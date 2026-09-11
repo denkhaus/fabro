@@ -709,7 +709,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-11T22:35:09.690211359Z",
-  "last_event_at": "2026-09-11T23:21:22.438559845Z",
+  "last_event_at": "2026-09-11T23:21:31.435061421Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -1820,9 +1820,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 859,
       "checkpoint": {
-        "timestamp": "2026-09-11T23:21:22.671401104Z",
+        "timestamp": "2026-09-11T23:21:30.219583995Z",
         "current_node": "closeout",
         "completed_nodes": [
           "start",
@@ -1835,24 +1835,6 @@
         ],
         "node_retries": {},
         "context_values": {
-          "internal.retry_count.planner": 0,
-          "internal.fidelity": "compact",
-          "internal.work_dir": "/workspace/fabro",
-          "thread.start.current_node": "planner",
-          "last_stage": "reviewer",
-          "internal.retry_count.reviewer": 0,
-          "current_node": "closeout",
-          "current_seed_title": "Long-window rate limits defeat count-based retries: honor provider reset times or park-and-resume",
-          "outcome": "succeeded",
-          "failure_signature": "",
-          "internal.node_visit_count": 1,
-          "lesson_capture": "mx-56553c",
-          "thread.implementer.current_node": "tester",
-          "thread.planner.current_node": "implementer",
-          "thread.tester.current_node": "evidence",
-          "thread.evidence.current_node": "reviewer",
-          "current_seed_brief": "Count-based exponential backoff (fabro-llm default_retry_policy: 3 attempts, backoff capped 5s, `lib/components/fabro-llm/src/client.rs:23`) cannot bridge multi-hour provider usage windows (zai 429 'Usage limit reached for 5 hour. Your limit will reset at <ts>', retry_after=null — reset exists only in message text). Retry exhaustion then fails the run hard (workflow_error) with no recovery path. Scope this run to the LLM/agent layer fix plus fail-fast propagation; full scheduled wake-up automation is follow-up (fabro-7627 depends on this). Acceptance criteria:\n- Parse reset hints from BOTH sources in `lib/components/fabro-llm/src/gateway.rs`: the existing Retry-After header path AND a message-text extractor for provider reset timestamps (at minimum the zai/Anthropic-style 'Your limit will reset at YYYY-MM-DD HH:MM:SS' wording; tolerate timezone-naive forms as UTC) — unit-tested with real message samples from the seed.\n- Retry middleware honors the reset deadline: when a RateLimit error carries a reset/reset-after window longer than the policy's total backoff budget, do NOT burn remaining attempts — surface the error immediately with the parsed reset time attached (structured field, not just message text).\n- Error type carries the provider reset deadline (extend the existing `with_provider_retry_after`/retry_after plumbing in `lib/components/fabro-llm/src/error.rs` area as needed) so callers can distinguish short-window 429s (retry as today) from long-window ones (fail fast, deadline attached).\n- Workflow layer: a long-window rate-limit failure from an agent stage maps to the existing soft-exit/soft-stop path (`lib/components/fabro-workflow/src/pipeline/finalize.rs`) instead of hard workflow_error, leaving the run resumable via the existing resume primitive (`lib/components/fabro-workflow/src/operations/resume.rs`). Scheduled wake-up/automation is explicitly OUT of scope this run.\n- Verification cheapest-first: `python3 -m pytest`-style parse check n/a; run `cargo nextest run -p fabro-llm` for the parser/middleware tests, then `cargo nextest run -p fabro-workflow` for the soft-exit mapping test; fmt/clippy on touched crates via `cargo +nightly-2026-04-14 fmt -p <touched-crate>` and `cargo +nightly-2026-04-14 clippy -p <touched-crate> --all-targets -- -D warnings`; gate green via the deterministic tester step.\n- No changes to loop assets (`justfile`, `scripts/`); engine-side scheduling work stays in fabro-7627/fabro-1f70.",
-          "graph.inspects": "develop",
           "journal": {
             "painpoints": [
               {
@@ -1863,26 +1845,37 @@
               "Verified all six seed criteria directly in the blob diff: prose+header reset parsing (with real incident sample), fail-fast retry behavior (RateLimitReset middleware ordered inside the retry layer), structured provider_retry_after with long_rate_limit_window classifier, and the SoftStop mapping in workflow error.rs/finalize.rs with both long and short window tests. Re-ran gateway reset-parser tests (3/3 pass). Loop churn adjudicated as legitimate (mx-56553c lesson + tracker sync). Noted non-blocking: soft_stop_failure_reason parses prose on all failure details, not just Llm — false positives require a future reset timestamp in a non-LLM failure message, effectively impossible."
             ]
           },
-          "graph.preamble_budget_kb": "24",
-          "implementation_summary": "fabro-a3d8 implemented across `lib/components/fabro-llm` (gateway.rs reset-prose parser + RateLimitReset middleware inside the retry layer; error.rs long_rate_limit_window classifier; chrono dep) and `lib/components/fabro-workflow` (error.rs failure_reason SoftStop mapping; finalize.rs soft_stop_failure_reason for Ok(Failed) outcomes and the terminal event). Lesson captured as mx-56553c. Per-criterion report: - PASS reset hints parsed from BOTH sources in `lib/components/fabro-llm/src/gateway.rs`: retry_after header path unchanged plus parse_reset_deadline/reset_window prose extractor (zai/Anthropic 'Your limit will reset at YYYY-MM-DD HH:MM:SS', timezone-naive as UTC), unit-tested with the real incident message in gateway::tests::{reset_deadline_is_parsed_from_zai_usage_prose, reset_prose_without_a_timestamp_yields_none, reset_window_measures_from_now_and_drops_past_deadlines} — PASS retry middleware honors the reset deadline: gateway_error and the RateLimitReset middleware attach the parsed window as RetryClassification::after + with_provider_retry_after, and gateway::tests::rate_limit_prose_attaches_the_reset_window plus client::tests::rate_limit_prose_attaches_the_reset_window_and_fails_fast assert default_retry_policy().next_delay(1,&error)==None for multi-hour windows (no attempts burned; error surfaces immediately) and short windows honored exactly — PASS error type carries the provider reset deadline as a structured field (provider_retry_after/retry_after plumbing extended in the fabro-llm/src/error.rs area with long_rate_limit_window/LONG_RATE_LIMIT_WINDOW distinguishing short vs long windows; error::tests::long_windows_are_only_rate_limits_beyond_the_cap) — PASS workflow layer maps long-window rate-limit failures to the soft-stop path: workflow error.rs failure_reason Llm guard and finalize.rs soft_stop_failure_reason used in classify_engine_result and build_terminal_event, tested in pipeline::finalize::tests::long_window_rate_limit_failure_parks_as_soft_stop (Failed{SoftStop}, resumable since resume rejects only succeeded runs) and short-window stays hard error; error::tests::long_window_rate_limit_maps_to_soft_stop — PASS verification cheapest-first: cargo nextest run -p fabro-llm (27/27 pass), cargo nextest run -p fabro-workflow (all pass except pre-existing load flake e2e_stall_watchdog_with_explicit_timeout_override, verified failing identically on the stashed clean tree and passing in isolation on both trees), crate-scoped fmt+clippy green on both touched crates with the pinned nightly, default features — PASS no loop-asset or scheduling changes (fabro-7627/fabro-1f70 untouched). Adjacent repair: none.",
-          "internal.retry_count.implementer": 0,
-          "review_verdict": "approved",
-          "thread.reviewer.current_node": "closeout",
-          "response.implementer": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.implementer",
-            "chars": 5428,
-            "preview": "All work is complete and verified. Summary of what was built:\n\n**fabro-llm** — `gateway.rs` gained `parse_reset_deadline`/`reset_window` (parses zai/Anthropic \"will reset at YYYY-MM-DD HH:MM:SS\" pro"
-          },
-          "internal.exit_kind": "natural",
-          "internal.retry_count.evidence": 0,
-          "current_seed_id": "fabro-a3d8",
-          "graph.max_node_visits": "40",
-          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
-          "graph.cycle_counter_reset_key": "current_seed_id",
-          "internal.retry_count.start": 0,
+          "failure_signature": "",
           "preferred_label": "Approved",
-          "command.output": "blob://sha256/a46c80c5581173d43419e873cd7d39050247b0a188cd862340fb9ceb8cb82dc9",
+          "failure_class": "",
+          "thread.tester.current_node": "evidence",
+          "graph.max_node_visits": "40",
+          "internal.seed_cycle_anchor": "fabro-a3d8",
+          "thread.evidence.current_node": "reviewer",
+          "thread.reviewer.current_node": "closeout",
+          "thread.planner.current_node": "implementer",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "internal.retry_count.evidence": 0,
+          "current_seed_brief": "Count-based exponential backoff (fabro-llm default_retry_policy: 3 attempts, backoff capped 5s, `lib/components/fabro-llm/src/client.rs:23`) cannot bridge multi-hour provider usage windows (zai 429 'Usage limit reached for 5 hour. Your limit will reset at <ts>', retry_after=null — reset exists only in message text). Retry exhaustion then fails the run hard (workflow_error) with no recovery path. Scope this run to the LLM/agent layer fix plus fail-fast propagation; full scheduled wake-up automation is follow-up (fabro-7627 depends on this). Acceptance criteria:\n- Parse reset hints from BOTH sources in `lib/components/fabro-llm/src/gateway.rs`: the existing Retry-After header path AND a message-text extractor for provider reset timestamps (at minimum the zai/Anthropic-style 'Your limit will reset at YYYY-MM-DD HH:MM:SS' wording; tolerate timezone-naive forms as UTC) — unit-tested with real message samples from the seed.\n- Retry middleware honors the reset deadline: when a RateLimit error carries a reset/reset-after window longer than the policy's total backoff budget, do NOT burn remaining attempts — surface the error immediately with the parsed reset time attached (structured field, not just message text).\n- Error type carries the provider reset deadline (extend the existing `with_provider_retry_after`/retry_after plumbing in `lib/components/fabro-llm/src/error.rs` area as needed) so callers can distinguish short-window 429s (retry as today) from long-window ones (fail fast, deadline attached).\n- Workflow layer: a long-window rate-limit failure from an agent stage maps to the existing soft-exit/soft-stop path (`lib/components/fabro-workflow/src/pipeline/finalize.rs`) instead of hard workflow_error, leaving the run resumable via the existing resume primitive (`lib/components/fabro-workflow/src/operations/resume.rs`). Scheduled wake-up/automation is explicitly OUT of scope this run.\n- Verification cheapest-first: `python3 -m pytest`-style parse check n/a; run `cargo nextest run -p fabro-llm` for the parser/middleware tests, then `cargo nextest run -p fabro-workflow` for the soft-exit mapping test; fmt/clippy on touched crates via `cargo +nightly-2026-04-14 fmt -p <touched-crate>` and `cargo +nightly-2026-04-14 clippy -p <touched-crate> --all-targets -- -D warnings`; gate green via the deterministic tester step.\n- No changes to loop assets (`justfile`, `scripts/`); engine-side scheduling work stays in fabro-7627/fabro-1f70.",
+          "last_response": "Focused tests pass. My adjudication is complete.\n\n**Requirement check against the fabro-a3d8 seed spec** (the capture's spec section mislabeled the seed as fabro-5082 — both are in_progress and the ",
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 3983,
+            "preview": "Claimed fabro-a3d8. The basis resolves against the current tree (retry policy at `lib/components/fabro-llm/src/client.rs:23`, Retry-After parsing at `lib/components/fabro-llm/src/gateway.rs:127-142`, "
+          },
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "last_stage": "reviewer",
+          "thread.start.current_node": "planner",
+          "current_seed_title": "Long-window rate limits defeat count-based retries: honor provider reset times or park-and-resume",
+          "lesson_capture": "mx-56553c",
+          "graph.preamble_budget_kb": "24",
+          "internal.retry_count.tester": 0,
+          "graph.rankdir": "LR",
+          "internal.retry_count.reviewer": 0,
+          "internal.run_id": "01M299PVMSE7Q53ZGPP67AHNMG",
+          "current_node": "closeout",
+          "current_seed_id": "fabro-a3d8",
           "seed_cycles": {
             "planner": 1,
             "implementer": 1,
@@ -1891,28 +1884,120 @@
             "reviewer": 1,
             "closeout": 1
           },
-          "internal.seed_cycle_anchor": "fabro-a3d8",
-          "failure_class": "",
-          "graph.rankdir": "LR",
-          "internal.retry_count.tester": 0,
+          "thread.implementer.current_node": "tester",
+          "internal.retry_count.implementer": 0,
+          "internal.thread_id": "reviewer",
+          "implementation_summary": "fabro-a3d8 implemented across `lib/components/fabro-llm` (gateway.rs reset-prose parser + RateLimitReset middleware inside the retry layer; error.rs long_rate_limit_window classifier; chrono dep) and `lib/components/fabro-workflow` (error.rs failure_reason SoftStop mapping; finalize.rs soft_stop_failure_reason for Ok(Failed) outcomes and the terminal event). Lesson captured as mx-56553c. Per-criterion report: - PASS reset hints parsed from BOTH sources in `lib/components/fabro-llm/src/gateway.rs`: retry_after header path unchanged plus parse_reset_deadline/reset_window prose extractor (zai/Anthropic 'Your limit will reset at YYYY-MM-DD HH:MM:SS', timezone-naive as UTC), unit-tested with the real incident message in gateway::tests::{reset_deadline_is_parsed_from_zai_usage_prose, reset_prose_without_a_timestamp_yields_none, reset_window_measures_from_now_and_drops_past_deadlines} — PASS retry middleware honors the reset deadline: gateway_error and the RateLimitReset middleware attach the parsed window as RetryClassification::after + with_provider_retry_after, and gateway::tests::rate_limit_prose_attaches_the_reset_window plus client::tests::rate_limit_prose_attaches_the_reset_window_and_fails_fast assert default_retry_policy().next_delay(1,&error)==None for multi-hour windows (no attempts burned; error surfaces immediately) and short windows honored exactly — PASS error type carries the provider reset deadline as a structured field (provider_retry_after/retry_after plumbing extended in the fabro-llm/src/error.rs area with long_rate_limit_window/LONG_RATE_LIMIT_WINDOW distinguishing short vs long windows; error::tests::long_windows_are_only_rate_limits_beyond_the_cap) — PASS workflow layer maps long-window rate-limit failures to the soft-stop path: workflow error.rs failure_reason Llm guard and finalize.rs soft_stop_failure_reason used in classify_engine_result and build_terminal_event, tested in pipeline::finalize::tests::long_window_rate_limit_failure_parks_as_soft_stop (Failed{SoftStop}, resumable since resume rejects only succeeded runs) and short-window stays hard error; error::tests::long_window_rate_limit_maps_to_soft_stop — PASS verification cheapest-first: cargo nextest run -p fabro-llm (27/27 pass), cargo nextest run -p fabro-workflow (all pass except pre-existing load flake e2e_stall_watchdog_with_explicit_timeout_override, verified failing identically on the stashed clean tree and passing in isolation on both trees), crate-scoped fmt+clippy green on both touched crates with the pinned nightly, default features — PASS no loop-asset or scheduling changes (fabro-7627/fabro-1f70 untouched). Adjacent repair: none.",
+          "graph.inspects": "develop",
+          "internal.work_dir": "/workspace/fabro",
+          "internal.node_visit_count": 1,
           "response.reviewer": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.reviewer",
             "chars": 4275,
             "preview": "Focused tests pass. My adjudication is complete.\n\n**Requirement check against the fabro-a3d8 seed spec** (the capture's spec section mislabeled the seed as fabro-5082 — both are in_progress and the "
           },
-          "internal.retry_count.closeout": 0,
-          "internal.run_id": "01M299PVMSE7Q53ZGPP67AHNMG",
-          "internal.thread_id": "reviewer",
-          "last_response": "Focused tests pass. My adjudication is complete.\n\n**Requirement check against the fabro-a3d8 seed spec** (the capture's spec section mislabeled the seed as fabro-5082 — both are in_progress and the ",
-          "response.planner": {
+          "review_verdict": "approved",
+          "internal.exit_kind": "natural",
+          "internal.retry_count.start": 0,
+          "outcome": "succeeded",
+          "internal.fidelity": "compact",
+          "command.output": "blob://sha256/a46c80c5581173d43419e873cd7d39050247b0a188cd862340fb9ceb8cb82dc9",
+          "response.implementer": {
             "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.planner",
-            "chars": 3983,
-            "preview": "Claimed fabro-a3d8. The basis resolves against the current tree (retry policy at `lib/components/fabro-llm/src/client.rs:23`, Retry-After parsing at `lib/components/fabro-llm/src/gateway.rs:127-142`, "
-          }
+            "output_key": "output.implementer",
+            "chars": 5428,
+            "preview": "All work is complete and verified. Summary of what was built:\n\n**fabro-llm** — `gateway.rs` gained `parse_reset_deadline`/`reset_window` (parses zai/Anthropic \"will reset at YYYY-MM-DD HH:MM:SS\" pro"
+          },
+          "internal.retry_count.closeout": 0,
+          "internal.retry_count.planner": 0
         },
         "node_outcomes": {
+          "evidence": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/2509f3147b66372cb8e88a679ab256ec5beebdd52ae867e07e44e49890985d94"
+            },
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 879,
+              "active_time_ms": 879
+            }
+          },
+          "closeout": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/a46c80c5581173d43419e873cd7d39050247b0a188cd862340fb9ceb8cb82dc9"
+            },
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/closeout.nu",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 380,
+              "active_time_ms": 380
+            }
+          },
+          "implementer": {
+            "status": "succeeded",
+            "preferred_label": "Implemented",
+            "context_updates": {
+              "implementation_summary": "fabro-a3d8 implemented across `lib/components/fabro-llm` (gateway.rs reset-prose parser + RateLimitReset middleware inside the retry layer; error.rs long_rate_limit_window classifier; chrono dep) and `lib/components/fabro-workflow` (error.rs failure_reason SoftStop mapping; finalize.rs soft_stop_failure_reason for Ok(Failed) outcomes and the terminal event). Lesson captured as mx-56553c. Per-criterion report: - PASS reset hints parsed from BOTH sources in `lib/components/fabro-llm/src/gateway.rs`: retry_after header path unchanged plus parse_reset_deadline/reset_window prose extractor (zai/Anthropic 'Your limit will reset at YYYY-MM-DD HH:MM:SS', timezone-naive as UTC), unit-tested with the real incident message in gateway::tests::{reset_deadline_is_parsed_from_zai_usage_prose, reset_prose_without_a_timestamp_yields_none, reset_window_measures_from_now_and_drops_past_deadlines} — PASS retry middleware honors the reset deadline: gateway_error and the RateLimitReset middleware attach the parsed window as RetryClassification::after + with_provider_retry_after, and gateway::tests::rate_limit_prose_attaches_the_reset_window plus client::tests::rate_limit_prose_attaches_the_reset_window_and_fails_fast assert default_retry_policy().next_delay(1,&error)==None for multi-hour windows (no attempts burned; error surfaces immediately) and short windows honored exactly — PASS error type carries the provider reset deadline as a structured field (provider_retry_after/retry_after plumbing extended in the fabro-llm/src/error.rs area with long_rate_limit_window/LONG_RATE_LIMIT_WINDOW distinguishing short vs long windows; error::tests::long_windows_are_only_rate_limits_beyond_the_cap) — PASS workflow layer maps long-window rate-limit failures to the soft-stop path: workflow error.rs failure_reason Llm guard and finalize.rs soft_stop_failure_reason used in classify_engine_result and build_terminal_event, tested in pipeline::finalize::tests::long_window_rate_limit_failure_parks_as_soft_stop (Failed{SoftStop}, resumable since resume rejects only succeeded runs) and short-window stays hard error; error::tests::long_window_rate_limit_maps_to_soft_stop — PASS verification cheapest-first: cargo nextest run -p fabro-llm (27/27 pass), cargo nextest run -p fabro-workflow (all pass except pre-existing load flake e2e_stall_watchdog_with_explicit_timeout_override, verified failing identically on the stashed clean tree and passing in isolation on both trees), crate-scoped fmt+clippy green on both touched crates with the pinned nightly, default features — PASS no loop-asset or scheduling changes (fabro-7627/fabro-1f70 untouched). Adjacent repair: none.",
+              "lesson_capture": "mx-56553c",
+              "journal": {
+                "painpoints": [
+                  {
+                    "text": "fabro-workflow full-suite runs on this sandbox are timing-flaky under parallel load: e2e_stall_watchdog_with_explicit_timeout_override fails (~2s) and 2-9 tests time out per run, identically on the clean tree (verified via git stash, run 01M299PVMSE7Q53ZGPP67AHNMG). The deterministic tester gate may hit these; suggest checking known-bug seeds for these timeout-prone integration tests or lowering nextest parallelism for fabro-workflow::it."
+                  }
+                ],
+                "observations": [
+                  "lithos RetryPolicy already implements the needed fail-fast: next_delay returns None when the classification's retry_after exceeds retry_after_cap (60s default, client.rs DEFAULT_RETRY_AFTER_CAP) — the fabro fix only had to attach the prose-parsed window to the error, not change retry logic.",
+                  "The incident path is direct provider calls, not just the gateway adapter: the seed named gateway.rs, but without the new RateLimitReset middleware inside the retry layer the real zai 429s would still burn attempts — the middleware reuses the same gateway parser so both paths share one implementation."
+                ]
+              },
+              "last_response": "All work is complete and verified. Summary of what was built:\n\n**fabro-llm** — `gateway.rs` gained `parse_reset_deadline`/`reset_window` (parses zai/Anthropic \"will reset at YYYY-MM-DD HH:MM:SS\" pro",
+              "last_stage": "implementer",
+              "response.implementer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.implementer",
+                "chars": 5428,
+                "preview": "All work is complete and verified. Summary of what was built:\n\n**fabro-llm** — `gateway.rs` gained `parse_reset_deadline`/`reset_window` (parses zai/Anthropic \"will reset at YYYY-MM-DD HH:MM:SS\" pro"
+              }
+            },
+            "notes": "Stage completed: implementer",
+            "usage": {
+              "model": {
+                "provider": "zai",
+                "model_id": "glm-5.3"
+              },
+              "tokens": {
+                "input": 98280,
+                "output": 18307,
+                "reasoning": 15116,
+                "cache_read": 7648768,
+                "cache_write": 0
+              },
+              "total_usd_micros": 2273184
+            },
+            "files_touched": [
+              "/workspace/fabro/lib/components/fabro-llm/Cargo.toml",
+              "/workspace/fabro/lib/components/fabro-llm/src/client.rs",
+              "/workspace/fabro/lib/components/fabro-llm/src/error.rs",
+              "/workspace/fabro/lib/components/fabro-llm/src/gateway.rs",
+              "/workspace/fabro/lib/components/fabro-llm/src/lib.rs",
+              "/workspace/fabro/lib/components/fabro-workflow/src/error.rs",
+              "/workspace/fabro/lib/components/fabro-workflow/src/pipeline/finalize.rs"
+            ],
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 708137,
+              "tool_time_ms": 1536812,
+              "active_time_ms": 2244949
+            }
+          },
           "planner": {
             "status": "succeeded",
             "preferred_label": "Seed claimed",
@@ -2006,76 +2091,9 @@
               "active_time_ms": 68312
             }
           },
-          "closeout": {
+          "start": {
             "status": "succeeded",
-            "context_updates": {
-              "command.output": "blob://sha256/a46c80c5581173d43419e873cd7d39050247b0a188cd862340fb9ceb8cb82dc9"
-            },
-            "notes": "Script completed: nu .fabro/workflows/develop/scripts/closeout.nu",
-            "usage": null,
-            "timing": {
-              "wall_time_ms": 0,
-              "inference_time_ms": 0,
-              "tool_time_ms": 380,
-              "active_time_ms": 380
-            }
-          },
-          "implementer": {
-            "status": "succeeded",
-            "preferred_label": "Implemented",
-            "context_updates": {
-              "implementation_summary": "fabro-a3d8 implemented across `lib/components/fabro-llm` (gateway.rs reset-prose parser + RateLimitReset middleware inside the retry layer; error.rs long_rate_limit_window classifier; chrono dep) and `lib/components/fabro-workflow` (error.rs failure_reason SoftStop mapping; finalize.rs soft_stop_failure_reason for Ok(Failed) outcomes and the terminal event). Lesson captured as mx-56553c. Per-criterion report: - PASS reset hints parsed from BOTH sources in `lib/components/fabro-llm/src/gateway.rs`: retry_after header path unchanged plus parse_reset_deadline/reset_window prose extractor (zai/Anthropic 'Your limit will reset at YYYY-MM-DD HH:MM:SS', timezone-naive as UTC), unit-tested with the real incident message in gateway::tests::{reset_deadline_is_parsed_from_zai_usage_prose, reset_prose_without_a_timestamp_yields_none, reset_window_measures_from_now_and_drops_past_deadlines} — PASS retry middleware honors the reset deadline: gateway_error and the RateLimitReset middleware attach the parsed window as RetryClassification::after + with_provider_retry_after, and gateway::tests::rate_limit_prose_attaches_the_reset_window plus client::tests::rate_limit_prose_attaches_the_reset_window_and_fails_fast assert default_retry_policy().next_delay(1,&error)==None for multi-hour windows (no attempts burned; error surfaces immediately) and short windows honored exactly — PASS error type carries the provider reset deadline as a structured field (provider_retry_after/retry_after plumbing extended in the fabro-llm/src/error.rs area with long_rate_limit_window/LONG_RATE_LIMIT_WINDOW distinguishing short vs long windows; error::tests::long_windows_are_only_rate_limits_beyond_the_cap) — PASS workflow layer maps long-window rate-limit failures to the soft-stop path: workflow error.rs failure_reason Llm guard and finalize.rs soft_stop_failure_reason used in classify_engine_result and build_terminal_event, tested in pipeline::finalize::tests::long_window_rate_limit_failure_parks_as_soft_stop (Failed{SoftStop}, resumable since resume rejects only succeeded runs) and short-window stays hard error; error::tests::long_window_rate_limit_maps_to_soft_stop — PASS verification cheapest-first: cargo nextest run -p fabro-llm (27/27 pass), cargo nextest run -p fabro-workflow (all pass except pre-existing load flake e2e_stall_watchdog_with_explicit_timeout_override, verified failing identically on the stashed clean tree and passing in isolation on both trees), crate-scoped fmt+clippy green on both touched crates with the pinned nightly, default features — PASS no loop-asset or scheduling changes (fabro-7627/fabro-1f70 untouched). Adjacent repair: none.",
-              "lesson_capture": "mx-56553c",
-              "journal": {
-                "painpoints": [
-                  {
-                    "text": "fabro-workflow full-suite runs on this sandbox are timing-flaky under parallel load: e2e_stall_watchdog_with_explicit_timeout_override fails (~2s) and 2-9 tests time out per run, identically on the clean tree (verified via git stash, run 01M299PVMSE7Q53ZGPP67AHNMG). The deterministic tester gate may hit these; suggest checking known-bug seeds for these timeout-prone integration tests or lowering nextest parallelism for fabro-workflow::it."
-                  }
-                ],
-                "observations": [
-                  "lithos RetryPolicy already implements the needed fail-fast: next_delay returns None when the classification's retry_after exceeds retry_after_cap (60s default, client.rs DEFAULT_RETRY_AFTER_CAP) — the fabro fix only had to attach the prose-parsed window to the error, not change retry logic.",
-                  "The incident path is direct provider calls, not just the gateway adapter: the seed named gateway.rs, but without the new RateLimitReset middleware inside the retry layer the real zai 429s would still burn attempts — the middleware reuses the same gateway parser so both paths share one implementation."
-                ]
-              },
-              "last_response": "All work is complete and verified. Summary of what was built:\n\n**fabro-llm** — `gateway.rs` gained `parse_reset_deadline`/`reset_window` (parses zai/Anthropic \"will reset at YYYY-MM-DD HH:MM:SS\" pro",
-              "last_stage": "implementer",
-              "response.implementer": {
-                "dedup": "response text omitted — payload lives in structured context keys",
-                "output_key": "output.implementer",
-                "chars": 5428,
-                "preview": "All work is complete and verified. Summary of what was built:\n\n**fabro-llm** — `gateway.rs` gained `parse_reset_deadline`/`reset_window` (parses zai/Anthropic \"will reset at YYYY-MM-DD HH:MM:SS\" pro"
-              }
-            },
-            "notes": "Stage completed: implementer",
-            "usage": {
-              "model": {
-                "provider": "zai",
-                "model_id": "glm-5.3"
-              },
-              "tokens": {
-                "input": 98280,
-                "output": 18307,
-                "reasoning": 15116,
-                "cache_read": 7648768,
-                "cache_write": 0
-              },
-              "total_usd_micros": 2273184
-            },
-            "files_touched": [
-              "/workspace/fabro/lib/components/fabro-llm/Cargo.toml",
-              "/workspace/fabro/lib/components/fabro-llm/src/client.rs",
-              "/workspace/fabro/lib/components/fabro-llm/src/error.rs",
-              "/workspace/fabro/lib/components/fabro-llm/src/gateway.rs",
-              "/workspace/fabro/lib/components/fabro-llm/src/lib.rs",
-              "/workspace/fabro/lib/components/fabro-workflow/src/error.rs",
-              "/workspace/fabro/lib/components/fabro-workflow/src/pipeline/finalize.rs"
-            ],
-            "timing": {
-              "wall_time_ms": 0,
-              "inference_time_ms": 708137,
-              "tool_time_ms": 1536812,
-              "active_time_ms": 2244949
-            }
+            "usage": null
           },
           "tester": {
             "status": "succeeded",
@@ -2090,41 +2108,142 @@
               "tool_time_ms": 132421,
               "active_time_ms": 132421
             }
-          },
-          "start": {
-            "status": "succeeded",
-            "usage": null
-          },
-          "evidence": {
-            "status": "succeeded",
-            "context_updates": {
-              "command.output": "blob://sha256/2509f3147b66372cb8e88a679ab256ec5beebdd52ae867e07e44e49890985d94"
-            },
-            "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
-            "usage": null,
-            "timing": {
-              "wall_time_ms": 0,
-              "inference_time_ms": 0,
-              "tool_time_ms": 879,
-              "active_time_ms": 879
-            }
           }
         },
         "next_node_id": "exit",
+        "git_commit_sha": "23d9bc0d976090904432c95af4b1346f5ca6c68c",
         "node_visits": {
-          "tester": 1,
-          "start": 1,
-          "closeout": 1,
-          "reviewer": 1,
           "evidence": 1,
+          "implementer": 1,
           "planner": 1,
-          "implementer": 1
+          "closeout": 1,
+          "start": 1,
+          "reviewer": 1,
+          "tester": 1
         }
       },
-      "diff": {}
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M299PVMSE7Q53ZGPP67AHNMG.jsonl b/.fabro/journal/01M299PVMSE7Q53ZGPP67AHNMG.jsonl\nindex 638e2515..3a7c2746 100644\n--- a/.fabro/journal/01M299PVMSE7Q53ZGPP67AHNMG.jsonl\n+++ b/.fabro/journal/01M299PVMSE7Q53ZGPP67AHNMG.jsonl\n@@ -4,3 +4,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M299PVMSE7Q53ZGPP67AHNMG\",\"node\":\"tester\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-11T23:19:52Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M299PVMSE7Q53ZGPP67AHNMG\",\"node\":\"evidence\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-11T23:19:58Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M299PVMSE7Q53ZGPP67AHNMG\",\"node\":\"reviewer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-11T23:21:17Z\",\"data\":{\"painpoints\":[{\"text\":\"Evidence capture named the wrong in-progress seed: the header and 'in-progress seed spec' section showed fabro-5082 (413 checkpoint issue) while this run's seed is fabro-a3d8 (run 01M299PVMSE7Q53ZGPP67AHNMG). Both seeds are in_progress in the tracker and evidence.nu apparently picked the other one. Fix idea: evidence.nu should take the claimed seed id from the run context/journal rather than scanning the tracker for in_progress seeds, or disambiguate when multiple are in_progress.\"}],\"observations\":[\"Verified all six seed criteria directly in the blob diff: prose+header reset parsing (with real incident sample), fail-fast retry behavior (RateLimitReset middleware ordered inside the retry layer), structured provider_retry_after with long_rate_limit_window classifier, and the SoftStop mapping in workflow error.rs/finalize.rs with both long and short window tests. Re-ran gateway reset-parser tests (3/3 pass). Loop churn adjudicated as legitimate (mx-56553c lesson + tracker sync). Noted non-blocking: soft_stop_failure_reason parses prose on all failure details, not just Llm — false positives require a future reset timestamp in a non-LLM failure message, effectively impossible.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M299PVMSE7Q53ZGPP67AHNMG\",\"node\":\"closeout\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-11T23:21:22Z\",\"data\":{}}\ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex a601a270..dff588a1 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -82,7 +82,7 @@\n {\"id\":\"fabro-09ea\",\"title\":\"engine: per-automation on_overlap policy — skip scheduled fires while a previous run is non-terminal\",\"status\":\"closed\",\"type\":\"feature\",\"priority\":1,\"createdAt\":\"2026-09-02T19:05:22.328Z\",\"updatedAt\":\"2026-09-04T07:16:08.741Z\",\"description\":\"STATUS: code complete, tested, pushed (1bf515770); DEPLOY PENDING — deliberately withheld while revisor run 01M1HKRE686W833SE86D8WD319 is active (user directive 2026-09-02). Deploy with `just up` once the run is terminal, then verify migration 2026090201 applied on production.\\n\\nLANDED: AutomationOverlapPolicy (fire|skip) through model/store/migration/OpenAPI/TS; scheduler skip guard (INFO, no run, no last_error; overlap-check failure also skips); manual API triggers unconditional. Tests: column round-trip, scheduler skip proof + default-fire control. ADR-0011 amendment recorded (gates wait indefinitely; overlap prevention replaces timeouts; timeout stays the per-node opt-in). automations.mdx docs.\\n\\nOriginal design: per-automation on_overlap for scheduled fires — skip while a previous run of the same automation is non-terminal (incl. gate-blocked, which can wait indefinitely). Known accepted window: terminal previous run with still-open PR not covered (auto-merge closes in seconds).\",\"closedAt\":\"2026-09-04T07:16:08.741Z\"}\n {\"id\":\"fabro-18a5\",\"title\":\"Terminal soft-exit edges classify runs as succeeded, blocking resume in CLI and web UI\",\"status\":\"closed\",\"type\":\"bug\",\"priority\":2,\"createdAt\":\"2026-09-03T05:48:55.539Z\",\"updatedAt\":\"2026-09-04T21:37:58.600Z\",\"description\":\"\\n\\nFIX LANDED 2026-09-04 (33a856869, deployed same day via just up rebuild): apply_soft_exit_downgrade in pipeline/finalize.rs mirrors the boundary upgrade in reverse — a success-shaped outcome routed through a kind=\\\"deadlock\\\"/\\\"soft\\\" exit edge becomes a failed terminal with FailureReason::Deadlock/SoftStop, the explicit failure detail lands in the persisted conclusion (resume unblocked), and publish gets its own exit-kind eligibility check (publish runs before finalize). Unit + pipeline e2e tests: soft_exit_downgrade_converts_green_terminal_to_failed, deadlock_exit_with_green_outcome_fails_instead_of_publishing. Live motivation: run 01M1PVMS7B6N39MG0041C5F7P6 (pre-fix binary) classified a closeout-failure soft exit as succeeded(completed) and opened PR #14-class artifact PR #18; with the rebuilt binary the re-run 01M1Q4P92K5RX8XX990BEB130Y completed naturally (closeout green) — the soft path is covered by tests, no live soft exit forced.\",\"labels\":[\"needs-triage\"],\"closedAt\":\"2026-09-04T21:37:58.341Z\"}\n {\"id\":\"fabro-83af\",\"title\":\"Graph-level retry policy with backoff config and node-level override for stage retries\",\"status\":\"open\",\"type\":\"feature\",\"priority\":2,\"createdAt\":\"2026-09-03T05:49:01.421Z\",\"updatedAt\":\"2026-09-07T13:23:27.573Z\",\"description\":\"Stage retries today (lib/components/fabro-workflow/src/retry.rs) support node attributes 'retry_policy' (presets: none/standard/aggressive/linear/patient) and 'max_retries', plus a single graph attribute 'default_max_retries' that sets only the attempt count. The backoff shape is hardcoded (initial 5s, factor 2.0, cap 60s, jitter) and presets can only be selected per node.\\n\\nGap: transient provider errors (e.g. zai 429 rate limits) can hit ANY LLM node in a workflow, so the retry default belongs at workflow level. Today every LLM node repeats 'retry_policy=standard' manually (see revisor graph nodes select/analyze/file in run 01M1HKRE686W833SE86D8WD319); forgetting one node silently leaves it without retries.\\n\\nDemand: declare a retry policy once at graph level (preset name, and optionally explicit backoff attributes initial_delay/factor/max_delay/jitter), applying to all nodes. Node attributes override the workflow default for special cases. Precedence: node retry_policy > node max_retries > graph retry_policy/backoff > graph default_max_retries > none. Exponential backoff with jitter already exists (fabro_util::backoff) and should stay the default shape.\",\"labels\":[\"needs-triage\"],\"assignee\":\"fabro\"}\n-{\"id\":\"fabro-a3d8\",\"title\":\"Long-window rate limits defeat count-based retries: honor provider reset times or park-and-resume\",\"status\":\"in_progress\",\"type\":\"feature\",\"priority\":0,\"createdAt\":\"2026-09-03T05:49:08.872Z\",\"updatedAt\":\"2026-09-11T22:35:58.178Z\",\"description\":\"Evidence: run 01M1HKRE686W833SE86D8WD319 burned its full stage retry budget (5 attempts, exponential backoff 5s..40s, ~2 min total) against a zai 429 whose usage window reset only hours later ('Usage limit reached for 5 hour. Your limit will reset at 2026-09-03 05:35:16'). The provider sent retry_after=null; the reset timestamp exists only inside the error message text. Three nested retry layers (agent.llm.retry x3, stage retries x5) all exhaust quickly against a multi-hour window, then the run soft-exits.\\n\\nCount-based exponential backoff cannot bridge multi-hour provider windows: the delays are far too short and the attempt count exhausts within minutes while the limit stays.\\n\\nFix directions to evaluate: (1) parse provider reset/retry-after hints (header AND message text) and cap or extend retry delays accordingly; (2) a wall-clock retry budget option (retry until T) instead of/in addition to attempt counts; (3) park-and-resume semantics: on a long-window 429, park the run in a resumable state with a scheduled wake-up instead of exhausting retries and exiting. Related: fabro-18a5 (soft-exit runs cannot be resumed), fabro-83af (graph-level retry defaults).\\n\\nEVIDENCE 2026-09-11 (integrate batch, recurrence confirmed same day): midday conductor passes on the second machine died on ZAI 5h-usage-limit 429s (conductor 01M269AXA and 01M26H7ZCA46 at 12:00/12:30 Berlin; merge child 01M27V6 at 11:27 — handoff fabro-91bf). None were resumable after the quota reset: recovery required manual new passes (13:20 API trigger) and a 2h salvage for merge child 01M2837. Code status at 23:5x Berlin: fabro-llm default_retry_policy = 3 attempts with backoff capped at 5s (client.rs); 429 maps to ErrorKind::RateLimit and Retry-After is parsed (gateway.rs), but retry exhaustion fails the run hard (workflow_error) — no park. Engine resume primitive exists (operations/resume.rs, POST /api/v1/runs/{id}/start {\\\"resume\\\":true}) but has the documented re-park trap when a routing decision already committed (see fabro-7627 engine part), and nothing triggers it on provider recovery. Priority raised P2->P1 by user decision 2026-09-11 ~23:59 Berlin; user ordering: this seed first, then fabro-7627 (manual resume UI+rewind). PRIORITY NOTE: raised P1->P0 by user decision 2026-09-12 00:29 Berlin to jump the develop queue — recurring unrecoverable outage class with same-day recurrence; user ordering: this seed next, then fabro-7627 (dep edge already in place).\",\"labels\":[\"needs-triage\"],\"assignee\":\"fabro\",\"blocks\":[\"fabro-7627\"]}\n+{\"id\":\"fabro-a3d8\",\"title\":\"Long-window rate limits defeat count-based retries: honor provider reset times or park-and-resume\",\"status\":\"closed\",\"type\":\"feature\",\"priority\":0,\"createdAt\":\"2026-09-03T05:49:08.872Z\",\"updatedAt\":\"2026-09-11T23:21:22.354Z\",\"description\":\"Evidence: run 01M1HKRE686W833SE86D8WD319 burned its full stage retry budget (5 attempts, exponential backoff 5s..40s, ~2 min total) against a zai 429 whose usage window reset only hours later ('Usage limit reached for 5 hour. Your limit will reset at 2026-09-03 05:35:16'). The provider sent retry_after=null; the reset timestamp exists only inside the error message text. Three nested retry layers (agent.llm.retry x3, stage retries x5) all exhaust quickly against a multi-hour window, then the run soft-exits.\\n\\nCount-based exponential backoff cannot bridge multi-hour provider windows: the delays are far too short and the attempt count exhausts within minutes while the limit stays.\\n\\nFix directions to evaluate: (1) parse provider reset/retry-after hints (header AND message text) and cap or extend retry delays accordingly; (2) a wall-clock retry budget option (retry until T) instead of/in addition to attempt counts; (3) park-and-resume semantics: on a long-window 429, park the run in a resumable state with a scheduled wake-up instead of exhausting retries and exiting. Related: fabro-18a5 (soft-exit runs cannot be resumed), fabro-83af (graph-level retry defaults).\\n\\nEVIDENCE 2026-09-11 (integrate batch, recurrence confirmed same day): midday conductor passes on the second machine died on ZAI 5h-usage-limit 429s (conductor 01M269AXA and 01M26H7ZCA46 at 12:00/12:30 Berlin; merge child 01M27V6 at 11:27 — handoff fabro-91bf). None were resumable after the quota reset: recovery required manual new passes (13:20 API trigger) and a 2h salvage for merge child 01M2837. Code status at 23:5x Berlin: fabro-llm default_retry_policy = 3 attempts with backoff capped at 5s (client.rs); 429 maps to ErrorKind::RateLimit and Retry-After is parsed (gateway.rs), but retry exhaustion fails the run hard (workflow_error) — no park. Engine resume primitive exists (operations/resume.rs, POST /api/v1/runs/{id}/start {\\\"resume\\\":true}) but has the documented re-park trap when a routing decision already committed (see fabro-7627 engine part), and nothing triggers it on provider recovery. Priority raised P2->P1 by user decision 2026-09-11 ~23:59 Berlin; user ordering: this seed first, then fabro-7627 (manual resume UI+rewind). PRIORITY NOTE: raised P1->P0 by user decision 2026-09-12 00:29 Berlin to jump the develop queue — recurring unrecoverable outage class with same-day recurrence; user ordering: this seed next, then fabro-7627 (dep edge already in place).\",\"labels\":[\"needs-triage\"],\"assignee\":\"fabro\",\"blocks\":[\"fabro-7627\"],\"closedAt\":\"2026-09-11T23:21:22.354Z\"}\n {\"id\":\"fabro-b440\",\"title\":\"rewind/fork UX: starting a fork with checkpoints ends terminal failed(terminated) — queue forks in resume mode or auto-switch\",\"status\":\"open\",\"type\":\"bug\",\"priority\":3,\"createdAt\":\"2026-09-03T06:03:02.286Z\",\"updatedAt\":\"2026-09-07T13:23:27.778Z\",\"description\":\"Scope NARROWED 2026-09-03 after verification on merged v0.345.0-nightly.0 (merge 6530c724f): upstream PR #838 fixed the crash-loop half — see VERIFIED below. What remains is fix direction (1): the happy path. `fabro rewind`/`fabro fork` produce a fork that CARRIES checkpoint history, but `fabro start <fork>` queues Start mode, hits the checkpoint precondition, and the fork ends terminal failed(terminated) within seconds. The rewind output already prints the correct recovery hint (\\\"To resume: fabro resume <fork-id>\\\"), so the remaining work is UX: queue forks in Resume mode by default (or have start auto-detect checkpoint history and switch), so users do not have to know the mode rule. Fix direction (3) (respawn backoff) is obsolete — no respawn happens anymore.\\n\\nOriginal report: after 'fabro rewind 01M1HKRE686W833SE86D8WD319 @41' (fork to 01M1JX979PTSZRZ10ZCTMJA34E), 'fabro start <new-run>' produced an infinite worker crash loop: every worker invocation died with 'Precondition failed: checkpoint already exists in the run store — did you mean to resume?' and the scheduler respawned it ~10x/second for minutes. Root cause: forked runs carry checkpoint history; queue_run_start (lib/apps/fabro-server/src/server/handler/lifecycle.rs) selects RunExecutionMode::Start for non-resume starts; operations::start refuses runs with existing checkpoints; the worker-exit failure event was rejected ('invalid status transition: runnable -> failed(terminated)') so the run stayed Runnable and spawn_scheduler retried forever. Correct recovery was 'fabro resume <fork-id>' (mode Resume), which worked.\\n\\nVERIFIED 2026-09-03 on v0.345.0-nightly.0 (server built from merge 6530c724f): reproduced the exact scenario — unarchived 01M1HKRE686W833SE86D8WD319, `fabro rewind ... @41` -> fork 01M1MG3JYMZ8DJW0G09QXKEH0Z, `fabro start` -> ONE worker invocation, worker stderr shows the precondition failure, run persists as terminal failed(terminated) (~4s from start to terminal; server log shows a single worker control-stream, zero respawns; second start attempt correctly rejected 409 'status is failed(terminated), expected submitted'). Both test runs re-archived afterwards.\",\"labels\":[\"needs-triage\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-8fb5\",\"title\":\"Designed loops exhaust per-node max_visits and fail as workflow_error 'stuck in a cycle'\",\"status\":\"open\",\"type\":\"bug\",\"priority\":2,\"createdAt\":\"2026-09-03T06:03:20.266Z\",\"updatedAt\":\"2026-09-07T13:23:27.880Z\",\"description\":\"Evidence: revisor run 01M1JXPAABBQ3TM3DJ2DQ1VZDW (forked from 01M1HKRE686W833SE86D8WD319 at checkpoint @41) resumed cleanly, ran select@11 successfully (selected target 01M11P68SHFS165HP9ATK6094V), then terminated as failed/workflow_error: 'node \\\"analyze\\\" visited 10 times (node limit 10); run is stuck in a cycle'. The original run would have hit the same wall one stage later even without the zai 429 — the budget was already spent after 10 completed revision cycles.\\n\\nProblems: (1) the revisor graph (digraph Revisor) is a designed loop with a natural end ('Nothing to revise' edge), but per-node max_visits (analyze=10, file=10, select=15) turns a healthy, still-productive loop into a hard workflow_error once the budget is gone and backlog remains — 'stuck in a cycle' is misleading for a loop that is making progress each visit; (2) node visit counts persist across fork/resume, so forking a long-running loop near its budget cannot continue it at all — the fork burns a cycle and dies; (3) there is no graceful 'budget exhausted, park and re-enter next pass' terminal state distinct from an error.\\n\\nFix directions: distinguish progress-making loops from true cycles (e.g. only fail as stuck-in-cycle when a node repeats without forward state change / same failure signature), or add a designed 'budget exhausted' exit kind (soft/boundary) so loops can park resumably, and/or revisit the revisor graph's per-node caps (graph max_node_visits=30 already bounds the run).\",\"labels\":[\"needs-triage\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-9588\",\"title\":\"Per-node skills and memory scoping for agent stages\",\"status\":\"open\",\"type\":\"feature\",\"priority\":2,\"createdAt\":\"2026-09-03T17:30:25.335Z\",\"updatedAt\":\"2026-09-07T13:23:27.980Z\",\"description\":\"Evidence: revisor run 01M1HKRE686W833SE86D8WD319 — every agent stage carries ~50 skill descriptions (~1.5k tokens) plus AGENTS.md memory (5.3KB) in its system prompt, regardless of need. Validation pass 01M1M568F5BZ9F17T3SFGRDCZ3 (2026-09-03) proved node attribute project_memory=false is INERT for agent nodes: AgentSession::initialize (lib/components/fabro-agent/src/session.rs ~line 625) calls discover_memory unconditionally; project_memory only gates the older prompt-handler path (lib/components/fabro-workflow/src/handler/prompt.rs line 68). select/analyze still loaded AGENTS.md (5307 bytes, budget 32768) with the attribute set.\\n\\nDemand: thread per-node scoping into the AGENT session path, not just the prompt handler. Cover BOTH: (a) memory — honor project_memory=false (or a dedicated memory=false) in AgentSession::initialize/AgentConfig; (b) skills — a per-node attribute (skills=false or skills=<dir>) to disable or scope skill discovery (AgentSession config already has skill_dirs, node-level override is missing). Both analogous to fs_hide/fabro_tools. Benefits every tool-light workflow stage.\",\"labels\":[\"needs-triage\"],\"assignee\":\"fabro\"}\n@@ -363,7 +363,7 @@\n {\"id\":\"fabro-3e48\",\"title\":\"Implementer: add routing-consistency self-check — one route per branch\",\"status\":\"open\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-10T11:52:11.067Z\",\"updatedAt\":\"2026-09-10T15:25:20.779Z\",\"description\":\"In `.fabro/workflows/develop/prompts/implementer.md` (Inline verification report section) add: before finishing, re-read every routing instruction written — each branch must yield exactly ONE route; two routing sentences in one branch is a FAIL, fix before reporting.\\n\\nGrounded: implementer@1 of the basis run wrote branch (a) of `.fabro/workflows/develop/prompts/planner.md` with both 'route \\\"Already landed\\\"' and 'continue down the `sd ready` candidate list' sentences, making the new graph edge dead config; reviewer@1 blocked it and the avoidable pass-2 cycle (planner@2+implementer@2+tester@2+evidence@2+reviewer@2) cost ~126 s wall / ~$0.125 / 5 stage visits for a one-sentence deletion. No existing seed covers a routing self-check (searched 'routing self-check', 'one route per branch': no matches).\\n\\nExpected effect: label-dead-config contradictions caught at implementer time, saving ~one full review cycle (~2 min / ~$0.13) per occurrence.\\n\\nBasis: run 01M25HCK22PNFPARY8R3YVC9DK, workflow version 99e5a7758912f1adc63c1749584b00296293249901eafbd60fa4e0556f75e4be, commit add88af03e7532624d73a287ff9d0225a77343a8\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-d83a\",\"title\":\"PROJECT_FACTS: name workflow.fabro as the graph source\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-10T11:52:11.104Z\",\"updatedAt\":\"2026-09-10T15:25:21.197Z\",\"description\":\"Add one line to `.fabro/workflows/develop/prompts/project-facts.md`: 'Graph source: `.fabro/workflows/develop/workflow.fabro` (DOT); `workflow.toml` wires runtime settings only — never probe it for edges.'\\n\\nGrounded: planner@1 of the basis run (100.6 s, $0.117 — the costliest stage of that run) burned two probes discovering this: a grep on `workflow.toml` for planner edges (seq 51–53, empty) and a `sed -n '1,120p'` head of `workflow.toml` (seq 57–59) before grepping the real file. Distinct from open fabro-0586 (available-binaries line — same file, different content) and from fabro-8d4c (probe style, not file identity).\\n\\nExpected effect: ~2 fewer tool calls per fresh claim; planners stop probing the wrong file every loop-asset seed.\\n\\nBasis: run 01M25HCK22PNFPARY8R3YVC9DK, workflow version 99e5a7758912f1adc63c1749584b00296293249901eafbd60fa4e0556f75e4be, commit add88af03e7532624d73a287ff9d0225a77343a8\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-9bf4\",\"title\":\"Bake graphviz into the develop toolchain image\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-10T11:52:20.414Z\",\"updatedAt\":\"2026-09-10T15:25:20.390Z\",\"description\":\"Add `graphviz` to the apt-get list in the toolchain Dockerfile (`.fabro/Dockerfile.toolchain`).\\n\\nGrounded: implementer@1 of the basis run — '`dot` is not installed in this environment, so the workflow.fabro render-check fell back to eyeballing the edge block'; loop-asset seeds edit this graph regularly (that run did) and a malformed edge would only surface at the next run's engine parse. Distinct from closed fabro-05d0 (baked `gh` — different package; that saga is unrelated). Caveat already covered by closed fabro-6f6e: inert until the toolchain image rebuilds.\\n\\nCAPABILITY-AFFECTING (ADR-0019): this adds a tool (`dot`) to an agent-reachable surface (`.fabro/Dockerfile.toolchain`); implementation awaits explicit user approval. Proposed fix direction is engine-mediated and read-only: install the distro `graphviz` package in the existing toolchain image so implementers can run `dot -Tcanon` as a pure syntax verification of graph edits — no new credentials, no raw clients, no tokens.\\n\\nExpected effect: mechanical `dot -Tcanon` syntax verification of graph edits at implementer time; eyeball fallback eliminated.\\n\\nBasis: run 01M25HCK22PNFPARY8R3YVC9DK, workflow version 99e5a7758912f1adc63c1749584b00296293249901eafbd60fa4e0556f75e4be, commit add88af03e7532624d73a287ff9d0225a77343a8\",\"labels\":[\"needs-user\",\"revision\"]}\n-{\"id\":\"fabro-7627\",\"title\":\"Web UI run actions: add Resume that re-runs the last failed node — engine auto-rewinds to its entry checkpoint (Retry alone discards committed stages)\",\"status\":\"open\",\"type\":\"feature\",\"priority\":1,\"createdAt\":\"2026-09-10T11:17:49.617Z\",\"updatedAt\":\"2026-09-11T22:00:36.254Z\",\"description\":\"Where/what: the web run actions menu (apps/fabro-web/app/lib/run-actions.ts offers cancel/approve/deny/archive/unarchive/retry) has no Resume for terminal runs; Retry is the only recovery path and re-runs the whole workflow from scratch, discarding completed stages, stage context, and run data. Change (1) engine: a Resume of a failed run must itself determine the rewind target — the entry checkpoint of the last failed stage, dropping that stage's committed outcome/routing decision — so Resume re-runs exactly the failed node with all prior committed work intact. Plain POST /api/v1/runs/{id}/start {\\\"resume\\\":true} is NOT enough when the failure already committed a routing decision (soft-exit park): it replays only the exit stage and re-parks immediately. (2) web UI: expose this as a Resume action in the run actions menu for terminal runs that have checkpoints; Retry stays for explicit fresh starts and the UI copy must distinguish the two. Optional advanced form: a 'Rewind to checkpoint…' picker over the checkpoint timeline (node@visit, as fabro rewind --list shows). (3) API changes OpenAPI-first (docs/public/api-reference/fabro-api.yaml -> fabro-api build.rs -> fabro-api-client regen). Open design point: fabro rewind forks a new run id ('new run 01M25G94'); one-click Resume either keeps fork+parent link or the engine grows in-place resume-from-failure for terminal runs. Expected effect: a 429-style mid-run death costs only the failed node's re-execution instead of the whole run. Grounded: 2026-09-10 zai 429 killed Revisor 01M257B996MJ at the File stage after 'Findings ready' (~9 min agent work, checkpoint @3 analyze); UI Retry would have discarded it. Plain `fabro resume` re-ran only the exit stage and re-parked in 2s (routing 'Bookkeeping failed (nothing merged)' was already checkpointed); the actual rescue needed `rewind @3` (fork 01M25G94TMN8) + resume -> File stage succeeded on first attempt, PR #118. Basis: run 01M257B996MJNPWPY33MNDAEHP (+ fork 01M25G94TMN81J03TC153NRJXF, PR #118), 2026-09-10\",\"labels\":[\"web\",\"engine\"],\"assignee\":\"fabro\",\"blockedBy\":[\"fabro-a3d8\"]}\n+{\"id\":\"fabro-7627\",\"title\":\"Web UI run actions: add Resume that re-runs the last failed node — engine auto-rewinds to its entry checkpoint (Retry alone discards committed stages)\",\"status\":\"open\",\"type\":\"feature\",\"priority\":1,\"createdAt\":\"2026-09-10T11:17:49.617Z\",\"updatedAt\":\"2026-09-11T23:21:22.354Z\",\"description\":\"Where/what: the web run actions menu (apps/fabro-web/app/lib/run-actions.ts offers cancel/approve/deny/archive/unarchive/retry) has no Resume for terminal runs; Retry is the only recovery path and re-runs the whole workflow from scratch, discarding completed stages, stage context, and run data. Change (1) engine: a Resume of a failed run must itself determine the rewind target — the entry checkpoint of the last failed stage, dropping that stage's committed outcome/routing decision — so Resume re-runs exactly the failed node with all prior committed work intact. Plain POST /api/v1/runs/{id}/start {\\\"resume\\\":true} is NOT enough when the failure already committed a routing decision (soft-exit park): it replays only the exit stage and re-parks immediately. (2) web UI: expose this as a Resume action in the run actions menu for terminal runs that have checkpoints; Retry stays for explicit fresh starts and the UI copy must distinguish the two. Optional advanced form: a 'Rewind to checkpoint…' picker over the checkpoint timeline (node@visit, as fabro rewind --list shows). (3) API changes OpenAPI-first (docs/public/api-reference/fabro-api.yaml -> fabro-api build.rs -> fabro-api-client regen). Open design point: fabro rewind forks a new run id ('new run 01M25G94'); one-click Resume either keeps fork+parent link or the engine grows in-place resume-from-failure for terminal runs. Expected effect: a 429-style mid-run death costs only the failed node's re-execution instead of the whole run. Grounded: 2026-09-10 zai 429 killed Revisor 01M257B996MJ at the File stage after 'Findings ready' (~9 min agent work, checkpoint @3 analyze); UI Retry would have discarded it. Plain `fabro resume` re-ran only the exit stage and re-parked in 2s (routing 'Bookkeeping failed (nothing merged)' was already checkpointed); the actual rescue needed `rewind @3` (fork 01M25G94TMN8) + resume -> File stage succeeded on first attempt, PR #118. Basis: run 01M257B996MJNPWPY33MNDAEHP (+ fork 01M25G94TMN81J03TC153NRJXF, PR #118), 2026-09-10\",\"labels\":[\"web\",\"engine\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-9837\",\"title\":\"Reviewer blob refs: state payload byte size in the marker; make a bounded nu substring read the mandatory first action\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-10T13:09:17.374Z\",\"updatedAt\":\"2026-09-10T13:15:19.104Z\",\"description\":\"In run 01M25K41V4NEWXSA3SVGRHKRXK the 62,474-byte evidence capture reached the reviewer as a blob ref; the first read_file landed mid-file truncated (~14 KB omitted) and recovery required nu -c 'open --raw <path> | str substring' (reviewer journal 12:56:51). Change: (1) make the engine's blob-ref/demotion marker state the payload byte size; (2) rewrite the LARGE VALUES paragraph in .fabro/workflows/develop/prompts/reviewer.md to mandate 'nu -c \\\"open --raw <path> | str substring 0..20000\\\"' as the first action before any read_file. Supersedes fabro-a0fe (read_file offset/limit is exactly what truncated here); budget raises stay as filed (fabro-8d2c, fabro-cf3e). Expected effect: one-shot evidence reads; removes the unread-blob verification-blocked bounce (~2-4 min plus a second reviewer visit). Basis: run 01M25K41V4NEWXSA3SVGRHKRXK, workflow version e825d8c827ce15defe0aa57d3586b0f369cab48cc7fe711d526776762f442aa1, commit 61d04c38f89a54168e02a12c4b1f82b0dc9c026b\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-8a60\",\"title\":\"Qualitygate: verify seed-spec-named loop-asset paths appear in the run diff\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-10T12:28:38.542Z\",\"updatedAt\":\"2026-09-10T15:25:21.068Z\",\"description\":\"In `scripts/qualitygate.nu`, extend the loop-asset tier (landed via fabro-bfe1) with one deterministic check: every path the in-progress seed's spec names that lies under the loop-asset roots must appear in the run diff (empty diff = red). Expected effect: an empty-edit or wrong-file pass bounces at the tester in seconds instead of consuming a full review cycle. Basis: run 01M25732658J2RFTM6MDM8CPFG, workflow version 38bab0b8b1faad62aaddb5e68facf6f1c58286169676479d3edbf99d4205b91c, commit 1c3dec49a41bd92afdd64a510210734cfc301b63\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-895d\",\"title\":\"Engine: staleness supervisor retires run PRs on .seeds JSONL update-conflicts — revisor bookkeeping lost (resumed/forked runs carry stale tracker state)\",\"status\":\"open\",\"type\":\"bug\",\"priority\":1,\"createdAt\":\"2026-09-10T12:29:07.847Z\",\"updatedAt\":\"2026-09-10T15:25:20.633Z\",\"description\":\"PROBLEM: the PR staleness supervisor closes run PRs as stale_base after 3 update-branch attempts fail with 422. When the conflict sits in `.seeds/issues.jsonl`, the branch is unmergeable by GitHub's updater and the run's whole bookkeeping (filed seeds, review/revision artifacts, journals) is dropped from base when the PR retires. EVIDENCE (2026-09-10): revisor run 01M257B996MJ died on the zai 429 at its File stage; rescued via `fabro rewind @3` into fork 01M25G94TMN8, whose PR #118 (two seeds + review of develop run 01M25732658J) sat in the gate while base moved (#117 merge + seeds syncs). Supervisor update-branch attempts hit 422 on the tracker file at 11:16/11:21/11:26 (attempts 1-3), PR closed stale_base 11:31:34. The two revisor seeds and the review artifacts landed nowhere; manual recovery from run branch `fabro/run/01M25G94TMN81J03TC153NRJXF` during integrate (seed re-filed as fabro-8a60, second folded into fabro-52b4). ROOT CAUSE: forked/resumed runs inherit the pre-fork clone's tracker state; a normal base move then conflicts at JSONL level, which neither GitHub update-branch nor the supervisor can resolve. CHANGE (engine, fabro-server pull_request_supervisor / pipeline): (a) resolve 422 conflicts on `.seeds/issues.jsonl`/`.mulch/**` with the documented closed-wins union instead of counting a strike; or (b) rebase tracker state onto current base at fork/resume creation; or (c) at minimum, park (not close) revisor/bookkeeping PRs on retirement and surface the loss — silent drop of filed findings is the worst outcome. CLASS LINEAGE: fabro-94e8 (origin: run-branch staleness) -> fabro-17e8 (409 must not strike) -> this (422-on-JSONL real conflict must resolve, not strike). One class, one durable fix: make the supervisor conflict-aware for the loop's own JSONL formats. Basis: runs 01M257B996MJNPWPY33MNDAEHP + fork 01M25G94TMN81J03TC153NRJXF, PR #118, server log 11:16-11:31 UTC, 2026-09-10\\n\\nSECOND INSTANCE (2026-09-10 ~14:1x UTC): PR #121 (fabro-3fe4 first attempt, run 01M25K41V4NE) hit the same 422-on-JSONL update-branch wall after base pushes (including the integrate batch 76ed61987) and was retired stale_base ~14:12 — this time NOT rescued by reopen; the branch survived and the fix landed via a fresh develop run (PR #123) instead. The 12:02 breaker-park + this retirement make the day's count two JSONL-driven PR losses in ~2 hours. The evidence strengthens the (a) JSONL-aware update-branch resolution as the preferred durable fix. Related same-day: fabro-8ee1 (duplicate develop child after the pass's own gate-stuck misroute) and fabro-ee5d (instant blocked returns misjudging young gates as stuck) — the three incidents form one operational cluster around conductor PR-wait semantics. Basis addition: PR #121 retirement, server logs 14:11-14:12 UTC.\",\"labels\":[\"engine\",\"workflows\"],\"assignee\":\"fabro\"}\n",
+        "summary": {
+          "files_changed": 11,
+          "additions": 462,
+          "deletions": 16
+        }
+      }
     }
   ],
-  "conclusion": null,
+  "conclusion": {
+    "timestamp": "2026-09-11T23:21:30.368777572Z",
+    "status": "succeeded",
+    "timing": {
+      "wall_time_ms": 2552148,
+      "inference_time_ms": 829187,
+      "tool_time_ms": 1687243,
+      "active_time_ms": 2516430
+    },
+    "final_git_commit_sha": "23d9bc0d976090904432c95af4b1346f5ca6c68c",
+    "stages": [
+      {
+        "stage_id": "start",
+        "stage_label": "start",
+        "timing": {
+          "wall_time_ms": 0,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "planner",
+        "stage_label": "planner",
+        "timing": {
+          "wall_time_ms": 70000,
+          "inference_time_ms": 55019,
+          "tool_time_ms": 14470,
+          "active_time_ms": 69489
+        },
+        "billing_usd_micros": 158934,
+        "retries": 0
+      },
+      {
+        "stage_id": "implementer",
+        "stage_label": "implementer",
+        "timing": {
+          "wall_time_ms": 2246010,
+          "inference_time_ms": 708137,
+          "tool_time_ms": 1536812,
+          "active_time_ms": 2244949
+        },
+        "billing_usd_micros": 2273184,
+        "retries": 0
+      },
+      {
+        "stage_id": "tester",
+        "stage_label": "tester",
+        "timing": {
+          "wall_time_ms": 132426,
+          "inference_time_ms": 0,
+          "tool_time_ms": 132421,
+          "active_time_ms": 132421
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "evidence",
+        "stage_label": "evidence",
+        "timing": {
+          "wall_time_ms": 886,
+          "inference_time_ms": 0,
+          "tool_time_ms": 879,
+          "active_time_ms": 879
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "reviewer",
+        "stage_label": "reviewer",
+        "timing": {
+          "wall_time_ms": 68836,
+          "inference_time_ms": 66031,
+          "tool_time_ms": 2281,
+          "active_time_ms": 68312
+        },
+        "billing_usd_micros": 87267,
+        "retries": 0
+      },
+      {
+        "stage_id": "closeout",
+        "stage_label": "closeout",
+        "timing": {
+          "wall_time_ms": 387,
+          "inference_time_ms": 0,
+          "tool_time_ms": 380,
+          "active_time_ms": 380
+        },
+        "retries": 0
+      }
+    ],
+    "billing": {
+      "input_tokens": 176765,
+      "output_tokens": 21834,
+      "total_tokens": 8274255,
+      "reasoning_tokens": 18440,
+      "cache_read_tokens": 8057216,
+      "cache_write_tokens": 0,
+      "total_usd_micros": 2519385
+    },
+    "total_retries": 0,
+    "diff": {
+      "patch": "diff --git a/.fabro/journal/01M299PVMSE7Q53ZGPP67AHNMG.jsonl b/.fabro/journal/01M299PVMSE7Q53ZGPP67AHNMG.jsonl\nnew file mode 100644\nindex 00000000..3a7c2746\n--- /dev/null\n+++ b/.fabro/journal/01M299PVMSE7Q53ZGPP67AHNMG.jsonl\n@@ -0,0 +1,7 @@\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M299PVMSE7Q53ZGPP67AHNMG\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-11T22:35:12Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M299PVMSE7Q53ZGPP67AHNMG\",\"node\":\"planner\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-11T22:36:27Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Seed fabro-a3d8 raised P2→P1→P0 by user decision (2026-09-12 00:29 Berlin) to jump the queue; user ordering: fabro-a3d8 first, then fabro-7627 (dep edge exists). Claimed this run.\",\"Seed's cited paths resolve but fabro-llm lives under `lib/components/` not `lib/foundation/` — paths in the seed body are abbreviated, no sd update needed.\",\"fabro_runs_list showed no open PRs and no non-terminal develop runs besides this run itself (01M299PVMSE7Q53ZGPP67AHNMG, self-excluded) — no in-flight exclusions applied.\",\"Scoped park-and-resume OUT of this run's brief (kept: fail-fast + soft-exit mapping + resumable state); scheduled wake-up belongs with fabro-7627/fabro-1f70 to keep one-seed-per-run tractable.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M299PVMSE7Q53ZGPP67AHNMG\",\"node\":\"implementer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-11T23:17:21Z\",\"data\":{\"painpoints\":[{\"text\":\"fabro-workflow full-suite runs on this sandbox are timing-flaky under parallel load: e2e_stall_watchdog_with_explicit_timeout_override fails (~2s) and 2-9 tests time out per run, identically on the clean tree (verified via git stash, run 01M299PVMSE7Q53ZGPP67AHNMG). The deterministic tester gate may hit these; suggest checking known-bug seeds for these timeout-prone integration tests or lowering nextest parallelism for fabro-workflow::it.\"}],\"observations\":[\"lithos RetryPolicy already implements the needed fail-fast: next_delay returns None when the classification's retry_after exceeds retry_after_cap (60s default, client.rs DEFAULT_RETRY_AFTER_CAP) — the fabro fix only had to attach the prose-parsed window to the error, not change retry logic.\",\"The incident path is direct provider calls, not just the gateway adapter: the seed named gateway.rs, but without the new RateLimitReset middleware inside the retry layer the real zai 429s would still burn attempts — the middleware reuses the same gateway parser so both paths share one implementation.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M299PVMSE7Q53ZGPP67AHNMG\",\"node\":\"tester\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-11T23:19:52Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M299PVMSE7Q53ZGPP67AHNMG\",\"node\":\"evidence\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-11T23:19:58Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M299PVMSE7Q53ZGPP67AHNMG\",\"node\":\"reviewer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-11T23:21:17Z\",\"data\":{\"painpoints\":[{\"text\":\"Evidence capture named the wrong in-progress seed: the header and 'in-progress seed spec' section showed fabro-5082 (413 checkpoint issue) while this run's seed is fabro-a3d8 (run 01M299PVMSE7Q53ZGPP67AHNMG). Both seeds are in_progress in the tracker and evidence.nu apparently picked the other one. Fix idea: evidence.nu should take the claimed seed id from the run context/journal rather than scanning the tracker for in_progress seeds, or disambiguate when multiple are in_progress.\"}],\"observations\":[\"Verified all six seed criteria directly in the blob diff: prose+header reset parsing (with real incident sample), fail-fast retry behavior (RateLimitReset middleware ordered inside the retry layer), structured provider_retry_after with long_rate_limit_window classifier, and the SoftStop mapping in workflow error.rs/finalize.rs with both long and short window tests. Re-ran gateway reset-parser tests (3/3 pass). Loop churn adjudicated as legitimate (mx-56553c lesson + tracker sync). Noted non-blocking: soft_stop_failure_reason parses prose on all failure details, not just Llm — false positives require a future reset timestamp in a non-LLM failure message, effectively impossible.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M299PVMSE7Q53ZGPP67AHNMG\",\"node\":\"closeout\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-11T23:21:22Z\",\"data\":{}}\ndiff --git a/.mulch/expertise/engine.jsonl b/.mulch/expertise/engine.jsonl\nindex 7c7201f8..c06ac82b 100644\n--- a/.mulch/expertise/engine.jsonl\n+++ b/.mulch/expertise/engine.jsonl\n@@ -57,3 +57,4 @@\n {\"type\":\"failure\",\"classification\":\"tactical\",\"recorded_at\":\"2026-09-10T14:54:14.516Z\",\"evidence\":{\"commit\":\"2a2f189a4cf44f95b03420280c488971156ae8b6\"},\"dir_anchors\":[\"lib/components/fabro-workflow/src/operations\"],\"description\":\"fabro-3fe4 reopen (runs 01M25K41V4NE, 01M25R832HP): making the live reducer strictly apply the shared lifecycle table stranded injected event sequences (submitted + worker-shaped run.starting, RunRunnable suppressed by the scheduling guard) at Submitted, so fabro rm no longer saw terminal runs as completed and failed dogfood-gate. Lesson: when two reducers share one strict table, any per-reducer guard (RunRunnable suppression) must be paired with the shared fast-forward path, or live/durable status drift breaks downstream terminality predicates like requires_force_to_delete.\",\"resolution\":\"Shared helper fabro_types::historic_skipped_statuses consumed by BOTH live_lifecycle_status (server.rs) and RunProjectionReducer (run_state.rs); rm completed-run tests pass on final tree.\",\"id\":\"mx-c555a3\"}\n {\"type\":\"failure\",\"classification\":\"tactical\",\"recorded_at\":\"2026-09-11T13:21:42.868Z\",\"evidence\":{\"commit\":\"52f7bbb340a7b973bf6db59a6305b137760c8a9b\"},\"description\":\"checkpoint.completed run event exceeds MAX_RUN_EVENT_BODY_BYTES (3MB) on big merge-upstream runs: worker loses canonical run store (HTTP 413) AFTER the merge commit exists, run is marked failed(workflow_error), conductor pass soft-stops, and the merge work is stranded in the sandbox (fabro/run/* pushes rejected by GitHub branch protection, nothing persisted remotely). Observed 2026-09-11 on runs 01M27V69 and 01M2837. Salvage: docker start the stopped run container, docker cp .git out, fetch into host repo, push under salvage/<name> (fabro/run/* blocked, salvage/* allowed).\",\"resolution\":\"Unresolved: needs code fix — bound checkpoint event payload size (blob-store large data like tool outputs already do via MAX_SERIALIZED_TOOL_OUTPUT_BYTES) or raise MAX_RUN_EVENT_BODY_BYTES; independently allow-list fabro/run/* pushes so finished work is persisted before sandbox teardown. Interim manual salvage procedure documented in description.\",\"id\":\"mx-82cf0d\"}\n {\"type\":\"pattern\",\"classification\":\"tactical\",\"recorded_at\":\"2026-09-11T21:35:37.752Z\",\"evidence\":{\"seeds\":\"fabro-3ef7\",\"commit\":\"effe7ed628707be38cf71b9fd30200a369b4262d\"},\"name\":\"sqlite-busy-classification-and-wal-test-pools\",\"description\":\"SQLite BUSY resilience in fabro-store run-event writes (fabro-3ef7): sqlx surfaces the EXTENDED error code via DatabaseError::code() (e.g. 517 SQLITE_BUSY_SNAPSHOT), so busy classification must mask to the primary code (code & 0xff == 5) plus a 'database is locked' message fallback; and file-backed test pools must set journal_mode(Wal) to mirror the canonical fabro-db connect policy — rollback-journal test pools deadlocked forever (not code-5) when two same-process pools held overlapping write transactions, silently failing to reproduce the production incident.\",\"files\":[\"lib/apps/fabro-server/migrations/2026082301_sqlite_blob_activation.rs\",\"lib/apps/fabro-server/migrations/2026082801_sqlite_run_history_activation.rs\",\"lib/components/fabro-store/src/legacy_blob_import.rs\",\"lib/components/fabro-store/src/slate/mod.rs\",\"lib/components/fabro-store/src/slate/run_store.rs\",\"lib/components/fabro-store/src/test_support/mod.rs\",\"lib/foundation/fabro-db/src/lib.rs\"],\"id\":\"mx-a2c839\"}\n+{\"type\":\"decision\",\"classification\":\"tactical\",\"recorded_at\":\"2026-09-11T23:16:48.122Z\",\"evidence\":{\"seeds\":\"fabro-a3d8\",\"commit\":\"5a39deb50ad5cc44ab4d620ab30e8d1f37613a39\"},\"dir_anchors\":[\"lib/components/fabro-llm/src\"],\"title\":\"Long-window rate limits: parse reset prose, fail fast, park as SoftStop\",\"rationale\":\"Count-based exponential backoff cannot bridge multi-hour provider usage windows; burning retry attempts then failing hard left runs unrecoverable (fabro-a3d8 evidence). The reset deadline arrives only in 429 message prose, so fabro-llm parses it, attaches it as the structured provider_retry_after field, lets the lithos retry_after_cap surface the error immediately, and the workflow parks the run as FailureReason::SoftStop which stays resumable.\",\"id\":\"mx-56553c\"}\ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex 0afdba4b..dff588a1 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -82,7 +82,7 @@\n {\"id\":\"fabro-09ea\",\"title\":\"engine: per-automation on_overlap policy — skip scheduled fires while a previous run is non-terminal\",\"status\":\"closed\",\"type\":\"feature\",\"priority\":1,\"createdAt\":\"2026-09-02T19:05:22.328Z\",\"updatedAt\":\"2026-09-04T07:16:08.741Z\",\"description\":\"STATUS: code complete, tested, pushed (1bf515770); DEPLOY PENDING — deliberately withheld while revisor run 01M1HKRE686W833SE86D8WD319 is active (user directive 2026-09-02). Deploy with `just up` once the run is terminal, then verify migration 2026090201 applied on production.\\n\\nLANDED: AutomationOverlapPolicy (fire|skip) through model/store/migration/OpenAPI/TS; scheduler skip guard (INFO, no run, no last_error; overlap-check failure also skips); manual API triggers unconditional. Tests: column round-trip, scheduler skip proof + default-fire control. ADR-0011 amendment recorded (gates wait indefinitely; overlap prevention replaces timeouts; timeout stays the per-node opt-in). automations.mdx docs.\\n\\nOriginal design: per-automation on_overlap for scheduled fires — skip while a previous run of the same automation is non-terminal (incl. gate-blocked, which can wait indefinitely). Known accepted window: terminal previous run with still-open PR not covered (auto-merge closes in seconds).\",\"closedAt\":\"2026-09-04T07:16:08.741Z\"}\n {\"id\":\"fabro-18a5\",\"title\":\"Terminal soft-exit edges classify runs as succeeded, blocking resume in CLI and web UI\",\"status\":\"closed\",\"type\":\"bug\",\"priority\":2,\"createdAt\":\"2026-09-03T05:48:55.539Z\",\"updatedAt\":\"2026-09-04T21:37:58.600Z\",\"description\":\"\\n\\nFIX LANDED 2026-09-04 (33a856869, deployed same day via just up rebuild): apply_soft_exit_downgrade in pipeline/finalize.rs mirrors the boundary upgrade in reverse — a success-shaped outcome routed through a kind=\\\"deadlock\\\"/\\\"soft\\\" exit edge becomes a failed terminal with FailureReason::Deadlock/SoftStop, the explicit failure detail lands in the persisted conclusion (resume unblocked), and publish gets its own exit-kind eligibility check (publish runs before finalize). Unit + pipeline e2e tests: soft_exit_downgrade_converts_green_terminal_to_failed, deadlock_exit_with_green_outcome_fails_instead_of_publishing. Live motivation: run 01M1PVMS7B6N39MG0041C5F7P6 (pre-fix binary) classified a closeout-failure soft exit as succeeded(completed) and opened PR #14-class artifact PR #18; with the rebuilt binary the re-run 01M1Q4P92K5RX8XX990BEB130Y completed naturally (closeout green) — the soft path is covered by tests, no live soft exit forced.\",\"labels\":[\"needs-triage\"],\"closedAt\":\"2026-09-04T21:37:58.341Z\"}\n {\"id\":\"fabro-83af\",\"title\":\"Graph-level retry policy with backoff config and node-level override for stage retries\",\"status\":\"open\",\"type\":\"feature\",\"priority\":2,\"createdAt\":\"2026-09-03T05:49:01.421Z\",\"updatedAt\":\"2026-09-07T13:23:27.573Z\",\"description\":\"Stage retries today (lib/components/fabro-workflow/src/retry.rs) support node attributes 'retry_policy' (presets: none/standard/aggressive/linear/patient) and 'max_retries', plus a single graph attribute 'default_max_retries' that sets only the attempt count. The backoff shape is hardcoded (initial 5s, factor 2.0, cap 60s, jitter) and presets can only be selected per node.\\n\\nGap: transient provider errors (e.g. zai 429 rate limits) can hit ANY LLM node in a workflow, so the retry default belongs at workflow level. Today every LLM node repeats 'retry_policy=standard' manually (see revisor graph nodes select/analyze/file in run 01M1HKRE686W833SE86D8WD319); forgetting one node silently leaves it without retries.\\n\\nDemand: declare a retry policy once at graph level (preset name, and optionally explicit backoff attributes initial_delay/factor/max_delay/jitter), applying to all nodes. Node attributes override the workflow default for special cases. Precedence: node retry_policy > node max_retries > graph retry_policy/backoff > graph default_max_retries > none. Exponential backoff with jitter already exists (fabro_util::backoff) and should stay the default shape.\",\"labels\":[\"needs-triage\"],\"assignee\":\"fabro\"}\n-{\"id\":\"fabro-a3d8\",\"title\":\"Long-window rate limits defeat count-based retries: honor provider reset times or park-and-resume\",\"status\":\"open\",\"type\":\"feature\",\"priority\":0,\"createdAt\":\"2026-09-03T05:49:08.872Z\",\"updatedAt\":\"2026-09-11T22:29:50.047Z\",\"description\":\"Evidence: run 01M1HKRE686W833SE86D8WD319 burned its full stage retry budget (5 attempts, exponential backoff 5s..40s, ~2 min total) against a zai 429 whose usage window reset only hours later ('Usage limit reached for 5 hour. Your limit will reset at 2026-09-03 05:35:16'). The provider sent retry_after=null; the reset timestamp exists only inside the error message text. Three nested retry layers (agent.llm.retry x3, stage retries x5) all exhaust quickly against a multi-hour window, then the run soft-exits.\\n\\nCount-based exponential backoff cannot bridge multi-hour provider windows: the delays are far too short and the attempt count exhausts within minutes while the limit stays.\\n\\nFix directions to evaluate: (1) parse provider reset/retry-after hints (header AND message text) and cap or extend retry delays accordingly; (2) a wall-clock retry budget option (retry until T) instead of/in addition to attempt counts; (3) park-and-resume semantics: on a long-window 429, park the run in a resumable state with a scheduled wake-up instead of exhausting retries and exiting. Related: fabro-18a5 (soft-exit runs cannot be resumed), fabro-83af (graph-level retry defaults).\\n\\nEVIDENCE 2026-09-11 (integrate batch, recurrence confirmed same day): midday conductor passes on the second machine died on ZAI 5h-usage-limit 429s (conductor 01M269AXA and 01M26H7ZCA46 at 12:00/12:30 Berlin; merge child 01M27V6 at 11:27 — handoff fabro-91bf). None were resumable after the quota reset: recovery required manual new passes (13:20 API trigger) and a 2h salvage for merge child 01M2837. Code status at 23:5x Berlin: fabro-llm default_retry_policy = 3 attempts with backoff capped at 5s (client.rs); 429 maps to ErrorKind::RateLimit and Retry-After is parsed (gateway.rs), but retry exhaustion fails the run hard (workflow_error) — no park. Engine resume primitive exists (operations/resume.rs, POST /api/v1/runs/{id}/start {\\\"resume\\\":true}) but has the documented re-park trap when a routing decision already committed (see fabro-7627 engine part), and nothing triggers it on provider recovery. Priority raised P2->P1 by user decision 2026-09-11 ~23:59 Berlin; user ordering: this seed first, then fabro-7627 (manual resume UI+rewind). PRIORITY NOTE: raised P1->P0 by user decision 2026-09-12 00:29 Berlin to jump the develop queue — recurring unrecoverable outage class with same-day recurrence; user ordering: this seed next, then fabro-7627 (dep edge already in place).\",\"labels\":[\"needs-triage\"],\"assignee\":\"fabro\",\"blocks\":[\"fabro-7627\"]}\n+{\"id\":\"fabro-a3d8\",\"title\":\"Long-window rate limits defeat count-based retries: honor provider reset times or park-and-resume\",\"status\":\"closed\",\"type\":\"feature\",\"priority\":0,\"createdAt\":\"2026-09-03T05:49:08.872Z\",\"updatedAt\":\"2026-09-11T23:21:22.354Z\",\"description\":\"Evidence: run 01M1HKRE686W833SE86D8WD319 burned its full stage retry budget (5 attempts, exponential backoff 5s..40s, ~2 min total) against a zai 429 whose usage window reset only hours later ('Usage limit reached for 5 hour. Your limit will reset at 2026-09-03 05:35:16'). The provider sent retry_after=null; the reset timestamp exists only inside the error message text. Three nested retry layers (agent.llm.retry x3, stage retries x5) all exhaust quickly against a multi-hour window, then the run soft-exits.\\n\\nCount-based exponential backoff cannot bridge multi-hour provider windows: the delays are far too short and the attempt count exhausts within minutes while the limit stays.\\n\\nFix directions to evaluate: (1) parse provider reset/retry-after hints (header AND message text) and cap or extend retry delays accordingly; (2) a wall-clock retry budget option (retry until T) instead of/in addition to attempt counts; (3) park-and-resume semantics: on a long-window 429, park the run in a resumable state with a scheduled wake-up instead of exhausting retries and exiting. Related: fabro-18a5 (soft-exit runs cannot be resumed), fabro-83af (graph-level retry defaults).\\n\\nEVIDENCE 2026-09-11 (integrate batch, recurrence confirmed same day): midday conductor passes on the second machine died on ZAI 5h-usage-limit 429s (conductor 01M269AXA and 01M26H7ZCA46 at 12:00/12:30 Berlin; merge child 01M27V6 at 11:27 — handoff fabro-91bf). None were resumable after the quota reset: recovery required manual new passes (13:20 API trigger) and a 2h salvage for merge child 01M2837. Code status at 23:5x Berlin: fabro-llm default_retry_policy = 3 attempts with backoff capped at 5s (client.rs); 429 maps to ErrorKind::RateLimit and Retry-After is parsed (gateway.rs), but retry exhaustion fails the run hard (workflow_error) — no park. Engine resume primitive exists (operations/resume.rs, POST /api/v1/runs/{id}/start {\\\"resume\\\":true}) but has the documented re-park trap when a routing decision already committed (see fabro-7627 engine part), and nothing triggers it on provider recovery. Priority raised P2->P1 by user decision 2026-09-11 ~23:59 Berlin; user ordering: this seed first, then fabro-7627 (manual resume UI+rewind). PRIORITY NOTE: raised P1->P0 by user decision 2026-09-12 00:29 Berlin to jump the develop queue — recurring unrecoverable outage class with same-day recurrence; user ordering: this seed next, then fabro-7627 (dep edge already in place).\",\"labels\":[\"needs-triage\"],\"assignee\":\"fabro\",\"blocks\":[\"fabro-7627\"],\"closedAt\":\"2026-09-11T23:21:22.354Z\"}\n {\"id\":\"fabro-b440\",\"title\":\"rewind/fork UX: starting a fork with checkpoints ends terminal failed(terminated) — queue forks in resume mode or auto-switch\",\"status\":\"open\",\"type\":\"bug\",\"priority\":3,\"createdAt\":\"2026-09-03T06:03:02.286Z\",\"updatedAt\":\"2026-09-07T13:23:27.778Z\",\"description\":\"Scope NARROWED 2026-09-03 after verification on merged v0.345.0-nightly.0 (merge 6530c724f): upstream PR #838 fixed the crash-loop half — see VERIFIED below. What remains is fix direction (1): the happy path. `fabro rewind`/`fabro fork` produce a fork that CARRIES checkpoint history, but `fabro start <fork>` queues Start mode, hits the checkpoint precondition, and the fork ends terminal failed(terminated) within seconds. The rewind output already prints the correct recovery hint (\\\"To resume: fabro resume <fork-id>\\\"), so the remaining work is UX: queue forks in Resume mode by default (or have start auto-detect checkpoint history and switch), so users do not have to know the mode rule. Fix direction (3) (respawn backoff) is obsolete — no respawn happens anymore.\\n\\nOriginal report: after 'fabro rewind 01M1HKRE686W833SE86D8WD319 @41' (fork to 01M1JX979PTSZRZ10ZCTMJA34E), 'fabro start <new-run>' produced an infinite worker crash loop: every worker invocation died with 'Precondition failed: checkpoint already exists in the run store — did you mean to resume?' and the scheduler respawned it ~10x/second for minutes. Root cause: forked runs carry checkpoint history; queue_run_start (lib/apps/fabro-server/src/server/handler/lifecycle.rs) selects RunExecutionMode::Start for non-resume starts; operations::start refuses runs with existing checkpoints; the worker-exit failure event was rejected ('invalid status transition: runnable -> failed(terminated)') so the run stayed Runnable and spawn_scheduler retried forever. Correct recovery was 'fabro resume <fork-id>' (mode Resume), which worked.\\n\\nVERIFIED 2026-09-03 on v0.345.0-nightly.0 (server built from merge 6530c724f): reproduced the exact scenario — unarchived 01M1HKRE686W833SE86D8WD319, `fabro rewind ... @41` -> fork 01M1MG3JYMZ8DJW0G09QXKEH0Z, `fabro start` -> ONE worker invocation, worker stderr shows the precondition failure, run persists as terminal failed(terminated) (~4s from start to terminal; server log shows a single worker control-stream, zero respawns; second start attempt correctly rejected 409 'status is failed(terminated), expected submitted'). Both test runs re-archived afterwards.\",\"labels\":[\"needs-triage\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-8fb5\",\"title\":\"Designed loops exhaust per-node max_visits and fail as workflow_error 'stuck in a cycle'\",\"status\":\"open\",\"type\":\"bug\",\"priority\":2,\"createdAt\":\"2026-09-03T06:03:20.266Z\",\"updatedAt\":\"2026-09-07T13:23:27.880Z\",\"description\":\"Evidence: revisor run 01M1JXPAABBQ3TM3DJ2DQ1VZDW (forked from 01M1HKRE686W833SE86D8WD319 at checkpoint @41) resumed cleanly, ran select@11 successfully (selected target 01M11P68SHFS165HP9ATK6094V), then terminated as failed/workflow_error: 'node \\\"analyze\\\" visited 10 times (node limit 10); run is stuck in a cycle'. The original run would have hit the same wall one stage later even without the zai 429 — the budget was already spent after 10 completed revision cycles.\\n\\nProblems: (1) the revisor graph (digraph Revisor) is a designed loop with a natural end ('Nothing to revise' edge), but per-node max_visits (analyze=10, file=10, select=15) turns a healthy, still-productive loop into a hard workflow_error once the budget is gone and backlog remains — 'stuck in a cycle' is misleading for a loop that is making progress each visit; (2) node visit counts persist across fork/resume, so forking a long-running loop near its budget cannot continue it at all — the fork burns a cycle and dies; (3) there is no graceful 'budget exhausted, park and re-enter next pass' terminal state distinct from an error.\\n\\nFix directions: distinguish progress-making loops from true cycles (e.g. only fail as stuck-in-cycle when a node repeats without forward state change / same failure signature), or add a designed 'budget exhausted' exit kind (soft/boundary) so loops can park resumably, and/or revisit the revisor graph's per-node caps (graph max_node_visits=30 already bounds the run).\",\"labels\":[\"needs-triage\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-9588\",\"title\":\"Per-node skills and memory scoping for agent stages\",\"status\":\"open\",\"type\":\"feature\",\"priority\":2,\"createdAt\":\"2026-09-03T17:30:25.335Z\",\"updatedAt\":\"2026-09-07T13:23:27.980Z\",\"description\":\"Evidence: revisor run 01M1HKRE686W833SE86D8WD319 — every agent stage carries ~50 skill descriptions (~1.5k tokens) plus AGENTS.md memory (5.3KB) in its system prompt, regardless of need. Validation pass 01M1M568F5BZ9F17T3SFGRDCZ3 (2026-09-03) proved node attribute project_memory=false is INERT for agent nodes: AgentSession::initialize (lib/components/fabro-agent/src/session.rs ~line 625) calls discover_memory unconditionally; project_memory only gates the older prompt-handler path (lib/components/fabro-workflow/src/handler/prompt.rs line 68). select/analyze still loaded AGENTS.md (5307 bytes, budget 32768) with the attribute set.\\n\\nDemand: thread per-node scoping into the AGENT session path, not just the prompt handler. Cover BOTH: (a) memory — honor project_memory=false (or a dedicated memory=false) in AgentSession::initialize/AgentConfig; (b) skills — a per-node attribute (skills=false or skills=<dir>) to disable or scope skill discovery (AgentSession config already has skill_dirs, node-level override is missing). Both analogous to fs_hide/fabro_tools. Benefits every tool-light workflow stage.\",\"labels\":[\"needs-triage\"],\"assignee\":\"fabro\"}\n@@ -363,7 +363,7 @@\n {\"id\":\"fabro-3e48\",\"title\":\"Implementer: add routing-consistency self-check — one route per branch\",\"status\":\"open\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-10T11:52:11.067Z\",\"updatedAt\":\"2026-09-10T15:25:20.779Z\",\"description\":\"In `.fabro/workflows/develop/prompts/implementer.md` (Inline verification report section) add: before finishing, re-read every routing instruction written — each branch must yield exactly ONE route; two routing sentences in one branch is a FAIL, fix before reporting.\\n\\nGrounded: implementer@1 of the basis run wrote branch (a) of `.fabro/workflows/develop/prompts/planner.md` with both 'route \\\"Already landed\\\"' and 'continue down the `sd ready` candidate list' sentences, making the new graph edge dead config; reviewer@1 blocked it and the avoidable pass-2 cycle (planner@2+implementer@2+tester@2+evidence@2+reviewer@2) cost ~126 s wall / ~$0.125 / 5 stage visits for a one-sentence deletion. No existing seed covers a routing self-check (searched 'routing self-check', 'one route per branch': no matches).\\n\\nExpected effect: label-dead-config contradictions caught at implementer time, saving ~one full review cycle (~2 min / ~$0.13) per occurrence.\\n\\nBasis: run 01M25HCK22PNFPARY8R3YVC9DK, workflow version 99e5a7758912f1adc63c1749584b00296293249901eafbd60fa4e0556f75e4be, commit add88af03e7532624d73a287ff9d0225a77343a8\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-d83a\",\"title\":\"PROJECT_FACTS: name workflow.fabro as the graph source\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-10T11:52:11.104Z\",\"updatedAt\":\"2026-09-10T15:25:21.197Z\",\"description\":\"Add one line to `.fabro/workflows/develop/prompts/project-facts.md`: 'Graph source: `.fabro/workflows/develop/workflow.fabro` (DOT); `workflow.toml` wires runtime settings only — never probe it for edges.'\\n\\nGrounded: planner@1 of the basis run (100.6 s, $0.117 — the costliest stage of that run) burned two probes discovering this: a grep on `workflow.toml` for planner edges (seq 51–53, empty) and a `sed -n '1,120p'` head of `workflow.toml` (seq 57–59) before grepping the real file. Distinct from open fabro-0586 (available-binaries line — same file, different content) and from fabro-8d4c (probe style, not file identity).\\n\\nExpected effect: ~2 fewer tool calls per fresh claim; planners stop probing the wrong file every loop-asset seed.\\n\\nBasis: run 01M25HCK22PNFPARY8R3YVC9DK, workflow version 99e5a7758912f1adc63c1749584b00296293249901eafbd60fa4e0556f75e4be, commit add88af03e7532624d73a287ff9d0225a77343a8\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-9bf4\",\"title\":\"Bake graphviz into the develop toolchain image\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-10T11:52:20.414Z\",\"updatedAt\":\"2026-09-10T15:25:20.390Z\",\"description\":\"Add `graphviz` to the apt-get list in the toolchain Dockerfile (`.fabro/Dockerfile.toolchain`).\\n\\nGrounded: implementer@1 of the basis run — '`dot` is not installed in this environment, so the workflow.fabro render-check fell back to eyeballing the edge block'; loop-asset seeds edit this graph regularly (that run did) and a malformed edge would only surface at the next run's engine parse. Distinct from closed fabro-05d0 (baked `gh` — different package; that saga is unrelated). Caveat already covered by closed fabro-6f6e: inert until the toolchain image rebuilds.\\n\\nCAPABILITY-AFFECTING (ADR-0019): this adds a tool (`dot`) to an agent-reachable surface (`.fabro/Dockerfile.toolchain`); implementation awaits explicit user approval. Proposed fix direction is engine-mediated and read-only: install the distro `graphviz` package in the existing toolchain image so implementers can run `dot -Tcanon` as a pure syntax verification of graph edits — no new credentials, no raw clients, no tokens.\\n\\nExpected effect: mechanical `dot -Tcanon` syntax verification of graph edits at implementer time; eyeball fallback eliminated.\\n\\nBasis: run 01M25HCK22PNFPARY8R3YVC9DK, workflow version 99e5a7758912f1adc63c1749584b00296293249901eafbd60fa4e0556f75e4be, commit add88af03e7532624d73a287ff9d0225a77343a8\",\"labels\":[\"needs-user\",\"revision\"]}\n-{\"id\":\"fabro-7627\",\"title\":\"Web UI run actions: add Resume that re-runs the last failed node — engine auto-rewinds to its entry checkpoint (Retry alone discards committed stages)\",\"status\":\"open\",\"type\":\"feature\",\"priority\":1,\"createdAt\":\"2026-09-10T11:17:49.617Z\",\"updatedAt\":\"2026-09-11T22:00:36.254Z\",\"description\":\"Where/what: the web run actions menu (apps/fabro-web/app/lib/run-actions.ts offers cancel/approve/deny/archive/unarchive/retry) has no Resume for terminal runs; Retry is the only recovery path and re-runs the whole workflow from scratch, discarding completed stages, stage context, and run data. Change (1) engine: a Resume of a failed run must itself determine the rewind target — the entry checkpoint of the last failed stage, dropping that stage's committed outcome/routing decision — so Resume re-runs exactly the failed node with all prior committed work intact. Plain POST /api/v1/runs/{id}/start {\\\"resume\\\":true} is NOT enough when the failure already committed a routing decision (soft-exit park): it replays only the exit stage and re-parks immediately. (2) web UI: expose this as a Resume action in the run actions menu for terminal runs that have checkpoints; Retry stays for explicit fresh starts and the UI copy must distinguish the two. Optional advanced form: a 'Rewind to checkpoint…' picker over the checkpoint timeline (node@visit, as fabro rewind --list shows). (3) API changes OpenAPI-first (docs/public/api-reference/fabro-api.yaml -> fabro-api build.rs -> fabro-api-client regen). Open design point: fabro rewind forks a new run id ('new run 01M25G94'); one-click Resume either keeps fork+parent link or the engine grows in-place resume-from-failure for terminal runs. Expected effect: a 429-style mid-run death costs only the failed node's re-execution instead of the whole run. Grounded: 2026-09-10 zai 429 killed Revisor 01M257B996MJ at the File stage after 'Findings ready' (~9 min agent work, checkpoint @3 analyze); UI Retry would have discarded it. Plain `fabro resume` re-ran only the exit stage and re-parked in 2s (routing 'Bookkeeping failed (nothing merged)' was already checkpointed); the actual rescue needed `rewind @3` (fork 01M25G94TMN8) + resume -> File stage succeeded on first attempt, PR #118. Basis: run 01M257B996MJNPWPY33MNDAEHP (+ fork 01M25G94TMN81J03TC153NRJXF, PR #118), 2026-09-10\",\"labels\":[\"web\",\"engine\"],\"assignee\":\"fabro\",\"blockedBy\":[\"fabro-a3d8\"]}\n+{\"id\":\"fabro-7627\",\"title\":\"Web UI run actions: add Resume that re-runs the last failed node — engine auto-rewinds to its entry checkpoint (Retry alone discards committed stages)\",\"status\":\"open\",\"type\":\"feature\",\"priority\":1,\"createdAt\":\"2026-09-10T11:17:49.617Z\",\"updatedAt\":\"2026-09-11T23:21:22.354Z\",\"description\":\"Where/what: the web run actions menu (apps/fabro-web/app/lib/run-actions.ts offers cancel/approve/deny/archive/unarchive/retry) has no Resume for terminal runs; Retry is the only recovery path and re-runs the whole workflow from scratch, discarding completed stages, stage context, and run data. Change (1) engine: a Resume of a failed run must itself determine the rewind target — the entry checkpoint of the last failed stage, dropping that stage's committed outcome/routing decision — so Resume re-runs exactly the failed node with all prior committed work intact. Plain POST /api/v1/runs/{id}/start {\\\"resume\\\":true} is NOT enough when the failure already committed a routing decision (soft-exit park): it replays only the exit stage and re-parks immediately. (2) web UI: expose this as a Resume action in the run actions menu for terminal runs that have checkpoints; Retry stays for explicit fresh starts and the UI copy must distinguish the two. Optional advanced form: a 'Rewind to checkpoint…' picker over the checkpoint timeline (node@visit, as fabro rewind --list shows). (3) API changes OpenAPI-first (docs/public/api-reference/fabro-api.yaml -> fabro-api build.rs -> fabro-api-client regen). Open design point: fabro rewind forks a new run id ('new run 01M25G94'); one-click Resume either keeps fork+parent link or the engine grows in-place resume-from-failure for terminal runs. Expected effect: a 429-style mid-run death costs only the failed node's re-execution instead of the whole run. Grounded: 2026-09-10 zai 429 killed Revisor 01M257B996MJ at the File stage after 'Findings ready' (~9 min agent work, checkpoint @3 analyze); UI Retry would have discarded it. Plain `fabro resume` re-ran only the exit stage and re-parked in 2s (routing 'Bookkeeping failed (nothing merged)' was already checkpointed); the actual rescue needed `rewind @3` (fork 01M25G94TMN8) + resume -> File stage succeeded on first attempt, PR #118. Basis: run 01M257B996MJNPWPY33MNDAEHP (+ fork 01M25G94TMN81J03TC153NRJXF, PR #118), 2026-09-10\",\"labels\":[\"web\",\"engine\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-9837\",\"title\":\"Reviewer blob refs: state payload byte size in the marker; make a bounded nu substring read the mandatory first action\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-10T13:09:17.374Z\",\"updatedAt\":\"2026-09-10T13:15:19.104Z\",\"description\":\"In run 01M25K41V4NEWXSA3SVGRHKRXK the 62,474-byte evidence capture reached the reviewer as a blob ref; the first read_file landed mid-file truncated (~14 KB omitted) and recovery required nu -c 'open --raw <path> | str substring' (reviewer journal 12:56:51). Change: (1) make the engine's blob-ref/demotion marker state the payload byte size; (2) rewrite the LARGE VALUES paragraph in .fabro/workflows/develop/prompts/reviewer.md to mandate 'nu -c \\\"open --raw <path> | str substring 0..20000\\\"' as the first action before any read_file. Supersedes fabro-a0fe (read_file offset/limit is exactly what truncated here); budget raises stay as filed (fabro-8d2c, fabro-cf3e). Expected effect: one-shot evidence reads; removes the unread-blob verification-blocked bounce (~2-4 min plus a second reviewer visit). Basis: run 01M25K41V4NEWXSA3SVGRHKRXK, workflow version e825d8c827ce15defe0aa57d3586b0f369cab48cc7fe711d526776762f442aa1, commit 61d04c38f89a54168e02a12c4b1f82b0dc9c026b\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-8a60\",\"title\":\"Qualitygate: verify seed-spec-named loop-asset paths appear in the run diff\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-10T12:28:38.542Z\",\"updatedAt\":\"2026-09-10T15:25:21.068Z\",\"description\":\"In `scripts/qualitygate.nu`, extend the loop-asset tier (landed via fabro-bfe1) with one deterministic check: every path the in-progress seed's spec names that lies under the loop-asset roots must appear in the run diff (empty diff = red). Expected effect: an empty-edit or wrong-file pass bounces at the tester in seconds instead of consuming a full review cycle. Basis: run 01M25732658J2RFTM6MDM8CPFG, workflow version 38bab0b8b1faad62aaddb5e68facf6f1c58286169676479d3edbf99d4205b91c, commit 1c3dec49a41bd92afdd64a510210734cfc301b63\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-895d\",\"title\":\"Engine: staleness supervisor retires run PRs on .seeds JSONL update-conflicts — revisor bookkeeping lost (resumed/forked runs carry stale tracker state)\",\"status\":\"open\",\"type\":\"bug\",\"priority\":1,\"createdAt\":\"2026-09-10T12:29:07.847Z\",\"updatedAt\":\"2026-09-10T15:25:20.633Z\",\"description\":\"PROBLEM: the PR staleness supervisor closes run PRs as stale_base after 3 update-branch attempts fail with 422. When the conflict sits in `.seeds/issues.jsonl`, the branch is unmergeable by GitHub's updater and the run's whole bookkeeping (filed seeds, review/revision artifacts, journals) is dropped from base when the PR retires. EVIDENCE (2026-09-10): revisor run 01M257B996MJ died on the zai 429 at its File stage; rescued via `fabro rewind @3` into fork 01M25G94TMN8, whose PR #118 (two seeds + review of develop run 01M25732658J) sat in the gate while base moved (#117 merge + seeds syncs). Supervisor update-branch attempts hit 422 on the tracker file at 11:16/11:21/11:26 (attempts 1-3), PR closed stale_base 11:31:34. The two revisor seeds and the review artifacts landed nowhere; manual recovery from run branch `fabro/run/01M25G94TMN81J03TC153NRJXF` during integrate (seed re-filed as fabro-8a60, second folded into fabro-52b4). ROOT CAUSE: forked/resumed runs inherit the pre-fork clone's tracker state; a normal base move then conflicts at JSONL level, which neither GitHub update-branch nor the supervisor can resolve. CHANGE (engine, fabro-server pull_request_supervisor / pipeline): (a) resolve 422 conflicts on `.seeds/issues.jsonl`/`.mulch/**` with the documented closed-wins union instead of counting a strike; or (b) rebase tracker state onto current base at fork/resume creation; or (c) at minimum, park (not close) revisor/bookkeeping PRs on retirement and surface the loss — silent drop of filed findings is the worst outcome. CLASS LINEAGE: fabro-94e8 (origin: run-branch staleness) -> fabro-17e8 (409 must not strike) -> this (422-on-JSONL real conflict must resolve, not strike). One class, one durable fix: make the supervisor conflict-aware for the loop's own JSONL formats. Basis: runs 01M257B996MJNPWPY33MNDAEHP + fork 01M25G94TMN81J03TC153NRJXF, PR #118, server log 11:16-11:31 UTC, 2026-09-10\\n\\nSECOND INSTANCE (2026-09-10 ~14:1x UTC): PR #121 (fabro-3fe4 first attempt, run 01M25K41V4NE) hit the same 422-on-JSONL update-branch wall after base pushes (including the integrate batch 76ed61987) and was retired stale_base ~14:12 — this time NOT rescued by reopen; the branch survived and the fix landed via a fresh develop run (PR #123) instead. The 12:02 breaker-park + this retirement make the day's count two JSONL-driven PR losses in ~2 hours. The evidence strengthens the (a) JSONL-aware update-branch resolution as the preferred durable fix. Related same-day: fabro-8ee1 (duplicate develop child after the pass's own gate-stuck misroute) and fabro-ee5d (instant blocked returns misjudging young gates as stuck) — the three incidents form one operational cluster around conductor PR-wait semantics. Basis addition: PR #121 retirement, server logs 14:11-14:12 UTC.\",\"labels\":[\"engine\",\"workflows\"],\"assignee\":\"fabro\"}\ndiff --git a/Cargo.lock b/Cargo.lock\nindex 55ad17a6..ae298384 100644\n--- a/Cargo.lock\n+++ b/Cargo.lock\n@@ -2758,6 +2758,7 @@ dependencies = [\n  \"anyhow\",\n  \"async-trait\",\n  \"bytes\",\n+ \"chrono\",\n  \"fabro-auth\",\n  \"fabro-config\",\n  \"fabro-http\",\ndiff --git a/lib/components/fabro-llm/Cargo.toml b/lib/components/fabro-llm/Cargo.toml\nindex cccc5fee..9c2aa116 100644\n--- a/lib/components/fabro-llm/Cargo.toml\n+++ b/lib/components/fabro-llm/Cargo.toml\n@@ -20,6 +20,7 @@ workspace = true\n anyhow.workspace = true\n async-trait.workspace = true\n bytes.workspace = true\n+chrono.workspace = true\n fabro-auth = { path = \"../../foundation/fabro-auth\" }\n fabro-config = { path = \"../../foundation/fabro-config\" }\n fabro-http.workspace = true\ndiff --git a/lib/components/fabro-llm/src/client.rs b/lib/components/fabro-llm/src/client.rs\nindex 64df12e1..4719eb53 100644\n--- a/lib/components/fabro-llm/src/client.rs\n+++ b/lib/components/fabro-llm/src/client.rs\n@@ -1,16 +1,19 @@\n //! Client construction from Fabro configuration and credentials.\n \n use std::sync::Arc;\n-use std::time::Duration;\n+use std::time::{Duration, SystemTime};\n \n use lithos_llm::adapter::ProviderAdapter;\n use lithos_llm::catalog::{Catalog, ProviderId};\n use lithos_llm::client::{Client, ClientBuildError, ClientBuilder, ProviderBuildIssue};\n use lithos_llm::credentials::{CredentialError, CredentialProvider};\n use lithos_llm::middleware::{\n-    Call, InlineLocalFiles, Middleware, Observer, RetryMiddleware, RetryPolicy, RetryStage,\n+    Call, InlineLocalFiles, Middleware, Next, Observer, Output, RetryMiddleware, RetryPolicy,\n+    RetryStage,\n };\n-use lithos_llm::types::{Error, ErrorData};\n+use lithos_llm::types::{Error, ErrorData, ErrorKind, RetryClassification};\n+\n+use crate::gateway::reset_window;\n \n /// The application name lithos reports to providers that ask, such as the\n /// `originator` header on the OpenAI Codex deployment.\n@@ -89,6 +92,46 @@ pub fn retry_middleware(policy: RetryPolicy) -> RetryMiddleware {\n     RetryMiddleware::new(policy).observer(RetryNotifier)\n }\n \n+/// Attaches provider reset windows parsed from RateLimit message prose.\n+///\n+/// Direct provider adapters surface a long usage-window 429 (zai and\n+/// Anthropic-style bodies) only as message text — `retry_after=null`, the\n+/// reset deadline in prose. This middleware records the parsed window as the\n+/// provider-advised wait so the retry middleware above it stops immediately\n+/// instead of burning attempts against a window hours away, and callers see\n+/// the deadline as a structured field (fabro-a3d8).\n+#[derive(Debug, Default)]\n+struct RateLimitReset;\n+\n+/// Enriches a RateLimit error with the reset window parsed from its message.\n+///\n+/// Errors that already carry an advised wait — a `Retry-After` header the\n+/// adapter honored — keep it; so does every non-rate-limit error.\n+fn enrich_rate_limit_reset(error: Error) -> Error {\n+    if error.kind() != ErrorKind::RateLimit\n+        || error.retry_after().is_some()\n+        || error.provider_retry_after().is_some()\n+    {\n+        return error;\n+    }\n+    match reset_window(error.message(), SystemTime::now()) {\n+        Some(window) => error\n+            .with_retry(RetryClassification::after(window))\n+            .with_provider_retry_after(window),\n+        None => error,\n+    }\n+}\n+\n+#[async_trait::async_trait]\n+impl Middleware for RateLimitReset {\n+    async fn handle(&self, call: Call, next: Next) -> Result<Output, Error> {\n+        match next.run(call).await {\n+            Err(error) => Err(enrich_rate_limit_reset(error)),\n+            output => output,\n+        }\n+    }\n+}\n+\n /// Options for [`build_client`] and [`build_offline_client`].\n #[derive(Default)]\n pub struct ClientOptions {\n@@ -145,6 +188,9 @@ impl ClientOptions {\n         if let Some(policy) = self.retry {\n             builder = builder.middleware(retry_middleware(policy));\n         }\n+        // Inside the retry layer, so retries see the enriched wait and a\n+        // multi-hour usage window fails fast on the first attempt.\n+        builder = builder.middleware(RateLimitReset);\n         if self.inline_attachments {\n             builder = builder.middleware(InlineLocalFiles::new());\n         }\n@@ -249,11 +295,67 @@ pub fn build_offline_client(\n \n #[cfg(test)]\n mod tests {\n+    use std::time::Duration;\n+\n     use fabro_auth::test_support::env_credential_source;\n \n     use super::*;\n     use crate::test_support::test_catalog;\n \n+    #[test]\n+    fn rate_limit_prose_attaches_the_reset_window_and_fails_fast() {\n+        let future = chrono::DateTime::<chrono::Utc>::from(std::time::SystemTime::now())\n+            + chrono::Duration::hours(4);\n+        let message = format!(\n+            \"Usage limit reached for 5 hour. Your limit will reset at {}\",\n+            future.format(\"%Y-%m-%d %H:%M:%S\")\n+        );\n+        let error = enrich_rate_limit_reset(\n+            Error::new(ErrorKind::RateLimit, message).with_retry(RetryClassification::Safe),\n+        );\n+        let window = error.provider_retry_after().expect(\"parsed reset window\");\n+        assert!(window >= Duration::from_hours(3), \"got {window:?}\");\n+        assert_eq!(error.retry_after(), Some(window));\n+        // A multi-hour window is beyond the policy's backoff budget: the\n+        // middleware must surface the error instead of retrying.\n+        assert_eq!(default_retry_policy().next_delay(1, &error), None);\n+    }\n+\n+    #[test]\n+    fn enrichment_leaves_advised_waits_and_other_errors_alone() {\n+        let advised = Error::new(ErrorKind::RateLimit, \"slow down\")\n+            .with_retry(RetryClassification::after(Duration::from_secs(20)))\n+            .with_provider_retry_after(Duration::from_secs(20));\n+        let enriched = enrich_rate_limit_reset(advised);\n+        assert_eq!(\n+            enriched.provider_retry_after(),\n+            Some(Duration::from_secs(20))\n+        );\n+        let short = enrich_rate_limit_reset(\n+            Error::new(ErrorKind::RateLimit, \"Your limit will reset at soon\")\n+                .with_retry(RetryClassification::Safe),\n+        );\n+        assert!(short.provider_retry_after().is_none());\n+        let other = enrich_rate_limit_reset(\n+            Error::new(ErrorKind::Server, \"boom\").with_retry(RetryClassification::Safe),\n+        );\n+        assert!(other.provider_retry_after().is_none());\n+        // A short parsed window within the retry-after cap is honored exactly.\n+        let future = chrono::DateTime::<chrono::Utc>::from(std::time::SystemTime::now())\n+            + chrono::Duration::seconds(30);\n+        let message = format!(\n+            \"Your limit will reset at {}\",\n+            future.format(\"%Y-%m-%d %H:%M:%S\")\n+        );\n+        let short_window = enrich_rate_limit_reset(\n+            Error::new(ErrorKind::RateLimit, message).with_retry(RetryClassification::Safe),\n+        );\n+        assert_eq!(\n+            default_retry_policy().next_delay(1, &short_window),\n+            short_window.provider_retry_after()\n+        );\n+    }\n+\n     #[tokio::test]\n     async fn ready_providers_follow_credentials_and_policy() {\n         let source = env_credential_source(|name| match name {\ndiff --git a/lib/components/fabro-llm/src/error.rs b/lib/components/fabro-llm/src/error.rs\nindex 3b0104da..72d92ef0 100644\n--- a/lib/components/fabro-llm/src/error.rs\n+++ b/lib/components/fabro-llm/src/error.rs\n@@ -4,9 +4,32 @@\n //! lithos `Error` and `ErrorData` themselves. What stays here is the loop and\n //! restart detector's signature format, which names Fabro's own categories.\n \n+use std::time::Duration;\n+\n use lithos_llm::catalog::ProviderId;\n use lithos_llm::types::{ErrorData, ErrorKind};\n \n+/// A rate-limit wait longer than the retry middleware's `Retry-After` cap.\n+///\n+/// The retry layer honors provider waits only up to this bound; anything\n+/// longer cannot be bridged by count-based retries and must be surfaced to\n+/// the caller (the workflow parks such runs as a soft stop, fabro-a3d8).\n+pub const LONG_RATE_LIMIT_WINDOW: Duration = Duration::from_mins(1);\n+\n+/// The provider-advised reset window when it is a long one.\n+///\n+/// `Some(window)` only for a rate-limit failure whose advised wait exceeds\n+/// [`LONG_RATE_LIMIT_WINDOW`] — the multi-hour usage-window case. Short\n+/// 429s return `None` and keep today's retry behavior.\n+#[must_use]\n+pub fn long_rate_limit_window(error: &ErrorData) -> Option<Duration> {\n+    if error.kind() != ErrorKind::RateLimit {\n+        return None;\n+    }\n+    let window = error.provider_retry_after()?;\n+    (window > LONG_RATE_LIMIT_WINDOW).then_some(window)\n+}\n+\n /// A stable `category|provider|detail` string for loop and restart detection.\n ///\n /// The category is `api_canceled` for a cancelled call, `api_transient` for a\n@@ -28,10 +51,44 @@ pub fn failure_signature_hint(error: &ErrorData) -> String {\n \n #[cfg(test)]\n mod tests {\n+    use std::time::Duration;\n+\n     use lithos_llm::types::{Error, RetryClassification};\n \n     use super::*;\n \n+    #[test]\n+    fn long_windows_are_only_rate_limits_beyond_the_cap() {\n+        let error = |kind, millis| {\n+            ErrorData::from(\n+                Error::new(kind, \"boom\")\n+                    .with_provider(ProviderId::new(\"zai\"))\n+                    .with_retry(RetryClassification::Safe)\n+                    .with_provider_retry_after(Duration::from_millis(millis)),\n+            )\n+        };\n+        assert_eq!(\n+            long_rate_limit_window(&error(ErrorKind::RateLimit, 5 * 3_600_000)),\n+            Some(Duration::from_hours(5))\n+        );\n+        // A short 429 advises a wait the retry layer can honor.\n+        assert_eq!(\n+            long_rate_limit_window(&error(ErrorKind::RateLimit, 2_000)),\n+            None\n+        );\n+        // No advised wait at all, or a long wait on another kind.\n+        let none = ErrorData::from(\n+            Error::new(ErrorKind::RateLimit, \"boom\")\n+                .with_provider(ProviderId::new(\"zai\"))\n+                .with_retry(RetryClassification::Safe),\n+        );\n+        assert_eq!(long_rate_limit_window(&none), None);\n+        assert_eq!(\n+            long_rate_limit_window(&error(ErrorKind::Server, 5 * 3_600_000)),\n+            None\n+        );\n+    }\n+\n     fn error(kind: ErrorKind) -> ErrorData {\n         Error::new(kind, \"boom\")\n             .with_provider(ProviderId::new(\"openai\"))\ndiff --git a/lib/components/fabro-llm/src/gateway.rs b/lib/components/fabro-llm/src/gateway.rs\nindex 21b267d6..60b96eb9 100644\n--- a/lib/components/fabro-llm/src/gateway.rs\n+++ b/lib/components/fabro-llm/src/gateway.rs\n@@ -10,9 +10,10 @@\n //! through [`GatewayTransport`], so this crate does not depend on the CLI's\n //! server client.\n \n-use std::time::Duration;\n+use std::time::{Duration, SystemTime};\n \n use async_trait::async_trait;\n+use chrono::NaiveDateTime;\n use fabro_http::HeaderMap;\n use futures::{StreamExt as _, stream};\n use lithos_llm::adapter::{ProviderAdapter, ResolvedCall};\n@@ -117,14 +118,26 @@ fn gateway_error(err: GatewayError, provider: &ProviderId) -> Error {\n                 500..=599 => ErrorKind::Server,\n                 _ => ErrorKind::Provider,\n             };\n-            let mut error = Error::new(kind.clone(), message)\n+            let mut error = Error::new(kind.clone(), message.clone())\n                 .with_provider(provider.clone())\n                 .with_status(status);\n             if let Some(code) = code {\n                 error = error.with_provider_code(code);\n             }\n             match kind {\n-                ErrorKind::RateLimit | ErrorKind::Server | ErrorKind::Timeout => {\n+                ErrorKind::RateLimit => {\n+                    error = error.with_retry(RetryClassification::Safe);\n+                    // The header wins when the provider sent one; otherwise\n+                    // the reset deadline may still live in the message prose.\n+                    let after =\n+                        retry_after(&headers).or_else(|| reset_window(&message, SystemTime::now()));\n+                    if let Some(after) = after {\n+                        error = error\n+                            .with_retry(RetryClassification::after(after))\n+                            .with_provider_retry_after(after);\n+                    }\n+                }\n+                ErrorKind::Server | ErrorKind::Timeout => {\n                     error = error.with_retry(RetryClassification::Safe);\n                     if let Some(after) = retry_after(&headers) {\n                         error = error\n@@ -147,6 +160,39 @@ fn retry_after(headers: &HeaderMap) -> Option<Duration> {\n         .map(Duration::from_secs_f64)\n }\n \n+/// The timestamp format providers embed in usage-window reset prose.\n+const RESET_TIMESTAMP_LEN: usize = \"YYYY-MM-DD HH:MM:SS\".len();\n+\n+/// Parses a provider usage-window reset deadline out of error message text.\n+///\n+/// Some providers (zai and Anthropic-style 429 bodies) say when a usage\n+/// window reopens only in prose: \"Usage limit reached for 5 hour. Your limit\n+/// will reset at 2026-09-03 05:35:16\". The timestamp is timezone-naive and\n+/// is read as UTC (fabro-a3d8).\n+#[must_use]\n+pub fn parse_reset_deadline(message: &str) -> Option<NaiveDateTime> {\n+    let marker = \"will reset at \";\n+    let start = message.find(marker)? + marker.len();\n+    let timestamp = message.get(start..)?.get(..RESET_TIMESTAMP_LEN)?;\n+    NaiveDateTime::parse_from_str(timestamp, \"%Y-%m-%d %H:%M:%S\").ok()\n+}\n+\n+/// The wait until the reset deadline parsed from `message`, when one exists\n+/// and lies in the future at `now`.\n+///\n+/// A deadline already reached advises nothing — the window has reopened, so\n+/// ordinary short-window retry behavior applies.\n+#[must_use]\n+pub fn reset_window(message: &str, now: SystemTime) -> Option<Duration> {\n+    let deadline = parse_reset_deadline(message)?;\n+    let now = chrono::DateTime::<chrono::Utc>::from(now).naive_utc();\n+    deadline\n+        .signed_duration_since(now)\n+        .to_std()\n+        .ok()\n+        .filter(|window| !window.is_zero())\n+}\n+\n /// Reads the Fabro API error envelope (`errors[0].detail` / `code`), falling\n /// back to the raw body.\n #[must_use]\n@@ -255,7 +301,75 @@ struct SseState {\n \n #[cfg(test)]\n mod tests {\n+    use std::time::{Duration, SystemTime};\n+\n+    use chrono::{TimeZone, Utc};\n+\n     use super::*;\n+    use crate::client::default_retry_policy;\n+\n+    /// The zai 429 body from the fabro-a3d8 incident: `retry_after=null`,\n+    /// the reset deadline only in message prose.\n+    const ZAI_USAGE_LIMIT: &str =\n+        \"Usage limit reached for 5 hour. Your limit will reset at 2026-09-03 05:35:16\";\n+\n+    fn utc(\n+        year: i32,\n+        month: u32,\n+        day: u32,\n+        hour: u32,\n+        minute: u32,\n+        second: u32,\n+    ) -> chrono::DateTime<Utc> {\n+        Utc.with_ymd_and_hms(year, month, day, hour, minute, second)\n+            .single()\n+            .expect(\"valid test timestamp\")\n+    }\n+\n+    #[test]\n+    fn reset_deadline_is_parsed_from_zai_usage_prose() {\n+        assert_eq!(\n+            parse_reset_deadline(ZAI_USAGE_LIMIT).map(|deadline| deadline.and_utc()),\n+            Some(utc(2026, 9, 3, 5, 35, 16))\n+        );\n+        // The Anthropic-style wording without the window sentence parses too.\n+        assert_eq!(\n+            parse_reset_deadline(\"Your limit will reset at 2026-09-03 05:35:16\")\n+                .map(|deadline| deadline.and_utc()),\n+            Some(utc(2026, 9, 3, 5, 35, 16))\n+        );\n+    }\n+\n+    #[test]\n+    fn reset_prose_without_a_timestamp_yields_none() {\n+        assert!(parse_reset_deadline(\"rate limit exceeded, slow down\").is_none());\n+        assert!(parse_reset_deadline(\"Your limit will reset at soon\").is_none());\n+        assert!(parse_reset_deadline(\"\").is_none());\n+    }\n+\n+    #[test]\n+    fn reset_window_measures_from_now_and_drops_past_deadlines() {\n+        let now = utc(2026, 9, 3, 1, 35, 16);\n+        assert_eq!(\n+            reset_window(ZAI_USAGE_LIMIT, SystemTime::from(now)),\n+            Some(Duration::from_hours(4))\n+        );\n+        // At or past the deadline there is nothing left to wait for.\n+        let later = utc(2026, 9, 3, 5, 35, 16);\n+        assert_eq!(reset_window(ZAI_USAGE_LIMIT, SystemTime::from(later)), None);\n+        let much_later = utc(2026, 9, 4, 0, 0, 0);\n+        assert_eq!(\n+            reset_window(ZAI_USAGE_LIMIT, SystemTime::from(much_later)),\n+            None\n+        );\n+    }\n+\n+    /// A reset deadline safely in the future for any test run date.\n+    fn far_future_reset() -> String {\n+        let future =\n+            chrono::DateTime::<chrono::Utc>::from(SystemTime::now()) + chrono::Duration::hours(3);\n+        future.format(\"%Y-%m-%d %H:%M:%S\").to_string()\n+    }\n \n     #[test]\n     fn server_error_envelope_is_parsed() {\n@@ -303,4 +417,51 @@ mod tests {\n         assert_eq!(error.kind(), ErrorKind::Authentication);\n         assert_eq!(error.retry_classification(), RetryClassification::Never);\n     }\n+\n+    #[test]\n+    fn rate_limit_prose_attaches_the_reset_window() {\n+        let provider = ProviderId::new(\"zai\");\n+        // The incident wording with a deadline still in the future so the\n+        // measured window is hours, not empty.\n+        let message = format!(\n+            \"Usage limit reached for 5 hour. Your limit will reset at {}\",\n+            far_future_reset()\n+        );\n+        let body =\n+            serde_json::json!({ \"errors\": [{ \"status\": \"429\", \"detail\": message }] }).to_string();\n+        let error = gateway_error(\n+            GatewayError::Status {\n+                status: 429,\n+                headers: HeaderMap::new(),\n+                body,\n+            },\n+            &provider,\n+        );\n+        let window = error.provider_retry_after().expect(\"parsed reset window\");\n+        assert!(\n+            window >= Duration::from_hours(1),\n+            \"a five-hour usage window must parse as hours, got {window:?}\"\n+        );\n+        assert_eq!(error.retry_after(), Some(window));\n+        // A multi-hour window is beyond any count-based backoff budget: the\n+        // default policy must refuse the next attempt and surface the error\n+        // immediately rather than burning the remaining attempts.\n+        assert_eq!(default_retry_policy().next_delay(1, &error), None);\n+    }\n+\n+    #[test]\n+    fn retry_after_header_wins_over_message_prose() {\n+        let provider = ProviderId::new(\"zai\");\n+        let mut headers = HeaderMap::new();\n+        headers.insert(\"retry-after\", \"3\".parse().unwrap());\n+        let error = gateway_error(\n+            GatewayError::Status {\n+                status: 429,\n+                headers,\n+                body: serde_json::json!({ \"detail\": ZAI_USAGE_LIMIT }).to_string(),\n+            },\n+            &provider,\n+        );\n+        assert_eq!(error.retry_after(), Some(Duration::from_secs(3)));\n+    }\n }\ndiff --git a/lib/components/fabro-llm/src/lib.rs b/lib/components/fabro-llm/src/lib.rs\nindex 27199a2e..01a53144 100644\n--- a/lib/components/fabro-llm/src/lib.rs\n+++ b/lib/components/fabro-llm/src/lib.rs\n@@ -33,7 +33,7 @@ pub use client::{\n     ClientOptions, FabroClient, LlmSetupError, RetryListener, RetryNotice, build_client,\n     build_offline_client, configured_providers,\n };\n-pub use error::failure_signature_hint;\n+pub use error::{LONG_RATE_LIMIT_WINDOW, failure_signature_hint, long_rate_limit_window};\n pub use lithos_llm::client::{Client, ClientBuild};\n pub use lithos_llm::middleware::{CallContext, CancellationToken, RetryPolicy, RetryStage};\n pub use lithos_llm::resolver::ModelSelectionError as RouteSelectionError;\ndiff --git a/lib/components/fabro-workflow/src/error.rs b/lib/components/fabro-workflow/src/error.rs\nindex 31998707..07122ec0 100644\n--- a/lib/components/fabro-workflow/src/error.rs\n+++ b/lib/components/fabro-workflow/src/error.rs\n@@ -574,6 +574,12 @@ impl Error {\n                 stage: ErrorStage::Publish,\n                 ..\n             } => FailureReason::PublishFailed,\n+            // A multi-hour provider usage window cannot be bridged by\n+            // retries: park the run as a soft stop so it stays resumable\n+            // instead of failing hard (fabro-a3d8).\n+            Self::Llm(err) if fabro_llm::long_rate_limit_window(err).is_some() => {\n+                FailureReason::SoftStop\n+            }\n             _ => FailureReason::WorkflowError,\n         }\n     }\n@@ -1171,6 +1177,33 @@ mod tests {\n         assert!(!non_retryable.is_retryable());\n     }\n \n+    /// fabro-a3d8: a rate limit whose provider-advised reset window is\n+    /// longer than the retry budget parks as a soft stop (resumable);\n+    /// short-window 429s keep the hard workflow-error mapping.\n+    #[test]\n+    fn long_window_rate_limit_maps_to_soft_stop() {\n+        let with_window = |millis| {\n+            ErrorData::from(\n+                fabro_llm::Error::new(\n+                    ErrorKind::RateLimit,\n+                    \"Usage limit reached for 5 hour. Your limit will reset at 2026-09-03 \\\n+                     05:35:16\",\n+                )\n+                .with_provider(lithos_llm::catalog::builtin::openai())\n+                .with_retry(RetryClassification::Safe)\n+                .with_provider_retry_after(std::time::Duration::from_millis(millis)),\n+            )\n+        };\n+        assert_eq!(\n+            Error::from(with_window(5 * 3600 * 1000)).failure_reason(),\n+            FailureReason::SoftStop\n+        );\n+        assert_eq!(\n+            Error::from(with_window(2_000)).failure_reason(),\n+            FailureReason::WorkflowError\n+        );\n+    }\n+\n     #[test]\n     fn llm_error_from_sdk_error() {\n         let sdk_err = transient_error(ErrorKind::StreamDecode, \"broken pipe\");\ndiff --git a/lib/components/fabro-workflow/src/pipeline/finalize.rs b/lib/components/fabro-workflow/src/pipeline/finalize.rs\nindex e73d4dba..157791a1 100644\n--- a/lib/components/fabro-workflow/src/pipeline/finalize.rs\n+++ b/lib/components/fabro-workflow/src/pipeline/finalize.rs\n@@ -1,8 +1,10 @@\n use std::sync::Arc;\n-use std::time::Instant;\n+use std::time::{Instant, SystemTime};\n \n use fabro_dump::RunDump;\n use fabro_hooks::{HookContext, HookEvent};\n+use fabro_llm::LONG_RATE_LIMIT_WINDOW;\n+use fabro_llm::gateway::reset_window;\n use fabro_types::run_event::{MetadataSnapshotFailureKind, MetadataSnapshotPhase};\n use fabro_types::{BilledTokenCounts, DiffSummary, EventBody, RunFailure, RunProjection};\n use fabro_util::error::collect_causes;\n@@ -13,7 +15,7 @@ use crate::billing_rollup;\n use crate::context::keys;\n use crate::error::{Error, run_failure_from_error, run_failure_from_outcome_failure};\n use crate::event::{Event, RunNoticeCode, RunNoticeLevel};\n-use crate::outcome::{Outcome, StageOutcome};\n+use crate::outcome::{FailureDetail, Outcome, StageOutcome};\n use crate::records::Conclusion;\n use crate::run_metadata::{MetadataSnapshot, metadata_push_failure_is_transient};\n use crate::run_options::RunOptions;\n@@ -22,15 +24,35 @@ use crate::runtime_store::RunStoreHandle;\n use crate::sandbox_git::{git_diff_with_timeout, list_diff_numstat, summarize_diff_numstat};\n use crate::services::RunServices;\n \n+/// The failure reason a failed outcome's detail parks under (fabro-a3d8).\n+///\n+/// A provider usage-window reset hours away arrives only as message prose.\n+/// Count-based retries cannot bridge it, so the run parks as a soft stop —\n+/// infrastructure could not finish, the run stays resumable and the next\n+/// pass re-enters after the window reopens — instead of a hard\n+/// `workflow_error`. Failures without a long reset window keep today's\n+/// hard-error mapping.\n+fn soft_stop_failure_reason(failure: &FailureDetail) -> FailureReason {\n+    match reset_window(&failure.message, SystemTime::now()) {\n+        Some(window) if window > LONG_RATE_LIMIT_WINDOW => FailureReason::SoftStop,\n+        _ => FailureReason::WorkflowError,\n+    }\n+}\n+\n pub fn classify_engine_result(\n     engine_result: &Result<Outcome, Error>,\n ) -> (StageOutcome, Option<RunFailure>, RunStatus) {\n     match engine_result {\n         Ok(outcome) => {\n             let status = outcome.status;\n-            let failure = outcome.failure.as_ref().map(|failure| {\n-                run_failure_from_outcome_failure(failure, FailureReason::WorkflowError)\n-            });\n+            let failure_reason = outcome\n+                .failure\n+                .as_ref()\n+                .map_or(FailureReason::WorkflowError, soft_stop_failure_reason);\n+            let failure = outcome\n+                .failure\n+                .as_ref()\n+                .map(|failure| run_failure_from_outcome_failure(failure, failure_reason));\n             let run_status = match status {\n                 StageOutcome::Succeeded | StageOutcome::Skipped => RunStatus::Succeeded {\n                     reason: SuccessReason::Completed,\n@@ -39,7 +61,7 @@ pub fn classify_engine_result(\n                     reason: SuccessReason::PartialSuccess,\n                 },\n                 StageOutcome::Failed { .. } => RunStatus::Failed {\n-                    reason: FailureReason::WorkflowError,\n+                    reason: failure_reason,\n                 },\n             };\n             (status, failure, run_status)\n@@ -507,7 +529,12 @@ pub(crate) fn build_terminal_event(\n             }\n         }\n         Ok(outcome) => {\n-            let fallback_reason = exit_reason.unwrap_or(FailureReason::WorkflowError);\n+            let fallback_reason = exit_reason.unwrap_or_else(|| {\n+                outcome\n+                    .failure\n+                    .as_ref()\n+                    .map_or(FailureReason::WorkflowError, soft_stop_failure_reason)\n+            });\n             if let Some(failure) = outcome.failure.as_ref() {\n                 run_failure_from_outcome_failure(failure, fallback_reason)\n             } else {\n@@ -1103,6 +1130,62 @@ mod tests {\n         assert!(soft_exit_failure.is_none());\n     }\n \n+    /// fabro-a3d8: a long-window provider rate limit — the reset deadline\n+    /// hours away, carried only in the failure message prose — parks the run\n+    /// as a soft stop instead of a hard `workflow_error`, so the existing\n+    /// resume primitive (which rejects only succeeded runs) can re-enter it\n+    /// after the usage window reopens.\n+    #[test]\n+    fn long_window_rate_limit_failure_parks_as_soft_stop() {\n+        let future = chrono::DateTime::<chrono::Utc>::from(std::time::SystemTime::now())\n+            + chrono::Duration::hours(5);\n+        let message = format!(\n+            \"Usage limit reached for 5 hour. Your limit will reset at {}\",\n+            future.format(\"%Y-%m-%d %H:%M:%S\")\n+        );\n+        let mut outcome = Outcome::success();\n+        outcome.status = StageOutcome::Failed {\n+            retry_requested: false,\n+        };\n+        outcome.failure = Some(FailureDetail::new(\n+            message,\n+            crate::error::FailureCategory::TransientInfra,\n+        ));\n+\n+        let (status, failure, run_status) = classify_engine_result(&Ok(outcome));\n+\n+        assert!(matches!(status, StageOutcome::Failed { .. }));\n+        let failure = failure.expect(\"failed outcome carries a failure\");\n+        assert_eq!(failure.reason, FailureReason::SoftStop);\n+        assert!(matches!(run_status, RunStatus::Failed {\n+            reason: FailureReason::SoftStop,\n+        }));\n+    }\n+\n+    /// The same shape without a long reset window keeps the hard-error\n+    /// mapping: short 429s are ordinary transient failures.\n+    #[test]\n+    fn short_window_rate_limit_failure_stays_a_hard_error() {\n+        let mut outcome = Outcome::success();\n+        outcome.status = StageOutcome::Failed {\n+            retry_requested: false,\n+        };\n+        outcome.failure = Some(FailureDetail::new(\n+            \"rate limit exceeded, retry shortly\",\n+            crate::error::FailureCategory::TransientInfra,\n+        ));\n+\n+        let (_, failure, run_status) = classify_engine_result(&Ok(outcome));\n+\n+        assert_eq!(\n+            failure.expect(\"failed outcome carries a failure\").reason,\n+            FailureReason::WorkflowError\n+        );\n+        assert!(matches!(run_status, RunStatus::Failed {\n+            reason: FailureReason::WorkflowError,\n+        }));\n+    }\n+\n     /// fabro-18a5 end to end: a green exit stage reached through a\n     /// kind=\"deadlock\" edge must terminate failed(Deadlock) with no publish\n     /// side effects — the live incident opened a pull request for code whose\n",
+      "summary": {
+        "files_changed": 11,
+        "additions": 462,
+        "deletions": 16
+      }
+    },
+    "exit_kind": "natural"
+  },
   "sandbox": {
     "kind": "ready",
     "plan": {
@@ -2151,229 +2270,6 @@
   "superseded_by": null,
   "pending_interviews": {},
   "stages": {
-    "planner@1": {
-      "first_event_seq": 20,
-      "prompt": null,
-      "response": null,
-      "completion": {
-        "outcome": "succeeded",
-        "notes": "Stage completed: planner",
-        "failure_reason": null,
-        "timestamp": "2026-09-11T22:36:27.808682655Z"
-      },
-      "provider_used": {
-        "mode": "agent",
-        "provider": "zai",
-        "model": "glm-5.3",
-        "reasoning_effort": "low"
-      },
-      "diff": null,
-      "script_invocation": null,
-      "script_timing": null,
-      "parallel_results": null,
-      "output": null,
-      "started_at": "2026-09-11T22:35:12.340030378Z",
-      "handler": "agent",
-      "graph_visit": 1,
-      "timing": {
-        "wall_time_ms": 70000,
-        "inference_time_ms": 55019,
-        "tool_time_ms": 14470,
-        "active_time_ms": 69489
-      },
-      "usage": {
-        "input_tokens": 47589,
-        "output_tokens": 1823,
-        "total_tokens": 361653,
-        "reasoning_tokens": 753,
-        "cache_read_tokens": 311488,
-        "cache_write_tokens": 0,
-        "total_usd_micros": 158934
-      },
-      "model": {
-        "provider": "zai",
-        "model_id": "glm-5.3"
-      },
-      "permission_level": "full",
-      "agent_tools": [
-        {
-          "name": "close_agent",
-          "description": "Close a running or completed subagent that is no longer needed.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "subagent",
-          "invoked": false
-        },
-        {
-          "name": "context_read",
-          "description": "Read one workflow context value by key, read-only. Values over the stage's inline budget return a preview plus a sandbox file path instead of the full value.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "edit_file",
-          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "write",
-          "invoked": false
-        },
-        {
-          "name": "fabro_runs_list",
-          "description": "Enumerate runs of one workflow for revisor bookkeeping. The workflow must be declared in this graph's inspects attribute; created_since optionally bounds creation time.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": true
-        },
-        {
-          "name": "glob",
-          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "read",
-          "invoked": false
-        },
-        {
-          "name": "grep",
-          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "read",
-          "invoked": false
-        },
-        {
-          "name": "read_file",
-          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "read",
-          "invoked": false
-        },
-        {
-          "name": "request_user_input",
-          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "send_input",
-          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "subagent",
-          "invoked": false
-        },
-        {
-          "name": "shell",
-          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "shell",
-          "invoked": true
-        },
-        {
-          "name": "spawn_agent",
-          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "subagent",
-          "invoked": false
-        },
-        {
-          "name": "update_plan",
-          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "wait",
-          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "subagent",
-          "invoked": false
-        },
-        {
-          "name": "web_fetch",
-          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "write_file",
-          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "write",
-          "invoked": false
-        }
-      ],
-      "context_window": {
-        "provider": "zai",
-        "model": "glm-5.3",
-        "context_window_tokens": 1048576,
-        "input_tokens": 47246,
-        "usage_percent": 4.505729675292969,
-        "count_method": "response_usage_scaled_breakdown",
-        "staleness": "live",
-        "generated_at": "2026-09-11T22:36:27.794491909Z",
-        "event_seq": 84,
-        "breakdown": [
-          {
-            "category": "system_prompt",
-            "tokens": 1330,
-            "usage_percent": 0.12683868408203125
-          },
-          {
-            "category": "tools",
-            "tokens": 2113,
-            "usage_percent": 0.20151138305664062
-          },
-          {
-            "category": "memory",
-            "tokens": 7026,
-            "usage_percent": 0.6700515747070312
-          },
-          {
-            "category": "conversation",
-            "tokens": 36768,
-            "usage_percent": 3.5064697265625
-          },
-          {
-            "category": "other",
-            "tokens": 9,
-            "usage_percent": 0.000858306884765625
-          }
-        ],
-        "warnings": []
-      },
-      "agent_control": "running",
-      "state": "succeeded"
-    },
     "evidence@1": {
       "first_event_seq": 788,
       "prompt": null,
@@ -2425,45 +2321,30 @@
       "agent_control": "running",
       "state": "succeeded"
     },
-    "closeout@1": {
-      "first_event_seq": 852,
+    "exit@1": {
+      "first_event_seq": 862,
       "prompt": null,
       "response": null,
       "completion": {
         "outcome": "succeeded",
-        "notes": "Script completed: nu .fabro/workflows/develop/scripts/closeout.nu",
+        "notes": null,
         "failure_reason": null,
-        "timestamp": "2026-09-11T23:21:22.438559845Z"
+        "timestamp": "2026-09-11T23:21:30.221336183Z"
       },
       "provider_used": null,
       "diff": null,
-      "script_invocation": {
-        "script": "nu .fabro/workflows/develop/scripts/closeout.nu",
-        "command": "exec 2>&1\nnu .fabro/workflows/develop/scripts/closeout.nu",
-        "language": "shell",
-        "timeout_ms": 60000
-      },
-      "script_timing": {
-        "output": "blob://sha256/a46c80c5581173d43419e873cd7d39050247b0a188cd862340fb9ceb8cb82dc9",
-        "exit_code": 0,
-        "duration_ms": 380,
-        "termination": "exited",
-        "output_bytes": 58,
-        "live_streaming": true
-      },
+      "script_invocation": null,
+      "script_timing": null,
       "parallel_results": null,
       "output": null,
-      "output_bytes": 58,
-      "live_streaming": true,
-      "termination": "exited",
-      "started_at": "2026-09-11T23:21:22.037461777Z",
-      "handler": "command",
+      "started_at": "2026-09-11T23:21:30.221084463Z",
+      "handler": "exit",
       "graph_visit": 1,
       "timing": {
-        "wall_time_ms": 387,
+        "wall_time_ms": 0,
         "inference_time_ms": 0,
-        "tool_time_ms": 380,
-        "active_time_ms": 380
+        "tool_time_ms": 0,
+        "active_time_ms": 0
       },
       "usage": {
         "input_tokens": 0,
@@ -2927,6 +2808,316 @@
       "agent_control": "running",
       "state": "succeeded"
     },
+    "closeout@1": {
+      "first_event_seq": 852,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Script completed: nu .fabro/workflows/develop/scripts/closeout.nu",
+        "failure_reason": null,
+        "timestamp": "2026-09-11T23:21:22.438559845Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": {
+        "script": "nu .fabro/workflows/develop/scripts/closeout.nu",
+        "command": "exec 2>&1\nnu .fabro/workflows/develop/scripts/closeout.nu",
+        "language": "shell",
+        "timeout_ms": 60000
+      },
+      "script_timing": {
+        "output": "blob://sha256/a46c80c5581173d43419e873cd7d39050247b0a188cd862340fb9ceb8cb82dc9",
+        "exit_code": 0,
+        "duration_ms": 380,
+        "termination": "exited",
+        "output_bytes": 58,
+        "live_streaming": true
+      },
+      "parallel_results": null,
+      "output": null,
+      "output_bytes": 58,
+      "live_streaming": true,
+      "termination": "exited",
+      "started_at": "2026-09-11T23:21:22.037461777Z",
+      "handler": "command",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 387,
+        "inference_time_ms": 0,
+        "tool_time_ms": 380,
+        "active_time_ms": 380
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "planner@1": {
+      "first_event_seq": 20,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Stage completed: planner",
+        "failure_reason": null,
+        "timestamp": "2026-09-11T22:36:27.808682655Z"
+      },
+      "provider_used": {
+        "mode": "agent",
+        "provider": "zai",
+        "model": "glm-5.3",
+        "reasoning_effort": "low"
+      },
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-11T22:35:12.340030378Z",
+      "handler": "agent",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 70000,
+        "inference_time_ms": 55019,
+        "tool_time_ms": 14470,
+        "active_time_ms": 69489
+      },
+      "usage": {
+        "input_tokens": 47589,
+        "output_tokens": 1823,
+        "total_tokens": 361653,
+        "reasoning_tokens": 753,
+        "cache_read_tokens": 311488,
+        "cache_write_tokens": 0,
+        "total_usd_micros": 158934
+      },
+      "model": {
+        "provider": "zai",
+        "model_id": "glm-5.3"
+      },
+      "permission_level": "full",
+      "agent_tools": [
+        {
+          "name": "close_agent",
+          "description": "Close a running or completed subagent that is no longer needed.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "context_read",
+          "description": "Read one workflow context value by key, read-only. Values over the stage's inline budget return a preview plus a sandbox file path instead of the full value.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "edit_file",
+          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        },
+        {
+          "name": "fabro_runs_list",
+          "description": "Enumerate runs of one workflow for revisor bookkeeping. The workflow must be declared in this graph's inspects attribute; created_since optionally bounds creation time.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": true
+        },
+        {
+          "name": "glob",
+          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "grep",
+          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "read_file",
+          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "request_user_input",
+          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "send_input",
+          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "shell",
+          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "shell",
+          "invoked": true
+        },
+        {
+          "name": "spawn_agent",
+          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "update_plan",
+          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "wait",
+          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "web_fetch",
+          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "write_file",
+          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        }
+      ],
+      "context_window": {
+        "provider": "zai",
+        "model": "glm-5.3",
+        "context_window_tokens": 1048576,
+        "input_tokens": 47246,
+        "usage_percent": 4.505729675292969,
+        "count_method": "response_usage_scaled_breakdown",
+        "staleness": "live",
+        "generated_at": "2026-09-11T22:36:27.794491909Z",
+        "event_seq": 84,
+        "breakdown": [
+          {
+            "category": "system_prompt",
+            "tokens": 1330,
+            "usage_percent": 0.12683868408203125
+          },
+          {
+            "category": "tools",
+            "tokens": 2113,
+            "usage_percent": 0.20151138305664062
+          },
+          {
+            "category": "memory",
+            "tokens": 7026,
+            "usage_percent": 0.6700515747070312
+          },
+          {
+            "category": "conversation",
+            "tokens": 36768,
+            "usage_percent": 3.5064697265625
+          },
+          {
+            "category": "other",
+            "tokens": 9,
+            "usage_percent": 0.000858306884765625
+          }
+        ],
+        "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "start@1": {
+      "first_event_seq": 16,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-11T22:35:12.120881228Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-11T22:35:12.110265726Z",
+      "handler": "start",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
     "tester@1": {
       "first_event_seq": 778,
       "prompt": null,
@@ -2966,42 +3157,6 @@
         "inference_time_ms": 0,
         "tool_time_ms": 132421,
         "active_time_ms": 132421
-      },
-      "usage": {
-        "input_tokens": 0,
-        "output_tokens": 0,
-        "total_tokens": 0,
-        "reasoning_tokens": 0,
-        "cache_read_tokens": 0,
-        "cache_write_tokens": 0
-      },
-      "agent_control": "running",
-      "state": "succeeded"
-    },
-    "start@1": {
-      "first_event_seq": 16,
-      "prompt": null,
-      "response": null,
-      "completion": {
-        "outcome": "succeeded",
-        "notes": null,
-        "failure_reason": null,
-        "timestamp": "2026-09-11T22:35:12.120881228Z"
-      },
-      "provider_used": null,
-      "diff": null,
-      "script_invocation": null,
-      "script_timing": null,
-      "parallel_results": null,
-      "output": null,
-      "started_at": "2026-09-11T22:35:12.110265726Z",
-      "handler": "start",
-      "graph_visit": 1,
-      "timing": {
-        "wall_time_ms": 0,
-        "inference_time_ms": 0,
-        "tool_time_ms": 0,
-        "active_time_ms": 0
       },
       "usage": {
         "input_tokens": 0,
