@@ -571,7 +571,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-11T09:00:17.862991676Z",
-  "last_event_at": "2026-09-11T09:31:47.648316770Z",
+  "last_event_at": "2026-09-11T09:31:52.216100913Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -743,9 +743,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 155,
       "checkpoint": {
-        "timestamp": "2026-09-11T09:31:47.659131709Z",
+        "timestamp": "2026-09-11T09:31:52.215818146Z",
         "current_node": "merge",
         "completed_nodes": [
           "start",
@@ -756,12 +756,17 @@
           "merge": 4
         },
         "context_values": {
-          "internal.exit_kind": "soft",
-          "failure_signature": "merge|transient_infra|api_transient|zai|rate_limited",
-          "current_node": "merge",
-          "internal.node_visit_count": 1,
-          "internal.fidelity": "compact",
           "graph.goal": "Run the serialized fabro line: one pass = upstream merge (when the threshold is met, infra-only) OR one develop+revisor cycle; children are created only after the previous child merged",
+          "internal.work_dir": "/workspace/fabro",
+          "graph.rankdir": "LR",
+          "last_stage": "survey",
+          "preferred_label": "Merge needed",
+          "internal.fidelity": "compact",
+          "failure_class": "transient_infra",
+          "internal.exit_kind": "soft",
+          "graph.preamble_budget_kb": "12",
+          "internal.node_visit_count": 1,
+          "internal.seed_cycle_anchor": "",
           "journal": {
             "painpoints": [],
             "observations": [
@@ -770,42 +775,33 @@
               "develop run 01M25VVK131JTQB3BRBPAV0DWR (14:34Z) failed and is archived — no revisor signal expected for it; next surveyor should not mistake it for backlog"
             ]
           },
+          "last_response": "{\"preferred_next_label\": \"Merge needed\", \"outcome\": \"succeeded\", \"failure_reason\": \"\", \"suggested_next_ids\": [], \"context_updates\": {\"journal\": {\"painpoints\": [], \"observations\": [\"upstream count 24 (",
           "response.survey": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.survey",
             "chars": 736,
             "preview": "{\"preferred_next_label\": \"Merge needed\", \"outcome\": \"succeeded\", \"failure_reason\": \"\", \"suggested_next_ids\": [], \"context_updates\": {\"journal\": {\"painpoints\": [], \"observations\": [\"upstream count 24 ("
           },
-          "internal.run_id": "01M27V3Y12QDV77VCM4JH4AE9D",
           "internal.thread_id": "survey",
-          "thread.start.current_node": "survey",
-          "preferred_label": "Merge needed",
-          "internal.work_dir": "/workspace/fabro",
-          "internal.retry_count.start": 0,
-          "outcome": "failed",
-          "graph.cycle_counter_reset_key": "pass_id",
-          "graph.inspects": "develop,merge-upstream,revisor",
-          "graph.preamble_budget_kb": "12",
-          "thread.survey.current_node": "merge",
-          "graph.max_node_visits": "12",
-          "internal.seed_cycle_anchor": "",
           "internal.retry_count.survey": 0,
-          "failure_class": "transient_infra",
-          "last_stage": "survey",
           "seed_cycles": {
             "start": 1,
             "survey": 1,
             "merge": 1
           },
-          "graph.rankdir": "LR",
+          "thread.start.current_node": "survey",
+          "current_node": "merge",
+          "failure_signature": "merge|transient_infra|api_transient|zai|rate_limited",
+          "graph.max_node_visits": "12",
+          "outcome": "failed",
+          "thread.survey.current_node": "merge",
           "internal.retry_count.merge": 4,
-          "last_response": "{\"preferred_next_label\": \"Merge needed\", \"outcome\": \"succeeded\", \"failure_reason\": \"\", \"suggested_next_ids\": [], \"context_updates\": {\"journal\": {\"painpoints\": [], \"observations\": [\"upstream count 24 ("
+          "internal.retry_count.start": 0,
+          "internal.run_id": "01M27V3Y12QDV77VCM4JH4AE9D",
+          "graph.cycle_counter_reset_key": "pass_id",
+          "graph.inspects": "develop,merge-upstream,revisor"
         },
         "node_outcomes": {
-          "start": {
-            "status": "succeeded",
-            "usage": null
-          },
           "survey": {
             "status": "succeeded",
             "preferred_label": "Merge needed",
@@ -864,19 +860,102 @@
               "signature": "api_transient|zai|rate_limited"
             },
             "usage": null
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
           }
         },
         "next_node_id": "exit",
+        "git_commit_sha": "88bb1f92883e202e5e700433b55c19be7545df5a",
         "node_visits": {
+          "survey": 1,
           "start": 1,
-          "merge": 1,
-          "survey": 1
+          "merge": 1
         }
       },
-      "diff": {}
+      "diff": {
+        "summary": {
+          "files_changed": 1,
+          "additions": 2,
+          "deletions": 0
+        }
+      }
     }
   ],
-  "conclusion": null,
+  "conclusion": {
+    "timestamp": "2026-09-11T09:31:52.268502498Z",
+    "status": "failed",
+    "timing": {
+      "wall_time_ms": 1894384,
+      "inference_time_ms": 27037,
+      "tool_time_ms": 14404,
+      "active_time_ms": 41441
+    },
+    "failure": {
+      "reason": "soft_stop",
+      "detail": {
+        "message": "run parked at a soft exit (kind=\"soft\") — infrastructure could not finish; the next run re-enters autonomously",
+        "category": "deterministic"
+      }
+    },
+    "final_git_commit_sha": "88bb1f92883e202e5e700433b55c19be7545df5a",
+    "stages": [
+      {
+        "stage_id": "start",
+        "stage_label": "start",
+        "timing": {
+          "wall_time_ms": 0,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "survey",
+        "stage_label": "survey",
+        "timing": {
+          "wall_time_ms": 42205,
+          "inference_time_ms": 27037,
+          "tool_time_ms": 14404,
+          "active_time_ms": 41441
+        },
+        "billing_usd_micros": 83036,
+        "retries": 0
+      },
+      {
+        "stage_id": "merge",
+        "stage_label": "merge",
+        "timing": {
+          "wall_time_ms": 8983,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 3
+      }
+    ],
+    "billing": {
+      "input_tokens": 41269,
+      "output_tokens": 736,
+      "total_tokens": 123488,
+      "reasoning_tokens": 203,
+      "cache_read_tokens": 81280,
+      "cache_write_tokens": 0,
+      "total_usd_micros": 83036
+    },
+    "total_retries": 3,
+    "diff": {
+      "patch": "diff --git a/.fabro/journal/01M27V3Y12QDV77VCM4JH4AE9D.jsonl b/.fabro/journal/01M27V3Y12QDV77VCM4JH4AE9D.jsonl\nnew file mode 100644\nindex 000000000..477773e52\n--- /dev/null\n+++ b/.fabro/journal/01M27V3Y12QDV77VCM4JH4AE9D.jsonl\n@@ -0,0 +1,2 @@\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M27V3Y12QDV77VCM4JH4AE9D\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-11T09:00:21Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M27V3Y12QDV77VCM4JH4AE9D\",\"node\":\"survey\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-11T09:01:03Z\",\"data\":{\"painpoints\":[],\"observations\":[\"upstream count 24 (>= 5 MIN threshold); newest upstream subject: 'Merge pull request #848 from fabro-sh/rust-boundary' — route Merge needed, infra-only upstream merge\",\"revisor backlog: 01M25R832HP615J291N72FHNCS (develop succeeded, PR #123, completed 2026-09-10T15:03Z, newer than newest revisor run 01M25PC202TRD3GAB27G77Q120 completed 13:10Z); next revisor pass should burn this down\",\"develop run 01M25VVK131JTQB3BRBPAV0DWR (14:34Z) failed and is archived — no revisor signal expected for it; next surveyor should not mistake it for backlog\"]}}\n",
+      "summary": {
+        "files_changed": 1,
+        "additions": 2,
+        "deletions": 0
+      }
+    },
+    "exit_kind": "soft"
+  },
   "sandbox": {
     "kind": "ready",
     "plan": {
@@ -906,7 +985,12 @@
       "first_event_seq": 58,
       "prompt": null,
       "response": null,
-      "completion": null,
+      "completion": {
+        "outcome": "failed",
+        "notes": null,
+        "failure_reason": "LLM error: Rate limited by zai: Usage limit reached for 5 hour. Your limit will reset at 2026-09-11 19:14:50",
+        "timestamp": "2026-09-11T09:31:47.658901223Z"
+      },
       "provider_used": {
         "mode": "agent",
         "provider": "zai",
@@ -921,7 +1005,12 @@
       "started_at": "2026-09-11T09:31:38.665071352Z",
       "handler": "agent",
       "graph_visit": 1,
-      "live_inference_ms": 8384,
+      "timing": {
+        "wall_time_ms": 8983,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
       "usage": {
         "input_tokens": 0,
         "output_tokens": 0,
@@ -1114,7 +1203,7 @@
         }
       ],
       "agent_control": "running",
-      "state": "running"
+      "state": "failed"
     },
     "survey@1": {
       "first_event_seq": 20,
@@ -1380,6 +1469,42 @@
       "output": null,
       "started_at": "2026-09-11T09:00:20.472501986Z",
       "handler": "start",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "exit@1": {
+      "first_event_seq": 158,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-11T09:31:52.216100913Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-11T09:31:52.215988223Z",
+      "handler": "exit",
       "graph_visit": 1,
       "timing": {
         "wall_time_ms": 0,

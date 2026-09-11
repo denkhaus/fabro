@@ -1,0 +1,6 @@
+{
+  "outcome": "failed",
+  "notes": null,
+  "failure_reason": "LLM error: Rate limited by zai: Usage limit reached for 5 hour. Your limit will reset at 2026-09-11 19:14:50",
+  "timestamp": "2026-09-11T09:31:47.658901223Z"
+}
