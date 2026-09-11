@@ -75,11 +75,11 @@ pub async fn provider_sandbox(
 /// Reattach to a run's sandbox on `kind` by its persisted id. The driver
 /// reports the sandbox's lifecycle from here on through `events`.
 ///
-/// The sandbox must carry fabro's managed label and, when a run id is
-/// known, the matching run label: the provider shares its backend with
-/// every other application, and fabro never operates on a sandbox it did
-/// not create. The ownership scope the provider is connected through
-/// refuses anything else.
+/// On a shared backend the sandbox must carry fabro's managed label and,
+/// when a run id is known, the matching run label: fabro never operates on
+/// a sandbox it did not create, and the ownership scope the provider is
+/// connected through refuses anything else. A local sandbox attaches by
+/// the id the Host provider derives from its directory.
 pub async fn attach_provider_sandbox(
     kind: SandboxProviderKind,
     access: &ProviderAccess,
@@ -166,6 +166,11 @@ async fn connect(
         .map_err(|error| {
             crate::Error::context(format!("Failed to connect to the {kind} provider"), error)
         })?;
+    // A local sandbox is a directory the caller designated; it carries no
+    // labels, and nothing else shares the host's directories with fabro.
+    if kind.bundled() == Some(BundledProvider::Local) {
+        return Ok(connected.provider);
+    }
     Ok(Arc::new(OwnedProvider::new(
         connected.provider,
         managed_labels::ownership(run_id),

@@ -1,28 +1,21 @@
-use std::collections::BTreeMap;
-
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use fabro_types::{
-    BundledProvider, RunId, RunSandboxInstance, SandboxDetails, SandboxNetwork, SandboxResources,
-    SandboxState, SandboxTimestamps,
+    RunId, RunSandboxInstance, SandboxDetails, SandboxNetwork, SandboxResources, SandboxState,
+    SandboxTimestamps,
 };
 
 use crate::driver::ProviderAccess;
 use crate::reconnect;
 
 /// Inspect the sandbox identified by `record` and return provider-neutral
-/// details for control-plane display.
-///
-/// `local` always returns a minimal record describing the host; every other
-/// provider is described through the sandbox driver.
+/// details for control-plane display, described through the sandbox driver
+/// on every provider.
 pub async fn sandbox_details(
     record: &RunSandboxInstance,
     access: &ProviderAccess,
     run_id: Option<RunId>,
 ) -> Result<SandboxDetails> {
-    if record.provider.bundled() == Some(BundledProvider::Local) {
-        return Ok(local_details(record));
-    }
     let sandbox = reconnect::reconnect_driver_for_run(record, access, run_id, None).await?;
     let status = sandbox.handle()?.describe().await.map_err(|err| {
         anyhow::anyhow!(
@@ -32,20 +25,6 @@ pub async fn sandbox_details(
         )
     })?;
     Ok(details_from_status(record, &status))
-}
-
-fn local_details(record: &RunSandboxInstance) -> SandboxDetails {
-    SandboxDetails {
-        sandbox:      record.clone(),
-        state:        SandboxState::Running,
-        native_state: None,
-        region:       None,
-        web_url:      None,
-        resources:    SandboxResources::default(),
-        network:      SandboxNetwork::unknown(),
-        labels:       BTreeMap::new(),
-        timestamps:   SandboxTimestamps::default(),
-    }
 }
 
 /// Projection of a sandbox-driver [`sandbox_driver::SandboxStatus`] into
@@ -225,37 +204,5 @@ mod tests {
         );
         assert_eq!(details.sandbox.runtime.id, "container-abc123");
         assert_eq!(details.network, SandboxNetwork::unknown());
-    }
-
-    #[test]
-    fn local_details_returns_running_with_no_metadata() {
-        let record = RunSandboxInstance {
-            provider: SandboxProviderKind::LOCAL,
-            image:    None,
-            snapshot: None,
-            runtime:  fabro_types::RunSandboxRuntime {
-                id:                "local:01JNQVR7M0EJ5GKAT2SC4ERS1Z".to_string(),
-                working_directory: "/Users/client/project".to_string(),
-                repo_cloned:       None,
-                clone_origin_url:  None,
-                clone_branch:      None,
-                workspace_root:    None,
-                repos_root:        None,
-                primary_repo_path: None,
-                primary_repo_link: None,
-            },
-        };
-        let details = local_details(&record);
-        assert_eq!(details.sandbox.provider, SandboxProviderKind::LOCAL);
-        assert_eq!(details.state, SandboxState::Running);
-        let runtime = &details.sandbox.runtime;
-        assert_eq!(runtime.id, "local:01JNQVR7M0EJ5GKAT2SC4ERS1Z");
-        assert_eq!(runtime.working_directory, "/Users/client/project");
-        assert!(details.region.is_none());
-        assert!(details.sandbox.image.is_none());
-        assert!(details.labels.is_empty());
-        assert_eq!(details.resources, SandboxResources::default());
-        assert_eq!(details.network, SandboxNetwork::unknown());
-        assert_eq!(details.timestamps, SandboxTimestamps::default());
     }
 }

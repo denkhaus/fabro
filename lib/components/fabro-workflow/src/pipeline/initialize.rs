@@ -522,9 +522,7 @@ pub async fn initialize(
     }
 
     if !attach_existing {
-        let run_sandbox = options
-            .sandbox
-            .to_run_sandbox_instance(&sandbox, options.run_options.run_id);
+        let run_sandbox = options.sandbox.to_run_sandbox_instance(&sandbox);
         let runtime = &run_sandbox.runtime;
         options.emitter.emit(&Event::SandboxInitialized {
             working_directory: runtime.working_directory.clone(),

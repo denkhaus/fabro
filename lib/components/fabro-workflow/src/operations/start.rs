@@ -1868,7 +1868,7 @@ mod tests {
             ..
         } = session;
         let runtime = sandbox
-            .to_run_sandbox_instance(&MockSandbox::linux().sandbox(), fixtures::RUN_1)
+            .to_run_sandbox_instance(&MockSandbox::linux().sandbox())
             .runtime;
         assert_eq!(runtime.repo_cloned, Some(false));
         assert_eq!(runtime.clone_origin_url, None);
@@ -1930,7 +1930,7 @@ mod tests {
             ..
         } = session;
         let runtime = sandbox
-            .to_run_sandbox_instance(&MockSandbox::linux().sandbox(), fixtures::RUN_1)
+            .to_run_sandbox_instance(&MockSandbox::linux().sandbox())
             .runtime;
         assert_eq!(runtime.repo_cloned, Some(false));
         assert_eq!(runtime.clone_origin_url, None);

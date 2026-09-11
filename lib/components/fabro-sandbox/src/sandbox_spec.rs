@@ -60,20 +60,9 @@ impl SandboxSpec {
     }
 
     /// Build initialized sandbox metadata for persistence.
-    pub fn to_run_sandbox_instance(
-        &self,
-        sandbox: &RunSandbox,
-        run_id: RunId,
-    ) -> RunSandboxInstance {
+    pub fn to_run_sandbox_instance(&self, sandbox: &RunSandbox) -> RunSandboxInstance {
         let working_directory = sandbox.working_directory().to_string();
-        let id = {
-            let info = sandbox.sandbox_info();
-            if info.is_empty() {
-                format!("local:{run_id}")
-            } else {
-                info
-            }
-        };
+        let id = sandbox.sandbox_info();
 
         match self {
             Self::Provider(spec) => {
@@ -136,7 +125,7 @@ impl SandboxSpec {
                 runtime:  RunSandboxRuntime {
                     id,
                     working_directory,
-                    repo_cloned: None,
+                    repo_cloned: Some(false),
                     clone_origin_url: None,
                     clone_branch: None,
                     workspace_root: None,
@@ -204,7 +193,6 @@ fn runtime_layout_metadata(
 
 #[cfg(test)]
 mod tests {
-    use fabro_types::RunId;
     use sandbox_driver::SandboxSource;
     use sandbox_driver_testing::ScriptedSandbox;
 
@@ -240,8 +228,7 @@ mod tests {
         })));
         let sandbox = sandbox_at("/workspace/rack-test");
 
-        let run_id: RunId = "01HY0000000000000000000000".parse().unwrap();
-        let record = spec.to_run_sandbox_instance(&sandbox, run_id);
+        let record = spec.to_run_sandbox_instance(&sandbox);
         let runtime = record.runtime;
 
         assert_eq!(runtime.working_directory, "/workspace/rack-test");
@@ -295,8 +282,7 @@ mod tests {
         })));
         let sandbox = sandbox_at("/workspace");
 
-        let run_id: RunId = "01HY0000000000000000000000".parse().unwrap();
-        let record = spec.to_run_sandbox_instance(&sandbox, run_id);
+        let record = spec.to_run_sandbox_instance(&sandbox);
         let runtime = record.runtime;
 
         assert_eq!(runtime.working_directory, "/workspace");

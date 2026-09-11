@@ -923,12 +923,8 @@ impl RunSandbox {
     }
 
     /// The provider's console page for this sandbox, when it has one. Best
-    /// effort: a failed describe reports no page. The local sandbox is the
-    /// host and has none.
+    /// effort: a failed describe reports no page.
     pub async fn console_url(&self) -> Option<String> {
-        if self.kind.is_local() {
-            return None;
-        }
         self.handle()
             .ok()?
             .describe()
@@ -1000,14 +996,10 @@ impl RunSandbox {
         )
     }
 
-    /// The provider's id for this sandbox, or empty for `local`: a local
-    /// sandbox is its working directory, which the run record already
-    /// carries, and its Host registry id does not outlive the process.
-    /// Empty for a pending sandbox that has not been created.
+    /// The provider's id for this sandbox; for `local`, the id the Host
+    /// provider derives from the working directory. Empty for a pending
+    /// sandbox that has not been created.
     pub fn sandbox_info(&self) -> String {
-        if self.kind.is_local() {
-            return String::new();
-        }
         self.handle
             .get()
             .map(|handle| handle.id().to_string())
@@ -1429,12 +1421,13 @@ mod tests {
         };
         assert_eq!(sandbox.platform(), expected);
         assert!(sandbox.os_version().starts_with(expected));
-        assert_eq!(
-            sandbox.sandbox_info(),
-            "",
-            "local sandboxes are identified by directory"
-        );
         let handle = Arc::clone(sandbox.handle().unwrap());
+        assert_eq!(sandbox.sandbox_info(), handle.id().to_string());
+        assert!(
+            sandbox.sandbox_info().starts_with("host-dir-"),
+            "a local sandbox is identified by its directory: {}",
+            sandbox.sandbox_info()
+        );
         let isolated = RunSandbox::new(SandboxProviderKind::DOCKER, Arc::clone(&handle));
         assert_eq!(isolated.sandbox_info(), handle.id().to_string());
         assert_eq!(sandbox.console_url().await, None);
