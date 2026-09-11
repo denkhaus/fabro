@@ -1039,14 +1039,16 @@ impl Default for RunExecutionSettings {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RunCheckpointSettings {
     pub exclude_globs:     Vec<String>,
-    /// When `true`, Fabro-managed run-branch checkpoint commits bypass
-    /// local Git commit hooks (e.g. `pre-commit`, `commit-msg`). This does
-    /// not affect Fabro workflow `[[run.hooks]]` or metadata-branch
-    /// snapshots, which already bypass repository hooks.
+    /// Accepted for compatibility. Fabro-managed run-branch checkpoint
+    /// commits never run local Git commit hooks (e.g. `pre-commit`,
+    /// `commit-msg`): the sandbox driver disables repository hooks on every
+    /// git command it runs, whatever this field says. Fabro workflow
+    /// `[[run.hooks]]` are unaffected.
     #[serde(default)]
     pub skip_git_hooks:    bool,
-    /// Timeout (ms) for the per-node run-branch checkpoint commit, which runs
-    /// repository commit hooks unless `skip_git_hooks` is set. Default 30_000.
+    /// Accepted for compatibility. The per-node run-branch checkpoint commit
+    /// runs under the sandbox driver's own git command budget now that no
+    /// repository hook can prolong it. Default 30_000.
     #[serde(default = "default_checkpoint_commit_timeout_ms")]
     pub commit_timeout_ms: u64,
 }

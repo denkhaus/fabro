@@ -2,25 +2,26 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use fabro_agent::{RunSandbox, shell_quote};
+use sandbox_driver::{Git as _, GitDiffOptions, GitRevisionRange};
 
-const DIFF_MARKER: &str = "__FABRO_CHANGED_FILES_DIFF__";
-const UNTRACKED_MARKER: &str = "__FABRO_CHANGED_FILES_UNTRACKED__";
-
+/// The paths the working tree changed against `HEAD`, plus the untracked
+/// files git does not ignore, sorted and deduplicated. A sandbox without
+/// git, or a working directory that is not a repository, has no changed
+/// files.
 pub async fn detect_changed_files(sandbox: &Arc<RunSandbox>) -> Vec<String> {
+    let Ok(git) = sandbox.git() else {
+        return Vec::new();
+    };
+    let repo = sandbox.working_directory();
     let mut files: Vec<String> = Vec::new();
-    let command = format!(
-        "printf '%s\\n' {diff}; git diff --name-only || true; \
-         printf '%s\\n' {untracked}; git ls-files --others --exclude-standard || true",
-        diff = shell_quote(DIFF_MARKER),
-        untracked = shell_quote(UNTRACKED_MARKER),
-    );
-    if let Ok(result) = sandbox
-        .exec_command(&command, 30_000, None, None, None)
+    if let Ok(entries) = git
+        .diff_entries(repo, &GitDiffOptions::new(GitRevisionRange::new("HEAD")))
         .await
     {
-        if result.success() {
-            files.extend(parse_changed_files(&result.stdout_lossy()));
-        }
+        files.extend(entries.into_iter().map(|entry| entry.path));
+    }
+    if let Ok(untracked) = git.untracked_files(repo).await {
+        files.extend(untracked);
     }
 
     files.sort();
@@ -56,28 +57,4 @@ pub async fn files_touched_since(
     };
 
     (files_touched, last_file_touched)
-}
-
-fn parse_changed_files(stdout: &str) -> impl Iterator<Item = String> + '_ {
-    stdout.lines().filter_map(|line| {
-        let trimmed = line.trim();
-        (!trimmed.is_empty() && trimmed != DIFF_MARKER && trimmed != UNTRACKED_MARKER)
-            .then(|| trimmed.to_string())
-    })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::parse_changed_files;
-
-    #[test]
-    fn parse_changed_files_ignores_section_markers() {
-        let files = parse_changed_files(
-            "__FABRO_CHANGED_FILES_DIFF__\nsrc/main.rs\n\
-             __FABRO_CHANGED_FILES_UNTRACKED__\nREADME.md\n",
-        )
-        .collect::<Vec<_>>();
-
-        assert_eq!(files, vec!["src/main.rs", "README.md"]);
-    }
 }

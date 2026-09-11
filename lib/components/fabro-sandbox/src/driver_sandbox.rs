@@ -472,9 +472,11 @@ impl RunSandbox {
         }
     }
 
-    /// The driver's git facet for this sandbox's checkout. Absent until a
-    /// pending sandbox is initialized, or when the provider has no git.
-    pub(crate) fn git(&self) -> crate::Result<sandbox_driver::GitFacet<'_>> {
+    /// The driver's git facet for this sandbox's checkout, for fabro's own
+    /// git operations (checkpoints, diffs, the Run Files listing). Absent
+    /// until a pending sandbox is initialized, or when the provider has no
+    /// git. Pass [`Self::working_directory`] as the repository path.
+    pub fn git(&self) -> crate::Result<sandbox_driver::GitFacet<'_>> {
         self.handle()?.git().ok_or_else(|| {
             crate::Error::message(format!(
                 "sandbox provider `{}` does not support git",

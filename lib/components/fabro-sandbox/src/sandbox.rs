@@ -5,20 +5,17 @@ use chrono::{DateTime, Utc};
 use fabro_github::token_source::TokenSnapshot;
 use fabro_util::shell;
 use sandbox_driver::{
-    Git as _, GitAttempt, GitCheckoutOptions, GitPushOptions, GitRetryError, GitRetryPolicy,
-    retry_git,
+    Git as _, GitAttempt, GitCheckoutOptions, GitFetchOptions, GitPushOptions, GitRetryError,
+    GitRetryPolicy, retry_git,
 };
 use serde::{Deserialize, Serialize};
 use tokio::time;
 
 use crate::credentials::{self, RepoCredentials};
 use crate::driver_sandbox::RunSandbox;
-use crate::exec::ExecResultExt;
 use crate::git_policy::{self, GitRetryReason};
 
 /// Git command prefix that disables background maintenance.
-pub(crate) const GIT: &str = "git -c maintenance.auto=0 -c gc.auto=0";
-
 pub const DEFAULT_EXEC_OUTPUT_TAIL_BYTES: usize = 8 * 1024;
 
 /// Where a clone-based sandbox put its files, as persisted on the run.
@@ -245,38 +242,27 @@ pub(crate) async fn fetch_source_run_ref(
 ) -> crate::Result<()> {
     let remote_ref = format!("refs/heads/fabro/run/{source_run_id}");
     let tracking_ref = format!("refs/remotes/origin/fabro/run/{source_run_id}");
-    let fetch_cmd = format!(
-        "{GIT} fetch origin {}:{}",
-        shell_quote(&remote_ref),
-        shell_quote(&tracking_ref)
-    );
-    let check_cmd = format!(
-        "{GIT} merge-base --is-ancestor {} {}",
-        shell_quote(checkpoint_sha),
-        shell_quote(&tracking_ref)
-    );
+    let git = sandbox.git()?;
+    let repo = sandbox.working_directory();
+    let mut fetch = GitFetchOptions::default();
+    fetch.remote = Some("origin".to_owned());
+    fetch.refspecs = vec![format!("{remote_ref}:{tracking_ref}")];
+    fetch.timeout = Some(Duration::from_secs(30));
 
+    // The source run's checkpoint may still be landing on the remote; a
+    // few short retries cover the replication.
     let mut last_error = String::new();
     for _ in 0..5 {
-        let fetch = sandbox
-            .exec_command(&fetch_cmd, 30_000, None, None, None)
-            .await?;
-        if fetch.success() {
-            let check = sandbox
-                .exec_command(&check_cmd, 10_000, None, None, None)
-                .await?;
-            if check.success() {
-                return Ok(());
-            }
-            last_error = check
-                .into_exec_error(format!(
-                    "checkpoint {checkpoint_sha} is not reachable from {remote_ref}"
-                ))
-                .to_string();
-        } else {
-            last_error = fetch
-                .into_exec_error("git fetch source run ref")
-                .to_string();
+        match git.fetch(repo, &fetch).await {
+            Ok(()) => match git.is_ancestor(repo, checkpoint_sha, &tracking_ref).await {
+                Ok(true) => return Ok(()),
+                Ok(false) => {
+                    last_error =
+                        format!("checkpoint {checkpoint_sha} is not reachable from {remote_ref}");
+                }
+                Err(error) => last_error = format!("git merge-base --is-ancestor: {error}"),
+            },
+            Err(error) => last_error = format!("git fetch source run ref: {error}"),
         }
         time::sleep(Duration::from_millis(500)).await;
     }

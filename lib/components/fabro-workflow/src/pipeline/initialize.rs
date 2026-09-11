@@ -12,13 +12,13 @@ use fabro_llm::credentials::{CredentialProvider, readiness};
 use fabro_llm::lithos_catalog::Catalog;
 use fabro_sandbox::{
     DaytonaCredentials, ExecResultExt, GitSetupIntent, ProviderAccess, SandboxSpec,
-    reconnect_for_run_with_events, shell_quote,
+    reconnect_for_run_with_events,
 };
 use fabro_static::EnvVars;
 use fabro_types::RunSandboxKind;
 use fabro_util::time::elapsed_ms;
 use fabro_vault::Vault;
-use sandbox_driver::{CorrelationId, EventContext};
+use sandbox_driver::{CorrelationId, EventContext, Git as _};
 use tokio::runtime::Handle;
 use tokio::sync::RwLock as AsyncRwLock;
 
@@ -79,18 +79,15 @@ async fn configure_sandbox_git_identity(
     sandbox: &RunSandbox,
     author: &GitAuthor,
 ) -> Result<(), Error> {
-    let command = format!(
-        "git config --local user.name {} && git config --local user.email {}",
-        shell_quote(&author.name),
-        shell_quote(&author.email)
-    );
-    sandbox
-        .exec_command(&command, 10_000, None, None, None)
-        .await
-        .map_err(|err| Error::engine_with_source("Sandbox git identity setup failed", err))?
-        .into_result("git config user identity")
+    let git = sandbox
+        .git()
         .map_err(|err| Error::engine_with_source("Sandbox git identity setup failed", err))?;
-
+    let repo = sandbox.working_directory();
+    for (key, value) in [("user.name", &author.name), ("user.email", &author.email)] {
+        git.config_set(repo, key, value)
+            .await
+            .map_err(|err| Error::engine_with_source("Sandbox git identity setup failed", err))?;
+    }
     Ok(())
 }
 
@@ -1071,10 +1068,17 @@ mod tests {
             .expect("git identity should configure");
 
         let commands = sandbox.driver().scripted_exec().commands();
-        assert_eq!(commands, vec![
-            "git config --local user.name 'Fabro Bot' && git config --local user.email \
-             fabro-bot@example.com"
-        ]);
+        assert_eq!(commands.len(), 2, "{commands:#?}");
+        assert!(
+            commands[0].contains("'config' '--local' '--' 'user.name' 'Fabro Bot'"),
+            "{}",
+            commands[0]
+        );
+        assert!(
+            commands[1].contains("'config' '--local' '--' 'user.email' 'fabro-bot@example.com'"),
+            "{}",
+            commands[1]
+        );
     }
 
     #[tokio::test]
