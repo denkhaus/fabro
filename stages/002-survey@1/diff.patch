@@ -1,0 +1,8 @@
+diff --git a/.fabro/journal/01M299F3FBYBHQ4DKGK4HT4YNP.jsonl b/.fabro/journal/01M299F3FBYBHQ4DKGK4HT4YNP.jsonl
+new file mode 100644
+index 000000000..b8b55cd7a
+--- /dev/null
++++ b/.fabro/journal/01M299F3FBYBHQ4DKGK4HT4YNP.jsonl
+@@ -0,0 +1,2 @@
++{"$schema":"fabro-journal-v1","run_id":"01M299F3FBYBHQ4DKGK4HT4YNP","node":"start","visit":1,"status":"succeeded","ts":"2026-09-11T22:32:11Z","data":{}}
++{"$schema":"fabro-journal-v1","run_id":"01M299F3FBYBHQ4DKGK4HT4YNP","node":"survey","visit":1,"status":"succeeded","ts":"2026-09-11T22:33:57Z","data":{"painpoints":[],"observations":["upstream count 0 (origin/denkhaus..upstream/main after fetch of both remotes; upstream remote was missing in this workspace and was added fresh -> `https://github.com/fabro-sh/fabro`); newest upstream subject: 'Bump version to 0.353.0-nightly.0' — zero drift, threshold of 5 far away","revisor backlog: none — both recent completed develop runs have review artifacts in `.fabro/reviews/develop/` (01M292T3YZ3B3YXXPT1R7F82XK.md, 01M294HH117ZMV11HCNCEQPCDJ.md) and 01M294HH was revised in 7ba56fd65 (#130)","routed to Work: seed_cycles start=1, so this pass runs one develop+revisor cycle; next surveyor should re-check drift count (it accumulates toward the 5-commit merge threshold) and watch for a new develop run completing after the newest revisor pass"]}}
