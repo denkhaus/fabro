@@ -108,7 +108,7 @@ pub async fn attach_provider_sandbox(
     );
     let sandbox = RunSandbox::attached(kind.clone(), handle, workspace);
     if kind.bundled() == Some(BundledProvider::Daytona) {
-        if let Some(snapshot) = status.source {
+        if let Some(snapshot) = status.snapshot {
             sandbox.set_snapshot(snapshot);
         }
     }

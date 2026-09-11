@@ -265,21 +265,18 @@ impl PluginBackedProvider {
                 kind: kind.clone(),
                 source,
             })?;
-        let supervisor = PluginSupervisor::new(
-            PLUGIN_BINARY_PREFIX,
-            plugin_config(driver_kind.clone(), settings),
-        );
         // Launch once now so a misconfigured plugin fails at connect time and
         // the declared capabilities are known for preflight.
-        let capabilities = supervisor
-            .current()
-            .await
-            .map_err(|source| ConnectError::Driver {
-                kind: kind.clone(),
-                source,
-            })?
-            .capabilities()
-            .clone();
+        let supervisor = PluginSupervisor::launch(
+            PLUGIN_BINARY_PREFIX,
+            plugin_config(driver_kind.clone(), settings),
+        )
+        .await
+        .map_err(|source| ConnectError::Driver {
+            kind: kind.clone(),
+            source,
+        })?;
+        let capabilities = SandboxProvider::capabilities(&supervisor).clone();
         Ok(Self {
             kind: driver_kind,
             capabilities,

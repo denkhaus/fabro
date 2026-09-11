@@ -3,8 +3,8 @@ use std::collections::BTreeMap;
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use fabro_types::{
-    BundledProvider, RunId, RunSandboxInstance, SandboxDetails, SandboxNetwork,
-    SandboxProviderKind, SandboxResources, SandboxState, SandboxTimestamps,
+    BundledProvider, RunId, RunSandboxInstance, SandboxDetails, SandboxNetwork, SandboxResources,
+    SandboxState, SandboxTimestamps,
 };
 
 use crate::driver::ProviderAccess;
@@ -63,8 +63,8 @@ pub(crate) fn info_from_status(
         display_name:      status.name.clone().filter(|name| !name.is_empty()),
         state:             fields.state,
         native_state:      fields.native_state,
-        image:             status.source.clone(),
-        snapshot:          None,
+        image:             status.image.clone(),
+        snapshot:          status.snapshot.clone(),
         region:            status.region.clone(),
         web_url:           status.web_url.clone(),
         working_directory: None,
@@ -82,14 +82,8 @@ pub(crate) fn details_from_status(
     let fields = fields_from_status(status);
     SandboxDetails {
         sandbox:      RunSandboxInstance {
-            image: (record.provider == SandboxProviderKind::DOCKER)
-                .then(|| status.source.clone())
-                .flatten()
-                .or_else(|| record.image.clone()),
-            snapshot: (record.provider == SandboxProviderKind::DAYTONA)
-                .then(|| status.source.clone())
-                .flatten()
-                .or_else(|| record.snapshot.clone()),
+            image: status.image.clone().or_else(|| record.image.clone()),
+            snapshot: status.snapshot.clone().or_else(|| record.snapshot.clone()),
             ..record.clone()
         },
         state:        fields.state,
@@ -152,6 +146,7 @@ pub(crate) fn normalize_driver_state(state: sandbox_driver::SandboxState) -> San
 
 #[cfg(test)]
 mod tests {
+    use fabro_types::SandboxProviderKind;
     use sandbox_driver::SandboxId;
 
     use super::*;
@@ -185,7 +180,7 @@ mod tests {
         );
         status.name = Some("fabro-run-abc".to_string());
         status.provider_state = "running".to_string();
-        status.source = Some("buildpack-deps:noble".to_string());
+        status.image = Some("buildpack-deps:noble".to_string());
         status
             .labels
             .insert("sh.fabro.managed".to_string(), "true".to_string());
