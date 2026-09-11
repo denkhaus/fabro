@@ -91,6 +91,14 @@ pub enum WorkflowVersionCollectError {
     /// reference that differs from the supplied key).
     #[error("collected file `{path}` was not supplied")]
     NotSupplied { path: WorkflowPath },
+    /// Supplied-content packaging: a supplied key differs from the implicit
+    /// sibling config name `{config_path}` only by case or normalization, so
+    /// hosts with different filesystem rules would package different trees.
+    #[error("supplied file `{alias}` aliases the workflow config name `{config_path}`")]
+    ConfigAlias {
+        config_path: WorkflowPath,
+        alias:       WorkflowPath,
+    },
     #[error("failed to stage supplied workflow files")]
     Stage {
         #[source]

@@ -59,16 +59,48 @@ fn collect_in_staging(
             },
         })?;
     let closure = crate::collect_workflow_versions_at_location(&location, &root, entrypoint)?;
-    // A case-insensitive host must not satisfy a reference that is missing
-    // from the supplied tree under its exact key.
     for (_, version) in closure.versions() {
-        for path in version.version().files().keys() {
-            if !files.contains_key(path) {
-                return Err(WorkflowVersionCollectError::NotSupplied { path: path.clone() });
-            }
-        }
+        confine_to_supplied(version.version(), files)?;
     }
     Ok(closure)
+}
+
+/// The collector resolves references against the staged tree, so its result
+/// can depend on the host filesystem's case and normalization rules. Reject
+/// every version whose collected files are not exactly the supplied keys, and
+/// pin the one implicit probe (the sibling `workflow.toml`) to the supplied
+/// map so the same request packages identically on every host.
+fn confine_to_supplied(
+    version: &fabro_types::WorkflowVersion,
+    files: &BTreeMap<WorkflowPath, String>,
+) -> Result<()> {
+    // A supplied sibling config attaches only when its `[workflow].graph`
+    // selects this entrypoint, exactly as for a checkout; several graphs may
+    // share one directory. When no exact sibling was supplied, the probe must
+    // not find one either.
+    let config_path = version.config_path();
+    if !files.contains_key(&config_path) {
+        let alias = files.keys().find(|path| {
+            fabro_types::validate_workflow_source_paths([*path, &config_path]).is_err()
+        });
+        if let Some(alias) = alias {
+            // A case-insensitive host would probe this key as the config and
+            // a case-sensitive one would not; neither outcome is what was
+            // asked for.
+            return Err(WorkflowVersionCollectError::ConfigAlias {
+                config_path,
+                alias: alias.clone(),
+            });
+        }
+    }
+    // A case-insensitive host must not satisfy a reference that is missing
+    // from the supplied tree under its exact key.
+    for path in version.files().keys() {
+        if !files.contains_key(path) {
+            return Err(WorkflowVersionCollectError::NotSupplied { path: path.clone() });
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -310,6 +342,73 @@ mod tests {
         ]);
         assert!(
             collect_supplied_workflow_versions(&elsewhere.entrypoint, &elsewhere.files).is_err()
+        );
+    }
+
+    #[test]
+    fn sibling_config_resolution_does_not_depend_on_the_host_filesystem() {
+        let graph = r#"digraph W { child [stack.child_workflow="sub/child.fabro"] }"#;
+        let selects = |target: &str| format!("_version = 1\n[workflow]\ngraph = \"{target}\"\n");
+
+        // Exact sibling configs attach to the root and to the child.
+        let attached = supplied("workflow.fabro", &[
+            ("workflow.fabro", graph),
+            ("workflow.toml", &selects("workflow.fabro")),
+            ("sub/child.fabro", "digraph Child {}"),
+            ("sub/workflow.toml", &selects("child.fabro")),
+        ]);
+        for (_, version) in collect(&attached).versions() {
+            let version = version.version();
+            assert!(
+                version.files().contains_key(&version.config_path()),
+                "{} lost its config",
+                version.entrypoint()
+            );
+        }
+
+        // A case variant of the implicit probe name is rejected everywhere,
+        // instead of attaching on APFS and vanishing on ext4.
+        for (entrypoint, files) in [
+            ("workflow.fabro", vec![
+                ("workflow.fabro", graph.to_owned()),
+                ("Workflow.toml", selects("workflow.fabro")),
+                ("sub/child.fabro", "digraph Child {}".to_owned()),
+            ]),
+            ("workflow.fabro", vec![
+                ("workflow.fabro", graph.to_owned()),
+                ("sub/child.fabro", "digraph Child {}".to_owned()),
+                ("sub/WORKFLOW.toml", selects("child.fabro")),
+            ]),
+        ] {
+            let files = files
+                .iter()
+                .map(|(path, content)| (*path, content.as_str()))
+                .collect::<Vec<_>>();
+            let input = supplied(entrypoint, &files);
+            let error =
+                collect_supplied_workflow_versions(&input.entrypoint, &input.files).unwrap_err();
+            assert!(
+                matches!(error, WorkflowVersionCollectError::ConfigAlias { .. }),
+                "{error}"
+            );
+        }
+
+        // Several graphs may share a directory: a sibling config attaches only
+        // to the graph it selects, as for a checkout.
+        let shared_dir = supplied("workflow.fabro", &[
+            ("workflow.fabro", graph),
+            ("sub/child.fabro", "digraph Child {}"),
+            ("sub/other.fabro", "digraph Other {}"),
+            ("sub/workflow.toml", &selects("other.fabro")),
+        ]);
+        let closure = collect(&shared_dir);
+        let (_, child) = closure.versions().next().unwrap();
+        assert_eq!(child.version().entrypoint().as_str(), "sub/child.fabro");
+        assert!(
+            !child
+                .version()
+                .files()
+                .contains_key(&child.version().config_path())
         );
     }
 
