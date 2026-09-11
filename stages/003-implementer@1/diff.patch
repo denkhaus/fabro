@@ -1,0 +1,702 @@
+diff --git a/.fabro/journal/01M299PVMSE7Q53ZGPP67AHNMG.jsonl b/.fabro/journal/01M299PVMSE7Q53ZGPP67AHNMG.jsonl
+index b425c03d..df5b7dcf 100644
+--- a/.fabro/journal/01M299PVMSE7Q53ZGPP67AHNMG.jsonl
++++ b/.fabro/journal/01M299PVMSE7Q53ZGPP67AHNMG.jsonl
+@@ -1,2 +1,3 @@
+ {"$schema":"fabro-journal-v1","run_id":"01M299PVMSE7Q53ZGPP67AHNMG","node":"start","visit":1,"status":"succeeded","ts":"2026-09-11T22:35:12Z","data":{}}
+ {"$schema":"fabro-journal-v1","run_id":"01M299PVMSE7Q53ZGPP67AHNMG","node":"planner","visit":1,"status":"succeeded","ts":"2026-09-11T22:36:27Z","data":{"painpoints":[],"observations":["Seed fabro-a3d8 raised P2→P1→P0 by user decision (2026-09-12 00:29 Berlin) to jump the queue; user ordering: fabro-a3d8 first, then fabro-7627 (dep edge exists). Claimed this run.","Seed's cited paths resolve but fabro-llm lives under `lib/components/` not `lib/foundation/` — paths in the seed body are abbreviated, no sd update needed.","fabro_runs_list showed no open PRs and no non-terminal develop runs besides this run itself (01M299PVMSE7Q53ZGPP67AHNMG, self-excluded) — no in-flight exclusions applied.","Scoped park-and-resume OUT of this run's brief (kept: fail-fast + soft-exit mapping + resumable state); scheduled wake-up belongs with fabro-7627/fabro-1f70 to keep one-seed-per-run tractable."]}}
++{"$schema":"fabro-journal-v1","run_id":"01M299PVMSE7Q53ZGPP67AHNMG","node":"implementer","visit":1,"status":"succeeded","ts":"2026-09-11T23:17:21Z","data":{"painpoints":[{"text":"fabro-workflow full-suite runs on this sandbox are timing-flaky under parallel load: e2e_stall_watchdog_with_explicit_timeout_override fails (~2s) and 2-9 tests time out per run, identically on the clean tree (verified via git stash, run 01M299PVMSE7Q53ZGPP67AHNMG). The deterministic tester gate may hit these; suggest checking known-bug seeds for these timeout-prone integration tests or lowering nextest parallelism for fabro-workflow::it."}],"observations":["lithos RetryPolicy already implements the needed fail-fast: next_delay returns None when the classification's retry_after exceeds retry_after_cap (60s default, client.rs DEFAULT_RETRY_AFTER_CAP) — the fabro fix only had to attach the prose-parsed window to the error, not change retry logic.","The incident path is direct provider calls, not just the gateway adapter: the seed named gateway.rs, but without the new RateLimitReset middleware inside the retry layer the real zai 429s would still burn attempts — the middleware reuses the same gateway parser so both paths share one implementation."]}}
+diff --git a/.mulch/expertise/engine.jsonl b/.mulch/expertise/engine.jsonl
+index 7c7201f8..c06ac82b 100644
+--- a/.mulch/expertise/engine.jsonl
++++ b/.mulch/expertise/engine.jsonl
+@@ -57,3 +57,4 @@
+ {"type":"failure","classification":"tactical","recorded_at":"2026-09-10T14:54:14.516Z","evidence":{"commit":"2a2f189a4cf44f95b03420280c488971156ae8b6"},"dir_anchors":["lib/components/fabro-workflow/src/operations"],"description":"fabro-3fe4 reopen (runs 01M25K41V4NE, 01M25R832HP): making the live reducer strictly apply the shared lifecycle table stranded injected event sequences (submitted + worker-shaped run.starting, RunRunnable suppressed by the scheduling guard) at Submitted, so fabro rm no longer saw terminal runs as completed and failed dogfood-gate. Lesson: when two reducers share one strict table, any per-reducer guard (RunRunnable suppression) must be paired with the shared fast-forward path, or live/durable status drift breaks downstream terminality predicates like requires_force_to_delete.","resolution":"Shared helper fabro_types::historic_skipped_statuses consumed by BOTH live_lifecycle_status (server.rs) and RunProjectionReducer (run_state.rs); rm completed-run tests pass on final tree.","id":"mx-c555a3"}
+ {"type":"failure","classification":"tactical","recorded_at":"2026-09-11T13:21:42.868Z","evidence":{"commit":"52f7bbb340a7b973bf6db59a6305b137760c8a9b"},"description":"checkpoint.completed run event exceeds MAX_RUN_EVENT_BODY_BYTES (3MB) on big merge-upstream runs: worker loses canonical run store (HTTP 413) AFTER the merge commit exists, run is marked failed(workflow_error), conductor pass soft-stops, and the merge work is stranded in the sandbox (fabro/run/* pushes rejected by GitHub branch protection, nothing persisted remotely). Observed 2026-09-11 on runs 01M27V69 and 01M2837. Salvage: docker start the stopped run container, docker cp .git out, fetch into host repo, push under salvage/<name> (fabro/run/* blocked, salvage/* allowed).","resolution":"Unresolved: needs code fix — bound checkpoint event payload size (blob-store large data like tool outputs already do via MAX_SERIALIZED_TOOL_OUTPUT_BYTES) or raise MAX_RUN_EVENT_BODY_BYTES; independently allow-list fabro/run/* pushes so finished work is persisted before sandbox teardown. Interim manual salvage procedure documented in description.","id":"mx-82cf0d"}
+ {"type":"pattern","classification":"tactical","recorded_at":"2026-09-11T21:35:37.752Z","evidence":{"seeds":"fabro-3ef7","commit":"effe7ed628707be38cf71b9fd30200a369b4262d"},"name":"sqlite-busy-classification-and-wal-test-pools","description":"SQLite BUSY resilience in fabro-store run-event writes (fabro-3ef7): sqlx surfaces the EXTENDED error code via DatabaseError::code() (e.g. 517 SQLITE_BUSY_SNAPSHOT), so busy classification must mask to the primary code (code & 0xff == 5) plus a 'database is locked' message fallback; and file-backed test pools must set journal_mode(Wal) to mirror the canonical fabro-db connect policy — rollback-journal test pools deadlocked forever (not code-5) when two same-process pools held overlapping write transactions, silently failing to reproduce the production incident.","files":["lib/apps/fabro-server/migrations/2026082301_sqlite_blob_activation.rs","lib/apps/fabro-server/migrations/2026082801_sqlite_run_history_activation.rs","lib/components/fabro-store/src/legacy_blob_import.rs","lib/components/fabro-store/src/slate/mod.rs","lib/components/fabro-store/src/slate/run_store.rs","lib/components/fabro-store/src/test_support/mod.rs","lib/foundation/fabro-db/src/lib.rs"],"id":"mx-a2c839"}
++{"type":"decision","classification":"tactical","recorded_at":"2026-09-11T23:16:48.122Z","evidence":{"seeds":"fabro-a3d8","commit":"5a39deb50ad5cc44ab4d620ab30e8d1f37613a39"},"dir_anchors":["lib/components/fabro-llm/src"],"title":"Long-window rate limits: parse reset prose, fail fast, park as SoftStop","rationale":"Count-based exponential backoff cannot bridge multi-hour provider usage windows; burning retry attempts then failing hard left runs unrecoverable (fabro-a3d8 evidence). The reset deadline arrives only in 429 message prose, so fabro-llm parses it, attaches it as the structured provider_retry_after field, lets the lithos retry_after_cap surface the error immediately, and the workflow parks the run as FailureReason::SoftStop which stays resumable.","id":"mx-56553c"}
+diff --git a/Cargo.lock b/Cargo.lock
+index 55ad17a6..ae298384 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -2758,6 +2758,7 @@ dependencies = [
+  "anyhow",
+  "async-trait",
+  "bytes",
++ "chrono",
+  "fabro-auth",
+  "fabro-config",
+  "fabro-http",
+diff --git a/lib/components/fabro-llm/Cargo.toml b/lib/components/fabro-llm/Cargo.toml
+index cccc5fee..9c2aa116 100644
+--- a/lib/components/fabro-llm/Cargo.toml
++++ b/lib/components/fabro-llm/Cargo.toml
+@@ -20,6 +20,7 @@ workspace = true
+ anyhow.workspace = true
+ async-trait.workspace = true
+ bytes.workspace = true
++chrono.workspace = true
+ fabro-auth = { path = "../../foundation/fabro-auth" }
+ fabro-config = { path = "../../foundation/fabro-config" }
+ fabro-http.workspace = true
+diff --git a/lib/components/fabro-llm/src/client.rs b/lib/components/fabro-llm/src/client.rs
+index 64df12e1..4719eb53 100644
+--- a/lib/components/fabro-llm/src/client.rs
++++ b/lib/components/fabro-llm/src/client.rs
+@@ -1,16 +1,19 @@
+ //! Client construction from Fabro configuration and credentials.
+ 
+ use std::sync::Arc;
+-use std::time::Duration;
++use std::time::{Duration, SystemTime};
+ 
+ use lithos_llm::adapter::ProviderAdapter;
+ use lithos_llm::catalog::{Catalog, ProviderId};
+ use lithos_llm::client::{Client, ClientBuildError, ClientBuilder, ProviderBuildIssue};
+ use lithos_llm::credentials::{CredentialError, CredentialProvider};
+ use lithos_llm::middleware::{
+-    Call, InlineLocalFiles, Middleware, Observer, RetryMiddleware, RetryPolicy, RetryStage,
++    Call, InlineLocalFiles, Middleware, Next, Observer, Output, RetryMiddleware, RetryPolicy,
++    RetryStage,
+ };
+-use lithos_llm::types::{Error, ErrorData};
++use lithos_llm::types::{Error, ErrorData, ErrorKind, RetryClassification};
++
++use crate::gateway::reset_window;
+ 
+ /// The application name lithos reports to providers that ask, such as the
+ /// `originator` header on the OpenAI Codex deployment.
+@@ -89,6 +92,46 @@ pub fn retry_middleware(policy: RetryPolicy) -> RetryMiddleware {
+     RetryMiddleware::new(policy).observer(RetryNotifier)
+ }
+ 
++/// Attaches provider reset windows parsed from RateLimit message prose.
++///
++/// Direct provider adapters surface a long usage-window 429 (zai and
++/// Anthropic-style bodies) only as message text — `retry_after=null`, the
++/// reset deadline in prose. This middleware records the parsed window as the
++/// provider-advised wait so the retry middleware above it stops immediately
++/// instead of burning attempts against a window hours away, and callers see
++/// the deadline as a structured field (fabro-a3d8).
++#[derive(Debug, Default)]
++struct RateLimitReset;
++
++/// Enriches a RateLimit error with the reset window parsed from its message.
++///
++/// Errors that already carry an advised wait — a `Retry-After` header the
++/// adapter honored — keep it; so does every non-rate-limit error.
++fn enrich_rate_limit_reset(error: Error) -> Error {
++    if error.kind() != ErrorKind::RateLimit
++        || error.retry_after().is_some()
++        || error.provider_retry_after().is_some()
++    {
++        return error;
++    }
++    match reset_window(error.message(), SystemTime::now()) {
++        Some(window) => error
++            .with_retry(RetryClassification::after(window))
++            .with_provider_retry_after(window),
++        None => error,
++    }
++}
++
++#[async_trait::async_trait]
++impl Middleware for RateLimitReset {
++    async fn handle(&self, call: Call, next: Next) -> Result<Output, Error> {
++        match next.run(call).await {
++            Err(error) => Err(enrich_rate_limit_reset(error)),
++            output => output,
++        }
++    }
++}
++
+ /// Options for [`build_client`] and [`build_offline_client`].
+ #[derive(Default)]
+ pub struct ClientOptions {
+@@ -145,6 +188,9 @@ impl ClientOptions {
+         if let Some(policy) = self.retry {
+             builder = builder.middleware(retry_middleware(policy));
+         }
++        // Inside the retry layer, so retries see the enriched wait and a
++        // multi-hour usage window fails fast on the first attempt.
++        builder = builder.middleware(RateLimitReset);
+         if self.inline_attachments {
+             builder = builder.middleware(InlineLocalFiles::new());
+         }
+@@ -249,11 +295,67 @@ pub fn build_offline_client(
+ 
+ #[cfg(test)]
+ mod tests {
++    use std::time::Duration;
++
+     use fabro_auth::test_support::env_credential_source;
+ 
+     use super::*;
+     use crate::test_support::test_catalog;
+ 
++    #[test]
++    fn rate_limit_prose_attaches_the_reset_window_and_fails_fast() {
++        let future = chrono::DateTime::<chrono::Utc>::from(std::time::SystemTime::now())
++            + chrono::Duration::hours(4);
++        let message = format!(
++            "Usage limit reached for 5 hour. Your limit will reset at {}",
++            future.format("%Y-%m-%d %H:%M:%S")
++        );
++        let error = enrich_rate_limit_reset(
++            Error::new(ErrorKind::RateLimit, message).with_retry(RetryClassification::Safe),
++        );
++        let window = error.provider_retry_after().expect("parsed reset window");
++        assert!(window >= Duration::from_hours(3), "got {window:?}");
++        assert_eq!(error.retry_after(), Some(window));
++        // A multi-hour window is beyond the policy's backoff budget: the
++        // middleware must surface the error instead of retrying.
++        assert_eq!(default_retry_policy().next_delay(1, &error), None);
++    }
++
++    #[test]
++    fn enrichment_leaves_advised_waits_and_other_errors_alone() {
++        let advised = Error::new(ErrorKind::RateLimit, "slow down")
++            .with_retry(RetryClassification::after(Duration::from_secs(20)))
++            .with_provider_retry_after(Duration::from_secs(20));
++        let enriched = enrich_rate_limit_reset(advised);
++        assert_eq!(
++            enriched.provider_retry_after(),
++            Some(Duration::from_secs(20))
++        );
++        let short = enrich_rate_limit_reset(
++            Error::new(ErrorKind::RateLimit, "Your limit will reset at soon")
++                .with_retry(RetryClassification::Safe),
++        );
++        assert!(short.provider_retry_after().is_none());
++        let other = enrich_rate_limit_reset(
++            Error::new(ErrorKind::Server, "boom").with_retry(RetryClassification::Safe),
++        );
++        assert!(other.provider_retry_after().is_none());
++        // A short parsed window within the retry-after cap is honored exactly.
++        let future = chrono::DateTime::<chrono::Utc>::from(std::time::SystemTime::now())
++            + chrono::Duration::seconds(30);
++        let message = format!(
++            "Your limit will reset at {}",
++            future.format("%Y-%m-%d %H:%M:%S")
++        );
++        let short_window = enrich_rate_limit_reset(
++            Error::new(ErrorKind::RateLimit, message).with_retry(RetryClassification::Safe),
++        );
++        assert_eq!(
++            default_retry_policy().next_delay(1, &short_window),
++            short_window.provider_retry_after()
++        );
++    }
++
+     #[tokio::test]
+     async fn ready_providers_follow_credentials_and_policy() {
+         let source = env_credential_source(|name| match name {
+diff --git a/lib/components/fabro-llm/src/error.rs b/lib/components/fabro-llm/src/error.rs
+index 3b0104da..72d92ef0 100644
+--- a/lib/components/fabro-llm/src/error.rs
++++ b/lib/components/fabro-llm/src/error.rs
+@@ -4,9 +4,32 @@
+ //! lithos `Error` and `ErrorData` themselves. What stays here is the loop and
+ //! restart detector's signature format, which names Fabro's own categories.
+ 
++use std::time::Duration;
++
+ use lithos_llm::catalog::ProviderId;
+ use lithos_llm::types::{ErrorData, ErrorKind};
+ 
++/// A rate-limit wait longer than the retry middleware's `Retry-After` cap.
++///
++/// The retry layer honors provider waits only up to this bound; anything
++/// longer cannot be bridged by count-based retries and must be surfaced to
++/// the caller (the workflow parks such runs as a soft stop, fabro-a3d8).
++pub const LONG_RATE_LIMIT_WINDOW: Duration = Duration::from_mins(1);
++
++/// The provider-advised reset window when it is a long one.
++///
++/// `Some(window)` only for a rate-limit failure whose advised wait exceeds
++/// [`LONG_RATE_LIMIT_WINDOW`] — the multi-hour usage-window case. Short
++/// 429s return `None` and keep today's retry behavior.
++#[must_use]
++pub fn long_rate_limit_window(error: &ErrorData) -> Option<Duration> {
++    if error.kind() != ErrorKind::RateLimit {
++        return None;
++    }
++    let window = error.provider_retry_after()?;
++    (window > LONG_RATE_LIMIT_WINDOW).then_some(window)
++}
++
+ /// A stable `category|provider|detail` string for loop and restart detection.
+ ///
+ /// The category is `api_canceled` for a cancelled call, `api_transient` for a
+@@ -28,10 +51,44 @@ pub fn failure_signature_hint(error: &ErrorData) -> String {
+ 
+ #[cfg(test)]
+ mod tests {
++    use std::time::Duration;
++
+     use lithos_llm::types::{Error, RetryClassification};
+ 
+     use super::*;
+ 
++    #[test]
++    fn long_windows_are_only_rate_limits_beyond_the_cap() {
++        let error = |kind, millis| {
++            ErrorData::from(
++                Error::new(kind, "boom")
++                    .with_provider(ProviderId::new("zai"))
++                    .with_retry(RetryClassification::Safe)
++                    .with_provider_retry_after(Duration::from_millis(millis)),
++            )
++        };
++        assert_eq!(
++            long_rate_limit_window(&error(ErrorKind::RateLimit, 5 * 3_600_000)),
++            Some(Duration::from_hours(5))
++        );
++        // A short 429 advises a wait the retry layer can honor.
++        assert_eq!(
++            long_rate_limit_window(&error(ErrorKind::RateLimit, 2_000)),
++            None
++        );
++        // No advised wait at all, or a long wait on another kind.
++        let none = ErrorData::from(
++            Error::new(ErrorKind::RateLimit, "boom")
++                .with_provider(ProviderId::new("zai"))
++                .with_retry(RetryClassification::Safe),
++        );
++        assert_eq!(long_rate_limit_window(&none), None);
++        assert_eq!(
++            long_rate_limit_window(&error(ErrorKind::Server, 5 * 3_600_000)),
++            None
++        );
++    }
++
+     fn error(kind: ErrorKind) -> ErrorData {
+         Error::new(kind, "boom")
+             .with_provider(ProviderId::new("openai"))
+diff --git a/lib/components/fabro-llm/src/gateway.rs b/lib/components/fabro-llm/src/gateway.rs
+index 21b267d6..60b96eb9 100644
+--- a/lib/components/fabro-llm/src/gateway.rs
++++ b/lib/components/fabro-llm/src/gateway.rs
+@@ -10,9 +10,10 @@
+ //! through [`GatewayTransport`], so this crate does not depend on the CLI's
+ //! server client.
+ 
+-use std::time::Duration;
++use std::time::{Duration, SystemTime};
+ 
+ use async_trait::async_trait;
++use chrono::NaiveDateTime;
+ use fabro_http::HeaderMap;
+ use futures::{StreamExt as _, stream};
+ use lithos_llm::adapter::{ProviderAdapter, ResolvedCall};
+@@ -117,14 +118,26 @@ fn gateway_error(err: GatewayError, provider: &ProviderId) -> Error {
+                 500..=599 => ErrorKind::Server,
+                 _ => ErrorKind::Provider,
+             };
+-            let mut error = Error::new(kind.clone(), message)
++            let mut error = Error::new(kind.clone(), message.clone())
+                 .with_provider(provider.clone())
+                 .with_status(status);
+             if let Some(code) = code {
+                 error = error.with_provider_code(code);
+             }
+             match kind {
+-                ErrorKind::RateLimit | ErrorKind::Server | ErrorKind::Timeout => {
++                ErrorKind::RateLimit => {
++                    error = error.with_retry(RetryClassification::Safe);
++                    // The header wins when the provider sent one; otherwise
++                    // the reset deadline may still live in the message prose.
++                    let after =
++                        retry_after(&headers).or_else(|| reset_window(&message, SystemTime::now()));
++                    if let Some(after) = after {
++                        error = error
++                            .with_retry(RetryClassification::after(after))
++                            .with_provider_retry_after(after);
++                    }
++                }
++                ErrorKind::Server | ErrorKind::Timeout => {
+                     error = error.with_retry(RetryClassification::Safe);
+                     if let Some(after) = retry_after(&headers) {
+                         error = error
+@@ -147,6 +160,39 @@ fn retry_after(headers: &HeaderMap) -> Option<Duration> {
+         .map(Duration::from_secs_f64)
+ }
+ 
++/// The timestamp format providers embed in usage-window reset prose.
++const RESET_TIMESTAMP_LEN: usize = "YYYY-MM-DD HH:MM:SS".len();
++
++/// Parses a provider usage-window reset deadline out of error message text.
++///
++/// Some providers (zai and Anthropic-style 429 bodies) say when a usage
++/// window reopens only in prose: "Usage limit reached for 5 hour. Your limit
++/// will reset at 2026-09-03 05:35:16". The timestamp is timezone-naive and
++/// is read as UTC (fabro-a3d8).
++#[must_use]
++pub fn parse_reset_deadline(message: &str) -> Option<NaiveDateTime> {
++    let marker = "will reset at ";
++    let start = message.find(marker)? + marker.len();
++    let timestamp = message.get(start..)?.get(..RESET_TIMESTAMP_LEN)?;
++    NaiveDateTime::parse_from_str(timestamp, "%Y-%m-%d %H:%M:%S").ok()
++}
++
++/// The wait until the reset deadline parsed from `message`, when one exists
++/// and lies in the future at `now`.
++///
++/// A deadline already reached advises nothing — the window has reopened, so
++/// ordinary short-window retry behavior applies.
++#[must_use]
++pub fn reset_window(message: &str, now: SystemTime) -> Option<Duration> {
++    let deadline = parse_reset_deadline(message)?;
++    let now = chrono::DateTime::<chrono::Utc>::from(now).naive_utc();
++    deadline
++        .signed_duration_since(now)
++        .to_std()
++        .ok()
++        .filter(|window| !window.is_zero())
++}
++
+ /// Reads the Fabro API error envelope (`errors[0].detail` / `code`), falling
+ /// back to the raw body.
+ #[must_use]
+@@ -255,7 +301,75 @@ struct SseState {
+ 
+ #[cfg(test)]
+ mod tests {
++    use std::time::{Duration, SystemTime};
++
++    use chrono::{TimeZone, Utc};
++
+     use super::*;
++    use crate::client::default_retry_policy;
++
++    /// The zai 429 body from the fabro-a3d8 incident: `retry_after=null`,
++    /// the reset deadline only in message prose.
++    const ZAI_USAGE_LIMIT: &str =
++        "Usage limit reached for 5 hour. Your limit will reset at 2026-09-03 05:35:16";
++
++    fn utc(
++        year: i32,
++        month: u32,
++        day: u32,
++        hour: u32,
++        minute: u32,
++        second: u32,
++    ) -> chrono::DateTime<Utc> {
++        Utc.with_ymd_and_hms(year, month, day, hour, minute, second)
++            .single()
++            .expect("valid test timestamp")
++    }
++
++    #[test]
++    fn reset_deadline_is_parsed_from_zai_usage_prose() {
++        assert_eq!(
++            parse_reset_deadline(ZAI_USAGE_LIMIT).map(|deadline| deadline.and_utc()),
++            Some(utc(2026, 9, 3, 5, 35, 16))
++        );
++        // The Anthropic-style wording without the window sentence parses too.
++        assert_eq!(
++            parse_reset_deadline("Your limit will reset at 2026-09-03 05:35:16")
++                .map(|deadline| deadline.and_utc()),
++            Some(utc(2026, 9, 3, 5, 35, 16))
++        );
++    }
++
++    #[test]
++    fn reset_prose_without_a_timestamp_yields_none() {
++        assert!(parse_reset_deadline("rate limit exceeded, slow down").is_none());
++        assert!(parse_reset_deadline("Your limit will reset at soon").is_none());
++        assert!(parse_reset_deadline("").is_none());
++    }
++
++    #[test]
++    fn reset_window_measures_from_now_and_drops_past_deadlines() {
++        let now = utc(2026, 9, 3, 1, 35, 16);
++        assert_eq!(
++            reset_window(ZAI_USAGE_LIMIT, SystemTime::from(now)),
++            Some(Duration::from_hours(4))
++        );
++        // At or past the deadline there is nothing left to wait for.
++        let later = utc(2026, 9, 3, 5, 35, 16);
++        assert_eq!(reset_window(ZAI_USAGE_LIMIT, SystemTime::from(later)), None);
++        let much_later = utc(2026, 9, 4, 0, 0, 0);
++        assert_eq!(
++            reset_window(ZAI_USAGE_LIMIT, SystemTime::from(much_later)),
++            None
++        );
++    }
++
++    /// A reset deadline safely in the future for any test run date.
++    fn far_future_reset() -> String {
++        let future =
++            chrono::DateTime::<chrono::Utc>::from(SystemTime::now()) + chrono::Duration::hours(3);
++        future.format("%Y-%m-%d %H:%M:%S").to_string()
++    }
+ 
+     #[test]
+     fn server_error_envelope_is_parsed() {
+@@ -303,4 +417,51 @@ mod tests {
+         assert_eq!(error.kind(), ErrorKind::Authentication);
+         assert_eq!(error.retry_classification(), RetryClassification::Never);
+     }
++
++    #[test]
++    fn rate_limit_prose_attaches_the_reset_window() {
++        let provider = ProviderId::new("zai");
++        // The incident wording with a deadline still in the future so the
++        // measured window is hours, not empty.
++        let message = format!(
++            "Usage limit reached for 5 hour. Your limit will reset at {}",
++            far_future_reset()
++        );
++        let body =
++            serde_json::json!({ "errors": [{ "status": "429", "detail": message }] }).to_string();
++        let error = gateway_error(
++            GatewayError::Status {
++                status: 429,
++                headers: HeaderMap::new(),
++                body,
++            },
++            &provider,
++        );
++        let window = error.provider_retry_after().expect("parsed reset window");
++        assert!(
++            window >= Duration::from_hours(1),
++            "a five-hour usage window must parse as hours, got {window:?}"
++        );
++        assert_eq!(error.retry_after(), Some(window));
++        // A multi-hour window is beyond any count-based backoff budget: the
++        // default policy must refuse the next attempt and surface the error
++        // immediately rather than burning the remaining attempts.
++        assert_eq!(default_retry_policy().next_delay(1, &error), None);
++    }
++
++    #[test]
++    fn retry_after_header_wins_over_message_prose() {
++        let provider = ProviderId::new("zai");
++        let mut headers = HeaderMap::new();
++        headers.insert("retry-after", "3".parse().unwrap());
++        let error = gateway_error(
++            GatewayError::Status {
++                status: 429,
++                headers,
++                body: serde_json::json!({ "detail": ZAI_USAGE_LIMIT }).to_string(),
++            },
++            &provider,
++        );
++        assert_eq!(error.retry_after(), Some(Duration::from_secs(3)));
++    }
+ }
+diff --git a/lib/components/fabro-llm/src/lib.rs b/lib/components/fabro-llm/src/lib.rs
+index 27199a2e..01a53144 100644
+--- a/lib/components/fabro-llm/src/lib.rs
++++ b/lib/components/fabro-llm/src/lib.rs
+@@ -33,7 +33,7 @@ pub use client::{
+     ClientOptions, FabroClient, LlmSetupError, RetryListener, RetryNotice, build_client,
+     build_offline_client, configured_providers,
+ };
+-pub use error::failure_signature_hint;
++pub use error::{LONG_RATE_LIMIT_WINDOW, failure_signature_hint, long_rate_limit_window};
+ pub use lithos_llm::client::{Client, ClientBuild};
+ pub use lithos_llm::middleware::{CallContext, CancellationToken, RetryPolicy, RetryStage};
+ pub use lithos_llm::resolver::ModelSelectionError as RouteSelectionError;
+diff --git a/lib/components/fabro-workflow/src/error.rs b/lib/components/fabro-workflow/src/error.rs
+index 31998707..07122ec0 100644
+--- a/lib/components/fabro-workflow/src/error.rs
++++ b/lib/components/fabro-workflow/src/error.rs
+@@ -574,6 +574,12 @@ impl Error {
+                 stage: ErrorStage::Publish,
+                 ..
+             } => FailureReason::PublishFailed,
++            // A multi-hour provider usage window cannot be bridged by
++            // retries: park the run as a soft stop so it stays resumable
++            // instead of failing hard (fabro-a3d8).
++            Self::Llm(err) if fabro_llm::long_rate_limit_window(err).is_some() => {
++                FailureReason::SoftStop
++            }
+             _ => FailureReason::WorkflowError,
+         }
+     }
+@@ -1171,6 +1177,33 @@ mod tests {
+         assert!(!non_retryable.is_retryable());
+     }
+ 
++    /// fabro-a3d8: a rate limit whose provider-advised reset window is
++    /// longer than the retry budget parks as a soft stop (resumable);
++    /// short-window 429s keep the hard workflow-error mapping.
++    #[test]
++    fn long_window_rate_limit_maps_to_soft_stop() {
++        let with_window = |millis| {
++            ErrorData::from(
++                fabro_llm::Error::new(
++                    ErrorKind::RateLimit,
++                    "Usage limit reached for 5 hour. Your limit will reset at 2026-09-03 \
++                     05:35:16",
++                )
++                .with_provider(lithos_llm::catalog::builtin::openai())
++                .with_retry(RetryClassification::Safe)
++                .with_provider_retry_after(std::time::Duration::from_millis(millis)),
++            )
++        };
++        assert_eq!(
++            Error::from(with_window(5 * 3600 * 1000)).failure_reason(),
++            FailureReason::SoftStop
++        );
++        assert_eq!(
++            Error::from(with_window(2_000)).failure_reason(),
++            FailureReason::WorkflowError
++        );
++    }
++
+     #[test]
+     fn llm_error_from_sdk_error() {
+         let sdk_err = transient_error(ErrorKind::StreamDecode, "broken pipe");
+diff --git a/lib/components/fabro-workflow/src/pipeline/finalize.rs b/lib/components/fabro-workflow/src/pipeline/finalize.rs
+index e73d4dba..157791a1 100644
+--- a/lib/components/fabro-workflow/src/pipeline/finalize.rs
++++ b/lib/components/fabro-workflow/src/pipeline/finalize.rs
+@@ -1,8 +1,10 @@
+ use std::sync::Arc;
+-use std::time::Instant;
++use std::time::{Instant, SystemTime};
+ 
+ use fabro_dump::RunDump;
+ use fabro_hooks::{HookContext, HookEvent};
++use fabro_llm::LONG_RATE_LIMIT_WINDOW;
++use fabro_llm::gateway::reset_window;
+ use fabro_types::run_event::{MetadataSnapshotFailureKind, MetadataSnapshotPhase};
+ use fabro_types::{BilledTokenCounts, DiffSummary, EventBody, RunFailure, RunProjection};
+ use fabro_util::error::collect_causes;
+@@ -13,7 +15,7 @@ use crate::billing_rollup;
+ use crate::context::keys;
+ use crate::error::{Error, run_failure_from_error, run_failure_from_outcome_failure};
+ use crate::event::{Event, RunNoticeCode, RunNoticeLevel};
+-use crate::outcome::{Outcome, StageOutcome};
++use crate::outcome::{FailureDetail, Outcome, StageOutcome};
+ use crate::records::Conclusion;
+ use crate::run_metadata::{MetadataSnapshot, metadata_push_failure_is_transient};
+ use crate::run_options::RunOptions;
+@@ -22,15 +24,35 @@ use crate::runtime_store::RunStoreHandle;
+ use crate::sandbox_git::{git_diff_with_timeout, list_diff_numstat, summarize_diff_numstat};
+ use crate::services::RunServices;
+ 
++/// The failure reason a failed outcome's detail parks under (fabro-a3d8).
++///
++/// A provider usage-window reset hours away arrives only as message prose.
++/// Count-based retries cannot bridge it, so the run parks as a soft stop —
++/// infrastructure could not finish, the run stays resumable and the next
++/// pass re-enters after the window reopens — instead of a hard
++/// `workflow_error`. Failures without a long reset window keep today's
++/// hard-error mapping.
++fn soft_stop_failure_reason(failure: &FailureDetail) -> FailureReason {
++    match reset_window(&failure.message, SystemTime::now()) {
++        Some(window) if window > LONG_RATE_LIMIT_WINDOW => FailureReason::SoftStop,
++        _ => FailureReason::WorkflowError,
++    }
++}
++
+ pub fn classify_engine_result(
+     engine_result: &Result<Outcome, Error>,
+ ) -> (StageOutcome, Option<RunFailure>, RunStatus) {
+     match engine_result {
+         Ok(outcome) => {
+             let status = outcome.status;
+-            let failure = outcome.failure.as_ref().map(|failure| {
+-                run_failure_from_outcome_failure(failure, FailureReason::WorkflowError)
+-            });
++            let failure_reason = outcome
++                .failure
++                .as_ref()
++                .map_or(FailureReason::WorkflowError, soft_stop_failure_reason);
++            let failure = outcome
++                .failure
++                .as_ref()
++                .map(|failure| run_failure_from_outcome_failure(failure, failure_reason));
+             let run_status = match status {
+                 StageOutcome::Succeeded | StageOutcome::Skipped => RunStatus::Succeeded {
+                     reason: SuccessReason::Completed,
+@@ -39,7 +61,7 @@ pub fn classify_engine_result(
+                     reason: SuccessReason::PartialSuccess,
+                 },
+                 StageOutcome::Failed { .. } => RunStatus::Failed {
+-                    reason: FailureReason::WorkflowError,
++                    reason: failure_reason,
+                 },
+             };
+             (status, failure, run_status)
+@@ -507,7 +529,12 @@ pub(crate) fn build_terminal_event(
+             }
+         }
+         Ok(outcome) => {
+-            let fallback_reason = exit_reason.unwrap_or(FailureReason::WorkflowError);
++            let fallback_reason = exit_reason.unwrap_or_else(|| {
++                outcome
++                    .failure
++                    .as_ref()
++                    .map_or(FailureReason::WorkflowError, soft_stop_failure_reason)
++            });
+             if let Some(failure) = outcome.failure.as_ref() {
+                 run_failure_from_outcome_failure(failure, fallback_reason)
+             } else {
+@@ -1103,6 +1130,62 @@ mod tests {
+         assert!(soft_exit_failure.is_none());
+     }
+ 
++    /// fabro-a3d8: a long-window provider rate limit — the reset deadline
++    /// hours away, carried only in the failure message prose — parks the run
++    /// as a soft stop instead of a hard `workflow_error`, so the existing
++    /// resume primitive (which rejects only succeeded runs) can re-enter it
++    /// after the usage window reopens.
++    #[test]
++    fn long_window_rate_limit_failure_parks_as_soft_stop() {
++        let future = chrono::DateTime::<chrono::Utc>::from(std::time::SystemTime::now())
++            + chrono::Duration::hours(5);
++        let message = format!(
++            "Usage limit reached for 5 hour. Your limit will reset at {}",
++            future.format("%Y-%m-%d %H:%M:%S")
++        );
++        let mut outcome = Outcome::success();
++        outcome.status = StageOutcome::Failed {
++            retry_requested: false,
++        };
++        outcome.failure = Some(FailureDetail::new(
++            message,
++            crate::error::FailureCategory::TransientInfra,
++        ));
++
++        let (status, failure, run_status) = classify_engine_result(&Ok(outcome));
++
++        assert!(matches!(status, StageOutcome::Failed { .. }));
++        let failure = failure.expect("failed outcome carries a failure");
++        assert_eq!(failure.reason, FailureReason::SoftStop);
++        assert!(matches!(run_status, RunStatus::Failed {
++            reason: FailureReason::SoftStop,
++        }));
++    }
++
++    /// The same shape without a long reset window keeps the hard-error
++    /// mapping: short 429s are ordinary transient failures.
++    #[test]
++    fn short_window_rate_limit_failure_stays_a_hard_error() {
++        let mut outcome = Outcome::success();
++        outcome.status = StageOutcome::Failed {
++            retry_requested: false,
++        };
++        outcome.failure = Some(FailureDetail::new(
++            "rate limit exceeded, retry shortly",
++            crate::error::FailureCategory::TransientInfra,
++        ));
++
++        let (_, failure, run_status) = classify_engine_result(&Ok(outcome));
++
++        assert_eq!(
++            failure.expect("failed outcome carries a failure").reason,
++            FailureReason::WorkflowError
++        );
++        assert!(matches!(run_status, RunStatus::Failed {
++            reason: FailureReason::WorkflowError,
++        }));
++    }
++
+     /// fabro-18a5 end to end: a green exit stage reached through a
+     /// kind="deadlock" edge must terminate failed(Deadlock) with no publish
+     /// side effects — the live incident opened a pull request for code whose

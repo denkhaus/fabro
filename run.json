@@ -709,7 +709,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-11T22:35:09.690211359Z",
-  "last_event_at": "2026-09-11T23:17:21.753799119Z",
+  "last_event_at": "2026-09-11T23:19:52.422090935Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -881,9 +881,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 775,
       "checkpoint": {
-        "timestamp": "2026-09-11T23:17:21.962784762Z",
+        "timestamp": "2026-09-11T23:17:26.331768717Z",
         "current_node": "implementer",
         "completed_nodes": [
           "start",
@@ -892,17 +892,215 @@
         ],
         "node_retries": {},
         "context_values": {
+          "internal.run_id": "01M299PVMSE7Q53ZGPP67AHNMG",
+          "graph.rankdir": "LR",
+          "internal.retry_count.start": 0,
           "internal.retry_count.planner": 0,
+          "preferred_label": "Implemented",
+          "graph.inspects": "develop",
+          "thread.planner.current_node": "implementer",
+          "current_seed_brief": "Count-based exponential backoff (fabro-llm default_retry_policy: 3 attempts, backoff capped 5s, `lib/components/fabro-llm/src/client.rs:23`) cannot bridge multi-hour provider usage windows (zai 429 'Usage limit reached for 5 hour. Your limit will reset at <ts>', retry_after=null — reset exists only in message text). Retry exhaustion then fails the run hard (workflow_error) with no recovery path. Scope this run to the LLM/agent layer fix plus fail-fast propagation; full scheduled wake-up automation is follow-up (fabro-7627 depends on this). Acceptance criteria:\n- Parse reset hints from BOTH sources in `lib/components/fabro-llm/src/gateway.rs`: the existing Retry-After header path AND a message-text extractor for provider reset timestamps (at minimum the zai/Anthropic-style 'Your limit will reset at YYYY-MM-DD HH:MM:SS' wording; tolerate timezone-naive forms as UTC) — unit-tested with real message samples from the seed.\n- Retry middleware honors the reset deadline: when a RateLimit error carries a reset/reset-after window longer than the policy's total backoff budget, do NOT burn remaining attempts — surface the error immediately with the parsed reset time attached (structured field, not just message text).\n- Error type carries the provider reset deadline (extend the existing `with_provider_retry_after`/retry_after plumbing in `lib/components/fabro-llm/src/error.rs` area as needed) so callers can distinguish short-window 429s (retry as today) from long-window ones (fail fast, deadline attached).\n- Workflow layer: a long-window rate-limit failure from an agent stage maps to the existing soft-exit/soft-stop path (`lib/components/fabro-workflow/src/pipeline/finalize.rs`) instead of hard workflow_error, leaving the run resumable via the existing resume primitive (`lib/components/fabro-workflow/src/operations/resume.rs`). Scheduled wake-up/automation is explicitly OUT of scope this run.\n- Verification cheapest-first: `python3 -m pytest`-style parse check n/a; run `cargo nextest run -p fabro-llm` for the parser/middleware tests, then `cargo nextest run -p fabro-workflow` for the soft-exit mapping test; fmt/clippy on touched crates via `cargo +nightly-2026-04-14 fmt -p <touched-crate>` and `cargo +nightly-2026-04-14 clippy -p <touched-crate> --all-targets -- -D warnings`; gate green via the deterministic tester step.\n- No changes to loop assets (`justfile`, `scripts/`); engine-side scheduling work stays in fabro-7627/fabro-1f70.",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "internal.retry_count.implementer": 0,
+          "outcome": "succeeded",
+          "thread.start.current_node": "planner",
+          "failure_signature": "",
+          "lesson_capture": "mx-56553c",
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 3983,
+            "preview": "Claimed fabro-a3d8. The basis resolves against the current tree (retry policy at `lib/components/fabro-llm/src/client.rs:23`, Retry-After parsing at `lib/components/fabro-llm/src/gateway.rs:127-142`, "
+          },
+          "internal.seed_cycle_anchor": "fabro-a3d8",
+          "internal.work_dir": "/workspace/fabro",
+          "current_node": "implementer",
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "current_seed_id": "fabro-a3d8",
           "internal.fidelity": "summary:high",
+          "internal.node_visit_count": 1,
+          "last_stage": "implementer",
+          "implementation_summary": "fabro-a3d8 implemented across `lib/components/fabro-llm` (gateway.rs reset-prose parser + RateLimitReset middleware inside the retry layer; error.rs long_rate_limit_window classifier; chrono dep) and `lib/components/fabro-workflow` (error.rs failure_reason SoftStop mapping; finalize.rs soft_stop_failure_reason for Ok(Failed) outcomes and the terminal event). Lesson captured as mx-56553c. Per-criterion report: - PASS reset hints parsed from BOTH sources in `lib/components/fabro-llm/src/gateway.rs`: retry_after header path unchanged plus parse_reset_deadline/reset_window prose extractor (zai/Anthropic 'Your limit will reset at YYYY-MM-DD HH:MM:SS', timezone-naive as UTC), unit-tested with the real incident message in gateway::tests::{reset_deadline_is_parsed_from_zai_usage_prose, reset_prose_without_a_timestamp_yields_none, reset_window_measures_from_now_and_drops_past_deadlines} — PASS retry middleware honors the reset deadline: gateway_error and the RateLimitReset middleware attach the parsed window as RetryClassification::after + with_provider_retry_after, and gateway::tests::rate_limit_prose_attaches_the_reset_window plus client::tests::rate_limit_prose_attaches_the_reset_window_and_fails_fast assert default_retry_policy().next_delay(1,&error)==None for multi-hour windows (no attempts burned; error surfaces immediately) and short windows honored exactly — PASS error type carries the provider reset deadline as a structured field (provider_retry_after/retry_after plumbing extended in the fabro-llm/src/error.rs area with long_rate_limit_window/LONG_RATE_LIMIT_WINDOW distinguishing short vs long windows; error::tests::long_windows_are_only_rate_limits_beyond_the_cap) — PASS workflow layer maps long-window rate-limit failures to the soft-stop path: workflow error.rs failure_reason Llm guard and finalize.rs soft_stop_failure_reason used in classify_engine_result and build_terminal_event, tested in pipeline::finalize::tests::long_window_rate_limit_failure_parks_as_soft_stop (Failed{SoftStop}, resumable since resume rejects only succeeded runs) and short-window stays hard error; error::tests::long_window_rate_limit_maps_to_soft_stop — PASS verification cheapest-first: cargo nextest run -p fabro-llm (27/27 pass), cargo nextest run -p fabro-workflow (all pass except pre-existing load flake e2e_stall_watchdog_with_explicit_timeout_override, verified failing identically on the stashed clean tree and passing in isolation on both trees), crate-scoped fmt+clippy green on both touched crates with the pinned nightly, default features — PASS no loop-asset or scheduling changes (fabro-7627/fabro-1f70 untouched). Adjacent repair: none.",
+          "journal": {
+            "painpoints": [
+              {
+                "text": "fabro-workflow full-suite runs on this sandbox are timing-flaky under parallel load: e2e_stall_watchdog_with_explicit_timeout_override fails (~2s) and 2-9 tests time out per run, identically on the clean tree (verified via git stash, run 01M299PVMSE7Q53ZGPP67AHNMG). The deterministic tester gate may hit these; suggest checking known-bug seeds for these timeout-prone integration tests or lowering nextest parallelism for fabro-workflow::it."
+              }
+            ],
+            "observations": [
+              "lithos RetryPolicy already implements the needed fail-fast: next_delay returns None when the classification's retry_after exceeds retry_after_cap (60s default, client.rs DEFAULT_RETRY_AFTER_CAP) — the fabro fix only had to attach the prose-parsed window to the error, not change retry logic.",
+              "The incident path is direct provider calls, not just the gateway adapter: the seed named gateway.rs, but without the new RateLimitReset middleware inside the retry layer the real zai 429s would still burn attempts — the middleware reuses the same gateway parser so both paths share one implementation."
+            ]
+          },
+          "last_response": "All work is complete and verified. Summary of what was built:\n\n**fabro-llm** — `gateway.rs` gained `parse_reset_deadline`/`reset_window` (parses zai/Anthropic \"will reset at YYYY-MM-DD HH:MM:SS\" pro",
+          "response.implementer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.implementer",
+            "chars": 5428,
+            "preview": "All work is complete and verified. Summary of what was built:\n\n**fabro-llm** — `gateway.rs` gained `parse_reset_deadline`/`reset_window` (parses zai/Anthropic \"will reset at YYYY-MM-DD HH:MM:SS\" pro"
+          },
+          "graph.preamble_budget_kb": "24",
+          "current_seed_title": "Long-window rate limits defeat count-based retries: honor provider reset times or park-and-resume",
+          "seed_cycles": {
+            "planner": 1,
+            "implementer": 1
+          },
+          "graph.max_node_visits": "40",
+          "failure_class": "",
+          "internal.thread_id": "planner"
+        },
+        "node_outcomes": {
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "current_seed_title": "Long-window rate limits defeat count-based retries: honor provider reset times or park-and-resume",
+              "last_response": "Claimed fabro-a3d8. The basis resolves against the current tree (retry policy at `lib/components/fabro-llm/src/client.rs:23`, Retry-After parsing at `lib/components/fabro-llm/src/gateway.rs:127-142`, ",
+              "current_seed_brief": "Count-based exponential backoff (fabro-llm default_retry_policy: 3 attempts, backoff capped 5s, `lib/components/fabro-llm/src/client.rs:23`) cannot bridge multi-hour provider usage windows (zai 429 'Usage limit reached for 5 hour. Your limit will reset at <ts>', retry_after=null — reset exists only in message text). Retry exhaustion then fails the run hard (workflow_error) with no recovery path. Scope this run to the LLM/agent layer fix plus fail-fast propagation; full scheduled wake-up automation is follow-up (fabro-7627 depends on this). Acceptance criteria:\n- Parse reset hints from BOTH sources in `lib/components/fabro-llm/src/gateway.rs`: the existing Retry-After header path AND a message-text extractor for provider reset timestamps (at minimum the zai/Anthropic-style 'Your limit will reset at YYYY-MM-DD HH:MM:SS' wording; tolerate timezone-naive forms as UTC) — unit-tested with real message samples from the seed.\n- Retry middleware honors the reset deadline: when a RateLimit error carries a reset/reset-after window longer than the policy's total backoff budget, do NOT burn remaining attempts — surface the error immediately with the parsed reset time attached (structured field, not just message text).\n- Error type carries the provider reset deadline (extend the existing `with_provider_retry_after`/retry_after plumbing in `lib/components/fabro-llm/src/error.rs` area as needed) so callers can distinguish short-window 429s (retry as today) from long-window ones (fail fast, deadline attached).\n- Workflow layer: a long-window rate-limit failure from an agent stage maps to the existing soft-exit/soft-stop path (`lib/components/fabro-workflow/src/pipeline/finalize.rs`) instead of hard workflow_error, leaving the run resumable via the existing resume primitive (`lib/components/fabro-workflow/src/operations/resume.rs`). Scheduled wake-up/automation is explicitly OUT of scope this run.\n- Verification cheapest-first: `python3 -m pytest`-style parse check n/a; run `cargo nextest run -p fabro-llm` for the parser/middleware tests, then `cargo nextest run -p fabro-workflow` for the soft-exit mapping test; fmt/clippy on touched crates via `cargo +nightly-2026-04-14 fmt -p <touched-crate>` and `cargo +nightly-2026-04-14 clippy -p <touched-crate> --all-targets -- -D warnings`; gate green via the deterministic tester step.\n- No changes to loop assets (`justfile`, `scripts/`); engine-side scheduling work stays in fabro-7627/fabro-1f70.",
+              "last_stage": "planner",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "Seed fabro-a3d8 raised P2→P1→P0 by user decision (2026-09-12 00:29 Berlin) to jump the queue; user ordering: fabro-a3d8 first, then fabro-7627 (dep edge exists). Claimed this run.",
+                  "Seed's cited paths resolve but fabro-llm lives under `lib/components/` not `lib/foundation/` — paths in the seed body are abbreviated, no sd update needed.",
+                  "fabro_runs_list showed no open PRs and no non-terminal develop runs besides this run itself (01M299PVMSE7Q53ZGPP67AHNMG, self-excluded) — no in-flight exclusions applied.",
+                  "Scoped park-and-resume OUT of this run's brief (kept: fail-fast + soft-exit mapping + resumable state); scheduled wake-up belongs with fabro-7627/fabro-1f70 to keep one-seed-per-run tractable."
+                ]
+              },
+              "current_seed_id": "fabro-a3d8",
+              "response.planner": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.planner",
+                "chars": 3983,
+                "preview": "Claimed fabro-a3d8. The basis resolves against the current tree (retry policy at `lib/components/fabro-llm/src/client.rs:23`, Retry-After parsing at `lib/components/fabro-llm/src/gateway.rs:127-142`, "
+              }
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "model": {
+                "provider": "zai",
+                "model_id": "glm-5.3"
+              },
+              "tokens": {
+                "input": 47589,
+                "output": 1823,
+                "reasoning": 753,
+                "cache_read": 311488,
+                "cache_write": 0
+              },
+              "total_usd_micros": 158934
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 55019,
+              "tool_time_ms": 14470,
+              "active_time_ms": 69489
+            }
+          },
+          "implementer": {
+            "status": "succeeded",
+            "preferred_label": "Implemented",
+            "context_updates": {
+              "implementation_summary": "fabro-a3d8 implemented across `lib/components/fabro-llm` (gateway.rs reset-prose parser + RateLimitReset middleware inside the retry layer; error.rs long_rate_limit_window classifier; chrono dep) and `lib/components/fabro-workflow` (error.rs failure_reason SoftStop mapping; finalize.rs soft_stop_failure_reason for Ok(Failed) outcomes and the terminal event). Lesson captured as mx-56553c. Per-criterion report: - PASS reset hints parsed from BOTH sources in `lib/components/fabro-llm/src/gateway.rs`: retry_after header path unchanged plus parse_reset_deadline/reset_window prose extractor (zai/Anthropic 'Your limit will reset at YYYY-MM-DD HH:MM:SS', timezone-naive as UTC), unit-tested with the real incident message in gateway::tests::{reset_deadline_is_parsed_from_zai_usage_prose, reset_prose_without_a_timestamp_yields_none, reset_window_measures_from_now_and_drops_past_deadlines} — PASS retry middleware honors the reset deadline: gateway_error and the RateLimitReset middleware attach the parsed window as RetryClassification::after + with_provider_retry_after, and gateway::tests::rate_limit_prose_attaches_the_reset_window plus client::tests::rate_limit_prose_attaches_the_reset_window_and_fails_fast assert default_retry_policy().next_delay(1,&error)==None for multi-hour windows (no attempts burned; error surfaces immediately) and short windows honored exactly — PASS error type carries the provider reset deadline as a structured field (provider_retry_after/retry_after plumbing extended in the fabro-llm/src/error.rs area with long_rate_limit_window/LONG_RATE_LIMIT_WINDOW distinguishing short vs long windows; error::tests::long_windows_are_only_rate_limits_beyond_the_cap) — PASS workflow layer maps long-window rate-limit failures to the soft-stop path: workflow error.rs failure_reason Llm guard and finalize.rs soft_stop_failure_reason used in classify_engine_result and build_terminal_event, tested in pipeline::finalize::tests::long_window_rate_limit_failure_parks_as_soft_stop (Failed{SoftStop}, resumable since resume rejects only succeeded runs) and short-window stays hard error; error::tests::long_window_rate_limit_maps_to_soft_stop — PASS verification cheapest-first: cargo nextest run -p fabro-llm (27/27 pass), cargo nextest run -p fabro-workflow (all pass except pre-existing load flake e2e_stall_watchdog_with_explicit_timeout_override, verified failing identically on the stashed clean tree and passing in isolation on both trees), crate-scoped fmt+clippy green on both touched crates with the pinned nightly, default features — PASS no loop-asset or scheduling changes (fabro-7627/fabro-1f70 untouched). Adjacent repair: none.",
+              "lesson_capture": "mx-56553c",
+              "journal": {
+                "painpoints": [
+                  {
+                    "text": "fabro-workflow full-suite runs on this sandbox are timing-flaky under parallel load: e2e_stall_watchdog_with_explicit_timeout_override fails (~2s) and 2-9 tests time out per run, identically on the clean tree (verified via git stash, run 01M299PVMSE7Q53ZGPP67AHNMG). The deterministic tester gate may hit these; suggest checking known-bug seeds for these timeout-prone integration tests or lowering nextest parallelism for fabro-workflow::it."
+                  }
+                ],
+                "observations": [
+                  "lithos RetryPolicy already implements the needed fail-fast: next_delay returns None when the classification's retry_after exceeds retry_after_cap (60s default, client.rs DEFAULT_RETRY_AFTER_CAP) — the fabro fix only had to attach the prose-parsed window to the error, not change retry logic.",
+                  "The incident path is direct provider calls, not just the gateway adapter: the seed named gateway.rs, but without the new RateLimitReset middleware inside the retry layer the real zai 429s would still burn attempts — the middleware reuses the same gateway parser so both paths share one implementation."
+                ]
+              },
+              "last_response": "All work is complete and verified. Summary of what was built:\n\n**fabro-llm** — `gateway.rs` gained `parse_reset_deadline`/`reset_window` (parses zai/Anthropic \"will reset at YYYY-MM-DD HH:MM:SS\" pro",
+              "last_stage": "implementer",
+              "response.implementer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.implementer",
+                "chars": 5428,
+                "preview": "All work is complete and verified. Summary of what was built:\n\n**fabro-llm** — `gateway.rs` gained `parse_reset_deadline`/`reset_window` (parses zai/Anthropic \"will reset at YYYY-MM-DD HH:MM:SS\" pro"
+              }
+            },
+            "notes": "Stage completed: implementer",
+            "usage": {
+              "model": {
+                "provider": "zai",
+                "model_id": "glm-5.3"
+              },
+              "tokens": {
+                "input": 98280,
+                "output": 18307,
+                "reasoning": 15116,
+                "cache_read": 7648768,
+                "cache_write": 0
+              },
+              "total_usd_micros": 2273184
+            },
+            "files_touched": [
+              "/workspace/fabro/lib/components/fabro-llm/Cargo.toml",
+              "/workspace/fabro/lib/components/fabro-llm/src/client.rs",
+              "/workspace/fabro/lib/components/fabro-llm/src/error.rs",
+              "/workspace/fabro/lib/components/fabro-llm/src/gateway.rs",
+              "/workspace/fabro/lib/components/fabro-llm/src/lib.rs",
+              "/workspace/fabro/lib/components/fabro-workflow/src/error.rs",
+              "/workspace/fabro/lib/components/fabro-workflow/src/pipeline/finalize.rs"
+            ],
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 708137,
+              "tool_time_ms": 1536812,
+              "active_time_ms": 2244949
+            }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          }
+        },
+        "next_node_id": "tester",
+        "git_commit_sha": "f547985d9c981445cd48f5ce8260d23a40a84656",
+        "node_visits": {
+          "start": 1,
+          "implementer": 1,
+          "planner": 1
+        }
+      },
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M299PVMSE7Q53ZGPP67AHNMG.jsonl b/.fabro/journal/01M299PVMSE7Q53ZGPP67AHNMG.jsonl\nindex b425c03d..df5b7dcf 100644\n--- a/.fabro/journal/01M299PVMSE7Q53ZGPP67AHNMG.jsonl\n+++ b/.fabro/journal/01M299PVMSE7Q53ZGPP67AHNMG.jsonl\n@@ -1,2 +1,3 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M299PVMSE7Q53ZGPP67AHNMG\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-11T22:35:12Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M299PVMSE7Q53ZGPP67AHNMG\",\"node\":\"planner\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-11T22:36:27Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Seed fabro-a3d8 raised P2→P1→P0 by user decision (2026-09-12 00:29 Berlin) to jump the queue; user ordering: fabro-a3d8 first, then fabro-7627 (dep edge exists). Claimed this run.\",\"Seed's cited paths resolve but fabro-llm lives under `lib/components/` not `lib/foundation/` — paths in the seed body are abbreviated, no sd update needed.\",\"fabro_runs_list showed no open PRs and no non-terminal develop runs besides this run itself (01M299PVMSE7Q53ZGPP67AHNMG, self-excluded) — no in-flight exclusions applied.\",\"Scoped park-and-resume OUT of this run's brief (kept: fail-fast + soft-exit mapping + resumable state); scheduled wake-up belongs with fabro-7627/fabro-1f70 to keep one-seed-per-run tractable.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M299PVMSE7Q53ZGPP67AHNMG\",\"node\":\"implementer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-11T23:17:21Z\",\"data\":{\"painpoints\":[{\"text\":\"fabro-workflow full-suite runs on this sandbox are timing-flaky under parallel load: e2e_stall_watchdog_with_explicit_timeout_override fails (~2s) and 2-9 tests time out per run, identically on the clean tree (verified via git stash, run 01M299PVMSE7Q53ZGPP67AHNMG). The deterministic tester gate may hit these; suggest checking known-bug seeds for these timeout-prone integration tests or lowering nextest parallelism for fabro-workflow::it.\"}],\"observations\":[\"lithos RetryPolicy already implements the needed fail-fast: next_delay returns None when the classification's retry_after exceeds retry_after_cap (60s default, client.rs DEFAULT_RETRY_AFTER_CAP) — the fabro fix only had to attach the prose-parsed window to the error, not change retry logic.\",\"The incident path is direct provider calls, not just the gateway adapter: the seed named gateway.rs, but without the new RateLimitReset middleware inside the retry layer the real zai 429s would still burn attempts — the middleware reuses the same gateway parser so both paths share one implementation.\"]}}\ndiff --git a/.mulch/expertise/engine.jsonl b/.mulch/expertise/engine.jsonl\nindex 7c7201f8..c06ac82b 100644\n--- a/.mulch/expertise/engine.jsonl\n+++ b/.mulch/expertise/engine.jsonl\n@@ -57,3 +57,4 @@\n {\"type\":\"failure\",\"classification\":\"tactical\",\"recorded_at\":\"2026-09-10T14:54:14.516Z\",\"evidence\":{\"commit\":\"2a2f189a4cf44f95b03420280c488971156ae8b6\"},\"dir_anchors\":[\"lib/components/fabro-workflow/src/operations\"],\"description\":\"fabro-3fe4 reopen (runs 01M25K41V4NE, 01M25R832HP): making the live reducer strictly apply the shared lifecycle table stranded injected event sequences (submitted + worker-shaped run.starting, RunRunnable suppressed by the scheduling guard) at Submitted, so fabro rm no longer saw terminal runs as completed and failed dogfood-gate. Lesson: when two reducers share one strict table, any per-reducer guard (RunRunnable suppression) must be paired with the shared fast-forward path, or live/durable status drift breaks downstream terminality predicates like requires_force_to_delete.\",\"resolution\":\"Shared helper fabro_types::historic_skipped_statuses consumed by BOTH live_lifecycle_status (server.rs) and RunProjectionReducer (run_state.rs); rm completed-run tests pass on final tree.\",\"id\":\"mx-c555a3\"}\n {\"type\":\"failure\",\"classification\":\"tactical\",\"recorded_at\":\"2026-09-11T13:21:42.868Z\",\"evidence\":{\"commit\":\"52f7bbb340a7b973bf6db59a6305b137760c8a9b\"},\"description\":\"checkpoint.completed run event exceeds MAX_RUN_EVENT_BODY_BYTES (3MB) on big merge-upstream runs: worker loses canonical run store (HTTP 413) AFTER the merge commit exists, run is marked failed(workflow_error), conductor pass soft-stops, and the merge work is stranded in the sandbox (fabro/run/* pushes rejected by GitHub branch protection, nothing persisted remotely). Observed 2026-09-11 on runs 01M27V69 and 01M2837. Salvage: docker start the stopped run container, docker cp .git out, fetch into host repo, push under salvage/<name> (fabro/run/* blocked, salvage/* allowed).\",\"resolution\":\"Unresolved: needs code fix — bound checkpoint event payload size (blob-store large data like tool outputs already do via MAX_SERIALIZED_TOOL_OUTPUT_BYTES) or raise MAX_RUN_EVENT_BODY_BYTES; independently allow-list fabro/run/* pushes so finished work is persisted before sandbox teardown. Interim manual salvage procedure documented in description.\",\"id\":\"mx-82cf0d\"}\n {\"type\":\"pattern\",\"classification\":\"tactical\",\"recorded_at\":\"2026-09-11T21:35:37.752Z\",\"evidence\":{\"seeds\":\"fabro-3ef7\",\"commit\":\"effe7ed628707be38cf71b9fd30200a369b4262d\"},\"name\":\"sqlite-busy-classification-and-wal-test-pools\",\"description\":\"SQLite BUSY resilience in fabro-store run-event writes (fabro-3ef7): sqlx surfaces the EXTENDED error code via DatabaseError::code() (e.g. 517 SQLITE_BUSY_SNAPSHOT), so busy classification must mask to the primary code (code & 0xff == 5) plus a 'database is locked' message fallback; and file-backed test pools must set journal_mode(Wal) to mirror the canonical fabro-db connect policy — rollback-journal test pools deadlocked forever (not code-5) when two same-process pools held overlapping write transactions, silently failing to reproduce the production incident.\",\"files\":[\"lib/apps/fabro-server/migrations/2026082301_sqlite_blob_activation.rs\",\"lib/apps/fabro-server/migrations/2026082801_sqlite_run_history_activation.rs\",\"lib/components/fabro-store/src/legacy_blob_import.rs\",\"lib/components/fabro-store/src/slate/mod.rs\",\"lib/components/fabro-store/src/slate/run_store.rs\",\"lib/components/fabro-store/src/test_support/mod.rs\",\"lib/foundation/fabro-db/src/lib.rs\"],\"id\":\"mx-a2c839\"}\n+{\"type\":\"decision\",\"classification\":\"tactical\",\"recorded_at\":\"2026-09-11T23:16:48.122Z\",\"evidence\":{\"seeds\":\"fabro-a3d8\",\"commit\":\"5a39deb50ad5cc44ab4d620ab30e8d1f37613a39\"},\"dir_anchors\":[\"lib/components/fabro-llm/src\"],\"title\":\"Long-window rate limits: parse reset prose, fail fast, park as SoftStop\",\"rationale\":\"Count-based exponential backoff cannot bridge multi-hour provider usage windows; burning retry attempts then failing hard left runs unrecoverable (fabro-a3d8 evidence). The reset deadline arrives only in 429 message prose, so fabro-llm parses it, attaches it as the structured provider_retry_after field, lets the lithos retry_after_cap surface the error immediately, and the workflow parks the run as FailureReason::SoftStop which stays resumable.\",\"id\":\"mx-56553c\"}\ndiff --git a/Cargo.lock b/Cargo.lock\nindex 55ad17a6..ae298384 100644\n--- a/Cargo.lock\n+++ b/Cargo.lock\n@@ -2758,6 +2758,7 @@ dependencies = [\n  \"anyhow\",\n  \"async-trait\",\n  \"bytes\",\n+ \"chrono\",\n  \"fabro-auth\",\n  \"fabro-config\",\n  \"fabro-http\",\ndiff --git a/lib/components/fabro-llm/Cargo.toml b/lib/components/fabro-llm/Cargo.toml\nindex cccc5fee..9c2aa116 100644\n--- a/lib/components/fabro-llm/Cargo.toml\n+++ b/lib/components/fabro-llm/Cargo.toml\n@@ -20,6 +20,7 @@ workspace = true\n anyhow.workspace = true\n async-trait.workspace = true\n bytes.workspace = true\n+chrono.workspace = true\n fabro-auth = { path = \"../../foundation/fabro-auth\" }\n fabro-config = { path = \"../../foundation/fabro-config\" }\n fabro-http.workspace = true\ndiff --git a/lib/components/fabro-llm/src/client.rs b/lib/components/fabro-llm/src/client.rs\nindex 64df12e1..4719eb53 100644\n--- a/lib/components/fabro-llm/src/client.rs\n+++ b/lib/components/fabro-llm/src/client.rs\n@@ -1,16 +1,19 @@\n //! Client construction from Fabro configuration and credentials.\n \n use std::sync::Arc;\n-use std::time::Duration;\n+use std::time::{Duration, SystemTime};\n \n use lithos_llm::adapter::ProviderAdapter;\n use lithos_llm::catalog::{Catalog, ProviderId};\n use lithos_llm::client::{Client, ClientBuildError, ClientBuilder, ProviderBuildIssue};\n use lithos_llm::credentials::{CredentialError, CredentialProvider};\n use lithos_llm::middleware::{\n-    Call, InlineLocalFiles, Middleware, Observer, RetryMiddleware, RetryPolicy, RetryStage,\n+    Call, InlineLocalFiles, Middleware, Next, Observer, Output, RetryMiddleware, RetryPolicy,\n+    RetryStage,\n };\n-use lithos_llm::types::{Error, ErrorData};\n+use lithos_llm::types::{Error, ErrorData, ErrorKind, RetryClassification};\n+\n+use crate::gateway::reset_window;\n \n /// The application name lithos reports to providers that ask, such as the\n /// `originator` header on the OpenAI Codex deployment.\n@@ -89,6 +92,46 @@ pub fn retry_middleware(policy: RetryPolicy) -> RetryMiddleware {\n     RetryMiddleware::new(policy).observer(RetryNotifier)\n }\n \n+/// Attaches provider reset windows parsed from RateLimit message prose.\n+///\n+/// Direct provider adapters surface a long usage-window 429 (zai and\n+/// Anthropic-style bodies) only as message text — `retry_after=null`, the\n+/// reset deadline in prose. This middleware records the parsed window as the\n+/// provider-advised wait so the retry middleware above it stops immediately\n+/// instead of burning attempts against a window hours away, and callers see\n+/// the deadline as a structured field (fabro-a3d8).\n+#[derive(Debug, Default)]\n+struct RateLimitReset;\n+\n+/// Enriches a RateLimit error with the reset window parsed from its message.\n+///\n+/// Errors that already carry an advised wait — a `Retry-After` header the\n+/// adapter honored — keep it; so does every non-rate-limit error.\n+fn enrich_rate_limit_reset(error: Error) -> Error {\n+    if error.kind() != ErrorKind::RateLimit\n+        || error.retry_after().is_some()\n+        || error.provider_retry_after().is_some()\n+    {\n+        return error;\n+    }\n+    match reset_window(error.message(), SystemTime::now()) {\n+        Some(window) => error\n+            .with_retry(RetryClassification::after(window))\n+            .with_provider_retry_after(window),\n+        None => error,\n+    }\n+}\n+\n+#[async_trait::async_trait]\n+impl Middleware for RateLimitReset {\n+    async fn handle(&self, call: Call, next: Next) -> Result<Output, Error> {\n+        match next.run(call).await {\n+            Err(error) => Err(enrich_rate_limit_reset(error)),\n+            output => output,\n+        }\n+    }\n+}\n+\n /// Options for [`build_client`] and [`build_offline_client`].\n #[derive(Default)]\n pub struct ClientOptions {\n@@ -145,6 +188,9 @@ impl ClientOptions {\n         if let Some(policy) = self.retry {\n             builder = builder.middleware(retry_middleware(policy));\n         }\n+        // Inside the retry layer, so retries see the enriched wait and a\n+        // multi-hour usage window fails fast on the first attempt.\n+        builder = builder.middleware(RateLimitReset);\n         if self.inline_attachments {\n             builder = builder.middleware(InlineLocalFiles::new());\n         }\n@@ -249,11 +295,67 @@ pub fn build_offline_client(\n \n #[cfg(test)]\n mod tests {\n+    use std::time::Duration;\n+\n     use fabro_auth::test_support::env_credential_source;\n \n     use super::*;\n     use crate::test_support::test_catalog;\n \n+    #[test]\n+    fn rate_limit_prose_attaches_the_reset_window_and_fails_fast() {\n+        let future = chrono::DateTime::<chrono::Utc>::from(std::time::SystemTime::now())\n+            + chrono::Duration::hours(4);\n+        let message = format!(\n+            \"Usage limit reached for 5 hour. Your limit will reset at {}\",\n+            future.format(\"%Y-%m-%d %H:%M:%S\")\n+        );\n+        let error = enrich_rate_limit_reset(\n+            Error::new(ErrorKind::RateLimit, message).with_retry(RetryClassification::Safe),\n+        );\n+        let window = error.provider_retry_after().expect(\"parsed reset window\");\n+        assert!(window >= Duration::from_hours(3), \"got {window:?}\");\n+        assert_eq!(error.retry_after(), Some(window));\n+        // A multi-hour window is beyond the policy's backoff budget: the\n+        // middleware must surface the error instead of retrying.\n+        assert_eq!(default_retry_policy().next_delay(1, &error), None);\n+    }\n+\n+    #[test]\n+    fn enrichment_leaves_advised_waits_and_other_errors_alone() {\n+        let advised = Error::new(ErrorKind::RateLimit, \"slow down\")\n+            .with_retry(RetryClassification::after(Duration::from_secs(20)))\n+            .with_provider_retry_after(Duration::from_secs(20));\n+        let enriched = enrich_rate_limit_reset(advised);\n+        assert_eq!(\n+            enriched.provider_retry_after(),\n+            Some(Duration::from_secs(20))\n+        );\n+        let short = enrich_rate_limit_reset(\n+            Error::new(ErrorKind::RateLimit, \"Your limit will reset at soon\")\n+                .with_retry(RetryClassification::Safe),\n+        );\n+        assert!(short.provider_retry_after().is_none());\n+        let other = enrich_rate_limit_reset(\n+            Error::new(ErrorKind::Server, \"boom\").with_retry(RetryClassification::Safe),\n+        );\n+        assert!(other.provider_retry_after().is_none());\n+        // A short parsed window within the retry-after cap is honored exactly.\n+        let future = chrono::DateTime::<chrono::Utc>::from(std::time::SystemTime::now())\n+            + chrono::Duration::seconds(30);\n+        let message = format!(\n+            \"Your limit will reset at {}\",\n+            future.format(\"%Y-%m-%d %H:%M:%S\")\n+        );\n+        let short_window = enrich_rate_limit_reset(\n+            Error::new(ErrorKind::RateLimit, message).with_retry(RetryClassification::Safe),\n+        );\n+        assert_eq!(\n+            default_retry_policy().next_delay(1, &short_window),\n+            short_window.provider_retry_after()\n+        );\n+    }\n+\n     #[tokio::test]\n     async fn ready_providers_follow_credentials_and_policy() {\n         let source = env_credential_source(|name| match name {\ndiff --git a/lib/components/fabro-llm/src/error.rs b/lib/components/fabro-llm/src/error.rs\nindex 3b0104da..72d92ef0 100644\n--- a/lib/components/fabro-llm/src/error.rs\n+++ b/lib/components/fabro-llm/src/error.rs\n@@ -4,9 +4,32 @@\n //! lithos `Error` and `ErrorData` themselves. What stays here is the loop and\n //! restart detector's signature format, which names Fabro's own categories.\n \n+use std::time::Duration;\n+\n use lithos_llm::catalog::ProviderId;\n use lithos_llm::types::{ErrorData, ErrorKind};\n \n+/// A rate-limit wait longer than the retry middleware's `Retry-After` cap.\n+///\n+/// The retry layer honors provider waits only up to this bound; anything\n+/// longer cannot be bridged by count-based retries and must be surfaced to\n+/// the caller (the workflow parks such runs as a soft stop, fabro-a3d8).\n+pub const LONG_RATE_LIMIT_WINDOW: Duration = Duration::from_mins(1);\n+\n+/// The provider-advised reset window when it is a long one.\n+///\n+/// `Some(window)` only for a rate-limit failure whose advised wait exceeds\n+/// [`LONG_RATE_LIMIT_WINDOW`] — the multi-hour usage-window case. Short\n+/// 429s return `None` and keep today's retry behavior.\n+#[must_use]\n+pub fn long_rate_limit_window(error: &ErrorData) -> Option<Duration> {\n+    if error.kind() != ErrorKind::RateLimit {\n+        return None;\n+    }\n+    let window = error.provider_retry_after()?;\n+    (window > LONG_RATE_LIMIT_WINDOW).then_some(window)\n+}\n+\n /// A stable `category|provider|detail` string for loop and restart detection.\n ///\n /// The category is `api_canceled` for a cancelled call, `api_transient` for a\n@@ -28,10 +51,44 @@ pub fn failure_signature_hint(error: &ErrorData) -> String {\n \n #[cfg(test)]\n mod tests {\n+    use std::time::Duration;\n+\n     use lithos_llm::types::{Error, RetryClassification};\n \n     use super::*;\n \n+    #[test]\n+    fn long_windows_are_only_rate_limits_beyond_the_cap() {\n+        let error = |kind, millis| {\n+            ErrorData::from(\n+                Error::new(kind, \"boom\")\n+                    .with_provider(ProviderId::new(\"zai\"))\n+                    .with_retry(RetryClassification::Safe)\n+                    .with_provider_retry_after(Duration::from_millis(millis)),\n+            )\n+        };\n+        assert_eq!(\n+            long_rate_limit_window(&error(ErrorKind::RateLimit, 5 * 3_600_000)),\n+            Some(Duration::from_hours(5))\n+        );\n+        // A short 429 advises a wait the retry layer can honor.\n+        assert_eq!(\n+            long_rate_limit_window(&error(ErrorKind::RateLimit, 2_000)),\n+            None\n+        );\n+        // No advised wait at all, or a long wait on another kind.\n+        let none = ErrorData::from(\n+            Error::new(ErrorKind::RateLimit, \"boom\")\n+                .with_provider(ProviderId::new(\"zai\"))\n+                .with_retry(RetryClassification::Safe),\n+        );\n+        assert_eq!(long_rate_limit_window(&none), None);\n+        assert_eq!(\n+            long_rate_limit_window(&error(ErrorKind::Server, 5 * 3_600_000)),\n+            None\n+        );\n+    }\n+\n     fn error(kind: ErrorKind) -> ErrorData {\n         Error::new(kind, \"boom\")\n             .with_provider(ProviderId::new(\"openai\"))\ndiff --git a/lib/components/fabro-llm/src/gateway.rs b/lib/components/fabro-llm/src/gateway.rs\nindex 21b267d6..60b96eb9 100644\n--- a/lib/components/fabro-llm/src/gateway.rs\n+++ b/lib/components/fabro-llm/src/gateway.rs\n@@ -10,9 +10,10 @@\n //! through [`GatewayTransport`], so this crate does not depend on the CLI's\n //! server client.\n \n-use std::time::Duration;\n+use std::time::{Duration, SystemTime};\n \n use async_trait::async_trait;\n+use chrono::NaiveDateTime;\n use fabro_http::HeaderMap;\n use futures::{StreamExt as _, stream};\n use lithos_llm::adapter::{ProviderAdapter, ResolvedCall};\n@@ -117,14 +118,26 @@ fn gateway_error(err: GatewayError, provider: &ProviderId) -> Error {\n                 500..=599 => ErrorKind::Server,\n                 _ => ErrorKind::Provider,\n             };\n-            let mut error = Error::new(kind.clone(), message)\n+            let mut error = Error::new(kind.clone(), message.clone())\n                 .with_provider(provider.clone())\n                 .with_status(status);\n             if let Some(code) = code {\n                 error = error.with_provider_code(code);\n             }\n             match kind {\n-                ErrorKind::RateLimit | ErrorKind::Server | ErrorKind::Timeout => {\n+                ErrorKind::RateLimit => {\n+                    error = error.with_retry(RetryClassification::Safe);\n+                    // The header wins when the provider sent one; otherwise\n+                    // the reset deadline may still live in the message prose.\n+                    let after =\n+                        retry_after(&headers).or_else(|| reset_window(&message, SystemTime::now()));\n+                    if let Some(after) = after {\n+                        error = error\n+                            .with_retry(RetryClassification::after(after))\n+                            .with_provider_retry_after(after);\n+                    }\n+                }\n+                ErrorKind::Server | ErrorKind::Timeout => {\n                     error = error.with_retry(RetryClassification::Safe);\n                     if let Some(after) = retry_after(&headers) {\n                         error = error\n@@ -147,6 +160,39 @@ fn retry_after(headers: &HeaderMap) -> Option<Duration> {\n         .map(Duration::from_secs_f64)\n }\n \n+/// The timestamp format providers embed in usage-window reset prose.\n+const RESET_TIMESTAMP_LEN: usize = \"YYYY-MM-DD HH:MM:SS\".len();\n+\n+/// Parses a provider usage-window reset deadline out of error message text.\n+///\n+/// Some providers (zai and Anthropic-style 429 bodies) say when a usage\n+/// window reopens only in prose: \"Usage limit reached for 5 hour. Your limit\n+/// will reset at 2026-09-03 05:35:16\". The timestamp is timezone-naive and\n+/// is read as UTC (fabro-a3d8).\n+#[must_use]\n+pub fn parse_reset_deadline(message: &str) -> Option<NaiveDateTime> {\n+    let marker = \"will reset at \";\n+    let start = message.find(marker)? + marker.len();\n+    let timestamp = message.get(start..)?.get(..RESET_TIMESTAMP_LEN)?;\n+    NaiveDateTime::parse_from_str(timestamp, \"%Y-%m-%d %H:%M:%S\").ok()\n+}\n+\n+/// The wait until the reset deadline parsed from `message`, when one exists\n+/// and lies in the future at `now`.\n+///\n+/// A deadline already reached advises nothing — the window has reopened, so\n+/// ordinary short-window retry behavior applies.\n+#[must_use]\n+pub fn reset_window(message: &str, now: SystemTime) -> Option<Duration> {\n+    let deadline = parse_reset_deadline(message)?;\n+    let now = chrono::DateTime::<chrono::Utc>::from(now).naive_utc();\n+    deadline\n+        .signed_duration_since(now)\n+        .to_std()\n+        .ok()\n+        .filter(|window| !window.is_zero())\n+}\n+\n /// Reads the Fabro API error envelope (`errors[0].detail` / `code`), falling\n /// back to the raw body.\n #[must_use]\n@@ -255,7 +301,75 @@ struct SseState {\n \n #[cfg(test)]\n mod tests {\n+    use std::time::{Duration, SystemTime};\n+\n+    use chrono::{TimeZone, Utc};\n+\n     use super::*;\n+    use crate::client::default_retry_policy;\n+\n+    /// The zai 429 body from the fabro-a3d8 incident: `retry_after=null`,\n+    /// the reset deadline only in message prose.\n+    const ZAI_USAGE_LIMIT: &str =\n+        \"Usage limit reached for 5 hour. Your limit will reset at 2026-09-03 05:35:16\";\n+\n+    fn utc(\n+        year: i32,\n+        month: u32,\n+        day: u32,\n+        hour: u32,\n+        minute: u32,\n+        second: u32,\n+    ) -> chrono::DateTime<Utc> {\n+        Utc.with_ymd_and_hms(year, month, day, hour, minute, second)\n+            .single()\n+            .expect(\"valid test timestamp\")\n+    }\n+\n+    #[test]\n+    fn reset_deadline_is_parsed_from_zai_usage_prose() {\n+        assert_eq!(\n+            parse_reset_deadline(ZAI_USAGE_LIMIT).map(|deadline| deadline.and_utc()),\n+            Some(utc(2026, 9, 3, 5, 35, 16))\n+        );\n+        // The Anthropic-style wording without the window sentence parses too.\n+        assert_eq!(\n+            parse_reset_deadline(\"Your limit will reset at 2026-09-03 05:35:16\")\n+                .map(|deadline| deadline.and_utc()),\n+            Some(utc(2026, 9, 3, 5, 35, 16))\n+        );\n+    }\n+\n+    #[test]\n+    fn reset_prose_without_a_timestamp_yields_none() {\n+        assert!(parse_reset_deadline(\"rate limit exceeded, slow down\").is_none());\n+        assert!(parse_reset_deadline(\"Your limit will reset at soon\").is_none());\n+        assert!(parse_reset_deadline(\"\").is_none());\n+    }\n+\n+    #[test]\n+    fn reset_window_measures_from_now_and_drops_past_deadlines() {\n+        let now = utc(2026, 9, 3, 1, 35, 16);\n+        assert_eq!(\n+            reset_window(ZAI_USAGE_LIMIT, SystemTime::from(now)),\n+            Some(Duration::from_hours(4))\n+        );\n+        // At or past the deadline there is nothing left to wait for.\n+        let later = utc(2026, 9, 3, 5, 35, 16);\n+        assert_eq!(reset_window(ZAI_USAGE_LIMIT, SystemTime::from(later)), None);\n+        let much_later = utc(2026, 9, 4, 0, 0, 0);\n+        assert_eq!(\n+            reset_window(ZAI_USAGE_LIMIT, SystemTime::from(much_later)),\n+            None\n+        );\n+    }\n+\n+    /// A reset deadline safely in the future for any test run date.\n+    fn far_future_reset() -> String {\n+        let future =\n+            chrono::DateTime::<chrono::Utc>::from(SystemTime::now()) + chrono::Duration::hours(3);\n+        future.format(\"%Y-%m-%d %H:%M:%S\").to_string()\n+    }\n \n     #[test]\n     fn server_error_envelope_is_parsed() {\n@@ -303,4 +417,51 @@ mod tests {\n         assert_eq!(error.kind(), ErrorKind::Authentication);\n         assert_eq!(error.retry_classification(), RetryClassification::Never);\n     }\n+\n+    #[test]\n+    fn rate_limit_prose_attaches_the_reset_window() {\n+        let provider = ProviderId::new(\"zai\");\n+        // The incident wording with a deadline still in the future so the\n+        // measured window is hours, not empty.\n+        let message = format!(\n+            \"Usage limit reached for 5 hour. Your limit will reset at {}\",\n+            far_future_reset()\n+        );\n+        let body =\n+            serde_json::json!({ \"errors\": [{ \"status\": \"429\", \"detail\": message }] }).to_string();\n+        let error = gateway_error(\n+            GatewayError::Status {\n+                status: 429,\n+                headers: HeaderMap::new(),\n+                body,\n+            },\n+            &provider,\n+        );\n+        let window = error.provider_retry_after().expect(\"parsed reset window\");\n+        assert!(\n+            window >= Duration::from_hours(1),\n+            \"a five-hour usage window must parse as hours, got {window:?}\"\n+        );\n+        assert_eq!(error.retry_after(), Some(window));\n+        // A multi-hour window is beyond any count-based backoff budget: the\n+        // default policy must refuse the next attempt and surface the error\n+        // immediately rather than burning the remaining attempts.\n+        assert_eq!(default_retry_policy().next_delay(1, &error), None);\n+    }\n+\n+    #[test]\n+    fn retry_after_header_wins_over_message_prose() {\n+        let provider = ProviderId::new(\"zai\");\n+        let mut headers = HeaderMap::new();\n+        headers.insert(\"retry-after\", \"3\".parse().unwrap());\n+        let error = gateway_error(\n+            GatewayError::Status {\n+                status: 429,\n+                headers,\n+                body: serde_json::json!({ \"detail\": ZAI_USAGE_LIMIT }).to_string(),\n+            },\n+            &provider,\n+        );\n+        assert_eq!(error.retry_after(), Some(Duration::from_secs(3)));\n+    }\n }\ndiff --git a/lib/components/fabro-llm/src/lib.rs b/lib/components/fabro-llm/src/lib.rs\nindex 27199a2e..01a53144 100644\n--- a/lib/components/fabro-llm/src/lib.rs\n+++ b/lib/components/fabro-llm/src/lib.rs\n@@ -33,7 +33,7 @@ pub use client::{\n     ClientOptions, FabroClient, LlmSetupError, RetryListener, RetryNotice, build_client,\n     build_offline_client, configured_providers,\n };\n-pub use error::failure_signature_hint;\n+pub use error::{LONG_RATE_LIMIT_WINDOW, failure_signature_hint, long_rate_limit_window};\n pub use lithos_llm::client::{Client, ClientBuild};\n pub use lithos_llm::middleware::{CallContext, CancellationToken, RetryPolicy, RetryStage};\n pub use lithos_llm::resolver::ModelSelectionError as RouteSelectionError;\ndiff --git a/lib/components/fabro-workflow/src/error.rs b/lib/components/fabro-workflow/src/error.rs\nindex 31998707..07122ec0 100644\n--- a/lib/components/fabro-workflow/src/error.rs\n+++ b/lib/components/fabro-workflow/src/error.rs\n@@ -574,6 +574,12 @@ impl Error {\n                 stage: ErrorStage::Publish,\n                 ..\n             } => FailureReason::PublishFailed,\n+            // A multi-hour provider usage window cannot be bridged by\n+            // retries: park the run as a soft stop so it stays resumable\n+            // instead of failing hard (fabro-a3d8).\n+            Self::Llm(err) if fabro_llm::long_rate_limit_window(err).is_some() => {\n+                FailureReason::SoftStop\n+            }\n             _ => FailureReason::WorkflowError,\n         }\n     }\n@@ -1171,6 +1177,33 @@ mod tests {\n         assert!(!non_retryable.is_retryable());\n     }\n \n+    /// fabro-a3d8: a rate limit whose provider-advised reset window is\n+    /// longer than the retry budget parks as a soft stop (resumable);\n+    /// short-window 429s keep the hard workflow-error mapping.\n+    #[test]\n+    fn long_window_rate_limit_maps_to_soft_stop() {\n+        let with_window = |millis| {\n+            ErrorData::from(\n+                fabro_llm::Error::new(\n+                    ErrorKind::RateLimit,\n+                    \"Usage limit reached for 5 hour. Your limit will reset at 2026-09-03 \\\n+                     05:35:16\",\n+                )\n+                .with_provider(lithos_llm::catalog::builtin::openai())\n+                .with_retry(RetryClassification::Safe)\n+                .with_provider_retry_after(std::time::Duration::from_millis(millis)),\n+            )\n+        };\n+        assert_eq!(\n+            Error::from(with_window(5 * 3600 * 1000)).failure_reason(),\n+            FailureReason::SoftStop\n+        );\n+        assert_eq!(\n+            Error::from(with_window(2_000)).failure_reason(),\n+            FailureReason::WorkflowError\n+        );\n+    }\n+\n     #[test]\n     fn llm_error_from_sdk_error() {\n         let sdk_err = transient_error(ErrorKind::StreamDecode, \"broken pipe\");\ndiff --git a/lib/components/fabro-workflow/src/pipeline/finalize.rs b/lib/components/fabro-workflow/src/pipeline/finalize.rs\nindex e73d4dba..157791a1 100644\n--- a/lib/components/fabro-workflow/src/pipeline/finalize.rs\n+++ b/lib/components/fabro-workflow/src/pipeline/finalize.rs\n@@ -1,8 +1,10 @@\n use std::sync::Arc;\n-use std::time::Instant;\n+use std::time::{Instant, SystemTime};\n \n use fabro_dump::RunDump;\n use fabro_hooks::{HookContext, HookEvent};\n+use fabro_llm::LONG_RATE_LIMIT_WINDOW;\n+use fabro_llm::gateway::reset_window;\n use fabro_types::run_event::{MetadataSnapshotFailureKind, MetadataSnapshotPhase};\n use fabro_types::{BilledTokenCounts, DiffSummary, EventBody, RunFailure, RunProjection};\n use fabro_util::error::collect_causes;\n@@ -13,7 +15,7 @@ use crate::billing_rollup;\n use crate::context::keys;\n use crate::error::{Error, run_failure_from_error, run_failure_from_outcome_failure};\n use crate::event::{Event, RunNoticeCode, RunNoticeLevel};\n-use crate::outcome::{Outcome, StageOutcome};\n+use crate::outcome::{FailureDetail, Outcome, StageOutcome};\n use crate::records::Conclusion;\n use crate::run_metadata::{MetadataSnapshot, metadata_push_failure_is_transient};\n use crate::run_options::RunOptions;\n@@ -22,15 +24,35 @@ use crate::runtime_store::RunStoreHandle;\n use crate::sandbox_git::{git_diff_with_timeout, list_diff_numstat, summarize_diff_numstat};\n use crate::services::RunServices;\n \n+/// The failure reason a failed outcome's detail parks under (fabro-a3d8).\n+///\n+/// A provider usage-window reset hours away arrives only as message prose.\n+/// Count-based retries cannot bridge it, so the run parks as a soft stop —\n+/// infrastructure could not finish, the run stays resumable and the next\n+/// pass re-enters after the window reopens — instead of a hard\n+/// `workflow_error`. Failures without a long reset window keep today's\n+/// hard-error mapping.\n+fn soft_stop_failure_reason(failure: &FailureDetail) -> FailureReason {\n+    match reset_window(&failure.message, SystemTime::now()) {\n+        Some(window) if window > LONG_RATE_LIMIT_WINDOW => FailureReason::SoftStop,\n+        _ => FailureReason::WorkflowError,\n+    }\n+}\n+\n pub fn classify_engine_result(\n     engine_result: &Result<Outcome, Error>,\n ) -> (StageOutcome, Option<RunFailure>, RunStatus) {\n     match engine_result {\n         Ok(outcome) => {\n             let status = outcome.status;\n-            let failure = outcome.failure.as_ref().map(|failure| {\n-                run_failure_from_outcome_failure(failure, FailureReason::WorkflowError)\n-            });\n+            let failure_reason = outcome\n+                .failure\n+                .as_ref()\n+                .map_or(FailureReason::WorkflowError, soft_stop_failure_reason);\n+            let failure = outcome\n+                .failure\n+                .as_ref()\n+                .map(|failure| run_failure_from_outcome_failure(failure, failure_reason));\n             let run_status = match status {\n                 StageOutcome::Succeeded | StageOutcome::Skipped => RunStatus::Succeeded {\n                     reason: SuccessReason::Completed,\n@@ -39,7 +61,7 @@ pub fn classify_engine_result(\n                     reason: SuccessReason::PartialSuccess,\n                 },\n                 StageOutcome::Failed { .. } => RunStatus::Failed {\n-                    reason: FailureReason::WorkflowError,\n+                    reason: failure_reason,\n                 },\n             };\n             (status, failure, run_status)\n@@ -507,7 +529,12 @@ pub(crate) fn build_terminal_event(\n             }\n         }\n         Ok(outcome) => {\n-            let fallback_reason = exit_reason.unwrap_or(FailureReason::WorkflowError);\n+            let fallback_reason = exit_reason.unwrap_or_else(|| {\n+                outcome\n+                    .failure\n+                    .as_ref()\n+                    .map_or(FailureReason::WorkflowError, soft_stop_failure_reason)\n+            });\n             if let Some(failure) = outcome.failure.as_ref() {\n                 run_failure_from_outcome_failure(failure, fallback_reason)\n             } else {\n@@ -1103,6 +1130,62 @@ mod tests {\n         assert!(soft_exit_failure.is_none());\n     }\n \n+    /// fabro-a3d8: a long-window provider rate limit — the reset deadline\n+    /// hours away, carried only in the failure message prose — parks the run\n+    /// as a soft stop instead of a hard `workflow_error`, so the existing\n+    /// resume primitive (which rejects only succeeded runs) can re-enter it\n+    /// after the usage window reopens.\n+    #[test]\n+    fn long_window_rate_limit_failure_parks_as_soft_stop() {\n+        let future = chrono::DateTime::<chrono::Utc>::from(std::time::SystemTime::now())\n+            + chrono::Duration::hours(5);\n+        let message = format!(\n+            \"Usage limit reached for 5 hour. Your limit will reset at {}\",\n+            future.format(\"%Y-%m-%d %H:%M:%S\")\n+        );\n+        let mut outcome = Outcome::success();\n+        outcome.status = StageOutcome::Failed {\n+            retry_requested: false,\n+        };\n+        outcome.failure = Some(FailureDetail::new(\n+            message,\n+            crate::error::FailureCategory::TransientInfra,\n+        ));\n+\n+        let (status, failure, run_status) = classify_engine_result(&Ok(outcome));\n+\n+        assert!(matches!(status, StageOutcome::Failed { .. }));\n+        let failure = failure.expect(\"failed outcome carries a failure\");\n+        assert_eq!(failure.reason, FailureReason::SoftStop);\n+        assert!(matches!(run_status, RunStatus::Failed {\n+            reason: FailureReason::SoftStop,\n+        }));\n+    }\n+\n+    /// The same shape without a long reset window keeps the hard-error\n+    /// mapping: short 429s are ordinary transient failures.\n+    #[test]\n+    fn short_window_rate_limit_failure_stays_a_hard_error() {\n+        let mut outcome = Outcome::success();\n+        outcome.status = StageOutcome::Failed {\n+            retry_requested: false,\n+        };\n+        outcome.failure = Some(FailureDetail::new(\n+            \"rate limit exceeded, retry shortly\",\n+            crate::error::FailureCategory::TransientInfra,\n+        ));\n+\n+        let (_, failure, run_status) = classify_engine_result(&Ok(outcome));\n+\n+        assert_eq!(\n+            failure.expect(\"failed outcome carries a failure\").reason,\n+            FailureReason::WorkflowError\n+        );\n+        assert!(matches!(run_status, RunStatus::Failed {\n+            reason: FailureReason::WorkflowError,\n+        }));\n+    }\n+\n     /// fabro-18a5 end to end: a green exit stage reached through a\n     /// kind=\"deadlock\" edge must terminate failed(Deadlock) with no publish\n     /// side effects — the live incident opened a pull request for code whose\n",
+        "summary": {
+          "files_changed": 11,
+          "additions": 457,
+          "deletions": 15
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-11T23:19:52.618387672Z",
+        "current_node": "tester",
+        "completed_nodes": [
+          "start",
+          "planner",
+          "implementer",
+          "tester"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "internal.retry_count.planner": 0,
+          "internal.fidelity": "compact",
           "internal.work_dir": "/workspace/fabro",
           "thread.start.current_node": "planner",
           "last_stage": "implementer",
-          "current_node": "implementer",
+          "current_node": "tester",
           "current_seed_title": "Long-window rate limits defeat count-based retries: honor provider reset times or park-and-resume",
           "outcome": "succeeded",
           "failure_signature": "",
           "internal.node_visit_count": 1,
           "lesson_capture": "mx-56553c",
+          "thread.implementer.current_node": "tester",
           "thread.planner.current_node": "implementer",
           "current_seed_brief": "Count-based exponential backoff (fabro-llm default_retry_policy: 3 attempts, backoff capped 5s, `lib/components/fabro-llm/src/client.rs:23`) cannot bridge multi-hour provider usage windows (zai 429 'Usage limit reached for 5 hour. Your limit will reset at <ts>', retry_after=null — reset exists only in message text). Retry exhaustion then fails the run hard (workflow_error) with no recovery path. Scope this run to the LLM/agent layer fix plus fail-fast propagation; full scheduled wake-up automation is follow-up (fabro-7627 depends on this). Acceptance criteria:\n- Parse reset hints from BOTH sources in `lib/components/fabro-llm/src/gateway.rs`: the existing Retry-After header path AND a message-text extractor for provider reset timestamps (at minimum the zai/Anthropic-style 'Your limit will reset at YYYY-MM-DD HH:MM:SS' wording; tolerate timezone-naive forms as UTC) — unit-tested with real message samples from the seed.\n- Retry middleware honors the reset deadline: when a RateLimit error carries a reset/reset-after window longer than the policy's total backoff budget, do NOT burn remaining attempts — surface the error immediately with the parsed reset time attached (structured field, not just message text).\n- Error type carries the provider reset deadline (extend the existing `with_provider_retry_after`/retry_after plumbing in `lib/components/fabro-llm/src/error.rs` area as needed) so callers can distinguish short-window 429s (retry as today) from long-window ones (fail fast, deadline attached).\n- Workflow layer: a long-window rate-limit failure from an agent stage maps to the existing soft-exit/soft-stop path (`lib/components/fabro-workflow/src/pipeline/finalize.rs`) instead of hard workflow_error, leaving the run resumable via the existing resume primitive (`lib/components/fabro-workflow/src/operations/resume.rs`). Scheduled wake-up/automation is explicitly OUT of scope this run.\n- Verification cheapest-first: `python3 -m pytest`-style parse check n/a; run `cargo nextest run -p fabro-llm` for the parser/middleware tests, then `cargo nextest run -p fabro-workflow` for the soft-exit mapping test; fmt/clippy on touched crates via `cargo +nightly-2026-04-14 fmt -p <touched-crate>` and `cargo +nightly-2026-04-14 clippy -p <touched-crate> --all-targets -- -D warnings`; gate green via the deterministic tester step.\n- No changes to loop assets (`justfile`, `scripts/`); engine-side scheduling work stays in fabro-7627/fabro-1f70.",
           "graph.inspects": "develop",
@@ -932,15 +1130,18 @@
           "graph.cycle_counter_reset_key": "current_seed_id",
           "internal.retry_count.start": 0,
           "preferred_label": "Implemented",
+          "command.output": "blob://sha256/5cc8c80206366233036def5d1d3fc92cbe203d151103b45df533c2ef1d4fcdd2",
           "seed_cycles": {
             "planner": 1,
-            "implementer": 1
+            "implementer": 1,
+            "tester": 1
           },
           "internal.seed_cycle_anchor": "fabro-a3d8",
           "failure_class": "",
           "graph.rankdir": "LR",
+          "internal.retry_count.tester": 0,
           "internal.run_id": "01M299PVMSE7Q53ZGPP67AHNMG",
-          "internal.thread_id": "planner",
+          "internal.thread_id": "implementer",
           "last_response": "All work is complete and verified. Summary of what was built:\n\n**fabro-llm** — `gateway.rs` gained `parse_reset_deadline`/`reset_window` (parses zai/Anthropic \"will reset at YYYY-MM-DD HH:MM:SS\" pro",
           "response.planner": {
             "dedup": "response text omitted — payload lives in structured context keys",
@@ -1057,10 +1258,25 @@
               "tool_time_ms": 1536812,
               "active_time_ms": 2244949
             }
+          },
+          "tester": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/5cc8c80206366233036def5d1d3fc92cbe203d151103b45df533c2ef1d4fcdd2"
+            },
+            "notes": "Script completed: just qualitygate",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 132421,
+              "active_time_ms": 132421
+            }
           }
         },
-        "next_node_id": "tester",
+        "next_node_id": "evidence",
         "node_visits": {
+          "tester": 1,
           "start": 1,
           "planner": 1,
           "implementer": 1
@@ -1529,6 +1745,57 @@
           }
         ],
         "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "tester@1": {
+      "first_event_seq": 778,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Script completed: just qualitygate",
+        "failure_reason": null,
+        "timestamp": "2026-09-11T23:19:52.422090935Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": {
+        "script": "just qualitygate",
+        "command": "exec 2>&1\njust qualitygate",
+        "language": "shell",
+        "timeout_ms": 1200000
+      },
+      "script_timing": {
+        "output": "blob://sha256/5cc8c80206366233036def5d1d3fc92cbe203d151103b45df533c2ef1d4fcdd2",
+        "exit_code": 0,
+        "duration_ms": 132421,
+        "termination": "exited",
+        "output_bytes": 278,
+        "live_streaming": true
+      },
+      "parallel_results": null,
+      "output": null,
+      "output_bytes": 278,
+      "live_streaming": true,
+      "termination": "exited",
+      "started_at": "2026-09-11T23:17:26.345629716Z",
+      "handler": "command",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 132426,
+        "inference_time_ms": 0,
+        "tool_time_ms": 132421,
+        "active_time_ms": 132421
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
       },
       "agent_control": "running",
       "state": "succeeded"
