@@ -997,91 +997,8 @@ fn event_body_from_event(event: &Event) -> EventBody {
                 causes:      causes.clone(),
                 duration_ms: *duration_ms,
             }),
-            SandboxLifecycle::StartStarted { provider } => {
-                EventBody::SandboxStartStarted(fabro_types::SandboxStartStartedProps {
-                    provider: provider.clone(),
-                })
-            }
-            SandboxLifecycle::StartCompleted {
-                provider,
-                duration_ms,
-            } => EventBody::SandboxStartCompleted(fabro_types::SandboxStartCompletedProps {
-                provider:    provider.clone(),
-                duration_ms: *duration_ms,
-            }),
-            SandboxLifecycle::StartFailed {
-                provider,
-                error,
-                causes,
-            } => EventBody::SandboxStartFailed(fabro_types::SandboxStartFailedProps {
-                provider: provider.clone(),
-                error:    error.clone(),
-                causes:   causes.clone(),
-            }),
-            SandboxLifecycle::StopStarted { provider } => {
-                EventBody::SandboxStopStarted(fabro_types::SandboxStopStartedProps {
-                    provider: provider.clone(),
-                })
-            }
-            SandboxLifecycle::StopCompleted {
-                provider,
-                duration_ms,
-            } => EventBody::SandboxStopCompleted(fabro_types::SandboxStopCompletedProps {
-                provider:    provider.clone(),
-                duration_ms: *duration_ms,
-            }),
-            SandboxLifecycle::StopFailed {
-                provider,
-                error,
-                causes,
-            } => EventBody::SandboxStopFailed(fabro_types::SandboxStopFailedProps {
-                provider: provider.clone(),
-                error:    error.clone(),
-                causes:   causes.clone(),
-            }),
-            SandboxLifecycle::DeleteStarted { provider } => {
-                EventBody::SandboxDeleteStarted(fabro_types::SandboxDeleteStartedProps {
-                    provider: provider.clone(),
-                })
-            }
-            SandboxLifecycle::DeleteCompleted {
-                provider,
-                duration_ms,
-            } => EventBody::SandboxDeleteCompleted(fabro_types::SandboxDeleteCompletedProps {
-                provider:    provider.clone(),
-                duration_ms: *duration_ms,
-            }),
-            SandboxLifecycle::DeleteFailed {
-                provider,
-                error,
-                causes,
-            } => EventBody::SandboxDeleteFailed(fabro_types::SandboxDeleteFailedProps {
-                provider: provider.clone(),
-                error:    error.clone(),
-                causes:   causes.clone(),
-            }),
-            SandboxLifecycle::SnapshotPulling { name } => {
-                EventBody::SnapshotPulling(fabro_types::SnapshotNameProps { name: name.clone() })
-            }
-            SandboxLifecycle::SnapshotCreating { name } => {
-                EventBody::SnapshotCreating(fabro_types::SnapshotNameProps { name: name.clone() })
-            }
-            SandboxLifecycle::SnapshotReady { name, duration_ms } => {
-                EventBody::SnapshotReady(fabro_types::SnapshotCompletedProps {
-                    name:        name.clone(),
-                    duration_ms: *duration_ms,
-                })
-            }
-            SandboxLifecycle::SnapshotFailed {
-                name,
-                error,
-                causes,
-            } => EventBody::SnapshotFailed(fabro_types::SnapshotFailedProps {
-                name:   name.clone(),
-                error:  error.clone(),
-                causes: causes.clone(),
-            }),
         },
+        Event::SandboxDriver { event } => EventBody::sandbox_driver(event.clone()),
         Event::SandboxInitialized {
             working_directory,
             provider,
@@ -1674,22 +1591,49 @@ mod tests {
     }
 
     #[test]
-    fn run_event_sandbox_stop_and_delete_use_distinct_event_names() {
-        let stopped = to_run_event(&fixtures::RUN_5, &Event::Sandbox {
-            event: SandboxLifecycle::StopCompleted {
-                provider:    "docker".to_string(),
-                duration_ms: 10,
-            },
+    fn run_event_driver_events_are_named_from_the_subject_action_and_phase() {
+        let stopped = to_run_event(&fixtures::RUN_5, &Event::SandboxDriver {
+            event: driver_event(serde_json::json!({
+                "id": {"source_id": "test", "sequence": 1},
+                "occurred_at": "2026-05-09T12:00:00Z",
+                "provider": "docker",
+                "subject": {"type": "sandbox", "id": "container-1"},
+                "type": "operation_completed",
+                "action": "stop",
+                "duration": {"secs": 0, "nanos": 10_000_000}
+            })),
         });
-        let deleted = to_run_event(&fixtures::RUN_5, &Event::Sandbox {
-            event: SandboxLifecycle::DeleteCompleted {
-                provider:    "docker".to_string(),
-                duration_ms: 20,
-            },
+        let building = to_run_event(&fixtures::RUN_5, &Event::SandboxDriver {
+            event: driver_event(serde_json::json!({
+                "id": {"source_id": "test", "sequence": 2},
+                "occurred_at": "2026-05-09T12:00:01Z",
+                "provider": "daytona",
+                "subject": {"type": "snapshot", "name": "sandbox-driver-abc"},
+                "type": "operation_started",
+                "action": "create"
+            })),
         });
 
         assert_eq!(stopped.event_name(), "sandbox.stop.completed");
-        assert_eq!(deleted.event_name(), "sandbox.delete.completed");
+        assert_eq!(building.event_name(), "snapshot.create.started");
+        let properties = stopped.properties().unwrap();
+        assert_eq!(properties["action"], "stop");
+        assert_eq!(properties["subject"]["id"], "container-1");
+        assert_eq!(properties["duration"]["nanos"], 10_000_000);
+
+        // The stored form reads back as the driver's event.
+        let round_trip: RunEvent = serde_json::from_value(serde_json::to_value(&stopped).unwrap())
+            .expect("a stored driver event decodes");
+        assert!(matches!(
+            &round_trip.body,
+            EventBody::SandboxDriver { name, event }
+                if name == "sandbox.stop.completed"
+                    && matches!(event.body, sandbox_driver::EventBody::OperationCompleted { .. })
+        ));
+    }
+
+    fn driver_event(value: serde_json::Value) -> sandbox_driver::Event {
+        serde_json::from_value(value).expect("a driver event")
     }
 
     #[test]

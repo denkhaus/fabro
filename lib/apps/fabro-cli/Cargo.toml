@@ -25,6 +25,7 @@ fabro-llm = { path = "../../components/fabro-llm" }
 fabro-oauth = { path = "../../foundation/fabro-oauth" }
 fabro-github = { path = "../../components/fabro-github" }
 fabro-agent = { path = "../../components/fabro-agent" }
+sandbox-driver.workspace = true
 fabro-dump = { path = "../../components/fabro-dump" }
 fabro-hooks = { path = "../../components/fabro-hooks" }
 fabro-install = { path = "../../components/fabro-install" }

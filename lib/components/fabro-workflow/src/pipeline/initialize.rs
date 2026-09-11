@@ -24,7 +24,7 @@ use tokio::sync::RwLock as AsyncRwLock;
 
 use super::types::{InitOptions, Initialized, LlmSpec, Persisted, SandboxEnvSpec};
 use crate::error::Error;
-use crate::event::{Event, RunNoticeCode, RunNoticeLevel, SandboxEventBridge, SandboxLifecycle};
+use crate::event::{DriverEventRecorder, Event, RunNoticeCode, RunNoticeLevel, SandboxLifecycle};
 use crate::git::GitAuthor;
 use crate::git_bridge;
 use crate::handler::llm::{AgentAcpBackend, AgentApiBackend, BackendRouter, routing};
@@ -385,14 +385,12 @@ pub async fn initialize(
         );
     }
 
-    // The driver reports what it does to the run's sandbox; the bridge
-    // records the operations fabro keeps as run events.
+    // The driver reports what it does to the run's sandbox; every event is
+    // kept as a run event.
     let provider_name = options.sandbox.provider_name();
-    let sandbox_events = EventContext::new(Arc::new(SandboxEventBridge::new(
-        Arc::clone(&options.emitter),
-        provider_name.clone(),
-        options.sandbox.image(),
-    )))
+    let sandbox_events = EventContext::new(Arc::new(DriverEventRecorder::new(Arc::clone(
+        &options.emitter,
+    ))))
     .correlation_id(CorrelationId::new(options.run_options.run_id.to_string()));
     let attach_instance = if is_resume {
         let record = options

@@ -1,10 +1,15 @@
+use std::borrow::Cow;
+
 use fabro_agent::AgentEvent;
 
 use super::{Event, SandboxLifecycle};
 
 #[must_use]
-pub fn event_name(event: &Event) -> &'static str {
-    match event {
+pub fn event_name(event: &Event) -> Cow<'static, str> {
+    let name: &'static str = match event {
+        Event::SandboxDriver { event } => {
+            return Cow::Owned(fabro_types::sandbox_driver_event_name(event));
+        }
         Event::RunCreated { .. } => "run.created",
         Event::WorkflowRunStarted { .. } => "run.started",
         Event::RunSubmitted { .. } => "run.submitted",
@@ -105,19 +110,6 @@ pub fn event_name(event: &Event) -> &'static str {
             SandboxLifecycle::Initializing { .. } => "sandbox.initializing",
             SandboxLifecycle::Ready { .. } => "sandbox.ready",
             SandboxLifecycle::InitializeFailed { .. } => "sandbox.failed",
-            SandboxLifecycle::StartStarted { .. } => "sandbox.start.started",
-            SandboxLifecycle::StartCompleted { .. } => "sandbox.start.completed",
-            SandboxLifecycle::StartFailed { .. } => "sandbox.start.failed",
-            SandboxLifecycle::StopStarted { .. } => "sandbox.stop.started",
-            SandboxLifecycle::StopCompleted { .. } => "sandbox.stop.completed",
-            SandboxLifecycle::StopFailed { .. } => "sandbox.stop.failed",
-            SandboxLifecycle::DeleteStarted { .. } => "sandbox.delete.started",
-            SandboxLifecycle::DeleteCompleted { .. } => "sandbox.delete.completed",
-            SandboxLifecycle::DeleteFailed { .. } => "sandbox.delete.failed",
-            SandboxLifecycle::SnapshotPulling { .. } => "sandbox.snapshot.pulling",
-            SandboxLifecycle::SnapshotCreating { .. } => "sandbox.snapshot.creating",
-            SandboxLifecycle::SnapshotReady { .. } => "sandbox.snapshot.ready",
-            SandboxLifecycle::SnapshotFailed { .. } => "sandbox.snapshot.failed",
         },
         Event::SandboxInitialized { .. } => "sandbox.initialized",
         Event::SetupStarted { .. } => "setup.started",
@@ -150,7 +142,8 @@ pub fn event_name(event: &Event) -> &'static str {
         Event::PullRequestLinked { .. } => "pull_request.linked",
         Event::PullRequestUnlinked { .. } => "pull_request.unlinked",
         Event::PullRequestFailed { .. } => "pull_request.failed",
-    }
+    };
+    Cow::Borrowed(name)
 }
 
 #[cfg(test)]

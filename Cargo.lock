@@ -2480,6 +2480,7 @@ dependencies = [
  "reqwest 0.13.4",
  "ring",
  "rustls",
+ "sandbox-driver",
  "scopeguard",
  "semver",
  "serde",

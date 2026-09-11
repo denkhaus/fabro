@@ -130,6 +130,7 @@ pub use run_event::{
     LlmRetryPhase, MetadataSnapshotFailureKind, MetadataSnapshotPhase, RunEvent, RunNoticeCode,
     RunNoticeLevel, RunPairEndedReason, RunPairFailedReason, RunRunnableSource, SessionCapability,
     TodoCreatedProps, TodoDeletedProps, TodoUpdatedProps, initial_subagent_generation,
+    sandbox_driver_event_name,
 };
 pub use run_failure::RunFailure;
 pub use run_id::{RunId, fixtures};

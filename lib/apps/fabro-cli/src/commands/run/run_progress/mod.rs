@@ -504,6 +504,55 @@ mod tests {
             .expect("valid utf-8")
     }
 
+    fn driver_event(value: serde_json::Value) -> Event {
+        Event::SandboxDriver {
+            event: serde_json::from_value(value).expect("a driver event"),
+        }
+    }
+
+    /// A snapshot build reported by the driver: started, or completed after
+    /// `secs`.
+    fn snapshot_build_event(name: &str, kind: &str, secs: Option<u64>) -> Event {
+        let mut value = serde_json::json!({
+            "id": {"source_id": "test", "sequence": 1},
+            "occurred_at": "2026-01-01T00:00:00Z",
+            "provider": "daytona",
+            "subject": {"type": "snapshot", "name": name},
+            "type": kind,
+            "action": "create"
+        });
+        if let Some(secs) = secs {
+            value["duration"] = serde_json::json!({"secs": secs, "nanos": 0});
+        }
+        driver_event(value)
+    }
+
+    fn snapshot_build_failed_event(name: &str, error: &str) -> Event {
+        driver_event(serde_json::json!({
+            "id": {"source_id": "test", "sequence": 1},
+            "occurred_at": "2026-01-01T00:00:00Z",
+            "provider": "docker",
+            "subject": {"type": "snapshot", "name": name},
+            "type": "operation_failed",
+            "action": "create",
+            "duration": {"secs": 1, "nanos": 0},
+            "error": {"kind": "provider", "message": error, "retryable": false, "causes": []}
+        }))
+    }
+
+    /// The Docker provider pulling the sandbox's image inside its create.
+    fn image_pull_event(image: &str) -> Event {
+        driver_event(serde_json::json!({
+            "id": {"source_id": "test", "sequence": 1},
+            "occurred_at": "2026-01-01T00:00:00Z",
+            "provider": "docker",
+            "subject": {"type": "sandbox"},
+            "type": "operation_progress",
+            "action": "create",
+            "progress": {"code": "image.pull", "message": format!("pulling image {image}")}
+        }))
+    }
+
     fn emit(ui: &mut ProgressUI, event: Event) {
         let stored = to_run_event(&fixtures::RUN_1, &event);
         ui.handle_event(&stored);
@@ -1078,17 +1127,14 @@ mod tests {
                 provider: "daytona".into(),
             },
         });
-        emit(&mut ui, Event::Sandbox {
-            event: SandboxLifecycle::SnapshotCreating {
-                name: "fabro-v9-test".into(),
-            },
-        });
-        emit(&mut ui, Event::Sandbox {
-            event: SandboxLifecycle::SnapshotReady {
-                name:        "fabro-v9-test".into(),
-                duration_ms: 210_000,
-            },
-        });
+        emit(
+            &mut ui,
+            snapshot_build_event("fabro-v9-test", "operation_started", None),
+        );
+        emit(
+            &mut ui,
+            snapshot_build_event("fabro-v9-test", "operation_completed", Some(210)),
+        );
         emit(&mut ui, Event::Sandbox {
             event: SandboxLifecycle::Ready {
                 provider:    "daytona".into(),
@@ -1114,17 +1160,7 @@ mod tests {
                 provider: "docker".into(),
             },
         });
-        emit(&mut ui, Event::Sandbox {
-            event: SandboxLifecycle::SnapshotPulling {
-                name: "buildpack-deps:noble".into(),
-            },
-        });
-        emit(&mut ui, Event::Sandbox {
-            event: SandboxLifecycle::SnapshotReady {
-                name:        "buildpack-deps:noble".into(),
-                duration_ms: 8_200,
-            },
-        });
+        emit(&mut ui, image_pull_event("buildpack-deps:noble"));
         emit(&mut ui, Event::Sandbox {
             event: SandboxLifecycle::Ready {
                 provider:    "docker".into(),
@@ -1170,13 +1206,10 @@ mod tests {
                 provider: "docker".into(),
             },
         });
-        emit(&mut ui, Event::Sandbox {
-            event: SandboxLifecycle::SnapshotFailed {
-                name:   "buildpack-deps:noble".into(),
-                error:  "pull failed".into(),
-                causes: Vec::new(),
-            },
-        });
+        emit(
+            &mut ui,
+            snapshot_build_failed_event("buildpack-deps:noble", "pull failed"),
+        );
         emit(&mut ui, Event::Sandbox {
             event: SandboxLifecycle::InitializeFailed {
                 provider:    "docker".into(),
@@ -1203,12 +1236,10 @@ mod tests {
         });
         assert!(ui.setup.sandbox_bar.is_some());
 
-        emit(&mut ui, Event::Sandbox {
-            event: SandboxLifecycle::SnapshotReady {
-                name:        "buildpack-deps:noble".into(),
-                duration_ms: 10,
-            },
-        });
+        emit(
+            &mut ui,
+            snapshot_build_event("buildpack-deps:noble", "operation_completed", Some(0)),
+        );
         assert!(ui.setup.sandbox_bar.is_some());
 
         emit(&mut ui, Event::Sandbox {

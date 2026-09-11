@@ -283,32 +283,17 @@ pub enum EventBody {
     SandboxReady(SandboxReadyProps),
     #[serde(rename = "sandbox.failed")]
     SandboxFailed(SandboxFailedProps),
-    #[serde(rename = "sandbox.start.started")]
-    SandboxStartStarted(SandboxStartStartedProps),
-    #[serde(rename = "sandbox.start.completed")]
-    SandboxStartCompleted(SandboxStartCompletedProps),
-    #[serde(rename = "sandbox.start.failed")]
-    SandboxStartFailed(SandboxStartFailedProps),
-    #[serde(rename = "sandbox.stop.started")]
-    SandboxStopStarted(SandboxStopStartedProps),
-    #[serde(rename = "sandbox.stop.completed")]
-    SandboxStopCompleted(SandboxStopCompletedProps),
-    #[serde(rename = "sandbox.stop.failed")]
-    SandboxStopFailed(SandboxStopFailedProps),
-    #[serde(rename = "sandbox.delete.started")]
-    SandboxDeleteStarted(SandboxDeleteStartedProps),
-    #[serde(rename = "sandbox.delete.completed")]
-    SandboxDeleteCompleted(SandboxDeleteCompletedProps),
-    #[serde(rename = "sandbox.delete.failed")]
-    SandboxDeleteFailed(SandboxDeleteFailedProps),
-    #[serde(rename = "sandbox.snapshot.pulling")]
-    SnapshotPulling(SnapshotNameProps),
-    #[serde(rename = "sandbox.snapshot.creating")]
-    SnapshotCreating(SnapshotNameProps),
-    #[serde(rename = "sandbox.snapshot.ready")]
-    SnapshotReady(SnapshotCompletedProps),
-    #[serde(rename = "sandbox.snapshot.failed")]
-    SnapshotFailed(SnapshotFailedProps),
+    /// An event the sandbox driver reported about the run's sandbox, a
+    /// snapshot, a volume, or the provider, stored as the driver's own event
+    /// under a name derived from it (`sandbox.stop.completed`,
+    /// `snapshot.create.started`, `sandbox.state`); see
+    /// [`sandbox_driver_event_name`]. The derive never sees this variant:
+    /// the run event writes the name and the driver's event itself.
+    #[serde(skip)]
+    SandboxDriver {
+        name:  String,
+        event: sandbox_driver::Event,
+    },
     #[serde(rename = "sandbox.initialized")]
     SandboxInitialized(SandboxInitializedProps),
     #[serde(rename = "setup.started")]
@@ -410,6 +395,88 @@ struct RunEventParts<'a> {
     actor:              Option<Principal>,
     event:              &'a str,
     properties:         &'a Value,
+}
+
+impl EventBody {
+    /// The sandbox driver's event as a run event body, named by
+    /// [`sandbox_driver_event_name`].
+    #[must_use]
+    pub fn sandbox_driver(event: sandbox_driver::Event) -> Self {
+        Self::SandboxDriver {
+            name: sandbox_driver_event_name(&event),
+            event,
+        }
+    }
+
+    /// A stored driver event: `name` has the shape the driver's events are
+    /// stored under and `properties` decode to a driver event that yields
+    /// that name. Anything else, including an event stored under one of
+    /// these names before the driver's events were kept whole, is left to
+    /// the other variants.
+    fn sandbox_driver_from_stored(name: &str, properties: &Value) -> Option<Self> {
+        if !is_sandbox_driver_event_name(name) {
+            return None;
+        }
+        let event: sandbox_driver::Event = serde_json::from_value(properties.clone()).ok()?;
+        (sandbox_driver_event_name(&event) == name).then(|| Self::SandboxDriver {
+            name: name.to_owned(),
+            event,
+        })
+    }
+}
+
+/// Whether `name` has the shape the sandbox driver's events are stored
+/// under: `<subject>.<action>.<phase>`, `<subject>.state`, `<subject>.notice`,
+/// or `<subject>.event`, for the subjects the driver reports on.
+fn is_sandbox_driver_event_name(name: &str) -> bool {
+    let Some((subject, rest)) = name.split_once('.') else {
+        return false;
+    };
+    matches!(subject, "sandbox" | "snapshot" | "volume" | "provider")
+        && (matches!(rest, "state" | "notice" | "event")
+            || rest.split_once('.').is_some_and(|(_, phase)| {
+                matches!(phase, "started" | "progress" | "completed" | "failed")
+            }))
+}
+
+/// The run event name for a sandbox driver event: the subject kind, the
+/// action, and the phase, so a stop on the sandbox is `sandbox.stop.started`,
+/// `sandbox.stop.completed`, or `sandbox.stop.failed`, an image pull inside
+/// a create is `sandbox.create.progress`, and a snapshot build is
+/// `snapshot.create.*`. A state observation is `<subject>.state`, a notice
+/// `<subject>.notice`, and an event kind this build does not know
+/// `<subject>.event`.
+#[must_use]
+pub fn sandbox_driver_event_name(event: &sandbox_driver::Event) -> String {
+    use sandbox_driver::{EventBody as Body, EventSubject};
+
+    let subject = match &event.subject {
+        EventSubject::Snapshot { .. } => "snapshot",
+        EventSubject::Volume { .. } => "volume",
+        EventSubject::Provider => "provider",
+        _ => "sandbox",
+    };
+    let (action, phase) = match &event.body {
+        Body::OperationStarted { action } => (Some(*action), "started"),
+        Body::OperationProgress { action, .. } => (Some(*action), "progress"),
+        Body::OperationCompleted { action, .. } => (Some(*action), "completed"),
+        Body::OperationFailed { action, .. } => (Some(*action), "failed"),
+        Body::StateObserved { .. } => (None, "state"),
+        Body::Notice { .. } => (None, "notice"),
+        _ => (None, "event"),
+    };
+    match action {
+        Some(action) => format!("{subject}.{}.{phase}", driver_action_name(action)),
+        None => format!("{subject}.{phase}"),
+    }
+}
+
+/// The driver action's wire name (`stop`, `refresh_activity`).
+fn driver_action_name(action: sandbox_driver::Action) -> String {
+    match serde_json::to_value(action) {
+        Ok(Value::String(name)) => name,
+        _ => "unknown".to_owned(),
+    }
 }
 
 impl EventBody {
@@ -526,19 +593,6 @@ impl EventBody {
             Self::SandboxInitializing(_) => "sandbox.initializing",
             Self::SandboxReady(_) => "sandbox.ready",
             Self::SandboxFailed(_) => "sandbox.failed",
-            Self::SandboxStartStarted(_) => "sandbox.start.started",
-            Self::SandboxStartCompleted(_) => "sandbox.start.completed",
-            Self::SandboxStartFailed(_) => "sandbox.start.failed",
-            Self::SandboxStopStarted(_) => "sandbox.stop.started",
-            Self::SandboxStopCompleted(_) => "sandbox.stop.completed",
-            Self::SandboxStopFailed(_) => "sandbox.stop.failed",
-            Self::SandboxDeleteStarted(_) => "sandbox.delete.started",
-            Self::SandboxDeleteCompleted(_) => "sandbox.delete.completed",
-            Self::SandboxDeleteFailed(_) => "sandbox.delete.failed",
-            Self::SnapshotPulling(_) => "sandbox.snapshot.pulling",
-            Self::SnapshotCreating(_) => "sandbox.snapshot.creating",
-            Self::SnapshotReady(_) => "sandbox.snapshot.ready",
-            Self::SnapshotFailed(_) => "sandbox.snapshot.failed",
             Self::SandboxInitialized(_) => "sandbox.initialized",
             Self::SetupStarted(_) => "setup.started",
             Self::SetupCommandStarted(_) => "setup.command.started",
@@ -563,7 +617,7 @@ impl EventBody {
             Self::PullRequestLinked(_) => "pull_request.linked",
             Self::PullRequestUnlinked(_) => "pull_request.unlinked",
             Self::PullRequestFailed(_) => "pull_request.failed",
-            Self::Unknown { name, .. } => name.as_str(),
+            Self::SandboxDriver { name, .. } | Self::Unknown { name, .. } => name.as_str(),
         }
     }
 
@@ -574,6 +628,9 @@ impl EventBody {
     fn properties_value(&self) -> serde_json::Result<Value> {
         if let Self::Unknown { properties, .. } = self {
             return Ok(properties.clone());
+        }
+        if let Self::SandboxDriver { event, .. } = self {
+            return serde_json::to_value(event);
         }
 
         match serde_json::to_value(self)? {
@@ -697,19 +754,6 @@ fn is_known_event_name(event: &str) -> bool {
             | "sandbox.cleanup.started"
             | "sandbox.cleanup.completed"
             | "sandbox.cleanup.failed"
-            | "sandbox.start.started"
-            | "sandbox.start.completed"
-            | "sandbox.start.failed"
-            | "sandbox.stop.started"
-            | "sandbox.stop.completed"
-            | "sandbox.stop.failed"
-            | "sandbox.delete.started"
-            | "sandbox.delete.completed"
-            | "sandbox.delete.failed"
-            | "sandbox.snapshot.pulling"
-            | "sandbox.snapshot.creating"
-            | "sandbox.snapshot.ready"
-            | "sandbox.snapshot.failed"
             | "sandbox.git.started"
             | "sandbox.git.completed"
             | "sandbox.git.failed"
@@ -818,12 +862,15 @@ impl RunEvent {
             "event": parts.event,
             "properties": parts.properties,
         });
-        let body: EventBody = match serde_json::from_value(body_payload) {
-            Ok(body) => body,
-            Err(err) if is_known_event_name(parts.event) => return Err(err),
-            Err(_) => EventBody::Unknown {
-                name:       parts.event.to_string(),
-                properties: parts.properties.clone(),
+        let body = match EventBody::sandbox_driver_from_stored(parts.event, parts.properties) {
+            Some(body) => body,
+            None => match serde_json::from_value(body_payload) {
+                Ok(body) => body,
+                Err(err) if is_known_event_name(parts.event) => return Err(err),
+                Err(_) => EventBody::Unknown {
+                    name:       parts.event.to_string(),
+                    properties: parts.properties.clone(),
+                },
             },
         };
         Ok(Self {
