@@ -29,6 +29,7 @@ lithos-llm = { workspace = true, features = ["runtime"] }
 fabro-llm = { path = "../fabro-llm" }
 fabro-mcp = { path = "../fabro-mcp" }
 fabro-sandbox = { path = "../fabro-sandbox" }
+sandbox-driver.workspace = true
 fabro-static.workspace = true
 fabro-template = { path = "../../foundation/fabro-template" }
 fabro-util = { path = "../../foundation/fabro-util" }

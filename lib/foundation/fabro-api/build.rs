@@ -672,16 +672,6 @@ fn main() {
         ),
         ("SandboxService", "fabro_types::SandboxService", &[]),
         (
-            "SandboxServiceDiscoverySource",
-            "fabro_types::SandboxServiceDiscoverySource",
-            &[],
-        ),
-        (
-            "SandboxServiceListMeta",
-            "fabro_types::SandboxServiceListMeta",
-            &[],
-        ),
-        (
             "SandboxServiceListResponse",
             "fabro_types::SandboxServiceListResponse",
             &[],

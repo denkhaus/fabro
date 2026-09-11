@@ -164,10 +164,7 @@ pub use sandbox_inventory::{
 pub use sandbox_provider::{
     BundledProvider, InvalidSandboxProviderKind, SandboxProviderKind, WorkspacePolicy,
 };
-pub use sandbox_services::{
-    SandboxService, SandboxServiceDiscoverySource, SandboxServiceListMeta,
-    SandboxServiceListResponse,
-};
+pub use sandbox_services::{SandboxService, SandboxServiceListResponse};
 pub use secret::{OAuthConfig, OAuthCredential, OAuthTokens, SecretMetadata, SecretType};
 pub use session::{
     PermissionLevel, SessionDetail, SessionId, SessionMessage, SessionRecord, SessionStatus,

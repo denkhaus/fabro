@@ -2294,6 +2294,7 @@ dependencies = [
  "libc",
  "lithos-llm",
  "paste",
+ "sandbox-driver",
  "sandbox-driver-testing",
  "serde",
  "serde_json",

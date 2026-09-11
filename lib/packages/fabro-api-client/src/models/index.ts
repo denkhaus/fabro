@@ -414,8 +414,6 @@ export * from './sandbox-plugin-settings';
 export * from './sandbox-provider-lookup-error';
 export * from './sandbox-resources';
 export * from './sandbox-service';
-export * from './sandbox-service-discovery-source';
-export * from './sandbox-service-list-meta';
 export * from './sandbox-service-list-response';
 export * from './sandbox-state';
 export * from './sandbox-status';

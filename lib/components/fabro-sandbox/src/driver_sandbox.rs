@@ -438,6 +438,20 @@ impl RunSandbox {
         })
     }
 
+    /// The driver's services facet for this sandbox: background processes
+    /// that outlive their exec (the agent's MCP servers, dev servers), the
+    /// wait for a port to answer, and the list of listeners. Absent until a
+    /// pending sandbox is initialized, or when the provider has no
+    /// services.
+    pub fn services(&self) -> crate::Result<sandbox_driver::ServicesFacet<'_>> {
+        self.handle()?.services().ok_or_else(|| {
+            crate::Error::message(format!(
+                "sandbox provider `{}` does not support background services",
+                self.kind
+            ))
+        })
+    }
+
     fn search(&self) -> crate::Result<sandbox_driver::SearchFacet<'_>> {
         self.handle()?.search().ok_or_else(|| {
             crate::Error::message(format!(

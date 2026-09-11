@@ -14119,7 +14119,7 @@ components:
             $ref: "#/components/schemas/SandboxFileEntry"
 
     SandboxService:
-      description: A listening TCP service discovered inside a run sandbox.
+      description: A TCP port a process inside a run sandbox listens on, as the sandbox driver reports it.
       type: object
       required:
         - port
@@ -14135,16 +14135,16 @@ components:
           example: 3000
         addresses:
           type: array
-          description: Local bind addresses discovered from `ss` or `/proc/net/tcp*`.
+          description: Local bind addresses the sandbox reports for the port.
           items:
             type: string
           example: ["127.0.0.1:3000", "[::]:3000"]
         processes:
           type: array
-          description: Visible process summaries when available. Empty when the sandbox only supports `/proc/net/tcp*` discovery.
+          description: The listening processes, when the sandbox can name them (`node`, or `pid=1234`). Empty when it cannot.
           items:
             type: string
-          example: ['users:(("node",pid=42,fd=23))']
+          example: ["node"]
         preview_supported:
           type: boolean
           description: Whether the provider supports an external preview URL for this port.
@@ -14155,30 +14155,11 @@ components:
       type: object
       required:
         - data
-        - meta
       properties:
         data:
           type: array
           items:
             $ref: "#/components/schemas/SandboxService"
-        meta:
-          $ref: "#/components/schemas/SandboxServiceListMeta"
-
-    SandboxServiceListMeta:
-      description: Metadata about sandbox service discovery.
-      type: object
-      required:
-        - source
-      properties:
-        source:
-          $ref: "#/components/schemas/SandboxServiceDiscoverySource"
-
-    SandboxServiceDiscoverySource:
-      description: Tool or kernel interface used to discover sandbox services.
-      type: string
-      enum:
-        - ss
-        - procfs
 
     VncPreviewResponse:
       description: Response containing a signed noVNC preview URL for a Daytona sandbox.
