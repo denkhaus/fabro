@@ -1,3 +1,5 @@
+use fabro_util::shell;
+
 use crate::sandbox;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -68,8 +70,8 @@ fn validate_path_component(label: &str, component: &str) -> crate::Result<()> {
 pub(crate) fn repo_symlink_command(layout: &GitHubRepoLayout) -> String {
     format!(
         "ln -s {} {}",
-        sandbox::shell_quote(&layout.primary_repo_path),
-        sandbox::shell_quote(&layout.primary_repo_link),
+        shell::shell_quote(&layout.primary_repo_path),
+        shell::shell_quote(&layout.primary_repo_link),
     )
 }
 

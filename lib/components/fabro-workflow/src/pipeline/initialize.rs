@@ -1357,7 +1357,7 @@ mod tests {
             "acp.command".to_string(),
             AttrValue::String(format!(
                 "python3 {}",
-                fabro_sandbox::shell_quote(&script_path.to_string_lossy())
+                fabro_util::shell::shell_quote(&script_path.to_string_lossy())
             )),
         );
         let mut exit = Node::new("exit");

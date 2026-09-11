@@ -1,9 +1,7 @@
-use std::fmt::Write;
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
 use fabro_github::token_source::TokenSnapshot;
-use fabro_util::shell;
 use sandbox_driver::{
     Git as _, GitAttempt, GitCheckoutOptions, GitFetchOptions, GitPushOptions, GitRetryError,
     GitRetryPolicy, retry_git,
@@ -48,25 +46,6 @@ pub enum GitSetupIntent {
         source_run_id:  String,
         checkpoint_sha: String,
     },
-}
-
-/// Formats file content with line numbers for display.
-///
-/// Applies optional offset (1-based starting line number) and limit (max lines
-/// to return). Line numbers are 1-based and right-aligned.
-#[must_use]
-pub fn format_lines_numbered(content: &str, offset: Option<usize>, limit: Option<usize>) -> String {
-    let all_lines: Vec<&str> = content.lines().collect();
-    let skip = offset.unwrap_or(1).saturating_sub(1);
-    let take = limit.unwrap_or(all_lines.len());
-    let selected: Vec<&str> = all_lines.into_iter().skip(skip).take(take).collect();
-    let width = (skip + selected.len()).to_string().len().max(1);
-    let mut result = String::new();
-    for (i, line) in selected.iter().enumerate() {
-        let line_num = skip + i + 1;
-        let _ = writeln!(result, "{line_num:>width$} | {line}");
-    }
-    result
 }
 
 /// Build a redacted `ExecOutputTail` from stdout/stderr text without
@@ -138,13 +117,6 @@ pub(crate) fn join_sandbox_path(base: &str, relative_path: &str) -> String {
         return format!("/{relative_path}");
     }
     format!("{}/{relative_path}", base.trim_end_matches('/'))
-}
-
-/// Shell-quote a string using `shlex::try_quote`, with a fallback for edge
-/// cases. Re-exported from [`fabro_util::shell::shell_quote`] so sandbox code
-/// and the config resolve layer share one audited implementation.
-pub fn shell_quote(s: &str) -> String {
-    shell::shell_quote(s)
 }
 
 /// Creates the run branch in the sandbox's checkout through the driver's
@@ -896,8 +868,6 @@ mod push_tests {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     #[test]
     fn sandbox_tracing_events_do_not_log_raw_command_or_stdin_fields() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
@@ -908,27 +878,6 @@ mod tests {
             "raw command/cmd/stdin tracing fields found:\n{}",
             failures.join("\n")
         );
-    }
-
-    #[test]
-    fn format_lines_numbered_basic() {
-        let result = format_lines_numbered("hello\nworld\nfoo", None, None);
-        assert_eq!(result, "1 | hello\n2 | world\n3 | foo\n");
-    }
-
-    #[test]
-    fn format_lines_numbered_with_offset_limit() {
-        let result = format_lines_numbered("a\nb\nc\nd\ne", Some(2), Some(2));
-        assert!(result.contains("2 | b"));
-        assert!(result.contains("3 | c"));
-        assert!(!result.contains("1 | a"));
-        assert!(!result.contains("4 | d"));
-    }
-
-    #[test]
-    fn shell_quote_basic() {
-        assert_eq!(shell_quote("hello"), "hello");
-        assert_eq!(shell_quote("hello world"), "'hello world'");
     }
 
     #[expect(

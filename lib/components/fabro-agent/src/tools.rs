@@ -24,6 +24,27 @@ const MAX_WEB_FETCH_BYTES: usize = 100 * 1024;
 const MAX_READ_MANY_FILES_CONCURRENCY: usize = 8;
 pub(crate) const DEFAULT_READ_LINES: usize = 2000;
 
+/// The Read tool's rendering of a file: each line prefixed with its 1-based
+/// number, right-aligned, from `offset` (1-based) for `limit` lines.
+#[must_use]
+pub(crate) fn format_lines_numbered(
+    content: &str,
+    offset: Option<usize>,
+    limit: Option<usize>,
+) -> String {
+    let all_lines: Vec<&str> = content.lines().collect();
+    let skip = offset.unwrap_or(1).saturating_sub(1);
+    let take = limit.unwrap_or(all_lines.len());
+    let selected: Vec<&str> = all_lines.into_iter().skip(skip).take(take).collect();
+    let width = (skip + selected.len()).to_string().len().max(1);
+    let mut result = String::new();
+    for (i, line) in selected.iter().enumerate() {
+        let line_num = skip + i + 1;
+        let _ = writeln!(result, "{line_num:>width$} | {line}");
+    }
+    result
+}
+
 /// Configuration for the optional LLM-based summarizer used by `web_fetch`.
 #[derive(Clone)]
 pub struct WebFetchSummarizer {
@@ -137,12 +158,12 @@ pub fn make_read_file_tool() -> RegisteredTool {
                 let offset_usize = optional_usize_arg(&args, "offset")?;
                 let limit_usize = optional_usize_arg(&args, "limit")?.or(Some(DEFAULT_READ_LINES));
 
-                let content = ctx
+                let text = ctx
                     .env
-                    .read_file(file_path, offset_usize, limit_usize)
+                    .read_file_text(file_path)
                     .await
                     .map_err(|e| e.display_with_causes())?;
-                Ok(content)
+                Ok(format_lines_numbered(&text, offset_usize, limit_usize))
             })
         }),
         source:     ToolSource::Native,
@@ -578,7 +599,10 @@ pub(crate) fn make_read_many_files_tool() -> RegisteredTool {
                     .map(|path| {
                         let env = Arc::clone(&ctx.env);
                         async move {
-                            let result = env.read_file(&path, None, None).await;
+                            let result = env
+                                .read_file_text(&path)
+                                .await
+                                .map(|text| format_lines_numbered(&text, None, None));
                             (path, result)
                         }
                     })
@@ -758,6 +782,18 @@ mod tests {
     use crate::config::{NativeToolOptions, SessionOptions, ToolSecrets};
     use crate::event::{Emitter, SessionBoundEmitter};
     use crate::sandbox::*;
+
+    #[test]
+    fn format_lines_numbered_numbers_every_line() {
+        let result = format_lines_numbered("hello\nworld\nfoo", None, None);
+        assert_eq!(result, "1 | hello\n2 | world\n3 | foo\n");
+    }
+
+    #[test]
+    fn format_lines_numbered_honors_offset_and_limit() {
+        let result = format_lines_numbered("a\nb\nc\nd\ne", Some(2), Some(2));
+        assert_eq!(result, "2 | b\n3 | c\n");
+    }
     use crate::test_support::MockSandbox;
     use crate::tool_registry::{ToolContext, ToolDefinitionExt};
     use crate::types::SessionEvent;

@@ -636,10 +636,11 @@ mod tests {
 
     use fabro_acp::test_support::fake_acp_agent_script;
     use fabro_acp::{AcpError, AcpProcessExit};
-    use fabro_agent::{RunSandbox, TokenProvenance, TokenSnapshot, local_sandbox, shell_quote};
+    use fabro_agent::{RunSandbox, TokenProvenance, TokenSnapshot, local_sandbox};
     use fabro_graphviz::graph::{AttrValue, Node};
     use fabro_sandbox::test_support::MockSandbox;
     use fabro_types::{CommandTermination, EventBody, ExecOutputTail};
+    use fabro_util::shell;
     use tokio_util::sync::CancellationToken;
 
     use super::{
@@ -931,7 +932,7 @@ mod tests {
             "acp.command".to_string(),
             AttrValue::String(format!(
                 "python3 {}",
-                shell_quote(&script_path.to_string_lossy())
+                shell::shell_quote(&script_path.to_string_lossy())
             )),
         );
 
@@ -1037,7 +1038,7 @@ mod tests {
             "acp.command".to_string(),
             AttrValue::String(format!(
                 "python3 {}",
-                shell_quote(&script_path.to_string_lossy())
+                shell::shell_quote(&script_path.to_string_lossy())
             )),
         );
 
@@ -1100,7 +1101,7 @@ mod tests {
             "acp.command".to_string(),
             AttrValue::String(format!(
                 "python3 {}",
-                shell_quote(&script_path.to_string_lossy())
+                shell::shell_quote(&script_path.to_string_lossy())
             )),
         );
 
@@ -1184,7 +1185,7 @@ mod tests {
             "acp.command".to_string(),
             AttrValue::String(format!(
                 "python3 {}",
-                shell_quote(&script_path.to_string_lossy())
+                shell::shell_quote(&script_path.to_string_lossy())
             )),
         );
 

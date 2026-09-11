@@ -27,11 +27,12 @@ use serde_json::Value;
 use strum::EnumString;
 
 use crate::native_tool::NativeTool;
-use crate::sandbox::{ExecResultExt, GrepOptions, Termination, format_lines_numbered};
+use crate::sandbox::{ExecResultExt, GrepOptions, Termination};
 use crate::tool_registry::{RegisteredTool, ToolSource};
 use crate::tools::{
     DEFAULT_READ_LINES, emit_shell_process_completed, execute_grep, execute_shell_command,
-    grep_result_path, make_edit_file_tool, optional_usize_arg, required_str, retain_shell_output,
+    format_lines_numbered, grep_result_path, make_edit_file_tool, optional_usize_arg, required_str,
+    retain_shell_output,
 };
 
 const DEFAULT_GREP_RESULTS: usize = 250;
@@ -230,9 +231,16 @@ depends on an exact file, API, or output shape, inspect the final result before 
                     Some(offset) => {
                         let start = usize::try_from(offset)
                             .map_err(|_| "line_offset must fit in usize".to_string())?;
-                        ctx.env.read_file(path, Some(start), Some(n_lines)).await
+                        ctx.env
+                            .read_file_text(path)
+                            .await
+                            .map(|text| format_lines_numbered(&text, Some(start), Some(n_lines)))
                     }
-                    None => ctx.env.read_file(path, None, Some(n_lines)).await,
+                    None => ctx
+                        .env
+                        .read_file_text(path)
+                        .await
+                        .map(|text| format_lines_numbered(&text, None, Some(n_lines))),
                 }
                 .map_err(|e| e.display_with_causes())?;
 

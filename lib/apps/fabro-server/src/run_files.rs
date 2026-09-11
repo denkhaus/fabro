@@ -35,9 +35,10 @@ use fabro_api::types::{
     RunFilesMeta, RunFilesMetaDegradedReason, RunFilesMetaScope, RunFilesMetaSource,
     RunFilesMetaToSha,
 };
+use fabro_sandbox::Termination;
 use fabro_sandbox::reconnect::reconnect_for_run;
-use fabro_sandbox::{Termination, shell_quote};
 use fabro_types::RunId;
+use fabro_util::shell;
 use fabro_workflow::sandbox_git::{
     DiffError, DiffNumstat, RawDiffEntry, SubmoduleChange, SymlinkChange, list_changed_files_raw,
     list_diff_numstat, stream_blob_metadata, stream_blobs,
@@ -1204,7 +1205,7 @@ async fn resolve_ref_sha_and_time(
     sandbox: &RunSandbox,
     git_ref: &str,
 ) -> std::result::Result<(String, Option<chrono::DateTime<chrono::Utc>>), ApiError> {
-    let ref_q = shell_quote(git_ref);
+    let ref_q = shell::shell_quote(git_ref);
     let res = sandbox
         .exec_command(
             &format!("git -c core.hooksPath=/dev/null show -s --format=%H\\ %cI {ref_q}"),

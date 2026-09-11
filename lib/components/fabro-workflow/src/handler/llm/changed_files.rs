@@ -1,7 +1,8 @@
 use std::collections::HashSet;
 use std::sync::Arc;
 
-use fabro_agent::{RunSandbox, shell_quote};
+use fabro_agent::RunSandbox;
+use fabro_util::shell;
 use sandbox_driver::{Git as _, GitDiffOptions, GitRevisionRange};
 
 /// The paths the working tree changed against `HEAD`, plus the untracked
@@ -43,8 +44,10 @@ pub async fn files_touched_since(
     let last_file_touched = if files_touched.is_empty() {
         None
     } else {
-        let quoted_files: Vec<String> =
-            files_touched.iter().map(|file| shell_quote(file)).collect();
+        let quoted_files: Vec<String> = files_touched
+            .iter()
+            .map(|file| shell::shell_quote(file))
+            .collect();
         let cmd = format!("ls -t {} | head -1", quoted_files.join(" "));
         sandbox
             .exec_command(&cmd, 5_000, None, None, None)

@@ -56,8 +56,7 @@ pub use reconnect::{
 };
 pub use sandbox::{
     DEFAULT_EXEC_OUTPUT_TAIL_BYTES, GitRunInfo, GitSetupIntent, PushAttempt, PushError, PushReport,
-    SandboxFile, SandboxWorkspaceLayout, format_lines_numbered, redacted_output_tail, setup_git,
-    shell_quote,
+    SandboxFile, SandboxWorkspaceLayout, redacted_output_tail, setup_git,
 };
 /// Driver types a run sandbox speaks: what a command is and how it ended,
 /// what the file and search operations return, and what an environment

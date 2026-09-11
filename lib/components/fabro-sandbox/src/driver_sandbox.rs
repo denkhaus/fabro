@@ -19,6 +19,7 @@ use std::time::{Duration, Instant};
 use fabro_github::GitHubCredentials;
 use fabro_github::token_source::{InstallationTokenSource, TokenSnapshot};
 use fabro_types::SandboxProviderKind;
+use fabro_util::shell;
 use fabro_util::workspace_glob::WorkspaceGlob;
 use sandbox_driver::{
     DirEntry, EventContext, ExecControls, ExecResult, ExecSpec, ExecStreamingResult, FileKind,
@@ -659,20 +660,6 @@ impl RunSandbox {
             .map_err(|err| crate::Error::context("File is not valid UTF-8", err))
     }
 
-    /// A file's text with line numbers, from `offset` for `limit` lines.
-    pub async fn read_file(
-        &self,
-        path: &str,
-        offset: Option<usize>,
-        limit: Option<usize>,
-    ) -> crate::Result<String> {
-        Ok(sandbox::format_lines_numbered(
-            &self.read_file_text(path).await?,
-            offset,
-            limit,
-        ))
-    }
-
     pub async fn write_file(&self, path: &str, content: &str) -> crate::Result<()> {
         self.handle()?
             .fs()
@@ -1006,8 +993,8 @@ impl RunSandbox {
         }
         vec![format!(
             "git fetch origin {} && git checkout {}",
-            sandbox::shell_quote(run_branch),
-            sandbox::shell_quote(run_branch)
+            shell::shell_quote(run_branch),
+            shell::shell_quote(run_branch)
         )]
     }
 
@@ -1186,7 +1173,7 @@ mod tests {
         assert!(missing.to_string().contains("does not exist"), "{missing}");
         let read = f
             .sandbox
-            .read_file("nonexistent.txt", None, None)
+            .read_file_text("nonexistent.txt")
             .await
             .unwrap_err();
         assert!(
