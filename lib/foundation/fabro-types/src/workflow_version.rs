@@ -189,16 +189,22 @@ fn validate_path_collisions<'a>(
     paths: impl IntoIterator<Item = &'a WorkflowPath>,
     key: impl Fn(&'a str) -> Cow<'a, str>,
 ) -> Result<(), WorkflowVersionShapeError> {
-    let mut by_text = HashMap::new();
-    for path in paths {
-        if let Some(existing) = by_text.insert(key(path.as_str()), path) {
+    let keyed: Vec<(Cow<'a, str>, &WorkflowPath)> = paths
+        .into_iter()
+        .map(|path| (key(path.as_str()), path))
+        .collect();
+    let mut by_text = HashMap::with_capacity(keyed.len());
+    for (text, path) in &keyed {
+        if let Some(existing) = by_text.insert(text.as_ref(), *path) {
             return Err(WorkflowVersionShapeError::PathCollision {
                 first:  existing.clone(),
-                second: path.clone(),
+                second: (*path).clone(),
             });
         }
     }
-    for (text, path) in &by_text {
+    // Walk the input order, not the map, so the reported pair is stable when
+    // more than one ancestor collision exists.
+    for (text, path) in &keyed {
         for (index, _) in text.match_indices('/') {
             if let Some(ancestor) = by_text.get(&text[..index]) {
                 return Err(WorkflowVersionShapeError::PathCollision {
@@ -559,6 +565,26 @@ mod tests {
 #[cfg(test)]
 mod source_path_tests {
     use super::*;
+
+    #[test]
+    fn ancestor_collision_reports_the_first_pair_in_input_order() {
+        let paths = ["assets", "assets/item.txt", "libs", "libs/child.fabro"]
+            .map(|path| WorkflowPath::new(path).unwrap());
+        for _ in 0..32 {
+            let error = validate_workflow_source_paths(paths.iter()).unwrap_err();
+            assert_eq!(
+                error.to_string(),
+                "workflow paths collide: `assets` and `assets/item.txt`"
+            );
+            let version = WorkflowVersion::new(
+                paths[1].clone(),
+                paths.iter().map(|p| (p.clone(), String::new())).collect(),
+                BTreeMap::new(),
+            )
+            .unwrap_err();
+            assert_eq!(version.to_string(), error.to_string());
+        }
+    }
 
     #[test]
     fn workflow_source_collisions_are_portable_in_both_orders() {
