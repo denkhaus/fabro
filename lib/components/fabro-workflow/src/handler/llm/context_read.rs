@@ -192,10 +192,10 @@ impl ContextReadState {
 /// Build the registered `context_read` tool closing over `state`.
 pub(crate) fn context_read_tool(state: Arc<ContextReadState>) -> RegisteredTool {
     RegisteredTool {
-        definition: LlmToolDefinition {
-            name:        CONTEXT_READ_TOOL_NAME.to_string(),
-            description: CONTEXT_READ_TOOL_DESCRIPTION.to_string(),
-            parameters:  serde_json::json!({
+        definition: LlmToolDefinition::function(
+            CONTEXT_READ_TOOL_NAME,
+            CONTEXT_READ_TOOL_DESCRIPTION,
+            serde_json::json!({
                 "type": "object",
                 "properties": {
                     "key": {
@@ -206,7 +206,7 @@ pub(crate) fn context_read_tool(state: Arc<ContextReadState>) -> RegisteredTool 
                 "required": ["key"],
                 "additionalProperties": false,
             }),
-        },
+        ),
         executor:   Arc::new(move |args, _context: ToolContext| {
             let state = Arc::clone(&state);
             Box::pin(async move { execute_context_read(args, state).await })
@@ -346,6 +346,7 @@ fn plain_test_node() -> Node {
 #[cfg(test)]
 mod tests {
     use fabro_agent::LocalSandbox;
+    use fabro_llm::types::ToolDefinitionKind;
     use serde_json::json;
 
     use super::test_support::MemoryBlobBackend;
@@ -643,9 +644,10 @@ mod tests {
         );
         let tool = context_read_tool(Arc::new(ContextReadState::new(services)));
         assert_eq!(tool.definition.name, "context_read");
-        let required = tool
-            .definition
-            .parameters
+        let ToolDefinitionKind::Function { input_schema } = &tool.definition.kind else {
+            panic!("context_read tool should be a function tool");
+        };
+        let required = input_schema
             .get("required")
             .and_then(Value::as_array)
             .expect("required array");

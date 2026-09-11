@@ -4,9 +4,8 @@ use std::sync::Arc;
 
 use fabro_graphviz::graph::Graph;
 use fabro_interview::Interviewer;
+use fabro_llm::lithos_catalog::Catalog;
 use fabro_mcp::config::McpServerSettings;
-use fabro_model::reasoning::ReasoningEffort;
-use fabro_model::{Catalog, ProviderId};
 use fabro_sandbox::SandboxSpec;
 use fabro_template::TemplateContext;
 use fabro_types::settings::run::{
@@ -15,6 +14,8 @@ use fabro_types::settings::run::{
 use fabro_types::{ManifestPath, RunFailure, RunId, RunProjection};
 use fabro_validate::{Diagnostic, Severity};
 use fabro_vault::Vault;
+use lithos_llm::catalog::ProviderId;
+use lithos_llm::types::ReasoningEffort;
 use tokio::sync::RwLock as AsyncRwLock;
 
 use crate::artifact_upload::ArtifactSink;
