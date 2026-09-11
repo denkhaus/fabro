@@ -278,7 +278,7 @@ async fn daytona_exec_command() {
     assert_eq!(result.exit_code, Some(0));
     assert!(result.stdout_lossy().contains("hello"));
 
-    env.cleanup().await.unwrap();
+    env.delete().await.unwrap();
 }
 
 #[fabro_macros::e2e_test(live("DAYTONA_API_KEY"), live("GITHUB_APP_PRIVATE_KEY"))]
@@ -294,7 +294,7 @@ async fn daytona_exec_command_with_pipe() {
     assert_eq!(result.exit_code, Some(0));
     assert!(result.stdout_lossy().trim().contains('2'));
 
-    env.cleanup().await.unwrap();
+    env.delete().await.unwrap();
 }
 
 #[fabro_macros::e2e_test(live("DAYTONA_API_KEY"), live("GITHUB_APP_PRIVATE_KEY"))]
@@ -325,7 +325,7 @@ async fn daytona_exec_command_cancelled() {
     ));
     assert_eq!(result.stderr_lossy(), "Command cancelled");
 
-    env.cleanup().await.unwrap();
+    env.delete().await.unwrap();
 }
 
 #[fabro_macros::e2e_test(live("DAYTONA_API_KEY"), live("GITHUB_APP_PRIVATE_KEY"))]
@@ -358,7 +358,7 @@ async fn daytona_exec_command_local_timeout() {
     assert_eq!(result.termination, fabro_sandbox::Termination::TimedOut);
     assert_eq!(result.stderr_lossy(), "Command timed out locally");
 
-    env.cleanup().await.unwrap();
+    env.delete().await.unwrap();
 }
 
 #[fabro_macros::e2e_test(live("DAYTONA_API_KEY"), live("GITHUB_APP_PRIVATE_KEY"))]
@@ -383,7 +383,7 @@ async fn daytona_file_round_trip() {
     env.delete_file(test_path).await.unwrap();
     assert!(!env.file_exists(test_path).await.unwrap());
 
-    env.cleanup().await.unwrap();
+    env.delete().await.unwrap();
 }
 
 #[fabro_macros::e2e_test(live("DAYTONA_API_KEY"), live("GITHUB_APP_PRIVATE_KEY"))]
@@ -408,7 +408,7 @@ async fn daytona_full_lifecycle() {
     assert!(!entries.is_empty());
 
     // Cleanup (deletes sandbox)
-    env.cleanup().await.unwrap();
+    env.delete().await.unwrap();
 }
 
 #[fabro_macros::e2e_test(live("DAYTONA_API_KEY"), live("GITHUB_APP_PRIVATE_KEY"))]
@@ -446,7 +446,7 @@ async fn daytona_snapshot_sandbox() {
     assert_eq!(result.exit_code, Some(0));
     assert!(result.stdout_lossy().contains("ripgrep"));
 
-    env.cleanup().await.unwrap();
+    env.delete().await.unwrap();
 }
 
 #[fabro_macros::e2e_test(live("DAYTONA_API_KEY"), live("GITHUB_APP_PRIVATE_KEY"))]
@@ -498,7 +498,7 @@ async fn daytona_artifact_sync_uploads_and_rewrites_pointer() {
         remote_content.len()
     );
 
-    env.cleanup().await.unwrap();
+    env.delete().await.unwrap();
 }
 
 // ---------------------------------------------------------------------------
@@ -612,7 +612,7 @@ async fn daytona_pipeline_artifact_offload_and_sync() {
         "offloaded value should round-trip through the run store"
     );
 
-    env.cleanup().await.unwrap();
+    env.delete().await.unwrap();
 }
 
 // ---------------------------------------------------------------------------
@@ -823,7 +823,7 @@ async fn daytona_git_checkpoint_remote_emits_events() {
         "checkpoint should have git_commit_sha"
     );
 
-    env.cleanup().await.unwrap();
+    env.delete().await.unwrap();
 }
 
 // ---------------------------------------------------------------------------
@@ -971,7 +971,7 @@ async fn daytona_git_checkpoint_with_shadow_branch() {
         "sandbox commit should have Fabro-Run trailer, got:\n{commit_msg}"
     );
 
-    env.cleanup().await.unwrap();
+    env.delete().await.unwrap();
 }
 
 // ---------------------------------------------------------------------------
@@ -1104,7 +1104,7 @@ async fn daytona_asset_collection() {
         "artifact scratch cache should not be created"
     );
 
-    env.cleanup().await.unwrap();
+    env.delete().await.unwrap();
 }
 
 #[fabro_macros::e2e_test(live("DAYTONA_API_KEY"), live("GITHUB_APP_PRIVATE_KEY"))]
@@ -1123,7 +1123,7 @@ async fn daytona_ssh_access() {
         "ssh_command should contain 'ssh': {ssh_command}",
     );
 
-    env.cleanup().await.unwrap();
+    env.delete().await.unwrap();
 }
 
 #[fabro_macros::e2e_test(live("DAYTONA_API_KEY"), live("GITHUB_APP_PRIVATE_KEY"))]
@@ -1204,7 +1204,7 @@ async fn daytona_clone_private_repo_with_github_app_iat() {
         result.stdout_lossy().trim()
     );
 
-    env.cleanup().await.unwrap();
+    env.delete().await.unwrap();
 }
 
 /// E2E: Verify that repos in an installed org get credentials (needed for
@@ -1390,7 +1390,7 @@ async fn daytona_git_push_run_branch_to_origin() {
         }
     }
 
-    env.cleanup().await.unwrap();
+    env.delete().await.unwrap();
 }
 
 /// Diagnose toolbox proxy staleness after idle time.
@@ -1528,7 +1528,7 @@ async fn daytona_toolbox_idle_diagnostic() {
     }
 
     eprintln!("\n=== PASS: all idle durations survived ===");
-    env.cleanup().await.unwrap();
+    env.delete().await.unwrap();
 }
 
 /// E2E test for `fabro cp` against a live Daytona sandbox.
@@ -1537,7 +1537,7 @@ async fn daytona_toolbox_idle_diagnostic() {
 /// uploads a file, downloads it back, and verifies the round-trip.
 #[fabro_macros::e2e_test(live("DAYTONA_API_KEY"), live("GITHUB_APP_PRIVATE_KEY"))]
 async fn daytona_cp_upload_download_round_trip() {
-    use fabro_sandbox::reconnect::reconnect;
+    use fabro_sandbox::reconnect::reconnect_for_run;
     use fabro_types::RunSandboxInstance;
 
     // 1. Create and initialize a real Daytona sandbox
@@ -1574,7 +1574,7 @@ async fn daytona_cp_upload_download_round_trip() {
         daytona: Some(live_daytona_credentials()),
         ..ProviderAccess::default()
     };
-    let reconnected = reconnect(&record, &access)
+    let reconnected = reconnect_for_run(&record, &access, None, None)
         .await
         .expect("reconnect should succeed");
 
@@ -1632,7 +1632,7 @@ async fn daytona_cp_upload_download_round_trip() {
     );
 
     // 9. Cleanup
-    env.cleanup().await.unwrap();
+    env.delete().await.unwrap();
 }
 
 #[fabro_macros::e2e_test(live("DAYTONA_API_KEY"))]
@@ -1772,7 +1772,7 @@ async fn daytona_computer_use_browser_screenshot() {
     );
 
     // 7. Cleanup
-    env.cleanup().await.unwrap();
+    env.delete().await.unwrap();
 }
 
 #[fabro_macros::e2e_test(live("DAYTONA_API_KEY"))]
@@ -2005,5 +2005,5 @@ async fn daytona_playwright_mcp_sandbox_transport() {
     }
 
     // 8. Cleanup
-    sandbox.cleanup().await.unwrap();
+    sandbox.delete().await.unwrap();
 }

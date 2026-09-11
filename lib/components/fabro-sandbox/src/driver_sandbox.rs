@@ -19,11 +19,10 @@ use std::time::{Duration, Instant};
 use fabro_github::GitHubCredentials;
 use fabro_github::token_source::{InstallationTokenSource, TokenSnapshot};
 use fabro_types::SandboxProviderKind;
-use fabro_util::shell;
 use fabro_util::workspace_glob::WorkspaceGlob;
 use sandbox_driver::{
     DirEntry, EventContext, ExecControls, ExecResult, ExecSpec, ExecStreamingResult, FileKind,
-    GitRetryPolicy, GrepMatch, GrepOptions, LifecycleTimers, PtyOptions, PtySession, PtySize,
+    GitRetryPolicy, GrepMatch, GrepOptions, PtyOptions, PtySession, PtySize,
     Sandbox as DriverHandle, SandboxProvider as DriverProvider, SandboxSource,
     SandboxSpec as DriverSpec, SandboxState, Search as _, StdioProcess, WaitOptions, WalkOptions,
 };
@@ -480,7 +479,7 @@ impl RunSandbox {
     }
 
     /// Bring the sandbox to `Running` with a verified Bash, and learn its
-    /// platform. Shared by initialize and start.
+    /// platform. Shared by initialize and activate.
     async fn make_ready(&self) -> crate::Result<()> {
         sandbox_driver::activate(self.handle()?.as_ref(), &WaitOptions::default()).await?;
         self.learn_platform().await
@@ -883,17 +882,15 @@ impl RunSandbox {
             .and_then(|status| status.web_url)
     }
 
-    /// Idempotent access-time check: a running sandbox is left alone; a
-    /// stopped or paused one is brought back and its Bash verified.
+    /// Brings the sandbox back into use, idempotently: a running sandbox is
+    /// left alone and only its platform is learned when unknown; a stopped
+    /// or paused one is started and its Bash verified. Resume and every
+    /// access-time caller share this one entry point.
     pub async fn activate(&self) -> crate::Result<()> {
         let status = self.handle()?.describe().await?;
         if status.state == SandboxState::Running {
-            return Ok(());
+            return self.learn_platform().await;
         }
-        self.make_ready().await
-    }
-
-    pub async fn start(&self) -> crate::Result<()> {
         self.make_ready().await
     }
 
@@ -901,14 +898,11 @@ impl RunSandbox {
         self.handle()?.stop().await.map_err(crate::Error::from)
     }
 
-    pub async fn delete(&self) -> crate::Result<()> {
-        self.release().await
-    }
-
     /// Releases the sandbox. For a designated host directory this frees the
     /// handle and leaves the directory in place; for an isolated provider it
-    /// removes the sandbox.
-    pub async fn cleanup(&self) -> crate::Result<()> {
+    /// removes the sandbox. A pending sandbox that was never created has
+    /// nothing to release.
+    pub async fn delete(&self) -> crate::Result<()> {
         self.release().await
     }
 
@@ -964,38 +958,11 @@ impl RunSandbox {
         self.workspace.as_ref().and_then(RepoWorkspace::record)
     }
 
-    pub async fn set_autostop_interval(&self, minutes: i32) -> crate::Result<()> {
-        let mut timers = LifecycleTimers::default();
-        timers.auto_stop_after_idle = u64::try_from(minutes)
-            .ok()
-            .filter(|minutes| *minutes > 0)
-            .map(Duration::from_mins);
-        match self.handle()?.set_timers(&timers).await {
-            // A provider without timers has nothing to stop automatically.
-            Ok(()) | Err(sandbox_driver::Error::Unsupported { .. }) => Ok(()),
-            Err(error) => Err(crate::Error::context(
-                "Failed to set sandbox auto-stop",
-                error,
-            )),
-        }
-    }
-
     pub async fn setup_git(&self, intent: &GitSetupIntent) -> crate::Result<Option<GitRunInfo>> {
         if !self.repo_cloned() {
             return Ok(None);
         }
         sandbox::setup_git(self, intent).await.map(Some)
-    }
-
-    pub fn resume_setup_commands(&self, run_branch: &str) -> Vec<String> {
-        if !self.repo_cloned() {
-            return Vec::new();
-        }
-        vec![format!(
-            "git fetch origin {} && git checkout {}",
-            shell::shell_quote(run_branch),
-            shell::shell_quote(run_branch)
-        )]
     }
 
     pub async fn git_push_ref(
@@ -1388,7 +1355,7 @@ mod tests {
 
         sandbox.stop().await.unwrap();
         sandbox.activate().await.unwrap();
-        sandbox.cleanup().await.unwrap();
+        sandbox.delete().await.unwrap();
         assert!(
             dir.path().is_dir(),
             "designated directories survive cleanup"
@@ -1440,7 +1407,7 @@ mod tests {
             Path::new(sandbox.working_directory()),
             workspace.canonicalize().unwrap()
         );
-        sandbox.cleanup().await.unwrap();
+        sandbox.delete().await.unwrap();
         assert!(workspace.is_dir());
     }
 

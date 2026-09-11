@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use axum::extract::ws::{Message as WsMessage, WebSocket, WebSocketUpgrade};
 use fabro_sandbox::{
-    FileKind, ProviderAccess, PtySize, RunSandbox, open_terminal_for_run, reconnect_driver_for_run,
+    FileKind, ProviderAccess, PtySize, RunSandbox, open_terminal_for_run, reconnect_for_run,
 };
 use fabro_types::{RunSandboxInstance, SandboxProviderKind};
 use futures_util::FutureExt;
@@ -735,7 +735,7 @@ async fn reconnect_run_sandbox_instance(
     record: &RunSandboxInstance,
 ) -> Result<RunSandbox, Response> {
     let access = load_provider_access(state).await?;
-    let sandbox = reconnect_driver_for_run(record, &access, Some(*run_id), None)
+    let sandbox = reconnect_for_run(record, &access, Some(*run_id), None)
         .await
         .map_err(|err| {
             let detail = render_with_causes(&err.to_string(), &collect_causes(err.as_ref()));

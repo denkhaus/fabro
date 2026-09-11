@@ -50,10 +50,7 @@ pub use git_policy::{
 };
 pub use provider::{SandboxInventory, SandboxLookupError};
 pub use provider_sandbox::{attach_provider_sandbox, provider_sandbox};
-pub use reconnect::{
-    open_terminal_for_run, reconnect, reconnect_driver_for_run, reconnect_for_run,
-    reconnect_for_run_with_events,
-};
+pub use reconnect::{open_terminal_for_run, reconnect_for_run};
 pub use sandbox::{
     DEFAULT_EXEC_OUTPUT_TAIL_BYTES, GitRunInfo, GitSetupIntent, PushAttempt, PushError, PushReport,
     SandboxFile, SandboxWorkspaceLayout, redacted_output_tail, setup_git,

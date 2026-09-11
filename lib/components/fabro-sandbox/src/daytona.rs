@@ -435,6 +435,6 @@ mod wire_gate {
             );
         };
         checks.await;
-        sandbox.cleanup().await.expect("cleanup");
+        sandbox.delete().await.expect("cleanup");
     }
 }

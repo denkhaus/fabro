@@ -1000,7 +1000,7 @@ async fn run_sandbox_check(
                         warn: true,
                     });
                 }
-                if let Err(err) = sandbox.cleanup().await {
+                if let Err(err) = sandbox.delete().await {
                     checks.push(CheckResult {
                         name: "Sandbox".into(),
                         status: CheckStatus::Error,
@@ -1020,7 +1020,7 @@ async fn run_sandbox_check(
                 true
             }
             Err(err) => {
-                let cleanup_error = sandbox.cleanup().await.err();
+                let cleanup_error = sandbox.delete().await.err();
                 checks.push(CheckResult {
                     name:        "Sandbox".into(),
                     status:      CheckStatus::Error,

@@ -374,7 +374,7 @@ async fn agent_tool_call_latency_through_the_driver() {
     fabro_docker.initialize().await.expect("fabro docker init");
     unpack_fabro(&fabro_docker, &repo).await;
     rows.extend(bench_fabro("fabro Docker (driver-backed)", &fabro_docker, &repo).await);
-    fabro_docker.cleanup().await.expect("fabro docker cleanup");
+    fabro_docker.delete().await.expect("fabro docker cleanup");
 
     let docker_provider = Arc::new(DockerProvider::connect().await.expect("docker connect"));
     let container = docker_provider

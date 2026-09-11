@@ -12,7 +12,7 @@ use fabro_llm::credentials::{CredentialProvider, readiness};
 use fabro_llm::lithos_catalog::Catalog;
 use fabro_sandbox::{
     DaytonaCredentials, ExecResultExt, GitSetupIntent, ProviderAccess, SandboxSpec,
-    reconnect_for_run_with_events,
+    reconnect_for_run,
 };
 use fabro_static::EnvVars;
 use fabro_types::RunSandboxKind;
@@ -433,7 +433,7 @@ pub async fn initialize(
                     DaytonaCredentials::from_api_key(api_key.to_string(), process_env_var)
                 }),
         };
-        let sandbox = reconnect_for_run_with_events(
+        let sandbox = reconnect_for_run(
             &instance,
             &access,
             Some(options.run_options.run_id),
@@ -460,10 +460,8 @@ pub async fn initialize(
     });
 
     if attach_existing {
-        // Resume needs the full provider health check. `activate()` is the
-        // lighter access-time operation used after a run is already active.
         sandbox
-            .start()
+            .activate()
             .await
             .map_err(|e| Error::engine_with_source("Failed to start sandbox", e))?;
     } else {

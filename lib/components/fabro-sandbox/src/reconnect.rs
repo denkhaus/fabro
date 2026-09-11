@@ -9,35 +9,13 @@ use crate::driver::ProviderAccess;
 use crate::driver_sandbox::RunSandbox;
 use crate::provider_sandbox;
 
-/// Reconnect to a sandbox from a saved record.
+/// Reconnect to a run's sandbox from its saved record.
 ///
 /// `access` carries the provider settings and vault credentials the record's
-/// provider needs; the process environment is never consulted.
-pub async fn reconnect(record: &RunSandboxInstance, access: &ProviderAccess) -> Result<RunSandbox> {
-    reconnect_for_run(record, access, None).await
-}
-
+/// provider needs; the process environment is never consulted. `run_id`
+/// narrows the ownership scope to the run when known, and the driver reports
+/// the sandbox's lifecycle from here on through `events`.
 pub async fn reconnect_for_run(
-    record: &RunSandboxInstance,
-    access: &ProviderAccess,
-    run_id: Option<RunId>,
-) -> Result<RunSandbox> {
-    reconnect_for_run_with_events(record, access, run_id, None).await
-}
-
-pub async fn reconnect_for_run_with_events(
-    record: &RunSandboxInstance,
-    access: &ProviderAccess,
-    run_id: Option<RunId>,
-    events: Option<EventContext>,
-) -> Result<RunSandbox> {
-    reconnect_driver_for_run(record, access, run_id, events).await
-}
-
-/// Reconnects as the driver-backed sandbox type, for callers that need a
-/// driver facet fabro's [`Sandbox`](crate::Sandbox) trait does not carry
-/// (VNC, signed previews, leased SSH).
-pub async fn reconnect_driver_for_run(
     record: &RunSandboxInstance,
     access: &ProviderAccess,
     run_id: Option<RunId>,
@@ -84,7 +62,7 @@ pub async fn open_terminal_for_run(
     run_id: Option<RunId>,
     size: PtySize,
 ) -> crate::Result<Box<dyn PtySession>> {
-    let sandbox = reconnect_driver_for_run(record, access, run_id, None)
+    let sandbox = reconnect_for_run(record, access, run_id, None)
         .await
         .map_err(|err| crate::Error::context_anyhow("Failed to reconnect sandbox", err))?;
     sandbox.activate().await?;

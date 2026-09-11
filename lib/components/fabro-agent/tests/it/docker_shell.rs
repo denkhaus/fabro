@@ -60,7 +60,7 @@ async fn shell_reports_real_docker_process_outcome() {
     )
     .await;
     sandbox
-        .cleanup()
+        .delete()
         .await
         .expect("docker cleanup should succeed");
 

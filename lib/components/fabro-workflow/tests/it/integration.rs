@@ -13727,7 +13727,7 @@ async fn asset_collection_docker_sandbox() {
         "artifact scratch cache should not be created"
     );
 
-    sandbox.cleanup().await.unwrap();
+    sandbox.delete().await.unwrap();
 }
 
 #[tokio::test]

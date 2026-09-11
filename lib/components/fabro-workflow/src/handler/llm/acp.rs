@@ -77,9 +77,8 @@ fn parse_refresh_enabled(raw: Option<&str>) -> bool {
     )
 }
 
-/// Parse the refresh-ahead loop interval. `None` disables the loop (explicit
-/// `0`, mirroring the codebase's `set_autostop_interval` "0 to disable"
-/// convention). Unset/empty or an unparsable value falls back to the default.
+/// Parse the refresh-ahead loop interval. `None` disables the loop (an
+/// explicit `0`). Unset/empty or an unparsable value falls back to the default.
 fn parse_refresh_interval(raw: Option<&str>) -> Option<Duration> {
     match raw.map(str::trim) {
         None | Some("") => Some(REFRESH_INTERVAL_DEFAULT),

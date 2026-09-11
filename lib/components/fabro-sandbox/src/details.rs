@@ -11,7 +11,7 @@ pub async fn sandbox_details(
     access: &ProviderAccess,
     run_id: Option<RunId>,
 ) -> Result<SandboxDetails> {
-    let sandbox = reconnect::reconnect_driver_for_run(record, access, run_id, None).await?;
+    let sandbox = reconnect::reconnect_for_run(record, access, run_id, None).await?;
     let status = sandbox.handle()?.describe().await.map_err(|err| {
         anyhow::anyhow!(
             "Failed to describe {} sandbox '{}': {err}",

@@ -1181,7 +1181,7 @@ async fn reconnect_run_sandbox(
         .provider_access()
         .await
         .map_err(|err| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string()))?;
-    let sandbox = reconnect_for_run(&record, &access, Some(*run_id))
+    let sandbox = reconnect_for_run(&record, &access, Some(*run_id), None)
         .await
         .map_err(|err| ApiError::new(StatusCode::CONFLICT, err.to_string()))?;
     sandbox

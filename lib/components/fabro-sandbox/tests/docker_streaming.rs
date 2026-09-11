@@ -92,7 +92,7 @@ async fn streaming_timeout_terminates_docker_exec_before_returning() {
         .await
         .expect("process probe should run");
     sandbox
-        .cleanup()
+        .delete()
         .await
         .expect("docker cleanup should succeed");
 
@@ -144,7 +144,7 @@ async fn streaming_command_receives_exact_stdin_and_eof() {
         .expect("injection probe should run");
 
     sandbox
-        .cleanup()
+        .delete()
         .await
         .expect("docker cleanup should succeed");
 
@@ -207,7 +207,7 @@ async fn cloned_docker_sandbox_uses_repos_checkout_and_workspace_symlink() {
         .await
         .expect("layout verification command should run");
     sandbox
-        .cleanup()
+        .delete()
         .await
         .expect("docker cleanup should succeed");
 
@@ -289,7 +289,7 @@ async fn docker_runs_clean_bash_through_both_command_paths() {
         .expect("streaming command should run");
 
     sandbox
-        .cleanup()
+        .delete()
         .await
         .expect("docker cleanup should succeed");
 
@@ -363,7 +363,7 @@ async fn docker_glob_matches_patterns_containing_a_path_separator() {
     let recursive = sandbox.glob("**/SKILL.md", Some("skills")).await;
 
     sandbox
-        .cleanup()
+        .delete()
         .await
         .expect("docker cleanup should succeed");
 
@@ -450,7 +450,7 @@ async fn docker_runtime_directory_is_private_and_outside_workspace() {
     let readback = sandbox.read_file_text(&blob_path).await;
 
     sandbox
-        .cleanup()
+        .delete()
         .await
         .expect("docker cleanup should succeed");
 

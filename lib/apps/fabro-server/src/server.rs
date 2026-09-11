@@ -2775,7 +2775,7 @@ async fn delete_run_sandbox_resource(
         .provider_access()
         .await
         .map_err(|err| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string()))?;
-    let sandbox = match reconnect_for_run(&record, &access, Some(id)).await {
+    let sandbox = match reconnect_for_run(&record, &access, Some(id), None).await {
         Ok(sandbox) => sandbox,
         Err(err) if force || delete_started => {
             tracing::warn!(

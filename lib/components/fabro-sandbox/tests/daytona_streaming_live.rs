@@ -43,7 +43,7 @@ mod daytona_streaming_live {
         sandbox.initialize().await?;
 
         let smoke_result = run_smoke(Arc::clone(&sandbox)).await;
-        let cleanup_result = sandbox.cleanup().await.context("clean up Daytona sandbox");
+        let cleanup_result = sandbox.delete().await.context("clean up Daytona sandbox");
 
         smoke_result?;
         cleanup_result?;
@@ -144,7 +144,7 @@ mod daytona_streaming_live {
         }
         .await;
 
-        let cleanup_result = sandbox.cleanup().await.context("clean up Daytona sandbox");
+        let cleanup_result = sandbox.delete().await.context("clean up Daytona sandbox");
 
         checks?;
         cleanup_result?;
@@ -182,7 +182,7 @@ mod daytona_streaming_live {
             .await
             .context("describe sandbox")?
             .labels;
-        let cleanup_result = sandbox.cleanup().await.context("clean up Daytona sandbox");
+        let cleanup_result = sandbox.delete().await.context("clean up Daytona sandbox");
 
         ensure_eq(
             &labels.get("sh.fabro.managed").map(String::as_str),
@@ -246,7 +246,7 @@ mod daytona_streaming_live {
                 None,
             )
             .await?;
-        let cleanup_result = sandbox.cleanup().await.context("clean up Daytona sandbox");
+        let cleanup_result = sandbox.delete().await.context("clean up Daytona sandbox");
 
         ensure!(
             result.success(),
@@ -292,7 +292,7 @@ mod daytona_streaming_live {
         sandbox.initialize().await?;
 
         let glob_result = run_glob_checks(&sandbox).await;
-        let cleanup_result = sandbox.cleanup().await.context("clean up Daytona sandbox");
+        let cleanup_result = sandbox.delete().await.context("clean up Daytona sandbox");
 
         glob_result?;
         cleanup_result?;

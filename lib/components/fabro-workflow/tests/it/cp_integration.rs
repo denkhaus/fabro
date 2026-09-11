@@ -14,7 +14,7 @@
     reason = "This integration test stages sandbox fixtures with sync std::fs."
 )]
 
-use fabro_sandbox::reconnect::reconnect;
+use fabro_sandbox::reconnect::reconnect_for_run;
 use fabro_sandbox::{CloneRequest, ProviderAccess, provider_sandbox};
 use fabro_types::{RunSandboxInstance, RunSandboxRuntime, SandboxProviderKind};
 use sandbox_driver::{SandboxSource, SandboxSpec};
@@ -50,7 +50,7 @@ async fn local_cp_upload_download_round_trip() {
     let scratch = tempfile::tempdir().unwrap();
 
     let record = local_record(sandbox_dir.path());
-    let sandbox = reconnect(&record, &ProviderAccess::default())
+    let sandbox = reconnect_for_run(&record, &ProviderAccess::default(), None, None)
         .await
         .expect("reconnect local");
 
@@ -83,7 +83,7 @@ async fn local_cp_binary_round_trip() {
     let scratch = tempfile::tempdir().unwrap();
 
     let record = local_record(sandbox_dir.path());
-    let sandbox = reconnect(&record, &ProviderAccess::default())
+    let sandbox = reconnect_for_run(&record, &ProviderAccess::default(), None, None)
         .await
         .expect("reconnect local");
 
@@ -112,7 +112,7 @@ async fn local_cp_creates_parent_dirs() {
     let scratch = tempfile::tempdir().unwrap();
 
     let record = local_record(sandbox_dir.path());
-    let sandbox = reconnect(&record, &ProviderAccess::default())
+    let sandbox = reconnect_for_run(&record, &ProviderAccess::default(), None, None)
         .await
         .expect("reconnect local");
 
@@ -237,7 +237,7 @@ async fn docker_cp_upload_download_round_trip() {
     let scratch = tempfile::tempdir().unwrap();
 
     let record = docker_record(&container.id);
-    let sandbox = reconnect(&record, &ProviderAccess::default())
+    let sandbox = reconnect_for_run(&record, &ProviderAccess::default(), None, None)
         .await
         .expect("reconnect docker");
 
@@ -268,7 +268,7 @@ async fn docker_cp_binary_round_trip() {
     let scratch = tempfile::tempdir().unwrap();
 
     let record = docker_record(&container.id);
-    let sandbox = reconnect(&record, &ProviderAccess::default())
+    let sandbox = reconnect_for_run(&record, &ProviderAccess::default(), None, None)
         .await
         .expect("reconnect docker");
 
@@ -297,7 +297,7 @@ async fn docker_cp_creates_parent_dirs() {
     let scratch = tempfile::tempdir().unwrap();
 
     let record = docker_record(&container.id);
-    let sandbox = reconnect(&record, &ProviderAccess::default())
+    let sandbox = reconnect_for_run(&record, &ProviderAccess::default(), None, None)
         .await
         .expect("reconnect docker");
 
