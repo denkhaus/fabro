@@ -2,16 +2,15 @@ use std::fmt::Write;
 use std::time::Duration;
 
 use fabro_github::token_source::TokenSnapshot;
-pub use fabro_types::run_event::GitCredentialAction as RemoteCredentialAction;
 use fabro_util::shell;
-use sandbox_driver::{Git as _, GitCheckoutOptions, GitFailureKind, GitPushOptions, Termination};
+use sandbox_driver::{Git as _, GitCheckoutOptions, GitPushOptions, Termination};
 use serde::{Deserialize, Serialize};
 use tokio::time;
 
+use crate::credentials::{self, RepoCredentials};
 use crate::driver_sandbox::RunSandbox;
 use crate::exec::ExecResultExt;
 use crate::git_retry::{self, CredentialContext, GitRetryReason, RetryPlan};
-use crate::push_credentials::{CredentialLease, PushCredentialState, RefreshErrorKind};
 
 /// Git command prefix that disables background maintenance.
 pub(crate) const GIT: &str = "git -c maintenance.auto=0 -c gc.auto=0";
@@ -158,56 +157,6 @@ pub struct SandboxFile {
     pub size:          u64,
 }
 
-/// Outcome of
-/// [`RunSandbox::refresh_push_credentials`](crate::RunSandbox::refresh_push_credentials):
-/// what this call did to the remote, and the non-secret description of the
-/// token embedded in it. `token` is `None` only when `action` is
-/// [`RemoteCredentialAction::None`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RefreshOutcome {
-    /// No managed credentials exist for this sandbox.
-    None,
-    /// The remote already carried this token generation.
-    Unchanged(TokenSnapshot),
-    /// The remote was updated to carry this token generation.
-    Embedded(TokenSnapshot),
-}
-
-impl RefreshOutcome {
-    /// No managed credentials to refresh.
-    #[must_use]
-    pub const fn none() -> Self {
-        Self::None
-    }
-
-    #[must_use]
-    pub const fn unchanged(token: TokenSnapshot) -> Self {
-        Self::Unchanged(token)
-    }
-
-    #[must_use]
-    pub const fn embedded(token: TokenSnapshot) -> Self {
-        Self::Embedded(token)
-    }
-
-    #[must_use]
-    pub const fn action(self) -> RemoteCredentialAction {
-        match self {
-            Self::None => RemoteCredentialAction::None,
-            Self::Unchanged(_) => RemoteCredentialAction::Unchanged,
-            Self::Embedded(_) => RemoteCredentialAction::Embedded,
-        }
-    }
-
-    #[must_use]
-    pub const fn token(self) -> Option<TokenSnapshot> {
-        match self {
-            Self::None => None,
-            Self::Unchanged(token) | Self::Embedded(token) => Some(token),
-        }
-    }
-}
-
 pub(crate) fn resolve_path(path: &str, working_dir: &str) -> String {
     if std::path::Path::new(path).is_absolute() {
         path.to_string()
@@ -337,21 +286,18 @@ pub(crate) async fn fetch_source_run_ref(
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PushAttempt {
     /// 1-based attempt number within this operation.
-    pub attempt:           u32,
-    pub started_at:        chrono::DateTime<chrono::Utc>,
-    pub success:           bool,
+    pub attempt:          u32,
+    pub started_at:       chrono::DateTime<chrono::Utc>,
+    pub success:          bool,
     /// The classifier's verdict for a failed attempt — recorded on the
     /// terminal attempt too; whether a retry actually followed is positional
     /// (every entry except the last).
-    pub retry_reason:      Option<GitRetryReason>,
+    pub retry_reason:     Option<GitRetryReason>,
     /// Redacted, bounded output tail; failed attempts only.
-    pub exec_output_tail:  Option<fabro_types::ExecOutputTail>,
-    /// The token embedded in the remote during this attempt.
-    pub token:             Option<TokenSnapshot>,
-    /// What `ensure_embedded` did to the remote this attempt.
-    pub credential_action: Option<RemoteCredentialAction>,
-    /// A mint or `set-url` failure this attempt pushed through.
-    pub refresh_error:     Option<RefreshErrorKind>,
+    pub exec_output_tail: Option<fabro_types::ExecOutputTail>,
+    /// The token this attempt pushed with; `None` without managed
+    /// credentials.
+    pub token:            Option<TokenSnapshot>,
 }
 
 /// The attempt history of one push operation.
@@ -387,30 +333,17 @@ fn classify_push_error(error: &crate::Error, cred: CredentialContext) -> Option<
     git_retry::classify_driver_failure(driver, cred)
 }
 
-/// Whether a failed push attempt was rejected as unauthenticated, the shape
-/// a drifted or missing embedded token also produces.
-fn push_failure_looks_auth_shaped(error: &crate::Error) -> bool {
-    matches!(
-        error.driver(),
-        Some(sandbox_driver::Error::Git(failure)) if failure.kind() == GitFailureKind::AuthRejected
-    )
-}
-
 /// Pushes a refspec to origin through the driver's git facet, retrying per
-/// `plan` with one pinned credential generation for the whole operation.
-/// `credentials` is the provider's push-credential state plus the origin
-/// URL; `None` pushes with whatever the remote already carries (the local
-/// sandbox, or a workspace without managed credentials).
+/// `plan` with one token for the whole operation. `credentials` is the
+/// checkout's managed credentials; `None` pushes with whatever the checkout
+/// already has (the local sandbox, or a workspace without a GitHub App).
 #[tracing::instrument(name = "git_op", skip_all, fields(op = "push"))]
 pub(crate) async fn git_push(
     sandbox: &RunSandbox,
-    credentials: Option<(&PushCredentialState, &str)>,
+    credentials: Option<&RepoCredentials>,
     refspec: &str,
     plan: &RetryPlan,
 ) -> Result<PushReport, PushError> {
-    use CredentialContext;
-    use CredentialLease;
-
     let start = time::Instant::now();
     let deadline = plan.effective_deadline(start);
     let git = match sandbox.git() {
@@ -424,37 +357,38 @@ pub(crate) async fn git_push(
     };
     let repo = sandbox.working_directory().to_owned();
 
-    // The lease pins one token generation and owns the embed mutex for the
-    // whole operation; no concurrent refresh can re-embed mid-operation, and
-    // no attempt can cross the refresh margin and restart the replication
-    // clock.
-    let mut lease: Option<(CredentialLease<'_>, &str)> = match credentials {
-        Some((state, origin_url)) => match match deadline {
-            Some(deadline) => match time::timeout_at(deadline, state.lease()).await {
-                Ok(result) => result,
-                Err(_) => {
-                    return Err(push_deadline_error(
-                        Vec::new(),
-                        "while acquiring credentials",
-                    ));
+    // One token for the whole operation. A retry after replication lag must
+    // present the same token, because replication of a given token only
+    // makes progress, and a fresh mint would restart that clock.
+    let token = match credentials {
+        Some(credentials) => {
+            let resolved = match deadline {
+                Some(deadline) => match time::timeout_at(deadline, credentials.resolve()).await {
+                    Ok(resolved) => resolved,
+                    Err(_) => {
+                        return Err(push_deadline_error(
+                            Vec::new(),
+                            "while acquiring credentials",
+                        ));
+                    }
+                },
+                None => credentials.resolve().await,
+            };
+            match resolved {
+                Ok(token) => token,
+                Err(error) => {
+                    return Err(PushError {
+                        report: PushReport::default(),
+                        error,
+                    });
                 }
-            },
-            None => state.lease().await,
-        } {
-            Ok(lease) => Some((lease, origin_url)),
-            Err(error) => {
-                return Err(PushError {
-                    report: PushReport::default(),
-                    error,
-                });
             }
-        },
+        }
         None => None,
     };
+    let snapshot = token.as_ref().map(|token| token.snapshot);
 
     let mut attempts: Vec<PushAttempt> = Vec::new();
-    let mut force_reembed = false;
-    let mut drift_repaired = false;
     let label = format!("git push origin {refspec}");
 
     loop {
@@ -466,43 +400,11 @@ pub(crate) async fn git_push(
         if attempt_timeout.is_zero() {
             return Err(push_deadline_error(attempts, "before the next attempt"));
         }
-        let attempt_deadline = time::Instant::now() + attempt_timeout;
-        let (token, credential_action, refresh_error) = match lease.as_mut() {
-            Some((lease, origin_url)) => {
-                let ensured = match time::timeout_at(
-                    attempt_deadline,
-                    lease.ensure_embedded(sandbox, origin_url, force_reembed),
-                )
-                .await
-                {
-                    Ok(Ok(ensured)) => ensured,
-                    Ok(Err(error)) => {
-                        return Err(PushError {
-                            report: PushReport { attempts },
-                            error,
-                        });
-                    }
-                    Err(_) => {
-                        return Err(push_deadline_error(
-                            attempts,
-                            "while refreshing credentials",
-                        ));
-                    }
-                };
-                force_reembed = false;
-                (ensured.token, Some(ensured.action), ensured.refresh_error)
-            }
-            None => (None, None, None),
-        };
-
-        let remaining = attempt_deadline.saturating_duration_since(time::Instant::now());
-        if remaining.is_zero() {
-            return Err(push_deadline_error(attempts, "before running git push"));
-        }
         let mut options = GitPushOptions::default();
         options.remote = Some("origin".to_owned());
         options.refspec = Some(refspec.to_owned());
-        options.timeout = Some(remaining);
+        options.timeout = Some(attempt_timeout);
+        options.credentials = token.as_ref().map(credentials::git_credentials);
         let push_result = git
             .push(&repo, &options)
             .await
@@ -516,29 +418,19 @@ pub(crate) async fn git_push(
                     success: true,
                     retry_reason: None,
                     exec_output_tail: None,
-                    token,
-                    credential_action,
-                    refresh_error,
+                    token: snapshot,
                 });
                 tracing::info!(
                     refspec = %refspec,
                     attempt = attempt_number,
-                    token_generation = token.map(|token| token.generation),
-                    token_age_ms = token.and_then(|token| token.age_ms()),
+                    token_generation = snapshot.map(|token| token.generation),
+                    token_age_ms = snapshot.and_then(|token| token.age_ms()),
                     "Pushed git ref to origin"
                 );
                 return Ok(PushReport { attempts });
             }
             Err(error) => {
-                // Drift recovery: the tracked generation is local belief, and
-                // agent code inside the sandbox can rewrite `origin`. The
-                // first auth/not-found failure earns one forced re-embed of
-                // the pinned token, inside the same retry budget.
-                if !drift_repaired && lease.is_some() && push_failure_looks_auth_shaped(&error) {
-                    drift_repaired = true;
-                    force_reembed = true;
-                }
-                let cred = CredentialContext::from_snapshot(token.as_ref());
+                let cred = CredentialContext::from_snapshot(snapshot.as_ref());
                 let retry_reason = classify_push_error(&error, cred);
                 attempts.push(PushAttempt {
                     attempt: attempt_number,
@@ -546,9 +438,7 @@ pub(crate) async fn git_push(
                     success: false,
                     retry_reason,
                     exec_output_tail: error.default_redacted_output_tail(),
-                    token,
-                    credential_action,
-                    refresh_error,
+                    token: snapshot,
                 });
 
                 let exhausted = attempt_number >= plan.max_attempts.max(1);
@@ -571,8 +461,8 @@ pub(crate) async fn git_push(
                     attempt = attempt_number,
                     max_attempts = plan.max_attempts,
                     reason = %reason,
-                    token_generation = token.map(|token| token.generation),
-                    token_age_ms = token.and_then(|token| token.age_ms()),
+                    token_generation = snapshot.map(|token| token.generation),
+                    token_age_ms = snapshot.and_then(|token| token.age_ms()),
                     delay_ms = u64::try_from(delay.as_millis()).unwrap_or(u64::MAX),
                     "Git push failed, retrying with the same token"
                 );
@@ -606,8 +496,8 @@ mod push_tests {
     use tokio::sync::Mutex as AsyncMutex;
 
     use super::*;
+    use crate::credentials::RepoCredentials;
     use crate::git_retry::{GitRetryReason, RetryPlan};
-    use crate::push_credentials::{PushCredentialState, RefreshErrorKind};
 
     const ORIGIN: &str = "https://github.com/fabro-testing/repo";
     const REFSPEC: &str = "refs/heads/fabro/run/01M0DH033P2XSTHAGVBHG6922F";
@@ -628,9 +518,9 @@ mod push_tests {
         result
     }
 
-    /// A run sandbox over a scripted driver double: `git push` answers come
-    /// from a script, `git remote set-url` succeeds unless scripted
-    /// otherwise, and every command is recorded.
+    /// A run sandbox over a scripted driver double. The driver's push reads
+    /// `origin`'s URL when it carries credentials and then runs `git push`;
+    /// push answers come from a script, and every command is recorded.
     struct ScriptedGitSandbox {
         run:    RunSandbox,
         driver: Arc<ScriptedSandbox>,
@@ -638,23 +528,17 @@ mod push_tests {
 
     impl ScriptedGitSandbox {
         fn new(push_results: Vec<ExecResult>) -> Self {
-            Self::with_set_url_results(push_results, Vec::new())
-        }
-
-        fn with_set_url_results(
-            push_results: Vec<ExecResult>,
-            set_url_results: Vec<ExecResult>,
-        ) -> Self {
             let driver = Arc::new(ScriptedSandbox::with_id_and_working_dir(
                 "scripted-git",
                 "/workspace",
             ));
             let pushes = Mutex::new(VecDeque::from(push_results));
-            let set_urls = Mutex::new(VecDeque::from(set_url_results));
             driver.scripted_exec().respond_with(move |spec| {
                 let script = spec.args.last().map(String::as_str).unwrap_or_default();
-                if script.contains("remote set-url") {
-                    return Some(set_urls.lock().unwrap().pop_front().unwrap_or_else(ok_exec));
+                if script.contains("'remote' 'get-url' 'origin'") {
+                    let mut url = ok_exec();
+                    url.stdout = format!("{ORIGIN}\n").into_bytes();
+                    return Some(url);
                 }
                 assert!(
                     script.contains("'push' 'origin'"),
@@ -676,17 +560,28 @@ mod push_tests {
             self.driver.scripted_exec().commands()
         }
 
-        fn push_count(&self) -> usize {
-            self.commands()
-                .iter()
-                .filter(|command| command.contains("'push' 'origin'"))
-                .count()
-        }
-
-        fn set_url_commands(&self) -> Vec<String> {
+        /// The `git push` commands that ran, in order.
+        fn pushes(&self) -> Vec<String> {
             self.commands()
                 .into_iter()
-                .filter(|command| command.contains("remote set-url"))
+                .filter(|command| command.contains("'push' 'origin'"))
+                .collect()
+        }
+
+        fn push_count(&self) -> usize {
+            self.pushes().len()
+        }
+
+        /// The token each push carried in its per-call rewrite; `None` for
+        /// a push without credentials.
+        fn push_tokens(&self) -> Vec<Option<String>> {
+            self.pushes()
+                .iter()
+                .map(|push| {
+                    let start = push.find("x-access-token:")? + "x-access-token:".len();
+                    let end = push[start..].find('@')? + start;
+                    Some(push[start..end].to_owned())
+                })
                 .collect()
         }
     }
@@ -702,8 +597,8 @@ mod push_tests {
     }
 
     impl ScriptedMinter {
-        fn new(script: Vec<MintAction>) -> std::sync::Arc<Self> {
-            std::sync::Arc::new(Self {
+        fn new(script: Vec<MintAction>) -> Arc<Self> {
+            Arc::new(Self {
                 calls:  AtomicUsize::new(0),
                 script: AsyncMutex::new(script.into()),
             })
@@ -741,25 +636,23 @@ mod push_tests {
         }
     }
 
-    fn minting_state(
-        script: Vec<MintAction>,
-    ) -> (PushCredentialState, std::sync::Arc<ScriptedMinter>) {
+    fn minting_credentials(script: Vec<MintAction>) -> (RepoCredentials, Arc<ScriptedMinter>) {
         let minter = ScriptedMinter::new(script);
         let source = installation_token_source(
             "fabro-testing/repo",
-            std::sync::Arc::clone(&minter) as std::sync::Arc<dyn InstallationTokenMinter>,
+            Arc::clone(&minter) as Arc<dyn InstallationTokenMinter>,
         );
-        (PushCredentialState::new(Some(source)), minter)
+        (RepoCredentials::new(Some(source)), minter)
     }
 
-    async fn seed_clone_token(state: &PushCredentialState) {
-        let clone_token = state
-            .source()
-            .expect("state has a source")
+    /// Mint the clone token first, the way `initialize` does, so the push
+    /// resolves the cached token instead of minting one.
+    async fn seed_clone_token(credentials: &RepoCredentials) {
+        credentials
             .mint_for_clone()
             .await
-            .expect("clone mint succeeds");
-        state.record_embedded(clone_token).await;
+            .expect("clone mint succeeds")
+            .expect("managed credentials mint");
     }
 
     /// Regression for run `01M0DH033P2XSTHAGVBHG6922F` (the push variant of
@@ -769,7 +662,7 @@ mod push_tests {
     /// token only makes progress — and recover inside the plan's budget.
     #[tokio::test(start_paused = true)]
     async fn push_not_found_after_a_successful_mint_is_retried_with_the_same_token() {
-        let (state, minter) = minting_state(vec![MintAction::Token(
+        let (credentials, minter) = minting_credentials(vec![MintAction::Token(
             "ghs_gen1",
             chrono::Duration::minutes(60),
         )]);
@@ -781,7 +674,7 @@ mod push_tests {
 
         let report = git_push(
             &sandbox.run,
-            Some((&state, ORIGIN)),
+            Some(&credentials),
             REFSPEC,
             &RetryPlan::checkpoint_push(),
         )
@@ -798,21 +691,20 @@ mod push_tests {
             Some(GitRetryReason::TokenReplication)
         );
         assert!(report.attempts[0].exec_output_tail.is_some());
-        assert_eq!(
-            report.attempts[0].credential_action,
-            Some(RemoteCredentialAction::Embedded),
-            "first attempt embeds the resolved token"
-        );
         assert!(report.attempts[2].success);
         assert!(report.attempts[2].exec_output_tail.is_none());
-        assert_eq!(sandbox.push_count(), 3);
+        assert_eq!(
+            sandbox.push_tokens(),
+            vec![Some("ghs_gen1".to_owned()); 3],
+            "every attempt presents the same token"
+        );
     }
 
     /// The publish plan gives the terminal push a real budget: four
     /// replication-lag failures still recover on the fifth attempt.
     #[tokio::test(start_paused = true)]
     async fn publish_plan_survives_four_not_found_failures() {
-        let (state, minter) = minting_state(vec![MintAction::Token(
+        let (credentials, minter) = minting_credentials(vec![MintAction::Token(
             "ghs_gen1",
             chrono::Duration::minutes(60),
         )]);
@@ -826,7 +718,7 @@ mod push_tests {
 
         let report = git_push(
             &sandbox.run,
-            Some((&state, ORIGIN)),
+            Some(&credentials),
             REFSPEC,
             &RetryPlan::publish_push(),
         )
@@ -845,10 +737,10 @@ mod push_tests {
     #[tokio::test(start_paused = true)]
     async fn token_resolved_just_above_the_margin_stays_pinned_through_retries() {
         let ttl = REFRESH_MARGIN + Duration::from_secs(5);
-        let (state, minter) = minting_state(vec![MintAction::Token(
-            "ghs_gen1",
-            chrono::Duration::from_std(ttl).unwrap(),
-        )]);
+        let (credentials, minter) = minting_credentials(vec![
+            MintAction::Token("ghs_gen1", chrono::Duration::from_std(ttl).unwrap()),
+            MintAction::Token("ghs_gen2", chrono::Duration::minutes(60)),
+        ]);
         let sandbox = ScriptedGitSandbox::new(vec![
             failed_exec("remote: Repository not found."),
             failed_exec("remote: Repository not found."),
@@ -857,39 +749,32 @@ mod push_tests {
 
         let report = git_push(
             &sandbox.run,
-            Some((&state, ORIGIN)),
+            Some(&credentials),
             REFSPEC,
             &RetryPlan::checkpoint_push(),
         )
         .await
-        .expect("push should recover");
+        .expect("push recovers");
 
-        assert_eq!(minter.calls(), 1, "no mid-operation mint");
-        let generations: Vec<u64> = report
-            .attempts
-            .iter()
-            .map(|attempt| attempt.token.expect("token recorded").generation)
-            .collect();
-        assert_eq!(generations, vec![1, 1, 1]);
+        assert_eq!(minter.calls(), 1, "the operation never re-resolves");
+        assert_eq!(sandbox.push_tokens(), vec![Some("ghs_gen1".to_owned()); 3]);
+        assert!(
+            report
+                .attempts
+                .iter()
+                .all(|attempt| attempt.token.map(|token| token.generation) == Some(1))
+        );
     }
 
     #[tokio::test(start_paused = true)]
     async fn static_credential_auth_failure_fails_fast() {
-        let source = InstallationTokenSource::for_origin(
-            &fabro_github::GitHubCredentials::Pat("ghp_pat".to_string()),
-            ORIGIN,
-            serde_json::json!({ "contents": "write" }),
-        )
-        .unwrap();
-        let state = PushCredentialState::new(Some(source));
-        seed_clone_token(&state).await;
-        let sandbox = ScriptedGitSandbox::new(vec![failed_exec(
-            "fatal: Authentication failed for 'https://github.com/fabro-testing/repo'",
-        )]);
+        let credentials =
+            RepoCredentials::new(Some(InstallationTokenSource::pat("ghp_static".to_owned())));
+        let sandbox = ScriptedGitSandbox::new(vec![failed_exec("remote: Repository not found.")]);
 
         let push_error = git_push(
             &sandbox.run,
-            Some((&state, ORIGIN)),
+            Some(&credentials),
             REFSPEC,
             &RetryPlan::publish_push(),
         )
@@ -898,221 +783,114 @@ mod push_tests {
 
         assert_eq!(push_error.report.attempts.len(), 1);
         assert_eq!(push_error.report.attempts[0].retry_reason, None);
-        assert!(push_error.report.attempts[0].token.unwrap().is_static());
+        assert_eq!(
+            push_error.report.attempts[0]
+                .token
+                .map(|token| token.generation),
+            Some(0)
+        );
+        assert_eq!(sandbox.push_tokens(), vec![Some("ghp_static".to_owned())]);
     }
 
-    /// Clone seeding closes the "nothing was ever embedded" hole: when the
-    /// first refresh mint fails, the push falls back to the clone token
-    /// recorded as last-embedded instead of aborting.
+    /// A refresh that fails while the cached token is still valid pushes
+    /// with the cached token.
     #[tokio::test(start_paused = true)]
-    async fn mint_failure_falls_back_to_the_clone_token() {
-        let (state, minter) = minting_state(vec![
-            MintAction::Token("ghs_clone", chrono::Duration::minutes(5)),
-            // The clone token is inside the margin, so lease acquisition
-            // re-mints and fails.
-            MintAction::Error("mint failed"),
+    async fn mint_failure_falls_back_to_the_cached_token() {
+        // The clone token is already inside the refresh margin, so the
+        // push's resolve tries to re-mint and fails.
+        let (credentials, minter) = minting_credentials(vec![
+            MintAction::Token(
+                "ghs_clone",
+                chrono::Duration::from_std(
+                    REFRESH_MARGIN
+                        .checked_sub(Duration::from_mins(1))
+                        .expect("the margin is longer than a minute"),
+                )
+                .unwrap(),
+            ),
+            MintAction::Error("github unavailable"),
         ]);
-        seed_clone_token(&state).await;
+        seed_clone_token(&credentials).await;
         let sandbox = ScriptedGitSandbox::new(vec![ok_exec()]);
 
         let report = git_push(
             &sandbox.run,
-            Some((&state, ORIGIN)),
+            Some(&credentials),
             REFSPEC,
             &RetryPlan::checkpoint_push(),
         )
         .await
-        .expect("push proceeds with the still-valid clone token");
+        .expect("the cached token still pushes");
 
-        assert_eq!(minter.calls(), 2);
-        let attempt = &report.attempts[0];
-        assert!(attempt.success);
-        assert_eq!(attempt.refresh_error, Some(RefreshErrorKind::Mint));
+        assert_eq!(minter.calls(), 2, "the push tried to refresh once");
+        assert_eq!(sandbox.push_tokens(), vec![Some("ghs_clone".to_owned())]);
         assert_eq!(
-            attempt.token.expect("fallback token recorded").generation,
-            1,
-            "attempts classify against the embedded clone token, never None"
-        );
-        assert_eq!(
-            attempt.credential_action,
-            Some(RemoteCredentialAction::Unchanged)
+            report.attempts[0].token.map(|token| token.generation),
+            Some(1)
         );
     }
 
     #[tokio::test(start_paused = true)]
-    async fn acquisition_fails_when_mint_fails_and_nothing_was_embedded() {
-        let (state, _minter) = minting_state(vec![MintAction::Error("mint failed")]);
+    async fn mint_failure_without_a_cached_token_fails_before_any_push() {
+        let (credentials, minter) =
+            minting_credentials(vec![MintAction::Error("github unavailable")]);
         let sandbox = ScriptedGitSandbox::new(vec![]);
 
         let push_error = git_push(
             &sandbox.run,
-            Some((&state, ORIGIN)),
+            Some(&credentials),
             REFSPEC,
             &RetryPlan::checkpoint_push(),
         )
         .await
-        .expect_err("there is nothing to push with");
+        .expect_err("no token to push with");
 
         assert!(push_error.report.attempts.is_empty());
-        assert!(push_error.error.to_string().contains("token_mint_failed"));
         assert_eq!(sandbox.push_count(), 0);
-    }
-
-    /// Late-mint recovery: the fallback push fails on the expired-ish old
-    /// token, a later attempt's resolve retry succeeds, the target embeds,
-    /// and the push recovers — all inside one operation's budget.
-    #[tokio::test(start_paused = true)]
-    async fn late_mint_recovery_lands_the_target_inside_the_operation() {
-        let (state, minter) = minting_state(vec![
-            MintAction::Token("ghs_gen1", chrono::Duration::minutes(5)),
-            MintAction::Error("mint failed"),
-            MintAction::Token("ghs_gen2", chrono::Duration::minutes(60)),
-        ]);
-        seed_clone_token(&state).await;
-        let sandbox = ScriptedGitSandbox::new(vec![
-            failed_exec("fatal: Authentication failed for 'https://github.com'"),
-            ok_exec(),
-        ]);
-
-        let report = git_push(
-            &sandbox.run,
-            Some((&state, ORIGIN)),
-            REFSPEC,
-            &RetryPlan::checkpoint_push(),
-        )
-        .await
-        .expect("late mint should recover the push");
-
-        assert_eq!(minter.calls(), 3);
-        let first = &report.attempts[0];
-        assert_eq!(first.refresh_error, Some(RefreshErrorKind::Mint));
-        assert_eq!(first.token.unwrap().generation, 1);
-        let second = &report.attempts[1];
-        assert!(second.success);
-        assert_eq!(second.refresh_error, None);
-        assert_eq!(second.token.unwrap().generation, 2);
-        assert_eq!(
-            second.credential_action,
-            Some(RemoteCredentialAction::Embedded),
-            "the report shows the single generation transition"
+        assert_eq!(minter.calls(), 1);
+        assert!(
+            push_error
+                .error
+                .to_string()
+                .contains("Failed to refresh GitHub App credentials"),
+            "{}",
+            push_error.error
         );
     }
 
-    /// A failed `set-url` defers the embed: attempt 1 records the old
-    /// generation with the refresh error, attempt 2 lands the target, and the
-    /// report shows the one generation transition via `credential_action`.
+    /// The token reaches git through the driver's per-call rewrite and never
+    /// through the remote URL.
     #[tokio::test(start_paused = true)]
-    async fn set_url_failure_defers_the_embed_until_the_next_attempt() {
-        let (state, minter) = minting_state(vec![
-            MintAction::Token("ghs_gen1", chrono::Duration::minutes(5)),
-            MintAction::Token("ghs_gen2", chrono::Duration::minutes(60)),
-        ]);
-        seed_clone_token(&state).await;
-        let sandbox = ScriptedGitSandbox::with_set_url_results(
-            vec![
-                failed_exec("error: RPC failed; connection reset by peer"),
-                ok_exec(),
-            ],
-            vec![failed_exec("error: could not lock config file")],
-        );
-
-        let report = git_push(
-            &sandbox.run,
-            Some((&state, ORIGIN)),
-            REFSPEC,
-            &RetryPlan::checkpoint_push(),
-        )
-        .await
-        .expect("deferred embed should land on the retry");
-
-        assert_eq!(
-            minter.calls(),
-            2,
-            "the successful resolve is never repeated"
-        );
-        let first = &report.attempts[0];
-        assert_eq!(first.refresh_error, Some(RefreshErrorKind::SetUrl));
-        assert_eq!(
-            first.token.unwrap().generation,
-            1,
-            "pin stays on the old token"
-        );
-        assert_eq!(
-            first.credential_action,
-            Some(RemoteCredentialAction::Unchanged)
-        );
-        let second = &report.attempts[1];
-        assert_eq!(second.token.unwrap().generation, 2);
-        assert_eq!(
-            second.credential_action,
-            Some(RemoteCredentialAction::Embedded)
-        );
-        assert!(second.success);
-    }
-
-    #[tokio::test(start_paused = true)]
-    async fn timed_out_set_url_stops_before_push_while_it_may_still_run() {
-        let (state, minter) = minting_state(vec![
-            MintAction::Token("ghs_gen1", chrono::Duration::minutes(5)),
-            MintAction::Token("ghs_gen2", chrono::Duration::minutes(60)),
-        ]);
-        seed_clone_token(&state).await;
-        let sandbox = ScriptedGitSandbox::with_set_url_results(vec![], vec![timed_out_exec()]);
-
-        let push_error = git_push(
-            &sandbox.run,
-            Some((&state, ORIGIN)),
-            REFSPEC,
-            &RetryPlan::checkpoint_push(),
-        )
-        .await
-        .expect_err("a timed-out set-url can still rewrite origin later");
-
-        assert_eq!(minter.calls(), 2);
-        assert!(push_error.report.attempts.is_empty());
-        assert_eq!(sandbox.push_count(), 0);
-    }
-
-    /// Remote drift: agent code rewrote `origin`, so the push fails on auth
-    /// even though the tracked generation looks current. The first
-    /// auth-shaped failure earns one forced re-embed of the pinned token.
-    #[tokio::test(start_paused = true)]
-    async fn remote_drift_gets_one_forced_reembed_of_the_pinned_token() {
-        let (state, minter) = minting_state(vec![MintAction::Token(
+    async fn credentials_travel_per_call_and_never_touch_the_remote() {
+        let (credentials, _minter) = minting_credentials(vec![MintAction::Token(
             "ghs_gen1",
             chrono::Duration::minutes(60),
         )]);
-        seed_clone_token(&state).await;
-        let sandbox = ScriptedGitSandbox::new(vec![
-            failed_exec(
-                "fatal: could not read Username for 'https://github.com': No such device or address\nremote: Repository not found.",
-            ),
-            ok_exec(),
-        ]);
+        let sandbox = ScriptedGitSandbox::new(vec![ok_exec()]);
 
-        let report = git_push(
+        git_push(
             &sandbox.run,
-            Some((&state, ORIGIN)),
+            Some(&credentials),
             REFSPEC,
             &RetryPlan::checkpoint_push(),
         )
         .await
-        .expect("drift repair should restore the pinned credentials");
+        .expect("push succeeds");
 
-        assert_eq!(minter.calls(), 1, "drift repair re-embeds, never re-mints");
-        assert_eq!(
-            report.attempts[0].credential_action,
-            Some(RemoteCredentialAction::Unchanged),
-            "before the failure the tracked generation matched"
+        let commands = sandbox.commands();
+        assert!(
+            commands.iter().all(|command| !command.contains("set-url")),
+            "{commands:#?}"
         );
-        assert_eq!(
-            report.attempts[1].credential_action,
-            Some(RemoteCredentialAction::Embedded),
-            "the retry force-re-embeds the pinned token"
+        let push = &sandbox.pushes()[0];
+        assert!(
+            push.contains("insteadOf=https://github.com/fabro-testing/repo"),
+            "{push}"
         );
-        let set_urls = sandbox.set_url_commands();
-        assert_eq!(set_urls.len(), 1);
-        assert!(set_urls[0].contains("ghs_gen1"));
+        assert!(
+            push.contains("'push' 'origin' 'refs/heads/fabro/run/"),
+            "{push}"
+        );
     }
 
     #[tokio::test(start_paused = true)]
@@ -1125,7 +903,7 @@ mod push_tests {
 
         assert_eq!(report.attempts.len(), 1);
         assert_eq!(report.attempts[0].token, None);
-        assert_eq!(report.attempts[0].credential_action, None);
+        assert_eq!(sandbox.push_tokens(), vec![None]);
     }
 
     #[tokio::test(start_paused = true)]
@@ -1156,16 +934,16 @@ mod push_tests {
     }
 
     #[tokio::test(start_paused = true)]
-    async fn retry_deadline_includes_credential_lease_acquisition() {
+    async fn retry_deadline_includes_credential_resolution() {
         let source = installation_token_source("fabro-testing/repo", Arc::new(SlowMinter));
-        let state = PushCredentialState::new(Some(source));
+        let credentials = RepoCredentials::new(Some(source));
         let sandbox = ScriptedGitSandbox::new(vec![]);
         let mut plan = RetryPlan::checkpoint_push();
         plan.max_elapsed = Some(Duration::from_secs(1));
 
-        let push_error = git_push(&sandbox.run, Some((&state, ORIGIN)), REFSPEC, &plan)
+        let push_error = git_push(&sandbox.run, Some(&credentials), REFSPEC, &plan)
             .await
-            .expect_err("credential acquisition must stop at the operation deadline");
+            .expect_err("credential resolution must stop at the operation deadline");
 
         assert!(push_error.report.attempts.is_empty());
         assert_eq!(sandbox.push_count(), 0);

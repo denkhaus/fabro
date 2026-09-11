@@ -10,9 +10,7 @@ mod git_retry;
 
 mod managed_labels;
 
-mod push_credentials;
-
-pub mod redact;
+mod credentials;
 
 pub mod details;
 
@@ -51,15 +49,14 @@ pub use git_retry::{
 };
 pub use provider::{SandboxInventory, SandboxLookupError};
 pub use provider_sandbox::{attach_provider_sandbox, provider_sandbox};
-pub use push_credentials::RefreshErrorKind;
 pub use reconnect::{
     open_terminal_for_run, reconnect, reconnect_driver_for_run, reconnect_for_run,
     reconnect_for_run_with_events,
 };
 pub use sandbox::{
     DEFAULT_EXEC_OUTPUT_TAIL_BYTES, GitRunInfo, GitSetupIntent, PushAttempt, PushError, PushReport,
-    RefreshOutcome, RemoteCredentialAction, SandboxFile, SandboxWorkspaceLayout,
-    format_lines_numbered, redacted_output_tail, setup_git, shell_quote,
+    SandboxFile, SandboxWorkspaceLayout, format_lines_numbered, redacted_output_tail, setup_git,
+    shell_quote,
 };
 /// Driver types a run sandbox speaks: what a command is and how it ended,
 /// what the file and search operations return, and what an environment

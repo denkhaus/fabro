@@ -271,14 +271,6 @@ pub trait ExecResultExt {
     /// carries only the label and the classified metadata.
     fn into_exec_error(self, label: impl Into<String>) -> crate::Error;
 
-    /// [`Self::into_exec_error`] with `redactor` applied to both streams
-    /// first, for output that can carry a credentialed URL.
-    fn into_exec_error_with_redactor(
-        self,
-        label: impl Into<String>,
-        redactor: impl Fn(&str) -> String,
-    ) -> crate::Error;
-
     /// `Ok(self)` for a clean exit, the failure under `label` otherwise.
     fn into_result(self, label: impl Into<String>) -> crate::Result<ExecResult>;
 }
@@ -314,16 +306,6 @@ impl ExecResultExt for ExecResult {
         )
         .with_duration(self.duration);
         crate::Error::driver_error(failure.into())
-    }
-
-    fn into_exec_error_with_redactor(
-        mut self,
-        label: impl Into<String>,
-        redactor: impl Fn(&str) -> String,
-    ) -> crate::Error {
-        self.stdout = redactor(&self.stdout_lossy()).into_bytes();
-        self.stderr = redactor(&self.stderr_lossy()).into_bytes();
-        self.into_exec_error(label)
     }
 
     fn into_result(self, label: impl Into<String>) -> crate::Result<ExecResult> {
@@ -728,23 +710,6 @@ mod tests {
 
         let ok = exec_result("out", "", Some(0), Termination::Exited, 1);
         assert!(ok.into_result("true").is_ok());
-    }
-
-    #[test]
-    fn redactor_applies_to_stderr_and_stdout() {
-        let result = exec_result(
-            "stdout https://token@example.com",
-            "stderr https://token@example.com",
-            Some(1),
-            Termination::Exited,
-            1,
-        );
-        let error = result.into_exec_error_with_redactor("git set-url", |s| {
-            s.replace("https://token@example.com", "https://****@example.com")
-        });
-        let failure = error.exec_failure().expect("exec failure");
-        assert_eq!(failure.stderr(), b"stderr https://****@example.com");
-        assert_eq!(failure.stdout(), b"stdout https://****@example.com");
     }
 
     #[test]

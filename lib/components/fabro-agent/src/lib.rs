@@ -56,10 +56,10 @@ pub use question_tools::{
 };
 pub use sandbox::{
     CaptureStats, DirEntry, DriverSpec, ExecControls, ExecResult, ExecResultExt, ExecSpec,
-    ExecStreamingResult, FileKind, GrepMatch, GrepOptions, OutputSink, OutputStream,
-    RefreshOutcome, RemoteCredentialAction, RunSandbox, SandboxFile, SandboxSource, StderrTail,
-    StdioProcess, StdioProcessHandle, Termination, TokenProvenance, TokenSnapshot, WalkOptions,
-    command_termination, format_lines_numbered, program_exit_code, shell_quote,
+    ExecStreamingResult, FileKind, GrepMatch, GrepOptions, OutputSink, OutputStream, RunSandbox,
+    SandboxFile, SandboxSource, StderrTail, StdioProcess, StdioProcessHandle, Termination,
+    TokenProvenance, TokenSnapshot, WalkOptions, command_termination, format_lines_numbered,
+    program_exit_code, shell_quote,
 };
 pub use session::{
     CompletionCoordinator, Session, SessionControlHandle, SessionInputTiming,

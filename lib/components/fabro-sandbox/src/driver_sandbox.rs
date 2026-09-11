@@ -19,7 +19,7 @@ use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use fabro_github::GitHubCredentials;
-use fabro_github::token_source::InstallationTokenSource;
+use fabro_github::token_source::{InstallationTokenSource, TokenSnapshot};
 use fabro_types::SandboxProviderKind;
 use fabro_util::workspace_glob::WorkspaceGlob;
 use sandbox_driver::{
@@ -35,9 +35,9 @@ use tokio_util::sync::CancellationToken;
 
 use crate::clone::{self, GitHubClone};
 use crate::clone_source::{self, CloneDecision, EmptyWorkspaceReason};
+use crate::credentials::{self, RepoCredentials};
 use crate::environment::CloneRequest;
-use crate::push_credentials::{self, PushCredentialState};
-use crate::{GitRunInfo, GitSetupIntent, RefreshOutcome, RetryPlan};
+use crate::{GitRunInfo, GitSetupIntent, RetryPlan};
 
 /// A sandbox on the worker host at `working_directory`, the fabro `local`
 /// kind, served by the driver's in-process Host provider.
@@ -118,7 +118,7 @@ enum WorkspacePlan {
 pub(crate) struct RepoWorkspace {
     layout:              OnceLock<WorkspaceLayout>,
     plan:                WorkspacePlan,
-    credentials:         PushCredentialState,
+    credentials:         RepoCredentials,
     repo_cloned:         OnceLock<bool>,
     origin_url:          OnceLock<String>,
     /// The directory the run works in once known: the repository link for a
@@ -145,7 +145,7 @@ impl RepoWorkspace {
             clone.tag.as_deref(),
             clone.commit_sha.as_deref(),
         )?;
-        let credentials = PushCredentialState::new(push_credentials::build_token_source(
+        let credentials = RepoCredentials::new(credentials::build_token_source(
             github_app,
             clone.origin_url.as_deref(),
         )?);
@@ -177,7 +177,7 @@ impl RepoWorkspace {
 
     /// A workspace prepared by an earlier process, described by the run
     /// record. Pushes from a reattached sandbox use whatever credentials the
-    /// checkout's `origin` already carries.
+    /// checkout's credential store already carries.
     pub(crate) fn attached(
         layout: LayoutSource,
         repo_cloned: bool,
@@ -187,7 +187,7 @@ impl RepoWorkspace {
         let workspace = Self {
             layout:              layout.into_cell(),
             plan:                WorkspacePlan::Attached,
-            credentials:         PushCredentialState::new(None),
+            credentials:         RepoCredentials::none(),
             repo_cloned:         OnceLock::new(),
             origin_url:          OnceLock::new(),
             execution_directory: OnceLock::new(),
@@ -1085,11 +1085,7 @@ impl RunSandbox {
         if !workspace.repo_cloned() {
             return Ok(PushReport::default());
         }
-        let credentials = workspace
-            .origin_url
-            .get()
-            .map(|origin_url| (&workspace.credentials, origin_url.as_str()));
-        sandbox::git_push(self, credentials, refspec, plan).await
+        sandbox::git_push(self, Some(&workspace.credentials), refspec, plan).await
     }
 
     pub fn origin_url(&self) -> Option<&str> {
@@ -1100,23 +1096,24 @@ impl RunSandbox {
         workspace.origin_url.get().map(String::as_str)
     }
 
+    /// Renew the credentials the agent's own git commands read for the
+    /// checkout: resolve the current token and rewrite the checkout's
+    /// credential store with it. Returns the token's non-secret description,
+    /// or `None` when this sandbox has no managed credentials or no
+    /// checkout to install them in.
     #[tracing::instrument(name = "git_op", skip_all, fields(op = "refresh-credentials"))]
-    pub async fn refresh_push_credentials(&self) -> crate::Result<RefreshOutcome> {
+    pub async fn refresh_ambient_credentials(&self) -> crate::Result<Option<TokenSnapshot>> {
         let Some(workspace) = &self.workspace else {
-            return Ok(RefreshOutcome::none());
+            return Ok(None);
         };
-        if !workspace.repo_cloned() {
-            return Ok(RefreshOutcome::none());
-        }
-        let Some(origin_url) = workspace.origin_url.get() else {
-            return Ok(RefreshOutcome::none());
+        let Some(checkout) = workspace.checkout_path.get() else {
+            return Ok(None);
         };
-        workspace
-            .credentials
-            .refresh(origin_url, |auth_url| {
-                push_credentials::set_auth_url_via_exec(self, auth_url)
-            })
-            .await
+        let Some(token) = workspace.credentials.resolve().await? else {
+            return Ok(None);
+        };
+        RepoCredentials::install(&self.git()?, checkout, &token).await?;
+        Ok(Some(token.snapshot))
     }
 
     pub fn push_token_source(&self) -> Option<Arc<InstallationTokenSource>> {

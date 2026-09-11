@@ -58,8 +58,6 @@ fn git_push_attempt_props(
                 .token
                 .and_then(|token| token.age_at(attempt.started_at))
                 .map(|age| u64::try_from(age.as_millis()).unwrap_or(u64::MAX)),
-            credential_action: attempt.credential_action,
-            refresh_error:     attempt.refresh_error,
         })
         .collect()
 }
@@ -2213,26 +2211,22 @@ mod tests {
                         expires_at,
                     },
                 }),
-                credential_action: Some(fabro_sandbox::RemoteCredentialAction::Embedded),
-                refresh_error: None,
             },
             // Terminal classified failure with a refresh error: the last
             // attempt carries its classification too.
             fabro_sandbox::PushAttempt {
-                attempt:           2,
-                started_at:        started_at + chrono::Duration::seconds(3),
-                success:           false,
-                retry_reason:      Some(fabro_sandbox::GitRetryReason::TransientInfra),
-                exec_output_tail:  Some(exec_tail()),
-                token:             Some(fabro_sandbox::TokenSnapshot {
+                attempt:          2,
+                started_at:       started_at + chrono::Duration::seconds(3),
+                success:          false,
+                retry_reason:     Some(fabro_sandbox::GitRetryReason::TransientInfra),
+                exec_output_tail: Some(exec_tail()),
+                token:            Some(fabro_sandbox::TokenSnapshot {
                     generation: 14,
                     provenance: fabro_sandbox::TokenProvenance::Reused {
                         minted_at,
                         expires_at,
                     },
                 }),
-                credential_action: Some(fabro_sandbox::RemoteCredentialAction::Unchanged),
-                refresh_error:     Some(fabro_sandbox::RefreshErrorKind::SetUrl),
             },
         ];
         let expected_attempts = git_push_attempt_props(&runtime_attempts);
@@ -2251,11 +2245,8 @@ mod tests {
         assert_eq!(serialized[0]["token_generation"], 14);
         assert_eq!(serialized[0]["token_provenance"], "minted");
         assert_eq!(serialized[0]["token_age_ms"], 180);
-        assert_eq!(serialized[0]["credential_action"], "embedded");
-        assert!(serialized[0].get("refresh_error").is_none());
         assert_eq!(serialized[1]["classified_reason"], "transient_infra");
         assert_eq!(serialized[1]["token_provenance"], "reused");
-        assert_eq!(serialized[1]["refresh_error"], "set_url");
         // The provenance enum never nests in stored events.
         assert!(serialized[0].get("token").is_none());
 
@@ -2269,20 +2260,43 @@ mod tests {
         }
     }
 
+    /// Attempts stored by earlier releases carried `credential_action` and
+    /// `refresh_error` from the origin-URL credential design. The fields are
+    /// gone; the stored events still read.
+    #[test]
+    fn stored_attempts_with_retired_credential_fields_still_deserialize() {
+        let json = serde_json::json!({
+            "attempt": 1,
+            "started_at": "2026-03-30T12:00:01.000Z",
+            "success": true,
+            "token_generation": 3,
+            "token_provenance": "reused",
+            "token_age_ms": 120,
+            "credential_action": "embedded",
+            "refresh_error": "set_url"
+        });
+        let props: ::fabro_types::run_event::GitPushAttemptProps =
+            serde_json::from_value(json).unwrap();
+        assert_eq!(props.attempt, 1);
+        assert_eq!(props.token_generation, Some(3));
+        assert_eq!(
+            props.token_provenance,
+            Some(::fabro_types::run_event::GitTokenProvenance::Reused)
+        );
+    }
+
     #[test]
     fn successful_single_attempt_push_omits_failure_fields() {
         let attempts = vec![fabro_sandbox::PushAttempt {
-            attempt:           1,
-            started_at:        Utc::now(),
-            success:           true,
-            retry_reason:      None,
-            exec_output_tail:  None,
-            token:             Some(fabro_sandbox::TokenSnapshot {
+            attempt:          1,
+            started_at:       Utc::now(),
+            success:          true,
+            retry_reason:     None,
+            exec_output_tail: None,
+            token:            Some(fabro_sandbox::TokenSnapshot {
                 generation: 0,
                 provenance: fabro_sandbox::TokenProvenance::Static,
             }),
-            credential_action: Some(fabro_sandbox::RemoteCredentialAction::Unchanged),
-            refresh_error:     None,
         }];
         let stored = to_run_event(&fixtures::RUN_1, &Event::GitPush {
             branch: "fabro/run/run-1".to_string(),
@@ -2295,12 +2309,7 @@ mod tests {
         let attempt = &json["properties"]["attempts"][0];
         assert_eq!(attempt["success"], true);
         assert_eq!(attempt["token_provenance"], "static");
-        for absent in [
-            "classified_reason",
-            "exec_output_tail",
-            "token_age_ms",
-            "refresh_error",
-        ] {
+        for absent in ["classified_reason", "exec_output_tail", "token_age_ms"] {
             assert!(attempt.get(absent).is_none(), "{absent} should be omitted");
         }
     }

@@ -17,7 +17,6 @@ use fabro_graphviz::render::apply_direction;
 use fabro_llm::FabroClient;
 use fabro_llm::lithos_catalog::Catalog;
 use fabro_llm::probe::{self, ModelTestStatus};
-use fabro_sandbox::redact::redact_auth_url;
 use fabro_sandbox::{
     CloneRequest, ProviderAccess, ProviderSandboxSpec, RunSandbox, SandboxSpec,
     sandbox_spec_for_environment,
@@ -874,7 +873,10 @@ async fn check_git_remote_ref(
 
     run_ls_remote(command)
         .await
-        .map_err(|message| redact_auth_url(&message, auth_url.as_ref()))
+        .map_err(|message| match &auth_url {
+            Some(auth_url) => auth_url.redact_in(&message),
+            None => message,
+        })
 }
 
 /// Run a prepared `git ls-remote` invocation with a 10s timeout, reducing a
