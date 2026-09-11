@@ -11,8 +11,7 @@ use fabro_hooks::{HookContext, HookDecision, HookEvent, HookExecutionContext, Ho
 use fabro_llm::credentials::{CredentialProvider, readiness};
 use fabro_llm::lithos_catalog::Catalog;
 use fabro_sandbox::{
-    DaytonaCredentials, ExecResultExt, GitSetupIntent, ProviderAccess, SandboxSpec,
-    reconnect_for_run,
+    DaytonaCredentials, ExecResultExt, GitSetupIntent, ProviderAccess, reconnect_for_run,
 };
 use fabro_static::EnvVars;
 use fabro_types::RunSandboxKind;
@@ -368,7 +367,7 @@ pub async fn initialize(
         .as_ref()
         .and_then(|git| git.sha.clone());
     if !is_resume
-        && !matches!(options.sandbox, SandboxSpec::Local { .. })
+        && !options.sandbox.kind.is_local()
         && matches!(
             options
                 .run_options
@@ -936,7 +935,7 @@ mod tests {
             run_store,
             dry_run: false,
             emitter: Arc::clone(&emitter),
-            sandbox: SandboxSpec::Local { working_directory },
+            sandbox: SandboxSpec::local(working_directory, ProviderAccess::default()),
             llm: LlmSpec {
                 model:          "test-model".to_string(),
                 provider_id:    lithos_llm::catalog::builtin::anthropic(),
@@ -1387,9 +1386,7 @@ mod tests {
             run_store: run_store.into(),
             dry_run: false,
             emitter: emitter.clone(),
-            sandbox: SandboxSpec::Local {
-                working_directory: temp.path().to_path_buf(),
-            },
+            sandbox: SandboxSpec::local(temp.path(), ProviderAccess::default()),
             llm: LlmSpec {
                 model:          "fake-acp".to_string(),
                 provider_id:    lithos_llm::catalog::builtin::openai(),
@@ -1492,9 +1489,10 @@ mod tests {
             run_store:         run_store.into(),
             dry_run:           false,
             emitter:           emitter.clone(),
-            sandbox:           SandboxSpec::Local {
-                working_directory: std::env::current_dir().unwrap(),
-            },
+            sandbox:           SandboxSpec::local(
+                std::env::current_dir().unwrap(),
+                ProviderAccess::default(),
+            ),
             llm:               LlmSpec {
                 model:          "test-model".to_string(),
                 provider_id:    lithos_llm::catalog::builtin::anthropic(),
@@ -1636,9 +1634,10 @@ mod tests {
             },
             dry_run: false,
             emitter: emitter.clone(),
-            sandbox: SandboxSpec::Local {
-                working_directory: std::env::current_dir().unwrap(),
-            },
+            sandbox: SandboxSpec::local(
+                std::env::current_dir().unwrap(),
+                ProviderAccess::default(),
+            ),
             llm: LlmSpec {
                 model:          "test-model".to_string(),
                 provider_id:    lithos_llm::catalog::builtin::anthropic(),

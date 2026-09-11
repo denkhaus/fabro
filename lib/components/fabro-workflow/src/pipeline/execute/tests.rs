@@ -16,8 +16,8 @@ use fabro_auth::test_support as auth_test_support;
 use fabro_graphviz::graph::{AttrValue, Edge, Graph, Node};
 use fabro_hooks::HookSettings;
 use fabro_interview::AutoApproveInterviewer;
-use fabro_sandbox::SandboxSpec;
-use fabro_sandbox::test_support::MockSandbox;
+use fabro_sandbox::test_support::{MockSandbox, local_sandbox_id};
+use fabro_sandbox::{ProviderAccess, SandboxSpec};
 use fabro_store::Database;
 use fabro_types::settings::run::RunModelControls;
 use fabro_types::{
@@ -262,9 +262,10 @@ async fn execute_test_run_with_options(
             run_store: run_store.into(),
             dry_run: false,
             emitter: emitter.clone(),
-            sandbox: SandboxSpec::Local {
-                working_directory: std::env::current_dir().unwrap(),
-            },
+            sandbox: SandboxSpec::local(
+                std::env::current_dir().unwrap(),
+                ProviderAccess::default(),
+            ),
             llm: LlmSpec {
                 model:          "test-model".to_string(),
                 provider_id:    lithos_llm::catalog::builtin::anthropic(),
@@ -324,9 +325,10 @@ async fn execute_runs_start_to_exit_and_returns_final_context() {
             run_store: run_store.into(),
             dry_run: false,
             emitter: test_emitter_arc("run-test"),
-            sandbox: SandboxSpec::Local {
-                working_directory: std::env::current_dir().unwrap(),
-            },
+            sandbox: SandboxSpec::local(
+                std::env::current_dir().unwrap(),
+                ProviderAccess::default(),
+            ),
             llm: LlmSpec {
                 model:          "test-model".to_string(),
                 provider_id:    lithos_llm::catalog::builtin::anthropic(),
@@ -411,10 +413,11 @@ async fn resumed_in_flight_node_starts_a_new_stage_execution() {
     let run_store = test_run_store(&run_id).await;
     seed_created_and_starting(&run_store, &run_options, &graph).await;
     // Resume reconnects to the previously recorded sandbox.
+    let working_directory = std::env::current_dir().unwrap();
     append_event(&run_store, &run_id, &Event::SandboxInitialized {
-        working_directory: std::env::current_dir().unwrap().display().to_string(),
+        working_directory: working_directory.display().to_string(),
         provider:          fabro_types::SandboxProviderKind::LOCAL,
-        id:                "local".to_string(),
+        id:                local_sandbox_id(&working_directory).await,
         image:             None,
         snapshot:          None,
         repo_cloned:       None,
@@ -467,9 +470,10 @@ async fn resumed_in_flight_node_starts_a_new_stage_execution() {
             run_store: run_store.into(),
             dry_run: false,
             emitter: emitter.clone(),
-            sandbox: SandboxSpec::Local {
-                working_directory: std::env::current_dir().unwrap(),
-            },
+            sandbox: SandboxSpec::local(
+                std::env::current_dir().unwrap(),
+                ProviderAccess::default(),
+            ),
             llm: LlmSpec {
                 model:          "test-model".to_string(),
                 provider_id:    lithos_llm::catalog::builtin::anthropic(),
@@ -583,9 +587,7 @@ async fn run_with_lifecycle(
             run_store: run_store.into(),
             dry_run: false,
             emitter: emitter.clone(),
-            sandbox: SandboxSpec::Local {
-                working_directory: PathBuf::from(sandbox.working_directory()),
-            },
+            sandbox: SandboxSpec::local(sandbox.working_directory(), ProviderAccess::default()),
             llm: LlmSpec {
                 model:          "test-model".to_string(),
                 provider_id:    lithos_llm::catalog::builtin::anthropic(),

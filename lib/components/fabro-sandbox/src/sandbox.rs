@@ -242,8 +242,8 @@ pub struct PushError {
 /// Pushes a refspec to origin through the driver's git facet, retried by
 /// the driver under `policy` with one token for the whole operation.
 /// `credentials` is the checkout's managed credentials; `None` pushes with
-/// whatever the checkout already has (the local sandbox, or a workspace
-/// without a GitHub App).
+/// whatever the checkout already has (a checkout fabro did not clone, or a
+/// clone made without a GitHub App).
 #[tracing::instrument(name = "git_op", skip_all, fields(op = "push"))]
 pub(crate) async fn git_push(
     sandbox: &RunSandbox,

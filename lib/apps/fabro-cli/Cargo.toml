@@ -118,6 +118,7 @@ chrono = { workspace = true }
 assert_cmd = "2"
 fabro-acp = { path = "../../components/fabro-acp", features = ["test-support"] }
 fabro-build-support = { path = "../../foundation/build-support" }
+fabro-sandbox = { path = "../../components/fabro-sandbox", features = ["test-support"] }
 fabro-server = { path = "../fabro-server", features = ["test-support"] }
 fabro-workflow = { path = "../../components/fabro-workflow", features = ["test-support"] }
 fabro-types = { path = "../../foundation/fabro-types", features = ["clap", "test-support"] }

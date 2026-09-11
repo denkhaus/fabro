@@ -6,9 +6,11 @@
 //! construction function, and a bundled provider adds only what its
 //! backend needs on top: Docker its fixed working directory and default
 //! image, Daytona its fixed working directory, default snapshot, and
-//! lifecycle timers. A plugin gets the spec as is, trimmed to what it can
-//! honor, laid out inside the working directory the provider chooses.
+//! lifecycle timers, the Host the designated directory it works in,
+//! created when missing. A plugin gets the spec as is, trimmed to what it
+//! can honor, laid out inside the working directory the provider chooses.
 
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use fabro_github::GitHubCredentials;
@@ -17,10 +19,12 @@ use sandbox_driver::{
     EventContext, OwnedProvider, SandboxId, SandboxProvider, SandboxSource,
     SandboxSpec as DriverSpec,
 };
+use tokio::fs;
 
 use crate::driver::{ProviderAccess, connect_provider};
 use crate::driver_sandbox::{LayoutSource, RepoWorkspace, RunSandbox};
 use crate::environment::{self, CloneRequest};
+use crate::sandbox_spec::SandboxSpec;
 use crate::{daytona, docker, managed_labels};
 
 /// A sandbox for a run on `kind`. The sandbox is created by `initialize`;
@@ -51,18 +55,43 @@ pub async fn provider_sandbox(
             daytona::overlay(spec, run_id.as_ref()),
             workspace,
         ),
-        Some(BundledProvider::Local) => {
-            return Err(crate::Error::message(
-                "local sandboxes are built from a working directory, not a provider spec",
-            ));
-        }
-        None => {
+        Some(BundledProvider::Local) | None => {
+            if kind.is_local() {
+                designate_directory(&spec).await?;
+            }
             let capabilities = provider.capabilities();
             spec.network = environment::supported_network(spec.network, capabilities);
             spec.timers = environment::supported_timers(spec.timers, capabilities);
             RunSandbox::pending(kind, provider, spec, workspace)
         }
     })
+}
+
+/// The Host provider works in a designated directory in place and needs it
+/// to exist. A run may point at a fresh scratch path, so the directory is
+/// created before the provider sees the spec.
+async fn designate_directory(spec: &DriverSpec) -> crate::Result<()> {
+    let Some(directory) = &spec.working_directory else {
+        return Ok(());
+    };
+    fs::create_dir_all(directory).await.map_err(|error| {
+        crate::Error::context(
+            format!("Failed to create working directory {directory}"),
+            error,
+        )
+    })
+}
+
+/// A sandbox on this host at `working_directory`, ready to use: the `local`
+/// kind, built through the provider path with default settings and
+/// initialized. For the agent CLI and tests; a run builds its sandbox from
+/// its [`SandboxSpec`] and initializes it itself.
+pub async fn local_sandbox(working_directory: impl Into<PathBuf>) -> crate::Result<RunSandbox> {
+    let spec = SandboxSpec::local(working_directory, ProviderAccess::default());
+    let sandbox =
+        provider_sandbox(spec.kind, &spec.access, spec.spec, &spec.clone, None, None).await?;
+    sandbox.initialize().await?;
+    Ok(sandbox)
 }
 
 /// Reattach to a run's sandbox on `kind` by its persisted id. The driver

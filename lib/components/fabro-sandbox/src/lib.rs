@@ -33,7 +33,7 @@ pub mod test_support;
 pub use details::sandbox_details;
 pub use docker::check_docker_daemon;
 pub use driver::{DaytonaCredentials, ProviderAccess};
-pub use driver_sandbox::{RunSandbox, local_sandbox};
+pub use driver_sandbox::RunSandbox;
 pub use environment::{CloneRequest, sandbox_spec_for_environment};
 pub use error::{Error, Result, default_redacted_output_tail, display_for_log};
 pub use exec::{
@@ -49,7 +49,7 @@ pub use git_policy::{
     retry_git_messages, transient_git_failure,
 };
 pub use provider::{SandboxInventory, SandboxLookupError};
-pub use provider_sandbox::{attach_provider_sandbox, provider_sandbox};
+pub use provider_sandbox::{attach_provider_sandbox, local_sandbox, provider_sandbox};
 pub use reconnect::{open_terminal_for_run, reconnect_for_run};
 pub use sandbox::{
     DEFAULT_EXEC_OUTPUT_TAIL_BYTES, GitRunInfo, GitSetupIntent, PushAttempt, PushError, PushReport,
@@ -65,4 +65,4 @@ pub use sandbox_driver::{
     OutputStream, PtySession, PtySize, Resources, SandboxSource, SandboxSpec as DriverSpec,
     StderrTail, StdioProcess, StdioProcessHandle, Termination, TransportError, WalkOptions,
 };
-pub use sandbox_spec::{ProviderSandboxSpec, SandboxSpec};
+pub use sandbox_spec::SandboxSpec;

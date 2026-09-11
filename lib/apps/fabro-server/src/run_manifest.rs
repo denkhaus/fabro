@@ -18,8 +18,7 @@ use fabro_llm::FabroClient;
 use fabro_llm::lithos_catalog::Catalog;
 use fabro_llm::probe::{self, ModelTestStatus};
 use fabro_sandbox::{
-    CloneRequest, ProviderAccess, ProviderSandboxSpec, RunSandbox, SandboxSpec,
-    sandbox_spec_for_environment,
+    CloneRequest, ProviderAccess, RunSandbox, SandboxSpec, sandbox_spec_for_environment,
 };
 use fabro_static::EnvVars;
 use fabro_types::settings::ModelRef;
@@ -929,7 +928,7 @@ fn preflight_sandbox_spec(
                     err,
                 )
             })?;
-        return Ok(SandboxSpec::Local { working_directory });
+        return Ok(SandboxSpec::local(working_directory, access.clone()));
     }
     // No vault is available on this path, so a `{{ secrets.* }}` value keeps
     // its source form. Preflight never clones.
@@ -942,14 +941,14 @@ fn preflight_sandbox_spec(
         branch: clone_branch,
         ..CloneRequest::none()
     };
-    Ok(SandboxSpec::Provider(Box::new(ProviderSandboxSpec {
+    Ok(SandboxSpec {
         kind: sandbox_provider.clone(),
         access: access.clone(),
         spec,
         clone,
         github_app,
         run_id: None,
-    })))
+    })
 }
 
 async fn run_sandbox_check(
@@ -2220,18 +2219,14 @@ provider = "local"
             &ProviderAccess::default(),
         );
 
-        match spec {
-            Ok(SandboxSpec::Provider(spec)) => {
-                assert_eq!(spec.kind, SandboxProviderKind::DOCKER);
-                assert!(spec.clone.skip);
-                assert_eq!(
-                    spec.clone.origin_url.as_deref(),
-                    Some("https://github.com/acme/widgets")
-                );
-                assert_eq!(spec.clone.branch.as_deref(), Some("main"));
-            }
-            _ => panic!("expected Docker preflight sandbox spec"),
-        }
+        let spec = spec.expect("Docker preflight sandbox spec");
+        assert_eq!(spec.kind, SandboxProviderKind::DOCKER);
+        assert!(spec.clone.skip);
+        assert_eq!(
+            spec.clone.origin_url.as_deref(),
+            Some("https://github.com/acme/widgets")
+        );
+        assert_eq!(spec.clone.branch.as_deref(), Some("main"));
     }
 
     #[test]

@@ -1089,6 +1089,19 @@ fn attach_json_errors_without_prompting_for_human_input() {
           "kind": "worker",
           "run_id": "[ULID]"
         },
+        "event": "sandbox.initializing",
+        "id": "[EVENT_ID]",
+        "properties": {
+          "provider": "local"
+        },
+        "run_id": "[ULID]",
+        "ts": "[TIMESTAMP]"
+      },
+      {
+        "actor": {
+          "kind": "worker",
+          "run_id": "[ULID]"
+        },
         "event": "sandbox.create.started",
         "id": "[EVENT_ID]",
         "properties": {
@@ -1174,19 +1187,6 @@ fn attach_json_errors_without_prompting_for_human_input() {
           "kind": "worker",
           "run_id": "[ULID]"
         },
-        "event": "sandbox.initializing",
-        "id": "[EVENT_ID]",
-        "properties": {
-          "provider": "local"
-        },
-        "run_id": "[ULID]",
-        "ts": "[TIMESTAMP]"
-      },
-      {
-        "actor": {
-          "kind": "worker",
-          "run_id": "[ULID]"
-        },
         "event": "sandbox.ready",
         "id": "[EVENT_ID]",
         "properties": {
@@ -1207,7 +1207,9 @@ fn attach_json_errors_without_prompting_for_human_input() {
           "id": "host-dir-[HEX]",
           "provider": "local",
           "repo_cloned": false,
-          "working_directory": "[TEMP_DIR]"
+          "repos_root": "[TEMP_DIR]/.repos",
+          "working_directory": "[TEMP_DIR]",
+          "workspace_root": "[TEMP_DIR]"
         },
         "run_id": "[ULID]",
         "ts": "[TIMESTAMP]"

@@ -12,7 +12,7 @@
 //! through the [`EventContext`] a sandbox is created or attached with.
 
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::{Arc, OnceLock};
 use std::time::{Duration, Instant};
 
@@ -23,11 +23,9 @@ use fabro_util::workspace_glob::WorkspaceGlob;
 use sandbox_driver::{
     DirEntry, EventContext, ExecControls, ExecResult, ExecSpec, ExecStreamingResult, FileKind,
     GitRetryPolicy, GrepMatch, GrepOptions, PtyOptions, PtySession, PtySize,
-    Sandbox as DriverHandle, SandboxProvider as DriverProvider, SandboxSource,
-    SandboxSpec as DriverSpec, SandboxState, Search as _, StdioProcess, WaitOptions, WalkOptions,
+    Sandbox as DriverHandle, SandboxProvider as DriverProvider, SandboxSpec as DriverSpec,
+    SandboxState, Search as _, StdioProcess, WaitOptions, WalkOptions,
 };
-use sandbox_driver_host::HostProvider;
-use tokio::fs;
 use tokio::sync::OnceCell;
 use tokio_util::sync::CancellationToken;
 
@@ -35,42 +33,9 @@ use crate::clone::{self, GitHubClone};
 use crate::clone_source::{self, CloneDecision, EmptyWorkspaceReason};
 use crate::credentials::{self, RepoCredentials};
 use crate::environment::CloneRequest;
-use crate::{GitRunInfo, GitSetupIntent};
-
-/// A sandbox on the worker host at `working_directory`, the fabro `local`
-/// kind, served by the driver's in-process Host provider.
-///
-/// The directory is designated: the sandbox uses it in place and never
-/// removes it. It is created when missing so a run can point at a fresh
-/// scratch path. The registry lives in a per-process temporary root, so a
-/// later process rebuilds the handle by calling this again with the
-/// persisted working directory rather than by id.
-pub async fn local_sandbox(working_directory: impl Into<PathBuf>) -> crate::Result<RunSandbox> {
-    local_sandbox_with_events(working_directory, None).await
-}
-
-/// [`local_sandbox`] whose driver lifecycle events reach `events`.
-pub async fn local_sandbox_with_events(
-    working_directory: impl Into<PathBuf>,
-    events: Option<EventContext>,
-) -> crate::Result<RunSandbox> {
-    let working_directory: PathBuf = working_directory.into();
-    fs::create_dir_all(&working_directory)
-        .await
-        .map_err(|error| crate::Error::context("Failed to create working directory", error))?;
-    let provider = HostProvider::new();
-    let spec = DriverSpec::new(SandboxSource::HostDirectory)
-        .working_directory(working_directory.display().to_string());
-    let handle = provider
-        .create(&spec, events)
-        .await
-        .map_err(|error| crate::Error::context("Failed to create local sandbox", error))?;
-    let sandbox = RunSandbox::new(SandboxProviderKind::LOCAL, handle);
-    sandbox.learn_platform().await?;
-    Ok(sandbox)
-}
 use crate::exec::SandboxExec;
 use crate::sandbox::{self, PushError, PushReport, SandboxFile, SandboxWorkspaceLayout};
+use crate::{GitRunInfo, GitSetupIntent};
 
 /// Where a clone-based provider puts its files: the run works under
 /// `workspace_root`, and repositories check out under `repos_root`.
@@ -111,8 +76,10 @@ enum WorkspacePlan {
     Attached,
 }
 
-/// Fabro's clone-based workspace on an isolated sandbox: the layout, the
-/// clone it performs, and the GitHub credentials its checkout carries.
+/// The run's workspace on a sandbox: the layout, the clone fabro performs
+/// into it (if any), and the GitHub credentials its checkout carries. A
+/// workspace fabro did not clone into is still a checkout the run may push
+/// from, with whatever credentials the checkout carries itself.
 pub(crate) struct RepoWorkspace {
     layout:              OnceLock<WorkspaceLayout>,
     plan:                WorkspacePlan,
@@ -202,6 +169,21 @@ impl RepoWorkspace {
         workspace
     }
 
+    /// The workspace an existing handle already works in, whatever it
+    /// holds: nothing fabro cloned, laid out from the handle's own working
+    /// directory.
+    pub(crate) fn existing() -> Self {
+        Self {
+            layout:              LayoutSource::ProviderWorkingDirectory.into_cell(),
+            plan:                WorkspacePlan::Attached,
+            credentials:         RepoCredentials::none(),
+            repo_cloned:         OnceLock::new(),
+            origin_url:          OnceLock::new(),
+            execution_directory: OnceLock::new(),
+            checkout_path:       OnceLock::new(),
+        }
+    }
+
     /// Settle a provider-dependent layout from the sandbox's working
     /// directory. A fixed layout is left alone.
     fn resolve_layout(&self, provider_working_directory: &str) -> &WorkspaceLayout {
@@ -285,7 +267,7 @@ pub struct RunSandbox {
     /// pending one.
     handle:    OnceCell<Arc<dyn DriverHandle>>,
     pending:   Option<PendingCreate>,
-    workspace: Option<RepoWorkspace>,
+    workspace: RepoWorkspace,
     /// Where the driver reports the lifecycle of a sandbox this creates.
     /// Set before `initialize` on a pending sandbox; an existing handle
     /// already carries the context it was created or attached with.
@@ -298,12 +280,11 @@ pub struct RunSandbox {
 }
 
 impl RunSandbox {
-    /// Wraps an existing driver handle as a sandbox of `kind`.
+    /// Wraps an existing driver handle as a sandbox of `kind`, working in
+    /// whatever the handle's working directory holds.
     #[must_use]
     pub fn new(kind: SandboxProviderKind, handle: Arc<dyn DriverHandle>) -> Self {
-        let sandbox = Self::empty(kind);
-        let _ = sandbox.handle.set(handle);
-        sandbox
+        Self::attached(kind, handle, RepoWorkspace::existing())
     }
 
     /// A sandbox over an existing handle whose platform is already known,
@@ -328,9 +309,8 @@ impl RunSandbox {
         spec: DriverSpec,
         workspace: RepoWorkspace,
     ) -> Self {
-        let mut sandbox = Self::empty(kind);
+        let mut sandbox = Self::empty(kind, workspace);
         sandbox.pending = Some(PendingCreate { provider, spec });
-        sandbox.workspace = Some(workspace);
         sandbox
     }
 
@@ -347,17 +327,17 @@ impl RunSandbox {
         workspace: RepoWorkspace,
     ) -> Self {
         workspace.resolve_layout(handle.working_directory());
-        let mut sandbox = Self::new(kind, handle);
-        sandbox.workspace = Some(workspace);
+        let sandbox = Self::empty(kind, workspace);
+        let _ = sandbox.handle.set(handle);
         sandbox
     }
 
-    fn empty(kind: SandboxProviderKind) -> Self {
+    fn empty(kind: SandboxProviderKind, workspace: RepoWorkspace) -> Self {
         Self {
             kind,
             handle: OnceCell::new(),
             pending: None,
-            workspace: None,
+            workspace,
             events: None,
             platform: OnceLock::new(),
             snapshot: OnceLock::new(),
@@ -393,10 +373,8 @@ impl RunSandbox {
     /// run's directory. Absent until a pending sandbox is initialized.
     pub fn exec(&self) -> crate::Result<SandboxExec<'_>> {
         let mut exec = SandboxExec::new(self.handle()?.exec());
-        if let Some(workspace) = &self.workspace {
-            if let Some(dir) = workspace.execution_directory.get() {
-                exec = exec.with_working_dir(dir.clone());
-            }
+        if let Some(dir) = self.workspace.execution_directory.get() {
+            exec = exec.with_working_dir(dir.clone());
         }
         Ok(exec)
     }
@@ -405,11 +383,7 @@ impl RunSandbox {
     /// resolves relative paths against the sandbox's own working directory,
     /// which sits above a cloned repository's link.
     fn resolve(&self, path: &str) -> String {
-        match self
-            .workspace
-            .as_ref()
-            .and_then(|workspace| workspace.execution_directory.get())
-        {
+        match self.workspace.execution_directory.get() {
             Some(working_directory) => sandbox::resolve_path(path, working_directory),
             None => path.to_string(),
         }
@@ -488,9 +462,7 @@ impl RunSandbox {
     /// Prepare the workspace after the sandbox runs for the first time:
     /// an empty root, or fabro's clone.
     async fn prepare_workspace(&self) -> crate::Result<()> {
-        let Some(workspace) = &self.workspace else {
-            return Ok(());
-        };
+        let workspace = &self.workspace;
         let layout = workspace
             .resolve_layout(self.handle()?.working_directory())
             .clone();
@@ -615,11 +587,7 @@ impl RunSandbox {
             // A cloned repository is reached through a workspace link. The
             // driver refuses a symlinked traversal root, so walk the real
             // checkout; results are reported under the link.
-            if let Some(checkout) = self
-                .workspace
-                .as_ref()
-                .and_then(|workspace| workspace.checkout_path.get())
-            {
+            if let Some(checkout) = self.workspace.checkout_path.get() {
                 return sandbox::join_sandbox_path(checkout, relative_start);
             }
             if relative_start.is_empty() {
@@ -909,16 +877,10 @@ impl RunSandbox {
     /// The directory the run works in: the cloned repository's link for a
     /// clone-based workspace, the provider's working directory otherwise.
     pub fn working_directory(&self) -> &str {
-        if let Some(directory) = self
-            .workspace
-            .as_ref()
-            .and_then(RepoWorkspace::working_directory)
-        {
-            return directory;
-        }
-        self.handle
-            .get()
-            .map_or("", |handle| handle.working_directory())
+        self.workspace
+            .working_directory()
+            .or_else(|| self.handle.get().map(|handle| handle.working_directory()))
+            .unwrap_or("")
     }
 
     pub fn runtime_directory(&self) -> Option<&str> {
@@ -955,7 +917,7 @@ impl RunSandbox {
     }
 
     pub fn workspace_layout(&self) -> Option<SandboxWorkspaceLayout> {
-        self.workspace.as_ref().and_then(RepoWorkspace::record)
+        self.workspace.record()
     }
 
     pub async fn setup_git(&self, intent: &GitSetupIntent) -> crate::Result<Option<GitRunInfo>> {
@@ -965,44 +927,42 @@ impl RunSandbox {
         sandbox::setup_git(self, intent).await.map(Some)
     }
 
+    /// Push `refspec` from the run's checkout. A checkout fabro cloned
+    /// pushes with the credentials it was cloned with. Any other checkout
+    /// pushes only when it has an origin, with whatever credentials it
+    /// carries itself; a workspace without one has nothing to push.
     pub async fn git_push_ref(
         &self,
         refspec: &str,
         policy: &GitRetryPolicy,
     ) -> Result<PushReport, PushError> {
-        let Some(workspace) = &self.workspace else {
-            // A designated directory: push only when the checkout has an
-            // origin, with whatever credentials its URL already carries.
-            let has_origin = match self
-                .exec_command("git remote get-url origin", 10_000, None, None, None)
-                .await
-            {
-                Ok(result) if result.success() => true,
-                Ok(_) => false,
-                Err(err) => {
-                    return Err(PushError {
-                        report: PushReport::default(),
-                        error:  crate::Error::context("git remote get-url origin", err),
-                    });
-                }
-            };
-            if !has_origin {
-                return Ok(PushReport::default());
+        let workspace = &self.workspace;
+        if workspace.repo_cloned() {
+            return sandbox::git_push(self, Some(&workspace.credentials), refspec, policy).await;
+        }
+        let has_origin = match self
+            .exec_command("git remote get-url origin", 10_000, None, None, None)
+            .await
+        {
+            Ok(result) => result.success(),
+            Err(err) => {
+                return Err(PushError {
+                    report: PushReport::default(),
+                    error:  crate::Error::context("git remote get-url origin", err),
+                });
             }
-            return sandbox::git_push(self, None, refspec, policy).await;
         };
-        if !workspace.repo_cloned() {
+        if !has_origin {
             return Ok(PushReport::default());
         }
-        sandbox::git_push(self, Some(&workspace.credentials), refspec, policy).await
+        sandbox::git_push(self, None, refspec, policy).await
     }
 
     pub fn origin_url(&self) -> Option<&str> {
-        let workspace = self.workspace.as_ref()?;
-        if !workspace.repo_cloned() {
+        if !self.workspace.repo_cloned() {
             return None;
         }
-        workspace.origin_url.get().map(String::as_str)
+        self.workspace.origin_url.get().map(String::as_str)
     }
 
     /// Renew the credentials the agent's own git commands read for the
@@ -1012,9 +972,7 @@ impl RunSandbox {
     /// checkout to install them in.
     #[tracing::instrument(name = "git_op", skip_all, fields(op = "refresh-credentials"))]
     pub async fn refresh_ambient_credentials(&self) -> crate::Result<Option<TokenSnapshot>> {
-        let Some(workspace) = &self.workspace else {
-            return Ok(None);
-        };
+        let workspace = &self.workspace;
         let Some(checkout) = workspace.checkout_path.get() else {
             return Ok(None);
         };
@@ -1026,9 +984,7 @@ impl RunSandbox {
     }
 
     pub fn push_token_source(&self) -> Option<Arc<InstallationTokenSource>> {
-        self.workspace
-            .as_ref()
-            .and_then(|workspace| workspace.credentials.source().cloned())
+        self.workspace.credentials.source().cloned()
     }
 
     /// The local command that opens a shell in the sandbox, from the
@@ -1065,9 +1021,7 @@ impl RunSandbox {
 
 impl RunSandbox {
     fn repo_cloned(&self) -> bool {
-        self.workspace
-            .as_ref()
-            .is_some_and(RepoWorkspace::repo_cloned)
+        self.workspace.repo_cloned()
     }
 
     /// Delete the sandbox on the provider. A pending sandbox that was never
@@ -1095,7 +1049,10 @@ mod tests {
     use tokio::fs;
 
     use super::*;
+    use crate::driver::ProviderAccess;
     use crate::exec::ExecResultExt;
+    use crate::provider_sandbox::local_sandbox;
+    use crate::sandbox_spec::SandboxSpec as RunSandboxSpec;
 
     struct Fixture {
         dir:       tempfile::TempDir,
@@ -1327,14 +1284,13 @@ mod tests {
     async fn lifecycle_reaches_the_driver_events_and_learns_the_platform() {
         let dir = tempfile::tempdir().unwrap();
         let recorded = Arc::new(Recorded(Mutex::new(Vec::new())));
-        let sandbox = local_sandbox_with_events(
-            dir.path(),
-            Some(EventContext::new(
+        let sandbox = RunSandboxSpec::local(dir.path(), ProviderAccess::default())
+            .build(Some(EventContext::new(
                 Arc::clone(&recorded) as Arc<dyn sandbox_driver::EventObserver>
-            )),
-        )
-        .await
-        .unwrap();
+            )))
+            .await
+            .unwrap();
+        sandbox.initialize().await.unwrap();
         let expected = if cfg!(target_os = "macos") {
             "darwin"
         } else {

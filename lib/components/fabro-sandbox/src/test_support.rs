@@ -10,6 +10,7 @@
 //! fabro's exec policy, down to the scripted driver.
 
 use std::collections::HashMap;
+use std::path::Path;
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
@@ -17,6 +18,7 @@ use fabro_types::SandboxProviderKind;
 use sandbox_driver::{
     ExecResult, GrepMatch, PlatformInfo, SandboxState, StderrTail, Termination, WalkedFile,
 };
+use sandbox_driver_host::HostProvider;
 pub use sandbox_driver_testing::{
     ScriptedExec, ScriptedProvider, ScriptedSandbox, ScriptedStdioProcess,
 };
@@ -26,6 +28,22 @@ use crate::driver::ConnectedProvider;
 use crate::driver_sandbox::RunSandbox;
 use crate::managed_labels::{MANAGED_LABEL, MANAGED_LABEL_VALUE};
 use crate::sandbox::SandboxFile;
+
+/// The id a run record carries for a local sandbox at `working_directory`,
+/// as the Host provider derives it from the canonical path. A record a test
+/// writes by hand reconnects the way one fabro wrote would. The directory
+/// must exist.
+pub async fn local_sandbox_id(working_directory: &Path) -> String {
+    HostProvider::directory_id(working_directory)
+        .await
+        .unwrap_or_else(|| {
+            panic!(
+                "no local sandbox id for {}: the directory must exist",
+                working_directory.display()
+            )
+        })
+        .to_string()
+}
 
 /// A driver [`ExecResult`] with the given streams, for scripting a mock
 /// sandbox's answers.

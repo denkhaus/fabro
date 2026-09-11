@@ -1011,6 +1011,7 @@ mod tests {
 mod retrieve_sandbox_tests {
     use axum::body::{Body, to_bytes};
     use axum::http::{Request, StatusCode};
+    use fabro_sandbox::test_support::local_sandbox_id;
     use fabro_types::{Graph, RunId, WorkflowSettings, test_support};
     use serde_json::{Value, json};
     use tower::ServiceExt;
@@ -1064,15 +1065,24 @@ mod retrieve_sandbox_tests {
         run_id: &RunId,
         provider: &str,
     ) {
-        append_sandbox_initialized_in(run_store, run_id, provider, "/workspace").await;
+        append_sandbox_initialized_in(
+            run_store,
+            run_id,
+            provider,
+            &format!("{provider}:sandbox-id"),
+            "/workspace",
+        )
+        .await;
     }
 
-    /// A local sandbox reconnects by attaching to its working directory, so
-    /// a test that reaches one records a directory that exists.
+    /// A local sandbox reconnects by the id the Host provider derives from
+    /// its working directory, so a test that reaches one records an
+    /// existing directory under the id fabro would have written for it.
     async fn append_sandbox_initialized_in(
         run_store: &fabro_store::RunDatabase,
         run_id: &RunId,
         provider: &str,
+        id: &str,
         working_directory: &str,
     ) {
         let payload = fabro_store::EventPayload::new(
@@ -1083,7 +1093,7 @@ mod retrieve_sandbox_tests {
                 "event": "sandbox.initialized",
                 "properties": {
                     "provider": provider,
-                    "id": format!("{provider}:sandbox-id"),
+                    "id": id,
                     "working_directory": working_directory,
                 },
             }),
@@ -1218,11 +1228,10 @@ mod retrieve_sandbox_tests {
             .await
             .expect("test run should be creatable");
         append_run_created(&run_store, &run_id).await;
-        // A record written before local sandboxes had directory-derived
-        // ids: the id is recomputed from the directory on reconnect.
         let workspace = tempfile::tempdir().expect("scratch directory");
         let working_directory = workspace.path().to_str().expect("utf-8").to_owned();
-        append_sandbox_initialized_in(&run_store, &run_id, "local", &working_directory).await;
+        let id = local_sandbox_id(workspace.path()).await;
+        append_sandbox_initialized_in(&run_store, &run_id, "local", &id, &working_directory).await;
 
         let response = app
             .oneshot(req_get(&format!("/api/v1/runs/{run_id}/sandbox")))
@@ -1231,7 +1240,7 @@ mod retrieve_sandbox_tests {
         assert_eq!(response.status(), StatusCode::OK);
         let body = body_json(response).await;
         assert_eq!(body["sandbox"]["provider"], "local");
-        assert_eq!(body["sandbox"]["runtime"]["id"], "local:sandbox-id");
+        assert_eq!(body["sandbox"]["runtime"]["id"], id);
         assert_eq!(
             body["sandbox"]["runtime"]["working_directory"],
             working_directory
@@ -1265,6 +1274,7 @@ mod retrieve_sandbox_tests {
             &run_store,
             &run_id,
             "local",
+            &local_sandbox_id(workspace.path()).await,
             workspace.path().to_str().expect("utf-8"),
         )
         .await;

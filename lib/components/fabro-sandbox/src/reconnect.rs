@@ -1,9 +1,6 @@
-use std::path::Path;
-
 use anyhow::{Context, Result};
-use fabro_types::{BundledProvider, RunId, RunSandboxInstance};
+use fabro_types::{RunId, RunSandboxInstance};
 use sandbox_driver::{EventContext, PtySession, PtySize};
-use sandbox_driver_host::HostProvider;
 
 use crate::driver::ProviderAccess;
 use crate::driver_sandbox::RunSandbox;
@@ -22,11 +19,10 @@ pub async fn reconnect_for_run(
     events: Option<EventContext>,
 ) -> Result<RunSandbox> {
     let runtime = &record.runtime;
-    let sandbox_id = sandbox_id(record).await;
     provider_sandbox::attach_provider_sandbox(
         record.provider.clone(),
         access,
-        &sandbox_id,
+        &runtime.id,
         // A record without the flag was written for a sandbox fabro never
         // cloned into.
         runtime.repo_cloned.unwrap_or(false),
@@ -37,20 +33,6 @@ pub async fn reconnect_for_run(
     )
     .await
     .with_context(|| format!("Failed to reconnect {} sandbox", record.provider))
-}
-
-/// The id the record's sandbox attaches by. A local sandbox is its working
-/// directory, and the Host provider derives the directory's id from its
-/// path, so the record's id is recomputed from the directory: a record
-/// written before directories had ids attaches the same way.
-async fn sandbox_id(record: &RunSandboxInstance) -> String {
-    let runtime = &record.runtime;
-    if record.provider.bundled() == Some(BundledProvider::Local) {
-        if let Some(id) = HostProvider::directory_id(Path::new(&runtime.working_directory)).await {
-            return id.to_string();
-        }
-    }
-    runtime.id.clone()
 }
 
 /// Opens an interactive shell in a run's sandbox over the driver's Pty
