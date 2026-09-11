@@ -487,12 +487,16 @@ pub async fn initialize(
                 error,
             ));
         }
+        // A local sandbox's id is derived from its directory, which the
+        // record already names; it is not a name worth showing.
+        let name = Some(sandbox.sandbox_info())
+            .filter(|name| !name.is_empty() && !sandbox.kind().is_local());
         options.emitter.emit(&Event::Sandbox {
             event: SandboxLifecycle::Ready {
-                provider:    provider_name.clone(),
+                provider: provider_name.clone(),
                 duration_ms: elapsed_ms(started),
-                name:        Some(sandbox.sandbox_info()).filter(|name| !name.is_empty()),
-                url:         sandbox.console_url().await,
+                name,
+                url: sandbox.console_url().await,
             },
         });
     }
