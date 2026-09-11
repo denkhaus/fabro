@@ -6,9 +6,8 @@
 //! the repository checks out under `<repos_root>/<owner>/<repo>` and the
 //! run works in `<workspace_root>/<repo>`, a symlink to the checkout. An
 //! exact commit or a tag is pinned by the driver's clone options, which
-//! fetch a tag by its fully qualified ref so a same-named branch is never
-//! consulted; fabro verifies the checked-out head afterwards. Neither path
-//! ever falls back to the branch head.
+//! fetch the pin directly and attach the branch to it; an unavailable pin
+//! fails the clone and never falls back to the branch head.
 
 use std::time::Duration;
 
@@ -20,7 +19,7 @@ use sandbox_driver::{
 };
 use tokio::time;
 
-use crate::clone_source::{self, GitHubRepoLayout, PinnedRevision};
+use crate::clone_source::{self, GitHubRepoLayout};
 use crate::exec::{ExecResultExt, SandboxExec};
 use crate::git_retry::{self, CredentialContext, GitRetryReason, RetryPlan};
 use crate::push_credentials::PushCredentialState;
@@ -158,20 +157,6 @@ pub(crate) async fn clone_github_repo(
     )
     .await
     .map_err(|failure| failure.error)?;
-    if let Some(pin) =
-        PinnedRevision::from_selectors(plan.tag.as_deref(), plan.commit_sha.as_deref())
-    {
-        let head = run_local_step(
-            exec,
-            &clone_source::exact_head_revision_command(&layout.primary_repo_path),
-            "git rev-parse HEAD (pinned checkout)",
-            deadline,
-            auth_url.as_ref(),
-            has_app,
-        )
-        .await?;
-        pin.verify_head(&head.stdout_lossy())?;
-    }
 
     run_local_step(
         exec,

@@ -73,19 +73,21 @@ pub(crate) fn repo_symlink_command(layout: &GitHubRepoLayout) -> String {
     )
 }
 
-/// A revision the checkout is pinned to instead of the branch's current HEAD.
+/// The kind of revision a checkout is pinned to instead of the branch's
+/// current HEAD.
 ///
 /// The working branch names the checkout the run works on; it never constrains
-/// which revision is fetched. No layer proves branch/revision ancestry, and an
-/// unavailable revision fails without falling back to branch HEAD.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// which revision is fetched. No layer proves branch/revision ancestry. The
+/// driver fetches the pin directly and attaches the branch to it, so an
+/// unavailable revision fails the clone without falling back to branch HEAD,
+/// and a successful clone has the pin checked out.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum PinnedRevision {
-    /// An exact commit SHA, already normalized by
-    /// [`normalize_exact_commit_sha`].
-    Commit(String),
+    /// An exact commit SHA.
+    Commit,
     /// A bare tag name; the driver fetches it as `refs/tags/<tag>` so a
     /// same-named branch is never consulted.
-    Tag(String),
+    Tag,
 }
 
 impl PinnedRevision {
@@ -93,60 +95,19 @@ impl PinnedRevision {
     /// target as durable identity but does not drive the checkout.
     pub(crate) fn from_selectors(tag: Option<&str>, commit_sha: Option<&str>) -> Option<Self> {
         match (commit_sha, tag) {
-            (Some(sha), _) => Some(Self::Commit(sha.to_string())),
-            (None, Some(tag)) => Some(Self::Tag(tag.to_string())),
+            (Some(_), _) => Some(Self::Commit),
+            (None, Some(_)) => Some(Self::Tag),
             (None, None) => None,
         }
     }
 
     /// Human-readable prefix for error messages.
-    pub(crate) fn label(&self) -> &'static str {
+    pub(crate) fn label(self) -> &'static str {
         match self {
-            Self::Commit(_) => "Exact commit checkout",
-            Self::Tag(_) => "Tag checkout",
+            Self::Commit => "Exact commit checkout",
+            Self::Tag => "Tag checkout",
         }
     }
-
-    /// The commit HEAD must resolve to after checkout, when one is known.
-    pub(crate) fn expected_sha(&self) -> Option<&str> {
-        match self {
-            Self::Commit(sha) => Some(sha),
-            Self::Tag(_) => None,
-        }
-    }
-
-    /// Validate the `rev-parse HEAD` output of a pinned checkout and return the
-    /// resolved commit ID.
-    pub(crate) fn verify_head(&self, output: &str) -> crate::Result<String> {
-        let actual_sha = verify_resolved_head(output)?;
-        if self
-            .expected_sha()
-            .is_some_and(|expected| expected != actual_sha)
-        {
-            return Err(crate::Error::message(
-                "Exact checkout HEAD did not match the requested commit",
-            ));
-        }
-        Ok(actual_sha)
-    }
-}
-
-/// Print the current HEAD commit and nothing else, for
-/// [`PinnedRevision::verify_head`].
-pub(crate) fn exact_head_revision_command(checkout_path: &str) -> String {
-    format!(
-        "{git} -C {path} rev-parse HEAD",
-        path = sandbox::shell_quote(checkout_path),
-        git = sandbox::GIT,
-    )
-}
-
-/// Validate that a `rev-parse HEAD` output is a single commit ID and return it
-/// normalized.
-pub(crate) fn verify_resolved_head(output: &str) -> crate::Result<String> {
-    normalize_exact_commit_sha(output.trim()).map_err(|err| {
-        crate::Error::context("Pinned checkout produced an invalid HEAD commit ID", err)
-    })
 }
 
 fn trim_root(root: &str) -> &str {
@@ -334,13 +295,17 @@ mod tests {
     }
 
     #[test]
-    fn pinned_revision_prefers_exact_commit_and_qualifies_tags() {
+    fn pinned_revision_prefers_exact_commit_over_a_tag() {
         let sha = "0123456789abcdef0123456789abcdef01234567";
         assert_eq!(PinnedRevision::from_selectors(None, None), None);
-        let tag = PinnedRevision::from_selectors(Some("release/v1"), None).unwrap();
-        assert_eq!(tag.expected_sha(), None);
-        let commit = PinnedRevision::from_selectors(Some("release/v1"), Some(sha)).unwrap();
-        assert_eq!(commit.expected_sha(), Some(sha));
+        assert_eq!(
+            PinnedRevision::from_selectors(Some("release/v1"), None),
+            Some(PinnedRevision::Tag)
+        );
+        assert_eq!(
+            PinnedRevision::from_selectors(Some("release/v1"), Some(sha)),
+            Some(PinnedRevision::Commit)
+        );
     }
 
     #[test]
@@ -466,25 +431,6 @@ mod tests {
         )
         .expect_err("empty tags should fail");
         assert!(empty_tag.to_string().contains("non-empty tag"));
-    }
-
-    #[test]
-    fn exact_checkout_verification_rejects_invalid_or_mismatched_head() {
-        let expected = "0123456789abcdef0123456789abcdef01234567";
-        let pin = PinnedRevision::Commit(expected.to_string());
-        pin.verify_head("0123456789ABCDEF0123456789ABCDEF01234567\n")
-            .expect("uppercase command output should normalize");
-
-        let invalid = pin
-            .verify_head("fatal: not a revision")
-            .expect_err("non-SHA output should fail verification");
-        assert!(invalid.to_string().contains("invalid HEAD commit ID"));
-        assert!(!invalid.to_string().contains("fatal: not a revision"));
-
-        let mismatched = pin
-            .verify_head("1123456789abcdef0123456789abcdef01234567")
-            .expect_err("mismatched SHA should fail verification");
-        assert!(mismatched.to_string().contains("did not match"));
     }
 
     #[test]
