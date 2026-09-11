@@ -169,7 +169,16 @@ pub fn validate_workflow_source_paths<'a>(
         if text.is_ascii() {
             Cow::Owned(text.to_ascii_lowercase())
         } else {
-            Cow::Owned(UniCase::unicode(text).to_folded_case().nfc().collect())
+            // Normalize before folding: case folding is not closed under
+            // canonical equivalence, so folding a decomposed sequence and
+            // folding its precomposed form can yield different strings.
+            let normalized: String = text.nfc().collect();
+            Cow::Owned(
+                UniCase::unicode(normalized)
+                    .to_folded_case()
+                    .nfc()
+                    .collect(),
+            )
         }
     })
 }
@@ -561,6 +570,9 @@ mod source_path_tests {
             ["ΟΣ", "οσ/b"],
             ["é", "e\u{301}/b"],
             ["Straße", "STRASSE/b"],
+            // Canonically equivalent, but folding before normalizing yields
+            // different keys (U+03B1 U+03AF vs U+03AC U+03B9).
+            ["α\u{345}\u{301}.md", "\u{1FB4}.md"],
         ] {
             let paths = pair.map(|path| WorkflowPath::new(path).unwrap());
             assert!(validate_workflow_source_paths(paths.iter()).is_err());
