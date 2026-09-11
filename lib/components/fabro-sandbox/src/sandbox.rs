@@ -1,16 +1,20 @@
 use std::fmt::Write;
 use std::time::Duration;
 
+use chrono::{DateTime, Utc};
 use fabro_github::token_source::TokenSnapshot;
 use fabro_util::shell;
-use sandbox_driver::{Git as _, GitCheckoutOptions, GitPushOptions, Termination};
+use sandbox_driver::{
+    Git as _, GitAttempt, GitCheckoutOptions, GitPushOptions, GitRetryError, GitRetryPolicy,
+    retry_git,
+};
 use serde::{Deserialize, Serialize};
 use tokio::time;
 
 use crate::credentials::{self, RepoCredentials};
 use crate::driver_sandbox::RunSandbox;
 use crate::exec::ExecResultExt;
-use crate::git_retry::{self, CredentialContext, GitRetryReason, RetryPlan};
+use crate::git_policy::{self, GitRetryReason};
 
 /// Git command prefix that disables background maintenance.
 pub(crate) const GIT: &str = "git -c maintenance.auto=0 -c gc.auto=0";
@@ -316,36 +320,19 @@ pub struct PushError {
     pub error:  crate::Error,
 }
 
-/// What a failed push attempt means for retrying. The driver classified
-/// the failure; a push that did not run to completion (timed out or
-/// cancelled) is never retried, because the remote may still be applying
-/// it.
-fn classify_push_error(error: &crate::Error, cred: CredentialContext) -> Option<GitRetryReason> {
-    let driver = error.driver()?;
-    if let sandbox_driver::Error::Git(failure) = driver {
-        if failure
-            .output()
-            .is_some_and(|output| output.termination() != Termination::Exited)
-        {
-            return None;
-        }
-    }
-    git_retry::classify_driver_failure(driver, cred)
-}
-
-/// Pushes a refspec to origin through the driver's git facet, retrying per
-/// `plan` with one token for the whole operation. `credentials` is the
-/// checkout's managed credentials; `None` pushes with whatever the checkout
-/// already has (the local sandbox, or a workspace without a GitHub App).
+/// Pushes a refspec to origin through the driver's git facet, retried by
+/// the driver under `policy` with one token for the whole operation.
+/// `credentials` is the checkout's managed credentials; `None` pushes with
+/// whatever the checkout already has (the local sandbox, or a workspace
+/// without a GitHub App).
 #[tracing::instrument(name = "git_op", skip_all, fields(op = "push"))]
 pub(crate) async fn git_push(
     sandbox: &RunSandbox,
     credentials: Option<&RepoCredentials>,
     refspec: &str,
-    plan: &RetryPlan,
+    policy: &GitRetryPolicy,
 ) -> Result<PushReport, PushError> {
     let start = time::Instant::now();
-    let deadline = plan.effective_deadline(start);
     let git = match sandbox.git() {
         Ok(git) => git,
         Err(error) => {
@@ -362,16 +349,18 @@ pub(crate) async fn git_push(
     // makes progress, and a fresh mint would restart that clock.
     let token = match credentials {
         Some(credentials) => {
-            let resolved = match deadline {
-                Some(deadline) => match time::timeout_at(deadline, credentials.resolve()).await {
-                    Ok(resolved) => resolved,
-                    Err(_) => {
-                        return Err(push_deadline_error(
-                            Vec::new(),
-                            "while acquiring credentials",
-                        ));
+            let resolved = match policy.max_elapsed {
+                Some(max_elapsed) => {
+                    match time::timeout(max_elapsed, credentials.resolve()).await {
+                        Ok(resolved) => resolved,
+                        Err(_) => {
+                            return Err(push_deadline_error(
+                                Vec::new(),
+                                "while acquiring credentials",
+                            ));
+                        }
                     }
-                },
+                }
                 None => credentials.resolve().await,
             };
             match resolved {
@@ -387,89 +376,86 @@ pub(crate) async fn git_push(
         None => None,
     };
     let snapshot = token.as_ref().map(|token| token.snapshot);
+    let git_credentials = token.as_ref().map(credentials::git_credentials);
+    // Resolving the token spent part of the operation's budget.
+    let policy = match policy.max_elapsed {
+        Some(max_elapsed) => policy.max_elapsed(max_elapsed.saturating_sub(start.elapsed())),
+        None => *policy,
+    };
 
-    let mut attempts: Vec<PushAttempt> = Vec::new();
     let label = format!("git push origin {refspec}");
-
-    loop {
-        let attempt_number = u32::try_from(attempts.len()).unwrap_or(u32::MAX) + 1;
-        let started_at = chrono::Utc::now();
-        let attempt_timeout = plan
-            .attempt_timeout(deadline)
-            .unwrap_or(Duration::from_mins(1));
-        if attempt_timeout.is_zero() {
-            return Err(push_deadline_error(attempts, "before the next attempt"));
+    let result = retry_git(
+        &policy,
+        git_credentials.as_ref(),
+        &label,
+        |_attempt, timeout| {
+            let mut options = GitPushOptions::default();
+            options.remote = Some("origin".to_owned());
+            options.refspec = Some(refspec.to_owned());
+            options.timeout = Some(timeout.unwrap_or(Duration::from_mins(1)));
+            options.credentials.clone_from(&git_credentials);
+            let git = &git;
+            let repo = &repo;
+            async move { git.push(repo, &options).await }
+        },
+    )
+    .await;
+    match result {
+        Ok(report) => {
+            tracing::info!(
+                refspec = %refspec,
+                attempts = report.attempts.len(),
+                token_generation = snapshot.map(|token| token.generation),
+                token_age_ms = snapshot.and_then(|token| token.age_ms()),
+                "Pushed git ref to origin"
+            );
+            Ok(PushReport {
+                attempts: push_attempts(report.attempts, Ok(()), snapshot),
+            })
         }
-        let mut options = GitPushOptions::default();
-        options.remote = Some("origin".to_owned());
-        options.refspec = Some(refspec.to_owned());
-        options.timeout = Some(attempt_timeout);
-        options.credentials = token.as_ref().map(credentials::git_credentials);
-        let push_result = git
-            .push(&repo, &options)
-            .await
-            .map_err(|error| crate::Error::context(label.clone(), error));
-
-        match push_result {
-            Ok(()) => {
-                attempts.push(PushAttempt {
-                    attempt: attempt_number,
-                    started_at,
-                    success: true,
-                    retry_reason: None,
-                    exec_output_tail: None,
-                    token: snapshot,
-                });
-                tracing::info!(
-                    refspec = %refspec,
-                    attempt = attempt_number,
-                    token_generation = snapshot.map(|token| token.generation),
-                    token_age_ms = snapshot.and_then(|token| token.age_ms()),
-                    "Pushed git ref to origin"
-                );
-                return Ok(PushReport { attempts });
-            }
-            Err(error) => {
-                let cred = CredentialContext::from_snapshot(snapshot.as_ref());
-                let retry_reason = classify_push_error(&error, cred);
-                attempts.push(PushAttempt {
-                    attempt: attempt_number,
-                    started_at,
-                    success: false,
-                    retry_reason,
-                    exec_output_tail: error.default_redacted_output_tail(),
-                    token: snapshot,
-                });
-
-                let exhausted = attempt_number >= plan.max_attempts.max(1);
-                let Some(reason) = retry_reason.filter(|_| !exhausted) else {
-                    return Err(PushError {
-                        report: PushReport { attempts },
-                        error,
-                    });
-                };
-                let Some(delay) = plan.retry_delay(attempt_number, deadline) else {
-                    return Err(PushError {
-                        report: PushReport { attempts },
-                        error,
-                    });
-                };
-                // The failure text can carry git stderr, so log the category
-                // rather than the message.
-                tracing::warn!(
-                    refspec = %refspec,
-                    attempt = attempt_number,
-                    max_attempts = plan.max_attempts,
-                    reason = %reason,
-                    token_generation = snapshot.map(|token| token.generation),
-                    token_age_ms = snapshot.and_then(|token| token.age_ms()),
-                    delay_ms = u64::try_from(delay.as_millis()).unwrap_or(u64::MAX),
-                    "Git push failed, retrying with the same token"
-                );
-                time::sleep(delay).await;
-            }
+        Err(GitRetryError { attempts, error }) => {
+            let error = crate::Error::context(label, error);
+            Err(PushError {
+                report: PushReport {
+                    attempts: push_attempts(attempts, Err(&error), snapshot),
+                },
+                error,
+            })
         }
     }
+}
+
+/// The driver's attempt history as fabro records it. In a completed
+/// operation every attempt but the last failed; in a failed one every
+/// attempt failed, and the last attempt's failure is `outcome`'s error.
+fn push_attempts(
+    attempts: Vec<GitAttempt>,
+    outcome: Result<(), &crate::Error>,
+    token: Option<TokenSnapshot>,
+) -> Vec<PushAttempt> {
+    let last = attempts.len();
+    attempts
+        .into_iter()
+        .enumerate()
+        .map(|(index, attempt)| {
+            let is_last = index + 1 == last;
+            let exec_output_tail = match (attempt.failure, &outcome) {
+                (Some(failure), _) => {
+                    crate::Error::driver_error(failure).default_redacted_output_tail()
+                }
+                (None, Err(error)) if is_last => error.default_redacted_output_tail(),
+                (None, _) => None,
+            };
+            PushAttempt {
+                attempt: attempt.attempt,
+                started_at: DateTime::<Utc>::from(attempt.started_at),
+                success: is_last && outcome.is_ok(),
+                retry_reason: attempt.retry_reason.map(git_policy::recorded_reason),
+                exec_output_tail,
+                token,
+            }
+        })
+        .collect()
 }
 
 fn push_deadline_error(attempts: Vec<PushAttempt>, stage: &str) -> PushError {
@@ -491,13 +477,13 @@ mod push_tests {
     use fabro_github::test_support::{InstallationTokenMinter, installation_token_source};
     use fabro_github::token_source::{InstallationTokenSource, REFRESH_MARGIN};
     use fabro_types::SandboxProviderKind;
-    use sandbox_driver::ExecResult;
+    use sandbox_driver::{ExecResult, Termination};
     use sandbox_driver_testing::ScriptedSandbox;
     use tokio::sync::Mutex as AsyncMutex;
 
     use super::*;
     use crate::credentials::RepoCredentials;
-    use crate::git_retry::{GitRetryReason, RetryPlan};
+    use crate::git_policy::{GitRetryReason, checkpoint_push_policy, publish_push_policy};
 
     const ORIGIN: &str = "https://github.com/fabro-testing/repo";
     const REFSPEC: &str = "refs/heads/fabro/run/01M0DH033P2XSTHAGVBHG6922F";
@@ -676,7 +662,7 @@ mod push_tests {
             &sandbox.run,
             Some(&credentials),
             REFSPEC,
-            &RetryPlan::checkpoint_push(),
+            &checkpoint_push_policy(),
         )
         .await
         .expect("push should recover within the checkpoint plan");
@@ -720,7 +706,7 @@ mod push_tests {
             &sandbox.run,
             Some(&credentials),
             REFSPEC,
-            &RetryPlan::publish_push(),
+            &publish_push_policy(),
         )
         .await
         .expect("push should recover within the publish plan");
@@ -751,7 +737,7 @@ mod push_tests {
             &sandbox.run,
             Some(&credentials),
             REFSPEC,
-            &RetryPlan::checkpoint_push(),
+            &checkpoint_push_policy(),
         )
         .await
         .expect("push recovers");
@@ -776,7 +762,7 @@ mod push_tests {
             &sandbox.run,
             Some(&credentials),
             REFSPEC,
-            &RetryPlan::publish_push(),
+            &publish_push_policy(),
         )
         .await
         .expect_err("static credentials cannot become valid by waiting");
@@ -817,7 +803,7 @@ mod push_tests {
             &sandbox.run,
             Some(&credentials),
             REFSPEC,
-            &RetryPlan::checkpoint_push(),
+            &checkpoint_push_policy(),
         )
         .await
         .expect("the cached token still pushes");
@@ -840,7 +826,7 @@ mod push_tests {
             &sandbox.run,
             Some(&credentials),
             REFSPEC,
-            &RetryPlan::checkpoint_push(),
+            &checkpoint_push_policy(),
         )
         .await
         .expect_err("no token to push with");
@@ -872,7 +858,7 @@ mod push_tests {
             &sandbox.run,
             Some(&credentials),
             REFSPEC,
-            &RetryPlan::checkpoint_push(),
+            &checkpoint_push_policy(),
         )
         .await
         .expect("push succeeds");
@@ -897,7 +883,7 @@ mod push_tests {
     async fn push_without_managed_credentials_reports_no_token() {
         let sandbox = ScriptedGitSandbox::new(vec![ok_exec()]);
 
-        let report = git_push(&sandbox.run, None, REFSPEC, &RetryPlan::checkpoint_push())
+        let report = git_push(&sandbox.run, None, REFSPEC, &checkpoint_push_policy())
             .await
             .expect("push succeeds");
 
@@ -912,7 +898,7 @@ mod push_tests {
             "fatal: Authentication failed for 'https://github.com/fabro-testing/repo'",
         )]);
 
-        let push_error = git_push(&sandbox.run, None, REFSPEC, &RetryPlan::publish_push())
+        let push_error = git_push(&sandbox.run, None, REFSPEC, &publish_push_policy())
             .await
             .expect_err("no credentials to wait on");
 
@@ -924,7 +910,7 @@ mod push_tests {
     async fn timed_out_push_is_not_retried_while_the_remote_process_may_still_run() {
         let sandbox = ScriptedGitSandbox::new(vec![timed_out_exec()]);
 
-        let push_error = git_push(&sandbox.run, None, REFSPEC, &RetryPlan::publish_push())
+        let push_error = git_push(&sandbox.run, None, REFSPEC, &publish_push_policy())
             .await
             .expect_err("an unconfirmed timeout must fail without another push");
 
@@ -938,10 +924,9 @@ mod push_tests {
         let source = installation_token_source("fabro-testing/repo", Arc::new(SlowMinter));
         let credentials = RepoCredentials::new(Some(source));
         let sandbox = ScriptedGitSandbox::new(vec![]);
-        let mut plan = RetryPlan::checkpoint_push();
-        plan.max_elapsed = Some(Duration::from_secs(1));
+        let policy = checkpoint_push_policy().max_elapsed(Duration::from_secs(1));
 
-        let push_error = git_push(&sandbox.run, Some(&credentials), REFSPEC, &plan)
+        let push_error = git_push(&sandbox.run, Some(&credentials), REFSPEC, &policy)
             .await
             .expect_err("credential resolution must stop at the operation deadline");
 
@@ -953,10 +938,9 @@ mod push_tests {
     #[tokio::test(start_paused = true)]
     async fn expired_retry_deadline_does_not_launch_a_zero_timeout_push() {
         let sandbox = ScriptedGitSandbox::new(vec![]);
-        let mut plan = RetryPlan::checkpoint_push();
-        plan.max_elapsed = Some(Duration::ZERO);
+        let policy = checkpoint_push_policy().max_elapsed(Duration::ZERO);
 
-        let push_error = git_push(&sandbox.run, None, REFSPEC, &plan)
+        let push_error = git_push(&sandbox.run, None, REFSPEC, &policy)
             .await
             .expect_err("an expired operation must stop before exec");
 

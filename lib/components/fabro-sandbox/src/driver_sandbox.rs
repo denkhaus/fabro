@@ -24,7 +24,7 @@ use fabro_types::SandboxProviderKind;
 use fabro_util::workspace_glob::WorkspaceGlob;
 use sandbox_driver::{
     DirEntry, EventContext, ExecControls, ExecResult, ExecSpec, ExecStreamingResult, FileKind,
-    GrepMatch, GrepOptions, LifecycleTimers, PtyOptions, PtySession, PtySize,
+    GitRetryPolicy, GrepMatch, GrepOptions, LifecycleTimers, PtyOptions, PtySession, PtySize,
     Sandbox as DriverHandle, SandboxProvider as DriverProvider, SandboxSource,
     SandboxSpec as DriverSpec, SandboxState, Search as _, StdioProcess, WaitOptions, WalkOptions,
 };
@@ -37,7 +37,7 @@ use crate::clone::{self, GitHubClone};
 use crate::clone_source::{self, CloneDecision, EmptyWorkspaceReason};
 use crate::credentials::{self, RepoCredentials};
 use crate::environment::CloneRequest;
-use crate::{GitRunInfo, GitSetupIntent, RetryPlan};
+use crate::{GitRunInfo, GitSetupIntent};
 
 /// A sandbox on the worker host at `working_directory`, the fabro `local`
 /// kind, served by the driver's in-process Host provider.
@@ -1051,7 +1051,7 @@ impl RunSandbox {
     pub async fn git_push_ref(
         &self,
         refspec: &str,
-        plan: &RetryPlan,
+        policy: &GitRetryPolicy,
     ) -> Result<PushReport, PushError> {
         let Some(workspace) = &self.workspace else {
             // A designated directory: push only when the checkout has an
@@ -1072,12 +1072,12 @@ impl RunSandbox {
             if !has_origin {
                 return Ok(PushReport::default());
             }
-            return sandbox::git_push(self, None, refspec, plan).await;
+            return sandbox::git_push(self, None, refspec, policy).await;
         };
         if !workspace.repo_cloned() {
             return Ok(PushReport::default());
         }
-        sandbox::git_push(self, Some(&workspace.credentials), refspec, plan).await
+        sandbox::git_push(self, Some(&workspace.credentials), refspec, policy).await
     }
 
     pub fn origin_url(&self) -> Option<&str> {

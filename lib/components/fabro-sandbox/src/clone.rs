@@ -23,7 +23,7 @@ use tokio::time;
 use crate::clone_source::{self, GitHubRepoLayout};
 use crate::credentials::{self, RepoCredentials};
 use crate::exec::{ExecResultExt, SandboxExec};
-use crate::git_retry::{self, CredentialContext, GitRetryReason, RetryPlan};
+use crate::git_policy;
 
 /// Whole-clone budget, shared by every network and local step.
 pub(crate) const GIT_CLONE_TIMEOUT: Duration = Duration::from_mins(5);
@@ -57,11 +57,6 @@ enum CloneStep {
     Local,
 }
 
-struct CloneFailure {
-    error:        crate::Error,
-    retry_reason: Option<GitRetryReason>,
-}
-
 /// Clone `plan` into `handle`, laid out under `workspace_root` and
 /// `repos_root`, with a GitHub App token from `credentials` when one is
 /// available: the clone carries it per call, and the checkout keeps it as
@@ -77,8 +72,6 @@ pub(crate) async fn clone_github_repo(
 ) -> crate::Result<CloneOutcome> {
     let layout = clone_source::github_repo_layout(&plan.origin_url, workspace_root, repos_root)?;
     let token = credentials.mint_for_clone().await?;
-    let credential_context =
-        CredentialContext::from_snapshot(token.as_ref().map(|token| &token.snapshot));
 
     let fs = handle.fs();
     for dir in [workspace_root, layout.repos_owner_path.as_str()] {
@@ -106,37 +99,30 @@ pub(crate) async fn clone_github_repo(
     options.tag = plan.tag.clone().filter(|_| plan.commit_sha.is_none());
     options.depth = plan.depth;
     options.credentials = token.as_ref().map(credentials::git_credentials);
-    let retry_plan = RetryPlan::clone_default(Some(deadline));
+    // The driver retries a clone the remote refused while the token may
+    // still be replicating, inside what is left of the clone budget.
+    let policy = git_policy::clone_policy(deadline.saturating_duration_since(time::Instant::now()));
     let target = layout.primary_repo_path.clone();
-    git_retry::retry_git_operation(
-        kind.clone(),
-        "clone",
-        &retry_plan,
-        |_attempt| {
-            let options = options.clone();
-            let target = target.clone();
-            let origin_url = plan.origin_url.clone();
+    sandbox_driver::retry_git(
+        &policy,
+        options.credentials.as_ref(),
+        "git clone",
+        |_attempt, _timeout| {
             let git = &git;
-            async move {
-                git.clone_repo(&origin_url, &target, &options)
-                    .await
-                    .map_err(|error| CloneFailure {
-                        retry_reason: git_retry::classify_driver_failure(
-                            &error,
-                            credential_context,
-                        ),
-                        error:        clone_failure_error(
-                            crate::Error::driver_error(error),
-                            CloneStep::Network,
-                            has_app,
-                        ),
-                    })
-            }
+            let options = &options;
+            let target = &target;
+            let origin_url = &plan.origin_url;
+            async move { git.clone_repo(origin_url, target, options).await }
         },
-        |failure: &CloneFailure| failure.retry_reason,
     )
     .await
-    .map_err(|failure| failure.error)?;
+    .map_err(|failure| {
+        clone_failure_error(
+            crate::Error::driver_error(failure.error),
+            CloneStep::Network,
+            has_app,
+        )
+    })?;
 
     run_local_step(
         exec,

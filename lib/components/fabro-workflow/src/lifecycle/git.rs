@@ -87,10 +87,10 @@ pub(crate) struct PushResult {
 pub(crate) async fn push_run_branch(
     sandbox: &fabro_sandbox::RunSandbox,
     branch: &str,
-    plan: &fabro_sandbox::RetryPlan,
+    policy: &fabro_sandbox::GitRetryPolicy,
 ) -> Result<fabro_sandbox::PushReport, fabro_sandbox::PushError> {
     sandbox
-        .git_push_ref(&format!("refs/heads/{branch}:refs/heads/{branch}"), plan)
+        .git_push_ref(&format!("refs/heads/{branch}:refs/heads/{branch}"), policy)
         .await
 }
 
@@ -333,9 +333,9 @@ impl RunLifecycle<WorkflowGraph> for GitLifecycle {
                         .as_ref()
                         .and_then(|g| g.run_branch.as_ref())
                     {
-                        let plan = fabro_sandbox::RetryPlan::checkpoint_push();
+                        let policy = fabro_sandbox::checkpoint_push_policy();
                         let (push_ok, exec_output_tail, attempts) =
-                            match push_run_branch(self.sandbox.as_ref(), branch, &plan).await {
+                            match push_run_branch(self.sandbox.as_ref(), branch, &policy).await {
                                 Ok(report) => {
                                     self.sandbox_git.record_successful_push();
                                     (true, None, report.attempts)

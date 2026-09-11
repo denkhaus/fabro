@@ -11,6 +11,7 @@
 //! [`InstallationTokenSource`].
 
 use std::sync::Arc;
+use std::time::SystemTime;
 
 use fabro_github::GitHubCredentials;
 use fabro_github::token_source::{InstallationTokenSource, ResolvedToken};
@@ -119,9 +120,15 @@ impl RepoCredentials {
     }
 }
 
-/// The per-call form of `token` for the driver's network operations.
+/// The per-call form of `token` for the driver's network operations. The
+/// mint time travels with a minted token so the driver's retry knows a
+/// rejection may be replication lag; a static credential carries none.
 pub(crate) fn git_credentials(token: &ResolvedToken) -> GitCredentials {
-    GitCredentials::new(GITHUB_TOKEN_USERNAME, token.token.expose())
+    let credentials = GitCredentials::new(GITHUB_TOKEN_USERNAME, token.token.expose());
+    match token.snapshot.minted_at() {
+        Some(minted_at) => credentials.minted_at(SystemTime::from(minted_at)),
+        None => credentials,
+    }
 }
 
 #[cfg(test)]
@@ -143,5 +150,9 @@ mod tests {
         let credentials = git_credentials(&token);
         assert_eq!(credentials.username, GITHUB_TOKEN_USERNAME);
         assert_eq!(credentials.password, "ghp_static");
+        assert!(
+            credentials.minted_at.is_none(),
+            "a static credential has no mint time"
+        );
     }
 }

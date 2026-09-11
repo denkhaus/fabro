@@ -229,8 +229,8 @@ impl Concluded {
     async fn push_final_commit(&self, run_branch: &str) -> Result<(), Error> {
         // The terminal push guards the whole run's value, so it gets a real
         // retry budget; attempts are nearly free at this point.
-        let plan = fabro_sandbox::RetryPlan::publish_push();
-        match push_run_branch(self.services.sandbox.as_ref(), run_branch, &plan).await {
+        let policy = fabro_sandbox::publish_push_policy();
+        match push_run_branch(self.services.sandbox.as_ref(), run_branch, &policy).await {
             Ok(report) => {
                 self.services.sandbox_git.record_successful_push();
                 self.services.emitter.emit(&Event::GitPush {

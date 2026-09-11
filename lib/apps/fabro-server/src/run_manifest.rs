@@ -1501,23 +1501,21 @@ async fn probe_github_repository(
 
 /// Retry auth-shaped failures with the SAME token: replication of a given
 /// token only makes progress, while re-minting would restart the replication
-/// clock. The sandbox git retry executor owns attempt limits,
-/// classification, and pacing.
+/// clock. The driver's git retry owns the decision and the pacing; fabro's
+/// probe policy owns the attempt count.
 async fn probe_with_replication_retry<F, Fut>(
     snapshot: TokenSnapshot,
-    mut run: F,
+    run: F,
 ) -> std::result::Result<(), String>
 where
     F: FnMut() -> Fut,
     Fut: Future<Output = std::result::Result<(), String>>,
 {
-    let credential_context = fabro_sandbox::CredentialContext::from_snapshot(Some(&snapshot));
-    fabro_sandbox::retry_git_operation(
-        SandboxProviderKind::LOCAL,
+    fabro_sandbox::retry_git_messages(
+        &fabro_sandbox::repository_probe_policy(),
+        Some(&snapshot),
         "repository probe",
-        &fabro_sandbox::RetryPlan::repository_probe(),
-        |_attempt| run(),
-        |message| fabro_sandbox::classify_failure(message, credential_context),
+        run,
     )
     .await
 }

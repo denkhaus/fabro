@@ -6,7 +6,7 @@ pub mod sandbox_spec;
 
 mod clone_source;
 
-mod git_retry;
+mod git_policy;
 
 mod managed_labels;
 
@@ -44,8 +44,9 @@ pub use fabro_github::token_source::{
     InstallationTokenSource, ResolvedToken, TokenProvenance, TokenSnapshot,
 };
 pub use fabro_types::{RunSandboxInstance, SandboxProviderKind};
-pub use git_retry::{
-    CredentialContext, GitRetryReason, RetryPlan, classify_failure, retry_git_operation,
+pub use git_policy::{
+    GitRetryReason, checkpoint_push_policy, publish_push_policy, repository_probe_policy,
+    retry_git_messages, transient_git_failure,
 };
 pub use provider::{SandboxInventory, SandboxLookupError};
 pub use provider_sandbox::{attach_provider_sandbox, provider_sandbox};
@@ -64,8 +65,8 @@ pub use sandbox::{
 /// dependency.
 pub use sandbox_driver::{
     CaptureStats, DirEntry, ExecControls, ExecFailure, ExecResult, ExecSpec, ExecStreamingResult,
-    FileKind, GrepMatch, GrepOptions, LifecycleTimers, NetworkPolicy, OutputSink, OutputStream,
-    PtySession, PtySize, Resources, SandboxSource, SandboxSpec as DriverSpec, StderrTail,
-    StdioProcess, StdioProcessHandle, Termination, TransportError, WalkOptions,
+    FileKind, GitRetryPolicy, GrepMatch, GrepOptions, LifecycleTimers, NetworkPolicy, OutputSink,
+    OutputStream, PtySession, PtySize, Resources, SandboxSource, SandboxSpec as DriverSpec,
+    StderrTail, StdioProcess, StdioProcessHandle, Termination, TransportError, WalkOptions,
 };
 pub use sandbox_spec::{ProviderSandboxSpec, SandboxSpec};
