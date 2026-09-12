@@ -1,0 +1,407 @@
+{
+  "title": "Merge upstream/main into denkhaus per the conflict policy, gate the merged tree, and report; depl...",
+  "parent_id": "01M2BCDGH0ZKK9SPYW186GWNEG",
+  "spec": {
+    "run_id": "01M2BCGNZ6SZG7V3QV4WWYEVR0",
+    "settings": {
+      "project": {
+        "name": null,
+        "description": null,
+        "metadata": {}
+      },
+      "workflow": {
+        "name": null,
+        "description": null,
+        "graph": "workflow.fabro",
+        "metadata": {}
+      },
+      "run": {
+        "goal": {
+          "type": "inline",
+          "value": "Merge upstream/main into denkhaus per the conflict policy, gate the merged tree, and report; deploy is host-side"
+        },
+        "working_dir": null,
+        "metadata": {},
+        "inputs": {},
+        "model": {
+          "provider": "zai",
+          "name": "glm-5.3",
+          "fallbacks": {},
+          "controls": {
+            "reasoning_effort": null,
+            "speed": null
+          }
+        },
+        "git": {
+          "author": null
+        },
+        "prepare": {
+          "steps": [],
+          "timeout_ms": 300000
+        },
+        "execution": {
+          "mode": "normal",
+          "approval": "auto",
+          "approval_timeout_secs": 86400
+        },
+        "checkpoint": {
+          "exclude_globs": [],
+          "skip_git_hooks": false,
+          "commit_timeout_ms": 30000
+        },
+        "clone": {
+          "enabled": true,
+          "depth": 0
+        },
+        "run_branch": {
+          "enabled": true,
+          "push": true
+        },
+        "meta_branch": {
+          "enabled": true,
+          "push": true
+        },
+        "environment": {
+          "id": "toolchain",
+          "provider": "docker",
+          "image": {
+            "docker": "fabro-toolchain:noble",
+            "dockerfile": null
+          },
+          "resources": {
+            "cpu": 8,
+            "memory": "16GB",
+            "disk": null
+          },
+          "network": {
+            "mode": "allow_all",
+            "allow": []
+          },
+          "lifecycle": {
+            "preserve": false,
+            "stop_on_terminal": true,
+            "auto_stop": null
+          },
+          "labels": {
+            "purpose": "smoke-lint-test"
+          },
+          "env": {}
+        },
+        "notifications": {
+          "terminal": {
+            "enabled": true,
+            "provider": "slack",
+            "events": [
+              "run.completed",
+              "run.failed"
+            ],
+            "slack": {
+              "channel": "#dev-fabro"
+            }
+          }
+        },
+        "interviews": {
+          "provider": null,
+          "slack": null
+        },
+        "agent": {
+          "fabro_tools": false,
+          "mcps": {}
+        },
+        "hooks": [
+          {
+            "name": "stage-journal",
+            "event": "stage_complete",
+            "command": "nu .fabro/workflows/merge-upstream/scripts/stage-journal.nu",
+            "matcher": null,
+            "blocking": false,
+            "timeout_ms": 10000,
+            "sandbox": true
+          }
+        ],
+        "scm": {
+          "provider": null,
+          "owner": null,
+          "repository": null,
+          "github": null
+        },
+        "pull_request": {
+          "enabled": true,
+          "draft": false,
+          "auto_merge": true,
+          "merge_strategy": "squash",
+          "model": "zai:glm-4.7"
+        },
+        "artifacts": {
+          "include": []
+        },
+        "integrations": {
+          "github": {
+            "permissions": {}
+          }
+        }
+      }
+    },
+    "graph": {
+      "name": "MergeUpstream",
+      "nodes": {
+        "reviewer": {
+          "id": "reviewer",
+          "attrs": {
+            "label": {
+              "String": "Review merge"
+            },
+            "prompt": {
+              "String": "You are the Upstream Merge Reviewer. The Merger claims upstream/main is merged into this fork branch per the conflict policy, gated green, and reported. You verify that claim and — above all — that OUR features survived. You never merge, never write files, never re-run the gate (it already ran; the Merger's evidence must show it).\n\n## Review checklist\n\n1. Read the Merger's report at `.fabro/reports/merge-upstream/<sha>.md` and the merge commit itself (`git show <merge-commit>` / `git diff <base>...HEAD --stat`).\n2. CONFLICTS: for every conflict in the report, open the resolved file and verify the resolution honors `.agents/skills/merge-upstream/references/conflict-policy.md`: BOTH sides' semantics survive; no silent revert of ours, no drop of upstream.\n3. FEATURE REGRESSION (the core duty): walk `.agents/skills/merge-upstream/references/touchpoints.md` — for EVERY listed touchpoint, check the merged tree still contains our feature (spot-check the key symbols/tests named there). Upstream refactors love to break our local features: renamed call sites, moved modules, changed signatures. Name each touchpoint you checked in the verdict.\n4. ADAPTATIONS: every fork call site the Merger adapted must type-check in the merged tree (the gate already proved it compiles — verify the ADAPTATION preserves OUR behavior, not just compilation).\n5. CAPABILITY & SECURITY SCAN (ADR-0019 — MANDATORY, user directive 2026-09-08): upstream has shipped capability-sensitive machinery before (the GITHUB_TOKEN shell injection and the git credential bridge both arrived via upstream merges). Scan the UPSTREAM DELTA (`git diff <base>...HEAD` limited to what the upstream side contributed) for changes on agent-reachable or credential-bearing surfaces: (a) credential minting/injection/env plumbing (fabro-github, fabro-workflow services/git_bridge/initialize, sandbox env assembly, ToolEnvProvider); (b) sandbox transports and clone/push credential handling (fabro-sandbox docker/daytona/push_credentials, remote-URL token embedding); (c) agent tool catalog or shell/web tool surface changes; (d) permission/integration config model changes (run.integrations, sandbox.env, fs_hide/fs_write semantics); (e) Dockerfile/image tool additions. For EVERY hit: name the file and change in the verdict and file it as a `needs-user` seed citing ADR-0019 (the human decides adoption; you never approve a capability delta silently). A capability-relevant upstream delta WITHOUT a filed needs-user seed is itself a \"Changes requested\" finding.\n6. OBSOLESCENCE: does upstream now provide what one of our open seeds implements? List candidates (the human decides; you only flag).\n7. EVIDENCE: the report's verification table must show the commands actually run and green; a claim without output is a finding.\n\n## Verdicts — routing is STRICT\n\nYour structured output's `preferred_label` MUST be exactly one of these\nthree strings — they are the graph's routing edges; any other value (e.g.\n\"deploy\", \"approve\", \"merge\") matches no edge and parks the run at a soft\nexit:\n\n- \"Approved\": conflicts policy-clean, all touchpoints verified present, evidence complete. Deploy happens host-side AFTER approval — it is never your label.\n- \"Changes requested\" (context key `review_feedback`: concrete objections phrased as instructions): any touchpoint regressed, resolution violates the policy, or evidence is incomplete.\n- \"Verification blocked\": you cannot read what you must review (missing report, unreadable diff).\n\n## Journal — every pass\n\nReport through `context_updates.journal` on EVERY pass. Silence is a missing report, not an empty one. Always emit BOTH keys:\n\n{\"journal\": {\"painpoints\": [{\"text\": \"<what hurt and a concrete suggestion, self-contained: where (file/line), what happened, evidence (run id), fix idea>\"}], \"observations\": [\"<touchpoints checked, time spent, upstream themes worth an obsolescence flag — what the next reviewer should know>\"]}}\n\n- `painpoints`: friction in the review loop itself (unreadable reports, missing evidence, tooling gaps).\n  Do not fix platform assets — report them here. `[]` when nothing hurt.\n- `observations`: at least one entry. The literal `\"none\"` is a valid\n  answer when the pass was genuinely unremarkable — but the key must be\n  present every time.\nThe engine records it durably per stage (no restating, no rewriting);\nnobody re-reads your prose, only the JSON survives.\n\nHygiene: wrap absolute paths in backticks; never write bare slash-words.\n"
+            },
+            "project_memory": {
+              "Boolean": false
+            },
+            "fs_write": {
+              "String": ""
+            },
+            "preamble_stages_ignore": {
+              "String": "merge,reviewer"
+            },
+            "fabro_tools": {
+              "String": ""
+            },
+            "output_retries": {
+              "Integer": 2
+            },
+            "retry_policy": {
+              "String": "standard"
+            },
+            "reasoning_effort": {
+              "String": "high"
+            },
+            "output_schema": {
+              "String": "routing"
+            }
+          }
+        },
+        "exit": {
+          "id": "exit",
+          "attrs": {
+            "shape": {
+              "String": "Msquare"
+            },
+            "label": {
+              "String": "Exit"
+            }
+          }
+        },
+        "start": {
+          "id": "start",
+          "attrs": {
+            "shape": {
+              "String": "Mdiamond"
+            },
+            "label": {
+              "String": "Start"
+            }
+          }
+        },
+        "merge": {
+          "id": "merge",
+          "attrs": {
+            "project_memory": {
+              "Boolean": false
+            },
+            "preamble_stages_ignore": {
+              "String": "merge"
+            },
+            "output_retries": {
+              "Integer": 2
+            },
+            "retry_policy": {
+              "String": "standard"
+            },
+            "fabro_tools": {
+              "String": ""
+            },
+            "output_schema": {
+              "String": "routing"
+            },
+            "label": {
+              "String": "Merge"
+            },
+            "reasoning_effort": {
+              "String": "high"
+            },
+            "prompt": {
+              "String": "You are the Upstream Merger. You merge upstream/main into this fork branch (denkhaus) in one pass: merge, resolve, gate, report. You never deploy and never push manually — the engine owns branch push and PR.\n\n## Procedure\n\n1. Ensure remotes: `origin` exists; add `upstream` pointing at `https://github.com/fabro-sh/fabro` if missing, then `git fetch upstream --prune` and `git fetch origin`. Report the one-line range `origin/denkhaus..upstream/main` (count + newest subject).\n2. `git merge upstream/main --no-commit`. On conflicts, resolve EVERY file strictly per `.agents/skills/merge-upstream/references/conflict-policy.md` (read it FIRST): our features AND upstream changes both survive; adapt our call sites to upstream signatures; never revert either side silently. Check `references/touchpoints.md` for known touchpoints.\n3. Run the full gate: `just qualitygate` (touched-crates from the merge diff; an upstream merge usually touches many crates, so expect near-full fmt+clippy+nextest). Fix breakage in OUR adaptation code only; never patch upstream code beyond conflict resolution.\n4. Feature-regression analysis (input for the reviewer): walk\n   `.agents/skills/merge-upstream/references/touchpoints.md` and state per\n   touchpoint whether the merged tree still carries our feature (key symbol\n   or test still present). List every adapted fork call site explicitly.\n   This section is MANDATORY in the report — the reviewer approves against\n   it.\n5. Write the report to `.fabro/reports/merge-upstream/<upstream-short-sha>.md` (create dirs): merge identity (range), conflicts resolved by class, verification commands + results, obsolescence notes (seeds/features upstream now supersedes), one-line \"what it means for us\" per upstream theme. English only.\n\n   Filename contract (uniform — never improvise): a REAL merge writes\n   `<short-sha>.md`; a no-op pass (upstream already contained, nothing\n   merged) writes `<short-sha>-noop.md`, OVERWRITING any existing noop\n   report at the same sha (git history keeps prior versions). Never add\n   dates or free-form suffixes.\n6. Stage exactly your changes: `git add -A` and commit with the message `merge: upstream/main (<old> -> <new>) — <version or 'unversioned'>` plus a body listing conflicts resolved and call-site adaptations.\n\n## Hard rules\n\n- Deploy is NOT yours: the run branch push, PR, and Dogfood-Gate auto-merge are the engine's; the host applies the deployment.\n- If conflicts exceed the policy (unknown class, semantic doubt), FAIL the stage with a precise description — the conductor routes the case to the manual /merge-upstream skill.\n- Wrap absolute paths in backticks in every text you emit; never write bare slash-words.\n\n## Journal — every pass\n\nReport through `context_updates.journal` on EVERY pass. Silence is a missing report, not an empty one. Always emit BOTH keys:\n\n{\"journal\": {\"painpoints\": [{\"text\": \"<what hurt and a concrete suggestion, self-contained: where (file/line), what happened, evidence (run id), fix idea>\"}], \"observations\": [\"<upstream commit count + newest subject, conflict classes seen, gate duration — what the next merger should know>\"]}}\n\n- `painpoints`: friction in the merge loop itself (conflict-policy gaps, gate tooling, shallow-clone traps).\n  Do not fix platform assets — report them here. `[]` when nothing hurt.\n- `observations`: at least one entry. The literal `\"none\"` is a valid\n  answer when the pass was genuinely unremarkable — but the key must be\n  present every time.\nThe engine records it durably per stage (no restating, no rewriting);\nnobody re-reads your prose, only the JSON survives.\n\n## Outcome contract\n\n- `succeeded`: merge committed, gate green, report written.\n- `failed`: conflicts beyond policy, or the gate stayed red after adaptation.\n"
+            }
+          }
+        }
+      },
+      "edges": [
+        {
+          "from": "start",
+          "to": "merge",
+          "attrs": {}
+        },
+        {
+          "from": "merge",
+          "to": "reviewer",
+          "attrs": {
+            "label": {
+              "String": "Merged and gated"
+            },
+            "condition": {
+              "String": "outcome=succeeded"
+            }
+          }
+        },
+        {
+          "from": "reviewer",
+          "to": "exit",
+          "attrs": {
+            "condition": {
+              "String": "preferred_label=\"Approved\""
+            },
+            "label": {
+              "String": "Approved"
+            }
+          }
+        },
+        {
+          "from": "reviewer",
+          "to": "merge",
+          "attrs": {
+            "condition": {
+              "String": "preferred_label=\"Changes requested\""
+            },
+            "label": {
+              "String": "Changes requested"
+            }
+          }
+        },
+        {
+          "from": "reviewer",
+          "to": "exit",
+          "attrs": {
+            "label": {
+              "String": "Review blocked — manual /merge-upstream takes over"
+            },
+            "condition": {
+              "String": "preferred_label=\"Verification blocked\""
+            },
+            "kind": {
+              "String": "soft"
+            }
+          }
+        },
+        {
+          "from": "reviewer",
+          "to": "exit",
+          "attrs": {
+            "label": {
+              "String": "Unrouted review outcome"
+            },
+            "kind": {
+              "String": "soft"
+            }
+          }
+        },
+        {
+          "from": "merge",
+          "to": "exit",
+          "attrs": {
+            "kind": {
+              "String": "soft"
+            },
+            "label": {
+              "String": "Merge failed (manual /merge-upstream takes over)"
+            }
+          }
+        }
+      ],
+      "attrs": {
+        "preamble_budget_kb": {
+          "Integer": 12
+        },
+        "cycle_counter_reset_key": {
+          "String": "merge_target_sha"
+        },
+        "rankdir": {
+          "String": "LR"
+        },
+        "max_node_visits": {
+          "Integer": 6
+        },
+        "goal": {
+          "String": "Merge upstream/main into denkhaus per the conflict policy, gate the merged tree, and report; deploy is host-side"
+        }
+      }
+    },
+    "graph_source": "digraph MergeUpstream {\n    graph [\n        goal=\"Merge upstream/main into denkhaus per the conflict policy, gate the merged tree, and report; deploy is host-side\",\n        rankdir=LR,\n        max_node_visits=6,\n        preamble_budget_kb=12,\n        cycle_counter_reset_key=\"merge_target_sha\"\n    ]\n\n    start [shape=Mdiamond, label=\"Start\"]\n    // Soft exits: tool failures leave the run branch unmerged; the\n    // conductor defers to manual /merge-upstream for hard conflicts.\n    exit  [shape=Msquare, label=\"Exit\"]\n\n    // Merge: fetch upstream, merge --no-commit, resolve conflicts per\n    // .agents/skills/merge-upstream/references/conflict-policy.md (our\n    // features AND upstream changes both survive), run the full\n    // qualitygate, write the report artifact. The engine pushes the run\n    // branch and opens the PR; the Dogfood Gate (full Rust+TS program\n    // for code paths) gates the auto-merge.\n    merge [\n        label=\"Merge\",\n        prompt=\"@prompts/merge.md\",\n        output_schema=\"routing\",\n        output_retries=2,\n        retry_policy=\"standard\",\n        reasoning_effort=\"high\",\n        project_memory=false,\n        preamble_stages_ignore=\"merge\",\n        // No fs_write restriction: the merger writes the WHOLE tree\n        // (conflict resolution, gate fixes, report). An empty allowlist\n        // would block every tool write and force shell-only workarounds\n        // (2026-09-05, first autonomous merge run 01M1SR27KEJGNQ).\n        fabro_tools=\"\"\n    ]\n\n\n    // Reviewer (user directive 2026-09-05 evening): an upstream merge is a\n    // normal implementation and gets reviewed BEFORE it can merge — our\n    // features must survive upstream changes. The engine creates the PR\n    // only on run success, so a rejected review fails the run and NOTHING\n    // merges unreviewed. Two-agent separation: the merger never judges its\n    // own merge.\n    reviewer [\n        label=\"Review merge\",\n        prompt=\"@prompts/review.md\",\n        output_schema=\"routing\",\n        output_retries=2,\n        retry_policy=\"standard\",\n        reasoning_effort=\"high\",\n        project_memory=false,\n        preamble_stages_ignore=\"merge,reviewer\",\n        fs_write=\"\",\n        fabro_tools=\"\"\n    ]\n\n    start -> merge\n    merge -> reviewer [label=\"Merged and gated\", condition=\"outcome=succeeded\"]\n    reviewer -> exit [label=\"Approved\", condition=\"preferred_label=\\\"Approved\\\"\"]\n    // Review requests changes: back to the merger with the objections in\n    // review_feedback; the reviewer's verdict travels via context like\n    // develop's cycle.\n    reviewer -> merge [label=\"Changes requested\", condition=\"preferred_label=\\\"Changes requested\\\"\"]\n    reviewer -> exit [kind=\"soft\", label=\"Review blocked — manual /merge-upstream takes over\", condition=\"preferred_label=\\\"Verification blocked\\\"\"]\n    // Unconditional safety net: an unrouted review outcome fails softly —\n    // nothing merges on an ambiguous verdict.\n    reviewer -> exit [kind=\"soft\", label=\"Unrouted review outcome\"]\n    merge -> exit [kind=\"soft\", label=\"Merge failed (manual /merge-upstream takes over)\"]\n}\n",
+    "workflow_slug": "merge-upstream",
+    "workflow_version_id": "53bf2425bdc7d9fbc07d2e1462c135a820b742ebe98eb9425a2b4acf8951ec32",
+    "target": {
+      "kind": "git",
+      "repo": "denkhaus/fabro",
+      "branch": "denkhaus",
+      "sha": "5eae47070054dd49886ad7b545531b7ca0f7093e"
+    },
+    "source_directory": "/workspace",
+    "provenance": {
+      "server": {
+        "version": "0.353.0-nightly.0"
+      },
+      "client": {
+        "user_agent": "fabro-cli/0.353.0-nightly.0",
+        "name": "fabro-cli",
+        "version": "0.353.0-nightly.0"
+      },
+      "subject": {
+        "kind": "worker",
+        "run_id": "01M2BCDGH0ZKK9SPYW186GWNEG"
+      }
+    },
+    "definition_blob": "82e2172750d840ce6ccea17951c9d6f72dce3192b532b768bfe14f6cb2be4ff6",
+    "spec_blob": "64b18858dfdc117658590681b40cd753ab3e0d9fa07bf3f8b01de23ee32c3f04",
+    "git": {
+      "origin_url": "https://github.com/denkhaus/fabro",
+      "branch": "denkhaus",
+      "sha": "5eae47070054dd49886ad7b545531b7ca0f7093e",
+      "dirty": "clean"
+    }
+  },
+  "web_url": "http://127.0.0.1:32276/runs/01M2BCGNZ6SZG7V3QV4WWYEVR0",
+  "start": null,
+  "status": {
+    "kind": "starting"
+  },
+  "status_updated_at": "2026-09-12T18:01:47.359454603Z",
+  "last_event_at": "2026-09-12T18:02:14.037207904Z",
+  "pending_control": null,
+  "checkpoints": [],
+  "conclusion": null,
+  "sandbox": {
+    "kind": "ready",
+    "plan": {
+      "provider": "docker",
+      "image": "fabro-toolchain:noble"
+    },
+    "instance": {
+      "provider": "docker",
+      "image": "fabro-toolchain:noble",
+      "runtime": {
+        "id": "93279698bb2d53d20ea13ae5300e54b902c7ce853fcb752a72e4e14fadf8191c",
+        "working_directory": "/workspace/fabro",
+        "repo_cloned": true,
+        "clone_origin_url": "https://github.com/denkhaus/fabro",
+        "clone_branch": "denkhaus",
+        "workspace_root": "/workspace",
+        "repos_root": "/repos",
+        "primary_repo_path": "/repos/denkhaus/fabro",
+        "primary_repo_link": "/workspace/fabro"
+      }
+    }
+  },
+  "pull_request": null,
+  "superseded_by": null,
+  "pending_interviews": {},
+  "stages": {}
+}
