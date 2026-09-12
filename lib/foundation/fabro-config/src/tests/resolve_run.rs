@@ -1,6 +1,7 @@
+use fabro_types::SandboxProviderKind;
 use fabro_types::settings::InterpString;
 use fabro_types::settings::run::{
-    ApprovalMode, DockerfileSource, EnvironmentNetworkMode, EnvironmentProvider, RunGoal, RunMode,
+    ApprovalMode, DockerfileSource, EnvironmentNetworkMode, RunGoal, RunMode,
 };
 
 use crate::{MergeMap, SettingsLayer};
@@ -109,7 +110,7 @@ fn resolves_run_defaults_from_empty_settings() {
     assert_eq!(settings.execution.approval, ApprovalMode::Prompt);
     assert_eq!(settings.prepare.timeout_ms, 300_000);
     assert_eq!(settings.environment.id, "default");
-    assert_eq!(settings.environment.provider, EnvironmentProvider::Docker);
+    assert_eq!(settings.environment.provider, SandboxProviderKind::DOCKER);
     assert_eq!(
         settings.environment.image.docker.as_deref(),
         Some("buildpack-deps:noble")
@@ -180,7 +181,7 @@ NODE_ENV = "development"
     let environment = settings.run.environment;
 
     assert_eq!(environment.id, "fabro-dev");
-    assert_eq!(environment.provider, EnvironmentProvider::Daytona);
+    assert_eq!(environment.provider, SandboxProviderKind::DAYTONA);
     assert_eq!(environment.image.docker.as_deref(), None);
     assert!(environment.image.dockerfile.is_some());
     assert_eq!(environment.resources.cpu, Some(8));
@@ -555,7 +556,7 @@ provider = "local"
     .run;
 
     assert_eq!(settings.environment.id, "host");
-    assert_eq!(settings.environment.provider, EnvironmentProvider::Local);
+    assert_eq!(settings.environment.provider, SandboxProviderKind::LOCAL);
     assert!(settings.environment.image.docker.is_none());
 }
 
@@ -663,7 +664,7 @@ docker = "fabro-runner:mise"
 
     assert_eq!(
         settings.run.environment.provider,
-        EnvironmentProvider::Docker
+        SandboxProviderKind::DOCKER
     );
     assert_eq!(settings.run.environment.image.docker.as_deref(), None);
     assert_eq!(
@@ -726,7 +727,7 @@ dockerfile = { path = "Dockerfile" }
     .expect("daytona dockerfile should not need a user-supplied snapshot name")
     .run;
 
-    assert_eq!(settings.environment.provider, EnvironmentProvider::Daytona);
+    assert_eq!(settings.environment.provider, SandboxProviderKind::DAYTONA);
     assert!(settings.environment.image.docker.is_none());
     assert!(settings.environment.image.dockerfile.is_some());
 }
@@ -751,7 +752,7 @@ dockerfile = { path = "Dockerfile" }
     .expect("docker dockerfile should not need a prebuilt image")
     .run;
 
-    assert_eq!(settings.environment.provider, EnvironmentProvider::Docker);
+    assert_eq!(settings.environment.provider, SandboxProviderKind::DOCKER);
     assert!(settings.environment.image.docker.is_none());
     assert!(settings.environment.image.dockerfile.is_some());
 }
@@ -803,7 +804,7 @@ docker = "ubuntu:24.04"
     .expect("daytona should accept docker image selection")
     .run;
 
-    assert_eq!(settings.environment.provider, EnvironmentProvider::Daytona);
+    assert_eq!(settings.environment.provider, SandboxProviderKind::DAYTONA);
     assert_eq!(
         settings.environment.image.docker.as_deref(),
         Some("ubuntu:24.04")

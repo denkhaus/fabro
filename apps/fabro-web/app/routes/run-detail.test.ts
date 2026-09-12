@@ -83,10 +83,6 @@ mock.module("../hooks/use-run-toasts", () => ({
   useRunToasts: () => undefined,
 }));
 
-mock.module("../hooks/use-sandbox-activity", () => ({
-  useSandboxActivity: () => null,
-}));
-
 mock.module("../lib/api-client", () => ({
   apiData: async function apiData<T>(
     call: () => Promise<{ data: T }>,

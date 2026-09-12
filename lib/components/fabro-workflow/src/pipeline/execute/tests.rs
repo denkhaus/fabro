@@ -11,13 +11,13 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
 
 use async_trait::async_trait;
-use fabro_agent::Sandbox;
+use fabro_agent::RunSandbox;
 use fabro_auth::test_support as auth_test_support;
 use fabro_graphviz::graph::{AttrValue, Edge, Graph, Node};
 use fabro_hooks::HookSettings;
 use fabro_interview::AutoApproveInterviewer;
-use fabro_sandbox::SandboxSpec;
-use fabro_sandbox::test_support::MockSandbox;
+use fabro_sandbox::test_support::{MockSandbox, local_sandbox_id};
+use fabro_sandbox::{ProviderAccess, SandboxSpec};
 use fabro_store::Database;
 use fabro_types::settings::run::RunModelControls;
 use fabro_types::{
@@ -40,10 +40,12 @@ use crate::records::RunSpec;
 use crate::run_options::{GitCheckpointOptions, LifecycleOptions, RunOptions, SetupCommand};
 use crate::test_support::run_graph;
 
-fn local_env() -> Arc<dyn Sandbox> {
-    Arc::new(fabro_agent::LocalSandbox::new(
-        std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
-    ))
+async fn local_env() -> Arc<RunSandbox> {
+    Arc::new(
+        fabro_agent::local_sandbox(std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")))
+            .await
+            .unwrap(),
+    )
 }
 
 fn simple_graph() -> Graph {
@@ -260,9 +262,10 @@ async fn execute_test_run_with_options(
             run_store: run_store.into(),
             dry_run: false,
             emitter: emitter.clone(),
-            sandbox: SandboxSpec::Local {
-                working_directory: std::env::current_dir().unwrap(),
-            },
+            sandbox: SandboxSpec::local(
+                std::env::current_dir().unwrap(),
+                ProviderAccess::default(),
+            ),
             llm: LlmSpec {
                 model:          "test-model".to_string(),
                 provider_id:    lithos_llm::catalog::builtin::anthropic(),
@@ -288,6 +291,8 @@ async fn execute_test_run_with_options(
                 origin_url:         None,
             },
             vault: auth_test_support::empty_vault(),
+            sandbox_providers:
+                fabro_types::settings::server::ServerSandboxProvidersSettings::default(),
             git: git_options,
             run_control: None,
             registry_override,
@@ -320,9 +325,10 @@ async fn execute_runs_start_to_exit_and_returns_final_context() {
             run_store: run_store.into(),
             dry_run: false,
             emitter: test_emitter_arc("run-test"),
-            sandbox: SandboxSpec::Local {
-                working_directory: std::env::current_dir().unwrap(),
-            },
+            sandbox: SandboxSpec::local(
+                std::env::current_dir().unwrap(),
+                ProviderAccess::default(),
+            ),
             llm: LlmSpec {
                 model:          "test-model".to_string(),
                 provider_id:    lithos_llm::catalog::builtin::anthropic(),
@@ -350,6 +356,8 @@ async fn execute_runs_start_to_exit_and_returns_final_context() {
                 origin_url:         None,
             },
             vault: auth_test_support::empty_vault(),
+            sandbox_providers:
+                fabro_types::settings::server::ServerSandboxProvidersSettings::default(),
             git: None,
             run_control: None,
             registry_override: None,
@@ -405,10 +413,11 @@ async fn resumed_in_flight_node_starts_a_new_stage_execution() {
     let run_store = test_run_store(&run_id).await;
     seed_created_and_starting(&run_store, &run_options, &graph).await;
     // Resume reconnects to the previously recorded sandbox.
+    let working_directory = std::env::current_dir().unwrap();
     append_event(&run_store, &run_id, &Event::SandboxInitialized {
-        working_directory: std::env::current_dir().unwrap().display().to_string(),
-        provider:          fabro_types::SandboxProviderKind::Local,
-        id:                "local".to_string(),
+        working_directory: working_directory.display().to_string(),
+        provider:          fabro_types::SandboxProviderKind::LOCAL,
+        id:                local_sandbox_id(&working_directory).await,
         image:             None,
         snapshot:          None,
         repo_cloned:       None,
@@ -461,9 +470,10 @@ async fn resumed_in_flight_node_starts_a_new_stage_execution() {
             run_store: run_store.into(),
             dry_run: false,
             emitter: emitter.clone(),
-            sandbox: SandboxSpec::Local {
-                working_directory: std::env::current_dir().unwrap(),
-            },
+            sandbox: SandboxSpec::local(
+                std::env::current_dir().unwrap(),
+                ProviderAccess::default(),
+            ),
             llm: LlmSpec {
                 model:          "test-model".to_string(),
                 provider_id:    lithos_llm::catalog::builtin::anthropic(),
@@ -489,6 +499,8 @@ async fn resumed_in_flight_node_starts_a_new_stage_execution() {
                 origin_url:         None,
             },
             vault: auth_test_support::empty_vault(),
+            sandbox_providers:
+                fabro_types::settings::server::ServerSandboxProvidersSettings::default(),
             git: None,
             run_control: None,
             registry_override: Some(Arc::new(make_registry())),
@@ -559,7 +571,7 @@ async fn resumed_in_flight_node_starts_a_new_stage_execution() {
 async fn run_with_lifecycle(
     registry: HandlerRegistry,
     emitter: Arc<Emitter>,
-    sandbox: Arc<dyn Sandbox>,
+    sandbox: Arc<RunSandbox>,
     graph: &Graph,
     run_options: RunOptions,
     lifecycle: LifecycleOptions,
@@ -575,9 +587,7 @@ async fn run_with_lifecycle(
             run_store: run_store.into(),
             dry_run: false,
             emitter: emitter.clone(),
-            sandbox: SandboxSpec::Local {
-                working_directory: PathBuf::from(sandbox.working_directory()),
-            },
+            sandbox: SandboxSpec::local(sandbox.working_directory(), ProviderAccess::default()),
             llm: LlmSpec {
                 model:          "test-model".to_string(),
                 provider_id:    lithos_llm::catalog::builtin::anthropic(),
@@ -600,6 +610,8 @@ async fn run_with_lifecycle(
                 origin_url:         None,
             },
             vault: auth_test_support::empty_vault(),
+            sandbox_providers:
+                fabro_types::settings::server::ServerSandboxProvidersSettings::default(),
             git: None,
             run_control: None,
             registry_override: Some(Arc::new(registry)),
@@ -702,7 +714,7 @@ fn interview_wait_graph(stall_timeout: Duration, node_timeout: Option<Duration>)
 }
 
 struct StopsSandboxHandler {
-    sandbox: Arc<MockSandbox>,
+    sandbox: Arc<RunSandbox>,
 }
 
 #[async_trait]
@@ -869,7 +881,7 @@ async fn execute_runs_simple_workflow() {
     let outcome = run_graph(
         make_registry(),
         test_emitter_arc("test-run"),
-        local_env(),
+        local_env().await,
         &simple_graph(),
         &test_run_options(dir.path(), "test-run"),
     )
@@ -881,8 +893,9 @@ async fn execute_runs_simple_workflow() {
 #[tokio::test]
 async fn execute_preserves_sandbox_activation_error_chain() {
     let dir = tempfile::tempdir().unwrap();
-    let sandbox: Arc<dyn Sandbox> =
-        Arc::new(MockSandbox::linux().with_activate_error("provider unavailable"));
+    let sandbox = MockSandbox::linux()
+        .with_activate_error("provider unavailable")
+        .sandbox();
 
     let error = run_graph(
         make_registry(),
@@ -896,7 +909,6 @@ async fn execute_preserves_sandbox_activation_error_chain() {
 
     assert_eq!(error.causes(), vec![
         "failed to activate sandbox before node start",
-        "Mock sandbox activation failed",
         "provider unavailable",
     ]);
 }
@@ -904,15 +916,15 @@ async fn execute_preserves_sandbox_activation_error_chain() {
 #[tokio::test]
 async fn execute_reactivates_sandbox_after_a_stage_can_leave_it_stopped() {
     let dir = tempfile::tempdir().unwrap();
-    let sandbox = Arc::new(MockSandbox::linux());
+    let sandbox = MockSandbox::linux();
     let mut registry = make_registry();
     registry.register(
         "start",
         Box::new(StopsSandboxHandler {
-            sandbox: Arc::clone(&sandbox),
+            sandbox: sandbox.sandbox(),
         }),
     );
-    let sandbox_for_run: Arc<dyn Sandbox> = sandbox.clone();
+    let sandbox_for_run = sandbox.sandbox();
     let mut run_options = test_run_options(dir.path(), "test-run");
     run_options
         .settings
@@ -932,9 +944,13 @@ async fn execute_reactivates_sandbox_after_a_stage_can_leave_it_stopped() {
     .unwrap();
 
     assert_eq!(outcome.status, StageOutcome::Succeeded);
-    assert_eq!(sandbox.stop_count(), 1);
-    assert!(sandbox.walk_files_was_called());
-    assert!(!sandbox.walked_while_inactive());
+    assert_eq!(sandbox.driver().stop_count(), 1);
+    assert!(sandbox.driver().scripted_search().walk_calls() > 0);
+    assert_eq!(
+        sandbox.driver().start_count(),
+        1,
+        "the stopped sandbox is started again before the walk"
+    );
 }
 
 #[tokio::test]
@@ -967,7 +983,7 @@ async fn execute_emits_events() {
     run_graph(
         make_registry(),
         Arc::new(emitter),
-        local_env(),
+        local_env().await,
         &simple_graph(),
         &test_run_options(dir.path(), "test-run"),
     )
@@ -983,7 +999,7 @@ async fn execute_error_when_no_start_node() {
     let result = run_graph(
         make_registry(),
         test_emitter_arc("test-run"),
-        local_env(),
+        local_env().await,
         &Graph::new("empty"),
         &test_run_options(dir.path(), "test-run"),
     )
@@ -1259,7 +1275,7 @@ async fn execute_cancelled_mid_run() {
     let result = run_graph(
         registry,
         test_emitter_arc("test-run"),
-        local_env(),
+        local_env().await,
         &g,
         &run_options,
     )
@@ -1308,7 +1324,7 @@ async fn max_node_visits_errors_on_cycle() {
     let result = run_graph(
         make_registry(),
         test_emitter_arc("test-run"),
-        local_env(),
+        local_env().await,
         &g,
         &test_run_options(dir.path(), "test-run"),
     )
@@ -1343,7 +1359,7 @@ async fn panic_handler_returns_panic_message() {
     let result = run_graph(
         registry,
         test_emitter_arc("test-run"),
-        local_env(),
+        local_env().await,
         &g,
         &test_run_options(dir.path(), "test-run"),
     )
@@ -1364,7 +1380,7 @@ async fn loop_circuit_breaker_aborts_on_repeated_failure() {
     let result = run_graph(
         registry,
         test_emitter_arc("test-run"),
-        local_env(),
+        local_env().await,
         &looping_fail_graph(),
         &test_run_options(dir.path(), "test-run"),
     )
@@ -1413,7 +1429,7 @@ async fn stall_watchdog_triggers_on_hung_handler() {
     let result = run_graph(
         registry,
         test_emitter_arc("test-run"),
-        local_env(),
+        local_env().await,
         &g,
         &test_run_options(dir.path(), "test-run"),
     )
@@ -1472,7 +1488,7 @@ async fn stall_watchdog_suspends_while_run_waits_for_human_input() {
     let outcome = run_graph(
         registry,
         test_emitter_arc("test-run"),
-        local_env(),
+        local_env().await,
         &graph,
         &test_run_options(dir.path(), "test-run"),
     )
@@ -1500,7 +1516,7 @@ async fn node_timeout_excludes_human_input_wait() {
     let outcome = run_graph(
         registry,
         test_emitter_arc("test-run"),
-        local_env(),
+        local_env().await,
         &graph,
         &test_run_options(dir.path(), "test-run"),
     )
@@ -1565,7 +1581,7 @@ async fn retry_emits_stage_started_per_attempt() {
     let outcome = run_graph(
         registry,
         Arc::new(emitter),
-        local_env(),
+        local_env().await,
         &g,
         &test_run_options(dir.path(), "retry-events-test"),
     )
@@ -1605,7 +1621,7 @@ async fn run_with_lifecycle_emits_initialize_and_setup_events() {
     let outcome = run_with_lifecycle(
         make_registry(),
         Arc::new(emitter),
-        local_env(),
+        local_env().await,
         &simple_graph(),
         test_run_options(dir.path(), "order-test"),
         test_lifecycle(vec!["echo ok"]),

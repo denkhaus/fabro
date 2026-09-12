@@ -2478,8 +2478,7 @@ mod tests {
     use std::time::Duration;
 
     use chrono::Duration as ChronoDuration;
-    use fabro_types::WorkflowPath;
-    use fabro_types::settings::run::EnvironmentProvider;
+    use fabro_types::{SandboxProviderKind, WorkflowPath};
     use fabro_util::exit;
     use httpmock::Method::{GET, POST};
     use httpmock::{HttpMockResponse, MockServer};
@@ -2599,7 +2598,7 @@ mod tests {
 
         mock.assert_async().await;
         assert_eq!(environment.id.as_str(), "local");
-        assert_eq!(environment.settings.provider, EnvironmentProvider::Local);
+        assert_eq!(environment.settings.provider, SandboxProviderKind::LOCAL);
     }
 
     #[tokio::test]
@@ -2625,7 +2624,7 @@ mod tests {
         assert_eq!(environments[0].id.as_str(), "production");
         assert_eq!(
             environments[0].settings.provider,
-            EnvironmentProvider::Daytona
+            SandboxProviderKind::DAYTONA
         );
     }
 

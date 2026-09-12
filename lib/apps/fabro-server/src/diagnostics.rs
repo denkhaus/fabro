@@ -9,8 +9,9 @@ use fabro_llm::Client;
 use fabro_llm::lithos_catalog::{Catalog, CatalogProvider};
 use fabro_llm::probe::{self, ModelTestStatus};
 use fabro_redact::redact_string;
-use fabro_sandbox::{DockerSandboxProvider, daytona};
+use fabro_sandbox::daytona;
 use fabro_static::EnvVars;
+use fabro_types::SandboxProviderKind;
 use fabro_types::settings::ServerAuthMethod;
 use fabro_types::settings::server::GithubIntegrationStrategy;
 use fabro_util::check_report::{CheckDetail, CheckResult, CheckSection, CheckStatus};
@@ -583,10 +584,9 @@ async fn check_docker_sandbox(state: &AppState) -> CheckResult {
             .server
             .sandbox
             .providers
-            .docker
-            .enabled,
+            .is_enabled(&SandboxProviderKind::DOCKER),
         || async {
-            DockerSandboxProvider::check_daemon()
+            fabro_sandbox::check_docker_daemon()
                 .await
                 .map_err(|err| err.display_with_causes())
         },
@@ -676,7 +676,7 @@ fn cloud_sandbox_probe_check(probe: anyhow::Result<daytona::DaytonaKeyCheck>) ->
         Ok(check) if check.ok() => CheckResult {
             name:        "Cloud Sandbox".to_string(),
             status:      CheckStatus::Pass,
-            summary:     format!("Daytona configured ({})", check.key_name),
+            summary:     "Daytona configured".to_string(),
             details:     Vec::new(),
             remediation: None,
         },
@@ -691,7 +691,7 @@ fn cloud_sandbox_probe_check(probe: anyhow::Result<daytona::DaytonaKeyCheck>) ->
             remediation: Some(format!(
                 "Regenerate the Daytona API key with scopes: {}, then \
                  `fabro secret set DAYTONA_API_KEY`.",
-                daytona::required_perms_display()
+                check.required_display()
             )),
         },
         Err(err) => {

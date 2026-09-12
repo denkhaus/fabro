@@ -8,7 +8,7 @@ use fabro_core::lifecycle::{
 use fabro_core::outcome::NodeResult;
 use fabro_core::state::ExecutionState;
 use fabro_hooks::{HookContext, HookDecision, HookEvent, HookExecutionContext, HookRunner};
-use fabro_sandbox::Sandbox;
+use fabro_sandbox::RunSandbox;
 use fabro_types::RunId;
 
 use crate::graph::{WorkflowGraph, WorkflowNode};
@@ -22,7 +22,7 @@ type WfNodeDecision = NodeDecision<Option<BilledModelUsage>>;
 /// Sub-lifecycle responsible for running workflow hooks.
 pub(crate) struct HookLifecycle {
     pub hook_runner:            Option<Arc<HookRunner>>,
-    pub sandbox:                Arc<dyn Sandbox>,
+    pub sandbox:                Arc<RunSandbox>,
     pub hook_execution_context: HookExecutionContext,
     pub run_id:                 RunId,
     pub graph_name:             String,
@@ -224,7 +224,7 @@ mod tests {
     /// (context JSON arrives on stdin). The command writes a verdict into
     /// `marker` for the test to assert on — this exercises the REAL
     /// executor pipe (HookContext -> serialization -> hook process).
-    fn hook_lifecycle(command: String) -> HookLifecycle {
+    async fn hook_lifecycle(command: String) -> HookLifecycle {
         let hook = HookDefinition {
             name:       Some("journal-probe".into()),
             event:      HookEvent::StageComplete,
@@ -242,7 +242,11 @@ mod tests {
         );
         HookLifecycle {
             hook_runner:            Some(Arc::new(runner)),
-            sandbox:                Arc::new(fabro_agent::LocalSandbox::new(std::env::temp_dir())),
+            sandbox:                Arc::new(
+                fabro_agent::local_sandbox(std::env::temp_dir())
+                    .await
+                    .expect("local sandbox for hook tests"),
+            ),
             hook_execution_context: HookExecutionContext::default(),
             run_id:                 fixtures::RUN_1,
             graph_name:             "test-wf".to_string(),
@@ -275,7 +279,7 @@ mod tests {
         let marker =
             std::env::temp_dir().join(format!("fabro-journal-bridge-{}.txt", std::process::id()));
         let _ = std::fs::remove_file(&marker);
-        let lc = hook_lifecycle(probe_command("blob refs unreadable", &marker));
+        let lc = hook_lifecycle(probe_command("blob refs unreadable", &marker)).await;
 
         let node = test_node("reviewer");
         let mut result = NodeResult::new(
@@ -315,7 +319,7 @@ mod tests {
         let marker =
             std::env::temp_dir().join(format!("fabro-journal-absent-{}.txt", std::process::id()));
         let _ = std::fs::remove_file(&marker);
-        let lc = hook_lifecycle(probe_command("context_updates", &marker));
+        let lc = hook_lifecycle(probe_command("context_updates", &marker)).await;
 
         let node = test_node("planner");
         let mut result = NodeResult::new(

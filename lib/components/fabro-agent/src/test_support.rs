@@ -10,19 +10,21 @@ pub use fabro_llm::test_support::{response_to_stream, test_retry_policy};
 use fabro_llm::{
     Client, ClientOptions, Error as LlmError, FinishReason, Request, Response, ResponseStream,
 };
-pub use fabro_sandbox::test_support::{MockSandbox, MutableMockSandbox};
-use fabro_sandbox::{GrepOptions, Result as SandboxResult};
-use fabro_types::AgentProfileKind;
+pub use fabro_sandbox::test_support::MockSandbox;
+use fabro_types::{AgentProfileKind, SandboxProviderKind};
 use lithos_llm::catalog::{ModelId, ProviderId, builtin};
 use lithos_llm::types::{ContentPart, TokenCounts, ToolCall};
+use sandbox_driver::{
+    Capabilities, DirEntry, FileMetadata, PlatformInfo, SandboxId, SandboxState, SandboxStatus,
+};
+use sandbox_driver_testing::{MemoryFs, ScriptedExec, ScriptedSandbox};
 use tokio::time::{Duration, sleep};
-use tokio_util::sync::CancellationToken;
 
 use crate::agent_profile::AgentProfile;
 use crate::config::SessionOptions;
 use crate::native_tool::ToolVocabulary;
 use crate::profiles::EnvContext;
-use crate::sandbox::*;
+use crate::sandbox::RunSandbox;
 use crate::session::Session;
 use crate::skills::{Skill, format_skills_prompt_section};
 use crate::tool_registry::{RegisteredTool, ToolRegistry, ToolSource};
@@ -86,7 +88,7 @@ impl AgentProfile for TestProfile {
 
     fn build_system_prompt(
         &self,
-        _env: &dyn Sandbox,
+        _env: &RunSandbox,
         _env_context: &EnvContext,
         _memory: &[String],
         user_instructions: Option<&str>,
@@ -235,7 +237,7 @@ pub async fn make_session(responses: Vec<Response>) -> Session {
     let provider = Arc::new(MockLlmProvider::new(responses));
     let client = make_client(provider).await;
     let profile = Arc::new(TestProfile::new());
-    let env = Arc::new(MockSandbox::default());
+    let env = MockSandbox::default().sandbox();
     Session::new(client, profile, env, SessionOptions::default(), None)
 }
 
@@ -250,7 +252,7 @@ pub async fn make_session_with_provider_and_tools(
 ) -> Session {
     let client = make_client(provider).await;
     let profile = Arc::new(TestProfile::with_tools(registry));
-    let env = Arc::new(MockSandbox::default());
+    let env = MockSandbox::default().sandbox();
     Session::new(client, profile, env, SessionOptions::default(), None)
 }
 
@@ -258,7 +260,7 @@ pub async fn make_session_with_config(responses: Vec<Response>, config: SessionO
     let provider = Arc::new(MockLlmProvider::new(responses));
     let client = make_client(provider).await;
     let profile = Arc::new(TestProfile::new());
-    let env = Arc::new(MockSandbox::default());
+    let env = MockSandbox::default().sandbox();
     Session::new(client, profile, env, config, None)
 }
 
@@ -270,7 +272,7 @@ pub async fn make_session_with_tools_and_config(
     let provider = Arc::new(MockLlmProvider::new(responses));
     let client = make_client(provider).await;
     let profile = Arc::new(TestProfile::with_tools(registry));
-    let env = Arc::new(MockSandbox::default());
+    let env = MockSandbox::default().sandbox();
     Session::new(client, profile, env, config, None)
 }
 
@@ -390,111 +392,151 @@ impl ProviderAdapter for CapturingLlmProvider {
     }
 }
 
-/// A [`MutableMockSandbox`] whose writes are delayed by `write_delay_ms`.
+/// A driver handle whose writes are delayed by `write_delay_ms`
+/// (fabro fork, write-lock tests).
 ///
-/// Tests for parallel tool execution use this to force the read-modify-write
-/// interleaving that instant mock writes would hide: without a delay, the
-/// first edit future can finish its write before the second one is polled.
-pub struct SlowWriteMockSandbox {
-    pub inner:          MutableMockSandbox,
-    pub write_delay_ms: u64,
+/// Tests for parallel tool execution use this to force the
+/// read-modify-write interleaving that instant mock writes would hide:
+/// without a delay, the first edit future can finish its write before the
+/// second one is polled. Storage is a shared in-memory filesystem; the
+/// test reads the same map the tools wrote through.
+pub struct SlowWriteSandbox {
+    files: std::sync::Arc<MemoryFs>,
+    delay: Duration,
+    caps:  Capabilities,
 }
 
-impl SlowWriteMockSandbox {
+impl SlowWriteSandbox {
     pub fn new(files: HashMap<String, String>, write_delay_ms: u64) -> Self {
+        let memory = MemoryFs::new("/");
+        for (path, content) in files {
+            memory.insert(&path, content);
+        }
         Self {
-            inner: MutableMockSandbox::new(files),
-            write_delay_ms,
+            files: std::sync::Arc::new(memory),
+            delay: Duration::from_millis(write_delay_ms),
+            caps:  ScriptedSandbox::default_capabilities(),
         }
     }
+
+    /// Wrap as the sandbox agent code works with.
+    pub fn sandbox(&self) -> Arc<RunSandbox> {
+        let handle = SlowWriteHandle {
+            fs:      SlowMemoryFs {
+                inner: std::sync::Arc::clone(&self.files),
+                delay: self.delay,
+            },
+            exec:    ScriptedExec::new(),
+            caps:    self.caps.clone(),
+            id:      SandboxId::try_new("slow-write-sandbox").expect("valid sandbox id"),
+            working: "/".to_string(),
+        };
+        Arc::new(RunSandbox::new_with_platform(
+            SandboxProviderKind::LOCAL,
+            Arc::new(handle),
+            "linux",
+            "6.1.0-test",
+        ))
+    }
+
+    /// The current content of `path`, for assertions.
+    pub fn read_file_text(&self, path: &str) -> anyhow::Result<String> {
+        let bytes = self
+            .files
+            .contents(path)
+            .ok_or_else(|| anyhow::anyhow!("no such file in the slow-write sandbox: {path}"))?;
+        Ok(String::from_utf8(bytes)?)
+    }
 }
 
-#[async_trait]
-impl Sandbox for SlowWriteMockSandbox {
-    async fn read_file_bytes(&self, path: &str) -> SandboxResult<Vec<u8>> {
-        self.inner.read_file_bytes(path).await
+struct SlowWriteHandle {
+    fs:      SlowMemoryFs,
+    exec:    ScriptedExec,
+    caps:    Capabilities,
+    id:      SandboxId,
+    working: String,
+}
+
+struct SlowMemoryFs {
+    inner: std::sync::Arc<MemoryFs>,
+    delay: Duration,
+}
+
+#[async_trait::async_trait]
+impl sandbox_driver::Filesystem for SlowMemoryFs {
+    async fn read(&self, path: &str) -> sandbox_driver::Result<Vec<u8>> {
+        self.inner.read(path).await
     }
 
-    async fn write_file(&self, path: &str, content: &str) -> SandboxResult<()> {
-        sleep(Duration::from_millis(self.write_delay_ms)).await;
-        self.inner.write_file(path, content).await
+    async fn write(&self, path: &str, content: &[u8]) -> sandbox_driver::Result<()> {
+        sleep(self.delay).await;
+        self.inner.write(path, content).await
     }
 
-    async fn delete_file(&self, path: &str) -> SandboxResult<()> {
-        self.inner.delete_file(path).await
+    async fn delete(&self, path: &str, recursive: bool) -> sandbox_driver::Result<()> {
+        self.inner.delete(path, recursive).await
     }
 
-    async fn file_exists(&self, path: &str) -> SandboxResult<bool> {
-        self.inner.file_exists(path).await
+    async fn exists(&self, path: &str) -> sandbox_driver::Result<bool> {
+        self.inner.exists(path).await
     }
 
-    async fn list_directory(
-        &self,
-        path: &str,
-        depth: Option<usize>,
-    ) -> SandboxResult<Vec<fabro_sandbox::DirEntry>> {
-        self.inner.list_directory(path, depth).await
+    async fn metadata(&self, path: &str) -> sandbox_driver::Result<FileMetadata> {
+        self.inner.metadata(path).await
     }
 
-    async fn exec_command(
-        &self,
-        command: &str,
-        timeout_ms: u64,
-        working_dir: Option<&str>,
-        env_vars: Option<&std::collections::HashMap<String, String>>,
-        cancel_token: Option<CancellationToken>,
-    ) -> SandboxResult<fabro_sandbox::ExecResult> {
-        self.inner
-            .exec_command(command, timeout_ms, working_dir, env_vars, cancel_token)
-            .await
+    async fn list_dir(&self, path: &str, depth: usize) -> sandbox_driver::Result<Vec<DirEntry>> {
+        self.inner.list_dir(path, depth).await
     }
 
-    async fn grep(
-        &self,
-        pattern: &str,
-        path: &str,
-        options: &GrepOptions,
-    ) -> SandboxResult<Vec<String>> {
-        self.inner.grep(pattern, path, options).await
+    async fn create_dir(&self, path: &str) -> sandbox_driver::Result<()> {
+        self.inner.create_dir(path).await
     }
 
-    async fn glob(&self, pattern: &str, path: Option<&str>) -> SandboxResult<Vec<String>> {
-        self.inner.glob(pattern, path).await
+    async fn rename(&self, from: &str, to: &str) -> sandbox_driver::Result<()> {
+        self.inner.rename(from, to).await
+    }
+}
+
+#[async_trait::async_trait]
+impl sandbox_driver::Sandbox for SlowWriteHandle {
+    fn id(&self) -> &SandboxId {
+        &self.id
     }
 
-    async fn download_file_to_local(
-        &self,
-        path: &str,
-        local: &std::path::Path,
-    ) -> SandboxResult<()> {
-        self.inner.download_file_to_local(path, local).await
+    fn capabilities(&self) -> &Capabilities {
+        &self.caps
     }
 
-    async fn upload_file_from_local(
-        &self,
-        local: &std::path::Path,
-        path: &str,
-    ) -> SandboxResult<()> {
-        self.inner.upload_file_from_local(local, path).await
-    }
-
-    async fn initialize(&self) -> SandboxResult<()> {
-        self.inner.initialize().await
-    }
-
-    async fn cleanup(&self) -> SandboxResult<()> {
-        self.inner.cleanup().await
+    async fn describe(&self) -> sandbox_driver::Result<SandboxStatus> {
+        Ok(SandboxStatus::new(self.id.clone(), SandboxState::Running))
     }
 
     fn working_directory(&self) -> &str {
-        self.inner.working_directory()
+        &self.working
     }
 
-    fn platform(&self) -> &str {
-        self.inner.platform()
+    async fn platform_info(&self) -> sandbox_driver::Result<PlatformInfo> {
+        Ok(PlatformInfo::new("linux", "x86_64", "6.1.0-test"))
     }
 
-    fn os_version(&self) -> String {
-        self.inner.os_version()
+    async fn start(&self) -> sandbox_driver::Result<()> {
+        Ok(())
+    }
+
+    async fn stop(&self) -> sandbox_driver::Result<()> {
+        Ok(())
+    }
+
+    async fn delete(&self) -> sandbox_driver::Result<()> {
+        Ok(())
+    }
+
+    fn exec(&self) -> &dyn sandbox_driver::Exec {
+        &self.exec
+    }
+
+    fn fs(&self) -> &dyn sandbox_driver::Filesystem {
+        &self.fs
     }
 }

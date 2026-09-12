@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use fabro_agent::{Sandbox, ToolHookCallback, ToolHookDecision};
+use fabro_agent::{RunSandbox, ToolHookCallback, ToolHookDecision};
 use fabro_types::RunId;
 
 use crate::runner::HookRunner;
@@ -12,7 +12,7 @@ use crate::types::{HookContext, HookDecision, HookEvent, HookExecutionContext};
 /// context needed to build `HookContext` for tool-level events.
 pub struct WorkflowToolHookCallback {
     pub hook_runner:            Arc<HookRunner>,
-    pub sandbox:                Arc<dyn Sandbox>,
+    pub sandbox:                Arc<RunSandbox>,
     pub run_id:                 RunId,
     pub workflow_name:          String,
     pub hook_execution_context: HookExecutionContext,
@@ -99,7 +99,7 @@ mod tests {
             &self,
             _definition: &HookDefinition,
             context: &HookContext,
-            _sandbox: Arc<dyn Sandbox>,
+            _sandbox: Arc<RunSandbox>,
             execution_context: &HookExecutionContext,
             _llm_source: Arc<dyn CredentialProvider>,
             _catalog: Arc<Catalog>,
@@ -130,15 +130,17 @@ mod tests {
         }
     }
 
-    fn make_sandbox() -> Arc<dyn Sandbox> {
-        Arc::new(fabro_agent::LocalSandbox::new(
-            std::env::current_dir().unwrap(),
-        ))
+    async fn make_sandbox() -> Arc<RunSandbox> {
+        Arc::new(
+            fabro_agent::local_sandbox(std::env::current_dir().unwrap())
+                .await
+                .unwrap(),
+        )
     }
 
     fn make_bridge(
         hook_runner: Arc<HookRunner>,
-        sandbox: Arc<dyn Sandbox>,
+        sandbox: Arc<RunSandbox>,
         hook_execution_context: HookExecutionContext,
     ) -> WorkflowToolHookCallback {
         WorkflowToolHookCallback {
@@ -163,7 +165,7 @@ mod tests {
             hooks: vec![make_hook(HookEvent::PreToolUse)],
         };
         let runner = Arc::new(HookRunner::with_executor(config, executor));
-        let sandbox = make_sandbox();
+        let sandbox = make_sandbox().await;
         let bridge = make_bridge(runner, sandbox, HookExecutionContext::default());
 
         bridge
@@ -195,7 +197,7 @@ mod tests {
             hooks: vec![make_hook(HookEvent::PreToolUse)],
         };
         let runner = Arc::new(HookRunner::with_executor(config, executor));
-        let sandbox = make_sandbox();
+        let sandbox = make_sandbox().await;
         let bridge = make_bridge(runner, sandbox, HookExecutionContext::default());
 
         let decision = bridge.pre_tool_use("shell", &serde_json::json!({})).await;
@@ -215,7 +217,7 @@ mod tests {
             hooks: vec![make_hook(HookEvent::PreToolUse)],
         };
         let runner = Arc::new(HookRunner::with_executor(config, executor));
-        let sandbox = make_sandbox();
+        let sandbox = make_sandbox().await;
         let bridge = make_bridge(runner, sandbox, HookExecutionContext::default());
 
         let decision = bridge.pre_tool_use("shell", &serde_json::json!({})).await;
@@ -234,7 +236,7 @@ mod tests {
             hooks: vec![make_hook(HookEvent::PostToolUse)],
         };
         let runner = Arc::new(HookRunner::with_executor(config, executor));
-        let sandbox = make_sandbox();
+        let sandbox = make_sandbox().await;
         let bridge = make_bridge(runner, sandbox, HookExecutionContext::default());
 
         bridge
@@ -264,7 +266,7 @@ mod tests {
             hooks: vec![make_hook(HookEvent::PostToolUseFailure)],
         };
         let runner = Arc::new(HookRunner::with_executor(config, executor));
-        let sandbox = make_sandbox();
+        let sandbox = make_sandbox().await;
         let bridge = make_bridge(runner, sandbox, HookExecutionContext::default());
 
         bridge
@@ -295,7 +297,7 @@ mod tests {
             hooks: vec![make_hook(HookEvent::PreToolUse)],
         };
         let runner = Arc::new(HookRunner::with_executor(config, executor));
-        let sandbox = make_sandbox();
+        let sandbox = make_sandbox().await;
         let hook_execution_context = HookExecutionContext {
             host_source_dir:  Some(PathBuf::from("/host/source")),
             sandbox_work_dir: Some(PathBuf::from("/supplied/sandbox")),

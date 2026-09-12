@@ -15,11 +15,8 @@
 
 // May contain unused imports in some cases
 // @ts-ignore
-import type { SandboxServiceDiscoverySource } from './sandbox-service-discovery-source';
+import type { SandboxNetworkPolicyOneOfCidrAllowList } from './sandbox-network-policy-one-of-cidr-allow-list';
 
-/**
- * Metadata about sandbox service discovery.
- */
-export interface SandboxServiceListMeta {
-    'source': SandboxServiceDiscoverySource;
+export interface SandboxNetworkPolicyOneOf {
+    'cidr_allow_list': SandboxNetworkPolicyOneOfCidrAllowList;
 }

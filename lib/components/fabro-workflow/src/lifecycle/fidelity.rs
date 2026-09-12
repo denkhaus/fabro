@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
-use fabro_agent::Sandbox;
+use fabro_agent::RunSandbox;
 use fabro_core::error::{Error as CoreError, Result as CoreResult};
 use fabro_core::graph::NodeSpec;
 use fabro_core::lifecycle::{EdgeContext, EdgeDecision, NodeDecision, RunLifecycle};
@@ -33,7 +33,7 @@ struct IncomingEdgeData {
 /// setup.
 pub(crate) struct FidelityLifecycle {
     pub graph:                  Arc<GvGraph>,
-    pub sandbox:                Arc<dyn Sandbox>,
+    pub sandbox:                Arc<RunSandbox>,
     pub run_store:              RunStoreHandle,
     pub run_dir:                PathBuf,
     incoming_edge_data:         Mutex<Option<IncomingEdgeData>>,
@@ -45,7 +45,7 @@ pub(crate) struct FidelityLifecycle {
 impl FidelityLifecycle {
     pub(crate) fn new(
         graph: Arc<GvGraph>,
-        sandbox: Arc<dyn Sandbox>,
+        sandbox: Arc<RunSandbox>,
         run_store: RunStoreHandle,
         run_dir: PathBuf,
     ) -> Self {
@@ -180,7 +180,7 @@ impl RunLifecycle<WorkflowGraph> for FidelityLifecycle {
         let mut resolved_values = artifact::resolved_context_snapshot(
             &state.context,
             &self.run_store,
-            &*self.sandbox,
+            &self.sandbox,
             &self.run_dir,
         )
         .await
@@ -188,7 +188,7 @@ impl RunLifecycle<WorkflowGraph> for FidelityLifecycle {
         let mut resolved_outcomes = artifact::resolve_outcomes_for_execution(
             &state.node_outcomes,
             &self.run_store,
-            &*self.sandbox,
+            &self.sandbox,
             &self.run_dir,
         )
         .await
@@ -238,7 +238,7 @@ impl RunLifecycle<WorkflowGraph> for FidelityLifecycle {
                 inline_max,
                 budget,
                 &self.run_store,
-                &*self.sandbox,
+                &self.sandbox,
                 &self.run_dir,
             )
             .await;
@@ -535,8 +535,11 @@ mod tests {
             None,
         ));
         let run_store = store.create_run(&fixtures::RUN_1).await.unwrap();
-        let sandbox: Arc<dyn Sandbox> =
-            Arc::new(fabro_agent::LocalSandbox::new(run_dir.to_path_buf()));
+        let sandbox: Arc<RunSandbox> = Arc::new(
+            fabro_agent::local_sandbox(run_dir.to_path_buf())
+                .await
+                .unwrap(),
+        );
         FidelityLifecycle::new(
             graph.0.clone(),
             sandbox,

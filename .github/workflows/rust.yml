@@ -122,6 +122,47 @@ jobs:
       # strict mode, which fails (rather than skips) live tests without keys.
       - run: cargo nextest run --locked --workspace --status-level slow --profile ci --run-ignored only -E 'package(fabro-agent) + package(fabro-llm)'
 
+  sandbox-plugins:
+    name: Sandbox plugins (stdio)
+    runs-on: ubuntu-24.04-x86-32-cores
+    permissions:
+      contents: read
+    env:
+      # The plugin scenarios skip when an executable or daemon is missing;
+      # in CI a skip is a failure.
+      FABRO_REQUIRE_SANDBOX_PLUGINS: "1"
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+        with:
+          toolchain: 1.97.1
+      - uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # v2
+        with:
+          cache-on-failure: true
+      - uses: taiki-e/install-action@773334c0e05d7e699e4d78234494308223f3a2cf # nextest
+      - run: docker pull buildpack-deps:noble
+      # The driver's own Host and Docker executables, installed at the rev the
+      # workspace pins so the plugins and the in-process providers are one
+      # build; the CLI scenarios find them on PATH and launch them over stdio.
+      - name: Install the sandbox-driver plugin executables
+        run: |
+          rev="$(sed -n 's/^sandbox-driver = { git = "[^"]*", rev = "\([0-9a-f]*\)" }$/\1/p' Cargo.toml)"
+          test -n "$rev"
+          cargo install --locked --git https://github.com/lithoscomputer/sandbox-driver --rev "$rev" sandbox-driver-host sandbox-driver-docker
+      # Host and Docker served as plugins through the workflow scenarios. The
+      # scenarios are e2e tests (ignored by default); the key-free ones run
+      # here, the LLM-backed ones self-skip without credentials.
+      - run: cargo nextest run --locked --profile ci --status-level slow --run-ignored only -p fabro-cli --test it -E 'test(/host_plugin_|docker_plugin_/)'
+      # The stdio plugin proof (not ignored: it skips without the executable,
+      # which the environment above forbids) and the driver-backed Docker
+      # integration tests.
+      - run: cargo nextest run --locked --profile ci --status-level slow -p fabro-sandbox --test plugin_provider
+      - run: cargo nextest run --locked --profile ci --status-level slow --run-ignored only -p fabro-sandbox --test docker_streaming
+      - run: cargo nextest run --locked --profile ci --status-level slow --run-ignored only -p fabro-agent --test it -E 'test(docker_shell)'
+      - run: cargo nextest run --locked --profile ci --status-level slow --run-ignored only -p fabro-workflow --test it -E 'test(asset_collection_docker_sandbox)'
+
   test-macos:
     name: Test (macOS)
     if: github.event_name == 'workflow_dispatch'

@@ -801,7 +801,7 @@ where
         github_api_base_url: None,
         active_config_path,
         http_client: None,
-        sandbox_provider_registry: None,
+        sandbox_inventory: None,
         shutdown: shutdown.clone(),
         #[cfg(test)]
         worker_control_bus: None,

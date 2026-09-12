@@ -663,11 +663,10 @@ mod kimi_todo_tests {
 
     use super::tests::SilentEmitter;
     use super::*;
-    use crate::sandbox::Sandbox;
     use crate::test_support::MockSandbox;
 
     fn ctx() -> ToolContext {
-        let env: Arc<dyn Sandbox> = Arc::new(MockSandbox::default());
+        let env = MockSandbox::default().sandbox();
         ToolContext {
             fs_scope: None,
             write_locks: None,
@@ -777,7 +776,6 @@ mod tests {
     use tokio_util::sync::CancellationToken;
 
     use super::*;
-    use crate::sandbox::Sandbox;
     use crate::test_support::MockSandbox;
     use crate::tool_registry::{AgentEventEmitter, ToolContext};
     use crate::types::AgentEvent;
@@ -789,7 +787,7 @@ mod tests {
     }
 
     fn ctx_for(session: &str, root: &str) -> ToolContext {
-        let env: Arc<dyn Sandbox> = Arc::new(MockSandbox::default());
+        let env = MockSandbox::default().sandbox();
         ToolContext {
             fs_scope: None,
             write_locks: None,

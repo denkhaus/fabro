@@ -1245,42 +1245,41 @@ async fn validate_intent_environment(
 ) -> Result<(), EnvironmentSelectionError> {
     let configured_provider = run_manifest::configured_sandbox_provider(&settings.run);
     let effective_provider = run_manifest::effective_sandbox_provider(&settings.run);
-    // Image-source compatibility is intentionally not checked here: docker
-    // environments with only `image.dockerfile` (inline content) are built
-    // into `fabro-runner-<sha12>` by the sandbox layer on first use
-    // (fabro-969f auto-build), so both image sources are valid for every
-    // target kind.
+    let image = &settings.run.environment.image;
+    let image_incompatible = effective_provider == SandboxProviderKind::DOCKER
+        && image.docker.is_none()
+        && image.dockerfile.is_some();
     let (target_incompatible, detail) = match target {
         RunTarget::Git(_) => (
-            configured_provider == SandboxProviderKind::Local || !settings.run.clone.enabled,
+            configured_provider == SandboxProviderKind::LOCAL || !settings.run.clone.enabled,
             "Git targets require a compatible clone-enabled Docker or Daytona environment",
         ),
         RunTarget::None {} => (
-            configured_provider == SandboxProviderKind::Local,
+            configured_provider == SandboxProviderKind::LOCAL,
             "none targets require a compatible Docker or Daytona environment",
         ),
         RunTarget::Folder { .. } => (
-            configured_provider != SandboxProviderKind::Local,
+            configured_provider != SandboxProviderKind::LOCAL,
             "folder targets require a Local environment",
         ),
     };
-    if target_incompatible {
+    if image_incompatible || target_incompatible {
         return Err(EnvironmentSelectionError::TargetUnsupported { detail });
     }
     // Settings resolution drops `run.pull_request` unless it is enabled, so
     // `Some` means automatic pull requests were requested.
-    if !configured_provider.is_clone_based() && settings.run.pull_request.is_some() {
+    if !configured_provider.clones_workspace() && settings.run.pull_request.is_some() {
         return Err(EnvironmentSelectionError::AutomaticPullRequestUnsupported);
     }
     if let Some(detail) =
-        run_manifest::sandbox_provider_policy_error(&state.server_settings(), effective_provider)
+        run_manifest::sandbox_provider_policy_error(&state.server_settings(), &effective_provider)
     {
         return Err(EnvironmentSelectionError::ProviderDisabled {
             provider: effective_provider,
             detail,
         });
     }
-    if effective_provider == SandboxProviderKind::Daytona {
+    if effective_provider == SandboxProviderKind::DAYTONA {
         match state.vault_secret(EnvVars::DAYTONA_API_KEY).await {
             Ok(Some(key)) if !key.trim().is_empty() => {}
             Ok(_) => {
@@ -1524,7 +1523,7 @@ pub(crate) async fn create_run_from_manifest(
     let prepared = prepared.with_web_url(state.run_web_url(&run_id));
     let provider = run_manifest::effective_sandbox_provider(&prepared.settings().run);
     if let Some(error) =
-        run_manifest::sandbox_provider_policy_error(&state.server_settings(), provider)
+        run_manifest::sandbox_provider_policy_error(&state.server_settings(), &provider)
     {
         return ApiError::bad_request(error).into_response();
     }

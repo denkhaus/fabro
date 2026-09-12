@@ -27,7 +27,7 @@ use crate::agent_profile::AgentProfile;
 use crate::apply_patch;
 use crate::config::{NativeToolOptions, ToolSecrets};
 use crate::native_tool::{NativeTool, ToolVocabulary};
-use crate::sandbox::Sandbox;
+use crate::sandbox::RunSandbox;
 use crate::skills::{Skill, format_skills_prompt_section};
 use crate::todo_runtime::TodoRuntime;
 use crate::tool_registry::ToolRegistry;
@@ -381,7 +381,7 @@ impl EmbeddedPrompt {
 #[must_use]
 pub fn assemble_system_prompt(
     template: EmbeddedPrompt,
-    env: &dyn Sandbox,
+    env: &RunSandbox,
     env_context: &EnvContext,
     memory: &[String],
     user_instructions: Option<&str>,
@@ -414,12 +414,12 @@ pub fn assemble_system_prompt(
 
 #[cfg(test)]
 #[must_use]
-pub fn build_env_context_block(env: &dyn Sandbox) -> String {
+pub fn build_env_context_block(env: &RunSandbox) -> String {
     build_env_context_block_with(env, &EnvContext::default())
 }
 
 #[must_use]
-pub fn build_env_context_block_with(env: &dyn Sandbox, ctx: &EnvContext) -> String {
+pub fn build_env_context_block_with(env: &RunSandbox, ctx: &EnvContext) -> String {
     let mut lines = vec![
         "<environment>".to_string(),
         format!("Working directory: {}", env.working_directory()),
@@ -480,7 +480,7 @@ mod tests {
     }
 
     fn system_prompt(profile: &dyn AgentProfile) -> String {
-        let env = MockSandbox::linux();
+        let env = MockSandbox::linux().sandbox();
         let context = EnvContext::default();
         profile.build_system_prompt(&env, &context, &[], None, &[])
     }
@@ -668,7 +668,7 @@ mod tests {
 
     #[test]
     fn env_context_block_contains_platform() {
-        let env = MockSandbox::linux();
+        let env = MockSandbox::linux().sandbox();
         let block = build_env_context_block(&env);
         assert!(block.contains("<environment>"));
         assert!(block.contains("</environment>"));
@@ -679,7 +679,7 @@ mod tests {
 
     #[test]
     fn env_context_block_with_extra_context() {
-        let env = MockSandbox::linux();
+        let env = MockSandbox::linux().sandbox();
         let ctx = EnvContext {
             git_branch:         Some("main".into()),
             is_git_repo:        true,
@@ -700,7 +700,7 @@ mod tests {
     #[test]
     fn profile_builder_keeps_tool_availability_and_prompt_guidance_in_sync() {
         let catalog = Arc::new(test_catalog());
-        let env = MockSandbox::linux();
+        let env = MockSandbox::linux().sandbox();
         let cases = [
             (AgentProfileKind::OpenAi, builtin::openai(), "gpt-5.4-mini"),
             (
@@ -794,7 +794,7 @@ mod tests {
         let child_create = executor(child.as_ref(), "TaskCreate");
         let child_list = executor(child.as_ref(), "TaskList");
 
-        let env: Arc<dyn Sandbox> = Arc::new(MockSandbox::default());
+        let env = MockSandbox::default().sandbox();
         let context = |session_id: &str| ToolContext {
             fs_scope:            None,
             write_locks:         None,

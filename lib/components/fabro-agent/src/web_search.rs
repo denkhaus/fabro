@@ -300,7 +300,6 @@ pub(crate) fn make_web_search_tool_with_api_key(api_key: String) -> RegisteredTo
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
 
     use httpmock::Method::{GET, POST};
     use httpmock::MockServer;
@@ -308,7 +307,6 @@ mod tests {
 
     use super::*;
     use crate::config::ToolSecrets;
-    use crate::sandbox::Sandbox;
     use crate::test_support::MockSandbox;
     use crate::tool_registry::{ToolContext, ToolDefinitionExt};
 
@@ -320,7 +318,7 @@ mod tests {
     }
 
     async fn execute(tool: &RegisteredTool, args: serde_json::Value) -> Result<String, String> {
-        let env: Arc<dyn Sandbox> = Arc::new(MockSandbox::default());
+        let env = MockSandbox::default().sandbox();
         (tool.executor)(args, ToolContext {
             fs_scope: None,
             write_locks: None,

@@ -23,7 +23,6 @@ use fabro_api::types::{
     RunFilesMeta, RunFilesMetaScope, RunFilesMetaSource, SandboxService,
     SandboxServiceListResponse,
 };
-use fabro_types::{SandboxServiceDiscoverySource, SandboxServiceListMeta};
 use serde_json::json;
 
 use crate::error::ApiError;
@@ -405,19 +404,16 @@ pub(crate) async fn list_sandbox_services_stub(
                 SandboxService {
                     port:              3000,
                     addresses:         vec!["0.0.0.0:3000".to_string()],
-                    processes:         vec![r#"users:(("node",pid=42,fd=23))"#.to_string()],
+                    processes:         vec!["node".to_string()],
                     preview_supported: true,
                 },
                 SandboxService {
                     port:              2500,
                     addresses:         vec!["127.0.0.1:2500".to_string()],
-                    processes:         vec![r#"users:(("debug",pid=84,fd=19))"#.to_string()],
+                    processes:         vec!["debug".to_string()],
                     preview_supported: false,
                 },
             ],
-            meta: SandboxServiceListMeta {
-                source: SandboxServiceDiscoverySource::Ss,
-            },
         }),
     )
         .into_response()
@@ -1087,9 +1083,9 @@ mod runs {
 
     use fabro_api::types::*;
     use fabro_types::settings::run::{
-        EnvironmentImageSettings, EnvironmentLifecycleSettings, EnvironmentProvider,
-        EnvironmentResourcesSettings, EnvironmentSettings, PreparedStep, PreparedStepRun,
-        RunEnvironmentSettings, RunGoal, RunModelSettings, RunNamespace, RunPrepareSettings,
+        EnvironmentImageSettings, EnvironmentLifecycleSettings, EnvironmentResourcesSettings,
+        EnvironmentSettings, PreparedStep, PreparedStepRun, RunEnvironmentSettings, RunGoal,
+        RunModelSettings, RunNamespace, RunPrepareSettings,
     };
     use fabro_types::settings::{InterpString, ProjectNamespace, WorkflowNamespace};
     use fabro_types::{
@@ -1797,7 +1793,7 @@ mod runs {
 
     pub(super) fn settings() -> serde_json::Value {
         let environment = EnvironmentSettings {
-            provider: EnvironmentProvider::Daytona,
+            provider: SandboxProviderKind::DAYTONA,
             image: EnvironmentImageSettings {
                 docker:     Some("api-server-dev".into()),
                 dockerfile: None,

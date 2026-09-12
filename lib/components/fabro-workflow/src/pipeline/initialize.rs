@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 
-use fabro_agent::{Sandbox, ToolSecrets};
+use fabro_agent::{RunSandbox, ToolSecrets};
 use fabro_auth::{ExtraHeadersCredentialSource, VaultCredentialSource};
 use fabro_github::token_source::InstallationTokenSource;
 use fabro_graphviz::graph;
@@ -11,17 +11,19 @@ use fabro_hooks::{HookContext, HookDecision, HookEvent, HookExecutionContext, Ho
 use fabro_llm::credentials::{CredentialProvider, readiness};
 use fabro_llm::lithos_catalog::Catalog;
 use fabro_sandbox::{
-    GitSetupIntent, SandboxEventCallback, SandboxSpec, reconnect_for_run_with_callback, shell_quote,
+    DaytonaCredentials, ExecResultExt, GitSetupIntent, ProviderAccess, reconnect_for_run,
 };
 use fabro_static::EnvVars;
 use fabro_types::RunSandboxKind;
+use fabro_util::time::elapsed_ms;
 use fabro_vault::Vault;
+use sandbox_driver::{CorrelationId, EventContext, Git as _};
 use tokio::runtime::Handle;
 use tokio::sync::RwLock as AsyncRwLock;
 
 use super::types::{InitOptions, Initialized, LlmSpec, Persisted, SandboxEnvSpec};
 use crate::error::Error;
-use crate::event::{Event, RunNoticeCode, RunNoticeLevel};
+use crate::event::{DriverEventRecorder, Event, RunNoticeCode, RunNoticeLevel, SandboxLifecycle};
 use crate::git::GitAuthor;
 use crate::git_bridge;
 use crate::handler::llm::{AgentAcpBackend, AgentApiBackend, BackendRouter, routing};
@@ -49,7 +51,7 @@ struct BuiltSandboxEnv {
 async fn run_hooks(
     hook_runner: Option<&HookRunner>,
     hook_context: &HookContext,
-    sandbox: Arc<dyn Sandbox>,
+    sandbox: Arc<RunSandbox>,
     execution_context: HookExecutionContext,
 ) -> HookDecision {
     let Some(runner) = hook_runner else {
@@ -73,21 +75,18 @@ fn git_setup_intent(run_options: &RunOptions) -> GitSetupIntent {
 }
 
 async fn configure_sandbox_git_identity(
-    sandbox: &dyn Sandbox,
+    sandbox: &RunSandbox,
     author: &GitAuthor,
 ) -> Result<(), Error> {
-    let command = format!(
-        "git config --local user.name {} && git config --local user.email {}",
-        shell_quote(&author.name),
-        shell_quote(&author.email)
-    );
-    sandbox
-        .exec_command(&command, 10_000, None, None, None)
-        .await
-        .map_err(|err| Error::engine_with_source("Sandbox git identity setup failed", err))?
-        .into_result("git config user identity")
+    let git = sandbox
+        .git()
         .map_err(|err| Error::engine_with_source("Sandbox git identity setup failed", err))?;
-
+    let repo = sandbox.working_directory();
+    for (key, value) in [("user.name", &author.name), ("user.email", &author.email)] {
+        git.config_set(repo, key, value)
+            .await
+            .map_err(|err| Error::engine_with_source("Sandbox git identity setup failed", err))?;
+    }
     Ok(())
 }
 
@@ -368,7 +367,7 @@ pub async fn initialize(
         .as_ref()
         .and_then(|git| git.sha.clone());
     if !is_resume
-        && !matches!(options.sandbox, SandboxSpec::Local { .. })
+        && !options.sandbox.kind.is_local()
         && matches!(
             options
                 .run_options
@@ -385,12 +384,13 @@ pub async fn initialize(
         );
     }
 
-    let sandbox_event_callback: SandboxEventCallback = {
-        let emitter = Arc::clone(&options.emitter);
-        Arc::new(move |event| {
-            emitter.emit(&Event::Sandbox { event });
-        })
-    };
+    // The driver reports what it does to the run's sandbox; every event is
+    // kept as a run event.
+    let provider_name = options.sandbox.provider_name();
+    let sandbox_events = EventContext::new(Arc::new(DriverEventRecorder::new(Arc::clone(
+        &options.emitter,
+    ))))
+    .correlation_id(CorrelationId::new(options.run_options.run_id.to_string()));
     let attach_instance = if is_resume {
         let record = options
             .run_store
@@ -420,18 +420,23 @@ pub async fn initialize(
         None
     };
     let attach_existing = attach_instance.is_some();
-    let sandbox: Arc<dyn Sandbox> = if let Some(instance) = attach_instance {
-        let daytona_api_key = options
-            .vault
-            .read()
-            .await
-            .get(EnvVars::DAYTONA_API_KEY)
-            .map(str::to_string);
-        let sandbox = reconnect_for_run_with_callback(
+    let sandbox: Arc<RunSandbox> = if let Some(instance) = attach_instance {
+        let access = ProviderAccess {
+            providers: options.sandbox_providers.clone(),
+            daytona:   options
+                .vault
+                .read()
+                .await
+                .get(EnvVars::DAYTONA_API_KEY)
+                .map(|api_key| {
+                    DaytonaCredentials::from_api_key(api_key.to_string(), process_env_var)
+                }),
+        };
+        let sandbox = reconnect_for_run(
             &instance,
-            daytona_api_key,
+            &access,
             Some(options.run_options.run_id),
-            Some(Arc::clone(&sandbox_event_callback)),
+            Some(sandbox_events.clone()),
         )
         .await
         .map_err(|err| Error::engine_with_anyhow("Failed to reconnect sandbox for resume", err))?;
@@ -439,7 +444,7 @@ pub async fn initialize(
     } else {
         options
             .sandbox
-            .build(Some(Arc::clone(&sandbox_event_callback)))
+            .build(Some(sandbox_events.clone()))
             .await
             .map_err(|e| Error::engine_with_anyhow("Failed to build sandbox", e))?
     };
@@ -454,17 +459,43 @@ pub async fn initialize(
     });
 
     if attach_existing {
-        // Resume needs the full provider health check. `activate()` is the
-        // lighter access-time operation used after a run is already active.
         sandbox
-            .start()
+            .activate()
             .await
             .map_err(|e| Error::engine_with_source("Failed to start sandbox", e))?;
     } else {
-        sandbox
-            .initialize()
-            .await
-            .map_err(|e| Error::engine_with_source("Failed to initialize sandbox", e))?;
+        options.emitter.emit(&Event::Sandbox {
+            event: SandboxLifecycle::Initializing {
+                provider: provider_name.clone(),
+            },
+        });
+        let started = Instant::now();
+        if let Err(error) = sandbox.initialize().await {
+            options.emitter.emit(&Event::Sandbox {
+                event: SandboxLifecycle::InitializeFailed {
+                    provider:    provider_name.clone(),
+                    error:       error.to_string(),
+                    causes:      error.causes(),
+                    duration_ms: elapsed_ms(started),
+                },
+            });
+            return Err(Error::engine_with_source(
+                "Failed to initialize sandbox",
+                error,
+            ));
+        }
+        // A local sandbox's id is derived from its directory, which the
+        // record already names; it is not a name worth showing.
+        let name = Some(sandbox.sandbox_info())
+            .filter(|name| !name.is_empty() && !sandbox.kind().is_local());
+        options.emitter.emit(&Event::Sandbox {
+            event: SandboxLifecycle::Ready {
+                provider: provider_name.clone(),
+                duration_ms: elapsed_ms(started),
+                name,
+                url: sandbox.console_url().await,
+            },
+        });
     }
 
     let locations = RunLocations::for_sandbox(host_source_dir, sandbox.as_ref(), run_dir.clone());
@@ -487,9 +518,7 @@ pub async fn initialize(
     }
 
     if !attach_existing {
-        let run_sandbox = options
-            .sandbox
-            .to_run_sandbox_instance(&*sandbox, options.run_options.run_id);
+        let run_sandbox = options.sandbox.to_run_sandbox_instance(&sandbox);
         let runtime = &run_sandbox.runtime;
         options.emitter.emit(&Event::SandboxInitialized {
             working_directory: runtime.working_directory.clone(),
@@ -560,7 +589,7 @@ pub async fn initialize(
         let sandbox_has_origin = sandbox.origin_url().is_some();
         if sandbox_has_origin {
             sandbox_git
-                .ensure_git_available(&*sandbox)
+                .ensure_git_available(&sandbox)
                 .await
                 .map_err(|err| Error::engine_with_source("sandbox git unavailable", err))?;
         }
@@ -637,19 +666,19 @@ pub async fn initialize(
             }
             cancel_token.cancel();
             let duration_ms = crate::millis_u64(cmd_start.elapsed());
-            if !result.is_success() {
-                let exit_code = result.display_exit_code();
+            if !result.success() {
+                let exit_code = result.program_exit_code().unwrap_or(-1);
                 let exec_output_tail = result.default_redacted_output_tail();
+                let stderr = result.stderr_lossy();
                 options.emitter.emit(&Event::SetupFailed {
                     command: command.clone(),
                     index,
                     exit_code,
-                    stderr: result.stderr.clone(),
+                    stderr: stderr.clone(),
                     exec_output_tail,
                 });
                 return Err(Error::engine(format!(
-                    "Setup command failed (exit code {}): {command}\n{}",
-                    exit_code, result.stderr,
+                    "Setup command failed (exit code {exit_code}): {command}\n{stderr}",
                 )));
             }
             let exit_code = result.exit_code.unwrap_or(0);
@@ -725,6 +754,14 @@ pub async fn initialize(
         engine,
         model: options.llm.model,
     })
+}
+
+#[expect(
+    clippy::disallowed_methods,
+    reason = "A CLI worker resolves the Daytona control-plane URL from its own environment; server-spawned workers run with a cleared environment and take the defaults."
+)]
+fn process_env_var(name: &str) -> Option<String> {
+    std::env::var(name).ok()
 }
 
 #[cfg(test)]
@@ -898,7 +935,7 @@ mod tests {
             run_store,
             dry_run: false,
             emitter: Arc::clone(&emitter),
-            sandbox: SandboxSpec::Local { working_directory },
+            sandbox: SandboxSpec::local(working_directory, ProviderAccess::default()),
             llm: LlmSpec {
                 model:          "test-model".to_string(),
                 provider_id:    lithos_llm::catalog::builtin::anthropic(),
@@ -924,6 +961,8 @@ mod tests {
                 origin_url:         None,
             },
             vault: auth_test_support::empty_vault(),
+            sandbox_providers:
+                fabro_types::settings::server::ServerSandboxProvidersSettings::default(),
             git: None,
             run_control: None,
             registry_override: None,
@@ -1023,19 +1062,22 @@ mod tests {
             Some("fabro-bot@example.com".to_string()),
         );
 
-        configure_sandbox_git_identity(&sandbox, &author)
+        configure_sandbox_git_identity(&sandbox.sandbox(), &author)
             .await
             .expect("git identity should configure");
 
-        let commands = sandbox
-            .captured_commands
-            .lock()
-            .expect("captured_commands lock poisoned")
-            .clone();
-        assert_eq!(commands, vec![
-            "git config --local user.name 'Fabro Bot' && git config --local user.email \
-             fabro-bot@example.com"
-        ]);
+        let commands = sandbox.driver().scripted_exec().commands();
+        assert_eq!(commands.len(), 2, "{commands:#?}");
+        assert!(
+            commands[0].contains("'config' '--local' '--' 'user.name' 'Fabro Bot'"),
+            "{}",
+            commands[0]
+        );
+        assert!(
+            commands[1].contains("'config' '--local' '--' 'user.email' 'fabro-bot@example.com'"),
+            "{}",
+            commands[1]
+        );
     }
 
     #[tokio::test]
@@ -1172,9 +1214,14 @@ mod tests {
             .await
             .expect("a forked run should materialize a fresh sandbox before resuming");
 
+        // The Host provider reports the designated directory canonically
+        // (macOS resolves `/var` to `/private/var`).
+        let expected = workspace
+            .canonicalize()
+            .expect("materialized workspace should exist");
         assert_eq!(
             initialized.engine.run.sandbox.working_directory(),
-            workspace.to_string_lossy().as_ref()
+            expected.to_string_lossy().as_ref()
         );
     }
 
@@ -1307,7 +1354,7 @@ mod tests {
             "acp.command".to_string(),
             AttrValue::String(format!(
                 "python3 {}",
-                fabro_sandbox::shell_quote(&script_path.to_string_lossy())
+                fabro_util::shell::shell_quote(&script_path.to_string_lossy())
             )),
         );
         let mut exit = Node::new("exit");
@@ -1339,9 +1386,7 @@ mod tests {
             run_store: run_store.into(),
             dry_run: false,
             emitter: emitter.clone(),
-            sandbox: SandboxSpec::Local {
-                working_directory: temp.path().to_path_buf(),
-            },
+            sandbox: SandboxSpec::local(temp.path(), ProviderAccess::default()),
             llm: LlmSpec {
                 model:          "fake-acp".to_string(),
                 provider_id:    lithos_llm::catalog::builtin::openai(),
@@ -1367,6 +1412,8 @@ mod tests {
                 origin_url:         None,
             },
             vault,
+            sandbox_providers:
+                fabro_types::settings::server::ServerSandboxProvidersSettings::default(),
             git: None,
             run_control: None,
             registry_override: None,
@@ -1442,9 +1489,10 @@ mod tests {
             run_store:         run_store.into(),
             dry_run:           false,
             emitter:           emitter.clone(),
-            sandbox:           SandboxSpec::Local {
-                working_directory: std::env::current_dir().unwrap(),
-            },
+            sandbox:           SandboxSpec::local(
+                std::env::current_dir().unwrap(),
+                ProviderAccess::default(),
+            ),
             llm:               LlmSpec {
                 model:          "test-model".to_string(),
                 provider_id:    lithos_llm::catalog::builtin::anthropic(),
@@ -1470,6 +1518,8 @@ mod tests {
                 origin_url:         None,
             },
             vault:             auth_test_support::empty_vault(),
+            sandbox_providers:
+                fabro_types::settings::server::ServerSandboxProvidersSettings::default(),
             git:               None,
             run_control:       None,
             registry_override: None,
@@ -1584,9 +1634,10 @@ mod tests {
             },
             dry_run: false,
             emitter: emitter.clone(),
-            sandbox: SandboxSpec::Local {
-                working_directory: std::env::current_dir().unwrap(),
-            },
+            sandbox: SandboxSpec::local(
+                std::env::current_dir().unwrap(),
+                ProviderAccess::default(),
+            ),
             llm: LlmSpec {
                 model:          "test-model".to_string(),
                 provider_id:    lithos_llm::catalog::builtin::anthropic(),
@@ -1612,6 +1663,8 @@ mod tests {
                 origin_url:         None,
             },
             vault: auth_test_support::empty_vault(),
+            sandbox_providers:
+                fabro_types::settings::server::ServerSandboxProvidersSettings::default(),
             git: None,
             run_control: None,
             registry_override: None,

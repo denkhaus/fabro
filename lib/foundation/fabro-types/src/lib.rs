@@ -138,6 +138,7 @@ pub use run_event::{
     RunPairEndedReason, RunPairFailedReason, RunRunnableSource, SessionCapability,
     TodoCreatedProps, TodoDeletedProps, TodoUpdatedProps, bound_run_event,
     bound_run_event_with_budget, initial_subagent_generation, run_event_body_budget,
+    sandbox_driver_event_name,
 };
 pub use run_failure::RunFailure;
 pub use run_id::{RunId, fixtures};
@@ -165,19 +166,15 @@ pub use run_summary::{
 pub use run_title::{
     MAX_RUN_TITLE_CHARS, RunTitleError, infer_run_title, normalize_explicit_run_title,
 };
-pub use sandbox_details::{
-    SandboxDetails, SandboxNetwork, SandboxNetworkPolicy, SandboxNetworkPolicyMode,
-    SandboxResources, SandboxState, SandboxTimestamps,
-};
+pub use sandbox_details::SandboxDetails;
 pub use sandbox_inventory::{
     RunSandboxAvailability, SandboxInfo, SandboxListMeta, SandboxListResponse,
     SandboxProviderLookupError,
 };
-pub use sandbox_provider::SandboxProviderKind;
-pub use sandbox_services::{
-    SandboxService, SandboxServiceDiscoverySource, SandboxServiceListMeta,
-    SandboxServiceListResponse,
+pub use sandbox_provider::{
+    BundledProvider, InvalidSandboxProviderKind, SandboxProviderKind, WorkspacePolicy,
 };
+pub use sandbox_services::{SandboxService, SandboxServiceListResponse};
 pub use secret::{OAuthConfig, OAuthCredential, OAuthTokens, SecretMetadata, SecretType};
 pub use session::{
     PermissionLevel, SessionDetail, SessionId, SessionMessage, SessionRecord, SessionStatus,

@@ -19,12 +19,11 @@ use fabro_config::{LlmLayer, RunLayer, ServerSettingsBuilder, Storage, envfile};
 use fabro_db::DbPool;
 use fabro_interview::Interviewer;
 use fabro_llm::lithos_catalog::Catalog;
-use fabro_sandbox::SandboxProviderRegistry;
+use fabro_sandbox::SandboxInventory;
 use fabro_static::EnvVars;
 use fabro_store::{ArtifactStore, Database, test_support as store_test_support};
 use fabro_types::settings::ServerAuthMethod;
-use fabro_types::settings::run::EnvironmentProvider;
-use fabro_types::{AuthMethod, IdpIdentity, ServerSettings};
+use fabro_types::{AuthMethod, IdpIdentity, SandboxProviderKind, ServerSettings};
 use fabro_vault::{SecretType, Vault};
 use fabro_workflow::handler::HandlerRegistry;
 use lithos_llm::catalog::ProviderId;
@@ -92,14 +91,14 @@ pub struct TestAppStateBuilder {
     manifest_run_defaults:        RunLayer,
     max_concurrent_runs:          usize,
     registry_factory_override:    Option<Box<RegistryFactoryOverride>>,
-    sandbox_provider_registry:    Option<SandboxProviderRegistry>,
+    sandbox_inventory:            Option<SandboxInventory>,
     store_bundle:                 Option<(Arc<Database>, ArtifactStore)>,
     vault_path:                   Option<PathBuf>,
     vault_entries:                Vec<(String, String)>,
     server_env_path:              Option<PathBuf>,
     active_config_path:           Option<PathBuf>,
     server_secret_env:            HashMap<String, String>,
-    default_environment_provider: Option<EnvironmentProvider>,
+    default_environment_provider: Option<SandboxProviderKind>,
     env_lookup:                   EnvLookup,
     llm_overlay:                  LlmLayer,
     automation_materializer:      Option<TestAutomationRunMaterializer>,
@@ -116,14 +115,14 @@ impl Default for TestAppStateBuilder {
             manifest_run_defaults:        RunLayer::default(),
             max_concurrent_runs:          5,
             registry_factory_override:    None,
-            sandbox_provider_registry:    None,
+            sandbox_inventory:            None,
             store_bundle:                 None,
             vault_path:                   None,
             vault_entries:                Vec::new(),
             server_env_path:              None,
             active_config_path:           None,
             server_secret_env:            HashMap::new(),
-            default_environment_provider: Some(EnvironmentProvider::Docker),
+            default_environment_provider: Some(SandboxProviderKind::DOCKER),
             env_lookup:                   default_env_lookup(),
             llm_overlay:                  LlmLayer::default(),
             automation_materializer:      None,
@@ -166,11 +165,8 @@ impl TestAppStateBuilder {
         self
     }
 
-    pub fn sandbox_provider_registry(
-        mut self,
-        sandbox_provider_registry: SandboxProviderRegistry,
-    ) -> Self {
-        self.sandbox_provider_registry = Some(sandbox_provider_registry);
+    pub fn sandbox_inventory(mut self, sandbox_inventory: SandboxInventory) -> Self {
+        self.sandbox_inventory = Some(sandbox_inventory);
         self
     }
 
@@ -237,7 +233,7 @@ impl TestAppStateBuilder {
         self
     }
 
-    pub fn default_environment_provider(mut self, provider: Option<EnvironmentProvider>) -> Self {
+    pub fn default_environment_provider(mut self, provider: Option<SandboxProviderKind>) -> Self {
         self.default_environment_provider = provider;
         self
     }
@@ -337,7 +333,7 @@ impl TestAppStateBuilder {
             http_client: Some(
                 fabro_http::test_http_client().expect("test HTTP client should build"),
             ),
-            sandbox_provider_registry: self.sandbox_provider_registry,
+            sandbox_inventory: self.sandbox_inventory,
             shutdown: CancellationToken::new(),
             #[cfg(test)]
             worker_control_bus: None,
@@ -646,13 +642,13 @@ pub fn test_store_bundle() -> (Arc<Database>, ArtifactStore) {
 pub(crate) fn test_db_pool_for_vault_path(vault_path: &Path) -> anyhow::Result<DbPool> {
     test_db_pool_for_vault_path_with_default_environment(
         vault_path,
-        Some(EnvironmentProvider::Docker),
+        Some(SandboxProviderKind::DOCKER),
     )
 }
 
 pub(crate) fn test_db_pool_for_vault_path_with_default_environment(
     vault_path: &Path,
-    default_environment_provider: Option<EnvironmentProvider>,
+    default_environment_provider: Option<SandboxProviderKind>,
 ) -> anyhow::Result<DbPool> {
     test_db_pool(
         sqlite_path_for_vault_path(vault_path),
@@ -686,7 +682,7 @@ pub async fn test_environment_from_storage_dir(
 fn test_db_pool(
     path: PathBuf,
     vault_path: PathBuf,
-    default_environment_provider: Option<EnvironmentProvider>,
+    default_environment_provider: Option<SandboxProviderKind>,
 ) -> anyhow::Result<DbPool> {
     std::thread::spawn(move || {
         let runtime = TokioRuntimeBuilder::new_current_thread()

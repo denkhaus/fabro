@@ -17,6 +17,7 @@ use fabro_server::install::{
     InstallAppState, InstallFinishHook, InstallFinishInfo, build_install_router,
 };
 use fabro_server::test_support::test_environment_from_storage_dir;
+use fabro_types::SandboxProviderKind;
 use fabro_util::Home;
 use fabro_vault::Vault;
 use httpmock::Method::GET;
@@ -58,9 +59,18 @@ fn assert_sandbox_provider_policy(
         .server
         .sandbox
         .providers;
-    assert_eq!(resolved.local.enabled, local_enabled);
-    assert_eq!(resolved.docker.enabled, docker_enabled);
-    assert_eq!(resolved.daytona.enabled, daytona_enabled);
+    assert_eq!(
+        resolved.is_enabled(&SandboxProviderKind::LOCAL),
+        local_enabled
+    );
+    assert_eq!(
+        resolved.is_enabled(&SandboxProviderKind::DOCKER),
+        docker_enabled
+    );
+    assert_eq!(
+        resolved.is_enabled(&SandboxProviderKind::DAYTONA),
+        daytona_enabled
+    );
 }
 
 async fn seeded_default_environment(
@@ -2783,9 +2793,8 @@ async fn sandbox_daytona_test_endpoint_rejects_under_scoped_api_key() {
 
     assert_eq!(
         body["errors"][0]["detail"],
-        "API key 'delete-only' is missing required Daytona scopes: \
-         write:snapshots, write:sandboxes. Regenerate the key with all \
-         snapshot and sandbox scopes."
+        "Daytona API key is missing required scopes: write:snapshots, write:sandboxes. \
+         Regenerate the key with all snapshot and sandbox scopes."
     );
     auth.assert_async().await;
     current_key.assert_async().await;

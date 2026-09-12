@@ -5,11 +5,13 @@
 use std::sync::Arc;
 
 use fabro_agent::event::SessionBoundEmitter;
-use fabro_agent::sandbox::Sandbox;
 use fabro_agent::tool_registry::ToolContext;
 use fabro_agent::tools::make_shell_tool;
 use fabro_agent::types::AgentEvent;
-use fabro_agent::{DockerSandbox, DockerSandboxOptions, Emitter};
+use fabro_agent::{
+    CloneRequest, DriverSpec, Emitter, ProviderAccess, SandboxProviderKind, SandboxSource,
+    provider_sandbox,
+};
 use fabro_types::CommandTermination;
 use tokio::sync::broadcast;
 use tokio_util::sync::CancellationToken;
@@ -17,20 +19,18 @@ use tokio_util::sync::CancellationToken;
 #[tokio::test]
 #[ignore = "requires real Docker container lifecycle; run explicitly when changing shell tool exec integration"]
 async fn shell_reports_real_docker_process_outcome() {
-    let Ok(sandbox) = DockerSandbox::new(
-        DockerSandboxOptions {
-            image: "buildpack-deps:noble".to_string(),
-            auto_pull: false,
-            skip_clone: true,
-            ..DockerSandboxOptions::default()
-        },
+    let Ok(sandbox) = provider_sandbox(
+        SandboxProviderKind::DOCKER,
+        &ProviderAccess::default(),
+        DriverSpec::new(SandboxSource::Image {
+            reference: "buildpack-deps:noble".to_string(),
+        }),
+        &CloneRequest::none(),
         None,
         None,
-        None,
-        None,
-        None,
-        None,
-    ) else {
+    )
+    .await
+    else {
         return;
     };
     // No Docker daemon or no local image: the integration precondition is not met.
@@ -47,7 +47,7 @@ async fn shell_reports_real_docker_process_outcome() {
         ToolContext {
             fs_scope:            None,
             write_locks:         None,
-            env:                 sandbox.clone() as Arc<dyn Sandbox>,
+            env:                 sandbox.clone(),
             cancel:              CancellationToken::new(),
             tool_env_provider:   None,
             session_id:          Some("test-session".to_string()),
@@ -62,7 +62,7 @@ async fn shell_reports_real_docker_process_outcome() {
     )
     .await;
     sandbox
-        .cleanup()
+        .delete()
         .await
         .expect("docker cleanup should succeed");
 

@@ -24,8 +24,7 @@ pub(crate) fn metadata_push_failure_is_transient(
     detail: &str,
     token: Option<&TokenSnapshot>,
 ) -> bool {
-    let credentials = fabro_sandbox::CredentialContext::from_snapshot(token);
-    fabro_sandbox::classify_failure(detail, credentials).is_some()
+    fabro_sandbox::transient_git_failure(detail, token).is_some()
 }
 
 #[derive(Debug, thiserror::Error)]

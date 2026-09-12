@@ -1,10 +1,15 @@
-use fabro_agent::{AgentEvent, SandboxEvent};
+use std::borrow::Cow;
 
-use super::Event;
+use fabro_agent::AgentEvent;
+
+use super::{Event, SandboxLifecycle};
 
 #[must_use]
-pub fn event_name(event: &Event) -> &'static str {
-    match event {
+pub fn event_name(event: &Event) -> Cow<'static, str> {
+    let name: &'static str = match event {
+        Event::SandboxDriver { event } => {
+            return Cow::Owned(fabro_types::sandbox_driver_event_name(event));
+        }
         Event::RunCreated { .. } => "run.created",
         Event::WorkflowRunStarted { .. } => "run.started",
         Event::RunSubmitted { .. } => "run.submitted",
@@ -102,28 +107,9 @@ pub fn event_name(event: &Event) -> &'static str {
         Event::SubgraphStarted { .. } => "subgraph.started",
         Event::SubgraphCompleted { .. } => "subgraph.completed",
         Event::Sandbox { event } => match event {
-            SandboxEvent::Initializing { .. } => "sandbox.initializing",
-            SandboxEvent::Ready { .. } => "sandbox.ready",
-            SandboxEvent::InitializeFailed { .. } => "sandbox.failed",
-            SandboxEvent::CleanupStarted { .. } => "sandbox.cleanup.started",
-            SandboxEvent::CleanupCompleted { .. } => "sandbox.cleanup.completed",
-            SandboxEvent::CleanupFailed { .. } => "sandbox.cleanup.failed",
-            SandboxEvent::StartStarted { .. } => "sandbox.start.started",
-            SandboxEvent::StartCompleted { .. } => "sandbox.start.completed",
-            SandboxEvent::StartFailed { .. } => "sandbox.start.failed",
-            SandboxEvent::StopStarted { .. } => "sandbox.stop.started",
-            SandboxEvent::StopCompleted { .. } => "sandbox.stop.completed",
-            SandboxEvent::StopFailed { .. } => "sandbox.stop.failed",
-            SandboxEvent::DeleteStarted { .. } => "sandbox.delete.started",
-            SandboxEvent::DeleteCompleted { .. } => "sandbox.delete.completed",
-            SandboxEvent::DeleteFailed { .. } => "sandbox.delete.failed",
-            SandboxEvent::SnapshotPulling { .. } => "sandbox.snapshot.pulling",
-            SandboxEvent::SnapshotCreating { .. } => "sandbox.snapshot.creating",
-            SandboxEvent::SnapshotReady { .. } => "sandbox.snapshot.ready",
-            SandboxEvent::SnapshotFailed { .. } => "sandbox.snapshot.failed",
-            SandboxEvent::GitCloneStarted { .. } => "sandbox.git.started",
-            SandboxEvent::GitCloneCompleted { .. } => "sandbox.git.completed",
-            SandboxEvent::GitCloneFailed { .. } => "sandbox.git.failed",
+            SandboxLifecycle::Initializing { .. } => "sandbox.initializing",
+            SandboxLifecycle::Ready { .. } => "sandbox.ready",
+            SandboxLifecycle::InitializeFailed { .. } => "sandbox.failed",
         },
         Event::SandboxInitialized { .. } => "sandbox.initialized",
         Event::SetupStarted { .. } => "setup.started",
@@ -157,7 +143,8 @@ pub fn event_name(event: &Event) -> &'static str {
         Event::PullRequestUnlinked { .. } => "pull_request.unlinked",
         Event::PullRequestClosed { .. } => "pull_request.closed",
         Event::PullRequestFailed { .. } => "pull_request.failed",
-    }
+    };
+    Cow::Borrowed(name)
 }
 
 #[cfg(test)]

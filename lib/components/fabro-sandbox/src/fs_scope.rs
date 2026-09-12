@@ -1,29 +1,22 @@
 //! Per-stage filesystem scope (fabro-ba96, ADR-0009 stage envelope).
 //!
 //! [`FsScope`] compiles a node's `fs_hide`/`fs_write` glob lists into one
-//! policy. [`ScopedSandbox`] wraps a stage session's sandbox and enforces
-//! that policy on every filesystem operation that flows through the
-//! [`Sandbox`] trait, so all builtin file tools — in every provider profile
-//! vocabulary — plus `read_many_files` and `apply_patch` are covered by a
-//! single seam. Spawned subagent sessions share the same wrapper and inherit
-//! the scope.
+//! policy. Enforcement lives in the agent's tool layer: the file, search,
+//! and listing tools consult the session's scope before touching the
+//! sandbox, and `apply_patch` pre-checks every target of a patch. All
+//! builtin tool vocabularies share the same native executors, so one seam
+//! covers every profile; spawned subagent sessions inherit the scope
+//! through their session options.
 //!
 //! The trust model is drift protection, not adversarial containment
-//! (ADR-0009): `shell` and process execution delegate to the inner sandbox
-//! untouched and remain the documented escape hatch. Sandbox-level
-//! per-stage materialization is deliberately out of scope for v1.
-
-use std::collections::HashMap;
-use std::sync::Arc;
+//! (ADR-0009): `shell` and process execution remain the documented escape
+//! hatch. Sandbox-level per-stage materialization is deliberately out of
+//! scope for v1.
 
 use fabro_util::workspace_glob::{WorkspaceGlob, WorkspaceGlobError};
-use tokio_util::sync::CancellationToken;
+use sandbox_driver::{DirEntry, GrepMatch};
 
-use crate::sandbox::{
-    DirEntry, ExecStreamingRequest, ExecStreamingResult, GrepOptions, Sandbox, SandboxActivation,
-    SandboxFile, StdioProcess, WalkOptions, grep_result_path,
-};
-use crate::{Error, GitRunInfo, GitSetupIntent, PushError, PushReport, RefreshOutcome, RetryPlan};
+use crate::Error;
 
 /// A compiled per-node filesystem scope.
 ///
@@ -225,277 +218,73 @@ fn workspace_relative(working_dir: &str, path: &str) -> Option<String> {
     path.strip_prefix(&format!("{dir}/")).map(str::to_string)
 }
 
-/// A [`Sandbox`] decorator enforcing an [`FsScope`] on every filesystem
-/// operation (fabro-ba96).
-///
-/// Hand-written instead of [`crate::delegate_sandbox!`] because the macro
-/// emits unconditional delegations and cannot skip methods this decorator
-/// overrides; revisit the macro when a second decorator appears.
-///
-/// Shell and process execution (`exec_command`,
-/// `exec_command_streaming`, `spawn_stdio_process`) delegate to the inner
-/// sandbox untouched: the scope is drift protection, and shell is the
-/// documented escape hatch (ADR-0009 trust model). Run-level plumbing
-/// (git setup/push, upload/download) also delegates — the wrapper is
-/// handed only to stage sessions, never to the run's own sandbox handle.
-pub struct ScopedSandbox {
-    inner: Arc<dyn Sandbox>,
-    scope: Arc<FsScope>,
-}
-
-impl ScopedSandbox {
-    /// Wrap `inner` so its filesystem surface follows `scope`.
-    #[must_use]
-    pub fn new(inner: Arc<dyn Sandbox>, scope: Arc<FsScope>) -> Self {
-        Self { inner, scope }
+/// Compose a listed directory and an entry path into one candidate for
+/// scope matching. Absolute entry paths pass through as they are.
+fn join_entry_path(dir: &str, entry_path: &str) -> String {
+    if entry_path.starts_with('/') {
+        return entry_path.to_string();
     }
-
-    fn working_dir(&self) -> &str {
-        self.inner.working_directory()
-    }
-}
-
-/// Compose a listed directory and an entry name into one path for scope
-/// matching. `DirEntry::name` is already relative to the listed directory
-/// with `/` separators, including recursive depth listings.
-fn join_entry_path(dir: &str, name: &str) -> String {
     let trimmed = dir.trim_end_matches('/');
     if trimmed.is_empty() || trimmed == "." {
-        name.to_string()
+        entry_path.to_string()
     } else {
-        format!("{trimmed}/{name}")
+        format!("{trimmed}/{entry_path}")
     }
 }
 
-#[async_trait::async_trait]
-impl Sandbox for ScopedSandbox {
-    async fn read_file_bytes(&self, path: &str) -> crate::Result<Vec<u8>> {
-        self.scope.check_read(self.working_dir(), path)?;
-        self.inner.read_file_bytes(path).await
-    }
-
-    async fn write_file(&self, path: &str, content: &str) -> crate::Result<()> {
-        self.scope.check_write(self.working_dir(), path)?;
-        self.inner.write_file(path, content).await
-    }
-
-    async fn delete_file(&self, path: &str) -> crate::Result<()> {
-        self.scope.check_write(self.working_dir(), path)?;
-        self.inner.delete_file(path).await
-    }
-
-    async fn file_exists(&self, path: &str) -> crate::Result<bool> {
-        if self.scope.is_path_hidden(self.working_dir(), path) {
-            return Ok(false);
-        }
-        self.inner.file_exists(path).await
-    }
-
-    async fn list_directory(
+impl FsScope {
+    /// Filter directory entries from [`RunSandbox::list_directory`] so
+    /// hidden paths do not leak through listings. A `dir/**` hide glob
+    /// also removes the `dir` entry itself (nonexistent semantics).
+    #[must_use]
+    pub fn filter_dir_entries(
         &self,
-        path: &str,
-        depth: Option<usize>,
-    ) -> crate::Result<Vec<DirEntry>> {
-        let entries = self.inner.list_directory(path, depth).await?;
-        Ok(entries
+        working_dir: &str,
+        dir: &str,
+        entries: Vec<DirEntry>,
+    ) -> Vec<DirEntry> {
+        entries
             .into_iter()
             .filter(|entry| {
-                let candidate = join_entry_path(path, &entry.name);
-                !self.scope.is_path_hidden(self.working_dir(), &candidate)
+                let candidate = join_entry_path(dir, &entry.path);
+                !self.is_path_hidden(working_dir, &candidate)
             })
-            .collect())
+            .collect()
     }
 
-    async fn grep(
-        &self,
-        pattern: &str,
-        path: &str,
-        options: &GrepOptions,
-    ) -> crate::Result<Vec<String>> {
-        self.scope.check_read(self.working_dir(), path)?;
-        let lines = self.inner.grep(pattern, path, options).await?;
-        Ok(lines
+    /// Filter absolute sandbox paths (glob and walk results) down to the
+    /// visible ones.
+    #[must_use]
+    pub fn filter_paths<I>(&self, working_dir: &str, paths: I) -> Vec<String>
+    where
+        I: IntoIterator<Item = String>,
+    {
+        paths
             .into_iter()
-            .filter(|line| {
-                let file = grep_result_path(line, path);
-                !self.scope.is_path_hidden(self.working_dir(), file)
-            })
-            .collect())
+            .filter(|path| !self.is_path_hidden(working_dir, path))
+            .collect()
     }
 
-    async fn glob(&self, pattern: &str, path: Option<&str>) -> crate::Result<Vec<String>> {
-        let results = self.inner.glob(pattern, path).await?;
-        Ok(results
+    /// Filter grep matches so hidden files do not leak matches. Match
+    /// paths are absolute sandbox paths.
+    #[must_use]
+    pub fn filter_grep_matches(
+        &self,
+        working_dir: &str,
+        matches: Vec<GrepMatch>,
+    ) -> Vec<GrepMatch> {
+        matches
             .into_iter()
-            .filter(|result| !self.scope.is_path_hidden(self.working_dir(), result))
-            .collect())
-    }
-
-    async fn walk_files(
-        &self,
-        base: &str,
-        relative_start: &str,
-        options: &WalkOptions,
-    ) -> crate::Result<Vec<SandboxFile>> {
-        let files = self.inner.walk_files(base, relative_start, options).await?;
-        Ok(files
-            .into_iter()
-            .filter(|file| !self.scope.is_path_hidden(self.working_dir(), &file.path))
-            .collect())
-    }
-
-    // Everything below delegates to the inner sandbox.
-
-    async fn exec_command(
-        &self,
-        command: &str,
-        timeout_ms: u64,
-        working_dir: Option<&str>,
-        env_vars: Option<&HashMap<String, String>>,
-        cancel_token: Option<CancellationToken>,
-    ) -> crate::Result<crate::ExecResult> {
-        self.inner
-            .exec_command(command, timeout_ms, working_dir, env_vars, cancel_token)
-            .await
-    }
-
-    async fn exec_command_streaming(
-        &self,
-        request: ExecStreamingRequest<'_>,
-    ) -> crate::Result<ExecStreamingResult> {
-        self.inner.exec_command_streaming(request).await
-    }
-
-    async fn spawn_stdio_process(
-        &self,
-        command: &str,
-        working_dir: Option<&str>,
-        env_vars: Option<&HashMap<String, String>>,
-        cancel_token: Option<CancellationToken>,
-    ) -> crate::Result<StdioProcess> {
-        self.inner
-            .spawn_stdio_process(command, working_dir, env_vars, cancel_token)
-            .await
-    }
-
-    async fn download_file_to_local(
-        &self,
-        remote_path: &str,
-        local_path: &std::path::Path,
-    ) -> crate::Result<()> {
-        self.inner
-            .download_file_to_local(remote_path, local_path)
-            .await
-    }
-
-    async fn upload_file_from_local(
-        &self,
-        local_path: &std::path::Path,
-        remote_path: &str,
-    ) -> crate::Result<()> {
-        self.inner
-            .upload_file_from_local(local_path, remote_path)
-            .await
-    }
-
-    async fn initialize(&self) -> crate::Result<()> {
-        self.inner.initialize().await
-    }
-
-    async fn activate(&self) -> crate::Result<SandboxActivation> {
-        self.inner.activate().await
-    }
-
-    async fn start(&self) -> crate::Result<()> {
-        self.inner.start().await
-    }
-
-    async fn stop(&self) -> crate::Result<()> {
-        self.inner.stop().await
-    }
-
-    async fn delete(&self) -> crate::Result<()> {
-        self.inner.delete().await
-    }
-
-    async fn cleanup(&self) -> crate::Result<()> {
-        self.inner.cleanup().await
-    }
-
-    fn working_directory(&self) -> &str {
-        self.inner.working_directory()
-    }
-
-    fn platform(&self) -> &str {
-        self.inner.platform()
-    }
-
-    fn os_version(&self) -> String {
-        self.inner.os_version()
-    }
-
-    fn sandbox_info(&self) -> String {
-        self.inner.sandbox_info()
-    }
-
-    fn snapshot_info(&self) -> Option<String> {
-        self.inner.snapshot_info()
-    }
-
-    async fn refresh_push_credentials(&self) -> crate::Result<RefreshOutcome> {
-        self.inner.refresh_push_credentials().await
-    }
-
-    async fn set_autostop_interval(&self, minutes: i32) -> crate::Result<()> {
-        self.inner.set_autostop_interval(minutes).await
-    }
-
-    async fn setup_git(&self, intent: &GitSetupIntent) -> crate::Result<Option<GitRunInfo>> {
-        self.inner.setup_git(intent).await
-    }
-
-    async fn git_push_ref(&self, refspec: &str, plan: &RetryPlan) -> Result<PushReport, PushError> {
-        self.inner.git_push_ref(refspec, plan).await
-    }
-
-    async fn ssh_access_command(&self) -> crate::Result<Option<String>> {
-        self.inner.ssh_access_command().await
-    }
-
-    async fn get_preview_url(
-        &self,
-        port: u16,
-    ) -> crate::Result<Option<(String, HashMap<String, String>)>> {
-        self.inner.get_preview_url(port).await
-    }
-
-    fn origin_url(&self) -> Option<&str> {
-        self.inner.origin_url()
+            .filter(|m| !self.is_path_hidden(working_dir, &m.path))
+            .collect()
     }
 }
 
-#[expect(
-    clippy::disallowed_methods,
-    reason = "scope tests stage fixtures with sync std::fs writes/reads"
-)]
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
-    use std::sync::Arc;
+    use sandbox_driver::{DirEntry, FileKind, GrepMatch};
 
     use super::*;
-    use crate::local::LocalSandbox;
-
-    fn temp_dir() -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("fs_scope_test_{}", uuid::Uuid::new_v4()));
-        std::fs::create_dir_all(&dir).unwrap();
-        dir
-    }
-
-    fn scoped(dir: PathBuf, hide: &[&str], write: Option<&[&str]>) -> ScopedSandbox {
-        let scope = Arc::new(FsScope::try_new(hide, write).expect("globs compile"));
-        ScopedSandbox::new(Arc::new(LocalSandbox::new(dir)) as Arc<dyn Sandbox>, scope)
-    }
 
     #[test]
     fn try_new_rejects_invalid_globs_with_the_attribute() {
@@ -545,187 +334,112 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn hidden_files_behave_as_if_nonexistent() {
-        let dir = temp_dir();
-        std::fs::write(dir.join("visible.txt"), "keep").unwrap();
-        std::fs::create_dir_all(dir.join(".seeds")).unwrap();
-        std::fs::write(dir.join(".seeds/issues.jsonl"), "{}").unwrap();
-        let sandbox = scoped(dir.clone(), &[".seeds/**"], None);
-
-        // Reads fail with the scope error.
-        let error = sandbox
-            .read_file_text(".seeds/issues.jsonl")
-            .await
+    #[test]
+    fn hidden_reads_fail_and_hidden_paths_report_absent() {
+        let scope = FsScope::try_new(&[".seeds/**"], None).unwrap();
+        let error = scope
+            .check_read("/workspace", ".seeds/issues.jsonl")
             .expect_err("hidden read denied");
         assert!(
             error.to_string().contains("fs_hide"),
             "unexpected error: {error}"
         );
+        assert!(scope.is_path_hidden("/workspace", ".seeds/issues.jsonl"));
+        assert!(!scope.is_path_hidden("/workspace", "visible.txt"));
 
-        // file_exists reports false — the path does not exist for the stage.
-        assert!(!sandbox.file_exists(".seeds/issues.jsonl").await.unwrap());
-        assert!(sandbox.file_exists("visible.txt").await.unwrap());
-
-        // Discovery results are filtered, so hiding does not leak.
-        let entries = sandbox.list_directory(".", None).await.unwrap();
-        assert_eq!(entries.len(), 1, "{entries:?}");
-        assert_eq!(entries[0].name, "visible.txt");
-
-        let globbed = sandbox.glob("**", None).await.unwrap();
-        assert_eq!(globbed.len(), 1, "{globbed:?}");
-        assert!(globbed[0].ends_with("visible.txt"));
-
-        let grepped = sandbox
-            .grep("{}", ".", &GrepOptions::default())
-            .await
-            .unwrap();
-        assert!(
-            grepped.is_empty(),
-            "hidden matches must not leak: {grepped:?}"
-        );
-
-        // Writes to hidden paths are denied too.
-        let error = sandbox
-            .write_file(".seeds/new.jsonl", "x")
-            .await
-            .expect_err("hidden write denied");
+        let absolute = "/workspace/.seeds/edge";
+        let error = scope
+            .check_read("/workspace", absolute)
+            .expect_err("absolute hidden path denied");
         assert!(
             error.to_string().contains("fs_hide"),
             "unexpected error: {error}"
         );
-        std::fs::remove_dir_all(&dir).unwrap();
     }
 
-    #[tokio::test]
-    async fn grep_filters_hidden_matches_but_keeps_visible_ones() {
-        let dir = temp_dir();
-        std::fs::write(dir.join("open.rs"), "needle\n").unwrap();
-        std::fs::create_dir_all(dir.join("hidden")).unwrap();
-        std::fs::write(dir.join("hidden/secret.rs"), "needle\n").unwrap();
-        let sandbox = scoped(dir.clone(), &["hidden/**"], None);
-
-        let lines = sandbox
-            .grep("needle", ".", &GrepOptions::default())
-            .await
-            .unwrap();
-        assert_eq!(lines.len(), 1, "{lines:?}");
-        assert!(lines[0].contains("open.rs"));
-        std::fs::remove_dir_all(&dir).unwrap();
+    #[test]
+    fn dir_glob_hides_the_directory_entry_in_listings() {
+        let scope = FsScope::try_new(&[".seeds/**"], None).unwrap();
+        let entries = vec![
+            DirEntry::new(".seeds", FileKind::Directory),
+            DirEntry::new("visible.txt", FileKind::File),
+            DirEntry::new(".seeds/issues.jsonl", FileKind::File),
+        ];
+        let visible = scope.filter_dir_entries("/workspace", ".", entries);
+        assert_eq!(visible.len(), 1, "{visible:?}");
+        assert_eq!(visible[0].path, "visible.txt");
     }
 
-    #[tokio::test]
-    async fn write_allowlist_governs_writes_and_deletes() {
-        let dir = temp_dir();
-        std::fs::write(dir.join("keep.go"), "package main").unwrap();
-        std::fs::write(dir.join("notes.md"), "hi").unwrap();
-        let sandbox = scoped(dir.clone(), &[], Some(&["*.go"]));
+    #[test]
+    fn filter_paths_and_grep_matches_drop_hidden_files() {
+        let scope = FsScope::try_new(&["hidden/**"], None).unwrap();
+        let paths = vec![
+            "/workspace/hidden/secret.rs".to_string(),
+            "/workspace/open.rs".to_string(),
+        ];
+        assert_eq!(scope.filter_paths("/workspace", paths), vec![
+            "/workspace/open.rs".to_string()
+        ]);
 
-        sandbox
-            .write_file("new.go", "package x")
-            .await
+        let matches = vec![
+            GrepMatch::new("/workspace/open.rs", 1, "needle"),
+            GrepMatch::new("/workspace/hidden/secret.rs", 3, "needle"),
+        ];
+        let visible = scope.filter_grep_matches("/workspace", matches);
+        assert_eq!(visible.len(), 1, "{visible:?}");
+        assert_eq!(visible[0].path, "/workspace/open.rs");
+    }
+
+    #[test]
+    fn write_allowlist_governs_writes() {
+        let scope = FsScope::try_new(&[], Some(&["*.go"])).unwrap();
+        scope
+            .check_write("/workspace", "new.go")
             .expect("listed glob writable");
-        sandbox
-            .write_existing_file("keep.go", "package main\n")
-            .await
-            .expect("listed glob writable via write_existing_file");
-        let error = sandbox
-            .write_file("notes.md", "changed")
-            .await
+        scope
+            .check_write("/workspace", "keep.go")
+            .expect("listed glob writable");
+        let error = scope
+            .check_write("/workspace", "notes.md")
             .expect_err("unlisted write denied");
-        assert!(
-            error.to_string().contains("fs_write"),
-            "unexpected error: {error}"
-        );
-        let error = sandbox
-            .delete_file("notes.md")
-            .await
-            .expect_err("delete counts as a write");
         assert!(
             error.to_string().contains("fs_write"),
             "unexpected error: {error}"
         );
 
         // Reads stay open regardless of the write list.
-        sandbox
-            .read_file_text("notes.md")
-            .await
+        scope
+            .check_read("/workspace", "notes.md")
             .expect("reads stay open");
-        assert_eq!(std::fs::read_to_string(dir.join("notes.md")).unwrap(), "hi");
-        std::fs::remove_dir_all(&dir).unwrap();
     }
 
-    #[tokio::test]
-    async fn empty_write_list_makes_the_stage_read_only() {
-        let dir = temp_dir();
-        std::fs::write(dir.join("any.txt"), "x").unwrap();
-        let sandbox = scoped(dir.clone(), &[], Some(&[]));
-
-        let error = sandbox
-            .write_file("any.txt", "y")
-            .await
+    #[test]
+    fn empty_write_list_makes_the_stage_read_only() {
+        let scope = FsScope::try_new(&[], Some(&[])).unwrap();
+        let error = scope
+            .check_write("/workspace", "any.txt")
             .expect_err("empty list admits no writes");
         assert!(
             error.to_string().contains("fs_write"),
             "unexpected error: {error}"
         );
-        std::fs::remove_dir_all(&dir).unwrap();
     }
 
-    #[tokio::test]
-    async fn outside_workspace_writes_are_denied_only_when_a_list_is_set() {
-        let dir = temp_dir();
-        let outside = std::env::temp_dir().join(format!("fs_scope_out_{}", uuid::Uuid::new_v4()));
-        std::fs::create_dir_all(&outside).unwrap();
-
+    #[test]
+    fn outside_workspace_writes_are_denied_only_when_a_list_is_set() {
         // Unset write list: outside paths pass through (default-open).
-        let open = scoped(dir.clone(), &[".x/**"], None);
-        open.write_file(&outside.join("scratch.txt").to_string_lossy(), "ok")
-            .await
+        let open = FsScope::try_new(&[".x/**"], None).unwrap();
+        open.check_write("/workspace", "/tmp/scratch.txt")
             .expect("outside writes pass through without fs_write");
 
         // Set write list: outside paths never match workspace-relative globs.
-        let restricted = scoped(dir, &[], Some(&["*.go"]));
+        let restricted = FsScope::try_new(&[], Some(&["*.go"])).unwrap();
         let error = restricted
-            .write_file(&outside.join("scratch2.txt").to_string_lossy(), "no")
-            .await
+            .check_write("/workspace", "/tmp/scratch.txt")
             .expect_err("outside write denied under fs_write");
         assert!(
             error.to_string().contains("fs_write"),
             "unexpected error: {error}"
         );
-        std::fs::remove_dir_all(&outside).unwrap();
-    }
-
-    #[tokio::test]
-    async fn absolute_paths_inside_the_workspace_are_scoped() {
-        let dir = temp_dir();
-        std::fs::create_dir_all(dir.join(".fabro")).unwrap();
-        std::fs::write(dir.join(".fabro/secret"), "s").unwrap();
-        let sandbox = scoped(dir.clone(), &[".fabro/**"], None);
-
-        let absolute = dir.join(".fabro/secret").to_string_lossy().into_owned();
-        let error = sandbox
-            .read_file_text(&absolute)
-            .await
-            .expect_err("absolute hidden path denied");
-        assert!(
-            error.to_string().contains("fs_hide"),
-            "unexpected error: {error}"
-        );
-        std::fs::remove_dir_all(&dir).unwrap();
-    }
-
-    #[tokio::test]
-    async fn exec_command_delegates_untouched() {
-        let dir = temp_dir();
-        let sandbox = scoped(dir.clone(), &["**"], Some(&[]));
-        let result = sandbox
-            .exec_command("printf scoped", 5_000, None, None, None)
-            .await
-            .expect("shell is the documented escape hatch");
-        assert!(result.is_success());
-        assert_eq!(result.stdout.trim(), "scoped");
-        std::fs::remove_dir_all(&dir).unwrap();
     }
 }

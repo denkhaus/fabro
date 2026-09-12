@@ -22,6 +22,7 @@ use lithos_llm::types::{
     ContentPart, Message as LlmMessage, ReasoningEffort, Role, Speed, TokenCounts, ToolCall,
     ToolChoice,
 };
+use sandbox_driver::{ServiceId, ServiceSpec, Services as _, ServicesFacet};
 use tokio::sync::{Notify, broadcast};
 use tokio::time;
 use tokio_util::sync::CancellationToken;
@@ -42,7 +43,7 @@ use crate::memory::{BUDGET_BYTES, MemoryDocument, discover_memory};
 use crate::native_tool::NativeTool;
 use crate::profiles::EnvContext;
 use crate::question_tools::AgentToolRuntime;
-use crate::sandbox::Sandbox;
+use crate::sandbox::RunSandbox;
 use crate::skills::{
     ExpandedInput, Skill, default_skill_dirs, discover_skills, expand_skill,
     make_use_skill_tool_for_vocabulary,
@@ -446,7 +447,7 @@ pub struct Session {
     ended: bool,
     llm_client: Client,
     provider_profile: Arc<dyn AgentProfile>,
-    sandbox: Arc<dyn Sandbox>,
+    sandbox: Arc<RunSandbox>,
     control_state: Arc<Mutex<ControlState>>,
     control_notify: Arc<Notify>,
     followup_queue: Arc<Mutex<VecDeque<String>>>,
@@ -472,7 +473,7 @@ impl Session {
     pub fn new(
         llm_client: Client,
         provider_profile: Arc<dyn AgentProfile>,
-        sandbox: Arc<dyn Sandbox>,
+        sandbox: Arc<RunSandbox>,
         config: SessionOptions,
         subagent_supervisor: Option<SubAgentSupervisor>,
     ) -> Self {
@@ -514,7 +515,7 @@ impl Session {
         runtime_context: &[SessionMessage],
         llm_client: Client,
         provider_profile: Arc<dyn AgentProfile>,
-        sandbox: Arc<dyn Sandbox>,
+        sandbox: Arc<RunSandbox>,
         config: SessionOptions,
         subagent_supervisor: Option<SubAgentSupervisor>,
     ) -> Result<Self, Error> {
@@ -852,14 +853,14 @@ impl Session {
         Ok(resolved)
     }
 
-    /// Start an MCP server inside the sandbox and return (url, headers) for
-    /// HTTP connection.
+    /// Start an MCP server inside the sandbox as a driver service and return
+    /// (url, headers) for HTTP connection.
     ///
     /// The outer `Result` surfaces fatal cancellation as
-    /// `Error::Interrupted(InterruptReason::Cancelled)` (the running MCP
-    /// process group is terminated before returning). The inner `Result`
-    /// captures non-fatal startup failures that the caller logs and turns
-    /// into an `McpServerFailed` event.
+    /// `Error::Interrupted(InterruptReason::Cancelled)` (a service already
+    /// started is stopped before returning). The inner `Result` captures
+    /// non-fatal startup failures that the caller logs and turns into an
+    /// `McpServerFailed` event.
     async fn start_sandbox_mcp_server(
         &self,
         command: &[String],
@@ -868,82 +869,56 @@ impl Session {
         cancel_token: &CancellationToken,
     ) -> Result<Result<(String, std::collections::HashMap<String, String>), String>, Error> {
         let sandbox = self.sandbox.as_ref();
-
-        let launch_script = sandbox_mcp_launch_script(command);
-        let env_ref = if env.is_empty() { None } else { Some(env) };
+        let services = match sandbox.services() {
+            Ok(services) => services,
+            Err(error) => {
+                return Ok(Err(format!(
+                    "Failed to launch MCP server: {}",
+                    error.display_with_causes()
+                )));
+            }
+        };
+        let mut spec = ServiceSpec::new(mcp_service_command(command));
+        for (key, value) in env {
+            spec = spec.env_var(key.clone(), value.clone());
+        }
 
         if cancel_token.is_cancelled() {
             return Err(Error::Interrupted(InterruptReason::Cancelled));
         }
-        let launch_result = match sandbox
-            .exec_command(
-                &launch_script,
-                30_000,
-                None,
-                env_ref,
-                Some(cancel_token.child_token()),
-            )
-            .await
-        {
-            Ok(result) => result,
-            Err(e) => {
+        let service = match services.spawn(&spec).await {
+            Ok(service) => service,
+            Err(error) => {
                 if cancel_token.is_cancelled() {
                     return Err(Error::Interrupted(InterruptReason::Cancelled));
                 }
-                return Ok(Err(format!(
-                    "Failed to launch MCP server: {}",
-                    e.display_with_causes()
-                )));
+                return Ok(Err(format!("Failed to launch MCP server: {error}")));
             }
         };
-
-        let pid = launch_result.stdout.trim().to_string();
-        info!(pid = %pid, port, "MCP server process launched in sandbox");
-
-        // Wait for the server to start listening on the port
-        let poll_cmd = format!(
-            "for i in $(seq 1 30); do ss -tln | grep -q ':{port} ' && echo ready && exit 0; sleep 1; done; echo timeout"
+        info!(
+            service = service.as_str(),
+            port, "MCP server started as a sandbox service"
         );
-        let poll_result = sandbox
-            .exec_command(
-                &poll_cmd,
-                60_000,
-                None,
-                None,
-                Some(cancel_token.child_token()),
-            )
-            .await;
 
-        if cancel_token.is_cancelled() {
-            kill_mcp_pid(sandbox, &pid).await;
-            return Err(Error::Interrupted(InterruptReason::Cancelled));
-        }
-
-        let poll_result = match poll_result {
-            Ok(result) => result,
-            Err(e) => {
-                return Ok(Err(format!(
-                    "Failed to poll MCP server readiness: {}",
-                    e.display_with_causes()
-                )));
+        // Wait for the server to listen; a cancellation stops it.
+        let ready = tokio::select! {
+            () = cancel_token.cancelled() => {
+                stop_mcp_service(&services, &service).await;
+                return Err(Error::Interrupted(InterruptReason::Cancelled));
             }
+            ready = services.wait_for_port(port, MCP_SERVER_READY_TIMEOUT) => ready,
         };
-
-        if poll_result.stdout.trim() != "ready" {
-            // Grab stderr for debugging
-            let stderr = sandbox
-                .exec_command(
-                    "cat /tmp/mcp_server_stderr.log 2>/dev/null | tail -20",
-                    10_000,
-                    None,
-                    None,
-                    Some(cancel_token.child_token()),
-                )
+        if let Err(error) = ready {
+            let logs = services
+                .logs(&service, MCP_SERVER_LOG_TAIL_BYTES)
                 .await
-                .map(|r| r.stdout)
+                .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
                 .unwrap_or_default();
+            stop_mcp_service(&services, &service).await;
             return Ok(Err(format!(
-                "MCP server did not start listening on port {port} within 30s. stderr:\n{stderr}"
+                "MCP server did not start listening on port {port} within {}s ({error}). \
+                 logs:\n{logs}",
+                MCP_SERVER_READY_TIMEOUT.as_secs()
             )));
         }
 
@@ -955,7 +930,7 @@ impl Session {
         };
 
         if cancel_token.is_cancelled() {
-            kill_mcp_pid(sandbox, &pid).await;
+            stop_mcp_service(&services, &service).await;
             return Err(Error::Interrupted(InterruptReason::Cancelled));
         }
 
@@ -993,8 +968,8 @@ impl Session {
             )
             .await
             .ok()
-            .filter(fabro_sandbox::ExecResult::is_success)
-            .map(|r| r.stdout.trim().to_string());
+            .filter(fabro_sandbox::ExecResult::success)
+            .map(|r| r.stdout_lossy().trim().to_string());
 
         if cancel_token.is_cancelled() {
             return Err(Error::Interrupted(InterruptReason::Cancelled));
@@ -1013,8 +988,8 @@ impl Session {
                 )
                 .await
                 .ok()
-                .filter(fabro_sandbox::ExecResult::is_success)
-                .map(|r| r.stdout.trim().to_string())
+                .filter(fabro_sandbox::ExecResult::success)
+                .map(|r| r.stdout_lossy().trim().to_string())
                 .filter(|s| !s.is_empty())
         } else {
             None
@@ -1035,8 +1010,8 @@ impl Session {
                 )
                 .await
                 .ok()
-                .filter(fabro_sandbox::ExecResult::is_success)
-                .map(|r| r.stdout.trim().to_string())
+                .filter(fabro_sandbox::ExecResult::success)
+                .map(|r| r.stdout_lossy().trim().to_string())
                 .filter(|s| !s.is_empty())
         } else {
             None
@@ -2192,49 +2167,31 @@ impl Session {
     }
 }
 
-/// Build the script that launches a sandbox MCP server detached and echoes its
-/// PID.
+/// How long a sandbox MCP server gets to start listening on its port.
+const MCP_SERVER_READY_TIMEOUT: Duration = Duration::from_secs(30);
+/// How much of a failed MCP server's output the failure message carries.
+const MCP_SERVER_LOG_TAIL_BYTES: usize = 4096;
+
+/// The Bash source a sandbox MCP server runs as a service.
 ///
-/// `setsid` fully detaches the server so Daytona's exec doesn't block on it.
-/// The inner command is shell-quoted for the wrapper so a single quote or
-/// metacharacter in any argv element can't break out, and the wrapper itself is
-/// the current `$BASH` because the sandbox evaluates this string as non-login
-/// Bash and may resolve that executable outside `/bin` (for example on NixOS).
-fn sandbox_mcp_launch_script(command: &[String]) -> String {
-    let command_source = match command {
-        // Sandbox MCP `script` entries resolve to this exact argv shape. The
-        // surrounding launcher is already the provider-selected Bash, so
-        // evaluate the source in that process instead of PATH-resolving a
-        // second interpreter. Grouping keeps the log redirections scoped to
-        // the whole script, including multi-command and trailing-comment
-        // forms.
-        [interpreter, flag, source] if interpreter == "bash" && flag == "-c" => {
-            format!("{{\n{source}\n}}")
-        }
+/// Sandbox MCP `script` entries resolve to the argv shape `bash -c <source>`.
+/// The service already runs in the provider-selected Bash, so the source
+/// runs there as it is instead of PATH-resolving a second interpreter (which
+/// may live outside `/bin`, for example on NixOS). Any other argv is quoted
+/// into one command line, so a quote or metacharacter in an element stays
+/// inert.
+fn mcp_service_command(command: &[String]) -> String {
+    match command {
+        [interpreter, flag, source] if interpreter == "bash" && flag == "-c" => source.clone(),
         _ => shell::shell_join(command),
-    };
-    let inner =
-        format!("{command_source} > /tmp/mcp_server_stdout.log 2>/tmp/mcp_server_stderr.log");
-    format!(
-        "setsid \"$BASH\" -c {quoted} </dev/null >/dev/null 2>&1 &\necho $!",
-        quoted = shell::shell_quote(&inner)
-    )
+    }
 }
 
-/// Best-effort kill of a sandbox MCP server process group. Used when
-/// `start_sandbox_mcp_server` is cancelled after spawning a detached
-/// `setsid` child but before reporting readiness. Errors from the sandbox
-/// are logged and swallowed; the caller is already returning a Cancelled
-/// error.
-async fn kill_mcp_pid(sandbox: &dyn Sandbox, pid: &str) {
-    let pid = pid.trim();
-    if pid.is_empty() {
-        return;
-    }
-    let script =
-        format!("kill -TERM -{pid} 2>/dev/null; sleep 1; kill -KILL -{pid} 2>/dev/null; true");
-    if let Err(err) = sandbox.exec_command(&script, 5_000, None, None, None).await {
-        warn!(pid, error = %err.display_with_causes(), "Failed to kill MCP server process group during cancellation");
+/// Best-effort stop of a sandbox MCP service that will not be used: the
+/// caller is already returning a cancellation or a startup failure.
+async fn stop_mcp_service(services: &ServicesFacet<'_>, service: &ServiceId) {
+    if let Err(error) = services.stop(service).await {
+        warn!(service = service.as_str(), error = %error, "Failed to stop the MCP server service");
     }
 }
 
@@ -2268,82 +2225,33 @@ mod tests {
     use crate::tool_registry::{RegisteredTool, ToolContext, ToolRegistry, ToolSource};
 
     #[test]
-    fn sandbox_mcp_launch_wrapper_uses_bash() {
-        // The sandbox evaluates this string as non-login Bash, so the detached
-        // wrapper reuses the executable selected by the provider.
-        let script = sandbox_mcp_launch_script(&[
-            "npx".to_string(),
-            "@playwright/mcp@latest".to_string(),
-            "--port".to_string(),
-            "3100".to_string(),
-        ]);
-
-        assert!(
-            script.starts_with("setsid \"$BASH\" -c "),
-            "launch wrapper should detach through the provider-selected Bash: {script}"
-        );
-        assert!(
-            script.ends_with(" </dev/null >/dev/null 2>&1 &\necho $!"),
-            "launch wrapper should stay detached and report its PID: {script}"
-        );
-        assert!(
-            script.contains("/tmp/mcp_server_stdout.log")
-                && script.contains("2>/tmp/mcp_server_stderr.log"),
-            "launch wrapper should keep its log redirection: {script}"
-        );
-    }
-
-    #[test]
-    fn sandbox_mcp_launch_wrapper_evaluates_scripts_in_the_selected_bash() {
+    fn mcp_service_command_runs_script_entries_in_the_service_bash() {
         let source =
             "PATH=/mcp-only\nprintf 'starting server\\n'\nexec my-server --port 3100 # ready";
-        let script =
-            sandbox_mcp_launch_script(&["bash".to_string(), "-c".to_string(), source.to_string()]);
-
-        let wrapper_argument = script
-            .strip_prefix("setsid \"$BASH\" -c ")
-            .and_then(|rest| rest.strip_suffix(" </dev/null >/dev/null 2>&1 &\necho $!"))
-            .expect("launch wrapper should have the canonical shape");
-        let unwrapped = shlex::split(wrapper_argument).expect("wrapper argument should parse");
-
-        assert_eq!(unwrapped, vec![format!(
-            "{{\n{source}\n}} > /tmp/mcp_server_stdout.log 2>/tmp/mcp_server_stderr.log"
-        )]);
-        assert!(
-            !unwrapped[0].contains("bash -c"),
-            "script entries must not PATH-resolve a nested Bash: {}",
-            unwrapped[0]
+        let command =
+            mcp_service_command(&["bash".to_string(), "-c".to_string(), source.to_string()]);
+        assert_eq!(
+            command, source,
+            "script entries must not PATH-resolve a nested Bash"
         );
     }
 
     #[test]
-    fn sandbox_mcp_launch_wrapper_quotes_arbitrary_argv() {
-        // A quote or metacharacter in any argv element must not break out of
-        // the wrapper; it has to arrive as one argument.
-        let script = sandbox_mcp_launch_script(&[
+    fn mcp_service_command_quotes_arbitrary_argv() {
+        // A quote or metacharacter in any argv element must not break out
+        // of the command line; it has to arrive as one argument.
+        let command = mcp_service_command(&[
             "my-server".to_string(),
             "--flag=it's a value".to_string(),
             "$(touch /tmp/pwned)".to_string(),
         ]);
-
-        let wrapper_argument = script
-            .strip_prefix("setsid \"$BASH\" -c ")
-            .and_then(|rest| rest.strip_suffix(" </dev/null >/dev/null 2>&1 &\necho $!"))
-            .expect("launch wrapper should have the canonical shape");
-
-        // Unwrap the wrapper's own quoting: the whole inner script must arrive
-        // as one argument to `bash -c`, with each argv element still quoted so
-        // the substitution stays inert.
-        let unwrapped = shlex::split(wrapper_argument).expect("wrapper argument should parse");
         assert_eq!(
-            unwrapped.len(),
-            1,
-            "the command must stay a single argument"
+            command,
+            "my-server \"--flag=it's a value\" '$(touch /tmp/pwned)'"
         );
         assert_eq!(
-            unwrapped[0],
-            "my-server \"--flag=it's a value\" '$(touch /tmp/pwned)' > \
-             /tmp/mcp_server_stdout.log 2>/tmp/mcp_server_stderr.log"
+            mcp_service_command(&["npx".to_string(), "@playwright/mcp@latest".to_string()]),
+            "npx @playwright/mcp@latest"
         );
     }
 
@@ -2625,7 +2533,7 @@ mod tests {
     ) -> Session {
         let client = make_client(provider).await;
         let profile = Arc::new(TestProfile::new());
-        let env = Arc::new(MockSandbox::default());
+        let env = MockSandbox::default().sandbox();
         Session::new(
             client,
             profile,
@@ -2736,7 +2644,7 @@ mod tests {
         ));
         let client = make_client(provider).await;
         let profile = Arc::new(TestProfile::with_tools(registry));
-        let env = Arc::new(MockSandbox::default());
+        let env = MockSandbox::default().sandbox();
         let mut session = Session::new(client, profile, env, SessionOptions::default(), None);
 
         let result = session
@@ -3629,7 +3537,7 @@ mod tests {
         let provider = Arc::new(MockLlmProvider::new(responses));
         let client = make_client(provider).await;
         let profile = Arc::new(TestProfile::with_tools(registry));
-        let env = Arc::new(MockSandbox::default());
+        let env = MockSandbox::default().sandbox();
         let config = SessionOptions {
             enable_loop_detection: false,
             ..Default::default()
@@ -3663,7 +3571,7 @@ mod tests {
         }));
         let client = make_client(error_provider).await;
         let profile = Arc::new(TestProfile::new());
-        let env = Arc::new(MockSandbox::default());
+        let env = MockSandbox::default().sandbox();
         let mut session = Session::new(client, profile, env, SessionOptions::default(), None);
 
         let result = session.process_input("Hello").await;
@@ -3760,7 +3668,7 @@ mod tests {
         let provider = Arc::new(MockLlmProvider::new(responses));
         let client = make_client(provider).await;
         let profile = Arc::new(TestProfile::with_tools(registry));
-        let env = Arc::new(MockSandbox::default());
+        let env = MockSandbox::default().sandbox();
         let mut session = Session::new(client, profile, env, SessionOptions::default(), None);
         let mut rx = session.subscribe();
 
@@ -3833,10 +3741,11 @@ mod tests {
         let provider = Arc::new(MockLlmProvider::new(responses));
         let client = make_client(provider).await;
         let profile = Arc::new(TestProfile::with_tools(registry));
-        let env = Arc::new(SlowWriteMockSandbox::new(
+        let slow = SlowWriteSandbox::new(
             HashMap::from([("/main.go".to_string(), "alpha beta".to_string())]),
             25,
-        ));
+        );
+        let env = slow.sandbox();
         let mut session = Session::new(
             client,
             profile,
@@ -3847,7 +3756,7 @@ mod tests {
 
         session.process_input("Edit both markers").await.unwrap();
 
-        let content = env.inner.read_file_text("/main.go").await.unwrap();
+        let content = slow.read_file_text("/main.go").unwrap();
         assert_eq!(content, "ALPHA BETA");
     }
 
@@ -3865,7 +3774,7 @@ mod tests {
         let client = make_client(provider).await;
         let registry = ToolRegistry::new();
         let profile = Arc::new(TestProfile::with_context_window(registry, 100));
-        let env = Arc::new(MockSandbox::default());
+        let env = MockSandbox::default().sandbox();
         let mut session = Session::new(client, profile, env, SessionOptions::default(), None);
         let mut rx = session.subscribe();
 
@@ -3887,7 +3796,7 @@ mod tests {
         let provider_ref = provider.clone();
         let client = make_client(provider as Arc<dyn ProviderAdapter>).await;
         let profile = Arc::new(TestProfile::new());
-        let env = Arc::new(MockSandbox::default());
+        let env = MockSandbox::default().sandbox();
         let mut session = Session::new(client, profile, env, SessionOptions::default(), None);
 
         // Default reasoning_effort is None
@@ -3910,7 +3819,7 @@ mod tests {
         let registry = ToolRegistry::new();
         // Large context window so short input stays well under 80%
         let profile = Arc::new(TestProfile::with_context_window(registry, 200_000));
-        let env = Arc::new(MockSandbox::default());
+        let env = MockSandbox::default().sandbox();
         let mut session = Session::new(client, profile, env, SessionOptions::default(), None);
         let mut rx = session.subscribe();
 
@@ -4042,7 +3951,7 @@ mod tests {
         let provider_ref = provider.clone();
         let client = make_client(provider as Arc<dyn ProviderAdapter>).await;
         let profile = Arc::new(TestProfile::new());
-        let env = Arc::new(MockSandbox::default());
+        let env = MockSandbox::default().sandbox();
         let config = SessionOptions {
             user_instructions: Some("Always use TDD".into()),
             ..Default::default()
@@ -4070,7 +3979,7 @@ mod tests {
         let provider_ref = provider.clone();
         let client = make_client(provider as Arc<dyn ProviderAdapter>).await;
         let profile = Arc::new(TestProfile::new());
-        let env = Arc::new(MockSandbox::default());
+        let env = MockSandbox::default().sandbox();
         let mut session = Session::new(client, profile, env, SessionOptions::default(), None);
 
         // Intentionally skip initialize(): system prompt remains empty.
@@ -4102,7 +4011,7 @@ mod tests {
         registry.register(make_named_noop_tool("read_file"));
         registry.register(make_named_noop_tool("write_file"));
         let profile = Arc::new(TestProfile::with_tools(registry));
-        let env = Arc::new(MockSandbox::default());
+        let env = MockSandbox::default().sandbox();
         let mut session = Session::new(client, profile, env, SessionOptions::default(), None);
 
         session.process_input("test").await.unwrap();
@@ -4158,7 +4067,7 @@ mod tests {
         registry.register(make_named_noop_tool("read_file"));
         registry.register(make_named_noop_tool("write_file"));
         let profile = Arc::new(TestProfile::with_tools(registry));
-        let env = Arc::new(MockSandbox::default());
+        let env = MockSandbox::default().sandbox();
         let config = SessionOptions {
             tool_access_policy: Some(Arc::new(NamedToolAccessPolicy::new(vec![
                 ("read_file", ToolAccess::Allowed),
@@ -4190,7 +4099,7 @@ mod tests {
         registry.register(make_named_noop_tool("apply_patch"));
         registry.register(make_named_noop_tool("shell"));
         let profile = Arc::new(TestProfile::with_tools(registry));
-        let env = Arc::new(MockSandbox::default());
+        let env = MockSandbox::default().sandbox();
         let config = SessionOptions {
             tool_access_policy: Some(Arc::new(NamedToolAccessPolicy::new(vec![
                 ("read_file", ToolAccess::Allowed),
@@ -4222,7 +4131,7 @@ mod tests {
         registry.register(make_named_noop_tool("read_file"));
         registry.register(make_named_noop_tool("shell"));
         let profile = Arc::new(TestProfile::with_tools(registry));
-        let env = Arc::new(MockSandbox::default());
+        let env = MockSandbox::default().sandbox();
         let config = SessionOptions {
             tool_access_policy: Some(Arc::new(NamedToolAccessPolicy::new(vec![
                 ("read_file", ToolAccess::Allowed),
@@ -5035,7 +4944,7 @@ mod tests {
         registry.register(counting_tool("echo", Arc::clone(&executions)));
         let client = make_client_without_retries(provider.clone() as Arc<dyn ProviderAdapter>);
         let profile = Arc::new(TestProfile::with_tools(registry));
-        let env = Arc::new(MockSandbox::default());
+        let env = MockSandbox::default().sandbox();
         let mut session = Session::new(client, profile, env, SessionOptions::default(), None);
         let mut rx = session.subscribe();
 
@@ -5069,7 +4978,7 @@ mod tests {
         // `make_client` installs a three-attempt policy with no delay.
         let client = make_client(provider.clone() as Arc<dyn ProviderAdapter>).await;
         let profile = Arc::new(TestProfile::new());
-        let env = Arc::new(MockSandbox::default());
+        let env = MockSandbox::default().sandbox();
         let mut session = Session::new(client, profile, env, SessionOptions::default(), None);
         let mut rx = session.subscribe();
 
@@ -5105,7 +5014,7 @@ mod tests {
         ]));
         let client = make_client(provider.clone() as Arc<dyn ProviderAdapter>).await;
         let profile = Arc::new(TestProfile::new());
-        let env = Arc::new(MockSandbox::default());
+        let env = MockSandbox::default().sandbox();
         let config = SessionOptions {
             replay_retry_policy: test_retry_policy(),
             ..SessionOptions::default()
@@ -5147,7 +5056,7 @@ mod tests {
         ]));
         let client = make_client(provider.clone() as Arc<dyn ProviderAdapter>).await;
         let profile = Arc::new(TestProfile::new());
-        let env = Arc::new(MockSandbox::default());
+        let env = MockSandbox::default().sandbox();
         let config = SessionOptions {
             replay_retry_policy: RetryPolicy::exponential()
                 .max_attempts(3)
@@ -5215,7 +5124,7 @@ mod tests {
         let client = make_client(provider).await;
         let registry = ToolRegistry::new();
         let profile = Arc::new(TestProfile::with_context_window(registry, 100));
-        let env = Arc::new(MockSandbox::default());
+        let env = MockSandbox::default().sandbox();
         let config = SessionOptions {
             enable_context_compaction: true,
             compaction_preserve_turns: 1,
@@ -5261,7 +5170,7 @@ mod tests {
         let client = make_client(provider).await;
         let registry = ToolRegistry::new();
         let profile = Arc::new(TestProfile::with_context_window(registry, 100));
-        let env = Arc::new(MockSandbox::default());
+        let env = MockSandbox::default().sandbox();
         let config = SessionOptions {
             enable_context_compaction: true,
             compaction_preserve_turns: 1,
@@ -5301,7 +5210,7 @@ mod tests {
         let client = make_client(provider).await;
         let registry = ToolRegistry::new();
         let profile = Arc::new(TestProfile::with_context_window(registry, 100));
-        let env = Arc::new(MockSandbox::default());
+        let env = MockSandbox::default().sandbox();
         let config = SessionOptions {
             enable_context_compaction: true,
             compaction_preserve_turns: 10,
@@ -5342,7 +5251,7 @@ mod tests {
         let client = make_client(provider).await;
         let registry = ToolRegistry::new();
         let profile = Arc::new(TestProfile::with_context_window(registry, 100));
-        let env = Arc::new(MockSandbox::default());
+        let env = MockSandbox::default().sandbox();
         let config = SessionOptions {
             enable_context_compaction: false,
             ..Default::default()
@@ -5372,7 +5281,7 @@ mod tests {
         let client = make_client(provider).await;
         let registry = ToolRegistry::new();
         let profile = Arc::new(TestProfile::with_context_window(registry, 100));
-        let env = Arc::new(MockSandbox::default());
+        let env = MockSandbox::default().sandbox();
         let config = SessionOptions {
             enable_context_compaction: false,
             compaction_preserve_turns: 1,
@@ -5461,7 +5370,7 @@ mod tests {
         let client = make_client_without_retries(provider.clone() as Arc<dyn ProviderAdapter>);
         let registry = ToolRegistry::new();
         let profile = Arc::new(TestProfile::with_context_window(registry, 100));
-        let env = Arc::new(MockSandbox::default());
+        let env = MockSandbox::default().sandbox();
         let config = SessionOptions {
             enable_context_compaction: true,
             compaction_preserve_turns: 1,
@@ -5574,7 +5483,7 @@ mod tests {
         let client = make_client(provider.clone() as Arc<dyn ProviderAdapter>).await;
         // Tiny context window to force compaction
         let profile = Arc::new(TestProfile::with_context_window(registry, 100));
-        let env = Arc::new(MockSandbox::default());
+        let env = MockSandbox::default().sandbox();
         let config = SessionOptions {
             enable_context_compaction: true,
             compaction_preserve_turns: 1,
@@ -5677,7 +5586,7 @@ mod tests {
         let provider = Arc::new(MockLlmProvider::new(responses));
         let client = make_client(provider).await;
         let profile: Arc<dyn AgentProfile> = Arc::new(TestProfile::new());
-        let env: Arc<dyn Sandbox> = Arc::new(MockSandbox::default());
+        let env = MockSandbox::default().sandbox();
         let mut session = Session::new(client, profile, env, config, None);
 
         // Subscribe to events before initialize
@@ -5875,7 +5784,7 @@ mod tests {
         ]));
         let client = make_client(parent_provider).await;
         let profile = Arc::new(TestProfile::with_tools(parent_registry));
-        let env = Arc::new(MockSandbox::default());
+        let env = MockSandbox::default().sandbox();
         let session = Session::new(
             client,
             profile,
@@ -6080,7 +5989,7 @@ mod tests {
     }
 
     async fn build_initialized_session(
-        sandbox: Arc<MockSandbox>,
+        sandbox: Arc<RunSandbox>,
         config: SessionOptions,
     ) -> Session {
         let provider = Arc::new(MockLlmProvider::new(vec![text_response("ok")]));
@@ -6093,10 +6002,11 @@ mod tests {
     async fn initialize_emits_memory_loaded_with_file_metadata() {
         let mut files = std::collections::HashMap::new();
         files.insert("/home/test/AGENTS.md".into(), "Hello world".into());
-        let sandbox = Arc::new(MockSandbox {
+        let sandbox = MockSandbox {
             files,
             ..MockSandbox::linux()
-        });
+        }
+        .sandbox();
         let config = SessionOptions {
             git_root: Some("/home/test".into()),
             skill_dirs: Some(Vec::new()),
@@ -6132,7 +6042,7 @@ mod tests {
 
     #[tokio::test]
     async fn initialize_emits_memory_loaded_event_with_empty_files_when_no_memory() {
-        let sandbox = Arc::new(MockSandbox::linux());
+        let sandbox = MockSandbox::linux().sandbox();
         let config = SessionOptions {
             git_root: Some("/home/test".into()),
             skill_dirs: Some(Vec::new()),
@@ -6163,11 +6073,11 @@ mod tests {
             "/skills/commit/SKILL.md".into(),
             "---\nname: commit\ndescription: Make a commit\n---\nDo commit".into(),
         );
-        let sandbox = Arc::new(MockSandbox {
+        let sandbox = MockSandbox {
             files,
-            glob_results: vec!["/skills/commit/SKILL.md".into()],
             ..MockSandbox::linux()
-        });
+        }
+        .sandbox();
         let config = SessionOptions {
             git_root: Some("/home/test".into()),
             skill_dirs: Some(vec!["/skills".into()]),
@@ -6200,7 +6110,7 @@ mod tests {
 
     #[tokio::test]
     async fn initialize_emits_skills_discovered_event_when_no_skills() {
-        let sandbox = Arc::new(MockSandbox::linux());
+        let sandbox = MockSandbox::linux().sandbox();
         let config = SessionOptions {
             git_root: Some("/home/test".into()),
             skill_dirs: Some(Vec::new()),
@@ -6231,11 +6141,11 @@ mod tests {
             "/skills/commit/SKILL.md".into(),
             "---\nname: commit\ndescription: Make a commit\n---\nRun commit. {{user_input}}".into(),
         );
-        let sandbox = Arc::new(MockSandbox {
+        let sandbox = MockSandbox {
             files,
-            glob_results: vec!["/skills/commit/SKILL.md".into()],
             ..MockSandbox::linux()
-        });
+        }
+        .sandbox();
         let config = SessionOptions {
             git_root: Some("/home/test".into()),
             skill_dirs: Some(vec!["/skills".into()]),
@@ -6271,11 +6181,11 @@ mod tests {
             "/skills/commit/SKILL.md".into(),
             "---\nname: commit\ndescription: Make a commit\n---\nRun commit.".into(),
         );
-        let sandbox = Arc::new(MockSandbox {
+        let sandbox = MockSandbox {
             files,
-            glob_results: vec!["/skills/commit/SKILL.md".into()],
             ..MockSandbox::linux()
-        });
+        }
+        .sandbox();
         let config = SessionOptions {
             git_root: Some("/home/test".into()),
             skill_dirs: Some(vec!["/skills".into()]),
@@ -6315,7 +6225,7 @@ mod tests {
 
     #[tokio::test]
     async fn use_skill_tool_failed_lookup_does_not_emit_activation() {
-        let sandbox = Arc::new(MockSandbox::linux());
+        let sandbox = MockSandbox::linux().sandbox();
         let config = SessionOptions {
             git_root: Some("/home/test".into()),
             skill_dirs: Some(Vec::new()),
@@ -6332,7 +6242,7 @@ mod tests {
         let skills_arc = Arc::new(Vec::<Skill>::new());
         let tool = make_use_skill_tool(skills_arc);
         let mut rx = session.subscribe();
-        let env: Arc<dyn Sandbox> = Arc::new(MockSandbox::default());
+        let env = MockSandbox::default().sandbox();
         let ctx = ToolContext {
             fs_scope: None,
             write_locks: None,

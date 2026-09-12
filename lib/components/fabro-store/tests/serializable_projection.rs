@@ -84,12 +84,12 @@ fn serializable_projection_round_trips_and_trims_bulky_node_fields() {
         diff:       RunDiff::default(),
     });
     let sandbox_plan = RunSandboxPlan {
-        provider: SandboxProviderKind::Local,
+        provider: SandboxProviderKind::LOCAL,
         image:    None,
         snapshot: None,
     };
     projection.sandbox = Some(RunSandbox::ready(sandbox_plan, RunSandboxInstance {
-        provider: SandboxProviderKind::Local,
+        provider: SandboxProviderKind::LOCAL,
         image:    None,
         snapshot: None,
         runtime:  RunSandboxRuntime {

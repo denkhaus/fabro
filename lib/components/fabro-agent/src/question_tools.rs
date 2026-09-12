@@ -961,7 +961,7 @@ mod tests {
             ToolContext {
                 fs_scope:            None,
                 write_locks:         None,
-                env:                 Arc::new(MockSandbox::default()),
+                env:                 MockSandbox::default().sandbox(),
                 cancel:              CancellationToken::new(),
                 tool_env_provider:   None,
                 session_id:          Some("child".to_string()),

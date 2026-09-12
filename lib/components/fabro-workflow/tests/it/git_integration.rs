@@ -3,12 +3,12 @@
     reason = "These git integration tests intentionally exercise the real git CLI to validate repository helper behavior."
 )]
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 use std::process::{Command, Output};
 use std::sync::Arc;
 
-use fabro_agent::Sandbox;
+use fabro_agent::RunSandbox;
 use fabro_graphviz::graph::{AttrValue, Edge, Graph, Node};
 use fabro_types::{RunEvent, WorkflowSettings, fixtures};
 use fabro_workflow::event::Emitter;
@@ -18,6 +18,9 @@ use fabro_workflow::handler::exit::ExitHandler;
 use fabro_workflow::handler::start::StartHandler;
 use fabro_workflow::run_options::{GitCheckpointOptions, RunOptions};
 use fabro_workflow::test_support::run_graph;
+use sandbox_driver::{
+    Capabilities, DirEntry, Exec, FileMetadata, Filesystem, PlatformInfo, SandboxId, SandboxStatus,
+};
 use tokio_util::sync::CancellationToken;
 
 fn assert_success(output: &Output, context: &str) {
@@ -114,8 +117,12 @@ fn list_branch(repo_dir: &Path, branch: &str) -> String {
     String::from_utf8(output.stdout).expect("git branch --list output should be UTF-8")
 }
 
-fn local_env(repo: &Path) -> Arc<dyn Sandbox> {
-    Arc::new(fabro_agent::LocalSandbox::new(repo.to_path_buf()))
+async fn local_env(repo: &Path) -> Arc<RunSandbox> {
+    Arc::new(
+        fabro_agent::local_sandbox(repo.to_path_buf())
+            .await
+            .expect("local sandbox should be created"),
+    )
 }
 
 fn simple_graph() -> Graph {
@@ -304,7 +311,7 @@ async fn git_checkpoint_skips_start_node() {
     Box::pin(run_graph(
         make_registry(),
         Arc::new(emitter),
-        local_env(repo),
+        local_env(repo).await,
         &g,
         &run_options,
     ))
@@ -333,105 +340,121 @@ async fn git_checkpoint_skips_start_node() {
 /// local checkout, but the workflow engine's run directory is reported as
 /// inaccessible (as it is for Docker/Daytona) and the sandbox exposes a
 /// runtime directory outside the checkout.
-struct RemoteRuntimeSandbox {
-    inner:             fabro_agent::LocalSandbox,
-    hidden_path:       String,
+struct RemoteStyleSandbox {
+    inner:             Arc<dyn sandbox_driver::Sandbox>,
+    fs:                HidingFs,
     runtime_directory: String,
 }
 
-#[async_trait::async_trait]
-impl Sandbox for RemoteRuntimeSandbox {
-    async fn read_file_bytes(&self, path: &str) -> fabro_sandbox::Result<Vec<u8>> {
-        self.inner.read_file_bytes(path).await
-    }
-
-    async fn write_file(&self, path: &str, content: &str) -> fabro_sandbox::Result<()> {
-        self.inner.write_file(path, content).await
-    }
-
-    async fn delete_file(&self, path: &str) -> fabro_sandbox::Result<()> {
-        self.inner.delete_file(path).await
-    }
-
-    async fn file_exists(&self, path: &str) -> fabro_sandbox::Result<bool> {
-        if path == self.hidden_path {
-            return Ok(false);
+impl RemoteStyleSandbox {
+    fn over(
+        inner: Arc<dyn sandbox_driver::Sandbox>,
+        hidden_path: String,
+        runtime_directory: String,
+    ) -> Self {
+        Self {
+            fs: HidingFs {
+                inner: Arc::clone(&inner),
+                hidden_path,
+            },
+            inner,
+            runtime_directory,
         }
-        self.inner.file_exists(path).await
+    }
+}
+
+#[async_trait::async_trait]
+impl sandbox_driver::Sandbox for RemoteStyleSandbox {
+    fn id(&self) -> &SandboxId {
+        self.inner.id()
     }
 
-    async fn list_directory(
-        &self,
-        path: &str,
-        depth: Option<usize>,
-    ) -> fabro_sandbox::Result<Vec<fabro_agent::DirEntry>> {
-        self.inner.list_directory(path, depth).await
+    fn capabilities(&self) -> &Capabilities {
+        self.inner.capabilities()
     }
 
-    async fn exec_command(
-        &self,
-        command: &str,
-        timeout_ms: u64,
-        working_dir: Option<&str>,
-        env_vars: Option<&HashMap<String, String>>,
-        cancel_token: Option<CancellationToken>,
-    ) -> fabro_sandbox::Result<fabro_agent::ExecResult> {
-        self.inner
-            .exec_command(command, timeout_ms, working_dir, env_vars, cancel_token)
-            .await
-    }
-
-    async fn grep(
-        &self,
-        pattern: &str,
-        path: &str,
-        options: &fabro_sandbox::GrepOptions,
-    ) -> fabro_sandbox::Result<Vec<String>> {
-        self.inner.grep(pattern, path, options).await
-    }
-
-    async fn download_file_to_local(
-        &self,
-        remote_path: &str,
-        local_path: &Path,
-    ) -> fabro_sandbox::Result<()> {
-        self.inner
-            .download_file_to_local(remote_path, local_path)
-            .await
-    }
-
-    async fn upload_file_from_local(
-        &self,
-        local_path: &Path,
-        remote_path: &str,
-    ) -> fabro_sandbox::Result<()> {
-        self.inner
-            .upload_file_from_local(local_path, remote_path)
-            .await
-    }
-
-    async fn initialize(&self) -> fabro_sandbox::Result<()> {
-        Ok(())
-    }
-
-    async fn cleanup(&self) -> fabro_sandbox::Result<()> {
-        Ok(())
+    async fn describe(&self) -> sandbox_driver::Result<SandboxStatus> {
+        self.inner.describe().await
     }
 
     fn working_directory(&self) -> &str {
         self.inner.working_directory()
     }
 
+    async fn environment(&self) -> sandbox_driver::Result<BTreeMap<String, String>> {
+        self.inner.environment().await
+    }
+
     fn runtime_directory(&self) -> Option<&str> {
         Some(&self.runtime_directory)
     }
 
-    fn platform(&self) -> &str {
-        self.inner.platform()
+    async fn platform_info(&self) -> sandbox_driver::Result<PlatformInfo> {
+        self.inner.platform_info().await
     }
 
-    fn os_version(&self) -> String {
-        self.inner.os_version()
+    async fn start(&self) -> sandbox_driver::Result<()> {
+        self.inner.start().await
+    }
+
+    async fn stop(&self) -> sandbox_driver::Result<()> {
+        self.inner.stop().await
+    }
+
+    async fn delete(&self) -> sandbox_driver::Result<()> {
+        self.inner.delete().await
+    }
+
+    fn exec(&self) -> &dyn Exec {
+        self.inner.exec()
+    }
+
+    fn fs(&self) -> &dyn Filesystem {
+        &self.fs
+    }
+}
+
+/// The real filesystem with one path reported absent.
+struct HidingFs {
+    inner:       Arc<dyn sandbox_driver::Sandbox>,
+    hidden_path: String,
+}
+
+#[async_trait::async_trait]
+impl Filesystem for HidingFs {
+    async fn read(&self, path: &str) -> sandbox_driver::Result<Vec<u8>> {
+        self.inner.fs().read(path).await
+    }
+
+    async fn write(&self, path: &str, content: &[u8]) -> sandbox_driver::Result<()> {
+        self.inner.fs().write(path, content).await
+    }
+
+    async fn delete(&self, path: &str, recursive: bool) -> sandbox_driver::Result<()> {
+        self.inner.fs().delete(path, recursive).await
+    }
+
+    async fn exists(&self, path: &str) -> sandbox_driver::Result<bool> {
+        if path == self.hidden_path {
+            return Ok(false);
+        }
+        self.inner.fs().exists(path).await
+    }
+
+    async fn metadata(&self, path: &str) -> sandbox_driver::Result<FileMetadata> {
+        self.inner.fs().metadata(path).await
+    }
+
+    async fn list_dir(&self, path: &str, depth: usize) -> sandbox_driver::Result<Vec<DirEntry>> {
+        self.inner.fs().list_dir(path, depth).await
+    }
+
+    async fn create_dir(&self, path: &str) -> sandbox_driver::Result<()> {
+        self.inner.fs().create_dir(path).await
+    }
+
+    async fn rename(&self, from: &str, to: &str) -> sandbox_driver::Result<()> {
+        self.inner.fs().rename(from, to).await
     }
 }
 
@@ -478,11 +501,17 @@ async fn remote_prompt_demotion_stays_outside_checkout_and_survives_checkpoint()
     let run_dir = dir.path().join("run");
     std::fs::create_dir_all(&run_dir).unwrap();
 
-    let sandbox = RemoteRuntimeSandbox {
-        inner:             fabro_agent::LocalSandbox::new(repo_dir.clone()),
-        hidden_path:       run_dir.to_string_lossy().to_string(),
-        runtime_directory: runtime_dir.to_string_lossy().to_string(),
-    };
+    let local = fabro_agent::local_sandbox(repo_dir.clone())
+        .await
+        .expect("local sandbox should be created");
+    let sandbox = RunSandbox::new(
+        fabro_sandbox::SandboxProviderKind::LOCAL,
+        Arc::new(RemoteStyleSandbox::over(
+            Arc::clone(local.handle().expect("local sandbox is initialized")),
+            run_dir.to_string_lossy().to_string(),
+            runtime_dir.to_string_lossy().to_string(),
+        )),
+    );
 
     let store = store_test_support::test_database(
         Arc::new(InMemory::new()),

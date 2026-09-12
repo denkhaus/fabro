@@ -22,7 +22,7 @@ use fabro_interview::{
 };
 use fabro_llm::lithos_catalog::Catalog;
 use fabro_types::settings::ServerAuthMethod;
-use fabro_types::settings::run::{ApprovalMode, EnvironmentProvider};
+use fabro_types::settings::run::ApprovalMode;
 use fabro_types::{
     AgentBackend, AttrValue, AuthMethod, BlobHash, CommandTermination, FailureCategory,
     FailureDetail, GitRunTarget, Graph, InterviewQuestionRecord, ModelRef, Node, Outcome,
@@ -89,7 +89,7 @@ fn manifest_run_defaults_from_toml(source: &str) -> fabro_config::RunLayer {
 }
 
 fn test_environment_store(
-    default_provider: Option<EnvironmentProvider>,
+    default_provider: Option<SandboxProviderKind>,
     local_enabled: bool,
 ) -> (tempfile::TempDir, EnvironmentStore) {
     let temp = tempfile::tempdir().expect("environment store tempdir should be created");
@@ -1352,7 +1352,7 @@ id = "missing"
 #[test]
 fn system_sandbox_provider_uses_manifest_defaults() {
     let (_environment_temp, environment_store) =
-        test_environment_store(Some(EnvironmentProvider::Daytona), true);
+        test_environment_store(Some(SandboxProviderKind::DAYTONA), true);
     let (_mcp_temp, mcp_server_store) = test_mcp_server_store();
     let source = r#"
 _version = 1
@@ -1406,8 +1406,11 @@ enabled = false
     );
 
     assert_eq!(
-        crate::run_manifest::sandbox_provider_policy_error(&settings, SandboxProviderKind::Daytona)
-            .as_deref(),
+        crate::run_manifest::sandbox_provider_policy_error(
+            &settings,
+            &SandboxProviderKind::DAYTONA
+        )
+        .as_deref(),
         Some(
             "sandbox provider \"daytona\" is disabled by server.sandbox.providers.daytona.enabled"
         )
@@ -1416,10 +1419,10 @@ enabled = false
 
 #[test]
 fn clone_sandbox_credentials_are_available_for_clone_based_providers() {
-    use fabro_types::settings::run::EnvironmentProvider;
-    assert!(EnvironmentProvider::Docker.is_clone_based());
-    assert!(EnvironmentProvider::Daytona.is_clone_based());
-    assert!(!EnvironmentProvider::Local.is_clone_based());
+    use fabro_types::SandboxProviderKind;
+    assert!(SandboxProviderKind::DOCKER.clones_workspace());
+    assert!(SandboxProviderKind::DAYTONA.clones_workspace());
+    assert!(!SandboxProviderKind::LOCAL.clones_workspace());
 }
 
 #[tokio::test]
@@ -1680,9 +1683,8 @@ async fn create_secret_rejects_under_scoped_daytona_api_key_and_leaves_vault_unc
 
     assert_eq!(
         body["errors"][0]["detail"],
-        "API key 'delete-only' is missing required Daytona scopes: \
-         write:snapshots, write:sandboxes. Regenerate the key with all \
-         snapshot and sandbox scopes."
+        "Daytona API key is missing required scopes: write:snapshots, write:sandboxes. \
+         Regenerate the key with all snapshot and sandbox scopes."
     );
     assert_eq!(
         state
@@ -2108,7 +2110,7 @@ fn slack_app_state_with_settings_and_secret_sources(
         github_api_base_url: None,
         active_config_path: tempfile::tempdir().unwrap().path().join("settings.toml"),
         http_client: Some(fabro_http::test_http_client().expect("test HTTP client should build")),
-        sandbox_provider_registry: None,
+        sandbox_inventory: None,
         shutdown: tokio_util::sync::CancellationToken::new(),
         worker_control_bus: None,
         worker_runtime: None,
@@ -2270,7 +2272,7 @@ fn slack_service_respects_disabled_server_config_even_with_vault_tokens() {
         github_api_base_url: None,
         active_config_path: tempfile::tempdir().unwrap().path().join("settings.toml"),
         http_client: Some(fabro_http::test_http_client().expect("test HTTP client should build")),
-        sandbox_provider_registry: None,
+        sandbox_inventory: None,
         shutdown: tokio_util::sync::CancellationToken::new(),
         worker_control_bus: None,
         worker_runtime: None,
@@ -2672,7 +2674,7 @@ methods = ["dev-token"]
         github_api_base_url: None,
         active_config_path: tempfile::tempdir().unwrap().path().join("settings.toml"),
         http_client: Some(fabro_http::test_http_client().expect("test HTTP client should build")),
-        sandbox_provider_registry: None,
+        sandbox_inventory: None,
         shutdown: tokio_util::sync::CancellationToken::new(),
         worker_control_bus: None,
         worker_runtime: None,
@@ -3596,7 +3598,7 @@ async fn post_run_intent_response(app: &Router, intent: serde_json::Value) -> Re
 /// the only placement folder targets admit.
 fn local_test_app_state() -> Arc<AppState> {
     TestAppStateBuilder::new()
-        .default_environment_provider(Some(EnvironmentProvider::Local))
+        .default_environment_provider(Some(SandboxProviderKind::LOCAL))
         .vault_entries([(fabro_static::EnvVars::OPENAI_API_KEY, "test-openai-api-key")])
         .build()
 }
@@ -3795,7 +3797,7 @@ docker = "workflow-owned:latest"
     );
     assert_eq!(
         projection.spec.settings.run.environment.provider,
-        EnvironmentProvider::Docker
+        SandboxProviderKind::DOCKER
     );
     assert_eq!(
         projection
@@ -3881,7 +3883,7 @@ async fn post_runs_run_intent_args_true_override_resolved_settings_without_start
     let workspace = dir.path().join("workspace");
     std::fs::create_dir(&workspace).unwrap();
     let state = TestAppStateBuilder::new()
-        .default_environment_provider(Some(EnvironmentProvider::Local))
+        .default_environment_provider(Some(SandboxProviderKind::LOCAL))
         .env_lookup(|_| None)
         .vault_entries([(EnvVars::OPENAI_API_KEY, "test-openai-api-key")])
         .build();
@@ -3941,7 +3943,7 @@ async fn post_runs_run_intent_dry_run_uses_configured_target_provider() {
         ),
         (
             TestAppStateBuilder::new()
-                .default_environment_provider(Some(EnvironmentProvider::Daytona))
+                .default_environment_provider(Some(SandboxProviderKind::DAYTONA))
                 .vault_entries([(fabro_static::EnvVars::OPENAI_API_KEY, "test-openai-api-key")])
                 .build(),
             Some("_version = 1\n[run.execution]\nmode = \"dry_run\"\n"),
@@ -3950,7 +3952,7 @@ async fn post_runs_run_intent_dry_run_uses_configured_target_provider() {
         ),
         (
             TestAppStateBuilder::new()
-                .default_environment_provider(Some(EnvironmentProvider::Daytona))
+                .default_environment_provider(Some(SandboxProviderKind::DAYTONA))
                 .vault_entries([(fabro_static::EnvVars::OPENAI_API_KEY, "test-openai-api-key")])
                 .build(),
             Some("_version = 1\n[run.execution]\nmode = \"dry_run\"\n"),
@@ -3967,7 +3969,7 @@ async fn post_runs_run_intent_dry_run_uses_configured_target_provider() {
                     default_test_server_settings(),
                     manifest_run_defaults_from_toml("[run.execution]\nmode = \"dry_run\"\n"),
                 )
-                .default_environment_provider(Some(EnvironmentProvider::Local))
+                .default_environment_provider(Some(SandboxProviderKind::LOCAL))
                 .vault_entries([(fabro_static::EnvVars::OPENAI_API_KEY, "test-openai-api-key")])
                 .build(),
             None,
@@ -4025,7 +4027,7 @@ async fn post_runs_run_intent_dry_run_rejects_configured_target_mismatches() {
         ),
         (
             TestAppStateBuilder::new()
-                .default_environment_provider(Some(EnvironmentProvider::Daytona))
+                .default_environment_provider(Some(SandboxProviderKind::DAYTONA))
                 .vault_entries([(fabro_static::EnvVars::OPENAI_API_KEY, "test-openai-api-key")])
                 .build(),
             json!({ "kind": "folder", "path": "/path-that-must-not-be-read" }),
@@ -4160,7 +4162,7 @@ preserve = true
 "#,
             ),
         )
-        .default_environment_provider(Some(EnvironmentProvider::Local))
+        .default_environment_provider(Some(SandboxProviderKind::LOCAL))
         .env_lookup(|_| None)
         .vault_entries([(EnvVars::OPENAI_API_KEY, "test-openai-api-key")])
         .build();
@@ -4298,7 +4300,7 @@ async fn post_runs_run_intent_canonicalizes_and_persists_a_local_folder_target()
     );
     assert_eq!(
         projection.spec.settings.run.environment.provider,
-        EnvironmentProvider::Local
+        SandboxProviderKind::LOCAL
     );
     assert_eq!(projection.spec.manifest_blob, None);
     assert!(projection.spec.definition_blob.is_some());
@@ -4393,7 +4395,7 @@ async fn post_runs_run_intent_accepts_automatic_pull_requests_for_configured_doc
 
     assert_eq!(
         projection.spec.settings.run.environment.provider,
-        EnvironmentProvider::Docker
+        SandboxProviderKind::DOCKER
     );
     assert_eq!(projection.spec.settings.run.execution.mode, RunMode::DryRun);
     assert!(projection.spec.settings.run.pull_request.is_some());
@@ -4490,7 +4492,7 @@ async fn post_runs_run_intent_applies_the_folder_target_environment_matrix() {
     for state in [
         test_app_state(),
         TestAppStateBuilder::new()
-            .default_environment_provider(Some(EnvironmentProvider::Daytona))
+            .default_environment_provider(Some(SandboxProviderKind::DAYTONA))
             .vault_entries([(fabro_static::EnvVars::OPENAI_API_KEY, "test-openai-api-key")])
             .build(),
     ] {
@@ -4526,7 +4528,7 @@ enabled = false
             ),
             RunLayer::default(),
         )
-        .default_environment_provider(Some(EnvironmentProvider::Local))
+        .default_environment_provider(Some(SandboxProviderKind::LOCAL))
         .vault_entries([(fabro_static::EnvVars::OPENAI_API_KEY, "test-openai-api-key")])
         .build();
     let app = crate::test_support::build_test_router(Arc::clone(&disabled_state));
@@ -4549,7 +4551,7 @@ enabled = false
 #[tokio::test]
 async fn post_runs_run_intent_accepts_none_target_with_ready_daytona_environment() {
     let state = TestAppStateBuilder::new()
-        .default_environment_provider(Some(EnvironmentProvider::Daytona))
+        .default_environment_provider(Some(SandboxProviderKind::DAYTONA))
         .vault_entries([
             (fabro_static::EnvVars::OPENAI_API_KEY, "test-openai-api-key"),
             (
@@ -4586,7 +4588,7 @@ async fn post_runs_run_intent_accepts_none_target_with_ready_daytona_environment
     );
     assert_eq!(
         projection.spec.settings.run.environment.provider,
-        EnvironmentProvider::Daytona
+        SandboxProviderKind::DAYTONA
     );
     assert_eq!(projection.spec.source_directory, None);
     assert_eq!(projection.spec.git, None);
@@ -4853,7 +4855,7 @@ enabled = false
     assert_run_intent_targets_unavailable(&disabled_state).await;
 
     let daytona_state = TestAppStateBuilder::new()
-        .default_environment_provider(Some(EnvironmentProvider::Daytona))
+        .default_environment_provider(Some(SandboxProviderKind::DAYTONA))
         .vault_entries([(fabro_static::EnvVars::OPENAI_API_KEY, "test-openai-api-key")])
         .build();
     assert_run_intent_targets_unavailable(&daytona_state).await;
@@ -5133,12 +5135,12 @@ async fn create_run_from_intent_helper_persists_automation_version_and_exact_tar
 }
 
 #[tokio::test]
-async fn create_run_from_intent_accepts_git_target_with_inline_dockerfile_environment() {
-    // fabro-0253: admission used to reject docker environments whose only
-    // image source is `image.dockerfile` (inline) even though the sandbox
-    // layer auto-builds them (`fabro-runner-<sha12>`, fabro-969f) and the
-    // environments API only persists inline dockerfiles. That made every
-    // stored toolchain-style environment unusable for git-target intents.
+async fn create_run_from_intent_rejects_git_target_with_dockerfile_only_environment() {
+    // Upstream (sandbox-driver adoption): the docker provider speaks
+    // `SandboxSource::Image` only, so admission rejects docker environments
+    // whose only image source is `image.dockerfile`. The fork's in-engine
+    // auto-build (fabro-969f) is retired; run images are provisioned by
+    // `just run-images` (deploy time) or a Daytona environment instead.
     let state = TestAppStateBuilder::new()
         .env_lookup(|_| None)
         .vault_entries([(EnvVars::OPENAI_API_KEY, "test-openai-api-key")])
@@ -5149,7 +5151,7 @@ async fn create_run_from_intent_accepts_git_target_with_inline_dockerfile_enviro
             id:       fabro_environment::EnvironmentId::new("toolchain-inline")
                 .expect("valid environment id"),
             settings: fabro_types::settings::run::EnvironmentSettings {
-                provider: EnvironmentProvider::Docker,
+                provider: SandboxProviderKind::DOCKER,
                 image: fabro_types::settings::run::EnvironmentImageSettings {
                     docker:     None,
                     dockerfile: Some(fabro_types::settings::run::DockerfileSource::Inline(
@@ -5191,21 +5193,8 @@ async fn create_run_from_intent_accepts_git_target_with_inline_dockerfile_enviro
     ))
     .await;
 
-    let body = response_json!(response, StatusCode::CREATED).await;
-    let run_id: RunId = body["id"].as_str().unwrap().parse().unwrap();
-    let run_store = state.stores.runs.open_run_reader(&run_id).await.unwrap();
-    let projection = run_store.state().await.unwrap();
-    assert_eq!(
-        projection.spec.settings.run.environment.id, "toolchain-inline",
-        "the admitted intent environment must survive into the run settings"
-    );
-    assert_eq!(
-        projection.spec.settings.run.environment.image.dockerfile,
-        Some(fabro_types::settings::run::DockerfileSource::Inline(
-            "FROM alpine:3\n".to_string()
-        )),
-        "the stored inline dockerfile must be the run's image source"
-    );
+    let body = response_json!(response, StatusCode::UNPROCESSABLE_ENTITY).await;
+    assert_eq!(body["errors"][0]["code"], "target_environment_unsupported");
 }
 
 #[tokio::test]
@@ -8852,7 +8841,7 @@ fn create_github_token_app_state_with_env_lookup_and_llm_catalog_settings(
         github_api_base_url,
         active_config_path,
         http_client: Some(fabro_http::test_http_client().expect("test HTTP client should build")),
-        sandbox_provider_registry: None,
+        sandbox_inventory: None,
         shutdown: tokio_util::sync::CancellationToken::new(),
         worker_control_bus: None,
         worker_runtime: None,
@@ -14352,6 +14341,9 @@ async fn fabro_ask_proves_the_wire_path_and_analyst_sentinels() {
     use fabro_client::{Client as ServerClient, Credential as ClientCredential, ServerTarget};
     use fabro_tool::{FabroAskParams, ValidatedAsk, ask_run};
 
+    let sandbox_dir = tempfile::tempdir().unwrap();
+    let sandbox_path = sandbox_dir.path().to_path_buf();
+
     // Scripted LLM: the strict mock carries the ANALYST SESSION sentinels
     // as matchers — positive (resolved model id + the five policy-allowed
     // tools) and negative (no write/shell tools reach the provider).
@@ -14429,6 +14421,7 @@ async fn fabro_ask_proves_the_wire_path_and_analyst_sentinels() {
     // Terminal target runs: develop (in scope) and nightly (out of scope).
     let terminal_run_with_slug = |slug: &'static str| {
         let state = Arc::clone(&state);
+        let sandbox_path = sandbox_path.clone();
         async move {
             let run_id = RunId::new();
             let run_store = state.stores.runs.create_run(&run_id).await.unwrap();
@@ -14456,9 +14449,13 @@ async fn fabro_ask_proves_the_wire_path_and_analyst_sentinels() {
                     web_url: None,
                 },
                 workflow_event::Event::SandboxInitialized {
-                    provider:          SandboxProviderKind::Local,
-                    id:                format!("sb-{slug}"),
-                    working_directory: "/sandbox/workdir".to_string(),
+                    provider:          SandboxProviderKind::LOCAL,
+                    // The Host provider attaches only to real directories
+                    // whose canonical path matches the id it derives from
+                    // them, so the record uses a real temp dir.
+                    id:                fabro_sandbox::test_support::local_sandbox_id(&sandbox_path)
+                        .await,
+                    working_directory: sandbox_path.to_string_lossy().to_string(),
                     image:             None,
                     snapshot:          None,
                     repo_cloned:       None,
@@ -14664,10 +14661,15 @@ async fn terminal_run_ask_fabro_turns_succeed_hermetically() {
         parent_id: None,
         web_url: None,
     }];
+    // The Host provider derives a local sandbox id from the canonical
+    // directory and attaches only to directories that exist, so the
+    // hand-written record uses a real temp dir.
+    let workdir = tempfile::tempdir().unwrap();
+    let workdir_path = workdir.path().to_path_buf();
     events.push(workflow_event::Event::SandboxInitialized {
-        provider:          SandboxProviderKind::Local,
-        id:                "sb-terminal".to_string(),
-        working_directory: "/sandbox/workdir".to_string(),
+        provider:          SandboxProviderKind::LOCAL,
+        id:                fabro_sandbox::test_support::local_sandbox_id(&workdir_path).await,
+        working_directory: workdir_path.to_string_lossy().to_string(),
         image:             None,
         snapshot:          None,
         repo_cloned:       None,
@@ -18040,7 +18042,7 @@ async fn create_preserved_local_sandbox_run(state: &Arc<AppState>, run_id: RunId
             definition_blob: None,
         },
         workflow_event::Event::SandboxInitialized {
-            provider:          SandboxProviderKind::Local,
+            provider:          SandboxProviderKind::LOCAL,
             id:                "sandbox-preserve-1".to_string(),
             working_directory: "/tmp/fabro-preserved-sandbox".to_string(),
             image:             None,
@@ -18794,7 +18796,7 @@ async fn delete_run_retry_after_missing_provider_resource_removes_metadata() {
         workflow_event::Event::RunStarting,
         workflow_event::Event::RunRunning,
         workflow_event::Event::SandboxInitialized {
-            provider:          SandboxProviderKind::Docker,
+            provider:          SandboxProviderKind::DOCKER,
             id:                "missing-sandbox".to_string(),
             working_directory: "/tmp/fabro-missing-sandbox".to_string(),
             image:             None,
@@ -21523,7 +21525,7 @@ async fn list_runs_includes_live_metadata_from_run_state() {
         workflow_event::Event::RunStarting,
         workflow_event::Event::RunRunning,
         workflow_event::Event::SandboxInitialized {
-            provider:          SandboxProviderKind::Local,
+            provider:          SandboxProviderKind::LOCAL,
             id:                "sb-test".to_string(),
             working_directory: "/sandbox/workdir".to_string(),
             image:             None,
@@ -21610,7 +21612,7 @@ async fn list_runs_page_limit_preserves_metadata_for_paged_items() {
             workflow_event::Event::RunStarting,
             workflow_event::Event::RunRunning,
             workflow_event::Event::SandboxInitialized {
-                provider:          SandboxProviderKind::Local,
+                provider:          SandboxProviderKind::LOCAL,
                 id:                sandbox_id.to_string(),
                 working_directory: "/sandbox/workdir".to_string(),
                 image:             None,

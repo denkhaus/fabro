@@ -7,9 +7,9 @@ use fabro_agent::subagent::{SessionFactory, SubAgentSupervisor};
 use fabro_agent::tool_registry::{RegisteredTool, ToolContext, ToolRegistry, ToolSource};
 use fabro_agent::{
     AgentEvent, AgentProfile, AgentProfileBuilder, CompletionCoordinator, FsScope,
-    Message as AgentMessage, Sandbox, ScopedSandbox, Session, SessionOptions,
-    SessionShutdownReason, StaticEnvProvider, ToolEnvProvider, ToolSecrets, WebFetchSummarizer,
-    canonical_tool_name, register_question_tools,
+    Message as AgentMessage, RunSandbox, Session, SessionOptions, SessionShutdownReason,
+    StaticEnvProvider, ToolEnvProvider, ToolSecrets, WebFetchSummarizer, canonical_tool_name,
+    register_question_tools,
 };
 use fabro_graphviz::graph::{AttrValue, Node};
 use fabro_llm::credentials::CredentialProvider;
@@ -1177,7 +1177,7 @@ impl AgentApiBackend {
     async fn create_session_with_plan(
         &self,
         node: &Node,
-        sandbox: &Arc<dyn Sandbox>,
+        sandbox: &Arc<RunSandbox>,
         tool_hooks: Option<Arc<dyn fabro_agent::ToolHookCallback>>,
         context_read: &ContextReadServices,
     ) -> Result<(CachedAgentSession, Vec<ModelFallbackNotice>), Error> {
@@ -1226,7 +1226,7 @@ impl AgentApiBackend {
         provider: ProviderContext,
         controls: EffectiveRequestControls,
         node: &Node,
-        sandbox: &Arc<dyn Sandbox>,
+        sandbox: &Arc<RunSandbox>,
         source: Arc<dyn CredentialProvider>,
         catalog: Arc<Catalog>,
         tool_env: Option<&Arc<dyn ToolEnvProvider>>,
@@ -1272,16 +1272,14 @@ impl AgentApiBackend {
                 )))
             };
         // Node-level filesystem scope (fabro-ba96, ADR-0009 stage
-        // envelope): compile fs_hide/fs_write once, wrap the stage
-        // sandbox (and the subagent factory env below) so every file
-        // operation of the session — in any tool vocabulary — enforces
-        // the scope, and expose the same policy to tool-layer pre-checks
-        // via SessionOptions. Fail-closed on invalid globs.
+        // envelope): compile fs_hide/fs_write once and hand the policy to
+        // the session. Enforcement lives in the agent's tool layer: the
+        // file, search, and listing tools consult the scope (via
+        // ToolContext), `apply_patch` pre-checks every target, and
+        // subagent sessions inherit the scope through their factory.
+        // Fail-closed on invalid globs.
         let fs_scope = node_fs_scope(node)?;
-        let stage_sandbox: Arc<dyn Sandbox> = match &fs_scope {
-            Some(scope) => Arc::new(ScopedSandbox::new(Arc::clone(sandbox), Arc::clone(scope))),
-            None => Arc::clone(sandbox),
-        };
+        let stage_sandbox: Arc<RunSandbox> = Arc::clone(sandbox);
         let config = SessionOptions {
             max_tokens: node_max_output_tokens(node),
             reasoning_effort: controls.reasoning_effort,
@@ -2157,7 +2155,7 @@ mod tests {
 
     use chrono::TimeZone;
     use fabro_agent::subagent::SessionFactory;
-    use fabro_agent::{AgentProfile, LocalSandbox, ToolRegistry};
+    use fabro_agent::{AgentProfile, ToolRegistry, local_sandbox};
     use fabro_api::types::{self, RunWaitResultReached};
     use fabro_auth::{VaultCredentialSource, test_support as auth_test_support};
     use fabro_llm::adapter::{ProviderAdapter, ResolvedCall};
@@ -2272,7 +2270,7 @@ mod tests {
 
         fn build_system_prompt(
             &self,
-            _env: &dyn fabro_agent::Sandbox,
+            _env: &fabro_agent::RunSandbox,
             _env_context: &fabro_agent::EnvContext,
             _memory: &[String],
             _user_instructions: Option<&str>,
@@ -2774,7 +2772,7 @@ capabilities = {{ text = true, tools = true, response_format = {{ json_object = 
                     "start": false
                 }]
             }),
-            tool_context(),
+            tool_context().await,
         )
         .await
         .expect("create tool should succeed");
@@ -2800,7 +2798,7 @@ capabilities = {{ text = true, tools = true, response_format = {{ json_object = 
                     "workflow": "child.fabro"
                 }]
             }),
-            tool_context(),
+            tool_context().await,
         )
         .await
         .expect("create tool should succeed");
@@ -2828,7 +2826,7 @@ capabilities = {{ text = true, tools = true, response_format = {{ json_object = 
                     "start": false
                 }]
             }),
-            tool_context(),
+            tool_context().await,
         )
         .await
         .expect_err("conflicting parent should be rejected");
@@ -2853,7 +2851,7 @@ capabilities = {{ text = true, tools = true, response_format = {{ json_object = 
                     "start": false
                 }]
             }),
-            tool_context(),
+            tool_context().await,
         )
         .await
         .expect("create should succeed");
@@ -2866,7 +2864,7 @@ capabilities = {{ text = true, tools = true, response_format = {{ json_object = 
                 "run_ids": [child_run_id().to_string()],
                 "timeout_seconds": 0
             }),
-            tool_context(),
+            tool_context().await,
         )
         .await
         .expect("gather should succeed");
@@ -2880,7 +2878,7 @@ capabilities = {{ text = true, tools = true, response_format = {{ json_object = 
                 "run_id": child_run_id().to_string(),
                 "first": 5
             }),
-            tool_context(),
+            tool_context().await,
         )
         .await
         .expect("events should succeed");
@@ -2934,7 +2932,7 @@ capabilities = {{ text = true, tools = true, response_format = {{ json_object = 
                 "until":      "merged",
                 "timeout_ms": 2_400_000
             }),
-            tool_context(),
+            tool_context().await,
         )
         .await
         .expect("wait dispatch should succeed");
@@ -2976,7 +2974,7 @@ capabilities = {{ text = true, tools = true, response_format = {{ json_object = 
                 "run_id": child_run_id().to_string(),
                 "question": "why did the reviewer fail?"
             }),
-            tool_context(),
+            tool_context().await,
         )
         .await
         .expect("in-scope ask should succeed");
@@ -3246,7 +3244,7 @@ capabilities = {{ text = true, tools = true, response_format = {{ json_object = 
                     "run_id": child_run_id().to_string(),
                     "action": action
                 }),
-                tool_context(),
+                tool_context().await,
             )
             .await
             .expect_err("workflow agents must not approve or deny runs");
@@ -3277,7 +3275,7 @@ capabilities = {{ text = true, tools = true, response_format = {{ json_object = 
                 "action": "status",
                 "run_id": child_run_id().to_string()
             }),
-            tool_context(),
+            tool_context().await,
         )
         .await
         .expect("pair status should succeed");
@@ -3342,9 +3340,9 @@ capabilities = {{ text = true, tools = true, response_format = {{ json_object = 
         }
     }
 
-    fn tool_context() -> ToolContext {
+    async fn tool_context() -> ToolContext {
         ToolContext {
-            env:                 Arc::new(LocalSandbox::new(PathBuf::from("."))),
+            env:                 Arc::new(local_sandbox(PathBuf::from(".")).await.unwrap()),
             cancel:              CancellationToken::new(),
             tool_env_provider:   None,
             write_locks:         None,
@@ -3937,15 +3935,15 @@ capabilities = {{ text = true, tools = true, response_format = {{ json_object = 
         tokio::fs::write(workspace.path().join("data.txt"), "hello\n")
             .await
             .unwrap();
-        let sandbox: Arc<dyn fabro_agent::Sandbox> =
-            Arc::new(LocalSandbox::new(workspace.path().to_path_buf()));
+        let sandbox: Arc<fabro_agent::RunSandbox> =
+            Arc::new(local_sandbox(workspace.path().to_path_buf()).await.unwrap());
 
         let mut session = backend
             .create_session_with_plan(
                 &node,
                 &sandbox,
                 Some(hooks),
-                &ContextReadServices::for_tests(),
+                &ContextReadServices::for_tests().await,
             )
             .await
             .unwrap()
@@ -4406,8 +4404,8 @@ capabilities = {{ text = true, tools = true, response_format = {{ json_object = 
         let stage_scope = StageScope::for_handler(&context, &node.id);
         let emitter = Arc::new(Emitter::new(fabro_types::RunId::new()));
         let workspace = tempfile::tempdir().unwrap();
-        let sandbox: Arc<dyn fabro_agent::Sandbox> =
-            Arc::new(LocalSandbox::new(workspace.path().to_path_buf()));
+        let sandbox: Arc<fabro_agent::RunSandbox> =
+            Arc::new(local_sandbox(workspace.path().to_path_buf()).await.unwrap());
 
         let result = backend
             .one_shot(OneShotRequest {
@@ -4473,8 +4471,8 @@ capabilities = {{ text = true, tools = true, response_format = {{ json_object = 
         let stage_scope = StageScope::for_handler(&context, &node.id);
         let emitter = Arc::new(Emitter::new(fabro_types::RunId::new()));
         let workspace = tempfile::tempdir().unwrap();
-        let sandbox: Arc<dyn fabro_agent::Sandbox> =
-            Arc::new(LocalSandbox::new(workspace.path().to_path_buf()));
+        let sandbox: Arc<fabro_agent::RunSandbox> =
+            Arc::new(local_sandbox(workspace.path().to_path_buf()).await.unwrap());
 
         let result = backend
             .one_shot(OneShotRequest {
@@ -4535,8 +4533,8 @@ capabilities = {{ text = true, tools = true, response_format = {{ json_object = 
         let context = Context::new();
         let emitter = Arc::new(Emitter::new(fabro_types::RunId::new()));
         let workspace = tempfile::tempdir().unwrap();
-        let sandbox: Arc<dyn fabro_agent::Sandbox> =
-            Arc::new(LocalSandbox::new(workspace.path().to_path_buf()));
+        let sandbox: Arc<fabro_agent::RunSandbox> =
+            Arc::new(local_sandbox(workspace.path().to_path_buf()).await.unwrap());
 
         let result = backend
             .run(CodergenRunRequest {
@@ -4544,7 +4542,7 @@ capabilities = {{ text = true, tools = true, response_format = {{ json_object = 
                 node:               &node,
                 prompt:             "Audit the result",
                 context:            &context,
-                context_read:       ContextReadServices::for_tests(),
+                context_read:       ContextReadServices::for_tests().await,
                 thread_id:          None,
                 emitter:            &emitter,
                 sandbox:            &sandbox,
@@ -4609,8 +4607,8 @@ capabilities = {{ text = true, tools = true, response_format = {{ json_object = 
         let context = Context::new();
         let emitter = Arc::new(Emitter::new(fabro_types::RunId::new()));
         let workspace = tempfile::tempdir().unwrap();
-        let sandbox: Arc<dyn fabro_agent::Sandbox> =
-            Arc::new(LocalSandbox::new(workspace.path().to_path_buf()));
+        let sandbox: Arc<fabro_agent::RunSandbox> =
+            Arc::new(local_sandbox(workspace.path().to_path_buf()).await.unwrap());
 
         let result = backend
             .run(CodergenRunRequest {
@@ -4618,7 +4616,7 @@ capabilities = {{ text = true, tools = true, response_format = {{ json_object = 
                 node:               &node,
                 prompt:             "Audit the result",
                 context:            &context,
-                context_read:       ContextReadServices::for_tests(),
+                context_read:       ContextReadServices::for_tests().await,
                 thread_id:          None,
                 emitter:            &emitter,
                 sandbox:            &sandbox,
@@ -4682,8 +4680,8 @@ capabilities = {{ text = true, tools = true, response_format = {{ json_object = 
         let context = Context::new();
         let emitter = Arc::new(Emitter::new(fabro_types::RunId::new()));
         let workspace = tempfile::tempdir().unwrap();
-        let sandbox: Arc<dyn fabro_agent::Sandbox> =
-            Arc::new(LocalSandbox::new(workspace.path().to_path_buf()));
+        let sandbox: Arc<fabro_agent::RunSandbox> =
+            Arc::new(local_sandbox(workspace.path().to_path_buf()).await.unwrap());
 
         let result = backend
             .run(CodergenRunRequest {
@@ -4691,7 +4689,7 @@ capabilities = {{ text = true, tools = true, response_format = {{ json_object = 
                 node:               &node,
                 prompt:             "Audit the result",
                 context:            &context,
-                context_read:       ContextReadServices::for_tests(),
+                context_read:       ContextReadServices::for_tests().await,
                 thread_id:          None,
                 emitter:            &emitter,
                 sandbox:            &sandbox,
@@ -4758,8 +4756,8 @@ capabilities = {{ text = true, tools = true, response_format = {{ json_object = 
             }
         });
         let workspace = tempfile::tempdir().unwrap();
-        let sandbox: Arc<dyn fabro_agent::Sandbox> =
-            Arc::new(LocalSandbox::new(workspace.path().to_path_buf()));
+        let sandbox: Arc<fabro_agent::RunSandbox> =
+            Arc::new(local_sandbox(workspace.path().to_path_buf()).await.unwrap());
 
         let result = backend
             .run(CodergenRunRequest {
@@ -4767,7 +4765,7 @@ capabilities = {{ text = true, tools = true, response_format = {{ json_object = 
                 node:               &node,
                 prompt:             "Search the web",
                 context:            &context,
-                context_read:       ContextReadServices::for_tests(),
+                context_read:       ContextReadServices::for_tests().await,
                 thread_id:          None,
                 emitter:            &emitter,
                 sandbox:            &sandbox,
@@ -4826,9 +4824,11 @@ capabilities = {{ text = true, tools = true, response_format = {{ json_object = 
         let session = Session::new(
             client,
             Arc::new(ShutdownTestProfile::new()),
-            Arc::new(fabro_agent::LocalSandbox::new(
-                tempfile::tempdir().unwrap().path().to_path_buf(),
-            )),
+            Arc::new(
+                fabro_agent::local_sandbox(tempfile::tempdir().unwrap().path().to_path_buf())
+                    .await
+                    .unwrap(),
+            ),
             SessionOptions::default(),
             None,
         );
@@ -4871,9 +4871,11 @@ capabilities = {{ text = true, tools = true, response_format = {{ json_object = 
         let mut session = Session::new(
             client,
             Arc::new(ShutdownTestProfile::new()),
-            Arc::new(LocalSandbox::new(
-                tempfile::tempdir().unwrap().path().to_path_buf(),
-            )),
+            Arc::new(
+                local_sandbox(tempfile::tempdir().unwrap().path().to_path_buf())
+                    .await
+                    .unwrap(),
+            ),
             SessionOptions::default(),
             None,
         );
@@ -5245,8 +5247,11 @@ profile = "anthropic"
         let server = MockServer::start();
         let backend = mock_api_backend(&server);
         let workspace = tempfile::tempdir().unwrap();
-        let sandbox: Arc<dyn fabro_agent::Sandbox> =
-            Arc::new(LocalSandbox::new(workspace.path().to_path_buf()));
+        let sandbox = Arc::new(
+            fabro_agent::local_sandbox(workspace.path().to_path_buf())
+                .await
+                .expect("local sandbox for tests"),
+        );
 
         // Default-open posture: every agent stage advertises context_read.
         let open_node = Node::new("researcher");
@@ -5255,7 +5260,7 @@ profile = "anthropic"
                 &open_node,
                 &sandbox,
                 None,
-                &ContextReadServices::for_tests(),
+                &ContextReadServices::for_tests().await,
             )
             .await
             .unwrap();
@@ -5281,7 +5286,7 @@ profile = "anthropic"
                 &narrow_node,
                 &sandbox,
                 None,
-                &ContextReadServices::for_tests(),
+                &ContextReadServices::for_tests().await,
             )
             .await
             .unwrap();
@@ -5308,7 +5313,7 @@ profile = "anthropic"
                 &pull_only,
                 &sandbox,
                 None,
-                &ContextReadServices::for_tests(),
+                &ContextReadServices::for_tests().await,
             )
             .await
             .unwrap();

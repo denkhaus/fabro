@@ -9,7 +9,7 @@ use agent_client_protocol::schema::{
 };
 use agent_client_protocol::util::MatchDispatch;
 use agent_client_protocol::{ActiveSession, Agent, Client, Error as ProtocolError, SessionMessage};
-use fabro_sandbox::Sandbox;
+use fabro_sandbox::RunSandbox;
 use fabro_types::{Principal, SteeringMessage};
 use fabro_util::time::elapsed_ms;
 use tokio::sync::Notify;
@@ -164,7 +164,7 @@ pub struct AcpRunRequest {
     pub cwd:          String,
     pub timeout_ms:   Option<u64>,
     pub env:          HashMap<String, String>,
-    pub sandbox:      Arc<dyn Sandbox>,
+    pub sandbox:      Arc<RunSandbox>,
     pub cancel_token: CancellationToken,
     pub on_activity:  Option<Arc<dyn Fn() + Send + Sync>>,
     pub live_control: Option<AcpLiveControl>,

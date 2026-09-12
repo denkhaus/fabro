@@ -7,7 +7,7 @@ use lithos_llm::catalog::ProviderId;
 use lithos_llm::types::ToolDefinition;
 
 use crate::profiles::EnvContext;
-use crate::sandbox::Sandbox;
+use crate::sandbox::RunSandbox;
 use crate::skills::Skill;
 use crate::subagent::{
     SessionFactory, SubAgentSupervisor, make_close_agent_tool, make_send_input_tool,
@@ -29,7 +29,7 @@ pub trait AgentProfile: Send + Sync {
     fn tool_registry_mut(&mut self) -> &mut ToolRegistry;
     fn build_system_prompt(
         &self,
-        env: &dyn Sandbox,
+        env: &RunSandbox,
         env_context: &EnvContext,
         memory: &[String],
         user_instructions: Option<&str>,
@@ -116,7 +116,7 @@ mod tests {
     #[test]
     fn profile_build_system_prompt() {
         let profile = TestProfile::new();
-        let env = MockSandbox::linux();
+        let env = MockSandbox::linux().sandbox();
         let ctx = EnvContext::default();
         let docs = vec!["README.md contents".into()];
         let prompt = profile.build_system_prompt(&env, &ctx, &docs, None, &[]);
@@ -126,7 +126,7 @@ mod tests {
     #[test]
     fn profile_build_system_prompt_with_user_instructions() {
         let profile = TestProfile::new();
-        let env = MockSandbox::default();
+        let env = MockSandbox::default().sandbox();
         let ctx = EnvContext::default();
         let prompt = profile.build_system_prompt(&env, &ctx, &[], Some("Always use TDD"), &[]);
         assert!(prompt.contains("Always use TDD"));

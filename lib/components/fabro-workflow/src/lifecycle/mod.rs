@@ -22,7 +22,7 @@ use fabro_core::outcome::NodeResult;
 use fabro_core::state::ExecutionState;
 use fabro_graphviz::graph::types::Graph as GvGraph;
 use fabro_hooks::HookRunner;
-use fabro_sandbox::Sandbox;
+use fabro_sandbox::RunSandbox;
 use fabro_types::RunId;
 
 use self::artifact::ArtifactLifecycle;
@@ -64,7 +64,7 @@ pub(crate) struct WorkflowLifecycle {
     /// context key whose value change resets the deterministic
     /// `seed_cycles` counter. None = feature off.
     cycle_reset_key:       Option<String>,
-    sandbox:               Arc<dyn Sandbox>,
+    sandbox:               Arc<RunSandbox>,
     on_node:               crate::OnNodeCallback,
     emitter:               Arc<Emitter>,
     run_control:           Option<Arc<RunControlState>>,
@@ -92,7 +92,7 @@ impl WorkflowLifecycle {
     pub(crate) fn new(
         emitter: &Arc<Emitter>,
         hook_runner: Option<Arc<HookRunner>>,
-        sandbox: &Arc<dyn Sandbox>,
+        sandbox: &Arc<RunSandbox>,
         graph: Arc<GvGraph>,
         run_dir: &Path,
         run_store: &RunStoreHandle,

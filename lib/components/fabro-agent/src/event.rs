@@ -3,8 +3,8 @@ use std::time::SystemTime;
 
 use tokio::sync::broadcast;
 
-use crate::sandbox::OutputCaptureStats;
 use crate::tool_registry::AgentEventEmitter;
+use crate::truncation::OutputCaptureStats;
 use crate::types::{AgentEvent, SessionEvent};
 
 #[derive(Clone)]

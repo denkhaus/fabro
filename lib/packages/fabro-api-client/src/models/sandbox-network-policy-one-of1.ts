@@ -13,15 +13,10 @@
  */
 
 
+// May contain unused imports in some cases
+// @ts-ignore
+import type { SandboxNetworkPolicyOneOf1DomainAllowList } from './sandbox-network-policy-one-of1-domain-allow-list';
 
-/**
- * Desired environment provider.
- */
-
-export const EnvironmentProvider = {
-    LOCAL: 'local',
-    DOCKER: 'docker',
-    DAYTONA: 'daytona'
-} as const;
-
-export type EnvironmentProvider = typeof EnvironmentProvider[keyof typeof EnvironmentProvider];
+export interface SandboxNetworkPolicyOneOf1 {
+    'domain_allow_list': SandboxNetworkPolicyOneOf1DomainAllowList;
+}

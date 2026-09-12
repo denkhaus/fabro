@@ -147,7 +147,6 @@ mod tests {
     use tokio_util::sync::CancellationToken;
 
     use super::*;
-    use crate::sandbox::Sandbox;
     use crate::test_support::MockSandbox;
     use crate::tool_registry::{AgentEventEmitter, ToolContext};
 
@@ -166,7 +165,7 @@ mod tests {
     }
 
     fn ctx_with(emitter: Arc<CollectingEmitter>) -> ToolContext {
-        let env: Arc<dyn Sandbox> = Arc::new(MockSandbox::default());
+        let env = MockSandbox::default().sandbox();
         ToolContext {
             fs_scope: None,
             write_locks: None,

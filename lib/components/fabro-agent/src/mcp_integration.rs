@@ -51,7 +51,6 @@ mod tests {
     use tokio_util::sync::CancellationToken;
 
     use super::*;
-    use crate::sandbox::Sandbox;
     use crate::test_support::MockSandbox;
     use crate::tool_registry::ToolContext;
 
@@ -94,7 +93,7 @@ mod tests {
         let tools = make_mcp_tools(&Arc::new(mgr));
         let tool = &tools[0];
 
-        let env: Arc<dyn Sandbox> = Arc::new(MockSandbox::default());
+        let env = MockSandbox::default().sandbox();
         let result = (tool.executor)(
             serde_json::json!({"message": "test message"}),
             ToolContext {

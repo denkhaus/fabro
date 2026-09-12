@@ -1647,7 +1647,7 @@ mod tests {
         let provider_ref = provider.clone();
         let client = make_client(provider as Arc<dyn ProviderAdapter>).await;
         let profile = Arc::new(TestProfile::new());
-        let env = Arc::new(MockSandbox::default());
+        let env = MockSandbox::default().sandbox();
         let session = Session::new(client, profile, env, SessionOptions::default(), None);
 
         let agent_id = manager.spawn(session, "Do something".into(), 0).unwrap();
@@ -1755,7 +1755,7 @@ mod tests {
         let ctx = ToolContext {
             fs_scope:            None,
             write_locks:         None,
-            env:                 Arc::new(MockSandbox::default()),
+            env:                 MockSandbox::default().sandbox(),
             cancel:              tool_cancel.clone(),
             tool_env_provider:   None,
             session_id:          None,
@@ -2060,7 +2060,7 @@ mod tests {
         let provider_ref = provider.clone();
         let client = make_client(provider as Arc<dyn ProviderAdapter>).await;
         let profile = Arc::new(TestProfile::new());
-        let env = Arc::new(MockSandbox::default());
+        let env = MockSandbox::default().sandbox();
         let session = Session::new(client, profile, env, SessionOptions::default(), None);
         let agent_id = manager.spawn(session, "Do something".into(), 0).unwrap();
         let first = manager.wait(&agent_id).await.unwrap();

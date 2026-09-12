@@ -1,7 +1,7 @@
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use fabro_llm::lithos_catalog::CatalogProvider;
-use fabro_types::settings::run::EnvironmentProvider;
+use fabro_types::SandboxProviderKind;
 use tower::ServiceExt;
 
 use crate::helpers::{
@@ -78,7 +78,7 @@ fn daytona_disabled_app() -> (axum::Router, tempfile::TempDir) {
     let state = fabro_server::test_support::TestAppStateBuilder::new()
         .runtime_settings(settings.server_settings, settings.manifest_run_defaults)
         .active_config_path(active_config_path)
-        .default_environment_provider(Some(EnvironmentProvider::Daytona))
+        .default_environment_provider(Some(SandboxProviderKind::DAYTONA))
         .build();
     (
         fabro_server::test_support::build_test_router(state),

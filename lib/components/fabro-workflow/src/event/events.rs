@@ -9,7 +9,7 @@ use ::fabro_types::{
     RunTiming, SandboxProviderKind, StageId, StageOutcome, StageTiming, SuccessReason,
     WorkflowVersionId, run_event as fabro_types,
 };
-use fabro_agent::{AgentEvent, SandboxEvent};
+use fabro_agent::AgentEvent;
 use lithos_llm::types::{ReasoningEffort, Speed};
 use serde::{Deserialize, Serialize};
 
@@ -519,9 +519,16 @@ pub enum Event {
         status:         String,
         duration_ms:    u64,
     },
-    /// Forwarded from a sandbox lifecycle operation.
+    /// A fact about the run's sandbox from the pipeline bringing it up.
     Sandbox {
-        event: SandboxEvent,
+        event: SandboxLifecycle,
+    },
+    /// An event the sandbox driver reported about the run's sandbox (an
+    /// operation and its outcome, progress inside a create, a state
+    /// observation, a notice), kept whole. Named from the event; see
+    /// `fabro_types::sandbox_driver_event_name`.
+    SandboxDriver {
+        event: sandbox_driver::Event,
     },
     /// Emitted after the sandbox has been initialized (by engine lifecycle).
     SandboxInitialized {
@@ -768,6 +775,60 @@ pub enum Event {
         creation_id: Option<PullRequestCreationId>,
         error:       String,
     },
+}
+
+/// The lifecycle of a run's sandbox as workflow events.
+///
+/// Initializing, ready, and failed are the pipeline's view of bringing the
+/// sandbox up — create, activate, and prepare the workspace as one step.
+/// The rest are the sandbox driver's own operations and snapshot work,
+/// the driver's own events are kept whole as [`Event::SandboxDriver`].
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum SandboxLifecycle {
+    Initializing {
+        provider: String,
+    },
+    Ready {
+        provider:    String,
+        duration_ms: u64,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        name:        Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        url:         Option<String>,
+    },
+    InitializeFailed {
+        provider:    String,
+        error:       String,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        causes:      Vec<String>,
+        duration_ms: u64,
+    },
+}
+
+impl SandboxLifecycle {
+    pub fn trace(&self) {
+        use tracing::{debug, error, info};
+        match self {
+            Self::Initializing { provider } => {
+                debug!(provider, "Sandbox initializing");
+            }
+            Self::Ready {
+                provider,
+                duration_ms,
+                ..
+            } => {
+                info!(provider, duration_ms, "Sandbox ready");
+            }
+            Self::InitializeFailed {
+                provider,
+                error,
+                causes,
+                duration_ms,
+            } => {
+                error!(provider, error, causes = ?causes, duration_ms, "Sandbox init failed");
+            }
+        }
+    }
 }
 
 impl Event {
@@ -1319,7 +1380,9 @@ impl Event {
             } => {
                 debug!(node_id, model, provider, "Prompt completed");
             }
-            Self::Agent { .. } | Self::Sandbox { .. } => {}
+            Self::Agent { .. } => {}
+            Self::Sandbox { event } => event.trace(),
+            Self::SandboxDriver { event } => trace_driver_event(event),
             Self::SandboxInitialized {
                 working_directory,
                 provider,
@@ -1600,5 +1663,24 @@ impl Event {
                 error!(error = %error, "Pull request creation failed");
             }
         }
+    }
+}
+
+/// Traces a sandbox driver event under its run event name.
+fn trace_driver_event(event: &sandbox_driver::Event) {
+    use sandbox_driver::EventBody as Body;
+    use tracing::{debug, info, warn};
+
+    let name = fabro_types::sandbox_driver_event_name(event);
+    match &event.body {
+        Body::OperationFailed { error, .. } => {
+            warn!(event = %name, error = %error.message, "Sandbox driver operation failed");
+        }
+        Body::OperationCompleted { duration, .. } => {
+            let duration_ms = u64::try_from(duration.as_millis()).unwrap_or(u64::MAX);
+            info!(event = %name, duration_ms, "Sandbox driver operation completed");
+        }
+        Body::OperationStarted { .. } => info!(event = %name, "Sandbox driver operation started"),
+        _ => debug!(event = %name, "Sandbox driver event"),
     }
 }

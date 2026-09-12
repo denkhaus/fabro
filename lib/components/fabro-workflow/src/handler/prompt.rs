@@ -75,7 +75,7 @@ impl Handler for PromptHandler {
             )?
             .profile_kind;
             let docs = match fabro_agent::discover_memory(
-                &*services.run.sandbox,
+                &services.run.sandbox,
                 working_dir,
                 working_dir,
                 profile_kind,
@@ -727,9 +727,11 @@ mod tests {
         let mut services = make_services();
         services.run = services
             .run
-            .with_sandbox(Arc::new(fabro_agent::LocalSandbox::new(
-                workspace.path().to_path_buf(),
-            )))
+            .with_sandbox(Arc::new(
+                fabro_agent::local_sandbox(workspace.path().to_path_buf())
+                    .await
+                    .unwrap(),
+            ))
             .with_catalog_context(
                 Arc::clone(&catalog),
                 ProviderId::new("acme"),
@@ -801,9 +803,11 @@ mod tests {
         let mut services = make_services();
         services.run = services
             .run
-            .with_sandbox(Arc::new(fabro_agent::LocalSandbox::new(
-                workspace.path().to_path_buf(),
-            )))
+            .with_sandbox(Arc::new(
+                fabro_agent::local_sandbox(workspace.path().to_path_buf())
+                    .await
+                    .unwrap(),
+            ))
             .with_catalog_context(
                 Arc::clone(&catalog),
                 ProviderId::new("acme"),

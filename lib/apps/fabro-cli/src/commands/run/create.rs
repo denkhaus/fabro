@@ -3,8 +3,7 @@ use std::path::Path;
 use anyhow::{Context as _, anyhow, bail};
 use fabro_config::project;
 use fabro_environment::{DEFAULT_ENVIRONMENT_ID, Environment};
-use fabro_types::settings::run::EnvironmentProvider;
-use fabro_types::{DirtyStatus, RunId, RunIntent, RunTarget};
+use fabro_types::{DirtyStatus, RunId, RunIntent, RunTarget, SandboxProviderKind};
 use fabro_util::terminal::Styles;
 
 use super::overrides::prepare_intent_overrides;
@@ -73,7 +72,7 @@ pub(crate) async fn create_run(
         resolve_run_environment(client.as_ref(), args.environment.as_deref()),
     )?;
     let (target, dirty_worktree) =
-        run_target_for_environment(environment.settings.provider, &canonical_cwd)?;
+        run_target_for_environment(&environment.settings.provider, &canonical_cwd)?;
     if dirty_worktree {
         fabro_util::printerr!(
             ctx.printer(),
@@ -169,10 +168,10 @@ fn warn_untransmitted_settings(
 /// provider. Returns the target plus whether a clone-based observation found a
 /// dirty Git worktree, so the caller can warn about it.
 fn run_target_for_environment(
-    provider: EnvironmentProvider,
+    provider: &SandboxProviderKind,
     canonical_cwd: &Path,
 ) -> anyhow::Result<(RunTarget, bool)> {
-    if !provider.is_clone_based() {
+    if !provider.clones_workspace() {
         let path = canonical_cwd.to_str().ok_or_else(|| {
             anyhow!(
                 "caller working directory is not valid UTF-8: {}",

@@ -3,11 +3,11 @@ use ::fabro_types::{
     run_event as fabro_types,
 };
 use chrono::Utc;
-use fabro_agent::{AgentEvent, SandboxEvent, SkillActivationSource};
+use fabro_agent::{AgentEvent, SkillActivationSource};
 use uuid::Uuid;
 
-use super::Event;
 use super::stored_fields::stored_event_fields;
+use super::{Event, SandboxLifecycle};
 use crate::outcome::billed_token_counts_from_llm;
 use crate::stage_scope::StageScope;
 
@@ -59,8 +59,6 @@ fn git_push_attempt_props(
                 .token
                 .and_then(|token| token.age_at(attempt.started_at))
                 .map(|age| u64::try_from(age.as_millis()).unwrap_or(u64::MAX)),
-            credential_action: attempt.credential_action,
-            refresh_error:     attempt.refresh_error,
         })
         .collect()
 }
@@ -975,27 +973,23 @@ fn event_body_from_event(event: &Event) -> EventBody {
             duration_ms:    *duration_ms,
         }),
         Event::Sandbox { event } => match event {
-            SandboxEvent::Initializing { provider } => {
+            SandboxLifecycle::Initializing { provider } => {
                 EventBody::SandboxInitializing(fabro_types::SandboxInitializingProps {
                     provider: provider.clone(),
                 })
             }
-            SandboxEvent::Ready {
+            SandboxLifecycle::Ready {
                 provider,
                 duration_ms,
                 name,
-                cpu,
-                memory,
                 url,
             } => EventBody::SandboxReady(fabro_types::SandboxReadyProps {
                 provider:    provider.clone(),
                 duration_ms: *duration_ms,
                 name:        name.clone(),
-                cpu:         *cpu,
-                memory:      *memory,
                 url:         url.clone(),
             }),
-            SandboxEvent::InitializeFailed {
+            SandboxLifecycle::InitializeFailed {
                 provider,
                 error,
                 causes,
@@ -1006,131 +1000,8 @@ fn event_body_from_event(event: &Event) -> EventBody {
                 causes:      causes.clone(),
                 duration_ms: *duration_ms,
             }),
-            SandboxEvent::CleanupStarted { provider } => {
-                EventBody::SandboxCleanupStarted(fabro_types::SandboxCleanupStartedProps {
-                    provider: provider.clone(),
-                })
-            }
-            SandboxEvent::CleanupCompleted {
-                provider,
-                duration_ms,
-            } => EventBody::SandboxCleanupCompleted(fabro_types::SandboxCleanupCompletedProps {
-                provider:    provider.clone(),
-                duration_ms: *duration_ms,
-            }),
-            SandboxEvent::CleanupFailed {
-                provider,
-                error,
-                causes,
-            } => EventBody::SandboxCleanupFailed(fabro_types::SandboxCleanupFailedProps {
-                provider: provider.clone(),
-                error:    error.clone(),
-                causes:   causes.clone(),
-            }),
-            SandboxEvent::StartStarted { provider } => {
-                EventBody::SandboxStartStarted(fabro_types::SandboxStartStartedProps {
-                    provider: provider.clone(),
-                })
-            }
-            SandboxEvent::StartCompleted {
-                provider,
-                duration_ms,
-            } => EventBody::SandboxStartCompleted(fabro_types::SandboxStartCompletedProps {
-                provider:    provider.clone(),
-                duration_ms: *duration_ms,
-            }),
-            SandboxEvent::StartFailed {
-                provider,
-                error,
-                causes,
-            } => EventBody::SandboxStartFailed(fabro_types::SandboxStartFailedProps {
-                provider: provider.clone(),
-                error:    error.clone(),
-                causes:   causes.clone(),
-            }),
-            SandboxEvent::StopStarted { provider } => {
-                EventBody::SandboxStopStarted(fabro_types::SandboxStopStartedProps {
-                    provider: provider.clone(),
-                })
-            }
-            SandboxEvent::StopCompleted {
-                provider,
-                duration_ms,
-            } => EventBody::SandboxStopCompleted(fabro_types::SandboxStopCompletedProps {
-                provider:    provider.clone(),
-                duration_ms: *duration_ms,
-            }),
-            SandboxEvent::StopFailed {
-                provider,
-                error,
-                causes,
-            } => EventBody::SandboxStopFailed(fabro_types::SandboxStopFailedProps {
-                provider: provider.clone(),
-                error:    error.clone(),
-                causes:   causes.clone(),
-            }),
-            SandboxEvent::DeleteStarted { provider } => {
-                EventBody::SandboxDeleteStarted(fabro_types::SandboxDeleteStartedProps {
-                    provider: provider.clone(),
-                })
-            }
-            SandboxEvent::DeleteCompleted {
-                provider,
-                duration_ms,
-            } => EventBody::SandboxDeleteCompleted(fabro_types::SandboxDeleteCompletedProps {
-                provider:    provider.clone(),
-                duration_ms: *duration_ms,
-            }),
-            SandboxEvent::DeleteFailed {
-                provider,
-                error,
-                causes,
-            } => EventBody::SandboxDeleteFailed(fabro_types::SandboxDeleteFailedProps {
-                provider: provider.clone(),
-                error:    error.clone(),
-                causes:   causes.clone(),
-            }),
-            SandboxEvent::SnapshotPulling { name } => {
-                EventBody::SnapshotPulling(fabro_types::SnapshotNameProps { name: name.clone() })
-            }
-            SandboxEvent::SnapshotCreating { name } => {
-                EventBody::SnapshotCreating(fabro_types::SnapshotNameProps { name: name.clone() })
-            }
-            SandboxEvent::SnapshotReady { name, duration_ms } => {
-                EventBody::SnapshotReady(fabro_types::SnapshotCompletedProps {
-                    name:        name.clone(),
-                    duration_ms: *duration_ms,
-                })
-            }
-            SandboxEvent::SnapshotFailed {
-                name,
-                error,
-                causes,
-            } => EventBody::SnapshotFailed(fabro_types::SnapshotFailedProps {
-                name:   name.clone(),
-                error:  error.clone(),
-                causes: causes.clone(),
-            }),
-            SandboxEvent::GitCloneStarted { url, branch } => {
-                EventBody::GitCloneStarted(fabro_types::GitCloneStartedProps {
-                    url:    url.clone(),
-                    branch: branch.clone(),
-                })
-            }
-            SandboxEvent::GitCloneCompleted { url, duration_ms } => {
-                EventBody::GitCloneCompleted(fabro_types::GitCloneCompletedProps {
-                    url:         url.clone(),
-                    duration_ms: *duration_ms,
-                })
-            }
-            SandboxEvent::GitCloneFailed { url, error, causes } => {
-                EventBody::GitCloneFailed(fabro_types::GitCloneFailedProps {
-                    url:    url.clone(),
-                    error:  error.clone(),
-                    causes: causes.clone(),
-                })
-            }
         },
+        Event::SandboxDriver { event } => EventBody::sandbox_driver(event.clone()),
         Event::SandboxInitialized {
             working_directory,
             provider,
@@ -1146,7 +1017,7 @@ fn event_body_from_event(event: &Event) -> EventBody {
             primary_repo_link,
         } => EventBody::SandboxInitialized(fabro_types::SandboxInitializedProps {
             working_directory: working_directory.clone(),
-            provider:          *provider,
+            provider:          provider.clone(),
             id:                id.clone(),
             image:             image.clone(),
             snapshot:          snapshot.clone(),
@@ -1491,8 +1362,7 @@ mod tests {
     };
     use chrono::Utc;
     use fabro_agent::{
-        AgentEvent, McpToolSummary, MemoryFileSummary, SandboxEvent, SkillActivationSource,
-        SkillSummary,
+        AgentEvent, McpToolSummary, MemoryFileSummary, SkillActivationSource, SkillSummary,
     };
     use lithos_llm::catalog::{ModelId, ProviderId, builtin};
     use lithos_llm::types::{Cost, CostSource, ReasoningOutput, TokenCounts as LlmTokenCounts};
@@ -1729,12 +1599,10 @@ mod tests {
     #[test]
     fn run_event_sandbox_event_keeps_properties_nested() {
         let stored = to_run_event(&fixtures::RUN_5, &Event::Sandbox {
-            event: SandboxEvent::Ready {
+            event: SandboxLifecycle::Ready {
                 provider:    "daytona".to_string(),
                 duration_ms: 2500,
                 name:        Some("sandbox-1".to_string()),
-                cpu:         Some(4.0),
-                memory:      Some(8.0),
                 url:         Some("https://example.test".to_string()),
             },
         });
@@ -1747,28 +1615,55 @@ mod tests {
     }
 
     #[test]
-    fn run_event_sandbox_stop_and_delete_use_distinct_event_names() {
-        let stopped = to_run_event(&fixtures::RUN_5, &Event::Sandbox {
-            event: SandboxEvent::StopCompleted {
-                provider:    "docker".to_string(),
-                duration_ms: 10,
-            },
+    fn run_event_driver_events_are_named_from_the_subject_action_and_phase() {
+        let stopped = to_run_event(&fixtures::RUN_5, &Event::SandboxDriver {
+            event: driver_event(serde_json::json!({
+                "id": {"source_id": "test", "sequence": 1},
+                "occurred_at": "2026-05-09T12:00:00Z",
+                "provider": "docker",
+                "subject": {"type": "sandbox", "id": "container-1"},
+                "type": "operation_completed",
+                "action": "stop",
+                "duration": {"secs": 0, "nanos": 10_000_000}
+            })),
         });
-        let deleted = to_run_event(&fixtures::RUN_5, &Event::Sandbox {
-            event: SandboxEvent::DeleteCompleted {
-                provider:    "docker".to_string(),
-                duration_ms: 20,
-            },
+        let building = to_run_event(&fixtures::RUN_5, &Event::SandboxDriver {
+            event: driver_event(serde_json::json!({
+                "id": {"source_id": "test", "sequence": 2},
+                "occurred_at": "2026-05-09T12:00:01Z",
+                "provider": "daytona",
+                "subject": {"type": "snapshot", "name": "sandbox-driver-abc"},
+                "type": "operation_started",
+                "action": "create"
+            })),
         });
 
         assert_eq!(stopped.event_name(), "sandbox.stop.completed");
-        assert_eq!(deleted.event_name(), "sandbox.delete.completed");
+        assert_eq!(building.event_name(), "snapshot.create.started");
+        let properties = stopped.properties().unwrap();
+        assert_eq!(properties["action"], "stop");
+        assert_eq!(properties["subject"]["id"], "container-1");
+        assert_eq!(properties["duration"]["nanos"], 10_000_000);
+
+        // The stored form reads back as the driver's event.
+        let round_trip: RunEvent = serde_json::from_value(serde_json::to_value(&stopped).unwrap())
+            .expect("a stored driver event decodes");
+        assert!(matches!(
+            &round_trip.body,
+            EventBody::SandboxDriver { name, event }
+                if name == "sandbox.stop.completed"
+                    && matches!(event.body, sandbox_driver::EventBody::OperationCompleted { .. })
+        ));
+    }
+
+    fn driver_event(value: serde_json::Value) -> sandbox_driver::Event {
+        serde_json::from_value(value).expect("a driver event")
     }
 
     #[test]
     fn run_event_sandbox_failure_serializes_causes() {
         let stored = to_run_event(&fixtures::RUN_5, &Event::Sandbox {
-            event: SandboxEvent::InitializeFailed {
+            event: SandboxLifecycle::InitializeFailed {
                 provider:    "docker".to_string(),
                 error:       "Failed to pull Docker image buildpack-deps:noble".to_string(),
                 causes:      vec!["connection refused".to_string()],
@@ -2284,26 +2179,22 @@ mod tests {
                         expires_at,
                     },
                 }),
-                credential_action: Some(fabro_sandbox::RemoteCredentialAction::Embedded),
-                refresh_error: None,
             },
             // Terminal classified failure with a refresh error: the last
             // attempt carries its classification too.
             fabro_sandbox::PushAttempt {
-                attempt:           2,
-                started_at:        started_at + chrono::Duration::seconds(3),
-                success:           false,
-                retry_reason:      Some(fabro_sandbox::GitRetryReason::TransientInfra),
-                exec_output_tail:  Some(exec_tail()),
-                token:             Some(fabro_sandbox::TokenSnapshot {
+                attempt:          2,
+                started_at:       started_at + chrono::Duration::seconds(3),
+                success:          false,
+                retry_reason:     Some(fabro_sandbox::GitRetryReason::TransientInfra),
+                exec_output_tail: Some(exec_tail()),
+                token:            Some(fabro_sandbox::TokenSnapshot {
                     generation: 14,
                     provenance: fabro_sandbox::TokenProvenance::Reused {
                         minted_at,
                         expires_at,
                     },
                 }),
-                credential_action: Some(fabro_sandbox::RemoteCredentialAction::Unchanged),
-                refresh_error:     Some(fabro_sandbox::RefreshErrorKind::SetUrl),
             },
         ];
         let expected_attempts = git_push_attempt_props(&runtime_attempts);
@@ -2322,11 +2213,8 @@ mod tests {
         assert_eq!(serialized[0]["token_generation"], 14);
         assert_eq!(serialized[0]["token_provenance"], "minted");
         assert_eq!(serialized[0]["token_age_ms"], 180);
-        assert_eq!(serialized[0]["credential_action"], "embedded");
-        assert!(serialized[0].get("refresh_error").is_none());
         assert_eq!(serialized[1]["classified_reason"], "transient_infra");
         assert_eq!(serialized[1]["token_provenance"], "reused");
-        assert_eq!(serialized[1]["refresh_error"], "set_url");
         // The provenance enum never nests in stored events.
         assert!(serialized[0].get("token").is_none());
 
@@ -2340,20 +2228,43 @@ mod tests {
         }
     }
 
+    /// Attempts stored by earlier releases carried `credential_action` and
+    /// `refresh_error` from the origin-URL credential design. The fields are
+    /// gone; the stored events still read.
+    #[test]
+    fn stored_attempts_with_retired_credential_fields_still_deserialize() {
+        let json = serde_json::json!({
+            "attempt": 1,
+            "started_at": "2026-03-30T12:00:01.000Z",
+            "success": true,
+            "token_generation": 3,
+            "token_provenance": "reused",
+            "token_age_ms": 120,
+            "credential_action": "embedded",
+            "refresh_error": "set_url"
+        });
+        let props: ::fabro_types::run_event::GitPushAttemptProps =
+            serde_json::from_value(json).unwrap();
+        assert_eq!(props.attempt, 1);
+        assert_eq!(props.token_generation, Some(3));
+        assert_eq!(
+            props.token_provenance,
+            Some(::fabro_types::run_event::GitTokenProvenance::Reused)
+        );
+    }
+
     #[test]
     fn successful_single_attempt_push_omits_failure_fields() {
         let attempts = vec![fabro_sandbox::PushAttempt {
-            attempt:           1,
-            started_at:        Utc::now(),
-            success:           true,
-            retry_reason:      None,
-            exec_output_tail:  None,
-            token:             Some(fabro_sandbox::TokenSnapshot {
+            attempt:          1,
+            started_at:       Utc::now(),
+            success:          true,
+            retry_reason:     None,
+            exec_output_tail: None,
+            token:            Some(fabro_sandbox::TokenSnapshot {
                 generation: 0,
                 provenance: fabro_sandbox::TokenProvenance::Static,
             }),
-            credential_action: Some(fabro_sandbox::RemoteCredentialAction::Unchanged),
-            refresh_error:     None,
         }];
         let stored = to_run_event(&fixtures::RUN_1, &Event::GitPush {
             branch: "fabro/run/run-1".to_string(),
@@ -2366,12 +2277,7 @@ mod tests {
         let attempt = &json["properties"]["attempts"][0];
         assert_eq!(attempt["success"], true);
         assert_eq!(attempt["token_provenance"], "static");
-        for absent in [
-            "classified_reason",
-            "exec_output_tail",
-            "token_age_ms",
-            "refresh_error",
-        ] {
+        for absent in ["classified_reason", "exec_output_tail", "token_age_ms"] {
             assert!(attempt.get(absent).is_none(), "{absent} should be omitted");
         }
     }

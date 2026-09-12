@@ -65,6 +65,7 @@ up:
     just clean
     just build-image
     just install-cli
+    just run-images
     just compose-up
     just wait-healthy
     just smoke
@@ -73,6 +74,12 @@ up:
 # Build the release binary and the local docker image (cached; uses cargo dev docker-build)
 build-image: web-deps
     cargo --locked dev docker-build --arch {{ arch }} --tag {{ image }}
+
+# Build the run images the lab environments reference (toolchain/mise),
+# on demand: rebuilt only when the Dockerfile content hash changed
+# (label sh.fabro.toolchain.sha256 carries the built hash).
+run-images:
+    nu scripts/run-images.nu
 
 # Build only the release binary and stage it (no docker image build)
 build-binary: web-deps

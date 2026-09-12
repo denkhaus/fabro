@@ -283,6 +283,11 @@ fn main() {
             &[],
         ),
         (
+            "SandboxPluginSettings",
+            "fabro_types::settings::server::SandboxPluginSettings",
+            &[],
+        ),
+        (
             "ServerStorageSettings",
             "fabro_types::settings::server::ServerStorageSettings",
             &[],
@@ -657,28 +662,20 @@ fn main() {
             "fabro_types::RunSandboxAvailability",
             &[],
         ),
-        ("SandboxNetwork", "fabro_types::SandboxNetwork", &[]),
+        // A sandbox's status is the sandbox driver's own type: the API reuses
+        // it and the types it carries rather than projecting them.
+        ("SandboxStatus", "sandbox_driver::SandboxStatus", &[]),
+        ("SandboxId", "sandbox_driver::SandboxId", &[]),
+        ("SandboxState", "sandbox_driver::SandboxState", &[]),
+        ("SandboxResources", "sandbox_driver::Resources", &[]),
+        ("SandboxNetworkPolicy", "sandbox_driver::NetworkPolicy", &[]),
+        ("SandboxKind", "sandbox_driver::SandboxKind", &[]),
         (
-            "SandboxNetworkPolicy",
-            "fabro_types::SandboxNetworkPolicy",
-            &[],
-        ),
-        (
-            "SandboxNetworkPolicyMode",
-            "fabro_types::SandboxNetworkPolicyMode",
+            "SandboxWorkspaceOwnership",
+            "sandbox_driver::WorkspaceOwnership",
             &[],
         ),
         ("SandboxService", "fabro_types::SandboxService", &[]),
-        (
-            "SandboxServiceDiscoverySource",
-            "fabro_types::SandboxServiceDiscoverySource",
-            &[],
-        ),
-        (
-            "SandboxServiceListMeta",
-            "fabro_types::SandboxServiceListMeta",
-            &[],
-        ),
         (
             "SandboxServiceListResponse",
             "fabro_types::SandboxServiceListResponse",

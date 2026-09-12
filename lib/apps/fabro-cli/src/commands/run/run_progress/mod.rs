@@ -140,8 +140,6 @@ impl ProgressUI {
                 provider,
                 duration_ms,
                 name,
-                cpu,
-                memory,
                 url,
             } => {
                 self.setup.on_sandbox_ready(
@@ -149,8 +147,6 @@ impl ProgressUI {
                     &provider,
                     duration_ms,
                     name.as_deref(),
-                    cpu,
-                    memory,
                     url.as_deref(),
                 );
             }
@@ -457,13 +453,15 @@ mod tests {
     use std::sync::{Arc, Mutex};
 
     use chrono::{DateTime, Utc};
-    use fabro_agent::{AgentEvent, SandboxEvent};
+    use fabro_agent::AgentEvent;
     use fabro_types::run_event::CliEnsureCompletedProps;
     use fabro_types::{
         MetadataSnapshotFailureKind, MetadataSnapshotPhase, ModelRef, ParallelBranchId,
         SandboxProviderKind, StageId, fixtures,
     };
-    use fabro_workflow::event::{Event, RunNoticeLevel, to_run_event, to_run_event_at};
+    use fabro_workflow::event::{
+        Event, RunNoticeLevel, SandboxLifecycle, to_run_event, to_run_event_at,
+    };
     use fabro_workflow::outcome::billed_model_usage_from_llm;
     use lithos_llm::catalog::{ModelId, builtin};
     use lithos_llm::types::TokenCounts;
@@ -504,6 +502,55 @@ mod tests {
     fn rendered(buffer: &Arc<Mutex<Vec<u8>>>) -> String {
         String::from_utf8(buffer.lock().expect("buffer lock poisoned").clone())
             .expect("valid utf-8")
+    }
+
+    fn driver_event(value: serde_json::Value) -> Event {
+        Event::SandboxDriver {
+            event: serde_json::from_value(value).expect("a driver event"),
+        }
+    }
+
+    /// A snapshot build reported by the driver: started, or completed after
+    /// `secs`.
+    fn snapshot_build_event(name: &str, kind: &str, secs: Option<u64>) -> Event {
+        let mut value = serde_json::json!({
+            "id": {"source_id": "test", "sequence": 1},
+            "occurred_at": "2026-01-01T00:00:00Z",
+            "provider": "daytona",
+            "subject": {"type": "snapshot", "name": name},
+            "type": kind,
+            "action": "create"
+        });
+        if let Some(secs) = secs {
+            value["duration"] = serde_json::json!({"secs": secs, "nanos": 0});
+        }
+        driver_event(value)
+    }
+
+    fn snapshot_build_failed_event(name: &str, error: &str) -> Event {
+        driver_event(serde_json::json!({
+            "id": {"source_id": "test", "sequence": 1},
+            "occurred_at": "2026-01-01T00:00:00Z",
+            "provider": "docker",
+            "subject": {"type": "snapshot", "name": name},
+            "type": "operation_failed",
+            "action": "create",
+            "duration": {"secs": 1, "nanos": 0},
+            "error": {"kind": "provider", "message": error, "retryable": false, "causes": []}
+        }))
+    }
+
+    /// The Docker provider pulling the sandbox's image inside its create.
+    fn image_pull_event(image: &str) -> Event {
+        driver_event(serde_json::json!({
+            "id": {"source_id": "test", "sequence": 1},
+            "occurred_at": "2026-01-01T00:00:00Z",
+            "provider": "docker",
+            "subject": {"type": "sandbox"},
+            "type": "operation_progress",
+            "action": "create",
+            "progress": {"code": "image.pull", "message": format!("pulling image {image}")}
+        }))
     }
 
     fn emit(ui: &mut ProgressUI, event: Event) {
@@ -907,7 +954,7 @@ mod tests {
             stage_started("code", "Code"),
             Event::SandboxInitialized {
                 working_directory: "/home/daytona/workspace".into(),
-                provider:          SandboxProviderKind::Daytona,
+                provider:          SandboxProviderKind::DAYTONA,
                 id:                "daytona:sandbox-id".into(),
                 repo_cloned:       None,
                 clone_origin_url:  None,
@@ -1035,17 +1082,15 @@ mod tests {
         let (mut ui, buffer) = capture_ui(false);
 
         emit(&mut ui, Event::Sandbox {
-            event: SandboxEvent::Initializing {
+            event: SandboxLifecycle::Initializing {
                 provider: "daytona".into(),
             },
         });
         emit(&mut ui, Event::Sandbox {
-            event: SandboxEvent::Ready {
+            event: SandboxLifecycle::Ready {
                 provider:    "daytona".into(),
                 duration_ms: 2500,
                 name:        Some("sandbox-1".into()),
-                cpu:         Some(4.0),
-                memory:      Some(8.0),
                 url:         None,
             },
         });
@@ -1064,12 +1109,12 @@ mod tests {
                 duration_ms:       600,
             }),
         );
-        insta::assert_snapshot!(rendered(&buffer), @r"
-            Sandbox: daytona (ready in 2s)
-                     sandbox-1 (4 cpu, 8 GB)
-                     ssh daytona@example
-            Setup: 2 commands (8s)
-            CLI: gh (installed, 600ms)
+        insta::assert_snapshot!(rendered(&buffer), @"
+        Sandbox: daytona (ready in 2s)
+                 sandbox-1
+                 ssh daytona@example
+        Setup: 2 commands (8s)
+        CLI: gh (installed, 600ms)
         ");
     }
 
@@ -1078,36 +1123,31 @@ mod tests {
         let (mut ui, buffer) = capture_ui(false);
 
         emit(&mut ui, Event::Sandbox {
-            event: SandboxEvent::Initializing {
+            event: SandboxLifecycle::Initializing {
                 provider: "daytona".into(),
             },
         });
+        emit(
+            &mut ui,
+            snapshot_build_event("fabro-v9-test", "operation_started", None),
+        );
+        emit(
+            &mut ui,
+            snapshot_build_event("fabro-v9-test", "operation_completed", Some(210)),
+        );
         emit(&mut ui, Event::Sandbox {
-            event: SandboxEvent::SnapshotCreating {
-                name: "fabro-v9-test".into(),
-            },
-        });
-        emit(&mut ui, Event::Sandbox {
-            event: SandboxEvent::SnapshotReady {
-                name:        "fabro-v9-test".into(),
-                duration_ms: 210_000,
-            },
-        });
-        emit(&mut ui, Event::Sandbox {
-            event: SandboxEvent::Ready {
+            event: SandboxLifecycle::Ready {
                 provider:    "daytona".into(),
                 duration_ms: 212_000,
                 name:        Some("sandbox-1".into()),
-                cpu:         Some(4.0),
-                memory:      Some(8.0),
                 url:         None,
             },
         });
 
-        insta::assert_snapshot!(rendered(&buffer), @r"
-            Sandbox: building fabro-v9-test...
-            Sandbox: daytona (ready in 3m32s)
-                     sandbox-1 (4 cpu, 8 GB)
+        insta::assert_snapshot!(rendered(&buffer), @"
+        Sandbox: building fabro-v9-test...
+        Sandbox: daytona (ready in 3m32s)
+                 sandbox-1
         ");
     }
 
@@ -1116,28 +1156,16 @@ mod tests {
         let (mut ui, buffer) = capture_ui(false);
 
         emit(&mut ui, Event::Sandbox {
-            event: SandboxEvent::Initializing {
+            event: SandboxLifecycle::Initializing {
                 provider: "docker".into(),
             },
         });
+        emit(&mut ui, image_pull_event("buildpack-deps:noble"));
         emit(&mut ui, Event::Sandbox {
-            event: SandboxEvent::SnapshotPulling {
-                name: "buildpack-deps:noble".into(),
-            },
-        });
-        emit(&mut ui, Event::Sandbox {
-            event: SandboxEvent::SnapshotReady {
-                name:        "buildpack-deps:noble".into(),
-                duration_ms: 8_200,
-            },
-        });
-        emit(&mut ui, Event::Sandbox {
-            event: SandboxEvent::Ready {
+            event: SandboxLifecycle::Ready {
                 provider:    "docker".into(),
                 duration_ms: 9_000,
                 name:        None,
-                cpu:         None,
-                memory:      None,
                 url:         None,
             },
         });
@@ -1153,17 +1181,15 @@ mod tests {
         let (mut ui, buffer) = capture_ui(false);
 
         emit(&mut ui, Event::Sandbox {
-            event: SandboxEvent::Initializing {
+            event: SandboxLifecycle::Initializing {
                 provider: "docker".into(),
             },
         });
         emit(&mut ui, Event::Sandbox {
-            event: SandboxEvent::Ready {
+            event: SandboxLifecycle::Ready {
                 provider:    "docker".into(),
                 duration_ms: 20,
                 name:        None,
-                cpu:         None,
-                memory:      None,
                 url:         None,
             },
         });
@@ -1176,19 +1202,16 @@ mod tests {
         let (mut ui, buffer) = capture_ui(false);
 
         emit(&mut ui, Event::Sandbox {
-            event: SandboxEvent::Initializing {
+            event: SandboxLifecycle::Initializing {
                 provider: "docker".into(),
             },
         });
+        emit(
+            &mut ui,
+            snapshot_build_failed_event("buildpack-deps:noble", "pull failed"),
+        );
         emit(&mut ui, Event::Sandbox {
-            event: SandboxEvent::SnapshotFailed {
-                name:   "buildpack-deps:noble".into(),
-                error:  "pull failed".into(),
-                causes: Vec::new(),
-            },
-        });
-        emit(&mut ui, Event::Sandbox {
-            event: SandboxEvent::InitializeFailed {
+            event: SandboxLifecycle::InitializeFailed {
                 provider:    "docker".into(),
                 error:       "pull failed".into(),
                 causes:      Vec::new(),
@@ -1207,27 +1230,23 @@ mod tests {
         let mut ui = ProgressUI::new(true, false);
 
         emit(&mut ui, Event::Sandbox {
-            event: SandboxEvent::Initializing {
+            event: SandboxLifecycle::Initializing {
                 provider: "docker".into(),
             },
         });
         assert!(ui.setup.sandbox_bar.is_some());
 
-        emit(&mut ui, Event::Sandbox {
-            event: SandboxEvent::SnapshotReady {
-                name:        "buildpack-deps:noble".into(),
-                duration_ms: 10,
-            },
-        });
+        emit(
+            &mut ui,
+            snapshot_build_event("buildpack-deps:noble", "operation_completed", Some(0)),
+        );
         assert!(ui.setup.sandbox_bar.is_some());
 
         emit(&mut ui, Event::Sandbox {
-            event: SandboxEvent::Ready {
+            event: SandboxLifecycle::Ready {
                 provider:    "docker".into(),
                 duration_ms: 20,
                 name:        None,
-                cpu:         None,
-                memory:      None,
                 url:         None,
             },
         });
@@ -1239,14 +1258,14 @@ mod tests {
         let mut ui = ProgressUI::new(true, false);
 
         emit(&mut ui, Event::Sandbox {
-            event: SandboxEvent::Initializing {
+            event: SandboxLifecycle::Initializing {
                 provider: "docker".into(),
             },
         });
         assert!(ui.setup.sandbox_bar.is_some());
 
         emit(&mut ui, Event::Sandbox {
-            event: SandboxEvent::InitializeFailed {
+            event: SandboxLifecycle::InitializeFailed {
                 provider:    "docker".into(),
                 error:       "pull failed".into(),
                 causes:      Vec::new(),
@@ -1263,7 +1282,7 @@ mod tests {
         emit(&mut ui, stage_started("code", "Code"));
         emit(&mut ui, Event::SandboxInitialized {
             working_directory: "/home/daytona/workspace".into(),
-            provider:          SandboxProviderKind::Daytona,
+            provider:          SandboxProviderKind::DAYTONA,
             id:                "daytona:sandbox-id".into(),
             repo_cloned:       None,
             clone_origin_url:  None,

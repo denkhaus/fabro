@@ -12,7 +12,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 
-use fabro_agent::Sandbox;
+use fabro_agent::RunSandbox;
 use fabro_agent::tool_registry::{RegisteredTool, ToolContext, ToolSource};
 use fabro_graphviz::graph::{Graph, Node};
 use fabro_llm::types::ToolDefinition as LlmToolDefinition;
@@ -88,7 +88,7 @@ impl ContextReadView {
 #[derive(Clone)]
 pub struct ContextReadServices {
     run_store: RunStoreHandle,
-    sandbox:   Arc<dyn Sandbox>,
+    sandbox:   Arc<RunSandbox>,
     run_dir:   PathBuf,
     view:      ContextReadView,
 }
@@ -100,7 +100,7 @@ impl ContextReadServices {
         node: &Node,
         graph: &Graph,
         run_store: RunStoreHandle,
-        sandbox: Arc<dyn Sandbox>,
+        sandbox: Arc<RunSandbox>,
         run_dir: PathBuf,
     ) -> Self {
         Self {
@@ -120,7 +120,7 @@ impl ContextReadServices {
 pub(crate) struct ContextReadState {
     view:      RwLock<ContextReadView>,
     run_store: RunStoreHandle,
-    sandbox:   Arc<dyn Sandbox>,
+    sandbox:   Arc<RunSandbox>,
     run_dir:   PathBuf,
     locality:  Mutex<artifact::SandboxLocality>,
 }
@@ -315,9 +315,13 @@ mod test_support {
 /// invoke the tool.
 #[cfg(test)]
 impl ContextReadServices {
-    pub(crate) fn for_tests() -> Self {
-        use fabro_agent::LocalSandbox;
+    pub(crate) async fn for_tests() -> Self {
         let run_dir = std::env::temp_dir().join("fabro-context-read-tests");
+        let sandbox = std::sync::Arc::new(
+            fabro_agent::local_sandbox(run_dir.clone())
+                .await
+                .expect("local sandbox for tests"),
+        );
         Self::new(
             &Context::new(),
             &plain_test_node(),
@@ -325,7 +329,7 @@ impl ContextReadServices {
             crate::runtime_store::RunStoreHandle::new(std::sync::Arc::new(
                 test_support::MemoryBlobBackend::new(),
             )),
-            std::sync::Arc::new(LocalSandbox::new(run_dir.clone())),
+            sandbox,
             run_dir,
         )
     }
@@ -345,7 +349,6 @@ fn plain_test_node() -> Node {
 
 #[cfg(test)]
 mod tests {
-    use fabro_agent::LocalSandbox;
     use fabro_llm::types::ToolDefinitionKind;
     use serde_json::json;
 
@@ -377,7 +380,7 @@ mod tests {
         graph
     }
 
-    fn services_for(
+    async fn services_for(
         context: &Context,
         node: &Node,
         graph: &Graph,
@@ -388,7 +391,11 @@ mod tests {
             node,
             graph,
             RunStoreHandle::new(Arc::new(MemoryBlobBackend::new())),
-            Arc::new(LocalSandbox::new(run_dir.to_path_buf())),
+            Arc::new(
+                fabro_agent::local_sandbox(run_dir.to_path_buf())
+                    .await
+                    .expect("local sandbox for tests"),
+            ),
             run_dir.to_path_buf(),
         )
     }
@@ -471,7 +478,8 @@ mod tests {
             &node_with_attrs(&[]),
             &plain_graph(),
             run_dir.path(),
-        );
+        )
+        .await;
         let state = Arc::new(ContextReadState::new(services));
 
         let answer = execute_context_read(json!({"key": "plan.outline"}), Arc::clone(&state))
@@ -491,7 +499,8 @@ mod tests {
             &node_with_attrs(&[]),
             &plain_graph(),
             run_dir.path(),
-        );
+        )
+        .await;
         let state = Arc::new(ContextReadState::new(services));
 
         let answer = execute_context_read(json!({"key": "evidence"}), Arc::clone(&state))
@@ -520,7 +529,8 @@ mod tests {
             &node_with_attrs(&[]),
             &plain_graph(),
             run_dir.path(),
-        );
+        )
+        .await;
         let state = Arc::new(ContextReadState::new(services));
 
         let message = execute_context_read(json!({"key": "missing"}), Arc::clone(&state))
@@ -543,7 +553,8 @@ mod tests {
             &node_with_attrs(&[]),
             &plain_graph(),
             run_dir.path(),
-        );
+        )
+        .await;
         let state = Arc::new(ContextReadState::new(services));
         assert_eq!(
             execute_context_read(json!({"key": "before"}), Arc::clone(&state))
@@ -555,7 +566,7 @@ mod tests {
         let next = Context::new();
         next.set("after", json!(2));
         let next_services =
-            services_for(&next, &node_with_attrs(&[]), &plain_graph(), run_dir.path());
+            services_for(&next, &node_with_attrs(&[]), &plain_graph(), run_dir.path()).await;
         state.update(&next_services);
 
         assert!(
@@ -591,7 +602,11 @@ mod tests {
             &node_with_attrs(&[]),
             &plain_graph(),
             run_store,
-            Arc::new(LocalSandbox::new(run_dir.path().to_path_buf())),
+            Arc::new(
+                fabro_agent::local_sandbox(run_dir.path().to_path_buf())
+                    .await
+                    .expect("local sandbox for tests"),
+            ),
             run_dir.path().to_path_buf(),
         );
         let state = Arc::new(ContextReadState::new(services));
@@ -624,7 +639,8 @@ mod tests {
             &node_with_attrs(&[]),
             &plain_graph(),
             run_dir.path(),
-        );
+        )
+        .await;
         let state = Arc::new(ContextReadState::new(services));
 
         let answer = execute_context_read(json!({"key": "note"}), Arc::clone(&state))
@@ -633,15 +649,16 @@ mod tests {
         assert_eq!(answer, "plain text");
     }
 
-    #[test]
-    fn tool_definition_name_and_schema() {
+    #[tokio::test]
+    async fn tool_definition_name_and_schema() {
         let run_dir = tempfile::tempdir().expect("tempdir");
         let services = services_for(
             &Context::new(),
             &node_with_attrs(&[]),
             &plain_graph(),
             run_dir.path(),
-        );
+        )
+        .await;
         let tool = context_read_tool(Arc::new(ContextReadState::new(services)));
         assert_eq!(tool.definition.name, "context_read");
         let ToolDefinitionKind::Function { input_schema } = &tool.definition.kind else {

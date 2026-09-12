@@ -1,7 +1,7 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use fabro_agent::{AgentProfile, LocalSandbox, OpenAiProfile, Session, SessionOptions};
+use fabro_agent::{AgentProfile, OpenAiProfile, Session, SessionOptions, local_sandbox};
 use fabro_llm::test_support::client_from_env;
 use fabro_llm::{Client, ClientOptions};
 use fabro_test::{TwinScenario, TwinScenarios, TwinToolCall, twin_openai};
@@ -44,7 +44,11 @@ async fn openai_twin_compaction_preserves_tool_call_pairs() {
 async fn make_openai_session(cwd: &Path, base_url: String, api_key: String) -> Session {
     let client = openai_client(base_url, api_key).await;
     let profile: Arc<dyn AgentProfile> = Arc::new(OpenAiProfile::new(MODEL));
-    let sandbox = Arc::new(LocalSandbox::new(cwd.to_path_buf()));
+    let sandbox = Arc::new(
+        local_sandbox(cwd.to_path_buf())
+            .await
+            .expect("local sandbox should be created"),
+    );
     let options = SessionOptions {
         enable_context_compaction: true,
         compaction_threshold_percent: 80,

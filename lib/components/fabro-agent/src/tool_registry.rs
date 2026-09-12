@@ -9,9 +9,10 @@ use tokio_util::sync::CancellationToken;
 
 use crate::config::{ToolAccessPolicy, ToolExposureMode};
 use crate::native_tool::{NativeTool, ToolVocabulary};
-use crate::sandbox::{FsScope, OutputCaptureStats, Sandbox};
+use crate::sandbox::{FsScope, RunSandbox};
 use crate::session::ToolEnvProvider;
 use crate::tool_permissions;
+use crate::truncation::OutputCaptureStats;
 use crate::types::AgentEvent;
 use crate::write_locks::BatchWriteLocks;
 
@@ -28,7 +29,7 @@ pub trait AgentEventEmitter: Send + Sync {
 }
 
 pub struct ToolContext {
-    pub env:                 Arc<dyn Sandbox>,
+    pub env:                 Arc<RunSandbox>,
     pub cancel:              CancellationToken,
     pub tool_env_provider:   Option<Arc<dyn ToolEnvProvider>>,
     /// Per-batch write locks for parallel tool calls. `None` outside parallel
@@ -53,6 +54,29 @@ pub struct ToolContext {
 }
 
 impl ToolContext {
+    /// Read-side filesystem-scope check (fabro-ba96): denies hidden
+    /// workspace paths for the stage. No-op outside scoped stages.
+    pub fn fs_check_read(&self, path: &str) -> Result<(), String> {
+        if let Some(scope) = self.fs_scope.as_ref() {
+            scope
+                .check_read(self.env.working_directory(), path)
+                .map_err(|e| e.display_with_causes())?;
+        }
+        Ok(())
+    }
+
+    /// Write-side filesystem-scope check (fabro-ba96): denies hidden paths
+    /// and paths outside the `fs_write` allow-list. No-op outside scoped
+    /// stages.
+    pub fn fs_check_write(&self, path: &str) -> Result<(), String> {
+        if let Some(scope) = self.fs_scope.as_ref() {
+            scope
+                .check_write(self.env.working_directory(), path)
+                .map_err(|e| e.display_with_causes())?;
+        }
+        Ok(())
+    }
+
     pub async fn resolve_tool_env(&self) -> anyhow::Result<Option<HashMap<String, String>>> {
         match &self.tool_env_provider {
             Some(provider) => Ok(Some(provider.resolve().await?)),
@@ -318,7 +342,6 @@ impl Default for ToolRegistry {
 mod tests {
     use super::*;
     use crate::config::{ToolAccess, ToolAccessPolicy, ToolExposureMode};
-    use crate::sandbox::Sandbox;
     use crate::test_support::MockSandbox;
 
     struct NamedPolicy {
@@ -540,7 +563,7 @@ mod tests {
 
         let tool = registry.get("echo").unwrap();
 
-        let env: Arc<dyn Sandbox> = Arc::new(MockSandbox::default());
+        let env = MockSandbox::default().sandbox();
         let ctx = ToolContext {
             fs_scope: None,
             write_locks: None,
