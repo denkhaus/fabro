@@ -53,6 +53,14 @@ pub async fn discover_memory(
                 return Err(Error::Interrupted(InterruptReason::Cancelled));
             }
             let path = format!("{dir}/{filename}");
+            // Probe existence before reading: candidate filenames are
+            // per-profile conventions and most repos carry only some of
+            // them, and the docker fs facet logs every failed read at
+            // ERROR — a plain probe-miss must not spam the run logs.
+            match env.file_exists(&path).await {
+                Ok(true) => {}
+                Ok(false) | Err(_) => continue,
+            }
             let read_result = env.read_file_text(&path).await;
             if cancel_token.is_cancelled() {
                 return Err(Error::Interrupted(InterruptReason::Cancelled));
