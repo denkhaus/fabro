@@ -122,30 +122,11 @@ impl WorkflowVersion {
     }
 
     fn validate_shape(&self) -> Result<(), WorkflowVersionShapeError> {
-        if self.files.len() > MAX_WORKFLOW_VERSION_FILES {
-            return Err(WorkflowVersionShapeError::TooManyFiles {
-                actual:  self.files.len(),
-                maximum: MAX_WORKFLOW_VERSION_FILES,
-            });
-        }
+        validate_workflow_files(&self.entrypoint, &self.files)?;
         if self.workflow_dependencies.len() > MAX_WORKFLOW_VERSION_DEPENDENCIES {
             return Err(WorkflowVersionShapeError::TooManyWorkflowDependencies {
                 actual:  self.workflow_dependencies.len(),
                 maximum: MAX_WORKFLOW_VERSION_DEPENDENCIES,
-            });
-        }
-        for (path, content) in &self.files {
-            if content.len() > MAX_WORKFLOW_VERSION_FILE_BYTES {
-                return Err(WorkflowVersionShapeError::FileTooLarge {
-                    path:    path.clone(),
-                    actual:  content.len(),
-                    maximum: MAX_WORKFLOW_VERSION_FILE_BYTES,
-                });
-            }
-        }
-        if !self.files.contains_key(&self.entrypoint) {
-            return Err(WorkflowVersionShapeError::MissingEntrypoint {
-                path: self.entrypoint.clone(),
             });
         }
         self.validate_path_collisions()
@@ -157,6 +138,36 @@ impl WorkflowVersion {
             Cow::Borrowed,
         )
     }
+}
+
+/// Validate the file limits and entrypoint shared by source trees and versions.
+/// Aggregate source bytes, canonical bytes, and path policies are checked
+/// separately.
+pub fn validate_workflow_files(
+    entrypoint: &WorkflowPath,
+    files: &BTreeMap<WorkflowPath, String>,
+) -> Result<(), WorkflowVersionShapeError> {
+    if files.len() > MAX_WORKFLOW_VERSION_FILES {
+        return Err(WorkflowVersionShapeError::TooManyFiles {
+            actual:  files.len(),
+            maximum: MAX_WORKFLOW_VERSION_FILES,
+        });
+    }
+    for (path, content) in files {
+        if content.len() > MAX_WORKFLOW_VERSION_FILE_BYTES {
+            return Err(WorkflowVersionShapeError::FileTooLarge {
+                path:    path.clone(),
+                actual:  content.len(),
+                maximum: MAX_WORKFLOW_VERSION_FILE_BYTES,
+            });
+        }
+    }
+    if !files.contains_key(entrypoint) {
+        return Err(WorkflowVersionShapeError::MissingEntrypoint {
+            path: entrypoint.clone(),
+        });
+    }
+    Ok(())
 }
 
 /// Reject file and directory aliases before materializing a portable source

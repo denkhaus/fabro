@@ -17,7 +17,10 @@ use fabro_template::{
 use fabro_types::ManifestPath;
 use fabro_types::graph::ReferenceKind;
 
-use crate::{manifest_path_from_absolute, normalize_absolute_path, workflow_version_collector};
+use crate::{
+    WorkflowVersionCollectError, manifest_path_from_absolute, normalize_absolute_path,
+    workflow_version_collector,
+};
 
 pub(super) struct WorkflowBundler<'a> {
     package_root: &'a Path,
@@ -36,15 +39,6 @@ pub(super) struct CollectedWorkflowSources {
 pub(super) struct CollectedWorkflowSource {
     pub(super) workflow:        types::ManifestWorkflow,
     pub(super) dependency_keys: BTreeSet<String>,
-}
-
-/// A referenced file that does not exist under the package root, reported
-/// with its package-relative path so callers can surface it without the
-/// staging directory or any file content.
-#[derive(Debug, thiserror::Error)]
-#[error("workflow package file `{path}` is missing")]
-pub(super) struct MissingPackageFile {
-    pub(super) path: String,
 }
 
 impl<'a> WorkflowBundler<'a> {
@@ -546,7 +540,9 @@ impl<'a> WorkflowBundler<'a> {
             if source.kind() == std::io::ErrorKind::NotFound {
                 let path = ManifestPath::from_absolute(path, self.package_root)
                     .map_or_else(|| path.display().to_string(), |path| path.to_string());
-                return anyhow::Error::new(MissingPackageFile { path });
+                return anyhow::Error::new(WorkflowVersionCollectError::MissingPackageFile {
+                    path,
+                });
             }
             anyhow::Error::new(source).context(format!(
                 "failed to canonicalize workflow package file `{}`",

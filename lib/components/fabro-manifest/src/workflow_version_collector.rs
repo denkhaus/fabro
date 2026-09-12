@@ -7,12 +7,12 @@ use fabro_types::{
     WorkflowPath, WorkflowPathParseError, WorkflowVersion, WorkflowVersionId,
     WorkflowVersionShapeError,
 };
-use fabro_workflow_version::{ValidatedWorkflowVersion, WorkflowVersionError};
+use fabro_workflow_version::{
+    CollectedWorkflowClosure, ValidatedWorkflowVersion, WorkflowVersionError,
+};
 use thiserror::Error;
 
-use crate::workflow_bundler::{
-    CollectedWorkflowSource, CollectedWorkflowSources, MissingPackageFile, WorkflowBundler,
-};
+use crate::workflow_bundler::{CollectedWorkflowSource, CollectedWorkflowSources, WorkflowBundler};
 
 /// Maximum active graph nesting while collecting or assembling a version.
 /// Bounds native stack use independently of file-count and byte budgets.
@@ -29,37 +29,6 @@ pub(super) fn check_workflow_depth(
         });
     }
     Ok(())
-}
-
-/// One locally packaged workflow-version closure in dependency-first order.
-#[derive(Debug)]
-pub struct CollectedWorkflowClosure {
-    root_id:  WorkflowVersionId,
-    versions: Vec<(WorkflowVersionId, ValidatedWorkflowVersion)>,
-}
-
-impl CollectedWorkflowClosure {
-    #[must_use]
-    pub fn root_id(&self) -> WorkflowVersionId {
-        self.root_id
-    }
-
-    /// Iterate over every unique version with dependencies before parents.
-    pub fn versions(
-        &self,
-    ) -> impl Iterator<Item = (WorkflowVersionId, &ValidatedWorkflowVersion)> + '_ {
-        self.versions.iter().map(|(id, version)| (*id, version))
-    }
-
-    /// Consume the closure, yielding every version with dependencies before
-    /// parents, for callers that hand the versions on without cloning.
-    #[must_use]
-    pub fn into_versions(self) -> Vec<WorkflowVersion> {
-        self.versions
-            .into_iter()
-            .map(|(_, version)| version.into_version())
-            .collect()
-    }
 }
 
 #[derive(Debug, Error)]
@@ -207,22 +176,12 @@ pub fn collect_workflow_versions_at_location(
     let collected = WorkflowBundler::new(package_root, &inputs)
         .collect_versions(location)
         .map_err(|source| {
-            let source = match source.downcast::<WorkflowVersionCollectError>() {
-                Ok(error) => return error,
-                Err(source) => source,
-            };
-            let missing = source
-                .chain()
-                .find_map(|cause| cause.downcast_ref::<MissingPackageFile>());
-            match missing {
-                Some(missing) => WorkflowVersionCollectError::MissingPackageFile {
-                    path: missing.path.clone(),
-                },
-                None => WorkflowVersionCollectError::Collect {
+            source
+                .downcast::<WorkflowVersionCollectError>()
+                .unwrap_or_else(|source| WorkflowVersionCollectError::Collect {
                     path: workflow.to_path_buf(),
                     source,
-                },
-            }
+                })
         })?;
     VersionAssembler::new(collected).assemble()
 }
@@ -260,10 +219,10 @@ impl VersionAssembler {
     fn assemble(mut self) -> Result<CollectedWorkflowClosure, WorkflowVersionCollectError> {
         let root_key = std::mem::take(&mut self.root_key);
         let root_id = self.assemble_one(&root_key)?;
-        Ok(CollectedWorkflowClosure {
+        Ok(CollectedWorkflowClosure::from_dependency_order(
             root_id,
-            versions: self.versions,
-        })
+            self.versions,
+        ))
     }
 
     fn assemble_one(

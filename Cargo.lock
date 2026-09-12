@@ -3173,6 +3173,7 @@ dependencies = [
  "fabro-client",
  "fabro-types",
  "fabro-util",
+ "fabro-workflow-version",
  "futures",
  "httpmock",
  "schemars 1.2.1",

@@ -1858,7 +1858,7 @@ async fn mcp_workflow_version_validation_happens_before_auth_or_network() {
         serde_json::json!({"entrypoint":"workflow","files":{}}),
     )
     .await;
-    assert_eq!(error, "entrypoint must be an exact supplied file key");
+    assert_eq!(error, "entrypoint `workflow` is not present in workflow files");
     assert_mcp_run_tool_count(&client).await;
     client
         .shutdown()

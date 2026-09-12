@@ -3,11 +3,9 @@
 
 use anyhow::Context as _;
 use async_trait::async_trait;
-use fabro_tool::{
-    PackagedWorkflowVersions, ToolError, ValidatedWorkflowVersionCreate, WorkflowVersionPackager,
-};
+use fabro_tool::{ToolError, ValidatedWorkflowVersionCreate, WorkflowVersionPackager};
 use fabro_util::error::collect_chain;
-use fabro_workflow_version::WorkflowVersionError;
+use fabro_workflow_version::{CollectedWorkflowClosure, WorkflowVersionError};
 use tokio::task;
 use tracing::debug;
 
@@ -24,7 +22,7 @@ impl WorkflowVersionPackager for SuppliedWorkflowVersionPackager {
     async fn package(
         &self,
         source: ValidatedWorkflowVersionCreate,
-    ) -> anyhow::Result<PackagedWorkflowVersions> {
+    ) -> anyhow::Result<CollectedWorkflowClosure> {
         let packaged = task::spawn_blocking(move || package_blocking(&source))
             .await
             .context("workflow packaging task failed")??;
@@ -40,7 +38,7 @@ impl WorkflowVersionPackager for SuppliedWorkflowVersionPackager {
 /// must not reach the log at any level.
 fn package_blocking(
     source: &ValidatedWorkflowVersionCreate,
-) -> Result<PackagedWorkflowVersions, ToolError> {
+) -> Result<CollectedWorkflowClosure, ToolError> {
     let closure = crate::collect_supplied_workflow_versions(&source.entrypoint, &source.files)
         .map_err(|err| {
             debug!(
@@ -51,10 +49,7 @@ fn package_blocking(
             );
             ToolError::message(render_packaging_error(&err))
         })?;
-    Ok(PackagedWorkflowVersions {
-        root_id:  closure.root_id(),
-        versions: closure.into_versions(),
-    })
+    Ok(closure)
 }
 
 /// Render a packaging failure for the tool caller. Every collector variant's
@@ -120,30 +115,7 @@ mod tests {
         }
     }
 
-    fn source(entrypoint: &str, files: &[(&str, &str)]) -> ValidatedWorkflowVersionCreate {
-        ValidatedWorkflowVersionCreate {
-            entrypoint: entrypoint.parse().unwrap(),
-            files:      files
-                .iter()
-                .map(|(path, content)| (path.parse().unwrap(), (*content).to_string()))
-                .collect(),
-        }
-    }
-
-    fn fixture() -> ValidatedWorkflowVersionCreate {
-        source("workflow.toml", &[
-            (
-                "workflow.toml",
-                "_version = 1\n[workflow]\ngraph = \"workflow.fabro\"\n",
-            ),
-            (
-                "workflow.fabro",
-                r#"digraph W { p [prompt="@prompt.md"] child [stack.child_workflow="child.fabro"] }"#,
-            ),
-            ("prompt.md", "Review the implementation."),
-            ("child.fabro", "digraph Child {}"),
-        ])
-    }
+    use crate::test_support::{fixture, source};
 
     async fn package_error(input: ValidatedWorkflowVersionCreate) -> String {
         let error = SuppliedWorkflowVersionPackager
@@ -246,16 +218,20 @@ mod tests {
             .package(fixture())
             .await
             .unwrap();
-        assert_eq!(packaged.versions.len(), 2);
-        assert_eq!(packaged.versions[0].entrypoint().as_str(), "child.fabro");
+        let versions = packaged
+            .versions()
+            .map(|(_, v)| v.version())
+            .collect::<Vec<_>>();
+        assert_eq!(versions.len(), 2);
+        assert_eq!(versions[0].entrypoint().as_str(), "child.fabro");
         assert_eq!(
-            packaged.versions[1].id().unwrap(),
-            packaged.root_id,
+            versions[1].id().unwrap(),
+            packaged.root_id(),
             "root version must be last"
         );
-        let child_id = packaged.versions[0].id().unwrap();
+        let child_id = versions[0].id().unwrap();
         assert!(
-            packaged.versions[1]
+            versions[1]
                 .workflow_dependencies()
                 .values()
                 .any(|id| *id == child_id)

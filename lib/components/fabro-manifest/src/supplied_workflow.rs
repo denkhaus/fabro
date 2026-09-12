@@ -118,42 +118,11 @@ fn confine_to_supplied(
 mod tests {
     use std::path::Path;
 
+    use fabro_tool::ValidatedWorkflowVersionCreate as Supplied;
     use fabro_util::error::collect_chain;
 
     use super::*;
-
-    struct Supplied {
-        entrypoint: WorkflowPath,
-        files:      BTreeMap<WorkflowPath, String>,
-    }
-
-    fn supplied(entrypoint: &str, files: &[(&str, &str)]) -> Supplied {
-        Supplied {
-            entrypoint: entrypoint.parse().unwrap(),
-            files:      files
-                .iter()
-                .map(|(path, content)| (path.parse().unwrap(), (*content).to_string()))
-                .collect(),
-        }
-    }
-
-    fn fixture() -> Supplied {
-        supplied("workflow.toml", &[
-            (
-                "workflow.toml",
-                "_version = 1\n[workflow]\ngraph = \"workflow.fabro\"\n",
-            ),
-            (
-                "workflow.fabro",
-                r#"digraph W { p [prompt="@prompt.md"] child [stack.child_workflow="child.fabro"] }"#,
-            ),
-            (
-                "prompt.md",
-                "Keep {{ secrets.TEST }} and {{ env.TEST }} for runtime.",
-            ),
-            ("child.fabro", "digraph Child {}"),
-        ])
-    }
+    use crate::test_support::{fixture, source as supplied};
 
     fn collect(input: &Supplied) -> CollectedWorkflowClosure {
         collect_supplied_workflow_versions(&input.entrypoint, &input.files).unwrap()

@@ -3,10 +3,8 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use fabro_api::types::CreateWorkflowVersionResponse;
-use fabro_types::{
-    MAX_WORKFLOW_VERSION_BYTES, MAX_WORKFLOW_VERSION_FILE_BYTES, MAX_WORKFLOW_VERSION_FILES,
-    WorkflowPath, WorkflowVersion, WorkflowVersionId,
-};
+use fabro_types::{MAX_WORKFLOW_VERSION_BYTES, WorkflowPath};
+use fabro_workflow_version::CollectedWorkflowClosure;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -41,26 +39,9 @@ impl TryFrom<FabroWorkflowVersionCreateParams> for ValidatedWorkflowVersionCreat
 
     fn try_from(params: FabroWorkflowVersionCreateParams) -> Result<Self, Self::Error> {
         let FabroWorkflowVersionCreateParams { entrypoint, files } = params;
-        if !files.contains_key(&entrypoint) {
-            return Err(ToolError::message(
-                "entrypoint must be an exact supplied file key",
-            ));
-        }
-        if files.len() > MAX_WORKFLOW_VERSION_FILES {
-            return Err(ToolError::message(format!(
-                "workflow source exceeds {MAX_WORKFLOW_VERSION_FILES} files"
-            )));
-        }
-        let mut total = 0;
-        for content in files.values() {
-            if content.len() > MAX_WORKFLOW_VERSION_FILE_BYTES {
-                return Err(ToolError::message(format!(
-                    "workflow source file exceeds {} KiB",
-                    MAX_WORKFLOW_VERSION_FILE_BYTES / 1024
-                )));
-            }
-            total += content.len();
-        }
+        fabro_types::validate_workflow_files(&entrypoint, &files)
+            .map_err(|err| ToolError::message(err.to_string()))?;
+        let total: usize = files.values().map(String::len).sum();
         if total > MAX_WORKFLOW_VERSION_BYTES {
             return Err(ToolError::message(format!(
                 "workflow source exceeds {} MiB",
@@ -73,15 +54,6 @@ impl TryFrom<FabroWorkflowVersionCreateParams> for ValidatedWorkflowVersionCreat
     }
 }
 
-/// The complete validated closure for one supplied source tree.
-#[derive(Clone, Debug)]
-pub struct PackagedWorkflowVersions {
-    pub root_id:  WorkflowVersionId,
-    /// Every version in the closure, dependencies before the versions that
-    /// reference them, so callers can register them in this order.
-    pub versions: Vec<WorkflowVersion>,
-}
-
 /// Application seam for packaging supplied content. The manifest crates that
 /// own collection depend on this crate, so the packager is injected instead.
 /// Implementations confine reads to supplied files and validate the entire
@@ -91,7 +63,7 @@ pub trait WorkflowVersionPackager: Send + Sync {
     async fn package(
         &self,
         source: ValidatedWorkflowVersionCreate,
-    ) -> anyhow::Result<PackagedWorkflowVersions>;
+    ) -> anyhow::Result<CollectedWorkflowClosure>;
 }
 
 pub async fn create_workflow_version(
@@ -114,6 +86,7 @@ pub fn workflow_version_create_text(result: &CreateWorkflowVersionResponse) -> S
 
 #[cfg(test)]
 mod tests {
+    use fabro_types::{MAX_WORKFLOW_VERSION_FILE_BYTES, MAX_WORKFLOW_VERSION_FILES};
     use serde_json::json;
 
     use super::*;
@@ -227,7 +200,7 @@ mod tests {
         async fn package(
             &self,
             _: ValidatedWorkflowVersionCreate,
-        ) -> anyhow::Result<PackagedWorkflowVersions> {
+        ) -> anyhow::Result<CollectedWorkflowClosure> {
             panic!("scoped backend must not invoke the packager")
         }
     }
