@@ -570,7 +570,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-12T12:00:34.057253943Z",
-  "last_event_at": "2026-09-12T12:30:57.343509132Z",
+  "last_event_at": "2026-09-12T12:31:05.032939547Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -927,9 +927,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 141,
       "checkpoint": {
-        "timestamp": "2026-09-12T12:30:57.541906851Z",
+        "timestamp": "2026-09-12T12:31:05.031023550Z",
         "current_node": "revise",
         "completed_nodes": [
           "start",
@@ -940,115 +940,65 @@
         "node_retries": {},
         "context_values": {
           "internal.retry_count.revise": 0,
-          "child_run_id": "01M2AQY97EG1YDTSQES8FFFAS2",
-          "thread.develop.current_node": "revise",
-          "seed_cycles": {
-            "start": 1,
-            "survey": 1,
-            "develop": 1,
-            "revise": 1
-          },
-          "last_response": "{\"preferred_next_label\":\"Cycle complete\",\"outcome\":\"succeeded\",\"suggested_next_ids\":[],\"context_updates\":{\"journal\":{\"painpoints\":[],\"observations\":[\"revise pass created revisor child 01M2ARXSXPX2X6WA",
-          "internal.seed_cycle_anchor": "",
-          "internal.retry_count.start": 0,
-          "internal.work_dir": "/workspace/fabro",
+          "outcome": "succeeded",
           "thread.survey.current_node": "develop",
-          "response.revise": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.revise",
-            "chars": 420,
-            "preview": "{\"preferred_next_label\":\"Cycle complete\",\"outcome\":\"succeeded\",\"suggested_next_ids\":[],\"context_updates\":{\"journal\":{\"painpoints\":[],\"observations\":[\"revise pass created revisor child 01M2ARXSXPX2X6WA"
-          },
           "response.survey": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.survey",
             "chars": 1646,
             "preview": "{\n  \"preferred_next_label\": \"Work\",\n  \"outcome\": \"succeeded\",\n  \"suggested_next_ids\": [],\n  \"context_updates\": {\n    \"journal\": {\n      \"painpoints\": [\n        {\n          \"text\": \"First fetch attempt"
           },
-          "outcome": "succeeded",
-          "internal.exit_kind": "natural",
-          "graph.preamble_budget_kb": "12",
+          "response.revise": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.revise",
+            "chars": 420,
+            "preview": "{\"preferred_next_label\":\"Cycle complete\",\"outcome\":\"succeeded\",\"suggested_next_ids\":[],\"context_updates\":{\"journal\":{\"painpoints\":[],\"observations\":[\"revise pass created revisor child 01M2ARXSXPX2X6WA"
+          },
+          "internal.retry_count.start": 0,
+          "failure_signature": "",
+          "internal.node_visit_count": 1,
+          "preferred_label": "Cycle complete",
           "failure_class": "",
-          "graph.inspects": "develop,merge-upstream,revisor",
-          "graph.rankdir": "LR",
-          "current_node": "revise",
-          "internal.retry_count.survey": 0,
-          "internal.thread_id": "develop",
           "journal": {
             "painpoints": [],
             "observations": [
               "revise pass created revisor child 01M2ARXSXPX2X6WAE81NRRDY03 (parent of develop child 01M2AQY97EG1YDTSQES8FFFAS2, whose PR #133 already merged); revisor reached terminal succeeded on the first wait within a single 1800000ms call window; cycle complete for this pass"
             ]
           },
+          "internal.retry_count.survey": 0,
+          "internal.retry_count.develop": 0,
+          "seed_cycles": {
+            "start": 1,
+            "survey": 1,
+            "develop": 1,
+            "revise": 1
+          },
+          "last_stage": "revise",
+          "internal.work_dir": "/workspace/fabro",
+          "current_node": "revise",
+          "thread.develop.current_node": "revise",
+          "internal.run_id": "01M2AQT8CJN4G8QGV9QDWH4V84",
+          "graph.preamble_budget_kb": "12",
+          "internal.thread_id": "develop",
+          "graph.cycle_counter_reset_key": "pass_id",
+          "thread.start.current_node": "survey",
+          "graph.inspects": "develop,merge-upstream,revisor",
+          "graph.rankdir": "LR",
+          "internal.exit_kind": "natural",
+          "internal.seed_cycle_anchor": "",
           "response.develop": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.develop",
             "chars": 842,
             "preview": "{\"preferred_next_label\": \"Develop integrated\", \"outcome\": \"succeeded\", \"context_updates\": {\"child_run_id\": \"01M2AQY97EG1YDTSQES8FFFAS2\", \"journal\": {\"painpoints\": [], \"observations\": [\"develop child 0"
           },
-          "graph.cycle_counter_reset_key": "pass_id",
-          "failure_signature": "",
-          "graph.max_node_visits": "12",
-          "internal.run_id": "01M2AQT8CJN4G8QGV9QDWH4V84",
           "graph.goal": "Run the serialized fabro line: one pass = upstream merge (when the threshold is met, infra-only) OR one develop+revisor cycle; children are created only after the previous child merged",
-          "internal.node_visit_count": 1,
-          "preferred_label": "Cycle complete",
+          "graph.max_node_visits": "12",
           "internal.fidelity": "compact",
-          "internal.retry_count.develop": 0,
-          "last_stage": "revise",
-          "thread.start.current_node": "survey"
+          "child_run_id": "01M2AQY97EG1YDTSQES8FFFAS2",
+          "last_response": "{\"preferred_next_label\":\"Cycle complete\",\"outcome\":\"succeeded\",\"suggested_next_ids\":[],\"context_updates\":{\"journal\":{\"painpoints\":[],\"observations\":[\"revise pass created revisor child 01M2ARXSXPX2X6WA"
         },
         "node_outcomes": {
-          "survey": {
-            "status": "succeeded",
-            "preferred_label": "Work",
-            "context_updates": {
-              "journal": {
-                "painpoints": [
-                  {
-                    "text": "First fetch attempt hit the 10s default shell timeout (run 01M2AQT8CJN4G8QGV9QDWH4V84 survey pass): `git fetch upstream --prune && git fetch origin --prune` plus rev-list cannot finish reliably in 10s. Fix idea: surveyor prompt or script should prescribe `timeout_ms` >= 120000 for the fetch step, or split upstream/origin fetches into separate calls."
-                  },
-                  {
-                    "text": "`fabro_runs_list` rejects date-only `created_since` (\"2026-09-05\") with 'must be RFC 3339: premature end of input' — the prompt's example wording invites this. Fix idea: state the full timestamp format (e.g. `2026-09-05T00:00:00Z`) in the surveyor prompt, or make the tool accept date-only input."
-                  }
-                ],
-                "observations": [
-                  "upstream count 1 (< 5 MIN threshold) — newest upstream subject: \"Bump version to 0.354.0-nightly.0\"; drift accumulates toward threshold",
-                  "revisor backlog: none clear — newest develop run 01M299PVMSE7Q53ZGPP67AHNMG (PR 131) was revised by revisor run 01M29DJXWY2XY3Z05C0JGM6GF5 (PR 132, merged 03e69c2e9); ambiguous candidate: develop run 01M292T3YZ3B3YXXPT1R7F82XK (PR 128) whose revisor pass 01M29305HYN6144K9FSKZ8TGRC failed, but two newer revisor passes succeeded since (ADR-0015 newest-first may skip it as stale evidence)",
-                  "origin fetch created new remote branch origin/main — first time origin/main appears in this clone; next surveyor should not be surprised by it"
-                ]
-              },
-              "last_response": "{\n  \"preferred_next_label\": \"Work\",\n  \"outcome\": \"succeeded\",\n  \"suggested_next_ids\": [],\n  \"context_updates\": {\n    \"journal\": {\n      \"painpoints\": [\n        {\n          \"text\": \"First fetch attempt",
-              "last_stage": "survey",
-              "response.survey": {
-                "dedup": "response text omitted — payload lives in structured context keys",
-                "output_key": "output.survey",
-                "chars": 1646,
-                "preview": "{\n  \"preferred_next_label\": \"Work\",\n  \"outcome\": \"succeeded\",\n  \"suggested_next_ids\": [],\n  \"context_updates\": {\n    \"journal\": {\n      \"painpoints\": [\n        {\n          \"text\": \"First fetch attempt"
-              }
-            },
-            "notes": "Stage completed: survey",
-            "usage": {
-              "model": {
-                "provider": "zai",
-                "model_id": "glm-5.3"
-              },
-              "tokens": {
-                "input": 26114,
-                "output": 1462,
-                "reasoning": 578,
-                "cache_read": 78400,
-                "cache_write": 0
-              },
-              "total_usd_micros": 65913
-            },
-            "timing": {
-              "wall_time_ms": 0,
-              "inference_time_ms": 39288,
-              "tool_time_ms": 32857,
-              "active_time_ms": 72145
-            }
-          },
           "develop": {
             "status": "succeeded",
             "preferred_label": "Develop integrated",
@@ -1136,20 +1086,156 @@
           "start": {
             "status": "succeeded",
             "usage": null
+          },
+          "survey": {
+            "status": "succeeded",
+            "preferred_label": "Work",
+            "context_updates": {
+              "journal": {
+                "painpoints": [
+                  {
+                    "text": "First fetch attempt hit the 10s default shell timeout (run 01M2AQT8CJN4G8QGV9QDWH4V84 survey pass): `git fetch upstream --prune && git fetch origin --prune` plus rev-list cannot finish reliably in 10s. Fix idea: surveyor prompt or script should prescribe `timeout_ms` >= 120000 for the fetch step, or split upstream/origin fetches into separate calls."
+                  },
+                  {
+                    "text": "`fabro_runs_list` rejects date-only `created_since` (\"2026-09-05\") with 'must be RFC 3339: premature end of input' — the prompt's example wording invites this. Fix idea: state the full timestamp format (e.g. `2026-09-05T00:00:00Z`) in the surveyor prompt, or make the tool accept date-only input."
+                  }
+                ],
+                "observations": [
+                  "upstream count 1 (< 5 MIN threshold) — newest upstream subject: \"Bump version to 0.354.0-nightly.0\"; drift accumulates toward threshold",
+                  "revisor backlog: none clear — newest develop run 01M299PVMSE7Q53ZGPP67AHNMG (PR 131) was revised by revisor run 01M29DJXWY2XY3Z05C0JGM6GF5 (PR 132, merged 03e69c2e9); ambiguous candidate: develop run 01M292T3YZ3B3YXXPT1R7F82XK (PR 128) whose revisor pass 01M29305HYN6144K9FSKZ8TGRC failed, but two newer revisor passes succeeded since (ADR-0015 newest-first may skip it as stale evidence)",
+                  "origin fetch created new remote branch origin/main — first time origin/main appears in this clone; next surveyor should not be surprised by it"
+                ]
+              },
+              "last_response": "{\n  \"preferred_next_label\": \"Work\",\n  \"outcome\": \"succeeded\",\n  \"suggested_next_ids\": [],\n  \"context_updates\": {\n    \"journal\": {\n      \"painpoints\": [\n        {\n          \"text\": \"First fetch attempt",
+              "last_stage": "survey",
+              "response.survey": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.survey",
+                "chars": 1646,
+                "preview": "{\n  \"preferred_next_label\": \"Work\",\n  \"outcome\": \"succeeded\",\n  \"suggested_next_ids\": [],\n  \"context_updates\": {\n    \"journal\": {\n      \"painpoints\": [\n        {\n          \"text\": \"First fetch attempt"
+              }
+            },
+            "notes": "Stage completed: survey",
+            "usage": {
+              "model": {
+                "provider": "zai",
+                "model_id": "glm-5.3"
+              },
+              "tokens": {
+                "input": 26114,
+                "output": 1462,
+                "reasoning": 578,
+                "cache_read": 78400,
+                "cache_write": 0
+              },
+              "total_usd_micros": 65913
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 39288,
+              "tool_time_ms": 32857,
+              "active_time_ms": 72145
+            }
           }
         },
         "next_node_id": "exit",
+        "git_commit_sha": "184eef8521a17c2f086e6bd8b0916ddadf823013",
         "node_visits": {
-          "survey": 1,
-          "start": 1,
           "develop": 1,
-          "revise": 1
+          "revise": 1,
+          "start": 1,
+          "survey": 1
         }
       },
-      "diff": {}
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M2AQT8CJN4G8QGV9QDWH4V84.jsonl b/.fabro/journal/01M2AQT8CJN4G8QGV9QDWH4V84.jsonl\nindex 158d8fa07..d1bbe6bb6 100644\n--- a/.fabro/journal/01M2AQT8CJN4G8QGV9QDWH4V84.jsonl\n+++ b/.fabro/journal/01M2AQT8CJN4G8QGV9QDWH4V84.jsonl\n@@ -1,3 +1,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M2AQT8CJN4G8QGV9QDWH4V84\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-12T12:00:37Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M2AQT8CJN4G8QGV9QDWH4V84\",\"node\":\"survey\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-12T12:01:57Z\",\"data\":{\"painpoints\":[{\"text\":\"First fetch attempt hit the 10s default shell timeout (run 01M2AQT8CJN4G8QGV9QDWH4V84 survey pass): `git fetch upstream --prune && git fetch origin --prune` plus rev-list cannot finish reliably in 10s. Fix idea: surveyor prompt or script should prescribe `timeout_ms` >= 120000 for the fetch step, or split upstream/origin fetches into separate calls.\"},{\"text\":\"`fabro_runs_list` rejects date-only `created_since` (\\\"2026-09-05\\\") with 'must be RFC 3339: premature end of input' — the prompt's example wording invites this. Fix idea: state the full timestamp format (e.g. `2026-09-05T00:00:00Z`) in the surveyor prompt, or make the tool accept date-only input.\"}],\"observations\":[\"upstream count 1 (< 5 MIN threshold) — newest upstream subject: \\\"Bump version to 0.354.0-nightly.0\\\"; drift accumulates toward threshold\",\"revisor backlog: none clear — newest develop run 01M299PVMSE7Q53ZGPP67AHNMG (PR 131) was revised by revisor run 01M29DJXWY2XY3Z05C0JGM6GF5 (PR 132, merged 03e69c2e9); ambiguous candidate: develop run 01M292T3YZ3B3YXXPT1R7F82XK (PR 128) whose revisor pass 01M29305HYN6144K9FSKZ8TGRC failed, but two newer revisor passes succeeded since (ADR-0015 newest-first may skip it as stale evidence)\",\"origin fetch created new remote branch origin/main — first time origin/main appears in this clone; next surveyor should not be surprised by it\"]}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M2AQT8CJN4G8QGV9QDWH4V84\",\"node\":\"develop\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-12T12:19:09Z\",\"data\":{\"painpoints\":[],\"observations\":[\"develop child 01M2AQY97EG1YDTSQES8FFFAS2 (seed fabro-7e8d, quarantine flaky e2e_stall_watchdog_with_explicit_timeout_override test via nextest overrides in .config/nextest.toml) succeeded in ~16 min, PR #133 opened and gate wait returned merged on the first wait; seed closed by deterministic closeout\",\"evidence capture header of the child run mislabeled the seed as fabro-5082 while the actual claimed seed was fabro-7e8d — the evidence.nu seed-id recovery picked a stale id; the reviewer judged correctly from context keys, but revisor/improve passes reading the journal fallback could mis-attribute runs (relevant to open engine seed fabro-9372)\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M2AQT8CJN4G8QGV9QDWH4V84\",\"node\":\"revise\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-12T12:30:57Z\",\"data\":{\"painpoints\":[],\"observations\":[\"revise pass created revisor child 01M2ARXSXPX2X6WAE81NRRDY03 (parent of develop child 01M2AQY97EG1YDTSQES8FFFAS2, whose PR #133 already merged); revisor reached terminal succeeded on the first wait within a single 1800000ms call window; cycle complete for this pass\"]}}\n",
+        "summary": {
+          "files_changed": 1,
+          "additions": 4,
+          "deletions": 0
+        }
+      }
     }
   ],
-  "conclusion": null,
+  "conclusion": {
+    "timestamp": "2026-09-12T12:31:05.104755328Z",
+    "status": "succeeded",
+    "timing": {
+      "wall_time_ms": 1647556,
+      "inference_time_ms": 82645,
+      "tool_time_ms": 1546100,
+      "active_time_ms": 1628745
+    },
+    "final_git_commit_sha": "184eef8521a17c2f086e6bd8b0916ddadf823013",
+    "stages": [
+      {
+        "stage_id": "start",
+        "stage_label": "start",
+        "timing": {
+          "wall_time_ms": 0,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "survey",
+        "stage_label": "survey",
+        "timing": {
+          "wall_time_ms": 72761,
+          "inference_time_ms": 39288,
+          "tool_time_ms": 32857,
+          "active_time_ms": 72145
+        },
+        "billing_usd_micros": 65913,
+        "retries": 0
+      },
+      {
+        "stage_id": "develop",
+        "stage_label": "develop",
+        "timing": {
+          "wall_time_ms": 924391,
+          "inference_time_ms": 25063,
+          "tool_time_ms": 898743,
+          "active_time_ms": 923806
+        },
+        "billing_usd_micros": 210999,
+        "retries": 0
+      },
+      {
+        "stage_id": "revise",
+        "stage_label": "revise",
+        "timing": {
+          "wall_time_ms": 633318,
+          "inference_time_ms": 18294,
+          "tool_time_ms": 614500,
+          "active_time_ms": 632794
+        },
+        "billing_usd_micros": 28364,
+        "retries": 0
+      }
+    ],
+    "billing": {
+      "input_tokens": 162141,
+      "output_tokens": 2382,
+      "total_tokens": 414786,
+      "reasoning_tokens": 663,
+      "cache_read_tokens": 249600,
+      "cache_write_tokens": 0,
+      "total_usd_micros": 305276
+    },
+    "total_retries": 0,
+    "diff": {
+      "patch": "diff --git a/.fabro/journal/01M2AQT8CJN4G8QGV9QDWH4V84.jsonl b/.fabro/journal/01M2AQT8CJN4G8QGV9QDWH4V84.jsonl\nnew file mode 100644\nindex 000000000..d1bbe6bb6\n--- /dev/null\n+++ b/.fabro/journal/01M2AQT8CJN4G8QGV9QDWH4V84.jsonl\n@@ -0,0 +1,4 @@\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M2AQT8CJN4G8QGV9QDWH4V84\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-12T12:00:37Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M2AQT8CJN4G8QGV9QDWH4V84\",\"node\":\"survey\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-12T12:01:57Z\",\"data\":{\"painpoints\":[{\"text\":\"First fetch attempt hit the 10s default shell timeout (run 01M2AQT8CJN4G8QGV9QDWH4V84 survey pass): `git fetch upstream --prune && git fetch origin --prune` plus rev-list cannot finish reliably in 10s. Fix idea: surveyor prompt or script should prescribe `timeout_ms` >= 120000 for the fetch step, or split upstream/origin fetches into separate calls.\"},{\"text\":\"`fabro_runs_list` rejects date-only `created_since` (\\\"2026-09-05\\\") with 'must be RFC 3339: premature end of input' — the prompt's example wording invites this. Fix idea: state the full timestamp format (e.g. `2026-09-05T00:00:00Z`) in the surveyor prompt, or make the tool accept date-only input.\"}],\"observations\":[\"upstream count 1 (< 5 MIN threshold) — newest upstream subject: \\\"Bump version to 0.354.0-nightly.0\\\"; drift accumulates toward threshold\",\"revisor backlog: none clear — newest develop run 01M299PVMSE7Q53ZGPP67AHNMG (PR 131) was revised by revisor run 01M29DJXWY2XY3Z05C0JGM6GF5 (PR 132, merged 03e69c2e9); ambiguous candidate: develop run 01M292T3YZ3B3YXXPT1R7F82XK (PR 128) whose revisor pass 01M29305HYN6144K9FSKZ8TGRC failed, but two newer revisor passes succeeded since (ADR-0015 newest-first may skip it as stale evidence)\",\"origin fetch created new remote branch origin/main — first time origin/main appears in this clone; next surveyor should not be surprised by it\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M2AQT8CJN4G8QGV9QDWH4V84\",\"node\":\"develop\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-12T12:19:09Z\",\"data\":{\"painpoints\":[],\"observations\":[\"develop child 01M2AQY97EG1YDTSQES8FFFAS2 (seed fabro-7e8d, quarantine flaky e2e_stall_watchdog_with_explicit_timeout_override test via nextest overrides in .config/nextest.toml) succeeded in ~16 min, PR #133 opened and gate wait returned merged on the first wait; seed closed by deterministic closeout\",\"evidence capture header of the child run mislabeled the seed as fabro-5082 while the actual claimed seed was fabro-7e8d — the evidence.nu seed-id recovery picked a stale id; the reviewer judged correctly from context keys, but revisor/improve passes reading the journal fallback could mis-attribute runs (relevant to open engine seed fabro-9372)\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M2AQT8CJN4G8QGV9QDWH4V84\",\"node\":\"revise\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-12T12:30:57Z\",\"data\":{\"painpoints\":[],\"observations\":[\"revise pass created revisor child 01M2ARXSXPX2X6WAE81NRRDY03 (parent of develop child 01M2AQY97EG1YDTSQES8FFFAS2, whose PR #133 already merged); revisor reached terminal succeeded on the first wait within a single 1800000ms call window; cycle complete for this pass\"]}}\n",
+      "summary": {
+        "files_changed": 1,
+        "additions": 4,
+        "deletions": 0
+      }
+    },
+    "exit_kind": "natural"
+  },
   "sandbox": {
     "kind": "ready",
     "plan": {
@@ -1727,6 +1813,42 @@
           }
         ],
         "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "exit@1": {
+      "first_event_seq": 144,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-12T12:31:05.032939547Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-12T12:31:05.032895448Z",
+      "handler": "exit",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
       },
       "agent_control": "running",
       "state": "succeeded"
