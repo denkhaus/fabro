@@ -1,10 +1,17 @@
 #!/usr/bin/env nu
 # Block until the local server answers /health (thin launcher:
 # `just wait-healthy`). On timeout, dump compose ps/logs as diagnostics.
+#
+# The default must cover COLD starts, not just warm recreations: a fresh
+# container runs SQLite blob/run-history activation, SlateDB open, and an
+# integrity check (observed ~40s alone on the 2026-09-12 volumes) before
+# /health answers — a 90s cap failed healthy deploys as a false alarm
+# (2026-09-11 handoff). 240s keeps the failure signal prompt enough while
+# tolerating the slowest observed cold start with headroom.
 
 def main [
-    port: string = "32276"   # server port
-    --timeout(-t): int = 90   # seconds to wait
+    port: string = "32276"    # server port
+    --timeout(-t): int = 240  # seconds to wait (cold-start budget)
 ]: nothing -> nothing {
     let url = $"http://127.0.0.1:($port)/health"
     print $"wait-healthy: waiting for ($url) ..."
