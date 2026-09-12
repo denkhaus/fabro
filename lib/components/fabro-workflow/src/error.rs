@@ -576,8 +576,14 @@ impl Error {
             } => FailureReason::PublishFailed,
             // A multi-hour provider usage window cannot be bridged by
             // retries: park the run as a soft stop so it stays resumable
-            // instead of failing hard (fabro-a3d8).
-            Self::Llm(err) if fabro_llm::long_rate_limit_window(err).is_some() => {
+            // instead of failing hard (fabro-a3d8). A naive (offset-less)
+            // reset timestamp parks too: its true wait is unknown, and
+            // computing one from UTC would misread west-of-UTC providers
+            // as already reset (fabro-0607).
+            Self::Llm(err)
+                if fabro_llm::long_rate_limit_window(err).is_some()
+                    || fabro_llm::rate_limit_window_unknown(err) =>
+            {
                 FailureReason::SoftStop
             }
             _ => FailureReason::WorkflowError,
@@ -1180,6 +1186,21 @@ mod tests {
     /// fabro-a3d8: a rate limit whose provider-advised reset window is
     /// longer than the retry budget parks as a soft stop (resumable);
     /// short-window 429s keep the hard workflow-error mapping.
+    /// fabro-0607: naive (offset-less) reset prose parks even with NO
+    /// trusted window attached — the unknown-ETA path.
+    #[test]
+    fn naive_reset_prose_without_a_window_still_maps_to_soft_stop() {
+        let naive = ErrorData::from(
+            fabro_llm::Error::new(
+                ErrorKind::RateLimit,
+                "Usage limit reached for 5 hour. Your limit will reset at 2026-09-03 05:35:16",
+            )
+            .with_provider(lithos_llm::catalog::builtin::openai())
+            .with_retry(RetryClassification::Safe),
+        );
+        assert_eq!(Error::from(naive).failure_reason(), FailureReason::SoftStop);
+    }
+
     #[test]
     fn long_window_rate_limit_maps_to_soft_stop() {
         let with_window = |millis| {

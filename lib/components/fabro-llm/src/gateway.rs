@@ -129,8 +129,17 @@ fn gateway_error(err: GatewayError, provider: &ProviderId) -> Error {
                     error = error.with_retry(RetryClassification::Safe);
                     // The header wins when the provider sent one; otherwise
                     // the reset deadline may still live in the message prose.
-                    let after =
-                        retry_after(&headers).or_else(|| reset_window(&message, SystemTime::now()));
+                    // A naive (offset-less) prose timestamp attaches NOTHING
+                    // here: its duration would be wrong by the provider's
+                    // local offset, and a past-in-UTC misread would silently
+                    // disable the park (fabro-0607). The classifier in
+                    // `rate_limit_window_unknown` still parks on its presence.
+                    let after = retry_after(&headers).or_else(|| {
+                        match reset_window(&message, SystemTime::now()) {
+                            Some(RateLimitWindow::Reopens(after)) => Some(after),
+                            Some(RateLimitWindow::UnknownEta) | None => None,
+                        }
+                    });
                     if let Some(after) = after {
                         error = error
                             .with_retry(RetryClassification::after(after))
@@ -163,34 +172,80 @@ fn retry_after(headers: &HeaderMap) -> Option<Duration> {
 /// The timestamp format providers embed in usage-window reset prose.
 const RESET_TIMESTAMP_LEN: usize = "YYYY-MM-DD HH:MM:SS".len();
 
+/// A reset deadline parsed out of provider error prose (fabro-0607).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ResetDeadline {
+    /// A timestamp with an explicit UTC offset: trustworthy as an absolute
+    /// instant.
+    At(chrono::DateTime<chrono::FixedOffset>),
+    /// A timezone-naive wallclock. The provider's local offset is unknown
+    /// (zai sends Beijing wallclock), so it must never become an absolute
+    /// deadline — west-of-UTC providers would look already-reset and
+    /// silently disable the park.
+    Naive,
+}
+
 /// Parses a provider usage-window reset deadline out of error message text.
 ///
 /// Some providers (zai and Anthropic-style 429 bodies) say when a usage
 /// window reopens only in prose: "Usage limit reached for 5 hour. Your limit
-/// will reset at 2026-09-03 05:35:16". The timestamp is timezone-naive and
-/// is read as UTC (fabro-a3d8).
+/// will reset at 2026-09-03 05:35:16". RFC3339 timestamps (with offset)
+/// parse as [`ResetDeadline::At`]; the offset-less wallclock form parses as
+/// [`ResetDeadline::Naive`] (fabro-a3d8, fabro-0607).
 #[must_use]
-pub fn parse_reset_deadline(message: &str) -> Option<NaiveDateTime> {
+pub fn parse_reset_deadline(message: &str) -> Option<ResetDeadline> {
     let marker = "will reset at ";
     let start = message.find(marker)? + marker.len();
-    let timestamp = message.get(start..)?.get(..RESET_TIMESTAMP_LEN)?;
-    NaiveDateTime::parse_from_str(timestamp, "%Y-%m-%d %H:%M:%S").ok()
+    let rest = message.get(start..)?;
+    let token = rest.split_whitespace().next()?;
+    if let Ok(at) = chrono::DateTime::parse_from_rfc3339(token) {
+        return Some(ResetDeadline::At(at));
+    }
+    let timestamp = rest.get(..RESET_TIMESTAMP_LEN)?;
+    if NaiveDateTime::parse_from_str(timestamp, "%Y-%m-%d %H:%M:%S").is_ok() {
+        return Some(ResetDeadline::Naive);
+    }
+    None
 }
 
-/// The wait until the reset deadline parsed from `message`, when one exists
-/// and lies in the future at `now`.
-///
-/// A deadline already reached advises nothing — the window has reopened, so
-/// ordinary short-window retry behavior applies.
+/// Whether `message` announces a reset only as a timezone-naive wallclock.
 #[must_use]
-pub fn reset_window(message: &str, now: SystemTime) -> Option<Duration> {
-    let deadline = parse_reset_deadline(message)?;
-    let now = chrono::DateTime::<chrono::Utc>::from(now).naive_utc();
-    deadline
-        .signed_duration_since(now)
-        .to_std()
-        .ok()
-        .filter(|window| !window.is_zero())
+pub fn reset_prose_is_naive(message: &str) -> bool {
+    matches!(parse_reset_deadline(message), Some(ResetDeadline::Naive))
+}
+
+/// The provider's announced wait until its usage window reopens
+/// (fabro-0607).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RateLimitWindow {
+    /// A trustworthy reopen wait: parsed from an offset-carrying timestamp
+    /// that still lies in the future at `now`.
+    Reopens(Duration),
+    /// A reset was announced, but its timestamp carries no UTC offset: the
+    /// real wait is unknown. Callers must still treat the window as closed
+    /// (park) instead of computing a duration.
+    UnknownEta,
+}
+
+/// The wait until the reset deadline parsed from `message`, when one exists.
+///
+/// Offset-carrying deadlines already reached advise nothing — the window
+/// has reopened, so ordinary short-window retry behavior applies. Naive
+/// wallclocks return [`RateLimitWindow::UnknownEta`] regardless of how they
+/// compare against UTC now: without the provider's offset the comparison
+/// itself is meaningless.
+#[must_use]
+pub fn reset_window(message: &str, now: SystemTime) -> Option<RateLimitWindow> {
+    match parse_reset_deadline(message)? {
+        ResetDeadline::At(deadline) => deadline
+            .with_timezone(&chrono::Utc)
+            .signed_duration_since(chrono::DateTime::<chrono::Utc>::from(now))
+            .to_std()
+            .ok()
+            .filter(|window| !window.is_zero())
+            .map(RateLimitWindow::Reopens),
+        ResetDeadline::Naive => Some(RateLimitWindow::UnknownEta),
+    }
 }
 
 /// Reads the Fabro API error envelope (`errors[0].detail` / `code`), falling
@@ -307,6 +362,7 @@ mod tests {
 
     use super::*;
     use crate::client::default_retry_policy;
+    use crate::error::rate_limit_window_unknown;
 
     /// The zai 429 body from the fabro-a3d8 incident: `retry_after=null`,
     /// the reset deadline only in message prose.
@@ -327,16 +383,23 @@ mod tests {
     }
 
     #[test]
-    fn reset_deadline_is_parsed_from_zai_usage_prose() {
+    fn naive_reset_prose_parses_as_untrustworthy() {
+        // The zai incident wording: Beijing wallclock without an offset.
         assert_eq!(
-            parse_reset_deadline(ZAI_USAGE_LIMIT).map(|deadline| deadline.and_utc()),
-            Some(utc(2026, 9, 3, 5, 35, 16))
+            parse_reset_deadline(ZAI_USAGE_LIMIT),
+            Some(ResetDeadline::Naive)
         );
         // The Anthropic-style wording without the window sentence parses too.
         assert_eq!(
-            parse_reset_deadline("Your limit will reset at 2026-09-03 05:35:16")
-                .map(|deadline| deadline.and_utc()),
-            Some(utc(2026, 9, 3, 5, 35, 16))
+            parse_reset_deadline("Your limit will reset at 2026-09-03 05:35:16"),
+            Some(ResetDeadline::Naive)
+        );
+        // An RFC3339 timestamp with an explicit offset is trustworthy.
+        let at = chrono::DateTime::parse_from_rfc3339("2026-09-03T05:35:16+08:00")
+            .expect("valid rfc3339");
+        assert_eq!(
+            parse_reset_deadline("Your limit will reset at 2026-09-03T05:35:16+08:00"),
+            Some(ResetDeadline::At(at))
         );
     }
 
@@ -348,20 +411,41 @@ mod tests {
     }
 
     #[test]
-    fn reset_window_measures_from_now_and_drops_past_deadlines() {
+    fn naive_reset_window_is_unknown_regardless_of_utc_reading() {
+        // A naive wallclock is UnknownEta whether it reads as future ...
         let now = utc(2026, 9, 3, 1, 35, 16);
         assert_eq!(
             reset_window(ZAI_USAGE_LIMIT, SystemTime::from(now)),
-            Some(Duration::from_hours(4))
+            Some(RateLimitWindow::UnknownEta)
         );
-        // At or past the deadline there is nothing left to wait for.
+        // ... or as past (the west-of-UTC sharp edge: a naive-UTC reading
+        // in the past must NOT read as "window reopened", fabro-0607).
         let later = utc(2026, 9, 3, 5, 35, 16);
-        assert_eq!(reset_window(ZAI_USAGE_LIMIT, SystemTime::from(later)), None);
+        assert_eq!(
+            reset_window(ZAI_USAGE_LIMIT, SystemTime::from(later)),
+            Some(RateLimitWindow::UnknownEta)
+        );
         let much_later = utc(2026, 9, 4, 0, 0, 0);
         assert_eq!(
             reset_window(ZAI_USAGE_LIMIT, SystemTime::from(much_later)),
-            None
+            Some(RateLimitWindow::UnknownEta)
         );
+    }
+
+    #[test]
+    fn offset_carrying_reset_window_measures_and_drops_past_deadlines() {
+        // 05:35:16 at +08:00 == 2026-09-02 21:35:16 UTC.
+        let prose = "Your limit will reset at 2026-09-03T05:35:16+08:00";
+        let now = utc(2026, 9, 2, 19, 35, 16);
+        assert_eq!(
+            reset_window(prose, SystemTime::from(now)),
+            Some(RateLimitWindow::Reopens(Duration::from_hours(2)))
+        );
+        // At or past the (trustworthy) deadline there is nothing to wait for.
+        let later = utc(2026, 9, 2, 21, 35, 16);
+        assert_eq!(reset_window(prose, SystemTime::from(later)), None);
+        let much_later = utc(2026, 9, 4, 0, 0, 0);
+        assert_eq!(reset_window(prose, SystemTime::from(much_later)), None);
     }
 
     /// A reset deadline safely in the future for any test run date.
@@ -369,6 +453,13 @@ mod tests {
         let future =
             chrono::DateTime::<chrono::Utc>::from(SystemTime::now()) + chrono::Duration::hours(3);
         future.format("%Y-%m-%d %H:%M:%S").to_string()
+    }
+
+    /// The same deadline with an explicit UTC offset (RFC3339).
+    fn far_future_reset_rfc3339() -> String {
+        let future =
+            chrono::DateTime::<chrono::Utc>::from(SystemTime::now()) + chrono::Duration::hours(3);
+        future.to_rfc3339()
     }
 
     #[test]
@@ -419,13 +510,13 @@ mod tests {
     }
 
     #[test]
-    fn rate_limit_prose_attaches_the_reset_window() {
+    fn offset_carrying_prose_attaches_the_reset_window() {
         let provider = ProviderId::new("zai");
         // The incident wording with a deadline still in the future so the
         // measured window is hours, not empty.
         let message = format!(
             "Usage limit reached for 5 hour. Your limit will reset at {}",
-            far_future_reset()
+            far_future_reset_rfc3339()
         );
         let body =
             serde_json::json!({ "errors": [{ "status": "429", "detail": message }] }).to_string();
@@ -447,6 +538,31 @@ mod tests {
         // default policy must refuse the next attempt and surface the error
         // immediately rather than burning the remaining attempts.
         assert_eq!(default_retry_policy().next_delay(1, &error), None);
+    }
+
+    #[test]
+    fn naive_prose_attaches_no_duration_but_flags_unknown() {
+        let provider = ProviderId::new("zai");
+        // The zai incident form: wallclock without offset. No duration may
+        // be attached (it would be off by the provider's offset), and the
+        // classifier must still recognize the closed window (fabro-0607).
+        let message = format!(
+            "Usage limit reached for 5 hour. Your limit will reset at {}",
+            far_future_reset()
+        );
+        let body =
+            serde_json::json!({ "errors": [{ "status": "429", "detail": message }] }).to_string();
+        let error = gateway_error(
+            GatewayError::Status {
+                status: 429,
+                headers: HeaderMap::new(),
+                body,
+            },
+            &provider,
+        );
+        assert_eq!(error.provider_retry_after(), None);
+        assert_eq!(error.retry_after(), None);
+        assert!(rate_limit_window_unknown(&error.data()));
     }
 
     #[test]

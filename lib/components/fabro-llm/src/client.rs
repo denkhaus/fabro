@@ -13,7 +13,7 @@ use lithos_llm::middleware::{
 };
 use lithos_llm::types::{Error, ErrorData, ErrorKind, RetryClassification};
 
-use crate::gateway::reset_window;
+use crate::gateway::{RateLimitWindow, reset_window};
 
 /// The application name lithos reports to providers that ask, such as the
 /// `originator` header on the OpenAI Codex deployment.
@@ -115,10 +115,13 @@ fn enrich_rate_limit_reset(error: Error) -> Error {
         return error;
     }
     match reset_window(error.message(), SystemTime::now()) {
-        Some(window) => error
+        Some(RateLimitWindow::Reopens(window)) => error
             .with_retry(RetryClassification::after(window))
             .with_provider_retry_after(window),
-        None => error,
+        // Naive prose attaches no duration (the provider's offset is
+        // unknown, fabro-0607); `rate_limit_window_unknown` parks on the
+        // announcement's presence instead.
+        Some(RateLimitWindow::UnknownEta) | None => error,
     }
 }
 
@@ -300,15 +303,17 @@ mod tests {
     use fabro_auth::test_support::env_credential_source;
 
     use super::*;
+    use crate::error::rate_limit_window_unknown;
     use crate::test_support::test_catalog;
 
     #[test]
     fn rate_limit_prose_attaches_the_reset_window_and_fails_fast() {
         let future = chrono::DateTime::<chrono::Utc>::from(std::time::SystemTime::now())
             + chrono::Duration::hours(4);
+        // RFC3339 with offset: the trustworthy form (fabro-0607).
         let message = format!(
             "Usage limit reached for 5 hour. Your limit will reset at {}",
-            future.format("%Y-%m-%d %H:%M:%S")
+            future.to_rfc3339()
         );
         let error = enrich_rate_limit_reset(
             Error::new(ErrorKind::RateLimit, message).with_retry(RetryClassification::Safe),
@@ -319,6 +324,20 @@ mod tests {
         // A multi-hour window is beyond the policy's backoff budget: the
         // middleware must surface the error instead of retrying.
         assert_eq!(default_retry_policy().next_delay(1, &error), None);
+    }
+
+    #[test]
+    fn naive_prose_attaches_no_duration_and_flags_unknown() {
+        // The zai incident form (wallclock, no offset): no duration is
+        // attached; the unknown-ETA classifier recognizes it (fabro-0607).
+        let message =
+            "Usage limit reached for 5 hour. Your limit will reset at 2026-09-03 05:35:16";
+        let error = enrich_rate_limit_reset(
+            Error::new(ErrorKind::RateLimit, message.to_string())
+                .with_retry(RetryClassification::Safe),
+        );
+        assert_eq!(error.provider_retry_after(), None);
+        assert!(rate_limit_window_unknown(&error.data()));
     }
 
     #[test]
@@ -343,10 +362,7 @@ mod tests {
         // A short parsed window within the retry-after cap is honored exactly.
         let future = chrono::DateTime::<chrono::Utc>::from(std::time::SystemTime::now())
             + chrono::Duration::seconds(30);
-        let message = format!(
-            "Your limit will reset at {}",
-            future.format("%Y-%m-%d %H:%M:%S")
-        );
+        let message = format!("Your limit will reset at {}", future.to_rfc3339());
         let short_window = enrich_rate_limit_reset(
             Error::new(ErrorKind::RateLimit, message).with_retry(RetryClassification::Safe),
         );

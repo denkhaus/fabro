@@ -9,6 +9,8 @@ use std::time::Duration;
 use lithos_llm::catalog::ProviderId;
 use lithos_llm::types::{ErrorData, ErrorKind};
 
+use crate::gateway::reset_prose_is_naive;
+
 /// A rate-limit wait longer than the retry middleware's `Retry-After` cap.
 ///
 /// The retry layer honors provider waits only up to this bound; anything
@@ -28,6 +30,27 @@ pub fn long_rate_limit_window(error: &ErrorData) -> Option<Duration> {
     }
     let window = error.provider_retry_after()?;
     (window > LONG_RATE_LIMIT_WINDOW).then_some(window)
+}
+
+/// Whether a rate-limit failure announced a reset whose deadline carries no
+/// UTC offset (fabro-0607).
+///
+/// The real wait is unknown — the provider's wallclock offset is missing
+/// (zai sends Beijing time), so no duration may be computed from it. Such
+/// errors must still park the run (soft stop): the usage window is closed
+/// for an unknown, potentially multi-hour span, and count-based retries
+/// would burn attempts against a live limit.
+#[must_use]
+pub fn rate_limit_window_unknown(error: &ErrorData) -> bool {
+    if error.kind() != ErrorKind::RateLimit {
+        return false;
+    }
+    // A trusted value — a Retry-After header or an offset-carrying
+    // timestamp — governs when present.
+    if error.provider_retry_after().is_some() {
+        return false;
+    }
+    reset_prose_is_naive(error.message())
 }
 
 /// A stable `category|provider|detail` string for loop and restart detection.

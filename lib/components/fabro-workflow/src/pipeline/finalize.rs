@@ -4,7 +4,7 @@ use std::time::{Instant, SystemTime};
 use fabro_dump::RunDump;
 use fabro_hooks::{HookContext, HookEvent};
 use fabro_llm::LONG_RATE_LIMIT_WINDOW;
-use fabro_llm::gateway::reset_window;
+use fabro_llm::gateway::{RateLimitWindow, reset_window};
 use fabro_types::run_event::{MetadataSnapshotFailureKind, MetadataSnapshotPhase};
 use fabro_types::{BilledTokenCounts, DiffSummary, EventBody, RunFailure, RunProjection};
 use fabro_util::error::collect_causes;
@@ -34,7 +34,12 @@ use crate::services::RunServices;
 /// hard-error mapping.
 fn soft_stop_failure_reason(failure: &FailureDetail) -> FailureReason {
     match reset_window(&failure.message, SystemTime::now()) {
-        Some(window) if window > LONG_RATE_LIMIT_WINDOW => FailureReason::SoftStop,
+        // A naive (offset-less) reset timestamp has an unknown true wait;
+        // park rather than guess a duration (fabro-0607).
+        Some(RateLimitWindow::UnknownEta) => FailureReason::SoftStop,
+        Some(RateLimitWindow::Reopens(window)) if window > LONG_RATE_LIMIT_WINDOW => {
+            FailureReason::SoftStop
+        }
         _ => FailureReason::WorkflowError,
     }
 }
@@ -1139,9 +1144,11 @@ mod tests {
     fn long_window_rate_limit_failure_parks_as_soft_stop() {
         let future = chrono::DateTime::<chrono::Utc>::from(std::time::SystemTime::now())
             + chrono::Duration::hours(5);
+        // RFC3339 with offset: the trustworthy form (fabro-0607). The naive
+        // form parks too, via the unknown-ETA classifier — covered below.
         let message = format!(
             "Usage limit reached for 5 hour. Your limit will reset at {}",
-            future.format("%Y-%m-%d %H:%M:%S")
+            future.to_rfc3339()
         );
         let mut outcome = Outcome::success();
         outcome.status = StageOutcome::Failed {
@@ -1164,6 +1171,32 @@ mod tests {
 
     /// The same shape without a long reset window keeps the hard-error
     /// mapping: short 429s are ordinary transient failures.
+    /// fabro-0607: a reset timestamp without a UTC offset parks as a soft
+    /// stop even when its naive-UTC reading lies in the PAST — the
+    /// west-of-UTC sharp edge that previously disabled the park silently.
+    #[test]
+    fn naive_past_reset_prose_still_parks_as_soft_stop() {
+        // Wallclock 2026-01-01 05:35:16 with NO offset: as naive-UTC this
+        // is long past, which used to read as "window reopened".
+        let message =
+            "Usage limit reached for 5 hour. Your limit will reset at 2026-01-01 05:35:16";
+        let mut outcome = Outcome::success();
+        outcome.status = StageOutcome::Failed {
+            retry_requested: false,
+        };
+        outcome.failure = Some(FailureDetail::new(
+            message.to_string(),
+            crate::error::FailureCategory::TransientInfra,
+        ));
+        let (status, failure, run_status) = classify_engine_result(&Ok(outcome));
+        assert!(matches!(status, StageOutcome::Failed { .. }));
+        let failure = failure.expect("failed outcome carries a failure");
+        assert_eq!(failure.reason, FailureReason::SoftStop);
+        assert!(matches!(run_status, RunStatus::Failed {
+            reason: FailureReason::SoftStop,
+        }));
+    }
+
     #[test]
     fn short_window_rate_limit_failure_stays_a_hard_error() {
         let mut outcome = Outcome::success();
