@@ -7843,4 +7843,228 @@ mod tests {
             assert!(open_bracket(&state).is_none());
         }
     }
+
+    /// Fabro's stage fold and pebble's `SessionProjection` read the same
+    /// stored events. The stage projection stays fabro's: it is the wire
+    /// contract the API serves and is applied to incrementally, so pebble's
+    /// value cannot stand in for it. These tests pin the two folds to each
+    /// other for a retained session that spans two stages, so a stage's live
+    /// account is the prompt delta pebble reports and the two never drift.
+    mod session_projection_parity {
+        use pebble_coding_agent::events::InputSource;
+        use pebble_coding_agent::projection::{
+            SessionActivity, SessionProjection, SubagentStatus as PebbleSubagentStatus,
+        };
+
+        use super::*;
+
+        const ROOT: &str = "ses_retained";
+        const CHILD: &str = "ses_child";
+
+        fn stored(seq: u32, stage: &StageId, event: CodingAgentEvent) -> EventEnvelope {
+            let session_id = event.session_id.clone();
+            let parent_session_id = event.parent_session_id.clone();
+            let body =
+                EventBody::Agent(AgentEventProps::new(stage.node_id(), stage.visit(), event));
+            let mut envelope = test_stage_event(seq, body, stage.clone());
+            envelope.event.session_id = Some(session_id);
+            envelope.event.parent_session_id = parent_session_id;
+            envelope
+        }
+
+        fn root(event: CodingEvent) -> CodingAgentEvent {
+            CodingAgentEvent::new(ROOT, event, SystemTime::UNIX_EPOCH)
+        }
+
+        fn child(event: CodingEvent) -> CodingAgentEvent {
+            CodingAgentEvent::new(CHILD, event, SystemTime::UNIX_EPOCH).with_parent_session_id(ROOT)
+        }
+
+        fn prompt() -> CodingEvent {
+            CodingEvent::UserInput {
+                text:    "go".to_string(),
+                content: None,
+                source:  InputSource::Prompt,
+            }
+        }
+
+        fn coding_event(envelope: &EventEnvelope) -> &CodingAgentEvent {
+            match &envelope.event.body {
+                EventBody::Agent(props) => &props.event,
+                other => panic!("not an agent event: {other:?}"),
+            }
+        }
+
+        fn tokens(count: u64) -> i64 {
+            i64::try_from(count).expect("token count fits")
+        }
+
+        /// One retained session driven by two stages in turn: `code` spawns a
+        /// child and prompts twice; `review` prompts once on the same session.
+        fn retained_session_events(code: &StageId, review: &StageId) -> Vec<EventEnvelope> {
+            vec![
+                stored(
+                    1,
+                    code,
+                    root(CodingEvent::SessionStarted {
+                        provider: Some("test".to_string()),
+                        model:    Some("model".to_string()),
+                    }),
+                ),
+                stored(2, code, root(prompt())),
+                stored(3, code, root(assistant_message(100, 10))),
+                stored(
+                    4,
+                    code,
+                    root(CodingEvent::SubAgentSpawned {
+                        agent_id:   "sub-1".to_string(),
+                        depth:      1,
+                        task:       "look around".to_string(),
+                        generation: 1,
+                    }),
+                ),
+                stored(5, code, child(assistant_message(7, 1))),
+                stored(
+                    6,
+                    code,
+                    root(CodingEvent::SubAgentCompleted {
+                        agent_id:   "sub-1".to_string(),
+                        depth:      1,
+                        generation: 1,
+                        success:    true,
+                        turns_used: 1,
+                    }),
+                ),
+                stored(7, code, root(assistant_message(50, 5))),
+                stored(8, code, root(CodingEvent::ProcessingEnd)),
+                stored(9, review, root(prompt())),
+                stored(10, review, root(assistant_message(20, 2))),
+                stored(11, review, root(CodingEvent::ProcessingEnd)),
+            ]
+        }
+
+        #[test]
+        fn a_stage_of_a_retained_session_is_billed_the_prompt_delta_pebble_reports() {
+            let code = StageId::new("code", 1);
+            let review = StageId::new("review", 1);
+            let events = retained_session_events(&code, &review);
+
+            let mut run = initialized_projection();
+            for event in &events {
+                run.apply_event(event).unwrap();
+            }
+
+            let mut projection = SessionProjection::new();
+            for event in &events[..8] {
+                projection.apply(coding_event(event));
+            }
+            let code_delta = projection.prompt.clone();
+            for event in &events[8..] {
+                projection.apply(coding_event(event));
+            }
+            let review_delta = projection.prompt.clone();
+
+            // The stage's live account is the tree's spend during its
+            // prompts: the root's own plus each descendant's.
+            let code_stage = run.stage(&code).unwrap();
+            let (code_descendants, _) = code_delta.descendant_usage();
+            assert!(code_delta.completed);
+            assert_eq!(
+                code_stage.usage.input_tokens,
+                tokens(code_delta.usage.input + code_descendants.input)
+            );
+            assert_eq!(
+                code_stage.usage.output_tokens,
+                tokens(code_delta.usage.output + code_descendants.output)
+            );
+            assert_eq!(code_stage.usage.input_tokens, 157, "100 + 7 + 50");
+
+            let review_stage = run.stage(&review).unwrap();
+            assert!(review_delta.completed);
+            assert!(review_delta.descendants.is_empty());
+            assert_eq!(
+                review_stage.usage.input_tokens,
+                tokens(review_delta.usage.input)
+            );
+            assert_eq!(review_stage.usage.input_tokens, 20);
+
+            // The session's lifetime total spans both stages; neither stage
+            // reads it as its own.
+            assert_eq!(projection.usage.input, 170);
+            assert_eq!(projection.descendant_usage().0.input, 7);
+            assert_eq!(projection.prompts, 2);
+        }
+
+        #[test]
+        fn subagents_and_control_state_agree_across_the_two_folds() {
+            let code = StageId::new("code", 1);
+            let review = StageId::new("review", 1);
+            let events = retained_session_events(&code, &review);
+
+            let mut run = initialized_projection();
+            let mut projection = SessionProjection::new();
+            for event in &events {
+                run.apply_event(event).unwrap();
+                projection.apply(coding_event(event));
+            }
+
+            let code_stage = run.stage(&code).unwrap();
+            assert_eq!(code_stage.subagents.len(), 1);
+            assert_eq!(code_stage.subagents[0].agent_id, "sub-1");
+            assert_eq!(code_stage.subagents[0].status, SubAgentStatus::Completed {
+                success:    true,
+                turns_used: 1,
+            });
+            assert_eq!(projection.subagents.len(), 1);
+            assert_eq!(projection.subagents[0].agent_id, "sub-1");
+            assert_eq!(
+                projection.subagents[0].status,
+                PebbleSubagentStatus::Completed {
+                    success:    true,
+                    turns_used: 1,
+                }
+            );
+            assert!(
+                run.stage(&review).unwrap().subagents.is_empty(),
+                "the child was the code stage's"
+            );
+            assert_eq!(projection.subagent_counts.spawned, 1);
+            assert_eq!(projection.subagent_counts.completed, 1);
+
+            // Both folds see the session idle after its last prompt, with
+            // the route the session reported.
+            assert_eq!(projection.activity, SessionActivity::Idle);
+            assert_eq!(projection.route.provider.as_deref(), Some("test"));
+            assert_eq!(projection.route.model.as_deref(), Some("model"));
+            assert_eq!(
+                run.stage(&review).unwrap().agent_control,
+                AgentControlState::Running,
+                "fabro moves control to idle on its own stage events, not pebble's"
+            );
+        }
+
+        #[test]
+        fn a_stored_projection_resumes_to_the_replayed_one() {
+            let code = StageId::new("code", 1);
+            let review = StageId::new("review", 1);
+            let events = retained_session_events(&code, &review);
+
+            let mut replayed = SessionProjection::new();
+            for event in &events {
+                replayed.apply(coding_event(event));
+            }
+
+            let mut stored_then_resumed = SessionProjection::new();
+            for event in &events[..8] {
+                stored_then_resumed.apply(coding_event(event));
+            }
+            let stored = serde_json::to_vec(&stored_then_resumed).unwrap();
+            let mut resumed: SessionProjection = serde_json::from_slice(&stored).unwrap();
+            for event in &events[8..] {
+                resumed.apply(coding_event(event));
+            }
+
+            assert_eq!(resumed, replayed);
+        }
+    }
 }
