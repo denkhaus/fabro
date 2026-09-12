@@ -709,7 +709,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-12T12:02:25.745563540Z",
-  "last_event_at": "2026-09-12T12:17:58.561915517Z",
+  "last_event_at": "2026-09-12T12:18:03.476088081Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -1475,9 +1475,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 208,
       "checkpoint": {
-        "timestamp": "2026-09-12T12:17:58.718548303Z",
+        "timestamp": "2026-09-12T12:18:02.753212828Z",
         "current_node": "reviewer",
         "completed_nodes": [
           "start",
@@ -1489,8 +1489,282 @@
         ],
         "node_retries": {},
         "context_values": {
-          "current_node": "reviewer",
+          "internal.retry_count.tester": 0,
+          "internal.retry_count.start": 0,
+          "lesson_capture": "nothing durable — skipped",
+          "graph.max_node_visits": "40",
+          "implementation_summary": "Added a nextest per-test quarantine for `e2e_stall_watchdog_with_explicit_timeout_override` in `.config/nextest.toml`: a `[[profile.default.overrides]]` entry with `retries = 1` and a relaxed `slow-timeout` ({ period = \"10s\", terminate-after = 4 }) scoped to `filter = \"test(e2e_stall_watchdog_with_explicit_timeout_override)\"`, plus a mirrored `[[profile.ci.overrides]]` entry (retries = 1, 30s/4) so CI's per-package override cannot resurrect the flake — both referencing fabro-7e8d in comments explaining the choice over `#[ignore]` (which the e2e profile's `--run-ignored only` would pull in). The override is scoped to exactly this one test; fabro-80b3's separate flaky test is untouched, and no new tracking seed was filed (fabro-7e8d is itself the tracking seed). No Rust source changed, so no lesson worth `ml record` — nothing durable — skipped. Verification report: - PASS quarantine via nextest per-test override with fabro-7e8d comment: `.config/nextest.toml` profile.default + profile.ci overrides (retries + relaxed slow-timeout, filter `test(e2e_stall_watchdog_with_explicit_timeout_override)`) — PASS scope is this one test only, fabro-80b3 excluded: override filter names only `e2e_stall_watchdog_with_explicit_timeout_override`; no other test config changed — PASS tracking-seed clause already satisfied by fabro-7e8d itself: no new seed created (verified via `sd show fabro-7e8d`) — PASS verification cheapest-first: TOML parses (`python3 tomllib`), `cargo nextest list -p fabro-workflow` resolves config and lists the test, `cargo nextest run -p fabro-workflow e2e_stall_watchdog` passes (1/1, incl. the quarantined test at 0.82s), pinned `cargo +nightly-2026-04-14 fmt -p fabro-workflow -- --check` and `clippy -p fabro-workflow --all-targets -- -D warnings` both clean; full gate left to the deterministic tester step.",
+          "internal.node_visit_count": 1,
           "review_verdict": "approved",
+          "thread.tester.current_node": "evidence",
+          "internal.retry_count.implementer": 0,
+          "journal": {
+            "painpoints": [],
+            "observations": [
+              "Verified independently: filter string matches the real test name at integration.rs:13496, cargo nextest list parses the amended config, and the diff against claim base b7394d89 is exactly one file (+17, .config/nextest.toml). The ci-profile mirror override is a defensive duplicate of the default-profile quarantine — accepted as in-scope since profile.ci carries its own package-level slow-timeout that could otherwise re-expose the flake; noted as slight duplication risk if the quarantine is ever lifted in only one profile."
+            ]
+          },
+          "graph.preamble_budget_kb": "24",
+          "failure_class": "",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "internal.seed_cycle_anchor": "fabro-7e8d",
+          "outcome": "succeeded",
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 3658,
+            "preview": "Seed claimed. The brief:\n\n**fabro-7e8d — Quarantine the known-flaky `e2e_stall_watchdog_with_explicit_timeout_override` test**\n\n- Test location: `lib/components/fabro-workflow/tests/it/integration.r"
+          },
+          "thread.evidence.current_node": "reviewer",
+          "internal.retry_count.reviewer": 0,
+          "internal.retry_count.planner": 0,
+          "thread.implementer.current_node": "tester",
+          "thread.planner.current_node": "implementer",
+          "graph.rankdir": "LR",
+          "internal.work_dir": "/workspace/fabro",
+          "thread.start.current_node": "planner",
+          "internal.fidelity": "summary:high",
+          "current_seed_title": "Quarantine the known-flaky e2e_stall_watchdog_with_explicit_timeout_override test",
+          "preferred_label": "Approved",
+          "graph.inspects": "develop",
+          "command.output": "blob://sha256/6c8dea3b340d07f6cff3bd57ed0b403699dfa4482d1770dc059d3e65d20a3325",
+          "response.implementer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.implementer",
+            "chars": 2893,
+            "preview": "All verification steps pass: TOML parse OK, `cargo nextest list` resolves the config (including the new override filters), the quarantined test passes under the default profile, and pinned-nightly `fm"
+          },
+          "internal.thread_id": "evidence",
+          "response.reviewer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.reviewer",
+            "chars": 2793,
+            "preview": "Review complete. Verified against the evidence:\n\n1. **Quarantine mechanism** — `[[profile.default.overrides]]` with `retries = 1` and relaxed `slow-timeout` (10s/4) for exactly `test(e2e_stall_watch"
+          },
+          "internal.retry_count.evidence": 0,
+          "seed_cycles": {
+            "planner": 1,
+            "implementer": 1,
+            "tester": 1,
+            "evidence": 1,
+            "reviewer": 1
+          },
+          "failure_signature": "",
+          "last_response": "Review complete. Verified against the evidence:\n\n1. **Quarantine mechanism** — `[[profile.default.overrides]]` with `retries = 1` and relaxed `slow-timeout` (10s/4) for exactly `test(e2e_stall_watch",
+          "current_seed_brief": "Quarantine the flaky test e2e_stall_watchdog_with_explicit_timeout_override in lib/components/fabro-workflow/tests/it/integration.rs (~line 13496). Acceptance criteria: (1) quarantine via a nextest per-test override in .config/nextest.toml (retries + relaxed slow-timeout for filter test(e2e_stall_watchdog_with_explicit_timeout_override)), referencing fabro-7e8d in a comment — preferred over #[ignore] because #[ignore] would pull the test into the e2e profile (--run-ignored only); #[ignore = \"flaky under parallel load\"] acceptable only with that e2e-profile implication checked and annotated; (2) scope is this one test only — fabro-80b3 (different flaky test) stays out; (3) the seed's 'file the tracking seed' clause is already satisfied: fabro-7e8d itself is that tracking seed, no new seed needed; (4) verification cheapest-first: cargo nextest list -p fabro-workflow (config parses), cargo nextest run -p fabro-workflow e2e_stall_watchdog passes, pinned-nightly fmt and clippy on fabro-workflow clean; gate green via the deterministic tester step — never run the full gate yourself.",
+          "internal.run_id": "01M2AQY97EG1YDTSQES8FFFAS2",
+          "current_node": "reviewer",
+          "last_stage": "reviewer",
+          "current_seed_id": "fabro-7e8d"
+        },
+        "node_outcomes": {
+          "evidence": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/6c8dea3b340d07f6cff3bd57ed0b403699dfa4482d1770dc059d3e65d20a3325"
+            },
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 1157,
+              "active_time_ms": 1157
+            }
+          },
+          "implementer": {
+            "status": "succeeded",
+            "preferred_label": "Implemented",
+            "context_updates": {
+              "last_response": "All verification steps pass: TOML parse OK, `cargo nextest list` resolves the config (including the new override filters), the quarantined test passes under the default profile, and pinned-nightly `fm",
+              "implementation_summary": "Added a nextest per-test quarantine for `e2e_stall_watchdog_with_explicit_timeout_override` in `.config/nextest.toml`: a `[[profile.default.overrides]]` entry with `retries = 1` and a relaxed `slow-timeout` ({ period = \"10s\", terminate-after = 4 }) scoped to `filter = \"test(e2e_stall_watchdog_with_explicit_timeout_override)\"`, plus a mirrored `[[profile.ci.overrides]]` entry (retries = 1, 30s/4) so CI's per-package override cannot resurrect the flake — both referencing fabro-7e8d in comments explaining the choice over `#[ignore]` (which the e2e profile's `--run-ignored only` would pull in). The override is scoped to exactly this one test; fabro-80b3's separate flaky test is untouched, and no new tracking seed was filed (fabro-7e8d is itself the tracking seed). No Rust source changed, so no lesson worth `ml record` — nothing durable — skipped. Verification report: - PASS quarantine via nextest per-test override with fabro-7e8d comment: `.config/nextest.toml` profile.default + profile.ci overrides (retries + relaxed slow-timeout, filter `test(e2e_stall_watchdog_with_explicit_timeout_override)`) — PASS scope is this one test only, fabro-80b3 excluded: override filter names only `e2e_stall_watchdog_with_explicit_timeout_override`; no other test config changed — PASS tracking-seed clause already satisfied by fabro-7e8d itself: no new seed created (verified via `sd show fabro-7e8d`) — PASS verification cheapest-first: TOML parses (`python3 tomllib`), `cargo nextest list -p fabro-workflow` resolves config and lists the test, `cargo nextest run -p fabro-workflow e2e_stall_watchdog` passes (1/1, incl. the quarantined test at 0.82s), pinned `cargo +nightly-2026-04-14 fmt -p fabro-workflow -- --check` and `clippy -p fabro-workflow --all-targets -- -D warnings` both clean; full gate left to the deterministic tester step.",
+              "response.implementer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.implementer",
+                "chars": 2893,
+                "preview": "All verification steps pass: TOML parse OK, `cargo nextest list` resolves the config (including the new override filters), the quarantined test passes under the default profile, and pinned-nightly `fm"
+              },
+              "lesson_capture": "nothing durable — skipped",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "First `cargo nextest list -p fabro-workflow` timed out at 300s on the fully cold build (fresh container); the doubled-timeout retry finished in ~3.6 min. Config-only seeds still pay the full crate compile for a `nextest list` parse check — `cargo nextest list --workspace --no-tests warning` alternatives don't avoid it either; worth knowing when budgeting verification time."
+                ]
+              },
+              "last_stage": "implementer"
+            },
+            "notes": "Stage completed: implementer",
+            "usage": {
+              "model": {
+                "provider": "zai",
+                "model_id": "glm-5.3"
+              },
+              "tokens": {
+                "input": 18215,
+                "output": 1841,
+                "reasoning": 551,
+                "cache_read": 113984,
+                "cache_write": 0
+              },
+              "total_usd_micros": 65650
+            },
+            "files_touched": [
+              "/workspace/fabro/.config/nextest.toml"
+            ],
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 58887,
+              "tool_time_ms": 655781,
+              "active_time_ms": 714668
+            }
+          },
+          "reviewer": {
+            "status": "succeeded",
+            "preferred_label": "Approved",
+            "context_updates": {
+              "review_verdict": "approved",
+              "last_stage": "reviewer",
+              "last_response": "Review complete. Verified against the evidence:\n\n1. **Quarantine mechanism** — `[[profile.default.overrides]]` with `retries = 1` and relaxed `slow-timeout` (10s/4) for exactly `test(e2e_stall_watch",
+              "response.reviewer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.reviewer",
+                "chars": 2793,
+                "preview": "Review complete. Verified against the evidence:\n\n1. **Quarantine mechanism** — `[[profile.default.overrides]]` with `retries = 1` and relaxed `slow-timeout` (10s/4) for exactly `test(e2e_stall_watch"
+              },
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "Verified independently: filter string matches the real test name at integration.rs:13496, cargo nextest list parses the amended config, and the diff against claim base b7394d89 is exactly one file (+17, .config/nextest.toml). The ci-profile mirror override is a defensive duplicate of the default-profile quarantine — accepted as in-scope since profile.ci carries its own package-level slow-timeout that could otherwise re-expose the flake; noted as slight duplication risk if the quarantine is ever lifted in only one profile."
+                ]
+              }
+            },
+            "notes": "Stage completed: reviewer",
+            "usage": {
+              "model": {
+                "provider": "zai",
+                "model_id": "glm-5.3"
+              },
+              "tokens": {
+                "input": 15264,
+                "output": 799,
+                "reasoning": 507,
+                "cache_read": 29312,
+                "cache_write": 0
+              },
+              "total_usd_micros": 34734
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 27958,
+              "tool_time_ms": 2128,
+              "active_time_ms": 30086
+            }
+          },
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "current_seed_brief": "Quarantine the flaky test e2e_stall_watchdog_with_explicit_timeout_override in lib/components/fabro-workflow/tests/it/integration.rs (~line 13496). Acceptance criteria: (1) quarantine via a nextest per-test override in .config/nextest.toml (retries + relaxed slow-timeout for filter test(e2e_stall_watchdog_with_explicit_timeout_override)), referencing fabro-7e8d in a comment — preferred over #[ignore] because #[ignore] would pull the test into the e2e profile (--run-ignored only); #[ignore = \"flaky under parallel load\"] acceptable only with that e2e-profile implication checked and annotated; (2) scope is this one test only — fabro-80b3 (different flaky test) stays out; (3) the seed's 'file the tracking seed' clause is already satisfied: fabro-7e8d itself is that tracking seed, no new seed needed; (4) verification cheapest-first: cargo nextest list -p fabro-workflow (config parses), cargo nextest run -p fabro-workflow e2e_stall_watchdog passes, pinned-nightly fmt and clippy on fabro-workflow clean; gate green via the deterministic tester step — never run the full gate yourself.",
+              "response.planner": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.planner",
+                "chars": 3658,
+                "preview": "Seed claimed. The brief:\n\n**fabro-7e8d — Quarantine the known-flaky `e2e_stall_watchdog_with_explicit_timeout_override` test**\n\n- Test location: `lib/components/fabro-workflow/tests/it/integration.r"
+              },
+              "current_seed_id": "fabro-7e8d",
+              "current_seed_title": "Quarantine the known-flaky e2e_stall_watchdog_with_explicit_timeout_override test",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "Basis of fabro-7e8d resolved cleanly: test present unquarantined at lib/components/fabro-workflow/tests/it/integration.rs:13496, no fix commit in history, .config/nextest.toml has no retries for it.",
+                  "The seed's 'file the tracking seed' clause was ambiguous — the journal of run 01M299PVMSE7Q53ZGPP67AHNMG shows the requested tracking seed became fabro-7e8d itself (revisor adoption); brief marks it satisfied, no new seed.",
+                  "In-flight check: only non-terminal develop run was this run itself; no open PRs; no skips needed."
+                ]
+              },
+              "last_stage": "planner",
+              "last_response": "Seed claimed. The brief:\n\n**fabro-7e8d — Quarantine the known-flaky `e2e_stall_watchdog_with_explicit_timeout_override` test**\n\n- Test location: `lib/components/fabro-workflow/tests/it/integration.r"
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "model": {
+                "provider": "zai",
+                "model_id": "glm-5.3"
+              },
+              "tokens": {
+                "input": 48134,
+                "output": 1545,
+                "reasoning": 725,
+                "cache_read": 315840,
+                "cache_write": 0
+              },
+              "total_usd_micros": 159483
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 54588,
+              "tool_time_ms": 12942,
+              "active_time_ms": 67530
+            }
+          },
+          "tester": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/6a6aa88e48376bd588e37c4a4ca50ef237d01806809b8c9a9775f1785909c11b"
+            },
+            "notes": "Script completed: just qualitygate",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 4752,
+              "active_time_ms": 4752
+            }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          }
+        },
+        "next_node_id": "closeout",
+        "git_commit_sha": "6994e0d74a3c12abccdff04088dafe8217a2482b",
+        "node_visits": {
+          "tester": 1,
+          "evidence": 1,
+          "planner": 1,
+          "implementer": 1,
+          "reviewer": 1,
+          "start": 1
+        }
+      },
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M2AQY97EG1YDTSQES8FFFAS2.jsonl b/.fabro/journal/01M2AQY97EG1YDTSQES8FFFAS2.jsonl\nindex b5df8a9b..5c0a4fe5 100644\n--- a/.fabro/journal/01M2AQY97EG1YDTSQES8FFFAS2.jsonl\n+++ b/.fabro/journal/01M2AQY97EG1YDTSQES8FFFAS2.jsonl\n@@ -3,3 +3,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M2AQY97EG1YDTSQES8FFFAS2\",\"node\":\"implementer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-12T12:17:02Z\",\"data\":{\"painpoints\":[],\"observations\":[\"First `cargo nextest list -p fabro-workflow` timed out at 300s on the fully cold build (fresh container); the doubled-timeout retry finished in ~3.6 min. Config-only seeds still pay the full crate compile for a `nextest list` parse check — `cargo nextest list --workspace --no-tests warning` alternatives don't avoid it either; worth knowing when budgeting verification time.\"]}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M2AQY97EG1YDTSQES8FFFAS2\",\"node\":\"tester\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-12T12:17:15Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M2AQY97EG1YDTSQES8FFFAS2\",\"node\":\"evidence\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-12T12:17:20Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M2AQY97EG1YDTSQES8FFFAS2\",\"node\":\"reviewer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-12T12:17:58Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Verified independently: filter string matches the real test name at integration.rs:13496, cargo nextest list parses the amended config, and the diff against claim base b7394d89 is exactly one file (+17, .config/nextest.toml). The ci-profile mirror override is a defensive duplicate of the default-profile quarantine — accepted as in-scope since profile.ci carries its own package-level slow-timeout that could otherwise re-expose the flake; noted as slight duplication risk if the quarantine is ever lifted in only one profile.\"]}}\n",
+        "summary": {
+          "files_changed": 3,
+          "additions": 24,
+          "deletions": 1
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-12T12:18:03.637511753Z",
+        "current_node": "closeout",
+        "completed_nodes": [
+          "start",
+          "planner",
+          "implementer",
+          "tester",
+          "evidence",
+          "reviewer",
+          "closeout"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "current_node": "closeout",
+          "review_verdict": "approved",
+          "internal.retry_count.closeout": 0,
           "thread.implementer.current_node": "tester",
           "thread.start.current_node": "planner",
           "internal.run_id": "01M2AQY97EG1YDTSQES8FFFAS2",
@@ -1511,8 +1785,8 @@
             "chars": 2893,
             "preview": "All verification steps pass: TOML parse OK, `cargo nextest list` resolves the config (including the new override filters), the quarantined test passes under the default profile, and pinned-nightly `fm"
           },
-          "command.output": "blob://sha256/6c8dea3b340d07f6cff3bd57ed0b403699dfa4482d1770dc059d3e65d20a3325",
-          "internal.thread_id": "evidence",
+          "command.output": "blob://sha256/71037c992bfb30fbaa9e9c8c45985bd58413c3a9d95ac6c5da7f9332f9a840f5",
+          "internal.thread_id": "reviewer",
           "failure_signature": "",
           "thread.tester.current_node": "evidence",
           "response.reviewer": {
@@ -1522,6 +1796,7 @@
             "preview": "Review complete. Verified against the evidence:\n\n1. **Quarantine mechanism** — `[[profile.default.overrides]]` with `retries = 1` and relaxed `slow-timeout` (10s/4) for exactly `test(e2e_stall_watch"
           },
           "internal.retry_count.reviewer": 0,
+          "thread.reviewer.current_node": "closeout",
           "internal.retry_count.start": 0,
           "outcome": "succeeded",
           "seed_cycles": {
@@ -1529,7 +1804,8 @@
             "implementer": 1,
             "tester": 1,
             "evidence": 1,
-            "reviewer": 1
+            "reviewer": 1,
+            "closeout": 1
           },
           "graph.preamble_budget_kb": "24",
           "thread.planner.current_node": "implementer",
@@ -1545,8 +1821,9 @@
           "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
           "lesson_capture": "nothing durable — skipped",
           "failure_class": "",
+          "internal.exit_kind": "natural",
           "internal.retry_count.planner": 0,
-          "internal.fidelity": "summary:high",
+          "internal.fidelity": "compact",
           "current_seed_brief": "Quarantine the flaky test e2e_stall_watchdog_with_explicit_timeout_override in lib/components/fabro-workflow/tests/it/integration.rs (~line 13496). Acceptance criteria: (1) quarantine via a nextest per-test override in .config/nextest.toml (retries + relaxed slow-timeout for filter test(e2e_stall_watchdog_with_explicit_timeout_override)), referencing fabro-7e8d in a comment — preferred over #[ignore] because #[ignore] would pull the test into the e2e profile (--run-ignored only); #[ignore = \"flaky under parallel load\"] acceptable only with that e2e-profile implication checked and annotated; (2) scope is this one test only — fabro-80b3 (different flaky test) stays out; (3) the seed's 'file the tracking seed' clause is already satisfied: fabro-7e8d itself is that tracking seed, no new seed needed; (4) verification cheapest-first: cargo nextest list -p fabro-workflow (config parses), cargo nextest run -p fabro-workflow e2e_stall_watchdog passes, pinned-nightly fmt and clippy on fabro-workflow clean; gate green via the deterministic tester step — never run the full gate yourself.",
           "response.planner": {
             "dedup": "response text omitted — payload lives in structured context keys",
@@ -1615,52 +1892,6 @@
               "active_time_ms": 30086
             }
           },
-          "implementer": {
-            "status": "succeeded",
-            "preferred_label": "Implemented",
-            "context_updates": {
-              "last_response": "All verification steps pass: TOML parse OK, `cargo nextest list` resolves the config (including the new override filters), the quarantined test passes under the default profile, and pinned-nightly `fm",
-              "implementation_summary": "Added a nextest per-test quarantine for `e2e_stall_watchdog_with_explicit_timeout_override` in `.config/nextest.toml`: a `[[profile.default.overrides]]` entry with `retries = 1` and a relaxed `slow-timeout` ({ period = \"10s\", terminate-after = 4 }) scoped to `filter = \"test(e2e_stall_watchdog_with_explicit_timeout_override)\"`, plus a mirrored `[[profile.ci.overrides]]` entry (retries = 1, 30s/4) so CI's per-package override cannot resurrect the flake — both referencing fabro-7e8d in comments explaining the choice over `#[ignore]` (which the e2e profile's `--run-ignored only` would pull in). The override is scoped to exactly this one test; fabro-80b3's separate flaky test is untouched, and no new tracking seed was filed (fabro-7e8d is itself the tracking seed). No Rust source changed, so no lesson worth `ml record` — nothing durable — skipped. Verification report: - PASS quarantine via nextest per-test override with fabro-7e8d comment: `.config/nextest.toml` profile.default + profile.ci overrides (retries + relaxed slow-timeout, filter `test(e2e_stall_watchdog_with_explicit_timeout_override)`) — PASS scope is this one test only, fabro-80b3 excluded: override filter names only `e2e_stall_watchdog_with_explicit_timeout_override`; no other test config changed — PASS tracking-seed clause already satisfied by fabro-7e8d itself: no new seed created (verified via `sd show fabro-7e8d`) — PASS verification cheapest-first: TOML parses (`python3 tomllib`), `cargo nextest list -p fabro-workflow` resolves config and lists the test, `cargo nextest run -p fabro-workflow e2e_stall_watchdog` passes (1/1, incl. the quarantined test at 0.82s), pinned `cargo +nightly-2026-04-14 fmt -p fabro-workflow -- --check` and `clippy -p fabro-workflow --all-targets -- -D warnings` both clean; full gate left to the deterministic tester step.",
-              "response.implementer": {
-                "dedup": "response text omitted — payload lives in structured context keys",
-                "output_key": "output.implementer",
-                "chars": 2893,
-                "preview": "All verification steps pass: TOML parse OK, `cargo nextest list` resolves the config (including the new override filters), the quarantined test passes under the default profile, and pinned-nightly `fm"
-              },
-              "lesson_capture": "nothing durable — skipped",
-              "journal": {
-                "painpoints": [],
-                "observations": [
-                  "First `cargo nextest list -p fabro-workflow` timed out at 300s on the fully cold build (fresh container); the doubled-timeout retry finished in ~3.6 min. Config-only seeds still pay the full crate compile for a `nextest list` parse check — `cargo nextest list --workspace --no-tests warning` alternatives don't avoid it either; worth knowing when budgeting verification time."
-                ]
-              },
-              "last_stage": "implementer"
-            },
-            "notes": "Stage completed: implementer",
-            "usage": {
-              "model": {
-                "provider": "zai",
-                "model_id": "glm-5.3"
-              },
-              "tokens": {
-                "input": 18215,
-                "output": 1841,
-                "reasoning": 551,
-                "cache_read": 113984,
-                "cache_write": 0
-              },
-              "total_usd_micros": 65650
-            },
-            "files_touched": [
-              "/workspace/fabro/.config/nextest.toml"
-            ],
-            "timing": {
-              "wall_time_ms": 0,
-              "inference_time_ms": 58887,
-              "tool_time_ms": 655781,
-              "active_time_ms": 714668
-            }
-          },
           "planner": {
             "status": "succeeded",
             "preferred_label": "Seed claimed",
@@ -1707,6 +1938,56 @@
               "active_time_ms": 67530
             }
           },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "implementer": {
+            "status": "succeeded",
+            "preferred_label": "Implemented",
+            "context_updates": {
+              "last_response": "All verification steps pass: TOML parse OK, `cargo nextest list` resolves the config (including the new override filters), the quarantined test passes under the default profile, and pinned-nightly `fm",
+              "implementation_summary": "Added a nextest per-test quarantine for `e2e_stall_watchdog_with_explicit_timeout_override` in `.config/nextest.toml`: a `[[profile.default.overrides]]` entry with `retries = 1` and a relaxed `slow-timeout` ({ period = \"10s\", terminate-after = 4 }) scoped to `filter = \"test(e2e_stall_watchdog_with_explicit_timeout_override)\"`, plus a mirrored `[[profile.ci.overrides]]` entry (retries = 1, 30s/4) so CI's per-package override cannot resurrect the flake — both referencing fabro-7e8d in comments explaining the choice over `#[ignore]` (which the e2e profile's `--run-ignored only` would pull in). The override is scoped to exactly this one test; fabro-80b3's separate flaky test is untouched, and no new tracking seed was filed (fabro-7e8d is itself the tracking seed). No Rust source changed, so no lesson worth `ml record` — nothing durable — skipped. Verification report: - PASS quarantine via nextest per-test override with fabro-7e8d comment: `.config/nextest.toml` profile.default + profile.ci overrides (retries + relaxed slow-timeout, filter `test(e2e_stall_watchdog_with_explicit_timeout_override)`) — PASS scope is this one test only, fabro-80b3 excluded: override filter names only `e2e_stall_watchdog_with_explicit_timeout_override`; no other test config changed — PASS tracking-seed clause already satisfied by fabro-7e8d itself: no new seed created (verified via `sd show fabro-7e8d`) — PASS verification cheapest-first: TOML parses (`python3 tomllib`), `cargo nextest list -p fabro-workflow` resolves config and lists the test, `cargo nextest run -p fabro-workflow e2e_stall_watchdog` passes (1/1, incl. the quarantined test at 0.82s), pinned `cargo +nightly-2026-04-14 fmt -p fabro-workflow -- --check` and `clippy -p fabro-workflow --all-targets -- -D warnings` both clean; full gate left to the deterministic tester step.",
+              "response.implementer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.implementer",
+                "chars": 2893,
+                "preview": "All verification steps pass: TOML parse OK, `cargo nextest list` resolves the config (including the new override filters), the quarantined test passes under the default profile, and pinned-nightly `fm"
+              },
+              "lesson_capture": "nothing durable — skipped",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "First `cargo nextest list -p fabro-workflow` timed out at 300s on the fully cold build (fresh container); the doubled-timeout retry finished in ~3.6 min. Config-only seeds still pay the full crate compile for a `nextest list` parse check — `cargo nextest list --workspace --no-tests warning` alternatives don't avoid it either; worth knowing when budgeting verification time."
+                ]
+              },
+              "last_stage": "implementer"
+            },
+            "notes": "Stage completed: implementer",
+            "usage": {
+              "model": {
+                "provider": "zai",
+                "model_id": "glm-5.3"
+              },
+              "tokens": {
+                "input": 18215,
+                "output": 1841,
+                "reasoning": 551,
+                "cache_read": 113984,
+                "cache_write": 0
+              },
+              "total_usd_micros": 65650
+            },
+            "files_touched": [
+              "/workspace/fabro/.config/nextest.toml"
+            ],
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 58887,
+              "tool_time_ms": 655781,
+              "active_time_ms": 714668
+            }
+          },
           "evidence": {
             "status": "succeeded",
             "context_updates": {
@@ -1721,13 +2002,24 @@
               "active_time_ms": 1157
             }
           },
-          "start": {
+          "closeout": {
             "status": "succeeded",
-            "usage": null
+            "context_updates": {
+              "command.output": "blob://sha256/71037c992bfb30fbaa9e9c8c45985bd58413c3a9d95ac6c5da7f9332f9a840f5"
+            },
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/closeout.nu",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 442,
+              "active_time_ms": 442
+            }
           }
         },
-        "next_node_id": "closeout",
+        "next_node_id": "exit",
         "node_visits": {
+          "closeout": 1,
           "start": 1,
           "planner": 1,
           "tester": 1,
@@ -1999,6 +2291,57 @@
           }
         ],
         "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "closeout@1": {
+      "first_event_seq": 211,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Script completed: nu .fabro/workflows/develop/scripts/closeout.nu",
+        "failure_reason": null,
+        "timestamp": "2026-09-12T12:18:03.476088081Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": {
+        "script": "nu .fabro/workflows/develop/scripts/closeout.nu",
+        "command": "exec 2>&1\nnu .fabro/workflows/develop/scripts/closeout.nu",
+        "language": "shell",
+        "timeout_ms": 60000
+      },
+      "script_timing": {
+        "output": "blob://sha256/71037c992bfb30fbaa9e9c8c45985bd58413c3a9d95ac6c5da7f9332f9a840f5",
+        "exit_code": 0,
+        "duration_ms": 442,
+        "termination": "exited",
+        "output_bytes": 58,
+        "live_streaming": true
+      },
+      "parallel_results": null,
+      "output": null,
+      "output_bytes": 58,
+      "live_streaming": true,
+      "termination": "exited",
+      "started_at": "2026-09-12T12:18:03.006381539Z",
+      "handler": "command",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 456,
+        "inference_time_ms": 0,
+        "tool_time_ms": 442,
+        "active_time_ms": 442
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
       },
       "agent_control": "running",
       "state": "succeeded"

@@ -1,0 +1,9 @@
+diff --git a/.fabro/journal/01M2AQY97EG1YDTSQES8FFFAS2.jsonl b/.fabro/journal/01M2AQY97EG1YDTSQES8FFFAS2.jsonl
+index b5df8a9b..5c0a4fe5 100644
+--- a/.fabro/journal/01M2AQY97EG1YDTSQES8FFFAS2.jsonl
++++ b/.fabro/journal/01M2AQY97EG1YDTSQES8FFFAS2.jsonl
+@@ -3,3 +3,4 @@
+ {"$schema":"fabro-journal-v1","run_id":"01M2AQY97EG1YDTSQES8FFFAS2","node":"implementer","visit":1,"status":"succeeded","ts":"2026-09-12T12:17:02Z","data":{"painpoints":[],"observations":["First `cargo nextest list -p fabro-workflow` timed out at 300s on the fully cold build (fresh container); the doubled-timeout retry finished in ~3.6 min. Config-only seeds still pay the full crate compile for a `nextest list` parse check — `cargo nextest list --workspace --no-tests warning` alternatives don't avoid it either; worth knowing when budgeting verification time."]}}
+ {"$schema":"fabro-journal-v1","run_id":"01M2AQY97EG1YDTSQES8FFFAS2","node":"tester","visit":1,"status":"succeeded","ts":"2026-09-12T12:17:15Z","data":{}}
+ {"$schema":"fabro-journal-v1","run_id":"01M2AQY97EG1YDTSQES8FFFAS2","node":"evidence","visit":1,"status":"succeeded","ts":"2026-09-12T12:17:20Z","data":{}}
++{"$schema":"fabro-journal-v1","run_id":"01M2AQY97EG1YDTSQES8FFFAS2","node":"reviewer","visit":1,"status":"succeeded","ts":"2026-09-12T12:17:58Z","data":{"painpoints":[],"observations":["Verified independently: filter string matches the real test name at integration.rs:13496, cargo nextest list parses the amended config, and the diff against claim base b7394d89 is exactly one file (+17, .config/nextest.toml). The ci-profile mirror override is a defensive duplicate of the default-profile quarantine — accepted as in-scope since profile.ci carries its own package-level slow-timeout that could otherwise re-expose the flake; noted as slight duplication risk if the quarantine is ever lifted in only one profile."]}}
