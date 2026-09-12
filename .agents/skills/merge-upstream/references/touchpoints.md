@@ -205,9 +205,11 @@ Upstream directions that may supersede our work — re-evaluate per merge:
 - Docker autobuild (fabro-969f/72a0/3822 CLOSED): driver docker provider
   is SandboxSource::Image only. Deploy-time `just run-images`
   (scripts/run-images.nu, content-hash label sh.fabro.toolchain.sha256)
-  is the interim; strategic path = sandbox-driver PR or Daytona snapshots
-  (seeds fabro-f251 re-scoped, fabro-6be6 dedicated host, fabro-a0e5
-  multi-project envs). Dockerfile.toolchain/.mise edits take effect at
+  is the interim; strategic path = the sandbox-driver PR
+  (SandboxSource::Dockerfile for the docker provider, seed fabro-a0e5).
+  Daytona REJECTED as self-host target 2026-09-12: cloud-control-plane-only
+  (BYOC = Enterprise), last OSS control plane v0.190.0 EOL — do not revisit
+  unless Daytona ships a supported self-hosted plane again. Dockerfile.toolchain/.mise edits take effect at
   the next `just up`, NOT at run time.
 - Web sandbox-activity UI ROLLED BACK (user decision): run-time snapshot
   build/pull events left the run-event vocabulary; CLI renders driver
