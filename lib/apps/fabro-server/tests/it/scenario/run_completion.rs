@@ -10,8 +10,8 @@ use tokio::time::sleep;
 use tower::ServiceExt;
 
 use crate::helpers::{
-    MINIMAL_DOT, api, checked_response, create_and_start_run_from_manifest, minimal_manifest_json,
-    minimal_manifest_json_with_dry_run, response_text, test_app_state_with_options,
+    MINIMAL_DOT, api, checked_response, create_and_start_run_from_intent, minimal_intent_json,
+    minimal_intent_json_with_dry_run, response_text, test_app_state_with_options,
     test_app_with_scheduler, test_settings, wait_for_run_status,
 };
 
@@ -76,12 +76,15 @@ fn test_app_with_openai_agent_backend(openai_base_url: String, api_key: String) 
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn run_completes_and_status_is_completed() {
+    let workspace = tempfile::tempdir().unwrap();
     let state = test_app_state_with_options(test_settings(), 5);
     let app = test_app_with_scheduler(state);
 
-    let run_id =
-        create_and_start_run_from_manifest(&app, minimal_manifest_json_with_dry_run(MINIMAL_DOT))
-            .await;
+    let run_id = create_and_start_run_from_intent(
+        &app,
+        minimal_intent_json_with_dry_run(&app, MINIMAL_DOT, workspace.path()).await,
+    )
+    .await;
 
     let status = wait_for_run_status(&app, &run_id, &["succeeded", "failed"]).await;
     assert_eq!(status, "succeeded");
@@ -89,6 +92,7 @@ async fn run_completes_and_status_is_completed() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn agent_run_includes_project_skills_from_local_sandbox_working_directory() {
+    let workspace = tempfile::tempdir().unwrap();
     let project = tempfile::tempdir().expect("project tempdir should create");
     let skill_dir = project
         .path()
@@ -117,10 +121,10 @@ async fn agent_run_includes_project_skills_from_local_sandbox_working_directory(
         .await;
     let app = test_app_with_openai_agent_backend(twin.base_url.clone(), namespace.clone());
 
-    let mut manifest = minimal_manifest_json(PROJECT_SKILL_AGENT_DOT);
-    manifest["title"] = serde_json::Value::String("Project skill agent".to_string());
-    manifest["cwd"] = serde_json::Value::String(project.path().display().to_string());
-    let run_id = create_and_start_run_from_manifest(&app, manifest).await;
+    let mut intent = minimal_intent_json(&app, PROJECT_SKILL_AGENT_DOT, workspace.path()).await;
+    intent["title"] = serde_json::Value::String("Project skill agent".to_string());
+    intent["target"] = serde_json::json!({"kind": "folder", "path": project.path()});
+    let run_id = create_and_start_run_from_intent(&app, intent).await;
 
     let status = wait_for_run_status(&app, &run_id, &["succeeded", "failed"]).await;
     assert_eq!(status, "succeeded");
@@ -145,12 +149,15 @@ async fn agent_run_includes_project_skills_from_local_sandbox_working_directory(
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn attach_run_events_returns_sse_stream() {
+    let workspace = tempfile::tempdir().unwrap();
     let state = test_app_state_with_options(test_settings(), 5);
     let app = test_app_with_scheduler(state);
 
-    let run_id =
-        create_and_start_run_from_manifest(&app, minimal_manifest_json_with_dry_run(MINIMAL_DOT))
-            .await;
+    let run_id = create_and_start_run_from_intent(
+        &app,
+        minimal_intent_json_with_dry_run(&app, MINIMAL_DOT, workspace.path()).await,
+    )
+    .await;
 
     // Wait for scheduler to promote run.
     sleep(std::time::Duration::from_millis(100)).await;
@@ -181,12 +188,15 @@ async fn attach_run_events_returns_sse_stream() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn attach_run_events_replays_terminal_event_after_completion() {
+    let workspace = tempfile::tempdir().unwrap();
     let state = test_app_state_with_options(test_settings(), 5);
     let app = test_app_with_scheduler(state);
 
-    let run_id =
-        create_and_start_run_from_manifest(&app, minimal_manifest_json_with_dry_run(MINIMAL_DOT))
-            .await;
+    let run_id = create_and_start_run_from_intent(
+        &app,
+        minimal_intent_json_with_dry_run(&app, MINIMAL_DOT, workspace.path()).await,
+    )
+    .await;
     let status = wait_for_run_status(&app, &run_id, &["succeeded", "failed"]).await;
     assert_eq!(status, "succeeded");
 

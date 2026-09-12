@@ -3,7 +3,6 @@ use std::io::ErrorKind;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use anyhow::Context as _;
 use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
@@ -15,10 +14,10 @@ use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use bytes::Bytes;
 use chrono::{DateTime, Utc};
 use fabro_api::types::{
-    BoardColumn, ManifestConfigType, ManifestGoalType, RunIntent, RunManifest, SubmitAnswerRequest,
-    UpdateRunParentRequest, UpdateRunRequest,
+    BoardColumn, RunIntent, RunManifest, SubmitAnswerRequest, UpdateRunParentRequest,
+    UpdateRunRequest,
 };
-use fabro_config::{CliLayer, RunLayer, Storage, project};
+use fabro_config::{Storage, project};
 use fabro_environment::{DEFAULT_ENVIRONMENT_ID, EnvironmentId};
 use fabro_interview::AnswerSubmission;
 use fabro_llm::Client as LlmClient;
@@ -38,9 +37,9 @@ use fabro_util::error as error_util;
 use fabro_util::version::FABRO_VERSION;
 use fabro_workflow::command_log::{command_log_path, read_json_string_blob, read_log_slice};
 use fabro_workflow::run_status::RunStatus;
-use fabro_workflow::workflow_bundle::WorkflowBundle;
 use fabro_workflow::{Error as WorkflowError, operations};
 use lithos_llm::catalog::ProviderId;
+use serde::de::IgnoredAny;
 use strum::VariantArray as _;
 use tokio::fs;
 use tracing::info;
@@ -56,10 +55,7 @@ use crate::principal_middleware::{
     RequireCommandLog, RequireRunManagementTarget, RequireRunScoped, RequireRunStageScoped,
     RequiredRunManagementActor, RequiredUser,
 };
-use crate::run_compiler::{
-    self, ProjectSettingsPathError, ProjectSettingsSource, RawRunCompilerInput, RunCompilerError,
-    RunCompilerSettingsInput,
-};
+use crate::run_compiler::{self, RawRunCompilerInput};
 use crate::run_files::{list_run_commits, list_run_files};
 use crate::run_intent::{
     EnvironmentSelectionError, PreparedIntentTarget, RunIntentAdmissionError,
@@ -528,79 +524,32 @@ async fn create_run(
     headers: HeaderMap,
     body: Bytes,
 ) -> Response {
-    // Both lanes parse the raw bytes directly so serde_json keeps its
-    // duplicate-key rejection and line/column error locations; a JSON `Value`
-    // round-trip would silently collapse duplicate keys to last-key-wins.
-    let intent_error = match serde_json::from_slice::<RunIntent>(&body) {
-        Ok(intent) => {
-            return Box::pin(create_run_from_intent(state, CreateRunFromIntentRequest {
-                intent,
-                explicit_run_id: None,
-                actor,
-                headers,
-                automation: None,
-            }))
-            .await;
-        }
-        Err(err) => err,
+    // Decode the original bytes so duplicate fields and error locations survive.
+    let intent = match serde_json::from_slice::<RunIntent>(&body) {
+        Ok(intent) => intent,
+        Err(error) => return create_run_parse_error(&body, &error),
     };
-    let req = match serde_json::from_slice::<RunManifest>(&body) {
-        Ok(req) => req,
-        Err(manifest_error) => {
-            return create_run_parse_error(&body, &intent_error, &manifest_error);
-        }
-    };
-    let explicit_title_supplied = req.title.is_some();
-    Box::pin(create_run_from_manifest(
-        state,
-        CreateRunFromManifestRequest {
-            manifest: req,
-            submitted_manifest_bytes: body.to_vec(),
-            explicit_run_id: None,
-            explicit_title_supplied,
-            actor,
-            headers,
-            automation: None,
-            target: None,
-        },
-    ))
+    Box::pin(create_run_from_intent(state, CreateRunFromIntentRequest {
+        intent,
+        explicit_run_id: None,
+        actor,
+        headers,
+        automation: None,
+    }))
     .await
 }
 
-/// Attribute a create-run body that neither lane accepted. A body carrying
-/// any of the legacy manifest's required keys is a defective manifest even
-/// when a stray `workflow_version_id` rides along, and keeps the manifest
-/// lane's `400` contract; only an intent-shaped body gets the intent `422`.
-fn create_run_parse_error(
-    body: &[u8],
-    intent_error: &serde_json::Error,
-    manifest_error: &serde_json::Error,
-) -> Response {
-    let value = match serde_json::from_slice::<serde_json::Value>(body) {
-        Ok(value) => value,
-        Err(err) => {
-            return ApiError::with_code(StatusCode::BAD_REQUEST, err.to_string(), "invalid_json")
-                .into_response();
-        }
-    };
-    let has_key = |key: &str| {
-        value
-            .as_object()
-            .is_some_and(|object| object.contains_key(key))
-    };
-    if has_key("workflow_version_id")
-        && !has_key("version")
-        && !has_key("cwd")
-        && !has_key("workflows")
-    {
-        return ApiError::with_code(
-            StatusCode::UNPROCESSABLE_ENTITY,
-            intent_error.to_string(),
-            "run_intent_invalid",
-        )
-        .into_response();
+fn create_run_parse_error(body: &[u8], intent_error: &serde_json::Error) -> Response {
+    if let Err(error) = serde_json::from_slice::<IgnoredAny>(body) {
+        return ApiError::with_code(StatusCode::BAD_REQUEST, error.to_string(), "invalid_json")
+            .into_response();
     }
-    ApiError::bad_request(manifest_error.to_string()).into_response()
+    ApiError::with_code(
+        StatusCode::UNPROCESSABLE_ENTITY,
+        intent_error.to_string(),
+        "run_intent_invalid",
+    )
+    .into_response()
 }
 
 pub(crate) struct CreateRunFromIntentRequest {
@@ -719,12 +668,8 @@ pub(crate) async fn create_run_from_intent(
         server_run_defaults: state.manifest_run_defaults().as_ref().clone(),
         server_environment_defaults: state.environment_store().catalog_layer().as_ref().clone(),
         server_mcp_catalog: state.mcp_server_store().catalog_settings(),
-        settings_input: RunCompilerSettingsInput::Admitted {
-            workflow_layer: lowered.workflow_layer.map(Box::new),
-        },
-        user_toml: Vec::new(),
+        workflow_layer: lowered.workflow_layer,
         run_overrides: Some(run_overrides),
-        cli_overrides: None,
         input_overrides,
         inline_goal_override: intent.goal,
         run_id: explicit_run_id,
@@ -739,7 +684,6 @@ pub(crate) async fn create_run_from_intent(
         target: None,
         provenance: run_provenance(&headers, &actor),
         web_url: None,
-        submitted_manifest_bytes: None,
         automation,
     };
     let normalized = match run_compiler::normalize_source(raw_compiler_input) {
@@ -775,18 +719,11 @@ pub(crate) async fn create_run_from_intent(
         return response;
     }
     let prepared = prepared.with_web_url(state.run_web_url(&run_id));
-    finalize_created_run(
-        state,
-        prepared,
-        explicit_title_supplied,
-        entrypoint,
-        CreatedRunErrorStyle::Intent,
-    )
-    .await
+    finalize_created_run(state, prepared, explicit_title_supplied, entrypoint).await
 }
 
-/// Shared parent-link validation for both create lanes: a run must not be
-/// its own parent, and an explicit parent must pass [`validate_parent_link`].
+/// A run must not be its own parent; an explicit parent must pass
+/// [`validate_parent_link`].
 async fn validate_optional_parent(
     state: &AppState,
     run_id: RunId,
@@ -803,91 +740,12 @@ async fn validate_optional_parent(
         .map_err(IntoResponse::into_response)
 }
 
-/// Which endpoint dialect's pinned error mapping the shared creation tail
-/// speaks: the RunIntent admission contract or the legacy manifest wire
-/// contract.
-enum CreatedRunErrorStyle {
-    Intent,
-    LegacyManifest,
-}
-
-impl CreatedRunErrorStyle {
-    fn compiler_error(&self, error: RunCompilerError) -> Response {
-        match self {
-            Self::Intent => run_intent_admission_error(error.into()),
-            Self::LegacyManifest => run_compiler_error_response(error),
-        }
-    }
-
-    fn persist_error(&self, error: &WorkflowError) -> Response {
-        match self {
-            Self::Intent => {
-                tracing::error!(
-                    error = %error,
-                    error_chain = ?error_util::collect_chain(error),
-                    "Failed to persist admitted run intent"
-                );
-                intent_error(
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "failed to persist run",
-                    "run_persistence_failed",
-                )
-            }
-            Self::LegacyManifest => ApiError::new(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Failed to persist run state: {error}"),
-            )
-            .into_response(),
-        }
-    }
-
-    fn missing_summary_error(&self) -> Response {
-        match self {
-            Self::Intent => intent_error(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "created run summary is unavailable",
-                "run_persistence_failed",
-            ),
-            Self::LegacyManifest => ApiError::not_found("Run not found.").into_response(),
-        }
-    }
-
-    fn summary_error(&self, error: &dyn std::fmt::Display) -> Response {
-        match self {
-            Self::Intent => {
-                tracing::error!(error = %error, "Failed to read admitted run summary");
-                intent_error(
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "failed to read created run",
-                    "run_persistence_failed",
-                )
-            }
-            Self::LegacyManifest => {
-                ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, error.to_string()).into_response()
-            }
-        }
-    }
-
-    fn log_created(&self, run_id: RunId) {
-        // The legacy manifest lane logs its "Run created" line before
-        // compilation, so only the intent lane logs here.
-        if matches!(self, Self::Intent) {
-            info!(run_id = %run_id, "Run created from intent");
-        }
-    }
-}
-
-/// The shared tail of both run-creation lanes: resolve LLM readiness, compile
-/// and pin, persist, register the managed run, spawn title generation, and
-/// render the 201 response. Identity (run id, parent link, web URL) must
-/// already be resolved on `prepared`; only error mapping differs per lane,
-/// through [`CreatedRunErrorStyle`].
+/// Compile, persist, register, and render the admitted run.
 async fn finalize_created_run(
     state: Arc<AppState>,
     prepared: run_compiler::PreparedRun,
     explicit_title_supplied: bool,
     title_generation_target: ManifestPath,
-    style: CreatedRunErrorStyle,
 ) -> Response {
     let catalog = state.catalog();
     // Resolve once: we need both the provider IDs (for the run create input
@@ -914,7 +772,7 @@ async fn finalize_created_run(
             .await
         {
             Ok(pinned) => pinned,
-            Err(error) => return style.compiler_error(error),
+            Err(error) => return run_intent_admission_error(error.into()),
         };
     let persistence_input = run_compiler::assemble_run(pinned);
     let created = match Box::pin(operations::persist_create_run(
@@ -924,7 +782,14 @@ async fn finalize_created_run(
     .await
     {
         Ok(created) => created,
-        Err(error) => return style.persist_error(&error),
+        Err(error) => {
+            tracing::error!(error = %error, error_chain = ?error_util::collect_chain(&error), "Failed to persist admitted run intent");
+            return intent_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "failed to persist run",
+                "run_persistence_failed",
+            );
+        }
     };
     let created_at = created.run_id.created_at();
     let summary = match state
@@ -934,8 +799,21 @@ async fn finalize_created_run(
         .await
     {
         Ok(Some(summary)) => summary,
-        Ok(None) => return style.missing_summary_error(),
-        Err(error) => return style.summary_error(&error),
+        Ok(None) => {
+            return intent_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "created run summary is unavailable",
+                "run_persistence_failed",
+            );
+        }
+        Err(error) => {
+            tracing::error!(error = %error, "Failed to read admitted run summary");
+            return intent_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "failed to read created run",
+                "run_persistence_failed",
+            );
+        }
     };
     let deterministic_title = summary.title.clone();
     {
@@ -972,7 +850,7 @@ async fn finalize_created_run(
             }
         }
     }
-    style.log_created(created.run_id);
+    info!(run_id = %created.run_id, "Run created from intent");
     (
         StatusCode::CREATED,
         Json(state.decorate_run_summary(summary).await),
@@ -1068,9 +946,7 @@ fn run_intent_admission_error(error: RunIntentAdmissionError) -> Response {
                 "credential_store_error",
             ),
         },
-        // The top-level compiler/lowering message is the same curated detail
-        // the legacy manifest lane returns for identical defects; the full
-        // source chain stays in the warn log above.
+        // Return the curated compiler detail; retain its source chain in the log.
         RunIntentAdmissionError::Compiler(error) => intent_error(
             StatusCode::UNPROCESSABLE_ENTITY,
             format!("run intent could not be compiled: {error}"),
@@ -1197,249 +1073,6 @@ async fn validate_intent_environment(
         }
     }
     Ok(())
-}
-
-pub(crate) struct CreateRunFromManifestRequest {
-    pub(crate) manifest:                 RunManifest,
-    pub(crate) submitted_manifest_bytes: Vec<u8>,
-    /// Run ID preallocated by server-side automation code, never supplied by
-    /// an HTTP create body.
-    pub(crate) explicit_run_id:          Option<RunId>,
-    pub(crate) explicit_title_supplied:  bool,
-    pub(crate) actor:                    Principal,
-    pub(crate) headers:                  HeaderMap,
-    pub(crate) automation:               Option<AutomationRef>,
-    /// Trusted canonical target supplied by an internal manifest producer.
-    /// Public legacy manifest requests always leave this absent.
-    pub(crate) target:                   Option<RunTarget>,
-}
-
-struct ManifestRunCompilerAdapter {
-    workflow_bundle:      WorkflowBundle,
-    entrypoint:           ManifestPath,
-    cwd:                  PathBuf,
-    project_settings:     Vec<ProjectSettingsSource>,
-    user_toml:            Vec<String>,
-    run_overrides:        Option<RunLayer>,
-    cli_overrides:        Option<CliLayer>,
-    input_overrides:      HashMap<String, toml::Value>,
-    inline_goal_override: Option<String>,
-}
-
-fn adapt_manifest_source_for_run_compiler(
-    manifest: &RunManifest,
-) -> anyhow::Result<ManifestRunCompilerAdapter> {
-    if manifest.version != 1 {
-        anyhow::bail!("unsupported manifest version {}", manifest.version);
-    }
-    let cwd = PathBuf::from(&manifest.cwd);
-    let entrypoint = ManifestPath::from_wire(&manifest.target.path)
-        .ok_or_else(|| anyhow::anyhow!("invalid manifest target path: {}", manifest.target.path))?;
-    let workflow_bundle = run_manifest::workflow_bundle_from_manifest(&manifest.workflows)?;
-    if workflow_bundle.workflow(&entrypoint).is_none() {
-        anyhow::bail!("manifest target path is missing from workflows map");
-    }
-    let overrides = run_manifest::manifest_args_overrides(manifest.args.as_ref())
-        .context("failed to parse manifest args")?;
-    let project_settings = manifest
-        .configs
-        .iter()
-        .filter(|config| config.type_ == ManifestConfigType::Project)
-        .filter_map(|config| config.source.as_ref().map(|source| (config, source)))
-        .map(|(config, source)| ProjectSettingsSource {
-            path: normalize_project_settings_path(config.path.as_deref(), &cwd),
-            toml: source.clone(),
-        })
-        .collect();
-    let user_toml = manifest
-        .configs
-        .iter()
-        .filter(|config| config.type_ == ManifestConfigType::User)
-        .filter_map(|config| config.source.clone())
-        .collect();
-    let inline_goal_override = manifest
-        .goal
-        .as_ref()
-        .filter(|goal| goal.type_ != ManifestGoalType::Graph)
-        .map(|goal| goal.text.clone());
-
-    Ok(ManifestRunCompilerAdapter {
-        workflow_bundle,
-        entrypoint,
-        cwd,
-        project_settings,
-        user_toml,
-        run_overrides: overrides.run,
-        cli_overrides: overrides.cli,
-        input_overrides: overrides.input_overrides,
-        inline_goal_override,
-    })
-}
-
-fn normalize_project_settings_path(
-    path: Option<&str>,
-    cwd: &std::path::Path,
-) -> Result<ManifestPath, ProjectSettingsPathError> {
-    let path = path.ok_or(ProjectSettingsPathError::Missing)?;
-    let path_ref = std::path::Path::new(path);
-    let manifest_path = if path_ref.is_absolute() {
-        ManifestPath::from_absolute(path_ref, cwd)
-    } else {
-        ManifestPath::from_wire(path)
-    };
-    manifest_path.ok_or_else(|| ProjectSettingsPathError::Invalid {
-        path: path.to_string(),
-    })
-}
-
-struct ManifestRunIdentity {
-    run_id:    Option<RunId>,
-    parent_id: Option<RunId>,
-    title:     Option<String>,
-}
-
-fn manifest_run_identity(
-    manifest: &RunManifest,
-    explicit_run_id: Option<RunId>,
-) -> anyhow::Result<ManifestRunIdentity> {
-    let title = manifest
-        .title
-        .as_ref()
-        .map(|title| fabro_types::normalize_explicit_run_title(title.as_str()))
-        .transpose()?;
-    let parent_id = manifest
-        .parent_id
-        .as_deref()
-        .map(str::parse::<RunId>)
-        .transpose()
-        .context("invalid parent run ID")?;
-    Ok(ManifestRunIdentity {
-        run_id: explicit_run_id,
-        parent_id,
-        title,
-    })
-}
-
-/// Map a [`RunCompilerError`] onto the create endpoint's pre-extraction wire
-/// contract. The 400 details for source, settings, and interpolation errors
-/// are the error types' own `Display` strings, which are pinned to the
-/// legacy messages.
-fn run_compiler_error_response(error: RunCompilerError) -> Response {
-    match error {
-        RunCompilerError::InvalidSource(_)
-        | RunCompilerError::InvalidSettings(_)
-        | RunCompilerError::VariableInterpolation(_) => {
-            ApiError::bad_request(error.to_string()).into_response()
-        }
-        RunCompilerError::Workflow(
-            WorkflowError::ValidationFailed { .. } | WorkflowError::Parse(_),
-        ) => ApiError::bad_request("Validation failed").into_response(),
-        RunCompilerError::Workflow(
-            err @ (WorkflowError::ModelSelection(_) | WorkflowError::ModelReference(_)),
-        ) => ApiError::bad_request(err.to_string()).into_response(),
-        RunCompilerError::Workflow(err) => ApiError::new(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Failed to persist run state: {err}"),
-        )
-        .into_response(),
-    }
-}
-
-pub(crate) async fn create_run_from_manifest(
-    state: Arc<AppState>,
-    request: CreateRunFromManifestRequest,
-) -> Response {
-    let CreateRunFromManifestRequest {
-        manifest,
-        submitted_manifest_bytes,
-        explicit_run_id,
-        explicit_title_supplied,
-        actor,
-        headers,
-        automation,
-        target,
-    } = request;
-    let manifest_run_defaults = state.manifest_run_defaults();
-    let manifest_environment_defaults = state.environment_store().catalog_layer();
-    let manifest_mcp_server_catalog = state.mcp_server_store().catalog_settings();
-    let manifest_adapter = match adapt_manifest_source_for_run_compiler(&manifest) {
-        Ok(adapter) => adapter,
-        Err(err) => return ApiError::bad_request(err.to_string()).into_response(),
-    };
-    let title_generation_target = manifest_adapter.entrypoint.clone();
-    let raw_compiler_input = RawRunCompilerInput {
-        workflow_bundle: manifest_adapter.workflow_bundle,
-        entrypoint: manifest_adapter.entrypoint,
-        cwd: manifest_adapter.cwd,
-        server_run_defaults: manifest_run_defaults.as_ref().clone(),
-        server_environment_defaults: manifest_environment_defaults.as_ref().clone(),
-        server_mcp_catalog: manifest_mcp_server_catalog,
-        settings_input: RunCompilerSettingsInput::LegacyManifest {
-            project_settings: manifest_adapter.project_settings,
-        },
-        user_toml: manifest_adapter.user_toml,
-        run_overrides: manifest_adapter.run_overrides,
-        cli_overrides: manifest_adapter.cli_overrides,
-        input_overrides: manifest_adapter.input_overrides,
-        inline_goal_override: manifest_adapter.inline_goal_override,
-        run_id: None,
-        title: None,
-        parent_id: None,
-        git: manifest.git.clone(),
-        storage_root: state.server_storage_dir(),
-        workflow_slug: None,
-        workflow_version_id: None,
-        target,
-        provenance: run_provenance(&headers, &actor),
-        web_url: None,
-        submitted_manifest_bytes: Some(submitted_manifest_bytes),
-        automation,
-    };
-    let normalized = match run_compiler::normalize_source(raw_compiler_input) {
-        Ok(normalized) => normalized,
-        Err(err) => return run_compiler_error_response(err),
-    };
-    let layered = match run_compiler::layer_settings(normalized) {
-        Ok(layered) => layered,
-        Err(err) => return run_compiler_error_response(err),
-    };
-    let vars = match snapshot_run_variables(&state).await {
-        Ok(vars) => vars,
-        Err(err) => {
-            return ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string())
-                .into_response();
-        }
-    };
-    let prepared = match run_compiler::apply_run_variables(layered, vars) {
-        Ok(prepared) => prepared,
-        Err(err) => return run_compiler_error_response(err),
-    };
-    let identity = match manifest_run_identity(&manifest, explicit_run_id) {
-        Ok(identity) => identity,
-        Err(err) => return ApiError::bad_request(err.to_string()).into_response(),
-    };
-    let prepared = prepared.with_identity(identity.run_id, identity.parent_id, identity.title);
-    let (prepared, run_id) = prepared.resolve_run_id();
-    let prepared = prepared.with_web_url(state.run_web_url(&run_id));
-    let provider = run_manifest::effective_sandbox_provider(&prepared.settings().run);
-    if let Some(error) =
-        run_manifest::sandbox_provider_policy_error(&state.server_settings(), &provider)
-    {
-        return ApiError::bad_request(error).into_response();
-    }
-    if let Err(response) = validate_optional_parent(&state, run_id, prepared.parent_id()).await {
-        return response;
-    }
-    info!(run_id = %run_id, "Run created");
-
-    finalize_created_run(
-        state,
-        prepared,
-        explicit_title_supplied,
-        title_generation_target,
-        CreatedRunErrorStyle::LegacyManifest,
-    )
-    .await
 }
 
 struct GeneratedTitleTask {

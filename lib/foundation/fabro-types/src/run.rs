@@ -79,8 +79,6 @@ pub struct RunSpec {
     pub labels:              HashMap<String, String>,
     pub provenance:          RunProvenance,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub manifest_blob:       Option<BlobHash>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub definition_blob:     Option<BlobHash>,
     /// Unredacted copy of this spec in the blob store. Stored events pass
     /// through secret redaction, so the spec folded from them is display

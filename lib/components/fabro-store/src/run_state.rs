@@ -872,7 +872,6 @@ fn projection_from_created(event: &EventEnvelope) -> Result<RunProjection> {
         source_directory: props.source_directory.clone(),
         labels,
         provenance: props.provenance.clone(),
-        manifest_blob: props.manifest_blob,
         definition_blob: None,
         spec_blob: props.spec_blob,
         git: props.git.clone(),
@@ -4216,10 +4215,7 @@ mod tests {
         let state = RunProjection::apply_events(&events).unwrap();
         let value = serde_json::to_value(&state).unwrap();
 
-        assert_eq!(
-            value["spec"]["manifest_blob"],
-            events[0].event.properties().unwrap()["manifest_blob"]
-        );
+        assert!(value["spec"].get("manifest_blob").is_none());
         assert_eq!(
             value["spec"]["definition_blob"],
             events[1].event.properties().unwrap()["definition_blob"]

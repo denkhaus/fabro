@@ -503,7 +503,6 @@ mod tests {
             target:              None,
             automation:          None,
             provenance:          run_spec.provenance.clone(),
-            manifest_blob:       None,
             spec_blob:           None,
             git:                 run_spec.git.clone(),
             fork_source_ref:     run_spec.fork_source_ref.clone(),

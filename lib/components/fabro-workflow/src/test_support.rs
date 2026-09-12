@@ -222,7 +222,6 @@ async fn initialized(
                 system_kind: fabro_types::SystemActorKind::Engine,
             },
         },
-        manifest_blob:       None,
         spec_blob:           None,
         git:                 run_options.pre_run_git.clone(),
         fork_source_ref:     run_options.fork_source_ref.clone(),

@@ -937,10 +937,9 @@ async fn seed_dry_run(context: &TestContext, state: SeededRunState) -> RunSetup 
         serde_json::json!({
             "dry_run": true,
             "auto_approve": true,
-            "sandbox": "local",
-            "label": test_labels(context),
+            "labels": test_label_map(context),
         }),
-        None,
+        false,
     )
     .await;
 
@@ -954,7 +953,6 @@ async fn seed_dry_run(context: &TestContext, state: SeededRunState) -> RunSetup 
 }
 
 async fn seed_git_backed_changed_run(context: &TestContext) -> SeededGitRunSetup {
-    let base_sha = "1111111111111111111111111111111111111111";
     let step_one_sha = "2222222222222222222222222222222222222222";
     let step_two_sha = "3333333333333333333333333333333333333333";
     let run = create_seeded_run(
@@ -963,18 +961,14 @@ async fn seed_git_backed_changed_run(context: &TestContext) -> SeededGitRunSetup
         changed_git_workflow_source(),
         serde_json::json!({
             "provider": "openai",
-            "sandbox": "local",
-            "label": test_labels(context),
+            "labels": test_label_map(context),
         }),
-        Some(serde_json::json!({
-            "origin_url": "https://github.com/fabro-sh/seeded-fixture.git",
-            "branch": "main",
-            "sha": base_sha,
-            "dirty": "clean",
-        })),
+        true,
     )
     .await;
 
+    let base_sha = run_git(&context.temp_dir, &["rev-parse", "HEAD"]);
+    let base_sha = base_sha.trim();
     let (client, base_url) = server_endpoint(&context.storage_dir)
         .expect("test server endpoint should be available for seeded run events");
     append_seeded_git_completion_events(
@@ -995,25 +989,20 @@ async fn seed_git_backed_changed_run(context: &TestContext) -> SeededGitRunSetup
 }
 
 async fn seed_git_backed_noop_run(context: &TestContext) -> RunSetup {
-    let base_sha = "1111111111111111111111111111111111111111";
     let run = create_seeded_run(
         context,
         "flow.fabro",
         noop_git_workflow_source(),
         serde_json::json!({
             "provider": "openai",
-            "sandbox": "local",
-            "label": test_labels(context),
+            "labels": test_label_map(context),
         }),
-        Some(serde_json::json!({
-            "origin_url": "https://github.com/fabro-sh/seeded-fixture.git",
-            "branch": "main",
-            "sha": base_sha,
-            "dirty": "clean",
-        })),
+        true,
     )
     .await;
 
+    let base_sha = run_git(&context.temp_dir, &["rev-parse", "HEAD"]);
+    let base_sha = base_sha.trim();
     let (client, base_url) = server_endpoint(&context.storage_dir)
         .expect("test server endpoint should be available for seeded run events");
     append_seeded_git_noop_events(&client, &base_url, &run, context, base_sha).await;
@@ -1026,10 +1015,9 @@ async fn seed_artifact_run(context: &TestContext) -> RunSetup {
         "artifact_run.fabro",
         artifact_workflow_source(),
         serde_json::json!({
-            "sandbox": "local",
-            "label": test_labels(context),
+            "labels": test_label_map(context),
         }),
-        None,
+        false,
     )
     .await;
 
@@ -1065,32 +1053,56 @@ async fn create_seeded_run(
     target_path: &str,
     source: &str,
     args: serde_json::Value,
-    git: Option<serde_json::Value>,
+    git: bool,
 ) -> RunSetup {
-    let mut manifest = serde_json::json!({
-        "version": 1,
-        "cwd": context.temp_dir.display().to_string(),
-        "target": {
-            "path": target_path,
-        },
-        "args": args,
-        "workflows": {
-            (target_path): {
-                "source": source,
-                "files": {},
-            },
-        },
-    });
-    if let Some(git) = git {
-        manifest["git"] = git;
-    }
-
+    let target = if git {
+        let sha = init_remote_fixture(&context.temp_dir, "main");
+        run_git(&context.temp_dir, &[
+            "remote",
+            "add",
+            "origin",
+            "https://github.com/fabro-sh/seeded-fixture.git",
+        ]);
+        serde_json::json!({"kind": "git", "repo": "fabro-sh/seeded-fixture", "branch": "main", "sha": sha})
+    } else {
+        serde_json::json!({"kind": "none"})
+    };
     let (client, base_url) = server_endpoint(&context.storage_dir)
         .expect("test server endpoint should be available for seeded run creation");
+    let path =
+        fabro_types::WorkflowPath::new(target_path).expect("seeded workflow path should be valid");
+    let version = fabro_types::WorkflowVersion::new(
+        path.clone(),
+        std::collections::BTreeMap::from([(path, source.to_string())]),
+        std::collections::BTreeMap::new(),
+    )
+    .expect("seeded workflow registration should succeed");
+    let registered = client
+        .post(format!("{base_url}/api/v1/workflow-versions"))
+        .json(&version)
+        .send()
+        .await
+        .expect("seeded workflow registration should succeed");
+    let registered = expect_reqwest_status(
+        registered,
+        fabro_http::StatusCode::CREATED,
+        "register seeded workflow",
+    )
+    .await;
+    let registered: serde_json::Value = registered
+        .json()
+        .await
+        .expect("workflow registration response should be JSON");
+    let intent = serde_json::json!({
+        "workflow_version_id": registered["workflow_version_id"],
+        "target": target,
+        "environment_id": "default",
+        "args": args,
+    });
     let response = client
         .post(format!("{base_url}/api/v1/runs"))
         .header("user-agent", "fabro-cli/test")
-        .json(&manifest)
+        .json(&intent)
         .send()
         .await
         .expect("seeded run create request should execute");
@@ -1701,6 +1713,18 @@ async fn append_run_event(
         format!("POST /api/v1/runs/{run_id}/events ({event_name})"),
     )
     .await;
+}
+
+fn test_label_map(context: &TestContext) -> std::collections::HashMap<String, String> {
+    test_labels(context)
+        .into_iter()
+        .map(|label| {
+            let (key, value) = label
+                .split_once('=')
+                .expect("test labels should contain a key and value");
+            (key.to_string(), value.to_string())
+        })
+        .collect()
 }
 
 fn test_labels(context: &TestContext) -> Vec<String> {

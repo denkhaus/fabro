@@ -78,7 +78,6 @@ async fn executable_run_spec(
     // folded source as a compatibility fallback.
     spec.run_id = folded.run_id;
     spec.provenance = folded.provenance;
-    spec.manifest_blob = folded.manifest_blob;
     spec.definition_blob = folded.definition_blob;
     spec.spec_blob = folded.spec_blob;
     spec.fork_source_ref = folded.fork_source_ref;
@@ -186,7 +185,6 @@ mod tests {
                 ("team".to_string(), "workflow".to_string()),
             ]),
             provenance: test_support::test_run_provenance(),
-            manifest_blob: None,
             definition_blob: None,
             spec_blob: None,
             fork_source_ref: None,
@@ -226,7 +224,6 @@ mod tests {
             target: record.target.clone(),
             automation: record.automation.clone(),
             provenance: record.provenance.clone(),
-            manifest_blob: None,
             spec_blob,
             git: record.git.clone(),
             fork_source_ref: record.fork_source_ref.clone(),

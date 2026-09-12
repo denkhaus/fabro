@@ -211,16 +211,16 @@ pub(crate) async fn reqwest_status(
     assert_reqwest_status(response, expected, context).await;
 }
 
-pub(crate) async fn create_and_start_run_from_manifest(
+pub(crate) async fn create_and_start_run_from_intent(
     app: &axum::Router,
-    manifest: serde_json::Value,
+    intent: serde_json::Value,
 ) -> String {
     let req = Request::builder()
         .method("POST")
         .uri(api("/runs"))
         .header("content-type", "application/json")
         .body(Body::from(
-            serde_json::to_string(&manifest).expect("manifest fixture should serialize"),
+            serde_json::to_string(&intent).expect("intent fixture should serialize"),
         ))
         .expect("create-run request should build");
     let response = app.clone().oneshot(req).await.unwrap();
@@ -261,10 +261,31 @@ pub(crate) fn minimal_manifest_json(dot_source: &str) -> serde_json::Value {
     })
 }
 
-pub(crate) fn minimal_manifest_json_with_dry_run(dot_source: &str) -> serde_json::Value {
-    let mut manifest = minimal_manifest_json(dot_source);
-    manifest["args"] = serde_json::json!({ "dry_run": true });
-    manifest
+pub(crate) async fn minimal_intent_json(
+    app: &axum::Router,
+    source: &str,
+    workspace: &std::path::Path,
+) -> serde_json::Value {
+    let path = fabro_types::WorkflowPath::new("workflow.fabro")
+        .expect("workflow fixture path should be valid");
+    let version = fabro_types::WorkflowVersion::new(
+        path.clone(),
+        std::collections::BTreeMap::from([(path, source.to_string())]),
+        std::collections::BTreeMap::new(),
+    )
+    .expect("workflow fixture version should be valid");
+    let id = fabro_server::test_support::test_register_workflow_version(app, &version, None).await;
+    serde_json::json!({"workflow_version_id": id, "target": {"kind": "folder", "path": workspace}, "environment_id": "local", "args": {}})
+}
+
+pub(crate) async fn minimal_intent_json_with_dry_run(
+    app: &axum::Router,
+    source: &str,
+    workspace: &std::path::Path,
+) -> serde_json::Value {
+    let mut intent = minimal_intent_json(app, source, workspace).await;
+    intent["args"]["dry_run"] = serde_json::json!(true);
+    intent
 }
 
 pub(crate) async fn run_json(app: &axum::Router, run_id: &str) -> serde_json::Value {

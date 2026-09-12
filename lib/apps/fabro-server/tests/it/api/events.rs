@@ -10,7 +10,7 @@ use object_store::memory::InMemory;
 use tokio::sync::Barrier;
 use tower::ServiceExt;
 
-use crate::helpers::{MINIMAL_DOT, api, minimal_manifest_json, response_json, test_settings};
+use crate::helpers::{MINIMAL_DOT, api, minimal_intent_json, response_json, test_settings};
 
 fn app_with_store(
     object_store: Arc<dyn ObjectStore>,
@@ -36,14 +36,15 @@ fn app_with_store(
     fabro_server::test_support::build_test_router(state)
 }
 
-async fn create_run(app: &axum::Router) -> String {
+async fn create_run(app: &axum::Router) -> (String, tempfile::TempDir) {
+    let workspace = tempfile::tempdir().expect("run target workspace should be created");
     let request = Request::builder()
         .method("POST")
         .uri(api("/runs"))
         .header("content-type", "application/json")
         .body(Body::from(
-            serde_json::to_string(&minimal_manifest_json(MINIMAL_DOT))
-                .expect("manifest should serialize"),
+            serde_json::to_string(&minimal_intent_json(app, MINIMAL_DOT, workspace.path()).await)
+                .expect("intent should serialize"),
         ))
         .expect("create-run request should build");
     let body = response_json(
@@ -52,10 +53,11 @@ async fn create_run(app: &axum::Router) -> String {
         "POST /api/v1/runs",
     )
     .await;
-    body["id"]
+    let run_id = body["id"]
         .as_str()
         .expect("create-run response should include an id")
-        .to_string()
+        .to_string();
+    (run_id, workspace)
 }
 
 fn append_stage_started_request(run_id: &str, index: usize) -> Request<Body> {
@@ -116,7 +118,7 @@ async fn concurrent_event_appends_after_restart_keep_projection_cache_contiguous
         Arc::clone(&blobs),
         Arc::clone(&run_summaries),
     );
-    let run_id = create_run(&first_app).await;
+    let (run_id, _run_id_workspace) = create_run(&first_app).await;
 
     tokio::time::sleep(Duration::from_millis(25)).await;
 

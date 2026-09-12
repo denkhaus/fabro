@@ -4,10 +4,10 @@ use httpmock::MockServer;
 use tower::ServiceExt;
 
 use crate::helpers::{
-    MINIMAL_DOT, api, checked_response, create_and_start_run_from_manifest, minimal_manifest_json,
-    minimal_manifest_json_with_dry_run, response_json, response_status,
-    test_app_state_with_options, test_app_with_mock_anthropic, test_app_with_no_providers,
-    test_app_with_scheduler, test_settings, wait_for_run_status,
+    MINIMAL_DOT, api, checked_response, create_and_start_run_from_intent,
+    minimal_intent_json_with_dry_run, response_json, response_status, test_app_state_with_options,
+    test_app_with_mock_anthropic, test_app_with_no_providers, test_app_with_scheduler,
+    test_settings, wait_for_run_status,
 };
 
 fn completion_request(stream: bool) -> Request<Body> {
@@ -43,12 +43,15 @@ fn completion_request_with_model(stream: bool, model: &str) -> Request<Body> {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn dry_run_serve_starts_and_runs_workflow() {
+    let workspace = tempfile::tempdir().unwrap();
     let state = test_app_state_with_options(test_settings(), 5);
     let app = test_app_with_scheduler(state);
 
-    let run_id =
-        create_and_start_run_from_manifest(&app, minimal_manifest_json_with_dry_run(MINIMAL_DOT))
-            .await;
+    let run_id = create_and_start_run_from_intent(
+        &app,
+        minimal_intent_json_with_dry_run(&app, MINIMAL_DOT, workspace.path()).await,
+    )
+    .await;
 
     let status = wait_for_run_status(&app, &run_id, &["succeeded", "failed"]).await;
     assert_eq!(status, "succeeded");
@@ -100,20 +103,15 @@ async fn test_model_unknown_via_full_router() {
 }
 
 #[tokio::test]
-async fn dry_run_serve_rejects_invalid_dot() {
+async fn registration_rejects_invalid_dot_without_a_provider() {
     let app = test_app_with_no_providers();
-
-    let req = Request::builder()
-        .method("POST")
-        .uri(api("/runs"))
-        .header("content-type", "application/json")
-        .body(Body::from(
-            serde_json::to_string(&minimal_manifest_json("not valid dot")).unwrap(),
-        ))
-        .unwrap();
-
-    let response = app.oneshot(req).await.unwrap();
-    response_status(response, StatusCode::BAD_REQUEST, "POST /api/v1/runs").await;
+    let req = Request::builder().method("POST").uri(api("/workflow-versions")).header("content-type", "application/json").body(Body::from(serde_json::json!({"entrypoint":"workflow.fabro","files":{"workflow.fabro":"not valid dot"},"workflow_dependencies":{}}).to_string())).unwrap();
+    response_status(
+        app.oneshot(req).await.unwrap(),
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "register invalid workflow",
+    )
+    .await;
 }
 
 #[tokio::test]

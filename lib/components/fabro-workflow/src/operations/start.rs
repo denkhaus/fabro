@@ -2397,7 +2397,6 @@ mod tests {
                 workflow_path: None,
                 workflow_bundle: None,
                 target,
-                submitted_manifest_bytes: None,
                 run_id: Some(fixtures::RUN_1),
                 title: None,
                 automation: None,
@@ -2973,35 +2972,34 @@ mod tests {
         crate::operations::create(
             &store,
             crate::operations::CreateRunInput {
-                workflow: crate::operations::WorkflowInput::Bundled(
+                workflow:             crate::operations::WorkflowInput::Bundled(
                     workflow_bundle
                         .workflow(&ManifestPath::from_wire("workflow.fabro").unwrap())
                         .unwrap()
                         .clone(),
                 ),
-                settings: settings_from_run_layer(RunLayer {
+                settings:             settings_from_run_layer(RunLayer {
                     execution: Some(RunExecutionLayer {
                         mode: Some(RunMode::DryRun),
                         ..RunExecutionLayer::default()
                     }),
                     ..RunLayer::default()
                 }),
-                vars: std::collections::HashMap::new(),
-                cwd: temp.path().to_path_buf(),
-                workflow_slug: Some("bundle-child".to_string()),
-                workflow_path: Some(ManifestPath::from_wire("workflow.fabro").unwrap()),
-                workflow_bundle: Some(workflow_bundle),
-                target: None,
-                submitted_manifest_bytes: None,
-                run_id: Some(fixtures::RUN_1),
-                title: None,
-                automation: None,
-                git: None,
-                fork_source_ref: None,
-                parent_id: None,
-                provenance: test_support::test_run_provenance(),
+                vars:                 std::collections::HashMap::new(),
+                cwd:                  temp.path().to_path_buf(),
+                workflow_slug:        Some("bundle-child".to_string()),
+                workflow_path:        Some(ManifestPath::from_wire("workflow.fabro").unwrap()),
+                workflow_bundle:      Some(workflow_bundle),
+                target:               None,
+                run_id:               Some(fixtures::RUN_1),
+                title:                None,
+                automation:           None,
+                git:                  None,
+                fork_source_ref:      None,
+                parent_id:            None,
+                provenance:           test_support::test_run_provenance(),
                 configured_providers: test_provider_ids(),
-                web_url: None,
+                web_url:              None,
             },
             storage_root,
             test_catalog(),

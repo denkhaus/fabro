@@ -1364,7 +1364,7 @@ mod tests {
     }
 
     #[test]
-    fn run_created_round_trip_preserves_manifest_blob() {
+    fn run_created_reads_retired_manifest_blob_without_serializing_it() {
         let line = json!({
             "id": "evt_created_blob",
             "ts": "2026-04-04T12:00:00.000Z",
@@ -1380,13 +1380,25 @@ mod tests {
             }
         });
 
-        let parsed = RunEvent::from_value(line.clone()).unwrap();
-        let serialized = parsed.to_value().unwrap();
-
-        assert_eq!(
-            serialized["properties"]["manifest_blob"],
-            line["properties"]["manifest_blob"]
-        );
+        for legacy_hash in [
+            Some(line["properties"]["manifest_blob"].clone()),
+            Some(serde_json::Value::Null),
+            None,
+        ] {
+            let mut historical = line.clone();
+            historical["properties"]
+                .as_object_mut()
+                .unwrap()
+                .remove("manifest_blob");
+            if let Some(hash) = legacy_hash {
+                historical["properties"]["manifest_blob"] = hash;
+            }
+            let parsed = RunEvent::from_value(historical).unwrap();
+            assert!(matches!(parsed.body, EventBody::RunCreated(_)));
+            let serialized = parsed.to_value().unwrap();
+            assert_eq!(serialized["event"], "run.created");
+            assert!(serialized["properties"].get("manifest_blob").is_none());
+        }
     }
 
     #[test]
