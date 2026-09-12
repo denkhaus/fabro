@@ -15,6 +15,15 @@ leak-timeout = "500ms"
     filter = "package(fabro-workflow)"
     slow-timeout = { period = "2s", terminate-after = 3 }
 
+    # fabro-7e8d: known-flaky under parallel load (2-9 timeouts per run,
+    # fails identically on stash-verified clean trees). Retry once and relax
+    # the watchdog timing budget for this single test; a #[ignore] would pull
+    # it into the e2e profile via --run-ignored only, so an override is
+    # preferred. Scoped to exactly this test — fabro-80b3 is a different one.
+    [[profile.default.overrides]]
+    filter = "test(e2e_stall_watchdog_with_explicit_timeout_override)"
+    retries = 1
+    slow-timeout = { period = "10s", terminate-after = 4 }
 
 [profile.e2e]
 # E2E (ignored) tests: flag SLOW after 10s, hard-kill after 30s
@@ -43,5 +52,13 @@ leak-timeout = "2s"
 
     [[profile.ci.overrides]]
     filter = "package(fabro-workflow)"
+    slow-timeout = { period = "30s", terminate-after = 4 }
+
+    # fabro-7e8d: known-flaky under parallel load — mirror the default-profile
+    # quarantine (retries + relaxed slow-timeout) here so CI does not resurrect
+    # the flake the default override suppresses.
+    [[profile.ci.overrides]]
+    filter = "test(e2e_stall_watchdog_with_explicit_timeout_override)"
+    retries = 1
     slow-timeout = { period = "30s", terminate-after = 4 }
 
