@@ -26,7 +26,7 @@ use fabro_types::settings::run::ResolvedMcpEntry;
 use fabro_util::exit::{self, ErrorExt, ExitClass};
 use fabro_util::home::Home;
 use fabro_util::terminal::Styles;
-use fabro_workflow::web_search::{SearchBackend, SearchSecrets};
+use fabro_workflow::web_search::{self, SearchSecrets};
 use lithos_llm::catalog::ProviderId;
 use pebble_agent::{ToolCallRequest, ToolSystemError};
 use pebble_coding_agent::environment::Environment;
@@ -636,8 +636,8 @@ async fn run_session(
     if let Some(routes) = sandbox.port_routes() {
         builder = builder.port_routes(routes);
     }
-    if let Some(search) = SearchBackend::from_secrets(&cli_search_secrets()) {
-        builder = builder.search_provider(Arc::new(search));
+    if let Some(search) = web_search::search_provider(&cli_search_secrets()) {
+        builder = builder.search_provider(search);
     }
     let mut agent = builder
         .build()

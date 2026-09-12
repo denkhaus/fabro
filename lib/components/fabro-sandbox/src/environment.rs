@@ -16,12 +16,11 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use fabro_types::CommandOutputStream;
-use fabro_util::workspace_glob::WorkspaceGlob;
+use pebble_coding_agent::environment::support::{capture_stats, tree_order, validate_glob};
 use pebble_coding_agent::environment::{
     DirEntry, EnvResult, Environment, EnvironmentError, EnvironmentErrorKind, ExecOutcome,
     ExecOutputSink, ExecOutputStream, ExecRequest, ExecResult, GrepOptions,
 };
-use pebble_coding_agent::tools::OutputCaptureStats as PebbleCaptureStats;
 use sandbox_driver::FileKind;
 
 use crate::driver_sandbox::RunSandbox;
@@ -136,9 +135,8 @@ impl Environment for RunSandbox {
             .collect();
         // The driver lists in flat lexicographic order of the whole relative
         // path, where `foo-bar` sorts between `foo` and `foo/x`. Pebble lists
-        // in tree order: by name within each directory. Comparing the paths
-        // segment by segment is that order.
-        entries.sort_by(|left, right| left.name.split('/').cmp(right.name.split('/')));
+        // in tree order, and says how.
+        tree_order(&mut entries);
         Ok(entries)
     }
 
@@ -162,22 +160,11 @@ impl Environment for RunSandbox {
     }
 
     async fn glob(&self, pattern: &str, path: Option<&str>) -> EnvResult<Vec<String>> {
-        // Validated here rather than by the run sandbox's own glob so the
-        // reason reaches the model in pebble's words, and so the patterns
-        // pebble rejects (a trailing `/`, a `/` or wildcard inside `[...]`)
-        // are rejected even though fabro's glob would accept them.
-        if let Err(reason) = validate_pebble_glob(pattern) {
-            return Err(EnvironmentError::new(
-                EnvironmentErrorKind::InvalidInput,
-                format!("Invalid glob pattern {pattern:?}: {reason}"),
-            ));
-        }
-        if let Err(error) = WorkspaceGlob::try_new(pattern) {
-            return Err(EnvironmentError::new(
-                EnvironmentErrorKind::InvalidInput,
-                format!("Invalid glob pattern {pattern:?}: {error}"),
-            ));
-        }
+        // Validated by pebble's own grammar before the driver sees the
+        // pattern, so the reason reaches the model in pebble's words and the
+        // patterns pebble rejects are rejected even where fabro's glob would
+        // accept them.
+        validate_glob(pattern)?;
         Self::glob(self, pattern, path)
             .await
             .map_err(|error| environment_error("Failed to match files", error))
@@ -226,8 +213,14 @@ impl Environment for RunSandbox {
                 duration_ms: streaming.result.duration_ms,
             },
             streams_separated: streaming.streams_separated,
-            stdout_capture:    capture_stats(streaming.stdout_capture),
-            stderr_capture:    capture_stats(streaming.stderr_capture),
+            stdout_capture:    capture_stats(
+                streaming.stdout_capture.observed_bytes,
+                output_bytes_cap,
+            ),
+            stderr_capture:    capture_stats(
+                streaming.stderr_capture.observed_bytes,
+                output_bytes_cap,
+            ),
         })
     }
 }
@@ -242,39 +235,6 @@ impl RunSandbox {
 
 /// Pebble's glob grammar, beyond what fabro's glob already rejects.
 ///
-/// A pattern names files, so one that ends with `/` is a mistake rather than a
-/// directory; and `/`, `*`, or `?` inside a character class never mean what a
-/// model meant by them. The messages are pebble's own, so a model corrects
-/// itself the same way wherever pebble runs.
-fn validate_pebble_glob(pattern: &str) -> Result<(), &'static str> {
-    let trimmed = pattern.strip_prefix("./").unwrap_or(pattern);
-    if trimmed.is_empty() {
-        return Err("pattern cannot be empty");
-    }
-    if trimmed.ends_with('/') {
-        return Err(
-            "pattern ends with \"/\"; glob matches files, drop the trailing slash or add a \
-             filename pattern",
-        );
-    }
-    let mut in_class = false;
-    for character in trimmed.chars() {
-        match (in_class, character) {
-            (false, '[') => in_class = true,
-            (true, ']') => in_class = false,
-            (true, '/') => return Err("a \"/\" cannot appear inside a character class"),
-            (true, '*' | '?') => {
-                return Err("wildcards are not valid inside a character class");
-            }
-            _ => {}
-        }
-    }
-    if in_class {
-        return Err("pattern has an unclosed character class");
-    }
-    Ok(())
-}
-
 /// A path with its redundant separators and `.` segments removed, for
 /// deciding whether two spellings name the same file.
 fn normalize(path: &str) -> String {
@@ -312,14 +272,6 @@ fn adapt_output_sink(sink: ExecOutputSink) -> CommandOutputCallback {
         sink(stream, &chunk);
         Box::pin(async { Ok(()) })
     })
-}
-
-fn capture_stats(stats: sandbox::OutputCaptureStats) -> PebbleCaptureStats {
-    PebbleCaptureStats {
-        observed_bytes: stats.observed_bytes,
-        retained_bytes: stats.retained_bytes,
-        omitted_bytes:  stats.omitted_bytes,
-    }
 }
 
 /// A sandbox failure as pebble classifies it, keeping the driver cause.
@@ -400,16 +352,6 @@ mod tests {
             "foo.txt"
         ]);
         drop(directory);
-    }
-
-    #[test]
-    fn pebbles_glob_grammar_is_enforced_before_the_driver() {
-        for pattern in ["nested/", "[a/]", "[a*]", "[ab"] {
-            assert!(validate_pebble_glob(pattern).is_err(), "{pattern}");
-        }
-        for pattern in ["**/*.txt", "?.txt", "[ab].txt", "./src/**"] {
-            assert!(validate_pebble_glob(pattern).is_ok(), "{pattern}");
-        }
     }
 
     #[test]

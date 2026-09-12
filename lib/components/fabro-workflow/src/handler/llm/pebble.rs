@@ -66,7 +66,7 @@ use crate::model_fallback::{ModelFallbackNotice, ModelFallbackPolicy};
 use crate::outcome::billed_model_usage_from_llm;
 use crate::services::FabroRunToolServices;
 use crate::steering_hub::{ActiveControlHandle, SteeringHub, SteeringItem};
-use crate::web_search::{SearchBackend, SearchSecrets};
+use crate::web_search::{self, SearchSecrets};
 
 /// The share of the model's context window at which an agent stage compacts
 /// its conversation. Fabro's own agent loop used this value; pebble's default
@@ -403,6 +403,18 @@ impl LiveAgent {
         self.tool_duration = self.tool_duration.saturating_add(report.timing.tool);
         self.files_touched
             .extend(report.files_touched.iter().cloned());
+        for compaction in &report.compactions {
+            // The summary call's usage is already in `report.usage`; this is
+            // the breakdown, for anyone asking why a stage cost what it did.
+            tracing::debug!(
+                reason = ?compaction.reason,
+                original_turns = compaction.original_turn_count,
+                preserved_turns = compaction.preserved_turn_count,
+                usage = ?compaction.usage,
+                cost_usd_micros = ?compaction.cost_usd_micros,
+                "agent stage compacted its conversation"
+            );
+        }
         if report.last_file_touched.is_some() {
             self.last_file_touched.clone_from(&report.last_file_touched);
         }
@@ -668,8 +680,8 @@ impl PebbleBackend {
         if let Some(human_input) = bindings.human_input {
             builder = builder.human_input(Arc::clone(human_input));
         }
-        if let Some(search) = SearchBackend::from_secrets(&self.search_secrets) {
-            builder = builder.search_provider(Arc::new(search));
+        if let Some(search) = web_search::search_provider(&self.search_secrets) {
+            builder = builder.search_provider(search);
         }
         if provider.profile_kind == AgentProfileKind::Claude5 {
             builder = builder.web_fetch_summarizer(route.selector());
