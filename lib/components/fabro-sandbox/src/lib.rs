@@ -61,6 +61,7 @@ pub use push_credentials::RefreshErrorKind;
 pub use reconnect::{
     reconnect, reconnect_driver_for_run, reconnect_for_run, reconnect_for_run_with_events,
 };
+pub use redact::SecretRedactor;
 pub use sandbox::{
     CommandOutputCallback, DEFAULT_EXEC_OUTPUT_TAIL_BYTES, ExecResult, ExecStreamingRequest,
     ExecStreamingResult, GitRunInfo, GitSetupIntent, OutputCaptureStats, PushAttempt, PushError,

@@ -19,7 +19,7 @@ use fabro_llm::types::ResponseFormat;
 use fabro_llm::{Client, ClientOptions, ErrorData, Request, Response};
 use fabro_mcp::config::McpServerSettings;
 use fabro_mcp::connection_manager::McpConnectionManager;
-use fabro_sandbox::RunSandbox;
+use fabro_sandbox::{RunSandbox, SecretRedactor};
 use fabro_types::settings::run::RunModelControls;
 use fabro_types::{
     AgentProfileKind, ModelRef, PermissionLevel, Principal, SessionCapability, StageId,
@@ -67,6 +67,15 @@ use crate::outcome::billed_model_usage_from_llm;
 use crate::services::FabroRunToolServices;
 use crate::steering_hub::{ActiveControlHandle, SteeringHub, SteeringItem};
 use crate::web_search::{SearchBackend, SearchSecrets};
+
+/// The share of the model's context window at which an agent stage compacts
+/// its conversation. Fabro's own agent loop used this value; pebble's default
+/// is the same, and it is set here so the stage's policy is fabro's to state.
+pub const COMPACTION_THRESHOLD_PERCENT: usize = 80;
+
+/// How many recent turns compaction leaves verbatim, as fabro's agent loop
+/// did.
+pub const COMPACTION_PRESERVE_TURNS: usize = 6;
 
 /// The API backend: pebble coding agents over the workflow's LLM client.
 pub struct PebbleBackend {
@@ -130,6 +139,13 @@ fn classify_agent_error(
             AgentErrorDisposition::Terminal(Error::Precondition(
                 "Agent session used every model turn it was allowed".to_string(),
             ))
+        }
+        // Stages set no round budget; the arm names the outcome should one
+        // ever be configured.
+        pebble_coding_agent::Error::ToolRoundsExhausted { limit } => {
+            AgentErrorDisposition::Terminal(Error::Precondition(format!(
+                "Agent session reached its limit of {limit} tool rounds"
+            )))
         }
         pebble_coding_agent::Error::EventSink(sink) => AgentErrorDisposition::Terminal(Error::Io(
             format!("Failed to persist agent events: {sink:#}"),
@@ -619,6 +635,9 @@ impl PebbleBackend {
             ))
             .with_skill_dirs(self.skill_dirs(sandbox))
             .with_recorded_permission_level(PermissionLevel::Full)
+            .with_context_compaction(true)
+            .with_compaction_threshold_percent(COMPACTION_THRESHOLD_PERCENT)
+            .with_compaction_preserve_turns(COMPACTION_PRESERVE_TURNS)
     }
 
     /// Start the stage's MCP servers, reporting each as a run event.
@@ -691,6 +710,7 @@ impl PebbleBackend {
                 scope:         bindings.stage_scope.clone(),
                 file_tracking: Arc::clone(bindings.file_tracking),
             }))
+            .redactor(Arc::new(SecretRedactor))
             .subagents(SubagentOptions::enabled());
         if let Some(provider) = &self.tool_env {
             builder = builder.tool_env_provider(Arc::clone(provider));

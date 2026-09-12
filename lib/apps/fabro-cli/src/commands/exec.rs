@@ -19,7 +19,7 @@ use fabro_llm::middleware::{Call, Middleware, Next, Output};
 use fabro_llm::{Client, ClientOptions, Error as LlmError, ErrorKind};
 use fabro_mcp::config::McpServerSettings;
 use fabro_mcp::connection_manager::McpConnectionManager;
-use fabro_sandbox::{RunSandbox, local_sandbox};
+use fabro_sandbox::{RunSandbox, SecretRedactor, local_sandbox};
 use fabro_static::EnvVars;
 use fabro_types::settings::cli::OutputFormat as SettingsOutputFormat;
 use fabro_types::settings::run::ResolvedMcpEntry;
@@ -633,6 +633,7 @@ async fn run_session(
         .model(format!("{provider_id}/{model}"))
         .options(options)
         .tool_middleware(Arc::new(permission_middleware))
+        .redactor(Arc::new(SecretRedactor))
         .web_fetch_summarizer(summarizer_model(&catalog, &provider_id, &model))
         .subagents(SubagentOptions::enabled());
     if let Some(manager) = &mcp {

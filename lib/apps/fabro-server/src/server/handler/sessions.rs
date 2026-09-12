@@ -16,6 +16,7 @@ use fabro_api::types::{
 };
 use fabro_llm::lithos_catalog::Catalog;
 use fabro_llm::{FabroClient, ModelSelectionError, selection};
+use fabro_sandbox::SecretRedactor;
 use fabro_sandbox::reconnect::reconnect_for_run;
 use fabro_store::{
     EventPayload, ProjectedRunSession, RunDatabase, project_run_session, project_run_sessions,
@@ -796,6 +797,7 @@ async fn build_agent(
             AskFabroToolPolicy,
         ))))
         .system_prompt_transform(Arc::new(AskFabroPrompt))
+        .redactor(Arc::new(SecretRedactor))
         .build()
         .await
         .map_err(|err| AskFabroBuildError::Agent(anyhow::Error::new(err)))

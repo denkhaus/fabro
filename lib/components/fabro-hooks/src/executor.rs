@@ -8,13 +8,13 @@ use fabro_llm::credentials::CredentialProvider;
 use fabro_llm::lithos_catalog::Catalog;
 use fabro_llm::{Client, ClientOptions, Request};
 use fabro_redact::redacted_url_for_log;
-use fabro_sandbox::RunSandbox;
+use fabro_sandbox::{RunSandbox, SecretRedactor};
 use fabro_types::PermissionLevel;
 use fabro_types::settings::{InterpString, ResolveCtx, ResolveError};
 use pebble_coding_agent::extensions::{
     SystemPromptContext, SystemPromptDecision, SystemPromptTransform,
 };
-use pebble_coding_agent::{CodingAgent, CodingAgentOptions, ShutdownReason};
+use pebble_coding_agent::{CodingAgent, CodingAgentOptions, Error as AgentError, ShutdownReason};
 use tokio::process::Command as TokioCommand;
 use tokio::time::timeout as tokio_timeout;
 
@@ -24,6 +24,9 @@ use crate::types::{
 };
 
 const HOOK_EVALUATOR_SYSTEM_PROMPT: &str = "You are a hook evaluator for a workflow engine. Given context about a workflow event, evaluate the condition.";
+
+/// How many tool rounds an agent hook may run when its definition names none.
+const DEFAULT_MAX_TOOL_ROUNDS: u32 = 50;
 
 static HOOK_RESPONSE_SCHEMA: LazyLock<serde_json::Value> = LazyLock::new(|| {
     serde_json::json!({
@@ -364,8 +367,16 @@ impl HookExecutorImpl {
     ///
     /// The agent runs pebble's full tool set at `PermissionLevel::Full`, with
     /// no memory or skills, the evaluator system prompt in place of the
-    /// profile's, and `max_tool_rounds` as its turn budget. Exhausting the
-    /// budget, an LLM failure, or a timeout all fail open.
+    /// profile's, and `max_tool_rounds` as pebble's tool-round budget.
+    /// Exhausting the budget, an LLM failure, or a timeout all fail open.
+    ///
+    /// Fabro's `max_tool_rounds` names how many model turns the hook may
+    /// take, executing the tools each asks for, before it proceeds on a turn
+    /// that still asks for tools. Pebble's budget of `rounds` lets `rounds`
+    /// tool turns run and refuses the next one without running its tools, so
+    /// `max_tool_rounds - 1` reaches the same decision at the same turn and
+    /// spares the last, useless tool execution. Zero is a loop that never
+    /// asks the model: the hook proceeds without an agent.
     async fn execute_agent(
         definition: &HookDefinition,
         prompt: &InterpString,
@@ -388,6 +399,14 @@ impl HookExecutorImpl {
 
         let resolved_model = Self::resolve_model(model.as_deref());
         let user_msg = Self::build_hook_user_message(&prompt, context);
+        let Some(rounds) = max_tool_rounds
+            .unwrap_or(DEFAULT_MAX_TOOL_ROUNDS)
+            .checked_sub(1)
+        else {
+            tracing::warn!("agent hook allows no tool rounds, proceeding");
+            return HookDecision::Proceed;
+        };
+        let rounds = usize::try_from(rounds).unwrap_or(usize::MAX);
 
         Self::execute_llm_with_timeout(definition.timeout(), "agent", || async move {
             let client = match Self::build_client(catalog, llm_source).await {
@@ -398,14 +417,14 @@ impl HookExecutorImpl {
                 }
             };
 
-            let max_turns = usize::try_from(max_tool_rounds.unwrap_or(50).max(1)).unwrap_or(50);
             let options = CodingAgentOptions::default()
                 .with_context_compaction(false)
-                .with_max_turns(max_turns);
+                .with_max_tool_rounds(rounds);
             let mut agent = match CodingAgent::builder(client, sandbox)
                 .model(resolved_model)
                 .permission_level(PermissionLevel::Full)
                 .system_prompt_transform(Arc::new(HookEvaluatorPrompt))
+                .redactor(Arc::new(SecretRedactor))
                 .options(options)
                 .build()
                 .await
@@ -420,6 +439,10 @@ impl HookExecutorImpl {
             let report = agent.prompt(user_msg).await;
             let decision = match report.result {
                 Ok(output) => Self::parse_prompt_response(output.text.as_deref().unwrap_or("")),
+                Err(AgentError::ToolRoundsExhausted { .. }) => {
+                    tracing::warn!("agent hook exhausted max tool rounds, proceeding");
+                    HookDecision::Proceed
+                }
                 Err(e) => {
                     tracing::warn!(error = %e, "agent hook did not complete, proceeding");
                     HookDecision::Proceed

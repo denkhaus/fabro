@@ -3,16 +3,18 @@
 //! Pebble loads memory from explicit paths and looks in no conventional
 //! location. Fabro supplies the convention: each coding harness reads the
 //! instruction files its vendor's own agent reads, found in the sandbox
-//! working directory.
+//! working directory. The loading itself — the 32 KB budget, duplicate text
+//! skipped, the file that crosses the budget cut and marked — is pebble's
+//! [`ProjectMemory`], the same loader an agent stage runs over
+//! `with_memory_files`, so a prompt stage reads by the agent's rules.
 
 use fabro_sandbox::RunSandbox;
 use fabro_types::AgentProfileKind;
+use pebble_coding_agent::environment::Environment;
+use pebble_coding_agent::{InterruptReason, ProjectMemory};
 use tokio_util::sync::CancellationToken;
 
 use crate::error::Error;
-
-/// The most memory text a stage loads into its system prompt.
-pub const MEMORY_BUDGET_BYTES: usize = 32_768;
 
 /// The instruction filenames a harness reads, in load order.
 #[must_use]
@@ -45,55 +47,25 @@ pub fn memory_paths(working_dir: &str, profile_kind: AgentProfileKind) -> Vec<St
 }
 
 /// The memory text a prompt stage inlines into its system prompt: every
-/// candidate file's contents, deduplicated and cut to the budget.
+/// candidate file's contents, loaded by pebble's [`ProjectMemory`] rules.
 ///
 /// # Errors
 ///
-/// Returns [`Error::Cancelled`] when `cancel` fires between reads.
+/// Returns [`Error::Cancelled`] when `cancel` fires around a read.
 pub async fn load_memory_text(
     sandbox: &RunSandbox,
     working_dir: &str,
     profile_kind: AgentProfileKind,
     cancel: &CancellationToken,
 ) -> Result<Option<String>, Error> {
-    let mut documents = Vec::new();
-    let mut seen = std::collections::HashSet::new();
-    let mut budget = MEMORY_BUDGET_BYTES;
-    for path in memory_paths(working_dir, profile_kind) {
-        if cancel.is_cancelled() {
-            return Err(Error::Cancelled);
-        }
-        let Ok(content) = sandbox.read_file_text(&path).await else {
-            continue;
-        };
-        if content.is_empty() || !seen.insert(content.clone()) {
-            continue;
-        }
-        if budget == 0 {
-            break;
-        }
-        if content.len() <= budget {
-            budget -= content.len();
-            documents.push(content);
-        } else {
-            documents.push(truncate_to_budget(&content, budget));
-            budget = 0;
-        }
-    }
-    if documents.is_empty() {
-        Ok(None)
-    } else {
-        Ok(Some(documents.join("\n\n")))
-    }
-}
-
-fn truncate_to_budget(content: &str, budget: usize) -> String {
-    const MARKER: &str = "[Project instructions truncated at 32KB]";
-    if budget <= MARKER.len() {
-        return MARKER[..budget].to_string();
-    }
-    let keep = content.floor_char_boundary(budget - MARKER.len());
-    format!("{}{MARKER}", &content[..keep])
+    let paths = memory_paths(working_dir, profile_kind);
+    let memory = ProjectMemory::load(sandbox as &dyn Environment, &paths, cancel)
+        .await
+        .map_err(|error| match error {
+            pebble_coding_agent::Error::Interrupted(InterruptReason::Cancelled) => Error::Cancelled,
+            other => Error::handler_with_source("Failed to load project memory", other),
+        })?;
+    Ok((!memory.is_empty()).then(|| memory.text()))
 }
 
 #[cfg(test)]
