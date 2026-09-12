@@ -112,8 +112,9 @@ futures-util = "0.3"
 # the merge commit once it lands. Pebble pins the same lithos-llm rev as
 # fabro, and its lockfile policy is that every shared crate resolves to the
 # version lithos-llm locks.
-pebble-agent = { git = "https://github.com/lithoscomputer/pebble", rev = "3a76aeee74d6c4aef349b927b09455c5616b296e" }
-pebble-coding-agent = { git = "https://github.com/lithoscomputer/pebble", rev = "3a76aeee74d6c4aef349b927b09455c5616b296e", features = ["mcp", "search-providers"] }
+pebble-agent = { git = "https://github.com/lithoscomputer/pebble", rev = "cb6b24e26eaab24fa94a53babeafaccf20b29ee8" }
+pebble-coding-agent = { git = "https://github.com/lithoscomputer/pebble", rev = "cb6b24e26eaab24fa94a53babeafaccf20b29ee8", features = ["mcp", "search-providers"] }
+pebble-cli-core = { git = "https://github.com/lithoscomputer/pebble", rev = "cb6b24e26eaab24fa94a53babeafaccf20b29ee8" }
 sandbox-driver = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "23062b6ad62ff4665cbbcb7dce037ec9c4c34318" }
 sandbox-driver-protocol = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "23062b6ad62ff4665cbbcb7dce037ec9c4c34318" }
 sandbox-driver-host = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "23062b6ad62ff4665cbbcb7dce037ec9c4c34318" }

@@ -1,13 +1,16 @@
 //! `fabro exec`: one agentic coding session in the current directory.
 //!
-//! The session is pebble's coding agent over a local sandbox. Model calls go
-//! either straight to the provider with the CLI's credentials or through a
-//! Fabro server's completions endpoint when a server target is set.
+//! The session is pebble's coding agent over a local sandbox, run through
+//! pebble's own command-line session: its event renderer, closing summary,
+//! and terminal approval prompt. What is fabro's here is the client (model
+//! calls go either straight to the provider with the CLI's credentials or
+//! through a Fabro server's completions endpoint when a server target is
+//! set), the sandbox, the MCP servers, skills, search, and redaction.
 
 use std::collections::HashMap;
 use std::io::IsTerminal as _;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use anyhow::{Context as _, Result as AnyResult};
 use async_trait::async_trait;
@@ -20,7 +23,6 @@ use fabro_mcp::config::McpServerSettings;
 use fabro_mcp::pebble::pebble_servers;
 use fabro_sandbox::{RunSandbox, SecretRedactor, local_sandbox};
 use fabro_static::EnvVars;
-use fabro_types::PermissionLevel;
 use fabro_types::settings::cli::OutputFormat as SettingsOutputFormat;
 use fabro_types::settings::run::ResolvedMcpEntry;
 use fabro_util::exit::{self, ErrorExt, ExitClass};
@@ -28,20 +30,14 @@ use fabro_util::home::Home;
 use fabro_util::terminal::Styles;
 use fabro_workflow::web_search::{self, SearchSecrets};
 use lithos_llm::catalog::ProviderId;
-use pebble_agent::{ToolCallRequest, ToolSystemError};
+use pebble_cli_core::approval::TerminalApproval;
+use pebble_cli_core::render::{self, JsonStream, Style};
+use pebble_cli_core::session::{SessionOptions, run_prompt};
 use pebble_coding_agent::environment::Environment;
-use pebble_coding_agent::events::{CodingAgentEvent, CodingEvent};
-use pebble_coding_agent::state::Message;
 use pebble_coding_agent::subagents::SubagentOptions;
-use pebble_coding_agent::tools::{
-    ApprovalDecision, PermissionLevelPolicy, PermissionMiddleware, ToolApprovalService,
-};
-use pebble_coding_agent::{
-    CodingAgent, CodingAgentOptions, MemoryDiscovery, ShutdownReason, SkillDiscovery,
-};
-use tokio::io::{AsyncWriteExt, stdout};
+use pebble_coding_agent::tools::{PermissionLevelPolicy, PermissionMiddleware};
+use pebble_coding_agent::{CodingAgent, CodingAgentOptions, MemoryDiscovery, SkillDiscovery};
 use tokio::signal;
-use tokio::task::spawn_blocking;
 use tokio_util::sync::CancellationToken;
 
 use crate::args::{AgentArgs, ExecArgs, ExecOutputFormat};
@@ -325,162 +321,6 @@ fn summarizer_model(catalog: &Catalog, provider_id: &ProviderId, selected_model:
     format!("{provider_id}/{model}")
 }
 
-/// Interactive approval for tools the permission level does not allow
-/// outright. Without a terminal, or with `--auto-approve`, such tools are
-/// refused.
-struct CliApproval {
-    level:          Mutex<PermissionLevel>,
-    is_interactive: bool,
-    styles:         &'static Styles,
-}
-
-#[async_trait]
-impl ToolApprovalService for CliApproval {
-    async fn approve(
-        &self,
-        request: &ToolCallRequest,
-    ) -> Result<ApprovalDecision, ToolSystemError> {
-        let tool_name = request.call().name.clone();
-        let current_level = *self
-            .level
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if current_level.auto_approves_tool(&tool_name) {
-            return Ok(ApprovalDecision::Allow);
-        }
-        if !self.is_interactive {
-            return Ok(ApprovalDecision::Deny {
-                reason: format!("{tool_name} tool denied at current permission level"),
-            });
-        }
-        let styles = self.styles;
-        let answer = spawn_blocking(move || prompt_for_approval(&tool_name, styles))
-            .await
-            .map_err(|error| ToolSystemError::new(format!("approval prompt failed: {error}")))?;
-        match answer {
-            Ok(ApprovalAnswer::Allow) => Ok(ApprovalDecision::Allow),
-            Ok(ApprovalAnswer::AllowAlways) => {
-                *self
-                    .level
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner) = PermissionLevel::Full;
-                Ok(ApprovalDecision::Allow)
-            }
-            Ok(ApprovalAnswer::Deny { tool_name }) => Ok(ApprovalDecision::Deny {
-                reason: format!("{tool_name} tool denied by user"),
-            }),
-            Err(reason) => Ok(ApprovalDecision::Deny { reason }),
-        }
-    }
-}
-
-enum ApprovalAnswer {
-    Allow,
-    AllowAlways,
-    Deny { tool_name: String },
-}
-
-#[allow(
-    clippy::print_stderr,
-    reason = "Interactive approval prompts belong on stderr, not assistant output."
-)]
-#[expect(
-    clippy::disallowed_methods,
-    clippy::disallowed_types,
-    reason = "Interactive tool approval blocks on stdin and stderr by design, on a blocking task."
-)]
-fn prompt_for_approval(tool_name: &str, styles: &Styles) -> Result<ApprovalAnswer, String> {
-    use std::io::Write as _;
-
-    eprint!(
-        "Allow {}? [y]es / [n]o / [a]lways: ",
-        styles.bold.apply_to(tool_name),
-    );
-    std::io::stderr().flush().ok();
-    let mut input = String::new();
-    std::io::stdin()
-        .read_line(&mut input)
-        .map_err(|e| format!("Failed to read input: {e}"))?;
-    Ok(match input.trim().to_lowercase().as_str() {
-        "y" | "yes" => ApprovalAnswer::Allow,
-        "a" | "always" => ApprovalAnswer::AllowAlways,
-        _ => ApprovalAnswer::Deny {
-            tool_name: tool_name.to_string(),
-        },
-    })
-}
-
-fn format_tool_args(args: &serde_json::Value, cwd: &str) -> String {
-    let cwd_prefix = if cwd.ends_with('/') {
-        cwd.to_string()
-    } else {
-        format!("{cwd}/")
-    };
-    let Some(obj) = args.as_object() else {
-        return args.to_string();
-    };
-    obj.iter()
-        .map(|(k, v)| match v {
-            serde_json::Value::String(s) => {
-                let s = s.strip_prefix(&cwd_prefix).unwrap_or(s);
-                let display = if s.len() > 80 {
-                    format!("{}...", &s[..s.floor_char_boundary(77)])
-                } else {
-                    s.to_string()
-                };
-                format!("{k}={display:?}")
-            }
-            other => format!("{k}={other}"),
-        })
-        .collect::<Vec<_>>()
-        .join(", ")
-}
-
-#[allow(
-    clippy::print_stdout,
-    reason = "Assistant responses are the CLI's primary stdout output."
-)]
-fn print_output(agent: &CodingAgent, styles: &Styles) {
-    for turn in agent.history().turns() {
-        if let Message::Assistant { content, .. } = turn {
-            if !content.is_empty() {
-                println!("{}", styles.render_markdown(content));
-            }
-        }
-    }
-}
-
-#[allow(
-    clippy::print_stderr,
-    reason = "Session summaries are diagnostic metadata, not assistant output."
-)]
-fn print_summary(agent: &CodingAgent, styles: &Styles) {
-    let (mut turn_count, mut tool_call_count, mut total_tokens) = (0usize, 0usize, 0u64);
-    for turn in agent.history().turns() {
-        if let Message::Assistant {
-            tool_calls, usage, ..
-        } = turn
-        {
-            turn_count += 1;
-            tool_call_count += tool_calls.len();
-            total_tokens = total_tokens.saturating_add(usage.input.saturating_add(usage.output));
-        }
-    }
-    let token_str = if total_tokens >= 1_000_000 {
-        format!("{:.1}m", total_tokens as f64 / 1_000_000.0)
-    } else if total_tokens >= 1000 {
-        format!("{}k", total_tokens / 1000)
-    } else {
-        total_tokens.to_string()
-    };
-    eprintln!(
-        "{}",
-        styles.dim.apply_to(format!(
-            "Done ({turn_count} turns, {tool_call_count} tools, {token_str} toks)"
-        )),
-    );
-}
-
 /// Middleware that logs LLM request/response summaries to stderr.
 struct DebugMiddleware {
     styles: &'static Styles,
@@ -554,9 +394,8 @@ impl Middleware for VerboseMiddleware {
 }
 
 #[allow(
-    clippy::print_stdout,
     clippy::print_stderr,
-    reason = "Assistant output stays on stdout while prompts and diagnostics use stderr."
+    reason = "The model line is a diagnostic for the person running the CLI."
 )]
 async fn run_session(
     args: AgentArgs,
@@ -587,7 +426,6 @@ async fn run_session(
     eprintln!("{}", styles.dim.apply_to(format!("Using model: {model}")));
 
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-    let cwd_str = cwd.to_string_lossy().to_string();
     let sandbox: Arc<RunSandbox> = Arc::new(
         local_sandbox(cwd)
             .await
@@ -600,14 +438,9 @@ async fn run_session(
         reason = "is_terminal() on stdin is a non-blocking fstat; no actual I/O performed"
     )]
     let is_interactive = std::io::stdin().is_terminal() && !args.auto_approve;
-    let approval = Arc::new(CliApproval {
-        level: Mutex::new(permissions),
-        is_interactive,
-        styles,
-    });
     let permission_middleware =
         PermissionMiddleware::new(Arc::new(PermissionLevelPolicy::new(permissions)))
-            .with_approval(approval);
+            .with_approval(Arc::new(TerminalApproval::new(permissions, is_interactive)));
 
     // The profile's own instruction files from the repository root down, and
     // fabro's skill directories: pebble knows the files and does the walk.
@@ -639,16 +472,22 @@ async fn run_session(
     if let Some(search) = web_search::search_provider(&cli_search_secrets()) {
         builder = builder.search_provider(search);
     }
-    let mut agent = builder
+    let agent = builder
         .build()
         .await
         .context("failed to start the agent session")?;
-    if matches!(
-        args.output_format.unwrap_or(ExecOutputFormat::Text),
-        ExecOutputFormat::Text
-    ) {
-        print_mcp_servers(&agent, styles);
-    }
+
+    // Text puts progress on stderr and the answer on stdout; JSON puts the
+    // event stream itself on stdout, as scripts that read it expect.
+    let session = match args.output_format.unwrap_or(ExecOutputFormat::Text) {
+        ExecOutputFormat::Text => SessionOptions::default(),
+        ExecOutputFormat::Json => SessionOptions {
+            style:        Style::Json,
+            json_to:      JsonStream::Stdout,
+            write_answer: false,
+        },
+    };
+    render::report_mcp_servers(&agent, session.style);
 
     // SIGINT ends the prompt; the session shuts down as cancelled.
     let cancel_token = CancellationToken::new();
@@ -658,202 +497,11 @@ async fn run_session(
         sigint_token.cancel();
     });
 
-    let verbose = args.verbose;
-    let output_format = args.output_format.unwrap_or(ExecOutputFormat::Text);
-    let mut rx = agent.subscribe();
-    let printer = tokio::spawn(async move {
-        match output_format {
-            ExecOutputFormat::Json => {
-                let mut stdout = stdout();
-                while let Ok(event) = rx.recv().await {
-                    if let Ok(json) = serde_json::to_string(&event) {
-                        let _ = stdout.write_all(json.as_bytes()).await;
-                        let _ = stdout.write_all(b"\n").await;
-                        let _ = stdout.flush().await;
-                    }
-                }
-            }
-            ExecOutputFormat::Text => {
-                while let Ok(event) = rx.recv().await {
-                    print_progress(&event, verbose, &cwd_str, styles);
-                }
-            }
-        }
-    });
-
-    let report = agent
-        .prompt_with_cancellation(args.prompt.as_str(), &cancel_token)
-        .await;
-    let shutdown_reason = match &report.result {
-        Ok(_) => ShutdownReason::Completed,
-        Err(_) if cancel_token.is_cancelled() => ShutdownReason::Cancelled,
-        Err(_) => ShutdownReason::Error,
-    };
-    if let Err(error) = agent.shutdown(shutdown_reason).await {
-        tracing::debug!(error = %error, "agent session did not shut down cleanly");
-    }
-    // The stream ends with the shutdown, so the printer drains everything.
-    let _ = printer.await;
-
-    if matches!(output_format, ExecOutputFormat::Text) {
-        print_output(&agent, styles);
-        print_summary(&agent, styles);
-    }
-
+    let report = run_prompt(agent, args.prompt.as_str(), &cancel_token, session).await?;
     report
         .result
         .map(|_| ())
         .map_err(|error| anyhow::Error::new(SessionError::from(error)))
-}
-
-/// Report what became of each configured MCP server on stderr: pebble
-/// started them while the agent was built, so the outcomes are read from the
-/// agent rather than from a stream that had no subscriber yet.
-#[allow(
-    clippy::print_stderr,
-    reason = "MCP connection outcomes are diagnostics for the person running the CLI."
-)]
-fn print_mcp_servers(agent: &CodingAgent, styles: &Styles) {
-    for status in agent.snapshot().mcp_servers() {
-        match &status.error {
-            None => eprintln!(
-                "{}",
-                styles.dim.apply_to(format!(
-                    "[mcp] {}: {} tools",
-                    status.server,
-                    status.tools.len()
-                ))
-            ),
-            Some(error) => eprintln!(
-                "{}",
-                styles
-                    .red
-                    .apply_to(format!("[mcp] {} failed: {error}", status.server))
-            ),
-        }
-    }
-}
-
-#[allow(
-    clippy::print_stderr,
-    reason = "Progress lines are diagnostics on stderr; assistant output stays on stdout."
-)]
-fn print_progress(event: &CodingAgentEvent, verbose: bool, cwd: &str, s: &Styles) {
-    let child_prefix = if event.parent_session_id.is_some() {
-        format!("[child {}] ", event.session_id)
-    } else {
-        String::new()
-    };
-    match &event.event {
-        CodingEvent::ToolCallStarted {
-            tool_name,
-            arguments,
-            ..
-        } => {
-            eprintln!(
-                "  {} {}{}",
-                s.dim.apply_to("\u{25cf}"),
-                s.bold_cyan.apply_to(format!("{child_prefix}{tool_name}")),
-                s.dim
-                    .apply_to(format!("({})", format_tool_args(arguments, cwd))),
-            );
-        }
-        CodingEvent::ToolCallCompleted {
-            tool_name,
-            output,
-            is_error,
-            ..
-        } if verbose => {
-            let label = if *is_error {
-                "tool error"
-            } else {
-                "tool result"
-            };
-            eprintln!(
-                "  {}\n{}",
-                s.dim
-                    .apply_to(format!("[{label}] {child_prefix}{tool_name}:")),
-                serde_json::to_string_pretty(output).unwrap_or_else(|_| output.to_string()),
-            );
-        }
-        CodingEvent::Error { error } => {
-            eprintln!(
-                "  {}",
-                s.red
-                    .apply_to(format!("\u{2717} {child_prefix}{}", error.message)),
-            );
-        }
-        CodingEvent::SubAgentSpawned {
-            agent_id,
-            depth,
-            task,
-            generation,
-        }
-        | CodingEvent::SubAgentTurnStarted {
-            agent_id,
-            depth,
-            task,
-            generation,
-        } => {
-            let started = if matches!(event.event, CodingEvent::SubAgentSpawned { .. }) {
-                "spawned"
-            } else {
-                "turn started"
-            };
-            let task_preview = if task.len() > 60 {
-                &task[..task.floor_char_boundary(60)]
-            } else {
-                task
-            };
-            eprintln!(
-                "  {}",
-                s.dim.apply_to(format!(
-                    "{child_prefix}\u{25b6} subagent {agent_id} {started} (depth={depth}, generation={generation}) task={task_preview:?}"
-                )),
-            );
-        }
-        CodingEvent::SubAgentCompleted {
-            agent_id,
-            depth,
-            generation,
-            success,
-            turns_used,
-        } => {
-            eprintln!(
-                "  {}",
-                s.dim.apply_to(format!(
-                    "{child_prefix}\u{25a0} subagent {agent_id} completed (depth={depth}, generation={generation}, success={success}, turns={turns_used})"
-                )),
-            );
-        }
-        CodingEvent::SubAgentFailed {
-            agent_id,
-            depth,
-            generation,
-            error,
-        } => {
-            eprintln!(
-                "  {}",
-                s.red.apply_to(format!(
-                    "{child_prefix}\u{2717} subagent {agent_id} failed (depth={depth}, generation={generation}): {}",
-                    error.message
-                )),
-            );
-        }
-        CodingEvent::SubAgentClosed {
-            agent_id,
-            depth,
-            generation,
-        } => {
-            eprintln!(
-                "  {}",
-                s.dim.apply_to(format!(
-                    "{child_prefix}\u{25a0} subagent {agent_id} closed (depth={depth}, generation={generation})"
-                )),
-            );
-        }
-        _ => {}
-    }
 }
 
 #[cfg(test)]
@@ -864,10 +512,7 @@ mod tests {
     use fabro_types::settings::run::{McpServerRef, McpServerSettings, ResolvedMcpEntry};
     use lithos_llm::catalog::builtin;
 
-    use super::{
-        AgentArgs, format_tool_args, resolve_provider_id, run_mcp_servers_for_exec,
-        summarizer_model,
-    };
+    use super::{AgentArgs, resolve_provider_id, run_mcp_servers_for_exec, summarizer_model};
     use crate::args::{ExecOutputFormat, PermissionsArg};
 
     fn args(provider: Option<&str>, model: Option<&str>) -> AgentArgs {
@@ -945,16 +590,5 @@ mod tests {
 
         assert!(selector.starts_with("anthropic/"), "{selector}");
         assert_ne!(selector, "anthropic/claude-opus-4-6");
-    }
-
-    #[test]
-    fn tool_args_strip_the_working_directory_prefix() {
-        let rendered = format_tool_args(
-            &serde_json::json!({"file_path": "/work/src/main.rs", "limit": 20}),
-            "/work",
-        );
-
-        assert!(rendered.contains("file_path=\"src/main.rs\""), "{rendered}");
-        assert!(rendered.contains("limit=20"), "{rendered}");
     }
 }

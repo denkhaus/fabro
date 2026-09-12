@@ -26,6 +26,7 @@ fabro-oauth = { path = "../../foundation/fabro-oauth" }
 fabro-github = { path = "../../components/fabro-github" }
 pebble-agent.workspace = true
 pebble-coding-agent.workspace = true
+pebble-cli-core.workspace = true
 fabro-dump = { path = "../../components/fabro-dump" }
 fabro-hooks = { path = "../../components/fabro-hooks" }
 fabro-install = { path = "../../components/fabro-install" }
