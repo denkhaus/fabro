@@ -1462,8 +1462,8 @@ mod tests {
     use std::time::{Duration, UNIX_EPOCH};
 
     use pebble_coding_agent::events::{
-        CodingAgentEvent, CodingEvent, CostSource, TodoCreatedProps, TodoListKind, TodoStatus,
-        TokenUsage, ToolCategory, ToolSource, ToolSummary,
+        CodingEvent, CostSource, TodoCreatedProps, TodoListKind, TodoStatus, TokenUsage,
+        ToolCategory, ToolSource, ToolSummary,
     };
     use serde_json::json;
 
