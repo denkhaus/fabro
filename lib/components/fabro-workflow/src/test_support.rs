@@ -6,7 +6,6 @@ use std::time::Duration;
 
 use fabro_auth::test_support as auth_test_support;
 use fabro_graphviz::graph::Graph as GvGraph;
-use crate::handler::llm::context_read::ContextReadServices;
 use fabro_interview::AutoApproveInterviewer;
 use fabro_llm::credentials::CredentialProvider;
 use fabro_llm::lithos_catalog::Catalog;
@@ -24,6 +23,7 @@ use crate::artifact_upload::ArtifactSink;
 use crate::error::{Error, Result};
 use crate::event::{Emitter, Event, StoreProgressLogger, append_event};
 use crate::handler::HandlerRegistry;
+use crate::handler::llm::context_read::ContextReadServices;
 use crate::outcome::Outcome;
 use crate::pipeline;
 use crate::pipeline::types::{Executed, Initialized};

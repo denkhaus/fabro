@@ -822,9 +822,7 @@ impl RunEvent {
                 // `visit`-only object. Synthesize the envelope instead of
                 // losing the event — there is nothing to preserve beyond
                 // the name.
-                Err(_error)
-                    if is_legacy_payloadless_coding_row(parts.event, parts.properties) =>
-                {
+                Err(_error) if is_legacy_payloadless_coding_row(parts.event, parts.properties) => {
                     let event = match parts.event {
                         "agent.session.ended" => crate::CodingEvent::SessionEnded,
                         "agent.loop.detected" => crate::CodingEvent::LoopDetected,
@@ -2904,10 +2902,7 @@ mod tests {
                     ..
                 } => {
                     let _ = usage; // TokenUsage carries no cost source
-                    assert_eq!(
-                        cost_source,
-                        Some(CostSource::Catalog),
-                    );
+                    assert_eq!(cost_source, Some(CostSource::Catalog),);
                 }
                 other => panic!("expected AssistantMessage, got {other:?}"),
             },
