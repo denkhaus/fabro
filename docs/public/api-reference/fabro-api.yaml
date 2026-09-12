@@ -856,7 +856,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/SessionRecord"
+                $ref: "#/components/schemas/RunSessionMetadata"
         "400":
           description: Invalid input
           headers:
@@ -8037,35 +8037,7 @@ components:
         input:
           type: string
 
-    SessionMessage:
-      description: Persisted full-fidelity session transcript message.
-      type: object
-      required:
-        - kind
-        - timestamp
-      properties:
-        kind:
-          type: string
-          enum: [user, assistant, tool_results, system, steering]
-        content:
-          type: string
-        timestamp:
-          type: string
-          format: date-time
-        tool_calls:
-          type: array
-          items: {}
-        provider_parts:
-          type: array
-          items: {}
-        usage: {}
-        response_id:
-          type: string
-        results:
-          type: array
-          items: {}
-
-    SessionRecord:
+    RunSessionMetadata:
       description: Ask Fabro session metadata derived from the owning run event stream.
       type: object
       required:
@@ -8142,7 +8114,10 @@ components:
           format: date-time
 
     SessionDetail:
-      description: Session metadata plus durable transcript projection.
+      description: >-
+        Session metadata plus the highest run event sequence the session's
+        event stream has reached. The conversation itself is held by the
+        server's durable session record and is not returned over the API.
       type: object
       required:
         - id
@@ -8151,7 +8126,6 @@ components:
         - active_turn
         - created_at
         - updated_at
-        - messages
         - last_seq
       properties:
         id:
@@ -8180,10 +8154,6 @@ components:
         updated_at:
           type: string
           format: date-time
-        messages:
-          type: array
-          items:
-            $ref: "#/components/schemas/SessionMessage"
         last_seq:
           type: integer
           minimum: 0
@@ -10445,44 +10415,46 @@ components:
           type: integer
           minimum: 1
 
-    AgentMessageProps:
-      description: Properties for the `agent.message` event.
+    AgentEventProps:
+      description: >-
+        Properties for every `agent.*` and `todo.*` event: the stage that owns
+        the session plus the coding agent's own event envelope. `event` is the
+        externally tagged coding event, `{"ToolCallStarted": {...}}` or a bare
+        `"SessionEnded"`. Variant names are permanent API; their payloads are
+        documented by the pebble coding agent.
       type: object
       required:
-        - text
-        - model
-        - billing
-        - tool_call_count
+        - stage
         - visit
+        - event
+        - timestamp
+        - session_id
       properties:
-        text:
+        stage:
           type: string
-        model:
-          $ref: "#/components/schemas/BillingModelRef"
-        billing:
-          $ref: "#/components/schemas/BilledTokenCounts"
-        tool_call_count:
-          type: integer
-          minimum: 0
+          description: Graph node id of the stage that owns the session.
         visit:
           type: integer
           minimum: 1
-        message:
-          oneOf:
-            - type: object
-              additionalProperties: true
-            - type: "null"
-          description: Canonical replay-authoritative transcript message, when present.
-        context_window:
-          oneOf:
-            - $ref: "#/components/schemas/StageContextWindowProjection"
-            - type: "null"
-          description: Latest content-free context-window projection for this agent stage.
-        reasoning:
-          oneOf:
-            - $ref: "#/components/schemas/ReasoningOutput"
-            - type: "null"
-          description: Readable reasoning the provider returned with this response, if any.
+        seq:
+          type: integer
+          format: uint64
+          minimum: 0
+          description: Position in the session's event stream.
+        stream_id:
+          type: string
+          description: The event stream this event belongs to.
+        event:
+          description: The externally tagged coding agent event.
+        timestamp:
+          type: string
+          format: date-time
+        session_id:
+          type: string
+        parent_session_id:
+          type: ["string", "null"]
+        tool_call_id:
+          type: ["string", "null"]
 
     ReasoningOutput:
       description: >-
@@ -10530,7 +10502,7 @@ components:
           type: array
           description: Effective model-callable tools exposed to the stage session.
           items:
-            $ref: "#/components/schemas/AgentToolSummary"
+            $ref: "#/components/schemas/ToolSummary"
         visit:
           type: integer
           minimum: 1
@@ -10830,7 +10802,7 @@ components:
           type: string
           format: date-time
 
-    StageContextWindowCategory:
+    ContextWindowCategory:
       description: Category of model-visible input/context tokens.
       type: string
       enum:
@@ -10842,7 +10814,7 @@ components:
         - conversation
         - other
 
-    StageContextWindowCountMethod:
+    ContextWindowCountMethod:
       description: Method used to produce the context-window token total and breakdown.
       type: string
       enum:
@@ -10850,7 +10822,7 @@ components:
         - response_usage_scaled_breakdown
         - local_estimate
 
-    StageContextWindowStaleness:
+    ContextWindowStaleness:
       description: Freshness of the returned context-window data.
       type: string
       enum:
@@ -10866,7 +10838,7 @@ components:
         - not_observed
         - provider_unconfigured
 
-    StageContextWindowWarning:
+    ContextWindowWarning:
       description: Content-free warning about context-window count quality or attribution.
       type: object
       required:
@@ -10882,7 +10854,7 @@ components:
           description: Human-readable warning that must not include prompt, memory, message, or tool-argument content.
           example: provider input token counting failed; returned local estimate
 
-    StageContextWindowBreakdownItem:
+    ContextWindowBreakdownItem:
       description: Token usage for one content category.
       type: object
       required:
@@ -10891,7 +10863,7 @@ components:
         - usage_percent
       properties:
         category:
-          $ref: "#/components/schemas/StageContextWindowCategory"
+          $ref: "#/components/schemas/ContextWindowCategory"
         tokens:
           type: integer
           format: uint64
@@ -10903,8 +10875,8 @@ components:
           minimum: 0
           example: 7.5
 
-    StageContextWindowProjection:
-      description: Durable content-free context-window snapshot projected onto an agent stage.
+    ContextWindowSnapshot:
+      description: Durable content-free context-window snapshot recorded by the coding agent.
       type: object
       required:
         - provider
@@ -10940,26 +10912,27 @@ components:
           minimum: 0
           example: 30.86
         count_method:
-          $ref: "#/components/schemas/StageContextWindowCountMethod"
+          $ref: "#/components/schemas/ContextWindowCountMethod"
         staleness:
-          $ref: "#/components/schemas/StageContextWindowStaleness"
+          $ref: "#/components/schemas/ContextWindowStaleness"
         generated_at:
           type: string
           format: date-time
           example: "2026-05-23T12:34:56Z"
         event_seq:
           type: ["integer", "null"]
-          format: uint32
-          minimum: 1
+          format: uint64
+          minimum: 0
+          description: Sequence of the agent event this snapshot was taken at, when known.
           example: 42
         breakdown:
           type: array
           items:
-            $ref: "#/components/schemas/StageContextWindowBreakdownItem"
+            $ref: "#/components/schemas/ContextWindowBreakdownItem"
         warnings:
           type: array
           items:
-            $ref: "#/components/schemas/StageContextWindowWarning"
+            $ref: "#/components/schemas/ContextWindowWarning"
 
     StageContextWindow:
       description: Best-effort context-window usage for one agent stage.
@@ -11014,10 +10987,10 @@ components:
           example: 30.86
         count_method:
           oneOf:
-            - $ref: "#/components/schemas/StageContextWindowCountMethod"
+            - $ref: "#/components/schemas/ContextWindowCountMethod"
             - type: "null"
         staleness:
-          $ref: "#/components/schemas/StageContextWindowStaleness"
+          $ref: "#/components/schemas/ContextWindowStaleness"
         generated_at:
           type: ["string", "null"]
           format: date-time
@@ -11030,11 +11003,11 @@ components:
         breakdown:
           type: array
           items:
-            $ref: "#/components/schemas/StageContextWindowBreakdownItem"
+            $ref: "#/components/schemas/ContextWindowBreakdownItem"
         warnings:
           type: array
           items:
-            $ref: "#/components/schemas/StageContextWindowWarning"
+            $ref: "#/components/schemas/ContextWindowWarning"
 
     ParallelBranchResult:
       description: The outcome and isolated context updates from one parallel branch.
@@ -11193,7 +11166,7 @@ components:
             Effective model-callable tools exposed to this agent stage session.
             Tool parameter schemas are intentionally omitted from this projection.
           items:
-            $ref: "#/components/schemas/AgentToolSummary"
+            $ref: "#/components/schemas/ToolSummary"
         mcp_servers:
           type: array
           description: MCP servers observed by this stage.
@@ -11201,7 +11174,7 @@ components:
             $ref: "#/components/schemas/McpServerProjection"
         context_window:
           oneOf:
-            - $ref: "#/components/schemas/StageContextWindowProjection"
+            - $ref: "#/components/schemas/ContextWindowSnapshot"
             - type: "null"
           description: Latest content-free context-window snapshot for this agent stage.
         inference:
@@ -11280,10 +11253,12 @@ components:
           format: date-time
           description: When the request was dispatched.
         requested_model:
-          $ref: "#/components/schemas/BillingModelRef"
+          type: string
           description: >
-            Provider and model the request was sent to. Failover can re-target,
-            so `StageProjection.model` stays authoritative for what answered.
+            The model the request was sent to, as the agent names it. Failover
+            can re-target, so `StageProjection.model` stays authoritative for
+            what answered.
+          example: claude-fable-5
         first_output_at:
           type: ["string", "null"]
           format: date-time
@@ -11399,13 +11374,13 @@ components:
         available:
           type: array
           items:
-            $ref: "#/components/schemas/AgentSkillSummary"
+            $ref: "#/components/schemas/SkillSummary"
         activated:
           type: array
           items:
             $ref: "#/components/schemas/ActivatedSkill"
 
-    AgentSkillSummary:
+    SkillSummary:
       description: Summary of an available agent skill.
       type: object
       required:
@@ -11427,14 +11402,14 @@ components:
         name:
           type: string
         source:
-          $ref: "#/components/schemas/AgentSkillActivationSource"
+          $ref: "#/components/schemas/SkillActivationSource"
 
-    AgentSkillActivationSource:
+    SkillActivationSource:
       description: Source that activated an agent skill.
       type: string
       enum: [slash, tool]
 
-    AgentToolSummary:
+    ToolSummary:
       description: Summary of one effective model-callable tool exposed to an agent stage.
       type: object
       required:
@@ -11451,27 +11426,31 @@ components:
           type: string
           description: Model-facing tool description.
         source:
-          $ref: "#/components/schemas/AgentToolSource"
+          $ref: "#/components/schemas/ToolSource"
         category:
-          $ref: "#/components/schemas/AgentToolCategory"
+          $ref: "#/components/schemas/ToolCategory"
         invoked:
           type: boolean
+          default: false
           description: True once this tool has been invoked during the stage.
 
-    AgentToolSource:
+    ToolSource:
       description: Origin of an effective agent tool.
       oneOf:
-        - $ref: "#/components/schemas/AgentToolSourceNative"
-        - $ref: "#/components/schemas/AgentToolSourceMcp"
-        - $ref: "#/components/schemas/AgentToolSourceSkill"
+        - $ref: "#/components/schemas/ToolSourceNative"
+        - $ref: "#/components/schemas/ToolSourceApplication"
+        - $ref: "#/components/schemas/ToolSourceMcp"
+        - $ref: "#/components/schemas/ToolSourceSkill"
       discriminator:
         propertyName: kind
         mapping:
-          native: "#/components/schemas/AgentToolSourceNative"
-          mcp: "#/components/schemas/AgentToolSourceMcp"
-          skill: "#/components/schemas/AgentToolSourceSkill"
+          native: "#/components/schemas/ToolSourceNative"
+          application: "#/components/schemas/ToolSourceApplication"
+          mcp: "#/components/schemas/ToolSourceMcp"
+          skill: "#/components/schemas/ToolSourceSkill"
 
-    AgentToolSourceNative:
+    ToolSourceNative:
+      description: A tool the coding agent itself implements.
       type: object
       required:
         - kind
@@ -11480,7 +11459,17 @@ components:
           type: string
           enum: [native]
 
-    AgentToolSourceMcp:
+    ToolSourceApplication:
+      description: A tool Fabro registers with the coding agent, such as the `fabro_run_*` tools.
+      type: object
+      required:
+        - kind
+      properties:
+        kind:
+          type: string
+          enum: [application]
+
+    ToolSourceMcp:
       type: object
       required:
         - kind
@@ -11497,7 +11486,7 @@ components:
           type: string
           description: Tool name before MCP qualification.
 
-    AgentToolSourceSkill:
+    ToolSourceSkill:
       type: object
       required:
         - kind
@@ -11506,7 +11495,7 @@ components:
           type: string
           enum: [skill]
 
-    AgentToolCategory:
+    ToolCategory:
       description: Coarse tool category for display and grouping.
       type: string
       enum: [read, write, shell, subagent, other]

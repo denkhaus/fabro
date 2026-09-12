@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 use std::sync::Arc;
 
-use fabro_agent::RunSandbox;
+use fabro_sandbox::RunSandbox;
 use fabro_util::shell;
 use sandbox_driver::{Git as _, GitDiffOptions, GitRevisionRange};
 

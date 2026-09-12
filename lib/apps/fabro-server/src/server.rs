@@ -77,8 +77,8 @@ use fabro_slack::{blocks as slack_blocks, connection as slack_connection};
 use fabro_static::EnvVars;
 use fabro_store::{
     ArtifactKey, ArtifactStore, AuthCodeStore, AuthSessionStore, Database, EventEnvelope,
-    EventPayload, KeyedMutex, NodeArtifact, PendingInterviewRecord, RunSummaryStore,
-    StageArtifactEntry, StageId,
+    EventPayload, KeyedMutex, NodeArtifact, PendingInterviewRecord, RunSessionRecordStore,
+    RunSummaryStore, StageArtifactEntry, StageId,
 };
 #[cfg(test)]
 use fabro_types::BlockedReason;
@@ -1144,15 +1144,17 @@ pub struct AppState {
 }
 
 pub(crate) struct AppStores {
-    pub(crate) runs:          Arc<Database>,
-    pub(crate) run_summaries: Arc<RunSummaryStore>,
-    pub(crate) auth_codes:    Arc<AuthCodeStore>,
-    pub(crate) auth_sessions: Arc<AuthSessionStore>,
-    pub(crate) automations:   Arc<AutomationStore>,
-    pub(crate) environments:  Arc<EnvironmentStore>,
-    pub(crate) mcp_servers:   Arc<McpServerStore>,
-    pub(crate) vault:         Arc<SecretStore>,
-    pub(crate) variables:     Arc<VariableStore>,
+    pub(crate) runs:            Arc<Database>,
+    pub(crate) run_summaries:   Arc<RunSummaryStore>,
+    /// Ask Fabro conversations, keyed by session id.
+    pub(crate) session_records: Arc<RunSessionRecordStore>,
+    pub(crate) auth_codes:      Arc<AuthCodeStore>,
+    pub(crate) auth_sessions:   Arc<AuthSessionStore>,
+    pub(crate) automations:     Arc<AutomationStore>,
+    pub(crate) environments:    Arc<EnvironmentStore>,
+    pub(crate) mcp_servers:     Arc<McpServerStore>,
+    pub(crate) vault:           Arc<SecretStore>,
+    pub(crate) variables:       Arc<VariableStore>,
 }
 
 #[cfg(any(test, feature = "test-support"))]
@@ -2464,6 +2466,7 @@ pub(crate) fn build_app_state(config: AppStateConfig) -> anyhow::Result<Arc<AppS
         .context("load mcp servers")?,
     );
     let variables = Arc::new(VariableStore::new(db_pool.clone()));
+    let session_records = Arc::new(RunSessionRecordStore::new(db_pool.clone()));
     let secret_store = Arc::new(SecretStore::new(db_pool));
     let vault = preloaded_vault;
     // Read vault secrets needed for synchronous setup before we wrap the vault in
@@ -2559,6 +2562,7 @@ pub(crate) fn build_app_state(config: AppStateConfig) -> anyhow::Result<Arc<AppS
         stores: AppStores {
             runs: store,
             run_summaries,
+            session_records,
             auth_codes,
             auth_sessions,
             automations: automation_store,

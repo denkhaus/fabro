@@ -4,14 +4,15 @@ use std::sync::Arc;
 #[cfg(test)]
 use std::time::Duration;
 
-use fabro_agent::{RunSandbox, ToolEnvProvider};
 use fabro_github::token_source::InstallationTokenSource;
 use fabro_hooks::{HookContext, HookDecision, HookExecutionContext, HookRunner};
 use fabro_interview::Interviewer;
 use fabro_llm::credentials::CredentialProvider;
 use fabro_llm::lithos_catalog::Catalog;
+use fabro_sandbox::RunSandbox;
 use fabro_types::{ManifestPath, RunId};
 use lithos_llm::catalog::ProviderId;
+use pebble_coding_agent::tools::{ToolEnvProvider, ToolError};
 use tokio_util::sync::CancellationToken;
 
 use crate::event::Emitter;
@@ -305,7 +306,7 @@ impl EngineServices {
                         .await
                         .expect("slate-backed test run store should initialize");
                     let sandbox: Arc<RunSandbox> = Arc::new(
-                        fabro_agent::local_sandbox(
+                        fabro_sandbox::local_sandbox(
                             std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
                         )
                         .await
@@ -352,10 +353,20 @@ pub struct WorkflowToolEnvProvider {
     pub github_token: Option<Arc<InstallationTokenSource>>,
 }
 
+impl WorkflowToolEnvProvider {
+    /// The environment tool processes run with right now: the configured
+    /// sandbox env plus a fresh `GITHUB_TOKEN` when the run has one.
+    pub async fn resolve(&self) -> anyhow::Result<HashMap<String, String>> {
+        resolve_workflow_env(&self.base_env, self.github_token.as_ref()).await
+    }
+}
+
 #[async_trait::async_trait]
 impl ToolEnvProvider for WorkflowToolEnvProvider {
-    async fn resolve(&self) -> anyhow::Result<HashMap<String, String>> {
-        resolve_workflow_env(&self.base_env, self.github_token.as_ref()).await
+    async fn resolve(&self) -> Result<HashMap<String, String>, ToolError> {
+        Self::resolve(self).await.map_err(|error| {
+            ToolError::execution(format!("Failed to resolve tool environment: {error:#}"))
+        })
     }
 }
 
@@ -380,7 +391,6 @@ mod tests {
     use std::sync::Arc;
 
     use anyhow::anyhow;
-    use fabro_agent::ToolEnvProvider as _;
     use fabro_github::InstallationToken;
     use fabro_github::test_support::{InstallationTokenMinter, installation_token_source};
     use fabro_github::token_source::InstallationTokenSource;

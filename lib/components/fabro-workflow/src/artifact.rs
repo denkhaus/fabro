@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use fabro_agent::RunSandbox;
 use fabro_config::RunScratch;
+use fabro_sandbox::RunSandbox;
 use fabro_types::{
     BlobHash, ParallelBranchResult, format_blob_ref, parse_blob_ref, parse_managed_blob_file_ref,
 };
@@ -1461,7 +1461,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let run_dir = tmp.path().join("run");
         std::fs::create_dir_all(&run_dir).unwrap();
-        let sandbox = fabro_agent::local_sandbox(tmp.path().to_path_buf())
+        let sandbox = fabro_sandbox::local_sandbox(tmp.path().to_path_buf())
             .await
             .unwrap();
 
@@ -1618,7 +1618,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let run_dir = tmp.path().join("run");
         std::fs::create_dir_all(&run_dir).unwrap();
-        let sandbox = fabro_agent::local_sandbox(tmp.path().to_path_buf())
+        let sandbox = fabro_sandbox::local_sandbox(tmp.path().to_path_buf())
             .await
             .unwrap();
 

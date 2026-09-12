@@ -45,7 +45,7 @@ use fabro_workflow::handler::command::CommandHandler;
 use fabro_workflow::handler::conditional::ConditionalHandler;
 use fabro_workflow::handler::exit::ExitHandler;
 use fabro_workflow::handler::human::HumanHandler;
-use fabro_workflow::handler::llm::AgentApiBackend;
+use fabro_workflow::handler::llm::PebbleBackend;
 use fabro_workflow::handler::manager_loop::SubWorkflowHandler;
 use fabro_workflow::handler::start::StartHandler;
 use fabro_workflow::handler::wait::WaitHandler;
@@ -73,9 +73,9 @@ fn catalog_with_provider_base_url(provider: &str, base_url: &str) -> Arc<Catalog
     Arc::new(fabro_llm::test_support::test_catalog_with_provider_base_url(provider, base_url))
 }
 
-async fn local_env() -> Arc<fabro_agent::RunSandbox> {
+async fn local_env() -> Arc<fabro_sandbox::RunSandbox> {
     Arc::new(
-        fabro_agent::local_sandbox(
+        fabro_sandbox::local_sandbox(
             std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")),
         )
         .await
@@ -2690,7 +2690,7 @@ capabilities = {{ text = true, tools = true, response_format = {{ json_object = 
     let source = auth_test_support::env_credential_source(|name| {
         (name == "COMPACT_API_KEY").then(|| "sk-test".to_string())
     });
-    let backend = AgentApiBackend::new_with_catalog(
+    let backend = PebbleBackend::new_with_catalog(
         "compact-model".to_string(),
         ProviderId::new("compact"),
         ModelFallbackPolicy::default(),
@@ -2844,7 +2844,7 @@ enabled = true
     let source = auth_test_support::env_credential_source(|name| {
         (name == "OPENROUTER_API_KEY").then(|| "sk-test".to_string())
     });
-    let backend = AgentApiBackend::new_with_catalog(
+    let backend = PebbleBackend::new_with_catalog(
         "openai/gpt-5.4".to_string(),
         ProviderId::new("openrouter"),
         ModelFallbackPolicy::default(),
@@ -10954,8 +10954,8 @@ async fn git_checkpoint_host_emits_events_and_diff_patch() {
     let emitter = Emitter::default();
     let events = collect_events(&emitter);
 
-    let env: Arc<fabro_agent::RunSandbox> = Arc::new(
-        fabro_agent::local_sandbox(worktree_path.clone())
+    let env: Arc<fabro_sandbox::RunSandbox> = Arc::new(
+        fabro_sandbox::local_sandbox(worktree_path.clone())
             .await
             .expect("local sandbox should be created"),
     );
@@ -11122,8 +11122,8 @@ async fn git_checkpoint_host_skips_metadata_branch_without_writer_prereqs() {
     std::fs::write(run_dir.path().join("graph.fabro"), "digraph {}").unwrap();
     let emitter = Emitter::default();
 
-    let env: Arc<fabro_agent::RunSandbox> = Arc::new(
-        fabro_agent::local_sandbox(worktree_path.clone())
+    let env: Arc<fabro_sandbox::RunSandbox> = Arc::new(
+        fabro_sandbox::local_sandbox(worktree_path.clone())
             .await
             .expect("local sandbox should be created"),
     );
@@ -11305,8 +11305,8 @@ async fn parallel_shared_checkout_host_e2e() {
     let emitter = Emitter::default();
     let events = collect_events(&emitter);
 
-    let env: Arc<fabro_agent::RunSandbox> = Arc::new(
-        fabro_agent::local_sandbox(worktree_path.clone())
+    let env: Arc<fabro_sandbox::RunSandbox> = Arc::new(
+        fabro_sandbox::local_sandbox(worktree_path.clone())
             .await
             .expect("local sandbox should be created"),
     );
@@ -11563,8 +11563,8 @@ async fn git_checkpoint_host_skips_empty_diff_patch() {
     let emitter = Emitter::default();
     let _events = collect_events(&emitter);
 
-    let env: Arc<fabro_agent::RunSandbox> = Arc::new(
-        fabro_agent::local_sandbox(worktree_path.clone())
+    let env: Arc<fabro_sandbox::RunSandbox> = Arc::new(
+        fabro_sandbox::local_sandbox(worktree_path.clone())
             .await
             .expect("local sandbox should be created"),
     );
@@ -13268,8 +13268,8 @@ async fn asset_collection_local_sandbox_success() {
     let work_dir = tempfile::tempdir().unwrap();
     let run_dir = tempfile::tempdir().unwrap();
 
-    let sandbox: Arc<fabro_agent::RunSandbox> = Arc::new(
-        fabro_agent::local_sandbox(work_dir.path().to_path_buf())
+    let sandbox: Arc<fabro_sandbox::RunSandbox> = Arc::new(
+        fabro_sandbox::local_sandbox(work_dir.path().to_path_buf())
             .await
             .expect("local sandbox should be created"),
     );
@@ -13416,8 +13416,8 @@ async fn asset_collection_local_sandbox_symlink_working_directory() {
         .expect("workspace symlink should create");
     let run_dir = tempfile::tempdir().unwrap();
 
-    let sandbox: Arc<fabro_agent::RunSandbox> = Arc::new(
-        fabro_agent::local_sandbox(symlink_work_dir)
+    let sandbox: Arc<fabro_sandbox::RunSandbox> = Arc::new(
+        fabro_sandbox::local_sandbox(symlink_work_dir)
             .await
             .expect("local sandbox should be created"),
     );
@@ -13519,8 +13519,8 @@ async fn asset_collection_local_sandbox_on_failure() {
     let work_dir = tempfile::tempdir().unwrap();
     let run_dir = tempfile::tempdir().unwrap();
 
-    let sandbox: Arc<fabro_agent::RunSandbox> = Arc::new(
-        fabro_agent::local_sandbox(work_dir.path().to_path_buf())
+    let sandbox: Arc<fabro_sandbox::RunSandbox> = Arc::new(
+        fabro_sandbox::local_sandbox(work_dir.path().to_path_buf())
             .await
             .expect("local sandbox should be created"),
     );
@@ -13625,12 +13625,12 @@ async fn asset_collection_local_sandbox_on_failure() {
 async fn asset_collection_docker_sandbox() {
     let run_dir = tempfile::tempdir().unwrap();
 
-    let sandbox: Arc<fabro_agent::RunSandbox> = Arc::new(
-        fabro_agent::provider_sandbox(
-            fabro_agent::SandboxProviderKind::DOCKER,
-            &fabro_agent::ProviderAccess::default(),
+    let sandbox: Arc<fabro_sandbox::RunSandbox> = Arc::new(
+        fabro_sandbox::provider_sandbox(
+            fabro_sandbox::SandboxProviderKind::DOCKER,
+            &fabro_sandbox::ProviderAccess::default(),
             sandbox_driver::SandboxSpec::new(sandbox_driver::SandboxSource::HostDirectory),
-            &fabro_agent::CloneRequest::none(),
+            &fabro_sandbox::CloneRequest::none(),
             None,
             None,
         )

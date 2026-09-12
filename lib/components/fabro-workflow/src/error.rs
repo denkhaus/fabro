@@ -2234,19 +2234,6 @@ mod tests {
     }
 
     #[test]
-    fn e2e_serde_stability_agent_error() {
-        use fabro_agent::Error as AgentError;
-
-        let err = AgentError::from(transient_error(ErrorKind::RateLimit, "too fast"));
-        let json = serde_json::to_string(&err).unwrap();
-        let v: serde_json::Value = serde_json::from_str(&json).unwrap();
-        assert_eq!(v["type"], "llm");
-
-        let deserialized: AgentError = serde_json::from_str(&json).unwrap();
-        assert_eq!(err.to_string(), deserialized.to_string());
-    }
-
-    #[test]
     fn e2e_failure_detail_in_outcome_serde_roundtrip() {
         use crate::outcome::Outcome;
 

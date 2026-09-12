@@ -1429,7 +1429,7 @@ mod tests {
         );
     }
 
-    fn make_sandbox_services(sandbox: std::sync::Arc<fabro_agent::RunSandbox>) -> EngineServices {
+    fn make_sandbox_services(sandbox: std::sync::Arc<fabro_sandbox::RunSandbox>) -> EngineServices {
         let mut services = make_services();
         services.run = services.run.with_sandbox(sandbox);
         services

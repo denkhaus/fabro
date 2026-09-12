@@ -4,13 +4,13 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
-use fabro_agent::RunSandbox;
 use fabro_auth::test_support as auth_test_support;
 use fabro_graphviz::graph::Graph as GvGraph;
 use fabro_interview::AutoApproveInterviewer;
 use fabro_llm::credentials::CredentialProvider;
 use fabro_llm::lithos_catalog::Catalog;
 use fabro_llm::test_support::test_catalog;
+use fabro_sandbox::RunSandbox;
 use fabro_store::{ArtifactStore, RunProjection, test_support as store_test_support};
 use fabro_types::ModelRef;
 #[cfg(feature = "test-support")]

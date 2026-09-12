@@ -1,13 +1,11 @@
 use ::fabro_types::{
-    EventBody, RunControlAction, RunEvent, RunId, StageOutcome, UsdMicros, run_event as fabro_types,
+    EventBody, RunControlAction, RunEvent, RunId, StageOutcome, run_event as fabro_types,
 };
 use chrono::Utc;
-use fabro_agent::{AgentEvent, SkillActivationSource};
 use uuid::Uuid;
 
 use super::stored_fields::stored_event_fields;
 use super::{Event, SandboxLifecycle};
-use crate::outcome::billed_token_counts_from_llm;
 use crate::stage_scope::StageScope;
 
 fn stage_status_from_string(status: &str) -> StageOutcome {
@@ -20,10 +18,6 @@ fn stage_status_from_string(status: &str) -> StageOutcome {
             retry_requested: false,
         }
     })
-}
-
-fn output_byte_count(value: usize) -> u64 {
-    u64::try_from(value).unwrap_or(u64::MAX)
 }
 
 /// Project the sandbox layer's runtime push attempts into the durable
@@ -637,323 +631,14 @@ fn event_body_from_event(event: &Event) -> EventBody {
             billing:  billing.clone(),
         }),
         Event::Agent {
-            stage: _,
+            stage,
             visit,
             event,
-            ..
-        } => match event {
-            AgentEvent::ProcessingEnd => {
-                EventBody::AgentProcessingEnd(fabro_types::AgentProcessingEndProps {
-                    visit: *visit,
-                })
-            }
-            AgentEvent::UserInput { text } => EventBody::AgentInput(fabro_types::AgentInputProps {
-                text:  text.clone(),
-                visit: *visit,
-            }),
-            AgentEvent::AssistantMessage {
-                text,
-                model,
-                usage,
-                cost,
-                tool_call_count,
-                context_window,
-                reasoning,
-            } => {
-                let billing = billed_token_counts_from_llm(*usage)
-                    .with_reported_cost(cost.as_ref().map(UsdMicros::from_cost));
-                EventBody::AgentMessage(fabro_types::AgentMessageProps {
-                    text: text.clone(),
-                    model: model.clone(),
-                    billing,
-                    cost_source: cost.map(|cost| cost.source),
-                    tool_call_count: *tool_call_count,
-                    visit: *visit,
-                    message: None,
-                    context_window: context_window.clone(),
-                    reasoning: reasoning.clone(),
-                })
-            }
-            AgentEvent::ToolCallStarted {
-                tool_name,
-                tool_call_id,
-                arguments,
-            } => EventBody::AgentToolStarted(fabro_types::AgentToolStartedProps {
-                tool_name:         tool_name.clone(),
-                tool_call_id:      tool_call_id.clone(),
-                arguments:         arguments.clone(),
-                visit:             *visit,
-                tool_call:         None,
-                turn_id:           None,
-                parent_message_id: None,
-            }),
-            AgentEvent::ToolCallCompleted {
-                tool_name,
-                tool_call_id,
-                output,
-                is_error,
-                output_bytes_observed,
-                output_bytes_retained,
-                output_bytes_omitted,
-            } => EventBody::AgentToolCompleted(fabro_types::AgentToolCompletedProps {
-                tool_name:    tool_name.clone(),
-                tool_call_id: tool_call_id.clone(),
-                output:       output.clone(),
-                is_error:     *is_error,
-                visit:        *visit,
-                output_bytes_observed: Some(output_byte_count(*output_bytes_observed)),
-                output_bytes_retained: Some(output_byte_count(*output_bytes_retained)),
-                output_bytes_omitted:  Some(output_byte_count(*output_bytes_omitted)),
-                tool_result:  None,
-                turn_id:      None,
-            }),
-            AgentEvent::ToolProcessCompleted {
-                exit_code,
-                termination,
-                duration_ms,
-                streams_separated,
-                exec_output_tail,
-                output_bytes_observed,
-                output_bytes_retained,
-                output_bytes_omitted,
-            } => EventBody::AgentToolProcessCompleted(
-                fabro_types::AgentToolProcessCompletedProps {
-                    exit_code:         *exit_code,
-                    termination:       *termination,
-                    duration_ms:       *duration_ms,
-                    streams_separated: *streams_separated,
-                    exec_output_tail:  exec_output_tail.clone(),
-                    output_bytes_observed: Some(output_byte_count(*output_bytes_observed)),
-                    output_bytes_retained: Some(output_byte_count(*output_bytes_retained)),
-                    output_bytes_omitted:  Some(output_byte_count(*output_bytes_omitted)),
-                    visit:             *visit,
-                },
-            ),
-            AgentEvent::Error { error } => EventBody::AgentError(fabro_types::AgentErrorProps {
-                error: serde_json::to_value(error).expect("agent Error derives Serialize with no custom logic that can fail"),
-                visit: *visit,
-            }),
-            AgentEvent::Warning {
-                kind,
-                message,
-                details,
-            } => EventBody::AgentWarning(fabro_types::AgentWarningProps {
-                kind:    kind.clone(),
-                message: message.clone(),
-                details: details.clone(),
-                visit:   *visit,
-            }),
-            AgentEvent::LoopDetected => {
-                EventBody::AgentLoopDetected(fabro_types::AgentLoopDetectedProps { visit: *visit })
-            }
-            AgentEvent::SteeringInjected { text, .. } => {
-                EventBody::AgentSteeringInjected(fabro_types::AgentSteeringInjectedProps {
-                    text:  text.clone(),
-                    visit: *visit,
-                })
-            }
-            AgentEvent::RoundInterrupted { generation } => {
-                EventBody::AgentRoundInterrupted(fabro_types::AgentRoundInterruptedProps {
-                    generation: *generation,
-                    visit:      *visit,
-                })
-            }
-            AgentEvent::CompactionStarted {
-                estimated_tokens,
-                context_window_size,
-            } => EventBody::AgentCompactionStarted(fabro_types::AgentCompactionStartedProps {
-                estimated_tokens:    *estimated_tokens,
-                context_window_size: *context_window_size,
-                visit:               *visit,
-            }),
-            AgentEvent::CompactionCompleted {
-                original_turn_count,
-                preserved_turn_count,
-                summary_token_estimate,
-                tracked_file_count,
-            } => EventBody::AgentCompactionCompleted(fabro_types::AgentCompactionCompletedProps {
-                original_turn_count:    *original_turn_count,
-                preserved_turn_count:   *preserved_turn_count,
-                summary_token_estimate: *summary_token_estimate,
-                tracked_file_count:     *tracked_file_count,
-                visit:                  *visit,
-            }),
-            AgentEvent::LlmRequestStarted { requested_model } => {
-                EventBody::AgentLlmStarted(fabro_types::AgentLlmStartedProps {
-                    requested_model: requested_model.clone(),
-                    visit:           *visit,
-                })
-            }
-            AgentEvent::LlmFirstOutput { kind } => {
-                EventBody::AgentLlmFirstOutput(fabro_types::AgentLlmFirstOutputProps {
-                    kind:  *kind,
-                    visit: *visit,
-                })
-            }
-            AgentEvent::LlmRetry {
-                provider,
-                model,
-                attempt,
-                delay_secs,
-                error,
-                phase,
-            } => EventBody::AgentLlmRetry(fabro_types::AgentLlmRetryProps {
-                provider:   provider.clone(),
-                model:      model.clone(),
-                attempt:    *attempt,
-                delay_secs: *delay_secs,
-                error:      serde_json::to_value(error).expect("LLM SDK error derives Serialize with no custom logic that can fail"),
-                phase:      Some(*phase),
-                visit:      *visit,
-            }),
-            AgentEvent::SubAgentSpawned {
-                agent_id,
-                depth,
-                task,
-                generation,
-            } => EventBody::AgentSubSpawned(fabro_types::AgentSubSpawnedProps {
-                agent_id:  agent_id.clone(),
-                depth:     *depth,
-                task:      task.clone(),
-                generation: *generation,
-                visit:     *visit,
-            }),
-            AgentEvent::SubAgentTurnStarted {
-                agent_id,
-                depth,
-                task,
-                generation,
-            } => EventBody::AgentSubTurnStarted(fabro_types::AgentSubTurnStartedProps {
-                agent_id:  agent_id.clone(),
-                depth:     *depth,
-                task:      task.clone(),
-                generation: *generation,
-                visit:     *visit,
-            }),
-            AgentEvent::SubAgentCompleted {
-                agent_id,
-                depth,
-                generation,
-                success,
-                turns_used,
-            } => EventBody::AgentSubCompleted(fabro_types::AgentSubCompletedProps {
-                agent_id:   agent_id.clone(),
-                depth:      *depth,
-                generation: *generation,
-                success:    *success,
-                turns_used: *turns_used,
-                visit:      *visit,
-            }),
-            AgentEvent::SubAgentFailed {
-                agent_id,
-                depth,
-                generation,
-                error,
-            } => EventBody::AgentSubFailed(fabro_types::AgentSubFailedProps {
-                agent_id:  agent_id.clone(),
-                depth:     *depth,
-                generation: *generation,
-                error:     serde_json::to_value(error).expect("agent Error derives Serialize with no custom logic that can fail"),
-                visit:     *visit,
-            }),
-            AgentEvent::SubAgentClosed {
-                agent_id,
-                depth,
-                generation,
-            } => {
-                EventBody::AgentSubClosed(fabro_types::AgentSubClosedProps {
-                    agent_id:  agent_id.clone(),
-                    depth:     *depth,
-                    generation: *generation,
-                    visit:     *visit,
-                })
-            }
-            AgentEvent::McpServerReady {
-                server_name,
-                tool_count,
-                tools,
-            } => EventBody::AgentMcpReady(fabro_types::AgentMcpReadyProps {
-                server_name: server_name.clone(),
-                tool_count:  *tool_count,
-                tools:       tools
-                    .iter()
-                    .map(|tool| fabro_types::AgentMcpToolSummary {
-                        name:          tool.name.clone(),
-                        original_name: tool.original_name.clone(),
-                    })
-                    .collect(),
-                visit:       *visit,
-            }),
-            AgentEvent::McpServerFailed { server_name, error } => {
-                EventBody::AgentMcpFailed(fabro_types::AgentMcpFailedProps {
-                    server_name: server_name.clone(),
-                    error:       error.clone(),
-                    visit:       *visit,
-                })
-            }
-            AgentEvent::MemoryLoaded {
-                provider_profile,
-                files,
-                total_loaded_bytes,
-                budget_bytes,
-            } => EventBody::AgentMemoryLoaded(fabro_types::AgentMemoryLoadedProps {
-                provider_profile:   provider_profile.clone(),
-                total_loaded_bytes: *total_loaded_bytes,
-                files:              files
-                    .iter()
-                    .map(|file| fabro_types::AgentMemoryFileProps {
-                        path:         file.path.clone(),
-                        byte_count:   file.byte_count,
-                        loaded_bytes: file.loaded_bytes,
-                        truncated:    file.truncated,
-                    })
-                    .collect(),
-                budget_bytes:       *budget_bytes,
-                visit:              *visit,
-            }),
-            AgentEvent::SkillsDiscovered {
-                provider_profile,
-                source_dirs,
-                skills,
-            } => EventBody::AgentSkillsDiscovered(fabro_types::AgentSkillsDiscoveredProps {
-                provider_profile: provider_profile.clone(),
-                source_dirs:      source_dirs.clone(),
-                skills:           skills
-                    .iter()
-                    .map(|skill| fabro_types::AgentSkillSummary {
-                        name:        skill.name.clone(),
-                        description: skill.description.clone(),
-                    })
-                    .collect(),
-                visit:            *visit,
-            }),
-            AgentEvent::SkillActivated { skill_name, source } => {
-                EventBody::AgentSkillActivated(fabro_types::AgentSkillActivatedProps {
-                    skill_name: skill_name.clone(),
-                    source:     match source {
-                        SkillActivationSource::Slash => {
-                            fabro_types::AgentSkillActivationSource::Slash
-                        }
-                        SkillActivationSource::Tool => {
-                            fabro_types::AgentSkillActivationSource::Tool
-                        }
-                    },
-                    visit:      *visit,
-                })
-            }
-            AgentEvent::TodoCreated(props) => EventBody::TodoCreated(props.clone()),
-            AgentEvent::TodoUpdated(props) => EventBody::TodoUpdated(props.clone()),
-            AgentEvent::TodoDeleted(props) => EventBody::TodoDeleted(props.clone()),
-            AgentEvent::AssistantOutputReplace { .. }
-            | AgentEvent::TextDelta { .. }
-            | AgentEvent::ReasoningDelta { .. }
-            | AgentEvent::ToolCallOutputDelta { .. }
-            | AgentEvent::SessionStarted { .. }
-            | AgentEvent::SessionEnded => unreachable!(
-                "streaming noise and session lifecycle events are filtered out before wrapping in \
-                 Event::Agent; if this is reached, the emitter has a routing bug"
-            ),
-        },
+        } => EventBody::Agent(fabro_types::AgentEventProps::new(
+            stage.clone(),
+            *visit,
+            event.clone(),
+        )),
         Event::SubgraphStarted { start_node, .. } => {
             EventBody::SubgraphStarted(fabro_types::SubgraphStartedProps {
                 start_node: start_node.clone(),
@@ -1123,12 +808,6 @@ fn event_body_from_event(event: &Event) -> EventBody {
             output_bytes:   *output_bytes,
             live_streaming: *live_streaming,
         }),
-        Event::AgentSessionStarted {
-            provider, model, ..
-        } => EventBody::AgentSessionStarted(fabro_types::AgentSessionStartedProps {
-            provider: provider.clone(),
-            model:    model.clone(),
-        }),
         Event::AgentSessionActivated {
             thread_id,
             provider,
@@ -1160,9 +839,28 @@ fn event_body_from_event(event: &Event) -> EventBody {
                 visit: *visit,
             })
         }
-        Event::AgentSessionEnded { .. } => {
-            EventBody::AgentSessionEnded(fabro_types::AgentSessionEndedProps {})
-        }
+        Event::AgentMcpReady {
+            visit,
+            server_name,
+            tool_count,
+            tools,
+            ..
+        } => EventBody::AgentMcpReady(fabro_types::AgentMcpReadyProps {
+            server_name: server_name.clone(),
+            tool_count:  *tool_count,
+            tools:       tools.clone(),
+            visit:       *visit,
+        }),
+        Event::AgentMcpFailed {
+            visit,
+            server_name,
+            error,
+            ..
+        } => EventBody::AgentMcpFailed(fabro_types::AgentMcpFailedProps {
+            server_name: server_name.clone(),
+            error:       error.clone(),
+            visit:       *visit,
+        }),
         Event::AgentInterruptInjected { visit, .. } => {
             EventBody::AgentInterruptInjected(fabro_types::AgentInterruptInjectedProps {
                 visit: *visit,
@@ -1332,16 +1030,13 @@ mod tests {
     use std::collections::BTreeMap;
 
     use ::fabro_types::{
-        AutomationRef, EventBody, FailureReason, ModelRef, ParallelBranchId, Principal,
-        RunNoticeCode, RunNoticeLevel, RunProvenance, StageId, SystemActorKind, fixtures,
+        AutomationRef, EventBody, FailureReason, ParallelBranchId, Principal, RunNoticeCode,
+        RunNoticeLevel, RunProvenance, StageId, SystemActorKind, fixtures,
         run_event as fabro_types, test_support,
     };
     use chrono::Utc;
-    use fabro_agent::{
-        AgentEvent, McpToolSummary, MemoryFileSummary, SkillActivationSource, SkillSummary,
-    };
-    use lithos_llm::catalog::{ModelId, ProviderId, builtin};
-    use lithos_llm::types::{Cost, CostSource, ReasoningOutput, TokenCounts as LlmTokenCounts};
+    use lithos_llm::types::ReasoningOutput;
+    use pebble_coding_agent::events::{CodingAgentEvent, CodingEvent, TokenUsage};
 
     use super::*;
     use crate::error::Error;
@@ -1475,89 +1170,16 @@ mod tests {
     }
 
     #[test]
-    fn run_event_agent_tool_started_moves_session_metadata_to_header() {
-        let stored = to_run_event(&fixtures::RUN_4, &Event::Agent {
-            stage:             "code".to_string(),
-            visit:             2,
-            event:             AgentEvent::ToolCallStarted {
-                tool_name:    "read_file".to_string(),
-                tool_call_id: "call_1".to_string(),
-                arguments:    serde_json::json!({"path": "src/main.rs"}),
-            },
-            session_id:        Some("ses_child".to_string()),
-            parent_session_id: Some("ses_parent".to_string()),
-            tool_call_id:      None,
-        });
-
-        assert_eq!(stored.event_name(), "agent.tool.started");
-        assert_eq!(stored.node_id.as_deref(), Some("code"));
-        assert_eq!(stored.node_label.as_deref(), Some("code"));
-        assert_eq!(stored.session_id.as_deref(), Some("ses_child"));
-        assert_eq!(stored.parent_session_id.as_deref(), Some("ses_parent"));
-        let properties = stored.properties().unwrap();
-        assert_eq!(properties["tool_name"], "read_file");
-        assert_eq!(properties["tool_call_id"], "call_1");
-        assert_eq!(properties["visit"], 2);
-    }
-
-    #[test]
-    fn run_event_agent_tool_process_completed_carries_stage_session_and_actor() {
-        let stored = to_run_event(&fixtures::RUN_4, &Event::Agent {
-            stage:             "code".to_string(),
-            visit:             2,
-            event:             AgentEvent::ToolProcessCompleted {
-                exit_code:             Some(7),
-                termination:           ::fabro_types::CommandTermination::Exited,
-                duration_ms:           12,
-                streams_separated:     true,
-                output_bytes_observed: 120,
-                output_bytes_retained: 100,
-                output_bytes_omitted:  20,
-                exec_output_tail:      Some(exec_tail()),
-            },
-            session_id:        Some("ses_child".to_string()),
-            parent_session_id: Some("ses_parent".to_string()),
-            tool_call_id:      Some("call_1".to_string()),
-        });
-
-        assert_eq!(stored.event_name(), "agent.tool.process.completed");
-        assert_eq!(stored.node_id.as_deref(), Some("code"));
-        assert_eq!(stored.stage_id, Some(StageId::new("code", 2)));
-        assert_eq!(stored.session_id.as_deref(), Some("ses_child"));
-        assert_eq!(stored.parent_session_id.as_deref(), Some("ses_parent"));
-        assert_eq!(stored.tool_call_id.as_deref(), Some("call_1"));
-        assert_eq!(
-            stored.actor,
-            Some(::fabro_types::Principal::Agent {
-                session_id:        Some("ses_child".to_string()),
-                parent_session_id: Some("ses_parent".to_string()),
-                model:             None,
-            })
-        );
-
-        let properties = stored.properties().unwrap();
-        assert_eq!(properties["exit_code"], 7);
-        assert_eq!(properties["termination"], "exited");
-        assert_eq!(properties["duration_ms"], 12);
-        assert_eq!(properties["streams_separated"], true);
-        assert_eq!(properties["output_bytes_observed"], 120);
-        assert_eq!(properties["output_bytes_retained"], 100);
-        assert_eq!(properties["output_bytes_omitted"], 20);
-        assert_eq!(properties["exec_output_tail"]["stdout"], "last stdout line");
-        assert_eq!(properties["visit"], 2);
-    }
-
-    #[test]
     fn run_event_agent_tools_available_moves_session_and_stage_metadata_to_header() {
         let stored = to_run_event(&fixtures::RUN_4, &Event::AgentToolsAvailable {
             node_id:    "code".to_string(),
             visit:      2,
             session_id: "ses_root".to_string(),
-            tools:      vec![::fabro_types::AgentToolSummary {
+            tools:      vec![::fabro_types::ToolSummary {
                 name:        "apply_patch".to_string(),
                 description: "Apply a unified diff patch".to_string(),
-                source:      ::fabro_types::AgentToolSource::Native,
-                category:    ::fabro_types::AgentToolCategory::Write,
+                source:      ::fabro_types::ToolSource::Native,
+                category:    ::fabro_types::ToolCategory::Write,
                 invoked:     false,
             }],
         });
@@ -1892,47 +1514,6 @@ mod tests {
     }
 
     #[test]
-    fn agent_tool_started_populates_tool_call_id_and_stage_id() {
-        let stored = to_run_event_at(
-            &fixtures::RUN_1,
-            &Event::Agent {
-                stage:             "code".to_string(),
-                visit:             3,
-                event:             AgentEvent::ToolCallStarted {
-                    tool_name:    "read_file".to_string(),
-                    tool_call_id: "call_abc".to_string(),
-                    arguments:    serde_json::json!({"path": "src/main.rs"}),
-                },
-                session_id:        Some("ses_1".to_string()),
-                parent_session_id: None,
-                tool_call_id:      None,
-            },
-            Utc::now(),
-            Some(&StageScope {
-                node_id:            "code".to_string(),
-                visit:              3,
-                parallel_group_id:  Some(StageId::new("fanout", 2)),
-                parallel_branch_id: Some(ParallelBranchId::new(StageId::new("fanout", 2), 0)),
-            }),
-        );
-        assert_eq!(stored.stage_id, Some(StageId::new("code", 3)));
-        assert_eq!(stored.tool_call_id.as_deref(), Some("call_abc"));
-        assert_eq!(
-            stored.actor,
-            Some(Principal::Agent {
-                session_id:        Some("ses_1".to_string()),
-                parent_session_id: None,
-                model:             None,
-            })
-        );
-        assert_eq!(stored.parallel_group_id, Some(StageId::new("fanout", 2)));
-        assert_eq!(
-            stored.parallel_branch_id,
-            Some(ParallelBranchId::new(StageId::new("fanout", 2), 0))
-        );
-    }
-
-    #[test]
     fn agent_interrupt_injected_populates_stage_session_and_actor() {
         let actor = Principal::System {
             system_kind: SystemActorKind::Engine,
@@ -1952,30 +1533,6 @@ mod tests {
         assert_eq!(stored.actor, Some(actor));
         match stored.body {
             EventBody::AgentInterruptInjected(props) => assert_eq!(props.visit, 3),
-            other => panic!("unexpected body: {other:?}"),
-        }
-    }
-
-    #[test]
-    fn agent_round_interrupted_populates_stage_session_and_generation() {
-        let stored = to_run_event(&fixtures::RUN_1, &Event::Agent {
-            stage:             "code".to_string(),
-            visit:             3,
-            event:             AgentEvent::RoundInterrupted { generation: 2 },
-            session_id:        Some("ses_1".to_string()),
-            parent_session_id: None,
-            tool_call_id:      None,
-        });
-
-        assert_eq!(stored.event_name(), "agent.round.interrupted");
-        assert_eq!(stored.node_id.as_deref(), Some("code"));
-        assert_eq!(stored.stage_id, Some(StageId::new("code", 3)));
-        assert_eq!(stored.session_id.as_deref(), Some("ses_1"));
-        match stored.body {
-            EventBody::AgentRoundInterrupted(props) => {
-                assert_eq!(props.generation, 2);
-                assert_eq!(props.visit, 3);
-            }
             other => panic!("unexpected body: {other:?}"),
         }
     }
@@ -2393,223 +1950,6 @@ mod tests {
     }
 
     #[test]
-    fn agent_todo_event_populates_tool_call_id_header() {
-        let stored = to_run_event(&fixtures::RUN_1, &Event::Agent {
-            stage:             "code".to_string(),
-            visit:             1,
-            event:             AgentEvent::TodoCreated(fabro_types::TodoCreatedProps {
-                list_id:     "openai_plan:ses_1".to_string(),
-                list_kind:   ::fabro_types::TodoListKind::OpenAiPlan,
-                todo_id:     "todo_1".to_string(),
-                status:      ::fabro_types::TodoStatus::Pending,
-                order:       0,
-                subject:     "step".to_string(),
-                description: String::new(),
-                active_form: None,
-                owner:       None,
-                blocks:      Vec::new(),
-                blocked_by:  Vec::new(),
-                metadata:    BTreeMap::new(),
-            }),
-            session_id:        Some("ses_1".to_string()),
-            parent_session_id: None,
-            tool_call_id:      Some("call_todo".to_string()),
-        });
-
-        assert_eq!(stored.event_name(), "todo.created");
-        assert_eq!(stored.session_id.as_deref(), Some("ses_1"));
-        assert_eq!(stored.tool_call_id.as_deref(), Some("call_todo"));
-        assert!(matches!(stored.body, EventBody::TodoCreated(_)));
-    }
-
-    #[test]
-    fn agent_assistant_message_populates_agent_actor() {
-        let stored = to_run_event(&fixtures::RUN_1, &Event::Agent {
-            stage:             "code".to_string(),
-            visit:             1,
-            event:             AgentEvent::AssistantMessage {
-                text:            "ok".to_string(),
-                model:           ModelRef::new(builtin::anthropic(), ModelId::new("claude-sonnet")),
-                usage:           LlmTokenCounts::default(),
-                cost:            None,
-                tool_call_count: 0,
-                context_window:  None,
-                reasoning:       None,
-            },
-            session_id:        Some("ses_agent".to_string()),
-            parent_session_id: None,
-            tool_call_id:      None,
-        });
-        let actor = stored.actor.as_ref().expect("actor set");
-        assert_eq!(actor, &Principal::Agent {
-            session_id:        Some("ses_agent".to_string()),
-            parent_session_id: None,
-            model:             Some("claude-sonnet".to_string()),
-        });
-    }
-
-    #[test]
-    fn agent_assistant_message_with_custom_provider_keeps_tokens_without_cost() {
-        let stored = to_run_event(&fixtures::RUN_1, &Event::Agent {
-            stage:             "code".to_string(),
-            visit:             1,
-            event:             AgentEvent::AssistantMessage {
-                text:            "ok".to_string(),
-                model:           ModelRef::new(
-                    ProviderId::new("custom_proxy"),
-                    ModelId::new("proxy-model"),
-                ),
-                usage:           LlmTokenCounts {
-                    input: 12,
-                    output: 34,
-                    ..LlmTokenCounts::default()
-                },
-                cost:            None,
-                tool_call_count: 0,
-                context_window:  None,
-                reasoning:       None,
-            },
-            session_id:        Some("ses_agent".to_string()),
-            parent_session_id: None,
-            tool_call_id:      None,
-        });
-
-        let EventBody::AgentMessage(message) = stored.body else {
-            panic!("expected agent message body");
-        };
-        assert_eq!(message.model.provider, ProviderId::new("custom_proxy"));
-        assert_eq!(message.model.model_id.as_str(), "proxy-model");
-        assert_eq!(message.billing.input_tokens, 12);
-        assert_eq!(message.billing.output_tokens, 34);
-        assert_eq!(message.billing.total_usd_micros, None);
-    }
-
-    #[test]
-    fn agent_assistant_message_preserves_provider_cost() {
-        let stored = to_run_event(&fixtures::RUN_1, &Event::Agent {
-            stage:             "code".to_string(),
-            visit:             1,
-            event:             AgentEvent::AssistantMessage {
-                text:            "ok".to_string(),
-                model:           ModelRef::new(
-                    ProviderId::new("openrouter"),
-                    ModelId::new("openai/gpt-5.4"),
-                ),
-                usage:           LlmTokenCounts {
-                    input: 12,
-                    output: 34,
-                    ..LlmTokenCounts::default()
-                },
-                cost:            Some(Cost {
-                    usd_micros: 125_000,
-
-                    source: CostSource::Provider,
-                }),
-                tool_call_count: 0,
-                context_window:  None,
-                reasoning:       None,
-            },
-            session_id:        Some("ses_agent".to_string()),
-            parent_session_id: None,
-            tool_call_id:      None,
-        });
-
-        let EventBody::AgentMessage(message) = stored.body else {
-            panic!("expected agent message body");
-        };
-        assert_eq!(message.billing.total_usd_micros, Some(125_000));
-        assert_eq!(message.cost_source, Some(CostSource::Provider));
-    }
-
-    #[test]
-    fn agent_assistant_message_copies_context_window_to_props() {
-        let context_window = ::fabro_types::StageContextWindowProjection {
-            provider:              "openai".to_string(),
-            model:                 "gpt-5.4".to_string(),
-            context_window_tokens: 400_000,
-            input_tokens:          123,
-            usage_percent:         0.03075,
-            count_method:          ::fabro_types::StageContextWindowCountMethod::LocalEstimate,
-            staleness:             ::fabro_types::StageContextWindowStaleness::Live,
-            generated_at:          Utc::now(),
-            event_seq:             None,
-            breakdown:             vec![::fabro_types::StageContextWindowBreakdownItem {
-                category:      ::fabro_types::StageContextWindowCategory::Conversation,
-                tokens:        123,
-                usage_percent: 0.03075,
-            }],
-            warnings:              Vec::new(),
-        };
-        let stored = to_run_event(&fixtures::RUN_1, &Event::Agent {
-            stage:             "code".to_string(),
-            visit:             1,
-            event:             AgentEvent::AssistantMessage {
-                text:            "ok".to_string(),
-                model:           ModelRef::new(builtin::openai(), ModelId::new("gpt-5.4")),
-                usage:           LlmTokenCounts::default(),
-                cost:            None,
-                tool_call_count: 0,
-                context_window:  Some(context_window),
-                reasoning:       None,
-            },
-            session_id:        Some("ses_agent".to_string()),
-            parent_session_id: None,
-            tool_call_id:      None,
-        });
-
-        let EventBody::AgentMessage(message) = stored.body else {
-            panic!("expected agent message body");
-        };
-        let context_window = message.context_window.expect("context window copied");
-        assert_eq!(context_window.input_tokens, 123);
-        assert_eq!(
-            context_window.count_method,
-            ::fabro_types::StageContextWindowCountMethod::LocalEstimate
-        );
-    }
-
-    #[test]
-    fn agent_assistant_message_copies_reasoning_into_canonical_event() {
-        let stored = to_run_event(&fixtures::RUN_1, &Event::Agent {
-            stage:             "code".to_string(),
-            visit:             1,
-            event:             AgentEvent::AssistantMessage {
-                text:            String::new(),
-                model:           ModelRef::new(builtin::openai(), ModelId::new("gpt-5.4")),
-                usage:           LlmTokenCounts::default(),
-                cost:            None,
-                tool_call_count: 1,
-                context_window:  None,
-                reasoning:       Some(ReasoningOutput::new(
-                    "inspect the conversion first",
-                    "read convert.rs, then the sink",
-                )),
-            },
-            session_id:        Some("ses_agent".to_string()),
-            parent_session_id: None,
-            tool_call_id:      None,
-        });
-
-        let EventBody::AgentMessage(message) = &stored.body else {
-            panic!("expected agent message body");
-        };
-        let reasoning = message.reasoning.as_ref().expect("reasoning copied");
-        assert_eq!(reasoning.summary(), Some("inspect the conversion first"));
-        assert_eq!(reasoning.trace(), Some("read convert.rs, then the sink"));
-
-        let value = stored.to_value().unwrap();
-        assert_eq!(value["event"], "agent.message");
-        assert_eq!(
-            value["properties"]["reasoning"]["summary"],
-            "inspect the conversion first"
-        );
-        assert_eq!(
-            value["properties"]["reasoning"]["trace"],
-            "read convert.rs, then the sink"
-        );
-    }
-
-    #[test]
     fn agent_acp_events_map_to_event_bodies_with_stage_scope() {
         let scope = StageScope {
             node_id:            "code".to_string(),
@@ -2773,180 +2113,219 @@ mod tests {
         assert_eq!(props.workflow_version_id, Some(workflow_version_id));
     }
 
-    #[test]
-    fn agent_memory_loaded_maps_to_typed_event_body() {
-        let stored = to_run_event(&fixtures::RUN_1, &Event::Agent {
-            stage:             "code".to_string(),
-            visit:             3,
-            event:             AgentEvent::MemoryLoaded {
-                provider_profile:   "anthropic".to_string(),
-                files:              vec![MemoryFileSummary {
-                    path:         "/repo/AGENTS.md".to_string(),
-                    byte_count:   200,
-                    loaded_bytes: 200,
-                    truncated:    false,
-                }],
-                total_loaded_bytes: 200,
-                budget_bytes:       32768,
-            },
-            session_id:        Some("ses_1".to_string()),
-            parent_session_id: None,
-            tool_call_id:      None,
-        });
-        assert_eq!(stored.event_name(), "agent.memory.loaded");
-        match stored.body {
-            EventBody::AgentMemoryLoaded(props) => {
-                assert_eq!(props.visit, 3);
-                assert_eq!(props.provider_profile, "anthropic");
-                assert_eq!(props.budget_bytes, 32768);
-                assert_eq!(props.total_loaded_bytes, 200);
-                assert_eq!(props.files.len(), 1);
-                assert_eq!(props.files[0].path, "/repo/AGENTS.md");
-                assert_eq!(props.files[0].byte_count, 200);
-                assert_eq!(props.files[0].loaded_bytes, 200);
-                assert!(!props.files[0].truncated);
-            }
-            other => panic!("expected AgentMemoryLoaded body, got {other:?}"),
-        }
+    fn agent_event(session_id: &str, event: CodingEvent) -> CodingAgentEvent {
+        CodingAgentEvent::new(session_id, event, std::time::SystemTime::UNIX_EPOCH)
     }
 
     #[test]
-    fn agent_memory_loaded_payload_excludes_file_contents() {
-        let stored = to_run_event(&fixtures::RUN_1, &Event::Agent {
-            stage:             "code".to_string(),
-            visit:             1,
-            event:             AgentEvent::MemoryLoaded {
-                provider_profile:   "openai".to_string(),
-                files:              vec![MemoryFileSummary {
-                    path:         "/repo/AGENTS.md".to_string(),
-                    byte_count:   100,
-                    loaded_bytes: 100,
-                    truncated:    false,
-                }],
-                total_loaded_bytes: 100,
-                budget_bytes:       32768,
-            },
-            session_id:        None,
-            parent_session_id: None,
-            tool_call_id:      None,
+    fn run_event_agent_tool_started_moves_session_metadata_to_header() {
+        let stored = to_run_event(&fixtures::RUN_4, &Event::Agent {
+            stage: "code".to_string(),
+            visit: 2,
+            event: agent_event("ses_child", CodingEvent::ToolCallStarted {
+                tool_name:    "read_file".to_string(),
+                tool_call_id: "call_1".to_string(),
+                arguments:    serde_json::json!({"path": "src/main.rs"}),
+            })
+            .with_parent_session_id("ses_parent"),
         });
-        let serialized = serde_json::to_string(&stored.body).unwrap();
-        assert!(
-            !serialized.contains("content"),
-            "memory event payload must not contain file content"
+
+        assert_eq!(stored.event_name(), "agent.tool.started");
+        assert_eq!(stored.node_id.as_deref(), Some("code"));
+        assert_eq!(stored.node_label.as_deref(), Some("code"));
+        assert_eq!(stored.stage_id, Some(StageId::new("code", 2)));
+        assert_eq!(stored.session_id.as_deref(), Some("ses_child"));
+        assert_eq!(stored.parent_session_id.as_deref(), Some("ses_parent"));
+        assert_eq!(stored.tool_call_id.as_deref(), Some("call_1"));
+        let properties = stored.properties().unwrap();
+        assert_eq!(properties["visit"], 2);
+        assert_eq!(properties["stage"], "code");
+        assert_eq!(
+            properties["event"]["ToolCallStarted"]["tool_name"],
+            "read_file"
+        );
+        assert_eq!(
+            properties["event"]["ToolCallStarted"]["tool_call_id"],
+            "call_1"
         );
     }
 
     #[test]
-    fn agent_skills_discovered_maps_to_typed_event_body() {
-        let stored = to_run_event(&fixtures::RUN_1, &Event::Agent {
-            stage:             "code".to_string(),
-            visit:             2,
-            event:             AgentEvent::SkillsDiscovered {
-                provider_profile: "anthropic".to_string(),
-                source_dirs:      vec!["/repo/.fabro/skills".to_string()],
-                skills:           vec![SkillSummary {
-                    name:        "commit".to_string(),
-                    description: "Make a commit".to_string(),
-                }],
+    fn run_event_agent_tool_process_completed_carries_stage_session_and_actor() {
+        let stored = to_run_event_at(
+            &fixtures::RUN_4,
+            &Event::Agent {
+                stage: "code".to_string(),
+                visit: 2,
+                event: agent_event("ses_child", CodingEvent::ToolProcessCompleted {
+                    exit_code:             Some(7),
+                    termination:           ::fabro_types::CommandTermination::Exited,
+                    duration_ms:           12,
+                    streams_separated:     true,
+                    output_bytes_observed: 120,
+                    output_bytes_retained: 100,
+                    output_bytes_omitted:  20,
+                    exec_output_tail:      Some(exec_tail()),
+                })
+                .with_parent_session_id("ses_parent")
+                .with_tool_call_id("call_1"),
             },
-            session_id:        Some("ses_1".to_string()),
-            parent_session_id: None,
-            tool_call_id:      None,
+            Utc::now(),
+            Some(&StageScope {
+                node_id:            "code".to_string(),
+                visit:              2,
+                parallel_group_id:  Some(StageId::new("fanout", 2)),
+                parallel_branch_id: Some(ParallelBranchId::new(StageId::new("fanout", 2), 1)),
+            }),
+        );
+
+        assert_eq!(stored.event_name(), "agent.tool.process.completed");
+        assert_eq!(stored.stage_id, Some(StageId::new("code", 2)));
+        assert_eq!(stored.session_id.as_deref(), Some("ses_child"));
+        assert_eq!(stored.parent_session_id.as_deref(), Some("ses_parent"));
+        assert_eq!(stored.tool_call_id.as_deref(), Some("call_1"));
+        assert_eq!(
+            stored.actor,
+            Some(::fabro_types::Principal::Agent {
+                session_id:        Some("ses_child".to_string()),
+                parent_session_id: Some("ses_parent".to_string()),
+                model:             None,
+            })
+        );
+        let properties = stored.properties().unwrap();
+        let event = &properties["event"]["ToolProcessCompleted"];
+        assert_eq!(event["exit_code"], 7);
+        assert_eq!(event["termination"], "exited");
+        assert_eq!(event["exec_output_tail"]["stdout"], "last stdout line");
+        assert_eq!(
+            stored.parallel_branch_id,
+            Some(ParallelBranchId::new(StageId::new("fanout", 2), 1))
+        );
+    }
+
+    #[test]
+    fn agent_round_interrupted_populates_stage_and_session() {
+        let stored = to_run_event(&fixtures::RUN_1, &Event::Agent {
+            stage: "code".to_string(),
+            visit: 3,
+            event: agent_event("ses_1", CodingEvent::RoundInterrupted { generation: 2 }),
         });
-        assert_eq!(stored.event_name(), "agent.skills.discovered");
+
+        assert_eq!(stored.event_name(), "agent.round.interrupted");
+        assert_eq!(stored.stage_id, Some(StageId::new("code", 3)));
+        assert_eq!(stored.session_id.as_deref(), Some("ses_1"));
         match stored.body {
-            EventBody::AgentSkillsDiscovered(props) => {
-                assert_eq!(props.visit, 2);
-                assert_eq!(props.provider_profile, "anthropic");
-                assert_eq!(props.source_dirs, vec!["/repo/.fabro/skills".to_string()]);
-                assert_eq!(props.skills.len(), 1);
-                assert_eq!(props.skills[0].name, "commit");
-                assert_eq!(props.skills[0].description, "Make a commit");
+            EventBody::Agent(props) => {
+                assert_eq!(props.visit, 3);
+                assert!(matches!(
+                    props.coding_event(),
+                    CodingEvent::RoundInterrupted { generation: 2 }
+                ));
             }
-            other => panic!("expected AgentSkillsDiscovered body, got {other:?}"),
+            other => panic!("unexpected body: {other:?}"),
         }
     }
 
     #[test]
-    fn agent_skill_activated_maps_slash_and_tool_sources() {
-        let slash = to_run_event(&fixtures::RUN_1, &Event::Agent {
-            stage:             "code".to_string(),
-            visit:             1,
-            event:             AgentEvent::SkillActivated {
-                skill_name: "commit".to_string(),
-                source:     SkillActivationSource::Slash,
-            },
-            session_id:        Some("ses_1".to_string()),
-            parent_session_id: None,
-            tool_call_id:      None,
+    fn agent_todo_event_uses_the_todo_event_name() {
+        let stored = to_run_event(&fixtures::RUN_1, &Event::Agent {
+            stage: "code".to_string(),
+            visit: 1,
+            event: agent_event(
+                "ses_1",
+                CodingEvent::TodoCreated(::fabro_types::TodoCreatedProps {
+                    list_id:     "openai_plan:ses_1".to_string(),
+                    list_kind:   ::fabro_types::TodoListKind::OpenAiPlan,
+                    todo_id:     "todo_1".to_string(),
+                    status:      ::fabro_types::TodoStatus::Pending,
+                    order:       0,
+                    subject:     "step".to_string(),
+                    description: String::new(),
+                    active_form: None,
+                    owner:       None,
+                    blocks:      Vec::new(),
+                    blocked_by:  Vec::new(),
+                    metadata:    BTreeMap::new(),
+                }),
+            )
+            .with_tool_call_id("call_todo"),
         });
-        assert_eq!(slash.event_name(), "agent.skill.activated");
-        match slash.body {
-            EventBody::AgentSkillActivated(props) => {
-                assert_eq!(props.visit, 1);
-                assert_eq!(props.skill_name, "commit");
-                assert_eq!(props.source, fabro_types::AgentSkillActivationSource::Slash);
-            }
-            other => panic!("expected AgentSkillActivated body, got {other:?}"),
-        }
 
-        let tool = to_run_event(&fixtures::RUN_1, &Event::Agent {
-            stage:             "code".to_string(),
-            visit:             4,
-            event:             AgentEvent::SkillActivated {
-                skill_name: "review".to_string(),
-                source:     SkillActivationSource::Tool,
-            },
-            session_id:        None,
-            parent_session_id: None,
-            tool_call_id:      None,
-        });
-        match tool.body {
-            EventBody::AgentSkillActivated(props) => {
-                assert_eq!(props.visit, 4);
-                assert_eq!(props.skill_name, "review");
-                assert_eq!(props.source, fabro_types::AgentSkillActivationSource::Tool);
-            }
-            other => panic!("expected AgentSkillActivated body, got {other:?}"),
-        }
+        assert_eq!(stored.event_name(), "todo.created");
+        assert_eq!(stored.session_id.as_deref(), Some("ses_1"));
+        assert_eq!(stored.tool_call_id.as_deref(), Some("call_todo"));
+        assert!(matches!(stored.body, EventBody::Agent(_)));
     }
 
     #[test]
-    fn agent_mcp_ready_carries_tool_summaries_and_visit() {
+    fn agent_assistant_message_populates_agent_actor_with_model() {
         let stored = to_run_event(&fixtures::RUN_1, &Event::Agent {
-            stage:             "code".to_string(),
-            visit:             5,
-            event:             AgentEvent::McpServerReady {
-                server_name: "github".to_string(),
-                tool_count:  2,
-                tools:       vec![
-                    McpToolSummary {
-                        name:          "mcp__github__create_issue".to_string(),
-                        original_name: "create_issue".to_string(),
-                    },
-                    McpToolSummary {
-                        name:          "mcp__github__list_issues".to_string(),
-                        original_name: "list_issues".to_string(),
-                    },
-                ],
-            },
-            session_id:        Some("ses_1".to_string()),
-            parent_session_id: None,
-            tool_call_id:      None,
+            stage: "code".to_string(),
+            visit: 1,
+            event: agent_event("ses_agent", CodingEvent::AssistantMessage {
+                text:            "ok".to_string(),
+                model:           "claude-sonnet".to_string(),
+                usage:           TokenUsage::default(),
+                cost_usd_micros: None,
+                cost_source:     None,
+                tool_call_count: 0,
+                context_window:  None,
+                reasoning:       None,
+            }),
         });
-        assert_eq!(stored.event_name(), "agent.mcp.ready");
-        match stored.body {
-            EventBody::AgentMcpReady(props) => {
-                assert_eq!(props.visit, 5);
-                assert_eq!(props.server_name, "github");
-                assert_eq!(props.tool_count, 2);
-                assert_eq!(props.tools.len(), 2);
-                assert_eq!(props.tools[0].name, "mcp__github__create_issue");
-                assert_eq!(props.tools[0].original_name, "create_issue");
-                assert_eq!(props.tools[1].name, "mcp__github__list_issues");
+
+        assert_eq!(stored.event_name(), "agent.message");
+        let actor = stored.actor.as_ref().expect("actor set");
+        assert_eq!(actor, &Principal::Agent {
+            session_id:        Some("ses_agent".to_string()),
+            parent_session_id: None,
+            model:             Some("claude-sonnet".to_string()),
+        });
+    }
+
+    #[test]
+    fn agent_assistant_message_round_trips_reasoning_through_the_stored_payload() {
+        let stored = to_run_event(&fixtures::RUN_1, &Event::Agent {
+            stage: "code".to_string(),
+            visit: 1,
+            event: agent_event("ses_agent", CodingEvent::AssistantMessage {
+                text:            String::new(),
+                model:           "gpt-5.4".to_string(),
+                usage:           TokenUsage::default(),
+                cost_usd_micros: Some(125_000),
+                cost_source:     Some(pebble_coding_agent::events::CostSource::Provider),
+                tool_call_count: 1,
+                context_window:  None,
+                reasoning:       Some(ReasoningOutput::new(
+                    "inspect the conversion first",
+                    "read convert.rs, then the sink",
+                )),
+            }),
+        });
+
+        let value = stored.to_value().unwrap();
+        assert_eq!(value["event"], "agent.message");
+        let message = &value["properties"]["event"]["AssistantMessage"];
+        assert_eq!(message["cost_usd_micros"], 125_000);
+        assert_eq!(
+            message["reasoning"]["summary"],
+            "inspect the conversion first"
+        );
+        assert_eq!(
+            message["reasoning"]["trace"],
+            "read convert.rs, then the sink"
+        );
+
+        let decoded = RunEvent::from_value(value).unwrap();
+        let EventBody::Agent(props) = decoded.body else {
+            panic!("expected agent body");
+        };
+        assert!(matches!(
+            props.coding_event(),
+            CodingEvent::AssistantMessage {
+                tool_call_count: 1,
+                ..
             }
-            other => panic!("expected AgentMcpReady body, got {other:?}"),
-        }
+        ));
     }
 }

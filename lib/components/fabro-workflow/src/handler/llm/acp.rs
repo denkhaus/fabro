@@ -11,15 +11,16 @@ use fabro_acp::{
     AcpCommandError, AcpControlHandle, AcpError, AcpLiveControl, AcpProcessSpec, AcpRunRequest,
     render_stop_reason,
 };
-use fabro_agent::{AgentEvent, RunSandbox, StaticEnvProvider, SteeringItem, ToolEnvProvider};
 use fabro_github::token_source::REFRESH_MARGIN;
 use fabro_graphviz::graph::Node;
-use fabro_sandbox::TokenSnapshot;
+use fabro_sandbox::{RunSandbox, TokenSnapshot};
 use fabro_static::EnvVars;
-use fabro_types::{
-    AgentBackend, Principal, SessionCapability, StageId, StageTiming, SteeringMessage,
-};
+use fabro_types::{AgentBackend, SessionCapability, StageId, StageTiming};
 use fabro_util::time::elapsed_ms;
+use pebble_coding_agent::events::{Actor, CodingAgentEvent, CodingEvent};
+use pebble_coding_agent::steering::SteerableSession;
+use pebble_coding_agent::tools::{StaticEnvProvider, ToolEnvProvider};
+use pebble_coding_agent::{SteeringMessage, SteeringOutcome};
 use tokio::task::JoinHandle;
 use tokio::time::{sleep, timeout};
 use tokio_util::sync::CancellationToken;
@@ -30,7 +31,7 @@ use super::changed_files;
 use crate::error::Error;
 use crate::event::{Emitter, Event, RunNoticeCode, RunNoticeLevel, StageScope};
 use crate::handler::NodeTimeoutPolicy;
-use crate::steering_hub::{ActiveControlHandle, SteeringHub};
+use crate::steering_hub::SteeringHub;
 
 /// Default refresh-ahead interval — comfortably under the ~60-min GitHub App
 /// installation-token TTL. Used as the loop cadence when a tick reports no
@@ -268,13 +269,12 @@ impl AgentAcpBackend {
         let lease_for_completion = Arc::new(Mutex::new(activation_lease));
         let on_natural_completion = self.steering_hub.as_ref().map(|_| {
             let lease = Arc::clone(&lease_for_completion);
-            let control_handle = control_handle.clone();
             Arc::new(move || {
                 let mut lease = lease.lock().expect("ACP activation lease lock poisoned");
                 let Some(active_lease) = lease.as_ref() else {
                     return true;
                 };
-                if active_lease.release_if_no_pending_control_work(&control_handle) {
+                if active_lease.release_if_idle() {
                     lease.take();
                     true
                 } else {
@@ -287,19 +287,24 @@ impl AgentAcpBackend {
             let stage_scope = stage_scope.clone();
             let node_id = node.id.clone();
             let session_id = activation_session_id.clone();
-            Arc::new(move |text: String, actor: Option<Principal>| {
+            Arc::new(move |text: String, actor: Option<Actor>| {
                 emitter.emit_scoped(
                     &Event::Agent {
-                        stage:             node_id.clone(),
-                        visit:             stage_scope.visit,
-                        event:             AgentEvent::SteeringInjected { text, actor },
-                        session_id:        Some(session_id.clone()),
-                        parent_session_id: None,
-                        tool_call_id:      None,
+                        stage: node_id.clone(),
+                        visit: stage_scope.visit,
+                        event: CodingAgentEvent::new(
+                            session_id.clone(),
+                            CodingEvent::SteeringInjected {
+                                text,
+                                content: None,
+                                actor,
+                            },
+                            std::time::SystemTime::now(),
+                        ),
                     },
                     &stage_scope,
                 );
-            }) as Arc<dyn Fn(String, Option<Principal>) + Send + Sync>
+            }) as Arc<dyn Fn(String, Option<Actor>) + Send + Sync>
         });
 
         // Refresh before launch for early pushes. Schedule later refreshes from
@@ -470,7 +475,7 @@ impl AgentAcpBackend {
         provider
             .resolve()
             .await
-            .map_err(|err| Error::handler_with_anyhow("Failed to resolve ACP agent env", err))
+            .map_err(|err| Error::handler_with_source("Failed to resolve ACP agent env", err))
     }
 
     fn activate_control_session(
@@ -499,39 +504,41 @@ impl AgentAcpBackend {
                 hub:              Arc::clone(steering_hub),
                 emitter:          Arc::clone(emitter),
             },
-            &(Arc::new(handle.clone()) as Arc<dyn ActiveControlHandle>),
+            Arc::new(AcpSteerable(handle.clone())),
         )
         .map(Some)
     }
 }
 
-impl ActiveControlHandle for AcpControlHandle {
-    fn enqueue_bounded(&self, item: SteeringItem, cap: usize) -> Option<SteeringItem> {
-        let item = match item {
-            SteeringItem::Steering { text, actor } => SteeringMessage::new(text, actor),
-            item => return Some(item),
-        };
-        Self::enqueue_bounded(self, item, cap).map(SteeringItem::from)
+/// How many steers wait on an ACP session before the oldest is dropped.
+/// Pebble's own sessions bound their queue themselves; the ACP session's
+/// queue is fabro's, so the bound is stated here.
+const ACP_STEERING_QUEUE_CAP: usize = 32;
+
+/// The ACP session as a session on the steering bus. It cannot hold its
+/// completion open, so a human cannot pair with it.
+struct AcpSteerable(AcpControlHandle);
+
+impl SteerableSession for AcpSteerable {
+    fn steer(&self, message: SteeringMessage) -> SteeringOutcome {
+        self.0
+            .enqueue_bounded(message, ACP_STEERING_QUEUE_CAP)
+            .map_or(SteeringOutcome::Accepted, SteeringOutcome::Evicted)
     }
 
-    fn interrupt(&self, actor: Option<Principal>) {
-        Self::interrupt(self, actor);
+    fn interrupt(&self) -> bool {
+        self.0.interrupt();
+        true
     }
 
-    fn interrupt_then_enqueue_bounded(
-        &self,
-        item: SteeringItem,
-        cap: usize,
-    ) -> Option<SteeringItem> {
-        let item = match item {
-            SteeringItem::Steering { text, actor } => SteeringMessage::new(text, actor),
-            item => return Some(item),
-        };
-        Self::interrupt_then_enqueue_bounded(self, item, cap).map(SteeringItem::from)
+    fn steer_now(&self, message: SteeringMessage) -> SteeringOutcome {
+        self.0
+            .interrupt_then_enqueue_bounded(message, ACP_STEERING_QUEUE_CAP)
+            .map_or(SteeringOutcome::Accepted, SteeringOutcome::Evicted)
     }
 
-    fn has_pending_control_work(&self) -> bool {
-        Self::has_pending_control_work(self)
+    fn has_pending_steering(&self) -> bool {
+        self.0.has_pending_control_work()
     }
 }
 
@@ -635,9 +642,9 @@ mod tests {
 
     use fabro_acp::test_support::fake_acp_agent_script;
     use fabro_acp::{AcpError, AcpProcessExit};
-    use fabro_agent::{RunSandbox, TokenProvenance, TokenSnapshot, local_sandbox};
     use fabro_graphviz::graph::{AttrValue, Node};
     use fabro_sandbox::test_support::MockSandbox;
+    use fabro_sandbox::{RunSandbox, TokenProvenance, TokenSnapshot, local_sandbox};
     use fabro_types::{CommandTermination, EventBody, ExecOutputTail};
     use fabro_util::shell;
     use tokio_util::sync::CancellationToken;
@@ -945,15 +952,15 @@ mod tests {
         let context = Context::new();
         let result = backend
             .run(CodergenRunRequest {
-                node:               &node,
-                prompt:             "write hello",
-                context:            &context,
-                thread_id:          None,
-                emitter:            &emitter,
-                sandbox:            &sandbox,
-                tool_hooks:         None,
-                cancel_token:       CancellationToken::new(),
-                agent_tool_runtime: fabro_agent::AgentToolRuntime::default(),
+                node:            &node,
+                prompt:          "write hello",
+                context:         &context,
+                thread_id:       None,
+                emitter:         &emitter,
+                sandbox:         &sandbox,
+                tool_middleware: None,
+                cancel_token:    CancellationToken::new(),
+                human_input:     None,
             })
             .await
             .unwrap();
@@ -994,15 +1001,15 @@ mod tests {
         let context = Context::new();
         let result = backend
             .run(CodergenRunRequest {
-                node:               &node,
-                prompt:             "write hello",
-                context:            &context,
-                thread_id:          None,
-                emitter:            &emitter,
-                sandbox:            &sandbox,
-                tool_hooks:         None,
-                cancel_token:       CancellationToken::new(),
-                agent_tool_runtime: fabro_agent::AgentToolRuntime::default(),
+                node:            &node,
+                prompt:          "write hello",
+                context:         &context,
+                thread_id:       None,
+                emitter:         &emitter,
+                sandbox:         &sandbox,
+                tool_middleware: None,
+                cancel_token:    CancellationToken::new(),
+                human_input:     None,
             })
             .await;
 
@@ -1065,15 +1072,15 @@ mod tests {
         let context = Context::new();
         let result = backend
             .run(CodergenRunRequest {
-                node:               &node,
-                prompt:             "write hello",
-                context:            &context,
-                thread_id:          None,
-                emitter:            &emitter,
-                sandbox:            &sandbox,
-                tool_hooks:         None,
-                cancel_token:       CancellationToken::new(),
-                agent_tool_runtime: fabro_agent::AgentToolRuntime::default(),
+                node:            &node,
+                prompt:          "write hello",
+                context:         &context,
+                thread_id:       None,
+                emitter:         &emitter,
+                sandbox:         &sandbox,
+                tool_middleware: None,
+                cancel_token:    CancellationToken::new(),
+                human_input:     None,
             })
             .await
             .unwrap();
@@ -1114,15 +1121,15 @@ mod tests {
         let context = Context::new();
         let result = backend
             .run(CodergenRunRequest {
-                node:               &node,
-                prompt:             "write hello",
-                context:            &context,
-                thread_id:          None,
-                emitter:            &emitter,
-                sandbox:            &sandbox,
-                tool_hooks:         None,
-                cancel_token:       CancellationToken::new(),
-                agent_tool_runtime: fabro_agent::AgentToolRuntime::default(),
+                node:            &node,
+                prompt:          "write hello",
+                context:         &context,
+                thread_id:       None,
+                emitter:         &emitter,
+                sandbox:         &sandbox,
+                tool_middleware: None,
+                cancel_token:    CancellationToken::new(),
+                human_input:     None,
             })
             .await
             .unwrap();
@@ -1152,15 +1159,15 @@ mod tests {
         let context = Context::new();
         let result = backend
             .run(CodergenRunRequest {
-                node:               &node,
-                prompt:             "write hello",
-                context:            &context,
-                thread_id:          None,
-                emitter:            &emitter,
-                sandbox:            &sandbox_dyn,
-                tool_hooks:         None,
-                cancel_token:       CancellationToken::new(),
-                agent_tool_runtime: fabro_agent::AgentToolRuntime::default(),
+                node:            &node,
+                prompt:          "write hello",
+                context:         &context,
+                thread_id:       None,
+                emitter:         &emitter,
+                sandbox:         &sandbox_dyn,
+                tool_middleware: None,
+                cancel_token:    CancellationToken::new(),
+                human_input:     None,
             })
             .await;
         assert!(result.is_err());
@@ -1198,15 +1205,15 @@ mod tests {
         let context = Context::new();
         let result = backend
             .run(CodergenRunRequest {
-                node:               &node,
-                prompt:             "cancel",
-                context:            &context,
-                thread_id:          None,
-                emitter:            &emitter,
-                sandbox:            &sandbox,
-                tool_hooks:         None,
-                cancel_token:       CancellationToken::new(),
-                agent_tool_runtime: fabro_agent::AgentToolRuntime::default(),
+                node:            &node,
+                prompt:          "cancel",
+                context:         &context,
+                thread_id:       None,
+                emitter:         &emitter,
+                sandbox:         &sandbox,
+                tool_middleware: None,
+                cancel_token:    CancellationToken::new(),
+                human_input:     None,
             })
             .await;
         let Err(err) = result else {
@@ -1253,15 +1260,15 @@ mod tests {
         let context = Context::new();
         backend
             .run(CodergenRunRequest {
-                node:               &node,
-                prompt:             "write hello",
-                context:            &context,
-                thread_id:          None,
-                emitter:            &emitter,
-                sandbox:            &sandbox,
-                tool_hooks:         None,
-                cancel_token:       CancellationToken::new(),
-                agent_tool_runtime: fabro_agent::AgentToolRuntime::default(),
+                node:            &node,
+                prompt:          "write hello",
+                context:         &context,
+                thread_id:       None,
+                emitter:         &emitter,
+                sandbox:         &sandbox,
+                tool_middleware: None,
+                cancel_token:    CancellationToken::new(),
+                human_input:     None,
             })
             .await
             .unwrap();
@@ -1294,15 +1301,15 @@ mod tests {
         let context = Context::new();
         let result = backend
             .run(CodergenRunRequest {
-                node:               &node,
-                prompt:             "write hello",
-                context:            &context,
-                thread_id:          None,
-                emitter:            &emitter,
-                sandbox:            &sandbox_dyn,
-                tool_hooks:         None,
-                cancel_token:       CancellationToken::new(),
-                agent_tool_runtime: fabro_agent::AgentToolRuntime::default(),
+                node:            &node,
+                prompt:          "write hello",
+                context:         &context,
+                thread_id:       None,
+                emitter:         &emitter,
+                sandbox:         &sandbox_dyn,
+                tool_middleware: None,
+                cancel_token:    CancellationToken::new(),
+                human_input:     None,
             })
             .await;
         let Err(err) = result else {
@@ -1342,15 +1349,15 @@ mod tests {
         let context = Context::new();
         let result = backend
             .run(CodergenRunRequest {
-                node:               &node,
-                prompt:             "write hello",
-                context:            &context,
-                thread_id:          None,
-                emitter:            &emitter,
-                sandbox:            &sandbox_dyn,
-                tool_hooks:         None,
-                cancel_token:       CancellationToken::new(),
-                agent_tool_runtime: fabro_agent::AgentToolRuntime::default(),
+                node:            &node,
+                prompt:          "write hello",
+                context:         &context,
+                thread_id:       None,
+                emitter:         &emitter,
+                sandbox:         &sandbox_dyn,
+                tool_middleware: None,
+                cancel_token:    CancellationToken::new(),
+                human_input:     None,
             })
             .await;
         let Err(err) = result else {

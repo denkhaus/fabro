@@ -28,11 +28,11 @@ use fabro_store::{
     RunSummaryListQuery, RunSummarySort, RunSummarySortDirection, RunSummaryVisibility,
 };
 use fabro_types::{
-    AutomationRef, ManifestPath, Principal, Run, RunClientProvenance, RunId, RunProvenance,
-    RunServerProvenance, RunStatusKind, RunTarget, SandboxProviderKind, StageContextWindow,
-    StageContextWindowStaleness, StageContextWindowUnavailableReason, StageHandler,
-    StageModelUsage, StageProjection, SystemActorKind, ValidatedRunTarget,
-    json_scalar_to_toml_value, parse_blob_ref,
+    AutomationRef, ContextWindowStaleness, ManifestPath, Principal, Run, RunClientProvenance,
+    RunId, RunProvenance, RunServerProvenance, RunStatusKind, RunTarget, SandboxProviderKind,
+    StageContextWindow, StageContextWindowUnavailableReason, StageHandler, StageModelUsage,
+    StageProjection, SystemActorKind, ValidatedRunTarget, json_scalar_to_toml_value,
+    parse_blob_ref,
 };
 use fabro_util::error as error_util;
 use fabro_util::version::FABRO_VERSION;
@@ -1741,7 +1741,7 @@ async fn get_run_stage_context_window(
 
     let mut response = StageContextWindow::available(stage_id, snapshot);
     if stage.state.is_terminal() {
-        response.staleness = StageContextWindowStaleness::Stored;
+        response.staleness = ContextWindowStaleness::Stored;
     }
     Json(response).into_response()
 }
