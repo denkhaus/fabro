@@ -4,6 +4,9 @@ pub mod auth_session_store;
 mod blob_store;
 mod error;
 mod keyed_mutex;
+#[cfg(any(test, feature = "test-support"))]
+pub(crate) mod keys;
+#[cfg(not(any(test, feature = "test-support")))]
 mod keys;
 mod legacy_blob_import;
 mod legacy_run_history_import;

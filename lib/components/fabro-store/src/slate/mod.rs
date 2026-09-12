@@ -217,6 +217,15 @@ impl Database {
     }
 
     #[cfg(any(test, feature = "test-support"))]
+    /// Writes a raw SlateDB key exactly as given — for test support that
+    /// must reproduce retired writer layouts (catalog markers).
+    pub(crate) async fn put_raw_legacy_key(&self, key: keys::SlateKey, value: &[u8]) -> Result<()> {
+        let db = self.open_db().await?;
+        db.put(key, value.to_vec()).await?;
+        Ok(())
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) async fn put_unvalidated_legacy_run_event(
         &self,
         run_id: &RunId,

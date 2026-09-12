@@ -6,7 +6,7 @@ use fabro_types::{BlobHash, RunId};
 use object_store::ObjectStore;
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
 
-use crate::keys::SlateKey;
+use crate::keys::{self, SlateKey};
 #[cfg(test)]
 use crate::{AuthCodeStore, AuthSessionStore};
 use crate::{BlobStore, Database, Result, RunSummaryStore};
@@ -272,6 +272,27 @@ pub async fn put_legacy_run_event(
 ) -> Result<()> {
     database
         .put_unvalidated_legacy_run_event(run_id, seq, payload)
+        .await
+}
+
+/// Writes a run's catalog marker in the CANONICAL layout
+/// (`runs/_index/by-start/<run_id>`), as the retired writer did.
+pub async fn put_legacy_run_catalog_marker(database: &Database, run_id: &RunId) -> Result<()> {
+    database
+        .put_raw_legacy_key(keys::run_catalog_key(run_id), b"")
+        .await
+}
+
+/// Writes a run's catalog marker in the REAL legacy layout the retired
+/// production writer emitted (`runs/_index/by-start/<YYYY-MM-DD>/<run_id>`
+/// with the date derived from the run id's timestamp, fabro-b7c4):
+/// run-history activation must discover runs under both spellings.
+pub async fn put_legacy_run_catalog_marker_dated(
+    database: &Database,
+    run_id: &RunId,
+) -> Result<()> {
+    database
+        .put_raw_legacy_key(keys::run_catalog_key_legacy(run_id), b"")
         .await
 }
 

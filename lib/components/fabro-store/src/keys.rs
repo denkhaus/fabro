@@ -66,7 +66,7 @@ pub(crate) fn run_catalog_prefix() -> SlateKey {
     run_catalog_root().into_prefix()
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 pub(crate) fn run_catalog_key(run_id: &RunId) -> SlateKey {
     run_catalog_root().with(run_id)
 }
@@ -74,7 +74,7 @@ pub(crate) fn run_catalog_key(run_id: &RunId) -> SlateKey {
 /// Legacy catalog marker key exactly as the retired writer produced it:
 /// `runs/_index/by-start/<YYYY-MM-DD>/<run_id>` (start date from
 /// `RunId::key_segments()`).
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 pub(crate) fn run_catalog_key_legacy(run_id: &RunId) -> SlateKey {
     run_catalog_root()
         .with(run_id.created_at().format("%Y-%m-%d"))

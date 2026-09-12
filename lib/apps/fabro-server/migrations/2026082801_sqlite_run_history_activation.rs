@@ -371,6 +371,47 @@ mod tests {
         RunId::from(Ulid::from_parts(1_788_000_000_000, 1))
     }
 
+    /// The pinned real event shapes from the production dogfood database
+    /// (fabro-fd16): one sample per distinct historical event name,
+    /// including the variantless `sandbox.git.*` names that crash-looped
+    /// the 2026-09-12 deploy (ca770f6b8) and every `sandbox.*` spelling
+    /// that only the tolerant `EventBody::Unknown` path accepts. Values
+    /// are truncated for committability; names and property shapes are
+    /// real. Regenerate only from a real database, never by hand.
+    const PINNED_LEGACY_EVENT_SHAPES: &str =
+        include_str!("../tests/fixtures/legacy-run-event-shapes.jsonl");
+
+    /// One pinned shape: the event name, its real properties, and the
+    /// envelope dimensions real events carried (node/stage/session).
+    struct PinnedShape {
+        event:      String,
+        properties: serde_json::Value,
+        node_id:    Option<String>,
+        stage_id:   Option<String>,
+        session_id: Option<String>,
+    }
+
+    fn pinned_legacy_shapes() -> Vec<PinnedShape> {
+        PINNED_LEGACY_EVENT_SHAPES
+            .lines()
+            .filter(|line| !line.trim().is_empty())
+            .map(|line| {
+                let value: serde_json::Value =
+                    serde_json::from_str(line).expect("pinned fixture line is valid JSON");
+                PinnedShape {
+                    event:      value["event"]
+                        .as_str()
+                        .expect("fixture line carries an event name")
+                        .to_string(),
+                    properties: value["properties"].clone(),
+                    node_id:    value["node_id"].as_str().map(str::to_string),
+                    stage_id:   value["stage_id"].as_str().map(str::to_string),
+                    session_id: value["session_id"].as_str().map(str::to_string),
+                }
+            })
+            .collect()
+    }
+
     #[tokio::test]
     async fn cold_activation_imports_and_warm_restart_preserves_marker() -> TestResult<()> {
         let context = TestContext::new("cold-and-warm-run-activation").await?;
@@ -604,5 +645,214 @@ mod tests {
         .await?;
         assert!(!context.backup_path().exists());
         Ok(())
+    }
+    fn prefix_for(event: &str) -> &'static [&'static str] {
+        const BASE: [&str; 2] = ["run.created", "run.submitted"];
+        const TO_RUNNABLE: [&str; 3] = ["run.created", "run.submitted", "run.runnable"];
+        const TO_STARTING: [&str; 4] = [
+            "run.created",
+            "run.submitted",
+            "run.runnable",
+            "run.starting",
+        ];
+        const TO_RUNNING: [&str; 5] = [
+            "run.created",
+            "run.submitted",
+            "run.runnable",
+            "run.starting",
+            "run.running",
+        ];
+        const TO_BLOCKED: [&str; 6] = [
+            "run.created",
+            "run.submitted",
+            "run.runnable",
+            "run.starting",
+            "run.running",
+            "run.blocked",
+        ];
+        const TO_PAUSED: [&str; 6] = [
+            "run.created",
+            "run.submitted",
+            "run.runnable",
+            "run.starting",
+            "run.running",
+            "run.paused",
+        ];
+        const TO_SUCCEEDED: [&str; 6] = [
+            "run.created",
+            "run.submitted",
+            "run.runnable",
+            "run.starting",
+            "run.running",
+            "run.completed",
+        ];
+        match event {
+            "run.starting" => &TO_RUNNABLE,
+            "run.running" => &TO_STARTING,
+            "run.completed" | "run.failed" | "run.superseded_by" | "run.blocked" | "run.paused" => {
+                &TO_RUNNING
+            }
+            "run.unblocked" => &TO_BLOCKED,
+            "run.unpaused" => &TO_PAUSED,
+            // `run.archived` requires a terminal status (the reducer
+            // rejects archiving a live run).
+            "run.archived" => &TO_SUCCEEDED,
+            _ => &BASE,
+        }
+    }
+
+    /// fabro-fd16: activation replays every pinned REAL event shape from
+    /// the production database — the gate that would have caught the
+    /// 2026-09-12 crash-loop (`sandbox.git.*` names without `EventBody`
+    /// variants, ca770f6b8) and every future vocabulary or property-shape
+    /// drift before it ships. Each shape replays in its own run behind the
+    /// minimal valid lifecycle prefix its family needs; run catalog markers
+    /// alternate between the canonical and the real legacy dated layout
+    /// (fabro-b7c4) so the key parser rides the same gate.
+    #[tokio::test]
+    async fn activation_accepts_every_pinned_real_event_shape() -> TestResult<()> {
+        let context = TestContext::new("pinned-real-event-shapes").await?;
+
+        let shapes = pinned_legacy_shapes();
+        assert!(
+            shapes.len() >= 90,
+            "the pinned fixture must keep covering the production vocabulary              (expected >= 90 distinct names, found {})",
+            shapes.len()
+        );
+        assert!(
+            shapes
+                .iter()
+                .any(|shape| shape.event == "sandbox.git.started"),
+            "the fixture must pin the crash-loop name from ca770f6b8"
+        );
+
+        let created_props = shapes
+            .iter()
+            .find(|shape| shape.event == "run.created")
+            .map(|shape| shape.properties.clone())
+            .expect("fixture pins run.created");
+
+        // The lifecycle prefix each run-state family needs to reach its
+        // transition's from-status (the shared table, fabro-3fe4).
+        // Everything else replays after created+submitted (non-lifecycle
+        // events never move the status; `run.submitted` itself carries the
+        // definition but does not drive status).
+        let mut source_runs = 0u64;
+        let mut source_events = 0u64;
+        for (index, shape) in shapes.iter().enumerate() {
+            let run_id = RunId::from(Ulid::from_parts(
+                1_788_000_000_000,
+                u128::from(2 + index as u64),
+            ));
+            let prefix = prefix_for(&shape.event);
+            let mut seq: u32 = 0;
+            for prefix_event in prefix {
+                seq += 1;
+                let properties = if prefix_event == &"run.created" {
+                    created_props.clone()
+                } else {
+                    shapes
+                        .iter()
+                        .find(|s| s.event == *prefix_event)
+                        .map_or_else(|| serde_json::json!({}), |s| s.properties.clone())
+                };
+                let prefix_shape = shapes.iter().find(|s| &s.event == prefix_event);
+                let payload = envelope_payload(
+                    &run_id,
+                    seq,
+                    prefix_event,
+                    &properties,
+                    prefix_shape.and_then(|s| s.node_id.as_deref()),
+                    prefix_shape.and_then(|s| s.stage_id.as_deref()),
+                    prefix_shape.and_then(|s| s.session_id.as_deref()),
+                );
+                fabro_store::test_support::put_legacy_run_event(
+                    &context.store,
+                    &run_id,
+                    seq,
+                    &payload,
+                )
+                .await?;
+            }
+            // The pinned shape itself (unless it was its own prefix event).
+            if prefix.iter().all(|p| *p != shape.event) {
+                seq += 1;
+                let payload = envelope_payload(
+                    &run_id,
+                    seq,
+                    &shape.event,
+                    &shape.properties,
+                    shape.node_id.as_deref(),
+                    shape.stage_id.as_deref(),
+                    shape.session_id.as_deref(),
+                );
+                fabro_store::test_support::put_legacy_run_event(
+                    &context.store,
+                    &run_id,
+                    seq,
+                    &payload,
+                )
+                .await?;
+            }
+            // Alternate catalog marker layouts: canonical vs. the real
+            // legacy dated spelling (fabro-b7c4).
+            if index % 2 == 0 {
+                fabro_store::test_support::put_legacy_run_catalog_marker(&context.store, &run_id)
+                    .await?;
+            } else {
+                fabro_store::test_support::put_legacy_run_catalog_marker_dated(
+                    &context.store,
+                    &run_id,
+                )
+                .await?;
+            }
+            source_runs += 1;
+            source_events += u64::from(seq);
+        }
+
+        // The exact call that crash-looped production on 2026-09-12.
+        let identity = context.source_identity().await?;
+        activate_run_history(
+            &context.database,
+            &context.sqlite_path,
+            &context.store,
+            &identity,
+        )
+        .await?;
+        let marker = read_activation_record(context.database.pool())
+            .await?
+            .expect("activation marker written");
+        assert_eq!(marker.source_runs, source_runs, "every run discovered");
+        assert!(
+            marker.source_events >= source_events,
+            "every pinned shape imported (marker: {marker:?})"
+        );
+        Ok(())
+    }
+
+    /// A full legacy run-event payload as the production writer shaped it.
+    fn envelope_payload(
+        run_id: &RunId,
+        seq: u32,
+        event: &str,
+        properties: &serde_json::Value,
+        node_id: Option<&str>,
+        stage_id: Option<&str>,
+        session_id: Option<&str>,
+    ) -> serde_json::Value {
+        serde_json::json!({
+            "id": format!("evt-{seq}-{event}"),
+            "ts": Utc
+                .timestamp_millis_opt(1_788_000_000_000 + i64::from(seq))
+                .single()
+                .unwrap()
+                .to_rfc3339(),
+            "run_id": run_id.to_string(),
+            "node_id": node_id,
+            "stage_id": stage_id,
+            "session_id": session_id,
+            "event": event,
+            "properties": properties,
+        })
     }
 }
