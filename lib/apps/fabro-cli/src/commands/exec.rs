@@ -18,7 +18,7 @@ use fabro_llm::lithos_catalog::{Catalog, CatalogProvider};
 use fabro_llm::middleware::{Call, Middleware, Next, Output};
 use fabro_llm::{Client, ClientOptions, Error as LlmError, ErrorKind};
 use fabro_mcp::config::McpServerSettings;
-use fabro_mcp::connection_manager::McpConnectionManager;
+use fabro_mcp::pebble::pebble_servers;
 use fabro_sandbox::{RunSandbox, SecretRedactor, local_sandbox};
 use fabro_static::EnvVars;
 use fabro_types::settings::cli::OutputFormat as SettingsOutputFormat;
@@ -627,7 +627,6 @@ async fn run_session(
         ]);
     }
 
-    let mcp = start_mcp_servers(&mcp_servers, styles).await;
     let environment: Arc<dyn Environment> = Arc::clone(&sandbox) as Arc<dyn Environment>;
     let mut builder = CodingAgent::builder(client, environment)
         .model(format!("{provider_id}/{model}"))
@@ -635,9 +634,10 @@ async fn run_session(
         .tool_middleware(Arc::new(permission_middleware))
         .redactor(Arc::new(SecretRedactor))
         .web_fetch_summarizer(summarizer_model(&catalog, &provider_id, &model))
+        .mcp_servers(pebble_servers(&mcp_servers))
         .subagents(SubagentOptions::enabled());
-    if let Some(manager) = &mcp {
-        builder = builder.tools(manager.tools());
+    if let Some(routes) = sandbox.port_routes() {
+        builder = builder.port_routes(routes);
     }
     if let Some(search) = SearchBackend::from_secrets(&cli_search_secrets()) {
         builder = builder.search_provider(Arc::new(search));
@@ -646,6 +646,12 @@ async fn run_session(
         .build()
         .await
         .context("failed to start the agent session")?;
+    if matches!(
+        args.output_format.unwrap_or(ExecOutputFormat::Text),
+        ExecOutputFormat::Text
+    ) {
+        print_mcp_servers(&agent, styles);
+    }
 
     // SIGINT ends the prompt; the session shuts down as cancelled.
     let cancel_token = CancellationToken::new();
@@ -703,36 +709,32 @@ async fn run_session(
         .map_err(|error| anyhow::Error::new(SessionError::from(error)))
 }
 
-/// Connect the configured MCP servers, reporting each outcome on stderr.
+/// Report what became of each configured MCP server on stderr: pebble
+/// started them while the agent was built, so the outcomes are read from the
+/// agent rather than from a stream that had no subscriber yet.
 #[allow(
     clippy::print_stderr,
     reason = "MCP connection outcomes are diagnostics for the person running the CLI."
 )]
-async fn start_mcp_servers(
-    servers: &[McpServerSettings],
-    styles: &Styles,
-) -> Option<Arc<McpConnectionManager>> {
-    if servers.is_empty() {
-        return None;
-    }
-    let mut manager = McpConnectionManager::new();
-    for (server_name, result) in manager.start_servers(servers).await {
-        match result {
-            Ok(tool_count) => eprintln!(
+fn print_mcp_servers(agent: &CodingAgent, styles: &Styles) {
+    for status in agent.snapshot().mcp_servers() {
+        match &status.error {
+            None => eprintln!(
                 "{}",
-                styles
-                    .dim
-                    .apply_to(format!("[mcp] {server_name}: {tool_count} tools"))
+                styles.dim.apply_to(format!(
+                    "[mcp] {}: {} tools",
+                    status.server,
+                    status.tools.len()
+                ))
             ),
-            Err(error) => eprintln!(
+            Some(error) => eprintln!(
                 "{}",
                 styles
                     .red
-                    .apply_to(format!("[mcp] {server_name} failed: {error}"))
+                    .apply_to(format!("[mcp] {} failed: {error}", status.server))
             ),
         }
     }
-    Some(Arc::new(manager))
 }
 
 #[allow(

@@ -89,6 +89,7 @@ fabro-environment = { path = "../fabro-environment" }
 fabro-sandbox = { path = "../fabro-sandbox", features = ["test-support"] }
 fabro-mcp = { path = "../fabro-mcp" }
 tokio = { workspace = true, features = ["test-util", "macros"] }
+pebble-coding-agent = { workspace = true, features = ["test-util"] }
 object_store.workspace = true
 assert_cmd = "2"
 predicates = "3"

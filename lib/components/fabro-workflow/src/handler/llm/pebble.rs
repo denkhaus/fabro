@@ -20,12 +20,12 @@ use fabro_llm::lithos_catalog::Catalog;
 use fabro_llm::types::ResponseFormat;
 use fabro_llm::{Client, ClientOptions, Request, Response};
 use fabro_mcp::config::McpServerSettings;
-use fabro_mcp::connection_manager::McpConnectionManager;
+use fabro_mcp::pebble::pebble_servers;
 use fabro_sandbox::{RunSandbox, SecretRedactor};
 use fabro_types::settings::run::RunModelControls;
 use fabro_types::{
-    AgentProfileKind, ModelRef, PermissionLevel, Principal, SessionCapability, StageId,
-    StageTiming, UsdMicros, billing,
+    AgentMcpToolSummary, AgentProfileKind, ModelRef, PermissionLevel, Principal, SessionCapability,
+    StageId, StageTiming, UsdMicros, billing,
 };
 use fabro_util::home::Home;
 use lithos_llm::catalog::{ModelId, ProviderId};
@@ -58,7 +58,6 @@ use super::controls::{
 use super::fabro_tools::register_fabro_run_tools;
 use super::fallback::{self, FallbackPlan, LlmRoute};
 use super::routing::{self, ProviderContext};
-use super::sandbox_mcp::{self, McpServerOutcome};
 use crate::agent_memory;
 use crate::context::WorkflowContext;
 use crate::context::keys::Fidelity;
@@ -100,11 +99,12 @@ pub struct PebbleBackend {
     fabro_run_tools:      Option<FabroRunToolServices>,
 }
 
-/// A conversation between stages: what the next stage resumes from.
+/// A conversation between stages: what the next stage resumes from. The
+/// successor starts the stage's MCP servers again; the same settings give
+/// the same tool names, so the conversation's earlier calls stay valid.
 struct CachedThread {
     export:        CodingAgentExport,
     fallback_plan: FallbackPlan,
-    mcp:           Option<Arc<McpConnectionManager>>,
 }
 
 /// How the backend reports a failed prompt.
@@ -165,8 +165,10 @@ fn classify_agent_error(error: pebble_coding_agent::Error) -> AgentErrorDisposit
 // --- Event sink -----------------------------------------------------------
 
 /// Pebble's durable event sink for one stage: every agent event becomes a
-/// run event in the run's log before the agent goes on, and a route failover
-/// is mirrored as the run's own `agent.failover` event on the way.
+/// run event in the run's log before the agent goes on. A route failover and
+/// an MCP server's outcome are facts the run already has events for, so
+/// those are mirrored onto the run's own `agent.failover`, `agent.mcp.ready`,
+/// and `agent.mcp.failed` events instead of being stored twice.
 struct WorkflowEventSink {
     emitter: Arc<Emitter>,
     node_id: String,
@@ -182,20 +184,54 @@ impl EventSink for WorkflowEventSink {
         // Every event, including streaming deltas, resets the run's activity
         // watchdog.
         self.emitter.touch();
-        if let CodingEvent::RouteFailover {
-            from,
-            to,
-            attempt,
-            error,
-        } = &event.event
-        {
-            self.emitter.emit_scoped(
-                &Event::Failover {
-                    stage: self.node_id.clone(),
-                    props: self.plan.failover_props(from, to, *attempt, &error.message),
-                },
-                &self.scope,
-            );
+        match &event.event {
+            CodingEvent::RouteFailover {
+                from,
+                to,
+                attempt,
+                error,
+            } => {
+                self.emitter.emit_scoped(
+                    &Event::Failover {
+                        stage: self.node_id.clone(),
+                        props: self.plan.failover_props(from, to, *attempt, &error.message),
+                    },
+                    &self.scope,
+                );
+                return Ok(());
+            }
+            CodingEvent::McpServerReady { server, tools } => {
+                self.emitter.emit_scoped(
+                    &Event::AgentMcpReady {
+                        node_id:     self.node_id.clone(),
+                        visit:       self.scope.visit,
+                        server_name: server.clone(),
+                        tool_count:  tools.len(),
+                        tools:       tools
+                            .iter()
+                            .map(|tool| AgentMcpToolSummary {
+                                name:          tool.name.clone(),
+                                original_name: tool.original_name.clone(),
+                            })
+                            .collect(),
+                    },
+                    &self.scope,
+                );
+                return Ok(());
+            }
+            CodingEvent::McpServerFailed { server, error } => {
+                self.emitter.emit_scoped(
+                    &Event::AgentMcpFailed {
+                        node_id:     self.node_id.clone(),
+                        visit:       self.scope.visit,
+                        server_name: server.clone(),
+                        error:       error.clone(),
+                    },
+                    &self.scope,
+                );
+                return Ok(());
+            }
+            _ => {}
         }
         // Deltas and the prompt's own durability barrier are not run history.
         if event.event.is_streaming_noise() || matches!(event.event, CodingEvent::ProcessingEnd) {
@@ -329,7 +365,6 @@ struct LiveAgent {
     agent:              CodingAgent,
     handle:             Arc<PebbleControlHandle>,
     lease:              Option<Arc<ActivationLease>>,
-    mcp:                Option<Arc<McpConnectionManager>>,
     total_usage:        TokenCounts,
     total_cost:         Option<UsdMicros>,
     inference_duration: Duration,
@@ -341,16 +376,11 @@ struct LiveAgent {
 }
 
 impl LiveAgent {
-    fn new(
-        agent: CodingAgent,
-        handle: Arc<PebbleControlHandle>,
-        mcp: Option<Arc<McpConnectionManager>>,
-    ) -> Self {
+    fn new(agent: CodingAgent, handle: Arc<PebbleControlHandle>) -> Self {
         Self {
             agent,
             handle,
             lease: None,
-            mcp,
             total_usage: TokenCounts::default(),
             total_cost: None,
             inference_duration: Duration::ZERO,
@@ -594,49 +624,13 @@ impl PebbleBackend {
             .with_compaction_preserve_turns(COMPACTION_PRESERVE_TURNS)
     }
 
-    /// Start the stage's MCP servers, reporting each as a run event.
-    async fn start_mcp(
-        &self,
-        bindings: &StageBindings<'_>,
-        cancel_token: &CancellationToken,
-    ) -> Result<Option<Arc<McpConnectionManager>>, Error> {
-        if self.mcp_servers.is_empty() {
-            return Ok(None);
+    /// The application tools a stage agent gets beyond pebble's own and the
+    /// MCP servers'.
+    fn stage_tools(&self) -> Vec<RegisteredTool> {
+        match &self.fabro_run_tools {
+            Some(services) => register_fabro_run_tools(services),
+            None => Vec::new(),
         }
-        let startup =
-            sandbox_mcp::start_mcp_servers(bindings.sandbox, &self.mcp_servers, cancel_token)
-                .await?;
-        for (server_name, outcome) in startup.outcomes {
-            let event = match outcome {
-                McpServerOutcome::Ready { tool_count, tools } => Event::AgentMcpReady {
-                    node_id: bindings.node_id.to_string(),
-                    visit: bindings.stage_scope.visit,
-                    server_name,
-                    tool_count,
-                    tools,
-                },
-                McpServerOutcome::Failed { error } => Event::AgentMcpFailed {
-                    node_id: bindings.node_id.to_string(),
-                    visit: bindings.stage_scope.visit,
-                    server_name,
-                    error,
-                },
-            };
-            bindings.emitter.emit_scoped(&event, bindings.stage_scope);
-        }
-        Ok(Some(startup.manager))
-    }
-
-    /// The application tools a stage agent gets beyond pebble's own.
-    fn stage_tools(&self, mcp: Option<&Arc<McpConnectionManager>>) -> Vec<RegisteredTool> {
-        let mut tools = Vec::new();
-        if let Some(services) = &self.fabro_run_tools {
-            tools.extend(register_fabro_run_tools(services));
-        }
-        if let Some(manager) = mcp {
-            tools.extend(manager.tools());
-        }
-        tools
     }
 
     /// Bind the stage's services, the plan's current route, and the routes
@@ -648,12 +642,12 @@ impl PebbleBackend {
         plan: &FallbackPlan,
         provider: &ProviderContext,
         bindings: &StageBindings<'_>,
-        mcp: Option<&Arc<McpConnectionManager>>,
     ) -> CodingAgentBuilder {
         let route = plan.current();
         let max_tokens = node_max_output_tokens(node).map(i64::from);
         builder = builder
-            .tools(self.stage_tools(mcp))
+            .tools(self.stage_tools())
+            .mcp_servers(pebble_servers(&self.mcp_servers))
             .permission_level(PermissionLevel::Full)
             .options(self.agent_options(
                 node,
@@ -670,6 +664,9 @@ impl PebbleBackend {
             }))
             .redactor(Arc::new(SecretRedactor))
             .subagents(SubagentOptions::enabled());
+        if let Some(routes) = bindings.sandbox.port_routes() {
+            builder = builder.port_routes(routes);
+        }
         if let Some(provider) = &self.tool_env {
             builder = builder.tool_env_provider(Arc::clone(provider));
         }
@@ -695,13 +692,12 @@ impl PebbleBackend {
         plan: &FallbackPlan,
         provider: &ProviderContext,
         bindings: &StageBindings<'_>,
-        mcp: Option<&Arc<McpConnectionManager>>,
     ) -> Result<CodingAgent, Error> {
         let client = self.build_llm_client().await?;
         let environment: Arc<dyn Environment> =
             Arc::clone(bindings.sandbox) as Arc<dyn Environment>;
         let builder = CodingAgent::builder(client, environment).model(plan.current().selector());
-        self.bind_builder(builder, node, plan, provider, bindings, mcp)
+        self.bind_builder(builder, node, plan, provider, bindings)
             .build()
             .await
             .map_err(|error| Error::handler_with_source("Failed to start agent session", error))
@@ -716,13 +712,12 @@ impl PebbleBackend {
         plan: &FallbackPlan,
         provider: &ProviderContext,
         bindings: &StageBindings<'_>,
-        mcp: Option<&Arc<McpConnectionManager>>,
     ) -> Result<CodingAgent, Error> {
         let client = self.build_llm_client().await?;
         let environment: Arc<dyn Environment> =
             Arc::clone(bindings.sandbox) as Arc<dyn Environment>;
         let builder = CodingAgent::resume_from_export(client, environment, export);
-        self.bind_builder(builder, node, plan, provider, bindings, mcp)
+        self.bind_builder(builder, node, plan, provider, bindings)
             .build()
             .await
             .map_err(|error| Error::handler_with_source("Failed to resume agent session", error))
@@ -950,8 +945,8 @@ async fn build_llm_client(
 #[async_trait]
 impl CodergenBackend for PebbleBackend {
     async fn shutdown(&self, _emitter: &Arc<Emitter>) {
-        // Exported conversations were shut down when their stages ended; the
-        // MCP connections they kept alive close with the exports.
+        // Exported conversations were shut down when their stages ended, and
+        // their MCP servers with them.
         self.threads
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -1092,7 +1087,7 @@ impl CodergenBackend for PebbleBackend {
 
         let cached = reuse_key.as_ref().and_then(|key| self.take_thread(key));
         let is_reused = cached.is_some();
-        let (agent, mut fallback_plan, mcp) = if let Some(thread) = cached {
+        let (agent, mut fallback_plan) = if let Some(thread) = cached {
             let route = thread.fallback_plan.current().clone();
             let provider = self.resolve_provider_context(
                 route.target.model.as_str(),
@@ -1105,10 +1100,9 @@ impl CodergenBackend for PebbleBackend {
                     &thread.fallback_plan,
                     &provider,
                     &bindings,
-                    thread.mcp.as_ref(),
                 )
                 .await?;
-            (agent, thread.fallback_plan, thread.mcp)
+            (agent, thread.fallback_plan)
         } else {
             let model = node.model().unwrap_or(&self.model);
             let provider = routing::resolve_node_provider_context(
@@ -1126,17 +1120,10 @@ impl CodergenBackend for PebbleBackend {
                 route.target.model.as_str(),
                 Some(route.target.provider.as_str()),
             )?;
-            let mcp = self.start_mcp(&bindings, cancel_token).await?;
             let agent = self
-                .build_agent(
-                    node,
-                    &fallback_plan,
-                    &route_provider,
-                    &bindings,
-                    mcp.as_ref(),
-                )
+                .build_agent(node, &fallback_plan, &route_provider, &bindings)
                 .await?;
-            (agent, fallback_plan, mcp)
+            (agent, fallback_plan)
         };
         if cancel_token.is_cancelled() {
             let mut agent = agent;
@@ -1152,7 +1139,7 @@ impl CodergenBackend for PebbleBackend {
         );
 
         let handle = Arc::new(PebbleControlHandle::new(agent.control_handle()));
-        let mut live = LiveAgent::new(agent, handle, mcp);
+        let mut live = LiveAgent::new(agent, handle);
         let route = fallback_plan.current().clone();
         if let Err(error) =
             self.activate(&mut live, &route, &stage_id, request.thread_id, &bindings)
@@ -1267,7 +1254,6 @@ impl CodergenBackend for PebbleBackend {
             self.store_thread(key, CachedThread {
                 export:        export.clone(),
                 fallback_plan: fallback_plan.clone(),
-                mcp:           live.mcp.clone(),
             });
         }
 

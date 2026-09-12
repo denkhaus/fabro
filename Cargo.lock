@@ -2774,19 +2774,11 @@ name = "fabro-mcp"
 version = "0.348.0-nightly.0"
 dependencies = [
  "anyhow",
- "axum",
- "fabro-config",
- "fabro-http",
  "fabro-types",
- "futures",
  "pebble-coding-agent",
  "rmcp",
- "serde",
  "serde_json",
- "sse-stream",
- "thiserror 2.0.18",
  "tokio",
- "tokio-stream",
  "tracing",
 ]
 
@@ -4353,7 +4345,7 @@ dependencies = [
  "js-sys",
  "log",
  "wasm-bindgen",
- "windows-core 0.61.2",
+ "windows-core 0.62.2",
 ]
 
 [[package]]
@@ -5864,7 +5856,7 @@ dependencies = [
 [[package]]
 name = "pebble-agent"
 version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/pebble?rev=1a5abe4a83b3c13f8ecbb38f761d17ede8e3d7d5#1a5abe4a83b3c13f8ecbb38f761d17ede8e3d7d5"
+source = "git+https://github.com/lithoscomputer/pebble?rev=6cdb30a874010582106bbde80ac91ae000dc13d8#6cdb30a874010582106bbde80ac91ae000dc13d8"
 dependencies = [
  "async-trait",
  "futures-util",
@@ -5881,20 +5873,25 @@ dependencies = [
 [[package]]
 name = "pebble-coding-agent"
 version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/pebble?rev=1a5abe4a83b3c13f8ecbb38f761d17ede8e3d7d5#1a5abe4a83b3c13f8ecbb38f761d17ede8e3d7d5"
+source = "git+https://github.com/lithoscomputer/pebble?rev=6cdb30a874010582106bbde80ac91ae000dc13d8#6cdb30a874010582106bbde80ac91ae000dc13d8"
 dependencies = [
  "async-trait",
  "futures-util",
  "lithos-llm",
  "pebble-agent",
+ "reqwest 0.13.4",
+ "rmcp",
  "rustix",
+ "sandbox-driver",
  "serde",
  "serde_json",
  "sha2 0.10.9",
+ "sse-stream",
  "thiserror 2.0.18",
  "tokio",
  "tokio-util",
  "tracing",
+ "url",
  "uuid",
 ]
 
@@ -7748,9 +7745,9 @@ dependencies = [
 
 [[package]]
 name = "sse-stream"
-version = "0.2.1"
+version = "0.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eb4dc4d33c68ec1f27d386b5610a351922656e1fdf5c05bbaad930cd1519479a"
+checksum = "c25ac7aff0abd1dbc474536e40416e1102c7dd9bfba0b9861c6d357f835dcfb4"
 dependencies = [
  "bytes",
  "futures-util",

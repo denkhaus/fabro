@@ -30,7 +30,6 @@ use fabro_sandbox::{
 use fabro_static::EnvVars;
 use fabro_store::{ArtifactKey, ArtifactStore};
 use fabro_types::{RunId, StageId, WorkflowSettings, parse_blob_ref};
-use fabro_util::shell;
 use fabro_workflow::artifact;
 use fabro_workflow::context::Context;
 use fabro_workflow::error::Error;
@@ -1841,9 +1840,12 @@ async fn daytona_playwright_mcp_sandbox_transport() {
     );
     assert_eq!(install.exit_code, Some(0), "Playwright install failed");
 
-    // 2. Start the Playwright MCP server via the sandbox transport resolution path
+    // 2. The Playwright MCP server as an agent stage gets it: launched in the
+    //    sandbox by pebble and reached over SSE through Daytona's preview link,
+    //    token header included. A scripted model drives the tools, so the test is
+    //    about the sandbox transport and nothing else.
     let mcp_port = 3100u16;
-    let mcp_config = fabro_mcp::config::McpServerSettings {
+    let server = fabro_mcp::pebble::pebble_server(&fabro_mcp::config::McpServerSettings {
         name:                 "playwright".into(),
         transport:            fabro_mcp::config::McpTransport::Sandbox {
             protocol: fabro_mcp::config::McpHttpProtocol::Sse,
@@ -1861,171 +1863,106 @@ async fn daytona_playwright_mcp_sandbox_transport() {
         },
         current_dir:          None,
         clear_env:            false,
-        startup_timeout_secs: 30,
+        startup_timeout_secs: 60,
         tool_timeout_secs:    120,
-    };
+    });
+    let (client, _provider) = pebble_coding_agent::test_support::client_from(
+        pebble_coding_agent::test_support::ScriptedProvider::new(vec![
+            pebble_coding_agent::test_support::ScriptedCall::response(
+                pebble_coding_agent::test_support::tool_call_response(
+                    "mcp__playwright__browser_install",
+                    "install",
+                    serde_json::json!({}),
+                ),
+            ),
+            pebble_coding_agent::test_support::ScriptedCall::response(
+                pebble_coding_agent::test_support::tool_call_response(
+                    "mcp__playwright__browser_navigate",
+                    "navigate",
+                    serde_json::json!({"url": "https://example.com"}),
+                ),
+            ),
+            pebble_coding_agent::test_support::ScriptedCall::response(
+                pebble_coding_agent::test_support::tool_call_response(
+                    "mcp__playwright__browser_snapshot",
+                    "snapshot",
+                    serde_json::json!({}),
+                ),
+            ),
+            pebble_coding_agent::test_support::ScriptedCall::response(
+                pebble_coding_agent::test_support::text_response("browsed"),
+            ),
+        ]),
+    );
+    let sandbox = Arc::new(sandbox);
+    let routes = sandbox
+        .port_routes()
+        .expect("Daytona forwards ports through preview URLs");
+    let mut agent = pebble_coding_agent::CodingAgent::builder(
+        client,
+        Arc::clone(&sandbox) as Arc<dyn pebble_coding_agent::environment::Environment>,
+    )
+    .model("test/model")
+    .permission_level(pebble_coding_agent::events::PermissionLevel::Full)
+    .mcp_servers([server])
+    .port_routes(routes)
+    .build()
+    .await
+    .expect("the agent builds with the sandbox-hosted server");
 
-    // Resolve the sandbox transport: start the server, get preview URL, rewrite to
-    // HTTP
-    let resolved = match &mcp_config.transport {
-        fabro_mcp::config::McpTransport::Sandbox {
-            protocol,
-            command,
-            port,
+    // 3. The server started and its tools are registered.
+    let statuses = agent.snapshot().mcp_servers().to_vec();
+    assert_eq!(statuses.len(), 1, "{statuses:?}");
+    assert_eq!(
+        statuses[0].error, None,
+        "the Playwright server should start: {statuses:?}"
+    );
+    eprintln!("Discovered {} MCP tools:", statuses[0].tools.len());
+    for tool in &statuses[0].tools {
+        eprintln!("  - {}", tool.name);
+    }
+    assert!(
+        statuses[0]
+            .tools
+            .iter()
+            .any(|tool| tool.name == "mcp__playwright__browser_navigate"),
+        "Should have discovered Playwright tools"
+    );
+
+    // 4. Install the browser, navigate, and snapshot through the agent.
+    let mut events = agent.subscribe();
+    let report = agent.prompt("browse example.com").await;
+    assert!(report.result.is_ok(), "{report:?}");
+    let mut completions = Vec::new();
+    while let Ok(event) = events.try_recv() {
+        if let pebble_coding_agent::events::CodingEvent::ToolCallCompleted {
+            tool_name,
+            output,
+            is_error,
             ..
-        } => {
-            let (url, headers) = {
-                let cmd_str = shell::shell_join(command);
-                let inner =
-                    format!("{cmd_str} > /tmp/mcp_server_stdout.log 2>/tmp/mcp_server_stderr.log");
-                let launch_script = format!(
-                    "setsid \"$BASH\" -c {} </dev/null >/dev/null 2>&1 &\necho $!",
-                    shell::shell_quote(&inner)
-                );
-                let launch_result = sandbox
-                    .exec_command(&launch_script, 30_000, None, None, None)
-                    .await
-                    .unwrap();
-                eprintln!("MCP server PID: {}", launch_result.stdout.trim());
-
-                // Wait for server to listen
-                let poll_cmd = format!(
-                    "for i in $(seq 1 30); do ss -tln | grep -q ':{port} ' && echo ready && exit 0; sleep 1; done; echo timeout"
-                );
-                let poll_result = sandbox
-                    .exec_command(&poll_cmd, 60_000, None, None, None)
-                    .await
-                    .unwrap();
-                eprintln!("Server readiness: {}", poll_result.stdout.trim());
-
-                if poll_result.stdout.trim() != "ready" {
-                    let stderr = sandbox
-                        .exec_command(
-                            "cat /tmp/mcp_server_stderr.log 2>/dev/null | tail -20",
-                            10_000,
-                            None,
-                            None,
-                            None,
-                        )
-                        .await
-                        .map(|r| r.stdout)
-                        .unwrap_or_default();
-                    panic!("MCP server did not start on port {port}. stderr:\n{stderr}");
-                }
-
-                sandbox
-                    .get_preview_url(*port)
-                    .await
-                    .unwrap()
-                    .expect("sandbox should support preview URLs")
-            };
-            eprintln!("Preview URL: {url}");
-
-            let url = fabro_mcp::http_transport::sandbox_mcp_http_url(*protocol, &url).unwrap();
-
-            fabro_mcp::config::McpServerSettings {
-                name:                 mcp_config.name.clone(),
-                transport:            fabro_mcp::config::McpTransport::Http {
-                    protocol: *protocol,
-                    url,
-                    headers,
-                },
-                current_dir:          mcp_config.current_dir.clone(),
-                clear_env:            mcp_config.clear_env,
-                startup_timeout_secs: mcp_config.startup_timeout_secs,
-                tool_timeout_secs:    mcp_config.tool_timeout_secs,
-            }
-        }
-        _ => unreachable!(),
-    };
-
-    // 3. Connect the MCP client to the resolved HTTP endpoint
-    let mut manager = fabro_mcp::connection_manager::McpConnectionManager::new();
-    let results = manager.start_servers(&[resolved]).await;
-    for (name, result) in &results {
-        match result {
-            Ok(count) => eprintln!("MCP server '{name}' ready with {count} tools"),
-            Err(e) => panic!("MCP server '{name}' failed: {e}"),
+        } = event.event
+        {
+            completions.push((tool_name, output, is_error));
         }
     }
-
-    // 4. List the tools to verify we got Playwright tools
-    let tools = manager.all_tools();
-    eprintln!("Discovered {} MCP tools:", tools.len());
-    for (name, info) in tools {
-        eprintln!(
-            "  - {name}: {}",
-            info.description.chars().take(80).collect::<String>()
-        );
-    }
-    assert!(!tools.is_empty(), "Should have discovered Playwright tools");
-
-    // 5. Install the browser via MCP tool (ensures correct version is available)
-    let install_tool = tools
-        .keys()
-        .find(|k| k.ends_with("browser_install"))
-        .expect("no browser_install tool found");
-    eprintln!("Calling tool: {install_tool}");
-    let install_result = manager.call_tool(install_tool, serde_json::json!({})).await;
-    match &install_result {
-        Ok(result) => eprintln!(
-            "Install result: {}",
-            result
-                .content
-                .first()
-                .map(|c| format!("{c:?}"))
-                .unwrap_or_default()
-        ),
-        Err(e) => eprintln!("Install error (non-fatal): {e}"),
-    }
-
-    // 6. Call the browser_navigate tool to load a page
-    let nav_tool = tools
-        .keys()
-        .find(|k| k.ends_with("browser_navigate"))
-        .expect("no browser_navigate tool found");
-    eprintln!("Calling tool: {nav_tool}");
-    let nav_result = manager
-        .call_tool(nav_tool, serde_json::json!({"url": "https://example.com"}))
-        .await;
-    match &nav_result {
-        Ok(result) => eprintln!(
-            "Navigate result: {}",
-            &result
-                .content
-                .first()
-                .map(|c| format!("{c:?}"))
-                .unwrap_or_default()
-        ),
-        Err(e) => eprintln!("Navigate error: {e}"),
-    }
-    assert!(nav_result.is_ok(), "Navigate should succeed");
-
-    // 7. Take a snapshot to verify the page loaded
-    let snap_tool = tools
-        .keys()
-        .find(|k| k.contains("snapshot"))
-        .expect("no snapshot tool found");
-    eprintln!("Calling tool: {snap_tool}");
-    let snap_result = manager.call_tool(snap_tool, serde_json::json!({})).await;
-    match &snap_result {
-        Ok(result) => {
-            let text = result
-                .content
-                .first()
-                .map(|c| format!("{c:?}"))
-                .unwrap_or_default();
-            eprintln!(
-                "Snapshot result (first 500 chars): {}",
-                &text[..text.len().min(500)]
-            );
-            assert!(
-                text.contains("Example Domain"),
-                "Snapshot should contain 'Example Domain'"
-            );
-        }
-        Err(e) => panic!("Snapshot failed: {e}"),
-    }
+    let navigate = completions
+        .iter()
+        .find(|(name, _, _)| name == "mcp__playwright__browser_navigate")
+        .expect("navigate ran");
+    assert!(!navigate.2, "Navigate should succeed: {navigate:?}");
+    let snapshot = completions
+        .iter()
+        .find(|(name, _, _)| name == "mcp__playwright__browser_snapshot")
+        .expect("snapshot ran");
+    assert!(!snapshot.2, "Snapshot should succeed: {snapshot:?}");
+    assert!(
+        snapshot.1.to_string().contains("Example Domain"),
+        "Snapshot should contain 'Example Domain'"
+    );
+    agent
+        .shutdown(pebble_coding_agent::ShutdownReason::Completed)
+        .await
+        .expect("the agent shuts down");
 
     // 8. Cleanup
     sandbox.cleanup().await.unwrap();

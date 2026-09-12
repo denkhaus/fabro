@@ -8,7 +8,6 @@ pub mod pebble;
 pub mod preamble;
 pub mod router;
 pub mod routing;
-mod sandbox_mcp;
 
 pub use acp::AgentAcpBackend;
 pub use controls::EffectiveRequestControls;

@@ -23,9 +23,10 @@ use fabro_github::token_source::InstallationTokenSource;
 use fabro_types::SandboxProviderKind;
 use fabro_util::workspace_glob::WorkspaceGlob;
 use sandbox_driver::{
-    DirEntry, EventContext, FileKind, GrepMatch, GrepOptions, LifecycleTimers, PtyOptions, PtySize,
-    Sandbox as DriverHandle, SandboxProvider as DriverProvider, SandboxSource,
-    SandboxSpec as DriverSpec, SandboxState, Search as _, WaitOptions, WalkOptions,
+    Capability, DirEntry, EventContext, FileKind, GrepMatch, GrepOptions, LifecycleTimers,
+    PreviewUrl, PreviewUrls, PtyOptions, PtySize, Sandbox as DriverHandle,
+    SandboxProvider as DriverProvider, SandboxSource, SandboxSpec as DriverSpec, SandboxState,
+    Search as _, WaitOptions, WalkOptions,
 };
 use sandbox_driver_host::HostProvider;
 use tokio::fs;
@@ -1151,6 +1152,16 @@ impl RunSandbox {
             .map_err(|error| crate::Error::context("Failed to build sandbox shell command", error))
     }
 
+    /// The route from fabro to a port inside the sandbox, as pebble's MCP
+    /// support takes it: the driver's preview URLs, when the provider has
+    /// them. `None` for a provider without forwarding, which is where pebble
+    /// reaches the port on the loopback address instead.
+    #[must_use]
+    pub fn port_routes(self: &Arc<Self>) -> Option<Arc<dyn PreviewUrls>> {
+        self.handle().ok()?.preview_urls()?;
+        Some(Arc::new(SandboxPortRoutes(Arc::clone(self))))
+    }
+
     pub async fn get_preview_url(
         &self,
         port: u16,
@@ -1166,6 +1177,37 @@ impl RunSandbox {
             preview.url,
             preview.headers.into_iter().collect::<HashMap<_, _>>(),
         )))
+    }
+}
+
+/// [`PreviewUrls`] over a run sandbox's driver handle, for pebble.
+struct SandboxPortRoutes(Arc<RunSandbox>);
+
+impl SandboxPortRoutes {
+    /// The driver's facet, present whenever [`RunSandbox::port_routes`] handed
+    /// this out: the handle is set once and never cleared.
+    fn facet(&self) -> Option<&dyn PreviewUrls> {
+        self.0
+            .handle()
+            .ok()
+            .and_then(|handle| handle.preview_urls())
+    }
+}
+
+#[async_trait::async_trait]
+impl PreviewUrls for SandboxPortRoutes {
+    async fn preview_url(&self, port: u16) -> sandbox_driver::Result<PreviewUrl> {
+        match self.facet() {
+            Some(facet) => facet.preview_url(port).await,
+            None => Err(sandbox_driver::Error::unsupported(Capability::PreviewUrls)),
+        }
+    }
+
+    async fn release_preview_url(&self, port: u16) -> sandbox_driver::Result<()> {
+        match self.facet() {
+            Some(facet) => facet.release_preview_url(port).await,
+            None => Err(sandbox_driver::Error::unsupported(Capability::PreviewUrls)),
+        }
     }
 }
 
