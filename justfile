@@ -75,6 +75,12 @@ up:
 build-image: web-deps
     cargo --locked dev docker-build --arch {{ arch }} --tag {{ image }}
 
+# Build the release image and push it to the fork's GHCR namespace
+# (ghcr.io/denkhaus/fabro): <version>-<shortsha> plus `latest`.
+# Needs a ghcr.io docker login with write:packages (see script header).
+image-release: web-deps
+    nu scripts/image-release.nu "{{ arch }}"
+
 # Build the run images the lab environments reference (toolchain/mise),
 # on demand: rebuilt only when the Dockerfile content hash changed
 # (label sh.fabro.toolchain.sha256 carries the built hash).
