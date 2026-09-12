@@ -24,25 +24,24 @@ use fabro_mcp::pebble::pebble_servers;
 use fabro_sandbox::{RunSandbox, SecretRedactor};
 use fabro_types::settings::run::RunModelControls;
 use fabro_types::{
-    AgentMcpToolSummary, AgentProfileKind, ModelRef, PermissionLevel, Principal, SessionCapability,
-    StageId, StageTiming, UsdMicros, billing,
+    AgentMcpToolSummary, AgentProfileKind, ModelRef, PermissionLevel, SessionCapability, StageId,
+    StageTiming, UsdMicros, billing,
 };
 use fabro_util::home::Home;
 use lithos_llm::catalog::{ModelId, ProviderId};
 use lithos_llm::types::{Message as LlmMessage, Role, TokenCounts};
 use pebble_agent::ToolMiddleware;
 use pebble_coding_agent::environment::Environment;
-use pebble_coding_agent::events::{
-    Actor, CodingAgentEvent, CodingEvent, EventSink, EventSinkError,
-};
+use pebble_coding_agent::events::{CodingAgentEvent, CodingEvent, EventSink, EventSinkError};
 use pebble_coding_agent::extensions::HumanInputProvider;
 use pebble_coding_agent::state::Message;
+use pebble_coding_agent::steering::SteerableSession;
 use pebble_coding_agent::subagents::SubagentOptions;
 use pebble_coding_agent::tools::{RegisteredTool, ToolEnvProvider};
 use pebble_coding_agent::{
     CodingAgent, CodingAgentBuilder, CodingAgentControlHandle, CodingAgentExport,
     CodingAgentOptions, CodingInput, InterruptReason, MemoryDiscovery, ShutdownReason,
-    SkillDiscovery, SteeringLease, SteeringMessage, SteeringOutcome,
+    SkillDiscovery,
 };
 use tokio_util::sync::CancellationToken;
 
@@ -61,11 +60,11 @@ use super::routing::{self, ProviderContext};
 use crate::context::WorkflowContext;
 use crate::context::keys::Fidelity;
 use crate::error::Error;
-use crate::event::{Emitter, Event, StageScope, actor_from_principal};
+use crate::event::{Emitter, Event, StageScope};
 use crate::model_fallback::{ModelFallbackNotice, ModelFallbackPolicy};
 use crate::outcome::billed_model_usage_from_llm;
 use crate::services::FabroRunToolServices;
-use crate::steering_hub::{ActiveControlHandle, SteeringHub, SteeringItem};
+use crate::steering_hub::SteeringHub;
 use crate::web_search::{self, SearchSecrets};
 
 /// The share of the model's context window at which an agent stage compacts
@@ -253,106 +252,6 @@ impl EventSink for WorkflowEventSink {
     }
 }
 
-// --- Steering -------------------------------------------------------------
-
-/// The steering hub's view of a live pebble agent.
-struct PebbleControlHandle {
-    control:    CodingAgentControlHandle,
-    /// Held while a human is paired, so a plain answer parks instead of
-    /// ending the stage under them.
-    pair_lease: Mutex<Option<SteeringLease>>,
-}
-
-impl PebbleControlHandle {
-    fn new(control: CodingAgentControlHandle) -> Self {
-        Self {
-            control,
-            pair_lease: Mutex::new(None),
-        }
-    }
-
-    fn message(item: &SteeringItem) -> SteeringMessage {
-        match item {
-            SteeringItem::Steering { text, actor } => {
-                let message = SteeringMessage::new(text.clone());
-                match actor {
-                    Some(actor) => message.with_actor(actor_from_principal(actor)),
-                    None => message,
-                }
-            }
-            SteeringItem::User { text } => {
-                SteeringMessage::new(text.clone()).with_actor(Actor::User {
-                    id:           None,
-                    display_name: None,
-                })
-            }
-            SteeringItem::System { text } => {
-                SteeringMessage::new(text.clone()).with_actor(Actor::System)
-            }
-        }
-    }
-
-    /// The item the agent will never see, if the queue rejected or evicted
-    /// one.
-    fn rejected(item: SteeringItem, outcome: SteeringOutcome) -> Option<SteeringItem> {
-        match outcome {
-            SteeringOutcome::Accepted => None,
-            SteeringOutcome::Evicted(evicted) => Some(SteeringItem::Steering {
-                text:  evicted.text().to_string(),
-                actor: None,
-            }),
-            // The agent is closed, or reported something this build does not
-            // know; either way the message was not queued.
-            SteeringOutcome::Closed | _ => Some(item),
-        }
-    }
-}
-
-impl ActiveControlHandle for PebbleControlHandle {
-    /// Pebble bounds its own queue; `cap` is the hub's expectation of that
-    /// bound and is not applied twice.
-    fn enqueue_bounded(&self, item: SteeringItem, _cap: usize) -> Option<SteeringItem> {
-        let outcome = self.control.queue_steering(Self::message(&item));
-        Self::rejected(item, outcome)
-    }
-
-    fn interrupt(&self, _actor: Option<Principal>) {
-        self.control.interrupt();
-    }
-
-    fn interrupt_then_enqueue_bounded(
-        &self,
-        item: SteeringItem,
-        _cap: usize,
-    ) -> Option<SteeringItem> {
-        let outcome = self.control.steer_now(Self::message(&item));
-        Self::rejected(item, outcome)
-    }
-
-    fn supports_pairing(&self) -> bool {
-        true
-    }
-
-    fn pair_started(&self) {
-        let lease = self.control.hold_open_for_steering();
-        *self
-            .pair_lease
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(lease);
-    }
-
-    fn pair_ended(&self) {
-        self.pair_lease
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .take();
-    }
-
-    fn has_pending_control_work(&self) -> bool {
-        self.control.snapshot().pending_steering() > 0
-    }
-}
-
 // --- Live invocation ------------------------------------------------------
 
 /// One stage invocation's live agent and its accounting.
@@ -362,7 +261,7 @@ impl ActiveControlHandle for PebbleControlHandle {
 /// are summed here, across whatever routes pebble moved through.
 struct LiveAgent {
     agent:              CodingAgent,
-    handle:             Arc<PebbleControlHandle>,
+    handle:             CodingAgentControlHandle,
     lease:              Option<Arc<ActivationLease>>,
     total_usage:        TokenCounts,
     total_cost:         Option<UsdMicros>,
@@ -375,7 +274,7 @@ struct LiveAgent {
 }
 
 impl LiveAgent {
-    fn new(agent: CodingAgent, handle: Arc<PebbleControlHandle>) -> Self {
+    fn new(agent: CodingAgent, handle: CodingAgentControlHandle) -> Self {
         Self {
             agent,
             handle,
@@ -737,8 +636,7 @@ impl PebbleBackend {
         thread_id: Option<&str>,
         bindings: &StageBindings<'_>,
     ) -> Result<(), Error> {
-        let handle: Arc<dyn ActiveControlHandle> =
-            Arc::clone(&live.handle) as Arc<dyn ActiveControlHandle>;
+        let session: Arc<dyn SteerableSession> = Arc::new(live.handle.clone());
         let lease = ActivationLease::activate(
             ActivationLeaseOptions {
                 stage_id:         stage_id.clone(),
@@ -753,7 +651,7 @@ impl PebbleBackend {
                 hub:              Arc::clone(&self.steering_hub),
                 emitter:          Arc::clone(bindings.emitter),
             },
-            &handle,
+            session,
         )?;
         live.lease = Some(lease);
         bindings.emitter.emit(&Event::AgentToolsAvailable {
@@ -814,12 +712,12 @@ impl PebbleBackend {
             let released = live
                 .lease
                 .as_ref()
-                .is_none_or(|lease| lease.release_if_no_pending_control_work(live.handle.as_ref()));
+                .is_none_or(|lease| lease.release_if_idle());
             if released {
                 live.lease.take();
                 return Ok(response);
             }
-            let (steering, follow_ups) = live.handle.control.take_pending_input().into_parts();
+            let (steering, follow_ups) = live.handle.take_pending_input().into_parts();
             for message in steering.into_iter().chain(follow_ups) {
                 response = self
                     .prompt_live(
@@ -1142,7 +1040,7 @@ impl CodergenBackend for PebbleBackend {
             "Agent session ready"
         );
 
-        let handle = Arc::new(PebbleControlHandle::new(agent.control_handle()));
+        let handle = agent.control_handle();
         let mut live = LiveAgent::new(agent, handle);
         let route = fallback_plan.current().clone();
         if let Err(error) =

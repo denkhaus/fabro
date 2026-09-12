@@ -331,7 +331,7 @@ fn agent_actor_for_event(
 /// The principal pebble's steering author stands for, where the mapping is
 /// lossless. A human author cannot be rebuilt from pebble's `Actor`; the
 /// durable `run.steer` event that delivered the steer carries the principal.
-pub(crate) fn principal_from_actor(actor: &Actor) -> Option<Principal> {
+pub fn principal_from_actor(actor: &Actor) -> Option<Principal> {
     match actor {
         Actor::Agent { id } => Some(Principal::Agent {
             session_id:        id.clone(),

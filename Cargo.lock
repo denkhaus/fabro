@@ -2254,6 +2254,7 @@ dependencies = [
  "fabro-types",
  "fabro-util",
  "futures",
+ "pebble-coding-agent",
  "serde_json",
  "shlex",
  "tempfile",
@@ -5856,7 +5857,7 @@ dependencies = [
 [[package]]
 name = "pebble-agent"
 version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/pebble?rev=5fbb6c98e0d0c9eaea4df4930b37c3a4a98e3ba0#5fbb6c98e0d0c9eaea4df4930b37c3a4a98e3ba0"
+source = "git+https://github.com/lithoscomputer/pebble?rev=3a76aeee74d6c4aef349b927b09455c5616b296e#3a76aeee74d6c4aef349b927b09455c5616b296e"
 dependencies = [
  "async-trait",
  "futures-util",
@@ -5873,7 +5874,7 @@ dependencies = [
 [[package]]
 name = "pebble-coding-agent"
 version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/pebble?rev=5fbb6c98e0d0c9eaea4df4930b37c3a4a98e3ba0#5fbb6c98e0d0c9eaea4df4930b37c3a4a98e3ba0"
+source = "git+https://github.com/lithoscomputer/pebble?rev=3a76aeee74d6c4aef349b927b09455c5616b296e#3a76aeee74d6c4aef349b927b09455c5616b296e"
 dependencies = [
  "async-trait",
  "futures-util",
