@@ -570,7 +570,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-12T18:00:35.624305877Z",
-  "last_event_at": "2026-09-12T20:24:43.355905130Z",
+  "last_event_at": "2026-09-12T20:24:47.774412032Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -743,9 +743,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 169,
       "checkpoint": {
-        "timestamp": "2026-09-12T20:24:43.373032223Z",
+        "timestamp": "2026-09-12T20:24:47.773564849Z",
         "current_node": "merge",
         "completed_nodes": [
           "start",
@@ -756,39 +756,40 @@
           "merge": 4
         },
         "context_values": {
-          "seed_cycles": {
-            "start": 1,
-            "survey": 1,
-            "merge": 1
-          },
-          "thread.survey.current_node": "merge",
-          "internal.node_visit_count": 1,
-          "internal.retry_count.merge": 4,
-          "internal.exit_kind": "soft",
-          "graph.max_node_visits": "12",
-          "internal.fidelity": "compact",
-          "graph.rankdir": "LR",
           "internal.work_dir": "/workspace/fabro",
-          "internal.run_id": "01M2BCDGH0ZKK9SPYW186GWNEG",
+          "last_response": "{\"preferred_next_label\": \"Merge needed\", \"outcome\": \"succeeded\", \"failure_reason\": \"\", \"suggested_next_ids\": [], \"context_updates\": {\"journal\": {\"painpoints\": [{\"text\": \"Revisor backlog signal is infe",
           "graph.cycle_counter_reset_key": "pass_id",
-          "current_node": "merge",
+          "internal.node_visit_count": 1,
+          "thread.start.current_node": "survey",
+          "internal.run_id": "01M2BCDGH0ZKK9SPYW186GWNEG",
+          "graph.rankdir": "LR",
           "internal.seed_cycle_anchor": "",
-          "last_stage": "survey",
           "failure_class": "transient_infra",
-          "internal.retry_count.survey": 0,
-          "graph.inspects": "develop,merge-upstream,revisor",
-          "graph.goal": "Run the serialized fabro line: one pass = upstream merge (when the threshold is met, infra-only) OR one develop+revisor cycle; children are created only after the previous child merged",
           "graph.preamble_budget_kb": "12",
-          "preferred_label": "Merge needed",
+          "current_node": "merge",
+          "graph.goal": "Run the serialized fabro line: one pass = upstream merge (when the threshold is met, infra-only) OR one develop+revisor cycle; children are created only after the previous child merged",
+          "failure_signature": "merge|transient_infra|api_transient|zai|rate_limit",
+          "graph.inspects": "develop,merge-upstream,revisor",
+          "internal.fidelity": "compact",
+          "internal.retry_count.start": 0,
           "response.survey": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.survey",
             "chars": 1393,
             "preview": "{\"preferred_next_label\": \"Merge needed\", \"outcome\": \"succeeded\", \"failure_reason\": \"\", \"suggested_next_ids\": [], \"context_updates\": {\"journal\": {\"painpoints\": [{\"text\": \"Revisor backlog signal is infe"
           },
-          "internal.retry_count.start": 0,
-          "failure_signature": "merge|transient_infra|api_transient|zai|rate_limit",
-          "thread.start.current_node": "survey",
+          "graph.max_node_visits": "12",
+          "internal.retry_count.merge": 4,
+          "last_stage": "survey",
+          "preferred_label": "Merge needed",
+          "internal.retry_count.survey": 0,
+          "internal.exit_kind": "soft",
+          "seed_cycles": {
+            "start": 1,
+            "survey": 1,
+            "merge": 1
+          },
+          "thread.survey.current_node": "merge",
           "outcome": "failed",
           "internal.thread_id": "survey",
           "journal": {
@@ -802,8 +803,7 @@
               "revisor backlog: 01M292T3YZ3B3YXXPT1R7F82XK — its paired revisor run 01M29305HYN6144K9FSKZ8TGRC (same parent 01M292KC8C278M4B5EM9655K5B) failed and was archived; no other revisor run covers it. All newer completed develop runs (01M294HH, 01M299PV, 01M2AQY9) have succeeded revisor pairs. Backlog depth: 1.",
               "For the next surveyor: after this merge lands, expect the upstream count to reset near 0; the revisor backlog of one (01M292T3) will burn down on the next Work pass."
             ]
-          },
-          "last_response": "{\"preferred_next_label\": \"Merge needed\", \"outcome\": \"succeeded\", \"failure_reason\": \"\", \"suggested_next_ids\": [], \"context_updates\": {\"journal\": {\"painpoints\": [{\"text\": \"Revisor backlog signal is infe"
+          }
         },
         "node_outcomes": {
           "survey": {
@@ -853,10 +853,6 @@
               "active_time_ms": 49212
             }
           },
-          "start": {
-            "status": "succeeded",
-            "usage": null
-          },
           "merge": {
             "status": "failed",
             "failure": {
@@ -865,19 +861,102 @@
               "signature": "api_transient|zai|rate_limit"
             },
             "usage": null
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
           }
         },
         "next_node_id": "exit",
+        "git_commit_sha": "aa52a92e4a43808934af026efa0e76b75abc2395",
         "node_visits": {
-          "start": 1,
           "merge": 1,
+          "start": 1,
           "survey": 1
         }
       },
-      "diff": {}
+      "diff": {
+        "summary": {
+          "files_changed": 1,
+          "additions": 2,
+          "deletions": 0
+        }
+      }
     }
   ],
-  "conclusion": null,
+  "conclusion": {
+    "timestamp": "2026-09-12T20:24:47.895697630Z",
+    "status": "failed",
+    "timing": {
+      "wall_time_ms": 7788387,
+      "inference_time_ms": 30924,
+      "tool_time_ms": 18288,
+      "active_time_ms": 49212
+    },
+    "failure": {
+      "reason": "soft_stop",
+      "detail": {
+        "message": "run parked at a soft exit (kind=\"soft\") — infrastructure could not finish; the next run re-enters autonomously",
+        "category": "deterministic"
+      }
+    },
+    "final_git_commit_sha": "aa52a92e4a43808934af026efa0e76b75abc2395",
+    "stages": [
+      {
+        "stage_id": "start",
+        "stage_label": "start",
+        "timing": {
+          "wall_time_ms": 0,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "survey",
+        "stage_label": "survey",
+        "timing": {
+          "wall_time_ms": 49779,
+          "inference_time_ms": 30924,
+          "tool_time_ms": 18288,
+          "active_time_ms": 49212
+        },
+        "billing_usd_micros": 90588,
+        "retries": 0
+      },
+      {
+        "stage_id": "merge",
+        "stage_label": "merge",
+        "timing": {
+          "wall_time_ms": 2807,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 3
+      }
+    ],
+    "billing": {
+      "input_tokens": 44311,
+      "output_tokens": 1019,
+      "total_tokens": 132216,
+      "reasoning_tokens": 358,
+      "cache_read_tokens": 86528,
+      "cache_write_tokens": 0,
+      "total_usd_micros": 90588
+    },
+    "total_retries": 3,
+    "diff": {
+      "patch": "diff --git a/.fabro/journal/01M2BCDGH0ZKK9SPYW186GWNEG.jsonl b/.fabro/journal/01M2BCDGH0ZKK9SPYW186GWNEG.jsonl\nnew file mode 100644\nindex 000000000..9aa656dc3\n--- /dev/null\n+++ b/.fabro/journal/01M2BCDGH0ZKK9SPYW186GWNEG.jsonl\n@@ -0,0 +1,2 @@\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M2BCDGH0ZKK9SPYW186GWNEG\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-12T18:00:38Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M2BCDGH0ZKK9SPYW186GWNEG\",\"node\":\"survey\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-12T18:01:31Z\",\"data\":{\"painpoints\":[{\"text\":\"Revisor backlog signal is inferential, not first-class: fabro_runs_list gives no link from a revisor run to the develop run it revised, so coverage was matched by shared parent_id + creation ordering (e.g. develop 01M2AQY9 and revisor 01M2ARXS both under parent 01M2AQT8). A run-to-revised-run link (or a 'revised' label on develop runs) in the runs list would make the fabro-1dc9 backfill check deterministic.\"}],\"observations\":[\"upstream count 52 (>= 5 threshold): origin/denkhaus..upstream/main; newest upstream subject 'Merge pull request #832 from fabro-sh/codex/run-intent-run-create' -> Merge needed. Note: this count is far above the usual drift; likely a fresh upstream batch (nightly tags v0.348-v0.354 appeared during fetch).\",\"revisor backlog: 01M292T3YZ3B3YXXPT1R7F82XK — its paired revisor run 01M29305HYN6144K9FSKZ8TGRC (same parent 01M292KC8C278M4B5EM9655K5B) failed and was archived; no other revisor run covers it. All newer completed develop runs (01M294HH, 01M299PV, 01M2AQY9) have succeeded revisor pairs. Backlog depth: 1.\",\"For the next surveyor: after this merge lands, expect the upstream count to reset near 0; the revisor backlog of one (01M292T3) will burn down on the next Work pass.\"]}}\n",
+      "summary": {
+        "files_changed": 1,
+        "additions": 2,
+        "deletions": 0
+      }
+    },
+    "exit_kind": "soft"
+  },
   "sandbox": {
     "kind": "ready",
     "plan": {
@@ -1190,7 +1269,12 @@
       "first_event_seq": 57,
       "prompt": null,
       "response": null,
-      "completion": null,
+      "completion": {
+        "outcome": "failed",
+        "notes": null,
+        "failure_reason": "LLM error: provider zai Usage limit reached for 5 hour. Your limit will reset at 2026-09-13 06:19:00",
+        "timestamp": "2026-09-12T20:24:43.372028263Z"
+      },
       "provider_used": {
         "mode": "agent",
         "provider": "zai",
@@ -1205,7 +1289,12 @@
       "started_at": "2026-09-12T20:24:40.549034894Z",
       "handler": "agent",
       "graph_visit": 1,
-      "live_inference_ms": 2234,
+      "timing": {
+        "wall_time_ms": 2807,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
       "usage": {
         "input_tokens": 0,
         "output_tokens": 0,
@@ -1398,7 +1487,43 @@
         }
       ],
       "agent_control": "running",
-      "state": "running"
+      "state": "failed"
+    },
+    "exit@1": {
+      "first_event_seq": 172,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-12T20:24:47.774412032Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-12T20:24:47.774374169Z",
+      "handler": "exit",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
     }
   }
 }
