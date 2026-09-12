@@ -17,10 +17,8 @@ use fabro_graphviz::render::apply_direction;
 use fabro_llm::FabroClient;
 use fabro_llm::lithos_catalog::Catalog;
 use fabro_llm::probe::{self, ModelTestStatus};
-use fabro_sandbox::redact::redact_auth_url;
 use fabro_sandbox::{
-    ProviderAccess, ProviderSandboxSpec, RunSandbox, SandboxSpec,
-    local_working_directory_from_environment, options_from_environment, unresolved_env,
+    CloneRequest, ProviderAccess, RunSandbox, SandboxSpec, sandbox_spec_for_environment,
 };
 use fabro_static::EnvVars;
 use fabro_types::settings::ModelRef;
@@ -874,7 +872,10 @@ async fn check_git_remote_ref(
 
     run_ls_remote(command)
         .await
-        .map_err(|message| redact_auth_url(&message, auth_url.as_ref()))
+        .map_err(|message| match &auth_url {
+            Some(auth_url) => auth_url.redact_in(&message),
+            None => message,
+        })
 }
 
 /// Run a prepared `git ls-remote` invocation with a 10s timeout, reducing a
@@ -918,31 +919,36 @@ fn preflight_sandbox_spec(
     let clone_branch = prepared.git.as_ref().map(|git| git.branch.clone());
 
     if sandbox_provider.bundled() == Some(BundledProvider::Local) {
-        let working_directory = local_working_directory_from_environment(
-            &resolved_run.environment,
-            Some(&prepared.source_directory),
-        )?;
-        return Ok(SandboxSpec::Local { working_directory });
+        let working_directory = resolved_run
+            .environment
+            .local_working_directory(Some(&prepared.source_directory))
+            .map_err(|err| {
+                fabro_sandbox::Error::context(
+                    "Failed to resolve local environment working directory",
+                    err,
+                )
+            })?;
+        return Ok(SandboxSpec::local(working_directory, access.clone()));
     }
     // No vault is available on this path, so a `{{ secrets.* }}` value keeps
-    // its source form.
-    let mut options = options_from_environment(
+    // its source form. Preflight never clones.
+    let spec = sandbox_spec_for_environment(
         &resolved_run.environment,
-        &resolved_run.clone,
-        unresolved_env(&resolved_run.environment),
+        resolved_run.environment.unresolved_env(),
     )?;
-    options.skip_clone = true;
-    Ok(SandboxSpec::Provider(Box::new(ProviderSandboxSpec {
+    let clone = CloneRequest {
+        origin_url: clone_origin_url,
+        branch: clone_branch,
+        ..CloneRequest::none()
+    };
+    Ok(SandboxSpec {
         kind: sandbox_provider.clone(),
         access: access.clone(),
-        options,
+        spec,
+        clone,
         github_app,
         run_id: None,
-        clone_origin_url,
-        clone_branch,
-        clone_tag: None,
-        clone_commit_sha: None,
-    })))
+    })
 }
 
 async fn run_sandbox_check(
@@ -993,7 +999,7 @@ async fn run_sandbox_check(
                         warn: true,
                     });
                 }
-                if let Err(err) = sandbox.cleanup().await {
+                if let Err(err) = sandbox.delete().await {
                     checks.push(CheckResult {
                         name: "Sandbox".into(),
                         status: CheckStatus::Error,
@@ -1013,7 +1019,7 @@ async fn run_sandbox_check(
                 true
             }
             Err(err) => {
-                let cleanup_error = sandbox.cleanup().await.err();
+                let cleanup_error = sandbox.delete().await.err();
                 checks.push(CheckResult {
                     name:        "Sandbox".into(),
                     status:      CheckStatus::Error,
@@ -1494,23 +1500,21 @@ async fn probe_github_repository(
 
 /// Retry auth-shaped failures with the SAME token: replication of a given
 /// token only makes progress, while re-minting would restart the replication
-/// clock. The sandbox git retry executor owns attempt limits,
-/// classification, and pacing.
+/// clock. The driver's git retry owns the decision and the pacing; fabro's
+/// probe policy owns the attempt count.
 async fn probe_with_replication_retry<F, Fut>(
     snapshot: TokenSnapshot,
-    mut run: F,
+    run: F,
 ) -> std::result::Result<(), String>
 where
     F: FnMut() -> Fut,
     Fut: Future<Output = std::result::Result<(), String>>,
 {
-    let credential_context = fabro_sandbox::CredentialContext::from_snapshot(Some(&snapshot));
-    fabro_sandbox::retry_git_operation(
-        SandboxProviderKind::LOCAL,
+    fabro_sandbox::retry_git_messages(
+        &fabro_sandbox::repository_probe_policy(),
+        Some(&snapshot),
         "repository probe",
-        &fabro_sandbox::RetryPlan::repository_probe(),
-        |_attempt| run(),
-        |message| fabro_sandbox::classify_failure(message, credential_context),
+        run,
     )
     .await
 }
@@ -2215,18 +2219,14 @@ provider = "local"
             &ProviderAccess::default(),
         );
 
-        match spec {
-            Ok(SandboxSpec::Provider(spec)) => {
-                assert_eq!(spec.kind, SandboxProviderKind::DOCKER);
-                assert!(spec.options.skip_clone);
-                assert_eq!(
-                    spec.clone_origin_url.as_deref(),
-                    Some("https://github.com/acme/widgets")
-                );
-                assert_eq!(spec.clone_branch.as_deref(), Some("main"));
-            }
-            _ => panic!("expected Docker preflight sandbox spec"),
-        }
+        let spec = spec.expect("Docker preflight sandbox spec");
+        assert_eq!(spec.kind, SandboxProviderKind::DOCKER);
+        assert!(spec.clone.skip);
+        assert_eq!(
+            spec.clone.origin_url.as_deref(),
+            Some("https://github.com/acme/widgets")
+        );
+        assert_eq!(spec.clone.branch.as_deref(), Some("main"));
     }
 
     #[test]

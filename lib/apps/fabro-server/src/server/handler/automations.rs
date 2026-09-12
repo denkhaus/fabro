@@ -302,10 +302,9 @@ pub(in crate::server) fn resolve_automation_environment(
         ));
     }
     if !state
-        .sandbox_provider_registry()
-        .providers()
-        .iter()
-        .any(|sandbox_provider| sandbox_provider.kind() == provider)
+        .sandbox_inventory()
+        .kinds()
+        .any(|kind| *kind == provider)
     {
         return Err(ApiError::with_code(
             status,

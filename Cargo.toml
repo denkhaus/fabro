@@ -10,7 +10,7 @@ resolver = "2"
 
 [workspace.package]
 edition = "2021"
-version = "0.348.0-nightly.0"
+version = "0.354.0-nightly.0"
 license = "MIT"
 
 [workspace.dependencies]
@@ -101,28 +101,30 @@ futures-util = "0.3"
 # sandbox-driver: the sandbox provider layer. Bundled Host, Docker, and
 # Daytona providers link in-process; third-party providers run as stdio
 # plugins through sandbox-driver-protocol. Pinned by rev; currently the head of
-# the sandbox-driver PR stack #9-#15 (configured plugin kind, tag pins, classified
-# git failures, stop grace, snapshot ensure, ownership scope, testing doubles), to
-# move to main on merge. The CI plugin job installs the driver executables at the
-# same rev, read from this file.
+# the sandbox-driver `section-4-driver-items` branch (provider-owned scopes, the
+# supervisor as provider, Host attach by directory, git retry and verbs in the
+# driver, status image/snapshot/network, Daytona snapshot caching, services port
+# wait and list, RFC 3339 timestamps), to move to main on merge. The CI plugin
+# job installs the driver executables at the same rev, read from this file.
+sandbox-driver = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "a92c0db6b6a122ca9b6df75de6615544f53c0d47" }
+sandbox-driver-protocol = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "a92c0db6b6a122ca9b6df75de6615544f53c0d47" }
+sandbox-driver-host = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "a92c0db6b6a122ca9b6df75de6615544f53c0d47" }
+sandbox-driver-docker = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "a92c0db6b6a122ca9b6df75de6615544f53c0d47" }
+sandbox-driver-docker-config = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "a92c0db6b6a122ca9b6df75de6615544f53c0d47" }
+sandbox-driver-daytona = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "a92c0db6b6a122ca9b6df75de6615544f53c0d47" }
+sandbox-driver-daytona-config = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "a92c0db6b6a122ca9b6df75de6615544f53c0d47" }
+sandbox-driver-testing = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "a92c0db6b6a122ca9b6df75de6615544f53c0d47" }
 # pebble: the coding agent loop fabro runs its agent stages, Ask Fabro
-# sessions, hook evaluators, and `fabro exec` on. Pinned by rev to the pebble
-# branch `embedder-concerns`, which merges the live exec output sink and
-# `max_turns` into pebble's main (so fabro and petri pin one line); re-pin to
-# the merge commit once it lands. Pebble pins the same lithos-llm rev as
-# fabro, and its lockfile policy is that every shared crate resolves to the
-# version lithos-llm locks.
-pebble-agent = { git = "https://github.com/lithoscomputer/pebble", rev = "29da922597873afba3d9ae8c2fb73425685eda9e" }
-pebble-coding-agent = { git = "https://github.com/lithoscomputer/pebble", rev = "29da922597873afba3d9ae8c2fb73425685eda9e", features = ["mcp", "search-providers"] }
-pebble-cli-core = { git = "https://github.com/lithoscomputer/pebble", rev = "29da922597873afba3d9ae8c2fb73425685eda9e" }
-sandbox-driver = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "23062b6ad62ff4665cbbcb7dce037ec9c4c34318" }
-sandbox-driver-protocol = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "23062b6ad62ff4665cbbcb7dce037ec9c4c34318" }
-sandbox-driver-host = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "23062b6ad62ff4665cbbcb7dce037ec9c4c34318" }
-sandbox-driver-docker = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "23062b6ad62ff4665cbbcb7dce037ec9c4c34318" }
-sandbox-driver-docker-config = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "23062b6ad62ff4665cbbcb7dce037ec9c4c34318" }
-sandbox-driver-daytona = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "23062b6ad62ff4665cbbcb7dce037ec9c4c34318" }
-sandbox-driver-daytona-config = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "23062b6ad62ff4665cbbcb7dce037ec9c4c34318" }
-sandbox-driver-testing = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "23062b6ad62ff4665cbbcb7dce037ec9c4c34318" }
+# sessions, hook evaluators, and `fabro exec` on. Pinned by rev to pebble's
+# `sandbox-driver-section-4` branch (lithoscomputer/pebble#10), which is
+# pebble main plus the sandbox-driver pin below: the `PreviewUrls` trait
+# objects fabro hands pebble's MCP servers only cross when both sides name
+# one sandbox-driver revision. Re-pin to main once that lands. Pebble pins
+# the same lithos-llm rev as fabro, and its lockfile policy is that every
+# shared crate resolves to the version lithos-llm locks.
+pebble-agent = { git = "https://github.com/lithoscomputer/pebble", rev = "9ec23d00d37faebcb2da5e3c5f2c1dfc5eec4d7f" }
+pebble-coding-agent = { git = "https://github.com/lithoscomputer/pebble", rev = "9ec23d00d37faebcb2da5e3c5f2c1dfc5eec4d7f", features = ["mcp", "search-providers"] }
+pebble-cli-core = { git = "https://github.com/lithoscomputer/pebble", rev = "9ec23d00d37faebcb2da5e3c5f2c1dfc5eec4d7f" }
 sentry = { version = "0.35", default-features = false, features = ["backtrace", "contexts", "ureq", "rustls"] }
 fork = "0.2"
 exec = "0.3"

@@ -16,16 +16,12 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use async_trait::async_trait;
 use fabro_static::EnvVars;
 use fabro_types::settings::server::{
     SandboxPluginSettings, ServerSandboxProviderSettings, ServerSandboxProvidersSettings,
 };
 use fabro_types::{BundledProvider, SandboxProviderKind};
-use sandbox_driver::{
-    Capabilities, EventContext, ProviderHealth, ProviderKind, Sandbox, SandboxFilter, SandboxId,
-    SandboxProvider, SandboxSpec, SandboxStatus, SnapshotProvider, VolumeProvider,
-};
+use sandbox_driver::{ProviderKind, SandboxProvider};
 use sandbox_driver_daytona::{DaytonaConfig, DaytonaProvider};
 use sandbox_driver_docker::DockerProvider;
 use sandbox_driver_host::HostProvider;
@@ -38,39 +34,74 @@ pub const PLUGIN_BINARY_PREFIX: &str = "fabro-sandbox";
 /// `User-Agent` fabro presents to remote sandbox control planes.
 pub const USER_AGENT: &str = concat!("fabro-sandbox/", env!("CARGO_PKG_VERSION"));
 
-/// Explicit Daytona credentials. The process environment is never consulted.
+/// Explicit Daytona credentials: the SDK's configuration with the API key
+/// always present and a `Debug` that never prints it. The process
+/// environment is never consulted.
 #[derive(Clone)]
-pub struct DaytonaCredentials {
-    pub api_key:         String,
-    pub api_url:         Option<String>,
-    pub organization_id: Option<String>,
-    pub target:          Option<String>,
-    /// Shared HTTP client; tests pass a no-proxy client here.
-    pub http_client:     Option<reqwest::Client>,
-}
+pub struct DaytonaCredentials(DaytonaConfig);
 
 impl DaytonaCredentials {
+    /// Credentials for `api_key` against Daytona's public control plane,
+    /// presenting fabro's `User-Agent`.
+    #[must_use]
+    pub fn new(api_key: String) -> Self {
+        Self(DaytonaConfig {
+            api_key: Some(api_key),
+            user_agent: Some(USER_AGENT.to_string()),
+            ..DaytonaConfig::default()
+        })
+    }
+
     /// Credentials for a vault API key, with the control-plane URL and
     /// organization taken from `lookup` (server configuration, or the
     /// process environment in a CLI worker). Nothing is read implicitly.
     pub fn from_api_key(api_key: String, lookup: impl Fn(&str) -> Option<String>) -> Self {
-        Self {
-            api_key,
-            api_url: lookup(EnvVars::DAYTONA_API_URL)
-                .or_else(|| lookup(EnvVars::DAYTONA_SERVER_URL)),
-            organization_id: lookup(EnvVars::DAYTONA_ORGANIZATION_ID),
-            target: None,
-            http_client: None,
-        }
+        Self::new(api_key)
+            .with_api_url(
+                lookup(EnvVars::DAYTONA_API_URL).or_else(|| lookup(EnvVars::DAYTONA_SERVER_URL)),
+            )
+            .with_organization_id(lookup(EnvVars::DAYTONA_ORGANIZATION_ID))
+    }
+
+    /// The control-plane URL; Daytona's public API when `None`.
+    #[must_use]
+    pub fn with_api_url(mut self, api_url: Option<String>) -> Self {
+        self.0.api_url = api_url;
+        self
+    }
+
+    #[must_use]
+    pub fn with_organization_id(mut self, organization_id: Option<String>) -> Self {
+        self.0.organization_id = organization_id;
+        self
+    }
+
+    /// A shared HTTP client; tests pass a no-proxy client here.
+    #[must_use]
+    pub fn with_http_client(mut self, http_client: Option<reqwest::Client>) -> Self {
+        self.0.http_client = http_client;
+        self
+    }
+
+    /// The API key, which every constructor sets.
+    #[must_use]
+    pub fn api_key(&self) -> &str {
+        self.0.api_key.as_deref().unwrap_or_default()
+    }
+
+    /// The SDK configuration the driver's Daytona provider connects with.
+    #[must_use]
+    pub fn config(&self) -> &DaytonaConfig {
+        &self.0
     }
 }
 
 impl std::fmt::Debug for DaytonaCredentials {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("DaytonaCredentials")
-            .field("api_url", &self.api_url)
-            .field("organization_id", &self.organization_id)
-            .field("target", &self.target)
+            .field("api_url", &self.0.api_url)
+            .field("organization_id", &self.0.organization_id)
+            .field("target", &self.0.target)
             .finish_non_exhaustive()
     }
 }
@@ -155,8 +186,10 @@ pub enum ConnectError {
 /// Connects the provider behind `kind`.
 ///
 /// Bundled kinds return the in-process driver provider. Any other kind
-/// launches the plugin named by `settings.plugin` and returns a supervised
-/// handle that relaunches it after a crash for new work only. The
+/// launches the plugin named by `settings.plugin` and returns the driver's
+/// supervisor, which relaunches the executable after a crash for new work
+/// only; handles from an earlier generation stay bound to it, and callers
+/// rebuild them through `attach` with the persisted sandbox id. The
 /// configured kind is fabro's name for whatever the executable serves; the
 /// kind the plugin declares is not compared against it. Disabled entries
 /// are refused here so no caller has to remember the policy check.
@@ -187,17 +220,8 @@ pub async fn connect_provider(
                 .daytona
                 .as_ref()
                 .ok_or(ConnectError::MissingDaytonaCredentials)?;
-            let config = DaytonaConfig {
-                api_key:         Some(credentials.api_key.clone()),
-                jwt_token:       None,
-                organization_id: credentials.organization_id.clone(),
-                api_url:         credentials.api_url.clone(),
-                target:          credentials.target.clone(),
-                http_client:     credentials.http_client.clone(),
-                user_agent:      Some(USER_AGENT.to_string()),
-            };
             Arc::new(
-                DaytonaProvider::connect_explicit(config)
+                DaytonaProvider::connect_explicit(credentials.config().clone())
                     .await
                     .map_err(driver)?,
             )
@@ -207,64 +231,26 @@ pub async fn connect_provider(
                 .plugin
                 .as_ref()
                 .ok_or_else(|| ConnectError::MissingPluginSettings { kind: kind.clone() })?;
-            Arc::new(PluginBackedProvider::launch(kind, plugin).await?)
+            let driver_kind = ProviderKind::try_new(kind.as_str()).map_err(|source| {
+                ConnectError::InvalidKind {
+                    kind: kind.clone(),
+                    source,
+                }
+            })?;
+            // The supervisor is the provider: it launches the executable now,
+            // so a misconfigured plugin fails at connect time, and relaunches
+            // it after a crash for new work only.
+            Arc::new(
+                PluginSupervisor::launch(PLUGIN_BINARY_PREFIX, plugin_config(driver_kind, plugin))
+                    .await
+                    .map_err(driver)?,
+            )
         }
     };
     Ok(ConnectedProvider {
         kind: kind.clone(),
         provider,
     })
-}
-
-/// A plugin provider that survives its executable crashing.
-///
-/// Wraps a [`PluginSupervisor`]: every call obtains the current plugin
-/// generation, and a closed transport is replaced with a fresh launch before
-/// the call. A failed call is never replayed, and handles obtained from an
-/// earlier generation stay bound to it; callers rebuild them through
-/// [`SandboxProvider::attach`] with the persisted sandbox id.
-pub struct PluginBackedProvider {
-    kind:         ProviderKind,
-    capabilities: Capabilities,
-    supervisor:   PluginSupervisor,
-}
-
-impl PluginBackedProvider {
-    async fn launch(
-        kind: &SandboxProviderKind,
-        settings: &SandboxPluginSettings,
-    ) -> Result<Self, ConnectError> {
-        let driver_kind =
-            ProviderKind::try_new(kind.as_str()).map_err(|source| ConnectError::InvalidKind {
-                kind: kind.clone(),
-                source,
-            })?;
-        let supervisor = PluginSupervisor::new(
-            PLUGIN_BINARY_PREFIX,
-            plugin_config(driver_kind.clone(), settings),
-        );
-        // Launch once now so a misconfigured plugin fails at connect time and
-        // the declared capabilities are known for preflight.
-        let capabilities = supervisor
-            .current()
-            .await
-            .map_err(|source| ConnectError::Driver {
-                kind: kind.clone(),
-                source,
-            })?
-            .capabilities()
-            .clone();
-        Ok(Self {
-            kind: driver_kind,
-            capabilities,
-            supervisor,
-        })
-    }
-
-    /// Asks the current plugin generation to exit and reaps it.
-    pub async fn shutdown(&self) -> sandbox_driver::Result<()> {
-        self.supervisor.shutdown().await
-    }
 }
 
 fn plugin_config(kind: ProviderKind, settings: &SandboxPluginSettings) -> PluginConfig {
@@ -280,69 +266,6 @@ fn plugin_config(kind: ProviderKind, settings: &SandboxPluginSettings) -> Plugin
             .map(|(key, value)| (key.clone(), value.clone()))
             .collect::<BTreeMap<_, _>>(),
         inherit_env: settings.inherit_env.clone(),
-    }
-}
-
-#[async_trait]
-impl SandboxProvider for PluginBackedProvider {
-    fn kind(&self) -> &ProviderKind {
-        &self.kind
-    }
-
-    fn capabilities(&self) -> &Capabilities {
-        &self.capabilities
-    }
-
-    async fn create(
-        &self,
-        spec: &SandboxSpec,
-        events: Option<EventContext>,
-    ) -> sandbox_driver::Result<Arc<dyn Sandbox>> {
-        self.supervisor.current().await?.create(spec, events).await
-    }
-
-    async fn attach(
-        &self,
-        id: &SandboxId,
-        events: Option<EventContext>,
-    ) -> sandbox_driver::Result<Arc<dyn Sandbox>> {
-        self.supervisor.current().await?.attach(id, events).await
-    }
-
-    async fn undelete(
-        &self,
-        id: &SandboxId,
-        events: Option<EventContext>,
-    ) -> sandbox_driver::Result<Arc<dyn Sandbox>> {
-        self.supervisor.current().await?.undelete(id, events).await
-    }
-
-    async fn delete(
-        &self,
-        id: &SandboxId,
-        events: Option<EventContext>,
-    ) -> sandbox_driver::Result<()> {
-        self.supervisor.current().await?.delete(id, events).await
-    }
-
-    async fn list(&self, filter: &SandboxFilter) -> sandbox_driver::Result<Vec<SandboxStatus>> {
-        self.supervisor.current().await?.list(filter).await
-    }
-
-    async fn health(&self) -> sandbox_driver::Result<ProviderHealth> {
-        self.supervisor.current().await?.health().await
-    }
-
-    /// Snapshot and volume management cross the wire per plugin generation,
-    /// which these borrowing accessors cannot express. Fabro drives
-    /// snapshots on the bundled Daytona provider only, so a plugin reports
-    /// none until a generation-aware accessor exists.
-    fn snapshots(&self) -> Option<&dyn SnapshotProvider> {
-        None
-    }
-
-    fn volumes(&self) -> Option<&dyn VolumeProvider> {
-        None
     }
 }
 

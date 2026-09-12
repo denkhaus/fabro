@@ -65,10 +65,7 @@ use fabro_redact::redact_jsonl_line;
 use fabro_sandbox::details::sandbox_details;
 use fabro_sandbox::driver::{DaytonaCredentials, ProviderAccess, ProviderConnectOptions};
 use fabro_sandbox::reconnect::reconnect_for_run;
-use fabro_sandbox::{
-    DriverInventoryProvider, LocalSandboxProvider, SandboxProvider, SandboxProviderRegistry,
-    daytona,
-};
+use fabro_sandbox::{SandboxInventory, daytona};
 use fabro_slack::client::{PostedMessage as SlackPostedMessage, SlackClient};
 use fabro_slack::config::{
     SlackCredentialResolution,
@@ -1137,7 +1134,7 @@ pub struct AppState {
     pub(crate) github_api_base_url: String,
     active_config_path: PathBuf,
     http_client: Option<fabro_http::HttpClient>,
-    sandbox_provider_registry: SandboxProviderRegistry,
+    sandbox_inventory: SandboxInventory,
     shutdown: CancellationToken,
     shutting_down: AtomicBool,
     registry_factory_override: Option<Box<RegistryFactoryOverride>>,
@@ -1282,7 +1279,7 @@ pub(crate) struct AppStateConfig {
     pub(crate) github_api_base_url: Option<String>,
     pub(crate) active_config_path: PathBuf,
     pub(crate) http_client: Option<fabro_http::HttpClient>,
-    pub(crate) sandbox_provider_registry: Option<SandboxProviderRegistry>,
+    pub(crate) sandbox_inventory: Option<SandboxInventory>,
     pub(crate) shutdown: CancellationToken,
     #[cfg(test)]
     pub(crate) worker_control_bus: Option<Arc<dyn WorkerControlBus>>,
@@ -1475,15 +1472,8 @@ impl AppState {
     /// the server's HTTP client. The process environment is consulted only
     /// through the configured lookup.
     pub(crate) fn daytona_credentials(&self, api_key: String) -> DaytonaCredentials {
-        DaytonaCredentials {
-            api_key,
-            api_url: self
-                .config_env_lookup(EnvVars::DAYTONA_API_URL)
-                .or_else(|| self.config_env_lookup(EnvVars::DAYTONA_SERVER_URL)),
-            organization_id: self.config_env_lookup(EnvVars::DAYTONA_ORGANIZATION_ID),
-            target: None,
-            http_client: self.http_client().ok(),
-        }
+        DaytonaCredentials::from_api_key(api_key, |name| self.config_env_lookup(name))
+            .with_http_client(self.http_client().ok())
     }
 
     /// Everything a reconnect needs to reach a run's provider: the server's
@@ -1540,8 +1530,8 @@ impl AppState {
         &self.session_runtimes
     }
 
-    pub(crate) fn sandbox_provider_registry(&self) -> &SandboxProviderRegistry {
-        &self.sandbox_provider_registry
+    pub(crate) fn sandbox_inventory(&self) -> &SandboxInventory {
+        &self.sandbox_inventory
     }
 
     pub(crate) fn server_secret(&self, name: &str) -> Option<String> {
@@ -2338,51 +2328,45 @@ fn worker_token_keys_from_server_secrets(
         .map_err(|err| jwt_auth::session_secret_key_error(&err))
 }
 
-fn build_sandbox_provider_registry(
+fn build_sandbox_inventory(
     server_settings: &ServerSettings,
     daytona_api_key: Option<String>,
     env_lookup: &EnvLookup,
     http_client: Option<fabro_http::HttpClient>,
-) -> SandboxProviderRegistry {
+) -> SandboxInventory {
     let provider_settings = &server_settings.server.sandbox.providers;
-    let mut providers: Vec<Arc<dyn SandboxProvider>> = Vec::new();
+    let mut inventory = SandboxInventory::empty();
 
     if provider_settings.is_enabled(&SandboxProviderKind::LOCAL) {
-        providers.push(Arc::new(LocalSandboxProvider));
+        inventory = inventory.with_host_directories(SandboxProviderKind::LOCAL);
     }
 
     if let Some(docker) = provider_settings.get(&SandboxProviderKind::DOCKER) {
         if docker.enabled {
-            providers.push(Arc::new(DriverInventoryProvider::lazy(
+            inventory = inventory.with_lazy(
                 SandboxProviderKind::DOCKER,
                 docker.clone(),
                 ProviderConnectOptions::default(),
-            )));
+            );
         }
     }
 
     if let Some(daytona) = provider_settings.get(&SandboxProviderKind::DAYTONA) {
         if let Some(api_key) = daytona_api_key.filter(|_| daytona.enabled) {
-            let credentials = DaytonaCredentials {
-                api_key,
-                api_url: env_lookup(EnvVars::DAYTONA_API_URL)
-                    .or_else(|| env_lookup(EnvVars::DAYTONA_SERVER_URL)),
-                organization_id: env_lookup(EnvVars::DAYTONA_ORGANIZATION_ID),
-                target: None,
-                http_client,
-            };
-            providers.push(Arc::new(DriverInventoryProvider::lazy(
+            let credentials = DaytonaCredentials::from_api_key(api_key, |name| env_lookup(name))
+                .with_http_client(http_client);
+            inventory = inventory.with_lazy(
                 SandboxProviderKind::DAYTONA,
                 daytona.clone(),
                 ProviderConnectOptions {
                     host_registry_root: None,
                     daytona:            Some(credentials),
                 },
-            )));
+            );
         }
     }
 
-    SandboxProviderRegistry::new(providers)
+    inventory
 }
 
 pub(crate) fn automation_dir_for_active_config(active_config_path: &std::path::Path) -> PathBuf {
@@ -2435,7 +2419,7 @@ pub(crate) fn build_app_state(config: AppStateConfig) -> anyhow::Result<Arc<AppS
         github_api_base_url,
         active_config_path,
         http_client,
-        sandbox_provider_registry,
+        sandbox_inventory,
         shutdown,
         #[cfg(test)]
         worker_control_bus,
@@ -2505,8 +2489,8 @@ pub(crate) fn build_app_state(config: AppStateConfig) -> anyhow::Result<Arc<AppS
         fabro_llm::build_catalog(&resolved_settings.llm_overlay, &|name| env_lookup(name))
             .context("building LLM model catalog")?,
     );
-    let sandbox_provider_registry = sandbox_provider_registry.unwrap_or_else(|| {
-        build_sandbox_provider_registry(
+    let sandbox_inventory = sandbox_inventory.unwrap_or_else(|| {
+        build_sandbox_inventory(
             current_server_settings.as_ref(),
             daytona_api_key,
             &env_lookup,
@@ -2619,7 +2603,7 @@ pub(crate) fn build_app_state(config: AppStateConfig) -> anyhow::Result<Arc<AppS
         github_api_base_url,
         active_config_path,
         http_client,
-        sandbox_provider_registry,
+        sandbox_inventory,
         shutdown,
         shutting_down: AtomicBool::new(false),
         registry_factory_override,
@@ -2795,7 +2779,7 @@ async fn delete_run_sandbox_resource(
         .provider_access()
         .await
         .map_err(|err| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string()))?;
-    let sandbox = match reconnect_for_run(&record, &access, Some(id)).await {
+    let sandbox = match reconnect_for_run(&record, &access, Some(id), None).await {
         Ok(sandbox) => sandbox,
         Err(err) if force || delete_started => {
             tracing::warn!(

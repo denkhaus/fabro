@@ -8,7 +8,7 @@ use fabro_llm::credentials::CredentialProvider;
 use fabro_llm::lithos_catalog::Catalog;
 use fabro_llm::{Client, ClientOptions, Request};
 use fabro_redact::redacted_url_for_log;
-use fabro_sandbox::{RunSandbox, SecretRedactor};
+use fabro_sandbox::{ExecResultExt as _, RunSandbox, SecretRedactor};
 use fabro_types::PermissionLevel;
 use fabro_types::settings::{InterpString, ResolveCtx, ResolveError};
 use pebble_coding_agent::extensions::{
@@ -189,7 +189,10 @@ impl HookExecutorImpl {
                 )
                 .await
             {
-                Ok(result) => Self::parse_decision(result.exit_code.unwrap_or(-1), &result.stdout),
+                Ok(result) => Self::parse_decision(
+                    result.program_exit_code().unwrap_or(-1),
+                    &result.stdout_lossy(),
+                ),
                 Err(e) => HookDecision::Block {
                     reason: Some(format!("sandbox exec failed: {e}")),
                 },

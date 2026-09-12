@@ -6,29 +6,33 @@
 //! the repository checks out under `<repos_root>/<owner>/<repo>` and the
 //! run works in `<workspace_root>/<repo>`, a symlink to the checkout. An
 //! exact commit or a tag is pinned by the driver's clone options, which
-//! fetch a tag by its fully qualified ref so a same-named branch is never
-//! consulted; fabro verifies the checked-out head afterwards. Neither path
-//! ever falls back to the branch head.
+//! fetch the pin directly and attach the branch to it; an unavailable pin
+//! fails the clone and never falls back to the branch head. The GitHub App
+//! token travels with the clone per call and is then installed as the
+//! checkout's ambient credentials, so the agent's own git commands can
+//! push; the remote URL never carries it.
 
 use std::time::Duration;
 
-use fabro_github::token_source::ResolvedToken;
-use fabro_redact::DisplaySafeUrl;
 use fabro_types::SandboxProviderKind;
-use sandbox_driver::{Git as _, GitCloneOptions, GitCredentials, Sandbox as DriverHandle};
+use sandbox_driver::{
+    ExecResult, Git as _, GitCloneOptions, GitFailureKind, Sandbox as DriverHandle,
+};
 use tokio::time;
 
-use crate::ExecResult;
-use crate::clone_source::{self, GitHubRepoLayout, PinnedRevision};
-use crate::exec::SandboxExec;
-use crate::git_retry::{self, CredentialContext, GitRetryReason, RetryPlan};
-use crate::push_credentials::PushCredentialState;
-use crate::redact::redact_auth_url;
-use crate::sandbox::shell_quote;
+use crate::clone_source::{self, GitHubRepoLayout};
+use crate::credentials::{self, RepoCredentials};
+use crate::exec::{ExecResultExt, SandboxExec};
+use crate::git_policy;
 
 /// Whole-clone budget, shared by every network and local step.
 pub(crate) const GIT_CLONE_TIMEOUT: Duration = Duration::from_mins(5);
-const STEP_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// What the operator hears when the image has no `git`: the driver classifies
+/// the failing command, and fabro names the fix.
+const GIT_UNAVAILABLE_MESSAGE: &str = "The sandbox image must include git for repository \
+                                       clone and git lifecycle operations. Use an image with \
+                                       bash and git, such as buildpack-deps:noble.";
 
 /// A GitHub clone fabro decided to perform.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -40,8 +44,7 @@ pub(crate) struct GitHubClone {
     pub(crate) depth:      Option<u32>,
 }
 
-/// What the clone left behind: the layout and the token now embedded in
-/// `origin`, if any.
+/// What the clone left behind: the layout it checked out into.
 pub(crate) struct CloneOutcome {
     pub(crate) layout: GitHubRepoLayout,
 }
@@ -54,14 +57,10 @@ enum CloneStep {
     Local,
 }
 
-struct CloneFailure {
-    error:        crate::Error,
-    retry_reason: Option<GitRetryReason>,
-}
-
 /// Clone `plan` into `handle`, laid out under `workspace_root` and
-/// `repos_root`, embedding a GitHub App token from `credentials` when one
-/// is available.
+/// `repos_root`, with a GitHub App token from `credentials` when one is
+/// available: the clone carries it per call, and the checkout keeps it as
+/// ambient credentials afterwards.
 pub(crate) async fn clone_github_repo(
     kind: &SandboxProviderKind,
     handle: &dyn DriverHandle,
@@ -69,34 +68,10 @@ pub(crate) async fn clone_github_repo(
     plan: &GitHubClone,
     workspace_root: &str,
     repos_root: &str,
-    credentials: &PushCredentialState,
+    credentials: &RepoCredentials,
 ) -> crate::Result<CloneOutcome> {
-    verify_git_available(exec).await?;
     let layout = clone_source::github_repo_layout(&plan.origin_url, workspace_root, repos_root)?;
-    // The clone mints its own token (never a warm-cache reuse) and seeds the
-    // shared source, so the first refresh compares against the clone token
-    // instead of believing nothing was ever embedded.
-    let resolved_token = match credentials.source() {
-        Some(source) => Some(source.mint_for_clone().await.map_err(|err| {
-            crate::Error::context_anyhow("Failed to get GitHub App credentials for clone", err)
-        })?),
-        None => None,
-    };
-    let credential_context =
-        CredentialContext::from_snapshot(resolved_token.as_ref().map(|token| &token.snapshot));
-    let auth_url = match &resolved_token {
-        Some(token) => Some(
-            fabro_github::embed_token_in_url(&plan.origin_url, token.token.expose()).map_err(
-                |err| {
-                    crate::Error::context_anyhow(
-                        "Failed to build authenticated GitHub clone URL",
-                        err,
-                    )
-                },
-            )?,
-        ),
-        None => None,
-    };
+    let token = credentials.mint_for_clone().await?;
 
     let fs = handle.fs();
     for dir in [workspace_root, layout.repos_owner_path.as_str()] {
@@ -106,7 +81,7 @@ pub(crate) async fn clone_github_repo(
     }
 
     let deadline = time::Instant::now() + GIT_CLONE_TIMEOUT;
-    let has_app = credentials.source().is_some();
+    let has_app = credentials.managed();
     let git = handle.git().ok_or_else(|| {
         crate::Error::message(format!(
             "sandbox provider `{kind}` does not support git operations"
@@ -123,82 +98,45 @@ pub(crate) async fn clone_github_repo(
     options.commit = plan.commit_sha.clone();
     options.tag = plan.tag.clone().filter(|_| plan.commit_sha.is_none());
     options.depth = plan.depth;
-    options.credentials = resolved_token
-        .as_ref()
-        .map(|token| GitCredentials::new("x-access-token", token.token.expose()));
-    let retry_plan = RetryPlan::clone_default(Some(deadline));
+    options.credentials = token.as_ref().map(credentials::git_credentials);
+    // The driver retries a clone the remote refused while the token may
+    // still be replicating, inside what is left of the clone budget.
+    let policy = git_policy::clone_policy(deadline.saturating_duration_since(time::Instant::now()));
     let target = layout.primary_repo_path.clone();
-    git_retry::retry_git_operation(
-        kind.clone(),
-        "clone",
-        &retry_plan,
-        |_attempt| {
-            let options = options.clone();
-            let target = target.clone();
-            let origin_url = plan.origin_url.clone();
+    sandbox_driver::retry_git(
+        &policy,
+        options.credentials.as_ref(),
+        "git clone",
+        |_attempt, _timeout| {
             let git = &git;
-            async move {
-                git.clone_repo(&origin_url, &target, &options)
-                    .await
-                    .map_err(|error| CloneFailure {
-                        retry_reason: git_retry::classify_driver_failure(
-                            &error,
-                            credential_context,
-                        ),
-                        error:        clone_failure_error(
-                            crate::Error::driver_error(error),
-                            CloneStep::Network,
-                            has_app,
-                        ),
-                    })
-            }
+            let options = &options;
+            let target = &target;
+            let origin_url = &plan.origin_url;
+            async move { git.clone_repo(origin_url, target, options).await }
         },
-        |failure: &CloneFailure| failure.retry_reason,
     )
     .await
-    .map_err(|failure| failure.error)?;
-    if let Some(pin) =
-        PinnedRevision::from_selectors(plan.tag.as_deref(), plan.commit_sha.as_deref())
-    {
-        let head = run_local_step(
-            exec,
-            &clone_source::exact_head_revision_command(&layout.primary_repo_path),
-            "git rev-parse HEAD (pinned checkout)",
-            deadline,
-            auth_url.as_ref(),
+    .map_err(|failure| {
+        clone_failure_error(
+            crate::Error::from(failure.error),
+            CloneStep::Network,
             has_app,
         )
-        .await?;
-        pin.verify_head(&head.stdout)?;
-    }
+    })?;
 
     run_local_step(
         exec,
         &clone_source::repo_symlink_command(&layout),
         "create workspace repo symlink",
         deadline,
-        auth_url.as_ref(),
         has_app,
     )
     .await?;
 
-    if let Some(token) = resolved_token {
-        embed_origin_credentials(exec, &layout, auth_url.as_ref(), token, credentials).await;
+    if let Some(token) = &token {
+        RepoCredentials::install(&git, &layout.primary_repo_path, token).await?;
     }
     Ok(CloneOutcome { layout })
-}
-
-async fn verify_git_available(exec: &SandboxExec<'_>) -> crate::Result<()> {
-    let result = exec
-        .run("git --version", Some(STEP_TIMEOUT), Some("/"), None, None)
-        .await?;
-    if !result.is_success() {
-        return Err(crate::Error::message(
-            "The sandbox image must include git for repository clone and git lifecycle \
-             operations. Use an image with bash and git, such as buildpack-deps:noble.",
-        ));
-    }
-    Ok(())
 }
 
 /// Run a local (non-network) step under the shared clone deadline.
@@ -211,7 +149,6 @@ async fn run_local_step(
     command: &str,
     label: &'static str,
     deadline: time::Instant,
-    auth_url: Option<&DisplaySafeUrl>,
     has_app: bool,
 ) -> crate::Result<ExecResult> {
     let remaining = deadline.saturating_duration_since(time::Instant::now());
@@ -224,17 +161,20 @@ async fn run_local_step(
         .run(command, Some(remaining), Some("/"), None, None)
         .await
         .map_err(|error| crate::Error::context(format!("{label} transport failed"), error))?;
-    if result.is_success() {
+    if result.success() {
         return Ok(result);
     }
     Err(clone_failure_error(
-        result.into_exec_error_with_redactor(label, |output| redact_auth_url(output, auth_url)),
+        result.into_exec_error(label),
         CloneStep::Local,
         has_app,
     ))
 }
 
 fn clone_failure_error(error: crate::Error, step: CloneStep, has_app: bool) -> crate::Error {
+    if git_unavailable(&error) {
+        return crate::Error::context(GIT_UNAVAILABLE_MESSAGE, error);
+    }
     let message = match step {
         CloneStep::Network if !has_app => {
             "Git clone failed. If this is a private repository, configure a GitHub App with \
@@ -246,51 +186,195 @@ fn clone_failure_error(error: crate::Error, step: CloneStep, has_app: bool) -> c
     crate::Error::context(message, error)
 }
 
-/// Point `origin` at the authenticated URL so pushes from the checkout
-/// carry the clone token, and record that generation for refreshes. A
-/// failure here is logged, not fatal: the checkout is complete, and the
-/// first push will re-embed.
-async fn embed_origin_credentials(
-    exec: &SandboxExec<'_>,
-    layout: &GitHubRepoLayout,
-    auth_url: Option<&DisplaySafeUrl>,
-    token: ResolvedToken,
-    credentials: &PushCredentialState,
-) {
-    credentials.record_embedded(token).await;
-    let Some(auth_url) = auth_url else {
-        return;
-    };
-    let command = format!(
-        "git -c maintenance.auto=0 remote set-url origin {}",
-        shell_quote(auth_url.as_raw_url().as_str())
-    );
-    match exec
-        .run(
-            &command,
-            Some(STEP_TIMEOUT),
-            Some(&layout.execution_directory),
-            None,
-            None,
+/// Whether the driver found no usable `git` in the sandbox.
+fn git_unavailable(error: &crate::Error) -> bool {
+    matches!(
+        error.driver(),
+        Some(sandbox_driver::Error::Git(failure))
+            if failure.kind() == GitFailureKind::GitUnavailable
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use fabro_github::token_source::InstallationTokenSource;
+    use sandbox_driver::{ExecFailure, GitFailure, Termination};
+    use sandbox_driver_testing::ScriptedSandbox;
+
+    use super::*;
+
+    const ORIGIN: &str = "https://github.com/acme/widgets";
+
+    fn ok() -> ExecResult {
+        ExecResult::new(Termination::Exited, Some(0), Duration::from_millis(1))
+    }
+
+    /// A scripted sandbox whose `origin` answers with the fixture URL and
+    /// whose every other command succeeds.
+    fn scripted_handle() -> ScriptedSandbox {
+        let handle = ScriptedSandbox::with_id_and_working_dir("scripted", "/workspace")
+            .runtime_directory("/tmp/sandbox-driver/runtime");
+        handle.scripted_exec().respond_with(|spec| {
+            let script = spec.args.last().map(String::as_str).unwrap_or_default();
+            script.contains("'remote' 'get-url' 'origin'").then(|| {
+                let mut result = ok();
+                result.stdout = format!("{ORIGIN}\n").into_bytes();
+                result
+            })
+        });
+        handle.scripted_exec().set_default(ok());
+        handle
+    }
+
+    fn plan() -> GitHubClone {
+        GitHubClone {
+            origin_url: ORIGIN.to_owned(),
+            branch:     Some("main".to_owned()),
+            tag:        None,
+            commit_sha: None,
+            depth:      Some(1),
+        }
+    }
+
+    async fn clone_with(handle: &ScriptedSandbox, credentials: &RepoCredentials) -> CloneOutcome {
+        let exec = SandboxExec::new(handle.exec());
+        clone_github_repo(
+            &SandboxProviderKind::DOCKER,
+            handle,
+            &exec,
+            &plan(),
+            "/workspace",
+            "/repos",
+            credentials,
         )
         .await
-    {
-        Ok(result) if result.is_success() => {}
-        Ok(result) => {
-            let err = result
-                .into_exec_error_with_redactor("git remote set-url origin (post-clone)", |s| {
-                    redact_auth_url(s, Some(auth_url))
-                });
-            tracing::warn!(
-                error = %err,
-                "Failed to set sandbox push credentials on origin; git push from this sandbox will fail"
-            );
-        }
-        Err(err) => {
-            tracing::warn!(
-                error = %redact_auth_url(&crate::display_for_log(&err), Some(auth_url)),
-                "Failed to set sandbox push credentials on origin; git push from this sandbox will fail"
-            );
-        }
+        .expect("clone succeeds")
+    }
+
+    #[tokio::test]
+    async fn a_clone_carries_the_token_per_call_and_installs_it_for_the_checkout() {
+        let handle = scripted_handle();
+        let credentials =
+            RepoCredentials::new(Some(InstallationTokenSource::pat("ghp_test".to_owned())));
+
+        let outcome = clone_with(&handle, &credentials).await;
+        assert_eq!(outcome.layout.primary_repo_path, "/repos/acme/widgets");
+
+        let commands = handle.scripted_exec().commands();
+        assert!(
+            commands
+                .iter()
+                .all(|command| !command.contains("git --version")),
+            "no probe runs ahead of the clone: {commands:#?}"
+        );
+        assert!(
+            commands.iter().all(|command| !command.contains("set-url")),
+            "the remote URL is never rewritten: {commands:#?}"
+        );
+        let clone = commands
+            .iter()
+            .find(|command| command.contains("'clone'"))
+            .expect("the clone ran");
+        assert!(
+            clone.contains(
+                "x-access-token:ghp_test@github.com/acme/widgets.insteadOf=https://github.com/acme/widgets"
+            ),
+            "the clone carries the token per call: {clone}"
+        );
+        assert!(
+            commands.iter().any(|command| command.starts_with("ln -s ")),
+            "{commands:#?}"
+        );
+        let install = commands
+            .iter()
+            .find(|command| command.contains("--add credential.helper"))
+            .expect("the checkout's credential store is installed");
+        assert!(
+            install.contains("/tmp/sandbox-driver/runtime/git-credentials/"),
+            "{install}"
+        );
+        assert!(
+            commands
+                .iter()
+                .all(|command| !command.contains("ghp_test") || command.contains("insteadOf")),
+            "the secret enters no command but the clone's own rewrite: {commands:#?}"
+        );
+        assert!(
+            handle.scripted_exec().recorded().iter().any(|spec| {
+                spec.env
+                    .get("SANDBOX_DRIVER_GIT_CREDENTIAL")
+                    .map(String::as_str)
+                    == Some("https://x-access-token:ghp_test@github.com")
+            }),
+            "the store line travels in the environment"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_clone_without_managed_credentials_installs_nothing() {
+        let handle = scripted_handle();
+
+        clone_with(&handle, &RepoCredentials::none()).await;
+
+        let commands = handle.scripted_exec().commands();
+        assert!(
+            commands.iter().any(|command| command.contains("'clone'")),
+            "{commands:#?}"
+        );
+        assert!(
+            commands
+                .iter()
+                .all(|command| !command.contains("insteadOf")
+                    && !command.contains("credential.helper")),
+            "{commands:#?}"
+        );
+    }
+
+    fn git_failure(exit_code: i32, stderr: &str) -> crate::Error {
+        crate::Error::from(sandbox_driver::Error::Git(GitFailure::from_command(
+            "git clone",
+            ExecFailure::new(
+                "git clone",
+                Termination::Exited,
+                Some(exit_code),
+                Vec::new(),
+                stderr.as_bytes().to_vec(),
+            ),
+        )))
+    }
+
+    #[test]
+    fn a_missing_git_executable_names_the_image_requirement() {
+        let error = clone_failure_error(
+            git_failure(127, "bash: line 1: git: command not found"),
+            CloneStep::Network,
+            true,
+        );
+        assert!(
+            error.to_string().contains("image must include git"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn other_network_failures_keep_the_credential_guidance() {
+        let without_app = clone_failure_error(
+            git_failure(128, "remote: Repository not found."),
+            CloneStep::Network,
+            false,
+        );
+        assert!(without_app.to_string().contains("fabro install"));
+        let with_app = clone_failure_error(
+            git_failure(128, "remote: Repository not found."),
+            CloneStep::Network,
+            true,
+        );
+        assert!(
+            with_app
+                .to_string()
+                .contains("Failed to clone repository into the sandbox")
+        );
+        let local = clone_failure_error(git_failure(1, "ln: failed"), CloneStep::Local, true);
+        assert!(local.to_string().contains("prepare the cloned repository"));
     }
 }

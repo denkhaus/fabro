@@ -1239,7 +1239,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(
-            env.exists_calls(),
+            env.driver().memory_fs().exists_calls(),
             1,
             "sandbox locality should be probed once per resolution pass"
         );

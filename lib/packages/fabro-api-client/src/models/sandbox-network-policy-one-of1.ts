@@ -15,11 +15,8 @@
 
 // May contain unused imports in some cases
 // @ts-ignore
-import type { SandboxServiceDiscoverySource } from './sandbox-service-discovery-source';
+import type { SandboxNetworkPolicyOneOf1DomainAllowList } from './sandbox-network-policy-one-of1-domain-allow-list';
 
-/**
- * Metadata about sandbox service discovery.
- */
-export interface SandboxServiceListMeta {
-    'source': SandboxServiceDiscoverySource;
+export interface SandboxNetworkPolicyOneOf1 {
+    'domain_allow_list': SandboxNetworkPolicyOneOf1DomainAllowList;
 }

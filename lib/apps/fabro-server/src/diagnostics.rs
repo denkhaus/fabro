@@ -691,7 +691,7 @@ fn cloud_sandbox_probe_check(probe: anyhow::Result<daytona::DaytonaKeyCheck>) ->
             remediation: Some(format!(
                 "Regenerate the Daytona API key with scopes: {}, then \
                  `fabro secret set DAYTONA_API_KEY`.",
-                daytona::required_perms_display()
+                check.required_display()
             )),
         },
         Err(err) => {

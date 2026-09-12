@@ -1,16 +1,8 @@
-//! Fabro's secret scanner on the text seams pebble and the sandbox expose.
+//! Fabro's secret scanner on the text seams pebble exposes.
 
 use std::borrow::Cow;
 
 use pebble_coding_agent::extensions::Redactor;
-
-/// Strips a specific authenticated URL out of `text`, when one is known.
-pub fn redact_auth_url(text: &str, auth_url: Option<&fabro_redact::DisplaySafeUrl>) -> String {
-    let Some(auth_url) = auth_url else {
-        return text.to_string();
-    };
-    text.replace(&auth_url.raw_string(), &auth_url.redacted_string())
-}
 
 /// Fabro's secret scanner as pebble's [`Redactor`].
 ///

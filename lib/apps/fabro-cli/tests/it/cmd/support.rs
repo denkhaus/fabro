@@ -1107,7 +1107,7 @@ async fn append_seeded_simple_completion_events(
         serde_json::json!({
             "working_directory": context.temp_dir.display().to_string(),
             "provider": "local",
-            "id": format!("local:{}", run.run_id),
+            "id": fabro_sandbox::test_support::local_sandbox_id(&context.temp_dir).await,
             "repo_cloned": false,
             "clone_origin_url": null,
             "clone_branch": null,
@@ -1276,7 +1276,7 @@ async fn append_seeded_git_completion_events(
         serde_json::json!({
             "working_directory": context.temp_dir.display().to_string(),
             "provider": "local",
-            "id": format!("local:{}", run.run_id),
+            "id": fabro_sandbox::test_support::local_sandbox_id(&context.temp_dir).await,
             "repo_cloned": false,
             "clone_origin_url": null,
             "clone_branch": null,

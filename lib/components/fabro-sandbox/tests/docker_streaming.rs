@@ -1,12 +1,13 @@
 //! Docker sandbox behaviour through the sandbox-driver Docker provider.
 
-use std::collections::BTreeMap;
 use std::sync::Arc;
+use std::time::Duration;
 
 use fabro_sandbox::{
-    CommandOutputCallback, ExecStreamingRequest, ProviderAccess, SandboxOptions,
-    SandboxProviderKind, provider_sandbox,
+    CloneRequest, ExecControls, ExecSpec, OutputSink, ProviderAccess, SandboxProviderKind,
+    Termination, provider_sandbox,
 };
+use sandbox_driver::{SandboxSource, SandboxSpec};
 use tokio::process::Command;
 use tokio::sync::Mutex;
 
@@ -22,7 +23,7 @@ async fn docker_image_available(image: &str) -> bool {
         .is_ok_and(|status| status.success())
 }
 
-fn capture_bytes(chunks: Arc<Mutex<Vec<u8>>>) -> CommandOutputCallback {
+fn capture_bytes(chunks: Arc<Mutex<Vec<u8>>>) -> OutputSink {
     Arc::new(move |_stream, bytes| {
         let chunks = Arc::clone(&chunks);
         Box::pin(async move {
@@ -43,15 +44,10 @@ async fn streaming_timeout_terminates_docker_exec_before_returning() {
     let sandbox = provider_sandbox(
         SandboxProviderKind::DOCKER,
         &ProviderAccess::default(),
-        SandboxOptions {
-            image: Some(image.to_string()),
-            skip_clone: true,
-            ..SandboxOptions::default()
-        },
-        None,
-        None,
-        None,
-        None,
+        SandboxSpec::new(SandboxSource::Image {
+            reference: image.to_string(),
+        }),
+        &CloneRequest::none(),
         None,
         None,
     )
@@ -67,15 +63,17 @@ async fn streaming_timeout_terminates_docker_exec_before_returning() {
     let marker = "fabro_streaming_timeout_sentinel";
     let command = format!("trap '' HUP TERM; echo start; sleep 5 # {marker}");
     let result = sandbox
-        .exec_command_streaming(ExecStreamingRequest {
-            timeout_ms: Some(200),
-            output_callback: Some(capture_bytes(Arc::clone(&chunks))),
-            ..ExecStreamingRequest::new(&command)
-        })
+        .exec_command_streaming(
+            ExecSpec::bash(&command).timeout(Duration::from_millis(200)),
+            ExecControls {
+                sink: Some(capture_bytes(Arc::clone(&chunks))),
+                ..ExecControls::default()
+            },
+        )
         .await
         .expect("streaming command should return a timeout result");
 
-    assert!(result.result.is_timed_out());
+    assert_eq!(result.result.termination, Termination::TimedOut);
     assert!(
         String::from_utf8_lossy(&chunks.lock().await).contains("start"),
         "stream should include output emitted before timeout"
@@ -94,14 +92,14 @@ async fn streaming_timeout_terminates_docker_exec_before_returning() {
         .await
         .expect("process probe should run");
     sandbox
-        .cleanup()
+        .delete()
         .await
         .expect("docker cleanup should succeed");
 
+    let probe = probe.stdout_lossy();
     assert!(
-        !probe.stdout.contains(marker),
-        "timed-out docker exec should be terminated before returning, found: {}",
-        probe.stdout
+        !probe.contains(marker),
+        "timed-out docker exec should be terminated before returning, found: {probe}"
     );
 }
 
@@ -116,15 +114,10 @@ async fn streaming_command_receives_exact_stdin_and_eof() {
     let sandbox = provider_sandbox(
         SandboxProviderKind::DOCKER,
         &ProviderAccess::default(),
-        SandboxOptions {
-            image: Some(image.to_string()),
-            skip_clone: true,
-            ..SandboxOptions::default()
-        },
-        None,
-        None,
-        None,
-        None,
+        SandboxSpec::new(SandboxSource::Image {
+            reference: image.to_string(),
+        }),
+        &CloneRequest::none(),
         None,
         None,
     )
@@ -137,11 +130,12 @@ async fn streaming_command_receives_exact_stdin_and_eof() {
 
     let stdin = b"first line\n$(touch /tmp/must-not-run)\nlast line".to_vec();
     let result = sandbox
-        .exec_command_streaming(ExecStreamingRequest {
-            timeout_ms: Some(10_000),
-            stdin: Some(stdin.clone()),
-            ..ExecStreamingRequest::new("cat")
-        })
+        .exec_command_streaming(
+            ExecSpec::bash("cat")
+                .timeout(Duration::from_secs(10))
+                .stdin(stdin.clone()),
+            ExecControls::default(),
+        )
         .await
         .expect("streaming command should read stdin and finish at EOF");
     let injection_probe = sandbox
@@ -150,19 +144,19 @@ async fn streaming_command_receives_exact_stdin_and_eof() {
         .expect("injection probe should run");
 
     sandbox
-        .cleanup()
+        .delete()
         .await
         .expect("docker cleanup should succeed");
 
     assert!(
-        result.result.is_success(),
+        result.result.success(),
         "stdin command failed: stdout={} stderr={}",
-        result.result.stdout,
-        result.result.stderr
+        result.result.stdout_lossy(),
+        result.result.stderr_lossy()
     );
-    assert_eq!(result.result.stdout.as_bytes(), stdin);
+    assert_eq!(result.result.stdout, stdin);
     assert!(
-        injection_probe.is_success(),
+        injection_probe.success(),
         "stdin bytes must not be evaluated as shell source"
     );
 }
@@ -178,15 +172,13 @@ async fn cloned_docker_sandbox_uses_repos_checkout_and_workspace_symlink() {
     let sandbox = provider_sandbox(
         SandboxProviderKind::DOCKER,
         &ProviderAccess::default(),
-        SandboxOptions {
-            image: Some(image.to_string()),
-            skip_clone: false,
-            ..SandboxOptions::default()
+        SandboxSpec::new(SandboxSource::Image {
+            reference: image.to_string(),
+        }),
+        &CloneRequest {
+            origin_url: Some("https://github.com/brynary/rack-test".to_string()),
+            ..CloneRequest::default()
         },
-        None,
-        None,
-        Some("https://github.com/brynary/rack-test".to_string()),
-        None,
         None,
         None,
     )
@@ -215,17 +207,17 @@ async fn cloned_docker_sandbox_uses_repos_checkout_and_workspace_symlink() {
         .await
         .expect("layout verification command should run");
     sandbox
-        .cleanup()
+        .delete()
         .await
         .expect("docker cleanup should succeed");
 
     assert!(
-        result.is_success(),
+        result.success(),
         "layout verification failed: stdout={} stderr={}",
-        result.stdout,
-        result.stderr
+        result.stdout_lossy(),
+        result.stderr_lossy()
     );
-    assert!(result.stdout.contains("true"));
+    assert!(result.stdout_lossy().contains("true"));
 }
 
 // Both command paths must evaluate the same interpreter, so Bash-only syntax
@@ -244,16 +236,11 @@ async fn docker_runs_clean_bash_through_both_command_paths() {
     let sandbox = provider_sandbox(
         SandboxProviderKind::DOCKER,
         &ProviderAccess::default(),
-        SandboxOptions {
-            image: Some(image.to_string()),
-            env: BTreeMap::from([("BASH_ENV".to_string(), "/tmp/fabro-bash-env".to_string())]),
-            skip_clone: true,
-            ..SandboxOptions::default()
-        },
-        None,
-        None,
-        None,
-        None,
+        SandboxSpec::new(SandboxSource::Image {
+            reference: image.to_string(),
+        })
+        .env_var("BASH_ENV".to_string(), "/tmp/fabro-bash-env".to_string()),
+        &CloneRequest::none(),
         None,
         None,
     )
@@ -276,7 +263,7 @@ async fn docker_runs_clean_bash_through_both_command_paths() {
         )
         .await
         .expect("startup-file fixture should be created");
-    assert!(setup.is_success());
+    assert!(setup.success());
 
     // Arrays, `[[ ]]`, and `${arr[@]}` are Bash-only; `shopt -q login_shell`
     // proves the command did not run under a login shell. Exact output also
@@ -291,33 +278,35 @@ async fn docker_runs_clean_bash_through_both_command_paths() {
 
     let chunks = Arc::new(Mutex::new(Vec::new()));
     let streaming = sandbox
-        .exec_command_streaming(ExecStreamingRequest {
-            timeout_ms: Some(10_000),
-            output_callback: Some(capture_bytes(Arc::clone(&chunks))),
-            ..ExecStreamingRequest::new(command)
-        })
+        .exec_command_streaming(
+            ExecSpec::bash(command).timeout(Duration::from_secs(10)),
+            ExecControls {
+                sink: Some(capture_bytes(Arc::clone(&chunks))),
+                ..ExecControls::default()
+            },
+        )
         .await
         .expect("streaming command should run");
 
     sandbox
-        .cleanup()
+        .delete()
         .await
         .expect("docker cleanup should succeed");
 
     assert!(
-        non_streaming.is_success(),
+        non_streaming.success(),
         "non-streaming Bash-only command failed: stdout={} stderr={}",
-        non_streaming.stdout,
-        non_streaming.stderr
+        non_streaming.stdout_lossy(),
+        non_streaming.stderr_lossy()
     );
-    assert_eq!(non_streaming.stdout.trim(), "two");
+    assert_eq!(non_streaming.stdout_lossy().trim(), "two");
     assert!(
-        streaming.result.is_success(),
+        streaming.result.success(),
         "streaming Bash-only command failed: stdout={} stderr={}",
-        streaming.result.stdout,
-        streaming.result.stderr
+        streaming.result.stdout_lossy(),
+        streaming.result.stderr_lossy()
     );
-    assert_eq!(streaming.result.stdout.trim(), "two");
+    assert_eq!(streaming.result.stdout_lossy().trim(), "two");
     assert_eq!(String::from_utf8_lossy(&chunks.lock().await).trim(), "two");
 }
 
@@ -339,15 +328,10 @@ async fn docker_glob_matches_patterns_containing_a_path_separator() {
     let sandbox = provider_sandbox(
         SandboxProviderKind::DOCKER,
         &ProviderAccess::default(),
-        SandboxOptions {
-            image: Some(image.to_string()),
-            skip_clone: true,
-            ..SandboxOptions::default()
-        },
-        None,
-        None,
-        None,
-        None,
+        SandboxSpec::new(SandboxSource::Image {
+            reference: image.to_string(),
+        }),
+        &CloneRequest::none(),
         None,
         None,
     )
@@ -379,15 +363,15 @@ async fn docker_glob_matches_patterns_containing_a_path_separator() {
     let recursive = sandbox.glob("**/SKILL.md", Some("skills")).await;
 
     sandbox
-        .cleanup()
+        .delete()
         .await
         .expect("docker cleanup should succeed");
 
     assert!(
-        seed.is_success(),
+        seed.success(),
         "seeding the skills tree failed: stdout={} stderr={}",
-        seed.stdout,
-        seed.stderr
+        seed.stdout_lossy(),
+        seed.stderr_lossy()
     );
 
     let one_level = one_level.expect("glob should run");
@@ -424,15 +408,10 @@ async fn docker_runtime_directory_is_private_and_outside_workspace() {
     let sandbox = provider_sandbox(
         SandboxProviderKind::DOCKER,
         &ProviderAccess::default(),
-        SandboxOptions {
-            image: Some(image.to_string()),
-            skip_clone: true,
-            ..SandboxOptions::default()
-        },
-        None,
-        None,
-        None,
-        None,
+        SandboxSpec::new(SandboxSource::Image {
+            reference: image.to_string(),
+        }),
+        &CloneRequest::none(),
         None,
         None,
     )
@@ -471,12 +450,13 @@ async fn docker_runtime_directory_is_private_and_outside_workspace() {
     let readback = sandbox.read_file_text(&blob_path).await;
 
     sandbox
-        .cleanup()
+        .delete()
         .await
         .expect("docker cleanup should succeed");
 
-    assert!(modes.is_success(), "stat failed: {}", modes.stderr);
-    let modes: Vec<&str> = modes.stdout.split_whitespace().collect();
+    assert!(modes.success(), "stat failed: {}", modes.stderr_lossy());
+    let modes = modes.stdout_lossy();
+    let modes: Vec<&str> = modes.split_whitespace().collect();
     assert_eq!(
         modes,
         ["700", "600"],
@@ -503,15 +483,10 @@ async fn docker_sandbox_satisfies_pebbles_environment_contract() {
     let sandbox = provider_sandbox(
         SandboxProviderKind::DOCKER,
         &ProviderAccess::default(),
-        SandboxOptions {
-            image: Some(image.to_string()),
-            skip_clone: true,
-            ..SandboxOptions::default()
-        },
-        None,
-        None,
-        None,
-        None,
+        SandboxSpec::new(SandboxSource::Image {
+            reference: image.to_string(),
+        }),
+        &CloneRequest::none(),
         None,
         None,
     )
@@ -531,7 +506,7 @@ async fn docker_sandbox_satisfies_pebbles_environment_contract() {
     }
     .await;
     sandbox
-        .cleanup()
+        .delete()
         .await
         .expect("docker sandbox should clean up");
     outcome.expect("the Docker sandbox satisfies pebble's environment contract");

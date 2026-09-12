@@ -62,18 +62,16 @@ pub mod types {
         RunPairStatusResponse, RunProjection, RunProvenance, RunRunnableSource, RunSandbox,
         RunSandboxFailure, RunSandboxInstance, RunSandboxKind, RunSandboxPlan, RunSandboxRuntime,
         RunServerProvenance, RunSessionMetadata, RunSize, RunTarget, SandboxDetails, SandboxInfo,
-        SandboxListMeta, SandboxListResponse, SandboxNetwork, SandboxNetworkPolicy,
-        SandboxNetworkPolicyMode, SandboxProviderKind, SandboxProviderLookupError,
-        SandboxResources, SandboxService, SandboxServiceListResponse, SandboxState,
-        SandboxTimestamps, SecretMetadata, SecretType, ServerSettings, SessionDetail, SessionId,
-        SessionStatus, SessionSummary, SessionTurn, SkillActivationSource, SkillSummary,
-        SkillsProjection, StageCompletion, StageContextWindow, StageContextWindowUnavailableReason,
-        StageHandler, StageId, StageInferenceProjection, StageModelUsage, StageOutcome,
-        StageProjection, StageState, StageToolBatchProjection, SubAgentProjection, SubAgentStatus,
-        SystemActorKind, SystemIntegrationStatus, SystemIntegrationsResponse, TodoListProjection,
-        ToolCategory, ToolSource, ToolSummary, TurnId, UpdateVariableRequest, UserPrincipal,
-        Variable, VariableListResponse, WorkflowPath, WorkflowSettings, WorkflowVersion,
-        WorkflowVersionId,
+        SandboxListMeta, SandboxListResponse, SandboxProviderKind, SandboxProviderLookupError,
+        SandboxService, SandboxServiceListResponse, SecretMetadata, SecretType, ServerSettings,
+        SessionDetail, SessionId, SessionStatus, SessionSummary, SessionTurn,
+        SkillActivationSource, SkillSummary, SkillsProjection, StageCompletion, StageContextWindow,
+        StageContextWindowUnavailableReason, StageHandler, StageId, StageInferenceProjection,
+        StageModelUsage, StageOutcome, StageProjection, StageState, StageToolBatchProjection,
+        SubAgentProjection, SubAgentStatus, SystemActorKind, SystemIntegrationStatus,
+        SystemIntegrationsResponse, TodoListProjection, ToolCategory, ToolSource, ToolSummary,
+        TurnId, UpdateVariableRequest, UserPrincipal, Variable, VariableListResponse, WorkflowPath,
+        WorkflowSettings, WorkflowVersion, WorkflowVersionId,
     };
     pub use lithos_llm::catalog::{ModelHandle, ProviderId};
     pub use lithos_llm::types::{
@@ -82,6 +80,11 @@ pub mod types {
         TokenCounts as CompletionUsage, ToolChoice as CompletionToolChoice,
         ToolDefinition as CompletionToolDefinition,
         ToolDefinitionKind as CompletionToolDefinitionKind,
+    };
+    /// A sandbox's status on the API is the sandbox driver's own type.
+    pub use sandbox_driver::{
+        NetworkPolicy as SandboxNetworkPolicy, Resources as SandboxResources, SandboxId,
+        SandboxKind, SandboxState, SandboxStatus, WorkspaceOwnership as SandboxWorkspaceOwnership,
     };
 
     pub use crate::generated::types::*;

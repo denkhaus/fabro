@@ -36,8 +36,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use fabro_sandbox::{
-    ProviderAccess, RunSandbox, SandboxOptions, SandboxProviderKind, local_sandbox,
-    provider_sandbox,
+    CloneRequest, ProviderAccess, RunSandbox, SandboxProviderKind, local_sandbox, provider_sandbox,
 };
 use sandbox_driver::{
     ExecSpec, GrepOptions, Sandbox as DriverHandle, SandboxProvider, SandboxSource, SandboxSpec,
@@ -279,7 +278,7 @@ async fn unpack_fabro(sandbox: &RunSandbox, repo: &Repository) {
         )
         .await
         .expect("unpack exec");
-    assert!(result.is_success(), "unpack failed: {}", result.stderr);
+    assert!(result.success(), "unpack failed: {}", result.stderr_lossy());
 }
 
 async fn unpack_driver(sandbox: &dyn DriverHandle, repo: &Repository) {
@@ -363,15 +362,10 @@ async fn agent_tool_call_latency_through_the_driver() {
     let fabro_docker = provider_sandbox(
         SandboxProviderKind::DOCKER,
         &ProviderAccess::default(),
-        SandboxOptions {
-            image: Some(IMAGE.to_owned()),
-            skip_clone: true,
-            ..SandboxOptions::default()
-        },
-        None,
-        None,
-        None,
-        None,
+        SandboxSpec::new(SandboxSource::Image {
+            reference: IMAGE.to_owned(),
+        }),
+        &CloneRequest::none(),
         None,
         None,
     )
@@ -380,7 +374,7 @@ async fn agent_tool_call_latency_through_the_driver() {
     fabro_docker.initialize().await.expect("fabro docker init");
     unpack_fabro(&fabro_docker, &repo).await;
     rows.extend(bench_fabro("fabro Docker (driver-backed)", &fabro_docker, &repo).await);
-    fabro_docker.cleanup().await.expect("fabro docker cleanup");
+    fabro_docker.delete().await.expect("fabro docker cleanup");
 
     let docker_provider = Arc::new(DockerProvider::connect().await.expect("docker connect"));
     let container = docker_provider

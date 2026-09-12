@@ -10,8 +10,7 @@ use fabro_llm::credentials::readiness;
 use fabro_llm::lithos_catalog::Catalog;
 use fabro_mcp::config::McpServerSettings;
 use fabro_sandbox::{
-    DaytonaCredentials, ProviderAccess, ProviderSandboxSpec, SandboxOptions, SandboxSpec,
-    local_working_directory_from_environment, options_from_environment,
+    CloneRequest, DaytonaCredentials, ProviderAccess, SandboxSpec, sandbox_spec_for_environment,
 };
 use fabro_static::EnvVars;
 #[cfg(test)]
@@ -506,10 +505,17 @@ impl RunSession {
                 )));
             }
         }
+        let daytona = vault_guard
+            .get(EnvVars::DAYTONA_API_KEY)
+            .map(|api_key| DaytonaCredentials::from_api_key(api_key.to_string(), process_env_var));
+        let access = ProviderAccess {
+            providers: services.sandbox_providers.clone(),
+            daytona,
+        };
         let sandbox = match sandbox_provider.bundled() {
-            Some(BundledProvider::Local) if dry_run_clone_target => SandboxSpec::Local {
-                working_directory: dry_run_workspace_for_target(persisted).await?,
-            },
+            Some(BundledProvider::Local) if dry_run_clone_target => {
+                SandboxSpec::local(dry_run_workspace_for_target(persisted).await?, access)
+            }
             Some(BundledProvider::Local) => match record.target.as_ref() {
                 Some(target @ (RunTarget::Git(_) | RunTarget::None {})) => {
                     return Err(Error::engine(format!(
@@ -517,44 +523,39 @@ impl RunSession {
                         target.kind_name()
                     )));
                 }
-                Some(RunTarget::Folder { path }) => SandboxSpec::Local {
-                    working_directory: folder_working_directory_from_record(record, path).await?,
-                },
+                Some(RunTarget::Folder { path }) => SandboxSpec::local(
+                    folder_working_directory_from_record(record, path).await?,
+                    access,
+                ),
                 None => {
-                    let working_directory = local_working_directory_from_environment(
-                        &resolved.environment,
-                        record.source_directory.as_deref().map(Path::new),
-                    )
-                    .map_err(|err| {
-                        Error::engine_with_source(
-                            "Failed to resolve local environment working directory",
-                            err,
-                        )
-                    })?;
-                    SandboxSpec::Local { working_directory }
+                    let working_directory = resolved
+                        .environment
+                        .local_working_directory(record.source_directory.as_deref().map(Path::new))
+                        .map_err(|err| {
+                            Error::engine_with_source(
+                                "Failed to resolve local environment working directory",
+                                err,
+                            )
+                        })?;
+                    SandboxSpec::local(working_directory, access)
                 }
             },
             _ => {
-                let daytona = vault_guard.get(EnvVars::DAYTONA_API_KEY).map(|api_key| {
-                    DaytonaCredentials::from_api_key(api_key.to_string(), process_env_var)
-                });
-                let access = ProviderAccess {
-                    providers: services.sandbox_providers.clone(),
-                    daytona,
-                };
-                let mut options = resolve_sandbox_options(resolved, secret_lookup)?;
-                options.skip_clone |= clone_source.skip_clone;
-                SandboxSpec::Provider(Box::new(ProviderSandboxSpec {
+                let spec = resolve_sandbox_spec(resolved, secret_lookup)?;
+                let mut clone = CloneRequest::from_settings(&resolved.clone);
+                clone.skip |= clone_source.skip_clone;
+                clone.origin_url = clone_source.origin_url;
+                clone.branch = clone_source.branch;
+                clone.tag = clone_source.tag;
+                clone.commit_sha = clone_source.commit_sha;
+                SandboxSpec {
                     kind: sandbox_provider.clone(),
                     access,
-                    options,
+                    spec,
+                    clone,
                     github_app: services.github_app.clone(),
                     run_id: Some(record.run_id),
-                    clone_origin_url: clone_source.origin_url,
-                    clone_branch: clone_source.branch,
-                    clone_tag: clone_source.tag,
-                    clone_commit_sha: clone_source.commit_sha,
-                }))
+                }
             }
         };
 
@@ -802,20 +803,20 @@ fn resolve_sandbox_provider(settings: &ResolvedRunSettings) -> SandboxProviderKi
     settings.environment.provider.clone()
 }
 
-/// The environment's sandbox options with its variables resolved through
-/// the vault.
-fn resolve_sandbox_options(
+/// The environment's sandbox spec with its variables resolved through the
+/// vault.
+fn resolve_sandbox_spec(
     settings: &ResolvedRunSettings,
     secrets_lookup: impl FnMut(&str) -> Option<String>,
-) -> Result<SandboxOptions, Error> {
+) -> Result<sandbox_driver::SandboxSpec, Error> {
     let env = settings
         .environment
         .resolve_env(secrets_lookup)
         .map_err(|err| Error::engine_with_source("failed to resolve environment variables", err))?
         .into_iter()
         .collect();
-    options_from_environment(&settings.environment, &settings.clone, env)
-        .map_err(|err| Error::engine_with_source("failed to resolve sandbox options", err))
+    sandbox_spec_for_environment(&settings.environment, env)
+        .map_err(|err| Error::engine_with_source("failed to resolve sandbox spec", err))
 }
 
 fn resolve_start_llm(
@@ -1525,9 +1526,9 @@ mod tests {
             ..RunLayer::default()
         });
 
-        let options = resolve_sandbox_options(&settings.run, |_| None).unwrap();
-        assert!(options.skip_clone);
-        assert_eq!(options.clone_depth, Some(1));
+        let clone = CloneRequest::from_settings(&settings.run.clone);
+        assert!(clone.skip);
+        assert_eq!(clone.depth, Some(1));
     }
 
     #[test]
@@ -1540,16 +1541,16 @@ mod tests {
             ..RunLayer::default()
         });
 
-        let options = resolve_sandbox_options(&settings.run, |_| None).unwrap();
-        assert_eq!(options.clone_depth, None);
+        let clone = CloneRequest::from_settings(&settings.run.clone);
+        assert_eq!(clone.depth, None);
     }
 
     #[test]
     fn clone_providers_default_to_depth_100() {
         let settings = settings_from_run_layer(RunLayer::default());
 
-        let options = resolve_sandbox_options(&settings.run, |_| None).unwrap();
-        assert_eq!(options.clone_depth, Some(100));
+        let clone = CloneRequest::from_settings(&settings.run.clone);
+        assert_eq!(clone.depth, Some(100));
     }
 
     #[test]
@@ -1867,29 +1868,19 @@ mod tests {
             ..
         } = session;
         let runtime = sandbox
-            .to_run_sandbox_instance(&MockSandbox::linux().sandbox(), fixtures::RUN_1)
+            .to_run_sandbox_instance(&MockSandbox::linux().sandbox())
             .runtime;
         assert_eq!(runtime.repo_cloned, Some(false));
         assert_eq!(runtime.clone_origin_url, None);
         assert_eq!(runtime.clone_branch, None);
         assert_eq!(runtime.primary_repo_path, None);
         assert_eq!(runtime.primary_repo_link, None);
-        let SandboxSpec::Provider(spec) = sandbox else {
-            panic!("none target should retain the selected Docker provider");
-        };
-        let ProviderSandboxSpec {
-            kind,
-            options,
-            clone_origin_url,
-            clone_branch,
-            clone_commit_sha,
-            ..
-        } = *spec;
+        let SandboxSpec { kind, clone, .. } = sandbox;
         assert_eq!(kind, SandboxProviderKind::DOCKER);
-        assert!(options.skip_clone);
-        assert_eq!(clone_origin_url, None);
-        assert_eq!(clone_branch, None);
-        assert_eq!(clone_commit_sha, None);
+        assert!(clone.skip);
+        assert_eq!(clone.origin_url, None);
+        assert_eq!(clone.branch, None);
+        assert_eq!(clone.commit_sha, None);
         assert_eq!(sandbox_env.origin_url, None);
         assert_eq!(pr_origin_url, None);
     }
@@ -1936,31 +1927,25 @@ mod tests {
             ..
         } = session;
         let runtime = sandbox
-            .to_run_sandbox_instance(&MockSandbox::linux().sandbox(), fixtures::RUN_1)
+            .to_run_sandbox_instance(&MockSandbox::linux().sandbox())
             .runtime;
         assert_eq!(runtime.repo_cloned, Some(false));
         assert_eq!(runtime.clone_origin_url, None);
         assert_eq!(runtime.clone_branch, None);
         assert_eq!(runtime.primary_repo_path, None);
         assert_eq!(runtime.primary_repo_link, None);
-        let SandboxSpec::Provider(spec) = sandbox else {
-            panic!("none target should retain the selected Daytona provider");
-        };
-        let ProviderSandboxSpec {
+        let SandboxSpec {
             kind,
             access,
-            options,
-            clone_origin_url,
-            clone_branch,
-            clone_commit_sha,
+            clone,
             ..
-        } = *spec;
+        } = sandbox;
         assert_eq!(kind, SandboxProviderKind::DAYTONA);
         assert!(access.daytona.is_some(), "the vault key reaches the spec");
-        assert!(options.skip_clone);
-        assert_eq!(clone_origin_url, None);
-        assert_eq!(clone_branch, None);
-        assert_eq!(clone_commit_sha, None);
+        assert!(clone.skip);
+        assert_eq!(clone.origin_url, None);
+        assert_eq!(clone.branch, None);
+        assert_eq!(clone.commit_sha, None);
         assert_eq!(sandbox_env.origin_url, None);
         assert_eq!(pr_origin_url, None);
     }
@@ -2033,12 +2018,20 @@ mod tests {
             .await
             .unwrap();
 
-            let SandboxSpec::Local { working_directory } = session.sandbox else {
-                panic!("clone target dry-run should execute in a Local scratch sandbox");
-            };
             assert_eq!(
-                working_directory,
-                run_dir.join("dry-run-workspace").canonicalize().unwrap()
+                session.sandbox.kind,
+                SandboxProviderKind::LOCAL,
+                "clone target dry-run should execute in a Local scratch sandbox"
+            );
+            assert_eq!(
+                session.sandbox.working_directory().map(Path::new),
+                Some(
+                    run_dir
+                        .join("dry-run-workspace")
+                        .canonicalize()
+                        .unwrap()
+                        .as_path()
+                )
             );
             assert_eq!(session.sandbox_env.origin_url, None);
             assert_eq!(session.pr_origin_url, None);
@@ -2147,11 +2140,14 @@ mod tests {
         .await
         .unwrap();
 
-        let SandboxSpec::Local { working_directory } = session.sandbox else {
-            panic!("folder target should retain the selected Local provider");
-        };
-        assert_eq!(working_directory, canonical_folder);
-        assert_ne!(working_directory, environment_cwd);
+        assert_eq!(
+            session.sandbox.kind,
+            SandboxProviderKind::LOCAL,
+            "folder target should retain the selected Local provider"
+        );
+        let working_directory = session.sandbox.working_directory().map(Path::new);
+        assert_eq!(working_directory, Some(canonical_folder.as_path()));
+        assert_ne!(working_directory, Some(environment_cwd.as_path()));
         assert_eq!(session.sandbox_env.origin_url.as_deref(), Some(origin_url));
         assert_eq!(session.pr_origin_url.as_deref(), Some(origin_url));
     }
@@ -2216,10 +2212,15 @@ mod tests {
         .await
         .unwrap();
 
-        let SandboxSpec::Local { working_directory } = session.sandbox else {
-            panic!("legacy Local run should retain the selected Local provider");
-        };
-        assert_eq!(working_directory, environment_cwd);
+        assert_eq!(
+            session.sandbox.kind,
+            SandboxProviderKind::LOCAL,
+            "legacy Local run should retain the selected Local provider"
+        );
+        assert_eq!(
+            session.sandbox.working_directory().map(Path::new),
+            Some(environment_cwd.as_path())
+        );
     }
 
     #[tokio::test]
@@ -2338,17 +2339,21 @@ mod tests {
             ..RunLayer::default()
         });
 
-        let options = resolve_sandbox_options(&settings.run, |_| None).unwrap();
+        let spec = resolve_sandbox_spec(&settings.run, |_| None).unwrap();
 
-        assert_eq!(options.image.as_deref(), Some("ubuntu:24.04"));
-        assert_eq!(options.cpu, Some(4));
-        assert_eq!(options.memory_bytes, Some(2_000_000_000));
         assert!(matches!(
-            options.network,
-            fabro_sandbox::NetworkPolicy::Block
+            &spec.source,
+            fabro_sandbox::SandboxSource::Image { reference } if reference == "ubuntu:24.04"
         ));
+        assert_eq!(spec.resources.cpu_cores, Some(4));
         assert_eq!(
-            options.env,
+            spec.resources.memory_mb,
+            Some(1908),
+            "2 GB rounds up to whole mebibytes"
+        );
+        assert!(matches!(spec.network, fabro_sandbox::NetworkPolicy::Block));
+        assert_eq!(
+            spec.env,
             std::collections::BTreeMap::from([("NODE_ENV".to_string(), "test".to_string())])
         );
     }

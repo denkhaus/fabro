@@ -1,23 +1,65 @@
 //! Test doubles for fabro's sandbox layer.
 //!
-//! [`MockSandbox`] is a configuration and a recorder over the sandbox
-//! driver's scripted double: a test writes down the files, the command
-//! answer, and the failures it wants, takes a [`RunSandbox`] from it, and
-//! reads back what the code under test ran or wrote. Nothing here fakes
+//! [`MockSandbox`] is a configuration over the sandbox driver's scripted
+//! double: a test writes down the files, the command answer, and the
+//! failures it wants, and takes a [`RunSandbox`] from it. What the code
+//! under test ran or wrote is read back from the driver double itself,
+//! through [`MockSandbox::driver`]; the few accessors here convert what a
+//! spec records into the shape fabro's tests assert on. Nothing here fakes
 //! fabro's own logic; every call goes through the real `RunSandbox` and
 //! fabro's exec policy, down to the scripted driver.
 
 use std::collections::HashMap;
+use std::path::Path;
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
-use fabro_types::{CommandTermination, SandboxProviderKind};
-use sandbox_driver::{GrepMatch, PlatformInfo, SandboxState, Termination, WalkedFile};
-pub use sandbox_driver_testing::{ScriptedExec, ScriptedSandbox, ScriptedStdioProcess};
+use fabro_types::SandboxProviderKind;
+use sandbox_driver::{
+    ExecResult, GrepMatch, PlatformInfo, SandboxState, StderrTail, Termination, WalkedFile,
+};
+use sandbox_driver_host::HostProvider;
+pub use sandbox_driver_testing::{
+    ScriptedExec, ScriptedProvider, ScriptedSandbox, ScriptedStdioProcess,
+};
 use tokio::io::DuplexStream;
 
+use crate::driver::ConnectedProvider;
 use crate::driver_sandbox::RunSandbox;
-use crate::sandbox::{ExecResult, SandboxFile, StderrCollector};
+use crate::managed_labels::{MANAGED_LABEL, MANAGED_LABEL_VALUE};
+use crate::sandbox::SandboxFile;
+
+/// The id a run record carries for a local sandbox at `working_directory`,
+/// as the Host provider derives it from the canonical path. A record a test
+/// writes by hand reconnects the way one fabro wrote would. The directory
+/// must exist.
+pub async fn local_sandbox_id(working_directory: &Path) -> String {
+    HostProvider::directory_id(working_directory)
+        .await
+        .unwrap_or_else(|| {
+            panic!(
+                "no local sandbox id for {}: the directory must exist",
+                working_directory.display()
+            )
+        })
+        .to_string()
+}
+
+/// A driver [`ExecResult`] with the given streams, for scripting a mock
+/// sandbox's answers.
+#[must_use]
+pub fn exec_result(
+    stdout: &str,
+    stderr: &str,
+    exit_code: Option<i32>,
+    termination: Termination,
+    duration_ms: u64,
+) -> ExecResult {
+    let mut result = ExecResult::new(termination, exit_code, Duration::from_millis(duration_ms));
+    result.stdout = stdout.as_bytes().to_vec();
+    result.stderr = stderr.as_bytes().to_vec();
+    result
+}
 
 // --- MockSandbox ---
 
@@ -71,12 +113,11 @@ impl Default for MockSandbox {
     fn default() -> Self {
         Self {
             files:               HashMap::new(),
-            exec_result:         ExecResult {
-                stdout:      "mock output".into(),
-                stderr:      String::new(),
-                exit_code:   Some(0),
-                termination: CommandTermination::Exited,
-                duration_ms: 10,
+            exec_result:         {
+                let mut result =
+                    ExecResult::new(Termination::Exited, Some(0), Duration::from_millis(10));
+                result.stdout = b"mock output".to_vec();
+                result
             },
             exec_error:          None,
             working_dir:         "/work",
@@ -145,25 +186,16 @@ impl MockSandbox {
     ) -> &Self {
         self.driver().scripted_exec().respond_with(move |spec| {
             let command = spec.args.last().map(String::as_str).unwrap_or_default();
-            responder(command).map(|result| driver_result(&result))
+            responder(command)
         });
-        self
-    }
-
-    /// Queues the result for the next command, ahead of `exec_result`.
-    /// Results answer in the order they were pushed.
-    pub fn push_exec_result(&self, result: &ExecResult) -> &Self {
-        self.driver()
-            .scripted_exec()
-            .push_result(driver_result(result));
         self
     }
 
     fn built(&self) -> &Built {
         self.built.get_or_init(|| {
             let driver = Arc::new(self.build_driver());
-            // An isolated provider: explicit environment passes as the
-            // caller composed it, as it does for Docker and Daytona runs.
+            // The kind is nominal for exec: the explicit environment reaches
+            // the scripted driver as the caller composed it on every provider.
             let run = RunSandbox::new_with_platform(
                 SandboxProviderKind::DOCKER,
                 Arc::clone(&driver) as Arc<dyn sandbox_driver::Sandbox>,
@@ -197,7 +229,7 @@ impl MockSandbox {
         let exec = driver.scripted_exec();
         match &self.exec_error {
             Some(message) => exec.fail_by_default(message.clone()),
-            None => exec.set_default(driver_result(&self.exec_result)),
+            None => exec.set_default(self.exec_result.clone()),
         };
         exec.set_streams_separated(self.streams_separated);
         if let Some(message) = &self.stdio_process_error {
@@ -240,17 +272,12 @@ impl MockSandbox {
             .unwrap_or_default()
     }
 
-    /// The Bash source of every command run so far, in order.
-    pub fn captured_commands(&self) -> Vec<String> {
-        self.recorded()
-            .iter()
-            .map(|spec| spec.args.last().cloned().unwrap_or_default())
-            .collect()
-    }
-
-    /// The last command's Bash source.
+    /// The last command's Bash source. Every command, in order, is
+    /// `driver().scripted_exec().commands()`.
     pub fn captured_command(&self) -> Option<String> {
-        self.captured_commands().pop()
+        self.recorded()
+            .last()
+            .and_then(|spec| spec.args.last().cloned())
     }
 
     /// The last command's timeout in milliseconds.
@@ -270,25 +297,9 @@ impl MockSandbox {
             .collect()
     }
 
-    /// Whether each command was given the run's cancellation to stop on,
-    /// in order.
-    pub fn captured_term_stops(&self) -> Vec<bool> {
-        self.built
-            .get()
-            .map(|built| built.driver.scripted_exec().term_stops())
-            .unwrap_or_default()
-    }
-
-    /// The working directory of every command, in order.
-    pub fn captured_working_dirs(&self) -> Vec<Option<String>> {
-        self.recorded()
-            .iter()
-            .map(|spec| spec.working_dir.clone())
-            .collect()
-    }
-
     /// The explicit variables of the last command as the caller passed them.
-    /// The exec policy's own `BASH_ENV` blank is not the caller's.
+    /// The driver's Bash helper records its own `BASH_ENV` blank on the
+    /// spec; that is not the caller's.
     pub fn captured_env_vars(&self) -> Option<HashMap<String, String>> {
         self.recorded().last().map(|spec| {
             spec.env
@@ -297,13 +308,6 @@ impl MockSandbox {
                 .map(|(k, v)| (k.clone(), v.clone()))
                 .collect()
         })
-    }
-
-    /// The bytes the last streaming command was fed on standard input.
-    pub fn captured_stdin(&self) -> Option<Vec<u8>> {
-        self.built
-            .get()
-            .and_then(|built| built.driver.scripted_exec().captured_stdin().pop())
     }
 
     /// Every file written so far as `(path, content)`, in order.
@@ -321,65 +325,6 @@ impl MockSandbox {
             })
             .unwrap_or_default()
     }
-
-    /// Every file deleted so far by absolute path, in order.
-    pub fn deleted_files(&self) -> Vec<String> {
-        self.built
-            .get()
-            .map(|built| built.driver.memory_fs().deletes())
-            .unwrap_or_default()
-    }
-
-    /// How many times the code under test asked whether a path exists.
-    pub fn exists_calls(&self) -> usize {
-        self.built
-            .get()
-            .map_or(0, |built| built.driver.memory_fs().exists_calls())
-    }
-
-    pub fn start_count(&self) -> u32 {
-        self.built
-            .get()
-            .map_or(0, |built| built.driver.start_count())
-    }
-
-    pub fn stop_count(&self) -> u32 {
-        self.built
-            .get()
-            .map_or(0, |built| built.driver.stop_count())
-    }
-
-    pub fn delete_count(&self) -> u32 {
-        self.built
-            .get()
-            .map_or(0, |built| built.driver.delete_count())
-    }
-
-    /// How many walks the code under test ran.
-    pub fn walk_files_was_called(&self) -> bool {
-        self.built
-            .get()
-            .is_some_and(|built| built.driver.scripted_search().walk_calls() > 0)
-    }
-}
-
-/// The driver result fabro's exec policy reads back as `result`.
-fn driver_result(result: &ExecResult) -> sandbox_driver::ExecResult {
-    let termination = match result.termination {
-        CommandTermination::TimedOut => Termination::TimedOut,
-        CommandTermination::Cancelled => Termination::Cancelled,
-        // `CommandTermination` is non-exhaustive; `Exited` and anything newer
-        // read back as a plain exit.
-        _ => Termination::Exited,
-    };
-    let mut driver = sandbox_driver::ExecResult::new(
-        termination,
-        result.exit_code,
-        Duration::from_millis(result.duration_ms),
-    );
-    driver.stdout = result.stdout.clone().into_bytes();
-    driver.stderr = result.stderr.clone().into_bytes();
-    driver
 }
 
 // --- MockStdioProcess ---
@@ -387,21 +332,17 @@ fn driver_result(result: &ExecResult) -> sandbox_driver::ExecResult {
 /// A stdio process a test drives, over the driver's scripted process.
 ///
 /// The driver closure receives the process's end of standard input, its
-/// end of standard output, and fabro's stderr collector for the process.
+/// end of standard output, and the rolling stderr tail the process reports.
 pub struct MockStdioProcess {
     inner: std::sync::Mutex<Option<ScriptedStdioProcess>>,
 }
 
 impl MockStdioProcess {
     pub fn new(
-        driver: impl FnOnce(DuplexStream, DuplexStream, StderrCollector) + Send + 'static,
+        driver: impl FnOnce(DuplexStream, DuplexStream, StderrTail) + Send + 'static,
     ) -> Self {
         Self {
-            inner: std::sync::Mutex::new(Some(ScriptedStdioProcess::new(
-                move |stdin, stdout, tail| {
-                    driver(stdin, stdout, StderrCollector::from_driver_tail(tail));
-                },
-            ))),
+            inner: std::sync::Mutex::new(Some(ScriptedStdioProcess::new(driver))),
         }
     }
 
@@ -426,98 +367,32 @@ impl MockStdioProcess {
     }
 }
 
-// --- FakeSandboxProvider ---
+// --- Inventory doubles ---
 
-pub use fake_provider::{FakeGet, FakeList, FakeSandboxProvider, fake_registry, fake_sandbox_info};
+/// A running scripted sandbox carrying fabro's managed label, so an owned
+/// inventory lists it and attaches to it.
+#[must_use]
+pub fn managed_scripted_sandbox(id: &str) -> Arc<ScriptedSandbox> {
+    Arc::new(
+        ScriptedSandbox::with_id_and_working_dir(id, "/work")
+            .state(SandboxState::Running)
+            .label(MANAGED_LABEL, MANAGED_LABEL_VALUE),
+    )
+}
 
-mod fake_provider {
-    use std::collections::BTreeMap;
-    use std::sync::Arc;
-
-    use async_trait::async_trait;
-    use fabro_types::{
-        SandboxInfo, SandboxNetwork, SandboxProviderKind, SandboxResources, SandboxState,
-        SandboxTimestamps,
-    };
-
-    use crate::provider::{SandboxProvider, SandboxProviderRegistry};
-
-    #[derive(Clone)]
-    pub enum FakeList {
-        Ok(Vec<SandboxInfo>),
-        Err(&'static str),
+/// A connected inventory provider of `kind` holding `sandboxes`, over the
+/// driver's scripted provider.
+#[must_use]
+pub fn scripted_inventory_provider(
+    kind: SandboxProviderKind,
+    sandboxes: Vec<Arc<ScriptedSandbox>>,
+) -> ConnectedProvider {
+    let provider = ScriptedProvider::new(kind.as_str());
+    for sandbox in sandboxes {
+        provider.register(sandbox);
     }
-
-    #[derive(Clone)]
-    pub enum FakeGet {
-        Found(Box<SandboxInfo>),
-        Missing,
-        Err(&'static str),
-    }
-
-    pub struct FakeSandboxProvider {
-        kind: SandboxProviderKind,
-        list: FakeList,
-        get:  FakeGet,
-    }
-
-    impl FakeSandboxProvider {
-        pub fn new(kind: SandboxProviderKind, list: FakeList, get: FakeGet) -> Self {
-            Self { kind, list, get }
-        }
-    }
-
-    #[async_trait]
-    impl SandboxProvider for FakeSandboxProvider {
-        fn kind(&self) -> SandboxProviderKind {
-            self.kind.clone()
-        }
-
-        async fn list(&self) -> crate::Result<Vec<SandboxInfo>> {
-            match &self.list {
-                FakeList::Ok(sandboxes) => Ok(sandboxes.clone()),
-                FakeList::Err(message) => Err(crate::Error::message(*message)),
-            }
-        }
-
-        async fn get(&self, _id: &str) -> crate::Result<Option<SandboxInfo>> {
-            match &self.get {
-                FakeGet::Found(sandbox) => Ok(Some((**sandbox).clone())),
-                FakeGet::Missing => Ok(None),
-                FakeGet::Err(message) => Err(crate::Error::message(*message)),
-            }
-        }
-
-        async fn delete(&self, _id: &str) -> crate::Result<()> {
-            Ok(())
-        }
-    }
-
-    pub fn fake_registry(providers: Vec<FakeSandboxProvider>) -> SandboxProviderRegistry {
-        SandboxProviderRegistry::new(
-            providers
-                .into_iter()
-                .map(|provider| Arc::new(provider) as Arc<dyn SandboxProvider>)
-                .collect(),
-        )
-    }
-
-    pub fn fake_sandbox_info(provider: SandboxProviderKind, id: &str) -> SandboxInfo {
-        SandboxInfo {
-            provider,
-            id: id.to_string(),
-            display_name: None,
-            state: SandboxState::Running,
-            native_state: None,
-            image: None,
-            snapshot: None,
-            region: None,
-            web_url: None,
-            working_directory: None,
-            resources: SandboxResources::default(),
-            network: SandboxNetwork::unknown(),
-            labels: BTreeMap::new(),
-            timestamps: SandboxTimestamps::default(),
-        }
+    ConnectedProvider {
+        kind,
+        provider: Arc::new(provider),
     }
 }

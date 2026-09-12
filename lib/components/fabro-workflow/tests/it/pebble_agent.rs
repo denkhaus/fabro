@@ -1269,14 +1269,8 @@ async fn docker_sandbox_runs_an_agent_stage() {
         fabro_sandbox::provider_sandbox(
             fabro_sandbox::SandboxProviderKind::DOCKER,
             &fabro_sandbox::ProviderAccess::default(),
-            fabro_sandbox::SandboxOptions {
-                skip_clone: true,
-                ..Default::default()
-            },
-            None,
-            None,
-            None,
-            None,
+            sandbox_driver::SandboxSpec::new(sandbox_driver::SandboxSource::HostDirectory),
+            &fabro_sandbox::CloneRequest::none(),
             None,
             None,
         )
@@ -1287,7 +1281,7 @@ async fn docker_sandbox_runs_an_agent_stage() {
 
     agent_stage_smoke(Arc::clone(&sandbox), "docker").await;
 
-    sandbox.cleanup().await.expect("Docker cleanup failed");
+    sandbox.delete().await.expect("Docker cleanup failed");
 }
 
 #[fabro_macros::e2e_test(live("DAYTONA_API_KEY"))]
@@ -1298,31 +1292,20 @@ async fn docker_sandbox_runs_an_agent_stage() {
 async fn daytona_sandbox_runs_an_agent_stage() {
     use fabro_static::EnvVars;
 
+    let api_key = std::env::var(EnvVars::DAYTONA_API_KEY).expect("DAYTONA_API_KEY must be set");
     let access = fabro_sandbox::ProviderAccess {
-        daytona: Some(fabro_sandbox::DaytonaCredentials {
-            api_key:         std::env::var(EnvVars::DAYTONA_API_KEY)
-                .expect("DAYTONA_API_KEY must be set"),
-            api_url:         std::env::var(EnvVars::DAYTONA_API_URL)
-                .or_else(|_| std::env::var(EnvVars::DAYTONA_SERVER_URL))
-                .ok(),
-            organization_id: std::env::var(EnvVars::DAYTONA_ORGANIZATION_ID).ok(),
-            target:          None,
-            http_client:     None,
-        }),
+        daytona: Some(fabro_sandbox::DaytonaCredentials::from_api_key(
+            api_key,
+            |name| std::env::var(name).ok(),
+        )),
         ..fabro_sandbox::ProviderAccess::default()
     };
     let sandbox: Arc<RunSandbox> = Arc::new(
         fabro_sandbox::provider_sandbox(
             fabro_sandbox::SandboxProviderKind::DAYTONA,
             &access,
-            fabro_sandbox::SandboxOptions {
-                skip_clone: true,
-                ..Default::default()
-            },
-            None,
-            None,
-            None,
-            None,
+            sandbox_driver::SandboxSpec::new(sandbox_driver::SandboxSource::HostDirectory),
+            &fabro_sandbox::CloneRequest::none(),
             None,
             None,
         )
@@ -1333,5 +1316,5 @@ async fn daytona_sandbox_runs_an_agent_stage() {
 
     agent_stage_smoke(Arc::clone(&sandbox), "daytona").await;
 
-    sandbox.cleanup().await.expect("Daytona cleanup failed");
+    sandbox.delete().await.expect("Daytona cleanup failed");
 }

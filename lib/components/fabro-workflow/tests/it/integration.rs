@@ -13625,19 +13625,12 @@ async fn asset_collection_local_sandbox_on_failure() {
 async fn asset_collection_docker_sandbox() {
     let run_dir = tempfile::tempdir().unwrap();
 
-    let options = fabro_sandbox::SandboxOptions {
-        skip_clone: true,
-        ..Default::default()
-    };
     let sandbox: Arc<fabro_sandbox::RunSandbox> = Arc::new(
         fabro_sandbox::provider_sandbox(
             fabro_sandbox::SandboxProviderKind::DOCKER,
             &fabro_sandbox::ProviderAccess::default(),
-            options,
-            None,
-            None,
-            None,
-            None,
+            sandbox_driver::SandboxSpec::new(sandbox_driver::SandboxSource::HostDirectory),
+            &fabro_sandbox::CloneRequest::none(),
             None,
             None,
         )
@@ -13734,7 +13727,7 @@ async fn asset_collection_docker_sandbox() {
         "artifact scratch cache should not be created"
     );
 
-    sandbox.cleanup().await.unwrap();
+    sandbox.delete().await.unwrap();
 }
 
 #[tokio::test]

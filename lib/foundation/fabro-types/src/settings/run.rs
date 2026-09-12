@@ -7,7 +7,7 @@
 //! behavior, and artifact collection.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Duration as StdDuration;
 
 use fabro_util::shell;
@@ -1039,14 +1039,16 @@ impl Default for RunExecutionSettings {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RunCheckpointSettings {
     pub exclude_globs:     Vec<String>,
-    /// When `true`, Fabro-managed run-branch checkpoint commits bypass
-    /// local Git commit hooks (e.g. `pre-commit`, `commit-msg`). This does
-    /// not affect Fabro workflow `[[run.hooks]]` or metadata-branch
-    /// snapshots, which already bypass repository hooks.
+    /// Accepted for compatibility. Fabro-managed run-branch checkpoint
+    /// commits never run local Git commit hooks (e.g. `pre-commit`,
+    /// `commit-msg`): the sandbox driver disables repository hooks on every
+    /// git command it runs, whatever this field says. Fabro workflow
+    /// `[[run.hooks]]` are unaffected.
     #[serde(default)]
     pub skip_git_hooks:    bool,
-    /// Timeout (ms) for the per-node run-branch checkpoint commit, which runs
-    /// repository commit hooks unless `skip_git_hooks` is set. Default 30_000.
+    /// Accepted for compatibility. The per-node run-branch checkpoint commit
+    /// runs under the sandbox driver's own git command budget now that no
+    /// repository hook can prolong it. Default 30_000.
     #[serde(default = "default_checkpoint_commit_timeout_ms")]
     pub commit_timeout_ms: u64,
 }
@@ -1228,6 +1230,19 @@ impl Default for EnvironmentSettings {
     }
 }
 
+/// Why a `local` run has no directory to work in.
+#[derive(Debug, thiserror::Error)]
+pub enum LocalWorkingDirectoryError {
+    #[error(
+        "local environment requires a server-side working directory; configure `environment.cwd = \"/absolute/path\"` on the selected local environment"
+    )]
+    MissingCwd,
+    #[error(
+        "local environment source_directory does not exist or is not a directory on this server: {0}. Configure `environment.cwd = \"/absolute/path\"` on the selected local environment for remote client/server deployments."
+    )]
+    MissingSourceDirectory(PathBuf),
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RunEnvironmentSettings {
     pub id:        String,
@@ -1256,6 +1271,42 @@ impl RunEnvironmentSettings {
             labels: environment.labels,
             env: environment.env,
         }
+    }
+
+    /// The environment's variables in source form, for a path with no vault
+    /// (server preflight): a `{{ secrets.* }}` value keeps its token, and
+    /// nothing else is left to resolve because `{{ vars.* }}` is substituted
+    /// at run creation.
+    #[must_use]
+    pub fn unresolved_env(&self) -> BTreeMap<String, String> {
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "preflight has no vault, so an unresolved secret token is carried in source form"
+        )]
+        self.env
+            .iter()
+            .map(|(key, value)| (key.clone(), value.as_source()))
+            .collect()
+    }
+
+    /// The directory a `local` run works in: the environment's `cwd`, or
+    /// the run's source directory when it exists on this host.
+    pub fn local_working_directory(
+        &self,
+        source_directory: Option<&Path>,
+    ) -> Result<PathBuf, LocalWorkingDirectoryError> {
+        if let Some(cwd) = self.cwd.as_deref() {
+            return Ok(PathBuf::from(cwd));
+        }
+        let Some(source_directory) = source_directory else {
+            return Err(LocalWorkingDirectoryError::MissingCwd);
+        };
+        if source_directory.is_dir() {
+            return Ok(source_directory.to_path_buf());
+        }
+        Err(LocalWorkingDirectoryError::MissingSourceDirectory(
+            source_directory.to_path_buf(),
+        ))
     }
 
     /// Resolve every environment value's `{{ secrets.* }}` tokens via

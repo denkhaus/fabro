@@ -1,364 +1,314 @@
-//! [`RunSandbox`] as the [`Environment`] pebble's coding agent runs in.
+//! What an environment asks of a sandbox, mapped once onto the driver's spec.
 //!
-//! Pebble's tools speak the `Environment` contract; fabro's one sandbox type
-//! speaks the sandbox driver's facets. This module is the mapping between the
-//! two, and nothing else: every path resolves the way fabro resolves it, every
-//! command runs through [`SandboxExec`](crate::SandboxExec) with fabro's
-//! environment policy, and every failure keeps its driver cause. There is no
-//! adapter struct; a run sandbox *is* an environment.
-//!
-//! Where the two contracts differ, pebble's wins here because the model reads
-//! pebble's: a glob that pebble rejects is rejected before the driver sees it,
-//! a directory listing is in tree order, and a command with no retention cap
-//! still drains under the driver's default buffer rather than without bound.
+//! The environment names an image or Dockerfile, resources, a network
+//! policy, labels, variables, and a lifecycle. Every provider starts from
+//! the same driver [`SandboxSpec`] built here; a bundled provider adds only
+//! what its backend needs on top (the Docker working directory and default
+//! image, the Daytona snapshot and timers) in its own overlay, and the
+//! ownership scope adds fabro's labels. The clone policy travels beside the
+//! spec as a [`CloneRequest`]: cloning is fabro's work once the sandbox
+//! exists, not the provider's.
 
-use std::sync::Arc;
+use std::collections::BTreeMap;
 
-use async_trait::async_trait;
-use fabro_types::CommandOutputStream;
-use pebble_coding_agent::environment::support::{capture_stats, tree_order, validate_glob};
-use pebble_coding_agent::environment::{
-    DirEntry, EnvResult, Environment, EnvironmentError, EnvironmentErrorKind, ExecOutcome,
-    ExecOutputSink, ExecOutputStream, ExecRequest, ExecResult, GrepOptions,
+use fabro_types::RunId;
+use fabro_types::settings::run::{
+    DockerfileSource, EnvironmentNetworkMode, RunCloneSettings, RunEnvironmentSettings,
 };
-use sandbox_driver::FileKind;
+use sandbox_driver::{
+    Capabilities, LifecycleTimers, NetworkPolicy, Resources, SandboxSource, SandboxSpec,
+};
 
-use crate::driver_sandbox::RunSandbox;
-use crate::sandbox::{self, CommandOutputCallback, ExecStreamingRequest};
+/// What to clone into a provider sandbox, if anything.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct CloneRequest {
+    pub origin_url: Option<String>,
+    /// The branch the checkout works on.
+    pub branch:     Option<String>,
+    /// A tag to pin the checkout to; the branch still names the checkout.
+    pub tag:        Option<String>,
+    /// An exact commit to pin the checkout to, authoritative over `tag`.
+    pub commit_sha: Option<String>,
+    /// Maximum Git history depth fetched; `None` fetches full history.
+    pub depth:      Option<u32>,
+    /// Create an empty workspace instead of cloning, even when an origin
+    /// is present.
+    pub skip:       bool,
+}
 
-#[async_trait]
-impl Environment for RunSandbox {
-    fn working_directory(&self) -> &str {
-        Self::working_directory(self)
-    }
-
-    fn platform(&self) -> &str {
-        Self::platform(self)
-    }
-
-    fn os_version(&self) -> String {
-        Self::os_version(self)
-    }
-
-    async fn read_file_bytes(&self, path: &str) -> EnvResult<Vec<u8>> {
-        Self::read_file_bytes(self, path)
-            .await
-            .map_err(|error| environment_error(&format!("Failed to read {path}"), error))
-    }
-
-    async fn write_file(&self, path: &str, content: &str) -> EnvResult<()> {
-        Self::write_file(self, path, content)
-            .await
-            .map_err(|error| environment_error(&format!("Failed to write {path}"), error))
-    }
-
-    async fn rename_file(&self, source: &str, destination: &str) -> EnvResult<()> {
-        let resolved_source = self.resolve_for_environment(source);
-        let resolved_destination = self.resolve_for_environment(destination);
-        if !Self::file_exists(self, source)
-            .await
-            .map_err(|error| environment_error(&format!("Failed to stat {source}"), error))?
-        {
-            return Err(EnvironmentError::new(
-                EnvironmentErrorKind::NotFound,
-                format!("Failed to move {source}: file does not exist"),
-            ));
+impl CloneRequest {
+    /// No clone: the run starts in an empty workspace.
+    #[must_use]
+    pub fn none() -> Self {
+        Self {
+            skip: true,
+            ..Self::default()
         }
-        // The same path spelled twice is a move to itself, which must leave
-        // the file where it is. Aliases the sandbox's own filesystem would
-        // resolve (a symlinked parent, a hard link) are not checked: fabro has
-        // no remote `realpath`, and a driver `mv a a` is a no-op anyway.
-        if normalize(&resolved_source) == normalize(&resolved_destination) {
-            return Ok(());
+    }
+
+    /// The environment's clone policy: whether to clone and how deep. The
+    /// origin and the selectors come from the run's target.
+    #[must_use]
+    pub fn from_settings(clone: &RunCloneSettings) -> Self {
+        Self {
+            depth: clone
+                .depth_limit()
+                .and_then(|depth| u32::try_from(depth).ok()),
+            skip: !clone.enabled,
+            ..Self::default()
         }
-        let handle = self
-            .handle()
-            .map_err(|error| environment_error("Sandbox is not initialized", error))?;
-        // The destination's parent is created first, and a parent that is a
-        // file fails here, before anything has moved, so the source stays
-        // intact as the contract requires.
-        if let Some(parent) = parent_directory(&resolved_destination) {
-            handle.fs().create_dir(parent).await.map_err(|error| {
-                environment_error(
-                    &format!("Failed to create the parent directory of {destination}"),
-                    crate::Error::from(error),
-                )
-            })?;
-        }
-        handle
-            .fs()
-            .rename(&resolved_source, &resolved_destination)
-            .await
-            .map_err(|error| {
-                environment_error(
-                    &format!("Failed to move {source} to {destination}"),
-                    crate::Error::from(error),
-                )
-            })
-    }
-
-    async fn delete_file(&self, path: &str) -> EnvResult<()> {
-        // The driver's delete is idempotent; pebble's is a `remove_file`, which
-        // reports a path that is not there.
-        if !Self::file_exists(self, path)
-            .await
-            .map_err(|error| environment_error(&format!("Failed to stat {path}"), error))?
-        {
-            return Err(EnvironmentError::new(
-                EnvironmentErrorKind::NotFound,
-                format!("Failed to delete {path}: file does not exist"),
-            ));
-        }
-        Self::delete_file(self, path)
-            .await
-            .map_err(|error| environment_error(&format!("Failed to delete {path}"), error))
-    }
-
-    async fn file_exists(&self, path: &str) -> EnvResult<bool> {
-        Self::file_exists(self, path)
-            .await
-            .map_err(|error| environment_error(&format!("Failed to stat {path}"), error))
-    }
-
-    async fn list_directory(&self, path: &str, depth: Option<usize>) -> EnvResult<Vec<DirEntry>> {
-        let mut entries: Vec<DirEntry> = Self::list_directory(self, path, depth)
-            .await
-            .map_err(|error| environment_error(&format!("Failed to list {path}"), error))?
-            .into_iter()
-            .map(|entry| DirEntry {
-                is_dir: entry.kind == FileKind::Directory,
-                size:   (entry.kind == FileKind::File)
-                    .then_some(entry.size)
-                    .flatten(),
-                name:   entry.path,
-            })
-            .collect();
-        // The driver lists in flat lexicographic order of the whole relative
-        // path, where `foo-bar` sorts between `foo` and `foo/x`. Pebble lists
-        // in tree order, and says how.
-        tree_order(&mut entries);
-        Ok(entries)
-    }
-
-    async fn grep(
-        &self,
-        pattern: &str,
-        path: &str,
-        options: &GrepOptions,
-    ) -> EnvResult<Vec<String>> {
-        let mut driver_options = sandbox_driver::GrepOptions::default();
-        driver_options.case_insensitive = options.case_insensitive;
-        driver_options.max_matches = options.max_results;
-        driver_options.include = options.glob_filter.clone();
-        let matches = Self::grep(self, pattern, path, &driver_options)
-            .await
-            .map_err(|error| environment_error("Failed to search file contents", error))?;
-        Ok(matches
-            .into_iter()
-            .map(|found| format!("{}:{}:{}", found.path, found.line_number, found.line))
-            .collect())
-    }
-
-    async fn glob(&self, pattern: &str, path: Option<&str>) -> EnvResult<Vec<String>> {
-        // Validated by pebble's own grammar before the driver sees the
-        // pattern, so the reason reaches the model in pebble's words and the
-        // patterns pebble rejects are rejected even where fabro's glob would
-        // accept them.
-        validate_glob(pattern)?;
-        Self::glob(self, pattern, path)
-            .await
-            .map_err(|error| environment_error("Failed to match files", error))
-    }
-
-    async fn exec(&self, request: ExecRequest<'_>) -> EnvResult<ExecOutcome> {
-        let ExecRequest {
-            command,
-            timeout_ms,
-            working_dir,
-            env_vars,
-            cancel_token,
-            output_bytes_cap,
-            output_sink,
-        } = request;
-        let streaming = self
-            .exec_command_streaming(ExecStreamingRequest {
-                timeout_ms,
-                working_dir,
-                env_vars,
-                cancel_token,
-                stdin: None,
-                output_callback: output_sink.map(adapt_output_sink),
-                // `None` asks pebble for no cap at all. The driver always
-                // retains under a buffer, so a command with no cap drains under
-                // the driver's default rather than without bound; the capture
-                // counts still say what was dropped.
-                stream_output_bytes_cap: output_bytes_cap,
-                ..ExecStreamingRequest::new(command)
-            })
-            .await
-            .map_err(|error| {
-                let kind = if error.is_transport() {
-                    EnvironmentErrorKind::Io
-                } else {
-                    EnvironmentErrorKind::Spawn
-                };
-                EnvironmentError::with_source(kind, "Failed to run the command", error)
-            })?;
-        Ok(ExecOutcome {
-            result:            ExecResult {
-                stdout:      streaming.result.stdout,
-                stderr:      streaming.result.stderr,
-                exit_code:   streaming.result.exit_code,
-                termination: streaming.result.termination,
-                duration_ms: streaming.result.duration_ms,
-            },
-            streams_separated: streaming.streams_separated,
-            stdout_capture:    capture_stats(
-                streaming.stdout_capture.observed_bytes,
-                output_bytes_cap,
-            ),
-            stderr_capture:    capture_stats(
-                streaming.stderr_capture.observed_bytes,
-                output_bytes_cap,
-            ),
-        })
     }
 }
 
-impl RunSandbox {
-    /// A caller path as the driver will see it: fabro's working directory
-    /// applied where fabro applies it, and nothing more.
-    fn resolve_for_environment(&self, path: &str) -> String {
-        sandbox::resolve_path(path, Self::working_directory(self))
-    }
-}
-
-/// Pebble's glob grammar, beyond what fabro's glob already rejects.
+/// The driver spec every provider starts from: the environment's source
+/// (an image, a Dockerfile, or a managed directory when it names neither),
+/// its labels, variables, resources, network policy, and auto-stop. `env`
+/// is the environment's variables, resolved by the caller: the worker
+/// resolves secrets through the vault, while preflight carries them in
+/// source form.
 ///
-/// A path with its redundant separators and `.` segments removed, for
-/// deciding whether two spellings name the same file.
-fn normalize(path: &str) -> String {
-    let absolute = path.starts_with('/');
-    let joined = path
-        .split('/')
-        .filter(|segment| !segment.is_empty() && *segment != ".")
-        .collect::<Vec<_>>()
-        .join("/");
-    if absolute {
-        format!("/{joined}")
-    } else {
-        joined
-    }
-}
-
-/// The directory a path is in, when the path names one.
-fn parent_directory(path: &str) -> Option<&str> {
-    let trimmed = path.trim_end_matches('/');
-    let (parent, _) = trimmed.rsplit_once('/')?;
-    if parent.is_empty() {
-        return Some("/");
-    }
-    Some(parent)
-}
-
-/// Feeds the driver's asynchronous chunk callback into pebble's synchronous
-/// sink.
-fn adapt_output_sink(sink: ExecOutputSink) -> CommandOutputCallback {
-    Arc::new(move |stream, chunk: Vec<u8>| {
-        let stream = match stream {
-            CommandOutputStream::Stdout => ExecOutputStream::Stdout,
-            CommandOutputStream::Stderr => ExecOutputStream::Stderr,
-        };
-        sink(stream, &chunk);
-        Box::pin(async { Ok(()) })
-    })
-}
-
-/// A sandbox failure as pebble classifies it, keeping the driver cause.
-fn environment_error(message: &str, error: crate::Error) -> EnvironmentError {
-    let kind = if error.is_not_found() {
-        EnvironmentErrorKind::NotFound
-    } else if error.is_unsupported() {
-        EnvironmentErrorKind::Unsupported
-    } else {
-        EnvironmentErrorKind::Io
+/// A Dockerfile given as a path must have been resolved to inline content
+/// earlier; none of the providers can read a path.
+pub fn sandbox_spec_for_environment(
+    settings: &RunEnvironmentSettings,
+    env: BTreeMap<String, String>,
+) -> crate::Result<SandboxSpec> {
+    // fabro-config rejects environments that set both image.docker and
+    // image.dockerfile. If both still arrive here, the image wins.
+    let source = match (&settings.image.docker, &settings.image.dockerfile) {
+        (Some(reference), _) => SandboxSource::Image {
+            reference: reference.clone(),
+        },
+        (None, Some(DockerfileSource::Inline(content))) => SandboxSource::Dockerfile {
+            content: content.clone(),
+        },
+        (None, Some(DockerfileSource::Path { path })) => {
+            return Err(crate::Error::message(format!(
+                "environment `{}` names a Dockerfile path ({path}) that should have been \
+                 resolved to inline content before sandbox creation",
+                settings.id
+            )));
+        }
+        // A provider without images (a host-style plugin) manages a
+        // workspace directory of its own.
+        (None, None) => SandboxSource::HostDirectory,
     };
-    EnvironmentError::with_source(kind, message, error)
+    let network = match settings.network.mode {
+        EnvironmentNetworkMode::Block => NetworkPolicy::Block,
+        EnvironmentNetworkMode::AllowAll => NetworkPolicy::AllowAll,
+        EnvironmentNetworkMode::CidrAllowList => NetworkPolicy::CidrAllowList {
+            cidrs: settings.network.allow.clone(),
+        },
+    };
+    let mut spec = SandboxSpec::new(source).network(network);
+    // The environment's labels; fabro's ownership labels are stamped by the
+    // ownership scope the provider is connected through.
+    for (key, value) in &settings.labels {
+        spec = spec.label(key, value);
+    }
+    for (key, value) in env {
+        spec = spec.env_var(key, value);
+    }
+    let mut resources = Resources::default();
+    resources.cpu_cores = settings
+        .resources
+        .cpu
+        .and_then(|cpu| u32::try_from(cpu).ok());
+    resources.memory_mb = settings
+        .resources
+        .memory
+        .map(|size| mebibytes(size.as_bytes()));
+    resources.disk_mb = settings
+        .resources
+        .disk
+        .map(|size| mebibytes(size.as_bytes()));
+    let mut timers = LifecycleTimers::default();
+    timers.auto_stop_after_idle = settings
+        .lifecycle
+        .auto_stop
+        .map(|duration| duration.as_std());
+    Ok(spec.resources(resources).timers(timers))
+}
+
+/// Whole mebibytes, rounded up: the unit the driver sizes resources in.
+fn mebibytes(bytes: u64) -> u64 {
+    bytes.div_ceil(1024 * 1024)
+}
+
+/// The provider-side name of a run's sandbox.
+pub(crate) fn run_name(run_id: &RunId) -> String {
+    format!("fabro-run-{run_id}")
+}
+
+/// The environment's default `allow_all` means "unrestricted", which a
+/// provider without network controls already is; asking such a provider
+/// for it explicitly would be rejected. An explicit restriction is still
+/// requested, and refused by the provider when it cannot honor it.
+pub(crate) fn supported_network(
+    requested: NetworkPolicy,
+    capabilities: &Capabilities,
+) -> NetworkPolicy {
+    match requested {
+        NetworkPolicy::AllowAll if !capabilities.network.allow_all => {
+            NetworkPolicy::ProviderDefault
+        }
+        other => other,
+    }
+}
+
+/// The environment's auto-stop is a request a backend without timers
+/// cannot take; such a provider gets no timers rather than a rejected spec.
+pub(crate) fn supported_timers(
+    requested: LifecycleTimers,
+    capabilities: &Capabilities,
+) -> LifecycleTimers {
+    if capabilities.lifecycle.timers {
+        requested
+    } else {
+        LifecycleTimers::default()
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use pebble_coding_agent::test_support::EnvironmentContract;
+    use std::collections::HashMap;
+    use std::time::Duration;
+
+    use fabro_types::SandboxProviderKind;
+    use fabro_types::settings::run::{
+        EnvironmentImageSettings, EnvironmentLifecycleSettings, EnvironmentNetworkSettings,
+        EnvironmentResourcesSettings,
+    };
+    use fabro_types::settings::{Duration as SettingsDuration, Size};
 
     use super::*;
-    use crate::local_sandbox;
 
-    /// The run sandbox over the driver's Host provider, in a directory that
-    /// goes away with the test.
-    async fn host_environment() -> (tempfile::TempDir, RunSandbox) {
-        let directory = tempfile::tempdir().expect("a temporary directory");
-        let sandbox = local_sandbox(directory.path().to_path_buf())
-            .await
-            .expect("a local sandbox");
-        (directory, sandbox)
-    }
-
-    #[tokio::test]
-    async fn host_files_satisfy_pebbles_environment_contract() {
-        let (_directory, sandbox) = host_environment().await;
-        EnvironmentContract::new(&sandbox, "contract")
-            .verify_files()
-            .await
-            .expect("file contract");
-    }
-
-    #[tokio::test]
-    async fn host_search_satisfies_pebbles_environment_contract() {
-        let (_directory, sandbox) = host_environment().await;
-        EnvironmentContract::new(&sandbox, "contract")
-            .verify_search()
-            .await
-            .expect("search contract");
-    }
-
-    #[tokio::test]
-    async fn host_commands_satisfy_pebbles_environment_contract() {
-        let (_directory, sandbox) = host_environment().await;
-        EnvironmentContract::new(&sandbox, "contract")
-            .verify_commands()
-            .await
-            .expect("command contract");
-    }
-
-    #[tokio::test]
-    async fn a_directory_listing_is_in_tree_order() {
-        let (directory, sandbox) = host_environment().await;
-        for name in ["foo/x.txt", "foo-bar/y.txt", "foo.txt"] {
-            Environment::write_file(&sandbox, name, "content")
-                .await
-                .expect("fixture");
+    fn environment(kind: &str) -> RunEnvironmentSettings {
+        RunEnvironmentSettings {
+            id:        kind.to_string(),
+            provider:  SandboxProviderKind::try_new(kind).unwrap(),
+            cwd:       None,
+            image:     EnvironmentImageSettings::default(),
+            resources: EnvironmentResourcesSettings::default(),
+            network:   EnvironmentNetworkSettings::default(),
+            lifecycle: EnvironmentLifecycleSettings::default(),
+            labels:    HashMap::from([("team".to_string(), "platform".to_string())]),
+            env:       HashMap::new(),
         }
-        let names: Vec<String> = Environment::list_directory(&sandbox, ".", Some(2))
-            .await
-            .expect("listing")
-            .into_iter()
-            .map(|entry| entry.name)
-            .collect();
-        assert_eq!(names, [
-            "foo",
-            "foo/x.txt",
-            "foo-bar",
-            "foo-bar/y.txt",
-            "foo.txt"
-        ]);
-        drop(directory);
     }
 
     #[test]
-    fn a_path_spelled_two_ways_is_one_path() {
-        assert_eq!(normalize("/work//a/./b.txt"), "/work/a/b.txt");
-        assert_eq!(parent_directory("/work/a/b.txt"), Some("/work/a"));
-        assert_eq!(parent_directory("/b.txt"), Some("/"));
-        assert_eq!(parent_directory("b.txt"), None);
+    fn an_environment_without_an_image_asks_for_a_managed_directory() {
+        let spec = sandbox_spec_for_environment(
+            &environment("host"),
+            BTreeMap::from([("FOO".to_string(), "bar".to_string())]),
+        )
+        .unwrap();
+        assert!(matches!(spec.source, SandboxSource::HostDirectory));
+        assert!(spec.working_directory.is_none());
+        assert!(
+            spec.name.is_none(),
+            "the run names the sandbox, not the environment"
+        );
+        assert_eq!(spec.env.get("FOO").map(String::as_str), Some("bar"));
+        assert_eq!(
+            spec.labels.get("team").map(String::as_str),
+            Some("platform")
+        );
+        assert!(
+            !spec.labels.contains_key("sh.fabro.managed"),
+            "ownership labels come from the scope, not the environment"
+        );
+        assert!(matches!(spec.network, NetworkPolicy::AllowAll));
+        assert_eq!(spec.resources, Resources::default());
+        assert_eq!(spec.timers, LifecycleTimers::default());
+    }
+
+    #[test]
+    fn an_environment_with_an_image_maps_resources_network_and_lifecycle() {
+        let mut settings = environment("e2b");
+        settings.image.docker = Some("ubuntu:24.04".to_string());
+        settings.resources.cpu = Some(2);
+        settings.resources.memory = Some(Size::from_bytes(4_000_000_000));
+        settings.network.mode = EnvironmentNetworkMode::Block;
+        settings.lifecycle.auto_stop = Some(SettingsDuration::from_std(Duration::from_mins(45)));
+
+        let spec = sandbox_spec_for_environment(&settings, BTreeMap::new()).unwrap();
+        assert!(matches!(
+            &spec.source,
+            SandboxSource::Image { reference } if reference == "ubuntu:24.04"
+        ));
+        assert_eq!(spec.resources.cpu_cores, Some(2));
+        assert_eq!(spec.resources.memory_mb, Some(3815));
+        assert!(matches!(spec.network, NetworkPolicy::Block));
+        assert_eq!(
+            spec.timers.auto_stop_after_idle,
+            Some(Duration::from_mins(45))
+        );
+    }
+
+    #[test]
+    fn the_clone_request_carries_the_environments_policy() {
+        let clone = CloneRequest::from_settings(&RunCloneSettings::default());
+        assert_eq!(clone.depth, Some(100));
+        assert!(!clone.skip);
+
+        let clone = CloneRequest::from_settings(&RunCloneSettings {
+            enabled: false,
+            depth:   0,
+        });
+        assert_eq!(clone.depth, None);
+        assert!(clone.skip);
+        assert!(CloneRequest::none().skip);
+    }
+
+    #[test]
+    fn an_inline_dockerfile_becomes_the_source_and_a_path_is_rejected() {
+        let mut settings = environment("daytona");
+        settings.image.dockerfile = Some(DockerfileSource::Inline("FROM ubuntu".to_string()));
+        let spec = sandbox_spec_for_environment(&settings, BTreeMap::new()).unwrap();
+        assert!(matches!(
+            spec.source,
+            SandboxSource::Dockerfile { content } if content == "FROM ubuntu"
+        ));
+
+        settings.image.dockerfile = Some(DockerfileSource::Path {
+            path: "Dockerfile".to_string(),
+        });
+        let error = sandbox_spec_for_environment(&settings, BTreeMap::new()).unwrap_err();
+        assert!(error.to_string().contains("Dockerfile path"), "{error}");
+    }
+
+    #[test]
+    fn allow_all_falls_back_to_the_provider_default_without_network_control() {
+        let none = Capabilities::minimal(sandbox_driver::Isolation::None);
+        assert!(matches!(
+            supported_network(NetworkPolicy::AllowAll, &none),
+            NetworkPolicy::ProviderDefault
+        ));
+        assert!(matches!(
+            supported_network(NetworkPolicy::Block, &none),
+            NetworkPolicy::Block
+        ));
+        let mut full = Capabilities::minimal(sandbox_driver::Isolation::Container);
+        full.network.allow_all = true;
+        assert!(matches!(
+            supported_network(NetworkPolicy::AllowAll, &full),
+            NetworkPolicy::AllowAll
+        ));
+    }
+
+    #[test]
+    fn timers_are_dropped_for_a_provider_without_them() {
+        let mut requested = LifecycleTimers::default();
+        requested.auto_stop_after_idle = Some(Duration::from_mins(45));
+        let none = Capabilities::minimal(sandbox_driver::Isolation::None);
+        assert_eq!(
+            supported_timers(requested, &none),
+            LifecycleTimers::default()
+        );
+        let mut with_timers = Capabilities::minimal(sandbox_driver::Isolation::Container);
+        with_timers.lifecycle.timers = true;
+        assert_eq!(supported_timers(requested, &with_timers), requested);
     }
 }

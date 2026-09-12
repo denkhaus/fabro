@@ -1,30 +1,27 @@
+pub mod environment;
 pub mod error;
-pub mod options;
 pub mod provider;
 pub mod sandbox;
 pub mod sandbox_spec;
 
 mod clone_source;
 
-mod git_retry;
+mod git_policy;
 
 mod managed_labels;
 
-mod push_credentials;
-
-pub mod redact;
+mod credentials;
 
 pub mod details;
 
 pub mod driver;
 pub mod driver_sandbox;
-pub mod environment;
 
 pub mod exec;
+mod pebble_environment;
 
 pub mod reconnect;
-
-pub mod terminal;
+mod redact;
 
 mod clone;
 pub mod docker;
@@ -38,40 +35,37 @@ pub mod test_support;
 pub use details::sandbox_details;
 pub use docker::check_docker_daemon;
 pub use driver::{DaytonaCredentials, ProviderAccess};
-pub use driver_sandbox::{RunSandbox, local_sandbox};
+pub use driver_sandbox::RunSandbox;
+pub use environment::{CloneRequest, sandbox_spec_for_environment};
 pub use error::{Error, Result, default_redacted_output_tail, display_for_log};
-pub use exec::{ExplicitEnvPolicy, SandboxExec, is_sensitive_env_var};
+pub use exec::{
+    DEFAULT_RETAINED_OUTPUT_BYTES, DEFAULT_STOP_GRACE, ExecResultExt, SandboxExec,
+    command_termination, program_exit_code,
+};
 pub use fabro_github::token_source::{
     InstallationTokenSource, ResolvedToken, TokenProvenance, TokenSnapshot,
 };
 pub use fabro_types::{RunSandboxInstance, SandboxProviderKind};
-pub use git_retry::{
-    CredentialContext, GitRetryReason, RetryPlan, classify_failure, retry_git_operation,
+pub use git_policy::{
+    GitRetryReason, checkpoint_push_policy, publish_push_policy, repository_probe_policy,
+    retry_git_messages, transient_git_failure,
 };
-pub use options::{
-    SandboxOptions, local_working_directory_from_environment, options_from_environment,
-    unresolved_env,
-};
-pub use provider::driver::DriverInventoryProvider;
-pub use provider::{
-    LocalSandboxProvider, SandboxLookupError, SandboxProvider, SandboxProviderRegistry,
-};
-pub use provider_sandbox::{attach_provider_sandbox, provider_sandbox};
-pub use push_credentials::RefreshErrorKind;
-pub use reconnect::{
-    reconnect, reconnect_driver_for_run, reconnect_for_run, reconnect_for_run_with_events,
-};
+pub use provider::{SandboxInventory, SandboxLookupError};
+pub use provider_sandbox::{attach_provider_sandbox, local_sandbox, provider_sandbox};
+pub use reconnect::{open_terminal_for_run, reconnect_for_run};
 pub use redact::SecretRedactor;
 pub use sandbox::{
-    CommandOutputCallback, DEFAULT_EXEC_OUTPUT_TAIL_BYTES, ExecResult, ExecStreamingRequest,
-    ExecStreamingResult, GitRunInfo, GitSetupIntent, OutputCaptureStats, PushAttempt, PushError,
-    PushReport, RefreshOutcome, RemoteCredentialAction, SandboxFile, SandboxWorkspaceLayout,
-    StderrCollector, StdioProcess, StdioProcessHandle, StdioProcessTermination,
-    format_lines_numbered, redacted_output_tail, setup_git, shell_quote,
+    DEFAULT_EXEC_OUTPUT_TAIL_BYTES, GitRunInfo, GitSetupIntent, PushAttempt, PushError, PushReport,
+    SandboxFile, SandboxWorkspaceLayout, redacted_output_tail, setup_git,
 };
-/// Driver types a run sandbox's file and search operations speak, and the
-/// network policy a [`SandboxOptions`] asks for, re-exported so consumers
-/// need no direct driver dependency.
-pub use sandbox_driver::{DirEntry, FileKind, GrepMatch, GrepOptions, NetworkPolicy, WalkOptions};
-pub use sandbox_spec::{ProviderSandboxSpec, SandboxSpec};
-pub use terminal::{DriverTerminalSession, TerminalSession, TerminalSize, open_terminal_for_run};
+/// Driver types a run sandbox speaks: what a command is and how it ended,
+/// what the file and search operations return, and what an environment
+/// asks of a sandbox. Re-exported so consumers need no direct driver
+/// dependency.
+pub use sandbox_driver::{
+    CaptureStats, DirEntry, ExecControls, ExecFailure, ExecResult, ExecSpec, ExecStreamingResult,
+    FileKind, GitRetryPolicy, GrepMatch, GrepOptions, LifecycleTimers, NetworkPolicy, OutputSink,
+    OutputStream, PtySession, PtySize, Resources, SandboxSource, SandboxSpec as DriverSpec,
+    StderrTail, StdioProcess, StdioProcessHandle, Termination, TransportError, WalkOptions,
+};
+pub use sandbox_spec::SandboxSpec;

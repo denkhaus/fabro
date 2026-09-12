@@ -20,7 +20,7 @@ use std::future::Future;
 use std::num::NonZeroU64;
 use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use axum::Json;
 use axum::extract::{Path, Query, State};
@@ -35,13 +35,17 @@ use fabro_api::types::{
     RunFilesMetaToSha,
 };
 use fabro_sandbox::reconnect::reconnect_for_run;
-use fabro_sandbox::{RunSandbox, shell_quote};
+use fabro_sandbox::{RunSandbox, Termination};
 use fabro_types::RunId;
+use fabro_util::shell;
 use fabro_workflow::sandbox_git::{
     DiffError, DiffNumstat, RawDiffEntry, SubmoduleChange, SymlinkChange, list_changed_files_raw,
     list_diff_numstat, stream_blob_metadata, stream_blobs,
 };
 use futures_util::FutureExt;
+use sandbox_driver::{
+    Git as _, GitCommit, GitDiffOptions, GitFacet, GitLogOptions, GitRevisionRange,
+};
 use serde::Deserialize;
 use tokio::sync::{Mutex, watch};
 
@@ -59,6 +63,7 @@ pub(crate) const AGGREGATE_BYTES_CAP: u64 = 5 * 1024 * 1024;
 pub(crate) const FILE_COUNT_CAP: usize = 200;
 /// Sandbox git timeout. Matches Unit 3 helpers (10 s).
 const SANDBOX_GIT_TIMEOUT_MS: u64 = 10_000;
+const SANDBOX_GIT_TIMEOUT: Duration = Duration::from_millis(SANDBOX_GIT_TIMEOUT_MS);
 
 /// Below this SHA count the phase-1 `cat-file --batch-check` pre-filter is
 /// skipped — its ~100 ms round-trip dominates for small diffs, and phase-2
@@ -332,8 +337,7 @@ async fn materialize_run_commits(
         .ok_or_else(|| ApiError::new(StatusCode::CONFLICT, "Run has no base SHA."))?;
     let sandbox = reconnect_run_sandbox(state, run_id, &projection).await?;
     let (head_sha, _) = resolve_ref_sha_and_time(&sandbox, "HEAD").await?;
-    let output = git_log_commits(&sandbox, &base_sha, &head_sha, limit + 1).await?;
-    let mut commits = parse_git_log_commits(&output)?;
+    let mut commits = git_log_commits(&sandbox, &base_sha, &head_sha, limit + 1).await?;
     let truncated = commits.len() > usize::try_from(limit).unwrap_or(usize::MAX);
     commits.truncate(usize::try_from(limit).unwrap_or(usize::MAX));
     let total_returned = u64::try_from(commits.len()).unwrap_or(u64::MAX);
@@ -356,57 +360,26 @@ async fn git_log_commits(
     base_sha: &str,
     head_sha: &str,
     limit: u64,
-) -> std::result::Result<String, ApiError> {
-    let base_q = shell_quote(base_sha);
-    let head_q = shell_quote(head_sha);
-    let format_q =
-        shell_quote("%H%x1f%T%x1f%P%x1f%an%x1f%ae%x1f%aI%x1f%cn%x1f%ce%x1f%cI%x1f%B%x1e");
-    sandbox_git_stdout(
-        sandbox,
-        &format!(
-            "git -c maintenance.auto=0 -c gc.auto=0 -c core.hooksPath=/dev/null -c core.fsmonitor=false -c core.quotePath=false log --first-parent --reverse --max-count={limit} --format={format_q} {base_q}..{head_q}"
-        ),
-        "git log",
-    )
-    .await
+) -> std::result::Result<Vec<RunCommit>, ApiError> {
+    let git = sandbox_git(sandbox)?;
+    let options = GitLogOptions::new(GitRevisionRange::new(base_sha).to(head_sha))
+        .first_parent()
+        .reverse()
+        .max_count(limit)
+        .timeout(SANDBOX_GIT_TIMEOUT);
+    let commits = git
+        .log(sandbox.working_directory(), &options)
+        .await
+        .map_err(|error| sandbox_git_error("git log", &error))?;
+    commits.iter().map(run_commit).collect()
 }
 
-fn parse_git_log_commits(stdout: &str) -> std::result::Result<Vec<RunCommit>, ApiError> {
-    stdout
-        .split('\x1e')
-        .filter_map(|record| {
-            let record = record.trim_matches('\n');
-            (!record.is_empty()).then_some(record)
-        })
-        .map(parse_git_log_commit)
-        .collect()
-}
-
-fn parse_git_log_commit(record: &str) -> std::result::Result<RunCommit, ApiError> {
-    let mut fields = record.splitn(10, '\x1f');
-    let sha = fields.next().unwrap_or_default();
-    let tree_sha = fields.next().unwrap_or_default();
-    let parents = fields.next().unwrap_or_default();
-    let author_name = fields.next().unwrap_or_default();
-    let author_email = fields.next().unwrap_or_default();
-    let author_date = fields.next().unwrap_or_default();
-    let committer_name = fields.next().unwrap_or_default();
-    let committer_email = fields.next().unwrap_or_default();
-    let committer_date = fields.next().unwrap_or_default();
-    let message = fields
-        .next()
-        .unwrap_or_default()
-        .trim_end_matches('\n')
-        .to_string();
-    if sha.is_empty() {
-        return Err(ApiError::bad_request(
-            "Malformed git log output: missing commit SHA.",
-        ));
-    }
-
+fn run_commit(commit: &GitCommit) -> std::result::Result<RunCommit, ApiError> {
+    let message = commit.message.trim_end_matches('\n').to_string();
     let (subject, body) = split_commit_message(&message);
-    let parents = parents
-        .split_whitespace()
+    let parents = commit
+        .parents
+        .iter()
         .map(|parent| {
             Ok(RunCommitParent {
                 sha:       sha_newtype::<RunCommitParentSha>(parent)?,
@@ -416,27 +389,27 @@ fn parse_git_log_commit(record: &str) -> std::result::Result<RunCommit, ApiError
         .collect::<std::result::Result<Vec<_>, ApiError>>()?;
 
     Ok(RunCommit {
-        sha: sha_newtype::<RunCommitSha>(sha)?,
-        short_sha: short_sha_newtype::<RunCommitShortSha>(sha)?,
+        sha: sha_newtype::<RunCommitSha>(&commit.sha)?,
+        short_sha: short_sha_newtype::<RunCommitShortSha>(&commit.sha)?,
         parents,
         author: RunCommitPerson {
-            name:  author_name.to_string(),
-            email: author_email.to_string(),
-            date:  parse_git_date(author_date),
+            name:  commit.author.name.clone(),
+            email: commit.author.email.clone(),
+            date:  parse_git_date(&commit.author.date),
         },
         committer: RunCommitPerson {
-            name:  committer_name.to_string(),
-            email: committer_email.to_string(),
-            date:  parse_git_date(committer_date),
+            name:  commit.committer.name.clone(),
+            email: commit.committer.email.clone(),
+            date:  parse_git_date(&commit.committer.date),
         },
         subject,
         body,
         message: message.clone(),
         trailers: parse_commit_trailers(&message),
-        tree_sha: if tree_sha.is_empty() {
+        tree_sha: if commit.tree.is_empty() {
             None
         } else {
-            Some(sha_newtype::<RunCommitTreeSha>(tree_sha)?)
+            Some(sha_newtype::<RunCommitTreeSha>(&commit.tree)?)
         },
     })
 }
@@ -732,15 +705,15 @@ async fn materialize_working_tree_sandbox_path(
     start: Instant,
 ) -> ListRunFilesResult {
     let (to_sha, to_sha_committed_at) = resolve_head_sha_and_time(sandbox).await?;
-    let base_q = shell_quote(base_ref);
-    let patch = sandbox_git_stdout(
-        sandbox,
-        &format!(
-            "git -c maintenance.auto=0 -c gc.auto=0 -c core.hooksPath=/dev/null -c core.fsmonitor=false -c core.quotePath=false diff --patch --find-renames=50% {base_q}"
-        ),
-        "git diff --patch",
-    )
-    .await?;
+    let git = sandbox_git(sandbox)?;
+    // No head: the driver diffs `base_ref` against the working tree.
+    let options = GitDiffOptions::new(GitRevisionRange::new(base_ref))
+        .find_renames(50)
+        .timeout(SANDBOX_GIT_TIMEOUT);
+    let patch = git
+        .diff_patch(sandbox.working_directory(), &options)
+        .await
+        .map_err(|error| sandbox_git_error("git diff --patch", &error))?;
 
     let entries: Vec<String> = split_patch_sections(&patch)
         .into_iter()
@@ -762,22 +735,25 @@ async fn materialize_working_tree_sandbox_path(
     ))
 }
 
-async fn sandbox_git_stdout(
-    sandbox: &RunSandbox,
-    command: &str,
-    op: &str,
-) -> std::result::Result<String, ApiError> {
-    let res = sandbox
-        .exec_command(command, SANDBOX_GIT_TIMEOUT_MS, None, None, None)
-        .await
-        .map_err(|err| ApiError::new(StatusCode::SERVICE_UNAVAILABLE, err.display_with_causes()))?;
-    if res.is_timed_out() {
-        return Err(transient_503(op, "command timed out"));
+/// The sandbox's git facet; a provider without git cannot serve files.
+fn sandbox_git(sandbox: &RunSandbox) -> std::result::Result<GitFacet<'_>, ApiError> {
+    sandbox
+        .git()
+        .map_err(|err| ApiError::new(StatusCode::SERVICE_UNAVAILABLE, err.display_with_causes()))
+}
+
+/// A driver git failure as the endpoint's transient 503, so the client
+/// retries; a command that timed out says so.
+fn sandbox_git_error(op: &str, error: &sandbox_driver::Error) -> ApiError {
+    let timed_out = matches!(
+        error,
+        sandbox_driver::Error::Git(failure)
+            if failure.output().is_some_and(|output| output.termination() == Termination::TimedOut)
+    );
+    if timed_out {
+        return transient_503(op, "command timed out");
     }
-    if !res.is_success() {
-        return Err(transient_503(op, res.stderr.trim()));
-    }
-    Ok(res.stdout)
+    transient_503(op, &fabro_sandbox::display_for_log(error))
 }
 
 /// Build the degraded response from the stored terminal diff patch.
@@ -1204,7 +1180,7 @@ async fn reconnect_run_sandbox(
         .provider_access()
         .await
         .map_err(|err| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string()))?;
-    let sandbox = reconnect_for_run(&record, &access, Some(*run_id))
+    let sandbox = reconnect_for_run(&record, &access, Some(*run_id), None)
         .await
         .map_err(|err| ApiError::new(StatusCode::CONFLICT, err.to_string()))?;
     sandbox
@@ -1228,7 +1204,7 @@ async fn resolve_ref_sha_and_time(
     sandbox: &RunSandbox,
     git_ref: &str,
 ) -> std::result::Result<(String, Option<chrono::DateTime<chrono::Utc>>), ApiError> {
-    let ref_q = shell_quote(git_ref);
+    let ref_q = shell::shell_quote(git_ref);
     let res = sandbox
         .exec_command(
             &format!("git -c core.hooksPath=/dev/null show -s --format=%H\\ %cI {ref_q}"),
@@ -1239,13 +1215,13 @@ async fn resolve_ref_sha_and_time(
         )
         .await
         .map_err(|err| ApiError::new(StatusCode::SERVICE_UNAVAILABLE, err.display_with_causes()))?;
-    if !res.is_success() {
+    if !res.success() {
         return Err(ApiError::new(
             StatusCode::SERVICE_UNAVAILABLE,
             "Failed to resolve sandbox git ref.",
         ));
     }
-    parse_head_show_output(&res.stdout).ok_or_else(|| {
+    parse_head_show_output(&res.stdout_lossy()).ok_or_else(|| {
         ApiError::new(
             StatusCode::SERVICE_UNAVAILABLE,
             "Sandbox HEAD resolved to an empty value.",
@@ -1703,7 +1679,9 @@ fn count_flags(data: &[FileDiff]) -> (u64, u64, u64, u64) {
 mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
 
-    use fabro_types::{CommandTermination, RunId, test_support};
+    use fabro_sandbox::Termination;
+    use fabro_sandbox::test_support::exec_result;
+    use fabro_types::{RunId, test_support};
     use tokio::time::{Duration, sleep};
 
     use super::*;
@@ -1749,7 +1727,7 @@ mod tests {
         sandbox.respond_with(|command| {
             let stdout = if command.contains(" show -s --format=") {
                 "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb 2026-05-09T17:12:40Z\n".to_string()
-            } else if command.contains(" diff --patch --find-renames=50% ") {
+            } else if command.contains("'diff'") && command.contains("'--find-renames=50%'") {
                 "\
 diff --git a/src/live.rs b/src/live.rs
 --- a/src/live.rs
@@ -1762,13 +1740,7 @@ diff --git a/src/live.rs b/src/live.rs
             } else {
                 return None;
             };
-            Some(fabro_sandbox::ExecResult {
-                stdout,
-                stderr: String::new(),
-                exit_code: Some(0),
-                termination: CommandTermination::Exited,
-                duration_ms: 0,
-            })
+            Some(exec_result(&stdout, "", Some(0), Termination::Exited, 0))
         });
 
         let body = materialize_working_tree_sandbox_path(
@@ -1784,15 +1756,21 @@ diff --git a/src/live.rs b/src/live.rs
         assert_eq!(body.meta.source, RunFilesMetaSource::Sandbox);
         assert_eq!(body.meta.scope, RunFilesMetaScope::Uncommitted);
         assert_eq!(body.data.len(), 1);
-        let commands = sandbox.captured_commands();
+        let commands = sandbox.driver().scripted_exec().commands();
         assert_eq!(commands.len(), 2);
         assert!(commands[0].contains(" show -s --format="));
-        assert!(commands[1].contains(" diff --patch --find-renames=50% HEAD"));
+        assert!(
+            commands[1].contains("'diff'")
+                && commands[1].contains("'--find-renames=50%'")
+                && commands[1].contains("'HEAD'"),
+            "{}",
+            commands[1]
+        );
         assert!(!commands.iter().any(|command| command.contains("ls-files")));
     }
 
-    #[test]
-    fn parse_git_log_commits_keeps_external_and_fabro_metadata() {
+    #[tokio::test]
+    async fn git_log_commits_keeps_external_and_fabro_metadata() {
         let stdout = concat!(
             "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\x1f",
             "cccccccccccccccccccccccccccccccccccccccc\x1f",
@@ -1807,8 +1785,26 @@ diff --git a/src/live.rs b/src/live.rs
             "Alice\x1falice@example.com\x1f2026-05-09T18:00:00Z\x1f",
             "external tool update\n\nLonger body.\n\x1e",
         );
+        let sandbox = fabro_sandbox::test_support::MockSandbox::default();
+        sandbox
+            .driver()
+            .scripted_exec()
+            .push_result(fabro_sandbox::test_support::exec_result(
+                stdout,
+                "",
+                Some(0),
+                Termination::Exited,
+                1,
+            ));
 
-        let commits = parse_git_log_commits(stdout).expect("git log should parse");
+        let commits = git_log_commits(
+            &sandbox.sandbox(),
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "dddddddddddddddddddddddddddddddddddddddd",
+            50,
+        )
+        .await
+        .expect("git log should parse");
 
         assert_eq!(commits.len(), 2);
         assert_eq!(commits[0].subject, "fabro(run_1): implement (succeeded)");
@@ -1821,6 +1817,11 @@ diff --git a/src/live.rs b/src/live.rs
         assert_eq!(commits[1].subject, "external tool update");
         assert_eq!(commits[1].body.as_deref(), Some("Longer body."));
         assert!(commits[1].trailers.is_empty());
+        let command = &sandbox.driver().scripted_exec().commands()[0];
+        assert!(
+            command.contains("'--first-parent'") && command.contains("'--max-count=50'"),
+            "{command}"
+        );
     }
 
     #[tokio::test]
@@ -2873,23 +2874,11 @@ rename to .env.production
     }
 
     fn ok_exec(stdout: &str) -> ExecResult {
-        ExecResult {
-            stdout:      stdout.to_string(),
-            stderr:      String::new(),
-            exit_code:   Some(0),
-            termination: CommandTermination::Exited,
-            duration_ms: 0,
-        }
+        exec_result(stdout, "", Some(0), Termination::Exited, 0)
     }
 
     fn fail_exec(stderr: &str) -> ExecResult {
-        ExecResult {
-            stdout:      String::new(),
-            stderr:      stderr.to_string(),
-            exit_code:   Some(1),
-            termination: CommandTermination::Exited,
-            duration_ms: 0,
-        }
+        exec_result("", stderr, Some(1), Termination::Exited, 0)
     }
 
     #[tokio::test]

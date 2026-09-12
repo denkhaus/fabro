@@ -13,14 +13,7 @@
  */
 
 
-// May contain unused imports in some cases
-// @ts-ignore
-import type { SandboxNetworkPolicy } from './sandbox-network-policy';
 
-/**
- * Provider-neutral public-network policy for sandbox egress and ingress.
- */
-export interface SandboxNetwork {
-    'egress': SandboxNetworkPolicy;
-    'ingress': SandboxNetworkPolicy;
+export interface SandboxNetworkPolicyOneOf1DomainAllowList {
+    'domains': Array<string>;
 }

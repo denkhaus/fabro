@@ -132,7 +132,7 @@ pub use run_event::{
     AgentEventProps, AgentMcpToolSummary, AgentToolsAvailableProps, CODING_EVENT_NAMES, EventBody,
     FailoverProps, InterviewOption, MetadataSnapshotFailureKind, MetadataSnapshotPhase, RunEvent,
     RunNoticeCode, RunNoticeLevel, RunPairEndedReason, RunPairFailedReason, RunRunnableSource,
-    SessionCapability, coding_event_name, is_coding_event_name,
+    SessionCapability, coding_event_name, is_coding_event_name, sandbox_driver_event_name,
 };
 pub use run_failure::RunFailure;
 pub use run_id::{RunId, fixtures};
@@ -158,20 +158,14 @@ pub use run_summary::{
 pub use run_title::{
     MAX_RUN_TITLE_CHARS, RunTitleError, infer_run_title, normalize_explicit_run_title,
 };
-pub use sandbox_details::{
-    SandboxDetails, SandboxNetwork, SandboxNetworkPolicy, SandboxNetworkPolicyMode,
-    SandboxResources, SandboxState, SandboxTimestamps,
-};
+pub use sandbox_details::SandboxDetails;
 pub use sandbox_inventory::{
     SandboxInfo, SandboxListMeta, SandboxListResponse, SandboxProviderLookupError,
 };
 pub use sandbox_provider::{
     BundledProvider, InvalidSandboxProviderKind, SandboxProviderKind, WorkspacePolicy,
 };
-pub use sandbox_services::{
-    SandboxService, SandboxServiceDiscoverySource, SandboxServiceListMeta,
-    SandboxServiceListResponse,
-};
+pub use sandbox_services::{SandboxService, SandboxServiceListResponse};
 pub use secret::{OAuthConfig, OAuthCredential, OAuthTokens, SecretMetadata, SecretType};
 pub use session::{
     RunSessionMetadata, SessionDetail, SessionId, SessionStatus, SessionSummary, SessionTurn,

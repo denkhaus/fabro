@@ -24,7 +24,7 @@ use std::sync::Arc;
 
 use fabro_graphviz::graph::{AttrValue, Edge, Graph, Node};
 use fabro_sandbox::{
-    DaytonaCredentials, ProviderAccess, RunSandbox, SandboxOptions, SandboxProviderKind,
+    CloneRequest, DaytonaCredentials, ProviderAccess, RunSandbox, SandboxProviderKind,
     provider_sandbox,
 };
 use fabro_static::EnvVars;
@@ -43,6 +43,7 @@ use fabro_workflow::run_options::{GitCheckpointOptions, RunOptions};
 use fabro_workflow::runtime_store::RunStoreHandle;
 use fabro_workflow::test_support::{WorkflowRunner, test_store_dir};
 use object_store::local::LocalFileSystem;
+use sandbox_driver::{LifecycleTimers, Resources, SandboxSource, SandboxSpec};
 use tokio_util::sync::CancellationToken;
 use ulid::Ulid;
 
@@ -192,16 +193,8 @@ fn daytona_access(credentials: DaytonaCredentials) -> ProviderAccess {
 }
 
 fn live_daytona_credentials() -> DaytonaCredentials {
-    DaytonaCredentials {
-        api_key:         std::env::var(EnvVars::DAYTONA_API_KEY)
-            .expect("DAYTONA_API_KEY must be set"),
-        api_url:         std::env::var(EnvVars::DAYTONA_API_URL)
-            .or_else(|_| std::env::var(EnvVars::DAYTONA_SERVER_URL))
-            .ok(),
-        organization_id: std::env::var(EnvVars::DAYTONA_ORGANIZATION_ID).ok(),
-        target:          None,
-        http_client:     None,
-    }
+    let api_key = std::env::var(EnvVars::DAYTONA_API_KEY).expect("DAYTONA_API_KEY must be set");
+    DaytonaCredentials::from_api_key(api_key, |name| std::env::var(name).ok())
 }
 
 async fn create_env() -> RunSandbox {
@@ -223,12 +216,9 @@ async fn create_env_with_github_app(
     provider_sandbox(
         SandboxProviderKind::DAYTONA,
         &daytona_access(live_daytona_credentials()),
-        SandboxOptions::default(),
+        SandboxSpec::new(SandboxSource::HostDirectory),
+        &CloneRequest::default(),
         github_app.as_ref(),
-        None,
-        None,
-        None,
-        None,
         None,
     )
     .await
@@ -285,9 +275,9 @@ async fn daytona_exec_command() {
         .await
         .unwrap();
     assert_eq!(result.exit_code, Some(0));
-    assert!(result.stdout.contains("hello"));
+    assert!(result.stdout_lossy().contains("hello"));
 
-    env.cleanup().await.unwrap();
+    env.delete().await.unwrap();
 }
 
 #[fabro_macros::e2e_test(live("DAYTONA_API_KEY"), live("GITHUB_APP_PRIVATE_KEY"))]
@@ -301,9 +291,9 @@ async fn daytona_exec_command_with_pipe() {
         .await
         .unwrap();
     assert_eq!(result.exit_code, Some(0));
-    assert!(result.stdout.trim().contains('2'));
+    assert!(result.stdout_lossy().trim().contains('2'));
 
-    env.cleanup().await.unwrap();
+    env.delete().await.unwrap();
 }
 
 #[fabro_macros::e2e_test(live("DAYTONA_API_KEY"), live("GITHUB_APP_PRIVATE_KEY"))]
@@ -328,10 +318,13 @@ async fn daytona_exec_command_cancelled() {
         .unwrap();
 
     assert_eq!(result.exit_code, None);
-    assert!(result.is_cancelled());
-    assert_eq!(result.stderr, "Command cancelled");
+    assert!(matches!(
+        result.termination,
+        fabro_sandbox::Termination::Cancelled | fabro_sandbox::Termination::Killed
+    ));
+    assert_eq!(result.stderr_lossy(), "Command cancelled");
 
-    env.cleanup().await.unwrap();
+    env.delete().await.unwrap();
 }
 
 #[fabro_macros::e2e_test(live("DAYTONA_API_KEY"), live("GITHUB_APP_PRIVATE_KEY"))]
@@ -361,10 +354,10 @@ async fn daytona_exec_command_local_timeout() {
         "Command stalled for longer than the local timeout mechanism"
     );
     assert_eq!(result.exit_code, None);
-    assert!(result.is_timed_out());
-    assert_eq!(result.stderr, "Command timed out locally");
+    assert_eq!(result.termination, fabro_sandbox::Termination::TimedOut);
+    assert_eq!(result.stderr_lossy(), "Command timed out locally");
 
-    env.cleanup().await.unwrap();
+    env.delete().await.unwrap();
 }
 
 #[fabro_macros::e2e_test(live("DAYTONA_API_KEY"), live("GITHUB_APP_PRIVATE_KEY"))]
@@ -389,7 +382,7 @@ async fn daytona_file_round_trip() {
     env.delete_file(test_path).await.unwrap();
     assert!(!env.file_exists(test_path).await.unwrap());
 
-    env.cleanup().await.unwrap();
+    env.delete().await.unwrap();
 }
 
 #[fabro_macros::e2e_test(live("DAYTONA_API_KEY"), live("GITHUB_APP_PRIVATE_KEY"))]
@@ -414,32 +407,30 @@ async fn daytona_full_lifecycle() {
     assert!(!entries.is_empty());
 
     // Cleanup (deletes sandbox)
-    env.cleanup().await.unwrap();
+    env.delete().await.unwrap();
 }
 
 #[fabro_macros::e2e_test(live("DAYTONA_API_KEY"), live("GITHUB_APP_PRIVATE_KEY"))]
 async fn daytona_snapshot_sandbox() {
-    let options = SandboxOptions {
-        auto_stop: Some(std::time::Duration::from_hours(1)),
-        dockerfile: Some(
-            "FROM ubuntu:22.04\nRUN apt-get update && apt-get install -y ripgrep".to_string(),
-        ),
-        cpu: Some(2),
-        memory_bytes: Some(4_000_000_000),
-        disk_bytes: Some(10_000_000_000),
-        ..SandboxOptions::default()
-    };
+    let mut resources = Resources::default();
+    resources.cpu_cores = Some(2);
+    resources.memory_mb = Some(4096);
+    resources.disk_mb = Some(10_240);
+    let mut timers = LifecycleTimers::default();
+    timers.auto_stop_after_idle = Some(std::time::Duration::from_hours(1));
+    let spec = SandboxSpec::new(SandboxSource::Dockerfile {
+        content: "FROM ubuntu:22.04\nRUN apt-get update && apt-get install -y ripgrep".to_string(),
+    })
+    .resources(resources)
+    .timers(timers);
 
     let creds = load_github_app_credentials();
     let env = provider_sandbox(
         SandboxProviderKind::DAYTONA,
         &daytona_access(live_daytona_credentials()),
-        options,
+        spec,
+        &CloneRequest::default(),
         Some(&creds),
-        None,
-        None,
-        None,
-        None,
         None,
     )
     .await
@@ -452,9 +443,9 @@ async fn daytona_snapshot_sandbox() {
         .await
         .unwrap();
     assert_eq!(result.exit_code, Some(0));
-    assert!(result.stdout.contains("ripgrep"));
+    assert!(result.stdout_lossy().contains("ripgrep"));
 
-    env.cleanup().await.unwrap();
+    env.delete().await.unwrap();
 }
 
 #[fabro_macros::e2e_test(live("DAYTONA_API_KEY"), live("GITHUB_APP_PRIVATE_KEY"))]
@@ -506,7 +497,7 @@ async fn daytona_artifact_sync_uploads_and_rewrites_pointer() {
         remote_content.len()
     );
 
-    env.cleanup().await.unwrap();
+    env.delete().await.unwrap();
 }
 
 // ---------------------------------------------------------------------------
@@ -620,7 +611,7 @@ async fn daytona_pipeline_artifact_offload_and_sync() {
         "offloaded value should round-trip through the run store"
     );
 
-    env.cleanup().await.unwrap();
+    env.delete().await.unwrap();
 }
 
 // ---------------------------------------------------------------------------
@@ -667,9 +658,9 @@ async fn setup_daytona_git(sandbox: &RunSandbox) -> (RunId, String, String) {
         sha_result.exit_code,
         Some(0),
         "git rev-parse HEAD failed: {}",
-        sha_result.stderr
+        sha_result.stderr_lossy()
     );
-    let base_sha = sha_result.stdout.trim().to_string();
+    let base_sha = sha_result.stdout_lossy().trim().to_string();
 
     let run_id = RunId::from(Ulid::new());
     let branch_name = format!("fabro/run/{run_id}");
@@ -684,8 +675,8 @@ async fn setup_daytona_git(sandbox: &RunSandbox) -> (RunId, String, String) {
         Some(0),
         "git checkout -b failed (exit {:?}): stdout={} stderr={}",
         checkout_result.exit_code,
-        checkout_result.stdout,
-        checkout_result.stderr
+        checkout_result.stdout_lossy(),
+        checkout_result.stderr_lossy()
     );
 
     (run_id, base_sha, branch_name)
@@ -701,7 +692,7 @@ async fn daytona_git_checkpoint_remote_emits_events() {
     let git_check = env
         .exec_command("git --version", 10_000, None, None, None)
         .await;
-    if git_check.as_ref().map_or(true, |r| !r.is_success()) {
+    if git_check.as_ref().map_or(true, |r| !r.success()) {
         let install = env
             .exec_command(
                 "apt-get update -qq && apt-get install -y -qq git >/dev/null 2>&1",
@@ -716,7 +707,7 @@ async fn daytona_git_checkpoint_remote_emits_events() {
             install.exit_code,
             Some(0),
             "git install failed: {}",
-            install.stderr
+            install.stderr_lossy()
         );
     }
 
@@ -831,7 +822,7 @@ async fn daytona_git_checkpoint_remote_emits_events() {
         "checkpoint should have git_commit_sha"
     );
 
-    env.cleanup().await.unwrap();
+    env.delete().await.unwrap();
 }
 
 // ---------------------------------------------------------------------------
@@ -851,7 +842,7 @@ async fn daytona_git_checkpoint_with_shadow_branch() {
     let git_check = env
         .exec_command("git --version", 10_000, None, None, None)
         .await;
-    if git_check.as_ref().map_or(true, |r| !r.is_success()) {
+    if git_check.as_ref().map_or(true, |r| !r.success()) {
         let install = env
             .exec_command(
                 "apt-get update -qq && apt-get install -y -qq git >/dev/null 2>&1",
@@ -866,7 +857,7 @@ async fn daytona_git_checkpoint_with_shadow_branch() {
             install.exit_code,
             Some(0),
             "git install failed: {}",
-            install.stderr
+            install.stderr_lossy()
         );
     }
 
@@ -947,9 +938,9 @@ async fn daytona_git_checkpoint_with_shadow_branch() {
         )
         .await
         .expect("git show should succeed");
-    assert_eq!(run_json.exit_code, Some(0), "{}", run_json.stderr);
+    assert_eq!(run_json.exit_code, Some(0), "{}", run_json.stderr_lossy());
     let projection: fabro_store::RunProjection =
-        serde_json::from_slice(run_json.stdout.as_bytes()).expect("run.json should parse");
+        serde_json::from_slice(run_json.stdout_lossy().as_bytes()).expect("run.json should parse");
     let checkpoint = projection
         .current_checkpoint()
         .cloned()
@@ -969,7 +960,7 @@ async fn daytona_git_checkpoint_with_shadow_branch() {
         .await
         .expect("git log should succeed");
     assert_eq!(log_result.exit_code, Some(0));
-    let commit_msg = log_result.stdout.trim().to_string();
+    let commit_msg = log_result.stdout_lossy().trim().to_string();
     assert!(
         commit_msg.contains("Fabro-Checkpoint:"),
         "sandbox commit should have Fabro-Checkpoint trailer, got:\n{commit_msg}"
@@ -979,7 +970,7 @@ async fn daytona_git_checkpoint_with_shadow_branch() {
         "sandbox commit should have Fabro-Run trailer, got:\n{commit_msg}"
     );
 
-    env.cleanup().await.unwrap();
+    env.delete().await.unwrap();
 }
 
 // ---------------------------------------------------------------------------
@@ -1112,7 +1103,7 @@ async fn daytona_asset_collection() {
         "artifact scratch cache should not be created"
     );
 
-    env.cleanup().await.unwrap();
+    env.delete().await.unwrap();
 }
 
 #[fabro_macros::e2e_test(live("DAYTONA_API_KEY"), live("GITHUB_APP_PRIVATE_KEY"))]
@@ -1131,7 +1122,7 @@ async fn daytona_ssh_access() {
         "ssh_command should contain 'ssh': {ssh_command}",
     );
 
-    env.cleanup().await.unwrap();
+    env.delete().await.unwrap();
 }
 
 #[fabro_macros::e2e_test(live("DAYTONA_API_KEY"), live("GITHUB_APP_PRIVATE_KEY"))]
@@ -1173,7 +1164,7 @@ async fn daytona_clone_private_repo_with_github_app_iat() {
         "CLAUDE.md should exist after clone"
     );
     assert!(
-        result.stdout.contains("EXISTS"),
+        result.stdout_lossy().contains("EXISTS"),
         "clone should have populated the workspace"
     );
 
@@ -1181,7 +1172,7 @@ async fn daytona_clone_private_repo_with_github_app_iat() {
     let git_check = env
         .exec_command("git --version", 10_000, None, None, None)
         .await;
-    if git_check.as_ref().map_or(true, |r| !r.is_success()) {
+    if git_check.as_ref().map_or(true, |r| !r.success()) {
         let install = env
             .exec_command(
                 "apt-get update -qq && apt-get install -y -qq git >/dev/null 2>&1",
@@ -1196,7 +1187,7 @@ async fn daytona_clone_private_repo_with_github_app_iat() {
             install.exit_code,
             Some(0),
             "git install failed: {}",
-            install.stderr
+            install.stderr_lossy()
         );
     }
 
@@ -1207,12 +1198,12 @@ async fn daytona_clone_private_repo_with_github_app_iat() {
         .unwrap();
     assert_eq!(result.exit_code, Some(0));
     assert!(
-        result.stdout.contains("fabro-sh/fabro"),
+        result.stdout_lossy().contains("fabro-sh/fabro"),
         "origin should point to fabro-sh/fabro, got: {}",
-        result.stdout.trim()
+        result.stdout_lossy().trim()
     );
 
-    env.cleanup().await.unwrap();
+    env.delete().await.unwrap();
 }
 
 /// E2E: Verify that repos in an installed org get credentials (needed for
@@ -1284,7 +1275,7 @@ async fn daytona_git_push_run_branch_to_origin() {
     let git_check = env
         .exec_command("git --version", 10_000, None, None, None)
         .await;
-    if git_check.as_ref().map_or(true, |r| !r.is_success()) {
+    if git_check.as_ref().map_or(true, |r| !r.success()) {
         let install = env
             .exec_command(
                 "apt-get update -qq && apt-get install -y -qq git >/dev/null 2>&1",
@@ -1299,7 +1290,7 @@ async fn daytona_git_push_run_branch_to_origin() {
             install.exit_code,
             Some(0),
             "git install failed: {}",
-            install.stderr
+            install.stderr_lossy()
         );
     }
 
@@ -1376,12 +1367,12 @@ async fn daytona_git_push_run_branch_to_origin() {
         ls_result.exit_code,
         Some(0),
         "git ls-remote failed: {}",
-        ls_result.stdout
+        ls_result.stdout_lossy()
     );
     assert!(
-        ls_result.stdout.contains(&branch_name),
+        ls_result.stdout_lossy().contains(&branch_name),
         "run branch should exist on origin after push, got: {}",
-        ls_result.stdout.trim()
+        ls_result.stdout_lossy().trim()
     );
 
     // Clean up the remote branch
@@ -1390,15 +1381,15 @@ async fn daytona_git_push_run_branch_to_origin() {
         .exec_command(&delete_cmd, 30_000, None, None, None)
         .await;
     if let Ok(r) = &delete_result {
-        if !r.is_success() {
+        if !r.success() {
             eprintln!(
                 "Warning: failed to delete remote branch {branch_name}: {}",
-                r.stdout
+                r.stdout_lossy()
             );
         }
     }
 
-    env.cleanup().await.unwrap();
+    env.delete().await.unwrap();
 }
 
 /// Diagnose toolbox proxy staleness after idle time.
@@ -1445,7 +1436,7 @@ async fn daytona_toolbox_idle_diagnostic() {
                 eprintln!(
                     "[t=+{sleep_secs}s] OK exit_code={:?} stdout={}",
                     r.exit_code,
-                    r.stdout.trim()
+                    r.stdout_lossy().trim()
                 );
             }
             Err(e) => {
@@ -1536,7 +1527,7 @@ async fn daytona_toolbox_idle_diagnostic() {
     }
 
     eprintln!("\n=== PASS: all idle durations survived ===");
-    env.cleanup().await.unwrap();
+    env.delete().await.unwrap();
 }
 
 /// E2E test for `fabro cp` against a live Daytona sandbox.
@@ -1545,7 +1536,7 @@ async fn daytona_toolbox_idle_diagnostic() {
 /// uploads a file, downloads it back, and verifies the round-trip.
 #[fabro_macros::e2e_test(live("DAYTONA_API_KEY"), live("GITHUB_APP_PRIVATE_KEY"))]
 async fn daytona_cp_upload_download_round_trip() {
-    use fabro_sandbox::reconnect::reconnect;
+    use fabro_sandbox::reconnect::reconnect_for_run;
     use fabro_types::RunSandboxInstance;
 
     // 1. Create and initialize a real Daytona sandbox
@@ -1582,7 +1573,7 @@ async fn daytona_cp_upload_download_round_trip() {
         daytona: Some(live_daytona_credentials()),
         ..ProviderAccess::default()
     };
-    let reconnected = reconnect(&record, &access)
+    let reconnected = reconnect_for_run(&record, &access, None, None)
         .await
         .expect("reconnect should succeed");
 
@@ -1640,23 +1631,16 @@ async fn daytona_cp_upload_download_round_trip() {
     );
 
     // 9. Cleanup
-    env.cleanup().await.unwrap();
+    env.delete().await.unwrap();
 }
 
 #[fabro_macros::e2e_test(live("DAYTONA_API_KEY"))]
 async fn daytona_computer_use_browser_screenshot() {
-    let options = SandboxOptions {
-        skip_clone: true,
-        ..SandboxOptions::default()
-    };
     let env = provider_sandbox(
         SandboxProviderKind::DAYTONA,
         &daytona_access(live_daytona_credentials()),
-        options,
-        None,
-        None,
-        None,
-        None,
+        SandboxSpec::new(SandboxSource::HostDirectory),
+        &CloneRequest::none(),
         None,
         None,
     )
@@ -1686,9 +1670,9 @@ async fn daytona_computer_use_browser_screenshot() {
         )
         .await
         .unwrap();
-    eprintln!("Browser check: {}", check.stdout.trim());
+    eprintln!("Browser check: {}", check.stdout_lossy().trim());
 
-    if check.stdout.trim() == "NONE" {
+    if check.stdout_lossy().trim() == "NONE" {
         let install_result = env
             .exec_command(
                 "apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq chromium 2>&1",
@@ -1699,7 +1683,7 @@ async fn daytona_computer_use_browser_screenshot() {
         eprintln!(
             "Browser install exit_code={:?}, last_line={}",
             install_result.exit_code,
-            install_result.stdout.lines().last().unwrap_or("")
+            install_result.stdout_lossy().lines().last().unwrap_or("")
         );
         assert_eq!(install_result.exit_code, Some(0), "Chromium install failed");
     }
@@ -1714,7 +1698,7 @@ async fn daytona_computer_use_browser_screenshot() {
         )
         .await
         .unwrap();
-    let browser = browser_bin.stdout.trim().to_string();
+    let browser = browser_bin.stdout_lossy().trim().to_string();
     eprintln!("Using browser: {browser}");
 
     // 3. Detect the DISPLAY that computer use started
@@ -1728,7 +1712,7 @@ async fn daytona_computer_use_browser_screenshot() {
         )
         .await
         .unwrap();
-    eprintln!("Xvfb process: {}", display_check.stdout.trim());
+    eprintln!("Xvfb process: {}", display_check.stdout_lossy().trim());
 
     // 4. Launch browser with setsid to fully detach, and log stderr
     let launch_cmd = format!(
@@ -1756,7 +1740,7 @@ async fn daytona_computer_use_browser_screenshot() {
         )
         .await
         .unwrap();
-    eprintln!("Chrome processes:\n{}", ps_check.stdout);
+    eprintln!("Chrome processes:\n{}", ps_check.stdout_lossy());
 
     let stderr_check = env
         .exec_command(
@@ -1768,7 +1752,7 @@ async fn daytona_computer_use_browser_screenshot() {
         )
         .await
         .unwrap();
-    eprintln!("Chrome stderr:\n{}", stderr_check.stdout);
+    eprintln!("Chrome stderr:\n{}", stderr_check.stdout_lossy());
 
     // 5. The desktop is serving: noVNC listens on its port.
     let listening = env
@@ -1782,29 +1766,22 @@ async fn daytona_computer_use_browser_screenshot() {
         .await
         .unwrap();
     assert!(
-        listening.is_success(),
+        listening.success(),
         "noVNC should be reachable inside the sandbox"
     );
 
     // 7. Cleanup
-    env.cleanup().await.unwrap();
+    env.delete().await.unwrap();
 }
 
 #[fabro_macros::e2e_test(live("DAYTONA_API_KEY"))]
 async fn daytona_playwright_mcp_sandbox_transport() {
     // Create sandbox from daytona-medium (has Node.js + Chromium)
-    let options = SandboxOptions {
-        skip_clone: true,
-        ..SandboxOptions::default()
-    };
     let sandbox = provider_sandbox(
         SandboxProviderKind::DAYTONA,
         &daytona_access(live_daytona_credentials()),
-        options,
-        None,
-        None,
-        None,
-        None,
+        SandboxSpec::new(SandboxSource::HostDirectory),
+        &CloneRequest::none(),
         None,
         None,
     )
@@ -1828,7 +1805,7 @@ async fn daytona_playwright_mcp_sandbox_transport() {
         "Install exit_code={:?}, last_lines:\n{}",
         install.exit_code,
         install
-            .stdout
+            .stdout_lossy()
             .lines()
             .rev()
             .take(5)
@@ -1965,5 +1942,5 @@ async fn daytona_playwright_mcp_sandbox_transport() {
         .expect("the agent shuts down");
 
     // 8. Cleanup
-    sandbox.cleanup().await.unwrap();
+    sandbox.delete().await.unwrap();
 }

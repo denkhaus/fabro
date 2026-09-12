@@ -14,13 +14,6 @@
 
 
 
-/**
- * Tool or kernel interface used to discover sandbox services.
- */
-
-export const SandboxServiceDiscoverySource = {
-    SS: 'ss',
-    PROCFS: 'procfs'
-} as const;
-
-export type SandboxServiceDiscoverySource = typeof SandboxServiceDiscoverySource[keyof typeof SandboxServiceDiscoverySource];
+export interface SandboxNetworkPolicyOneOfCidrAllowList {
+    'cidrs': Array<string>;
+}

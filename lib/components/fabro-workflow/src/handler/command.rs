@@ -2,8 +2,11 @@ use std::path::Path;
 
 use async_trait::async_trait;
 use fabro_graphviz::graph::{ContextKeyAttr, Graph, Node};
-use fabro_sandbox::sandbox::{CommandOutputCallback, ExecStreamingRequest};
-use fabro_types::{CommandTermination, StageTiming};
+use fabro_sandbox::{
+    ExecControls, ExecResultExt, ExecSpec, OutputSink, Termination, TransportError,
+    command_termination,
+};
+use fabro_types::StageTiming;
 use fabro_util::shell::shell_quote;
 
 use super::structured_output::{self, StructuredOutputError};
@@ -108,7 +111,7 @@ impl Handler for CommandHandler {
         let cancel_token = services.run.cancel_token().child_token();
         let stage_id = stage_scope.stage_id();
         let recorder = CommandLogRecorder::create(run_dir, &stage_id).await?;
-        let output_callback: CommandOutputCallback = {
+        let sink: OutputSink = {
             let recorder = recorder.clone();
             std::sync::Arc::new(move |_stream, bytes| {
                 let recorder = recorder.clone();
@@ -116,21 +119,26 @@ impl Handler for CommandHandler {
                     recorder
                         .append(&bytes)
                         .await
-                        .map_err(|err| fabro_sandbox::Error::message(err.to_string()))
+                        .map_err(|err| TransportError::new(err.to_string()).into())
                 })
             })
         };
 
+        let mut spec =
+            ExecSpec::bash(&command).timeout(std::time::Duration::from_millis(timeout_ms));
+        for (key, value) in env_vars.into_iter().flatten() {
+            spec = spec.env_var(key, value);
+        }
+        if let Some(stdin) = stdin {
+            spec = spec.stdin(stdin);
+        }
         let result = services
             .run
             .sandbox
-            .exec_command_streaming(ExecStreamingRequest {
-                timeout_ms: Some(timeout_ms),
-                env_vars,
-                cancel_token: Some(cancel_token.clone()),
-                stdin,
-                output_callback: Some(output_callback),
-                ..ExecStreamingRequest::new(&command)
+            .exec_command_streaming(spec, ExecControls {
+                term: Some(cancel_token.clone()),
+                sink: Some(sink),
+                ..ExecControls::default()
             })
             .await;
         cancel_token.cancel();
@@ -148,28 +156,31 @@ impl Handler for CommandHandler {
             &Event::CommandCompleted {
                 node_id:        node.id.clone(),
                 output:         finalized.output_ref.clone(),
-                exit_code:      result.exit_code,
-                duration_ms:    result.duration_ms,
-                termination:    result.termination,
+                exit_code:      result.program_exit_code(),
+                duration_ms:    result.duration_ms(),
+                termination:    command_termination(result.termination),
                 output_bytes:   finalized.output_bytes,
                 live_streaming: streaming.live_streaming,
             },
             &stage_scope,
         );
 
-        if result.termination == CommandTermination::TimedOut {
+        if result.termination == Termination::TimedOut {
             let mut reason = format!("Script timed out after {timeout_ms}ms: {script}");
             append_output_tail(&mut reason, &finalized.output_text);
             return Err(Error::handler(reason));
         }
 
-        if result.termination == CommandTermination::Cancelled {
+        if matches!(
+            result.termination,
+            Termination::Cancelled | Termination::Killed
+        ) {
             let mut reason = format!("Script cancelled: {script}");
             append_output_tail(&mut reason, &finalized.output_text);
             return Err(Error::handler(reason));
         }
 
-        if result.exit_code == Some(0) {
+        if result.success() {
             let validation = output_schema.as_ref().map(|schema| {
                 (
                     schema,
@@ -191,7 +202,7 @@ impl Handler for CommandHandler {
                 keys::COMMAND_OUTPUT.to_string(),
                 serde_json::json!(finalized.output_ref),
             );
-            outcome.timing = Some(StageTiming::active_only(0, result.duration_ms));
+            outcome.timing = Some(StageTiming::active_only(0, result.duration_ms()));
             if let Some((schema, Ok(validated))) = validation {
                 structured_output::apply_validated_output(node, schema, &validated, &mut outcome);
             }
@@ -199,7 +210,7 @@ impl Handler for CommandHandler {
         } else {
             let mut reason = format!(
                 "Script failed with exit code: {}",
-                result.exit_code.unwrap_or(-1)
+                result.program_exit_code().unwrap_or(-1)
             );
             append_output_tail(&mut reason, &finalized.output_text);
             let mut outcome = Outcome::fail_classify(reason);
@@ -207,7 +218,7 @@ impl Handler for CommandHandler {
                 keys::COMMAND_OUTPUT.to_string(),
                 serde_json::json!(finalized.output_ref),
             );
-            outcome.timing = Some(StageTiming::active_only(0, result.duration_ms));
+            outcome.timing = Some(StageTiming::active_only(0, result.duration_ms()));
             Ok(outcome)
         }
     }
@@ -321,7 +332,8 @@ mod tests {
 
     use bytes::Bytes;
     use fabro_graphviz::graph::AttrValue;
-    use fabro_sandbox::test_support::MockSandbox;
+    use fabro_sandbox::Termination;
+    use fabro_sandbox::test_support::{MockSandbox, exec_result};
     use fabro_store::{Database, RunDatabase, StageId};
     use fabro_types::{Graph, RunProjection, RunSpec, WorkflowSettings, fixtures, test_support};
     use object_store::memory::InMemory;
@@ -842,13 +854,7 @@ mod tests {
     #[tokio::test]
     async fn command_invalid_output_schema_fails_before_execution() {
         let spy = MockSandbox {
-            exec_result: fabro_sandbox::sandbox::ExecResult {
-                stdout:      String::new(),
-                stderr:      String::new(),
-                exit_code:   Some(0),
-                termination: CommandTermination::Exited,
-                duration_ms: 1,
-            },
+            exec_result: exec_result("", "", Some(0), Termination::Exited, 1),
             ..Default::default()
         };
         let handler = CommandHandler;
@@ -1460,7 +1466,7 @@ mod tests {
 
         assert_eq!(outcome.status, StageOutcome::Succeeded);
         assert_eq!(
-            mock.captured_stdin(),
+            mock.driver().scripted_exec().captured_stdin().pop(),
             Some(serde_json::to_vec(&parallel_results).unwrap())
         );
         assert!(
@@ -1496,7 +1502,11 @@ mod tests {
 
         assert_eq!(outcome.status, StageOutcome::Succeeded);
         assert_eq!(
-            mock.captured_stdin().as_deref(),
+            mock.driver()
+                .scripted_exec()
+                .captured_stdin()
+                .pop()
+                .as_deref(),
             Some(b"first\nlast".as_slice())
         );
     }
@@ -1590,13 +1600,7 @@ mod tests {
     #[tokio::test]
     async fn executes_script_via_sandbox() {
         let spy = MockSandbox {
-            exec_result: fabro_sandbox::sandbox::ExecResult {
-                stdout:      "SANDBOX_MARKER\n".into(),
-                stderr:      String::new(),
-                exit_code:   Some(0),
-                termination: CommandTermination::Exited,
-                duration_ms: 5,
-            },
+            exec_result: exec_result("SANDBOX_MARKER\n", "", Some(0), Termination::Exited, 5),
             ..Default::default()
         };
 
@@ -1633,13 +1637,7 @@ mod tests {
     #[tokio::test]
     async fn executes_python_script_via_sandbox() {
         let spy = MockSandbox {
-            exec_result: fabro_sandbox::sandbox::ExecResult {
-                stdout:      "PYTHON_SANDBOX\n".into(),
-                stderr:      String::new(),
-                exit_code:   Some(0),
-                termination: CommandTermination::Exited,
-                duration_ms: 5,
-            },
+            exec_result: exec_result("PYTHON_SANDBOX\n", "", Some(0), Termination::Exited, 5),
             ..Default::default()
         };
 
@@ -1679,13 +1677,7 @@ mod tests {
     #[tokio::test]
     async fn passes_env_vars_to_sandbox() {
         let spy = MockSandbox {
-            exec_result: fabro_sandbox::sandbox::ExecResult {
-                stdout:      String::new(),
-                stderr:      String::new(),
-                exit_code:   Some(0),
-                termination: CommandTermination::Exited,
-                duration_ms: 5,
-            },
+            exec_result: exec_result("", "", Some(0), Termination::Exited, 5),
             ..Default::default()
         };
 
@@ -1717,13 +1709,7 @@ mod tests {
     #[tokio::test]
     async fn refreshes_github_token_for_each_command_stage_when_near_expiry() {
         let spy = MockSandbox {
-            exec_result: fabro_sandbox::sandbox::ExecResult {
-                stdout:      String::new(),
-                stderr:      String::new(),
-                exit_code:   Some(0),
-                termination: CommandTermination::Exited,
-                duration_ms: 5,
-            },
+            exec_result: exec_result("", "", Some(0), Termination::Exited, 5),
             ..Default::default()
         };
         let minter = std::sync::Arc::new(RefreshingMinter {
@@ -1772,13 +1758,7 @@ mod tests {
     #[tokio::test]
     async fn passes_run_cancellation_to_sandbox() {
         let spy = MockSandbox {
-            exec_result: fabro_sandbox::sandbox::ExecResult {
-                stdout:      String::new(),
-                stderr:      String::new(),
-                exit_code:   Some(0),
-                termination: CommandTermination::Exited,
-                duration_ms: 5,
-            },
+            exec_result: exec_result("", "", Some(0), Termination::Exited, 5),
             ..Default::default()
         };
 
@@ -1800,19 +1780,19 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(spy.captured_term_stops(), vec![true]);
+        assert_eq!(spy.driver().scripted_exec().term_stops(), vec![true]);
     }
 
     #[tokio::test]
     async fn script_handler_timeout_error_includes_output_tails() {
         let spy = MockSandbox {
-            exec_result: fabro_sandbox::sandbox::ExecResult {
-                stdout:      "partial stdout\n".into(),
-                stderr:      "partial stderr\n".into(),
-                exit_code:   None,
-                termination: CommandTermination::TimedOut,
-                duration_ms: 50,
-            },
+            exec_result: exec_result(
+                "partial stdout\n",
+                "partial stderr\n",
+                None,
+                Termination::TimedOut,
+                50,
+            ),
             ..Default::default()
         };
 

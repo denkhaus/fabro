@@ -513,10 +513,16 @@ pub enum Event {
         status:         String,
         duration_ms:    u64,
     },
-    /// A fact about the run's sandbox: the pipeline bringing it up, or a
-    /// driver operation on it.
+    /// A fact about the run's sandbox from the pipeline bringing it up.
     Sandbox {
         event: SandboxLifecycle,
+    },
+    /// An event the sandbox driver reported about the run's sandbox (an
+    /// operation and its outcome, progress inside a create, a state
+    /// observation, a notice), kept whole. Named from the event; see
+    /// `fabro_types::sandbox_driver_event_name`.
+    SandboxDriver {
+        event: sandbox_driver::Event,
     },
     /// Emitted after the sandbox has been initialized (by engine lifecycle).
     SandboxInitialized {
@@ -763,7 +769,7 @@ pub enum Event {
 /// Initializing, ready, and failed are the pipeline's view of bringing the
 /// sandbox up — create, activate, and prepare the workspace as one step.
 /// The rest are the sandbox driver's own operations and snapshot work,
-/// translated from its events by [`super::SandboxEventBridge`].
+/// the driver's own events are kept whole as [`Event::SandboxDriver`].
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum SandboxLifecycle {
     Initializing {
@@ -784,68 +790,11 @@ pub enum SandboxLifecycle {
         causes:      Vec<String>,
         duration_ms: u64,
     },
-    StartStarted {
-        provider: String,
-    },
-    StartCompleted {
-        provider:    String,
-        duration_ms: u64,
-    },
-    StartFailed {
-        provider: String,
-        error:    String,
-        #[serde(default, skip_serializing_if = "Vec::is_empty")]
-        causes:   Vec<String>,
-    },
-    StopStarted {
-        provider: String,
-    },
-    StopCompleted {
-        provider:    String,
-        duration_ms: u64,
-    },
-    StopFailed {
-        provider: String,
-        error:    String,
-        #[serde(default, skip_serializing_if = "Vec::is_empty")]
-        causes:   Vec<String>,
-    },
-    DeleteStarted {
-        provider: String,
-    },
-    DeleteCompleted {
-        provider:    String,
-        duration_ms: u64,
-    },
-    DeleteFailed {
-        provider: String,
-        error:    String,
-        #[serde(default, skip_serializing_if = "Vec::is_empty")]
-        causes:   Vec<String>,
-    },
-    /// The provider is pulling the image the sandbox is created from.
-    SnapshotPulling {
-        name: String,
-    },
-    /// The provider is building or activating the snapshot.
-    SnapshotCreating {
-        name: String,
-    },
-    SnapshotReady {
-        name:        String,
-        duration_ms: u64,
-    },
-    SnapshotFailed {
-        name:   String,
-        error:  String,
-        #[serde(default, skip_serializing_if = "Vec::is_empty")]
-        causes: Vec<String>,
-    },
 }
 
 impl SandboxLifecycle {
     pub fn trace(&self) {
-        use tracing::{debug, error, info, warn};
+        use tracing::{debug, error, info};
         match self {
             Self::Initializing { provider } => {
                 debug!(provider, "Sandbox initializing");
@@ -864,70 +813,6 @@ impl SandboxLifecycle {
                 duration_ms,
             } => {
                 error!(provider, error, causes = ?causes, duration_ms, "Sandbox init failed");
-            }
-            Self::StartStarted { provider } => {
-                info!(provider, "Sandbox start started");
-            }
-            Self::StartCompleted {
-                provider,
-                duration_ms,
-            } => {
-                info!(provider, duration_ms, "Sandbox start completed");
-            }
-            Self::StartFailed {
-                provider,
-                error,
-                causes,
-            } => {
-                warn!(provider, error, causes = ?causes, "Sandbox start failed");
-            }
-            Self::StopStarted { provider } => {
-                info!(provider, "Sandbox stop started");
-            }
-            Self::StopCompleted {
-                provider,
-                duration_ms,
-            } => {
-                info!(provider, duration_ms, "Sandbox stop completed");
-            }
-            Self::StopFailed {
-                provider,
-                error,
-                causes,
-            } => {
-                warn!(provider, error, causes = ?causes, "Sandbox stop failed");
-            }
-            Self::DeleteStarted { provider } => {
-                info!(provider, "Sandbox delete started");
-            }
-            Self::DeleteCompleted {
-                provider,
-                duration_ms,
-            } => {
-                info!(provider, duration_ms, "Sandbox delete completed");
-            }
-            Self::DeleteFailed {
-                provider,
-                error,
-                causes,
-            } => {
-                warn!(provider, error, causes = ?causes, "Sandbox delete failed");
-            }
-            Self::SnapshotPulling { name } => {
-                debug!(name, "Snapshot pulling");
-            }
-            Self::SnapshotCreating { name } => {
-                debug!(name, "Snapshot creating");
-            }
-            Self::SnapshotReady { name, duration_ms } => {
-                info!(name, duration_ms, "Snapshot ready");
-            }
-            Self::SnapshotFailed {
-                name,
-                error,
-                causes,
-            } => {
-                error!(name, error, causes = ?causes, "Snapshot failed");
             }
         }
     }
@@ -1484,6 +1369,7 @@ impl Event {
             }
             Self::Agent { event, .. } => event.event.trace(&event.session_id),
             Self::Sandbox { event } => event.trace(),
+            Self::SandboxDriver { event } => trace_driver_event(event),
             Self::SandboxInitialized {
                 working_directory,
                 provider,
@@ -1759,5 +1645,24 @@ impl Event {
                 error!(error = %error, "Pull request creation failed");
             }
         }
+    }
+}
+
+/// Traces a sandbox driver event under its run event name.
+fn trace_driver_event(event: &sandbox_driver::Event) {
+    use sandbox_driver::EventBody as Body;
+    use tracing::{debug, info, warn};
+
+    let name = fabro_types::sandbox_driver_event_name(event);
+    match &event.body {
+        Body::OperationFailed { error, .. } => {
+            warn!(event = %name, error = %error.message, "Sandbox driver operation failed");
+        }
+        Body::OperationCompleted { duration, .. } => {
+            let duration_ms = u64::try_from(duration.as_millis()).unwrap_or(u64::MAX);
+            info!(event = %name, duration_ms, "Sandbox driver operation completed");
+        }
+        Body::OperationStarted { .. } => info!(event = %name, "Sandbox driver operation started"),
+        _ => debug!(event = %name, "Sandbox driver event"),
     }
 }

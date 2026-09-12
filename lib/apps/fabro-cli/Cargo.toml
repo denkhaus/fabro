@@ -27,6 +27,7 @@ fabro-github = { path = "../../components/fabro-github" }
 pebble-agent.workspace = true
 pebble-coding-agent.workspace = true
 pebble-cli-core.workspace = true
+sandbox-driver.workspace = true
 fabro-dump = { path = "../../components/fabro-dump" }
 fabro-hooks = { path = "../../components/fabro-hooks" }
 fabro-install = { path = "../../components/fabro-install" }
@@ -120,6 +121,7 @@ assert_cmd = "2"
 fabro-acp = { path = "../../components/fabro-acp", features = ["test-support"] }
 fabro-mcp = { path = "../../components/fabro-mcp", features = ["test-support"] }
 fabro-build-support = { path = "../../foundation/build-support" }
+fabro-sandbox = { path = "../../components/fabro-sandbox", features = ["test-support"] }
 fabro-server = { path = "../fabro-server", features = ["test-support"] }
 fabro-workflow = { path = "../../components/fabro-workflow", features = ["test-support"] }
 fabro-types = { path = "../../foundation/fabro-types", features = ["clap", "test-support"] }
