@@ -5863,7 +5863,7 @@ dependencies = [
 [[package]]
 name = "pebble-agent"
 version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/pebble?rev=9ec23d00d37faebcb2da5e3c5f2c1dfc5eec4d7f#9ec23d00d37faebcb2da5e3c5f2c1dfc5eec4d7f"
+source = "git+https://github.com/lithoscomputer/pebble?rev=222d17f17d7384545d3782f3b315210ad2cb0cfe#222d17f17d7384545d3782f3b315210ad2cb0cfe"
 dependencies = [
  "async-trait",
  "futures-util",
@@ -5880,7 +5880,7 @@ dependencies = [
 [[package]]
 name = "pebble-cli-core"
 version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/pebble?rev=9ec23d00d37faebcb2da5e3c5f2c1dfc5eec4d7f#9ec23d00d37faebcb2da5e3c5f2c1dfc5eec4d7f"
+source = "git+https://github.com/lithoscomputer/pebble?rev=222d17f17d7384545d3782f3b315210ad2cb0cfe#222d17f17d7384545d3782f3b315210ad2cb0cfe"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -5909,7 +5909,7 @@ dependencies = [
 [[package]]
 name = "pebble-coding-agent"
 version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/pebble?rev=9ec23d00d37faebcb2da5e3c5f2c1dfc5eec4d7f#9ec23d00d37faebcb2da5e3c5f2c1dfc5eec4d7f"
+source = "git+https://github.com/lithoscomputer/pebble?rev=222d17f17d7384545d3782f3b315210ad2cb0cfe#222d17f17d7384545d3782f3b315210ad2cb0cfe"
 dependencies = [
  "async-trait",
  "futures-util",

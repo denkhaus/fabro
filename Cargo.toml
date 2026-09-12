@@ -115,16 +115,15 @@ sandbox-driver-daytona = { git = "https://github.com/lithoscomputer/sandbox-driv
 sandbox-driver-daytona-config = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "a92c0db6b6a122ca9b6df75de6615544f53c0d47" }
 sandbox-driver-testing = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "a92c0db6b6a122ca9b6df75de6615544f53c0d47" }
 # pebble: the coding agent loop fabro runs its agent stages, Ask Fabro
-# sessions, hook evaluators, and `fabro exec` on. Pinned by rev to pebble's
-# `sandbox-driver-section-4` branch (lithoscomputer/pebble#10), which is
-# pebble main plus the sandbox-driver pin below: the `PreviewUrls` trait
-# objects fabro hands pebble's MCP servers only cross when both sides name
-# one sandbox-driver revision. Re-pin to main once that lands. Pebble pins
-# the same lithos-llm rev as fabro, and its lockfile policy is that every
-# shared crate resolves to the version lithos-llm locks.
-pebble-agent = { git = "https://github.com/lithoscomputer/pebble", rev = "9ec23d00d37faebcb2da5e3c5f2c1dfc5eec4d7f" }
-pebble-coding-agent = { git = "https://github.com/lithoscomputer/pebble", rev = "9ec23d00d37faebcb2da5e3c5f2c1dfc5eec4d7f", features = ["mcp", "search-providers"] }
-pebble-cli-core = { git = "https://github.com/lithoscomputer/pebble", rev = "9ec23d00d37faebcb2da5e3c5f2c1dfc5eec4d7f" }
+# sessions, hook evaluators, and `fabro exec` on. Pinned by rev to pebble
+# `main`. The `PreviewUrls` trait objects fabro hands pebble's MCP servers
+# only cross when fabro and pebble's `mcp` feature name the same
+# sandbox-driver revision, so move the two pins together. Pebble pins the
+# same lithos-llm rev as fabro, and its lockfile policy is that every shared
+# crate resolves to the version lithos-llm locks.
+pebble-agent = { git = "https://github.com/lithoscomputer/pebble", rev = "222d17f17d7384545d3782f3b315210ad2cb0cfe" }
+pebble-coding-agent = { git = "https://github.com/lithoscomputer/pebble", rev = "222d17f17d7384545d3782f3b315210ad2cb0cfe", features = ["mcp", "search-providers"] }
+pebble-cli-core = { git = "https://github.com/lithoscomputer/pebble", rev = "222d17f17d7384545d3782f3b315210ad2cb0cfe" }
 sentry = { version = "0.35", default-features = false, features = ["backtrace", "contexts", "ureq", "rustls"] }
 fork = "0.2"
 exec = "0.3"
