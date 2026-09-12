@@ -709,7 +709,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-12T12:02:25.745563540Z",
-  "last_event_at": "2026-09-12T12:18:03.476088081Z",
+  "last_event_at": "2026-09-12T12:18:09.047521653Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -1747,9 +1747,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 218,
       "checkpoint": {
-        "timestamp": "2026-09-12T12:18:03.637511753Z",
+        "timestamp": "2026-09-12T12:18:07.851439259Z",
         "current_node": "closeout",
         "completed_nodes": [
           "start",
@@ -1762,43 +1762,70 @@
         ],
         "node_retries": {},
         "context_values": {
-          "current_node": "closeout",
-          "review_verdict": "approved",
-          "internal.retry_count.closeout": 0,
-          "thread.implementer.current_node": "tester",
-          "thread.start.current_node": "planner",
-          "internal.run_id": "01M2AQY97EG1YDTSQES8FFFAS2",
-          "graph.rankdir": "LR",
+          "failure_class": "",
+          "thread.planner.current_node": "implementer",
+          "internal.retry_count.tester": 0,
+          "internal.retry_count.reviewer": 0,
+          "command.output": "blob://sha256/71037c992bfb30fbaa9e9c8c45985bd58413c3a9d95ac6c5da7f9332f9a840f5",
+          "internal.retry_count.start": 0,
           "last_stage": "reviewer",
-          "current_seed_title": "Quarantine the known-flaky e2e_stall_watchdog_with_explicit_timeout_override test",
+          "graph.max_node_visits": "40",
           "current_seed_id": "fabro-7e8d",
+          "last_response": "Review complete. Verified against the evidence:\n\n1. **Quarantine mechanism** — `[[profile.default.overrides]]` with `retries = 1` and relaxed `slow-timeout` (10s/4) for exactly `test(e2e_stall_watch",
+          "outcome": "succeeded",
+          "thread.evidence.current_node": "reviewer",
           "journal": {
             "painpoints": [],
             "observations": [
               "Verified independently: filter string matches the real test name at integration.rs:13496, cargo nextest list parses the amended config, and the diff against claim base b7394d89 is exactly one file (+17, .config/nextest.toml). The ci-profile mirror override is a defensive duplicate of the default-profile quarantine — accepted as in-scope since profile.ci carries its own package-level slow-timeout that could otherwise re-expose the flake; noted as slight duplication risk if the quarantine is ever lifted in only one profile."
             ]
           },
-          "preferred_label": "Approved",
-          "response.implementer": {
+          "internal.run_id": "01M2AQY97EG1YDTSQES8FFFAS2",
+          "internal.node_visit_count": 1,
+          "response.planner": {
             "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.implementer",
-            "chars": 2893,
-            "preview": "All verification steps pass: TOML parse OK, `cargo nextest list` resolves the config (including the new override filters), the quarantined test passes under the default profile, and pinned-nightly `fm"
+            "output_key": "output.planner",
+            "chars": 3658,
+            "preview": "Seed claimed. The brief:\n\n**fabro-7e8d — Quarantine the known-flaky `e2e_stall_watchdog_with_explicit_timeout_override` test**\n\n- Test location: `lib/components/fabro-workflow/tests/it/integration.r"
           },
-          "command.output": "blob://sha256/71037c992bfb30fbaa9e9c8c45985bd58413c3a9d95ac6c5da7f9332f9a840f5",
-          "internal.thread_id": "reviewer",
-          "failure_signature": "",
-          "thread.tester.current_node": "evidence",
           "response.reviewer": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.reviewer",
             "chars": 2793,
             "preview": "Review complete. Verified against the evidence:\n\n1. **Quarantine mechanism** — `[[profile.default.overrides]]` with `retries = 1` and relaxed `slow-timeout` (10s/4) for exactly `test(e2e_stall_watch"
           },
-          "internal.retry_count.reviewer": 0,
+          "failure_signature": "",
+          "review_verdict": "approved",
+          "thread.start.current_node": "planner",
+          "internal.fidelity": "compact",
           "thread.reviewer.current_node": "closeout",
-          "internal.retry_count.start": 0,
-          "outcome": "succeeded",
+          "implementation_summary": "Added a nextest per-test quarantine for `e2e_stall_watchdog_with_explicit_timeout_override` in `.config/nextest.toml`: a `[[profile.default.overrides]]` entry with `retries = 1` and a relaxed `slow-timeout` ({ period = \"10s\", terminate-after = 4 }) scoped to `filter = \"test(e2e_stall_watchdog_with_explicit_timeout_override)\"`, plus a mirrored `[[profile.ci.overrides]]` entry (retries = 1, 30s/4) so CI's per-package override cannot resurrect the flake — both referencing fabro-7e8d in comments explaining the choice over `#[ignore]` (which the e2e profile's `--run-ignored only` would pull in). The override is scoped to exactly this one test; fabro-80b3's separate flaky test is untouched, and no new tracking seed was filed (fabro-7e8d is itself the tracking seed). No Rust source changed, so no lesson worth `ml record` — nothing durable — skipped. Verification report: - PASS quarantine via nextest per-test override with fabro-7e8d comment: `.config/nextest.toml` profile.default + profile.ci overrides (retries + relaxed slow-timeout, filter `test(e2e_stall_watchdog_with_explicit_timeout_override)`) — PASS scope is this one test only, fabro-80b3 excluded: override filter names only `e2e_stall_watchdog_with_explicit_timeout_override`; no other test config changed — PASS tracking-seed clause already satisfied by fabro-7e8d itself: no new seed created (verified via `sd show fabro-7e8d`) — PASS verification cheapest-first: TOML parses (`python3 tomllib`), `cargo nextest list -p fabro-workflow` resolves config and lists the test, `cargo nextest run -p fabro-workflow e2e_stall_watchdog` passes (1/1, incl. the quarantined test at 0.82s), pinned `cargo +nightly-2026-04-14 fmt -p fabro-workflow -- --check` and `clippy -p fabro-workflow --all-targets -- -D warnings` both clean; full gate left to the deterministic tester step.",
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "current_seed_brief": "Quarantine the flaky test e2e_stall_watchdog_with_explicit_timeout_override in lib/components/fabro-workflow/tests/it/integration.rs (~line 13496). Acceptance criteria: (1) quarantine via a nextest per-test override in .config/nextest.toml (retries + relaxed slow-timeout for filter test(e2e_stall_watchdog_with_explicit_timeout_override)), referencing fabro-7e8d in a comment — preferred over #[ignore] because #[ignore] would pull the test into the e2e profile (--run-ignored only); #[ignore = \"flaky under parallel load\"] acceptable only with that e2e-profile implication checked and annotated; (2) scope is this one test only — fabro-80b3 (different flaky test) stays out; (3) the seed's 'file the tracking seed' clause is already satisfied: fabro-7e8d itself is that tracking seed, no new seed needed; (4) verification cheapest-first: cargo nextest list -p fabro-workflow (config parses), cargo nextest run -p fabro-workflow e2e_stall_watchdog passes, pinned-nightly fmt and clippy on fabro-workflow clean; gate green via the deterministic tester step — never run the full gate yourself.",
+          "graph.inspects": "develop",
+          "thread.tester.current_node": "evidence",
+          "internal.retry_count.closeout": 0,
+          "internal.retry_count.planner": 0,
+          "lesson_capture": "nothing durable — skipped",
+          "internal.retry_count.implementer": 0,
+          "internal.exit_kind": "natural",
+          "preferred_label": "Approved",
+          "thread.implementer.current_node": "tester",
+          "internal.thread_id": "reviewer",
+          "internal.retry_count.evidence": 0,
+          "current_node": "closeout",
+          "current_seed_title": "Quarantine the known-flaky e2e_stall_watchdog_with_explicit_timeout_override test",
+          "graph.preamble_budget_kb": "24",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "graph.rankdir": "LR",
+          "internal.seed_cycle_anchor": "fabro-7e8d",
+          "internal.work_dir": "/workspace/fabro",
+          "response.implementer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.implementer",
+            "chars": 2893,
+            "preview": "All verification steps pass: TOML parse OK, `cargo nextest list` resolves the config (including the new override filters), the quarantined test passes under the default profile, and pinned-nightly `fm"
+          },
           "seed_cycles": {
             "planner": 1,
             "implementer": 1,
@@ -1806,34 +1833,7 @@
             "evidence": 1,
             "reviewer": 1,
             "closeout": 1
-          },
-          "graph.preamble_budget_kb": "24",
-          "thread.planner.current_node": "implementer",
-          "thread.evidence.current_node": "reviewer",
-          "internal.node_visit_count": 1,
-          "graph.cycle_counter_reset_key": "current_seed_id",
-          "graph.max_node_visits": "40",
-          "last_response": "Review complete. Verified against the evidence:\n\n1. **Quarantine mechanism** — `[[profile.default.overrides]]` with `retries = 1` and relaxed `slow-timeout` (10s/4) for exactly `test(e2e_stall_watch",
-          "internal.retry_count.evidence": 0,
-          "internal.work_dir": "/workspace/fabro",
-          "internal.retry_count.tester": 0,
-          "internal.retry_count.implementer": 0,
-          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
-          "lesson_capture": "nothing durable — skipped",
-          "failure_class": "",
-          "internal.exit_kind": "natural",
-          "internal.retry_count.planner": 0,
-          "internal.fidelity": "compact",
-          "current_seed_brief": "Quarantine the flaky test e2e_stall_watchdog_with_explicit_timeout_override in lib/components/fabro-workflow/tests/it/integration.rs (~line 13496). Acceptance criteria: (1) quarantine via a nextest per-test override in .config/nextest.toml (retries + relaxed slow-timeout for filter test(e2e_stall_watchdog_with_explicit_timeout_override)), referencing fabro-7e8d in a comment — preferred over #[ignore] because #[ignore] would pull the test into the e2e profile (--run-ignored only); #[ignore = \"flaky under parallel load\"] acceptable only with that e2e-profile implication checked and annotated; (2) scope is this one test only — fabro-80b3 (different flaky test) stays out; (3) the seed's 'file the tracking seed' clause is already satisfied: fabro-7e8d itself is that tracking seed, no new seed needed; (4) verification cheapest-first: cargo nextest list -p fabro-workflow (config parses), cargo nextest run -p fabro-workflow e2e_stall_watchdog passes, pinned-nightly fmt and clippy on fabro-workflow clean; gate green via the deterministic tester step — never run the full gate yourself.",
-          "response.planner": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.planner",
-            "chars": 3658,
-            "preview": "Seed claimed. The brief:\n\n**fabro-7e8d — Quarantine the known-flaky `e2e_stall_watchdog_with_explicit_timeout_override` test**\n\n- Test location: `lib/components/fabro-workflow/tests/it/integration.r"
-          },
-          "graph.inspects": "develop",
-          "internal.seed_cycle_anchor": "fabro-7e8d",
-          "implementation_summary": "Added a nextest per-test quarantine for `e2e_stall_watchdog_with_explicit_timeout_override` in `.config/nextest.toml`: a `[[profile.default.overrides]]` entry with `retries = 1` and a relaxed `slow-timeout` ({ period = \"10s\", terminate-after = 4 }) scoped to `filter = \"test(e2e_stall_watchdog_with_explicit_timeout_override)\"`, plus a mirrored `[[profile.ci.overrides]]` entry (retries = 1, 30s/4) so CI's per-package override cannot resurrect the flake — both referencing fabro-7e8d in comments explaining the choice over `#[ignore]` (which the e2e profile's `--run-ignored only` would pull in). The override is scoped to exactly this one test; fabro-80b3's separate flaky test is untouched, and no new tracking seed was filed (fabro-7e8d is itself the tracking seed). No Rust source changed, so no lesson worth `ml record` — nothing durable — skipped. Verification report: - PASS quarantine via nextest per-test override with fabro-7e8d comment: `.config/nextest.toml` profile.default + profile.ci overrides (retries + relaxed slow-timeout, filter `test(e2e_stall_watchdog_with_explicit_timeout_override)`) — PASS scope is this one test only, fabro-80b3 excluded: override filter names only `e2e_stall_watchdog_with_explicit_timeout_override`; no other test config changed — PASS tracking-seed clause already satisfied by fabro-7e8d itself: no new seed created (verified via `sd show fabro-7e8d`) — PASS verification cheapest-first: TOML parses (`python3 tomllib`), `cargo nextest list -p fabro-workflow` resolves config and lists the test, `cargo nextest run -p fabro-workflow e2e_stall_watchdog` passes (1/1, incl. the quarantined test at 0.82s), pinned `cargo +nightly-2026-04-14 fmt -p fabro-workflow -- --check` and `clippy -p fabro-workflow --all-targets -- -D warnings` both clean; full gate left to the deterministic tester step."
+          }
         },
         "node_outcomes": {
           "tester": {
@@ -1848,48 +1848,6 @@
               "inference_time_ms": 0,
               "tool_time_ms": 4752,
               "active_time_ms": 4752
-            }
-          },
-          "reviewer": {
-            "status": "succeeded",
-            "preferred_label": "Approved",
-            "context_updates": {
-              "review_verdict": "approved",
-              "last_stage": "reviewer",
-              "last_response": "Review complete. Verified against the evidence:\n\n1. **Quarantine mechanism** — `[[profile.default.overrides]]` with `retries = 1` and relaxed `slow-timeout` (10s/4) for exactly `test(e2e_stall_watch",
-              "response.reviewer": {
-                "dedup": "response text omitted — payload lives in structured context keys",
-                "output_key": "output.reviewer",
-                "chars": 2793,
-                "preview": "Review complete. Verified against the evidence:\n\n1. **Quarantine mechanism** — `[[profile.default.overrides]]` with `retries = 1` and relaxed `slow-timeout` (10s/4) for exactly `test(e2e_stall_watch"
-              },
-              "journal": {
-                "painpoints": [],
-                "observations": [
-                  "Verified independently: filter string matches the real test name at integration.rs:13496, cargo nextest list parses the amended config, and the diff against claim base b7394d89 is exactly one file (+17, .config/nextest.toml). The ci-profile mirror override is a defensive duplicate of the default-profile quarantine — accepted as in-scope since profile.ci carries its own package-level slow-timeout that could otherwise re-expose the flake; noted as slight duplication risk if the quarantine is ever lifted in only one profile."
-                ]
-              }
-            },
-            "notes": "Stage completed: reviewer",
-            "usage": {
-              "model": {
-                "provider": "zai",
-                "model_id": "glm-5.3"
-              },
-              "tokens": {
-                "input": 15264,
-                "output": 799,
-                "reasoning": 507,
-                "cache_read": 29312,
-                "cache_write": 0
-              },
-              "total_usd_micros": 34734
-            },
-            "timing": {
-              "wall_time_ms": 0,
-              "inference_time_ms": 27958,
-              "tool_time_ms": 2128,
-              "active_time_ms": 30086
             }
           },
           "planner": {
@@ -1936,6 +1894,76 @@
               "inference_time_ms": 54588,
               "tool_time_ms": 12942,
               "active_time_ms": 67530
+            }
+          },
+          "closeout": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/71037c992bfb30fbaa9e9c8c45985bd58413c3a9d95ac6c5da7f9332f9a840f5"
+            },
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/closeout.nu",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 442,
+              "active_time_ms": 442
+            }
+          },
+          "evidence": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/6c8dea3b340d07f6cff3bd57ed0b403699dfa4482d1770dc059d3e65d20a3325"
+            },
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 1157,
+              "active_time_ms": 1157
+            }
+          },
+          "reviewer": {
+            "status": "succeeded",
+            "preferred_label": "Approved",
+            "context_updates": {
+              "review_verdict": "approved",
+              "last_stage": "reviewer",
+              "last_response": "Review complete. Verified against the evidence:\n\n1. **Quarantine mechanism** — `[[profile.default.overrides]]` with `retries = 1` and relaxed `slow-timeout` (10s/4) for exactly `test(e2e_stall_watch",
+              "response.reviewer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.reviewer",
+                "chars": 2793,
+                "preview": "Review complete. Verified against the evidence:\n\n1. **Quarantine mechanism** — `[[profile.default.overrides]]` with `retries = 1` and relaxed `slow-timeout` (10s/4) for exactly `test(e2e_stall_watch"
+              },
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "Verified independently: filter string matches the real test name at integration.rs:13496, cargo nextest list parses the amended config, and the diff against claim base b7394d89 is exactly one file (+17, .config/nextest.toml). The ci-profile mirror override is a defensive duplicate of the default-profile quarantine — accepted as in-scope since profile.ci carries its own package-level slow-timeout that could otherwise re-expose the flake; noted as slight duplication risk if the quarantine is ever lifted in only one profile."
+                ]
+              }
+            },
+            "notes": "Stage completed: reviewer",
+            "usage": {
+              "model": {
+                "provider": "zai",
+                "model_id": "glm-5.3"
+              },
+              "tokens": {
+                "input": 15264,
+                "output": 799,
+                "reasoning": 507,
+                "cache_read": 29312,
+                "cache_write": 0
+              },
+              "total_usd_micros": 34734
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 27958,
+              "tool_time_ms": 2128,
+              "active_time_ms": 30086
             }
           },
           "start": {
@@ -1987,51 +2015,142 @@
               "tool_time_ms": 655781,
               "active_time_ms": 714668
             }
-          },
-          "evidence": {
-            "status": "succeeded",
-            "context_updates": {
-              "command.output": "blob://sha256/6c8dea3b340d07f6cff3bd57ed0b403699dfa4482d1770dc059d3e65d20a3325"
-            },
-            "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
-            "usage": null,
-            "timing": {
-              "wall_time_ms": 0,
-              "inference_time_ms": 0,
-              "tool_time_ms": 1157,
-              "active_time_ms": 1157
-            }
-          },
-          "closeout": {
-            "status": "succeeded",
-            "context_updates": {
-              "command.output": "blob://sha256/71037c992bfb30fbaa9e9c8c45985bd58413c3a9d95ac6c5da7f9332f9a840f5"
-            },
-            "notes": "Script completed: nu .fabro/workflows/develop/scripts/closeout.nu",
-            "usage": null,
-            "timing": {
-              "wall_time_ms": 0,
-              "inference_time_ms": 0,
-              "tool_time_ms": 442,
-              "active_time_ms": 442
-            }
           }
         },
         "next_node_id": "exit",
+        "git_commit_sha": "c225c9a5205cd073be25d7eaa4f18d3867b154c8",
         "node_visits": {
-          "closeout": 1,
           "start": 1,
-          "planner": 1,
           "tester": 1,
-          "reviewer": 1,
+          "evidence": 1,
+          "closeout": 1,
           "implementer": 1,
-          "evidence": 1
+          "planner": 1,
+          "reviewer": 1
         }
       },
-      "diff": {}
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M2AQY97EG1YDTSQES8FFFAS2.jsonl b/.fabro/journal/01M2AQY97EG1YDTSQES8FFFAS2.jsonl\nindex 5c0a4fe5..91fd38e5 100644\n--- a/.fabro/journal/01M2AQY97EG1YDTSQES8FFFAS2.jsonl\n+++ b/.fabro/journal/01M2AQY97EG1YDTSQES8FFFAS2.jsonl\n@@ -4,3 +4,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M2AQY97EG1YDTSQES8FFFAS2\",\"node\":\"tester\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-12T12:17:15Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M2AQY97EG1YDTSQES8FFFAS2\",\"node\":\"evidence\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-12T12:17:20Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M2AQY97EG1YDTSQES8FFFAS2\",\"node\":\"reviewer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-12T12:17:58Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Verified independently: filter string matches the real test name at integration.rs:13496, cargo nextest list parses the amended config, and the diff against claim base b7394d89 is exactly one file (+17, .config/nextest.toml). The ci-profile mirror override is a defensive duplicate of the default-profile quarantine — accepted as in-scope since profile.ci carries its own package-level slow-timeout that could otherwise re-expose the flake; noted as slight duplication risk if the quarantine is ever lifted in only one profile.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M2AQY97EG1YDTSQES8FFFAS2\",\"node\":\"closeout\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-12T12:18:03Z\",\"data\":{}}\ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex 649e9532..b589fbef 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -386,7 +386,7 @@\n {\"id\":\"fabro-9495\",\"title\":\"Publish: skip the project gate on loop-asset-only run PRs (keep the PR — it delivers the tracker close)\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-11T21:40:07.217Z\",\"updatedAt\":\"2026-09-11T21:40:07.217Z\",\"assignee\":\"fabro\",\"description\":\"Bookkeeping-only run 01M292T3 (3-line .seeds edit closing fabro-7893 as superseded) opened PR #128 through the full project gate — a Rust build/clippy/test run priced ~15 min worst-case that a tracker-line edit cannot affect. Complements open fabro-9f97 (journal-only diff -> no PR): when the run diff intersects only loop-asset paths (.fabro/, .seeds/), keep the PR but mark it publish-eligible with a gate-skipping label or merge without checks. Acceptance: loop-asset-only run PR merges without the project gate; code-carrying PRs unaffected. Basis: run 01M292T3YZ3B3YXXPT1R7F82XK, PR #128, revisor review .fabro/reviews/develop/01M292T3YZ3B3YXXPT1R7F82XK.md rec 2.\",\"labels\":[\"workflows\"]}\n {\"id\":\"fabro-ac16\",\"title\":\"Engine: auto-stamp a journal painpoint when a stage's tool output arrives truncated (tool + byte count)\",\"status\":\"open\",\"type\":\"task\",\"priority\":3,\"createdAt\":\"2026-09-11T21:40:07.418Z\",\"updatedAt\":\"2026-09-11T21:40:07.418Z\",\"assignee\":\"fabro\",\"description\":\"sd ready returned stdout_truncated:true (28,211 bytes, 200 seeds) to the planner of run 01M292T3 (seq 33), yet the stage journal reported painpoints:[] (seq 62) — the improve loop went blind at the exact moment friction occurred. Demand: when the engine truncates a tool output observed by an agent stage, auto-append a journal painpoint (or run notice) naming tool and byte count; friction capture must not depend on the model noticing its own discomfort. Prior art: closed fabro-176b (post-stage hooks for deterministic painpoint capture) is the mechanism; this adds the truncation trigger. Acceptance: a stage with truncated tool output records a painpoint naming tool + sizes without model cooperation. Basis: run 01M292T3 seq 33 vs seq 62.\",\"labels\":[\"engine\",\"workflows\"]}\n {\"id\":\"fabro-2b7a\",\"title\":\"Publish: make non-strict generation the default for PR title/body prose (strict-then-retry wastes a call per PR)\",\"status\":\"closed\",\"type\":\"task\",\"priority\":3,\"createdAt\":\"2026-09-11T21:40:07.608Z\",\"updatedAt\":\"2026-09-11T22:21:52.533Z\",\"assignee\":\"fabro\",\"description\":\"Worker log 2026-09-11 20:35:38: 'PR content structured generation failed; retrying once without strict JSON output' — the strict-JSON first pass for PR prose is a guaranteed-to-fail round trip (~10-15 s wasted per PR) rescued by the existing non-strict retry. Closed prior art: fabro-c7f7/cd27/46f3/890b (dedicated PR model, retry, deterministic fallback). Demand: default PR prose content to non-strict generation or validate-and-degrade in one step. Acceptance: PR publish performs exactly one LLM call for content on the happy path. Basis: run 01M292T3 worker log 20:35:38Z.\",\"labels\":[\"engine\"],\"closedAt\":\"2026-09-11T22:21:52.533Z\",\"closeReason\":\"duplicate of fabro-41b1 (revisor-filed, same demand, P2): 41b1 kept and enriched with the prior-art chain + acceptance criterion from this seed; basis integrate batch 2026-09-11 ~00:26 Berlin\"}\n-{\"id\":\"fabro-7e8d\",\"title\":\"Quarantine the known-flaky e2e_stall_watchdog_with_explicit_timeout_override test\",\"status\":\"in_progress\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-11T23:49:56.164Z\",\"updatedAt\":\"2026-09-12T12:03:29.537Z\",\"description\":\"Mark e2e_stall_watchdog_with_explicit_timeout_override in the fabro-workflow test suite as flaky — e.g. #[ignore = \\\"flaky under parallel load\\\"] or a nextest retries = 1 profile override for it — and file the tracking seed the implementer journal requested. Evidence: implementer ran the full fabro-workflow suite 4x plus 2 single-test runs (~10 min, tool seq 540-576, 22:57-23:07) chasing a flake that fails identically on stash-verified clean trees (2-9 timeouts per run); a prior ~22-min gate-red bounce came from exactly this class. Effect: implementer verification drops to one suite run; removes a standing ~22-min tail risk on every gate pass over fabro-workflow. Distinct from closed fabro-56f4 (gate-red tail matching) and open fabro-80b3 (a different flaky test). Basis: run 01M299PVMSE7Q53ZGPP67AHNMG, workflow version e825d8c827ce15defe0aa57d3586b0f369cab48cc7fe711d526776762f442aa1, commit 6f628c21a79469837da6b9bef63903e5f40c1f65\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n+{\"id\":\"fabro-7e8d\",\"title\":\"Quarantine the known-flaky e2e_stall_watchdog_with_explicit_timeout_override test\",\"status\":\"closed\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-11T23:49:56.164Z\",\"updatedAt\":\"2026-09-12T12:18:03.414Z\",\"description\":\"Mark e2e_stall_watchdog_with_explicit_timeout_override in the fabro-workflow test suite as flaky — e.g. #[ignore = \\\"flaky under parallel load\\\"] or a nextest retries = 1 profile override for it — and file the tracking seed the implementer journal requested. Evidence: implementer ran the full fabro-workflow suite 4x plus 2 single-test runs (~10 min, tool seq 540-576, 22:57-23:07) chasing a flake that fails identically on stash-verified clean trees (2-9 timeouts per run); a prior ~22-min gate-red bounce came from exactly this class. Effect: implementer verification drops to one suite run; removes a standing ~22-min tail risk on every gate pass over fabro-workflow. Distinct from closed fabro-56f4 (gate-red tail matching) and open fabro-80b3 (a different flaky test). Basis: run 01M299PVMSE7Q53ZGPP67AHNMG, workflow version e825d8c827ce15defe0aa57d3586b0f369cab48cc7fe711d526776762f442aa1, commit 6f628c21a79469837da6b9bef63903e5f40c1f65\",\"labels\":[\"revision\"],\"assignee\":\"fabro\",\"closedAt\":\"2026-09-12T12:18:03.414Z\"}\n {\"id\":\"fabro-020b\",\"title\":\"Cap loop-churn diffs in evidence.nu to numstat plus first ~30 changed lines\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-11T23:50:03.060Z\",\"updatedAt\":\"2026-09-12T00:06:02.344Z\",\"description\":\"In .fabro/workflows/develop/scripts/evidence.nu, render loop-churn/anomaly files as numstat plus the first ~30 changed lines each; keep full diffs for seed-work files only, preserving the adjudicate-every-loop-file contract via the file list. Evidence: this run's evidence capture was 94,873 bytes — mostly full diffs of changed loop files (.seeds/issues.jsonl hunks embed multi-KB seed bodies) — so it reached the reviewer as a blob-ref marker despite preamble_inline_max_kb=16, forcing a 68.8s reviewer blob-paging detour. Effect: typical capture lands under the reviewer's 16 KB inline ceiling, eliminating the per-cycle blob detour. Supply-side complement to open fabro-3c9d/fabro-8d2c/fabro-9837 (budget-side), not a duplicate of them. Basis: run 01M299PVMSE7Q53ZGPP67AHNMG, workflow version e825d8c827ce15defe0aa57d3586b0f369cab48cc7fe711d526776762f442aa1, commit 6f628c21a79469837da6b9bef63903e5f40c1f65\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-1a35\",\"title\":\"PROJECT_FACTS: resolve abbreviated crate paths by symbol search, not area-prefix guessing\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-11T23:50:09.484Z\",\"updatedAt\":\"2026-09-12T00:06:02.268Z\",\"description\":\"Add one line to .fabro/workflows/develop/prompts/project-facts.md: crates live under both lib/components/ and lib/foundation/; resolve a seed's abbreviated paths by symbol search (rg -ln <symbol>), never by guessing the area prefix. Evidence: the planner probed the non-existent lib/foundation/fabro-llm/src/... path (events 45-59: two failed rg probes, one fd: command not found, then a symbol search found it) because PROJECT_FACTS names lib/foundation/ as a primary area while fabro-llm lives under lib/components/. Effect: ~3 fewer tool calls and 2-3 fewer model turns per fresh claim (~30-45s). Scope note: the fd-not-installed half is already open seed fabro-0586 (available-binaries line) — do not duplicate it; closed fabro-3d2d landed only dev-loop asset paths, not crate area prefixes. Basis: run 01M299PVMSE7Q53ZGPP67AHNMG, workflow version e825d8c827ce15defe0aa57d3586b0f369cab48cc7fe711d526776762f442aa1, commit 6f628c21a79469837da6b9bef63903e5f40c1f65\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-0607\",\"title\":\"fabro-llm: 429 reset-deadline prose is parsed as naive-UTC — provider wallclock offsets corrupt the window and can silently disable the park (west-of-UTC)\",\"status\":\"open\",\"type\":\"bug\",\"priority\":1,\"createdAt\":\"2026-09-11T23:33:41.920Z\",\"updatedAt\":\"2026-09-11T23:33:41.920Z\",\"assignee\":\"fabro\",\"description\":\"PR #131 (run 01M299PVMSE7Q53ZGPP67AHNMG, seed fabro-a3d8) parses the 429 prose 'Your limit will reset at 2026-09-03 05:35:16' via NaiveDateTime::parse_from_str and compares it against UTC-now (gateway.rs parse_reset_deadline + reset_window). The provider timestamp carries NO timezone; treating it as UTC is wrong by the provider's local offset. Observed offset: ZAI sends Beijing wallclock (2026-09-11 incident, handoff fabro-91bf: 'Reset 13:14:50' was Beijing time; user decision 2026-09-12 for fabro-1f70: provider timestamps are timezone-untrustworthy). Consequences: (1) structured provider_retry_after/long_rate_limit_window durations are off by the offset (telemetry + any future consumer scheduling on them); (2) SHARP EDGE: for providers west of UTC the naive-UTC deadline is often in the PAST -> reset_window returns None -> treated as 'window reopened' -> normal short-window retries burn attempts against a live limit -> hard fail instead of park — the exact failure mode a3d8 was built to eliminate. The a3d8 tests only cover UTC-formatted fixtures so this is untested. Demand: naive (offset-less) prose timestamps must never be used as absolute deadlines — options: require an explicit offset (RFC3339) for authoritative windows; otherwise treat the window as UNKNOWN-ETA (fail-fast + park on prose PRESENCE, report window as unbounded, do not compute a duration); optionally calibrate a per-provider offset empirically. Acceptance: tests with a Beijing-offset sample (+8h) and a US-offset sample (-6h, past-deadline case) prove the park still triggers and no negative/None window disables it. Basis: PR #131 diff (gateway.rs lines ~173-194), run 01M299PVMSE7Q53ZGPP67AHNMG, user session 2026-09-12 ~01:35 Berlin.\",\"labels\":[\"engine\"]}\n",
+        "summary": {
+          "files_changed": 3,
+          "additions": 25,
+          "deletions": 1
+        }
+      }
     }
   ],
-  "conclusion": null,
+  "conclusion": {
+    "timestamp": "2026-09-12T12:18:07.924371448Z",
+    "status": "succeeded",
+    "timing": {
+      "wall_time_ms": 848730,
+      "inference_time_ms": 141433,
+      "tool_time_ms": 677202,
+      "active_time_ms": 818635
+    },
+    "final_git_commit_sha": "c225c9a5205cd073be25d7eaa4f18d3867b154c8",
+    "stages": [
+      {
+        "stage_id": "start",
+        "stage_label": "start",
+        "timing": {
+          "wall_time_ms": 0,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "planner",
+        "stage_label": "planner",
+        "timing": {
+          "wall_time_ms": 68092,
+          "inference_time_ms": 54588,
+          "tool_time_ms": 12942,
+          "active_time_ms": 67530
+        },
+        "billing_usd_micros": 159483,
+        "retries": 0
+      },
+      {
+        "stage_id": "implementer",
+        "stage_label": "implementer",
+        "timing": {
+          "wall_time_ms": 715233,
+          "inference_time_ms": 58887,
+          "tool_time_ms": 655781,
+          "active_time_ms": 714668
+        },
+        "billing_usd_micros": 65650,
+        "retries": 0
+      },
+      {
+        "stage_id": "tester",
+        "stage_label": "tester",
+        "timing": {
+          "wall_time_ms": 4757,
+          "inference_time_ms": 0,
+          "tool_time_ms": 4752,
+          "active_time_ms": 4752
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "evidence",
+        "stage_label": "evidence",
+        "timing": {
+          "wall_time_ms": 1162,
+          "inference_time_ms": 0,
+          "tool_time_ms": 1157,
+          "active_time_ms": 1157
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "reviewer",
+        "stage_label": "reviewer",
+        "timing": {
+          "wall_time_ms": 30643,
+          "inference_time_ms": 27958,
+          "tool_time_ms": 2128,
+          "active_time_ms": 30086
+        },
+        "billing_usd_micros": 34734,
+        "retries": 0
+      },
+      {
+        "stage_id": "closeout",
+        "stage_label": "closeout",
+        "timing": {
+          "wall_time_ms": 456,
+          "inference_time_ms": 0,
+          "tool_time_ms": 442,
+          "active_time_ms": 442
+        },
+        "retries": 0
+      }
+    ],
+    "billing": {
+      "input_tokens": 81613,
+      "output_tokens": 4185,
+      "total_tokens": 546717,
+      "reasoning_tokens": 1783,
+      "cache_read_tokens": 459136,
+      "cache_write_tokens": 0,
+      "total_usd_micros": 259867
+    },
+    "total_retries": 0,
+    "diff": {
+      "patch": "diff --git a/.config/nextest.toml b/.config/nextest.toml\nindex 0580f3f5..8b0e6839 100644\n--- a/.config/nextest.toml\n+++ b/.config/nextest.toml\n@@ -15,6 +15,15 @@ leak-timeout = \"500ms\"\n     filter = \"package(fabro-workflow)\"\n     slow-timeout = { period = \"2s\", terminate-after = 3 }\n \n+    # fabro-7e8d: known-flaky under parallel load (2-9 timeouts per run,\n+    # fails identically on stash-verified clean trees). Retry once and relax\n+    # the watchdog timing budget for this single test; a #[ignore] would pull\n+    # it into the e2e profile via --run-ignored only, so an override is\n+    # preferred. Scoped to exactly this test — fabro-80b3 is a different one.\n+    [[profile.default.overrides]]\n+    filter = \"test(e2e_stall_watchdog_with_explicit_timeout_override)\"\n+    retries = 1\n+    slow-timeout = { period = \"10s\", terminate-after = 4 }\n \n [profile.e2e]\n # E2E (ignored) tests: flag SLOW after 10s, hard-kill after 30s\n@@ -45,3 +54,11 @@ leak-timeout = \"2s\"\n     filter = \"package(fabro-workflow)\"\n     slow-timeout = { period = \"30s\", terminate-after = 4 }\n \n+    # fabro-7e8d: known-flaky under parallel load — mirror the default-profile\n+    # quarantine (retries + relaxed slow-timeout) here so CI does not resurrect\n+    # the flake the default override suppresses.\n+    [[profile.ci.overrides]]\n+    filter = \"test(e2e_stall_watchdog_with_explicit_timeout_override)\"\n+    retries = 1\n+    slow-timeout = { period = \"30s\", terminate-after = 4 }\n+\ndiff --git a/.fabro/journal/01M2AQY97EG1YDTSQES8FFFAS2.jsonl b/.fabro/journal/01M2AQY97EG1YDTSQES8FFFAS2.jsonl\nnew file mode 100644\nindex 00000000..91fd38e5\n--- /dev/null\n+++ b/.fabro/journal/01M2AQY97EG1YDTSQES8FFFAS2.jsonl\n@@ -0,0 +1,7 @@\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M2AQY97EG1YDTSQES8FFFAS2\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-12T12:02:28Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M2AQY97EG1YDTSQES8FFFAS2\",\"node\":\"planner\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-12T12:03:43Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Basis of fabro-7e8d resolved cleanly: test present unquarantined at lib/components/fabro-workflow/tests/it/integration.rs:13496, no fix commit in history, .config/nextest.toml has no retries for it.\",\"The seed's 'file the tracking seed' clause was ambiguous — the journal of run 01M299PVMSE7Q53ZGPP67AHNMG shows the requested tracking seed became fabro-7e8d itself (revisor adoption); brief marks it satisfied, no new seed.\",\"In-flight check: only non-terminal develop run was this run itself; no open PRs; no skips needed.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M2AQY97EG1YDTSQES8FFFAS2\",\"node\":\"implementer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-12T12:17:02Z\",\"data\":{\"painpoints\":[],\"observations\":[\"First `cargo nextest list -p fabro-workflow` timed out at 300s on the fully cold build (fresh container); the doubled-timeout retry finished in ~3.6 min. Config-only seeds still pay the full crate compile for a `nextest list` parse check — `cargo nextest list --workspace --no-tests warning` alternatives don't avoid it either; worth knowing when budgeting verification time.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M2AQY97EG1YDTSQES8FFFAS2\",\"node\":\"tester\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-12T12:17:15Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M2AQY97EG1YDTSQES8FFFAS2\",\"node\":\"evidence\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-12T12:17:20Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M2AQY97EG1YDTSQES8FFFAS2\",\"node\":\"reviewer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-12T12:17:58Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Verified independently: filter string matches the real test name at integration.rs:13496, cargo nextest list parses the amended config, and the diff against claim base b7394d89 is exactly one file (+17, .config/nextest.toml). The ci-profile mirror override is a defensive duplicate of the default-profile quarantine — accepted as in-scope since profile.ci carries its own package-level slow-timeout that could otherwise re-expose the flake; noted as slight duplication risk if the quarantine is ever lifted in only one profile.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M2AQY97EG1YDTSQES8FFFAS2\",\"node\":\"closeout\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-12T12:18:03Z\",\"data\":{}}\ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex f9d98c74..b589fbef 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -386,7 +386,7 @@\n {\"id\":\"fabro-9495\",\"title\":\"Publish: skip the project gate on loop-asset-only run PRs (keep the PR — it delivers the tracker close)\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-11T21:40:07.217Z\",\"updatedAt\":\"2026-09-11T21:40:07.217Z\",\"assignee\":\"fabro\",\"description\":\"Bookkeeping-only run 01M292T3 (3-line .seeds edit closing fabro-7893 as superseded) opened PR #128 through the full project gate — a Rust build/clippy/test run priced ~15 min worst-case that a tracker-line edit cannot affect. Complements open fabro-9f97 (journal-only diff -> no PR): when the run diff intersects only loop-asset paths (.fabro/, .seeds/), keep the PR but mark it publish-eligible with a gate-skipping label or merge without checks. Acceptance: loop-asset-only run PR merges without the project gate; code-carrying PRs unaffected. Basis: run 01M292T3YZ3B3YXXPT1R7F82XK, PR #128, revisor review .fabro/reviews/develop/01M292T3YZ3B3YXXPT1R7F82XK.md rec 2.\",\"labels\":[\"workflows\"]}\n {\"id\":\"fabro-ac16\",\"title\":\"Engine: auto-stamp a journal painpoint when a stage's tool output arrives truncated (tool + byte count)\",\"status\":\"open\",\"type\":\"task\",\"priority\":3,\"createdAt\":\"2026-09-11T21:40:07.418Z\",\"updatedAt\":\"2026-09-11T21:40:07.418Z\",\"assignee\":\"fabro\",\"description\":\"sd ready returned stdout_truncated:true (28,211 bytes, 200 seeds) to the planner of run 01M292T3 (seq 33), yet the stage journal reported painpoints:[] (seq 62) — the improve loop went blind at the exact moment friction occurred. Demand: when the engine truncates a tool output observed by an agent stage, auto-append a journal painpoint (or run notice) naming tool and byte count; friction capture must not depend on the model noticing its own discomfort. Prior art: closed fabro-176b (post-stage hooks for deterministic painpoint capture) is the mechanism; this adds the truncation trigger. Acceptance: a stage with truncated tool output records a painpoint naming tool + sizes without model cooperation. Basis: run 01M292T3 seq 33 vs seq 62.\",\"labels\":[\"engine\",\"workflows\"]}\n {\"id\":\"fabro-2b7a\",\"title\":\"Publish: make non-strict generation the default for PR title/body prose (strict-then-retry wastes a call per PR)\",\"status\":\"closed\",\"type\":\"task\",\"priority\":3,\"createdAt\":\"2026-09-11T21:40:07.608Z\",\"updatedAt\":\"2026-09-11T22:21:52.533Z\",\"assignee\":\"fabro\",\"description\":\"Worker log 2026-09-11 20:35:38: 'PR content structured generation failed; retrying once without strict JSON output' — the strict-JSON first pass for PR prose is a guaranteed-to-fail round trip (~10-15 s wasted per PR) rescued by the existing non-strict retry. Closed prior art: fabro-c7f7/cd27/46f3/890b (dedicated PR model, retry, deterministic fallback). Demand: default PR prose content to non-strict generation or validate-and-degrade in one step. Acceptance: PR publish performs exactly one LLM call for content on the happy path. Basis: run 01M292T3 worker log 20:35:38Z.\",\"labels\":[\"engine\"],\"closedAt\":\"2026-09-11T22:21:52.533Z\",\"closeReason\":\"duplicate of fabro-41b1 (revisor-filed, same demand, P2): 41b1 kept and enriched with the prior-art chain + acceptance criterion from this seed; basis integrate batch 2026-09-11 ~00:26 Berlin\"}\n-{\"id\":\"fabro-7e8d\",\"title\":\"Quarantine the known-flaky e2e_stall_watchdog_with_explicit_timeout_override test\",\"status\":\"open\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-11T23:49:56.164Z\",\"updatedAt\":\"2026-09-12T00:06:02.191Z\",\"description\":\"Mark e2e_stall_watchdog_with_explicit_timeout_override in the fabro-workflow test suite as flaky — e.g. #[ignore = \\\"flaky under parallel load\\\"] or a nextest retries = 1 profile override for it — and file the tracking seed the implementer journal requested. Evidence: implementer ran the full fabro-workflow suite 4x plus 2 single-test runs (~10 min, tool seq 540-576, 22:57-23:07) chasing a flake that fails identically on stash-verified clean trees (2-9 timeouts per run); a prior ~22-min gate-red bounce came from exactly this class. Effect: implementer verification drops to one suite run; removes a standing ~22-min tail risk on every gate pass over fabro-workflow. Distinct from closed fabro-56f4 (gate-red tail matching) and open fabro-80b3 (a different flaky test). Basis: run 01M299PVMSE7Q53ZGPP67AHNMG, workflow version e825d8c827ce15defe0aa57d3586b0f369cab48cc7fe711d526776762f442aa1, commit 6f628c21a79469837da6b9bef63903e5f40c1f65\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n+{\"id\":\"fabro-7e8d\",\"title\":\"Quarantine the known-flaky e2e_stall_watchdog_with_explicit_timeout_override test\",\"status\":\"closed\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-11T23:49:56.164Z\",\"updatedAt\":\"2026-09-12T12:18:03.414Z\",\"description\":\"Mark e2e_stall_watchdog_with_explicit_timeout_override in the fabro-workflow test suite as flaky — e.g. #[ignore = \\\"flaky under parallel load\\\"] or a nextest retries = 1 profile override for it — and file the tracking seed the implementer journal requested. Evidence: implementer ran the full fabro-workflow suite 4x plus 2 single-test runs (~10 min, tool seq 540-576, 22:57-23:07) chasing a flake that fails identically on stash-verified clean trees (2-9 timeouts per run); a prior ~22-min gate-red bounce came from exactly this class. Effect: implementer verification drops to one suite run; removes a standing ~22-min tail risk on every gate pass over fabro-workflow. Distinct from closed fabro-56f4 (gate-red tail matching) and open fabro-80b3 (a different flaky test). Basis: run 01M299PVMSE7Q53ZGPP67AHNMG, workflow version e825d8c827ce15defe0aa57d3586b0f369cab48cc7fe711d526776762f442aa1, commit 6f628c21a79469837da6b9bef63903e5f40c1f65\",\"labels\":[\"revision\"],\"assignee\":\"fabro\",\"closedAt\":\"2026-09-12T12:18:03.414Z\"}\n {\"id\":\"fabro-020b\",\"title\":\"Cap loop-churn diffs in evidence.nu to numstat plus first ~30 changed lines\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-11T23:50:03.060Z\",\"updatedAt\":\"2026-09-12T00:06:02.344Z\",\"description\":\"In .fabro/workflows/develop/scripts/evidence.nu, render loop-churn/anomaly files as numstat plus the first ~30 changed lines each; keep full diffs for seed-work files only, preserving the adjudicate-every-loop-file contract via the file list. Evidence: this run's evidence capture was 94,873 bytes — mostly full diffs of changed loop files (.seeds/issues.jsonl hunks embed multi-KB seed bodies) — so it reached the reviewer as a blob-ref marker despite preamble_inline_max_kb=16, forcing a 68.8s reviewer blob-paging detour. Effect: typical capture lands under the reviewer's 16 KB inline ceiling, eliminating the per-cycle blob detour. Supply-side complement to open fabro-3c9d/fabro-8d2c/fabro-9837 (budget-side), not a duplicate of them. Basis: run 01M299PVMSE7Q53ZGPP67AHNMG, workflow version e825d8c827ce15defe0aa57d3586b0f369cab48cc7fe711d526776762f442aa1, commit 6f628c21a79469837da6b9bef63903e5f40c1f65\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-1a35\",\"title\":\"PROJECT_FACTS: resolve abbreviated crate paths by symbol search, not area-prefix guessing\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-11T23:50:09.484Z\",\"updatedAt\":\"2026-09-12T00:06:02.268Z\",\"description\":\"Add one line to .fabro/workflows/develop/prompts/project-facts.md: crates live under both lib/components/ and lib/foundation/; resolve a seed's abbreviated paths by symbol search (rg -ln <symbol>), never by guessing the area prefix. Evidence: the planner probed the non-existent lib/foundation/fabro-llm/src/... path (events 45-59: two failed rg probes, one fd: command not found, then a symbol search found it) because PROJECT_FACTS names lib/foundation/ as a primary area while fabro-llm lives under lib/components/. Effect: ~3 fewer tool calls and 2-3 fewer model turns per fresh claim (~30-45s). Scope note: the fd-not-installed half is already open seed fabro-0586 (available-binaries line) — do not duplicate it; closed fabro-3d2d landed only dev-loop asset paths, not crate area prefixes. Basis: run 01M299PVMSE7Q53ZGPP67AHNMG, workflow version e825d8c827ce15defe0aa57d3586b0f369cab48cc7fe711d526776762f442aa1, commit 6f628c21a79469837da6b9bef63903e5f40c1f65\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-0607\",\"title\":\"fabro-llm: 429 reset-deadline prose is parsed as naive-UTC — provider wallclock offsets corrupt the window and can silently disable the park (west-of-UTC)\",\"status\":\"open\",\"type\":\"bug\",\"priority\":1,\"createdAt\":\"2026-09-11T23:33:41.920Z\",\"updatedAt\":\"2026-09-11T23:33:41.920Z\",\"assignee\":\"fabro\",\"description\":\"PR #131 (run 01M299PVMSE7Q53ZGPP67AHNMG, seed fabro-a3d8) parses the 429 prose 'Your limit will reset at 2026-09-03 05:35:16' via NaiveDateTime::parse_from_str and compares it against UTC-now (gateway.rs parse_reset_deadline + reset_window). The provider timestamp carries NO timezone; treating it as UTC is wrong by the provider's local offset. Observed offset: ZAI sends Beijing wallclock (2026-09-11 incident, handoff fabro-91bf: 'Reset 13:14:50' was Beijing time; user decision 2026-09-12 for fabro-1f70: provider timestamps are timezone-untrustworthy). Consequences: (1) structured provider_retry_after/long_rate_limit_window durations are off by the offset (telemetry + any future consumer scheduling on them); (2) SHARP EDGE: for providers west of UTC the naive-UTC deadline is often in the PAST -> reset_window returns None -> treated as 'window reopened' -> normal short-window retries burn attempts against a live limit -> hard fail instead of park — the exact failure mode a3d8 was built to eliminate. The a3d8 tests only cover UTC-formatted fixtures so this is untested. Demand: naive (offset-less) prose timestamps must never be used as absolute deadlines — options: require an explicit offset (RFC3339) for authoritative windows; otherwise treat the window as UNKNOWN-ETA (fail-fast + park on prose PRESENCE, report window as unbounded, do not compute a duration); optionally calibrate a per-provider offset empirically. Acceptance: tests with a Beijing-offset sample (+8h) and a US-offset sample (-6h, past-deadline case) prove the park still triggers and no negative/None window disables it. Basis: PR #131 diff (gateway.rs lines ~173-194), run 01M299PVMSE7Q53ZGPP67AHNMG, user session 2026-09-12 ~01:35 Berlin.\",\"labels\":[\"engine\"]}\n",
+      "summary": {
+        "files_changed": 3,
+        "additions": 25,
+        "deletions": 1
+      }
+    },
+    "exit_kind": "natural"
+  },
   "sandbox": {
     "kind": "ready",
     "plan": {
@@ -2291,57 +2410,6 @@
           }
         ],
         "warnings": []
-      },
-      "agent_control": "running",
-      "state": "succeeded"
-    },
-    "closeout@1": {
-      "first_event_seq": 211,
-      "prompt": null,
-      "response": null,
-      "completion": {
-        "outcome": "succeeded",
-        "notes": "Script completed: nu .fabro/workflows/develop/scripts/closeout.nu",
-        "failure_reason": null,
-        "timestamp": "2026-09-12T12:18:03.476088081Z"
-      },
-      "provider_used": null,
-      "diff": null,
-      "script_invocation": {
-        "script": "nu .fabro/workflows/develop/scripts/closeout.nu",
-        "command": "exec 2>&1\nnu .fabro/workflows/develop/scripts/closeout.nu",
-        "language": "shell",
-        "timeout_ms": 60000
-      },
-      "script_timing": {
-        "output": "blob://sha256/71037c992bfb30fbaa9e9c8c45985bd58413c3a9d95ac6c5da7f9332f9a840f5",
-        "exit_code": 0,
-        "duration_ms": 442,
-        "termination": "exited",
-        "output_bytes": 58,
-        "live_streaming": true
-      },
-      "parallel_results": null,
-      "output": null,
-      "output_bytes": 58,
-      "live_streaming": true,
-      "termination": "exited",
-      "started_at": "2026-09-12T12:18:03.006381539Z",
-      "handler": "command",
-      "graph_visit": 1,
-      "timing": {
-        "wall_time_ms": 456,
-        "inference_time_ms": 0,
-        "tool_time_ms": 442,
-        "active_time_ms": 442
-      },
-      "usage": {
-        "input_tokens": 0,
-        "output_tokens": 0,
-        "total_tokens": 0,
-        "reasoning_tokens": 0,
-        "cache_read_tokens": 0,
-        "cache_write_tokens": 0
       },
       "agent_control": "running",
       "state": "succeeded"
@@ -2643,30 +2711,96 @@
       "agent_control": "running",
       "state": "succeeded"
     },
-    "start@1": {
-      "first_event_seq": 15,
+    "tester@1": {
+      "first_event_seq": 156,
       "prompt": null,
       "response": null,
       "completion": {
         "outcome": "succeeded",
-        "notes": null,
+        "notes": "Script completed: just qualitygate",
         "failure_reason": null,
-        "timestamp": "2026-09-12T12:02:27.844230309Z"
+        "timestamp": "2026-09-12T12:17:15.292076379Z"
       },
       "provider_used": null,
       "diff": null,
-      "script_invocation": null,
-      "script_timing": null,
+      "script_invocation": {
+        "script": "just qualitygate",
+        "command": "exec 2>&1\njust qualitygate",
+        "language": "shell",
+        "timeout_ms": 1200000
+      },
+      "script_timing": {
+        "output": "blob://sha256/6a6aa88e48376bd588e37c4a4ca50ef237d01806809b8c9a9775f1785909c11b",
+        "exit_code": 0,
+        "duration_ms": 4752,
+        "termination": "exited",
+        "output_bytes": 157,
+        "live_streaming": true
+      },
       "parallel_results": null,
       "output": null,
-      "started_at": "2026-09-12T12:02:27.832273268Z",
-      "handler": "start",
+      "output_bytes": 157,
+      "live_streaming": true,
+      "termination": "exited",
+      "started_at": "2026-09-12T12:17:10.521124453Z",
+      "handler": "command",
       "graph_visit": 1,
       "timing": {
-        "wall_time_ms": 0,
+        "wall_time_ms": 4757,
         "inference_time_ms": 0,
-        "tool_time_ms": 0,
-        "active_time_ms": 0
+        "tool_time_ms": 4752,
+        "active_time_ms": 4752
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "closeout@1": {
+      "first_event_seq": 211,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Script completed: nu .fabro/workflows/develop/scripts/closeout.nu",
+        "failure_reason": null,
+        "timestamp": "2026-09-12T12:18:03.476088081Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": {
+        "script": "nu .fabro/workflows/develop/scripts/closeout.nu",
+        "command": "exec 2>&1\nnu .fabro/workflows/develop/scripts/closeout.nu",
+        "language": "shell",
+        "timeout_ms": 60000
+      },
+      "script_timing": {
+        "output": "blob://sha256/71037c992bfb30fbaa9e9c8c45985bd58413c3a9d95ac6c5da7f9332f9a840f5",
+        "exit_code": 0,
+        "duration_ms": 442,
+        "termination": "exited",
+        "output_bytes": 58,
+        "live_streaming": true
+      },
+      "parallel_results": null,
+      "output": null,
+      "output_bytes": 58,
+      "live_streaming": true,
+      "termination": "exited",
+      "started_at": "2026-09-12T12:18:03.006381539Z",
+      "handler": "command",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 456,
+        "inference_time_ms": 0,
+        "tool_time_ms": 442,
+        "active_time_ms": 442
       },
       "usage": {
         "input_tokens": 0,
@@ -2916,45 +3050,66 @@
       "agent_control": "running",
       "state": "succeeded"
     },
-    "tester@1": {
-      "first_event_seq": 156,
+    "start@1": {
+      "first_event_seq": 15,
       "prompt": null,
       "response": null,
       "completion": {
         "outcome": "succeeded",
-        "notes": "Script completed: just qualitygate",
+        "notes": null,
         "failure_reason": null,
-        "timestamp": "2026-09-12T12:17:15.292076379Z"
+        "timestamp": "2026-09-12T12:02:27.844230309Z"
       },
       "provider_used": null,
       "diff": null,
-      "script_invocation": {
-        "script": "just qualitygate",
-        "command": "exec 2>&1\njust qualitygate",
-        "language": "shell",
-        "timeout_ms": 1200000
-      },
-      "script_timing": {
-        "output": "blob://sha256/6a6aa88e48376bd588e37c4a4ca50ef237d01806809b8c9a9775f1785909c11b",
-        "exit_code": 0,
-        "duration_ms": 4752,
-        "termination": "exited",
-        "output_bytes": 157,
-        "live_streaming": true
-      },
+      "script_invocation": null,
+      "script_timing": null,
       "parallel_results": null,
       "output": null,
-      "output_bytes": 157,
-      "live_streaming": true,
-      "termination": "exited",
-      "started_at": "2026-09-12T12:17:10.521124453Z",
-      "handler": "command",
+      "started_at": "2026-09-12T12:02:27.832273268Z",
+      "handler": "start",
       "graph_visit": 1,
       "timing": {
-        "wall_time_ms": 4757,
+        "wall_time_ms": 0,
         "inference_time_ms": 0,
-        "tool_time_ms": 4752,
-        "active_time_ms": 4752
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "exit@1": {
+      "first_event_seq": 221,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-12T12:18:07.852789056Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-12T12:18:07.852559092Z",
+      "handler": "exit",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
       },
       "usage": {
         "input_tokens": 0,
