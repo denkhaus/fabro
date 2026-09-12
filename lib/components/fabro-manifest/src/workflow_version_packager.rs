@@ -64,7 +64,8 @@ fn package_blocking(
 /// failures that reach them stop at the last path-only level and add a hint.
 fn render_packaging_error(err: &WorkflowVersionCollectError) -> String {
     let quotes_source = match err {
-        WorkflowVersionCollectError::Collect { .. } => true,
+        WorkflowVersionCollectError::Collect { .. }
+        | WorkflowVersionCollectError::InvalidSuppliedConfig { .. } => true,
         WorkflowVersionCollectError::InvalidVersion { source, .. } => matches!(
             source,
             WorkflowVersionError::GraphParse { .. }
@@ -87,6 +88,7 @@ fn render_packaging_error(err: &WorkflowVersionCollectError) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
     #[expect(
         clippy::disallowed_types,
         reason = "test log capture writes synchronously into memory"
@@ -149,6 +151,93 @@ mod tests {
             .await
             .unwrap_err();
         format!("{error:#}")
+    }
+
+    #[tokio::test]
+    async fn deeply_nested_graphs_return_errors_on_the_packaging_thread() {
+        for kind in ["child", "import", "mixed"] {
+            for count in [
+                crate::MAX_WORKFLOW_VERSION_DEPTH,
+                crate::MAX_WORKFLOW_VERSION_DEPTH + 1,
+                384,
+                512,
+            ] {
+                let files: BTreeMap<_, _> = (0..count)
+                    .map(|index| {
+                        let attribute = if kind == "import" || (kind == "mixed" && index % 2 == 0) {
+                            "import"
+                        } else {
+                            "stack.child_workflow"
+                        };
+                        let graph = if index + 1 < count {
+                            format!(
+                                "digraph W {{ node{index} [{attribute}=\"f{}.fabro\"] }}",
+                                index + 1
+                            )
+                        } else {
+                            "digraph W {}".to_owned()
+                        };
+                        (format!("f{index}.fabro").parse().unwrap(), graph)
+                    })
+                    .collect();
+                let input = ValidatedWorkflowVersionCreate::try_from(
+                    fabro_tool::FabroWorkflowVersionCreateParams {
+                        entrypoint: "f0.fabro".parse().unwrap(),
+                        files,
+                    },
+                )
+                .unwrap();
+                let result = SuppliedWorkflowVersionPackager.package(input).await;
+                if count == crate::MAX_WORKFLOW_VERSION_DEPTH {
+                    assert!(result.is_ok(), "{kind} at limit: {result:?}");
+                } else {
+                    let error = result.unwrap_err();
+                    assert!(
+                        error.to_string().contains("exceeds 64 levels"),
+                        "{kind}/{count}: {error:#}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn invalid_supplied_sibling_configs_fail_without_quoting_source() {
+        for config in [
+            "_version = 1\nPRIVATE_CONTENT = [unterminated",
+            "_version = 1\n[workflow]\ngraph = \"workflow.fabro\"\n[run]\ngoal = \"PRIVATE_CONTENT\"\nunknown_setting = true\n",
+        ] {
+            for child in [false, true] {
+                let input = if child {
+                    source("root.fabro", &[
+                        (
+                            "root.fabro",
+                            r#"digraph W { child [stack.child_workflow="sub/workflow.fabro"] }"#,
+                        ),
+                        ("sub/workflow.fabro", "digraph Child {}"),
+                        ("sub/workflow.toml", config),
+                    ])
+                } else {
+                    source("workflow.fabro", &[
+                        ("workflow.fabro", "digraph W {}"),
+                        ("workflow.toml", config),
+                    ])
+                };
+                let error = package_error(input).await;
+                let path = if child {
+                    "sub/workflow.toml"
+                } else {
+                    "workflow.toml"
+                };
+                assert!(
+                    error.contains(&format!(
+                        "supplied workflow configuration `{path}` is invalid"
+                    )),
+                    "{error}"
+                );
+                assert!(!error.contains("PRIVATE_CONTENT"), "{error}");
+            }
+        }
     }
 
     #[tokio::test]
@@ -218,6 +307,13 @@ mod tests {
                 "workflow.toml",
                 "_version = 1\nPRIVATE_CONTENT = [unterminated",
             )]),
+            source("workflow.fabro", &[
+                ("workflow.fabro", "digraph W {}"),
+                (
+                    "workflow.toml",
+                    "_version = 1\nPRIVATE_CONTENT = [unterminated",
+                ),
+            ]),
         ];
         // The guard is load-bearing: the full chain does quote the source.
         let leaky =

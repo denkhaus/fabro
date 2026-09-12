@@ -14,6 +14,23 @@ use crate::workflow_bundler::{
     CollectedWorkflowSource, CollectedWorkflowSources, MissingPackageFile, WorkflowBundler,
 };
 
+/// Maximum active graph nesting while collecting or assembling a version.
+/// Bounds native stack use independently of file-count and byte budgets.
+pub const MAX_WORKFLOW_VERSION_DEPTH: usize = 64;
+
+pub(super) fn check_workflow_depth(
+    depth: usize,
+    path: &str,
+) -> Result<(), WorkflowVersionCollectError> {
+    if depth > MAX_WORKFLOW_VERSION_DEPTH {
+        return Err(WorkflowVersionCollectError::DepthExceeded {
+            path:    path.to_owned(),
+            maximum: MAX_WORKFLOW_VERSION_DEPTH,
+        });
+    }
+    Ok(())
+}
+
 /// One locally packaged workflow-version closure in dependency-first order.
 #[derive(Debug)]
 pub struct CollectedWorkflowClosure {
@@ -47,6 +64,8 @@ impl CollectedWorkflowClosure {
 
 #[derive(Debug, Error)]
 pub enum WorkflowVersionCollectError {
+    #[error("workflow dependency nesting at `{path}` exceeds {maximum} levels")]
+    DepthExceeded { path: String, maximum: usize },
     #[error("workflow `{path}` was not found")]
     WorkflowNotFound { path: PathBuf },
     #[error("failed to collect workflow `{path}`")]
@@ -98,6 +117,12 @@ pub enum WorkflowVersionCollectError {
     ConfigAlias {
         config_path: WorkflowPath,
         alias:       WorkflowPath,
+    },
+    #[error("supplied workflow configuration `{path}` is invalid")]
+    InvalidSuppliedConfig {
+        path:   WorkflowPath,
+        #[source]
+        source: Box<fabro_config::Error>,
     },
     #[error("failed to stage supplied workflow files")]
     Stage {
@@ -182,6 +207,10 @@ pub fn collect_workflow_versions_at_location(
     let collected = WorkflowBundler::new(package_root, &inputs)
         .collect_versions(location)
         .map_err(|source| {
+            let source = match source.downcast::<WorkflowVersionCollectError>() {
+                Ok(error) => return error,
+                Err(source) => source,
+            };
             let missing = source
                 .chain()
                 .find_map(|cause| cause.downcast_ref::<MissingPackageFile>());
@@ -244,6 +273,7 @@ impl VersionAssembler {
         if let Some(id) = self.ids.get(key) {
             return Ok(*id);
         }
+        check_workflow_depth(self.visiting.len() + 1, key)?;
         if !self.visiting.insert(key.to_owned()) {
             return Err(WorkflowVersionCollectError::DependencyCycle {
                 path: workflow_path(key)?,
@@ -348,6 +378,44 @@ mod tests {
     use std::fs;
 
     use super::*;
+
+    #[test]
+    fn version_assembly_bounds_its_own_dependency_traversal() {
+        // Collection and assembly visit shared dependencies in different orders.
+        // Assembly must bound its stack even if collection already cached nodes.
+        for count in [MAX_WORKFLOW_VERSION_DEPTH, MAX_WORKFLOW_VERSION_DEPTH + 1] {
+            let workflows = (0..count)
+                .map(|index| {
+                    let child = (index + 1 < count).then(|| format!("f{}.fabro", index + 1));
+                    let source = child.as_ref().map_or_else(
+                        || "digraph W {}".to_owned(),
+                        |child| format!("digraph W {{ child [stack.child_workflow=\"{child}\"] }}"),
+                    );
+                    (format!("f{index}.fabro"), CollectedWorkflowSource {
+                        workflow:        types::ManifestWorkflow {
+                            config: None,
+                            files: HashMap::new(),
+                            source,
+                        },
+                        dependency_keys: child.into_iter().collect(),
+                    })
+                })
+                .collect();
+            let result = VersionAssembler::new(CollectedWorkflowSources {
+                root_key: "f0.fabro".to_owned(),
+                workflows,
+            })
+            .assemble();
+            if count == MAX_WORKFLOW_VERSION_DEPTH {
+                assert_eq!(result.unwrap().versions().count(), count);
+            } else {
+                assert!(matches!(
+                    result,
+                    Err(WorkflowVersionCollectError::DepthExceeded { .. })
+                ));
+            }
+        }
+    }
 
     fn write(root: &Path, path: &str, content: &str) {
         let path = root.join(path);

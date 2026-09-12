@@ -60,7 +60,7 @@ fn collect_in_staging(
         })?;
     let closure = crate::collect_workflow_versions_at_location(&location, &root, entrypoint)?;
     for (_, version) in closure.versions() {
-        confine_to_supplied(version.version(), files)?;
+        confine_to_supplied(version.version(), files, &root)?;
     }
     Ok(closure)
 }
@@ -73,6 +73,7 @@ fn collect_in_staging(
 fn confine_to_supplied(
     version: &fabro_types::WorkflowVersion,
     files: &BTreeMap<WorkflowPath, String>,
+    root: &Path,
 ) -> Result<()> {
     // A supplied sibling config attaches only when its `[workflow].graph`
     // selects this entrypoint, exactly as for a checkout; several graphs may
@@ -92,6 +93,16 @@ fn confine_to_supplied(
                 alias: alias.clone(),
             });
         }
+    } else if !version.files().contains_key(&config_path) {
+        // Graph discovery deliberately ignores sibling configs that it cannot
+        // load. A supplied config may be omitted only if it is valid and selects
+        // a different graph; malformed settings must not silently disappear.
+        WorkflowLocation::from_exact_path(Path::new(config_path.as_str()), root).map_err(
+            |source| WorkflowVersionCollectError::InvalidSuppliedConfig {
+                path:   config_path,
+                source: Box::new(source),
+            },
+        )?;
     }
     // A case-insensitive host must not satisfy a reference that is missing
     // from the supplied tree under its exact key.

@@ -17,7 +17,7 @@ use fabro_template::{
 use fabro_types::ManifestPath;
 use fabro_types::graph::ReferenceKind;
 
-use crate::{manifest_path_from_absolute, normalize_absolute_path};
+use crate::{manifest_path_from_absolute, normalize_absolute_path, workflow_version_collector};
 
 pub(super) struct WorkflowBundler<'a> {
     package_root: &'a Path,
@@ -64,7 +64,7 @@ impl<'a> WorkflowBundler<'a> {
         workflow: &Path,
         project_config: Option<(&ManifestPath, &str)>,
     ) -> Result<HashMap<String, types::ManifestWorkflow>> {
-        let root_key = self.collect_workflow_entry(workflow, self.package_root)?;
+        let root_key = self.collect_workflow_entry(workflow, self.package_root, 1)?;
 
         if let Some((config_path, source)) = project_config {
             let mut root = self
@@ -89,7 +89,7 @@ impl<'a> WorkflowBundler<'a> {
         root: &WorkflowLocation,
     ) -> Result<CollectedWorkflowSources> {
         self.workflow_version_projection = true;
-        let root_key = self.collect_workflow_location(root)?;
+        let root_key = self.collect_workflow_location(root, 1)?;
         Ok(CollectedWorkflowSources {
             root_key,
             workflows: self.workflows,
@@ -97,11 +97,18 @@ impl<'a> WorkflowBundler<'a> {
     }
 
     /// Collects the workflow at `location` and returns its manifest key.
-    fn collect_workflow_location(&mut self, location: &WorkflowLocation) -> Result<String> {
+    fn collect_workflow_location(
+        &mut self,
+        location: &WorkflowLocation,
+        depth: usize,
+    ) -> Result<String> {
         let dot_path = manifest_path_from_absolute(&location.graph, self.package_root)?;
         let dot_key = dot_path.to_string();
         if !self.visited_workflows.insert(dot_key.clone()) {
             return Ok(dot_key);
+        }
+        if self.workflow_version_projection {
+            workflow_version_collector::check_workflow_depth(depth, &dot_key)?;
         }
 
         let source = self.read_package_file(&location.graph)?;
@@ -147,6 +154,7 @@ impl<'a> WorkflowBundler<'a> {
             &mut visited_imports,
             &mut dependency_keys,
             GraphPosition::Entrypoint,
+            depth,
         )?;
 
         self.workflows
@@ -168,7 +176,12 @@ impl<'a> WorkflowBundler<'a> {
     /// key. Workflow-version projection normalizes every reference and
     /// resolves it as an exact path inside the package root, with no
     /// workflow-name lookup. Returns the collected workflow's manifest key.
-    fn collect_workflow_entry(&mut self, workflow: &Path, resolve_from: &Path) -> Result<String> {
+    fn collect_workflow_entry(
+        &mut self,
+        workflow: &Path,
+        resolve_from: &Path,
+        depth: usize,
+    ) -> Result<String> {
         let normalize = self.workflow_version_projection
             || (workflow.extension().is_some() && workflow.is_relative());
         let normalized = if normalize {
@@ -197,7 +210,7 @@ impl<'a> WorkflowBundler<'a> {
         } else {
             WorkflowLocation::resolve(&normalized, resolve_from)?
         };
-        self.collect_workflow_location(&location)
+        self.collect_workflow_location(&location, depth)
     }
 
     fn collect_workflow_files(
@@ -207,7 +220,14 @@ impl<'a> WorkflowBundler<'a> {
         visited_imports: &mut HashSet<String>,
         dependency_keys: &mut BTreeSet<String>,
         position: GraphPosition,
+        depth: usize,
     ) -> Result<()> {
+        if self.workflow_version_projection {
+            workflow_version_collector::check_workflow_depth(
+                depth,
+                &workflow.dot_path.to_string(),
+            )?;
+        }
         let graph = parser::parse(&workflow.source)
             .with_context(|| format!("Failed to parse {}", workflow.absolute_dot_path.display()))?;
         let workflow_base_dir = workflow
@@ -305,12 +325,13 @@ impl<'a> WorkflowBundler<'a> {
                     visited_imports,
                     dependency_keys,
                     GraphPosition::Imported,
+                    depth + 1,
                 )?;
             }
         }
         for child in children {
             let dependency_key =
-                self.collect_workflow_entry(Path::new(child), workflow_base_dir)?;
+                self.collect_workflow_entry(Path::new(child), workflow_base_dir, depth + 1)?;
             dependency_keys.insert(dependency_key);
         }
 

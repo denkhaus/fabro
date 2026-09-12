@@ -75,7 +75,10 @@ values are text, never host paths or URLs to fetch. Missing references and paths
 that escape the supplied tree fail. The source tree is limited to 512 files,
 512 KiB per file, and 2 MiB of text; each resulting serialized version must also
 fit the existing 2 MiB API limit. Case-insensitive file and ancestor collisions
-are rejected before staging. Collection follows declared file references; command
+are rejected before staging. Graph nesting through child workflows and imports
+is limited to 64 levels, including the entrypoint. A supplied sibling
+`workflow.toml` must be valid even when a graph is the entrypoint; a valid config
+that selects another graph is omitted. Collection follows declared file references; command
 `script` values remain literal text, and paths embedded in shell commands are not
 inspected or acquired.
 
