@@ -570,7 +570,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-12T22:00:30.060096672Z",
-  "last_event_at": "2026-09-12T22:02:05.463246893Z",
+  "last_event_at": "2026-09-12T22:02:09.984478594Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -618,9 +618,9 @@
       "diff": {}
     },
     {
-      "seq": 0,
+      "seq": 101,
       "checkpoint": {
-        "timestamp": "2026-09-12T22:02:05.479226110Z",
+        "timestamp": "2026-09-12T22:02:09.983604953Z",
         "current_node": "survey",
         "completed_nodes": [
           "start",
@@ -630,30 +630,30 @@
           "survey": 4
         },
         "context_values": {
-          "graph.inspects": "develop,merge-upstream,revisor",
-          "internal.fidelity": "compact",
-          "current_node": "survey",
-          "graph.goal": "Run the serialized fabro line: one pass = upstream merge (when the threshold is met, infra-only) OR one develop+revisor cycle; children are created only after the previous child merged",
-          "failure_class": "transient_infra",
-          "failure_signature": "survey|transient_infra|api_transient|zai|rate_limit",
-          "thread.start.current_node": "survey",
-          "internal.retry_count.survey": 4,
-          "internal.thread_id": "start",
-          "internal.run_id": "01M2BT4WC3MGM5F7J3XEHF8XRR",
           "graph.rankdir": "LR",
+          "internal.exit_kind": "soft",
+          "current_node": "survey",
+          "graph.cycle_counter_reset_key": "pass_id",
+          "internal.retry_count.start": 0,
+          "internal.thread_id": "start",
+          "graph.goal": "Run the serialized fabro line: one pass = upstream merge (when the threshold is met, infra-only) OR one develop+revisor cycle; children are created only after the previous child merged",
+          "failure_signature": "survey|transient_infra|api_transient|zai|rate_limit",
+          "graph.preamble_budget_kb": "12",
           "internal.work_dir": "/workspace/fabro",
-          "internal.seed_cycle_anchor": "",
+          "internal.fidelity": "compact",
+          "internal.run_id": "01M2BT4WC3MGM5F7J3XEHF8XRR",
+          "failure_class": "transient_infra",
+          "internal.retry_count.survey": 4,
           "seed_cycles": {
             "start": 1,
             "survey": 1
           },
-          "internal.node_visit_count": 1,
-          "graph.cycle_counter_reset_key": "pass_id",
-          "outcome": "failed",
-          "internal.exit_kind": "soft",
+          "thread.start.current_node": "survey",
+          "internal.seed_cycle_anchor": "",
           "graph.max_node_visits": "12",
-          "internal.retry_count.start": 0,
-          "graph.preamble_budget_kb": "12"
+          "graph.inspects": "develop,merge-upstream,revisor",
+          "internal.node_visit_count": 1,
+          "outcome": "failed"
         },
         "node_outcomes": {
           "start": {
@@ -671,15 +671,74 @@
           }
         },
         "next_node_id": "exit",
+        "git_commit_sha": "cf3290d4f38e4ff19fe722a109f599d14e45cec5",
         "node_visits": {
-          "survey": 1,
-          "start": 1
+          "start": 1,
+          "survey": 1
         }
       },
-      "diff": {}
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M2BT4WC3MGM5F7J3XEHF8XRR.jsonl b/.fabro/journal/01M2BT4WC3MGM5F7J3XEHF8XRR.jsonl\nnew file mode 100644\nindex 000000000..0f02e0bcb\n--- /dev/null\n+++ b/.fabro/journal/01M2BT4WC3MGM5F7J3XEHF8XRR.jsonl\n@@ -0,0 +1 @@\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M2BT4WC3MGM5F7J3XEHF8XRR\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-12T22:00:32Z\",\"data\":{}}\n",
+        "summary": {
+          "files_changed": 1,
+          "additions": 1,
+          "deletions": 0
+        }
+      }
     }
   ],
-  "conclusion": null,
+  "conclusion": {
+    "timestamp": "2026-09-12T22:02:10.026703458Z",
+    "status": "failed",
+    "timing": {
+      "wall_time_ms": 98966,
+      "inference_time_ms": 0,
+      "tool_time_ms": 0,
+      "active_time_ms": 0
+    },
+    "failure": {
+      "reason": "soft_stop",
+      "detail": {
+        "message": "run parked at a soft exit (kind=\"soft\") — infrastructure could not finish; the next run re-enters autonomously",
+        "category": "deterministic"
+      }
+    },
+    "final_git_commit_sha": "cf3290d4f38e4ff19fe722a109f599d14e45cec5",
+    "stages": [
+      {
+        "stage_id": "start",
+        "stage_label": "start",
+        "timing": {
+          "wall_time_ms": 0,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "survey",
+        "stage_label": "survey",
+        "timing": {
+          "wall_time_ms": 3137,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 3
+      }
+    ],
+    "total_retries": 3,
+    "diff": {
+      "patch": "diff --git a/.fabro/journal/01M2BT4WC3MGM5F7J3XEHF8XRR.jsonl b/.fabro/journal/01M2BT4WC3MGM5F7J3XEHF8XRR.jsonl\nnew file mode 100644\nindex 000000000..0f02e0bcb\n--- /dev/null\n+++ b/.fabro/journal/01M2BT4WC3MGM5F7J3XEHF8XRR.jsonl\n@@ -0,0 +1 @@\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M2BT4WC3MGM5F7J3XEHF8XRR\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-12T22:00:32Z\",\"data\":{}}\n",
+      "summary": {
+        "files_changed": 1,
+        "additions": 1,
+        "deletions": 0
+      }
+    },
+    "exit_kind": "soft"
+  },
   "sandbox": {
     "kind": "ready",
     "plan": {
@@ -706,11 +765,52 @@
   "superseded_by": null,
   "pending_interviews": {},
   "stages": {
+    "exit@1": {
+      "first_event_seq": 104,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-12T22:02:09.984478594Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-12T22:02:09.983970561Z",
+      "handler": "exit",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
     "survey@1": {
       "first_event_seq": 19,
       "prompt": null,
       "response": null,
-      "completion": null,
+      "completion": {
+        "outcome": "failed",
+        "notes": null,
+        "failure_reason": "LLM error: provider zai Usage limit reached for 5 hour. Your limit will reset at 2026-09-13 06:19:00",
+        "timestamp": "2026-09-12T22:02:05.478849896Z"
+      },
       "provider_used": {
         "mode": "agent",
         "provider": "zai",
@@ -725,7 +825,12 @@
       "started_at": "2026-09-12T22:02:02.325904110Z",
       "handler": "agent",
       "graph_visit": 1,
-      "live_inference_ms": 2547,
+      "timing": {
+        "wall_time_ms": 3137,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
       "usage": {
         "input_tokens": 0,
         "output_tokens": 0,
@@ -891,7 +996,7 @@
         }
       ],
       "agent_control": "running",
-      "state": "running"
+      "state": "failed"
     },
     "start@1": {
       "first_event_seq": 15,
