@@ -86,34 +86,58 @@ Registration resolves no runtime secrets, selects no environment, and starts no
 execution. It requires a user credential or a worker token with `agent:run_tools`;
 ordinary worker tokens and same-run Ask Fabro sessions cannot register versions.
 If an upload fails, retry the same contents: previously registered immutable
-versions remain reusable. The existing `fabro_run_create` input is unchanged.
+versions remain reusable. Use the returned ID with `fabro_run_create`.
 
 ### Create runs
 
-For a simple create call, `fabro_run_create` accepts a workflow selector string:
-
-```json
-{ "runs": ["sleeper"] }
-```
-
-Use the object form when you need create options:
+Call `fabro_run_create` with a registered workflow version ID and an independent
+workspace target. You can reuse the same ID for multiple runs without uploading
+again:
 
 ```json
 {
-  "runs": [
-    {
-      "workflow": "sleeper",
-      "auto_approve": true,
-      "dry_run": true,
-      "goal_file": "plans/ship-it.md",
+  "runs": [{
+    "workflow_version_id": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "target": { "kind": "git", "repo": "acme/widgets", "branch": "main" },
+    "environment_id": "production",
+    "goal": "Review the checkout implementation.",
+    "args": {
+      "inputs": { "component": "checkout" },
       "labels": { "source": "mcp" },
-      "start": true
-    }
-  ]
+      "auto_approve": false
+    },
+    "start": false
+  }]
 }
 ```
 
-Use `goal` for inline goal text or `goal_file` to read the run goal from a file. They are mutually exclusive. Relative `goal_file` paths resolve from the run's `cwd`, or from the MCP server working directory when `cwd` is omitted.
+Standalone MCP calls require an explicit `target`: Git coordinates, `kind: none`
+for an empty workspace, or a server-local folder for a compatible Local environment.
+A folder path refers to the server's filesystem, not the MCP client's filesystem.
+Workflow content does not determine the target. Native workflow-agent calls may
+omit `target` to inherit the parent's execution target; see [Child Runs](/execution/child-runs).
+Supplying `parent_id` in standalone MCP does not enable that inheritance.
+
+`args` uses the same fields as RunIntent: `inputs`, `labels`, `model`, `provider`,
+`dry_run`, `auto_approve`, and `preserve_sandbox`. Omitted boolean overrides stay
+omitted; explicit `false` is preserved. `environment_id` selects a server environment;
+omission uses the server default. `title`, literal `goal`, and an exact `parent_id`
+are optional. Caller/project/machine run settings are not read by the tool.
+Workflow-owned settings remain in the registered `workflow.toml`.
+
+<Note>
+Run creation accepts registered IDs only. Replace workflow strings and inline
+sources with a preceding `fabro_workflow_version_create` call. Move flat run
+options into `args`, use `environment_id` instead of `environment`, and send goal
+text instead of `goal_file`. Obtain local or remote files using the caller's own
+shell/read tools. Neither Fabro tool fetches remote sources or reads a caller path.
+</Note>
+
+Creation persists a submitted run. A separate start request follows by default;
+set `start: false` to start later. Batches contain 1–50 items and stop at the first
+failure. If creation succeeded before a start, summary lookup, or later item
+failed, the error includes the already-created run IDs. Inspect those runs before
+retrying to avoid creating duplicates.
 
 Run summaries returned by the MCP server include parent metadata. Use `parent_id` on `fabro_run_create` to create a child run, `parent_id` on `fabro_run_search` to list direct children, and the `link_parent` or `unlink_parent` actions on `fabro_run_interact` to change an existing run's parent. See [Child Runs](/execution/child-runs) for the orchestration model.
 

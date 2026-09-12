@@ -41,7 +41,8 @@ mod run_intent;
 mod run_manifest;
 mod run_selector;
 mod run_title_generation;
-pub mod run_tool_manifest;
+#[cfg(test)]
+mod run_tool_create;
 pub mod security_headers;
 pub mod serve;
 pub mod server;

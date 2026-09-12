@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::path::Path;
 use std::sync::LazyLock;
 
 use async_trait::async_trait;
@@ -55,13 +54,8 @@ pub trait FabroToolBackend: Send + Sync {
         Err(workflow_version_tool_unavailable_error())
     }
 
-    async fn create_run_from_spec(
-        &self,
-        spec: &crate::ValidatedCreateRunSpec,
-        cwd: &Path,
-        user_settings_path: &Path,
-        parent_id: Option<RunId>,
-    ) -> anyhow::Result<RunId>;
+    async fn create_run_from_intent(&self, intent: fabro_types::RunIntent)
+    -> anyhow::Result<RunId>;
 
     async fn resolve_run(&self, selector: &str) -> anyhow::Result<Run>;
     async fn retrieve_run(&self, run_id: &RunId) -> anyhow::Result<Run>;
@@ -149,15 +143,6 @@ pub(crate) fn workflow_version_tool_unavailable_error() -> anyhow::Error {
     .into()
 }
 
-pub trait RunManifestBuilder: Send + Sync {
-    fn build_run_manifest(
-        &self,
-        spec: &crate::ValidatedCreateRunSpec,
-        cwd: &Path,
-        user_settings_path: &Path,
-    ) -> ToolResult<types::RunManifest>;
-}
-
 #[derive(Debug, Serialize, JsonSchema)]
 pub struct RunSummaryResult {
     pub run_id:              String,
@@ -201,7 +186,7 @@ static TOOL_DEFINITIONS: LazyLock<Vec<ToolDefinition>> = LazyLock::new(|| {
         ),
         tool_definition::<crate::FabroRunCreateParams>(
             FABRO_RUN_CREATE_TOOL_NAME,
-            "Create one or more Fabro workflow runs, optionally under a parent run, starting them by default.",
+            "Create runs from registered workflow_version_id values and canonical RunIntent settings. Register contents with fabro_workflow_version_create first. Standalone calls require an explicit target; native workers may inherit the parent target. Starts runs by default.",
         ),
         tool_definition::<crate::FabroRunSearchParams>(
             FABRO_RUN_SEARCH_TOOL_NAME,

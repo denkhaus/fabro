@@ -1,19 +1,17 @@
-use std::path::Path;
 use std::sync::Arc;
 
 use async_trait::async_trait;
 use fabro_api::types;
 use fabro_types::{
     EventEnvelope, PairId, PairMessageRecord, PairMessageRequest, PairRecord,
-    PairTranscriptResponse, Run, RunId, RunPairStatusResponse, RunProjection, StageId,
+    PairTranscriptResponse, Run, RunId, RunIntent, RunPairStatusResponse, RunProjection, StageId,
 };
 
-use crate::{FabroToolBackend, RunManifestBuilder, ToolError, common};
+use crate::{FabroToolBackend, common};
 
 #[derive(Clone)]
 pub struct ClientBackend {
     client:                    Arc<::fabro_client::Client>,
-    manifest_builder:          Option<Arc<dyn RunManifestBuilder>>,
     run_scope:                 Option<RunId>,
     workflow_version_packager: Option<Arc<dyn crate::WorkflowVersionPackager>>,
 }
@@ -23,16 +21,9 @@ impl ClientBackend {
     pub fn new(client: Arc<::fabro_client::Client>) -> Self {
         Self {
             client,
-            manifest_builder: None,
             run_scope: None,
             workflow_version_packager: None,
         }
-    }
-
-    #[must_use]
-    pub fn with_manifest_builder(mut self, builder: Arc<dyn RunManifestBuilder>) -> Self {
-        self.manifest_builder = Some(builder);
-        self
     }
 
     #[must_use]
@@ -90,28 +81,12 @@ impl FabroToolBackend for ClientBackend {
         Ok(packaged.root_id())
     }
 
-    async fn create_run_from_spec(
-        &self,
-        spec: &crate::ValidatedCreateRunSpec,
-        cwd: &Path,
-        user_settings_path: &Path,
-        parent_id: Option<RunId>,
-    ) -> anyhow::Result<RunId> {
-        if let Some(parent_id) = parent_id.as_ref() {
-            self.ensure_run_scope(parent_id)?;
-        }
-        let Some(builder) = self.manifest_builder.as_ref() else {
-            return Err(ToolError::message(format!(
-                "{} is not available",
-                crate::FABRO_RUN_CREATE_TOOL_NAME
-            ))
-            .into());
-        };
-        let mut manifest = builder
-            .build_run_manifest(spec, cwd, user_settings_path)
-            .map_err(anyhow::Error::new)?;
-        manifest.parent_id = parent_id.map(|run_id| run_id.to_string());
-        self.client.create_run_from_manifest(manifest).await
+    async fn create_run_from_intent(&self, intent: RunIntent) -> anyhow::Result<RunId> {
+        anyhow::ensure!(
+            self.run_scope.is_none(),
+            "run creation is outside this tool session's run scope"
+        );
+        self.client.create_run_from_intent(intent).await
     }
 
     async fn resolve_run(&self, selector: &str) -> anyhow::Result<Run> {
