@@ -771,7 +771,7 @@ async fn build_agent(
         Some(stored) => {
             let mut record = stored.record;
             if let Ok(Some(last_seq)) = run_store.last_event_seq().await {
-                record.advance_event_cursor(u64::from(last_seq));
+                record.resume_after(u64::from(last_seq));
             }
             CodingAgent::resume(
                 llm_result.client,

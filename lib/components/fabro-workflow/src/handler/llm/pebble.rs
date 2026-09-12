@@ -41,8 +41,8 @@ use pebble_coding_agent::subagents::SubagentOptions;
 use pebble_coding_agent::tools::{RegisteredTool, ToolEnvProvider};
 use pebble_coding_agent::{
     CodingAgent, CodingAgentBuilder, CodingAgentControlHandle, CodingAgentExport,
-    CodingAgentOptions, CodingInput, InterruptReason, ShutdownReason, SteeringLease,
-    SteeringMessage, SteeringOutcome,
+    CodingAgentOptions, CodingInput, InterruptReason, MemoryDiscovery, ShutdownReason,
+    SkillDiscovery, SteeringLease, SteeringMessage, SteeringOutcome,
 };
 use tokio_util::sync::CancellationToken;
 
@@ -58,7 +58,6 @@ use super::controls::{
 use super::fabro_tools::register_fabro_run_tools;
 use super::fallback::{self, FallbackPlan, LlmRoute};
 use super::routing::{self, ProviderContext};
-use crate::agent_memory;
 use crate::context::WorkflowContext;
 use crate::context::keys::Fidelity;
 use crate::error::Error;
@@ -591,33 +590,31 @@ impl PebbleBackend {
         build_llm_client(&self.catalog, Arc::clone(&self.source)).await
     }
 
-    fn skill_dirs(&self, sandbox: &RunSandbox) -> Vec<String> {
-        if let Some(dirs) = &self.skill_dirs {
-            return dirs.clone();
+    /// Where a stage's skills come from: the directories the backend was
+    /// given, else fabro's convention — the user's skills directory, then
+    /// `.fabro/skills` and `skills` under the repository root — which pebble
+    /// resolves and searches.
+    fn skill_options(&self, options: CodingAgentOptions) -> CodingAgentOptions {
+        match &self.skill_dirs {
+            Some(dirs) => options.with_skill_dirs(dirs.clone()),
+            None => options.with_skill_discovery(
+                SkillDiscovery::new()
+                    .search(Home::from_env().skills_dir().to_string_lossy().into_owned())
+                    .search_under_git_root(".fabro/skills")
+                    .search_under_git_root("skills"),
+            ),
         }
-        let root = sandbox.working_directory().trim_end_matches('/');
-        let mut dirs = vec![Home::from_env().skills_dir().to_string_lossy().into_owned()];
-        dirs.push(format!("{root}/.fabro/skills"));
-        dirs.push(format!("{root}/skills"));
-        dirs
     }
 
-    fn agent_options(
-        &self,
-        node: &Node,
-        profile_kind: AgentProfileKind,
-        controls: EffectiveRequestControls,
-        sandbox: &RunSandbox,
-    ) -> CodingAgentOptions {
-        CodingAgentOptions::default()
+    fn agent_options(&self, node: &Node, controls: EffectiveRequestControls) -> CodingAgentOptions {
+        // The profile's own instruction files, from the repository root down
+        // to the working directory: pebble knows the files and does the walk.
+        let options = CodingAgentOptions::default()
             .with_reasoning_effort(controls.reasoning_effort)
             .with_speed(controls.speed)
             .with_max_tokens(node_max_output_tokens(node).map(i64::from))
-            .with_memory_files(agent_memory::memory_paths(
-                sandbox.working_directory(),
-                profile_kind,
-            ))
-            .with_skill_dirs(self.skill_dirs(sandbox))
+            .with_memory_discovery(MemoryDiscovery::from_git_root());
+        self.skill_options(options)
             .with_recorded_permission_level(PermissionLevel::Full)
             .with_context_compaction(true)
             .with_compaction_threshold_percent(COMPACTION_THRESHOLD_PERCENT)
@@ -649,12 +646,7 @@ impl PebbleBackend {
             .tools(self.stage_tools())
             .mcp_servers(pebble_servers(&self.mcp_servers))
             .permission_level(PermissionLevel::Full)
-            .options(self.agent_options(
-                node,
-                provider.profile_kind,
-                route.controls,
-                bindings.sandbox,
-            ))
+            .options(self.agent_options(node, route.controls))
             .fallback_routes(plan.pebble_routes(max_tokens))
             .event_sink(Arc::new(WorkflowEventSink {
                 emitter: Arc::clone(bindings.emitter),
@@ -1244,17 +1236,23 @@ impl CodergenBackend for PebbleBackend {
         .with_reported_cost(live.total_cost);
 
         live.release_lease();
-        let mut export = reuse_key.as_ref().map(|_| live.agent.export());
-        if let Err(error) = live.agent.shutdown(ShutdownReason::Completed).await {
-            tracing::debug!(error = %error, "agent session did not shut down cleanly");
-        }
-        if let (Some(key), Some(export)) = (reuse_key, export.as_mut()) {
-            // The close is in the log now; the successor numbers past it.
-            export.advance_event_cursor(live.agent.committed_event_seq());
-            self.store_thread(key, CachedThread {
-                export:        export.clone(),
-                fallback_plan: fallback_plan.clone(),
-            });
+        match reuse_key {
+            // The thread's successor continues from an export whose cursor is
+            // already past this session's close.
+            Some(key) => match live.agent.export_for_reuse(ShutdownReason::Completed).await {
+                Ok(export) => self.store_thread(key, CachedThread {
+                    export,
+                    fallback_plan: fallback_plan.clone(),
+                }),
+                Err(error) => {
+                    tracing::debug!(error = %error, "agent session did not shut down cleanly");
+                }
+            },
+            None => {
+                if let Err(error) = live.agent.shutdown(ShutdownReason::Completed).await {
+                    tracing::debug!(error = %error, "agent session did not shut down cleanly");
+                }
+            }
         }
 
         Ok(CodergenResult::Text {

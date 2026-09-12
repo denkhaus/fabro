@@ -67,7 +67,6 @@ impl Handler for PromptHandler {
 
         // 1b. Discover project docs for system prompt when project_memory is enabled
         let system_prompt = if node.project_memory() {
-            let working_dir = services.run.sandbox.working_directory();
             let profile_kind = routing::resolve_node_provider_context(
                 services.run.catalog.as_ref(),
                 &services.run.provider_id,
@@ -77,7 +76,6 @@ impl Handler for PromptHandler {
             .profile_kind;
             agent_memory::load_memory_text(
                 &services.run.sandbox,
-                working_dir,
                 profile_kind,
                 &services.run.cancel_token(),
             )

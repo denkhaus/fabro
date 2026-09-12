@@ -11,7 +11,6 @@ use std::sync::{Arc, Mutex};
 
 use anyhow::{Context as _, Result as AnyResult};
 use async_trait::async_trait;
-use fabro_llm::catalog::agent_profile;
 use fabro_llm::credentials::CredentialProvider;
 use fabro_llm::gateway::{GatewayAdapter, GatewayError, GatewayTransport};
 use fabro_llm::lithos_catalog::{Catalog, CatalogProvider};
@@ -21,13 +20,12 @@ use fabro_mcp::config::McpServerSettings;
 use fabro_mcp::pebble::pebble_servers;
 use fabro_sandbox::{RunSandbox, SecretRedactor, local_sandbox};
 use fabro_static::EnvVars;
+use fabro_types::PermissionLevel;
 use fabro_types::settings::cli::OutputFormat as SettingsOutputFormat;
 use fabro_types::settings::run::ResolvedMcpEntry;
-use fabro_types::{AgentProfileKind, PermissionLevel};
 use fabro_util::exit::{self, ErrorExt, ExitClass};
 use fabro_util::home::Home;
 use fabro_util::terminal::Styles;
-use fabro_workflow::agent_memory;
 use fabro_workflow::web_search::{SearchBackend, SearchSecrets};
 use lithos_llm::catalog::ProviderId;
 use pebble_agent::{ToolCallRequest, ToolSystemError};
@@ -38,7 +36,9 @@ use pebble_coding_agent::subagents::SubagentOptions;
 use pebble_coding_agent::tools::{
     ApprovalDecision, PermissionLevelPolicy, PermissionMiddleware, ToolApprovalService,
 };
-use pebble_coding_agent::{CodingAgent, CodingAgentOptions, ShutdownReason};
+use pebble_coding_agent::{
+    CodingAgent, CodingAgentOptions, MemoryDiscovery, ShutdownReason, SkillDiscovery,
+};
 use tokio::io::{AsyncWriteExt, stdout};
 use tokio::signal;
 use tokio::task::spawn_blocking;
@@ -609,23 +609,20 @@ async fn run_session(
         PermissionMiddleware::new(Arc::new(PermissionLevelPolicy::new(permissions)))
             .with_approval(approval);
 
+    // The profile's own instruction files from the repository root down, and
+    // fabro's skill directories: pebble knows the files and does the walk.
     let mut options = CodingAgentOptions::default()
-        .with_memory_files(agent_memory::memory_paths(
-            sandbox.working_directory(),
-            agent_profile(&catalog, provider_id.as_str(), Some(&model))
-                .unwrap_or(AgentProfileKind::OpenAi),
-        ))
+        .with_memory_discovery(MemoryDiscovery::from_git_root())
         .with_recorded_permission_level(permissions);
-    if let Some(skills_dir) = &args.skills_dir {
-        options = options.with_skill_dirs([skills_dir.clone()]);
-    } else {
-        let root = sandbox.working_directory().trim_end_matches('/');
-        options = options.with_skill_dirs([
-            Home::from_env().skills_dir().to_string_lossy().into_owned(),
-            format!("{root}/.fabro/skills"),
-            format!("{root}/skills"),
-        ]);
-    }
+    options = match &args.skills_dir {
+        Some(skills_dir) => options.with_skill_dirs([skills_dir.clone()]),
+        None => options.with_skill_discovery(
+            SkillDiscovery::new()
+                .search(Home::from_env().skills_dir().to_string_lossy().into_owned())
+                .search_under_git_root(".fabro/skills")
+                .search_under_git_root("skills"),
+        ),
+    };
 
     let environment: Arc<dyn Environment> = Arc::clone(&sandbox) as Arc<dyn Environment>;
     let mut builder = CodingAgent::builder(client, environment)
