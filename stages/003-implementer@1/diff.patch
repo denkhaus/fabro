@@ -1,0 +1,40 @@
+diff --git a/.config/nextest.toml b/.config/nextest.toml
+index 0580f3f5..8b0e6839 100644
+--- a/.config/nextest.toml
++++ b/.config/nextest.toml
+@@ -15,6 +15,15 @@ leak-timeout = "500ms"
+     filter = "package(fabro-workflow)"
+     slow-timeout = { period = "2s", terminate-after = 3 }
+ 
++    # fabro-7e8d: known-flaky under parallel load (2-9 timeouts per run,
++    # fails identically on stash-verified clean trees). Retry once and relax
++    # the watchdog timing budget for this single test; a #[ignore] would pull
++    # it into the e2e profile via --run-ignored only, so an override is
++    # preferred. Scoped to exactly this test — fabro-80b3 is a different one.
++    [[profile.default.overrides]]
++    filter = "test(e2e_stall_watchdog_with_explicit_timeout_override)"
++    retries = 1
++    slow-timeout = { period = "10s", terminate-after = 4 }
+ 
+ [profile.e2e]
+ # E2E (ignored) tests: flag SLOW after 10s, hard-kill after 30s
+@@ -45,3 +54,11 @@ leak-timeout = "2s"
+     filter = "package(fabro-workflow)"
+     slow-timeout = { period = "30s", terminate-after = 4 }
+ 
++    # fabro-7e8d: known-flaky under parallel load — mirror the default-profile
++    # quarantine (retries + relaxed slow-timeout) here so CI does not resurrect
++    # the flake the default override suppresses.
++    [[profile.ci.overrides]]
++    filter = "test(e2e_stall_watchdog_with_explicit_timeout_override)"
++    retries = 1
++    slow-timeout = { period = "30s", terminate-after = 4 }
++
+diff --git a/.fabro/journal/01M2AQY97EG1YDTSQES8FFFAS2.jsonl b/.fabro/journal/01M2AQY97EG1YDTSQES8FFFAS2.jsonl
+index 8bc9a113..a7826b97 100644
+--- a/.fabro/journal/01M2AQY97EG1YDTSQES8FFFAS2.jsonl
++++ b/.fabro/journal/01M2AQY97EG1YDTSQES8FFFAS2.jsonl
+@@ -1,2 +1,3 @@
+ {"$schema":"fabro-journal-v1","run_id":"01M2AQY97EG1YDTSQES8FFFAS2","node":"start","visit":1,"status":"succeeded","ts":"2026-09-12T12:02:28Z","data":{}}
+ {"$schema":"fabro-journal-v1","run_id":"01M2AQY97EG1YDTSQES8FFFAS2","node":"planner","visit":1,"status":"succeeded","ts":"2026-09-12T12:03:43Z","data":{"painpoints":[],"observations":["Basis of fabro-7e8d resolved cleanly: test present unquarantined at lib/components/fabro-workflow/tests/it/integration.rs:13496, no fix commit in history, .config/nextest.toml has no retries for it.","The seed's 'file the tracking seed' clause was ambiguous — the journal of run 01M299PVMSE7Q53ZGPP67AHNMG shows the requested tracking seed became fabro-7e8d itself (revisor adoption); brief marks it satisfied, no new seed.","In-flight check: only non-terminal develop run was this run itself; no open PRs; no skips needed."]}}
++{"$schema":"fabro-journal-v1","run_id":"01M2AQY97EG1YDTSQES8FFFAS2","node":"implementer","visit":1,"status":"succeeded","ts":"2026-09-12T12:17:02Z","data":{"painpoints":[],"observations":["First `cargo nextest list -p fabro-workflow` timed out at 300s on the fully cold build (fresh container); the doubled-timeout retry finished in ~3.6 min. Config-only seeds still pay the full crate compile for a `nextest list` parse check — `cargo nextest list --workspace --no-tests warning` alternatives don't avoid it either; worth knowing when budgeting verification time."]}}
