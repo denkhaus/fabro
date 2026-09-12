@@ -4,10 +4,12 @@
 //! One agent serves one stage invocation. At `full` fidelity, stages sharing a
 //! `thread_id` continue one conversation: the agent is exported when a stage
 //! ends and resumed by the next, which binds its own event scope, hooks, and
-//! interviewer. Model failover keeps the conversation as it stands and asks
-//! the next route to continue it, so no tool effect repeats.
+//! interviewer. Model failover is pebble's: the stage hands it the resolved
+//! fallback routes, pebble keeps the conversation as it stands and asks the
+//! next route to continue it, and this module mirrors each move as the run's
+//! `agent.failover` event.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -16,7 +18,7 @@ use fabro_graphviz::graph::Node;
 use fabro_llm::credentials::CredentialProvider;
 use fabro_llm::lithos_catalog::Catalog;
 use fabro_llm::types::ResponseFormat;
-use fabro_llm::{Client, ClientOptions, ErrorData, Request, Response};
+use fabro_llm::{Client, ClientOptions, Request, Response};
 use fabro_mcp::config::McpServerSettings;
 use fabro_mcp::connection_manager::McpConnectionManager;
 use fabro_sandbox::{RunSandbox, SecretRedactor};
@@ -34,12 +36,12 @@ use pebble_coding_agent::events::{
     Actor, CodingAgentEvent, CodingEvent, EventSink, EventSinkError,
 };
 use pebble_coding_agent::extensions::HumanInputProvider;
-use pebble_coding_agent::state::{Message, SessionRecord};
+use pebble_coding_agent::state::Message;
 use pebble_coding_agent::subagents::SubagentOptions;
-use pebble_coding_agent::tools::{RegisteredTool, ToolEnvProvider, canonical_tool_name};
+use pebble_coding_agent::tools::{RegisteredTool, ToolEnvProvider};
 use pebble_coding_agent::{
     CodingAgent, CodingAgentBuilder, CodingAgentControlHandle, CodingAgentExport,
-    CodingAgentOptions, CodingInput, InterruptReason, ResumeMode, ShutdownReason, SteeringLease,
+    CodingAgentOptions, CodingInput, InterruptReason, ShutdownReason, SteeringLease,
     SteeringMessage, SteeringOutcome,
 };
 use tokio_util::sync::CancellationToken;
@@ -106,25 +108,19 @@ struct CachedThread {
 }
 
 /// How the backend reports a failed prompt.
+///
+/// A model error reaches this after pebble has followed every fallback route
+/// the stage gave it, so it is terminal here whatever its kind.
 enum AgentErrorDisposition {
     /// The run's token cancelled the prompt; surface as `Error::Cancelled`.
     Cancelled,
-    /// Underlying LLM error eligible for provider failover.
-    FailoverEligible(ErrorData),
     /// Terminal error; abort the invocation with this workflow `Error`.
     Terminal(Error),
 }
 
-fn classify_agent_error(
-    error: pebble_coding_agent::Error,
-    allow_failover: bool,
-) -> AgentErrorDisposition {
+fn classify_agent_error(error: pebble_coding_agent::Error) -> AgentErrorDisposition {
     if let Some(llm) = error.llm_source() {
-        let data = llm.data();
-        if allow_failover && llm.failover_eligible() {
-            return AgentErrorDisposition::FailoverEligible(data);
-        }
-        return AgentErrorDisposition::Terminal(Error::from(data));
+        return AgentErrorDisposition::Terminal(Error::from(llm.data()));
     }
     match error {
         pebble_coding_agent::Error::Interrupted(InterruptReason::Cancelled) => {
@@ -150,6 +146,11 @@ fn classify_agent_error(
         pebble_coding_agent::Error::EventSink(sink) => AgentErrorDisposition::Terminal(Error::Io(
             format!("Failed to persist agent events: {sink:#}"),
         )),
+        pebble_coding_agent::Error::FallbackRoute { route, source } => {
+            AgentErrorDisposition::Terminal(Error::Precondition(format!(
+                "Fallback route {route} could not be started: {source:#}"
+            )))
+        }
         // `InterruptReason` may grow; a reason this build does not know still
         // ended the prompt.
         pebble_coding_agent::Error::Interrupted(_) => AgentErrorDisposition::Terminal(
@@ -163,99 +164,16 @@ fn classify_agent_error(
 
 // --- Event sink -----------------------------------------------------------
 
-/// Files a stage's tool calls changed, paired from `ToolCallStarted`
-/// arguments and a successful `ToolCallCompleted`.
-#[derive(Default)]
-struct FileTracking {
-    /// `tool_call_id` → paths for in-flight write, edit, and patch calls.
-    pending: HashMap<String, Vec<String>>,
-    /// Every path successfully written.
-    touched: HashSet<String>,
-    /// The most recently written path.
-    last:    Option<String>,
-}
-
-impl FileTracking {
-    fn snapshot(&self) -> (Vec<String>, Option<String>) {
-        let mut files: Vec<String> = self.touched.iter().cloned().collect();
-        files.sort();
-        (files, self.last.clone())
-    }
-}
-
-/// The paths a tool call will write, from its arguments.
-fn written_paths(tool_name: &str, arguments: &serde_json::Value) -> Vec<String> {
-    match canonical_tool_name(tool_name) {
-        "write_file" | "edit_file" => arguments
-            .get("file_path")
-            .or_else(|| arguments.get("path"))
-            .and_then(serde_json::Value::as_str)
-            .map(|path| vec![path.to_string()])
-            .unwrap_or_default(),
-        "apply_patch" => {
-            let patch = arguments
-                .as_str()
-                .or_else(|| arguments.get("patch").and_then(serde_json::Value::as_str))
-                .unwrap_or_default();
-            patch_written_paths(patch)
-        }
-        _ => Vec::new(),
-    }
-}
-
-/// The files an `apply_patch` patch creates or changes, in patch order.
-fn patch_written_paths(patch: &str) -> Vec<String> {
-    const MARKERS: [&str; 3] = ["*** Add File: ", "*** Update File: ", "*** Move to: "];
-    patch
-        .lines()
-        .filter_map(|line| {
-            MARKERS
-                .iter()
-                .find_map(|marker| line.strip_prefix(marker))
-                .map(|path| path.trim().to_string())
-        })
-        .filter(|path| !path.is_empty())
-        .collect()
-}
-
-fn track_file_event(event: &CodingEvent, state: &mut FileTracking) {
-    match event {
-        CodingEvent::ToolCallStarted {
-            tool_name,
-            tool_call_id,
-            arguments,
-        } => {
-            let paths = written_paths(tool_name, arguments);
-            if !paths.is_empty() {
-                state.pending.insert(tool_call_id.clone(), paths);
-            }
-        }
-        CodingEvent::ToolCallCompleted {
-            tool_call_id,
-            is_error,
-            ..
-        } => {
-            if let Some(paths) = state.pending.remove(tool_call_id) {
-                if !*is_error {
-                    for path in paths {
-                        state.touched.insert(path.clone());
-                        state.last = Some(path);
-                    }
-                }
-            }
-        }
-        _ => {}
-    }
-}
-
 /// Pebble's durable event sink for one stage: every agent event becomes a
-/// run event in the run's log before the agent goes on, and the stage's
-/// file tracking sees it on the way.
+/// run event in the run's log before the agent goes on, and a route failover
+/// is mirrored as the run's own `agent.failover` event on the way.
 struct WorkflowEventSink {
-    emitter:       Arc<Emitter>,
-    node_id:       String,
-    scope:         StageScope,
-    file_tracking: Arc<Mutex<FileTracking>>,
+    emitter: Arc<Emitter>,
+    node_id: String,
+    scope:   StageScope,
+    /// The stage's resolved plan, for the controls and origin the mirrored
+    /// failover event names.
+    plan:    FallbackPlan,
 }
 
 #[async_trait]
@@ -264,13 +182,21 @@ impl EventSink for WorkflowEventSink {
         // Every event, including streaming deltas, resets the run's activity
         // watchdog.
         self.emitter.touch();
-        track_file_event(
-            &event.event,
-            &mut self
-                .file_tracking
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner),
-        );
+        if let CodingEvent::RouteFailover {
+            from,
+            to,
+            attempt,
+            error,
+        } = &event.event
+        {
+            self.emitter.emit_scoped(
+                &Event::Failover {
+                    stage: self.node_id.clone(),
+                    props: self.plan.failover_props(from, to, *attempt, &error.message),
+                },
+                &self.scope,
+            );
+        }
         // Deltas and the prompt's own durability barrier are not run history.
         if event.event.is_streaming_noise() || matches!(event.event, CodingEvent::ProcessingEnd) {
             return Ok(());
@@ -396,8 +322,9 @@ impl ActiveControlHandle for PebbleControlHandle {
 
 /// One stage invocation's live agent and its accounting.
 ///
-/// Failover replaces the agent while the accumulated usage, cost, and timing
-/// keep counting across routes.
+/// A stage may run several prompts on one agent (the prompt, output repairs,
+/// late steering); the usage, cost, timing, and files of every one of them
+/// are summed here, across whatever routes pebble moved through.
 struct LiveAgent {
     agent:              CodingAgent,
     handle:             Arc<PebbleControlHandle>,
@@ -407,9 +334,32 @@ struct LiveAgent {
     total_cost:         Option<UsdMicros>,
     inference_duration: Duration,
     tool_duration:      Duration,
+    /// Every file the stage's prompts wrote or edited, subagents included.
+    files_touched:      BTreeSet<String>,
+    /// The most recently written path.
+    last_file_touched:  Option<String>,
 }
 
 impl LiveAgent {
+    fn new(
+        agent: CodingAgent,
+        handle: Arc<PebbleControlHandle>,
+        mcp: Option<Arc<McpConnectionManager>>,
+    ) -> Self {
+        Self {
+            agent,
+            handle,
+            lease: None,
+            mcp,
+            total_usage: TokenCounts::default(),
+            total_cost: None,
+            inference_duration: Duration::ZERO,
+            tool_duration: Duration::ZERO,
+            files_touched: BTreeSet::new(),
+            last_file_touched: None,
+        }
+    }
+
     fn record_report(&mut self, report: &pebble_coding_agent::PromptReport) {
         billing::add_usage(&mut self.total_usage, TokenCounts::from(report.usage));
         UsdMicros::accumulate(
@@ -422,6 +372,11 @@ impl LiveAgent {
             .inference_duration
             .saturating_add(report.timing.inference);
         self.tool_duration = self.tool_duration.saturating_add(report.timing.tool);
+        self.files_touched
+            .extend(report.files_touched.iter().cloned());
+        if report.last_file_touched.is_some() {
+            self.last_file_touched.clone_from(&report.last_file_touched);
+        }
     }
 
     fn release_lease(&mut self) {
@@ -461,7 +416,6 @@ struct StageBindings<'a> {
     sandbox:         &'a Arc<RunSandbox>,
     tool_middleware: Option<&'a Arc<dyn ToolMiddleware>>,
     human_input:     Option<&'a Arc<dyn HumanInputProvider>>,
-    file_tracking:   &'a Arc<Mutex<FileTracking>>,
 }
 
 impl PebbleBackend {
@@ -685,16 +639,19 @@ impl PebbleBackend {
         tools
     }
 
-    /// Bind the stage's services and this route's policy to `builder`.
+    /// Bind the stage's services, the plan's current route, and the routes
+    /// left to fail over to, to `builder`.
     fn bind_builder(
         &self,
         mut builder: CodingAgentBuilder,
         node: &Node,
-        route: &LlmRoute,
+        plan: &FallbackPlan,
         provider: &ProviderContext,
         bindings: &StageBindings<'_>,
         mcp: Option<&Arc<McpConnectionManager>>,
     ) -> CodingAgentBuilder {
+        let route = plan.current();
+        let max_tokens = node_max_output_tokens(node).map(i64::from);
         builder = builder
             .tools(self.stage_tools(mcp))
             .permission_level(PermissionLevel::Full)
@@ -704,11 +661,12 @@ impl PebbleBackend {
                 route.controls,
                 bindings.sandbox,
             ))
+            .fallback_routes(plan.pebble_routes(max_tokens))
             .event_sink(Arc::new(WorkflowEventSink {
-                emitter:       Arc::clone(bindings.emitter),
-                node_id:       bindings.node_id.to_string(),
-                scope:         bindings.stage_scope.clone(),
-                file_tracking: Arc::clone(bindings.file_tracking),
+                emitter: Arc::clone(bindings.emitter),
+                node_id: bindings.node_id.to_string(),
+                scope:   bindings.stage_scope.clone(),
+                plan:    plan.clone(),
             }))
             .redactor(Arc::new(SecretRedactor))
             .subagents(SubagentOptions::enabled());
@@ -730,11 +688,11 @@ impl PebbleBackend {
         builder
     }
 
-    /// A new agent on `route`.
+    /// A new agent on the plan's current route.
     async fn build_agent(
         &self,
         node: &Node,
-        route: &LlmRoute,
+        plan: &FallbackPlan,
         provider: &ProviderContext,
         bindings: &StageBindings<'_>,
         mcp: Option<&Arc<McpConnectionManager>>,
@@ -742,20 +700,20 @@ impl PebbleBackend {
         let client = self.build_llm_client().await?;
         let environment: Arc<dyn Environment> =
             Arc::clone(bindings.sandbox) as Arc<dyn Environment>;
-        let builder = CodingAgent::builder(client, environment).model(route.selector());
-        self.bind_builder(builder, node, route, provider, bindings, mcp)
+        let builder = CodingAgent::builder(client, environment).model(plan.current().selector());
+        self.bind_builder(builder, node, plan, provider, bindings, mcp)
             .build()
             .await
             .map_err(|error| Error::handler_with_source("Failed to start agent session", error))
     }
 
     /// The exported conversation of an earlier stage, continued on the
-    /// route it was on.
+    /// route it was on, with the routes it had left.
     async fn resume_exported_agent(
         &self,
         export: CodingAgentExport,
         node: &Node,
-        route: &LlmRoute,
+        plan: &FallbackPlan,
         provider: &ProviderContext,
         bindings: &StageBindings<'_>,
         mcp: Option<&Arc<McpConnectionManager>>,
@@ -764,37 +722,10 @@ impl PebbleBackend {
         let environment: Arc<dyn Environment> =
             Arc::clone(bindings.sandbox) as Arc<dyn Environment>;
         let builder = CodingAgent::resume_from_export(client, environment, export);
-        self.bind_builder(builder, node, route, provider, bindings, mcp)
+        self.bind_builder(builder, node, plan, provider, bindings, mcp)
             .build()
             .await
             .map_err(|error| Error::handler_with_source("Failed to resume agent session", error))
-    }
-
-    /// The conversation as it stands, continued on a fallback route.
-    async fn resume_agent_on_route(
-        &self,
-        record: SessionRecord,
-        node: &Node,
-        route: &LlmRoute,
-        provider: &ProviderContext,
-        bindings: &StageBindings<'_>,
-        mcp: Option<&Arc<McpConnectionManager>>,
-    ) -> Result<CodingAgent, Error> {
-        let client = self.build_llm_client().await?;
-        let environment: Arc<dyn Environment> =
-            Arc::clone(bindings.sandbox) as Arc<dyn Environment>;
-        let builder = CodingAgent::resume(
-            client,
-            environment,
-            record,
-            ResumeMode::UseModel(route.selector()),
-        );
-        self.bind_builder(builder, node, route, provider, bindings, mcp)
-            .build()
-            .await
-            .map_err(|error| {
-                Error::handler_with_source("Failed to resume agent session on fallback", error)
-            })
     }
 
     /// Register `live` with the steering hub so steers reach it, and tell
@@ -835,13 +766,14 @@ impl PebbleBackend {
         Ok(())
     }
 
-    /// Run `input` on `live`, following the fallback plan when the model
-    /// fails. On success the agent that answered is in `live`.
-    async fn prompt_with_failover(
+    /// Run `input` on `live`. Pebble follows the stage's fallback routes
+    /// itself; the plan here follows the route the prompt ended on, so a
+    /// later prompt of this stage and a successor on the thread start there,
+    /// and the run hears which route the session is on now.
+    async fn prompt_live(
         &self,
         live: &mut LiveAgent,
         input: CodingInput,
-        node: &Node,
         fallback_plan: &mut FallbackPlan,
         stage_id: &StageId,
         thread_id: Option<&str>,
@@ -853,93 +785,17 @@ impl PebbleBackend {
             .prompt_with_cancellation(input, cancel_token)
             .await;
         live.record_report(&report);
-        let mut last_error = match report.result {
-            Ok(output) => {
-                return Ok(output.text.unwrap_or_else(|| live.last_assistant_text()));
-            }
-            Err(error) => match classify_agent_error(error, fallback_plan.has_next()) {
-                AgentErrorDisposition::Cancelled => return Err(Error::Cancelled),
-                AgentErrorDisposition::Terminal(error) => return Err(error),
-                AgentErrorDisposition::FailoverEligible(error) => Error::from(error),
-            },
-        };
-
-        while fallback_plan.advance() {
-            fallback::emit_failover(
-                node,
-                bindings.emitter,
-                bindings.stage_scope,
-                fallback_plan,
-                &last_error.to_string(),
-            );
-            let route = fallback_plan.current().clone();
-            let provider = match self.resolve_provider_context(
-                route.target.model.as_str(),
-                Some(route.target.provider.as_str()),
-            ) {
-                Ok(provider) => provider,
-                Err(error) => {
-                    last_error = error;
-                    continue;
-                }
-            };
-            if cancel_token.is_cancelled() {
-                return Err(Error::Cancelled);
-            }
-
-            // The record holds the prompt and every committed tool result, so
-            // the next route continues the conversation as it stands and no
-            // tool effect repeats. Steering the failed agent still held moves
-            // with it.
-            let mut record = live.agent.to_record();
-            let pending = live.handle.control.take_pending_input();
-            live.discard(ShutdownReason::Error).await;
-            record.advance_event_cursor(live.agent.committed_event_seq());
-
-            let mcp = live.mcp.clone();
-            let agent = self
-                .resume_agent_on_route(record, node, &route, &provider, bindings, mcp.as_ref())
-                .await;
-            if cancel_token.is_cancelled() {
-                return Err(Error::Cancelled);
-            }
-            live.agent = match agent {
-                Ok(agent) => agent,
-                Err(error) => {
-                    last_error = error;
-                    continue;
-                }
-            };
-            live.handle = Arc::new(PebbleControlHandle::new(live.agent.control_handle()));
-            let (steering, follow_ups) = pending.into_parts();
-            for message in steering {
-                live.handle.control.queue_steering(message);
-            }
-            for message in follow_ups {
-                live.handle.control.queue_follow_up(message);
-            }
-            self.activate(live, &route, stage_id, thread_id, bindings)?;
-
-            let report = live
-                .agent
-                .continue_prompt_with_cancellation(cancel_token)
-                .await;
-            live.record_report(&report);
-            match report.result {
-                Ok(output) => {
-                    return Ok(output.text.unwrap_or_else(|| live.last_assistant_text()));
-                }
-                Err(error) => match classify_agent_error(error, fallback_plan.has_next()) {
-                    AgentErrorDisposition::Cancelled => return Err(Error::Cancelled),
-                    AgentErrorDisposition::Terminal(error) => return Err(error),
-                    AgentErrorDisposition::FailoverEligible(error) => {
-                        last_error = Error::from(error);
-                    }
-                },
-            }
+        if fallback_plan.advance_to(&report.route) {
+            live.release_lease();
+            self.activate(live, fallback_plan.current(), stage_id, thread_id, bindings)?;
         }
-
-        Err(last_error)
+        match report.result {
+            Ok(output) => Ok(output.text.unwrap_or_else(|| live.last_assistant_text())),
+            Err(error) => match classify_agent_error(error) {
+                AgentErrorDisposition::Cancelled => Err(Error::Cancelled),
+                AgentErrorDisposition::Terminal(error) => Err(error),
+            },
+        }
     }
 
     /// Steers that landed between the answer and the hub's close-the-door
@@ -948,7 +804,6 @@ impl PebbleBackend {
     async fn drain_late_steering(
         &self,
         live: &mut LiveAgent,
-        node: &Node,
         fallback_plan: &mut FallbackPlan,
         stage_id: &StageId,
         thread_id: Option<&str>,
@@ -968,10 +823,9 @@ impl PebbleBackend {
             let (steering, follow_ups) = live.handle.control.take_pending_input().into_parts();
             for message in steering.into_iter().chain(follow_ups) {
                 response = self
-                    .prompt_with_failover(
+                    .prompt_live(
                         live,
                         CodingInput::from(message.content().clone()),
-                        node,
                         fallback_plan,
                         stage_id,
                         thread_id,
@@ -1227,7 +1081,6 @@ impl CodergenBackend for PebbleBackend {
         }
         let stage_scope = StageScope::for_handler(request.context, &node.id);
         let stage_id = stage_scope.stage_id();
-        let file_tracking = Arc::new(Mutex::new(FileTracking::default()));
         let bindings = StageBindings {
             node_id: &node.id,
             stage_scope: &stage_scope,
@@ -1235,7 +1088,6 @@ impl CodergenBackend for PebbleBackend {
             sandbox: request.sandbox,
             tool_middleware: request.tool_middleware.as_ref(),
             human_input: request.human_input.as_ref(),
-            file_tracking: &file_tracking,
         };
 
         let cached = reuse_key.as_ref().and_then(|key| self.take_thread(key));
@@ -1250,7 +1102,7 @@ impl CodergenBackend for PebbleBackend {
                 .resume_exported_agent(
                     thread.export,
                     node,
-                    &route,
+                    &thread.fallback_plan,
                     &provider,
                     &bindings,
                     thread.mcp.as_ref(),
@@ -1276,7 +1128,13 @@ impl CodergenBackend for PebbleBackend {
             )?;
             let mcp = self.start_mcp(&bindings, cancel_token).await?;
             let agent = self
-                .build_agent(node, &route, &route_provider, &bindings, mcp.as_ref())
+                .build_agent(
+                    node,
+                    &fallback_plan,
+                    &route_provider,
+                    &bindings,
+                    mcp.as_ref(),
+                )
                 .await?;
             (agent, fallback_plan, mcp)
         };
@@ -1294,16 +1152,7 @@ impl CodergenBackend for PebbleBackend {
         );
 
         let handle = Arc::new(PebbleControlHandle::new(agent.control_handle()));
-        let mut live = LiveAgent {
-            agent,
-            handle,
-            lease: None,
-            mcp,
-            total_usage: TokenCounts::default(),
-            total_cost: None,
-            inference_duration: Duration::ZERO,
-            tool_duration: Duration::ZERO,
-        };
+        let mut live = LiveAgent::new(agent, handle, mcp);
         let route = fallback_plan.current().clone();
         if let Err(error) =
             self.activate(&mut live, &route, &stage_id, request.thread_id, &bindings)
@@ -1314,10 +1163,9 @@ impl CodergenBackend for PebbleBackend {
 
         let result = async {
             let mut response = self
-                .prompt_with_failover(
+                .prompt_live(
                     &mut live,
                     CodingInput::text(request.prompt),
-                    node,
                     &mut fallback_plan,
                     &stage_id,
                     request.thread_id,
@@ -1330,11 +1178,7 @@ impl CodergenBackend for PebbleBackend {
                 let mut repair_attempts = 0_i64;
                 let mut previous_validation_error = None;
                 loop {
-                    let last_file_touched = file_tracking
-                        .lock()
-                        .unwrap_or_else(std::sync::PoisonError::into_inner)
-                        .last
-                        .clone();
+                    let last_file_touched = live.last_file_touched.clone();
                     match validate_agent_output_sources(
                         schema,
                         &response,
@@ -1358,10 +1202,9 @@ impl CodergenBackend for PebbleBackend {
                             // identical failure mean it ignored the correction.
                             previous_validation_error = Some(error);
                             response = self
-                                .prompt_with_failover(
+                                .prompt_live(
                                     &mut live,
                                     CodingInput::text(repair_message),
-                                    node,
                                     &mut fallback_plan,
                                     &stage_id,
                                     request.thread_id,
@@ -1377,7 +1220,6 @@ impl CodergenBackend for PebbleBackend {
 
             self.drain_late_steering(
                 &mut live,
-                node,
                 &mut fallback_plan,
                 &stage_id,
                 request.thread_id,
@@ -1429,17 +1271,12 @@ impl CodergenBackend for PebbleBackend {
             });
         }
 
-        let (files_touched, last_file_touched) = file_tracking
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .snapshot();
-
         Ok(CodergenResult::Text {
-            text: response,
-            usage: Some(stage_usage),
-            files_touched,
-            last_file_touched,
-            timing: StageTiming::active_only(
+            text:              response,
+            usage:             Some(stage_usage),
+            files_touched:     live.files_touched.into_iter().collect(),
+            last_file_touched: live.last_file_touched,
+            timing:            StageTiming::active_only(
                 crate::millis_u64(live.inference_duration),
                 crate::millis_u64(live.tool_duration),
             ),

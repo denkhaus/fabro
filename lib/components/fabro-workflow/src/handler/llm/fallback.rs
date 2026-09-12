@@ -2,7 +2,10 @@
 //!
 //! The plan belongs to the originally requested model: advancing it never
 //! activates a target model's own chain. `model_fallback.rs` decides the
-//! policy; this module walks it and records each failover as a run event.
+//! policy; this module resolves it against the catalog and records each
+//! failover as a run event. Agent stages hand the resolved routes to pebble
+//! ([`FallbackPlan::pebble_routes`]), which executes them and reports each
+//! move as `RouteFailover`; one-shot prompt stages walk the plan themselves.
 
 use fabro_graphviz::graph::Node;
 use fabro_llm::FallbackTarget;
@@ -10,6 +13,7 @@ use fabro_llm::lithos_catalog::Catalog;
 use fabro_types::FailoverProps;
 use lithos_llm::catalog::ProviderId;
 use lithos_llm::types::ReasoningEffort;
+use pebble_coding_agent::FallbackRoute;
 
 use super::controls::EffectiveRequestControls;
 use crate::event::{Emitter, Event, StageScope};
@@ -70,6 +74,83 @@ impl FallbackPlan {
         } else {
             false
         }
+    }
+
+    /// Moves to the route whose `provider/model` selector is `selector`, the
+    /// route pebble reports a prompt ended on. Returns whether the position
+    /// changed; a selector the plan does not know leaves it where it was.
+    pub(crate) fn advance_to(&mut self, selector: &str) -> bool {
+        if self.current().selector() == selector {
+            return false;
+        }
+        match self
+            .remaining
+            .iter()
+            .position(|route| route.selector() == selector)
+        {
+            Some(index) => {
+                self.position = index + 1;
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// The routes after the current one, as pebble executes them: each with
+    /// its own controls and the stage's output limit.
+    pub(crate) fn pebble_routes(&self, max_tokens: Option<i64>) -> Vec<FallbackRoute> {
+        self.remaining
+            .iter()
+            .skip(self.position)
+            .map(|route| {
+                FallbackRoute::new(route.selector())
+                    .with_reasoning_effort(route.controls.reasoning_effort)
+                    .with_speed(route.controls.speed)
+                    .with_max_tokens(max_tokens)
+            })
+            .collect()
+    }
+
+    /// The `agent.failover` payload for a move from `from` to `to`, both
+    /// `provider/model` selectors, on this plan.
+    ///
+    /// `from` may be a route that failed during activation without serving
+    /// traffic; `error` says why it was abandoned. Consecutive payloads
+    /// chain: one's `to` is the next one's `from`.
+    pub(crate) fn failover_props(
+        &self,
+        from: &str,
+        to: &str,
+        attempt: u32,
+        error: &str,
+    ) -> FailoverProps {
+        let (from_provider, from_model) = split_selector(from);
+        let (to_provider, to_model) = split_selector(to);
+        let effective_reasoning_effort = std::iter::once(&self.original)
+            .chain(self.remaining.iter())
+            .find(|route| route.selector() == to)
+            .and_then(|route| route.controls.reasoning_effort);
+        FailoverProps {
+            original_provider: Some(self.original.target.provider.to_string()),
+            original_model: Some(self.original.target.model.to_string()),
+            attempt: Some(attempt),
+            from_provider,
+            from_model,
+            to_provider,
+            to_model,
+            requested_reasoning_effort: self.original.controls.reasoning_effort,
+            effective_reasoning_effort,
+            error: error.to_string(),
+        }
+    }
+}
+
+/// A `provider/model` selector split at its first slash; a selector with no
+/// slash is all model.
+fn split_selector(selector: &str) -> (String, String) {
+    match selector.split_once('/') {
+        Some((provider, model)) => (provider.to_string(), model.to_string()),
+        None => (String::new(), selector.to_string()),
     }
 }
 
@@ -186,12 +267,7 @@ pub(crate) fn fallback_plan(
 }
 
 /// Emit `agent.failover` for the plan's most recent
-/// [`FallbackPlan::advance`].
-///
-/// `from` is the previously attempted candidate, which may have failed
-/// during activation without ever serving traffic; `error` says why it
-/// was abandoned. Consecutive events therefore chain — one event's `to`
-/// is the next event's `from` — recording every candidate the plan tried.
+/// [`FallbackPlan::advance`], on a one-shot stage that walks the plan itself.
 pub(crate) fn emit_failover(
     node: &Node,
     emitter: &Emitter,
@@ -199,23 +275,15 @@ pub(crate) fn emit_failover(
     plan: &FallbackPlan,
     error: &str,
 ) {
-    let from = plan.previous();
-    let to = plan.current();
     emitter.emit_scoped(
         &Event::Failover {
             stage: node.id.clone(),
-            props: FailoverProps {
-                original_provider: Some(plan.original.target.provider.to_string()),
-                original_model: Some(plan.original.target.model.to_string()),
-                attempt: Some(plan.attempt()),
-                from_provider: from.target.provider.to_string(),
-                from_model: from.target.model.to_string(),
-                to_provider: to.target.provider.to_string(),
-                to_model: to.target.model.to_string(),
-                requested_reasoning_effort: plan.original.controls.reasoning_effort,
-                effective_reasoning_effort: to.controls.reasoning_effort,
-                error: error.to_string(),
-            },
+            props: plan.failover_props(
+                &plan.previous().selector(),
+                &plan.current().selector(),
+                plan.attempt(),
+                error,
+            ),
         },
         stage_scope,
     );
