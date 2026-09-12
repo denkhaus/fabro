@@ -8,13 +8,14 @@ use fabro_types::{
     PairTranscriptResponse, Run, RunId, RunPairStatusResponse, RunProjection, StageId,
 };
 
-use crate::{FabroToolBackend, RunManifestBuilder, ToolError};
+use crate::{FabroToolBackend, RunManifestBuilder, ToolError, common};
 
 #[derive(Clone)]
 pub struct ClientBackend {
-    client:           Arc<::fabro_client::Client>,
-    manifest_builder: Option<Arc<dyn RunManifestBuilder>>,
-    run_scope:        Option<RunId>,
+    client:                    Arc<::fabro_client::Client>,
+    manifest_builder:          Option<Arc<dyn RunManifestBuilder>>,
+    run_scope:                 Option<RunId>,
+    workflow_version_packager: Option<Arc<dyn crate::WorkflowVersionPackager>>,
 }
 
 impl ClientBackend {
@@ -24,12 +25,22 @@ impl ClientBackend {
             client,
             manifest_builder: None,
             run_scope: None,
+            workflow_version_packager: None,
         }
     }
 
     #[must_use]
     pub fn with_manifest_builder(mut self, builder: Arc<dyn RunManifestBuilder>) -> Self {
         self.manifest_builder = Some(builder);
+        self
+    }
+
+    #[must_use]
+    pub fn with_workflow_version_packager(
+        mut self,
+        packager: Arc<dyn crate::WorkflowVersionPackager>,
+    ) -> Self {
+        self.workflow_version_packager = Some(packager);
         self
     }
 
@@ -55,6 +66,30 @@ impl ClientBackend {
 
 #[async_trait]
 impl FabroToolBackend for ClientBackend {
+    /// Package the supplied tree, then register dependencies before parents.
+    /// Versions are immutable and content-addressed, so a failed upload can be
+    /// retried with the same contents without cleanup.
+    async fn create_workflow_version(
+        &self,
+        source: crate::ValidatedWorkflowVersionCreate,
+    ) -> anyhow::Result<fabro_types::WorkflowVersionId> {
+        anyhow::ensure!(
+            self.run_scope.is_none(),
+            "workflow version creation is outside this tool session's run scope"
+        );
+        let packager = self
+            .workflow_version_packager
+            .as_ref()
+            .ok_or_else(common::workflow_version_tool_unavailable_error)?;
+        let packaged = packager.package(source).await?;
+        let versions = packaged
+            .versions()
+            .map(|(_, v)| v.version())
+            .collect::<Vec<_>>();
+        self.client.register_workflow_versions(versions).await?;
+        Ok(packaged.root_id())
+    }
+
     async fn create_run_from_spec(
         &self,
         spec: &crate::ValidatedCreateRunSpec,
@@ -250,5 +285,137 @@ impl FabroToolBackend for ClientBackend {
         self.client
             .get_run_pair_transcript(run_id, pair_id, since_seq, limit)
             .await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeMap;
+
+    use async_trait::async_trait;
+    use fabro_types::{WorkflowVersion, WorkflowVersionId};
+    use fabro_workflow_version::{CollectedWorkflowClosure, ValidatedWorkflowVersion};
+    use serde_json::json;
+
+    use super::*;
+    use crate::{ValidatedWorkflowVersionCreate, WorkflowVersionPackager};
+
+    struct FixedPackager(Vec<WorkflowVersion>);
+
+    #[async_trait]
+    impl WorkflowVersionPackager for FixedPackager {
+        async fn package(
+            &self,
+            _: ValidatedWorkflowVersionCreate,
+        ) -> anyhow::Result<CollectedWorkflowClosure> {
+            let versions = self
+                .0
+                .iter()
+                .map(|v| Ok((v.id()?, ValidatedWorkflowVersion::new(v.clone())?)))
+                .collect::<anyhow::Result<Vec<_>>>()?;
+            Ok(CollectedWorkflowClosure::from_dependency_order(
+                versions.last().unwrap().0,
+                versions,
+            ))
+        }
+    }
+
+    fn version(
+        entrypoint: &str,
+        dependencies: BTreeMap<fabro_types::WorkflowPath, WorkflowVersionId>,
+    ) -> WorkflowVersion {
+        WorkflowVersion::new(
+            entrypoint.parse().unwrap(),
+            BTreeMap::from([(
+                entrypoint.parse().unwrap(),
+                format!(
+                    "digraph {entrypoint} {{ {} }}",
+                    dependencies
+                        .keys()
+                        .map(|p| format!("child [stack.child_workflow=\"{p}\"]"))
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                ),
+            )]),
+            dependencies,
+        )
+        .unwrap()
+    }
+
+    fn source() -> ValidatedWorkflowVersionCreate {
+        ValidatedWorkflowVersionCreate {
+            entrypoint: "root".parse().unwrap(),
+            files:      BTreeMap::new(),
+        }
+    }
+
+    #[tokio::test]
+    async fn create_workflow_version_registers_packaged_closure_and_retries_after_failure() {
+        let server = httpmock::MockServer::start_async().await;
+        let child = version("child", BTreeMap::new());
+        let child_id = child.id().unwrap();
+        let root = version(
+            "root",
+            BTreeMap::from([("child".parse().unwrap(), child_id)]),
+        );
+        let root_id = root.id().unwrap();
+        let child_upload = server
+            .mock_async(|when, then| {
+                when.method(httpmock::Method::POST)
+                    .path("/api/v1/workflow-versions")
+                    .json_body_obj(&child);
+                then.status(201)
+                    .json_body(json!({"workflow_version_id": child_id}));
+            })
+            .await;
+        let failed_root = server
+            .mock_async(|when, then| {
+                when.method(httpmock::Method::POST)
+                    .path("/api/v1/workflow-versions")
+                    .json_body_obj(&root);
+                then.status(400);
+            })
+            .await;
+        let client = ::fabro_client::Client::new_no_proxy(&server.url("")).unwrap();
+        let backend = ClientBackend::new(Arc::new(client))
+            .with_workflow_version_packager(Arc::new(FixedPackager(vec![child, root.clone()])));
+
+        assert!(backend.create_workflow_version(source()).await.is_err());
+        child_upload.assert_calls_async(1).await;
+        failed_root.assert_calls_async(1).await;
+
+        // Immutable content: retrying re-sends the child and completes the root.
+        failed_root.delete_async().await;
+        let root_upload = server
+            .mock_async(|when, then| {
+                when.method(httpmock::Method::POST)
+                    .path("/api/v1/workflow-versions")
+                    .json_body_obj(&root);
+                then.status(201)
+                    .json_body(json!({"workflow_version_id": root_id}));
+            })
+            .await;
+        assert_eq!(
+            backend.create_workflow_version(source()).await.unwrap(),
+            root_id
+        );
+        child_upload.assert_calls_async(2).await;
+        root_upload.assert_calls_async(1).await;
+    }
+
+    #[tokio::test]
+    async fn create_workflow_version_without_packager_is_unavailable() {
+        let client = ::fabro_client::Client::new_no_proxy("http://127.0.0.1:1").unwrap();
+        let error = ClientBackend::new(Arc::new(client))
+            .create_workflow_version(source())
+            .await
+            .unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            format!(
+                "{} is not available",
+                crate::FABRO_WORKFLOW_VERSION_CREATE_TOOL_NAME
+            )
+        );
     }
 }

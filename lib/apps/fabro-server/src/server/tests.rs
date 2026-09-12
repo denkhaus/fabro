@@ -19738,3 +19738,77 @@ fn validate_github_slug_rejects_overlong() {
     let long = "a".repeat(40);
     assert!(super::validate_github_slug("owner", &long, 39).is_err());
 }
+
+#[tokio::test]
+async fn workflow_version_registration_requires_user_or_run_tools_capability() {
+    let (state, app) = jwt_auth_app();
+    let run_id = RunId::new();
+    let body = json!({
+        "entrypoint": "workflow.fabro",
+        "files": {"workflow.fabro": "digraph W {}"},
+        "workflow_dependencies": {},
+    });
+    for (token, expected) in [
+        (issue_test_user_jwt(), StatusCode::CREATED),
+        (
+            issue_test_run_tools_worker_token(&run_id),
+            StatusCode::CREATED,
+        ),
+        (issue_test_worker_token(&run_id), StatusCode::FORBIDDEN),
+    ] {
+        let response = app
+            .clone()
+            .oneshot(json_bearer_request(
+                Method::POST,
+                "/workflow-versions",
+                &token,
+                &body,
+            ))
+            .await
+            .unwrap();
+        fabro_test::expect_axum_status(response, expected, "POST /workflow-versions actor matrix")
+            .await;
+    }
+    for body in [serde_json::to_string(&body).unwrap(), "{".to_string()] {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri(api("/workflow-versions"))
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        fabro_test::expect_axum_status(
+            response,
+            StatusCode::UNAUTHORIZED,
+            "anonymous POST /workflow-versions",
+        )
+        .await;
+    }
+    let response = app
+        .oneshot(bearer_request(
+            Method::GET,
+            "/runs",
+            &issue_test_user_jwt(),
+            Body::empty(),
+        ))
+        .await
+        .unwrap();
+    let listed =
+        fabro_test::expect_axum_json(response, StatusCode::OK, "GET /runs after registration")
+            .await;
+    assert_eq!(listed["data"], json!([]));
+    assert!(
+        state
+            .stores
+            .runs
+            .load_run_projection(&run_id)
+            .await
+            .unwrap()
+            .is_none()
+    );
+}

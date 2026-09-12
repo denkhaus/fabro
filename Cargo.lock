@@ -2754,12 +2754,14 @@ name = "fabro-manifest"
 version = "0.354.0-nightly.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "fabro-api",
  "fabro-config",
  "fabro-github",
  "fabro-graphviz",
  "fabro-template",
  "fabro-test",
+ "fabro-tool",
  "fabro-types",
  "fabro-util",
  "fabro-workflow",
@@ -2770,7 +2772,10 @@ dependencies = [
  "temp-env",
  "tempfile",
  "thiserror 2.0.18",
+ "tokio",
  "toml 0.8.23",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -3168,7 +3173,9 @@ dependencies = [
  "fabro-client",
  "fabro-types",
  "fabro-util",
+ "fabro-workflow-version",
  "futures",
+ "httpmock",
  "schemars 1.2.1",
  "serde",
  "serde_json",
@@ -3214,6 +3221,8 @@ dependencies = [
  "thiserror 2.0.18",
  "toml 0.8.23",
  "ulid",
+ "unicase",
+ "unicode-normalization",
  "url",
 ]
 
@@ -3304,6 +3313,7 @@ dependencies = [
  "fabro-api",
  "fabro-auth",
  "fabro-checkpoint",
+ "fabro-client",
  "fabro-config",
  "fabro-core",
  "fabro-dump",
@@ -3328,6 +3338,7 @@ dependencies = [
  "fabro-validate",
  "fabro-vault",
  "fabro-workflow",
+ "fabro-workflow-version",
  "futures",
  "git2",
  "hex",

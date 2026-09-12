@@ -1,4 +1,4 @@
-//! The Fabro run tools (`fabro_run_*`) as application tools a pebble coding
+//! The Fabro workflow and run tools as application tools a pebble coding
 //! agent can call.
 
 use std::sync::Arc;
@@ -66,6 +66,15 @@ pub(crate) async fn execute_fabro_run_tool(
     services: &FabroRunToolServices,
 ) -> fabro_tool::ToolResult<String> {
     match name {
+        fabro_tool::FABRO_WORKFLOW_VERSION_CREATE_TOOL_NAME => {
+            let params =
+                parse_fabro_tool_args::<fabro_tool::FabroWorkflowVersionCreateParams>(name, args)?;
+            let source = fabro_tool::ValidatedWorkflowVersionCreate::try_from(params)?;
+            let result =
+                fabro_tool::create_workflow_version(Arc::clone(&services.backend), source).await?;
+            let summary = fabro_tool::workflow_version_create_text(&result);
+            render_fabro_tool_result(&summary, &result)
+        }
         fabro_tool::FABRO_RUN_CREATE_TOOL_NAME => {
             let params = parse_fabro_tool_args::<fabro_tool::FabroRunCreateParams>(name, args)?;
             ensure_current_run_parent(&params, services.current_run_id)?;
@@ -195,4 +204,90 @@ where
         fabro_tool::ToolError::message(format!("failed to serialize tool result: {err}"))
     })?;
     Ok(format!("{summary}\n{json}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeMap;
+
+    use async_trait::async_trait;
+    use fabro_tool::fabro_client::ClientBackend;
+    use fabro_tool::{ValidatedWorkflowVersionCreate, WorkflowVersionPackager};
+    use fabro_types::WorkflowVersion;
+    use fabro_workflow_version::{CollectedWorkflowClosure, ValidatedWorkflowVersion};
+    use serde_json::json;
+
+    use super::*;
+
+    struct SingleGraphPackager;
+
+    #[async_trait]
+    impl WorkflowVersionPackager for SingleGraphPackager {
+        async fn package(
+            &self,
+            source: ValidatedWorkflowVersionCreate,
+        ) -> anyhow::Result<CollectedWorkflowClosure> {
+            let version = WorkflowVersion::new(source.entrypoint, source.files, BTreeMap::new())?;
+            let id = version.id()?;
+            Ok(CollectedWorkflowClosure::from_dependency_order(id, vec![(
+                id,
+                ValidatedWorkflowVersion::new(version)?,
+            )]))
+        }
+    }
+
+    #[tokio::test]
+    async fn workflow_version_native_dispatch_registers_and_returns_version() {
+        let server = httpmock::MockServer::start_async().await;
+        let version = WorkflowVersion::new(
+            "workflow".parse().unwrap(),
+            BTreeMap::from([("workflow".parse().unwrap(), "digraph W {}".into())]),
+            BTreeMap::new(),
+        )
+        .unwrap();
+        let id = version.id().unwrap();
+        let upload = server
+            .mock_async(|when, then| {
+                when.method(httpmock::Method::POST)
+                    .path("/api/v1/workflow-versions")
+                    .json_body_obj(&version);
+                then.status(201)
+                    .json_body(json!({"workflow_version_id": id}));
+            })
+            .await;
+        let client = fabro_client::Client::new_no_proxy(&server.url("")).unwrap();
+        let services = FabroRunToolServices {
+            backend:            Arc::new(
+                ClientBackend::new(Arc::new(client))
+                    .with_workflow_version_packager(Arc::new(SingleGraphPackager)),
+            ),
+            current_run_id:     "01KRBZW4DW0000000000000002".parse().unwrap(),
+            base_cwd:           "unused".into(),
+            user_settings_path: "unused".into(),
+        };
+        let name = fabro_tool::FABRO_WORKFLOW_VERSION_CREATE_TOOL_NAME;
+        assert_eq!(register_named_fabro_run_tools(&services, &[name]).len(), 1);
+        let output = execute_fabro_run_tool(
+            name,
+            json!({"entrypoint":"workflow", "files":{"workflow":"digraph W {}"}}),
+            &services,
+        )
+        .await
+        .unwrap();
+        let (summary, body) = output.split_once('\n').unwrap();
+        assert_eq!(summary, format!("Registered workflow version {id}"));
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(body).unwrap(),
+            json!({"workflow_version_id": id})
+        );
+        let error = execute_fabro_run_tool(
+            name,
+            json!({"entrypoint":"missing", "files":{"workflow":"digraph W {}"}}),
+            &services,
+        )
+        .await
+        .unwrap_err();
+        assert!(error.to_string().contains("not present"));
+        upload.assert_calls_async(1).await;
+    }
 }
