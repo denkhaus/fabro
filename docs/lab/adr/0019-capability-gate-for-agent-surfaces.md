@@ -74,6 +74,24 @@ line could arm its own sandboxes.
    not matter that the credential already existed or that the engine,
    not the agent, minted it.
 
+8. **The post-#849 ambient checkout credential is accepted as the
+   sandbox's forge capability** (user decision, 2026-09-12, fabro-0f22
+   resolved): upstream's sandbox-driver adoption installs the clone
+   token as the checkout's ambient credential (per-repo git-credential
+   store, umask 077, remote URL stays clean; fabro agents can push from
+   their own shells). The token is minted per repository with
+   `contents: write` ONLY — it cannot open or merge pull requests
+   (that requires `pull_requests: write`, which the engine mints as a
+   separate server-side token that never reaches a sandbox). Blast
+   radius of exfiltration: commit/branch writes to exactly the run's
+   repository for the token's GitHub-side lifetime (installation tokens
+   are fixed at 60 minutes; the engine refreshes at a 10-minute
+   margin). No token revocation on sandbox teardown (explicitly
+   declined); no per-agent credential scoping beyond the per-checkout
+   store. The strict credential-free-sandbox posture of decision 6 is
+   superseded for clone/push capability by this item; item 7's
+   capability-gate discipline is unchanged.
+
 ## Consequences
 
 - `gh` is removed from the toolchain image (fabro-06e0); the in-flight PR
