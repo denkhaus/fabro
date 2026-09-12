@@ -5,9 +5,7 @@ use std::time::Duration;
 
 use anyhow::{Context, Result, anyhow};
 use async_trait::async_trait;
-use fabro_api::types::RunManifest;
 use fabro_client::ServerTarget;
-use fabro_config::user::active_settings_path;
 use fabro_config::{ServerSettingsBuilder, Storage};
 use fabro_interview::{
     AnswerSubmission, ControlInterviewer, WORKER_CONTROL_INVALID_CURSOR_REASON,
@@ -15,7 +13,7 @@ use fabro_interview::{
     WORKER_CONTROL_WS_PING_INTERVAL, WorkerControlDeliveryFrame, WorkerControlEnvelope,
     WorkerControlMessage,
 };
-use fabro_server::run_tool_manifest;
+use fabro_manifest::SuppliedWorkflowVersionPackager;
 use fabro_store::{EventEnvelope, RunProjection, RunProjectionReducer};
 use fabro_tool::fabro_client::ClientBackend;
 use fabro_types::settings::run::{RunMode, RunNamespace};
@@ -105,8 +103,6 @@ pub(crate) async fn execute(
             worker_token,
             client.clone_for_reuse(),
             run_id,
-            run_spec.source_directory.as_deref(),
-            &run_dir,
             run_spec.settings.run.agent.fabro_tools,
         )
     } else {
@@ -241,8 +237,6 @@ fn build_fabro_run_tool_services(
     worker_token: &str,
     client: fabro_client::Client,
     current_run_id: RunId,
-    source_directory: Option<&str>,
-    run_dir: &Path,
     run_wide: bool,
 ) -> Option<FabroRunToolServices> {
     if worker_token.trim().is_empty() {
@@ -254,28 +248,13 @@ fn build_fabro_run_tool_services(
         .map(|claims| claims.inspects)
         .unwrap_or_default();
     let backend = ClientBackend::new(Arc::new(client))
-        .with_manifest_builder(Arc::new(WorkerRunManifestBuilder));
+        .with_workflow_version_packager(Arc::new(SuppliedWorkflowVersionPackager));
     Some(FabroRunToolServices {
         backend: Arc::new(backend),
         current_run_id,
-        base_cwd: source_directory.map_or_else(|| run_dir.to_path_buf(), PathBuf::from),
-        user_settings_path: active_settings_path(None),
         inspects,
         run_wide,
     })
-}
-
-struct WorkerRunManifestBuilder;
-
-impl fabro_tool::RunManifestBuilder for WorkerRunManifestBuilder {
-    fn build_run_manifest(
-        &self,
-        spec: &fabro_tool::ValidatedCreateRunSpec,
-        cwd: &Path,
-        user_settings_path: &Path,
-    ) -> fabro_tool::ToolResult<RunManifest> {
-        run_tool_manifest::build_run_tool_manifest(spec, cwd, user_settings_path)
-    }
 }
 
 /// Load the worker's secret vault from the run's storage root.

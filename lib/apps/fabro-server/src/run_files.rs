@@ -26,7 +26,6 @@ use axum::Json;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use fabro_agent::RunSandbox;
 use fabro_api::types::{
     DiffFile, DiffStats, FileDiff, FileDiffChangeKind, FileDiffTruncationReason, ListRunFilesScope,
     PaginatedRunCommitList, PaginatedRunFileList, RunCommit, RunCommitParent, RunCommitParentSha,
@@ -35,8 +34,8 @@ use fabro_api::types::{
     RunFilesMeta, RunFilesMetaDegradedReason, RunFilesMetaScope, RunFilesMetaSource,
     RunFilesMetaToSha,
 };
-use fabro_sandbox::Termination;
 use fabro_sandbox::reconnect::reconnect_for_run;
+use fabro_sandbox::{RunSandbox, Termination};
 use fabro_types::{RunId, RunStatus};
 use fabro_util::shell;
 use fabro_workflow::sandbox_git::{

@@ -11,9 +11,9 @@ use fabro_acp::{
 };
 use fabro_sandbox::test_support::{MockSandbox, MockStdioProcess};
 use fabro_sandbox::{RunSandbox, local_sandbox};
-use fabro_types::SteeringMessage;
 use fabro_util::error::collect_chain;
 use fabro_util::shell;
+use pebble_coding_agent::SteeringMessage;
 use tokio::fs::{read_to_string, write};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, DuplexStream};
 use tokio::process::Command;
@@ -188,8 +188,7 @@ async fn steering_sends_followup_session_prompt_over_acp() {
         cancel_token: CancellationToken::new(),
         on_activity: Some(Arc::new(move || {
             if !queued_for_activity.swap(true, Ordering::AcqRel) {
-                handle_for_activity
-                    .enqueue_bounded(SteeringMessage::new("please revise", None), 32);
+                handle_for_activity.enqueue_bounded(SteeringMessage::new("please revise"), 32);
             }
         })),
         live_control: Some(AcpLiveControl::new(control_handle)),
@@ -263,10 +262,8 @@ async fn interrupt_then_steer_sends_cancel_then_followup_session_prompt_over_acp
         cancel_token: CancellationToken::new(),
         on_activity: Some(Arc::new(move || {
             if !queued_for_activity.swap(true, Ordering::AcqRel) {
-                handle_for_activity.interrupt_then_enqueue_bounded(
-                    SteeringMessage::new("please revise", None),
-                    32,
-                );
+                handle_for_activity
+                    .interrupt_then_enqueue_bounded(SteeringMessage::new("please revise"), 32);
             }
         })),
         live_control: Some(AcpLiveControl::new(control_handle)),
@@ -341,7 +338,7 @@ async fn inline_interrupt_terminates_agent_that_ignores_cancel() {
         cancel_token: CancellationToken::new(),
         on_activity: Some(Arc::new(move || {
             if !interrupted_for_activity.swap(true, Ordering::AcqRel) {
-                handle_for_activity.interrupt(None);
+                handle_for_activity.interrupt();
             }
         })),
         live_control: Some(AcpLiveControl::new(control_handle)),

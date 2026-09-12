@@ -1,7 +1,6 @@
 use std::path::Path;
 
-use fabro_agent::RunSandbox;
-use fabro_sandbox::{SandboxFile, WalkOptions};
+use fabro_sandbox::{RunSandbox, SandboxFile, WalkOptions};
 use fabro_types::ArtifactUpload;
 use fabro_util::workspace_glob::WorkspaceGlobSet;
 use futures::{StreamExt as _, TryStreamExt as _, stream};

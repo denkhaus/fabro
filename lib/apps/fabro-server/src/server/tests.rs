@@ -24,13 +24,12 @@ use fabro_llm::lithos_catalog::Catalog;
 use fabro_types::settings::ServerAuthMethod;
 use fabro_types::settings::run::ApprovalMode;
 use fabro_types::{
-    AgentBackend, AttrValue, AuthMethod, BlobHash, CommandTermination, FailureCategory,
-    FailureDetail, GitRunTarget, Graph, InterviewQuestionRecord, ModelRef, Node, Outcome,
-    ParallelBranchId, QuestionType, RunId, RunSpec, RunTarget, SandboxProviderKind,
-    StageContextWindowBreakdownItem, StageContextWindowCategory, StageContextWindowCountMethod,
-    StageContextWindowProjection, StageContextWindowStaleness, StageContextWindowWarning,
-    StageModelUsage, StageTiming, SuccessReason, SystemActorKind, WorkflowSettings, fixtures,
-    test_support,
+    AgentBackend, AttrValue, AuthMethod, BlobHash, CommandTermination, ContextWindowBreakdownItem,
+    ContextWindowCategory, ContextWindowCountMethod, ContextWindowSnapshot, ContextWindowStaleness,
+    ContextWindowWarning, FailureCategory, FailureDetail, GitRunTarget, Graph,
+    InterviewQuestionRecord, ModelRef, Node, Outcome, ParallelBranchId, QuestionType, RunId,
+    RunSpec, RunTarget, SandboxProviderKind, StageModelUsage, StageTiming, SuccessReason,
+    SystemActorKind, WorkflowSettings, fixtures, test_support,
 };
 use fabro_util::check_report::CheckStatus;
 use fabro_workflow::records::CheckpointExt;
@@ -40,6 +39,7 @@ use lithos_llm::catalog::ModelId;
 use lithos_llm::types::{
     ReasoningEffort, ReasoningOutput, Request as LlmRequest, Speed, TokenCounts,
 };
+use pebble_coding_agent::events::{CodingAgentEvent, CodingEvent, TokenUsage};
 use serde_json::json;
 use tokio::sync::Notify;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
@@ -4549,6 +4549,121 @@ enabled = false
 }
 
 #[tokio::test]
+async fn run_tools_worker_cannot_select_server_folder_from_clone_based_parent() {
+    let dir = tempfile::tempdir().unwrap();
+    let missing_target = dir.path().join("missing");
+    let (state, app) = jwt_auth_app();
+    let user_token = issue_test_user_jwt();
+    let parent_run_id = create_run_with_bearer(&app, &user_token).await;
+    let worker_token = issue_test_run_tools_worker_token(&parent_run_id);
+    let workflow_version_id = store_workflow_version(&state, MINIMAL_DOT, None).await;
+    let mut intent = folder_intent(workflow_version_id, missing_target.to_string_lossy());
+    intent["environment_id"] = json!("local");
+    intent["parent_id"] = json!(parent_run_id);
+
+    let response = app
+        .oneshot(json_bearer_request(
+            Method::POST,
+            "/runs",
+            &worker_token,
+            &intent,
+        ))
+        .await
+        .unwrap();
+    let body = response_json!(response, StatusCode::UNPROCESSABLE_ENTITY).await;
+
+    assert_eq!(body["errors"][0]["code"], "target_environment_unsupported");
+    assert_eq!(
+        body["errors"][0]["detail"],
+        "folder targets created by a worker require a Local parent environment"
+    );
+    assert_eq!(
+        state
+            .stores
+            .run_summaries
+            .list_identities()
+            .await
+            .unwrap()
+            .len(),
+        1,
+        "the rejected child must not be persisted"
+    );
+}
+
+#[tokio::test]
+async fn run_tools_worker_folder_target_from_missing_parent_run_is_not_found() {
+    let dir = tempfile::tempdir().unwrap();
+    let (state, app) = jwt_auth_app();
+    let worker_token = issue_test_run_tools_worker_token(&RunId::new());
+    let workflow_version_id = store_workflow_version(&state, MINIMAL_DOT, None).await;
+    let mut intent = folder_intent(workflow_version_id, dir.path().to_string_lossy());
+    intent["environment_id"] = json!("local");
+
+    let response = app
+        .oneshot(json_bearer_request(
+            Method::POST,
+            "/runs",
+            &worker_token,
+            &intent,
+        ))
+        .await
+        .unwrap();
+    let body = response_json!(response, StatusCode::NOT_FOUND).await;
+
+    assert_eq!(body["errors"][0]["code"], "worker_run_not_found");
+    assert!(
+        state
+            .stores
+            .run_summaries
+            .list_identities()
+            .await
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[tokio::test]
+async fn run_tools_worker_can_select_server_folder_from_local_parent() {
+    let dir = tempfile::tempdir().unwrap();
+    let (state, app) = jwt_auth_app();
+    let user_token = issue_test_user_jwt();
+    let workflow_version_id = store_workflow_version(&state, MINIMAL_DOT, None).await;
+    let mut parent_intent = folder_intent(workflow_version_id, dir.path().to_string_lossy());
+    parent_intent["environment_id"] = json!("local");
+
+    let response = app
+        .clone()
+        .oneshot(json_bearer_request(
+            Method::POST,
+            "/runs",
+            &user_token,
+            &parent_intent,
+        ))
+        .await
+        .unwrap();
+    let parent = response_json!(response, StatusCode::CREATED).await;
+    let parent_run_id = parent["id"].as_str().unwrap().parse::<RunId>().unwrap();
+    let worker_token = issue_test_run_tools_worker_token(&parent_run_id);
+    let mut child_intent = folder_intent(workflow_version_id, dir.path().to_string_lossy());
+    child_intent["environment_id"] = json!("local");
+    child_intent["parent_id"] = json!(parent_run_id);
+
+    let response = app
+        .oneshot(json_bearer_request(
+            Method::POST,
+            "/runs",
+            &worker_token,
+            &child_intent,
+        ))
+        .await
+        .unwrap();
+    let child = response_json!(response, StatusCode::CREATED).await;
+
+    assert_eq!(child["parent_id"], parent_run_id.to_string());
+    assert_eq!(child["lifecycle"]["status"]["kind"], "submitted");
+}
+
+#[tokio::test]
 async fn post_runs_run_intent_accepts_none_target_with_ready_daytona_environment() {
     let state = TestAppStateBuilder::new()
         .default_environment_provider(Some(SandboxProviderKind::DAYTONA))
@@ -6233,48 +6348,65 @@ fn stage_completed_event(node_id: &str) -> workflow_event::Event {
     }
 }
 
-fn context_window_event(
+fn agent_message_event(
     stage: &str,
     visit: u32,
-    context_window: StageContextWindowProjection,
+    session_id: &str,
+    text: &str,
+    context_window: Option<ContextWindowSnapshot>,
+    reasoning: Option<ReasoningOutput>,
 ) -> workflow_event::Event {
     workflow_event::Event::Agent {
         stage: stage.to_string(),
         visit,
-        event: fabro_agent::AgentEvent::AssistantMessage {
-            text:            "assistant response".to_string(),
-            model:           ModelRef::new(
-                lithos_llm::catalog::builtin::openai(),
-                ModelId::new("gpt-5.4"),
-            ),
-            usage:           TokenCounts::default(),
-            cost:            None,
-            tool_call_count: 0,
-            context_window:  Some(context_window),
-            reasoning:       None,
-        },
-        session_id: Some("session-1".to_string()),
-        parent_session_id: None,
-        tool_call_id: None,
+        event: CodingAgentEvent::new(
+            session_id,
+            CodingEvent::AssistantMessage {
+                text: text.to_string(),
+                model: "gpt-5.4".to_string(),
+                usage: TokenUsage::default(),
+                cost_usd_micros: None,
+                cost_source: None,
+                tool_call_count: 0,
+                context_window,
+                reasoning,
+            },
+            std::time::SystemTime::now(),
+        ),
     }
+}
+
+fn context_window_event(
+    stage: &str,
+    visit: u32,
+    context_window: ContextWindowSnapshot,
+) -> workflow_event::Event {
+    agent_message_event(
+        stage,
+        visit,
+        "session-1",
+        "assistant response",
+        Some(context_window),
+        None,
+    )
 }
 
 fn context_window_snapshot(
     input_tokens: u64,
-    warnings: Vec<StageContextWindowWarning>,
-) -> StageContextWindowProjection {
-    StageContextWindowProjection {
+    warnings: Vec<ContextWindowWarning>,
+) -> ContextWindowSnapshot {
+    ContextWindowSnapshot {
         provider: "openai".to_string(),
         model: "gpt-5.4".to_string(),
         context_window_tokens: 400_000,
         input_tokens,
         usage_percent: input_tokens as f64 * 100.0 / 400_000.0,
-        count_method: StageContextWindowCountMethod::ResponseUsageScaledBreakdown,
-        staleness: StageContextWindowStaleness::Live,
-        generated_at: Utc::now(),
+        count_method: ContextWindowCountMethod::ResponseUsageScaledBreakdown,
+        staleness: ContextWindowStaleness::Live,
+        generated_at: std::time::SystemTime::now(),
         event_seq: None,
-        breakdown: vec![StageContextWindowBreakdownItem {
-            category:      StageContextWindowCategory::Conversation,
+        breakdown: vec![ContextWindowBreakdownItem {
+            category:      ContextWindowCategory::Conversation,
             tokens:        input_tokens,
             usage_percent: input_tokens as f64 * 100.0 / 400_000.0,
         }],
@@ -11577,7 +11709,7 @@ async fn get_run_stage_context_window_returns_projected_warnings() {
         context_window_event(
             "agent_node",
             1,
-            context_window_snapshot(100, vec![StageContextWindowWarning {
+            context_window_snapshot(100, vec![ContextWindowWarning {
                 code:    "provider_token_count_failed".to_string(),
                 message: "provider input token counting failed; returned local estimate"
                     .to_string(),
@@ -13627,11 +13759,21 @@ async fn append_run_event_accepts_a_body_larger_than_two_mib() {
         "run_id": run_id,
         "event": "agent.tool.completed",
         "properties": {
-            "tool_name": "shell",
-            "tool_call_id": "call-large",
-            "output": "x".repeat(2 * 1024 * 1024),
-            "is_error": false,
-            "visit": 1
+            "stage": "code",
+            "visit": 1,
+            "session_id": "ses_large",
+            "timestamp": "2026-08-24T12:00:00.000Z",
+            "event": {
+                "ToolCallCompleted": {
+                    "tool_name": "shell",
+                    "tool_call_id": "call-large",
+                    "output": "x".repeat(2 * 1024 * 1024),
+                    "is_error": false,
+                    "output_bytes_observed": 2 * 1024 * 1024,
+                    "output_bytes_retained": 2 * 1024 * 1024,
+                    "output_bytes_omitted": 0
+                }
+            }
         }
     })
     .to_string();
@@ -20491,28 +20633,17 @@ async fn attach_stream_replays_agent_message_reasoning() {
 
     create_durable_run_with_events(&state, run_id, &[
         stage_started_event("code", "agent"),
-        workflow_event::Event::Agent {
-            stage:             "code".to_string(),
-            visit:             1,
-            event:             fabro_agent::AgentEvent::AssistantMessage {
-                text:            String::new(),
-                model:           ModelRef::new(
-                    lithos_llm::catalog::builtin::openai(),
-                    ModelId::new("gpt-5.4"),
-                ),
-                usage:           TokenCounts::default(),
-                cost:            None,
-                tool_call_count: 1,
-                context_window:  None,
-                reasoning:       Some(ReasoningOutput::new(
-                    "inspect the sink first",
-                    "read events.rs, then attach",
-                )),
-            },
-            session_id:        Some("session-1".to_string()),
-            parent_session_id: None,
-            tool_call_id:      None,
-        },
+        agent_message_event(
+            "code",
+            1,
+            "session-1",
+            "",
+            None,
+            Some(ReasoningOutput::new(
+                "inspect the sink first",
+                "read events.rs, then attach",
+            )),
+        ),
         workflow_event::Event::WorkflowRunCompleted {
             timing:               fabro_types::RunTiming::wall_only(1000),
             artifact_count:       0,
@@ -20543,14 +20674,9 @@ async fn attach_stream_replays_agent_message_reasoning() {
         .filter_map(|data| serde_json::from_str::<serde_json::Value>(data).ok())
         .find(|value| value["event"] == "agent.message")
         .expect("attach stream should replay the agent message");
-    assert_eq!(
-        message["properties"]["reasoning"]["summary"],
-        "inspect the sink first"
-    );
-    assert_eq!(
-        message["properties"]["reasoning"]["trace"],
-        "read events.rs, then attach"
-    );
+    let reasoning = &message["properties"]["event"]["AssistantMessage"]["reasoning"];
+    assert_eq!(reasoning["summary"], "inspect the sink first");
+    assert_eq!(reasoning["trace"], "read events.rs, then attach");
 }
 
 #[tokio::test]
@@ -21915,4 +22041,132 @@ fn validate_github_slug_rejects_path_traversal_and_separators() {
 fn validate_github_slug_rejects_overlong() {
     let long = "a".repeat(40);
     assert!(super::validate_github_slug("owner", &long, 39).is_err());
+}
+
+#[tokio::test]
+async fn workflow_version_registration_requires_user_or_run_tools_capability() {
+    let (state, app) = jwt_auth_app();
+    let run_id = RunId::new();
+    let body = json!({
+        "entrypoint": "workflow.fabro",
+        "files": {"workflow.fabro": "digraph W {}"},
+        "workflow_dependencies": {},
+    });
+    for (token, expected) in [
+        (issue_test_user_jwt(), StatusCode::CREATED),
+        (
+            issue_test_run_tools_worker_token(&run_id),
+            StatusCode::CREATED,
+        ),
+        (issue_test_worker_token(&run_id), StatusCode::FORBIDDEN),
+    ] {
+        let response = app
+            .clone()
+            .oneshot(json_bearer_request(
+                Method::POST,
+                "/workflow-versions",
+                &token,
+                &body,
+            ))
+            .await
+            .unwrap();
+        fabro_test::expect_axum_status(response, expected, "POST /workflow-versions actor matrix")
+            .await;
+    }
+    for body in [serde_json::to_string(&body).unwrap(), "{".to_string()] {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri(api("/workflow-versions"))
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        fabro_test::expect_axum_status(
+            response,
+            StatusCode::UNAUTHORIZED,
+            "anonymous POST /workflow-versions",
+        )
+        .await;
+    }
+    let response = app
+        .oneshot(bearer_request(
+            Method::GET,
+            "/runs",
+            &issue_test_user_jwt(),
+            Body::empty(),
+        ))
+        .await
+        .unwrap();
+    let listed =
+        fabro_test::expect_axum_json(response, StatusCode::OK, "GET /runs after registration")
+            .await;
+    assert_eq!(listed["data"], json!([]));
+    assert!(
+        state
+            .stores
+            .runs
+            .load_run_projection(&run_id)
+            .await
+            .unwrap()
+            .is_none()
+    );
+}
+
+#[tokio::test]
+async fn run_tools_worker_registers_contents_then_creates_by_version_id() {
+    let (state, app) = jwt_auth_app();
+    let parent_id = create_run_with_bearer(&app, &issue_test_user_jwt()).await;
+    let token = issue_test_run_tools_worker_token(&parent_id);
+    let response = app
+        .clone()
+        .oneshot(json_bearer_request(
+            Method::POST,
+            "/workflow-versions",
+            &token,
+            &json!({
+                "entrypoint": "child.fabro",
+                "files": {"child.fabro": MINIMAL_DOT},
+                "workflow_dependencies": {}
+            }),
+        ))
+        .await
+        .unwrap();
+    let registered = response_json!(response, StatusCode::CREATED).await;
+    let response = app
+        .oneshot(json_bearer_request(
+            Method::POST,
+            "/runs",
+            &token,
+            &json!({
+                "workflow_version_id": registered["workflow_version_id"],
+                "target": {"kind": "none"},
+                "args": {"dry_run": true},
+                "parent_id": parent_id,
+                "goal": "A child created from sandbox-supplied contents"
+            }),
+        ))
+        .await
+        .unwrap();
+    let child = response_json!(response, StatusCode::CREATED).await;
+    assert_eq!(child["parent_id"], parent_id.to_string());
+    assert_eq!(child["lifecycle"]["status"]["kind"], "submitted");
+    let child_id = child["id"].as_str().unwrap().parse::<RunId>().unwrap();
+    let projection = state
+        .stores
+        .runs
+        .load_run_projection(&child_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        serde_json::to_value(projection.spec.workflow_version_id).unwrap(),
+        registered["workflow_version_id"]
+    );
+    assert_eq!(projection.spec.target, Some(RunTarget::None {}));
+    assert!(projection.start.is_none());
 }
