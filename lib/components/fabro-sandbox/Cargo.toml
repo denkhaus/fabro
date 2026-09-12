@@ -26,6 +26,7 @@ sandbox-driver-docker-config.workspace = true
 sandbox-driver-daytona.workspace = true
 sandbox-driver-daytona-config.workspace = true
 sandbox-driver-testing = { workspace = true, optional = true }
+pebble-coding-agent.workspace = true
 anyhow.workspace = true
 async-trait.workspace = true
 thiserror.workspace = true
@@ -52,6 +53,7 @@ chrono = { workspace = true }
 
 [dev-dependencies]
 fabro-github = { path = "../fabro-github", features = ["test-support"] }
+pebble-coding-agent = { workspace = true, features = ["test-util"] }
 sandbox-driver-testing.workspace = true
 tokio = { workspace = true, features = ["test-util", "macros"] }
 tempfile = "3"

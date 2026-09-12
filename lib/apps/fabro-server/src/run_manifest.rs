@@ -17,6 +17,7 @@ use fabro_graphviz::render::apply_direction;
 use fabro_llm::FabroClient;
 use fabro_llm::lithos_catalog::Catalog;
 use fabro_llm::probe::{self, ModelTestStatus};
+use fabro_proc::ProcessError;
 use fabro_sandbox::{
     CloneRequest, ProviderAccess, RunSandbox, SandboxSpec, sandbox_spec_for_environment,
 };
@@ -42,7 +43,9 @@ use fabro_workflow::workflow_bundle::{BundledWorkflow, ParsedWorkflowConfig, Wor
 use futures_util::stream::{self, StreamExt};
 use lithos_llm::catalog::ProviderId;
 use tokio::process::Command;
+#[cfg(test)]
 use tokio::time;
+use tokio_util::sync::CancellationToken;
 
 use crate::run_compiler;
 use crate::server::AppState;
@@ -879,13 +882,19 @@ async fn check_git_remote_ref(
 /// failure to its most useful message: stderr, then stdout, then the exit
 /// status.
 async fn run_ls_remote(mut command: Command) -> std::result::Result<(), String> {
-    // Dropping a timed-out `Command::output` future does not stop the child
-    // unless kill-on-drop is enabled.
-    command.kill_on_drop(true);
-    let output = time::timeout(Duration::from_secs(10), command.output())
-        .await
-        .map_err(|_| "git ls-remote timed out after 10s".to_string())?
-        .map_err(|err| format!("Failed to run git ls-remote: {err}"))?;
+    let output = fabro_proc::capture(
+        &mut command,
+        Some(Duration::from_secs(10)),
+        &CancellationToken::new(),
+        None,
+    )
+    .await
+    .map_err(|err| match err {
+        ProcessError::TimedOut => "git ls-remote timed out after 10s".to_string(),
+        ProcessError::Io(source) => format!("Failed to run git ls-remote: {source}"),
+        ProcessError::Cancelled => "git ls-remote cancelled".to_string(),
+    })?
+    .output;
 
     if output.status.success() {
         return Ok(());
@@ -1738,6 +1747,32 @@ mod tests {
     use lithos_llm::catalog::ProviderId;
 
     use super::*;
+
+    #[tokio::test]
+    async fn ls_remote_capture_keeps_diagnostic_precedence_and_unlimited_output() {
+        for (script, expected) in [
+            ("printf stdout; printf stderr >&2; exit 7", "stderr"),
+            ("printf stdout; exit 7", "stdout"),
+        ] {
+            let mut command = Command::new("sh");
+            command.args(["-c", script]);
+            assert_eq!(super::run_ls_remote(command).await.unwrap_err(), expected);
+        }
+        let mut command = Command::new("sh");
+        command.args(["-c", "head -c 200000 /dev/zero | tr '\\0' x >&2; exit 7"]);
+        assert_eq!(
+            super::run_ls_remote(command).await.unwrap_err().len(),
+            200_000
+        );
+        let mut command = Command::new("sh");
+        command.args(["-c", "exit 7"]);
+        assert!(
+            super::run_ls_remote(command)
+                .await
+                .unwrap_err()
+                .starts_with("git ls-remote exited with status")
+        );
+    }
 
     fn minimal_manifest() -> types::RunManifest {
         types::RunManifest {

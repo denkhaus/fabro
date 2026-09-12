@@ -12,7 +12,9 @@ use fabro_config::LlmLayer;
 use fabro_static::EnvVars;
 use fabro_types::AgentProfileKind;
 pub use lithos_llm::catalog::Offering;
-use lithos_llm::catalog::{Catalog, CatalogError, CatalogModel, CatalogProvider, Metadata};
+use lithos_llm::catalog::{
+    Catalog, CatalogBuilder, CatalogError, CatalogModel, CatalogProvider, Metadata,
+};
 use serde::Deserialize;
 
 /// The metadata namespace agent harnesses read.
@@ -50,7 +52,72 @@ pub fn build_catalog(
         );
         builder = builder.toml_layer("OPENAI_BASE_URL", &document)?;
     }
-    builder.build()
+    let catalog = builder.build()?;
+    // The coding agent reads a provider's harness profile from
+    // `metadata.agent.profile` and refuses a provider without one. The lithos
+    // built-ins all declare theirs; an operator-defined provider that does
+    // not gets the profile its wire protocol implies, layered on last.
+    let implied = implied_agent_profiles(&catalog);
+    if implied.is_empty() {
+        return Ok(catalog);
+    }
+    let mut builder = Catalog::builder().with_builtin();
+    if !overlay.is_empty() {
+        let mut document = overlay.to_overlay_toml();
+        document.insert_str(0, "schema_version = 1\n");
+        builder = builder.toml_layer("settings [llm]", &document)?;
+    }
+    if let Some(base_url) = env_lookup(EnvVars::OPENAI_BASE_URL) {
+        let document = format!(
+            "schema_version = 1\n[providers.openai]\nbase_url = {}\n",
+            toml::Value::String(base_url.trim_end_matches("/v1").to_string())
+        );
+        builder = builder.toml_layer("OPENAI_BASE_URL", &document)?;
+    }
+    builder
+        .toml_layer("implied agent profiles", &implied)
+        .and_then(CatalogBuilder::build)
+}
+
+/// A TOML layer declaring `metadata.agent.profile` for every provider that
+/// has none, as the profile implied by the provider's adapter. Empty when
+/// every provider already says.
+fn implied_agent_profiles(catalog: &Catalog) -> String {
+    use std::fmt::Write as _;
+
+    let mut document = String::new();
+    for provider in catalog.providers() {
+        if agent_metadata(provider.metadata()).profile.is_some() {
+            continue;
+        }
+        let profile = adapter_agent_profile(provider);
+        let _ = writeln!(
+            document,
+            "[providers.{}.metadata.agent]\nprofile = {}\n",
+            provider.id(),
+            toml::Value::String(
+                serde_json::to_value(profile)
+                    .ok()
+                    .and_then(|value| value.as_str().map(str::to_owned))
+                    .unwrap_or_else(|| "openai".to_string())
+            ),
+        );
+    }
+    if document.is_empty() {
+        return document;
+    }
+    document.insert_str(0, "schema_version = 1\n");
+    document
+}
+
+/// The profile a provider's wire protocol implies, for a provider whose
+/// catalog entry does not name one.
+fn adapter_agent_profile(provider: &CatalogProvider) -> AgentProfileKind {
+    match provider.adapter().as_str() {
+        "anthropic" | "bedrock" => AgentProfileKind::Anthropic,
+        "gemini" => AgentProfileKind::Gemini,
+        _ => AgentProfileKind::OpenAi,
+    }
 }
 
 /// The catalog with no operator overlay: the lithos built-ins.
@@ -96,13 +163,6 @@ pub fn reasons_by_default(offering: &Offering<'_>) -> bool {
         })
 }
 
-/// The agent harness `offering` runs under: the model's own answer, then
-/// the provider's, then the profile implied by the provider's adapter.
-#[must_use]
-pub fn offering_agent_profile(offering: &Offering<'_>) -> AgentProfileKind {
-    model_agent_profile(offering.provider, offering.model)
-}
-
 fn model_agent_profile(provider: &CatalogProvider, model: &CatalogModel) -> AgentProfileKind {
     agent_metadata(model.metadata())
         .profile
@@ -110,16 +170,12 @@ fn model_agent_profile(provider: &CatalogProvider, model: &CatalogModel) -> Agen
 }
 
 /// The agent profile a provider's models run under unless a model row says
-/// otherwise: the provider's `metadata.agent.profile`, else the profile
-/// implied by its wire protocol.
+/// otherwise: the provider's `metadata.agent.profile`, which
+/// [`build_catalog`] fills in for a provider that declared none.
 fn provider_agent_profile(provider: &CatalogProvider) -> AgentProfileKind {
     agent_metadata(provider.metadata())
         .profile
-        .unwrap_or_else(|| match provider.adapter().as_str() {
-            "anthropic" | "bedrock" => AgentProfileKind::Anthropic,
-            "gemini" => AgentProfileKind::Gemini,
-            _ => AgentProfileKind::OpenAi,
-        })
+        .unwrap_or_else(|| adapter_agent_profile(provider))
 }
 
 /// The agent profile for a route on an enabled provider. Unknown
@@ -225,6 +281,41 @@ enabled = false
             !reasons_by_default(&sonnet),
             "a thinking-budget model reasons only when asked"
         );
-        assert_eq!(offering_agent_profile(&kimi), AgentProfileKind::Kimi);
+    }
+
+    /// An operator-defined provider with no `metadata.agent.profile` gets the
+    /// one its adapter implies, so the coding agent can build on it.
+    #[test]
+    fn operator_providers_without_a_profile_get_the_adapter_implied_one() {
+        let overlay = LlmLayer(
+            toml::from_str(
+                r#"
+[providers.acme]
+display_name = "Acme"
+adapter = "openai-compatible"
+codec = "openai-chat"
+base_url = "https://api.acme.test/v1"
+auth = { type = "bearer" }
+default_model = "acme-llama"
+
+[providers.acme.models.acme-llama]
+display_name = "Acme Llama"
+api_model = "acme-llama"
+limits = { context_tokens = 131072, max_output_tokens = 8192 }
+capabilities = { text = true, tools = true }
+"#,
+            )
+            .unwrap(),
+        );
+        let catalog = build_catalog(&overlay, &|_| None).unwrap();
+        let acme = catalog.provider("acme").unwrap();
+        assert_eq!(
+            agent_metadata(acme.metadata()).profile,
+            Some(AgentProfileKind::OpenAi)
+        );
+        assert_eq!(
+            agent_profile(&catalog, "acme", Some("acme-llama")),
+            Some(AgentProfileKind::OpenAi)
+        );
     }
 }

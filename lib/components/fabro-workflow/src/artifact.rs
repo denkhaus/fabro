@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use fabro_agent::RunSandbox;
 use fabro_config::RunScratch;
 use fabro_graphviz::graph::{Graph, Node};
+use fabro_sandbox::RunSandbox;
 use fabro_types::context_keys::TRANSIENT_CONTEXT_KEYS;
 use fabro_types::graph::{DEFAULT_PREAMBLE_BUDGET_KB, DEFAULT_PREAMBLE_INLINE_MAX_KB};
 use fabro_types::{
@@ -1628,7 +1628,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let run_dir = tmp.path().join("run");
         std::fs::create_dir_all(&run_dir).unwrap();
-        let sandbox = fabro_agent::local_sandbox(tmp.path().to_path_buf())
+        let sandbox = fabro_sandbox::local_sandbox(tmp.path().to_path_buf())
             .await
             .unwrap();
 
@@ -1699,7 +1699,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let run_dir = tmp.path().join("run");
         std::fs::create_dir_all(&run_dir).unwrap();
-        let sandbox = fabro_agent::local_sandbox(tmp.path().to_path_buf())
+        let sandbox = fabro_sandbox::local_sandbox(tmp.path().to_path_buf())
             .await
             .expect("local sandbox for tests");
 
@@ -1791,7 +1791,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let run_dir = tmp.path().join("run");
         std::fs::create_dir_all(&run_dir).unwrap();
-        let sandbox = fabro_agent::local_sandbox(tmp.path().to_path_buf())
+        let sandbox = fabro_sandbox::local_sandbox(tmp.path().to_path_buf())
             .await
             .expect("local sandbox for tests");
 
@@ -1838,7 +1838,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let run_dir = tmp.path().join("run");
         std::fs::create_dir_all(&run_dir).unwrap();
-        let sandbox = fabro_agent::local_sandbox(tmp.path().to_path_buf())
+        let sandbox = fabro_sandbox::local_sandbox(tmp.path().to_path_buf())
             .await
             .expect("local sandbox for tests");
 
@@ -1872,7 +1872,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let run_dir = tmp.path().join("run");
         std::fs::create_dir_all(&run_dir).unwrap();
-        let sandbox = fabro_agent::local_sandbox(tmp.path().to_path_buf())
+        let sandbox = fabro_sandbox::local_sandbox(tmp.path().to_path_buf())
             .await
             .expect("local sandbox for tests");
 
@@ -1983,7 +1983,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let run_dir = tmp.path().join("run");
         std::fs::create_dir_all(&run_dir).unwrap();
-        let sandbox = fabro_agent::local_sandbox(tmp.path().to_path_buf())
+        let sandbox = fabro_sandbox::local_sandbox(tmp.path().to_path_buf())
             .await
             .unwrap();
 

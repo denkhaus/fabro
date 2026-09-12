@@ -5,23 +5,25 @@ description: "Using Fabro as a Rust library for AI agents and multi-provider LLM
 
 Fabro can be used as a Rust SDK with two primary entry points:
 
-- **`fabro-agent`** — a full AI coding agent with tool use, sandboxed execution, event streaming, and context management. Use this when you want to build an agent that can read files, run commands, and interact with a codebase.
+- **`pebble-coding-agent`** — the coding agent Fabro runs its agent stages, Ask Fabro sessions, hook evaluators, and `fabro exec` on. Use it with `fabro-sandbox` when you want an agent that can read files, run commands, and interact with a codebase.
 - **`fabro-llm`** — a standalone LLM client for multi-provider completions, streaming, and tool execution loops. Use this when you want direct control over LLM calls without the agent layer.
 
-Both crates can be used independently of Fabro's workflow engine.
+Both can be used independently of Fabro's workflow engine.
 
-## Agent (`fabro-agent`)
+## Agent (`pebble-coding-agent` over `fabro-sandbox`)
 
-The `fabro-agent` crate provides a session-based AI agent that runs an LLM with tool use in a sandboxed environment. The agent loop streams LLM responses, executes tool calls (`shell`, `read_file`, `write_file`, `edit_file`, `glob`, `grep`, `web_fetch`, `web_search`), feeds results back, and repeats until the model responds with text or hits a safety limit.
+Fabro does not ship its own agent loop. Its agent stages run pebble's `CodingAgent`, and `fabro-sandbox`'s `RunSandbox` is the `Environment` the agent's tools act through: the local filesystem, a Docker container, or a cloud sandbox. The agent loop streams model responses, executes tool calls (`shell`, `read_file`, `write_file`, `edit_file`, `apply_patch`, `glob`, `grep`, `web_fetch`, `web_search`, subagents), feeds results back, and repeats until the model answers or a limit is hit.
 
 ```toml title="Cargo.toml"
 [dependencies]
 fabro-auth = { git = "https://github.com/fabro-sh/fabro" }
-fabro-agent = { git = "https://github.com/fabro-sh/fabro" }
 fabro-llm = { git = "https://github.com/fabro-sh/fabro" }
-fabro-types = { git = "https://github.com/fabro-sh/fabro" }
+fabro-sandbox = { git = "https://github.com/fabro-sh/fabro" }
+pebble-coding-agent = { git = "https://github.com/lithoscomputer/pebble" }
 tokio = { version = "1", features = ["full"] }
 ```
+
+Pin `pebble-coding-agent` to the revision Fabro's workspace `Cargo.toml` pins; `RunSandbox` implements that revision's `Environment` contract.
 
 ### Quick start
 
@@ -29,109 +31,91 @@ tokio = { version = "1", features = ["full"] }
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use fabro_agent::{AgentProfile, AgentProfileBuilder, Session, SessionOptions, local_sandbox};
 use fabro_auth::VaultCredentialSource;
 use fabro_llm::ClientOptions;
-use fabro_types::AgentProfileKind;
-use lithos_llm::catalog::builtin;
+use fabro_sandbox::local_sandbox;
+use pebble_coding_agent::environment::Environment;
+use pebble_coding_agent::events::CodingEvent;
+use pebble_coding_agent::tools::PermissionLevel;
+use pebble_coding_agent::{CodingAgent, ShutdownReason};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let catalog = Arc::new(fabro_llm::default_catalog());
+    let catalog = fabro_llm::default_catalog();
     let client = fabro_llm::build_client(
-        (*catalog).clone(),
+        catalog,
         Arc::new(VaultCredentialSource::environment_only()),
         ClientOptions::standard(),
     )
     .await?
     .client;
-    let sandbox = Arc::new(local_sandbox(PathBuf::from(".")).await?);
-    let profile: Arc<dyn AgentProfile> = Arc::from(
-        AgentProfileBuilder::new(
-            AgentProfileKind::Anthropic,
-            builtin::anthropic(),
-            "claude-sonnet-4.5",
-            Arc::clone(&catalog),
-        )
-        .build(),
-    );
-    let config = SessionOptions::default();
+    let sandbox: Arc<dyn Environment> = Arc::new(local_sandbox(PathBuf::from(".")).await?);
 
-    let mut session = Session::new(client, profile, sandbox, config);
-    session.initialize().await?;
+    let mut agent = CodingAgent::builder(client, sandbox)
+        .model("anthropic/claude-sonnet-4.5")
+        .permission_level(PermissionLevel::Full)
+        .build()
+        .await?;
 
     // Subscribe to events before sending input
-    let mut events = session.subscribe();
+    let mut events = agent.subscribe();
     tokio::spawn(async move {
         while let Ok(event) = events.recv().await {
-            if let fabro_agent::AgentEvent::TextDelta { delta } = &event.event {
+            if let CodingEvent::TextDelta { delta } = &event.event {
                 print!("{delta}");
             }
         }
     });
 
-    session.process_input("List the files in this directory").await?;
-    session.close();
+    let report = agent.prompt("List the files in this directory").await;
+    agent.shutdown(ShutdownReason::Completed).await?;
+    report.result?;
     Ok(())
 }
 ```
 
-### Session
+### CodingAgent
 
-`Session` is the core type. It holds the LLM client, a provider profile, a sandbox, and configuration. The main loop lives inside `process_input()`.
-
-**Constructor:**
-
-```rust
-pub fn new(
-    llm_client: Client,
-    provider_profile: Arc<dyn AgentProfile>,
-    sandbox: Arc<RunSandbox>,
-    config: SessionOptions,
-) -> Self
-```
+`CodingAgent` is the core type. `CodingAgent::builder(client, environment)` takes the lithos client and the environment; the builder picks the model (`provider/model`), the permission level, tool middleware, application tools, a human-input provider, a system prompt transform, an event sink, options, and subagent limits. `build()` initializes the agent: it probes the environment, loads memory files and skills, and assembles the system prompt.
 
 **Lifecycle methods:**
 
 | Method | Description |
 |---|---|
-| `initialize().await` | Discovers project docs, skills, and MCP servers. Call before `process_input`. |
-| `process_input(input).await` | Sends user input and runs the agent loop until the model stops, the session is interrupted, or an error occurs. |
-| `close()` | Ends the session and emits `SessionEnded`. |
-| `interrupt()` | Cancels the current `process_input` call. |
-| `cancel_token()` | Returns a `CancellationToken` for external cancellation. |
+| `prompt(input).await` | Runs one user prompt and every queued follow-up to completion. Returns a `PromptReport` with the result, token usage, cost, and timing. |
+| `prompt_with_cancellation(input, &token).await` | The same, ending early when the token fires. The agent stays reusable. |
+| `continue_prompt_with_cancellation(&token).await` | Continues an unfinished prompt on the history as it stands, such as after a model failover. |
+| `shutdown(reason).await` | Ends the agent, emits `SessionEnded`, and flushes events. |
+| `control_handle()` | A cloneable handle for steering, interrupting, and aborting from another task. |
 
 **Inspection:**
 
 | Method | Description |
 |---|---|
-| `state()` | Returns `SessionState`: `Idle`, `Thinking`, `Executing`, or `Closed`. |
-| `history()` | Returns the conversation as `&History` (a sequence of `Turn` values). |
-| `subscribe()` | Returns a broadcast receiver for `SessionEvent` values. |
+| `history()` | The conversation as `History` (a sequence of `Message` values). |
+| `snapshot()` | The agent's identity, route, tools, memory, and skills at the last committed event. |
+| `subscribe()` | A broadcast receiver for `CodingAgentEvent` values. |
+| `to_record()` | The durable `SessionRecord`, restored with `CodingAgent::resume`. |
 
-**Steering:**
+**Steering** goes through the control handle: `queue_steering(message)` injects guidance at the next turn boundary, `steer_now(message)` interrupts the round first, `interrupt()` parks the prompt until a steer arrives, and `queue_follow_up(message)` queues another user turn.
 
-| Method | Description |
-|---|---|
-| `steer(message)` | Injects a system-level guidance message into the next LLM call. |
-| `follow_up(message)` | Queues a follow-up user message after the current turn completes. |
+### CodingAgentOptions
 
-### SessionOptions
+Set with the builder's `.options(...)`. Key settings with their defaults:
 
-All fields are public. Key settings with their defaults:
-
-| Field | Default | Description |
+| Setter | Default | Description |
 |---|---|---|
-| `default_command_timeout_ms` | `10,000` | Default timeout for Bash tool commands. |
-| `max_command_timeout_ms` | `600,000` | Maximum allowed timeout for Bash tool commands. |
-| `enable_loop_detection` | `true` | Detect and break out of repetitive tool call patterns. |
-| `enable_context_compaction` | `true` | Automatically summarize old turns when approaching the context window limit. |
-| `compaction_threshold_percent` | `80` | Context window usage percentage that triggers compaction. |
-| `max_subagent_depth` | `1` | Maximum nesting depth for sub-agents. |
-| `wall_clock_timeout` | `None` | Hard timeout for `process_input`. Triggers `InterruptReason::WallClockTimeout`. |
-| `tool_hooks` | `None` | Pre/post hooks around tool execution (see [Tool hooks](#tool-hooks)). |
-| `mcp_servers` | `[]` | MCP server configurations to connect on startup. |
-| `skill_dirs` | `None` | Directories to discover `SKILL.md` files. `None` uses convention defaults. |
+| `with_reasoning_effort` / `with_speed` | `None` | Request controls for the model. |
+| `with_max_tokens` | catalog default | The most tokens the model may produce per turn. |
+| `with_loop_detection` | `true` | Stop a session that is repeating itself. |
+| `with_context_compaction` | `true` | Summarize old turns when approaching the context window limit. |
+| `with_compaction_threshold_percent` | `80` | Context window usage that triggers compaction. |
+| `with_wall_clock_timeout` | `None` | Hard timeout for a prompt. Reported as `InterruptReason::WallClockTimeout`. |
+| `with_max_turns` | unlimited | The most model turns one prompt may use. |
+| `with_memory_files` | none | Files loaded into the system prompt as memory (Fabro passes `AGENTS.md` and the profile's own file). |
+| `with_skill_dirs` | none | Directories searched for `SKILL.md` files. |
+
+Subagents are enabled with `.subagents(SubagentOptions::enabled())`; `SubagentLimits` bounds how many child sessions may be open at once.
 
 ### Sandbox
 
@@ -171,6 +155,8 @@ impl RunSandbox {
 }
 ```
 
+`RunSandbox` also implements pebble's `Environment` trait, so an `Arc<RunSandbox>` is what a `CodingAgent` is built over. The mapping lives in `fabro_sandbox::environment` and is checked against pebble's environment contract suite.
+
 `DirEntry`, `GrepMatch`, `GrepOptions`, and `WalkOptions` are the driver's own
 types, re-exported from `fabro_sandbox`.
 
@@ -189,134 +175,89 @@ files, the result every command returns, the platform — and hands out the
 
 ### Provider profiles
 
-The `AgentProfile` trait encapsulates LLM-specific system prompts, tool definitions, and capability metadata. It controls how the agent presents itself to the model.
-
-```rust
-pub trait AgentProfile: Send + Sync {
-    fn provider(&self) -> Provider;
-    fn model(&self) -> &str;
-    fn tool_registry(&self) -> &ToolRegistry;
-    fn tool_registry_mut(&mut self) -> &mut ToolRegistry;
-    fn build_system_prompt(&self, env: &RunSandbox, ...) -> String;
-    fn capabilities(&self) -> ProfileCapabilities;
-    fn tools(&self) -> Vec<ToolDefinition>;
-    // ...
-}
-```
-
-Profiles are built with `AgentProfileBuilder::new(kind, provider, model, catalog)`. The `AgentProfileKind` values are `anthropic`, `claude-5`, `openai`, `gemini`, `kimi`, `gpt56`, and `gpt6`; the catalog's `metadata.agent.profile` picks one per provider or model.
+Pebble picks the harness profile (system prompt, tool vocabulary, and capability defaults) from the catalog: `metadata.agent.profile` on the model, else on the provider. The `AgentProfileKind` values are `anthropic`, `claude-5`, `openai`, `gemini`, `kimi`, `gpt56`, and `gpt6`. Every lithos built-in provider declares its profile; `fabro_llm::build_catalog` fills in the profile implied by the adapter for an operator-defined provider that declares none, and `fabro_llm::catalog::agent_profile(catalog, provider, model)` reports the resolved profile.
 
 ### Events
 
-All operations emit `AgentEvent` values through a tokio broadcast channel. Subscribe before calling `process_input()`.
+All operations emit `CodingAgentEvent` values (a `CodingEvent` plus session ids, a sequence number, and a timestamp) through a tokio broadcast channel. Subscribe before calling `prompt()`. For a complete durable record install an `EventSink` with the builder; the broadcast channel is bounded and can lag.
 
 ```rust
-let mut rx = session.subscribe();
+let mut rx = agent.subscribe();
 tokio::spawn(async move {
     while let Ok(event) = rx.recv().await {
         match event.event {
-            AgentEvent::TextDelta { delta } => print!("{delta}"),
-            AgentEvent::ToolCallStarted { tool_name, .. } => {
+            CodingEvent::TextDelta { delta } => print!("{delta}"),
+            CodingEvent::ToolCallStarted { tool_name, .. } => {
                 println!("[calling {tool_name}]");
             }
-            AgentEvent::ToolCallCompleted { tool_name, is_error, .. } => {
+            CodingEvent::ToolCallCompleted { tool_name, is_error, .. } => {
                 println!("[{tool_name} done, error={is_error}]");
             }
-            AgentEvent::LoopDetected => println!("[loop detected]"),
-            AgentEvent::CompactionCompleted { .. } => println!("[context compacted]"),
+            CodingEvent::LoopDetected => println!("[loop detected]"),
+            CodingEvent::CompactionCompleted { .. } => println!("[context compacted]"),
             _ => {}
         }
     }
 });
 ```
 
-Key `AgentEvent` variants:
+Key `CodingEvent` variants:
 
 | Variant | Description |
 |---|---|
 | `SessionStarted` / `SessionEnded` | Session lifecycle. |
 | `TextDelta { delta }` | Incremental text from the model. |
 | `ReasoningDelta { delta }` | Incremental reasoning/thinking text. |
-| `AssistantMessage { text, model, usage, tool_call_count }` | Complete assistant turn with token usage. |
+| `AssistantMessage { text, model, usage, tool_call_count, .. }` | Complete assistant turn with token usage. |
 | `ToolCallStarted { tool_name, tool_call_id, arguments }` | A tool call is about to execute. |
-| `ToolCallCompleted { tool_name, tool_call_id, output, is_error }` | A tool call finished. |
-| `Error { error }` | An `AgentError` occurred. |
+| `ToolCallCompleted { tool_name, tool_call_id, output, is_error, .. }` | A tool call finished. |
+| `Error { error }` | An `ErrorData` occurred. |
 | `LoopDetected` | The agent is repeating itself. |
 | `CompactionStarted` / `CompactionCompleted` | Context window compaction. |
 | `SubAgentSpawned` / `SubAgentCompleted` | Sub-agent lifecycle. |
-| `McpServerReady` / `McpServerFailed` | MCP server connection status. |
+| `SteeringInjected` / `RoundInterrupted` | Steering and interrupts. |
 
-### Tool hooks
+Fabro stores every one of these as an `agent.*` run event whose properties are the `CodingAgentEvent` envelope; `fabro_types::coding_event_name` maps a variant to its run event name.
 
-Implement `ToolHookCallback` to intercept tool calls for approval, logging, or transformation:
+### Tool middleware
+
+Implement pebble's `ToolMiddleware` to intercept tool calls for approval, logging, or transformation, and install it with the builder's `.tool_middleware(...)`. Fabro's `fabro_hooks::WorkflowToolHookCallback` is one: it runs the workflow's `pre_tool_use` hooks before each call and the `post_tool_use` hooks after.
 
 ```rust
-use fabro_agent::{ToolHookCallback, ToolHookDecision};
 use async_trait::async_trait;
+use pebble_agent::{ToolCallNext, ToolCallRequest, ToolErrorKind, ToolMiddleware, ToolOutcome, ToolSystemError};
 
 struct MyHooks;
 
 #[async_trait]
-impl ToolHookCallback for MyHooks {
-    async fn pre_tool_use(
+impl ToolMiddleware for MyHooks {
+    async fn call(
         &self,
-        tool_name: &str,
-        tool_input: &serde_json::Value,
-    ) -> ToolHookDecision {
-        if tool_name == "shell" {
-            println!("Agent wants to run: {}", tool_input["command"]);
+        request: ToolCallRequest,
+        next: ToolCallNext<'_>,
+    ) -> Result<ToolOutcome, ToolSystemError> {
+        if request.call().name == "shell" {
+            return Ok(ToolOutcome::failure(ToolErrorKind::Denied, "shell is not allowed"));
         }
-        ToolHookDecision::Proceed // or Block { reason }
-    }
-
-    async fn post_tool_use(&self, tool_name: &str, _call_id: &str, _output: &str) {
-        println!("{tool_name} completed");
-    }
-
-    async fn post_tool_use_failure(&self, tool_name: &str, _call_id: &str, error: &str) {
-        eprintln!("{tool_name} failed: {error}");
+        next.run(request).await
     }
 }
 ```
 
-Pass hooks via `SessionOptions`:
-
-```rust
-let config = SessionOptions {
-    tool_hooks: Some(Arc::new(MyHooks)),
-    ..Default::default()
-};
-```
-
-For simple sync approval, use `ToolApprovalAdapter` to wrap a closure:
-
-```rust
-use fabro_agent::ToolApprovalAdapter;
-use std::sync::Arc;
-
-let config = SessionOptions {
-    tool_hooks: Some(Arc::new(ToolApprovalAdapter(Arc::new(|tool_name, _args| {
-        if tool_name == "shell" {
-            Err("shell is not allowed".into())
-        } else {
-            Ok(())
-        }
-    })))),
-    ..Default::default()
-};
-```
+For permission gating, `PermissionMiddleware::new(policy)` hides tools a `ToolPermissionPolicy` denies and routes the rest through an optional `ToolApprovalService`; `PermissionLevelPolicy::new(level)` is the read-only, read-write, full ladder `fabro exec --permissions` uses.
 
 ### Error handling
 
-All fallible `Session` methods return `Result<T, AgentError>`:
+`PromptReport::result` is `Result<PromptOutput, pebble_coding_agent::Error>`:
 
 | Variant | Description |
 |---|---|
-| `Llm(Box<ErrorData>)` | An error from the LLM provider: the lithos `ErrorData`, the stored form of a lithos `Error`. |
-| `SessionClosed` | `process_input` was called on a closed session. |
-| `InvalidState(String)` | The session is in an unexpected state. |
-| `ToolExecution(String)` | A tool execution failed. |
-| `Interrupted(InterruptReason)` | The session was cancelled or timed out. |
+| `Llm(lithos_llm::Error)` | An error from the LLM provider. `llm_source()` reaches it from any variant that wraps one. |
+| `SessionClosed` | A prompt was sent to a closed agent. |
+| `InvalidState(String)` | The agent is in an unexpected state. |
+| `ToolExecution(String)` | A tool execution failed in a way that stops the prompt. |
+| `Interrupted(InterruptReason)` | The prompt was cancelled, timed out, or used every allowed turn. |
+| `EventSink(EventSinkError)` | The durable event sink refused an event; the recorded stream is untrustworthy. |
 
 ---
 
@@ -411,7 +352,7 @@ let response = client.complete(request).await?;
 println!("{}", response.text());
 ```
 
-There is no tool-execution loop in `fabro-llm`. The agent loop lives in `fabro-agent`, which decides when to run a tool and feeds results back as `Role::Tool` messages.
+There is no tool-execution loop in `fabro-llm`. The agent loop lives in `pebble-coding-agent`, which decides when to run a tool and feeds results back as `Role::Tool` messages.
 
 ### Streaming
 
@@ -433,7 +374,7 @@ while let Some(event) = stream.next().await {
 }
 ```
 
-A turn that ends with `FinishReason::Length` or `FinishReason::Incomplete` is not complete. Tool calls from such a turn arrive in `response.suppressed_tool_calls` and must not be executed. `fabro-agent` treats both as a retryable failure of the turn.
+A turn that ends with `FinishReason::Length` or `FinishReason::Incomplete` is not complete. Tool calls from such a turn arrive in `response.suppressed_tool_calls` and must not be executed. The coding agent treats both as a retryable failure of the turn.
 
 ### Structured output
 
@@ -484,7 +425,7 @@ Both `Error` and `ErrorData` answer the policy questions directly; only the loop
 
 ### Retries
 
-The lithos `RetryMiddleware` installed by `ClientOptions::standard()` retries a request until its stream delivers visible output. After visible output the client never replays on its own; `fabro-agent` decides whether to replay a turn using `RetryPolicy::next_delay`, the same decision the middleware uses. Insert a `fabro_llm::RetryListener` into a call's context extensions to be told about each retry the middleware performs.
+The lithos `RetryMiddleware` installed by `ClientOptions::standard()` retries a request until its stream delivers visible output. After visible output the client never replays on its own; the coding agent decides whether to replay a turn using `RetryPolicy::next_delay`, the same decision the middleware uses. Insert a `fabro_llm::RetryListener` into a call's context extensions to be told about each retry the middleware performs.
 
 ### Cancellation
 

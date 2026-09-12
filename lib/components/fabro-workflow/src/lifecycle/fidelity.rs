@@ -3,12 +3,12 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
-use fabro_agent::RunSandbox;
 use fabro_core::error::{Error as CoreError, Result as CoreResult};
 use fabro_core::graph::NodeSpec;
 use fabro_core::lifecycle::{EdgeContext, EdgeDecision, NodeDecision, RunLifecycle};
 use fabro_core::state::ExecutionState;
 use fabro_graphviz::graph::types::{Edge as GvEdge, Graph as GvGraph, Node as GvNode};
+use fabro_sandbox::RunSandbox;
 use fabro_types::graph::ATTR_LIST_WILDCARD;
 use tracing::warn;
 
@@ -536,7 +536,7 @@ mod tests {
         ));
         let run_store = store.create_run(&fixtures::RUN_1).await.unwrap();
         let sandbox: Arc<RunSandbox> = Arc::new(
-            fabro_agent::local_sandbox(run_dir.to_path_buf())
+            fabro_sandbox::local_sandbox(run_dir.to_path_buf())
                 .await
                 .unwrap(),
         );

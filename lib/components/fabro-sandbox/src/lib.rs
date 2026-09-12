@@ -21,8 +21,10 @@ pub mod driver;
 pub mod driver_sandbox;
 
 pub mod exec;
+mod pebble_environment;
 
 pub mod reconnect;
+mod redact;
 
 mod clone;
 pub mod docker;
@@ -55,6 +57,7 @@ pub use git_policy::{
 pub use provider::{SandboxInventory, SandboxLookupError};
 pub use provider_sandbox::{attach_provider_sandbox, local_sandbox, provider_sandbox};
 pub use reconnect::{open_terminal_for_run, reconnect_for_run};
+pub use redact::SecretRedactor;
 pub use sandbox::{
     DEFAULT_EXEC_OUTPUT_TAIL_BYTES, GitRunInfo, GitSetupIntent, PushAttempt, PushError, PushReport,
     SandboxFile, SandboxWorkspaceLayout, redacted_output_tail, setup_git,

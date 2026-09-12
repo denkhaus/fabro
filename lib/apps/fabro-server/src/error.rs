@@ -11,7 +11,7 @@ pub enum Error {
     Workflow(#[from] fabro_workflow::Error),
 
     #[error(transparent)]
-    Agent(#[from] fabro_agent::Error),
+    Agent(#[from] pebble_coding_agent::Error),
 
     #[error(transparent)]
     Llm(#[from] fabro_llm::Error),
