@@ -176,3 +176,37 @@ upstream's new signatures; never revert upstream, never drop our features.
   fixes, `cargo nextest run` can reuse a stale binary (mtime granularity) —
   the same failure reappears with unchanged line numbers. `touch <file>`
   forces the rebuild; only trust a rerun after it.
+
+## 2026-09-12 (v0.353.0-nightly.0, merge 409a3e9dd — sandbox-driver adoption #849)
+
+- Whole-layer rewrite class: upstream deleted the Sandbox trait AND every
+  in-tree provider transport (local.rs/docker.rs-bollard/daytona/push_credentials,
+  ~11k lines) for one concrete RunSandbox over git-pinned sandbox-driver
+  crates. Resolution is upstream-first per file; fork features re-anchor at
+  NEW seams (see touchpoints). Expect E0599/E0308 fallout across every
+  consumer, not just conflicted files: Arc<RunSandbox> replaces Arc<dyn Sandbox>,
+  local_sandbox()/tool_context() became async, EnvironmentProvider ->
+  SandboxProviderKind (LOCAL/DOCKER/DAYTONA consts), labels moved onto
+  driver SandboxStatus.
+- Trait-decorator features die with the trait: fs_scope's ScopedSandbox
+  wrapper ported to the agent TOOL layer (ToolContext checks + FsScope
+  filter helpers) instead of resurrecting a sandbox-side wrapper.
+- Mock port class: old trait mocks (SlowWrite/Mutable) become driver-handle
+  doubles — implement sandbox_driver::Sandbox over MemoryFs/ScriptedExec
+  (shared Arc<MemoryFs> for test-side assertions, tokio sleep in write).
+  Hand-written local sandbox records in tests MUST use real dirs + the
+  Host-provider path-derived id (fabro_sandbox::test_support::local_sandbox_id)
+  or attach fails NotFound.
+- Regex-edit discipline (recurrence of the 2026-08-31 cut-before-write
+  lesson): blanket `fn(...)(?!\.await)` regexes corrupted fn heads and
+  nested calls (services_for/tool_context/sandbox_with_file). After each
+  batched regex edit, compile immediately; fix paren placement by hand.
+- DEPLOY-time data rejection (2nd occurrence of the 2026-09-01 class):
+  upstream removed EventBody variants (sandbox.git.*/sandbox.cleanup.*)
+  but KEPT the names in is_known_event_name — the strict read path
+  crash-looped the server on real stored history. Fix: route
+  variantless-but-known names to EventBody::Unknown (fabro-types
+  is_legacy_variantless_event_name) + regression test; offer upstream.
+  A crash-looping container after `just up` = read activation logs first.
+- Smoke count moved: "smoke: all 8 checks green" (was 7) — update any
+  hardcoded 7/7 expectations in this skill.

@@ -189,3 +189,38 @@ Upstream directions that may supersede our work — re-evaluate per merge:
 - lab-check.yml is RETIRED (lab restructure): the auto-merge wiring
   touchpoint now resolves to `.github/workflows/dogfood-gate.yml` + branch
   protection (engine-owned).
+
+## 2026-09-12 (v0.353.0-nightly.0, merge 409a3e9dd — sandbox-driver adoption #849)
+
+- SANDBOX LAYER REBASED: fabro-sandbox is a policy shell over git-pinned
+  sandbox-driver crates (rev in root Cargo.toml; CI installs driver plugin
+  executables from that rev). Fork sandbox work targets the driver project,
+  not fabro. Track driver rev bumps per merge — provider behavior (snapshot
+  caching, devcontainer support) advances there.
+- fs_hide/fs_write (fabro-ba96): enforcement seam moved to the agent tool
+  layer (ToolContext fs_check_read/fs_check_write + FsScope
+  filter_dir_entries/filter_paths/filter_grep_matches; apply_patch pre-check
+  + subagent factory inheritance unchanged). ScopedSandbox is GONE — a
+  future re-port must not resurrect a sandbox wrapper.
+- Docker autobuild (fabro-969f/72a0/3822 CLOSED): driver docker provider
+  is SandboxSource::Image only. Deploy-time `just run-images`
+  (scripts/run-images.nu, content-hash label sh.fabro.toolchain.sha256)
+  is the interim; strategic path = sandbox-driver PR or Daytona snapshots
+  (seeds fabro-f251 re-scoped, fabro-6be6 dedicated host, fabro-a0e5
+  multi-project envs). Dockerfile.toolchain/.mise edits take effect at
+  the next `just up`, NOT at run time.
+- Web sandbox-activity UI ROLLED BACK (user decision): run-time snapshot
+  build/pull events left the run-event vocabulary; CLI renders driver
+  events natively. Do not re-add web build-step display unless driver
+  events become web-consumable.
+- Availability probe (fabro-8d30a) lives on SandboxInventory::list_managed
+  + status.labels — labels moved OFF SandboxInfo; keep the
+  with_replacement type in fabro-api.
+- Lifecycle guards KEPT (regression watch): upstream reconnect_run_sandbox
+  (run_files.rs) and ask-fabro session build still activate sandboxes and
+  would leak terminal-run ones — our InspectionSandbox + TurnScopedSandbox
+  guards stay; predicates are status.is_terminal() only (driver attach
+  never starts; SandboxActivation is gone).
+- Read-path tolerance: legacy variantless event names read as Unknown
+  (ca770f6b8); when upstream removes more EventBody variants, extend
+  is_legacy_variantless_event_name BEFORE deploying.
