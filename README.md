@@ -180,6 +180,16 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for build instructions and development wo
 
 ---
 
+## Haiku
+
+> Define the workflow —
+> agents branch, approve, and merge;
+> code ships while you sleep.
+
+*Committed by the [`hello`](.fabro/workflows/hello/workflow.fabro) workflow's greet stage.*
+
+---
+
 ## License
 
 Fabro is licensed under the [MIT License](LICENSE.md).
