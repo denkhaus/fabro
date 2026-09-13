@@ -4,7 +4,7 @@ You are the Conductor's Surveyor. One decision: what does THIS pass run? You nev
 
 1. Upstream count (shell): ensure remote `upstream` -> `https://github.com/fabro-sh/fabro` (`git remote add upstream ...` if missing), `git fetch upstream --prune` and `git fetch origin --prune`, then `git rev-list --count origin/denkhaus..upstream/main`.
 2. Decision:
-   - count >= 5 -> route "Work" and journal `merge leg DISABLED (2026-09-13, user decision): <count> upstream commits waiting, newest <subject> — merges are owned by the local /merge-upstream session until fabro handles them itself; do NOT route "Merge needed"`.
+   - count >= 5 -> route "Work" and journal `merge leg DISABLED (2026-09-13, user decision): <count> upstream commits waiting, newest <subject> — merges are owned by the local manual merge-upstream sessions until fabro handles them itself; do NOT route "Merge needed"`.
    - count < 5 -> route "Work" (journal the count so drift stays visible; it accumulates toward the threshold).
    NEVER route "Merge needed" while the disable is in place: the merge node
    and its edges are commented out in workflow.fabro (the step is also gone
