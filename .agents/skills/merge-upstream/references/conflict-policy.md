@@ -210,3 +210,24 @@ upstream's new signatures; never revert upstream, never drop our features.
   A crash-looping container after `just up` = read activation logs first.
 - Smoke count moved: "smoke: all 8 checks green" (was 7) — update any
   hardcoded 7/7 expectations in this skill.
+
+## 2026-09-13 (v0.354.0-nightly.0, merge 6efe0e92c — run-metadata retirement #843 + git identity #856)
+
+- Whole-concept retirement class: upstream deletes a MACHINERY (run-metadata
+  branches: RunMetadataRuntime, write_finalize_commit, MetadataSnapshot*)
+  our side only has TESTS on. The textual conflicts are tiny (2 hunks), but
+  the auto-merge keeps FORK test copies of deleted machinery far from the
+  conflict markers (finalize.rs tests referencing write_finalize_commit +
+  RunMetadataRuntime + meta_branch at ~1500). After resolving markers, grep
+  the WHOLE file (and crate) for the removed type names; expect E0599/E0560
+  on fn/fields, and delete those tests with the machinery (upstream-first).
+- New-feature fallout on fork tests: #856's RunOptions.git_identity breaks
+  fork test initializers with E0063 — add `git_identity: None`. A fork test
+  with a FAKE vault GITHUB_TOKEN + declared permissions now hits the real
+  GET /user at run start (deterministic failure): isolate with an explicit
+  `[run.git.author] name+email` — resolve_git_identity skips the lookup when
+  both explicit fields are set.
+- Conductor merge leg DISABLED this day (user decision, df7997279 +
+  472b9a4a4): merges are local /merge-upstream sessions until fabro-5082 is
+  fixed; survey routes Work on drift. Watch: when re-enabling run merges,
+  re-check the deploy-proven data-migration tolerance first.
