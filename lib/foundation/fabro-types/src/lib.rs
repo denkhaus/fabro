@@ -131,10 +131,10 @@ pub use run::{
     RunServerProvenance, RunSpec,
 };
 pub use run_event::{
-    AgentEventProps, AgentMcpToolSummary, AgentToolsAvailableProps, CODING_EVENT_NAMES, EventBody,
-    FailoverProps, InterviewOption, MetadataSnapshotFailureKind, MetadataSnapshotPhase, RunEvent,
-    RunNoticeCode, RunNoticeLevel, RunPairEndedReason, RunPairFailedReason, RunRunnableSource,
-    SessionCapability, coding_event_name, is_coding_event_name, sandbox_driver_event_name,
+    AgentEventProps, AgentToolsAvailableProps, CODING_EVENT_NAMES, EventBody, FailoverProps,
+    InterviewOption, MetadataSnapshotFailureKind, MetadataSnapshotPhase, RunEvent, RunNoticeCode,
+    RunNoticeLevel, RunPairEndedReason, RunPairFailedReason, RunRunnableSource, SessionCapability,
+    coding_event_name, is_coding_event_name, sandbox_driver_event_name,
 };
 pub use run_failure::RunFailure;
 pub use run_id::{RunId, fixtures};
