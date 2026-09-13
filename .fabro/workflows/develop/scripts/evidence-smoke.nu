@@ -2,7 +2,7 @@
 # Smoke test for evidence.nu's PURE helpers (fabro-bfe1): sanitize,
 # resolve-blobrefs, diff-sort-key, is-loop-path, total — exercised over
 # canned fixtures without git (helpers that shell out — numstat-rows,
-# run-base, worktree-state, in-progress-seed — are out of scope here;
+# run-base, worktree-state, claimed-seed — are out of scope here;
 # their logic is covered by the parse check in scripts/qualitygate.nu
 # and manual invocation). The `source` const resolves against THIS
 # file's directory, so the script runs from any cwd (closeout-smoke

@@ -181,6 +181,13 @@ digraph Develop {
         label="Evidence",
         shape=parallelogram,
         script="nu .fabro/workflows/develop/scripts/evidence.nu",
+        // The engine feeds the claimed seed's id via stdin — the evidence
+        // capture resolves spec and diff base for EXACTLY this run's seed
+        // and exits non-zero on any mismatch, never a silent fallback to
+        // scanning in_progress claims (run 01M294HH quoted a different
+        // concurrent seed fabro-5082 as authoritative and the reviewer
+        // burned a re-cycle verifying the real one; fabro-189d).
+        stdin_source="current_seed_id",
         timeout="2m",
         max_retries=1
     ]
