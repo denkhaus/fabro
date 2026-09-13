@@ -14,7 +14,7 @@ use tower::ServiceExt;
 
 use crate::helpers::{
     MINIMAL_DOT, POLL_ATTEMPTS, POLL_INTERVAL, TestAppSettings, api, checked_response,
-    minimal_manifest_json, minimal_manifest_json_with_dry_run, response_json, response_status,
+    minimal_intent_json, minimal_intent_json_with_dry_run, response_json, response_status,
     settings_from_toml, test_app_state_with_options, test_app_with_scheduler, test_settings,
     wait_for_run_status,
 };
@@ -43,13 +43,13 @@ fn temp_storage_settings() -> (tempfile::TempDir, TestAppSettings, PathBuf) {
     (temp, settings, storage_dir)
 }
 
-async fn create_run(app: &axum::Router, manifest: serde_json::Value) -> String {
+async fn create_run(app: &axum::Router, intent: serde_json::Value) -> String {
     let request = Request::builder()
         .method("POST")
         .uri(api("/runs"))
         .header("content-type", "application/json")
         .body(Body::from(
-            serde_json::to_vec(&manifest).expect("manifest fixture should serialize"),
+            serde_json::to_vec(&intent).expect("intent fixture should serialize"),
         ))
         .expect("create-run request should build");
     let response = app.clone().oneshot(request).await.unwrap();
@@ -404,10 +404,19 @@ fn assert_percent_if_present(value: &serde_json::Value) {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_app_state_with_options_respects_max_concurrent_runs() {
+    let workspace = tempfile::tempdir().unwrap();
     let app = test_app_with_scheduler(test_app_state_with_options(test_settings(), 1));
 
-    let first_run = create_run(&app, minimal_manifest_json(HUMAN_GATE_DOT)).await;
-    let second_run = create_run(&app, minimal_manifest_json(HUMAN_GATE_DOT)).await;
+    let first_run = create_run(
+        &app,
+        minimal_intent_json(&app, HUMAN_GATE_DOT, workspace.path()).await,
+    )
+    .await;
+    let second_run = create_run(
+        &app,
+        minimal_intent_json(&app, HUMAN_GATE_DOT, workspace.path()).await,
+    )
+    .await;
 
     start_run(&app, &first_run).await;
     start_run(&app, &second_run).await;
@@ -438,10 +447,15 @@ async fn test_app_state_with_options_respects_max_concurrent_runs() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn get_system_disk_usage_returns_summary_and_verbose_rows() {
+    let workspace = tempfile::tempdir().unwrap();
     let (_temp, settings, storage_dir) = temp_storage_settings();
     let app = test_app_with_scheduler(test_app_state_with_options(settings, 5));
 
-    let run_id = create_run(&app, minimal_manifest_json_with_dry_run(MINIMAL_DOT)).await;
+    let run_id = create_run(
+        &app,
+        minimal_intent_json_with_dry_run(&app, MINIMAL_DOT, workspace.path()).await,
+    )
+    .await;
     start_run(&app, &run_id).await;
     let status = wait_for_run_status(&app, &run_id, &["succeeded", "failed"]).await;
     assert_eq!(status, "succeeded");
@@ -488,10 +502,15 @@ async fn get_system_disk_usage_returns_summary_and_verbose_rows() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn prune_runs_supports_dry_run_and_deletion() {
+    let workspace = tempfile::tempdir().unwrap();
     let (_temp, settings, storage_dir) = temp_storage_settings();
     let app = test_app_with_scheduler(test_app_state_with_options(settings, 5));
 
-    let run_id = create_run(&app, minimal_manifest_json_with_dry_run(MINIMAL_DOT)).await;
+    let run_id = create_run(
+        &app,
+        minimal_intent_json_with_dry_run(&app, MINIMAL_DOT, workspace.path()).await,
+    )
+    .await;
     start_run(&app, &run_id).await;
     let status = wait_for_run_status(&app, &run_id, &["succeeded", "failed"]).await;
     assert_eq!(status, "succeeded");

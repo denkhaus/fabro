@@ -3,7 +3,7 @@ use axum::http::{Method, Request, StatusCode};
 use tower::ServiceExt;
 
 use crate::helpers::{
-    MINIMAL_DOT, api, body_json, minimal_manifest_json, response_json, response_status,
+    MINIMAL_DOT, api, body_json, minimal_intent_json, response_json, response_status,
     test_app_state, test_app_state_with_options, test_settings,
 };
 
@@ -220,6 +220,7 @@ async fn variables_persist_across_rebuilt_app_state() {
 
 #[tokio::test]
 async fn run_config_substitutes_variables_before_persisting_settings() {
+    let workspace = tempfile::tempdir().unwrap();
     let app = fabro_server::test_support::build_test_router(test_app_state());
 
     let create_variable = app
@@ -236,24 +237,12 @@ async fn run_config_substitutes_variables_before_persisting_settings() {
         .expect("POST /variables should route");
     response_status(create_variable, StatusCode::OK, "POST /api/v1/variables").await;
 
-    let mut manifest = minimal_manifest_json(MINIMAL_DOT);
-    manifest["configs"] = serde_json::json!([{
-        "type": "project",
-        "path": ".fabro/project.toml",
-        "source": r#"
-_version = 1
-
-[run]
-goal = "secret: {{ vars.RUNTIME_TOKEN }}"
-
-[run.environment]
-id = "local"
-"#
-    }]);
+    let mut intent = minimal_intent_json(&app, MINIMAL_DOT, workspace.path()).await;
+    intent["goal"] = serde_json::json!("secret: {{ vars.RUNTIME_TOKEN }}");
 
     let create_run = app
         .clone()
-        .oneshot(json_request(Method::POST, "/runs", &manifest))
+        .oneshot(json_request(Method::POST, "/runs", &intent))
         .await
         .expect("POST /runs should route");
     let create_status = create_run.status();
@@ -282,6 +271,7 @@ id = "local"
 
 #[tokio::test]
 async fn run_create_interpolates_variables_into_node_prompts() {
+    let workspace = tempfile::tempdir().unwrap();
     // End-to-end through the real run-create path: a server variable resolves
     // inside a node `prompt` (a DOT graph attribute the settings substitution
     // pass never touches), proving the variable store is snapshotted into the
@@ -315,7 +305,7 @@ async fn run_create_interpolates_variables_into_node_prompts() {
         .oneshot(json_request(
             Method::POST,
             "/runs",
-            &minimal_manifest_json(dot),
+            &minimal_intent_json(&app, dot, workspace.path()).await,
         ))
         .await
         .expect("POST /runs should route");
@@ -383,7 +373,7 @@ async fn run_validate_resolves_variables_in_node_prompts() {
         .oneshot(json_request(
             Method::POST,
             "/validate",
-            &minimal_manifest_json(dot),
+            &crate::helpers::minimal_manifest_json(dot),
         ))
         .await
         .expect("POST /validate should route");

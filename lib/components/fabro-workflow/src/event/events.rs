@@ -43,8 +43,6 @@ pub enum Event {
         automation:          Option<AutomationRef>,
         provenance:          RunProvenance,
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        manifest_blob:       Option<BlobHash>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
         spec_blob:           Option<BlobHash>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         git:                 Option<GitContext>,

@@ -1176,12 +1176,12 @@ paths:
       tags: [Runs]
       summary: Create Run
       description: >-
-        Creates a new workflow run in `submitted` status from either a
-        self-contained legacy manifest or an immutable workflow-version intent.
+        Creates a new workflow run in `submitted` status from an
+        immutable workflow-version intent.
         Creation does not start or schedule the run.
 
 
-        Failures return the standard error body. The intent lane responds
+        Failures return the standard error body. The endpoint responds
         `404` (`workflow_version_not_found`, `environment_not_found`), `422`
         (`run_intent_invalid`, `target_invalid`,
         `target_environment_unsupported`,
@@ -1194,7 +1194,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/CreateRunRequest"
+              $ref: "#/components/schemas/RunIntent"
       responses:
         "201":
           description: Run created
@@ -1209,7 +1209,7 @@ paths:
         # the CLI's error display contract
         # (run_create_failure_shows_action_context_and_response_body).
         "400":
-          description: Invalid JSON or legacy manifest
+          description: Invalid JSON
           headers:
             x-request-id:
               $ref: "#/components/headers/XRequestId"
@@ -9326,14 +9326,6 @@ components:
         workflow_version_id:
           $ref: "#/components/schemas/WorkflowVersionId"
 
-    CreateRunRequest:
-      description: >-
-        Transitional create body used while callers migrate independently from
-        self-contained manifests to immutable workflow-version intents.
-      oneOf:
-        - $ref: "#/components/schemas/RunManifest"
-        - $ref: "#/components/schemas/RunIntent"
-
     RunIntent:
       description: >-
         A request to create, but not start, one run from an immutable workflow
@@ -12376,8 +12368,6 @@ components:
             type: string
         provenance:
           $ref: "#/components/schemas/RunProvenance"
-        manifest_blob:
-          type: ["string", "null"]
         definition_blob:
           type: ["string", "null"]
         spec_blob:

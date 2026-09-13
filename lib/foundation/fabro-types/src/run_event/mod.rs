@@ -1364,32 +1364,6 @@ mod tests {
     }
 
     #[test]
-    fn run_created_round_trip_preserves_manifest_blob() {
-        let line = json!({
-            "id": "evt_created_blob",
-            "ts": "2026-04-04T12:00:00.000Z",
-            "run_id": fixtures::RUN_1,
-            "event": "run.created",
-            "properties": {
-                "settings": WorkflowSettings::default(),
-                "graph": Graph::new("test"),
-                "labels": {},
-                "source_directory": "/tmp/run",
-                "provenance": test_support::test_run_provenance(),
-                "manifest_blob": BlobHash::new(br#"{"version":1}"#).to_string()
-            }
-        });
-
-        let parsed = RunEvent::from_value(line.clone()).unwrap();
-        let serialized = parsed.to_value().unwrap();
-
-        assert_eq!(
-            serialized["properties"]["manifest_blob"],
-            line["properties"]["manifest_blob"]
-        );
-    }
-
-    #[test]
     fn interview_interrupted_kind_matches_event_name() {
         let body = EventBody::InterviewInterrupted(InterviewInterruptedProps {
             question_id: "q-1".to_string(),

@@ -46,7 +46,6 @@ fn run_spec_round_trips_templated_settings() {
         source_directory:    Some("/Users/client/project".to_string()),
         labels:              HashMap::from([("team".to_string(), "platform".to_string())]),
         provenance:          test_run_provenance(),
-        manifest_blob:       None,
         definition_blob:     None,
         spec_blob:           None,
         git:                 Some(GitContext {

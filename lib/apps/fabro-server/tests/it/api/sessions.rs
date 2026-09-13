@@ -4,17 +4,18 @@ use fabro_static::EnvVars;
 use tower::ServiceExt;
 
 use crate::helpers::{
-    MINIMAL_DOT, api, minimal_manifest_json, response_json, response_status, test_app_state,
+    MINIMAL_DOT, api, minimal_intent_json, response_json, response_status, test_app_state,
 };
 
-async fn create_run(app: &axum::Router) -> String {
+async fn create_run(app: &axum::Router) -> (String, tempfile::TempDir) {
+    let workspace = tempfile::tempdir().expect("run target workspace should be created");
     let request = Request::builder()
         .method("POST")
         .uri(api("/runs"))
         .header("content-type", "application/json")
         .body(Body::from(
-            serde_json::to_string(&minimal_manifest_json(MINIMAL_DOT))
-                .expect("manifest should serialize"),
+            serde_json::to_string(&minimal_intent_json(app, MINIMAL_DOT, workspace.path()).await)
+                .expect("intent should serialize"),
         ))
         .expect("create-run request should build");
     let body = response_json(
@@ -23,10 +24,11 @@ async fn create_run(app: &axum::Router) -> String {
         "POST /api/v1/runs",
     )
     .await;
-    body["id"]
+    let run_id = body["id"]
         .as_str()
         .expect("create-run response should include an id")
-        .to_string()
+        .to_string();
+    (run_id, workspace)
 }
 
 async fn create_session(app: &axum::Router, run_id: &str, title: &str) -> serde_json::Value {
@@ -79,7 +81,7 @@ async fn create_session_response(
 #[tokio::test]
 async fn run_bound_session_is_created_as_run_event_and_resolves_by_flat_id() {
     let app = fabro_server::test_support::build_test_router(test_app_state());
-    let run_id = create_run(&app).await;
+    let (run_id, _run_id_workspace) = create_run(&app).await;
 
     let created = create_session(&app, &run_id, "Ask Fabro").await;
     let session_id = created["id"]
@@ -139,7 +141,7 @@ async fn run_bound_session_is_created_as_run_event_and_resolves_by_flat_id() {
 #[tokio::test]
 async fn generic_session_creation_requires_the_dedicated_operation_without_advancing_history() {
     let app = fabro_server::test_support::build_test_router(test_app_state());
-    let run_id = create_run(&app).await;
+    let (run_id, _run_id_workspace) = create_run(&app).await;
     let before_request = Request::builder()
         .method("GET")
         .uri(api(&format!("/runs/{run_id}/events")))
@@ -198,8 +200,8 @@ async fn generic_session_creation_requires_the_dedicated_operation_without_advan
 #[tokio::test]
 async fn sessions_are_listed_only_under_their_owning_run() {
     let app = fabro_server::test_support::build_test_router(test_app_state());
-    let first_run_id = create_run(&app).await;
-    let second_run_id = create_run(&app).await;
+    let (first_run_id, _first_run_id_workspace) = create_run(&app).await;
+    let (second_run_id, _second_run_id_workspace) = create_run(&app).await;
     let created = create_session(&app, &first_run_id, "First run chat").await;
 
     let first_request = Request::builder()
@@ -234,7 +236,7 @@ async fn sessions_are_listed_only_under_their_owning_run() {
 #[tokio::test]
 async fn supplied_session_model_alias_is_canonicalized() {
     let app = fabro_server::test_support::build_test_router(test_app_state());
-    let run_id = create_run(&app).await;
+    let (run_id, _run_id_workspace) = create_run(&app).await;
 
     let created = create_session_with_model(&app, &run_id, "Ask Fabro", "gpt54").await;
     assert_eq!(created["model"], "gpt-5.4");
@@ -264,7 +266,7 @@ async fn supplied_session_model_alias_is_canonicalized() {
 #[tokio::test]
 async fn provider_qualified_session_model_is_canonicalized() {
     let app = fabro_server::test_support::build_test_router(test_app_state());
-    let run_id = create_run(&app).await;
+    let (run_id, _run_id_workspace) = create_run(&app).await;
 
     let created =
         create_session_with_model(&app, &run_id, "Ask Fabro", "openai/gpt-5.4-mini").await;
@@ -276,7 +278,7 @@ async fn provider_qualified_session_model_is_canonicalized() {
 #[tokio::test]
 async fn unknown_session_models_preserve_passthrough_on_the_selected_provider() {
     let app = fabro_server::test_support::build_test_router(test_app_state());
-    let run_id = create_run(&app).await;
+    let (run_id, _run_id_workspace) = create_run(&app).await;
 
     for model in ["not-a-real-model", "openai/not-a-real-model"] {
         let created = create_session_with_model(&app, &run_id, "Ask Fabro", model).await;
@@ -288,7 +290,7 @@ async fn unknown_session_models_preserve_passthrough_on_the_selected_provider() 
 #[tokio::test]
 async fn invalid_session_model_refs_are_rejected_at_creation() {
     let app = fabro_server::test_support::build_test_router(test_app_state());
-    let run_id = create_run(&app).await;
+    let (run_id, _run_id_workspace) = create_run(&app).await;
 
     for model in ["openai", "openai/", "anthropic/gpt-5.4"] {
         let response = create_session_response(
@@ -313,7 +315,7 @@ async fn ambiguous_session_model_refs_are_rejected_at_creation() {
         .vault_entries([(EnvVars::OPENAI_API_KEY, "test-openai-api-key")])
         .build();
     let app = fabro_server::test_support::build_test_router(state);
-    let run_id = create_run(&app).await;
+    let (run_id, _run_id_workspace) = create_run(&app).await;
 
     let response = create_session_response(
         &app,
@@ -332,7 +334,7 @@ async fn ambiguous_session_model_refs_are_rejected_at_creation() {
 #[tokio::test]
 async fn session_turn_fails_when_selected_model_provider_becomes_unconfigured() {
     let app = fabro_server::test_support::build_test_router(test_app_state());
-    let run_id = create_run(&app).await;
+    let (run_id, _run_id_workspace) = create_run(&app).await;
     let created = create_session_with_model(&app, &run_id, "Ask Fabro", "gpt54").await;
     let session_id = created["id"]
         .as_str()
@@ -371,7 +373,7 @@ async fn session_turn_fails_when_selected_model_provider_becomes_unconfigured() 
 #[tokio::test]
 async fn session_metadata_patch_route_is_removed() {
     let app = fabro_server::test_support::build_test_router(test_app_state());
-    let run_id = create_run(&app).await;
+    let (run_id, _run_id_workspace) = create_run(&app).await;
     let created = create_session(&app, &run_id, "Ask Fabro").await;
     let session_id = created["id"]
         .as_str()
@@ -394,7 +396,7 @@ async fn session_metadata_patch_route_is_removed() {
 #[tokio::test]
 async fn unsupported_derived_turn_read_routes_are_removed() {
     let app = fabro_server::test_support::build_test_router(test_app_state());
-    let run_id = create_run(&app).await;
+    let (run_id, _run_id_workspace) = create_run(&app).await;
     let created = create_session(&app, &run_id, "Ask Fabro").await;
     let session_id = created["id"]
         .as_str()
@@ -419,7 +421,7 @@ async fn unsupported_derived_turn_read_routes_are_removed() {
 #[tokio::test]
 async fn session_events_are_filtered_by_session_and_paginated_by_run_sequence() {
     let app = fabro_server::test_support::build_test_router(test_app_state());
-    let run_id = create_run(&app).await;
+    let (run_id, _run_id_workspace) = create_run(&app).await;
     let first = create_session(&app, &run_id, "First").await;
     let second = create_session(&app, &run_id, "Second").await;
     let first_id = first["id"].as_str().unwrap();
@@ -482,7 +484,7 @@ async fn session_events_are_filtered_by_session_and_paginated_by_run_sequence() 
 #[tokio::test]
 async fn inactive_turn_interrupt_returns_conflict() {
     let app = fabro_server::test_support::build_test_router(test_app_state());
-    let run_id = create_run(&app).await;
+    let (run_id, _run_id_workspace) = create_run(&app).await;
     let created = create_session(&app, &run_id, "Ask Fabro").await;
     let session_id = created["id"]
         .as_str()

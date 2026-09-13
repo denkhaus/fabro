@@ -8,7 +8,7 @@ use tower::ServiceExt;
 
 use crate::helpers::{
     POLL_ATTEMPTS, POLL_INTERVAL, api, checked_response, checked_response_in,
-    create_and_start_run_from_manifest, minimal_manifest_json_with_dry_run, response_json,
+    create_and_start_run_from_intent, minimal_intent_json_with_dry_run, response_json,
     test_app_state_with_options, test_app_with_scheduler, test_settings,
     wait_for_run_status_not_in,
 };
@@ -51,12 +51,15 @@ async fn wait_for_checkpoint(app: &axum::Router, run_id: &str) -> serde_json::Va
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn sse_stream_contains_expected_event_types() {
+    let workspace = tempfile::tempdir().unwrap();
     let state = test_app_state_with_options(test_settings(), 5);
     let app = test_app_with_scheduler(state);
 
-    let run_id =
-        create_and_start_run_from_manifest(&app, minimal_manifest_json_with_dry_run(SIMPLE_DOT))
-            .await;
+    let run_id = create_and_start_run_from_intent(
+        &app,
+        minimal_intent_json_with_dry_run(&app, SIMPLE_DOT, workspace.path()).await,
+    )
+    .await;
 
     wait_for_run_status_not_in(&app, &run_id, &["runnable", "starting"]).await;
 

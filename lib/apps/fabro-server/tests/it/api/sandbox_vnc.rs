@@ -3,7 +3,7 @@ use axum::http::{Request, StatusCode};
 use tower::ServiceExt;
 
 use crate::helpers::{
-    MINIMAL_DOT, api, minimal_manifest_json, response_json, response_status, test_app_state,
+    MINIMAL_DOT, api, minimal_intent_json, response_json, response_status, test_app_state,
 };
 
 #[tokio::test]
@@ -28,13 +28,15 @@ async fn vnc_for_missing_run_returns_not_found() {
 
 #[tokio::test]
 async fn vnc_for_run_without_sandbox_returns_not_found() {
+    let workspace = tempfile::tempdir().unwrap();
     let app = fabro_server::test_support::build_test_router(test_app_state());
     let create_req = Request::builder()
         .method("POST")
         .uri(api("/runs"))
         .header("content-type", "application/json")
         .body(Body::from(
-            serde_json::to_string(&minimal_manifest_json(MINIMAL_DOT)).unwrap(),
+            serde_json::to_string(&minimal_intent_json(&app, MINIMAL_DOT, workspace.path()).await)
+                .unwrap(),
         ))
         .unwrap();
     let create_response = app.clone().oneshot(create_req).await.unwrap();

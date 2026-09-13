@@ -35,30 +35,29 @@ use crate::workflow_bundle::{RunDefinition, WorkflowBundle};
 
 #[derive(Clone, Debug)]
 pub struct CreateRunInput {
-    pub workflow: WorkflowInput,
-    pub settings: WorkflowSettings,
+    pub workflow:             WorkflowInput,
+    pub settings:             WorkflowSettings,
     /// Run-scoped variables (`{{ vars.* }}`) snapshotted from the server's
     /// variable store at create time, threaded into the template render
     /// context for prompts and goals. Empty for offline/CLI callers.
-    pub vars: HashMap<String, String>,
-    pub cwd: PathBuf,
-    pub workflow_slug: Option<String>,
-    pub workflow_path: Option<ManifestPath>,
-    pub workflow_bundle: Option<WorkflowBundle>,
-    pub target: Option<RunTarget>,
-    pub submitted_manifest_bytes: Option<Vec<u8>>,
-    pub run_id: Option<RunId>,
-    pub title: Option<String>,
-    pub automation: Option<AutomationRef>,
-    pub git: Option<GitContext>,
-    pub fork_source_ref: Option<ForkSourceRef>,
-    pub parent_id: Option<RunId>,
-    pub provenance: RunProvenance,
+    pub vars:                 HashMap<String, String>,
+    pub cwd:                  PathBuf,
+    pub workflow_slug:        Option<String>,
+    pub workflow_path:        Option<ManifestPath>,
+    pub workflow_bundle:      Option<WorkflowBundle>,
+    pub target:               Option<RunTarget>,
+    pub run_id:               Option<RunId>,
+    pub title:                Option<String>,
+    pub automation:           Option<AutomationRef>,
+    pub git:                  Option<GitContext>,
+    pub fork_source_ref:      Option<ForkSourceRef>,
+    pub parent_id:            Option<RunId>,
+    pub provenance:           RunProvenance,
     pub configured_providers: Vec<ProviderId>,
     /// Public URL where this run can be viewed in the web UI, when the server
     /// has the web UI enabled. Recorded on the `run.created` event so attach
     /// replays can surface the link.
-    pub web_url: Option<String>,
+    pub web_url:              Option<String>,
 }
 
 impl CreateRunInput {
@@ -78,7 +77,6 @@ impl CreateRunInput {
             workflow_path,
             workflow_bundle,
             target,
-            submitted_manifest_bytes,
             run_id: _,
             title,
             automation,
@@ -105,7 +103,6 @@ impl CreateRunInput {
                 workflow_slug,
                 workflow_version_id: None,
                 target,
-                submitted_manifest_bytes,
                 title,
                 automation,
                 git,
@@ -135,19 +132,18 @@ pub struct CreateRunCompileInput {
 /// run's scratch directory during pure input assembly.
 #[derive(Debug)]
 pub struct CreateRunPersistenceMetadata {
-    pub run_id: RunId,
-    pub storage_root: PathBuf,
-    pub workflow_slug: Option<String>,
+    pub run_id:              RunId,
+    pub storage_root:        PathBuf,
+    pub workflow_slug:       Option<String>,
     pub workflow_version_id: Option<WorkflowVersionId>,
-    pub target: Option<RunTarget>,
-    pub submitted_manifest_bytes: Option<Vec<u8>>,
-    pub title: Option<String>,
-    pub automation: Option<AutomationRef>,
-    pub git: Option<GitContext>,
-    pub fork_source_ref: Option<ForkSourceRef>,
-    pub parent_id: Option<RunId>,
-    pub provenance: RunProvenance,
-    pub web_url: Option<String>,
+    pub target:              Option<RunTarget>,
+    pub title:               Option<String>,
+    pub automation:          Option<AutomationRef>,
+    pub git:                 Option<GitContext>,
+    pub fork_source_ref:     Option<ForkSourceRef>,
+    pub parent_id:           Option<RunId>,
+    pub provenance:          RunProvenance,
+    pub web_url:             Option<String>,
 }
 
 #[derive(Debug)]
@@ -205,20 +201,19 @@ impl MaterializedRun {
 /// Complete input for creating a durable run. The run ID and run directory
 /// are resolved during assembly, before persistence begins.
 pub struct CreateRunPersistenceInput {
-    materialized: MaterializedRun,
-    run_id: RunId,
-    run_dir: PathBuf,
-    workflow_slug: Option<String>,
+    materialized:        MaterializedRun,
+    run_id:              RunId,
+    run_dir:             PathBuf,
+    workflow_slug:       Option<String>,
     workflow_version_id: Option<WorkflowVersionId>,
-    target: Option<RunTarget>,
-    submitted_manifest_bytes: Option<Vec<u8>>,
-    title: Option<String>,
-    automation: Option<AutomationRef>,
-    git: Option<GitContext>,
-    fork_source_ref: Option<ForkSourceRef>,
-    parent_id: Option<RunId>,
-    provenance: RunProvenance,
-    web_url: Option<String>,
+    target:              Option<RunTarget>,
+    title:               Option<String>,
+    automation:          Option<AutomationRef>,
+    git:                 Option<GitContext>,
+    fork_source_ref:     Option<ForkSourceRef>,
+    parent_id:           Option<RunId>,
+    provenance:          RunProvenance,
+    web_url:             Option<String>,
 }
 
 impl CreateRunPersistenceInput {
@@ -240,10 +235,6 @@ impl CreateRunPersistenceInput {
 
     pub fn workflow_version_id(&self) -> Option<WorkflowVersionId> {
         self.workflow_version_id
-    }
-
-    pub fn submitted_manifest_bytes(&self) -> Option<&[u8]> {
-        self.submitted_manifest_bytes.as_deref()
     }
 
     pub fn automation(&self) -> Option<&AutomationRef> {
@@ -412,7 +403,6 @@ pub fn assemble_create_run_persistence_input(
         workflow_slug,
         workflow_version_id,
         target,
-        submitted_manifest_bytes,
         title,
         automation,
         git,
@@ -434,7 +424,6 @@ pub fn assemble_create_run_persistence_input(
         workflow_slug,
         workflow_version_id,
         target,
-        submitted_manifest_bytes,
         title,
         automation,
         git,
@@ -457,7 +446,6 @@ pub async fn persist_create_run(
         workflow_slug,
         workflow_version_id,
         target,
-        submitted_manifest_bytes,
         title,
         automation,
         git,
@@ -495,7 +483,6 @@ pub async fn persist_create_run(
             source_directory,
             labels,
             provenance,
-            manifest_blob: None,
             definition_blob: None,
             spec_blob: None,
             git,
@@ -513,7 +500,6 @@ pub async fn persist_create_run(
         store,
         &persisted,
         &raw_source,
-        submitted_manifest_bytes.as_deref(),
         definition.as_ref(),
         title,
         parent_id,
@@ -533,7 +519,6 @@ async fn persist_created_run(
     store: &Database,
     persisted: &Persisted,
     workflow_source: &str,
-    submitted_manifest_bytes: Option<&[u8]>,
     accepted_definition: Option<&RunDefinition>,
     explicit_title: Option<String>,
     parent_id: Option<RunId>,
@@ -547,8 +532,7 @@ async fn persist_created_run(
     let spec_bytes = serde_json::to_vec(record)
         .map_err(|err| Error::engine_with_source("failed to serialize run spec", err))?;
     let blob_store = store.blobs();
-    let (manifest_blob, definition_blob, spec_blob) = tokio::try_join!(
-        write_optional_blob(&blob_store, submitted_manifest_bytes),
+    let (definition_blob, spec_blob) = tokio::try_join!(
         write_optional_blob(&blob_store, definition_bytes.as_deref()),
         async { blob_store.write(&spec_bytes).await.map_err(store_error) },
     )?;
@@ -575,7 +559,6 @@ async fn persist_created_run(
         target: record.target.clone(),
         automation: record.automation.clone(),
         provenance: record.provenance.clone(),
-        manifest_blob,
         spec_blob: Some(spec_blob),
         git: record.git.clone(),
         fork_source_ref: record.fork_source_ref.clone(),
@@ -1624,27 +1607,26 @@ mod tests {
             workflow_source: None,
         };
         let request = CreateRunInput {
-            workflow: WorkflowInput::DotSource {
+            workflow:             WorkflowInput::DotSource {
                 source:   MINIMAL_DOT.to_string(),
                 base_dir: None,
             },
-            settings: test_default_settings(),
-            vars: HashMap::new(),
-            cwd: dir.path().to_path_buf(),
-            workflow_slug: Some("request-slug".to_string()),
-            workflow_path: None,
-            workflow_bundle: None,
-            target: None,
-            submitted_manifest_bytes: Some(b"submitted manifest".to_vec()),
-            run_id: Some(fixtures::RUN_1),
-            title: Some("Assembled run".to_string()),
-            automation: Some(automation.clone()),
-            git: None,
-            fork_source_ref: None,
-            parent_id: Some(fixtures::RUN_2),
-            provenance: test_support::test_run_provenance(),
+            settings:             test_default_settings(),
+            vars:                 HashMap::new(),
+            cwd:                  dir.path().to_path_buf(),
+            workflow_slug:        Some("request-slug".to_string()),
+            workflow_path:        None,
+            workflow_bundle:      None,
+            target:               None,
+            run_id:               Some(fixtures::RUN_1),
+            title:                Some("Assembled run".to_string()),
+            automation:           Some(automation.clone()),
+            git:                  None,
+            fork_source_ref:      None,
+            parent_id:            Some(fixtures::RUN_2),
+            provenance:           test_support::test_run_provenance(),
             configured_providers: test_provider_ids(),
-            web_url: Some("https://fabro.test/runs/1".to_string()),
+            web_url:              Some("https://fabro.test/runs/1".to_string()),
         };
         let catalog = test_catalog();
         let resolved_run_id = fixtures::RUN_64;
@@ -1662,10 +1644,6 @@ mod tests {
                 .root()
         );
         assert_eq!(input.workflow_slug(), Some("request-slug"));
-        assert_eq!(
-            input.submitted_manifest_bytes(),
-            Some(b"submitted manifest".as_slice())
-        );
         assert_eq!(input.automation(), Some(&automation));
         assert_eq!(
             input.materialized().settings().run.model.name.as_deref(),
@@ -1737,19 +1715,18 @@ mod tests {
         let materialized = materialize_create_run(compiled, test_catalog().as_ref()).unwrap();
         let input =
             assemble_create_run_persistence_input(materialized, CreateRunPersistenceMetadata {
-                run_id: fixtures::RUN_1,
-                storage_root: PathBuf::from("/tmp/storage"),
-                workflow_slug: None,
+                run_id:              fixtures::RUN_1,
+                storage_root:        PathBuf::from("/tmp/storage"),
+                workflow_slug:       None,
                 workflow_version_id: None,
-                target: None,
-                submitted_manifest_bytes: None,
-                title: None,
-                automation: None,
-                git: None,
-                fork_source_ref: None,
-                parent_id: None,
-                provenance: test_support::test_run_provenance(),
-                web_url: None,
+                target:              None,
+                title:               None,
+                automation:          None,
+                git:                 None,
+                fork_source_ref:     None,
+                parent_id:           None,
+                provenance:          test_support::test_run_provenance(),
+                web_url:             None,
             });
         let definition = input
             .definition()
@@ -1771,24 +1748,23 @@ mod tests {
             workflow_source: None,
         };
         let request = CreateRunInput {
-            workflow: WorkflowInput::Path(dot_path.clone()),
-            settings: test_default_settings(),
-            vars: HashMap::new(),
-            cwd: dir.path().to_path_buf(),
-            workflow_slug: Some("compiled-slug".to_string()),
-            workflow_path: None,
-            workflow_bundle: None,
-            target: None,
-            submitted_manifest_bytes: Some(b"submitted manifest".to_vec()),
-            run_id: Some(fixtures::RUN_2),
-            title: Some("Compiled run".to_string()),
-            automation: Some(automation.clone()),
-            git: None,
-            fork_source_ref: None,
-            parent_id: None,
-            provenance: test_support::test_run_provenance(),
+            workflow:             WorkflowInput::Path(dot_path.clone()),
+            settings:             test_default_settings(),
+            vars:                 HashMap::new(),
+            cwd:                  dir.path().to_path_buf(),
+            workflow_slug:        Some("compiled-slug".to_string()),
+            workflow_path:        None,
+            workflow_bundle:      None,
+            target:               None,
+            run_id:               Some(fixtures::RUN_2),
+            title:                Some("Compiled run".to_string()),
+            automation:           Some(automation.clone()),
+            git:                  None,
+            fork_source_ref:      None,
+            parent_id:            None,
+            provenance:           test_support::test_run_provenance(),
             configured_providers: test_provider_ids(),
-            web_url: None,
+            web_url:              None,
         };
         let catalog = test_catalog();
         let compiled = compile_create_run(compile_input(&request), Arc::clone(&catalog)).unwrap();
@@ -1829,19 +1805,7 @@ mod tests {
             Some(compiled_source.as_str())
         );
         assert_eq!(created.workflow_version_id, Some(workflow_version_id));
-        let manifest_blob = created
-            .manifest_blob
-            .as_ref()
-            .expect("submitted manifest should be persisted");
-        assert_eq!(
-            run_store
-                .read_blob(manifest_blob)
-                .await
-                .unwrap()
-                .expect("submitted manifest blob should exist")
-                .as_ref(),
-            b"submitted manifest"
-        );
+        assert!(created.spec_blob.is_some());
     }
 
     #[tokio::test]
@@ -1856,27 +1820,26 @@ mod tests {
         let err = create(
             &store,
             CreateRunInput {
-                workflow: WorkflowInput::DotSource {
+                workflow:             WorkflowInput::DotSource {
                     source:   dot.to_string(),
                     base_dir: None,
                 },
-                settings: test_default_settings(),
-                vars: HashMap::new(),
-                cwd: dir.path().to_path_buf(),
-                workflow_slug: None,
-                workflow_path: None,
-                workflow_bundle: None,
-                target: None,
-                submitted_manifest_bytes: None,
-                run_id: None,
-                title: None,
-                automation: None,
-                git: None,
-                fork_source_ref: None,
-                parent_id: None,
-                provenance: test_support::test_run_provenance(),
+                settings:             test_default_settings(),
+                vars:                 HashMap::new(),
+                cwd:                  dir.path().to_path_buf(),
+                workflow_slug:        None,
+                workflow_path:        None,
+                workflow_bundle:      None,
+                target:               None,
+                run_id:               None,
+                title:                None,
+                automation:           None,
+                git:                  None,
+                fork_source_ref:      None,
+                parent_id:            None,
+                provenance:           test_support::test_run_provenance(),
                 configured_providers: test_provider_ids(),
-                web_url: None,
+                web_url:              None,
             },
             storage_root,
             test_catalog(),
@@ -1904,11 +1867,11 @@ mod tests {
         let created = create(
             &store,
             CreateRunInput {
-                workflow: WorkflowInput::DotSource {
+                workflow:             WorkflowInput::DotSource {
                     source:   MINIMAL_DOT.to_string(),
                     base_dir: None,
                 },
-                settings: settings_from_run_layer({
+                settings:             settings_from_run_layer({
                     let mut metadata = HashMap::new();
                     metadata.insert("env".to_string(), "test".to_string());
                     RunLayer {
@@ -1929,27 +1892,26 @@ mod tests {
                         ..RunLayer::default()
                     }
                 }),
-                vars: HashMap::new(),
-                cwd: dir.path().to_path_buf(),
-                workflow_slug: Some("slug".to_string()),
-                workflow_path: None,
-                workflow_bundle: None,
-                target: None,
-                submitted_manifest_bytes: None,
-                run_id: Some(fixtures::RUN_1),
-                title: None,
-                automation: None,
-                git: Some(fabro_types::GitContext {
+                vars:                 HashMap::new(),
+                cwd:                  dir.path().to_path_buf(),
+                workflow_slug:        Some("slug".to_string()),
+                workflow_path:        None,
+                workflow_bundle:      None,
+                target:               None,
+                run_id:               Some(fixtures::RUN_1),
+                title:                None,
+                automation:           None,
+                git:                  Some(fabro_types::GitContext {
                     origin_url: String::new(),
                     branch:     "main".to_string(),
                     sha:        None,
                     dirty:      fabro_types::DirtyStatus::Clean,
                 }),
-                fork_source_ref: None,
-                parent_id: None,
-                provenance: test_support::test_run_provenance(),
+                fork_source_ref:      None,
+                parent_id:            None,
+                provenance:           test_support::test_run_provenance(),
                 configured_providers: test_provider_ids(),
-                web_url: None,
+                web_url:              None,
             },
             storage_root.clone(),
             test_catalog(),
@@ -2069,7 +2031,6 @@ mod tests {
                         workflow_path: None,
                         workflow_bundle: None,
                         target: None,
-                        submitted_manifest_bytes: None,
                         run_id: None,
                         title: None,
                         automation: None,
@@ -2148,11 +2109,11 @@ mod tests {
         let created = create(
             &store,
             CreateRunInput {
-                workflow: WorkflowInput::DotSource {
+                workflow:             WorkflowInput::DotSource {
                     source:   MINIMAL_DOT.to_string(),
                     base_dir: None,
                 },
-                settings: settings_from_run_layer(RunLayer {
+                settings:             settings_from_run_layer(RunLayer {
                     prepare: Some(RunPrepareLayer {
                         steps:   vec![PrepareStep {
                             script:  None,
@@ -2173,22 +2134,21 @@ mod tests {
                     }),
                     ..RunLayer::default()
                 }),
-                vars: HashMap::new(),
-                cwd: dir.path().to_path_buf(),
-                workflow_slug: Some("secret-source".to_string()),
-                workflow_path: None,
-                workflow_bundle: None,
-                target: None,
-                submitted_manifest_bytes: None,
-                run_id: Some(fixtures::RUN_1),
-                title: None,
-                automation: None,
-                git: None,
-                fork_source_ref: None,
-                parent_id: None,
-                provenance: test_support::test_run_provenance(),
+                vars:                 HashMap::new(),
+                cwd:                  dir.path().to_path_buf(),
+                workflow_slug:        Some("secret-source".to_string()),
+                workflow_path:        None,
+                workflow_bundle:      None,
+                target:               None,
+                run_id:               Some(fixtures::RUN_1),
+                title:                None,
+                automation:           None,
+                git:                  None,
+                fork_source_ref:      None,
+                parent_id:            None,
+                provenance:           test_support::test_run_provenance(),
                 configured_providers: test_provider_ids(),
-                web_url: None,
+                web_url:              None,
             },
             storage_root,
             test_catalog(),
@@ -2237,11 +2197,11 @@ mod tests {
         let created = create(
             &store,
             CreateRunInput {
-                workflow: WorkflowInput::DotSource {
+                workflow:             WorkflowInput::DotSource {
                     source:   MINIMAL_DOT.to_string(),
                     base_dir: None,
                 },
-                settings: settings_from_run_layer({
+                settings:             settings_from_run_layer({
                     RunLayer {
                         working_dir: Some("workspace".to_string()),
                         execution: Some(RunExecutionLayer {
@@ -2251,22 +2211,21 @@ mod tests {
                         ..RunLayer::default()
                     }
                 }),
-                vars: HashMap::new(),
-                cwd: dir.path().to_path_buf(),
-                workflow_slug: None,
-                workflow_path: None,
-                workflow_bundle: None,
-                target: None,
-                submitted_manifest_bytes: None,
-                run_id: Some(fixtures::RUN_2),
-                title: None,
-                automation: None,
-                git: None,
-                fork_source_ref: None,
-                parent_id: None,
-                provenance: test_support::test_run_provenance(),
+                vars:                 HashMap::new(),
+                cwd:                  dir.path().to_path_buf(),
+                workflow_slug:        None,
+                workflow_path:        None,
+                workflow_bundle:      None,
+                target:               None,
+                run_id:               Some(fixtures::RUN_2),
+                title:                None,
+                automation:           None,
+                git:                  None,
+                fork_source_ref:      None,
+                parent_id:            None,
+                provenance:           test_support::test_run_provenance(),
                 configured_providers: test_provider_ids(),
-                web_url: None,
+                web_url:              None,
             },
             storage_root,
             test_catalog(),
@@ -2288,27 +2247,26 @@ mod tests {
         let created = create(
             &store,
             CreateRunInput {
-                workflow: WorkflowInput::DotSource {
+                workflow:             WorkflowInput::DotSource {
                     source:   MINIMAL_DOT.to_string(),
                     base_dir: None,
                 },
-                settings: test_default_settings(),
-                vars: HashMap::new(),
-                cwd: dir.path().to_path_buf(),
-                workflow_slug: None,
-                workflow_path: None,
-                workflow_bundle: None,
-                target: Some(RunTarget::None {}),
-                submitted_manifest_bytes: None,
-                run_id: Some(fixtures::RUN_2),
-                title: None,
-                automation: None,
-                git: None,
-                fork_source_ref: None,
-                parent_id: None,
-                provenance: test_support::test_run_provenance(),
+                settings:             test_default_settings(),
+                vars:                 HashMap::new(),
+                cwd:                  dir.path().to_path_buf(),
+                workflow_slug:        None,
+                workflow_path:        None,
+                workflow_bundle:      None,
+                target:               Some(RunTarget::None {}),
+                run_id:               Some(fixtures::RUN_2),
+                title:                None,
+                automation:           None,
+                git:                  None,
+                fork_source_ref:      None,
+                parent_id:            None,
+                provenance:           test_support::test_run_provenance(),
                 configured_providers: test_provider_ids(),
-                web_url: None,
+                web_url:              None,
             },
             storage_root,
             test_catalog(),
@@ -2345,29 +2303,28 @@ mod tests {
         let created = create(
             &store,
             CreateRunInput {
-                workflow: WorkflowInput::DotSource {
+                workflow:             WorkflowInput::DotSource {
                     source:   MINIMAL_DOT.to_string(),
                     base_dir: None,
                 },
-                settings: test_default_settings(),
-                vars: HashMap::new(),
-                cwd: dir.path().to_path_buf(),
-                workflow_slug: None,
-                workflow_path: None,
-                workflow_bundle: None,
-                target: Some(RunTarget::Folder {
+                settings:             test_default_settings(),
+                vars:                 HashMap::new(),
+                cwd:                  dir.path().to_path_buf(),
+                workflow_slug:        None,
+                workflow_path:        None,
+                workflow_bundle:      None,
+                target:               Some(RunTarget::Folder {
                     path: canonical.clone(),
                 }),
-                submitted_manifest_bytes: None,
-                run_id: Some(fixtures::RUN_2),
-                title: None,
-                automation: None,
-                git: Some(git.clone()),
-                fork_source_ref: None,
-                parent_id: None,
-                provenance: test_support::test_run_provenance(),
+                run_id:               Some(fixtures::RUN_2),
+                title:                None,
+                automation:           None,
+                git:                  Some(git.clone()),
+                fork_source_ref:      None,
+                parent_id:            None,
+                provenance:           test_support::test_run_provenance(),
                 configured_providers: test_provider_ids(),
-                web_url: None,
+                web_url:              None,
             },
             storage_root,
             test_catalog(),
@@ -2396,32 +2353,31 @@ mod tests {
         let created = create(
             &store,
             CreateRunInput {
-                workflow: WorkflowInput::DotSource {
+                workflow:             WorkflowInput::DotSource {
                     source:   MINIMAL_DOT.to_string(),
                     base_dir: None,
                 },
-                settings: dry_run_only_settings(),
-                vars: HashMap::new(),
-                cwd: dir.path().to_path_buf(),
-                workflow_slug: None,
-                workflow_path: None,
-                workflow_bundle: None,
-                target: None,
-                submitted_manifest_bytes: None,
-                run_id: Some(fixtures::RUN_2),
-                title: None,
-                automation: None,
-                git: Some(fabro_types::GitContext {
+                settings:             dry_run_only_settings(),
+                vars:                 HashMap::new(),
+                cwd:                  dir.path().to_path_buf(),
+                workflow_slug:        None,
+                workflow_path:        None,
+                workflow_bundle:      None,
+                target:               None,
+                run_id:               Some(fixtures::RUN_2),
+                title:                None,
+                automation:           None,
+                git:                  Some(fabro_types::GitContext {
                     origin_url: "https://github.com/acme/widgets".to_string(),
                     branch:     String::new(),
                     sha:        None,
                     dirty:      fabro_types::DirtyStatus::Clean,
                 }),
-                fork_source_ref: None,
-                parent_id: None,
-                provenance: test_support::test_run_provenance(),
+                fork_source_ref:      None,
+                parent_id:            None,
+                provenance:           test_support::test_run_provenance(),
                 configured_providers: test_provider_ids(),
-                web_url: None,
+                web_url:              None,
             },
             storage_root,
             test_catalog(),
@@ -2477,27 +2433,26 @@ mod tests {
         let created = create(
             store.as_ref(),
             CreateRunInput {
-                workflow: WorkflowInput::DotSource {
+                workflow:             WorkflowInput::DotSource {
                     source:   MINIMAL_DOT.to_string(),
                     base_dir: None,
                 },
-                settings: dry_run_with_storage(&storage_dir),
-                vars: HashMap::new(),
-                cwd: dir.path().to_path_buf(),
-                workflow_slug: Some("slug".to_string()),
-                workflow_path: None,
-                workflow_bundle: None,
-                target: None,
-                submitted_manifest_bytes: None,
-                run_id: Some(fixtures::RUN_3),
-                title: None,
-                automation: Some(automation.clone()),
-                git: None,
-                fork_source_ref: None,
-                parent_id: None,
-                provenance: test_support::test_run_provenance(),
+                settings:             dry_run_with_storage(&storage_dir),
+                vars:                 HashMap::new(),
+                cwd:                  dir.path().to_path_buf(),
+                workflow_slug:        Some("slug".to_string()),
+                workflow_path:        None,
+                workflow_bundle:      None,
+                target:               None,
+                run_id:               Some(fixtures::RUN_3),
+                title:                None,
+                automation:           Some(automation.clone()),
+                git:                  None,
+                fork_source_ref:      None,
+                parent_id:            None,
+                provenance:           test_support::test_run_provenance(),
                 configured_providers: test_provider_ids(),
-                web_url: None,
+                web_url:              None,
             },
             storage_dir.clone(),
             test_catalog(),
@@ -2532,25 +2487,24 @@ mod tests {
         let created = create(
             store.as_ref(),
             CreateRunInput {
-                workflow: WorkflowInput::DotSource {
+                workflow:             WorkflowInput::DotSource {
                     source:   MINIMAL_DOT.to_string(),
                     base_dir: None,
                 },
-                settings: dry_run_with_storage(&storage_dir),
-                vars: HashMap::new(),
-                cwd: dir.path().to_path_buf(),
-                workflow_slug: Some("slug".to_string()),
-                workflow_path: None,
-                workflow_bundle: None,
-                target: None,
-                submitted_manifest_bytes: None,
-                run_id: Some(fixtures::RUN_64),
-                title: None,
-                automation: None,
-                git: None,
-                fork_source_ref: None,
-                parent_id: None,
-                provenance: fabro_types::RunProvenance {
+                settings:             dry_run_with_storage(&storage_dir),
+                vars:                 HashMap::new(),
+                cwd:                  dir.path().to_path_buf(),
+                workflow_slug:        Some("slug".to_string()),
+                workflow_path:        None,
+                workflow_bundle:      None,
+                target:               None,
+                run_id:               Some(fixtures::RUN_64),
+                title:                None,
+                automation:           None,
+                git:                  None,
+                fork_source_ref:      None,
+                parent_id:            None,
+                provenance:           fabro_types::RunProvenance {
                     server:  Some(fabro_types::RunServerProvenance {
                         version: "0.9.0".to_string(),
                     }),
@@ -2566,7 +2520,7 @@ mod tests {
                     ),
                 },
                 configured_providers: test_provider_ids(),
-                web_url: None,
+                web_url:              None,
             },
             storage_dir,
             test_catalog(),
