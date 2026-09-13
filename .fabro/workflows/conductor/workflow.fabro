@@ -24,7 +24,12 @@ digraph Conductor {
         project_memory=false,
         preamble_stages_ignore="survey",
         fs_write="",
-        fabro_tools="fabro_runs_list"
+        // fabro_workflow_version_create (fabro-978d): the survey
+        // pre-registers the develop + revisor workflow versions while it
+        // has slack, so the legs pass only the content-addressed id
+        // instead of transcribing ~118 KB of closure through tool
+        // arguments on the critical path.
+        fabro_tools="fabro_runs_list,fabro_workflow_version_create"
     ]
 
     // MERGE LEG DISABLED 2026-09-13 (user decision): fabro no longer runs

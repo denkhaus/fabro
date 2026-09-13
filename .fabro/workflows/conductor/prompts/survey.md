@@ -13,6 +13,32 @@ You are the Conductor's Surveyor. One decision: what does THIS pass run? You nev
    block + uncomment the merge node and its edges.
 3. "Nothing to do" is RESERVED for maintenance cases you cannot handle (e.g. tools unavailable); default to "Work" — a cheap develop pass is fine even when the tracker turns out empty.
 
+## Workflow version pre-registration (fabro-978d, when routing "Work")
+
+The develop and revise legs used to transcribe their whole workflow
+closures (~118 KB develop, ~36 KB revisor) through tool arguments —
+5-minute stream stalls per big payload and JSON-mangling retries on the
+critical path. Registration is idempotent and content-addressed, so THIS
+stage does it while it has slack; the legs only pass the id.
+
+When your decision is "Work":
+
+1. Collect each closure in ONE shell call — never one turn per file:
+   `cd /workspace/fabro && for f in $(find .fabro/workflows/develop -type f | sort); do echo "=== $f ==="; cat "$f"; done`
+   and the same for `.fabro/workflows/revisor`. The closure is every
+   file the packager needs: `workflow.toml`, `workflow.fabro`,
+   `prompts/*.md`, `schemas/*.json`, referenced `scripts/*.nu`.
+2. Register: `fabro_workflow_version_create {"entrypoint": "workflow.toml", "files": {...}}` —
+   once for develop, once for revisor. If the packager names a missing
+   dependency, add exactly that file and retry once.
+3. Emit BOTH ids as context keys — `develop_workflow_version_id` and
+   `revisor_workflow_version_id` (64 hex each) via `context_updates` —
+   and journal them under `observations` with the closure path.
+4. A registration failure is NOT a pass failure: journal the error under
+   `painpoints`, emit no id for that workflow, and let the leg fall back
+   to registering itself. Do not re-register after a success to
+   "make sure" — the transcription cost is the thing being avoided.
+
 ## Revisor backfill (best-effort, fabro-1dc9)
 
 Before deciding, one cheap check with `fabro_runs_list`: are there

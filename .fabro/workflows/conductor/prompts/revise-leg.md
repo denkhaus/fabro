@@ -9,14 +9,17 @@ Registration is TWO steps (the #832 run-intent contract — runs come
 from immutable registered workflow versions, never from inline
 workflow names):
 
-a. Register the revisor workflow version: read every file the closure
-needs from the cloned repo — workflow.toml, workflow.fabro,
-prompts/*.md, scripts/*.nu if referenced — then call
-`fabro_workflow_version_create {"entrypoint": "workflow.toml",
-"files": {"workflow.toml": "<contents>", ...}}`. Content-addressed:
-identical files return the same id. If the packager names a missing
-dependency, add exactly that file and retry. Record
-`workflow_version_id` (64 hex).
+a. Workflow version: read `revisor_workflow_version_id` from context —
+the survey stage pre-registered it (fabro-978d). If present, use it
+directly and do NOT re-register (the ~36 KB transcription is the cost
+this avoids). If ABSENT (continuity break), register yourself with ONE
+shell-collection call — `cd /workspace/fabro && for f in $(find
+.fabro/workflows/revisor -type f | sort); do echo "=== $f ==="; cat
+"$f"; done` — then `fabro_workflow_version_create {"entrypoint":
+"workflow.toml", "files": {"workflow.toml": "<contents>", ...}}`.
+Content-addressed: identical files return the same id. If the packager
+names a missing dependency, add exactly that file and retry once.
+Record `workflow_version_id` (64 hex).
 b. Create the child: `fabro_run_create {"runs":
 [{"workflow_version_id": "<id from a>", "environment_id": "toolchain",
 "target": {"kind": "git", "repo": "denkhaus/fabro", "branch": "denkhaus"},
