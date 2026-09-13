@@ -883,7 +883,36 @@ Emitted when execution loops back to an earlier node.
 
 ## Agent events
 
-Most agent activity events are stage-scoped and carry `node_id` (the workflow stage), `node_label`, `stage_id`, `session_id`, and `parent_session_id` in the envelope. Session object lifecycle events are the exception: `agent.session.started` and `agent.session.ended` are not stage-scoped and intentionally omit `node_id`, `node_label`, `stage_id`, and `visit`.
+Pebble's `CodingAgentEvent` stream is the agent event contract. Every event
+the coding agent publishes for a stage, except streaming deltas, is stored
+verbatim as an `EventBody::Agent` under a name derived from its variant
+(`agent.message`, `agent.tool.started`, `agent.route.failover`,
+`agent.mcp.server.ready`, `todo.created`, and so on; the full list is
+`CODING_EVENT_NAMES`). Its `properties` are pebble's own envelope, so
+pebble's event types are part of fabro's stored format, and the store folds
+the same events into `StageProjection.agent` with pebble's
+`SessionProjection`, the one fold of that stream.
+
+Fabro emits an agent event of its own only for a fact pebble cannot know:
+
+- `agent.session.activated` and `agent.session.deactivated`: the stage's
+  route, controls, permission level, and steering capabilities, as fabro
+  resolved them.
+- `agent.tools.available`: the tool catalog fabro handed the agent.
+- `agent.pair.user_message` and `agent.pair.system_message`: pair mode.
+- `agent.interrupt.injected`, `agent.steer.buffered`, `agent.steer.dropped`:
+  run-level steering as it reaches, waits for, or misses a session.
+- `agent.acp.started`, `agent.acp.completed`, `agent.acp.cancelled`,
+  `agent.acp.timed_out`: an external ACP agent process, which pebble does
+  not run.
+- `prompt.failover`: a one-shot prompt stage moving to a fallback route,
+  which it does without pebble.
+
+Every agent activity event is stage-scoped and carries `node_id` (the
+workflow stage), `node_label`, `stage_id`, `session_id`, and
+`parent_session_id` in the envelope. Pebble's session lifecycle events
+(`agent.session.started`, `agent.session.ended`) are stored with the stage
+that ran the session like the rest.
 
 ### `agent.session.started`
 
