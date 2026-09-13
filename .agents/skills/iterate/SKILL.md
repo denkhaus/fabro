@@ -27,11 +27,13 @@ decision, not an accident - it needs the user plus an ADR.
   The product/lab branches are gone (archived as tags
   archive/denkhaus-lab-final, archive/meta-denkhaus-lab-final); there is
   nothing to switch between. Local machine = the dev/agent checkout;
-  runs execute on the fabro server instance that owns the line - WHICH
-  machine that is is deployment-specific (verify with `fabro ps`, and
-  never hardcode container names or host facts here: this file is
-  repo-shared across machines). NEVER git worktrees - branch switches
-  happen in the main checkout.
+  runs execute on the PRODUCTION fabro server `https://mirtuell.net`
+  (user directive 2026-09-13: ALWAYS work against mirtuell.net - every
+  line query carries `--server https://mirtuell.net` (`fabro ps`,
+  `inspect`, `events`, `pr view`); never mistake the local server's
+  run list for the line). The local server (127.0.0.1:32276) is for
+  TESTS only. NEVER git worktrees - branch switches happen in the main
+  checkout.
 - Is a workflow cycle in flight? (`fabro ps`, or a `just run`/`just
   cycle` process). Serialization principle (ADR-0015): while the
   develop/revisor workflow works the tracker, this agent session does
@@ -252,15 +254,24 @@ decision, not an accident - it needs the user plus an ADR.
 
 ## Phase 5 - Integrate
 
-- Commit and push. Deploy/smoke where the domain requires it:
-  `just up` refreshes the fabro server deployment the runs live on.
-- DEPLOY WINDOWS (user directive 2026-09-07): `just up` ONLY while no
-  conductor pass runs. Pause the line first (PUT automation replace
-  with schedule enabled:false - PRESERVE on_overlap, replaces and UI
-  edits can wipe it), deploy nonblocking, verify smoke (health, ps,
-  authenticated automations probe), then re-enable the schedule with
-  on_overlap=skip again. A heartbeat (~5m) monitors the deploy and
-  performs the resume.
+- Commit and push. Deploy/smoke where the domain requires it.
+- PRODUCTION DEPLOY (user directive 2026-09-13): after SUBSTANTIAL
+  ENGINE CHANGES (the binary-need check below fires: any lib/ path in
+  the merged work), rebuild the release image with `just image-release`
+  (ghcr.io push, needs a docker login with write:packages) and deploy
+  with fabro-tofu: `cd ~/dev/fabro-tofu && just tofu apply` (profile
+  picker; non-interactive agent form:
+  `TF_DATA_DIR=.terraform-prod tofu apply -var-file=envs/prod.tfvars`
+  from that repo). mirtuell.net runs the released image - a merged
+  engine change is NOT live until this cycle runs. `just up` refreshes
+  only the LOCAL test stack (127.0.0.1:32276), never production.
+- DEPLOY WINDOWS (user directive 2026-09-07): deploys ONLY while no
+  conductor pass runs on mirtuell.net. Pause the line first (PUT
+  automation replace with schedule enabled:false - PRESERVE
+  on_overlap, replaces and UI edits can wipe it), deploy nonblocking,
+  verify smoke on https://mirtuell.net (health, ps, authenticated
+  automations probe), then re-enable the schedule with on_overlap=skip
+  again. A heartbeat (~5m) monitors the deploy and performs the resume.
 - BINARY-NEED CHECK (2026-09-07 lesson, user caught it): claiming
   'repo-side only, no binary need' for a merged PR requires diffing it
   against lib/ - .fabro/docs/tracker-only changes skip the rebuild, but
@@ -289,10 +300,12 @@ decision, not an accident - it needs the user plus an ADR.
    (user directive 2026-08-27: a reflection that does not refine the
    workflow is ineffective). Domain knowledge goes to mulch; durable
    preferences to memory; process lessons HERE. No finding may stay
-   unrecorded. Deployment on this repo is ALWAYS `just up` (cached
+   unrecorded. LOCAL test-stack deploys are ALWAYS `just up` (cached
    loop: SPA, binary, image, CLI, compose) - `docker compose up
    --build` builds nothing here and `cargo build -p <name>` drifts with
-   upstream package renames.
+   upstream package renames. PRODUCTION deploys are `just
+   image-release` + fabro-tofu apply (Phase 5) - never compose
+   production by hand.
 2. **Learnings -> mulch**: `ml record <domain> --type
    <convention|pattern|failure|decision> --description ...` (+ evidence
    flags), then `ml sync`. Real insights only - no ritual filler.
