@@ -322,21 +322,20 @@ pub struct StageProjection {
     /// lifetime is the best available live inference estimate.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub acp_started_at:        Option<DateTime<Utc>>,
-    #[serde(default)]
-    pub agent_control:         AgentControlState,
     /// Pebble's fold of this stage's agent events: the one agent projection,
     /// fed every `agent.*` and `todo.*` event stored on the stage, and what
     /// the stage view reads for todos, subagents, skills, MCP servers, files,
-    /// failovers, compactions, and the context window. Present for
-    /// pebble-backed agent stages once their first agent event is stored;
-    /// `None` for prompt, command, ACP, human, parallel, and conditional
-    /// stages.
+    /// failovers, compactions, the context window, and where the agent
+    /// stands (`activity`, `waiting_for_steer` after an interrupted round).
+    /// Present for pebble-backed agent stages once their first agent event is
+    /// stored; `None` for prompt, command, ACP, human, parallel, and
+    /// conditional stages.
     ///
     /// Its lifetime fields are the stage's totals across every prompt the
     /// stage ran, because each stage gets its own fold over its own events.
     /// `activity` reads `running` on stages stored before
-    /// `agent.processing.end` was kept; `state` is the authority on whether
-    /// a stage is done.
+    /// `agent.processing.end` was kept, so `state` is the authority on
+    /// whether a stage is done.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub agent:                 Option<SessionProjection>,
     pub state:                 StageState,
@@ -392,27 +391,6 @@ pub struct StageInferenceProjection {
     pub retries:           u32,
 }
 
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    Default,
-    PartialEq,
-    Eq,
-    serde::Serialize,
-    serde::Deserialize,
-    Display,
-    EnumString,
-    IntoStaticStr,
-)]
-#[serde(rename_all = "snake_case")]
-#[strum(serialize_all = "snake_case")]
-pub enum AgentControlState {
-    #[default]
-    Running,
-    WaitingForSteer,
-}
-
 /// Convert a 1-based event sequence number into the `NonZeroU32` form used for
 /// `StageProjection::first_event_seq`. Run event seqs always start at 1.
 #[must_use]
@@ -439,7 +417,6 @@ impl StageProjection {
             agent_tools: Vec::new(),
             inference: None,
             acp_started_at: None,
-            agent_control: AgentControlState::default(),
             agent: None,
             billing_by_model: Vec::new(),
             provider_used: None,
@@ -961,7 +938,7 @@ mod iter_stages_tests {
     use serde_json::json;
 
     use super::RunProjection;
-    use crate::{AgentControlState, StageProjection, test_support};
+    use crate::{StageProjection, test_support};
 
     fn seq(n: u32) -> NonZeroU32 {
         NonZeroU32::new(n).unwrap()
@@ -1028,7 +1005,7 @@ mod iter_stages_tests {
 
         let stage: StageProjection = serde_json::from_value(value).unwrap();
         assert!(stage.agent_tools.is_empty());
-        assert_eq!(stage.agent_control, AgentControlState::Running);
+        assert!(stage.agent.is_none());
 
         let serialized = serde_json::to_value(stage).unwrap();
         assert!(

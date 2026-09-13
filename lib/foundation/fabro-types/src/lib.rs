@@ -143,7 +143,7 @@ pub use run_intent::{
     TargetValidationError, ValidatedGitRunTarget, ValidatedRunTarget,
 };
 pub use run_projection::{
-    AgentControlState, CheckpointRecord, PendingInterviewRecord, RunProjection, StageContextWindow,
+    CheckpointRecord, PendingInterviewRecord, RunProjection, StageContextWindow,
     StageContextWindowUnavailableReason, StageInferenceProjection, StageModelUsage,
     StageProjection, StageToolBatchProjection, first_event_seq,
 };

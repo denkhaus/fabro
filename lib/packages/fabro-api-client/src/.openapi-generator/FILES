@@ -27,7 +27,6 @@ base.ts
 common.ts
 configuration.ts
 index.ts
-models/agent-control-state.ts
 models/agent-error-data.ts
 models/agent-error-kind.ts
 models/agent-event-props.ts

@@ -1,4 +1,3 @@
-export * from './agent-control-state';
 export * from './agent-error-data';
 export * from './agent-error-kind';
 export * from './agent-event-props';

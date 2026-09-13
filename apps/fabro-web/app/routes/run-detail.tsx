@@ -9,7 +9,7 @@ import {
   useMatches,
   useNavigate,
 } from "react-router";
-import { AgentControlState } from "@qltysh/fabro-api-client";
+import { AgentSessionActivity } from "@qltysh/fabro-api-client";
 
 import { type SteerBarHandle } from "../components/steer-bar";
 import { ErrorState } from "../components/state";
@@ -126,8 +126,14 @@ export default function RunDetail({ params }: { params: { id: string } }) {
   const filesCount = runQuery.data?.diff?.files_changed ?? null;
   const childrenCount = runQuery.data?.children_count ?? null;
   const hasSandbox = runHasSandbox(runStateQuery.data);
+  // The coding agent's fold says a round was interrupted and the prompt
+  // waits for a steer; the stage's state says the stage is still running,
+  // which rules out a stage that ended mid-interrupt and a run recorded
+  // before the fold saw its prompts end.
   const waitingForSteer = Object.values(runStateQuery.data?.stages ?? {}).some(
-    (stage) => stage.agent_control === AgentControlState.WAITING_FOR_STEER,
+    (stage) =>
+      stage.state === "running" &&
+      stage.agent?.activity === AgentSessionActivity.WAITING_FOR_STEER,
   );
   const tabs = buildRunDetailTabs({
     hasSandbox,

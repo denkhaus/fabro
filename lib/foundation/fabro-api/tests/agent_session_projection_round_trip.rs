@@ -175,7 +175,6 @@ fn a_stage_projection_carrying_the_fold_matches_its_openapi_schema() {
             "cache_read_tokens": 0,
             "cache_write_tokens": 0
         },
-        "agent_control": "running",
         "state": "running"
     }))
     .unwrap();

@@ -1,7 +1,6 @@
 use std::any::{TypeId, type_name};
 
 use fabro_api::types::{
-    AgentControlState as ApiAgentControlState,
     AgentToolsAvailableProps as ApiAgentToolsAvailableProps,
     BilledModelUsage as ApiBilledModelUsage,
     ContextWindowBreakdownItem as ApiContextWindowBreakdownItem,
@@ -20,13 +19,12 @@ use fabro_api::types::{
     ToolSource as ApiToolSource, ToolSummary as ApiToolSummary,
 };
 use fabro_types::{
-    AgentControlState, AgentToolsAvailableProps, BilledModelUsage, ContextWindowBreakdownItem,
-    ContextWindowCategory, ContextWindowCountMethod, ContextWindowSnapshot, ContextWindowStaleness,
-    ContextWindowWarning, LlmOutputKind, ModelRef, ParallelBranchId, ParallelBranchResult,
-    PermissionLevel, SkillActivationSource, SkillSummary, StageContextWindow,
-    StageContextWindowUnavailableReason, StageId, StageInferenceProjection, StageProjection,
-    StageToolBatchProjection, TodoListKind, TodoListProjection, ToolCategory, ToolSource,
-    ToolSummary,
+    AgentToolsAvailableProps, BilledModelUsage, ContextWindowBreakdownItem, ContextWindowCategory,
+    ContextWindowCountMethod, ContextWindowSnapshot, ContextWindowStaleness, ContextWindowWarning,
+    LlmOutputKind, ModelRef, ParallelBranchId, ParallelBranchResult, PermissionLevel,
+    SkillActivationSource, SkillSummary, StageContextWindow, StageContextWindowUnavailableReason,
+    StageId, StageInferenceProjection, StageProjection, StageToolBatchProjection, TodoListKind,
+    TodoListProjection, ToolCategory, ToolSource, ToolSummary,
 };
 use lithos_llm::catalog::{ModelId, ProviderId};
 use lithos_llm::types::TokenCounts;
@@ -93,7 +91,6 @@ fn billing_by_model_rows_match_openapi_json_shape() {
             "cache_read_tokens": 0,
             "cache_write_tokens": 0
         },
-        "agent_control": "running",
         "state": "running"
     }))
     .unwrap();
@@ -109,7 +106,6 @@ fn billing_by_model_rows_match_openapi_json_shape() {
 
 #[test]
 fn stage_projection_reuses_nested_agent_state_types() {
-    assert_same_type::<ApiAgentControlState, AgentControlState>();
     assert_same_type::<ApiParallelBranchResult, ParallelBranchResult>();
     assert_same_type::<ApiTodoListProjection, TodoListProjection>();
     assert_same_type::<ApiSkillSummary, SkillSummary>();
@@ -218,7 +214,6 @@ fn stage_projection_without_inference_round_trips() {
             "cache_read_tokens": 0,
             "cache_write_tokens": 0
         },
-        "agent_control": "running",
         "state": "running"
     });
 
@@ -319,7 +314,6 @@ fn stage_projection_round_trips_representative_json() {
             "retries": 0
         },
         "acp_started_at": "2026-04-29T12:34:00Z",
-        "agent_control": "running",
         "state": "succeeded"
     });
 

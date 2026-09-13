@@ -376,7 +376,6 @@ fn main() {
         ("ParallelBranchId", "fabro_types::ParallelBranchId", &[]),
         ("StageHandler", "fabro_types::StageHandler", &[]),
         ("StageState", "fabro_types::StageState", &[]),
-        ("AgentControlState", "fabro_types::AgentControlState", &[]),
         ("CommandTermination", "fabro_types::CommandTermination", &[]),
         ("StageModelUsage", "fabro_types::StageModelUsage", &[]),
         (
