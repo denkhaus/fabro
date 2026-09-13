@@ -25,7 +25,8 @@ use fabro_types::{
 use fabro_util::error::render_compact_with_causes;
 use lithos_llm::catalog::{ModelId, ProviderId};
 use lithos_llm::types::TokenCounts;
-use pebble_coding_agent::events::{CodingEvent, TokenUsage};
+use pebble_coding_agent::events::CodingEvent;
+use pebble_coding_agent::projection::SessionProjection;
 
 use crate::{Error, EventEnvelope, Result};
 
@@ -524,6 +525,7 @@ impl RunProjectionReducer for RunProjection {
                     stage.usage.replace_with_billed_usage(billing);
                     stage.model = Some(billing.model().clone());
                 }
+                stage.billing_by_model.clone_from(&props.billing_by_model);
                 stage.state = StageState::from(outcome.status);
                 stage.agent_control = AgentControlState::Running;
             }
@@ -760,9 +762,16 @@ fn apply_agent_event(
 ) {
     let visit = props.visit;
     // Pebble's own fold sees every agent event the stage stored, before the
-    // fabro-only arms below read the same event.
+    // fabro-only arms below read the same event. While the stage runs, its
+    // usage is that fold's: the tree's tokens, the root's and every
+    // subagent's, with whatever cost the provider reported. The terminal
+    // billing then brings the catalog's price for the same tokens.
     if let Some(stage) = stage_at_stored_or_visit(state, stored, visit, seq) {
-        stage.agent.get_or_insert_default().apply(&props.event);
+        let agent = stage.agent.get_or_insert_default();
+        agent.apply(&props.event);
+        if stage.completion.is_none() {
+            stage.usage = live_usage(agent);
+        }
     }
     #[expect(
         clippy::wildcard_enum_match_arm,
@@ -771,17 +780,12 @@ fn apply_agent_event(
     match props.coding_event() {
         CodingEvent::AssistantMessage {
             model,
-            usage,
-            cost_usd_micros,
             context_window,
             ..
         } => {
             let Some(stage) = stage_at_stored_or_visit(state, stored, visit, seq) else {
                 return;
             };
-            stage
-                .usage
-                .add_counts(&billed_counts(*usage, *cost_usd_micros));
             if let Some(model) = stage_model_ref(stage, model) {
                 stage.model = Some(model);
             }
@@ -984,11 +988,17 @@ fn apply_agent_event(
     }
 }
 
-/// Token accounting for one assistant message, in fabro's billing shape.
-fn billed_counts(usage: TokenUsage, cost_usd_micros: Option<u64>) -> BilledTokenCounts {
+/// A running stage's usage, from its agent's fold: the tree's tokens and the
+/// cost the provider reported for them, `None` when it reported none.
+fn live_usage(agent: &SessionProjection) -> BilledTokenCounts {
+    let (descendants, descendant_cost) = agent.descendant_usage();
+    let mut cost = agent.cost_usd_micros;
+    if let Some(descendant_cost) = descendant_cost {
+        cost = Some(cost.unwrap_or(0).saturating_add(descendant_cost));
+    }
     BilledTokenCounts::from_token_counts(
-        TokenCounts::from(usage),
-        cost_usd_micros.map(|cost| i64::try_from(cost).unwrap_or(i64::MAX)),
+        TokenCounts::from(agent.usage.saturating_add(descendants)),
+        cost.map(|cost| i64::try_from(cost).unwrap_or(i64::MAX)),
     )
 }
 
@@ -1779,6 +1789,7 @@ fn stage_outcome_from_props(props: &StageCompletedProps) -> Outcome<Option<Bille
         notes:              props.notes.clone(),
         failure:            props.failure.clone(),
         usage:              props.billing.clone(),
+        usage_by_model:     props.billing_by_model.clone(),
         files_touched:      props.files_touched.clone(),
         timing:             Some(props.timing),
     }
@@ -1854,12 +1865,12 @@ mod tests {
         SandboxProviderKind, StageHandler, StageModelUsage, StageOutcome, StageState, StageTiming,
         SubAgentStatus, SuccessReason, WorkflowSettings, first_event_seq, fixtures, test_support,
     };
-    use lithos_llm::types::{ReasoningEffort, Speed};
+    use lithos_llm::types::{ReasoningEffort, Speed, TokenCounts};
     use pebble_coding_agent::events::{
-        CodingAgentEvent, CodingEvent, ContextWindowBreakdownItem, ContextWindowCategory,
-        ContextWindowCountMethod, ContextWindowSnapshot, ContextWindowStaleness,
-        ContextWindowWarning, ErrorData, ErrorKind, SkillActivationSource, SkillSummary,
-        TokenUsage, ToolCategory, ToolSource, ToolSummary,
+        CodingAgentEvent, CodingEvent, CompactionReason, ContextWindowBreakdownItem,
+        ContextWindowCategory, ContextWindowCountMethod, ContextWindowSnapshot,
+        ContextWindowStaleness, ContextWindowWarning, ErrorData, ErrorKind, SkillActivationSource,
+        SkillSummary, TokenUsage, ToolCategory, ToolSource, ToolSummary,
     };
     use pebble_coding_agent::tools::ToolOutputMetadata;
     use serde_json::json;
@@ -3657,6 +3668,7 @@ mod tests {
                     status: StageOutcome::Succeeded,
                     preferred_label: None,
                     suggested_next_ids: Vec::new(),
+                    billing_by_model: Vec::new(),
                     billing: Some(usage.clone()),
                     failure: None,
                     notes: None,
@@ -3744,6 +3756,7 @@ mod tests {
                         status: StageOutcome::Succeeded,
                         preferred_label: None,
                         suggested_next_ids: Vec::new(),
+                        billing_by_model: Vec::new(),
                         billing: Some(usage),
                         failure: None,
                         notes: None,
@@ -3788,6 +3801,7 @@ mod tests {
                     status: StageOutcome::Succeeded,
                     preferred_label: None,
                     suggested_next_ids: Vec::new(),
+                    billing_by_model: Vec::new(),
                     billing: Some(usage.clone()),
                     failure: None,
                     notes: None,
@@ -5503,6 +5517,7 @@ mod tests {
             status,
             preferred_label: None,
             suggested_next_ids: Vec::new(),
+            billing_by_model: Vec::new(),
             billing: None,
             failure: None,
             notes: None,
@@ -5647,11 +5662,28 @@ mod tests {
         assert_eq!(stage.model, Some(model));
     }
 
+    fn child_message_body(input: u64, output: u64) -> EventBody {
+        EventBody::Agent(AgentEventProps::new(
+            "code",
+            1,
+            CodingAgentEvent::new(
+                "ses_child",
+                assistant_message(input, output),
+                SystemTime::UNIX_EPOCH,
+            )
+            .with_parent_session_id("ses_test"),
+        ))
+    }
+
+    /// One usage rule: a stage's usage is its session tree's, live and at
+    /// completion. The terminal billing carries the tokens the fold already
+    /// showed plus the catalog's price, so completion changes the cost, not
+    /// the tokens, and keeps the split by model.
     #[test]
-    fn stage_completed_replaces_live_usage_with_terminal_billing() {
+    fn stage_completed_keeps_the_trees_live_usage_and_prices_it() {
         let mut state = initialized_projection();
         let stage_id = StageId::new("build", 1);
-        let usage = billed_usage();
+        let model = billed_usage().model().clone();
 
         state
             .apply_event(&test_stage_event(
@@ -5663,23 +5695,145 @@ mod tests {
         state
             .apply_event(&test_stage_event(
                 2,
+                activated(model.provider.as_str(), model.model_id.as_str()),
+                stage_id.clone(),
+            ))
+            .unwrap();
+        state
+            .apply_event(&test_stage_event(
+                3,
                 agent_message_body(100, 50),
                 stage_id.clone(),
             ))
             .unwrap();
-        let mut props = completed_props(42, StageOutcome::Succeeded);
-        props.billing = Some(usage.clone());
         state
             .apply_event(&test_stage_event(
-                3,
+                4,
+                child_message_body(7, 1),
+                stage_id.clone(),
+            ))
+            .unwrap();
+        let live = state.stage(&stage_id).unwrap().usage.clone();
+        assert_eq!(
+            live,
+            live_counts(107, 51),
+            "the subagent's tokens are the stage's too"
+        );
+
+        let tree = BilledModelUsage {
+            model:            model.clone(),
+            tokens:           TokenCounts {
+                input: 107,
+                output: 51,
+                ..TokenCounts::default()
+            },
+            total_usd_micros: Some(321),
+        };
+        let mut props = completed_props(42, StageOutcome::Succeeded);
+        props.billing = Some(tree.clone());
+        props.billing_by_model = vec![tree.clone()];
+        state
+            .apply_event(&test_stage_event(
+                5,
                 EventBody::StageCompleted(props),
                 stage_id.clone(),
             ))
             .unwrap();
 
         let stage = state.stage(&stage_id).unwrap();
-        assert_eq!(stage.usage, usage_counts(&usage));
-        assert_eq!(stage.model.as_ref(), Some(usage.model()));
+        assert_eq!(
+            stage.usage.token_counts(),
+            live.token_counts(),
+            "completion keeps the tokens the fold showed"
+        );
+        assert_eq!(
+            stage.usage.total_usd_micros,
+            Some(321),
+            "and brings the catalog's price"
+        );
+        assert_eq!(stage.model.as_ref(), Some(&model));
+        assert_eq!(stage.billing_by_model, vec![tree]);
+    }
+
+    #[test]
+    fn live_usage_is_the_trees_with_compactions_and_the_reported_cost() {
+        let mut state = initialized_projection();
+        let stage_id = StageId::new("build", 1);
+        let priced_message = |input: u64, output: u64, cost: u64| {
+            let CodingEvent::AssistantMessage {
+                text,
+                model,
+                usage,
+                cost_source,
+                tool_call_count,
+                context_window,
+                reasoning,
+                ..
+            } = assistant_message(input, output)
+            else {
+                unreachable!("assistant_message builds an assistant message")
+            };
+            agent_body(CodingEvent::AssistantMessage {
+                text,
+                model,
+                usage,
+                cost_usd_micros: Some(cost),
+                cost_source,
+                tool_call_count,
+                context_window,
+                reasoning,
+            })
+        };
+
+        state
+            .apply_event(&test_stage_event(
+                1,
+                EventBody::StageStarted(started_props()),
+                stage_id.clone(),
+            ))
+            .unwrap();
+        state
+            .apply_event(&test_stage_event(
+                2,
+                priced_message(10, 5, 5),
+                stage_id.clone(),
+            ))
+            .unwrap();
+        state
+            .apply_event(&test_stage_event(
+                3,
+                child_message_body(7, 1),
+                stage_id.clone(),
+            ))
+            .unwrap();
+        state
+            .apply_event(&test_stage_event(
+                4,
+                agent_body(CodingEvent::CompactionCompleted {
+                    original_turn_count:    20,
+                    preserved_turn_count:   6,
+                    summary_token_estimate: 500,
+                    tracked_file_count:     1,
+                    reason:                 CompactionReason::Threshold,
+                    usage:                  TokenUsage {
+                        input: 30,
+                        ..TokenUsage::default()
+                    },
+                    cost_usd_micros:        Some(2),
+                }),
+                stage_id.clone(),
+            ))
+            .unwrap();
+
+        let stage = state.stage(&stage_id).unwrap();
+        assert_eq!(
+            stage.usage,
+            BilledTokenCounts {
+                total_usd_micros: Some(7),
+                ..live_counts(47, 6)
+            },
+            "the root's messages and compaction, the child's message, and the provider's cost"
+        );
     }
 
     #[test]

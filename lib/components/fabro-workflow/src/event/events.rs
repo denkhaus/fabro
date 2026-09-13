@@ -272,6 +272,8 @@ pub enum Event {
         preferred_label: Option<String>,
         suggested_next_ids: Vec<String>,
         billing: Option<BilledModelUsage>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        billing_by_model: Vec<BilledModelUsage>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         failure: Option<FailureDetail>,
         notes: Option<String>,

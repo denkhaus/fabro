@@ -325,6 +325,7 @@ mod tests {
             ) -> Result<CodergenResult, Error> {
                 Ok(CodergenResult::Text {
                     text:              "one-shot response".to_string(),
+                    usage_by_model:    Vec::new(),
                     usage:             None,
                     files_touched:     Vec::new(),
                     last_file_touched: None,
@@ -383,6 +384,7 @@ mod tests {
             ) -> Result<CodergenResult, Error> {
                 Ok(CodergenResult::Text {
                     text:              "one-shot response".to_string(),
+                    usage_by_model:    Vec::new(),
                     usage:             None,
                     files_touched:     Vec::new(),
                     last_file_touched: None,
@@ -421,6 +423,7 @@ mod tests {
             ) -> Result<CodergenResult, Error> {
                 Ok(CodergenResult::Text {
                     text:              r#"{"passed": true}"#.to_string(),
+                    usage_by_model:    Vec::new(),
                     usage:             None,
                     files_touched:     Vec::new(),
                     last_file_touched: None,
@@ -469,6 +472,7 @@ mod tests {
             ) -> Result<CodergenResult, Error> {
                 Ok(CodergenResult::Text {
                     text:              r#"{"outcome": 123}"#.to_string(),
+                    usage_by_model:    Vec::new(),
                     usage:             None,
                     files_touched:     Vec::new(),
                     last_file_touched: None,
@@ -519,6 +523,7 @@ mod tests {
             ) -> Result<CodergenResult, Error> {
                 Ok(CodergenResult::Text {
                     text:              "one-shot response".to_string(),
+                    usage_by_model:    Vec::new(),
                     usage:             None,
                     files_touched:     Vec::new(),
                     last_file_touched: None,
@@ -579,6 +584,7 @@ mod tests {
                 Some(request.system_prompt.map(String::from));
             Ok(CodergenResult::Text {
                 text:              "classified".to_string(),
+                usage_by_model:    Vec::new(),
                 usage:             None,
                 files_touched:     Vec::new(),
                 last_file_touched: None,

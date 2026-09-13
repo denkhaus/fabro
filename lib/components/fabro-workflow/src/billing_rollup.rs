@@ -23,6 +23,49 @@ mod tests {
     }
 
     #[test]
+    fn by_model_splits_a_completed_stage_by_its_billing_rows() {
+        let mut projection = test_projection();
+        let root = test_usage("gpt-root", 100, 10);
+        let child = test_usage("gpt-child", 7, 1);
+        let stage = projection.stage_entry("work", 1, first_event_seq(1));
+        stage.timing = Some(fabro_types::StageTiming::wall_only(100));
+        stage.usage = BilledTokenCounts::from_billed_usage(&[root.clone(), child.clone()]);
+        stage.model = Some(root.model().clone());
+        stage.billing_by_model = vec![root.clone(), child.clone()];
+        stage.completion = Some(StageCompletion {
+            outcome:        StageOutcome::Succeeded,
+            notes:          None,
+            failure_reason: None,
+            timestamp:      chrono::Utc::now(),
+        });
+
+        let rollup = billing_rollup_from_projection(&projection);
+
+        assert_eq!(rollup.totals.input_tokens, 107);
+        assert_eq!(rollup.stages[0].model.as_ref(), Some(root.model()));
+        assert_eq!(rollup.by_model.len(), 2, "{:?}", rollup.by_model);
+        let entry = |model_id: &str| {
+            rollup
+                .by_model
+                .iter()
+                .find(|entry| entry.model.model_id.as_str() == model_id)
+                .unwrap_or_else(|| panic!("a row for {model_id}"))
+        };
+        assert_eq!(entry("gpt-root").stages, 1);
+        assert_eq!(entry("gpt-root").billing.input_tokens, 100);
+        assert_eq!(
+            entry("gpt-root").billing.total_usd_micros,
+            root.total_usd_micros
+        );
+        assert_eq!(entry("gpt-child").stages, 1);
+        assert_eq!(entry("gpt-child").billing.input_tokens, 7);
+        assert_eq!(
+            entry("gpt-child").billing.total_usd_micros,
+            child.total_usd_micros
+        );
+    }
+
+    #[test]
     fn rollup_groups_stage_rows_by_node_and_sums_retry_visit_usage() {
         let mut projection = test_projection();
         let failed_usage = test_usage("gpt-old", 100, 10);

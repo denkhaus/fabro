@@ -1,6 +1,9 @@
 use std::collections::HashMap;
 
-use crate::{BilledTokenCounts, ModelRef, RunProjection, RunTiming, StageSummary, StageTiming};
+use crate::{
+    BilledTokenCounts, ModelRef, RunProjection, RunTiming, StageProjection, StageSummary,
+    StageTiming,
+};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ProjectionBillingStage {
@@ -159,16 +162,21 @@ pub fn billing_rollup_from_projection(projection: &RunProjection) -> ProjectionB
 
             if let Some(model) = &stage.model {
                 row.model = Some(model.clone());
+            }
+            // A completed agent stage says which model billed which tokens:
+            // the root's route and each subagent's own. Until then, and for
+            // a stage without a coding agent, `usage` bills to `model`.
+            for (model, billing) in model_rows(stage) {
                 let model_entry =
                     by_model
                         .entry(model.clone())
                         .or_insert_with(|| ProjectionBillingByModel {
-                            model:   model.clone(),
-                            stages:  0,
+                            model,
+                            stages: 0,
                             billing: BilledTokenCounts::default(),
                         });
                 model_entry.stages += 1;
-                model_entry.billing.add_counts(usage);
+                model_entry.billing.add_counts(&billing);
             }
         }
     }
@@ -183,6 +191,28 @@ pub fn billing_rollup_from_projection(projection: &RunProjection) -> ProjectionB
         timing: run_timing,
         billed_visit_count,
     }
+}
+
+/// The stage's usage by model: its `billing_by_model` rows when the stage
+/// completed with them, else its `usage` under its `model`.
+fn model_rows(stage: &StageProjection) -> Vec<(ModelRef, BilledTokenCounts)> {
+    if stage.billing_by_model.is_empty() {
+        return stage
+            .model
+            .iter()
+            .map(|model| (model.clone(), stage.usage.clone()))
+            .collect();
+    }
+    stage
+        .billing_by_model
+        .iter()
+        .map(|row| {
+            (
+                row.model.clone(),
+                BilledTokenCounts::from_token_counts(row.tokens, row.total_usd_micros),
+            )
+        })
+        .collect()
 }
 
 fn stage_projection_order(state: &RunProjection) -> HashMap<String, u32> {

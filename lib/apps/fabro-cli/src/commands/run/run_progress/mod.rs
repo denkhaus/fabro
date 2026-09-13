@@ -650,6 +650,7 @@ mod tests {
             status: "succeeded".into(),
             preferred_label: None,
             suggested_next_ids: Vec::new(),
+            billing_by_model: Vec::new(),
             billing: Some(
                 billed_model_usage_from_llm(
                     &fabro_llm::test_support::test_catalog(),
