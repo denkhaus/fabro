@@ -385,6 +385,7 @@ fn main() {
             &[],
         ),
         ("StageProjection", "fabro_types::StageProjection", &[]),
+        ("BilledModelUsage", "fabro_types::BilledModelUsage", &[]),
         (
             "StageInferenceProjection",
             "fabro_types::StageInferenceProjection",

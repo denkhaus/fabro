@@ -2568,6 +2568,7 @@ mod tests {
             preferred_label: None,
             suggested_next_ids: Vec::new(),
             billing,
+            billing_by_model: Vec::new(),
             failure: None,
             notes: None,
             files_touched: Vec::new(),

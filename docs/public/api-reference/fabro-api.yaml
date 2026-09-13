@@ -11227,6 +11227,18 @@ components:
         agent_control:
           $ref: "#/components/schemas/AgentControlState"
           description: Whether the agent is executing normally or waiting for steering after an interrupt.
+        billing_by_model:
+          type: array
+          items:
+            $ref: "#/components/schemas/BilledModelUsage"
+          default: []
+          description: >-
+            The completed stage's `usage` split by model, as `stage.completed`
+            reported it: the root session's route and each subagent's own
+            model, a subagent whose model the catalog does not know billed at
+            the root's. Sums to `usage`. Empty while the stage runs and for
+            stages without a coding agent; the billing rollup then bills
+            `usage` to `model`.
         agent:
           oneOf:
             - $ref: "#/components/schemas/AgentSessionProjection"
@@ -13354,6 +13366,26 @@ components:
           format: int64
           description: Billed USD amount in micros.
           example: 720000
+
+    BilledModelUsage:
+      description: >-
+        Usage and cost billed to one model: one response, or one model's share
+        of a stage.
+      type: object
+      required:
+        - model
+        - tokens
+      properties:
+        model:
+          $ref: "#/components/schemas/BillingModelRef"
+        tokens:
+          $ref: "#/components/schemas/CompletionUsage"
+        total_usd_micros:
+          type: integer
+          format: int64
+          description: >-
+            Cost for `tokens`, when the provider reported one or the catalog
+            could price them. Absent means no cost data, not zero.
 
     BillingModelRef:
       description: Provider-qualified billing model identity used for cost estimates.

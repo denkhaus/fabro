@@ -651,6 +651,7 @@ mod tests {
             status: "succeeded".into(),
             preferred_label: None,
             suggested_next_ids: Vec::new(),
+            billing_by_model: Vec::new(),
             billing: None,
             failure: None,
             notes: None,

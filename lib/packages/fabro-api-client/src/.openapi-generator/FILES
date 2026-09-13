@@ -87,6 +87,7 @@ models/batch-run-lifecycle-request.ts
 models/batch-run-lifecycle-response.ts
 models/batch-run-lifecycle-result.ts
 models/batch-run-lifecycle-summary.ts
+models/billed-model-usage.ts
 models/billed-token-counts.ts
 models/billing-by-model.ts
 models/billing-model-ref.ts

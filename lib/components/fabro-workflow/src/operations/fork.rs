@@ -429,6 +429,7 @@ mod tests {
             status: "succeeded".to_string(),
             preferred_label: None,
             suggested_next_ids: Vec::new(),
+            billing_by_model: Vec::new(),
             billing: None,
             failure: None,
             notes: None,

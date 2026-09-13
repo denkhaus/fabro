@@ -742,6 +742,134 @@ async fn the_stage_timeout_fails_a_slow_agent() {
     );
 }
 
+/// A stage whose agent fails for good after answering model calls bills
+/// those calls: the failed outcome carries the session tree's usage from the
+/// same fold the completed outcome would have, and the files it wrote.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_stage_that_fails_after_spending_bills_what_it_spent() {
+    let stage = Stage::new().await;
+    let first = stage.file("first.txt");
+    let second = stage.file("second.txt");
+    // Two answered calls, each writing a file; the third is refused for good.
+    stage
+        .server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path(CHAT_PATH)
+                .body_excludes(TOOL_RESULT_MARKER);
+            sse_headers(
+                then,
+                sse_tool_call(
+                    "call-1",
+                    "write_file",
+                    &serde_json::json!({ "file_path": first, "content": "one" }),
+                ),
+            );
+        })
+        .await;
+    stage
+        .server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path(CHAT_PATH)
+                .body_includes("call-1")
+                .body_excludes("call-2");
+            sse_headers(
+                then,
+                sse_tool_call(
+                    "call-2",
+                    "write_file",
+                    &serde_json::json!({ "file_path": second, "content": "two" }),
+                ),
+            );
+        })
+        .await;
+    stage
+        .server
+        .mock_async(|when, then| {
+            when.method(POST).path(CHAT_PATH).body_includes("call-2");
+            then.status(400)
+                .header("content-type", "application/json")
+                .body(r#"{"error":{"message":"the request was rejected","type":"invalid_request_error"}}"#);
+        })
+        .await;
+
+    let mut graph = agent_graph("Spent", "Write two files");
+    let work = graph.nodes.get_mut("work").unwrap();
+    work.attrs
+        .insert("max_retries".to_string(), AttrValue::Integer(0));
+    graph.edges.retain(|edge| edge.from != "work");
+    let mut fail_edge = Edge::new("work", "exit");
+    fail_edge.attrs.insert(
+        "condition".to_string(),
+        AttrValue::String("outcome=failed".to_string()),
+    );
+    graph.edges.push(fail_edge);
+
+    let backend = stage.backend("openai");
+    let (_, state) = stage
+        .run(backend, &graph, CancellationToken::new())
+        .await
+        .expect("the fail edge carries the run to exit");
+
+    let work = work_stage(&state);
+    assert_eq!(
+        work.completion
+            .as_ref()
+            .expect("the stage finished")
+            .outcome,
+        StageOutcome::Failed {
+            retry_requested: false,
+        }
+    );
+    assert_eq!(
+        work.usage.input_tokens,
+        2 * INPUT_TOKENS_PER_CALL,
+        "the two answered calls are billed"
+    );
+    assert_eq!(work.usage.output_tokens, 2 * OUTPUT_TOKENS_PER_CALL);
+    assert_eq!(
+        work.usage.total_usd_micros,
+        Some(2 * (INPUT_TOKENS_PER_CALL + 2 * OUTPUT_TOKENS_PER_CALL)),
+        "priced from the catalog like a completed stage"
+    );
+    assert_eq!(
+        work.billing_by_model.len(),
+        1,
+        "{:?}",
+        work.billing_by_model
+    );
+    assert_eq!(
+        work.billing_by_model[0].tokens.input,
+        u64::try_from(2 * INPUT_TOKENS_PER_CALL).unwrap()
+    );
+    assert!(
+        tokio::fs::try_exists(&second).await.unwrap(),
+        "the second write landed before the failure"
+    );
+
+    let failed = stage
+        .events
+        .lock()
+        .unwrap()
+        .iter()
+        .find(|event| {
+            event.event_name() == "stage.failed" && event.node_id.as_deref() == Some("work")
+        })
+        .cloned()
+        .expect("the stage failure is emitted");
+    let EventBody::StageFailed(props) = &failed.body else {
+        panic!("stage.failed carries its props: {failed:?}");
+    };
+    assert!(!props.will_retry);
+    let billing = props.billing.as_ref().expect("the failed stage is billed");
+    assert_eq!(
+        billing.tokens.input,
+        u64::try_from(2 * INPUT_TOKENS_PER_CALL).unwrap()
+    );
+    assert_eq!(props.billing_by_model, vec![billing.clone()]);
+}
+
 // --- Questions, subagents, MCP
 // --------------------------------------------------
 
@@ -872,6 +1000,57 @@ async fn a_subagent_runs_under_its_parent_session() {
     assert_eq!(child.calls_async().await, 1, "{:?}", names(&stage.events));
     assert_eq!(work_stage(&state).response.as_deref(), Some("Parent done"));
     assert_eq!(count(&stage.events, "agent.sub.spawned"), 1);
+
+    // One usage rule: the stage bills its whole session tree, live and at
+    // completion. Four model calls answered: the parent's three and the
+    // child's one.
+    let work = work_stage(&state);
+    assert_eq!(
+        work.usage.input_tokens,
+        4 * INPUT_TOKENS_PER_CALL,
+        "the child's call is the stage's too"
+    );
+    assert_eq!(work.usage.output_tokens, 4 * OUTPUT_TOKENS_PER_CALL);
+    assert_eq!(
+        work.usage.total_usd_micros,
+        Some(4 * (INPUT_TOKENS_PER_CALL + 2 * OUTPUT_TOKENS_PER_CALL)),
+        "priced from the catalog for every call"
+    );
+    let agent = work
+        .agent
+        .as_ref()
+        .expect("the stage carries pebble's fold");
+    let (descendants, _) = agent.descendant_usage();
+    assert_eq!(
+        u64::try_from(work.usage.input_tokens).unwrap(),
+        agent.usage.input + descendants.input,
+        "the completed usage is what the live fold showed"
+    );
+    assert_eq!(
+        descendants.input,
+        u64::try_from(INPUT_TOKENS_PER_CALL).unwrap()
+    );
+    // The child ran on its parent's model, so the split is one row carrying
+    // the tree.
+    assert_eq!(
+        work.billing_by_model.len(),
+        1,
+        "{:?}",
+        work.billing_by_model
+    );
+    assert_eq!(
+        work.billing_by_model[0].tokens.input,
+        u64::try_from(4 * INPUT_TOKENS_PER_CALL).unwrap()
+    );
+    assert_eq!(
+        Some(&work.billing_by_model[0].model),
+        work.model.as_ref(),
+        "billed under the root's route"
+    );
+    assert_eq!(
+        work.billing_by_model[0].total_usd_micros,
+        work.usage.total_usd_micros
+    );
 
     let agent_events = coding_events(&stage.events);
     let root_session = agent_events

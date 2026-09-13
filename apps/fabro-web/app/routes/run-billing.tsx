@@ -97,6 +97,9 @@ function TokenBreakdown({ billing }: { billing: BilledTokenCounts }) {
           </Fragment>
         ))}
       </dl>
+      <p className="border-line text-fg-3 mt-1.5 border-t pt-1">
+        Includes subagent tokens, priced at each subagent&apos;s model.
+      </p>
     </div>
   );
 }

@@ -58,6 +58,7 @@ export * from './batch-run-lifecycle-request';
 export * from './batch-run-lifecycle-response';
 export * from './batch-run-lifecycle-result';
 export * from './batch-run-lifecycle-summary';
+export * from './billed-model-usage';
 export * from './billed-token-counts';
 export * from './billing-by-model';
 export * from './billing-model-ref';

@@ -2202,6 +2202,7 @@ impl CodergenBackend for MockCodergenBackend {
                 request.node.id,
                 &request.prompt[..request.prompt.len().min(50)]
             ),
+            usage_by_model:    Vec::new(),
             usage:             None,
             files_touched:     Vec::new(),
             last_file_touched: None,
@@ -7425,6 +7426,7 @@ mod real_llm {
                 .map_err(|e| Error::handler(e.to_string()))?;
             Ok(CodergenResult::Text {
                 text:              response.text(),
+                usage_by_model:    Vec::new(),
                 usage:             None,
                 files_touched:     Vec::new(),
                 last_file_touched: None,
