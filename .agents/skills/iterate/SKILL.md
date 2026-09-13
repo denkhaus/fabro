@@ -267,11 +267,15 @@ decision, not an accident - it needs the user plus an ADR.
   only the LOCAL test stack (127.0.0.1:32276), never production.
 - DEPLOY WINDOWS (user directive 2026-09-07): deploys ONLY while no
   conductor pass runs on mirtuell.net. Pause the line first (PUT
-  automation replace with schedule enabled:false - PRESERVE
-  on_overlap, replaces and UI edits can wipe it), deploy nonblocking,
-  verify smoke on https://mirtuell.net (health, ps, authenticated
-  automations probe), then re-enable the schedule with on_overlap=skip
-  again. A heartbeat (~5m) monitors the deploy and performs the resume.
+  automation replace with schedule enabled:false - the PUT needs the
+  FULL body name/environment_id/target/workflow/triggers, the
+  `If-Match: "<revision>"` header from the current GET (428 without
+  it), and an explicit `on_overlap: skip` - replaces and UI edits can
+  wipe it; response is the bare automation, so re-GET and verify
+  on_overlap survived), deploy nonblocking, verify smoke on
+  https://mirtuell.net (health, ps, authenticated automations probe),
+  then re-enable the schedule the same way. A heartbeat (~5m) monitors
+  the deploy and performs the resume.
 - BINARY-NEED CHECK (2026-09-07 lesson, user caught it): claiming
   'repo-side only, no binary need' for a merged PR requires diffing it
   against lib/ - .fabro/docs/tracker-only changes skip the rebuild, but
@@ -388,7 +392,13 @@ decision, not an accident - it needs the user plus an ADR.
   class); a parallel conductor pass means the policy was lost; a
   pass parked on Tracker-empty with a non-empty backlog means the
   assignment queue ran dry - surface it in the report, never
-  bulk-assign behind the user's back.
+  bulk-assign behind the user's back. LANDED-WORK CHECK (2026-09-13,
+  pass 01M2E2805XB4): a pass where every run shows "succeeded" can
+  still have produced NOTHING on denkhaus - after each pass, confirm
+  the child PR actually merged into denkhaus (base branch = denkhaus,
+  not a run branch) and the work commits appear in origin/denkhaus;
+  child PRs basing on anything other than the line branch are a
+  stranding incident (engine inheritance gap, fabro-b4ed).
 - Tool-agnostic engine (ADR-0017, user decision 2026-09-07): fabro
   engine components (sandbox providers, workflow engine, server, CLI)
   never reference project-scope tooling by name or behavior (mise,
