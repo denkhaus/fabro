@@ -74,6 +74,12 @@ policy (see /iterate) never drifts from upstream's; note it in the report.
 
 Order matters; a red earlier step means fix before continuing.
 
+0. FORK-ONLY PRESENCE SUITES (user directive 2026-09-13): immediately
+   after conflict resolution, run `cargo nextest run -p fabro-workflow --
+   fork_seam` (plus any newer fork-only test files). A red fork-only test
+   = a fork feature was dropped in the resolution — restore it or stop;
+   never relax the test. Also grep fork-guard markers that have no
+   presence test yet (touchpoints.md rows) before trusting the gate.
 1. `cargo build --workspace` — zero errors.
 2. `cargo +nightly-2026-04-14 fmt --all` then `--check --all` green.
 3. Tests (reduced threads avoids load timeouts on this host):
@@ -92,14 +98,18 @@ Order matters; a red earlier step means fix before continuing.
 1. One merge commit, message `merge: upstream/main (<old> -> <new>) —
    <version>` listing conflicts resolved and call-site adaptations.
 2. `git push origin denkhaus`.
-3. Deploy + verify in one step: `just up` (has a pipeline lock and the
-   post-deploy smoke). Watch `/tmp/just-up<N>.log` via PROCESS LIVENESS +
-   terminal markers ("smoke: all" / "recipe ... failed"), never blind
-   sleep-polling. Smoke must be 7/7 green. (2026-09-05, user directive:
-   start `just up` nohup-backgrounded, then schedule an rlm_heartbeat
-   (follow_up, 5m) whose instruction names the log path, PID, terminal
-   markers, and the full post-success continuation — wakes the session
-   autonomously instead of waiting for the user to ask for status.)
+3. Deploy + verify (user directive 2026-09-13, anchored in iterate):
+   PRODUCTION is https://mirtuell.net — after an upstream merge (engine
+   changes by definition), build the release image with `just
+   image-release` (ghcr.io push), pin the new digest in
+   ~/dev/fabro-tofu/variables.tf (fabro_image_ref), and deploy with
+   fabro-tofu: `TF_VAR_state_passphrase` from gopass +
+   `TF_DATA_DIR=.terraform-prod tofu plan -var-file=envs/prod.tfvars`
+   (verify the plan touches only image/container/ghcr-auth), then apply.
+   Smoke on https://mirtuell.net: /health, HTTP 200, auth probe, fresh
+   uptime. `just up` is the LOCAL test stack only — never production.
+   Deploy windows: only while no conductor pass runs (check
+   `fabro ps --server https://mirtuell.net`).
 4. Prove the container runs the merged code (e.g. strings of the binary
    for a marker of the new upstream change) when cheap.
 

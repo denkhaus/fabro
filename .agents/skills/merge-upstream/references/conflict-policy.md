@@ -58,6 +58,22 @@ upstream's new signatures; never revert upstream, never drop our features.
   `AsyncWriteExt as _` import looks unused under some feature unions — both
   pre-existing upstream artifacts, NOT merge regressions; clippy --workspace
   is the gate, don't chase them.
+- 2026-09-13 v0.355.0: upstream retires the manifest create lane — fork
+  tests posting `minimal_manifest_json` bodies to POST /runs get a 422
+  `run_intent_invalid`. Adapt to `test_intent_with_bearer` (register version,
+  create from id); run settings that the manifest defaults used to supply
+  (git author, github permissions) must ride the REGISTERED VERSION's
+  workflow.toml (config param), and the create request must carry the
+  Authorization bearer or the run records a User subject and capability
+  gating changes meaning (bridge tests fabro-e505).
+- 2026-09-13 v0.355.0: upstream billing one-rule adds `usage_by_model` to
+  CodergenResult::Text/Outcome — fork test backends initializing Text need
+  the field; the simulated-agent else branch tuple grows one Vec::new().
+- 2026-09-13 v0.355.0: e297 git-source lane is fork-only API surface —
+  upstream's create dispatch rewrite must gain our lane back BEFORE the
+  RunIntent parse (feature survival), and the yaml requestBody is
+  oneOf [RunIntent, GitSourceRunIntent]; progenitor then generates a
+  CreateRunBody enum with From impls (typed client wrapper).
 
 ## 2026-09-01 (v0.342.0-nightly.0)
 
