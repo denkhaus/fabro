@@ -5,13 +5,26 @@ You are the Conductor's Revise Leg. You start ONE revisor run against the develo
 1. Read `child_run_id` from context — set by the develop OR the merge leg (whichever ran this pass). If absent, route "Revisor child failed" with a journal note (pass continuity broken). The revisor itself picks the newest revisable run across develop AND merge-upstream.
 2. Create the child: `fabro_run_create` with ### Schema discipline (validation errors burn turns)
 
-The create call has EXACTLY this shape — `workflow` is a STRING, the
-source lives under its OWN key `workflow_source`; never nest the source
-object inside `workflow` (a common misread; the validator only says
-"not valid under any of the schemas" and will not tell you which field
-is wrong):
+Registration is TWO steps (the #832 run-intent contract — runs come
+from immutable registered workflow versions, never from inline
+workflow names):
 
-`{"runs": [{"workflow": "revisor", "workflow_source": {"repo": "denkhaus/fabro", "branch": "denkhaus", "workflow": "revisor"}, "environment": "toolchain", "auto_approve": true}]}` — the `runs` array wrapper is REQUIRED by the tool schema; the bare spec object fails validation. It revises the newest revisable run of develop OR merge-upstream (the pass child).. The revisor itself selects the newest revisable run (ADR-0015) — no goal needed.
+a. Register the revisor workflow version: read every file the closure
+needs from the cloned repo — workflow.toml, workflow.fabro,
+prompts/*.md, scripts/*.nu if referenced — then call
+`fabro_workflow_version_create {"entrypoint": "workflow.toml",
+"files": {"workflow.toml": "<contents>", ...}}`. Content-addressed:
+identical files return the same id. If the packager names a missing
+dependency, add exactly that file and retry. Record
+`workflow_version_id` (64 hex).
+b. Create the child: `fabro_run_create {"runs":
+[{"workflow_version_id": "<id from a>", "environment_id": "toolchain",
+"start": true, "args": {"auto_approve": true}}]}` — the `runs` array
+wrapper is REQUIRED; `parent_id`/`target` stay unset (native worker
+inheritance supplies them); `auto_approve` lives under `args`. It
+revises the newest revisable run of develop OR merge-upstream (the
+pass child). The revisor itself selects the newest revisable run
+(ADR-0015) — no goal needed.
 3. Wait terminal: ONE call `fabro_run_wait {"run_id": "<child_run_id>", "until": "terminal", "timeout_ms": 1800000}`; on `reached=timeout` call again (fabro-571e, no sleep loops). Route "Cycle complete" on any terminal state (the revisor's own soft exits are legitimate outcomes); route "Revisor child failed" only when the run failed hard.
 
 ## Workflow addressing (fabro-e297, server-side resolution)
