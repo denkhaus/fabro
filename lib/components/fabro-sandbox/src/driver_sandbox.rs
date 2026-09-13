@@ -20,11 +20,12 @@ use fabro_github::GitHubCredentials;
 use fabro_github::token_source::TokenSnapshot;
 use fabro_types::SandboxProviderKind;
 use fabro_util::workspace_glob::WorkspaceGlob;
+use pebble_coding_agent::mcp::{PortRoute, PortRouteError, PortRoutes};
 use sandbox_driver::{
-    Capability, DirEntry, EventContext, ExecControls, ExecResult, ExecSpec, ExecStreamingResult,
-    FileKind, GitRetryPolicy, GrepMatch, GrepOptions, PreviewUrl, PreviewUrls, PtyOptions,
-    PtySession, PtySize, Sandbox as DriverHandle, SandboxProvider as DriverProvider,
-    SandboxSpec as DriverSpec, SandboxState, Search as _, StdioProcess, WaitOptions, WalkOptions,
+    DirEntry, EventContext, ExecControls, ExecResult, ExecSpec, ExecStreamingResult, FileKind,
+    GitRetryPolicy, GrepMatch, GrepOptions, PreviewUrls, PtyOptions, PtySession, PtySize,
+    Sandbox as DriverHandle, SandboxProvider as DriverProvider, SandboxSpec as DriverSpec,
+    SandboxState, Search as _, StdioProcess, WaitOptions, WalkOptions,
 };
 use tokio::sync::OnceCell;
 use tokio_util::sync::CancellationToken;
@@ -998,11 +999,12 @@ impl RunSandbox {
     }
 
     /// The route from fabro to a port inside the sandbox, as pebble's MCP
-    /// support takes it: the driver's preview URLs, when the provider has
-    /// them. `None` for a provider without forwarding, which is where pebble
-    /// reaches the port on the loopback address instead.
+    /// support takes it: pebble's [`PortRoutes`] over the driver's preview
+    /// URLs, when the provider has them. `None` for a provider without
+    /// forwarding, which is where pebble reaches the port on the loopback
+    /// address instead.
     #[must_use]
-    pub fn port_routes(self: &Arc<Self>) -> Option<Arc<dyn PreviewUrls>> {
+    pub fn port_routes(self: &Arc<Self>) -> Option<Arc<dyn PortRoutes>> {
         self.handle().ok()?.preview_urls()?;
         Some(Arc::new(SandboxPortRoutes(Arc::clone(self))))
     }
@@ -1025,34 +1027,48 @@ impl RunSandbox {
     }
 }
 
-/// [`PreviewUrls`] over a run sandbox's driver handle, for pebble.
+/// Pebble's [`PortRoutes`] over a run sandbox's driver handle: the driver's
+/// preview-URL facet answers with the URL and headers that reach a port.
 struct SandboxPortRoutes(Arc<RunSandbox>);
 
 impl SandboxPortRoutes {
     /// The driver's facet, present whenever [`RunSandbox::port_routes`] handed
-    /// this out: the handle is set once and never cleared.
-    fn facet(&self) -> Option<&dyn PreviewUrls> {
+    /// this out: the handle is set once and never cleared. A missing facet is
+    /// the environment routing to none of its ports.
+    fn facet(&self) -> Result<&dyn PreviewUrls, PortRouteError> {
         self.0
             .handle()
             .ok()
             .and_then(|handle| handle.preview_urls())
+            .ok_or(PortRouteError::Unsupported)
     }
 }
 
 #[async_trait::async_trait]
-impl PreviewUrls for SandboxPortRoutes {
-    async fn preview_url(&self, port: u16) -> sandbox_driver::Result<PreviewUrl> {
-        match self.facet() {
-            Some(facet) => facet.preview_url(port).await,
-            None => Err(sandbox_driver::Error::unsupported(Capability::PreviewUrls)),
-        }
+impl PortRoutes for SandboxPortRoutes {
+    async fn route(&self, port: u16) -> Result<PortRoute, PortRouteError> {
+        let preview = self.facet()?.preview_url(port).await.map_err(|error| {
+            PortRouteError::failed_with_source(
+                format!("Failed to open a route to sandbox port {port}"),
+                error,
+            )
+        })?;
+        Ok(PortRoute {
+            url:     preview.url,
+            headers: preview.headers,
+        })
     }
 
-    async fn release_preview_url(&self, port: u16) -> sandbox_driver::Result<()> {
-        match self.facet() {
-            Some(facet) => facet.release_preview_url(port).await,
-            None => Err(sandbox_driver::Error::unsupported(Capability::PreviewUrls)),
-        }
+    async fn release(&self, port: u16) -> Result<(), PortRouteError> {
+        self.facet()?
+            .release_preview_url(port)
+            .await
+            .map_err(|error| {
+                PortRouteError::failed_with_source(
+                    format!("Failed to release the route to sandbox port {port}"),
+                    error,
+                )
+            })
     }
 }
 
@@ -1410,5 +1426,22 @@ mod tests {
         let (url, headers) = f.sandbox.get_preview_url(8080).await.unwrap().unwrap();
         assert_eq!(url, "http://127.0.0.1:8080");
         assert!(headers.is_empty());
+    }
+
+    #[tokio::test]
+    async fn port_routes_answer_pebble_with_the_access_facets_preview_url() {
+        let Fixture {
+            dir,
+            _provider: provider,
+            sandbox,
+        } = fixture().await;
+        let sandbox = Arc::new(sandbox);
+        let routes = sandbox
+            .port_routes()
+            .expect("the host provider routes to its ports");
+        let route = routes.route(8080).await.unwrap();
+        assert_eq!(route, PortRoute::new("http://127.0.0.1:8080"));
+        routes.release(8080).await.unwrap();
+        drop((dir, provider));
     }
 }

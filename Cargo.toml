@@ -118,14 +118,13 @@ sandbox-driver-daytona-config = { git = "https://github.com/lithoscomputer/sandb
 sandbox-driver-testing = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "a92c0db6b6a122ca9b6df75de6615544f53c0d47" }
 # pebble: the coding agent loop fabro runs its agent stages, Ask Fabro
 # sessions, hook evaluators, and `fabro exec` on. Pinned by rev to pebble
-# `main`. The `PreviewUrls` trait objects fabro hands pebble's MCP servers
-# only cross when fabro and pebble's `mcp` feature name the same
-# sandbox-driver revision, so move the two pins together. Pebble pins the
-# same lithos-llm rev as fabro, and its lockfile policy is that every shared
-# crate resolves to the version lithos-llm locks.
-pebble-agent = { git = "https://github.com/lithoscomputer/pebble", rev = "430740f1114f859d6d173683f25b5007cf2023ca" }
-pebble-coding-agent = { git = "https://github.com/lithoscomputer/pebble", rev = "430740f1114f859d6d173683f25b5007cf2023ca", features = ["mcp", "search-providers"] }
-pebble-cli-core = { git = "https://github.com/lithoscomputer/pebble", rev = "430740f1114f859d6d173683f25b5007cf2023ca" }
+# `main`. Pebble owns the `PortRoutes` trait fabro implements over its run
+# sandbox, so the pebble and sandbox-driver pins move independently. Pebble
+# pins the same lithos-llm rev as fabro, and its lockfile policy is that
+# every shared crate resolves to the version lithos-llm locks.
+pebble-agent = { git = "https://github.com/lithoscomputer/pebble", rev = "69969420c9017ca15ac6c175c820a0cb8090866a" }
+pebble-coding-agent = { git = "https://github.com/lithoscomputer/pebble", rev = "69969420c9017ca15ac6c175c820a0cb8090866a", features = ["mcp", "search-providers"] }
+pebble-cli-core = { git = "https://github.com/lithoscomputer/pebble", rev = "69969420c9017ca15ac6c175c820a0cb8090866a" }
 sentry = { version = "0.35", default-features = false, features = ["backtrace", "contexts", "ureq", "rustls"] }
 fork = "0.2"
 exec = "0.3"
