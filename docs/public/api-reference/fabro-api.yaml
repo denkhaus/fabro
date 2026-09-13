@@ -11029,8 +11029,11 @@ components:
           example: "2026-05-23T12:34:56Z"
         event_seq:
           type: ["integer", "null"]
-          format: uint32
-          minimum: 1
+          format: uint64
+          minimum: 0
+          description: >-
+            The coding agent's own event sequence for the snapshot, when it
+            carried one; not the run event sequence.
           example: 42
         breakdown:
           type: array
@@ -11170,23 +11173,6 @@ components:
           oneOf:
             - $ref: "#/components/schemas/BillingModelRef"
             - type: "null"
-        todos:
-          oneOf:
-            - $ref: "#/components/schemas/TodoListProjection"
-            - type: "null"
-          description: |
-            Todo / task list owned by this stage's root agent session. OpenAI
-            child sessions have separate per-session plans that do not appear
-            here. Anthropic task lists are root-scoped and shared with child
-            sessions, so child mutations of that shared list do appear here.
-        subagents:
-          type: array
-          description: Subagents spawned by this stage, in replay/insertion order.
-          items:
-            $ref: "#/components/schemas/SubAgentProjection"
-        skills:
-          $ref: "#/components/schemas/SkillsProjection"
-          description: Agent skills discovered and activated during this stage.
         permission_level:
           oneOf:
             - $ref: "#/components/schemas/PermissionLevel"
@@ -11199,16 +11185,6 @@ components:
             Tool parameter schemas are intentionally omitted from this projection.
           items:
             $ref: "#/components/schemas/ToolSummary"
-        mcp_servers:
-          type: array
-          description: MCP servers observed by this stage.
-          items:
-            $ref: "#/components/schemas/McpServerProjection"
-        context_window:
-          oneOf:
-            - $ref: "#/components/schemas/ContextWindowSnapshot"
-            - type: "null"
-          description: Latest content-free context-window snapshot for this agent stage.
         inference:
           oneOf:
             - $ref: "#/components/schemas/StageInferenceProjection"
@@ -11340,102 +11316,6 @@ components:
         - text
         - tool_call
 
-    SubAgentProjection:
-      description: Current projected state for one subagent spawned by an agent stage.
-      type: object
-      required:
-        - agent_id
-        - depth
-        - task
-        - status
-      properties:
-        agent_id:
-          type: string
-        depth:
-          type: integer
-          minimum: 0
-        task:
-          type: string
-        status:
-          $ref: "#/components/schemas/SubAgentStatus"
-
-    SubAgentStatus:
-      description: Projected lifecycle status for a subagent.
-      oneOf:
-        - $ref: "#/components/schemas/SubAgentStatusRunning"
-        - $ref: "#/components/schemas/SubAgentStatusCompleted"
-        - $ref: "#/components/schemas/SubAgentStatusFailed"
-        - $ref: "#/components/schemas/SubAgentStatusClosed"
-      discriminator:
-        propertyName: kind
-        mapping:
-          running: "#/components/schemas/SubAgentStatusRunning"
-          completed: "#/components/schemas/SubAgentStatusCompleted"
-          failed: "#/components/schemas/SubAgentStatusFailed"
-          closed: "#/components/schemas/SubAgentStatusClosed"
-
-    SubAgentStatusRunning:
-      type: object
-      required:
-        - kind
-      properties:
-        kind:
-          type: string
-          enum: [running]
-
-    SubAgentStatusCompleted:
-      type: object
-      required:
-        - kind
-        - success
-        - turns_used
-      properties:
-        kind:
-          type: string
-          enum: [completed]
-        success:
-          type: boolean
-        turns_used:
-          type: integer
-          minimum: 0
-
-    SubAgentStatusFailed:
-      type: object
-      required:
-        - kind
-        - error
-      properties:
-        kind:
-          type: string
-          enum: [failed]
-        error:
-          description: Provider/tool error payload captured by the subagent event.
-
-    SubAgentStatusClosed:
-      type: object
-      required:
-        - kind
-      properties:
-        kind:
-          type: string
-          enum: [closed]
-
-    SkillsProjection:
-      description: Agent skills discovered and activated during a stage.
-      type: object
-      required:
-        - available
-        - activated
-      properties:
-        available:
-          type: array
-          items:
-            $ref: "#/components/schemas/SkillSummary"
-        activated:
-          type: array
-          items:
-            $ref: "#/components/schemas/ActivatedSkill"
-
     SkillSummary:
       description: Summary of an available agent skill.
       type: object
@@ -11447,18 +11327,6 @@ components:
           type: string
         description:
           type: string
-
-    ActivatedSkill:
-      description: One observed agent skill activation.
-      type: object
-      required:
-        - name
-        - source
-      properties:
-        name:
-          type: string
-        source:
-          $ref: "#/components/schemas/SkillActivationSource"
 
     SkillActivationSource:
       description: Source that activated an agent skill.
@@ -11555,91 +11423,6 @@ components:
       description: Coarse tool category for display and grouping.
       type: string
       enum: [read, write, shell, subagent, other]
-
-    McpServerProjection:
-      description: Projected state for one MCP server observed by an agent stage.
-      type: object
-      required:
-        - server_name
-        - tool_count
-        - status
-        - invoked
-      properties:
-        server_name:
-          type: string
-        tool_count:
-          type: integer
-          minimum: 0
-        status:
-          $ref: "#/components/schemas/McpServerStatus"
-        invoked:
-          type: boolean
-          description: True once the agent has invoked at least one tool from this server during the stage.
-
-    McpServerStatus:
-      description: Projected MCP server readiness status.
-      oneOf:
-        - $ref: "#/components/schemas/McpServerStatusReady"
-        - $ref: "#/components/schemas/McpServerStatusFailed"
-        - $ref: "#/components/schemas/McpServerStatusDisconnected"
-      discriminator:
-        propertyName: kind
-        mapping:
-          ready: "#/components/schemas/McpServerStatusReady"
-          failed: "#/components/schemas/McpServerStatusFailed"
-          disconnected: "#/components/schemas/McpServerStatusDisconnected"
-
-    McpServerStatusReady:
-      type: object
-      required:
-        - kind
-        - tools
-      properties:
-        kind:
-          type: string
-          enum: [ready]
-        tools:
-          type: array
-          items:
-            $ref: "#/components/schemas/AgentMcpToolSummary"
-
-    McpServerStatusFailed:
-      type: object
-      required:
-        - kind
-        - error
-      properties:
-        kind:
-          type: string
-          enum: [failed]
-        error:
-          type: string
-
-    McpServerStatusDisconnected:
-      description: The server was ready and then its connection closed during the stage; its tools fail until the session ends.
-      type: object
-      required:
-        - kind
-        - error
-      properties:
-        kind:
-          type: string
-          enum: [disconnected]
-        error:
-          type: string
-          description: What closed the connection, as the client observed it.
-
-    AgentMcpToolSummary:
-      description: Summary of one tool exposed by an MCP server.
-      type: object
-      required:
-        - name
-        - original_name
-      properties:
-        name:
-          type: string
-        original_name:
-          type: string
 
     AgentSessionProjection:
       description: >-

@@ -404,10 +404,6 @@ fn main() {
             &[],
         ),
         ("TodoListProjection", "fabro_types::TodoListProjection", &[]),
-        ("SubAgentProjection", "fabro_types::SubAgentProjection", &[]),
-        ("SubAgentStatus", "fabro_types::SubAgentStatus", &[]),
-        ("SkillsProjection", "fabro_types::SkillsProjection", &[]),
-        ("ActivatedSkill", "fabro_types::ActivatedSkill", &[]),
         ("SkillSummary", "fabro_types::SkillSummary", &[]),
         (
             "SkillActivationSource",
@@ -421,17 +417,6 @@ fn main() {
         (
             "AgentToolsAvailableProps",
             "fabro_types::AgentToolsAvailableProps",
-            &[],
-        ),
-        (
-            "McpServerProjection",
-            "fabro_types::McpServerProjection",
-            &[],
-        ),
-        ("McpServerStatus", "fabro_types::McpServerStatus", &[]),
-        (
-            "AgentMcpToolSummary",
-            "fabro_types::AgentMcpToolSummary",
             &[],
         ),
         // Pebble's own fold of a stage's agent events, embedded in
