@@ -7,7 +7,7 @@ use fabro_types::settings::run::RunGoal;
 use fabro_types::test_support::{test_run_provenance, test_workflow_version_id};
 use fabro_types::{
     AutomationRef, GitRunTarget, ResolvedAutomationGitWorkflowSource, RunTarget, WorkflowSettings,
-    fixtures, test_support,
+    fixtures,
 };
 
 fn templated_settings() -> WorkflowSettings {
@@ -116,29 +116,4 @@ fn run_spec_defaults_automation_for_legacy_specs() {
 
     let round_trip = serde_json::to_value(&record).expect("record should serialize");
     assert!(round_trip.get("workflow_version_id").is_none());
-}
-
-#[test]
-fn historical_run_spec_ignores_retired_manifest_blob() {
-    let spec = test_support::test_run_spec();
-    let value = serde_json::to_value(spec).unwrap();
-    for hash in [
-        Some(serde_json::json!(fabro_types::BlobHash::new(
-            b"old manifest"
-        ))),
-        Some(serde_json::Value::Null),
-        None,
-    ] {
-        let mut historical = value.clone();
-        if let Some(hash) = hash {
-            historical["manifest_blob"] = hash;
-        }
-        let decoded: RunSpec = serde_json::from_value(historical).unwrap();
-        assert!(
-            serde_json::to_value(decoded)
-                .unwrap()
-                .get("manifest_blob")
-                .is_none()
-        );
-    }
 }

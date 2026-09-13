@@ -1805,11 +1805,6 @@ mod tests {
             Some(compiled_source.as_str())
         );
         assert_eq!(created.workflow_version_id, Some(workflow_version_id));
-        assert!(
-            events[0].event.to_value().unwrap()["properties"]
-                .get("manifest_blob")
-                .is_none()
-        );
         assert!(created.spec_blob.is_some());
     }
 

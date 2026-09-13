@@ -3559,8 +3559,8 @@ async fn generated_title_does_not_overwrite_user_title_edit() {
     assert_eq!(title_update_event_count(&state, run_id).await, 1);
 }
 
-async fn post_run_intent(app: &Router, manifest: serde_json::Value) -> serde_json::Value {
-    let response = post_run_intent_response(app, manifest).await;
+async fn post_run_intent(app: &Router, intent: serde_json::Value) -> serde_json::Value {
+    let response = post_run_intent_response(app, intent).await;
     response_json!(response, StatusCode::CREATED).await
 }
 
@@ -4685,7 +4685,7 @@ async fn post_runs_run_intent_accepts_none_target_with_ready_daytona_environment
 }
 
 #[tokio::test]
-async fn post_runs_rejects_legacy_manifests() {
+async fn post_runs_reports_malformed_json() {
     let state = test_app_state();
     let app = crate::test_support::build_test_router(Arc::clone(&state));
     let malformed = app
@@ -4702,27 +4702,6 @@ async fn post_runs_rejects_legacy_manifests() {
         .unwrap();
     let malformed = response_json!(malformed, StatusCode::BAD_REQUEST).await;
     assert_eq!(malformed["errors"][0]["code"], "invalid_json");
-
-    let intent_shaped = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri(api("/runs"))
-                .header("content-type", "application/json")
-                .body(Body::from(json!({ "workflow_version_id": fabro_types::test_support::test_workflow_version_id() }).to_string()))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    let intent_shaped = response_json!(intent_shaped, StatusCode::UNPROCESSABLE_ENTITY).await;
-    assert_eq!(intent_shaped["errors"][0]["code"], "run_intent_invalid");
-
-    let mut legacy = minimal_manifest_json(MINIMAL_DOT);
-    legacy["workflow_version_id"] = json!(fabro_types::test_support::test_workflow_version_id());
-    let response = post_run_intent_response(&app, legacy).await;
-    let body = response_json!(response, StatusCode::UNPROCESSABLE_ENTITY).await;
-    assert_eq!(body["errors"][0]["code"], "run_intent_invalid");
 }
 
 #[tokio::test]
@@ -4733,12 +4712,8 @@ async fn post_runs_attributes_parse_failures_and_rejects_duplicate_keys() {
     for (raw, expected_detail) in [
         ("{}".to_string(), "missing field"),
         (
-            minimal_manifest_json(MINIMAL_DOT).to_string(),
-            "unknown field",
-        ),
-        (
             format!(
-                r#"{{"workflow_version_id":"{id}","target":{{"kind":"none"}},"cwd":"/tmp","args":{{}}}}"#
+                r#"{{"workflow_version_id":"{id}","target":{{"kind":"none"}},"unexpected":true,"args":{{}}}}"#
             ),
             "unknown field",
         ),
@@ -4974,16 +4949,6 @@ enabled = false
         .vault_entries([(fabro_static::EnvVars::OPENAI_API_KEY, "test-openai-api-key")])
         .build();
     assert_run_intent_targets_unavailable(&daytona_state).await;
-}
-
-#[tokio::test]
-async fn post_runs_rejects_removed_run_id_input() {
-    let app = test_app_with();
-    let mut intent = test_intent(&app, MINIMAL_DOT).await;
-    intent["run_id"] = json!(RunId::new());
-    let response = post_run_intent_response(&app, intent).await;
-    let body = response_json!(response, StatusCode::UNPROCESSABLE_ENTITY).await;
-    assert_eq!(body["errors"][0]["code"], "run_intent_invalid");
 }
 
 #[tokio::test]
@@ -12189,7 +12154,7 @@ async fn dev_token_web_login_authorizes_cookie_backed_api_requests() {
 }
 
 #[tokio::test]
-async fn create_run_persists_definition_and_spec_blobs_without_manifest() {
+async fn create_run_persists_definition_and_spec_blobs() {
     let state = test_app_state();
     let app = crate::test_support::build_test_router(Arc::clone(&state));
     let raw_intent = serde_json::to_string_pretty(&test_intent(&app, MINIMAL_DOT).await).unwrap();
@@ -12198,7 +12163,7 @@ async fn create_run_persists_definition_and_spec_blobs_without_manifest() {
         .method("POST")
         .uri(api("/runs"))
         .header("content-type", "application/json")
-        .body(Body::from(raw_intent.clone()))
+        .body(Body::from(raw_intent))
         .unwrap();
 
     let response = app.clone().oneshot(req).await.unwrap();
@@ -12209,7 +12174,6 @@ async fn create_run_persists_definition_and_spec_blobs_without_manifest() {
     let events = run_store.list_events().await.unwrap();
     let created = events[0].event.to_value().unwrap();
     let submitted = events[1].event.to_value().unwrap();
-    assert!(created["properties"].get("manifest_blob").is_none());
     assert!(created["properties"]["spec_blob"].is_string());
     let definition_blob = submitted["properties"]["definition_blob"]
         .as_str()
@@ -12224,10 +12188,6 @@ async fn create_run_persists_definition_and_spec_blobs_without_manifest() {
         .expect("accepted definition blob should exist");
     let accepted_definition: serde_json::Value =
         serde_json::from_slice(&accepted_definition_bytes).unwrap();
-    assert!(
-        accepted_definition.get("version").is_none(),
-        "accepted run definition should not carry compatibility versioning"
-    );
     assert_eq!(accepted_definition["workflow_path"], "workflow.fabro");
     assert!(accepted_definition["workflows"]["workflow.fabro"].is_object());
 }

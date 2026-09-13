@@ -2677,7 +2677,6 @@ mod tests {
                 "base_branch": null,
                 "labels": {},
                 "provenance": test_support::test_run_provenance(),
-                "manifest_blob": null,
                 "definition_blob": null,
                 "git": null,
                 "fork_source_ref": null
@@ -4169,8 +4168,7 @@ mod tests {
     }
 
     #[test]
-    fn projection_serialization_includes_manifest_and_definition_blob_refs() {
-        let manifest_blob = BlobHash::new(br#"{"version":1}"#).to_string();
+    fn projection_serialization_includes_definition_blob() {
         let definition_blob =
             BlobHash::new(br#"{"version":1,"workflow_path":"workflow.fabro"}"#).to_string();
         let events = vec![
@@ -4191,8 +4189,7 @@ mod tests {
                         },
                         "labels": {},
                         "source_directory": "/tmp/run",
-                        "provenance": test_support::test_run_provenance(),
-                        "manifest_blob": manifest_blob
+                        "provenance": test_support::test_run_provenance()
                     }
                 }))
                 .unwrap(),
@@ -4215,7 +4212,6 @@ mod tests {
         let state = RunProjection::apply_events(&events).unwrap();
         let value = serde_json::to_value(&state).unwrap();
 
-        assert!(value["spec"].get("manifest_blob").is_none());
         assert_eq!(
             value["spec"]["definition_blob"],
             events[1].event.properties().unwrap()["definition_blob"]

@@ -1727,7 +1727,6 @@ mod runs {
                 client:  None,
                 subject: DEMO_PRINCIPAL.clone(),
             },
-            manifest_blob:       None,
             definition_blob:     None,
             spec_blob:           None,
             git:                 None,

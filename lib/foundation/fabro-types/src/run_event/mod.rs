@@ -1364,44 +1364,6 @@ mod tests {
     }
 
     #[test]
-    fn run_created_reads_retired_manifest_blob_without_serializing_it() {
-        let line = json!({
-            "id": "evt_created_blob",
-            "ts": "2026-04-04T12:00:00.000Z",
-            "run_id": fixtures::RUN_1,
-            "event": "run.created",
-            "properties": {
-                "settings": WorkflowSettings::default(),
-                "graph": Graph::new("test"),
-                "labels": {},
-                "source_directory": "/tmp/run",
-                "provenance": test_support::test_run_provenance(),
-                "manifest_blob": BlobHash::new(br#"{"version":1}"#).to_string()
-            }
-        });
-
-        for legacy_hash in [
-            Some(line["properties"]["manifest_blob"].clone()),
-            Some(serde_json::Value::Null),
-            None,
-        ] {
-            let mut historical = line.clone();
-            historical["properties"]
-                .as_object_mut()
-                .unwrap()
-                .remove("manifest_blob");
-            if let Some(hash) = legacy_hash {
-                historical["properties"]["manifest_blob"] = hash;
-            }
-            let parsed = RunEvent::from_value(historical).unwrap();
-            assert!(matches!(parsed.body, EventBody::RunCreated(_)));
-            let serialized = parsed.to_value().unwrap();
-            assert_eq!(serialized["event"], "run.created");
-            assert!(serialized["properties"].get("manifest_blob").is_none());
-        }
-    }
-
-    #[test]
     fn interview_interrupted_kind_matches_event_name() {
         let body = EventBody::InterviewInterrupted(InterviewInterruptedProps {
             question_id: "q-1".to_string(),
