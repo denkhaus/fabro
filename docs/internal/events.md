@@ -951,7 +951,12 @@ Object-lifecycle event. `session_id` and `parent_session_id` are envelope fields
 }
 ```
 
-No properties.
+No properties. One per prompt, when the agent has nothing more to do for
+it. Pebble's `SessionProjection`, embedded in `StageProjection.agent`, reads
+it to mark the prompt complete and the session idle, so the projection
+rebuilt from the run's log needs it. Runs recorded before fabro stored it
+never have it; their `agent.activity` stays `running`, and
+`StageProjection.state` is the authority on whether the stage is done.
 
 ### `agent.input`
 
@@ -1402,6 +1407,10 @@ Emitted when a sub-agent is spawned.
 
 ### `agent.mcp.ready`
 
+Fabro's mirror of pebble's `McpServerReady`. The pebble event itself is
+also stored, as `agent.mcp.server.ready`; see the section on stored pebble
+events below.
+
 ```json
 {
   "id": "...", "ts": "...", "run_id": "...",
@@ -1605,7 +1614,10 @@ Emitted whenever a skill is activated in the running session. Sources:
 
 ### `agent.failover`
 
-Emitted when the agent fails over to a different LLM provider/model.
+Emitted when the agent fails over to a different LLM provider/model. On an
+agent stage this is fabro's mirror of pebble's `RouteFailover`, which is
+also stored as `agent.route.failover`; a one-shot prompt stage, which walks
+the fallback plan without pebble, emits only this event.
 
 ```json
 {
@@ -1633,10 +1645,20 @@ Emitted when the agent fails over to a different LLM provider/model.
 | `error` | string | Error that triggered failover |
 | `continuation` | string? | How the new route carried the prompt on, as pebble reported it: `replay_prompt` (nothing the prompt committed was in the conversation, so the new route was asked the prompt again) or `continue_turn` (the conversation held assistant output or tool results, so the new route continued from there). Absent on events written before pebble reported it and on one-shot prompt stages, which re-send their request themselves |
 
+### `agent.route.failover`, `agent.mcp.server.ready`, `agent.mcp.server.failed`, `agent.mcp.server.disconnected`
+
+Pebble's `RouteFailover`, `McpServerReady`, `McpServerFailed`, and
+`McpServerDisconnected` events, stored verbatim with pebble's envelope in
+`properties` like every other pebble event. Fabro also mirrors each onto
+its own `agent.failover`, `agent.mcp.ready`, `agent.mcp.failed`, and
+`agent.mcp.disconnected`, which the store folds into `StageProjection`'s
+`mcp_servers`; the pebble events feed `StageProjection.agent`. The mirrors
+go once every reader is on `agent`.
+
 ### `agent.route.failover.stopped`
 
 Pebble's `RouteFailoverStopped` event, stored verbatim like every other
-pebble event fabro does not mirror. An agent stage with fallback routes
+pebble event. An agent stage with fallback routes
 publishes it when a model failure ends the prompt on its current route
 anyway: the failure does not qualify for failover (`reason: "ineligible"`)
 or every route has been taken (`reason: "exhausted"`). It follows the

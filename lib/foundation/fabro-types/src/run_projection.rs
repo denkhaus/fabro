@@ -9,6 +9,7 @@ use pebble_coding_agent::events::{
     ContextWindowStaleness, ContextWindowWarning, LlmOutputKind, PermissionLevel,
     SkillActivationSource, SkillSummary, TodoListProjection, ToolSummary,
 };
+use pebble_coding_agent::projection::SessionProjection;
 use strum::{Display, EnumString, IntoStaticStr};
 
 use crate::run_event::{AgentSessionActivatedProps, StagePromptProps};
@@ -332,6 +333,19 @@ pub struct StageProjection {
     pub acp_started_at:        Option<DateTime<Utc>>,
     #[serde(default)]
     pub agent_control:         AgentControlState,
+    /// Pebble's fold of this stage's agent events: the one agent projection,
+    /// fed every `agent.*` and `todo.*` event stored on the stage. Present
+    /// for pebble-backed agent stages once their first agent event is
+    /// stored; `None` for prompt, command, ACP, human, parallel, and
+    /// conditional stages.
+    ///
+    /// Its lifetime fields are the stage's totals across every prompt the
+    /// stage ran, because each stage gets its own fold over its own events.
+    /// `activity` reads `running` on stages stored before
+    /// `agent.processing.end` was kept; `state` is the authority on whether
+    /// a stage is done.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent:                 Option<SessionProjection>,
     pub state:                 StageState,
 }
 
@@ -499,6 +513,7 @@ impl StageProjection {
             inference: None,
             acp_started_at: None,
             agent_control: AgentControlState::default(),
+            agent: None,
             provider_used: None,
             diff: None,
             script_invocation: None,
