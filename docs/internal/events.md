@@ -473,6 +473,8 @@ Emitted when a stage fails (before retry decision).
 | `failure_class` | string | Failure category |
 | `failure_signature` | string? | Dedup key for repeated failures |
 | `will_retry` | boolean | Whether the stage will be retried |
+| `billing` | object? | What the stage spent before it failed, in the shape `stage.completed` uses. An agent stage that fails for good after answering model calls bills its whole session tree, as it would have on completion; a retried attempt and a cancelled stage carry none |
+| `billing_by_model` | array? | `billing` split by model, as on `stage.completed` |
 
 ### `stage.retrying`
 

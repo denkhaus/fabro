@@ -387,6 +387,7 @@ fn event_body_from_event(event: &Event) -> EventBody {
             will_retry,
             timing,
             billing,
+            billing_by_model,
             ..
         } => EventBody::StageFailed(fabro_types::StageFailedProps {
             index:      *index,
@@ -394,6 +395,7 @@ fn event_body_from_event(event: &Event) -> EventBody {
             will_retry: *will_retry,
             timing:     *timing,
             billing:    billing.clone(),
+            billing_by_model: billing_by_model.clone(),
         }),
         Event::StageRetrying {
             index,
@@ -1171,17 +1173,18 @@ mod tests {
     fn run_event_stage_failure_keeps_failure_detail() {
         let usage = test_usage("gpt-5.2", 321, 54);
         let stored = to_run_event(&fixtures::RUN_3, &Event::StageFailed {
-            node_id:    "code".to_string(),
-            name:       "Code".to_string(),
-            index:      1,
-            failure:    FailureDetail::new(
+            node_id:          "code".to_string(),
+            name:             "Code".to_string(),
+            index:            1,
+            failure:          FailureDetail::new(
                 "lint failed",
                 crate::outcome::FailureCategory::Deterministic,
             ),
-            will_retry: true,
-            timing:     ::fabro_types::StageTiming::wall_only(5000),
-            billing:    Some(usage.clone()),
-            actor:      None,
+            will_retry:       true,
+            timing:           ::fabro_types::StageTiming::wall_only(5000),
+            billing_by_model: Vec::new(),
+            billing:          Some(usage.clone()),
+            actor:            None,
         });
 
         assert_eq!(stored.event_name(), "stage.failed");

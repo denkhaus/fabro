@@ -72,15 +72,20 @@ pub struct StageCompletedProps {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct StageFailedProps {
-    pub index:      usize,
+    pub index:            usize,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub failure:    Option<FailureDetail>,
-    pub will_retry: bool,
+    pub failure:          Option<FailureDetail>,
+    pub will_retry:       bool,
     /// Per-attempt timing breakdown for this stage visit.
     #[serde(default)]
-    pub timing:     StageTiming,
+    pub timing:           StageTiming,
+    /// The stage's billing: for an agent stage that failed after spending,
+    /// the whole session tree's tokens under the root's route.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub billing:    Option<BilledModelUsage>,
+    pub billing:          Option<BilledModelUsage>,
+    /// `billing` split by model, as on `stage.completed`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub billing_by_model: Vec<BilledModelUsage>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
