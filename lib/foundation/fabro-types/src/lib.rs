@@ -143,10 +143,9 @@ pub use run_intent::{
     TargetValidationError, ValidatedGitRunTarget, ValidatedRunTarget,
 };
 pub use run_projection::{
-    ActivatedSkill, AgentControlState, CheckpointRecord, McpServerProjection, McpServerStatus,
-    PendingInterviewRecord, RunProjection, SkillsProjection, StageContextWindow,
+    AgentControlState, CheckpointRecord, PendingInterviewRecord, RunProjection, StageContextWindow,
     StageContextWindowUnavailableReason, StageInferenceProjection, StageModelUsage,
-    StageProjection, StageToolBatchProjection, SubAgentProjection, SubAgentStatus, first_event_seq,
+    StageProjection, StageToolBatchProjection, first_event_seq,
 };
 pub use run_sandbox::{
     RunSandbox, RunSandboxFailure, RunSandboxInstance, RunSandboxKind, RunSandboxPlan,

@@ -27,12 +27,10 @@ base.ts
 common.ts
 configuration.ts
 index.ts
-models/activated-skill.ts
 models/agent-control-state.ts
 models/agent-error-data.ts
 models/agent-error-kind.ts
 models/agent-event-props.ts
-models/agent-mcp-tool-summary.ts
 models/agent-session-activated-props.ts
 models/agent-session-activated-skill.ts
 models/agent-session-activity.ts
@@ -244,12 +242,7 @@ models/manifest-workflow.ts
 models/mcp-http-protocol.ts
 models/mcp-server-list-meta.ts
 models/mcp-server-list-response.ts
-models/mcp-server-projection.ts
 models/mcp-server-settings.ts
-models/mcp-server-status-disconnected.ts
-models/mcp-server-status-failed.ts
-models/mcp-server-status-ready.ts
-models/mcp-server-status.ts
 models/mcp-server.ts
 models/mcp-tool-summary.ts
 models/mcp-transport-http.ts
@@ -508,7 +501,6 @@ models/session-summary.ts
 models/session-turn.ts
 models/skill-activation-source.ts
 models/skill-summary.ts
-models/skills-projection.ts
 models/slack-integration-settings.ts
 models/ssh-access-request.ts
 models/ssh-access-response.ts
@@ -527,12 +519,6 @@ models/stage-tool-batch-projection.ts
 models/start-record.ts
 models/start-run-request.ts
 models/steer-run-request.ts
-models/sub-agent-projection.ts
-models/sub-agent-status-closed.ts
-models/sub-agent-status-completed.ts
-models/sub-agent-status-failed.ts
-models/sub-agent-status-running.ts
-models/sub-agent-status.ts
 models/submit-answer-multi-selected-request.ts
 models/submit-answer-no-request.ts
 models/submit-answer-request.ts

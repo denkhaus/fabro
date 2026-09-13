@@ -514,3 +514,27 @@ async function waitFor(condition: () => boolean, timeoutMs = 200) {
   }
   throw new Error("condition did not become true before timeout");
 }
+
+describe("agent session events", () => {
+  test("refresh the run state the stage sidebar reads its agent facts from", () => {
+    for (const event of [
+      "agent.route.failover",
+      "agent.route.failover.stopped",
+      "agent.mcp.server.ready",
+      "agent.mcp.server.failed",
+      "agent.mcp.server.disconnected",
+      "agent.skills.discovered",
+      "agent.skill.activated",
+      "agent.sub.spawned",
+      "agent.sub.completed",
+      "agent.sub.failed",
+      "agent.compaction.completed",
+    ]) {
+      expect(queryKeysForRunEvent("run-1", event, "code@1")).toEqual([
+        queryKeys.runs.state("run-1"),
+        queryKeys.runs.events("run-1", 1000),
+        queryKeys.runs.stageEvents("run-1", "code@1"),
+      ]);
+    }
+  });
+});

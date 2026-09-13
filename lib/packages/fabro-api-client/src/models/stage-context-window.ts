@@ -50,6 +50,9 @@ export interface StageContextWindow {
     'count_method': ContextWindowCountMethod | null;
     'staleness': ContextWindowStaleness;
     'generated_at': string | null;
+    /**
+     * The coding agent\'s own event sequence for the snapshot, when it carried one; not the run event sequence.
+     */
     'event_seq': number | null;
     'breakdown': Array<ContextWindowBreakdownItem>;
     'warnings': Array<ContextWindowWarning>;
