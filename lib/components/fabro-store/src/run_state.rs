@@ -322,6 +322,11 @@ impl RunProjectionReducer for RunProjection {
                     number: props.pr_number,
                 };
                 self.pull_request = Some(pull_request.clone());
+                // fabro-b4ed: the publish-time auto-merge enable outcome
+                // travels with the creation event; `None` (auto-merge not
+                // requested, or events predating the record) clears any
+                // stale state.
+                self.auto_merge.clone_from(&props.auto_merge);
                 if let Some(creation) = self
                     .pull_request_creation
                     .as_mut()
@@ -342,6 +347,7 @@ impl RunProjectionReducer for RunProjection {
             }
             EventBody::PullRequestUnlinked(_) => {
                 self.pull_request = None;
+                self.auto_merge = None;
                 // Clear the creation record too: a lingering `Succeeded`
                 // record would point at a pull request that is no longer
                 // linked, and it would block a later explicit creation.
@@ -357,6 +363,7 @@ impl RunProjectionReducer for RunProjection {
                     .is_some_and(|current| *current == props.pull_request) =>
             {
                 self.pull_request = None;
+                self.auto_merge = None;
                 self.pull_request_creation = None;
             }
             EventBody::PullRequestFailed(props) => {
@@ -5075,6 +5082,7 @@ mod tests {
                     head_sha:    Some("final-sha".to_string()),
                     title:       "Add run PR chip".to_string(),
                     draft:       false,
+                    auto_merge:  None,
                 }),
                 None,
             ))
@@ -5171,6 +5179,7 @@ mod tests {
                     head_sha:    Some("final-sha".to_string()),
                     title:       "Create asynchronously".to_string(),
                     draft:       true,
+                    auto_merge:  None,
                 }),
                 None,
             ))
@@ -5213,6 +5222,7 @@ mod tests {
                     head_sha:    Some("final-sha".to_string()),
                     title:       "Add run PR chip".to_string(),
                     draft:       false,
+                    auto_merge:  None,
                 }),
                 None,
             ))

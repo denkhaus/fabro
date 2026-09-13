@@ -123,10 +123,11 @@ pub use pebble_coding_agent::events::{
 };
 pub use principal::{AuthMethod, Principal, SystemActorKind, UserPrincipal};
 pub use pull_request::{
-    CheckRun, CheckRunStatus, PullRequest, PullRequestCreation, PullRequestCreationId,
-    PullRequestCreationStatus, PullRequestDetails, PullRequestDetailsStatus,
-    PullRequestDetailsUnavailableReason, PullRequestGithubDetail, PullRequestLink, PullRequestMeta,
-    PullRequestRef, PullRequestResponse, PullRequestTimestamps, PullRequestUser,
+    CheckRun, CheckRunStatus, PullRequest, PullRequestAutoMergeState, PullRequestAutoMergeStatus,
+    PullRequestCreation, PullRequestCreationId, PullRequestCreationStatus, PullRequestDetails,
+    PullRequestDetailsStatus, PullRequestDetailsUnavailableReason, PullRequestGithubDetail,
+    PullRequestLink, PullRequestMeta, PullRequestRef, PullRequestResponse, PullRequestTimestamps,
+    PullRequestUser,
 };
 pub use repository::{
     GitHubRepositorySlug, GitHubRepositorySlugError, RepositoryProvider, RepositoryRef,

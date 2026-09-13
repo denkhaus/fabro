@@ -3,8 +3,8 @@ use serde::{Deserialize, Serialize};
 
 use super::ExecOutputTail;
 use crate::{
-    CommandTermination, ParallelBranchResult, PullRequestCreationId, PullRequestLink, ReviewTarget,
-    StageId, StageOutcome,
+    CommandTermination, ParallelBranchResult, PullRequestAutoMergeState, PullRequestCreationId,
+    PullRequestLink, ReviewTarget, StageId, StageOutcome,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -351,6 +351,11 @@ pub struct PullRequestCreatedProps {
     pub head_sha:    Option<String>,
     pub title:       String,
     pub draft:       bool,
+    /// Outcome of the engine's auto-merge enable attempt, present only when
+    /// the run's publish requested auto-merge (fabro-b4ed). Absent on
+    /// events written before that record existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auto_merge:  Option<PullRequestAutoMergeState>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

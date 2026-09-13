@@ -177,23 +177,54 @@ pub async fn create_runs_with_options(
     Ok(CreateRunsResult { runs })
 }
 
+/// Resolve the target a parented child run inherits when its create payload
+/// omits one (fabro-b4ed).
+///
+/// Resolution choice — option (a) of fabro-b4ed: an orchestration parent
+/// (pull requests disabled, run-branch push only) never chains children
+/// onto its run branch. Such a run branch has no terminus — nothing in the
+/// engine merges it back to its base, protection rules and gate workflows
+/// do not apply to it, and `enablePullRequestAutoMerge` fails structurally
+/// on it — so children inherit the parent's BASE branch (`git.branch`).
+/// Only a parent that publishes a pull request of its own (a terminus for
+/// its run branch) chains children onto the run branch, and a parent with
+/// run branches disabled hands down its base branch directly.
 fn inherit_parent_target(parent: &RunProjection) -> anyhow::Result<RunTarget> {
     let target = parent.spec.target.as_ref().context(
         "the parent run has no canonical target; send an explicit target for this child run",
     )?;
     Ok(match target {
         RunTarget::Git(git) => {
-            let branch = if parent.spec.settings.run.run_branch.enabled {
+            let parent_publishes_pr = parent
+                .spec
+                .settings
+                .run
+                .pull_request
+                .as_ref()
+                .is_some_and(|pr| pr.enabled);
+            let branch = if parent.spec.settings.run.run_branch.enabled && parent_publishes_pr {
                 parent.start.as_ref().and_then(|start| start.run_branch.as_ref())
                     .filter(|branch| !branch.trim().is_empty()).context(
                     "the parent run has no execution branch yet; send an explicit target for this child run"
                 )?
             } else {
-                &git.branch
+                // Orchestration parent (PR disabled) or run branches
+                // disabled: the base branch is the chain terminus. Loud
+                // contract (fabro-b4ed, option (c)'s guard as fallback):
+                // a parent whose base branch cannot be resolved fails the
+                // create instead of silently falling back to a run branch.
+                let base = git.branch.trim();
+                if base.is_empty() {
+                    anyhow::bail!(
+                        "the parent run's base branch cannot be resolved; \
+                         send an explicit target for this child run"
+                    );
+                }
+                base
             };
             RunTarget::Git(fabro_types::GitRunTarget {
                 repo:   git.repo.clone(),
-                branch: branch.clone(),
+                branch: branch.to_string(),
                 tag:    None,
                 sha:    None,
             })
@@ -279,6 +310,7 @@ mod tests {
     use std::collections::HashMap;
 
     use chrono::{TimeZone, Utc};
+    use fabro_types::settings::run::PullRequestSettings;
     use fabro_types::{
         GitRunTarget, Run, RunLifecycle, RunLinks, RunOrigin, RunStatus, RunTimestamps,
         WorkflowRef, test_support,
@@ -405,6 +437,13 @@ mod tests {
         );
     }
 
+    fn enable_parent_pull_requests(p: &mut RunProjection) {
+        p.spec.settings.run.pull_request = Some(PullRequestSettings {
+            enabled: true,
+            ..Default::default()
+        });
+    }
+
     #[test]
     fn inherited_target_uses_execution_branch_and_requires_execution_state() {
         let mut p = parent(RunTarget::Git(GitRunTarget {
@@ -413,6 +452,10 @@ mod tests {
             sha:    Some("a".repeat(40)),
             tag:    Some("v1".into()),
         }));
+        // Only a parent that publishes a pull request of its own (a
+        // terminus for its run branch) chains children onto the run branch
+        // (fabro-b4ed).
+        enable_parent_pull_requests(&mut p);
         assert!(
             inherit_parent_target(&p)
                 .unwrap_err()
@@ -445,6 +488,56 @@ mod tests {
         }
         p.spec.target = None;
         assert!(inherit_parent_target(&p).is_err());
+    }
+
+    #[test]
+    fn orchestration_parent_inherits_base_branch_never_run_branch() {
+        // fabro-b4ed option (a): an orchestration parent (PR disabled,
+        // run-branch push only) has no chain terminus for its run branch,
+        // so children inherit the parent's BASE branch instead.
+        let mut p = parent(RunTarget::Git(GitRunTarget {
+            repo:   "acme/repo".into(),
+            branch: "denkhaus".into(),
+            sha:    None,
+            tag:    None,
+        }));
+        assert!(p.spec.settings.run.run_branch.enabled);
+        assert!(p.spec.settings.run.pull_request.is_none());
+        p.start = Some(fabro_types::StartRecord {
+            start_time: Utc::now(),
+            run_branch: Some("fabro/run/parent".into()),
+            base_sha:   None,
+        });
+        let RunTarget::Git(target) = inherit_parent_target(&p).unwrap() else {
+            panic!("expected git")
+        };
+        assert_eq!(target.branch, "denkhaus");
+        assert_eq!(target.repo, "acme/repo");
+        assert_eq!(target.sha, None);
+        assert_eq!(target.tag, None);
+    }
+
+    #[test]
+    fn unresolvable_parent_base_branch_fails_loudly() {
+        // fabro-b4ed guard: a parented create whose inherited base branch
+        // cannot be resolved fails loudly instead of silently falling back
+        // to the parent's run branch.
+        let mut p = parent(RunTarget::Git(GitRunTarget {
+            repo:   "acme/repo".into(),
+            branch: "  ".into(),
+            sha:    None,
+            tag:    None,
+        }));
+        p.start = Some(fabro_types::StartRecord {
+            start_time: Utc::now(),
+            run_branch: Some("fabro/run/parent".into()),
+            base_sha:   None,
+        });
+        let error = inherit_parent_target(&p).unwrap_err().to_string();
+        assert!(
+            error.contains("base branch cannot be resolved"),
+            "unexpected error: {error}"
+        );
     }
 
     #[tokio::test]

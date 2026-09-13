@@ -9,8 +9,8 @@ use fabro_llm::credentials::CredentialProvider;
 use fabro_llm::lithos_catalog::Catalog;
 use fabro_llm::{Client, ClientOptions, Request, selection};
 use fabro_store::RunProjection;
-use fabro_types::PullRequestLink;
 use fabro_types::settings::run::MergeStrategy;
+use fabro_types::{PullRequestAutoMergeState, PullRequestAutoMergeStatus, PullRequestLink};
 use fabro_util::text::strip_goal_decoration;
 use lithos_llm::catalog::ProviderId;
 use lithos_llm::types::{Message, ReasoningEffort, Role};
@@ -600,6 +600,9 @@ pub struct CreatedPullRequest {
     pub title:       String,
     pub base_branch: String,
     pub head_branch: String,
+    /// Outcome of the engine's auto-merge enable attempt: `None` when
+    /// auto-merge was not requested (fabro-b4ed).
+    pub auto_merge:  Option<PullRequestAutoMergeState>,
 }
 
 /// Adopt an open pull request that already exists for the head branch at the
@@ -624,7 +627,7 @@ async fn reconcile_existing_pull_request(
         return Ok(None);
     };
     info!(pr_url = %existing.html_url, pr_number = existing.number, context, "Existing pull request reconciled");
-    enable_auto_merge_if_requested(
+    let auto_merge = enable_auto_merge_if_requested(
         &req.github,
         owner,
         repo,
@@ -634,17 +637,23 @@ async fn reconcile_existing_pull_request(
     )
     .await;
     Ok(Some(CreatedPullRequest {
-        link:        PullRequestLink {
+        link: PullRequestLink {
             owner:  owner.to_string(),
             repo:   repo.to_string(),
             number: existing.number,
         },
-        title:       existing.title,
+        title: existing.title,
         base_branch: req.base_branch.to_string(),
         head_branch: req.head_branch.to_string(),
+        auto_merge,
     }))
 }
 
+/// Enable auto-merge when requested, returning the durable outcome
+/// (fabro-b4ed): `None` when auto-merge was not requested. An enable
+/// failure is no longer only a WARN — the outcome is recorded on the run's
+/// pull request so the merged wait can classify an unprotected-base dead
+/// end as a stuck gate instead of treating the PR as young forever.
 async fn enable_auto_merge_if_requested(
     github: &github_app::GitHubContext<'_>,
     owner: &str,
@@ -652,18 +661,35 @@ async fn enable_auto_merge_if_requested(
     node_id: &str,
     number: u64,
     options: Option<&AutoMergeOptions>,
-) {
-    let Some(options) = options else {
-        return;
-    };
+) -> Option<PullRequestAutoMergeState> {
+    let options = options?;
     match github_app::enable_auto_merge(github, owner, repo, node_id, options.merge_strategy).await
     {
-        Ok(()) => info!(pr_number = number, "Auto-merge enabled"),
-        Err(err) => warn!(
-            pr_number = number,
-            error = %err,
-            "Failed to enable auto-merge (repo may not have auto-merge enabled in settings)"
-        ),
+        Ok(()) => {
+            info!(pr_number = number, "Auto-merge enabled");
+            Some(PullRequestAutoMergeState {
+                status: PullRequestAutoMergeStatus::Enabled,
+                error:  None,
+            })
+        }
+        Err(err) => {
+            let message = format!("{err:#}");
+            let status = if github_app::is_unprotected_base_auto_merge_error(&message) {
+                PullRequestAutoMergeStatus::UnprotectedBase
+            } else {
+                PullRequestAutoMergeStatus::Failed
+            };
+            warn!(
+                pr_number = number,
+                auto_merge_status = %status,
+                error = %message,
+                "Failed to enable auto-merge (repo may not have auto-merge enabled in settings)"
+            );
+            Some(PullRequestAutoMergeState {
+                status,
+                error: Some(message),
+            })
+        }
     }
 }
 
@@ -868,7 +894,7 @@ pub async fn open_pull_request(
     };
 
     info!(pr_url = %created.html_url, created.number, "Pull request created");
-    enable_auto_merge_if_requested(
+    let auto_merge = enable_auto_merge_if_requested(
         &req.github,
         &owner,
         &repo,
@@ -889,6 +915,7 @@ pub async fn open_pull_request(
         title,
         base_branch: req.base_branch.to_string(),
         head_branch: req.head_branch.to_string(),
+        auto_merge,
     })
 }
 

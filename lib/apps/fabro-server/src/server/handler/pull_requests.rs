@@ -140,11 +140,15 @@ fn pull_request_exists_error(record: &PullRequestLink) -> ApiError {
 }
 
 pub(in crate::server) struct PullRequestGithubContext {
-    pub(in crate::server) record: PullRequestLink,
-    pub(in crate::server) owner:  String,
-    pub(in crate::server) repo:   String,
-    pub(in crate::server) number: u64,
-    pub(in crate::server) creds:  fabro_github::GitHubCredentials,
+    pub(in crate::server) record:     PullRequestLink,
+    pub(in crate::server) owner:      String,
+    pub(in crate::server) repo:       String,
+    pub(in crate::server) number:     u64,
+    pub(in crate::server) creds:      fabro_github::GitHubCredentials,
+    /// The engine's auto-merge enable attempt for this PR, when publish
+    /// requested auto-merge (fabro-b4ed). An unprotected-base failure is a
+    /// stuck-gate signal for the merged wait.
+    pub(in crate::server) auto_merge: Option<fabro_types::PullRequestAutoMergeState>,
 }
 
 async fn load_pull_request_record(
@@ -170,6 +174,11 @@ pub(in crate::server) async fn load_pull_request_github_context(
     id: &RunId,
 ) -> Result<PullRequestGithubContext, ApiError> {
     let record = load_pull_request_record(state, id).await?;
+    let auto_merge = state
+        .load_run_projection(id)
+        .await?
+        .auto_merge
+        .clone();
     let (owner, repo, number) = github_coordinates_for_record(&record);
     let creds = load_server_github_credentials(state.as_ref()).await?;
     Ok(PullRequestGithubContext {
@@ -178,6 +187,7 @@ pub(in crate::server) async fn load_pull_request_github_context(
         repo,
         number,
         creds,
+        auto_merge,
     })
 }
 

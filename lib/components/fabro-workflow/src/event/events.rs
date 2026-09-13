@@ -4,10 +4,10 @@ use ::fabro_types::{
     AutomationRef, BilledTokenCounts, BlobHash, BlockedReason, CommandTermination, DiffSummary,
     FailureReason, ForkSourceRef, GitContext, PairId, PairMessageId, PairSystemMessageKind,
     PairTarget, ParallelBranchId, ParallelBranchResult, PendingReason, PermissionLevel, Principal,
-    PullRequestCreationId, PullRequestLink, ReviewTarget, RunFailure, RunId, RunNoticeLevel,
-    RunPairEndedReason, RunPairFailedReason, RunProvenance, RunRunnableSource, RunTarget,
-    RunTiming, SandboxProviderKind, StageId, StageOutcome, StageTiming, SuccessReason,
-    WorkflowVersionId, run_event as fabro_types,
+    PullRequestAutoMergeState, PullRequestCreationId, PullRequestLink, ReviewTarget, RunFailure,
+    RunId, RunNoticeLevel, RunPairEndedReason, RunPairFailedReason, RunProvenance,
+    RunRunnableSource, RunTarget, RunTiming, SandboxProviderKind, StageId, StageOutcome,
+    StageTiming, SuccessReason, WorkflowVersionId, run_event as fabro_types,
 };
 use lithos_llm::types::{ReasoningEffort, Speed};
 use pebble_coding_agent::events::CodingAgentEvent;
@@ -770,6 +770,10 @@ pub enum Event {
         head_sha:    Option<String>,
         title:       String,
         draft:       bool,
+        /// Outcome of the engine's auto-merge enable attempt, present only
+        /// when publish requested auto-merge (fabro-b4ed).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        auto_merge:  Option<PullRequestAutoMergeState>,
     },
     PullRequestLinked {
         pull_request: PullRequestLink,
@@ -874,6 +878,29 @@ impl Event {
         title: &str,
         draft: bool,
     ) -> Self {
+        Self::pull_request_created_with_auto_merge(
+            record,
+            base_branch,
+            head_branch,
+            head_sha,
+            title,
+            draft,
+            None,
+        )
+    }
+
+    /// [`Self::pull_request_created`] plus the auto-merge enable outcome
+    /// recorded by publish (fabro-b4ed): `None` means auto-merge was not
+    /// requested.
+    pub fn pull_request_created_with_auto_merge(
+        record: &PullRequestLink,
+        base_branch: &str,
+        head_branch: &str,
+        head_sha: &str,
+        title: &str,
+        draft: bool,
+        auto_merge: Option<PullRequestAutoMergeState>,
+    ) -> Self {
         Self::PullRequestCreated {
             pr_url: record.html_url(),
             pr_number: record.number,
@@ -884,6 +911,7 @@ impl Event {
             head_sha: Some(head_sha.to_string()),
             title: title.to_string(),
             draft,
+            auto_merge,
         }
     }
 
