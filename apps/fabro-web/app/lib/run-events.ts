@@ -152,6 +152,26 @@ const TODO_EVENTS = new Set([
   "todo.updated",
   "todo.deleted",
 ]);
+// The coding agent's own events whose facts the stage sidebar reads from
+// `StageProjection.agent`: route moves, MCP server outcomes, skills,
+// subagent lifecycle, and compactions. Each refreshes the run state the
+// sidebar renders from, like a todo mutation does. Files the tree wrote
+// arrive with `agent.tool.completed`, which already refreshes it.
+const AGENT_SESSION_EVENTS = new Set([
+  "agent.route.failover",
+  "agent.route.failover.stopped",
+  "agent.mcp.server.ready",
+  "agent.mcp.server.failed",
+  "agent.mcp.server.disconnected",
+  "agent.skills.discovered",
+  "agent.skill.activated",
+  "agent.sub.spawned",
+  "agent.sub.turn.started",
+  "agent.sub.completed",
+  "agent.sub.failed",
+  "agent.sub.closed",
+  "agent.compaction.completed",
+]);
 
 function liveTimingKeys(runId: string): Key[] {
   return [
@@ -288,7 +308,7 @@ export function queryKeysForRunEvent(
       : [];
   }
 
-  if (TODO_EVENTS.has(event)) {
+  if (TODO_EVENTS.has(event) || AGENT_SESSION_EVENTS.has(event)) {
     const keys: Key[] = [
       queryKeys.runs.state(runId),
       queryKeys.runs.events(runId, 1000),

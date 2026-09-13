@@ -11,24 +11,33 @@ import {
   XCircleIcon,
 } from "@heroicons/react/24/solid";
 import {
+  ArrowsRightLeftIcon,
   CheckBadgeIcon,
   CommandLineIcon,
+  DocumentTextIcon,
   ListBulletIcon,
   PuzzlePieceIcon,
   ServerStackIcon,
   Squares2X2Icon,
+  UserGroupIcon,
   WrenchScrewdriverIcon,
 } from "@heroicons/react/24/outline";
 import {
   ContextWindowCategory,
   ContextWindowStaleness,
+  FailoverStop,
   SkillActivationSource,
   TodoStatus,
 } from "@qltysh/fabro-api-client";
 import type {
-  ActivatedSkill,
+  AgentSessionActivatedSkill,
+  AgentSessionCompaction,
+  AgentSessionFailoverStop,
+  AgentSessionMcpServer,
+  AgentSessionProjection,
+  AgentSessionRouteFailover,
+  AgentSessionSubagent,
   ContextWindowBreakdownItem,
-  McpServerProjection,
   SkillSummary,
   StageContextWindow,
   StageProjection,
@@ -41,14 +50,16 @@ import { formatTokenCount } from "../lib/format";
 const COLLAPSED_STORAGE_KEY = "fabro:stage-insights-sidebar-collapsed";
 const SECTION_STORAGE_PREFIX = "fabro:stage-insights-section:";
 
-type SectionKey = "todos" | "context" | "tools" | "skills" | "mcps";
+type SectionKey = "todos" | "context" | "files" | "subagents" | "tools" | "skills" | "mcps";
 
 const SECTIONS_DEFAULT_OPEN: Record<SectionKey, boolean> = {
-  todos:   true,
-  context: false,
-  tools:   false,
-  skills:  false,
-  mcps:    false,
+  todos:     true,
+  context:   false,
+  files:     false,
+  subagents: false,
+  tools:     false,
+  skills:    false,
+  mcps:      false,
 };
 
 export interface StageInsightsSidebarProps {
@@ -58,6 +69,11 @@ export interface StageInsightsSidebarProps {
   contextWindow: StageContextWindow | null | undefined;
 }
 
+/**
+ * The agent stage's sidebar. Everything about the agent's session comes from
+ * `stage.agent`, the coding agent's own fold of the stage's events; the
+ * stage itself contributes the tool catalog it was handed.
+ */
 export function StageInsightsSidebar({ stage, contextWindow }: StageInsightsSidebarProps) {
   const [collapsed, setCollapsed] = useState(loadStoredCollapsed);
   const toggleCollapsed = useCallback(() => {
@@ -68,14 +84,24 @@ export function StageInsightsSidebar({ stage, contextWindow }: StageInsightsSide
     });
   }, []);
 
-  const todos = stage?.todos ?? null;
-  const skills = stage?.skills ?? { activated: [], available: [] };
+  const agent = stage?.agent ?? null;
+  const todoLists = agent ? Object.values(agent.todos) : [];
+  const todos = rootTodoList(agent);
+  const otherTodoLists = todos ? todoLists.length - 1 : todoLists.length;
+  const skills = agent?.skills ?? { activated: [], available: [] };
   const agentTools = stage?.agent_tools ?? [];
-  const mcpServers = stage?.mcp_servers ?? [];
+  const mcpServers = agent ? mcpServerRows(agent.mcp_servers) : [];
+  const files = agent?.files_touched ?? [];
+  const lastFile = agent?.last_file_touched ?? null;
+  const subagents = agent?.subagents ?? [];
+  const failovers = agent?.failovers ?? [];
+  const failoverStopped = agent?.failover_stopped ?? null;
+  const compactions = agent?.compactions ?? [];
 
   const todoStats = countTodoStats(todos);
   const activatedSkillNames = new Set(skills.activated.map((s) => s.name));
   const invokedToolCount = agentTools.filter((tool) => tool.invoked).length;
+  const finishedSubagents = subagents.filter((s) => s.status.status !== "running").length;
 
   return (
     <aside
@@ -104,6 +130,8 @@ export function StageInsightsSidebar({ stage, contextWindow }: StageInsightsSide
         </button>
       </div>
 
+      <FailoverBadge collapsed={collapsed} failovers={failovers} stopped={failoverStopped} />
+
       <div className="mt-3 flex flex-col gap-4">
         {todoStats.total > 0 && (
           <CollapsibleSection
@@ -114,11 +142,39 @@ export function StageInsightsSidebar({ stage, contextWindow }: StageInsightsSide
             count={`${todoStats.done}/${todoStats.total}`}
             empty={false}
           >
-            <TodoSection todos={todos} />
+            <TodoSection todos={todos} otherLists={otherTodoLists} />
           </CollapsibleSection>
         )}
 
-        <ContextWindowSection collapsed={collapsed} snapshot={contextWindow ?? null} />
+        <ContextWindowSection
+          collapsed={collapsed}
+          snapshot={contextWindow ?? null}
+          compactions={compactions}
+        />
+
+        <CollapsibleSection
+          sectionKey="files"
+          title="Files"
+          icon={DocumentTextIcon}
+          collapsed={collapsed}
+          count={files.length}
+          empty={files.length === 0}
+          hideCountWhenCollapsed
+        >
+          <FilesSection files={files} lastFile={lastFile} />
+        </CollapsibleSection>
+
+        <CollapsibleSection
+          sectionKey="subagents"
+          title="Subagents"
+          icon={UserGroupIcon}
+          collapsed={collapsed}
+          count={`${finishedSubagents}/${subagents.length}`}
+          empty={subagents.length === 0}
+          hideCountWhenCollapsed
+        >
+          <SubagentsSection subagents={subagents} />
+        </CollapsibleSection>
 
         <CollapsibleSection
           sectionKey="skills"
@@ -228,11 +284,69 @@ function CollapsibleSection({
   );
 }
 
+// ---------- Failover ----------
+
+interface FailoverBadgeProps {
+  collapsed: boolean;
+  failovers: AgentSessionRouteFailover[];
+  stopped: AgentSessionFailoverStop | null;
+}
+
+/**
+ * Where the session's model moved: the last fallback route the root took,
+ * and whether the prompt then stopped although routes were named. The
+ * failures that caused each are the hover text.
+ */
+function FailoverBadge({ collapsed, failovers, stopped }: FailoverBadgeProps) {
+  const last = failovers.length > 0 ? failovers[failovers.length - 1] : null;
+  if (!last && !stopped) return null;
+  const details = [
+    ...failovers.map((move) => `${move.from} failed: ${move.error.message}`),
+    stopped ? `${stopped.route}: ${stopped.error.message}` : null,
+  ].filter((line): line is string => line != null);
+  if (collapsed) {
+    return (
+      <div className="mt-2 flex justify-center" title={details.join("\n")}>
+        <ArrowsRightLeftIcon className="size-4 shrink-0 text-amber" aria-label="Model failover" />
+      </div>
+    );
+  }
+  return (
+    <div className="mt-2 space-y-0.5 px-2 text-[11px] text-amber" title={details.join("\n")}>
+      {last && (
+        <p className="flex items-center gap-1">
+          <ArrowsRightLeftIcon className="size-3.5 shrink-0" aria-hidden="true" />
+          <span className="min-w-0 truncate">
+            {`Moved to ${last.to} after ${last.attempt} ${last.attempt === 1 ? "attempt" : "attempts"}`}
+          </span>
+        </p>
+      )}
+      {stopped && (
+        <p className="pl-4.5">
+          {`Stopped: ${stopped.reason === FailoverStop.EXHAUSTED ? "routes exhausted" : "failure not eligible for failover"}`}
+        </p>
+      )}
+    </div>
+  );
+}
+
 // ---------- Todos ----------
 
 interface TodoStats {
   done: number;
   total: number;
+}
+
+/**
+ * The root agent's own list: the one keyed by the root session's id. Subagent
+ * plans are separate lists in the same map.
+ */
+function rootTodoList(agent: AgentSessionProjection | null): TodoListProjection | null {
+  if (!agent) return null;
+  const lists = Object.values(agent.todos);
+  const rootId = agent.root_session_id;
+  const root = rootId ? lists.find((list) => list.list_id.endsWith(rootId)) : undefined;
+  return root ?? (lists.length === 1 ? lists[0] : null);
 }
 
 function countTodoStats(list: TodoListProjection | null): TodoStats {
@@ -244,16 +358,23 @@ function countTodoStats(list: TodoListProjection | null): TodoStats {
   return { done, total: items.length };
 }
 
-function TodoSection({ todos }: { todos: TodoListProjection | null }) {
+function TodoSection({ todos, otherLists }: { todos: TodoListProjection | null; otherLists: number }) {
   if (!todos || (todos.items?.length ?? 0) === 0) return <p className="text-xs text-fg-muted">No todos.</p>;
   const items = Array.from(todos.items ?? []);
   items.sort((a, b) => a.order - b.order);
   return (
-    <ul className="space-y-1">
-      {items.map((item) => (
-        <TodoRow key={item.id} todo={item} />
-      ))}
-    </ul>
+    <div className="space-y-2">
+      <ul className="space-y-1">
+        {items.map((item) => (
+          <TodoRow key={item.id} todo={item} />
+        ))}
+      </ul>
+      {otherLists > 0 && (
+        <p className="text-[11px] text-fg-muted">
+          {`+${otherLists} subagent ${otherLists === 1 ? "list" : "lists"}`}
+        </p>
+      )}
+    </div>
   );
 }
 
@@ -297,9 +418,10 @@ function EmptyCircleIcon({ className }: { className?: string }) {
 interface ContextWindowSectionProps {
   collapsed: boolean;
   snapshot: StageContextWindow | null;
+  compactions: AgentSessionCompaction[];
 }
 
-function ContextWindowSection({ collapsed, snapshot }: ContextWindowSectionProps) {
+function ContextWindowSection({ collapsed, snapshot, compactions }: ContextWindowSectionProps) {
   const [open, setOpen] = useState(() => loadStoredSectionOpen("context"));
   const toggle = useCallback(() => {
     setOpen((prev) => {
@@ -343,9 +465,22 @@ function ContextWindowSection({ collapsed, snapshot }: ContextWindowSectionProps
             <ContextBar snapshot={snapshot} />
           </div>
           <ContextBreakdown snapshot={snapshot} />
+          <CompactionsRow compactions={compactions} />
         </>
       )}
     </div>
+  );
+}
+
+/** How often the conversation was compacted, and what the last one kept. */
+function CompactionsRow({ compactions }: { compactions: AgentSessionCompaction[] }) {
+  if (compactions.length === 0) return null;
+  const last = compactions[compactions.length - 1];
+  const noun = compactions.length === 1 ? "compaction" : "compactions";
+  return (
+    <p className="mt-2 px-2 text-[11px] text-fg-muted" title={`Last compaction: ${last.reason}`}>
+      {`${compactions.length} ${noun} · last kept ${last.preserved_turn_count} of ${last.original_turn_count} turns`}
+    </p>
   );
 }
 
@@ -484,10 +619,102 @@ function categoryLabel(category: ContextWindowCategory): string {
   }
 }
 
+// ---------- Files ----------
+
+/** Files the stage's agent and its subagents wrote or edited, sorted. */
+function FilesSection({ files, lastFile }: { files: string[]; lastFile: string | null }) {
+  if (files.length === 0) return <p className="text-xs text-fg-muted">No files written.</p>;
+  return (
+    <ul className="space-y-1">
+      {files.map((path) => {
+        const isLast = path === lastFile;
+        return (
+          <li key={path} title={path} className="flex items-center gap-1.5">
+            <DocumentTextIcon className="size-3.5 shrink-0 text-fg-muted" aria-hidden="true" />
+            <span className={`min-w-0 flex-1 truncate font-mono text-[11px] ${isLast ? "text-fg-2" : "text-fg-3"}`}>
+              {fileLabel(path)}
+            </span>
+            {isLast && (
+              <span className="text-[10px] uppercase tracking-wider text-fg-muted">last</span>
+            )}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+/** The path from its last two segments, so a deep tree still reads. */
+function fileLabel(path: string): string {
+  const segments = path.split("/").filter((segment) => segment.length > 0);
+  return segments.length <= 2 ? path : segments.slice(-2).join("/");
+}
+
+// ---------- Subagents ----------
+
+function SubagentsSection({ subagents }: { subagents: AgentSessionSubagent[] }) {
+  if (subagents.length === 0) return <p className="text-xs text-fg-muted">No subagents.</p>;
+  return (
+    <ul className="space-y-1">
+      {subagents.map((subagent) => (
+        <SubagentRow key={subagent.agent_id} subagent={subagent} />
+      ))}
+    </ul>
+  );
+}
+
+function SubagentRow({ subagent }: { subagent: AgentSessionSubagent }) {
+  const { status } = subagent;
+  const title = status.status === "failed" ? `${subagent.task}\n${status.error.message}` : subagent.task;
+  return (
+    <li className="flex items-center gap-1.5" title={title}>
+      <SubagentStatusIcon subagent={subagent} />
+      <span className="min-w-0 flex-1 truncate text-xs text-fg-2">{subagent.task}</span>
+      <SubagentStatusBadge subagent={subagent} />
+    </li>
+  );
+}
+
+function SubagentStatusIcon({ subagent }: { subagent: AgentSessionSubagent }) {
+  const { status } = subagent;
+  switch (status.status) {
+    case "running":
+      return <ArrowPathIcon className="size-3.5 shrink-0 animate-spin text-teal-500" aria-label="Running" />;
+    case "completed":
+      return status.success ? (
+        <CheckCircleIcon className="size-3.5 shrink-0 text-mint" aria-label="Completed" />
+      ) : (
+        <ExclamationTriangleIcon className="size-3.5 shrink-0 text-amber" aria-label="Completed without success" />
+      );
+    case "failed":
+      return <XCircleIcon className="size-3.5 shrink-0 text-coral" aria-label="Failed" />;
+    case "closed":
+      return <EmptyCircleIcon className="size-3.5 shrink-0 text-fg-muted" aria-label="Closed" />;
+  }
+}
+
+function SubagentStatusBadge({ subagent }: { subagent: AgentSessionSubagent }) {
+  const { status } = subagent;
+  switch (status.status) {
+    case "running":
+      return <span className="text-[10px] uppercase tracking-wider text-teal-500">running</span>;
+    case "completed":
+      return (
+        <span className="font-mono text-[10px] tabular-nums text-fg-muted">
+          {`${status.turns_used} ${status.turns_used === 1 ? "turn" : "turns"}`}
+        </span>
+      );
+    case "failed":
+      return <span className="text-[10px] uppercase tracking-wider text-coral">Failed</span>;
+    case "closed":
+      return <span className="text-[10px] uppercase tracking-wider text-fg-muted">closed</span>;
+  }
+}
+
 // ---------- Skills ----------
 
 interface SkillsSectionProps {
-  activated: ActivatedSkill[];
+  activated: AgentSessionActivatedSkill[];
   available: SkillSummary[];
   activatedNames: Set<string>;
 }
@@ -517,7 +744,7 @@ function SkillsSection({ activated, available, activatedNames }: SkillsSectionPr
   );
 }
 
-function SkillSourceIcon({ source }: { source: ActivatedSkill["source"] }) {
+function SkillSourceIcon({ source }: { source: AgentSessionActivatedSkill["source"] }) {
   const Icon = source === SkillActivationSource.SLASH ? CommandLineIcon : PuzzlePieceIcon;
   return <Icon className="size-3.5 shrink-0 text-fg-muted" />;
 }
@@ -549,20 +776,49 @@ function AgentToolsSection({ tools }: { tools: ToolSummary[] }) {
 
 // ---------- MCPs ----------
 
-function McpSection({ servers }: { servers: McpServerProjection[] }) {
+type McpStatus = "ready" | "failed" | "disconnected";
+
+interface McpServerRow {
+  name: string;
+  status: McpStatus;
+  /** Why it failed, or what closed its connection. */
+  error: string | null;
+  toolCount: number;
+  invoked: boolean;
+}
+
+/**
+ * The agent's MCP servers as rows. A closed connection outranks a failed
+ * start, which outranks ready; the tool count is the tools it advertised.
+ */
+function mcpServerRows(servers: Record<string, AgentSessionMcpServer>): McpServerRow[] {
+  return Object.entries(servers).map(([name, server]) => {
+    const status: McpStatus =
+      server.disconnected != null ? "disconnected" : server.error != null ? "failed" : "ready";
+    return {
+      name,
+      status,
+      error:     server.disconnected ?? server.error ?? null,
+      toolCount: server.tools.length,
+      invoked:   server.invoked,
+    };
+  });
+}
+
+function McpSection({ servers }: { servers: McpServerRow[] }) {
   if (servers.length === 0) return <p className="text-xs text-fg-muted">No MCP servers.</p>;
   return (
     <ul className="space-y-1">
       {servers.map((server) => {
         // Dim unused servers so the eye lands on the invoked ones first;
         // failed and disconnected servers keep their tone regardless.
-        const nameClass = server.status.kind === "ready" && !server.invoked
+        const nameClass = server.status === "ready" && !server.invoked
           ? "min-w-0 flex-1 truncate text-xs text-fg-muted"
           : "min-w-0 flex-1 truncate text-xs text-fg-2";
         return (
-          <li key={server.server_name} className="flex items-center gap-1.5">
+          <li key={server.name} className="flex items-center gap-1.5" title={server.error ?? undefined}>
             <McpStatusIcon status={server.status} />
-            <span className={nameClass}>{server.server_name}</span>
+            <span className={nameClass}>{server.name}</span>
             <McpStatusBadge server={server} />
           </li>
         );
@@ -571,8 +827,8 @@ function McpSection({ servers }: { servers: McpServerProjection[] }) {
   );
 }
 
-function McpStatusIcon({ status }: { status: McpServerProjection["status"] }) {
-  switch (status.kind) {
+function McpStatusIcon({ status }: { status: McpStatus }) {
+  switch (status) {
     case "ready":
       return <CheckCircleIcon className="size-3.5 shrink-0 text-mint" aria-label="Ready" />;
     case "disconnected":
@@ -587,14 +843,14 @@ function McpStatusIcon({ status }: { status: McpServerProjection["status"] }) {
   }
 }
 
-function McpStatusBadge({ server }: { server: McpServerProjection }) {
-  switch (server.status.kind) {
+function McpStatusBadge({ server }: { server: McpServerRow }) {
+  switch (server.status) {
     case "ready":
       return (
         <span className="font-mono text-[10px] tabular-nums text-fg-muted">
           {server.invoked
             ? "used"
-            : `${server.tool_count} ${server.tool_count === 1 ? "tool" : "tools"}`}
+            : `${server.toolCount} ${server.toolCount === 1 ? "tool" : "tools"}`}
         </span>
       );
     case "disconnected":
