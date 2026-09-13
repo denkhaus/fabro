@@ -4,6 +4,7 @@ use fabro_api::types::{
     ActivatedSkill as ApiActivatedSkill, AgentControlState as ApiAgentControlState,
     AgentMcpToolSummary as ApiAgentMcpToolSummary,
     AgentToolsAvailableProps as ApiAgentToolsAvailableProps,
+    BilledModelUsage as ApiBilledModelUsage,
     ContextWindowBreakdownItem as ApiContextWindowBreakdownItem,
     ContextWindowCategory as ApiContextWindowCategory,
     ContextWindowCountMethod as ApiContextWindowCountMethod,
@@ -23,19 +24,91 @@ use fabro_api::types::{
 };
 use fabro_types::{
     ActivatedSkill, AgentControlState, AgentMcpToolSummary, AgentToolsAvailableProps,
-    ContextWindowBreakdownItem, ContextWindowCategory, ContextWindowCountMethod,
+    BilledModelUsage, ContextWindowBreakdownItem, ContextWindowCategory, ContextWindowCountMethod,
     ContextWindowSnapshot, ContextWindowStaleness, ContextWindowWarning, LlmOutputKind,
-    McpServerProjection, McpServerStatus, ParallelBranchId, ParallelBranchResult, PermissionLevel,
-    SkillActivationSource, SkillSummary, SkillsProjection, StageContextWindow,
+    McpServerProjection, McpServerStatus, ModelRef, ParallelBranchId, ParallelBranchResult,
+    PermissionLevel, SkillActivationSource, SkillSummary, SkillsProjection, StageContextWindow,
     StageContextWindowUnavailableReason, StageId, StageInferenceProjection, StageProjection,
     StageToolBatchProjection, SubAgentProjection, SubAgentStatus, TodoListKind, TodoListProjection,
     ToolCategory, ToolSource, ToolSummary,
 };
+use lithos_llm::catalog::{ModelId, ProviderId};
+use lithos_llm::types::TokenCounts;
 use serde_json::json;
 
 #[test]
 fn stage_projection_reuses_canonical_type() {
     assert_same_type::<ApiStageProjection, StageProjection>();
+    assert_same_type::<ApiBilledModelUsage, BilledModelUsage>();
+}
+
+#[test]
+fn billing_by_model_rows_match_openapi_json_shape() {
+    let row = BilledModelUsage {
+        model:            ModelRef::new(ProviderId::new("openai"), ModelId::new("gpt-5.4")),
+        tokens:           TokenCounts {
+            input: 107,
+            output: 51,
+            ..TokenCounts::default()
+        },
+        total_usd_micros: Some(321),
+    };
+    let value = serde_json::to_value(&row).unwrap();
+    assert_eq!(
+        value,
+        json!({
+            "model": { "provider": "openai", "model_id": "gpt-5.4" },
+            "tokens": {
+                "input": 107,
+                "output": 51,
+                "reasoning": 0,
+                "cache_read": 0,
+                "cache_write": 0
+            },
+            "total_usd_micros": 321
+        })
+    );
+    let api_row: ApiBilledModelUsage = serde_json::from_value(value).unwrap();
+    assert_eq!(api_row, row);
+
+    let mut stage = StageProjection::new(std::num::NonZeroU32::new(1).unwrap());
+    stage.billing_by_model = vec![row.clone()];
+    let stage_json = serde_json::to_value(&stage).unwrap();
+    assert_eq!(
+        stage_json["billing_by_model"],
+        json!([serde_json::to_value(&row).unwrap()])
+    );
+    let without: StageProjection = serde_json::from_value(json!({
+        "first_event_seq": 1,
+        "prompt": null,
+        "response": null,
+        "completion": null,
+        "provider_used": null,
+        "diff": null,
+        "script_invocation": null,
+        "script_timing": null,
+        "parallel_results": null,
+        "output": null,
+        "usage": {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "reasoning_tokens": 0,
+            "cache_read_tokens": 0,
+            "cache_write_tokens": 0
+        },
+        "agent_control": "running",
+        "state": "running"
+    }))
+    .unwrap();
+    assert!(without.billing_by_model.is_empty());
+    assert!(
+        serde_json::to_value(&without)
+            .unwrap()
+            .get("billing_by_model")
+            .is_none(),
+        "no rows, nothing on the wire"
+    );
 }
 
 #[test]

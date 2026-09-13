@@ -21,6 +21,9 @@ import type { AgentControlState } from './agent-control-state';
 import type { AgentSessionProjection } from './agent-session-projection';
 // May contain unused imports in some cases
 // @ts-ignore
+import type { BilledModelUsage } from './billed-model-usage';
+// May contain unused imports in some cases
+// @ts-ignore
 import type { BilledTokenCounts } from './billed-token-counts';
 // May contain unused imports in some cases
 // @ts-ignore
@@ -145,6 +148,10 @@ export interface StageProjection {
      * Whether the agent is executing normally or waiting for steering after an interrupt.
      */
     'agent_control': AgentControlState;
+    /**
+     * The completed stage\'s `usage` split by model, as `stage.completed` reported it: the root session\'s route and each subagent\'s own model, a subagent whose model the catalog does not know billed at the root\'s. Sums to `usage`. Empty while the stage runs and for stages without a coding agent; the billing rollup then bills `usage` to `model`.
+     */
+    'billing_by_model'?: Array<BilledModelUsage>;
     'agent'?: AgentSessionProjection | null;
     /**
      * Lifecycle state of the stage projection.
