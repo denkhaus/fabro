@@ -3310,8 +3310,8 @@ mod tests {
         // "zai/glm-5.3" name failed run-history activation verification
         // and crash-looped the server on healthy data.
         let raw = r#"{"id":"00000000-0000-0000-0000-00000000000a","ts":"2026-09-08T08:00:00Z","run_id":"01M0NGQXB67674XQ5YCR1MB4BN","event":"agent.message","properties":{"text":"ok","model":{"provider":"zai","model_id":"glm-5.3"},"billing":{"input_tokens":10,"output_tokens":2,"total_tokens":12,"reasoning_tokens":0,"cache_read_tokens":0,"cache_write_tokens":0,"total_usd_micros":7},"tool_call_count":0,"visit":1}}"#;
-        let event = RunEvent::from_json_str(raw)
-            .expect("legacy agent.message row should normalize");
+        let event =
+            RunEvent::from_json_str(raw).expect("legacy agent.message row should normalize");
         let EventBody::Agent(props) = event.body else {
             panic!("expected Agent envelope, got {:?}", event.body);
         };
