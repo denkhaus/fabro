@@ -358,6 +358,10 @@ fn workflow_prompts_carry_no_expandable_slash_tokens() {
 fn conductor_legs_teach_the_workflow_version_contract() {
     for leg in ["develop-leg.md", "revise-leg.md"] {
         let base = repo_root().join(".fabro/workflows/conductor/prompts");
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "synchronous test-asset read (tiny file, contract pin)"
+        )]
         let source = std::fs::read_to_string(base.join(leg))
             .unwrap_or_else(|error| panic!("conductor prompt {leg} should exist: {error}"));
         assert!(
@@ -383,6 +387,10 @@ fn repo_root() -> std::path::PathBuf {
         .to_path_buf()
 }
 
+#[expect(
+    clippy::disallowed_methods,
+    reason = "synchronous asset enumeration in tests (tiny dirs, contract pins)"
+)]
 fn workflow_fabro_files() -> Vec<(String, String)> {
     let dir = repo_root().join(".fabro/workflows");
     let mut out = Vec::new();
@@ -401,6 +409,10 @@ fn workflow_fabro_files() -> Vec<(String, String)> {
     out
 }
 
+#[expect(
+    clippy::disallowed_methods,
+    reason = "synchronous asset enumeration in tests (tiny dirs, contract pins)"
+)]
 fn workflow_prompt_files() -> Vec<(String, String)> {
     let dir = repo_root().join(".fabro/workflows");
     let mut out = Vec::new();
