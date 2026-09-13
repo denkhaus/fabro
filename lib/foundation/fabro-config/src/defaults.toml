@@ -22,10 +22,6 @@ enabled = true
 enabled = true
 push = true
 
-[run.meta_branch]
-enabled = true
-push = true
-
 [run.environment]
 id = "default"
 

@@ -14,7 +14,15 @@
 
 
 
-export interface RunMetaBranchSettings {
-    'enabled': boolean;
-    'push': boolean;
-}
+/**
+ * Where a run\'s Git author/committer identity came from.
+ */
+
+export const GitIdentitySource = {
+    EXPLICIT: 'explicit',
+    GITHUB_APP: 'github_app',
+    GITHUB_PAT: 'github_pat',
+    DEFAULT: 'default'
+} as const;
+
+export type GitIdentitySource = typeof GitIdentitySource[keyof typeof GitIdentitySource];

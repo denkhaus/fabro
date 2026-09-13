@@ -357,6 +357,7 @@ mod tests {
                 settings:         WorkflowSettings::default(),
                 run_dir:          std::path::PathBuf::new(),
                 cancel_token:     CancellationToken::new(),
+                git_identity:     None,
                 run_id:           RunId::new(),
                 labels:           HashMap::new(),
                 workflow_slug:    Some("test".to_string()),

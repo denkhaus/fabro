@@ -42,7 +42,8 @@ pub struct RunLayer {
     pub clone:         Option<RunCloneLayer>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub run_branch:    Option<RunRunBranchLayer>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    /// Legacy input only. Metadata branches are no longer written.
+    #[serde(default, skip_serializing)]
     pub meta_branch:   Option<RunMetaBranchLayer>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub environment:   Option<RunEnvironmentLayer>,
@@ -251,13 +252,22 @@ pub struct RunGitLayer {
 )]
 #[serde(deny_unknown_fields)]
 pub struct GitAuthorLayer {
-    /// Git author name for checkpoint commits.
+    /// Git author and committer name for every commit the run creates. When
+    /// unset, the run uses its GitHub App bot or PAT user, else `Fabro`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[option(default = "\"fabro\"", value_type = "string")]
+    #[option(
+        default = "resolved from the run's GitHub credential",
+        value_type = "string"
+    )]
     pub name:  Option<String>,
-    /// Git author email for checkpoint commits.
+    /// Git author and committer email for every commit the run creates. When
+    /// unset, the run uses the credential's noreply address, else
+    /// `noreply@fabro.sh`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[option(default = "\"fabro@local\"", value_type = "string")]
+    #[option(
+        default = "resolved from the run's GitHub credential",
+        value_type = "string"
+    )]
     pub email: Option<String>,
 }
 
@@ -332,7 +342,7 @@ pub struct RunRunBranchLayer {
     pub push:    Option<bool>,
 }
 
-/// `[run.meta_branch]` — Fabro-managed checkpoint metadata branch policy.
+/// Legacy `[run.meta_branch]` input, accepted and ignored on config load.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, fabro_macros::Combine)]
 #[serde(deny_unknown_fields)]
 pub struct RunMetaBranchLayer {

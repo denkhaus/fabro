@@ -77,8 +77,10 @@ pub fn coding_event_name(event: &CodingEvent) -> &'static str {
         CodingEvent::LoopDetected => "agent.loop.detected",
         CodingEvent::ToolRoundsExhausted { .. } => "agent.tool.rounds.exhausted",
         CodingEvent::RouteFailover { .. } => "agent.route.failover",
+        CodingEvent::RouteFailoverStopped { .. } => "agent.route.failover.stopped",
         CodingEvent::McpServerReady { .. } => "agent.mcp.server.ready",
         CodingEvent::McpServerFailed { .. } => "agent.mcp.server.failed",
+        CodingEvent::McpServerDisconnected { .. } => "agent.mcp.server.disconnected",
         CodingEvent::SteeringInjected { .. } => "agent.steering.injected",
         CodingEvent::RoundInterrupted { .. } => "agent.round.interrupted",
         CodingEvent::CompactionStarted { .. } => "agent.compaction.started",
@@ -124,8 +126,10 @@ pub const CODING_EVENT_NAMES: &[&str] = &[
     "agent.loop.detected",
     "agent.tool.rounds.exhausted",
     "agent.route.failover",
+    "agent.route.failover.stopped",
     "agent.mcp.server.ready",
     "agent.mcp.server.failed",
+    "agent.mcp.server.disconnected",
     "agent.steering.injected",
     "agent.round.interrupted",
     "agent.compaction.started",
@@ -238,6 +242,10 @@ pub struct AgentMcpReadyProps {
     pub tool_count:  usize,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tools:       Vec<AgentMcpToolSummary>,
+    /// Whole milliseconds from the server's launch to its tools being
+    /// listed. Events written before the field existed read as `0`.
+    #[serde(default)]
+    pub startup_ms:  u64,
     pub visit:       u32,
 }
 
@@ -251,6 +259,22 @@ pub struct AgentMcpToolSummary {
 pub struct AgentMcpFailedProps {
     pub server_name: String,
     pub error:       String,
+    /// Whole milliseconds from the server's launch to the failure. Events
+    /// written before the field existed read as `0`.
+    #[serde(default)]
+    pub startup_ms:  u64,
+    pub visit:       u32,
+}
+
+/// An MCP server that was ready lost its connection during the stage; every
+/// later call to its tools fails until the session ends. Pebble reports the
+/// disconnect once per server, from whichever session's tool call first
+/// observed the closed connection.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AgentMcpDisconnectedProps {
+    pub server_name: String,
+    /// What closed the connection, as the client observed it.
+    pub error:       String,
     pub visit:       u32,
 }
 
@@ -258,7 +282,7 @@ pub struct AgentMcpFailedProps {
 mod tests {
     use std::time::{Duration, UNIX_EPOCH};
 
-    use pebble_coding_agent::events::TokenUsage;
+    use pebble_coding_agent::events::{ErrorData, ErrorKind, FailoverStop, TokenUsage};
     use serde_json::json;
 
     use super::*;
@@ -313,6 +337,10 @@ mod tests {
             CodingEvent::SessionEnded,
             CodingEvent::ProcessingEnd,
             CodingEvent::LoopDetected,
+            CodingEvent::McpServerDisconnected {
+                server: "github".to_string(),
+                error:  "transport closed".to_string(),
+            },
             CodingEvent::AssistantMessage {
                 text:            String::new(),
                 model:           "gpt-5.4".to_string(),
@@ -329,5 +357,17 @@ mod tests {
         }
         assert!(is_coding_event_name("todo.updated"));
         assert!(!is_coding_event_name("agent.session.activated"));
+    }
+
+    #[test]
+    fn a_stopped_failover_has_its_own_name() {
+        let stopped = CodingEvent::RouteFailoverStopped {
+            route:   "anthropic/claude-fable-5".to_string(),
+            attempt: 2,
+            reason:  FailoverStop::Exhausted,
+            error:   ErrorData::new(ErrorKind::Llm, "overloaded"),
+        };
+        assert_eq!(coding_event_name(&stopped), "agent.route.failover.stopped");
+        assert!(is_coding_event_name("agent.route.failover.stopped"));
     }
 }

@@ -13,7 +13,7 @@ use strum::{Display, EnumString, IntoStaticStr};
 
 use crate::run_event::{AgentSessionActivatedProps, StagePromptProps};
 use crate::{
-    AgentBackend, AgentMcpToolSummary, BilledTokenCounts, Checkpoint, Conclusion,
+    AgentBackend, AgentMcpToolSummary, BilledTokenCounts, Checkpoint, Conclusion, GitIdentity,
     InterviewQuestionRecord, InvalidTransition, ModelRef, ParallelBranchId, PullRequestCreation,
     PullRequestLink, RunApproval, RunControlAction, RunDiff, RunId, RunSandbox, RunSpec, RunStatus,
     RunTiming, StageCompletion, StageHandler, StageId, StageState, StageTiming, StartRecord,
@@ -47,6 +47,10 @@ pub struct RunProjection {
     pub superseded_by:         Option<RunId>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub retried_from:          Option<RunId>,
+    /// The Git author/committer identity the run resolved for its commits.
+    /// Absent until the run's first initialization resolves it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub git_identity:          Option<GitIdentity>,
     pub pending_interviews:    BTreeMap<String, PendingInterviewRecord>,
     stages:                    HashMap<StageId, StageProjection>,
 }
@@ -450,8 +454,17 @@ pub struct McpServerProjection {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum McpServerStatus {
-    Ready { tools: Vec<AgentMcpToolSummary> },
-    Failed { error: String },
+    Ready {
+        tools: Vec<AgentMcpToolSummary>,
+    },
+    Failed {
+        error: String,
+    },
+    /// The server was ready and then its connection closed during the
+    /// stage; its tools fail until the session ends.
+    Disconnected {
+        error: String,
+    },
 }
 
 /// Convert a 1-based event sequence number into the `NonZeroU32` form used for
@@ -760,6 +773,7 @@ impl RunProjection {
             pull_request_creation: None,
             superseded_by: None,
             retried_from: None,
+            git_identity: None,
             pending_interviews: BTreeMap::new(),
             stages: HashMap::new(),
         }

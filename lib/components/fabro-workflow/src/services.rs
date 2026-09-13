@@ -10,15 +10,15 @@ use fabro_interview::Interviewer;
 use fabro_llm::credentials::CredentialProvider;
 use fabro_llm::lithos_catalog::Catalog;
 use fabro_sandbox::RunSandbox;
-use fabro_types::{ManifestPath, RunId};
+use fabro_types::{GitIdentity, ManifestPath, RunId};
 use lithos_llm::catalog::ProviderId;
 use pebble_coding_agent::tools::{ToolEnvProvider, ToolError};
 use tokio_util::sync::CancellationToken;
 
 use crate::event::Emitter;
+use crate::git_identity;
 use crate::handler::HandlerRegistry;
 use crate::interview_runtime::RunInterviewBlocker;
-use crate::run_metadata::{RunMetadataRuntime, RunMetadataWriterHandle};
 use crate::runtime_store::RunStoreHandle;
 use crate::sandbox_git_runtime::SandboxGitRuntime;
 use crate::stage_execution::StageExecutionTracker;
@@ -112,8 +112,6 @@ pub struct RunServices {
     pub llm_source:               Arc<dyn CredentialProvider>,
     pub catalog:                  Arc<Catalog>,
     pub(crate) sandbox_git:       Arc<SandboxGitRuntime>,
-    pub(crate) metadata_runtime:  Arc<RunMetadataRuntime>,
-    pub(crate) metadata_writer:   Option<RunMetadataWriterHandle>,
     pub(crate) interview_blocker: Arc<RunInterviewBlocker>,
     /// Run-scoped stage execution allocator, shared between the core
     /// lifecycle and direct-dispatch handlers such as parallel branches.
@@ -134,8 +132,6 @@ impl RunServices {
         llm_source: Arc<dyn CredentialProvider>,
         catalog: Arc<Catalog>,
         sandbox_git: Arc<SandboxGitRuntime>,
-        metadata_runtime: Arc<RunMetadataRuntime>,
-        metadata_writer: Option<RunMetadataWriterHandle>,
         stage_executions: StageExecutionTracker,
     ) -> Arc<Self> {
         Arc::new(Self {
@@ -150,8 +146,6 @@ impl RunServices {
             llm_source,
             catalog,
             sandbox_git,
-            metadata_runtime,
-            metadata_writer,
             interview_blocker: Arc::new(RunInterviewBlocker::new()),
             stage_executions,
         })
@@ -247,6 +241,9 @@ pub struct EngineServices {
     pub base_env:        HashMap<String, String>,
     /// GitHub token source used to inject `GITHUB_TOKEN` at the point of use.
     pub github_token:    Option<Arc<InstallationTokenSource>>,
+    /// The run's resolved Git identity, injected as the `GIT_AUTHOR_*` /
+    /// `GIT_COMMITTER_*` variables into every stage environment.
+    pub git_identity:    Option<GitIdentity>,
     /// Typed values from `[run.inputs]`, available to prompt templates.
     pub inputs:          HashMap<String, toml::Value>,
     /// When true, handlers should skip real execution and return simulated
@@ -260,7 +257,12 @@ pub struct EngineServices {
 
 impl EngineServices {
     pub async fn env_for_stage(&self) -> anyhow::Result<HashMap<String, String>> {
-        resolve_workflow_env(&self.base_env, self.github_token.as_ref()).await
+        resolve_workflow_env(
+            &self.base_env,
+            self.github_token.as_ref(),
+            self.git_identity.as_ref(),
+        )
+        .await
     }
 
     /// Test-only default: empty registry and cross-phase services.
@@ -340,14 +342,13 @@ impl EngineServices {
                 Arc::new(StubCredentialSource),
                 Arc::new(fabro_llm::default_catalog()),
                 Arc::new(SandboxGitRuntime::new()),
-                Arc::new(RunMetadataRuntime::new()),
-                None,
                 StageExecutionTracker::default(),
             ),
             registry:        Arc::new(HandlerRegistry::new(Box::new(start::StartHandler))),
             interviewer:     Arc::new(fabro_interview::AutoApproveInterviewer::engine()),
             base_env:        HashMap::new(),
             github_token:    None,
+            git_identity:    None,
             inputs:          HashMap::new(),
             dry_run:         false,
             workflow_path:   None,
@@ -359,13 +360,21 @@ impl EngineServices {
 pub struct WorkflowToolEnvProvider {
     pub base_env:     HashMap<String, String>,
     pub github_token: Option<Arc<InstallationTokenSource>>,
+    /// The run's resolved Git identity; see [`EngineServices::git_identity`].
+    pub git_identity: Option<GitIdentity>,
 }
 
 impl WorkflowToolEnvProvider {
     /// The environment tool processes run with right now: the configured
-    /// sandbox env plus a fresh `GITHUB_TOKEN` when the run has one.
+    /// sandbox env, a fresh `GITHUB_TOKEN` when the run has one, and the
+    /// run's Git identity.
     pub async fn resolve(&self) -> anyhow::Result<HashMap<String, String>> {
-        resolve_workflow_env(&self.base_env, self.github_token.as_ref()).await
+        resolve_workflow_env(
+            &self.base_env,
+            self.github_token.as_ref(),
+            self.git_identity.as_ref(),
+        )
+        .await
     }
 }
 
@@ -381,6 +390,7 @@ impl ToolEnvProvider for WorkflowToolEnvProvider {
 async fn resolve_workflow_env(
     base_env: &HashMap<String, String>,
     github_token: Option<&Arc<InstallationTokenSource>>,
+    identity: Option<&GitIdentity>,
 ) -> anyhow::Result<HashMap<String, String>> {
     let mut env = base_env.clone();
     if let Some(source) = github_token {
@@ -389,6 +399,11 @@ async fn resolve_workflow_env(
             "GITHUB_TOKEN".to_string(),
             resolved.token.expose().to_owned(),
         );
+    }
+    // Applied last: the run's identity wins over any `[run.environment]`
+    // entry of the same name, so `run.git.author` stays the one control.
+    if let Some(identity) = identity {
+        git_identity::apply_git_identity_env(&mut env, identity);
     }
     Ok(env)
 }
@@ -424,12 +439,46 @@ mod tests {
         let provider = WorkflowToolEnvProvider {
             base_env:     HashMap::from([("FOO".to_string(), "bar".to_string())]),
             github_token: None,
+            git_identity: None,
         };
 
         let env = provider.resolve().await.unwrap();
 
         assert_eq!(env.get("FOO").map(String::as_str), Some("bar"));
         assert!(!env.contains_key("GITHUB_TOKEN"));
+        assert!(!env.contains_key("GIT_AUTHOR_NAME"));
+    }
+
+    #[tokio::test]
+    async fn workflow_tool_env_provider_git_identity_wins_over_base_env() {
+        let provider = WorkflowToolEnvProvider {
+            base_env:     HashMap::from([
+                ("GIT_AUTHOR_NAME".to_string(), "from-run-env".to_string()),
+                (
+                    "GIT_COMMITTER_EMAIL".to_string(),
+                    "run@example.com".to_string(),
+                ),
+            ]),
+            github_token: None,
+            git_identity: Some(fabro_types::GitIdentity {
+                name:   "octocat".to_string(),
+                email:  "1+octocat@users.noreply.github.com".to_string(),
+                source: fabro_types::GitIdentitySource::GithubPat,
+            }),
+        };
+
+        let env = provider.resolve().await.unwrap();
+
+        assert_eq!(env["GIT_AUTHOR_NAME"], "octocat");
+        assert_eq!(
+            env["GIT_AUTHOR_EMAIL"],
+            "1+octocat@users.noreply.github.com"
+        );
+        assert_eq!(env["GIT_COMMITTER_NAME"], "octocat");
+        assert_eq!(
+            env["GIT_COMMITTER_EMAIL"],
+            "1+octocat@users.noreply.github.com"
+        );
     }
 
     #[tokio::test]
@@ -437,6 +486,7 @@ mod tests {
         let provider = WorkflowToolEnvProvider {
             base_env:     HashMap::from([("FOO".to_string(), "bar".to_string())]),
             github_token: Some(InstallationTokenSource::pat("ghp_pat".to_string())),
+            git_identity: None,
         };
 
         let env = provider.resolve().await.unwrap();
@@ -462,6 +512,7 @@ mod tests {
                 "owner/repo",
                 Arc::new(FailingMinter),
             )),
+            git_identity: None,
         };
 
         let err = format!("{:#}", provider.resolve().await.unwrap_err());

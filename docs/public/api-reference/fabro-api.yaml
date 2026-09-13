@@ -9865,6 +9865,35 @@ components:
         dirty:
           $ref: "#/components/schemas/DirtyStatus"
 
+    GitIdentitySource:
+      description: Where a run's Git author/committer identity came from.
+      type: string
+      enum:
+        - explicit
+        - github_app
+        - github_pat
+        - default
+
+    GitIdentity:
+      description: >
+        The Git author and committer identity a run resolved once and uses for
+        every commit it creates: engine checkpoints, metadata commits, and any
+        commit a workflow command or agent tool runs.
+      type: object
+      required:
+        - name
+        - email
+        - source
+      properties:
+        name:
+          type: string
+          example: "fabro-sh[bot]"
+        email:
+          type: string
+          example: "123456+fabro-sh[bot]@users.noreply.github.com"
+        source:
+          $ref: "#/components/schemas/GitIdentitySource"
+
     ManifestGoal:
       description: Resolved goal kind and content.
       type: object
@@ -11833,11 +11862,13 @@ components:
       oneOf:
         - $ref: "#/components/schemas/McpServerStatusReady"
         - $ref: "#/components/schemas/McpServerStatusFailed"
+        - $ref: "#/components/schemas/McpServerStatusDisconnected"
       discriminator:
         propertyName: kind
         mapping:
           ready: "#/components/schemas/McpServerStatusReady"
           failed: "#/components/schemas/McpServerStatusFailed"
+          disconnected: "#/components/schemas/McpServerStatusDisconnected"
 
     McpServerStatusReady:
       type: object
@@ -11864,6 +11895,20 @@ components:
           enum: [failed]
         error:
           type: string
+
+    McpServerStatusDisconnected:
+      description: The server was ready and then its connection closed during the stage; its tools fail until the session ends.
+      type: object
+      required:
+        - kind
+        - error
+      properties:
+        kind:
+          type: string
+          enum: [disconnected]
+        error:
+          type: string
+          description: What closed the connection, as the client observed it.
 
     AgentMcpToolSummary:
       description: Summary of one tool exposed by an MCP server.
@@ -12251,6 +12296,13 @@ components:
         retried_from:
           type: ["string", "null"]
           description: Source run ID when this run was created by manual retry.
+        git_identity:
+          oneOf:
+            - $ref: "#/components/schemas/GitIdentity"
+            - type: "null"
+          description: >
+            The Git author/committer identity the run resolved for its
+            commits. Absent until the run's first initialization resolves it.
         pending_interviews:
           type: object
           additionalProperties:
@@ -15020,7 +15072,6 @@ components:
         - checkpoint
         - clone
         - run_branch
-        - meta_branch
         - environment
         - notifications
         - interviews
@@ -15059,8 +15110,6 @@ components:
           $ref: "#/components/schemas/RunCloneSettings"
         run_branch:
           $ref: "#/components/schemas/RunBranchSettings"
-        meta_branch:
-          $ref: "#/components/schemas/RunMetaBranchSettings"
         environment:
           $ref: "#/components/schemas/RunEnvironmentSettings"
         notifications:
@@ -15307,15 +15356,6 @@ components:
           description: Git history depth. Set to 0 to clone full history.
 
     RunBranchSettings:
-      type: object
-      required: [enabled, push]
-      properties:
-        enabled:
-          type: boolean
-        push:
-          type: boolean
-
-    RunMetaBranchSettings:
       type: object
       required: [enabled, push]
       properties:

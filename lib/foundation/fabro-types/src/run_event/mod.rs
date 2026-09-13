@@ -147,10 +147,16 @@ pub enum EventBody {
     RunFailed(RunFailedProps),
     #[serde(rename = "run.notice")]
     RunNotice(RunNoticeProps),
+    /// Historical metadata snapshot event. Retained for replay; no longer
+    /// emitted.
     #[serde(rename = "metadata.snapshot.started")]
     MetadataSnapshotStarted(MetadataSnapshotStartedProps),
+    /// Historical metadata snapshot event. Retained for replay; no longer
+    /// emitted.
     #[serde(rename = "metadata.snapshot.completed")]
     MetadataSnapshotCompleted(MetadataSnapshotCompletedProps),
+    /// Historical metadata snapshot event. Retained for replay; no longer
+    /// emitted.
     #[serde(rename = "metadata.snapshot.failed")]
     MetadataSnapshotFailed(MetadataSnapshotFailedProps),
     #[serde(rename = "stage.started")]
@@ -224,6 +230,8 @@ pub enum EventBody {
     AgentMcpReady(AgentMcpReadyProps),
     #[serde(rename = "agent.mcp.failed")]
     AgentMcpFailed(AgentMcpFailedProps),
+    #[serde(rename = "agent.mcp.disconnected")]
+    AgentMcpDisconnected(AgentMcpDisconnectedProps),
     #[serde(rename = "subgraph.started")]
     SubgraphStarted(SubgraphStartedProps),
     #[serde(rename = "subgraph.completed")]
@@ -255,6 +263,8 @@ pub enum EventBody {
     SetupCommandCompleted(SetupCommandCompletedProps),
     #[serde(rename = "setup.completed")]
     SetupCompleted(SetupCompletedProps),
+    #[serde(rename = "git.identity.resolved")]
+    GitIdentityResolved(GitIdentityResolvedProps),
     #[serde(rename = "setup.failed")]
     SetupFailed(SetupFailedProps),
     #[serde(rename = "watchdog.timeout")]
@@ -513,6 +523,7 @@ impl EventBody {
             Self::AgentSteerDropped(_) => "agent.steer.dropped",
             Self::AgentMcpReady(_) => "agent.mcp.ready",
             Self::AgentMcpFailed(_) => "agent.mcp.failed",
+            Self::AgentMcpDisconnected(_) => "agent.mcp.disconnected",
             Self::SubgraphStarted(_) => "subgraph.started",
             Self::SubgraphCompleted(_) => "subgraph.completed",
             Self::SandboxInitializing(_) => "sandbox.initializing",
@@ -523,6 +534,7 @@ impl EventBody {
             Self::SetupCommandStarted(_) => "setup.command.started",
             Self::SetupCommandCompleted(_) => "setup.command.completed",
             Self::SetupCompleted(_) => "setup.completed",
+            Self::GitIdentityResolved(_) => "git.identity.resolved",
             Self::SetupFailed(_) => "setup.failed",
             Self::StallWatchdogTimeout(_) => "watchdog.timeout",
             Self::ArtifactCaptured(_) => "artifact.captured",
@@ -668,6 +680,7 @@ fn is_known_event_name(event: &str) -> bool {
                 | "agent.steer.dropped"
                 | "agent.mcp.ready"
                 | "agent.mcp.failed"
+                | "agent.mcp.disconnected"
                 | "subgraph.started"
                 | "subgraph.completed"
                 | "sandbox.initializing"
@@ -685,6 +698,7 @@ fn is_known_event_name(event: &str) -> bool {
                 | "setup.command.completed"
                 | "setup.completed"
                 | "setup.failed"
+                | "git.identity.resolved"
                 | "watchdog.timeout"
                 | "artifact.captured"
                 | "ssh.ready"
@@ -1740,6 +1754,44 @@ mod tests {
         assert_eq!(props.attempt, None);
         assert_eq!(props.requested_reasoning_effort, None);
         assert_eq!(props.effective_reasoning_effort, None);
+        assert_eq!(props.continuation, None);
+    }
+
+    #[test]
+    fn failover_event_round_trips_its_continuation() {
+        let body = EventBody::Failover(FailoverProps {
+            original_provider: Some("anthropic".to_string()),
+            original_model: Some("claude-fable-5".to_string()),
+            attempt: Some(1),
+            from_provider: "anthropic".to_string(),
+            from_model: "claude-fable-5".to_string(),
+            to_provider: "openai".to_string(),
+            to_model: "gpt-5.6-sol".to_string(),
+            requested_reasoning_effort: None,
+            effective_reasoning_effort: None,
+            error: "overloaded".to_string(),
+            continuation: Some("continue_turn".to_string()),
+        });
+        let value = serde_json::to_value(&body).unwrap();
+        assert_eq!(value["event"], "agent.failover");
+        assert_eq!(value["properties"]["continuation"], "continue_turn");
+        let parsed: EventBody = serde_json::from_value(value).unwrap();
+        assert_eq!(parsed, body);
+
+        // A one-shot stage, or an event written before pebble reported the
+        // continuation, omits the field rather than writing `null`.
+        let EventBody::Failover(mut props) = body else {
+            unreachable!()
+        };
+        props.continuation = None;
+        let value = serde_json::to_value(EventBody::Failover(props)).unwrap();
+        assert!(
+            value["properties"]
+                .as_object()
+                .unwrap()
+                .get("continuation")
+                .is_none()
+        );
     }
 
     #[test]
@@ -2777,6 +2829,7 @@ mod tests {
                 name:          "mcp__github__create_issue".to_string(),
                 original_name: "create_issue".to_string(),
             }],
+            startup_ms:  0,
             visit:       1,
         });
         let value = serde_json::to_value(&body).unwrap();
@@ -2792,11 +2845,70 @@ mod tests {
     }
 
     #[test]
+    fn agent_mcp_ready_and_failed_carry_startup_ms_and_default_it_when_absent() {
+        let ready = EventBody::AgentMcpReady(AgentMcpReadyProps {
+            server_name: "github".to_string(),
+            tool_count:  0,
+            tools:       Vec::new(),
+            startup_ms:  842,
+            visit:       1,
+        });
+        let value = serde_json::to_value(&ready).unwrap();
+        assert_eq!(value["properties"]["startup_ms"], 842);
+
+        let failed = EventBody::AgentMcpFailed(AgentMcpFailedProps {
+            server_name: "filesystem".to_string(),
+            error:       "could not launch `npx`".to_string(),
+            startup_ms:  4,
+            visit:       1,
+        });
+        let value = serde_json::to_value(&failed).unwrap();
+        assert_eq!(value["properties"]["startup_ms"], 4);
+
+        // Events written before pebble reported startup time.
+        let legacy: EventBody = serde_json::from_value(json!({
+            "event": "agent.mcp.failed",
+            "properties": {
+                "server_name": "filesystem",
+                "error": "Connection refused",
+                "visit": 1
+            }
+        }))
+        .unwrap();
+        match legacy {
+            EventBody::AgentMcpFailed(props) => assert_eq!(props.startup_ms, 0),
+            other => panic!("unexpected body: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn agent_mcp_disconnected_round_trips() {
+        let body = EventBody::AgentMcpDisconnected(AgentMcpDisconnectedProps {
+            server_name: "github".to_string(),
+            error:       "transport closed".to_string(),
+            visit:       1,
+        });
+        let value = serde_json::to_value(&body).unwrap();
+        assert_eq!(value["event"], "agent.mcp.disconnected");
+        assert_eq!(
+            value["properties"],
+            json!({
+                "server_name": "github",
+                "error": "transport closed",
+                "visit": 1
+            })
+        );
+        let parsed: EventBody = serde_json::from_value(value).unwrap();
+        assert_eq!(parsed, body);
+    }
+
+    #[test]
     fn agent_mcp_ready_omits_tools_when_empty() {
         let body = EventBody::AgentMcpReady(AgentMcpReadyProps {
             server_name: "github".to_string(),
             tool_count:  0,
             tools:       Vec::new(),
+            startup_ms:  0,
             visit:       1,
         });
         let value = serde_json::to_value(&body).unwrap();

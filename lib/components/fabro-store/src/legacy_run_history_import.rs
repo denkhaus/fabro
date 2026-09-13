@@ -1691,30 +1691,84 @@ mod tests {
     /// through the current projection and print the first JSON pointer
     /// where the recomputed summary diverges from the stored row. Used to
     /// root-cause the 2026-09-13 activation crash-loop on run 01M0NGQXB.
+    ///
+    /// Run with: `FABRO_DIAG_DB=<sqlite file> cargo nextest run -p
+    /// fabro-store diag_replay_real_run`. Skips silently when the
+    /// variable is unset.
     #[test]
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "diagnostic-only process-env lookup; not a fixed EnvVars name"
+    )]
     fn diag_replay_real_run_and_diff_summary_json() {
+        use sqlx::Row as _;
+        use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
+        use tokio::runtime::Builder;
+
+        use crate::run_summary_store::summary_json_value;
+
+        fn strip(mut value: serde_json::Value) -> serde_json::Value {
+            if let Some(workflow) = value
+                .get_mut("workflow")
+                .and_then(serde_json::Value::as_object_mut)
+            {
+                workflow.remove("workflow_version_id");
+            }
+            value
+        }
+
+        fn walk(
+            pointer: &str,
+            a: &serde_json::Value,
+            b: &serde_json::Value,
+            out: &mut Vec<String>,
+        ) {
+            if a == b {
+                return;
+            }
+            match (a, b) {
+                (serde_json::Value::Object(x), serde_json::Value::Object(y)) => {
+                    for key in x.keys().chain(y.keys()) {
+                        walk(
+                            &format!("{pointer}/{key}"),
+                            x.get(key).unwrap_or(&serde_json::Value::Null),
+                            y.get(key).unwrap_or(&serde_json::Value::Null),
+                            out,
+                        );
+                    }
+                }
+                (serde_json::Value::Array(x), serde_json::Value::Array(y)) => {
+                    for index in 0..x.len().max(y.len()) {
+                        walk(
+                            &format!("{pointer}/{index}"),
+                            x.get(index).unwrap_or(&serde_json::Value::Null),
+                            y.get(index).unwrap_or(&serde_json::Value::Null),
+                            out,
+                        );
+                    }
+                }
+                _ => out.push(format!("{pointer}: stored={a} recomputed={b}")),
+            }
+        }
+
         let Ok(path) = std::env::var("FABRO_DIAG_DB") else {
-            eprintln!("FABRO_DIAG_DB not set; skipping");
             return;
         };
-        let runtime = tokio::runtime::Builder::new_current_thread()
+        let runtime = Builder::new_current_thread()
             .enable_all()
             .build()
             .expect("runtime");
         runtime.block_on(async move {
-            use sqlx::Row as _;
-
-            let options = sqlx::sqlite::SqliteConnectOptions::new()
-                .filename(&path)
-                .read_only(true);
-            let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            let run_id_text = "01M0NGQXB67674XQ5YCR1MB4BN";
+            let run_id: RunId = run_id_text.parse().expect("run id");
+            let options = SqliteConnectOptions::new().filename(&path).read_only(true);
+            let pool = SqlitePoolOptions::new()
                 .max_connections(1)
                 .connect_with(options)
                 .await
                 .expect("open diagnostic db");
             let mut connection = pool.acquire().await.expect("acquire connection");
-            let run_id_text = "01M0NGQXB67674XQ5YCR1MB4BN";
-            let run_id: RunId = run_id_text.parse().expect("run id");
+
             let rows = sqlx::query(
                 "SELECT seq, event_json FROM run_events WHERE run_id = ? ORDER BY seq ASC",
             )
@@ -1729,15 +1783,15 @@ mod tests {
                 let payload: EventPayload =
                     serde_json::from_str(&event_json).expect("payload parses");
                 let event = RunEvent::try_from(&payload).expect("event normalizes");
+                let seq: i64 = row.try_get("seq").expect("seq");
                 envelopes.push(EventEnvelope {
-                    seq: row.try_get::<i64, _>("seq").expect("seq") as u32,
+                    seq: u32::try_from(seq).expect("seq fits u32"),
                     event,
                 });
             }
-            eprintln!("replaying {} events", envelopes.len());
             let entry = ProjectedRun::replay(run_id, &envelopes).expect("replay");
 
-            let recomputed = crate::run_summary_store::summary_json_value(&entry);
+            let recomputed = summary_json_value(&entry);
             let stored_json: String =
                 sqlx::query_scalar("SELECT summary_json FROM runs WHERE id = ?")
                     .bind(run_id_text)
@@ -1747,60 +1801,20 @@ mod tests {
             let stored: serde_json::Value =
                 serde_json::from_str(&stored_json).expect("stored json");
 
-            fn strip(mut v: serde_json::Value) -> serde_json::Value {
-                if let Some(w) = v
-                    .get_mut("workflow")
-                    .and_then(serde_json::Value::as_object_mut)
-                {
-                    w.remove("workflow_version_id");
-                }
-                v
-            }
             let a = strip(stored);
             let b = strip(recomputed);
             if a == b {
-                eprintln!("SUMMARY MATCHES");
                 return;
-            }
-            fn walk(
-                pointer: &str,
-                a: &serde_json::Value,
-                b: &serde_json::Value,
-                out: &mut Vec<String>,
-            ) {
-                if a == b {
-                    return;
-                }
-                match (a, b) {
-                    (serde_json::Value::Object(x), serde_json::Value::Object(y)) => {
-                        for k in x.keys().chain(y.keys()) {
-                            walk(
-                                &format!("{pointer}/{k}"),
-                                x.get(k).unwrap_or(&serde_json::Value::Null),
-                                y.get(k).unwrap_or(&serde_json::Value::Null),
-                                out,
-                            );
-                        }
-                    }
-                    (serde_json::Value::Array(x), serde_json::Value::Array(y)) => {
-                        for i in 0..x.len().max(y.len()) {
-                            walk(
-                                &format!("{pointer}/{i}"),
-                                x.get(i).unwrap_or(&serde_json::Value::Null),
-                                y.get(i).unwrap_or(&serde_json::Value::Null),
-                                out,
-                            );
-                        }
-                    }
-                    _ => out.push(format!("{pointer}: stored={a} recomputed={b}")),
-                }
             }
             let mut diffs = Vec::new();
             walk("", &a, &b, &mut diffs);
-            for d in diffs.iter().take(30) {
-                eprintln!("DIFF {d}");
-            }
-            panic!("summary diverges: {} pointer(s)", diffs.len());
+            let shown = diffs
+                .iter()
+                .take(30)
+                .cloned()
+                .collect::<Vec<_>>()
+                .join("; ");
+            panic!("summary diverges at {} pointer(s): {}", diffs.len(), shown);
         });
     }
 

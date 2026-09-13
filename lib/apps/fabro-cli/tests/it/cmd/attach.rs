@@ -975,10 +975,6 @@ fn attach_json_errors_without_prompting_for_human_input() {
                 "provider": null,
                 "slack": null
               },
-              "meta_branch": {
-                "enabled": true,
-                "push": true
-              },
               "metadata": {},
               "model": {
                 "controls": {
@@ -1211,6 +1207,21 @@ fn attach_json_errors_without_prompting_for_human_input() {
           "repos_root": "[TEMP_DIR]/.repos",
           "working_directory": "[TEMP_DIR]",
           "workspace_root": "[TEMP_DIR]"
+        },
+        "run_id": "[ULID]",
+        "ts": "[TIMESTAMP]"
+      },
+      {
+        "actor": {
+          "kind": "worker",
+          "run_id": "[ULID]"
+        },
+        "event": "git.identity.resolved",
+        "id": "[EVENT_ID]",
+        "properties": {
+          "email": "noreply@fabro.sh",
+          "name": "Fabro",
+          "source": "default"
         },
         "run_id": "[ULID]",
         "ts": "[TIMESTAMP]"

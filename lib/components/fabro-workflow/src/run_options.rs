@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use fabro_types::settings::run::{RunCheckpointSettings, RunMode};
-use fabro_types::{ForkSourceRef, GitContext, RunId, WorkflowSettings};
+use fabro_types::{ForkSourceRef, GitContext, GitIdentity, RunId, WorkflowSettings};
 use tokio_util::sync::CancellationToken;
 
 use crate::git::{GitAuthor, git_author_from_settings};
@@ -10,9 +10,8 @@ use crate::git::{GitAuthor, git_author_from_settings};
 /// Git checkpoint options for a workflow run.
 #[derive(Clone)]
 pub struct GitCheckpointOptions {
-    pub base_sha:    Option<String>,
-    pub run_branch:  Option<String>,
-    pub meta_branch: Option<String>,
+    pub base_sha:   Option<String>,
+    pub run_branch: Option<String>,
 }
 
 /// Options for a workflow run.
@@ -30,7 +29,7 @@ pub struct RunOptions {
     pub labels:           HashMap<String, String>,
     /// Workflow directory slug (e.g. "smoke" from `.fabro/workflows/smoke/`).
     pub workflow_slug:    Option<String>,
-    /// GitHub credentials for pushing metadata branches to origin.
+    /// GitHub credentials for sandbox repository access.
     pub github_app:       Option<fabro_github::GitHubCredentials>,
     /// Submitter-side git context captured before the run was created.
     pub pre_run_git:      Option<GitContext>,
@@ -43,6 +42,10 @@ pub struct RunOptions {
     pub display_base_sha: Option<String>,
     /// Git checkpoint options; `None` means checkpointing disabled.
     pub git:              Option<GitCheckpointOptions>,
+    /// The identity resolved for this run's commits. Set by initialization
+    /// before any commit can be created; `None` only before that point, where
+    /// `git_author()` falls back to the submitted settings without a lookup.
+    pub git_identity:     Option<GitIdentity>,
 }
 
 impl RunOptions {
@@ -54,8 +57,11 @@ impl RunOptions {
         &self.settings.run.checkpoint
     }
 
+    /// The author and committer identity for commits this run creates.
     pub fn git_author(&self) -> GitAuthor {
-        git_author_from_settings(&self.settings)
+        self.git_identity
+            .as_ref()
+            .map_or_else(|| git_author_from_settings(&self.settings), GitAuthor::from)
     }
 
     pub fn artifact_glob_patterns(&self) -> &[String] {

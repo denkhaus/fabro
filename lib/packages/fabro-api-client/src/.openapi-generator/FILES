@@ -159,6 +159,8 @@ models/fork-response.ts
 models/fork-source-ref.ts
 models/git-author-settings.ts
 models/git-context.ts
+models/git-identity-source.ts
+models/git-identity.ts
 models/git-run-target.ts
 models/git-source-run-intent.ts
 models/github-integration-settings.ts
@@ -217,6 +219,7 @@ models/mcp-server-list-meta.ts
 models/mcp-server-list-response.ts
 models/mcp-server-projection.ts
 models/mcp-server-settings.ts
+models/mcp-server-status-disconnected.ts
 models/mcp-server-status-failed.ts
 models/mcp-server-status-ready.ts
 models/mcp-server-status.ts
@@ -386,7 +389,6 @@ models/run-interviews-settings.ts
 models/run-lifecycle.ts
 models/run-links.ts
 models/run-manifest.ts
-models/run-meta-branch-settings.ts
 models/run-mode.ts
 models/run-model-controls.ts
 models/run-model-settings.ts

@@ -9117,6 +9117,14 @@ methods = ["dev-token"]
 [run.environment]
 id = "local"
 
+# Explicit author: the run's git identity resolves without a GitHub
+# lookup — #856 would otherwise GET /user with the fake vault token and
+# fail the run before the bridge observation. This test scopes to the
+# credential bridge, not identity resolution.
+[run.git.author]
+name = "Bridge Test"
+email = "bridge@test.invalid"
+
 [run.integrations.github.permissions]
 contents = "read"
 "#;

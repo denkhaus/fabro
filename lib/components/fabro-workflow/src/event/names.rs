@@ -78,6 +78,7 @@ pub fn event_name(event: &Event) -> Cow<'static, str> {
         Event::SetupCommandStarted { .. } => "setup.command.started",
         Event::SetupCommandCompleted { .. } => "setup.command.completed",
         Event::SetupCompleted { .. } => "setup.completed",
+        Event::GitIdentityResolved { .. } => "git.identity.resolved",
         Event::SetupFailed { .. } => "setup.failed",
         Event::StallWatchdogTimeout { .. } => "watchdog.timeout",
         Event::ArtifactCaptured { .. } => "artifact.captured",
@@ -90,6 +91,7 @@ pub fn event_name(event: &Event) -> Cow<'static, str> {
         Event::AgentSessionDeactivated { .. } => "agent.session.deactivated",
         Event::AgentMcpReady { .. } => "agent.mcp.ready",
         Event::AgentMcpFailed { .. } => "agent.mcp.failed",
+        Event::AgentMcpDisconnected { .. } => "agent.mcp.disconnected",
         Event::AgentInterruptInjected { .. } => "agent.interrupt.injected",
         Event::AgentPairUserMessage { .. } => "agent.pair.user_message",
         Event::AgentPairSystemMessage { .. } => "agent.pair.system_message",
@@ -130,6 +132,15 @@ mod tests {
                 item_label:            None,
             }),
             "parallel.branch.started"
+        );
+        assert_eq!(
+            event_name(&Event::AgentMcpDisconnected {
+                node_id:     "code".to_string(),
+                visit:       1,
+                server_name: "github".to_string(),
+                error:       "transport closed".to_string(),
+            }),
+            "agent.mcp.disconnected"
         );
         assert_eq!(
             event_name(&Event::Agent {

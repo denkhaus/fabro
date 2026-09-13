@@ -566,6 +566,11 @@ pub enum Event {
     SetupCompleted {
         duration_ms: u64,
     },
+    /// The run resolved the Git author/committer identity it uses for every
+    /// commit: engine checkpoints, metadata commits, and workflow commands.
+    GitIdentityResolved {
+        identity: ::fabro_types::GitIdentity,
+    },
     SetupFailed {
         command:          String,
         index:            usize,
@@ -653,9 +658,23 @@ pub enum Event {
         server_name: String,
         tool_count:  usize,
         tools:       Vec<fabro_types::AgentMcpToolSummary>,
+        /// Whole milliseconds from launch to the tools being listed.
+        #[serde(default)]
+        startup_ms:  u64,
     },
     /// An MCP server configured for a stage failed to start or connect.
     AgentMcpFailed {
+        node_id:     String,
+        visit:       u32,
+        server_name: String,
+        error:       String,
+        /// Whole milliseconds from launch to the failure.
+        #[serde(default)]
+        startup_ms:  u64,
+    },
+    /// An MCP server that was ready lost its connection during the stage;
+    /// its tools fail until the session ends.
+    AgentMcpDisconnected {
         node_id:     String,
         visit:       u32,
         server_name: String,
@@ -1428,6 +1447,14 @@ impl Event {
             Self::SetupCompleted { duration_ms } => {
                 info!(duration_ms, "Setup completed");
             }
+            Self::GitIdentityResolved { identity } => {
+                info!(
+                    name = %identity.name,
+                    email = %identity.email,
+                    source = %identity.source,
+                    "Git identity resolved"
+                );
+            }
             Self::SetupFailed {
                 command,
                 index,
@@ -1479,6 +1506,7 @@ impl Event {
                     to_model = %props.to_model,
                     requested_reasoning_effort = ?props.requested_reasoning_effort,
                     effective_reasoning_effort = ?props.effective_reasoning_effort,
+                    continuation = ?props.continuation,
                     error = %props.error,
                     "LLM provider failover"
                 );
@@ -1542,17 +1570,36 @@ impl Event {
                 visit,
                 server_name,
                 tool_count,
+                startup_ms,
                 ..
             } => {
-                debug!(node_id, visit, server_name, tool_count, "MCP server ready");
+                debug!(
+                    node_id,
+                    visit, server_name, tool_count, startup_ms, "MCP server ready"
+                );
             }
             Self::AgentMcpFailed {
                 node_id,
                 visit,
                 server_name,
                 error,
+                startup_ms,
             } => {
-                warn!(node_id, visit, server_name, error, "MCP server failed");
+                warn!(
+                    node_id,
+                    visit, server_name, error, startup_ms, "MCP server failed"
+                );
+            }
+            Self::AgentMcpDisconnected {
+                node_id,
+                visit,
+                server_name,
+                error,
+            } => {
+                warn!(
+                    node_id,
+                    visit, server_name, error, "MCP server disconnected"
+                );
             }
             Self::AgentInterruptInjected {
                 node_id,

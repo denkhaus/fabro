@@ -449,6 +449,7 @@ async fn end_to_end_linear_pipeline() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -582,6 +583,7 @@ async fn end_to_end_branching_pipeline() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -705,6 +707,7 @@ async fn end_to_end_human_gate_pipeline() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -804,6 +807,7 @@ async fn human_gate_interrupted_input_fails_closed_without_fail_route() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -948,6 +952,7 @@ async fn human_gate_timeout_routes_to_default_choice_when_unanswered() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -1063,6 +1068,7 @@ async fn human_gate_interrupted_input_routes_via_outcome_fail_condition() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -1497,6 +1503,7 @@ async fn goal_gate_routes_to_retry_target_on_failure() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -1620,6 +1627,7 @@ async fn goal_gate_routes_to_retry_target_when_present() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -2035,6 +2043,7 @@ async fn retry_on_failure_then_succeed() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -2110,6 +2119,7 @@ async fn pipeline_with_many_nodes() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -2568,6 +2578,7 @@ async fn smoke_test_with_mock_codergen_backend() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -2803,6 +2814,7 @@ capabilities = {{ text = true, tools = true, response_format = {{ json_object = 
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -2973,6 +2985,7 @@ capabilities = {{ text = true, tools = true, response_format = {{ json_object = 
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
         cancel_token:     CancellationToken::new(),
+        git_identity:     None,
         run_id:           test_run_id("node-tools-wire"),
         labels:           std::collections::HashMap::new(),
         workflow_slug:    None,
@@ -3127,6 +3140,7 @@ enabled = true
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -3223,6 +3237,7 @@ async fn end_to_end_parallel_fan_out_fan_in() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -3339,6 +3354,7 @@ async fn resume_from_checkpoint_completes_pipeline() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -3441,6 +3457,7 @@ async fn resume_from_checkpoint_preserves_goal_gate_outcomes() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -3484,6 +3501,7 @@ async fn graph_goal_in_context() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -3526,6 +3544,7 @@ async fn event_streaming_lifecycle() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -3606,6 +3625,7 @@ async fn context_flow_between_stages() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -3665,6 +3685,7 @@ async fn tool_handler_e2e() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -3736,6 +3757,7 @@ async fn auto_approve_interviewer_e2e() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -3776,6 +3798,7 @@ async fn codergen_without_backend_simulated() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -3884,6 +3907,7 @@ async fn branching_loop_back_on_failure() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -3970,6 +3994,7 @@ async fn human_gate_loops_back() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -4033,6 +4058,7 @@ async fn scenario_ship_a_feature() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -4121,6 +4147,7 @@ async fn scenario_parallel_expert_review() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -4211,6 +4238,7 @@ async fn scenario_node_retries_on_retry_status() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -4279,6 +4307,7 @@ async fn scenario_loop_restart_resets_context() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -4347,6 +4376,7 @@ async fn scenario_bug_triage_router() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -4412,6 +4442,7 @@ async fn scenario_crash_recovery() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -4525,6 +4556,7 @@ async fn manager_loop_stop_condition_satisfied_e2e() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -4610,6 +4642,7 @@ async fn manager_loop_max_cycles_exceeded_e2e() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -4756,6 +4789,7 @@ async fn conditional_branching_success_fail_paths() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -4815,6 +4849,7 @@ async fn edge_selection_condition_match_wins_over_weight() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -4868,6 +4903,7 @@ async fn edge_selection_weight_breaks_ties() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -4913,6 +4949,7 @@ async fn edge_selection_lexical_tiebreak() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -4977,6 +5014,7 @@ async fn context_updates_visible_across_nodes() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -5037,6 +5075,7 @@ async fn stage_envelope_drops_and_accumulates_end_to_end() {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
         cancel_token:     CancellationToken::new(),
+        git_identity:     None,
         run_id:           test_run_id("test-run"),
         labels:           std::collections::HashMap::new(),
         workflow_slug:    None,
@@ -5123,6 +5162,7 @@ async fn stylesheet_applies_model_override() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -5179,6 +5219,7 @@ async fn custom_handler_registration_and_execution() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -5258,6 +5299,7 @@ async fn integration_smoke_plan_implement_review_done() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -5350,6 +5392,7 @@ async fn manager_loop_runs_child_engine_e2e() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -5487,6 +5530,7 @@ async fn manager_loop_context_flows_e2e() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -5566,6 +5610,7 @@ async fn manager_loop_child_workflow_e2e() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -5677,6 +5722,7 @@ async fn import_e2e_through_engine() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -5856,6 +5902,7 @@ async fn fidelity_default_is_compact() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -5913,6 +5960,7 @@ async fn fidelity_graph_default_applied() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -5966,6 +6014,7 @@ async fn fidelity_node_overrides_graph_default() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -6025,6 +6074,7 @@ async fn fidelity_edge_overrides_node_and_graph() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -6074,6 +6124,7 @@ async fn fidelity_full_produces_empty_preamble() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -6133,6 +6184,7 @@ async fn fidelity_truncate_preamble_minimal() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -6205,6 +6257,7 @@ async fn fidelity_summary_low_mode() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -6272,6 +6325,7 @@ async fn fidelity_summary_medium_mode() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -6339,6 +6393,7 @@ async fn fidelity_summary_high_mode() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -6399,6 +6454,7 @@ async fn fidelity_full_sets_thread_id_in_context() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -6470,6 +6526,7 @@ async fn fidelity_full_nodes_share_thread_id() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -6551,6 +6608,7 @@ async fn fidelity_resume_degrades_full_to_summary_high() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -6648,6 +6706,7 @@ async fn fidelity_resume_degrade_only_affects_first_hop() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -6732,6 +6791,7 @@ async fn fidelity_resume_no_degrade_when_not_full() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -6774,6 +6834,7 @@ async fn fidelity_stored_in_checkpoint_context() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -6870,6 +6931,7 @@ async fn fidelity_precedence_multi_node_pipeline() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -6938,6 +7000,7 @@ async fn fidelity_compact_preamble_includes_completed_stages_and_context() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -7017,6 +7080,7 @@ async fn fidelity_summary_low_excludes_context_values_in_pipeline() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -7088,6 +7152,7 @@ async fn fidelity_summary_low_excludes_context_values_in_pipeline() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -7160,6 +7225,7 @@ async fn fidelity_thread_id_fallback_to_previous_node_in_pipeline() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -7214,6 +7280,7 @@ async fn fidelity_thread_id_from_node_class_in_pipeline() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -7271,6 +7338,7 @@ async fn fidelity_edge_thread_id_override_in_pipeline() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -7329,6 +7397,7 @@ async fn fidelity_full_without_explicit_thread_id_uses_previous_node() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -7397,6 +7466,7 @@ async fn fidelity_from_parsed_dot_pipeline() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -7446,6 +7516,7 @@ async fn fidelity_checkpoint_roundtrip_preserves_fidelity() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -7522,6 +7593,7 @@ async fn fidelity_node_thread_id_overrides_edge_thread_id_in_pipeline() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -7609,6 +7681,7 @@ async fn fidelity_resume_preserves_context_values_across_checkpoint() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -7847,6 +7920,7 @@ mod real_llm {
             github_app:       None,
             base_branch:      None,
             display_base_sha: None,
+            git_identity:     None,
             pre_run_git:      None,
             fork_source_ref:  None,
             git:              None,
@@ -8016,6 +8090,7 @@ mod real_llm {
             github_app:       None,
             base_branch:      None,
             display_base_sha: None,
+            git_identity:     None,
             pre_run_git:      None,
             fork_source_ref:  None,
             git:              None,
@@ -8139,6 +8214,7 @@ mod real_llm {
             github_app:       None,
             base_branch:      None,
             display_base_sha: None,
+            git_identity:     None,
             pre_run_git:      None,
             fork_source_ref:  None,
             git:              None,
@@ -8272,6 +8348,7 @@ mod real_llm {
             github_app:       None,
             base_branch:      None,
             display_base_sha: None,
+            git_identity:     None,
             pre_run_git:      None,
             fork_source_ref:  None,
             git:              None,
@@ -8373,6 +8450,7 @@ mod real_llm {
             github_app:       None,
             base_branch:      None,
             display_base_sha: None,
+            git_identity:     None,
             pre_run_git:      None,
             fork_source_ref:  None,
             git:              None,
@@ -8506,6 +8584,7 @@ async fn workflow_run_with_vault_only_openai_codex_builds_pr_body() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -8625,6 +8704,7 @@ async fn human_gate_freeform_only_routes_text() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -8759,6 +8839,7 @@ async fn human_gate_freeform_with_fixed_choice_match() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -8879,6 +8960,7 @@ async fn human_gate_freeform_fallback_on_unmatched_text() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -9010,6 +9092,7 @@ async fn human_gate_freeform_sets_allow_freeform_on_question() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -9119,6 +9202,7 @@ async fn human_gate_without_freeform_sets_allow_freeform_false() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -9424,6 +9508,7 @@ fn make_run_options(dir: &std::path::Path) -> RunOptions {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -10369,6 +10454,7 @@ async fn run_fidelity_prompt_pipeline(fidelity: &str) -> String {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -10488,6 +10574,7 @@ async fn run_parallel_fidelity_capture(
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -10741,6 +10828,7 @@ async fn large_context_values_are_offloaded_to_artifact_store() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -10839,6 +10927,7 @@ async fn artifact_pointers_rewritten_for_remote_sandbox() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -10929,6 +11018,7 @@ async fn downstream_local_execution_resolves_response_blob_refs_as_text() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -11009,6 +11099,7 @@ async fn downstream_remote_execution_resolves_response_blob_refs_as_text() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -11141,6 +11232,7 @@ async fn node_dir_uses_visit_count_on_revisit() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -11310,12 +11402,12 @@ async fn git_checkpoint_host_emits_events_and_diff_patch() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              Some(GitCheckpointOptions {
-            base_sha:    Some(base_sha.clone()),
-            run_branch:  Some(run_branch),
-            meta_branch: None,
+            base_sha:   Some(base_sha.clone()),
+            run_branch: Some(run_branch),
         }),
     };
     // 5. Run pipeline
@@ -11373,11 +11465,9 @@ async fn git_checkpoint_host_emits_events_and_diff_patch() {
         .output();
 }
 
-/// End-to-end test: pipeline with git checkpointing enabled + `meta_branch`
-/// but no worker-side GitHub credentials still writes run-branch checkpoint
-/// commits and skips metadata-branch snapshots.
+/// Git checkpointing writes code commits while execution state stays in events.
 #[tokio::test]
-async fn git_checkpoint_host_skips_metadata_branch_without_writer_prereqs() {
+async fn git_checkpoint_retains_run_history_without_metadata_branch() {
     // 1. Create a temporary git repo with an initial commit
     let repo = tempfile::tempdir().unwrap();
     std::process::Command::new("git")
@@ -11401,7 +11491,7 @@ async fn git_checkpoint_host_skips_metadata_branch_without_writer_prereqs() {
         .unwrap();
 
     // 2. Create a branch and worktree
-    let run_id = test_run_id("test-shadow");
+    let run_id = test_run_id("test-code-history");
     let base_sha = {
         let out = std::process::Command::new("git")
             .args(["rev-parse", "HEAD"])
@@ -11424,14 +11514,26 @@ async fn git_checkpoint_host_skips_metadata_branch_without_writer_prereqs() {
         .output()
         .unwrap();
 
+    let historical_branch = "fabro/meta/historical";
+    let historical = std::process::Command::new("git")
+        .args(["branch", historical_branch, &base_sha])
+        .current_dir(repo.path())
+        .output()
+        .unwrap();
+    assert!(historical.status.success());
+
     // Write a file in the worktree so there's something to commit
-    std::fs::write(worktree_path.join("shadow_test.txt"), "shadow branch test").unwrap();
+    std::fs::write(
+        worktree_path.join("checkpoint_test.txt"),
+        "code checkpoint test",
+    )
+    .unwrap();
 
     // 3. Build a simple pipeline: start -> work -> exit
-    let mut graph = Graph::new("ShadowBranchTest");
+    let mut graph = Graph::new("CodeHistoryTest");
     graph.attrs.insert(
         "goal".to_string(),
-        AttrValue::String("Test shadow branch".to_string()),
+        AttrValue::String("Test code history".to_string()),
     );
     let mut start = Node::new("start");
     start.attrs.insert(
@@ -11452,11 +11554,10 @@ async fn git_checkpoint_host_skips_metadata_branch_without_writer_prereqs() {
     graph.edges.push(Edge::new("start", "work"));
     graph.edges.push(Edge::new("work", "exit"));
 
-    // 4. Set up engine with meta_branch
+    // 4. Set up the workflow engine
     let run_dir = tempfile::tempdir().unwrap();
-    // Write graph.fabro so init_run can read it
-    std::fs::write(run_dir.path().join("graph.fabro"), "digraph {}").unwrap();
     let emitter = Emitter::default();
+    let events = collect_events(&emitter);
 
     let env: Arc<fabro_sandbox::RunSandbox> = Arc::new(
         fabro_sandbox::local_sandbox(worktree_path.clone())
@@ -11468,7 +11569,6 @@ async fn git_checkpoint_host_skips_metadata_branch_without_writer_prereqs() {
     registry.register("exit", Box::new(ExitHandler));
     let engine = WorkflowRunner::new(registry, Arc::new(emitter), env);
 
-    let meta_branch = format!("fabro/meta/{run_id}");
     let run_options = RunOptions {
         settings: WorkflowSettings::default(),
         run_dir: run_dir.path().to_path_buf(),
@@ -11479,31 +11579,63 @@ async fn git_checkpoint_host_skips_metadata_branch_without_writer_prereqs() {
         github_app: None,
         base_branch: None,
         display_base_sha: None,
+        git_identity: None,
         pre_run_git: None,
         fork_source_ref: None,
         git: Some(GitCheckpointOptions {
-            base_sha:    Some(base_sha),
-            run_branch:  Some(format!("fabro/run/{run_id}")),
-            meta_branch: Some(meta_branch.clone()),
+            base_sha:   Some(base_sha.clone()),
+            run_branch: Some(format!("fabro/run/{run_id}")),
         }),
     };
     // 5. Run pipeline
-    let outcome = engine
-        .run(&graph, &run_options)
+    let (outcome, state) = engine
+        .run_with_state(&graph, &run_options)
         .await
         .expect("pipeline should succeed");
     assert_eq!(outcome.status, StageOutcome::Succeeded);
 
-    // 6. Without pre-run GitHub credentials, metadata snapshots are disabled.
-    let run_json = std::process::Command::new("git")
-        .args(["show", &format!("refs/heads/{meta_branch}:run.json")])
+    // Existing metadata refs stay unchanged; the run creates none.
+    let refs = std::process::Command::new("git")
+        .args([
+            "for-each-ref",
+            "--format=%(refname) %(objectname)",
+            "refs/heads/fabro/meta/",
+        ])
         .current_dir(repo.path())
         .output()
-        .expect("git show should run");
-    assert!(
-        !run_json.status.success(),
-        "metadata run.json should not exist without writer prerequisites"
+        .unwrap();
+    assert!(refs.status.success());
+    assert_eq!(
+        String::from_utf8_lossy(&refs.stdout).trim(),
+        format!("refs/heads/{historical_branch} {base_sha}")
     );
+
+    // Events retain the code link and context used by resume and history views.
+    let events = events.lock().unwrap();
+    assert!(
+        !events
+            .iter()
+            .any(|event| event.event_name().starts_with("metadata.snapshot."))
+    );
+    let checkpoint_event = events
+        .iter()
+        .rev()
+        .find(|event| event.event_name() == "checkpoint.completed")
+        .expect("checkpoint event");
+    let properties = checkpoint_event.properties().unwrap();
+    let sha = properties["git_commit_sha"].as_str().unwrap();
+    let head = std::process::Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .current_dir(&worktree_path)
+        .output()
+        .unwrap();
+    assert!(head.status.success());
+    assert_eq!(sha, String::from_utf8_lossy(&head.stdout).trim());
+    assert_eq!(properties["context_values"]["my_flag"], "set");
+    let checkpoint = state.current_checkpoint().unwrap();
+    assert_eq!(checkpoint.git_commit_sha.as_deref(), Some(sha));
+    assert_eq!(checkpoint.context_values["my_flag"], "set");
+    assert!(!state.conclusion.as_ref().unwrap().stages.is_empty());
 
     // 7. Assert run-branch commit still has the run checkpoint trailers.
     let output = std::process::Command::new("git")
@@ -11522,7 +11654,7 @@ async fn git_checkpoint_host_skips_metadata_branch_without_writer_prereqs() {
     );
     assert!(
         !commit_msg.contains("Fabro-Checkpoint:"),
-        "run-branch commit should not have Fabro-Checkpoint trailer without metadata snapshot, got:\n{commit_msg}"
+        "run-branch commit should not have Fabro-Checkpoint trailer after metadata branch removal, got:\n{commit_msg}"
     );
 
     // Cleanup worktree
@@ -11665,12 +11797,12 @@ async fn parallel_shared_checkout_host_e2e() {
         github_app: None,
         base_branch: None,
         display_base_sha: None,
+        git_identity: None,
         pre_run_git: None,
         fork_source_ref: None,
         git: Some(GitCheckpointOptions {
-            base_sha:    Some(base_sha.clone()),
-            run_branch:  Some(run_branch.clone()),
-            meta_branch: None,
+            base_sha:   Some(base_sha.clone()),
+            run_branch: Some(run_branch.clone()),
         }),
     };
     // 5. Run pipeline
@@ -11919,12 +12051,12 @@ async fn git_checkpoint_host_skips_empty_diff_patch() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              Some(GitCheckpointOptions {
-            base_sha:    Some(base_sha.clone()),
-            run_branch:  Some(run_branch),
-            meta_branch: None,
+            base_sha:   Some(base_sha.clone()),
+            run_branch: Some(run_branch),
         }),
     };
     let outcome = engine
@@ -12290,6 +12422,7 @@ async fn e2e_circuit_breaker_deterministic_self_loop() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -12337,6 +12470,7 @@ async fn e2e_circuit_breaker_custom_limit() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -12377,6 +12511,7 @@ async fn e2e_circuit_breaker_ignores_transient_failures() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -12424,6 +12559,7 @@ async fn e2e_circuit_breaker_different_reasons_separate_counters() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -12464,6 +12600,7 @@ async fn e2e_circuit_breaker_loop_restart() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -12527,6 +12664,7 @@ async fn e2e_failure_signature_persisted_in_context() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -12594,6 +12732,7 @@ async fn e2e_failure_signature_hint_overrides_reason_in_context() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -12655,6 +12794,7 @@ async fn e2e_signature_maps_persist_in_checkpoint() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -12786,6 +12926,7 @@ async fn e2e_circuit_breaker_emits_events_before_abort() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -12853,6 +12994,7 @@ async fn e2e_circuit_breaker_does_not_fire_below_limit() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -12952,6 +13094,7 @@ async fn e2e_circuit_breaker_multi_stage_impl_verify_cycle() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -13050,6 +13193,7 @@ async fn e2e_loop_restart_blocked_for_deterministic_failure() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -13090,6 +13234,7 @@ async fn e2e_loop_restart_blocked_for_structural_failure() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -13130,6 +13275,7 @@ async fn e2e_loop_restart_blocked_for_budget_exhausted_failure() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -13170,6 +13316,7 @@ async fn e2e_loop_restart_blocked_for_canceled_failure() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -13207,6 +13354,7 @@ async fn e2e_loop_restart_blocked_for_compilation_loop_failure() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -13248,6 +13396,7 @@ async fn e2e_loop_restart_allowed_for_transient_infra() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -13358,6 +13507,7 @@ async fn e2e_stall_watchdog_triggers_from_dot_parsed_pipeline() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -13414,6 +13564,7 @@ async fn e2e_stall_watchdog_kept_alive_by_handler_events() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -13460,6 +13611,7 @@ async fn e2e_stall_watchdog_disabled_with_zero_timeout() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -13526,6 +13678,7 @@ async fn e2e_stall_watchdog_with_explicit_timeout_override() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -13670,6 +13823,7 @@ async fn asset_collection_local_sandbox_success() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -13818,6 +13972,7 @@ async fn asset_collection_local_sandbox_symlink_working_directory() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -13918,6 +14073,7 @@ async fn asset_collection_local_sandbox_on_failure() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -14031,6 +14187,7 @@ async fn asset_collection_docker_sandbox() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,
@@ -14103,6 +14260,7 @@ async fn wait_timer_e2e() {
         github_app:       None,
         base_branch:      None,
         display_base_sha: None,
+        git_identity:     None,
         pre_run_git:      None,
         fork_source_ref:  None,
         git:              None,

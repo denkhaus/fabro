@@ -2343,16 +2343,8 @@ version = "0.354.0-nightly.0"
 name = "fabro-checkpoint"
 version = "0.354.0-nightly.0"
 dependencies = [
- "chrono",
  "fabro-config",
- "fabro-store",
  "fabro-types",
- "git2",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror 2.0.18",
- "tracing",
 ]
 
 [[package]]
@@ -5883,7 +5875,7 @@ dependencies = [
 [[package]]
 name = "pebble-agent"
 version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/pebble?rev=222d17f17d7384545d3782f3b315210ad2cb0cfe#222d17f17d7384545d3782f3b315210ad2cb0cfe"
+source = "git+https://github.com/lithoscomputer/pebble?rev=430740f1114f859d6d173683f25b5007cf2023ca#430740f1114f859d6d173683f25b5007cf2023ca"
 dependencies = [
  "async-trait",
  "futures-util",
@@ -5900,7 +5892,7 @@ dependencies = [
 [[package]]
 name = "pebble-cli-core"
 version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/pebble?rev=222d17f17d7384545d3782f3b315210ad2cb0cfe#222d17f17d7384545d3782f3b315210ad2cb0cfe"
+source = "git+https://github.com/lithoscomputer/pebble?rev=430740f1114f859d6d173683f25b5007cf2023ca#430740f1114f859d6d173683f25b5007cf2023ca"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -5929,7 +5921,7 @@ dependencies = [
 [[package]]
 name = "pebble-coding-agent"
 version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/pebble?rev=222d17f17d7384545d3782f3b315210ad2cb0cfe#222d17f17d7384545d3782f3b315210ad2cb0cfe"
+source = "git+https://github.com/lithoscomputer/pebble?rev=430740f1114f859d6d173683f25b5007cf2023ca#430740f1114f859d6d173683f25b5007cf2023ca"
 dependencies = [
  "async-trait",
  "futures-util",
