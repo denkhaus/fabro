@@ -11227,6 +11227,18 @@ components:
         agent_control:
           $ref: "#/components/schemas/AgentControlState"
           description: Whether the agent is executing normally or waiting for steering after an interrupt.
+        agent:
+          oneOf:
+            - $ref: "#/components/schemas/AgentSessionProjection"
+            - type: "null"
+          description: >-
+            The coding agent's own fold of this stage's `agent.*` and `todo.*`
+            events, present for agent stages once their first agent event is
+            stored and absent for every other stage kind. Each stage owns one
+            fold over its own events, so the lifetime fields are the stage's
+            totals across every prompt it ran. `activity` reads `running` on
+            stages recorded before `agent.processing.end` was kept; `state` is
+            the authority on whether the stage is done.
         state:
           $ref: "#/components/schemas/StageState"
           description: Lifecycle state of the stage projection.
@@ -11616,6 +11628,779 @@ components:
           type: string
         original_name:
           type: string
+
+    AgentSessionProjection:
+      description: >-
+        The coding agent's fold of one stage's event stream: token counts and
+        provider-reported cost for the root session and each descendant, the
+        route and where it moved, the context window, tools, MCP servers,
+        skills, todo lists, subagents, compactions, files touched, and the
+        prompt in progress. Counts only; pricing a count from the catalog is
+        fabro's, and lives in `StageProjection.usage`.
+      type: object
+      required:
+        - root_session_id
+        - route
+        - activity
+        - usage
+        - cost_usd_micros
+        - messages
+        - descendants
+        - context_window
+        - tools
+        - mcp_servers
+        - skills
+        - subagent_counts
+        - todos
+        - subagents
+        - compactions
+        - files_touched
+        - last_file_touched
+        - prompts
+        - prompt
+      properties:
+        root_session_id:
+          type: ["string", "null"]
+          description: The root session, once an event named it.
+        route:
+          $ref: "#/components/schemas/AgentSessionRoute"
+        activity:
+          $ref: "#/components/schemas/AgentSessionActivity"
+        usage:
+          $ref: "#/components/schemas/TokenUsage"
+          description: The root session's usage over the stage.
+        cost_usd_micros:
+          type: ["integer", "null"]
+          format: uint64
+          minimum: 0
+          description: The root session's provider-reported cost, when a provider reported one.
+        messages:
+          type: integer
+          format: uint64
+          minimum: 0
+          description: Committed assistant messages from the root session.
+        descendants:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/AgentSessionDescendantAccount"
+          description: Every descendant session's account, by session id.
+        context_window:
+          oneOf:
+            - $ref: "#/components/schemas/ContextWindowSnapshot"
+            - type: "null"
+          description: >-
+            The root session's latest context window. `event_seq` is the
+            agent's own sequence when it carried one, not the run event seq.
+        tools:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/AgentSessionToolActivity"
+          description: Every tool called anywhere in the tree, by the name the model used.
+        retries:
+          type: integer
+          format: uint64
+          minimum: 0
+          default: 0
+          description: Model calls retried after a failed attempt, across the tree.
+        mcp_servers:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/AgentSessionMcpServer"
+          description: Every MCP server the root configured, by name.
+        skills:
+          $ref: "#/components/schemas/AgentSessionSkills"
+        subagent_counts:
+          $ref: "#/components/schemas/AgentSessionSubagentCounts"
+        todos:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/TodoListProjection"
+          description: >-
+            Every todo list in the tree, by list id. The root agent's own list
+            is the one whose id ends with `root_session_id`.
+        subagents:
+          type: array
+          items:
+            $ref: "#/components/schemas/AgentSessionSubagent"
+        compactions:
+          type: array
+          items:
+            $ref: "#/components/schemas/AgentSessionCompaction"
+          description: The root session's compactions, in order.
+        failovers:
+          type: array
+          items:
+            $ref: "#/components/schemas/AgentSessionRouteFailover"
+          default: []
+          description: Every move the root made to a fallback route, in order.
+        failover_stopped:
+          oneOf:
+            - $ref: "#/components/schemas/AgentSessionFailoverStop"
+            - type: "null"
+          description: >-
+            Why the prompt in progress, or the last one, stayed on its route
+            and ended there although fallback routes were named. Cleared when
+            a prompt starts.
+        files_touched:
+          type: array
+          items:
+            type: string
+          description: Files written or edited across the tree, sorted.
+        last_file_touched:
+          type: ["string", "null"]
+        prompts:
+          type: integer
+          format: uint64
+          minimum: 0
+          description: How many prompts have started.
+        prompt:
+          $ref: "#/components/schemas/AgentSessionPromptDelta"
+        pending_writes:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+          description: >-
+            In-flight bookkeeping, not a fact about the session: the paths a
+            write or edit tool call named, by tool call id, between its start
+            and its completion. Present only while such a call is open; a
+            settled projection has no such member.
+
+    AgentSessionActivity:
+      description: Where a session stands, as its events tell it.
+      type: string
+      enum: [idle, running, waiting_for_steer, ended]
+
+    AgentSessionRoute:
+      description: The route a session runs on, as it reported it.
+      type: object
+      required:
+        - provider
+        - model
+      properties:
+        provider:
+          type: ["string", "null"]
+        model:
+          type: ["string", "null"]
+
+    AgentSessionDescendantAccount:
+      description: What one descendant session spent, as its own events reported it.
+      type: object
+      required:
+        - parent
+        - usage
+        - cost_usd_micros
+        - messages
+        - compactions
+      properties:
+        parent:
+          type: string
+          description: The session that spawned it.
+        provider:
+          type: string
+          description: The provider it runs on, as its `SessionStarted` reported it.
+        model:
+          type: string
+          description: >-
+            The model it runs on, from its `SessionStarted`; when the start
+            was not seen, the model of its first answer.
+        usage:
+          $ref: "#/components/schemas/TokenUsage"
+        cost_usd_micros:
+          type: ["integer", "null"]
+          format: uint64
+          minimum: 0
+        messages:
+          type: integer
+          format: uint64
+          minimum: 0
+          description: Committed assistant messages.
+        compactions:
+          type: integer
+          format: uint64
+          minimum: 0
+          description: Compactions it completed.
+
+    AgentSessionToolActivity:
+      description: How one tool has been used across the tree.
+      type: object
+      required:
+        - calls
+        - errors
+        - open
+      properties:
+        calls:
+          type: integer
+          format: uint64
+          minimum: 0
+          description: Calls started.
+        errors:
+          type: integer
+          format: uint64
+          minimum: 0
+          description: Calls that completed as errors.
+        open:
+          type: integer
+          format: uint64
+          minimum: 0
+          description: Calls started and not yet completed.
+
+    AgentSessionSubagentCounts:
+      description: How many child lifecycle events the tree recorded.
+      type: object
+      required:
+        - spawned
+        - turns_started
+        - completed
+        - failed
+        - closed
+      properties:
+        spawned:
+          type: integer
+          format: uint64
+          minimum: 0
+        turns_started:
+          type: integer
+          format: uint64
+          minimum: 0
+        completed:
+          type: integer
+          format: uint64
+          minimum: 0
+        failed:
+          type: integer
+          format: uint64
+          minimum: 0
+        closed:
+          type: integer
+          format: uint64
+          minimum: 0
+
+    AgentSessionMcpServer:
+      description: >-
+        One MCP server the session configured, and whether it has been called.
+        `disconnected` set means the server came up and its connection then
+        closed; otherwise `error` set means it did not start; otherwise it is
+        ready with `tools`.
+      type: object
+      required:
+        - tools
+        - error
+        - invoked
+      properties:
+        tools:
+          type: array
+          items:
+            $ref: "#/components/schemas/McpToolSummary"
+        error:
+          type: ["string", "null"]
+          description: Why it did not start, when it did not.
+        invoked:
+          type: boolean
+          description: Whether any of its tools has been called.
+        disconnected:
+          type: string
+          description: What closed its connection during the session, when it closed.
+        startup_ms:
+          type: integer
+          format: uint64
+          minimum: 0
+          description: >-
+            Milliseconds from launch to its outcome: to its tools being
+            listed, or to the failure. Absent until either has been seen.
+
+    AgentSessionSkills:
+      description: The skills the root session found and the ones activated anywhere in the tree.
+      type: object
+      required:
+        - available
+        - activated
+      properties:
+        available:
+          type: array
+          items:
+            $ref: "#/components/schemas/SkillSummary"
+        activated:
+          type: array
+          items:
+            $ref: "#/components/schemas/AgentSessionActivatedSkill"
+
+    AgentSessionActivatedSkill:
+      description: A skill the session activated.
+      type: object
+      required:
+        - name
+        - source
+      properties:
+        name:
+          type: string
+        source:
+          $ref: "#/components/schemas/SkillActivationSource"
+
+    AgentSessionSubagent:
+      description: One child the root spawned. A reused child stays one row; every event after the spawn moves its status.
+      type: object
+      required:
+        - agent_id
+        - depth
+        - task
+        - status
+      properties:
+        agent_id:
+          type: string
+        depth:
+          type: integer
+          minimum: 0
+        task:
+          type: string
+        status:
+          $ref: "#/components/schemas/AgentSessionSubagentStatus"
+
+    AgentSessionSubagentStatus:
+      description: Where a child stands.
+      oneOf:
+        - $ref: "#/components/schemas/AgentSessionSubagentStatusRunning"
+        - $ref: "#/components/schemas/AgentSessionSubagentStatusCompleted"
+        - $ref: "#/components/schemas/AgentSessionSubagentStatusFailed"
+        - $ref: "#/components/schemas/AgentSessionSubagentStatusClosed"
+      discriminator:
+        propertyName: status
+        mapping:
+          running: "#/components/schemas/AgentSessionSubagentStatusRunning"
+          completed: "#/components/schemas/AgentSessionSubagentStatusCompleted"
+          failed: "#/components/schemas/AgentSessionSubagentStatusFailed"
+          closed: "#/components/schemas/AgentSessionSubagentStatusClosed"
+
+    AgentSessionSubagentStatusRunning:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          enum: [running]
+
+    AgentSessionSubagentStatusCompleted:
+      type: object
+      required:
+        - status
+        - success
+        - turns_used
+      properties:
+        status:
+          type: string
+          enum: [completed]
+        success:
+          type: boolean
+        turns_used:
+          type: integer
+          minimum: 0
+
+    AgentSessionSubagentStatusFailed:
+      type: object
+      required:
+        - status
+        - error
+      properties:
+        status:
+          type: string
+          enum: [failed]
+        error:
+          $ref: "#/components/schemas/AgentErrorData"
+
+    AgentSessionSubagentStatusClosed:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          enum: [closed]
+
+    AgentSessionCompaction:
+      description: One compaction the root session completed.
+      type: object
+      required:
+        - reason
+        - original_turn_count
+        - preserved_turn_count
+        - summary_token_estimate
+        - tracked_file_count
+      properties:
+        reason:
+          $ref: "#/components/schemas/CompactionReason"
+        original_turn_count:
+          type: integer
+          minimum: 0
+        preserved_turn_count:
+          type: integer
+          minimum: 0
+        summary_token_estimate:
+          type: integer
+          minimum: 0
+        tracked_file_count:
+          type: integer
+          minimum: 0
+        usage:
+          $ref: "#/components/schemas/TokenUsage"
+          description: >-
+            The summary call's tokens: a breakdown of the session's and the
+            prompt's usage, which already include them. Zero on compactions
+            recorded before it was kept.
+        cost_usd_micros:
+          type: integer
+          format: uint64
+          minimum: 0
+          description: The summary call's provider-reported cost, included in the totals the same way.
+
+    AgentSessionRouteFailover:
+      description: One move the root session made to a fallback route, as the stream reported it from the route it moved to.
+      type: object
+      required:
+        - from
+        - to
+        - attempt
+        - error
+        - usage
+        - inference_ms
+        - tool_ms
+        - continuation
+      properties:
+        from:
+          type: string
+          description: The `provider/model` that failed.
+        to:
+          type: string
+          description: The `provider/model` the prompt continued on.
+        attempt:
+          type: integer
+          format: uint32
+          minimum: 0
+          description: How many routes the prompt had moved through, this one included.
+        error:
+          $ref: "#/components/schemas/AgentErrorData"
+          description: The failure that ended the previous route.
+        usage:
+          $ref: "#/components/schemas/TokenUsage"
+          description: >-
+            What the prompt spent on the failed route. Already in the
+            session's and the prompt's totals through that route's committed
+            answers: a breakdown, not an addition.
+        cost_usd_micros:
+          type: integer
+          format: uint64
+          minimum: 0
+        inference_ms:
+          type: integer
+          format: uint64
+          minimum: 0
+          description: Milliseconds the prompt spent waiting on the failed route's model.
+        tool_ms:
+          type: integer
+          format: uint64
+          minimum: 0
+          description: Milliseconds the prompt spent running tools on the failed route.
+        continuation:
+          $ref: "#/components/schemas/FailoverContinuation"
+
+    AgentSessionFailoverStop:
+      description: Why a prompt stayed on its route and ended there although fallback routes were named.
+      type: object
+      required:
+        - route
+        - attempt
+        - reason
+        - error
+      properties:
+        route:
+          type: string
+          description: The `provider/model` the prompt ended on.
+        attempt:
+          type: integer
+          format: uint32
+          minimum: 0
+          description: How many fallback routes the prompt had moved through; `0` on the route it started on.
+        reason:
+          $ref: "#/components/schemas/FailoverStop"
+        error:
+          $ref: "#/components/schemas/AgentErrorData"
+          description: The failure that ended the prompt.
+
+    AgentSessionPromptDelta:
+      description: >-
+        What the prompt in progress, or the last one, did: reset when a prompt
+        starts, complete once `completed` is set.
+      type: object
+      required:
+        - completed
+        - usage
+        - cost_usd_micros
+        - messages
+        - context_window
+        - tool_calls
+        - descendants
+        - subagents
+        - compactions
+        - files_touched
+        - last_file_touched
+      properties:
+        completed:
+          type: boolean
+          description: Whether the prompt reached its end.
+        usage:
+          $ref: "#/components/schemas/TokenUsage"
+          description: The root session's usage over the prompt.
+        cost_usd_micros:
+          type: ["integer", "null"]
+          format: uint64
+          minimum: 0
+        messages:
+          type: integer
+          format: uint64
+          minimum: 0
+          description: Committed assistant messages.
+        context_window:
+          oneOf:
+            - $ref: "#/components/schemas/ContextWindowSnapshot"
+            - type: "null"
+          description: The latest context window the prompt reported.
+        tool_calls:
+          type: integer
+          format: uint64
+          minimum: 0
+          description: Tool calls started, across the tree.
+        retries:
+          type: integer
+          format: uint64
+          minimum: 0
+          default: 0
+          description: Model calls retried after a failed attempt, across the tree.
+        failovers:
+          type: integer
+          format: uint32
+          minimum: 0
+          default: 0
+          description: Moves the root made to a fallback route during the prompt.
+        descendants:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/AgentSessionDescendantAccount"
+          description: What each descendant spent during the prompt, by session id.
+        subagents:
+          $ref: "#/components/schemas/AgentSessionSubagentCounts"
+          description: Child lifecycle events during the prompt.
+        compactions:
+          type: array
+          items:
+            $ref: "#/components/schemas/AgentSessionCompaction"
+          description: Compactions the root completed during the prompt.
+        files_touched:
+          type: array
+          items:
+            type: string
+          description: Files written or edited during the prompt, across the tree, sorted.
+        last_file_touched:
+          type: ["string", "null"]
+
+    TokenUsage:
+      description: >-
+        Token accounting as the coding agent counts it. The five buckets are
+        disjoint: every token is counted in exactly one, so their plain sum
+        is the total. A bucket that is absent reads as zero.
+      type: object
+      properties:
+        input:
+          type: integer
+          format: uint64
+          minimum: 0
+          default: 0
+          description: Prompt tokens that were neither read from nor written to a cache.
+        output:
+          type: integer
+          format: uint64
+          minimum: 0
+          default: 0
+          description: Completion tokens that are not reasoning tokens.
+        reasoning:
+          type: integer
+          format: uint64
+          minimum: 0
+          default: 0
+          description: Completion tokens spent on reasoning, billed at the output rate.
+        cache_read:
+          type: integer
+          format: uint64
+          minimum: 0
+          default: 0
+          description: Prompt tokens served from a provider cache.
+        cache_write:
+          type: integer
+          format: uint64
+          minimum: 0
+          default: 0
+          description: Prompt tokens written into a provider cache.
+
+    McpToolSummary:
+      description: One tool an MCP server advertised, as the coding agent's registry named it.
+      type: object
+      required:
+        - name
+        - original_name
+      properties:
+        name:
+          type: string
+          description: "The name the model calls: `mcp__{server}__{tool}`."
+        original_name:
+          type: string
+          description: The server's own name for the tool.
+
+    CompactionReason:
+      description: Why a conversation compaction ran.
+      type: string
+      enum: [threshold, manual, overflow]
+
+    FailoverContinuation:
+      description: >-
+        How a prompt carries on after a failover. `replay_prompt` when nothing
+        the prompt committed is in the conversation, so the new route is asked
+        the prompt again; `continue_turn` when the conversation holds output
+        or tool results this prompt committed, so the new route continues the
+        turn from where it stood.
+      type: string
+      enum: [replay_prompt, continue_turn]
+
+    FailoverStop:
+      description: >-
+        Why a model failure ends a prompt on its route when fallback routes
+        were named. `ineligible` when the failure follows the request, so
+        another route would fail the same way; `exhausted` when every named
+        route has been taken.
+      type: string
+      enum: [ineligible, exhausted]
+
+    AgentErrorData:
+      description: >-
+        A failure as the coding agent's event stream carries it: category,
+        safe message, retry advice, provider and model context, and the
+        rendered source chain. Never a raw provider response body.
+      type: object
+      required:
+        - kind
+        - message
+      properties:
+        kind:
+          $ref: "#/components/schemas/AgentErrorKind"
+        message:
+          type: string
+          description: The whole failure rendered for a person, cause included.
+        llm_kind:
+          $ref: "#/components/schemas/LlmErrorKind"
+          description: The model-layer category, when a model call failed.
+        retry:
+          $ref: "#/components/schemas/LlmRetryClassification"
+          description: Whether repeating the same model call is safe, when a model call failed.
+        provider:
+          type: string
+          description: The provider that produced the failure, when one was selected.
+        model:
+          type: string
+          description: The model that produced the failure, when one was selected.
+        status:
+          type: integer
+          format: uint16
+          minimum: 0
+          description: The HTTP status, when the failure came from an HTTP response.
+        provider_code:
+          type: string
+          description: The provider's own error code, as reported on the wire.
+        provider_retry_after_millis:
+          type: integer
+          format: uint64
+          minimum: 0
+          description: The provider's advised wait in milliseconds.
+        source_chain:
+          type: array
+          items:
+            type: string
+          description: The text of each cause below `message`, outermost first.
+
+    AgentErrorKind:
+      description: The stable category of a coding agent failure.
+      type: string
+      enum:
+        - llm
+        - compaction
+        - agent
+        - invalid_input
+        - session_closed
+        - invalid_state
+        - tool_execution
+        - interrupted
+        - tool_rounds_exhausted
+        - task
+        - event_stream
+
+    LlmErrorKind:
+      description: >-
+        The model layer's stable failure category. Known values are
+        `configuration`, `model_selection`, `authentication`,
+        `access_denied`, `not_found`, `invalid_request`, `context_length`,
+        `rate_limit`, `quota_exceeded`, `content_filter`, `server`,
+        `provider`, `network`, `timeout`, `stream_decode`, `response_decode`,
+        `resource_limit`, `middleware`, and `cancelled`. A category written
+        by a newer model layer is carried as its own spelling.
+      type: string
+      example: rate_limit
+
+    LlmRetryClassification:
+      description: Whether repeating the same resolved model call is safe.
+      oneOf:
+        - $ref: "#/components/schemas/LlmRetryClassificationNever"
+        - $ref: "#/components/schemas/LlmRetryClassificationSafe"
+        - $ref: "#/components/schemas/LlmRetryClassificationAfter"
+      discriminator:
+        propertyName: type
+        mapping:
+          never: "#/components/schemas/LlmRetryClassificationNever"
+          safe: "#/components/schemas/LlmRetryClassificationSafe"
+          after: "#/components/schemas/LlmRetryClassificationAfter"
+
+    LlmRetryClassificationNever:
+      description: Repeating the call cannot succeed.
+      type: object
+      required:
+        - type
+      properties:
+        type:
+          type: string
+          enum: [never]
+
+    LlmRetryClassificationSafe:
+      description: Repeating the call is safe on the caller's own schedule.
+      type: object
+      required:
+        - type
+      properties:
+        type:
+          type: string
+          enum: [safe]
+
+    LlmRetryClassificationAfter:
+      description: Repeating the call is safe after the given delay.
+      type: object
+      required:
+        - type
+        - after_millis
+      properties:
+        type:
+          type: string
+          enum: [after]
+        after_millis:
+          type: integer
+          format: uint64
+          minimum: 0
+          description: The delay in milliseconds.
 
     StageModelUsage:
       description: Provider, model, and request-control metadata recorded for a stage attempt.
