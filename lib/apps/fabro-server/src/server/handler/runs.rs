@@ -1772,7 +1772,11 @@ async fn get_run_stage_context_window(
         .into_response();
     }
 
-    let Some(snapshot) = stage.context_window.as_ref() else {
+    let Some(snapshot) = stage
+        .agent
+        .as_ref()
+        .and_then(|agent| agent.context_window.as_ref())
+    else {
         return Json(StageContextWindow::unavailable(
             stage_id,
             StageContextWindowUnavailableReason::NotObserved,
@@ -1789,7 +1793,11 @@ async fn get_run_stage_context_window(
 }
 
 fn is_agent_context_window_stage(stage: &StageProjection) -> bool {
-    if stage.context_window.is_some() {
+    if stage
+        .agent
+        .as_ref()
+        .is_some_and(|agent| agent.context_window.is_some())
+    {
         return true;
     }
     if stage.handler == Some(StageHandler::Agent) {

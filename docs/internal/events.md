@@ -1660,9 +1660,9 @@ Pebble's `RouteFailover`, `McpServerReady`, `McpServerFailed`, and
 `McpServerDisconnected` events, stored verbatim with pebble's envelope in
 `properties` like every other pebble event. Fabro also mirrors each onto
 its own `agent.failover`, `agent.mcp.ready`, `agent.mcp.failed`, and
-`agent.mcp.disconnected`, which the store folds into `StageProjection`'s
-`mcp_servers`; the pebble events feed `StageProjection.agent`. The mirrors
-go once every reader is on `agent`.
+`agent.mcp.disconnected`. The stage view reads MCP state from
+`StageProjection.agent`, which the pebble events feed; the mirrors change
+nothing on the stage any more and go next.
 
 ### `agent.route.failover.stopped`
 

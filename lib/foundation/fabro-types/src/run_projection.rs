@@ -6,19 +6,18 @@ use chrono::{DateTime, Utc};
 use lithos_llm::types::{ReasoningEffort, Speed};
 use pebble_coding_agent::events::{
     ContextWindowBreakdownItem, ContextWindowCountMethod, ContextWindowSnapshot,
-    ContextWindowStaleness, ContextWindowWarning, LlmOutputKind, PermissionLevel,
-    SkillActivationSource, SkillSummary, TodoListProjection, ToolSummary,
+    ContextWindowStaleness, ContextWindowWarning, LlmOutputKind, PermissionLevel, ToolSummary,
 };
 use pebble_coding_agent::projection::SessionProjection;
 use strum::{Display, EnumString, IntoStaticStr};
 
 use crate::run_event::{AgentSessionActivatedProps, StagePromptProps};
 use crate::{
-    AgentBackend, AgentMcpToolSummary, BilledModelUsage, BilledTokenCounts, Checkpoint, Conclusion,
-    GitIdentity, InterviewQuestionRecord, InvalidTransition, ModelRef, ParallelBranchId,
-    PullRequestCreation, PullRequestLink, RunApproval, RunControlAction, RunDiff, RunId,
-    RunSandbox, RunSpec, RunStatus, RunTiming, StageCompletion, StageHandler, StageId, StageState,
-    StageTiming, StartRecord, timing,
+    AgentBackend, BilledModelUsage, BilledTokenCounts, Checkpoint, Conclusion, GitIdentity,
+    InterviewQuestionRecord, InvalidTransition, ModelRef, ParallelBranchId, PullRequestCreation,
+    PullRequestLink, RunApproval, RunControlAction, RunDiff, RunId, RunSandbox, RunSpec, RunStatus,
+    RunTiming, StageCompletion, StageHandler, StageId, StageState, StageTiming, StartRecord,
+    timing,
 };
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -304,25 +303,10 @@ pub struct StageProjection {
     /// `usage` to `model`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub billing_by_model:      Vec<BilledModelUsage>,
-    /// Todo/task list owned by the stage's root agent session.
-    ///
-    /// OpenAI child sessions own separate per-session plans and do not appear
-    /// here. Anthropic task lists are root-scoped and shared with child
-    /// sessions, so child mutations of that shared list do appear here.
-    #[serde(default, rename = "todos", skip_serializing_if = "Option::is_none")]
-    pub root_agent_todos:      Option<TodoListProjection>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub subagents:             Vec<SubAgentProjection>,
-    #[serde(default, skip_serializing_if = "SkillsProjection::is_empty")]
-    pub skills:                SkillsProjection,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub permission_level:      Option<PermissionLevel>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub agent_tools:           Vec<ToolSummary>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub mcp_servers:           Vec<McpServerProjection>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub context_window:        Option<ContextWindowSnapshot>,
     /// Open inference bracket for this stage, if the event log contains one.
     ///
     /// `Some` means exactly *"an `agent.llm.started` was recorded and no
@@ -341,10 +325,12 @@ pub struct StageProjection {
     #[serde(default)]
     pub agent_control:         AgentControlState,
     /// Pebble's fold of this stage's agent events: the one agent projection,
-    /// fed every `agent.*` and `todo.*` event stored on the stage. Present
-    /// for pebble-backed agent stages once their first agent event is
-    /// stored; `None` for prompt, command, ACP, human, parallel, and
-    /// conditional stages.
+    /// fed every `agent.*` and `todo.*` event stored on the stage, and what
+    /// the stage view reads for todos, subagents, skills, MCP servers, files,
+    /// failovers, compactions, and the context window. Present for
+    /// pebble-backed agent stages once their first agent event is stored;
+    /// `None` for prompt, command, ACP, human, parallel, and conditional
+    /// stages.
     ///
     /// Its lifetime fields are the stage's totals across every prompt the
     /// stage ran, because each stage gets its own fold over its own events.
@@ -427,67 +413,6 @@ pub enum AgentControlState {
     WaitingForSteer,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct SubAgentProjection {
-    pub agent_id: String,
-    pub depth:    usize,
-    pub task:     String,
-    pub status:   SubAgentStatus,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-pub enum SubAgentStatus {
-    Running,
-    Completed { success: bool, turns_used: usize },
-    Failed { error: serde_json::Value },
-    Closed,
-}
-
-#[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct SkillsProjection {
-    pub available: Vec<SkillSummary>,
-    pub activated: Vec<ActivatedSkill>,
-}
-
-impl SkillsProjection {
-    #[must_use]
-    pub fn is_empty(&self) -> bool {
-        self.available.is_empty() && self.activated.is_empty()
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct ActivatedSkill {
-    pub name:   String,
-    pub source: SkillActivationSource,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct McpServerProjection {
-    pub server_name: String,
-    pub tool_count:  usize,
-    pub status:      McpServerStatus,
-    /// True once any tool from this server has been invoked during the stage.
-    pub invoked:     bool,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-pub enum McpServerStatus {
-    Ready {
-        tools: Vec<AgentMcpToolSummary>,
-    },
-    Failed {
-        error: String,
-    },
-    /// The server was ready and then its connection closed during the
-    /// stage; its tools fail until the session ends.
-    Disconnected {
-        error: String,
-    },
-}
-
 /// Convert a 1-based event sequence number into the `NonZeroU32` form used for
 /// `StageProjection::first_event_seq`. Run event seqs always start at 1.
 #[must_use]
@@ -510,13 +435,8 @@ impl StageProjection {
             tool_batch: None,
             usage: BilledTokenCounts::default(),
             model: None,
-            root_agent_todos: None,
-            subagents: Vec::new(),
-            skills: SkillsProjection::default(),
             permission_level: None,
             agent_tools: Vec::new(),
-            mcp_servers: Vec::new(),
-            context_window: None,
             inference: None,
             acp_started_at: None,
             agent_control: AgentControlState::default(),
