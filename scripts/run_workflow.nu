@@ -140,7 +140,7 @@ def main [
     # and Slack carry the outcomes).
     let has_pr = (($info | get -o pull_request | default null) != null)
     if not $has_pr {
-        print $"run_workflow: orchestration run (no PR) — nothing to integrate"
+        print "run_workflow: orchestration run - no PR - nothing to integrate"
         exit 0
     }
 
