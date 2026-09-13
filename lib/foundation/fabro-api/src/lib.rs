@@ -38,9 +38,9 @@ pub mod types {
         BlockedReason, FailureReason, PendingReason, RunControlAction, RunStatus, SuccessReason,
     };
     pub use fabro_types::{
-        AgentControlState, AgentEventProps, AgentToolsAvailableProps, AskFabro, AuthMethod,
-        AutomationRef, BilledModelUsage, BilledTokenCounts, BlobHash, CommandTermination,
-        Conclusion, ContextWindowBreakdownItem, ContextWindowCategory, ContextWindowCountMethod,
+        AgentEventProps, AgentToolsAvailableProps, AskFabro, AuthMethod, AutomationRef,
+        BilledModelUsage, BilledTokenCounts, BlobHash, CommandTermination, Conclusion,
+        ContextWindowBreakdownItem, ContextWindowCategory, ContextWindowCountMethod,
         ContextWindowSnapshot, ContextWindowStaleness, ContextWindowWarning, CreateVariableRequest,
         DiffStats, DiffSummary, DirtyStatus, EventEnvelope, ExecOutputTail, FailureCategory,
         FailureDetail, FailureSignature, GitContext, GitRunTarget,

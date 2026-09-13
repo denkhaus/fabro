@@ -851,7 +851,8 @@ describe("RunDetail full-height child routes", () => {
     currentRunState = {
       stages: {
         "code@1": {
-          agent_control: "waiting_for_steer",
+          state: "running",
+          agent: { activity: "waiting_for_steer" },
         },
       },
     };

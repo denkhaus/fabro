@@ -15,9 +15,6 @@
 
 // May contain unused imports in some cases
 // @ts-ignore
-import type { AgentControlState } from './agent-control-state';
-// May contain unused imports in some cases
-// @ts-ignore
 import type { AgentSessionProjection } from './agent-session-projection';
 // May contain unused imports in some cases
 // @ts-ignore
@@ -115,10 +112,6 @@ export interface StageProjection {
      * Start of an external ACP agent process, if one is running. ACP agents do not expose Fabro\'s internal LLM brackets, so the process lifetime supplies their live inference estimate.
      */
     'acp_started_at'?: string | null;
-    /**
-     * Whether the agent is executing normally or waiting for steering after an interrupt.
-     */
-    'agent_control': AgentControlState;
     /**
      * The completed stage\'s `usage` split by model, as `stage.completed` reported it: the root session\'s route and each subagent\'s own model, a subagent whose model the catalog does not know billed at the root\'s. Sums to `usage`. Empty while the stage runs and for stages without a coding agent; the billing rollup then bills `usage` to `model`.
      */
