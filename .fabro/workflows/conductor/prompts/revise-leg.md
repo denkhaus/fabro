@@ -19,9 +19,12 @@ dependency, add exactly that file and retry. Record
 `workflow_version_id` (64 hex).
 b. Create the child: `fabro_run_create {"runs":
 [{"workflow_version_id": "<id from a>", "environment_id": "toolchain",
+"target": {"kind": "git", "repo": "denkhaus/fabro", "branch": "denkhaus"},
 "start": true, "args": {"auto_approve": true}}]}` — the `runs` array
-wrapper is REQUIRED; `parent_id`/`target` stay unset (native worker
-inheritance supplies them); `auto_approve` lives under `args`. It
+wrapper is REQUIRED; `parent_id` stays unset (native worker
+inheritance supplies it), but `target` is ALWAYS EXPLICIT `denkhaus`
+(omitted targets inherit the parent's RUN BRANCH and strand the work —
+pass 01M2E2805XB4, 2026-09-13); `auto_approve` lives under `args`. It
 revises the newest revisable run of develop OR merge-upstream (the
 pass child). The revisor itself selects the newest revisable run
 (ADR-0015) — no goal needed.
