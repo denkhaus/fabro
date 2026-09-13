@@ -422,6 +422,7 @@ Emitted when a workflow node finishes execution.
 | `usage.reasoning_tokens` | number? | Reasoning/thinking tokens |
 | `usage.speed` | string? | Speed tier |
 | `usage.cost` | number? | Estimated cost in USD |
+| `billing_by_model` | array? | For an agent stage, the stage's billing split by model: the root session's route and each subagent's own model, a subagent whose model the catalog does not know billed at the root's. Each row has `model`, `tokens`, and `total_usd_micros`, and the rows sum to the stage's billing. Empty for stages without a coding agent and on events written before it existed |
 | `error` | string? | Error message (flattened from failure detail) |
 | `failure_class` | string? | `"transient_infra"`, `"deterministic"`, `"budget_exhausted"`, `"compilation_loop"`, `"canceled"`, `"structural"` |
 | `failure_signature` | string? | Dedup key for repeated failures |
@@ -433,6 +434,12 @@ Emitted when a workflow node finishes execution.
 | `restart_failure_signatures` | object? | Restart failure signature counts |
 | `response` | string? | Full LLM or agent response text when produced by the stage |
 | `notes` | string? | Free-text notes |
+
+An agent stage's usage is its whole session tree's: the root session and
+every subagent, live in `StageProjection.usage` and here at completion, both
+read from the same fold of the stage's agent events. The root is priced at
+its route and each subagent at its own model; where the provider reported a
+cost, that cost stands.
 | `files_touched` | string[] | File paths modified |
 | `attempt` | number | Attempt number (1-based) |
 | `max_attempts` | number | Maximum attempts allowed |
