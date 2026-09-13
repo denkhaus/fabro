@@ -23,7 +23,6 @@ workspace = true
 anyhow.workspace = true
 fabro-auth = { path = "../../foundation/fabro-auth" }
 fabro-acp = { path = "../fabro-acp" }
-fabro-agent = { path = "../fabro-agent" }
 fabro-config = { path = "../../foundation/fabro-config" }
 fabro-graphviz = { path = "../fabro-graphviz" }
 fabro-hooks = { path = "../fabro-hooks" }
@@ -32,6 +31,8 @@ fabro-dump = { path = "../fabro-dump" }
 fabro-sandbox = { path = "../fabro-sandbox" }
 sandbox-driver.workspace = true
 fabro-mcp = { path = "../fabro-mcp" }
+pebble-agent.workspace = true
+pebble-coding-agent.workspace = true
 fabro-github = { path = "../fabro-github" }
 fabro-interview = { path = "../fabro-interview" }
 fabro-template = { path = "../../foundation/fabro-template" }
@@ -76,6 +77,8 @@ tempfile = "3"
 toml.workspace = true
 fabro-vault = { path = "../../foundation/fabro-vault" }
 [dev-dependencies]
+fabro-client = { path = "../../foundation/fabro-client" }
+fabro-workflow-version = { path = "../fabro-workflow-version" }
 fabro-llm = { path = "../fabro-llm", features = ["test-support"] }
 fabro-store = { path = "../fabro-store", features = ["test-support"] }
 fabro-auth = { path = "../../foundation/fabro-auth", features = ["test-support"] }
@@ -88,6 +91,7 @@ fabro-environment = { path = "../fabro-environment" }
 fabro-sandbox = { path = "../fabro-sandbox", features = ["test-support"] }
 fabro-mcp = { path = "../fabro-mcp" }
 tokio = { workspace = true, features = ["test-util", "macros"] }
+pebble-coding-agent = { workspace = true, features = ["test-util"] }
 object_store.workspace = true
 assert_cmd = "2"
 predicates = "3"

@@ -13,9 +13,11 @@ doctest = false
 workspace = true
 
 [dependencies]
-fabro-agent = { path = "../fabro-agent" }
 fabro-auth = { path = "../../foundation/fabro-auth" }
 fabro-llm = { path = "../fabro-llm" }
+fabro-sandbox = { path = "../fabro-sandbox" }
+pebble-agent.workspace = true
+pebble-coding-agent.workspace = true
 fabro-redact.workspace = true
 fabro-types = { path = "../../foundation/fabro-types" }
 lithos-llm = { workspace = true, features = ["runtime"] }

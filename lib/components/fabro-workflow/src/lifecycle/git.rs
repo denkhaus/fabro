@@ -841,7 +841,7 @@ mod tests {
         GitLifecycle {
             stage_executions: StageExecutionTracker::default(),
             sandbox: Arc::new(
-                fabro_agent::local_sandbox(repo.to_path_buf())
+                fabro_sandbox::local_sandbox(repo.to_path_buf())
                     .await
                     .unwrap(),
             ),
@@ -1305,8 +1305,8 @@ mod tests {
             .on_checkpoint(&node, &result, Some("exit"), &checkpoint_state)
             .await
             .unwrap();
-        let finalize_sandbox: Arc<fabro_agent::RunSandbox> = Arc::new(
-            fabro_agent::local_sandbox(repo_dir.path().to_path_buf())
+        let finalize_sandbox: Arc<fabro_sandbox::RunSandbox> = Arc::new(
+            fabro_sandbox::local_sandbox(repo_dir.path().to_path_buf())
                 .await
                 .unwrap(),
         );

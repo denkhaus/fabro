@@ -1829,7 +1829,7 @@ mod tests {
             .run
             .with_run_store(run_store.into())
             .with_sandbox(Arc::new(
-                fabro_agent::local_sandbox(run_dir.path().to_path_buf())
+                fabro_sandbox::local_sandbox(run_dir.path().to_path_buf())
                     .await
                     .unwrap(),
             ));
@@ -2164,7 +2164,7 @@ mod tests {
             .run
             .with_run_store(run_store.into())
             .with_sandbox(Arc::new(
-                fabro_agent::local_sandbox(sandbox_dir.path().to_path_buf())
+                fabro_sandbox::local_sandbox(sandbox_dir.path().to_path_buf())
                     .await
                     .unwrap(),
             ));

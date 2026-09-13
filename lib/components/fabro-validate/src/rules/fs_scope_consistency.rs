@@ -118,8 +118,6 @@ impl LintRule for Rule {
 
 #[cfg(test)]
 mod tests {
-    use fabro_agent::native_tool::NativeTool;
-
     use super::super::test_support;
     use super::*;
 
@@ -214,14 +212,15 @@ mod tests {
     }
 
     /// The hardcoded shell spellings must stay inside the live alias set of
-    /// `NativeTool::Shell`, so a new alias cannot silently diverge (same
-    /// cross-check discipline as `tools_attribute_known`).
+    /// the stage policy's shell resolution, so a new alias cannot silently
+    /// diverge (same cross-check discipline as `tools_attribute_known`).
     #[test]
     fn shell_tool_names_stay_within_native_shell_aliases() {
+        use fabro_workflow::handler::llm::stage_policy::canonical_tool_name;
         for name in SHELL_TOOL_NAMES {
             assert_eq!(
-                NativeTool::from_any_name(name),
-                Some(NativeTool::Shell),
+                canonical_tool_name(name),
+                "shell",
                 "spelling '{name}' no longer resolves to the shell tool"
             );
         }

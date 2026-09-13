@@ -1578,7 +1578,7 @@ mod tests {
     fn test_services(
         run_store: RunStoreHandle,
         emitter: Arc<Emitter>,
-        sandbox: Arc<fabro_agent::RunSandbox>,
+        sandbox: Arc<fabro_sandbox::RunSandbox>,
         metadata_runtime: Arc<RunMetadataRuntime>,
         metadata_writer: Option<RunMetadataWriterHandle>,
     ) -> Arc<RunServices> {
@@ -1615,8 +1615,8 @@ mod tests {
         let emitter = Arc::new(Emitter::new(test_run_id()));
         let store_logger = StoreProgressLogger::new(run_store.clone());
         store_logger.register(&emitter);
-        let sandbox: Arc<fabro_agent::RunSandbox> = Arc::new(
-            fabro_agent::local_sandbox(std::env::current_dir().unwrap())
+        let sandbox: Arc<fabro_sandbox::RunSandbox> = Arc::new(
+            fabro_sandbox::local_sandbox(std::env::current_dir().unwrap())
                 .await
                 .unwrap(),
         );
@@ -1686,7 +1686,7 @@ mod tests {
             handle,
             emitter,
             Arc::new(
-                fabro_agent::local_sandbox(repo_dir.path().to_path_buf())
+                fabro_sandbox::local_sandbox(repo_dir.path().to_path_buf())
                     .await
                     .unwrap(),
             ),
@@ -1725,7 +1725,7 @@ mod tests {
             RunStoreHandle::new(Arc::new(FailingStateStore)),
             emitter,
             Arc::new(
-                fabro_agent::local_sandbox(repo_dir.path().to_path_buf())
+                fabro_sandbox::local_sandbox(repo_dir.path().to_path_buf())
                     .await
                     .unwrap(),
             ),
@@ -1780,7 +1780,7 @@ mod tests {
             RunStoreHandle::local(run_store),
             emitter,
             Arc::new(
-                fabro_agent::local_sandbox(repo_dir.path().to_path_buf())
+                fabro_sandbox::local_sandbox(repo_dir.path().to_path_buf())
                     .await
                     .unwrap(),
             ),
@@ -1820,7 +1820,7 @@ mod tests {
             RunStoreHandle::local(run_store),
             Arc::clone(&emitter),
             Arc::new(
-                fabro_agent::local_sandbox(repo_dir.path().to_path_buf())
+                fabro_sandbox::local_sandbox(repo_dir.path().to_path_buf())
                     .await
                     .unwrap(),
             ),
@@ -2042,7 +2042,7 @@ mod tests {
             RunStoreHandle::local(seeded_run_store().await),
             emitter,
             Arc::new(
-                fabro_agent::local_sandbox(repo_dir.path().to_path_buf())
+                fabro_sandbox::local_sandbox(repo_dir.path().to_path_buf())
                     .await
                     .unwrap(),
             ),
@@ -2116,7 +2116,7 @@ mod tests {
             RunStoreHandle::local(seeded_run_store().await),
             emitter,
             Arc::new(
-                fabro_agent::local_sandbox(repo_dir.path().to_path_buf())
+                fabro_sandbox::local_sandbox(repo_dir.path().to_path_buf())
                     .await
                     .unwrap(),
             ),
@@ -2181,7 +2181,7 @@ mod tests {
             RunStoreHandle::local(seeded_run_store().await),
             emitter,
             Arc::new(
-                fabro_agent::local_sandbox(repo_dir.path().to_path_buf())
+                fabro_sandbox::local_sandbox(repo_dir.path().to_path_buf())
                     .await
                     .unwrap(),
             ),
@@ -2357,7 +2357,7 @@ mod tests {
             RunStoreHandle::local(run_store),
             Arc::clone(&emitter),
             Arc::new(
-                fabro_agent::local_sandbox(repo.to_path_buf())
+                fabro_sandbox::local_sandbox(repo.to_path_buf())
                     .await
                     .unwrap(),
             ),

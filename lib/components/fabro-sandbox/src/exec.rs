@@ -201,9 +201,11 @@ pub fn command_termination(termination: Termination) -> CommandTermination {
 /// trapped `TERM`), which events must not present as a program result.
 #[must_use]
 pub fn program_exit_code(termination: Termination, exit_code: Option<i32>) -> Option<i32> {
+    // `CommandTermination` is pebble's and non-exhaustive: only a command
+    // that exited on its own owns its exit code.
     match command_termination(termination) {
         CommandTermination::Exited => exit_code,
-        CommandTermination::TimedOut | CommandTermination::Cancelled => None,
+        _ => None,
     }
 }
 

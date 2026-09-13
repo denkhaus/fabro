@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use fabro_agent::RunSandbox;
 #[cfg(test)]
 use fabro_auth::test_support;
 use fabro_llm::credentials::CredentialProvider;
 use fabro_llm::lithos_catalog::Catalog;
+use fabro_sandbox::RunSandbox;
 
 use crate::config::{HookDefinition, HookSettings};
 use crate::executor::{HookExecutor, HookExecutorImpl};
@@ -269,7 +269,7 @@ mod tests {
 
     async fn make_sandbox() -> Arc<RunSandbox> {
         Arc::new(
-            fabro_agent::local_sandbox(std::env::current_dir().unwrap())
+            fabro_sandbox::local_sandbox(std::env::current_dir().unwrap())
                 .await
                 .unwrap(),
         )

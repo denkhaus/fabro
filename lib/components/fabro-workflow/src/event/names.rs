@@ -1,7 +1,5 @@
 use std::borrow::Cow;
 
-use fabro_agent::AgentEvent;
-
 use super::{Event, SandboxLifecycle};
 
 #[must_use]
@@ -67,43 +65,7 @@ pub fn event_name(event: &Event) -> Cow<'static, str> {
         Event::LoopRestart { .. } => "loop.restart",
         Event::Prompt { .. } => "stage.prompt",
         Event::PromptCompleted { .. } => "prompt.completed",
-        Event::Agent { event, .. } => match event {
-            AgentEvent::SessionStarted { .. } => "agent.session.started",
-            AgentEvent::SessionEnded => "agent.session.ended",
-            AgentEvent::ProcessingEnd => "agent.processing.end",
-            AgentEvent::UserInput { .. } => "agent.input",
-            AgentEvent::LlmRequestStarted { .. } => "agent.llm.started",
-            AgentEvent::LlmFirstOutput { .. } => "agent.llm.first_output",
-            AgentEvent::AssistantOutputReplace { .. } => "agent.output.replace",
-            AgentEvent::AssistantMessage { .. } => "agent.message",
-            AgentEvent::TextDelta { .. } => "agent.text.delta",
-            AgentEvent::ReasoningDelta { .. } => "agent.reasoning.delta",
-            AgentEvent::ToolCallStarted { .. } => "agent.tool.started",
-            AgentEvent::ToolCallOutputDelta { .. } => "agent.tool.output.delta",
-            AgentEvent::ToolCallCompleted { .. } => "agent.tool.completed",
-            AgentEvent::ToolProcessCompleted { .. } => "agent.tool.process.completed",
-            AgentEvent::Error { .. } => "agent.error",
-            AgentEvent::Warning { .. } => "agent.warning",
-            AgentEvent::LoopDetected => "agent.loop.detected",
-            AgentEvent::SteeringInjected { .. } => "agent.steering.injected",
-            AgentEvent::RoundInterrupted { .. } => "agent.round.interrupted",
-            AgentEvent::CompactionStarted { .. } => "agent.compaction.started",
-            AgentEvent::CompactionCompleted { .. } => "agent.compaction.completed",
-            AgentEvent::LlmRetry { .. } => "agent.llm.retry",
-            AgentEvent::SubAgentSpawned { .. } => "agent.sub.spawned",
-            AgentEvent::SubAgentTurnStarted { .. } => "agent.sub.turn.started",
-            AgentEvent::SubAgentCompleted { .. } => "agent.sub.completed",
-            AgentEvent::SubAgentFailed { .. } => "agent.sub.failed",
-            AgentEvent::SubAgentClosed { .. } => "agent.sub.closed",
-            AgentEvent::McpServerReady { .. } => "agent.mcp.ready",
-            AgentEvent::McpServerFailed { .. } => "agent.mcp.failed",
-            AgentEvent::MemoryLoaded { .. } => "agent.memory.loaded",
-            AgentEvent::SkillsDiscovered { .. } => "agent.skills.discovered",
-            AgentEvent::SkillActivated { .. } => "agent.skill.activated",
-            AgentEvent::TodoCreated(_) => "todo.created",
-            AgentEvent::TodoUpdated(_) => "todo.updated",
-            AgentEvent::TodoDeleted(_) => "todo.deleted",
-        },
+        Event::Agent { event, .. } => fabro_types::coding_event_name(&event.event),
         Event::SubgraphStarted { .. } => "subgraph.started",
         Event::SubgraphCompleted { .. } => "subgraph.completed",
         Event::Sandbox { event } => match event {
@@ -123,11 +85,11 @@ pub fn event_name(event: &Event) -> Cow<'static, str> {
         Event::Failover { .. } => "agent.failover",
         Event::CommandStarted { .. } => "command.started",
         Event::CommandCompleted { .. } => "command.completed",
-        Event::AgentSessionStarted { .. } => "agent.session.started",
         Event::AgentSessionActivated { .. } => "agent.session.activated",
         Event::AgentToolsAvailable { .. } => "agent.tools.available",
         Event::AgentSessionDeactivated { .. } => "agent.session.deactivated",
-        Event::AgentSessionEnded { .. } => "agent.session.ended",
+        Event::AgentMcpReady { .. } => "agent.mcp.ready",
+        Event::AgentMcpFailed { .. } => "agent.mcp.failed",
         Event::AgentInterruptInjected { .. } => "agent.interrupt.injected",
         Event::AgentPairUserMessage { .. } => "agent.pair.user_message",
         Event::AgentPairSystemMessage { .. } => "agent.pair.system_message",
@@ -150,7 +112,7 @@ pub fn event_name(event: &Event) -> Cow<'static, str> {
 #[cfg(test)]
 mod tests {
     use ::fabro_types::{ParallelBranchId, StageId};
-    use fabro_agent::AgentEvent;
+    use pebble_coding_agent::events::{CodingAgentEvent, CodingEvent};
 
     use super::*;
     use crate::event::Event;
@@ -171,44 +133,47 @@ mod tests {
         );
         assert_eq!(
             event_name(&Event::Agent {
-                stage:             "code".to_string(),
-                visit:             1,
-                event:             AgentEvent::SubAgentSpawned {
-                    agent_id:   "a1".to_string(),
-                    depth:      1,
-                    task:       "do it".to_string(),
-                    generation: 1,
-                },
-                session_id:        None,
-                parent_session_id: None,
-                tool_call_id:      None,
+                stage: "code".to_string(),
+                visit: 1,
+                event: CodingAgentEvent::new(
+                    "ses_test".to_string(),
+                    CodingEvent::SubAgentSpawned {
+                        agent_id:   "a1".to_string(),
+                        depth:      1,
+                        task:       "do it".to_string(),
+                        generation: 1,
+                    },
+                    std::time::SystemTime::UNIX_EPOCH,
+                ),
             }),
             "agent.sub.spawned"
         );
         assert_eq!(
             event_name(&Event::Agent {
-                stage:             "code".to_string(),
-                visit:             1,
-                event:             AgentEvent::SubAgentTurnStarted {
-                    agent_id:   "a1".to_string(),
-                    depth:      1,
-                    task:       "fix it".to_string(),
-                    generation: 2,
-                },
-                session_id:        None,
-                parent_session_id: None,
-                tool_call_id:      None,
+                stage: "code".to_string(),
+                visit: 1,
+                event: CodingAgentEvent::new(
+                    "ses_test".to_string(),
+                    CodingEvent::SubAgentTurnStarted {
+                        agent_id:   "a1".to_string(),
+                        depth:      1,
+                        task:       "fix it".to_string(),
+                        generation: 2,
+                    },
+                    std::time::SystemTime::UNIX_EPOCH,
+                ),
             }),
             "agent.sub.turn.started"
         );
         assert_eq!(
             event_name(&Event::Agent {
-                stage:             "code".to_string(),
-                visit:             1,
-                event:             AgentEvent::RoundInterrupted { generation: 1 },
-                session_id:        Some("session-1".to_string()),
-                parent_session_id: None,
-                tool_call_id:      None,
+                stage: "code".to_string(),
+                visit: 1,
+                event: CodingAgentEvent::new(
+                    "session-1".to_string(),
+                    CodingEvent::RoundInterrupted { generation: 1 },
+                    std::time::SystemTime::UNIX_EPOCH,
+                ),
             }),
             "agent.round.interrupted"
         );

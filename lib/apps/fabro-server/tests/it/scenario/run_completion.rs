@@ -55,7 +55,7 @@ fn test_app_with_openai_agent_backend(openai_base_url: String, api_key: String) 
             let steering_hub = Arc::new(fabro_workflow::SteeringHub::new(emitter));
             fabro_workflow::handler::default_registry(interviewer, move || {
                 Some(Box::new(
-                    fabro_workflow::handler::llm::AgentApiBackend::new_with_catalog(
+                    fabro_workflow::handler::llm::PebbleBackend::new_with_catalog(
                         OPENAI_AGENT_MODEL.to_string(),
                         lithos_llm::catalog::builtin::openai(),
                         fabro_workflow::model_fallback::ModelFallbackPolicy::default(),

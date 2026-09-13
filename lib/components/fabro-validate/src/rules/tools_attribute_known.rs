@@ -130,23 +130,46 @@ mod tests {
     }
 
     /// Guard the static catalogs against the live ones: the lists below
-    /// must track fabro-agent's NativeTool and fabro-tool's catalog.
+    /// must track the enforcement seam's vocabulary (pebble's NativeTool
+    /// enum is crate-private, so the live reference is the fork policy's
+    /// alias table) and fabro-tool's catalog.
     #[test]
     fn static_catalogs_match_live_crates() {
         use fabro_workflow::handler::llm::context_read::workflow_tool_names;
-        use strum::VariantArray as _;
+        use fabro_workflow::handler::llm::stage_policy::canonical_tool_name;
 
-        let mut native: Vec<&str> = KNOWN_NATIVE_TOOL_NAMES.to_vec();
-        let mut live_native: Vec<String> = fabro_agent::NativeTool::VARIANTS
-            .iter()
-            .map(|tool| tool.canonical_name().to_owned())
-            .collect();
-        native.sort_unstable();
-        live_native.sort_unstable();
-        assert_eq!(
-            native, live_native,
-            "KNOWN_NATIVE_TOOL_NAMES drifted from fabro-agent NativeTool"
-        );
+        let native: Vec<&str> = KNOWN_NATIVE_TOOL_NAMES.to_vec();
+        // Every alias target the stage policy can resolve to must be a
+        // known native name — a pebble rename that the static list misses
+        // would silently deny every stage naming the tool.
+        let live_targets: Vec<&str> = [
+            "Read",
+            "Write",
+            "Edit",
+            "Bash",
+            "Grep",
+            "Glob",
+            "WebSearch",
+            "WebFetch",
+            "FetchURL",
+            "Skill",
+            "Agent",
+            "TaskOutput",
+            "TaskStop",
+            "SendMessage",
+            "read_file",
+            "spawn_agent",
+        ]
+        .into_iter()
+        .map(canonical_tool_name)
+        .collect();
+        for target in live_targets {
+            assert!(
+                native.contains(&target),
+                "KNOWN_NATIVE_TOOL_NAMES is missing '{target}': the stage policy can resolve to \
+                 it, so the validator would warn on a valid tools= entry"
+            );
+        }
 
         let mut workflow: Vec<&str> = KNOWN_WORKFLOW_TOOL_NAMES.to_vec();
         let mut live_workflow: Vec<String> = workflow_tool_names()

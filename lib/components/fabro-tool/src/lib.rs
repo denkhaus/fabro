@@ -11,7 +11,6 @@ mod events;
 pub mod fabro_client;
 mod gather;
 mod get;
-mod git_source;
 mod interact;
 mod logs;
 mod manifest;
@@ -19,6 +18,7 @@ mod pair;
 mod runs_list;
 mod search;
 mod wait;
+mod workflow_version;
 
 pub use ask::{
     AskResult, AskTurnCollector, AskTurnOutcome, AskTurnStatus, FabroAskParams, ValidatedAsk,
@@ -28,14 +28,13 @@ pub use common::{
     FABRO_ASK_TOOL_NAME, FABRO_RUN_CREATE_TOOL_NAME, FABRO_RUN_EVENTS_TOOL_NAME,
     FABRO_RUN_GATHER_TOOL_NAME, FABRO_RUN_GET_TOOL_NAME, FABRO_RUN_INTERACT_TOOL_NAME,
     FABRO_RUN_LOG_TOOL_NAME, FABRO_RUN_PAIR_TOOL_NAME, FABRO_RUN_SEARCH_TOOL_NAME,
-    FABRO_RUN_WAIT_TOOL_NAME, FABRO_RUNS_LIST_TOOL_NAME, FabroToolBackend, RunManifestBuilder,
-    RunPullRequestSummary, RunSummaryResult, ToolDefinition, ToolError, ToolResult,
-    tool_definitions,
+    FABRO_RUN_WAIT_TOOL_NAME, FABRO_RUNS_LIST_TOOL_NAME, FABRO_WORKFLOW_VERSION_CREATE_TOOL_NAME,
+    FabroToolBackend, RunPullRequestSummary, RunSummaryResult, ToolDefinition, ToolError,
+    ToolResult, tool_definitions,
 };
 pub use create::{
-    CreateRunOptions, CreateRunSpec, CreateRunSpecInput, CreateRunsResult, CreatedRunResult,
-    FabroRunCreateParams, RunInputValue, ValidatedCreateRunSpec, ValidatedCreateRuns,
-    WorkflowSourceRef, create_runs, create_runs_text, create_runs_with_options,
+    CreateRunOptions, CreateRunSpec, CreateRunsResult, CreatedRunResult, FabroRunCreateParams,
+    create_runs, create_runs_text, create_runs_with_options,
 };
 pub use events::{
     FabroRunEventsParams, RunEventResult, RunEventsAction, RunEventsResult, ValidatedRunEvents,
@@ -67,4 +66,8 @@ pub use search::{
 pub use wait::{
     FabroRunWaitParams, MAX_WAIT_TIMEOUT_MS, RunWaitOutcome, RunWaitReached, RunWaitUntil,
     ValidatedRunWait, run_wait, run_wait_text,
+};
+pub use workflow_version::{
+    FabroWorkflowVersionCreateParams, ValidatedWorkflowVersionCreate, WorkflowVersionPackager,
+    create_workflow_version, workflow_version_create_text,
 };

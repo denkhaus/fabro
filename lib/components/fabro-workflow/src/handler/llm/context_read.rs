@@ -12,11 +12,10 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 
-use fabro_agent::RunSandbox;
-use fabro_agent::tool_registry::{RegisteredTool, ToolContext, ToolSource};
 use fabro_graphviz::graph::{Graph, Node};
-use fabro_llm::types::ToolDefinition as LlmToolDefinition;
+use fabro_sandbox::RunSandbox;
 use fabro_types::graph::ATTR_LIST_WILDCARD;
+use pebble_coding_agent::tools::{RegisteredTool, ToolError};
 use serde_json::Value;
 use tokio::sync::Mutex;
 
@@ -28,7 +27,7 @@ use crate::runtime_store::RunStoreHandle;
 /// Canonical name of the stage context-pull tool.
 pub const CONTEXT_READ_TOOL_NAME: &str = "context_read";
 
-/// Stage tools this module registers beyond fabro-agent's native set.
+/// Stage tools this module registers beyond pebble's native set.
 /// The validate crate's catalog drift test cross-checks against this list.
 #[must_use]
 pub fn workflow_tool_names() -> &'static [&'static str] {
@@ -142,11 +141,6 @@ impl ContextReadState {
         }
     }
 
-    /// Replace the served view for the node about to execute.
-    pub(crate) fn update(&self, services: &ContextReadServices) {
-        *self.view.write().expect(VIEW_LOCK_POISONED) = services.view.clone();
-    }
-
     /// Look up one key under the current view, in a single read-lock hold.
     ///
     /// Returns the cloned value plus the stage's inline budget, or the
@@ -190,29 +184,34 @@ impl ContextReadState {
 }
 
 /// Build the registered `context_read` tool closing over `state`.
+///
+/// The tool is inheritable so spawned helper sessions serve the same
+/// per-node view the parent stage was given (fabro-e804).
 pub(crate) fn context_read_tool(state: Arc<ContextReadState>) -> RegisteredTool {
-    RegisteredTool {
-        definition: LlmToolDefinition::function(
-            CONTEXT_READ_TOOL_NAME,
-            CONTEXT_READ_TOOL_DESCRIPTION,
-            serde_json::json!({
-                "type": "object",
-                "properties": {
-                    "key": {
-                        "type": "string",
-                        "description": "Context key to read, e.g. 'plan.outline'"
-                    }
-                },
-                "required": ["key"],
-                "additionalProperties": false,
-            }),
-        ),
-        executor:   Arc::new(move |args, _context: ToolContext| {
-            let state = Arc::clone(&state);
-            Box::pin(async move { execute_context_read(args, state).await })
+    RegisteredTool::function(
+        CONTEXT_READ_TOOL_NAME,
+        CONTEXT_READ_TOOL_DESCRIPTION,
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "key": {
+                    "type": "string",
+                    "description": "Context key to read, e.g. 'plan.outline'"
+                }
+            },
+            "required": ["key"],
+            "additionalProperties": false,
         }),
-        source:     ToolSource::Native,
-    }
+        move |_, args| {
+            let state = Arc::clone(&state);
+            async move {
+                execute_context_read(args, state)
+                    .await
+                    .map_err(ToolError::execution)
+            }
+        },
+    )
+    .allow_in_subagents()
 }
 
 async fn execute_context_read(
@@ -318,7 +317,7 @@ impl ContextReadServices {
     pub(crate) async fn for_tests() -> Self {
         let run_dir = std::env::temp_dir().join("fabro-context-read-tests");
         let sandbox = std::sync::Arc::new(
-            fabro_agent::local_sandbox(run_dir.clone())
+            fabro_sandbox::local_sandbox(run_dir.clone())
                 .await
                 .expect("local sandbox for tests"),
         );
@@ -392,7 +391,7 @@ mod tests {
             graph,
             RunStoreHandle::new(Arc::new(MemoryBlobBackend::new())),
             Arc::new(
-                fabro_agent::local_sandbox(run_dir.to_path_buf())
+                fabro_sandbox::local_sandbox(run_dir.to_path_buf())
                     .await
                     .expect("local sandbox for tests"),
             ),
@@ -544,7 +543,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn update_swaps_the_served_view() {
+    async fn each_invocation_serves_its_own_view() {
+        // The pebble backend builds a fresh state per stage invocation from
+        // that node's resolved context, which is what the old shared-state
+        // `update` swap achieved; this pins the per-construction view.
         let context = Context::new();
         context.set("before", json!(1));
         let run_dir = tempfile::tempdir().expect("tempdir");
@@ -567,15 +569,15 @@ mod tests {
         next.set("after", json!(2));
         let next_services =
             services_for(&next, &node_with_attrs(&[]), &plain_graph(), run_dir.path()).await;
-        state.update(&next_services);
+        let next_state = Arc::new(ContextReadState::new(next_services));
 
         assert!(
-            execute_context_read(json!({"key": "before"}), Arc::clone(&state))
+            execute_context_read(json!({"key": "after"}), Arc::clone(&state))
                 .await
                 .is_err()
         );
         assert_eq!(
-            execute_context_read(json!({"key": "after"}), Arc::clone(&state))
+            execute_context_read(json!({"key": "after"}), Arc::clone(&next_state))
                 .await
                 .expect("serves"),
             "2"
@@ -603,7 +605,7 @@ mod tests {
             &plain_graph(),
             run_store,
             Arc::new(
-                fabro_agent::local_sandbox(run_dir.path().to_path_buf())
+                fabro_sandbox::local_sandbox(run_dir.path().to_path_buf())
                     .await
                     .expect("local sandbox for tests"),
             ),
@@ -660,8 +662,9 @@ mod tests {
         )
         .await;
         let tool = context_read_tool(Arc::new(ContextReadState::new(services)));
-        assert_eq!(tool.definition.name, "context_read");
-        let ToolDefinitionKind::Function { input_schema } = &tool.definition.kind else {
+        let definition = tool.definition();
+        assert_eq!(definition.name, "context_read");
+        let ToolDefinitionKind::Function { input_schema } = &definition.kind else {
             panic!("context_read tool should be a function tool");
         };
         let required = input_schema

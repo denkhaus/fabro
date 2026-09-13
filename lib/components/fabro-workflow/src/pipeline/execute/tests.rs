@@ -11,13 +11,12 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
 
 use async_trait::async_trait;
-use fabro_agent::RunSandbox;
 use fabro_auth::test_support as auth_test_support;
 use fabro_graphviz::graph::{AttrValue, Edge, Graph, Node};
 use fabro_hooks::HookSettings;
 use fabro_interview::AutoApproveInterviewer;
 use fabro_sandbox::test_support::{MockSandbox, local_sandbox_id};
-use fabro_sandbox::{ProviderAccess, SandboxSpec};
+use fabro_sandbox::{ProviderAccess, RunSandbox, SandboxSpec};
 use fabro_store::Database;
 use fabro_types::settings::run::RunModelControls;
 use fabro_types::{
@@ -42,9 +41,11 @@ use crate::test_support::run_graph;
 
 async fn local_env() -> Arc<RunSandbox> {
     Arc::new(
-        fabro_agent::local_sandbox(std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")))
-            .await
-            .unwrap(),
+        fabro_sandbox::local_sandbox(
+            std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
+        )
+        .await
+        .unwrap(),
     )
 }
 

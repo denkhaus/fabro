@@ -446,7 +446,6 @@ fn normalize_optional_text(value: Option<&str>) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
-    use std::path::Path;
     use std::sync::{Arc, Mutex};
 
     use async_trait::async_trait;
@@ -782,12 +781,16 @@ mod tests {
             anyhow::bail!("workflow enumeration is not supported by this mock")
         }
 
-        async fn create_run_from_spec(
+        async fn create_workflow_version(
             &self,
-            _spec: &crate::ValidatedCreateRunSpec,
-            _cwd: &Path,
-            _user_settings_path: &Path,
-            _parent_id: Option<RunId>,
+            _source: crate::ValidatedWorkflowVersionCreate,
+        ) -> anyhow::Result<fabro_types::WorkflowVersionId> {
+            anyhow::bail!("workflow version creation is not supported by this mock")
+        }
+
+        async fn create_run_from_intent(
+            &self,
+            _intent: fabro_types::RunIntent,
         ) -> anyhow::Result<RunId> {
             unreachable!()
         }

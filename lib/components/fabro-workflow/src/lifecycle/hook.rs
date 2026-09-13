@@ -243,7 +243,7 @@ mod tests {
         HookLifecycle {
             hook_runner:            Some(Arc::new(runner)),
             sandbox:                Arc::new(
-                fabro_agent::local_sandbox(std::env::temp_dir())
+                fabro_sandbox::local_sandbox(std::env::temp_dir())
                     .await
                     .expect("local sandbox for hook tests"),
             ),

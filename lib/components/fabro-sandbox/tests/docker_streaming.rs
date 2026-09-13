@@ -464,3 +464,50 @@ async fn docker_runtime_directory_is_private_and_outside_workspace() {
     );
     assert_eq!(readback.expect("runtime blob should be readable"), "{}");
 }
+
+/// The run sandbox over Docker is the `Environment` pebble's coding agent runs
+/// in for a Docker run, so it has to pass pebble's own contract there too:
+/// the Host proof in `environment.rs` covers the mapping, this covers the
+/// provider (derived search over `rg`/`grep`, `mv` for a move, a merged or
+/// separated stream pair).
+#[tokio::test]
+#[ignore = "requires real Docker container lifecycle; run explicitly when changing the pebble Environment mapping"]
+async fn docker_sandbox_satisfies_pebbles_environment_contract() {
+    use pebble_coding_agent::test_support::EnvironmentContract;
+
+    let image = "buildpack-deps:noble";
+    if !docker_image_available(image).await {
+        return;
+    }
+
+    let sandbox = provider_sandbox(
+        SandboxProviderKind::DOCKER,
+        &ProviderAccess::default(),
+        SandboxSpec::new(SandboxSource::Image {
+            reference: image.to_string(),
+        }),
+        &CloneRequest::none(),
+        None,
+        None,
+    )
+    .await
+    .expect("docker sandbox should construct");
+    sandbox
+        .initialize()
+        .await
+        .expect("docker sandbox should initialize");
+
+    let contract = EnvironmentContract::new(&sandbox, "pebble-contract")
+        .with_operation_timeout(std::time::Duration::from_mins(1));
+    let outcome = async {
+        contract.verify_files().await?;
+        contract.verify_search().await?;
+        contract.verify_commands().await
+    }
+    .await;
+    sandbox
+        .delete()
+        .await
+        .expect("docker sandbox should clean up");
+    outcome.expect("the Docker sandbox satisfies pebble's environment contract");
+}

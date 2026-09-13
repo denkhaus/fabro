@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 
+use super::ExecOutputTail;
 use crate::{RunSandboxFailure, SandboxProviderKind};
 
 #[derive(
@@ -95,65 +96,6 @@ pub enum MetadataSnapshotFailureKind {
     LoadState,
     Write,
     Push,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ExecOutputTail {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub stdout:           Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub stderr:           Option<String>,
-    #[serde(default, skip_serializing_if = "is_false")]
-    pub stdout_truncated: bool,
-    #[serde(default, skip_serializing_if = "is_false")]
-    pub stderr_truncated: bool,
-}
-
-#[allow(
-    clippy::trivially_copy_pass_by_ref,
-    reason = "serde skip_serializing_if predicates receive fields by reference"
-)]
-fn is_false(value: &bool) -> bool {
-    !*value
-}
-
-impl ExecOutputTail {
-    #[must_use]
-    pub fn is_empty(&self) -> bool {
-        self.stdout.as_deref().unwrap_or("").is_empty()
-            && self.stderr.as_deref().unwrap_or("").is_empty()
-    }
-
-    #[must_use]
-    pub fn stdout_len(&self) -> usize {
-        self.stdout.as_deref().map_or(0, str::len)
-    }
-
-    #[must_use]
-    pub fn stderr_len(&self) -> usize {
-        self.stderr.as_deref().map_or(0, str::len)
-    }
-
-    #[must_use]
-    pub fn trace_summary(tail: Option<&Self>) -> ExecOutputTailTrace {
-        ExecOutputTailTrace {
-            present:          tail.is_some(),
-            stdout_bytes:     tail.map_or(0, Self::stdout_len),
-            stderr_bytes:     tail.map_or(0, Self::stderr_len),
-            stdout_truncated: tail.is_some_and(|t| t.stdout_truncated),
-            stderr_truncated: tail.is_some_and(|t| t.stderr_truncated),
-        }
-    }
-}
-
-/// Flat view of an `ExecOutputTail` for tracing field expansion.
-#[derive(Debug, Clone, Copy)]
-pub struct ExecOutputTailTrace {
-    pub present:          bool,
-    pub stdout_bytes:     usize,
-    pub stderr_bytes:     usize,
-    pub stdout_truncated: bool,
-    pub stderr_truncated: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

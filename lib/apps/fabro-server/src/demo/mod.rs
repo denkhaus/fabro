@@ -1093,7 +1093,7 @@ mod runs {
         RunLifecycle, RunLinks, RunOrigin, RunSize, RunTimestamps, StageId, WorkflowRef,
         WorkflowSettings,
     };
-    use lithos_llm::catalog::{ModelId, ProviderId};
+    use lithos_llm::catalog::ProviderId;
 
     use super::ts;
 
@@ -1445,11 +1445,9 @@ mod runs {
     }
 
     pub(super) fn stage_events() -> Vec<fabro_types::EventEnvelope> {
-        use fabro_types::run_event::agent::{
-            AgentMessageProps, AgentToolCompletedProps, AgentToolStartedProps,
-        };
         use fabro_types::run_event::stage::StagePromptProps;
-        use fabro_types::{BilledTokenCounts, EventBody, EventEnvelope, RunEvent};
+        use fabro_types::{AgentEventProps, EventBody, EventEnvelope, RunEvent};
+        use pebble_coding_agent::events::{CodingAgentEvent, CodingEvent, TokenUsage};
 
         let run_id = demo_run_id(1);
         let node_id = "detect-drift";
@@ -1474,6 +1472,45 @@ mod runs {
                 body,
             },
         };
+        let agent = |event: CodingEvent| {
+            EventBody::Agent(AgentEventProps::new(
+                node_id,
+                1,
+                CodingAgentEvent::new("ses_demo_detect_drift", event, ts.into()),
+            ))
+        };
+        let message = |text: &str| {
+            agent(CodingEvent::AssistantMessage {
+                text:            text.into(),
+                model:           "claude-opus-4.6".into(),
+                usage:           TokenUsage::default(),
+                cost_usd_micros: None,
+                cost_source:     None,
+                tool_call_count: 0,
+                context_window:  None,
+                reasoning:       None,
+            })
+        };
+        let tool_started = |tool_call_id: &str, path: &str| {
+            agent(CodingEvent::ToolCallStarted {
+                tool_name:    "read_file".into(),
+                tool_call_id: tool_call_id.into(),
+                arguments:    serde_json::json!({ "path": path }),
+            })
+        };
+        let tool_completed = |tool_call_id: &str, output: &str| {
+            agent(CodingEvent::ToolCallCompleted {
+                tool_name:             "read_file".into(),
+                tool_call_id:          tool_call_id.into(),
+                output:                serde_json::json!(output),
+                metadata:              pebble_agent::ToolOutputMetadata::default(),
+                is_error:              false,
+                error_kind:            None,
+                output_bytes_observed: output.len(),
+                output_bytes_retained: output.len(),
+                output_bytes_omitted:  0,
+            })
+        };
 
         vec![
             make_envelope(
@@ -1492,96 +1529,32 @@ mod runs {
             make_envelope(
                 2,
                 "evt-detect-drift-2",
-                EventBody::AgentMessage(AgentMessageProps {
-                    text:            "I'll start by loading the environment configurations for both production and staging to compare them.".into(),
-                    model:           fabro_types::ModelRef::new(
-                        lithos_llm::catalog::builtin::anthropic(),
-                        ModelId::new("claude-opus-4.6"),
-                    ),
-                    billing:         BilledTokenCounts::default(),
-                    cost_source:     None,
-                    tool_call_count: 0,
-                    visit:           1,
-                    message:         None,
-                    context_window:  None,
-                    reasoning:       None,
-                }),
+                message("I'll start by loading the environment configurations for both production and staging to compare them."),
             ),
             make_envelope(
                 3,
                 "evt-detect-drift-3",
-                EventBody::AgentToolStarted(AgentToolStartedProps {
-                    tool_name:         "read_file".into(),
-                    tool_call_id:      "toolu_01".into(),
-                    arguments:         serde_json::json!({ "path": "environments/production/config.toml" }),
-                    visit:             1,
-                    tool_call:         None,
-                    turn_id:           None,
-                    parent_message_id: None,
-                }),
+                tool_started("toolu_01", "environments/production/config.toml"),
             ),
             make_envelope(
                 4,
                 "evt-detect-drift-4",
-                EventBody::AgentToolCompleted(AgentToolCompletedProps {
-                    tool_name:    "read_file".into(),
-                    tool_call_id: "toolu_01".into(),
-                    output:       serde_json::json!("[redis]\nhost = \"redis-prod.internal\"\nport = 6379"),
-                    is_error:     false,
-                    visit:        1,
-                    output_bytes_observed: None,
-                    output_bytes_retained: None,
-                    output_bytes_omitted:  None,
-                    tool_result:  None,
-                    turn_id:      None,
-                }),
+                tool_completed("toolu_01", "[redis]\nhost = \"redis-prod.internal\"\nport = 6379"),
             ),
             make_envelope(
                 5,
                 "evt-detect-drift-5",
-                EventBody::AgentToolStarted(AgentToolStartedProps {
-                    tool_name:         "read_file".into(),
-                    tool_call_id:      "toolu_02".into(),
-                    arguments:         serde_json::json!({ "path": "environments/staging/config.toml" }),
-                    visit:             1,
-                    tool_call:         None,
-                    turn_id:           None,
-                    parent_message_id: None,
-                }),
+                tool_started("toolu_02", "environments/staging/config.toml"),
             ),
             make_envelope(
                 6,
                 "evt-detect-drift-6",
-                EventBody::AgentToolCompleted(AgentToolCompletedProps {
-                    tool_name:    "read_file".into(),
-                    tool_call_id: "toolu_02".into(),
-                    output:       serde_json::json!("[redis]\nhost = \"redis-staging.internal\"\nport = 6379"),
-                    is_error:     false,
-                    visit:        1,
-                    output_bytes_observed: None,
-                    output_bytes_retained: None,
-                    output_bytes_omitted:  None,
-                    tool_result:  None,
-                    turn_id:      None,
-                }),
+                tool_completed("toolu_02", "[redis]\nhost = \"redis-staging.internal\"\nport = 6379"),
             ),
             make_envelope(
                 7,
                 "evt-detect-drift-7",
-                EventBody::AgentMessage(AgentMessageProps {
-                    text:            "I've detected drift in 3 resources between production and staging:\n\n1. **redis.max_connections** — production has 200, staging has 100\n2. **redis.tls** — enabled in production, disabled in staging\n3. **iam.session_duration** — production uses 3600s, staging uses 1800s".into(),
-                    model:           fabro_types::ModelRef::new(
-                        lithos_llm::catalog::builtin::anthropic(),
-                        ModelId::new("claude-opus-4.6"),
-                    ),
-                    billing:         BilledTokenCounts::default(),
-                    cost_source:     None,
-                    tool_call_count: 0,
-                    visit:           1,
-                    message:         None,
-                    context_window:  None,
-                    reasoning:       None,
-                }),
+                message("I've detected drift in 3 resources between production and staging:\n\n1. **redis.max_connections** — production has 200, staging has 100\n2. **redis.tls** — enabled in production, disabled in staging\n3. **iam.session_duration** — production uses 3600s, staging uses 1800s"),
             ),
         ]
     }

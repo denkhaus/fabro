@@ -57,6 +57,7 @@ pub(crate) const KNOWN_FABRO_RUN_TOOL_NAMES: &[&str] = &[
     "fabro_run_search",
     "fabro_run_wait",
     "fabro_runs_list",
+    "fabro_workflow_version_create",
 ];
 
 /// Whether `name` is a known tool for the given list family. MCP names

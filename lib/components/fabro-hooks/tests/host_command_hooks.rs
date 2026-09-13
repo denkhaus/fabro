@@ -1,7 +1,6 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use fabro_agent::{RunSandbox, local_sandbox};
 use fabro_auth::test_support;
 use fabro_hooks::{
     HookContext, HookDecision, HookDefinition, HookEvent, HookExecutionContext, HookRunner,
@@ -9,6 +8,7 @@ use fabro_hooks::{
 };
 use fabro_llm::credentials::CredentialProvider;
 use fabro_llm::lithos_catalog::Catalog;
+use fabro_sandbox::{RunSandbox, local_sandbox};
 use fabro_types::RunId;
 use tokio::fs;
 

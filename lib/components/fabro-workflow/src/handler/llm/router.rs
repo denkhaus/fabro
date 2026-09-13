@@ -6,7 +6,7 @@ use fabro_types::AgentBackend;
 
 use super::super::agent::{CodergenBackend, CodergenResult, CodergenRunRequest, OneShotRequest};
 use super::acp::AgentAcpBackend;
-use super::api::EffectiveRequestControls;
+use super::controls::EffectiveRequestControls;
 use super::routing;
 use crate::error::Error;
 use crate::event::Emitter;
@@ -79,8 +79,8 @@ mod tests {
     use std::sync::Arc;
 
     use async_trait::async_trait;
-    use fabro_agent::{RunSandbox, local_sandbox};
     use fabro_graphviz::graph::{AttrValue, Node};
+    use fabro_sandbox::{RunSandbox, local_sandbox};
     use lithos_llm::types::{ReasoningEffort, Speed};
     use tokio_util::sync::CancellationToken;
 

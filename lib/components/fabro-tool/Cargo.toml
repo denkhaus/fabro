@@ -21,6 +21,7 @@ fabro-client = { path = "../../foundation/fabro-client" }
 fabro-redact.workspace = true
 fabro-types = { path = "../../foundation/fabro-types" }
 fabro-util = { path = "../../foundation/fabro-util" }
+fabro-workflow-version = { path = "../fabro-workflow-version" }
 futures.workspace = true
 schemars = "1.2.1"
 serde.workspace = true
@@ -31,4 +32,6 @@ toml.workspace = true
 
 [dev-dependencies]
 fabro-types = { path = "../../foundation/fabro-types", features = ["test-support"] }
+httpmock = "0.8"
+jsonschema.workspace = true
 tempfile = "3"

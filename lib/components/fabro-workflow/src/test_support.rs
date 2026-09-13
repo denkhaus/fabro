@@ -4,13 +4,13 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
-use fabro_agent::RunSandbox;
 use fabro_auth::test_support as auth_test_support;
 use fabro_graphviz::graph::Graph as GvGraph;
 use fabro_interview::AutoApproveInterviewer;
 use fabro_llm::credentials::CredentialProvider;
 use fabro_llm::lithos_catalog::Catalog;
 use fabro_llm::test_support::test_catalog;
+use fabro_sandbox::RunSandbox;
 use fabro_store::{ArtifactStore, RunProjection, test_support as store_test_support};
 use fabro_types::ModelRef;
 #[cfg(feature = "test-support")]
@@ -23,6 +23,7 @@ use crate::artifact_upload::ArtifactSink;
 use crate::error::{Error, Result};
 use crate::event::{Emitter, Event, StoreProgressLogger, append_event};
 use crate::handler::HandlerRegistry;
+use crate::handler::llm::context_read::ContextReadServices;
 use crate::outcome::Outcome;
 use crate::pipeline;
 use crate::pipeline::types::{Executed, Initialized};
@@ -645,4 +646,60 @@ impl WorkflowRunner {
         ))
         .await
     }
+}
+
+/// A `ContextReadServices` fixture for it-test request literals that never
+/// invoke the `context_read` tool (fabro-e804). The backend is inert: the
+/// tool is never called through these services.
+pub async fn context_read_services_for_tests() -> ContextReadServices {
+    use anyhow::Result;
+    use fabro_graphviz::graph::{Graph, Node};
+    use fabro_store::{EventEnvelope, RunProjection};
+    use fabro_types::{BlobHash, RunEvent};
+
+    use crate::context::Context;
+    use crate::handler::llm::context_read::ContextReadServices;
+    use crate::runtime_store::{RunStoreBackend, RunStoreHandle};
+
+    struct InertRunStoreBackend;
+
+    #[async_trait::async_trait]
+    impl RunStoreBackend for InertRunStoreBackend {
+        async fn load_state(&self) -> Result<RunProjection> {
+            unreachable!("context_read fixture never loads run state")
+        }
+
+        async fn list_events(&self) -> Result<Vec<EventEnvelope>> {
+            unreachable!("context_read fixture never lists events")
+        }
+
+        async fn append_run_event(&self, _event: &RunEvent) -> Result<()> {
+            unreachable!("context_read fixture never appends events")
+        }
+
+        async fn write_blob(&self, data: &[u8]) -> Result<BlobHash> {
+            Ok(BlobHash::new(data))
+        }
+
+        async fn read_blob(&self, _blob_hash: &BlobHash) -> Result<Option<bytes::Bytes>> {
+            Ok(None)
+        }
+
+        async fn read_run_log(&self) -> Result<Option<Vec<u8>>> {
+            unreachable!("context_read fixture never reads run logs")
+        }
+    }
+
+    let run_dir = std::env::temp_dir().join("fabro-workflow-it-context-read");
+    let sandbox = fabro_sandbox::local_sandbox(run_dir.clone())
+        .await
+        .expect("local sandbox for context_read fixture");
+    ContextReadServices::new(
+        &Context::new(),
+        &Node::new("test"),
+        &Graph::new("test"),
+        RunStoreHandle::new(Arc::new(InertRunStoreBackend)),
+        Arc::new(sandbox),
+        run_dir,
+    )
 }

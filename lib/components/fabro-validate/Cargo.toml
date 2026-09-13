@@ -23,7 +23,6 @@ thiserror = { workspace = true }
 
 [dev-dependencies]
 fabro-llm = { path = "../fabro-llm", features = ["test-support"] }
-fabro-agent = { path = "../fabro-agent" }
 fabro-workflow = { path = "../fabro-workflow" }
 strum = { workspace = true }
 fabro-tool = { path = "../fabro-tool" }
