@@ -3301,6 +3301,51 @@ mod tests {
     }
 
     #[test]
+    fn legacy_agent_message_model_folds_to_the_stored_model_ref() {
+        // Regression (2026-09-13, run 01M0NGQXB67674XQ5YCR1MB4BN): the
+        // legacy agent.message row carries the full ModelRef object; the
+        // normalizer must reduce it to the bare catalog id so the fold,
+        // paired with the session-activation provider, reproduces exactly
+        // the summary row the old fold wrote. A slash-joined
+        // "zai/glm-5.3" name failed run-history activation verification
+        // and crash-looped the server on healthy data.
+        let raw = r#"{"id":"00000000-0000-0000-0000-00000000000a","ts":"2026-09-08T08:00:00Z","run_id":"01M0NGQXB67674XQ5YCR1MB4BN","event":"agent.message","properties":{"text":"ok","model":{"provider":"zai","model_id":"glm-5.3"},"billing":{"input_tokens":10,"output_tokens":2,"total_tokens":12,"reasoning_tokens":0,"cache_read_tokens":0,"cache_write_tokens":0,"total_usd_micros":7},"tool_call_count":0,"visit":1}}"#;
+        let event = RunEvent::from_json_str(raw)
+            .expect("legacy agent.message row should normalize");
+        let EventBody::Agent(props) = event.body else {
+            panic!("expected Agent envelope, got {:?}", event.body);
+        };
+
+        let mut state = initialized_projection();
+        let stage_id = StageId::new("code", 1);
+        start_stage(&mut state, &stage_id);
+        state
+            .apply_event(&test_stage_event(
+                4,
+                EventBody::AgentSessionActivated(AgentSessionActivatedProps {
+                    thread_id:        Some("thread-1".to_string()),
+                    provider:         Some("zai".to_string()),
+                    model:            Some("glm-5.3".to_string()),
+                    reasoning_effort: None,
+                    speed:            None,
+                    permission_level: None,
+                    capabilities:     vec![],
+                    visit:            1,
+                }),
+                stage_id.clone(),
+            ))
+            .unwrap();
+        state
+            .apply_event(&test_stage_event(5, EventBody::Agent(props), stage_id))
+            .unwrap();
+
+        let stage = state.stage(&StageId::new("code", 1)).unwrap();
+        let model = stage.model.as_ref().expect("stage model should be set");
+        assert_eq!(model.provider.to_string(), "zai");
+        assert_eq!(model.model_id.to_string(), "glm-5.3");
+    }
+
+    #[test]
     fn agent_session_activated_updates_stage_provider_used() {
         let mut state = initialized_projection();
         let stage_id = StageId::new("code", 1);

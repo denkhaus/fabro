@@ -1049,12 +1049,18 @@ fn normalize_legacy_agent_message(properties: &mut Value, timestamp: Value) {
     let model = match object.get("model") {
         Some(Value::String(model)) => model.clone(),
         Some(Value::Object(model)) => {
-            let provider = model.get("provider").and_then(Value::as_str);
-            let model_id = model.get("model_id").and_then(Value::as_str);
-            match (provider, model_id) {
-                (Some(provider), Some(model_id)) => format!("{provider}/{model_id}"),
-                _ => String::new(),
-            }
+            // The legacy row carries the full ModelRef (provider + model_id);
+            // the current AssistantMessage contract is the bare catalog model
+            // id, with the provider sourced from the session-activation
+            // evidence on the stage (run_state's stage_model_ref). Joining
+            // "provider/model_id" here produced a wrong model name on replay
+            // and aborted run-history activation on healthy stored rows
+            // (observed live 2026-09-13, run 01M0NGQXB67674XQ5YCR1MB4BN).
+            model
+                .get("model_id")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string()
         }
         _ => String::new(),
     };
@@ -1427,10 +1433,17 @@ mod tests {
         match event.body {
             EventBody::Agent(props) => match props.event.event {
                 CodingEvent::AssistantMessage {
+                    ref model,
                     ref usage,
                     cost_usd_micros,
                     ..
                 } => {
+                    // The bare catalog id, NOT "zai/glm-5.3": the fold's
+                    // stage_model_ref pairs it with the session-activation
+                    // provider, and a slash-joined name failed the
+                    // run-history activation verification on healthy rows
+                    // (2026-09-13, run 01M0NGQXB67674XQ5YCR1MB4BN).
+                    assert_eq!(model, "glm-5.3");
                     assert_eq!(usage.input, 10);
                     assert_eq!(usage.output, 2);
                     assert_eq!(cost_usd_micros, Some(7));
