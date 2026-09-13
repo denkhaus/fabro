@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use fabro_graphviz::graph::{Graph, Node};
-use fabro_types::{StageModelUsage, StageTiming};
+use fabro_types::{RunNoticeLevel, StageModelUsage, StageTiming};
 
 use super::agent::{
     CodergenBackend, CodergenResult, OneShotRequest, emit_stage_prompt, extract_status_fields,
@@ -172,24 +172,56 @@ impl Handler for PromptHandler {
         );
 
         if let Some(schema) = structured_output::parse_node_output_schema(graph, node)? {
-            if let Ok(validated) =
-                structured_output::validate_response_text(&schema, &response_text)
-            {
-                structured_output::apply_validated_output(node, &schema, &validated, &mut outcome);
-                // Response dedup (fabro-b907): payload lives under
-                // output.<node>; replace the full-text echo with a compact
-                // reference (see agent.rs for the twin).
-                outcome.context_updates.insert(
-                    keys::response_key(&node.id),
-                    structured_output::compact_response_value(&node.id, &response_text),
-                );
-            } else {
-                let mut failed =
-                    structured_output::exhausted_failure_outcome(node.output_retries());
-                failed.timing = Some(timing);
-                failed.usage = stage_usage;
-                failed.files_touched = backend_files_touched;
-                return Ok(failed);
+            match structured_output::validate_response_text(&schema, &response_text) {
+                Ok(validated) => {
+                    structured_output::apply_validated_output(
+                        node,
+                        &schema,
+                        &validated,
+                        &mut outcome,
+                    );
+                    // Response dedup (fabro-b907): payload lives under
+                    // output.<node>; replace the full-text echo with a compact
+                    // reference (see agent.rs for the twin).
+                    outcome.context_updates.insert(
+                        keys::response_key(&node.id),
+                        structured_output::compact_response_value(&node.id, &response_text),
+                    );
+                }
+                // fabro-274d: pure size overflow must not park the run.
+                // Persist the truncated payload with an explicit truncation
+                // marker plus a non-fatal run.notice instead of a
+                // deterministic failure.
+                Err(error) if error.is_truncated() => {
+                    services.run.emitter.emit_scoped(
+                        &Event::RunNotice {
+                            level:            RunNoticeLevel::Warn,
+                            code:             structured_output::TRUNCATION_NOTICE_CODE.to_string(),
+                            message:          structured_output::truncation_notice_message(
+                                &node.id,
+                                &response_text,
+                            ),
+                            exec_output_tail: None,
+                        },
+                        &stage_scope,
+                    );
+                    outcome.context_updates.insert(
+                        structured_output::output_key(&node.id),
+                        structured_output::truncated_recovery_value(&node.id, &response_text),
+                    );
+                    outcome.notes = Some(format!(
+                        "Stage completed with truncated structured output: {}",
+                        node.id
+                    ));
+                }
+                Err(_) => {
+                    let mut failed =
+                        structured_output::exhausted_failure_outcome(node.output_retries());
+                    failed.timing = Some(timing);
+                    failed.usage = stage_usage;
+                    failed.files_touched = backend_files_touched;
+                    return Ok(failed);
+                }
             }
         } else {
             extract_status_fields(&response_text, &mut outcome);
@@ -509,6 +541,117 @@ mod tests {
             outcome.failure_reason(),
             Some("output schema validation failed after 0 repair attempt(s)")
         );
+    }
+
+    #[tokio::test]
+    async fn prompt_handler_oversized_structured_output_completes_instead_of_parking() {
+        // fabro-274d twin of the agent handler test: a truncated final
+        // structured message persists best-effort with an explicit truncation
+        // marker; a balanced-but-invalid one keeps the deterministic failure.
+        struct FixedTextBackend(&'static str);
+
+        #[async_trait]
+        impl CodergenBackend for FixedTextBackend {
+            async fn run(&self, _request: CodergenRunRequest<'_>) -> Result<CodergenResult, Error> {
+                panic!("run() should not be called for prompt handler");
+            }
+
+            async fn one_shot(
+                &self,
+                _request: OneShotRequest<'_>,
+            ) -> Result<CodergenResult, Error> {
+                Ok(CodergenResult::Text {
+                    text:              self.0.to_string(),
+                    usage:             None,
+                    files_touched:     Vec::new(),
+                    last_file_touched: None,
+                    timing:            StageTiming::default(),
+                })
+            }
+        }
+
+        let truncated_text = concat!(
+            r#"{"findings":[{"id":"a","detail":"long"},{"id":"b","det"#,
+            r#"ail":"also long"},{"id":"c","det"#
+        );
+        let cases: &[(&str, &str, bool)] = &[
+            (
+                "truncated payload persists best-effort",
+                truncated_text,
+                true,
+            ),
+            (
+                "balanced invalid payload still fails deterministically",
+                r#"{"passed":"not a boolean"}"#,
+                false,
+            ),
+        ];
+
+        for (name, text, expect_recovery) in cases {
+            let handler = PromptHandler::new(Some(Box::new(FixedTextBackend(text))));
+            let mut node = Node::new("audit");
+            node.attrs.insert(
+                "prompt".to_string(),
+                AttrValue::String("Summarize the findings".to_string()),
+            );
+            node.attrs.insert(
+                "output_schema".to_string(),
+                AttrValue::String(
+                    r#"{"type":"object","required":["passed"],"properties":{"passed":{"type":"boolean"}}}"#
+                        .to_string(),
+                ),
+            );
+            node.attrs
+                .insert("output_retries".to_string(), AttrValue::Integer(0));
+            let context = Context::new();
+            let graph = Graph::new("test");
+            let tmp = TempDir::new().unwrap();
+
+            let outcome = handler
+                .execute(&node, &context, &graph, tmp.path(), &make_services())
+                .await
+                .unwrap();
+
+            if *expect_recovery {
+                assert_eq!(
+                    outcome.status,
+                    crate::outcome::StageOutcome::Succeeded,
+                    "case: {name}"
+                );
+                let persisted = outcome
+                    .context_updates
+                    .get("output.audit")
+                    .expect("truncated payload must be persisted");
+                assert_eq!(
+                    persisted.get("truncated"),
+                    Some(&serde_json::json!(true)),
+                    "case: {name}"
+                );
+                assert_eq!(
+                    persisted.get("notice_code"),
+                    Some(&serde_json::json!("event_body_overflow")),
+                    "case: {name}"
+                );
+                assert_eq!(
+                    persisted.get("payload"),
+                    Some(&serde_json::json!(*text)),
+                    "case: {name}"
+                );
+            } else {
+                assert_eq!(
+                    outcome.status,
+                    crate::outcome::StageOutcome::Failed {
+                        retry_requested: false,
+                    },
+                    "case: {name}"
+                );
+                assert_eq!(
+                    outcome.failure_reason(),
+                    Some("output schema validation failed after 0 repair attempt(s)"),
+                    "case: {name}"
+                );
+            }
+        }
     }
 
     #[tokio::test]
