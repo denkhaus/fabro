@@ -6,10 +6,11 @@ use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
 use anyhow::Context as _;
+use axum::body::{self, Body};
 use axum::extract::Request;
 #[cfg(test)]
 use axum::extract::State as AxumState;
-use axum::http::{HeaderValue, header};
+use axum::http::{HeaderValue, Request as HttpRequest, StatusCode, header};
 use axum::middleware::Next;
 use axum::response::Response;
 use axum::{Router, middleware};
@@ -23,7 +24,10 @@ use fabro_sandbox::SandboxInventory;
 use fabro_static::EnvVars;
 use fabro_store::{ArtifactStore, Database, test_support as store_test_support};
 use fabro_types::settings::ServerAuthMethod;
-use fabro_types::{AuthMethod, IdpIdentity, SandboxProviderKind, ServerSettings};
+use fabro_types::{
+    AuthMethod, IdpIdentity, SandboxProviderKind, ServerSettings, WorkflowVersion,
+    WorkflowVersionId,
+};
 use fabro_vault::{SecretType, Vault};
 use fabro_workflow::handler::HandlerRegistry;
 use lithos_llm::catalog::ProviderId;
@@ -864,6 +868,48 @@ pub(crate) async fn capture_auth_context(
         .expect("captured auth contexts lock poisoned")
         .push(slot.snapshot());
     response
+}
+
+/// Register fixture content through the same HTTP boundary as run producers.
+pub async fn test_register_workflow_version(
+    app: &Router,
+    version: &WorkflowVersion,
+    bearer: Option<&str>,
+) -> WorkflowVersionId {
+    use tower::ServiceExt as _;
+
+    let mut request = HttpRequest::builder()
+        .method("POST")
+        .uri("/api/v1/workflow-versions")
+        .header(header::CONTENT_TYPE, "application/json");
+    if let Some(bearer) = bearer {
+        request = request.header(header::AUTHORIZATION, format!("Bearer {bearer}"));
+    }
+    let response = app
+        .clone()
+        .oneshot(
+            request
+                .body(Body::from(
+                    serde_json::to_vec(version).expect("fixture version should serialize"),
+                ))
+                .expect("version registration request should build"),
+        )
+        .await
+        .expect("version registration should route");
+    let status = response.status();
+    let bytes = body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("version registration response body should be readable");
+    assert_eq!(
+        status,
+        StatusCode::CREATED,
+        "{}",
+        String::from_utf8_lossy(&bytes)
+    );
+    let body: serde_json::Value =
+        serde_json::from_slice(&bytes).expect("version registration response should be JSON");
+    serde_json::from_value(body["workflow_version_id"].clone())
+        .expect("version registration response should contain a valid ID")
 }
 
 #[cfg(test)]

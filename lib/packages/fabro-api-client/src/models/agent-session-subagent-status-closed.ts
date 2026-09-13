@@ -14,13 +14,12 @@
 
 
 
-export interface SubAgentStatusFailed {
-    'kind': SubAgentStatusFailedKindEnum;
-    'error': any;
+export interface AgentSessionSubagentStatusClosed {
+    'status': AgentSessionSubagentStatusClosedStatusEnum;
 }
 
-export const SubAgentStatusFailedKindEnum = {
-    FAILED: 'failed'
+export const AgentSessionSubagentStatusClosedStatusEnum = {
+    CLOSED: 'closed'
 } as const;
 
-export type SubAgentStatusFailedKindEnum = typeof SubAgentStatusFailedKindEnum[keyof typeof SubAgentStatusFailedKindEnum];
+export type AgentSessionSubagentStatusClosedStatusEnum = typeof AgentSessionSubagentStatusClosedStatusEnum[keyof typeof AgentSessionSubagentStatusClosedStatusEnum];

@@ -53,7 +53,6 @@ pub(crate) fn run_projection_json(run_id: &str, status: &serde_json::Value) -> s
         source_directory: Some("/srv/repo".to_string()),
         labels: std::collections::HashMap::default(),
         provenance: test_support::test_run_provenance(),
-        manifest_blob: None,
         definition_blob: None,
         spec_blob: None,
         git: None,

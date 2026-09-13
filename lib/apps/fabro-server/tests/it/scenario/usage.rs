@@ -4,8 +4,8 @@ use tokio::time::sleep;
 use tower::ServiceExt;
 
 use crate::helpers::{
-    MINIMAL_DOT, POLL_ATTEMPTS, POLL_INTERVAL, api, create_and_start_run_from_manifest,
-    minimal_manifest_json, minimal_manifest_json_with_dry_run, test_app_state_with_options,
+    MINIMAL_DOT, POLL_ATTEMPTS, POLL_INTERVAL, api, create_and_start_run_from_intent,
+    minimal_intent_json, minimal_intent_json_with_dry_run, test_app_state_with_options,
     test_app_with_scheduler, test_settings, wait_for_run_status,
 };
 
@@ -27,12 +27,15 @@ const WAIT_DOT: &str = r#"digraph Test {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn aggregate_billing_increments_after_run_completes() {
+    let workspace = tempfile::tempdir().unwrap();
     let state = test_app_state_with_options(test_settings(), 5);
     let app = test_app_with_scheduler(state);
 
-    let run_id =
-        create_and_start_run_from_manifest(&app, minimal_manifest_json_with_dry_run(MINIMAL_DOT))
-            .await;
+    let run_id = create_and_start_run_from_intent(
+        &app,
+        minimal_intent_json_with_dry_run(&app, MINIMAL_DOT, workspace.path()).await,
+    )
+    .await;
 
     // Poll until run completes
     let status = wait_for_run_status(&app, &run_id, &["succeeded", "failed"]).await;
@@ -64,10 +67,15 @@ async fn aggregate_billing_increments_after_run_completes() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn run_billing_includes_completed_non_llm_stages() {
+    let workspace = tempfile::tempdir().unwrap();
     let state = test_app_state_with_options(test_settings(), 5);
     let app = test_app_with_scheduler(state);
 
-    let run_id = create_and_start_run_from_manifest(&app, minimal_manifest_json(WAIT_DOT)).await;
+    let run_id = create_and_start_run_from_intent(
+        &app,
+        minimal_intent_json(&app, WAIT_DOT, workspace.path()).await,
+    )
+    .await;
 
     let status = wait_for_run_status(&app, &run_id, &["succeeded", "failed"]).await;
     assert_eq!(status, "succeeded");
@@ -78,10 +86,15 @@ async fn run_billing_includes_completed_non_llm_stages() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn run_billing_includes_completed_command_stages() {
+    let workspace = tempfile::tempdir().unwrap();
     let state = test_app_state_with_options(test_settings(), 5);
     let app = test_app_with_scheduler(state);
 
-    let run_id = create_and_start_run_from_manifest(&app, minimal_manifest_json(COMMAND_DOT)).await;
+    let run_id = create_and_start_run_from_intent(
+        &app,
+        minimal_intent_json(&app, COMMAND_DOT, workspace.path()).await,
+    )
+    .await;
 
     let status = wait_for_run_status(&app, &run_id, &["succeeded", "failed"]).await;
     assert_eq!(status, "succeeded");

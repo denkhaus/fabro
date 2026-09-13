@@ -15,12 +15,13 @@
 
 
 /**
- * Control state of a live agent stage.
+ * Why a conversation compaction ran.
  */
 
-export const AgentControlState = {
-    RUNNING: 'running',
-    WAITING_FOR_STEER: 'waiting_for_steer'
+export const CompactionReason = {
+    THRESHOLD: 'threshold',
+    MANUAL: 'manual',
+    OVERFLOW: 'overflow'
 } as const;
 
-export type AgentControlState = typeof AgentControlState[keyof typeof AgentControlState];
+export type CompactionReason = typeof CompactionReason[keyof typeof CompactionReason];

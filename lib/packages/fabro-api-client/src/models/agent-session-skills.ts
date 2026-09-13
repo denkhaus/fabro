@@ -15,15 +15,15 @@
 
 // May contain unused imports in some cases
 // @ts-ignore
-import type { ActivatedSkill } from './activated-skill';
+import type { AgentSessionActivatedSkill } from './agent-session-activated-skill';
 // May contain unused imports in some cases
 // @ts-ignore
 import type { SkillSummary } from './skill-summary';
 
 /**
- * Agent skills discovered and activated during a stage.
+ * The skills the root session found and the ones activated anywhere in the tree.
  */
-export interface SkillsProjection {
+export interface AgentSessionSkills {
     'available': Array<SkillSummary>;
-    'activated': Array<ActivatedSkill>;
+    'activated': Array<AgentSessionActivatedSkill>;
 }

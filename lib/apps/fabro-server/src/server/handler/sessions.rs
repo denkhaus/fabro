@@ -2037,7 +2037,6 @@ enabled = true
             source_directory: None,
             labels: HashMap::default(),
             provenance: test_support::test_run_provenance(),
-            manifest_blob: None,
             definition_blob: None,
             spec_blob: None,
             git: None,
@@ -2201,15 +2200,17 @@ mod resume_tests {
     }
 
     /// A completed local dry run, so the session has a sandbox to reconnect.
-    async fn completed_run(app: &axum::Router) -> RunId {
-        let manifest = serde_json::json!({
-            "version": 1,
-            "cwd": std::env::temp_dir().display().to_string(),
-            "args": { "dry_run": true },
-            "target": { "path": "workflow.fabro" },
-            "workflows": { "workflow.fabro": { "source": DOT, "files": {} } },
-        });
-        let created = json_response(app, post_json("/runs", &manifest), StatusCode::CREATED).await;
+    async fn completed_run(app: &axum::Router, workspace: &std::path::Path) -> RunId {
+        let path = fabro_types::WorkflowPath::new("workflow.fabro").unwrap();
+        let version = fabro_types::WorkflowVersion::new(
+            path.clone(),
+            std::collections::BTreeMap::from([(path, DOT.to_string())]),
+            std::collections::BTreeMap::new(),
+        )
+        .unwrap();
+        let id = crate::test_support::test_register_workflow_version(app, &version, None).await;
+        let intent = serde_json::json!({"workflow_version_id": id, "target": {"kind": "folder", "path": workspace}, "environment_id": "local", "args": {"dry_run": true}});
+        let created = json_response(app, post_json("/runs", &intent), StatusCode::CREATED).await;
         let run_id = created["id"].as_str().unwrap().to_string();
         let start = Request::builder()
             .method("POST")
@@ -2284,7 +2285,8 @@ mod resume_tests {
         let state = twin_backed_state(twin.base_url.clone(), &namespace);
         spawn_scheduler(Arc::clone(&state));
         let app = build_test_router(Arc::clone(&state));
-        let run_id = completed_run(&app).await;
+        let workspace = tempfile::tempdir().unwrap();
+        let run_id = completed_run(&app, workspace.path()).await;
 
         let created = json_response(
             &app,

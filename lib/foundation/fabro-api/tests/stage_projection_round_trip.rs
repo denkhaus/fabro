@@ -1,61 +1,119 @@
 use std::any::{TypeId, type_name};
 
 use fabro_api::types::{
-    ActivatedSkill as ApiActivatedSkill, AgentControlState as ApiAgentControlState,
-    AgentMcpToolSummary as ApiAgentMcpToolSummary,
     AgentToolsAvailableProps as ApiAgentToolsAvailableProps,
+    BilledModelUsage as ApiBilledModelUsage,
     ContextWindowBreakdownItem as ApiContextWindowBreakdownItem,
     ContextWindowCategory as ApiContextWindowCategory,
     ContextWindowCountMethod as ApiContextWindowCountMethod,
     ContextWindowSnapshot as ApiContextWindowSnapshot,
     ContextWindowStaleness as ApiContextWindowStaleness,
     ContextWindowWarning as ApiContextWindowWarning, LlmOutputKind as ApiLlmOutputKind,
-    McpServerProjection as ApiMcpServerProjection, McpServerStatus as ApiMcpServerStatus,
     ParallelBranchResult as ApiParallelBranchResult, PermissionLevel as ApiPermissionLevel,
     SkillActivationSource as ApiSkillActivationSource, SkillSummary as ApiSkillSummary,
-    SkillsProjection as ApiSkillsProjection, StageContextWindow as ApiStageContextWindow,
+    StageContextWindow as ApiStageContextWindow,
     StageContextWindowUnavailableReason as ApiStageContextWindowUnavailableReason,
     StageInferenceProjection as ApiStageInferenceProjection, StageProjection as ApiStageProjection,
     StageToolBatchProjection as ApiStageToolBatchProjection,
-    SubAgentProjection as ApiSubAgentProjection, SubAgentStatus as ApiSubAgentStatus,
     TodoListProjection as ApiTodoListProjection, ToolCategory as ApiToolCategory,
     ToolSource as ApiToolSource, ToolSummary as ApiToolSummary,
 };
 use fabro_types::{
-    ActivatedSkill, AgentControlState, AgentMcpToolSummary, AgentToolsAvailableProps,
-    ContextWindowBreakdownItem, ContextWindowCategory, ContextWindowCountMethod,
-    ContextWindowSnapshot, ContextWindowStaleness, ContextWindowWarning, LlmOutputKind,
-    McpServerProjection, McpServerStatus, ParallelBranchId, ParallelBranchResult, PermissionLevel,
-    SkillActivationSource, SkillSummary, SkillsProjection, StageContextWindow,
-    StageContextWindowUnavailableReason, StageId, StageInferenceProjection, StageProjection,
-    StageToolBatchProjection, SubAgentProjection, SubAgentStatus, TodoListKind, TodoListProjection,
-    ToolCategory, ToolSource, ToolSummary,
+    AgentToolsAvailableProps, BilledModelUsage, ContextWindowBreakdownItem, ContextWindowCategory,
+    ContextWindowCountMethod, ContextWindowSnapshot, ContextWindowStaleness, ContextWindowWarning,
+    LlmOutputKind, ModelRef, ParallelBranchId, ParallelBranchResult, PermissionLevel,
+    SkillActivationSource, SkillSummary, StageContextWindow, StageContextWindowUnavailableReason,
+    StageId, StageInferenceProjection, StageProjection, StageToolBatchProjection, TodoListKind,
+    TodoListProjection, ToolCategory, ToolSource, ToolSummary,
 };
+use lithos_llm::catalog::{ModelId, ProviderId};
+use lithos_llm::types::TokenCounts;
 use serde_json::json;
 
 #[test]
 fn stage_projection_reuses_canonical_type() {
     assert_same_type::<ApiStageProjection, StageProjection>();
+    assert_same_type::<ApiBilledModelUsage, BilledModelUsage>();
+}
+
+#[test]
+fn billing_by_model_rows_match_openapi_json_shape() {
+    let row = BilledModelUsage {
+        model:            ModelRef::new(ProviderId::new("openai"), ModelId::new("gpt-5.4")),
+        tokens:           TokenCounts {
+            input: 107,
+            output: 51,
+            ..TokenCounts::default()
+        },
+        total_usd_micros: Some(321),
+    };
+    let value = serde_json::to_value(&row).unwrap();
+    assert_eq!(
+        value,
+        json!({
+            "model": { "provider": "openai", "model_id": "gpt-5.4" },
+            "tokens": {
+                "input": 107,
+                "output": 51,
+                "reasoning": 0,
+                "cache_read": 0,
+                "cache_write": 0
+            },
+            "total_usd_micros": 321
+        })
+    );
+    let api_row: ApiBilledModelUsage = serde_json::from_value(value).unwrap();
+    assert_eq!(api_row, row);
+
+    let mut stage = StageProjection::new(std::num::NonZeroU32::new(1).unwrap());
+    stage.billing_by_model = vec![row.clone()];
+    let stage_json = serde_json::to_value(&stage).unwrap();
+    assert_eq!(
+        stage_json["billing_by_model"],
+        json!([serde_json::to_value(&row).unwrap()])
+    );
+    let without: StageProjection = serde_json::from_value(json!({
+        "first_event_seq": 1,
+        "prompt": null,
+        "response": null,
+        "completion": null,
+        "provider_used": null,
+        "diff": null,
+        "script_invocation": null,
+        "script_timing": null,
+        "parallel_results": null,
+        "output": null,
+        "usage": {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "reasoning_tokens": 0,
+            "cache_read_tokens": 0,
+            "cache_write_tokens": 0
+        },
+        "state": "running"
+    }))
+    .unwrap();
+    assert!(without.billing_by_model.is_empty());
+    assert!(
+        serde_json::to_value(&without)
+            .unwrap()
+            .get("billing_by_model")
+            .is_none(),
+        "no rows, nothing on the wire"
+    );
 }
 
 #[test]
 fn stage_projection_reuses_nested_agent_state_types() {
-    assert_same_type::<ApiAgentControlState, AgentControlState>();
     assert_same_type::<ApiParallelBranchResult, ParallelBranchResult>();
     assert_same_type::<ApiTodoListProjection, TodoListProjection>();
-    assert_same_type::<ApiSubAgentProjection, SubAgentProjection>();
-    assert_same_type::<ApiSubAgentStatus, SubAgentStatus>();
-    assert_same_type::<ApiSkillsProjection, SkillsProjection>();
-    assert_same_type::<ApiActivatedSkill, ActivatedSkill>();
     assert_same_type::<ApiSkillSummary, SkillSummary>();
     assert_same_type::<ApiSkillActivationSource, SkillActivationSource>();
     assert_same_type::<ApiToolSummary, ToolSummary>();
     assert_same_type::<ApiToolSource, ToolSource>();
     assert_same_type::<ApiToolCategory, ToolCategory>();
     assert_same_type::<ApiAgentToolsAvailableProps, AgentToolsAvailableProps>();
-    assert_same_type::<ApiMcpServerProjection, McpServerProjection>();
-    assert_same_type::<ApiMcpServerStatus, McpServerStatus>();
-    assert_same_type::<ApiAgentMcpToolSummary, AgentMcpToolSummary>();
     assert_same_type::<ApiPermissionLevel, PermissionLevel>();
     assert_same_type::<ApiStageContextWindow, StageContextWindow>();
     assert_same_type::<ApiContextWindowSnapshot, ContextWindowSnapshot>();
@@ -156,7 +214,6 @@ fn stage_projection_without_inference_round_trips() {
             "cache_read_tokens": 0,
             "cache_write_tokens": 0
         },
-        "agent_control": "running",
         "state": "running"
     });
 
@@ -227,45 +284,6 @@ fn stage_projection_round_trips_representative_json() {
             "cache_read_tokens": 0,
             "cache_write_tokens": 0
         },
-        "todos": {
-            "kind": "openai_plan",
-            "list_id": "openai_plan:ses_root",
-            "items": [
-                {
-                    "id": "todo-1",
-                    "status": "in_progress",
-                    "order": 0,
-                    "subject": "Write tests",
-                    "active_form": "Writing tests"
-                }
-            ]
-        },
-        "subagents": [
-            {
-                "agent_id": "sub-1",
-                "depth": 1,
-                "task": "Investigate failing test",
-                "status": {
-                    "kind": "completed",
-                    "success": true,
-                    "turns_used": 3
-                }
-            }
-        ],
-        "skills": {
-            "available": [
-                {
-                    "name": "rust",
-                    "description": "Rust workflow help"
-                }
-            ],
-            "activated": [
-                {
-                    "name": "rust",
-                    "source": "slash"
-                }
-            ]
-        },
         "permission_level": "read-only",
         "agent_tools": [
             {
@@ -287,41 +305,6 @@ fn stage_projection_round_trips_representative_json() {
                 "invoked": false
             }
         ],
-        "mcp_servers": [
-            {
-                "server_name": "filesystem",
-                "tool_count": 1,
-                "status": {
-                    "kind": "ready",
-                    "tools": [
-                        {
-                            "name": "read_file",
-                            "original_name": "read_file"
-                        }
-                    ]
-                },
-                "invoked": true
-            }
-        ],
-        "context_window": {
-            "provider": "openai",
-            "model": "gpt-5.4",
-            "context_window_tokens": 400000,
-            "input_tokens": 123456,
-            "usage_percent": 30.864,
-            "count_method": "provider_api_scaled_breakdown",
-            "staleness": "live",
-            "generated_at": "2026-05-23T12:34:56.000Z",
-            "event_seq": 42,
-            "breakdown": [
-                {
-                    "category": "system_prompt",
-                    "tokens": 30000,
-                    "usage_percent": 7.5
-                }
-            ],
-            "warnings": []
-        },
         "inference": {
             "session_id": "ses_root",
             "started_at": "2026-04-29T12:34:00Z",
@@ -331,7 +314,6 @@ fn stage_projection_round_trips_representative_json() {
             "retries": 0
         },
         "acp_started_at": "2026-04-29T12:34:00Z",
-        "agent_control": "running",
         "state": "succeeded"
     });
 
@@ -388,7 +370,7 @@ fn permission_level_matches_openapi_json_shape() {
 }
 
 #[test]
-fn nested_agent_state_types_match_openapi_json_shape() {
+fn todo_list_and_skill_types_match_openapi_json_shape() {
     for (kind, list_id, wire_kind) in [
         (
             TodoListKind::OpenAiPlan,
@@ -411,32 +393,6 @@ fn nested_agent_state_types_match_openapi_json_shape() {
         assert_eq!(api_todo_list, todo_list);
     }
 
-    let subagent = SubAgentProjection {
-        agent_id: "sub-1".to_string(),
-        depth:    1,
-        task:     "Investigate failing test".to_string(),
-        status:   SubAgentStatus::Completed {
-            success:    true,
-            turns_used: 3,
-        },
-    };
-    let subagent_json = serde_json::to_value(&subagent).unwrap();
-    assert_eq!(
-        subagent_json,
-        json!({
-            "agent_id": "sub-1",
-            "depth": 1,
-            "task": "Investigate failing test",
-            "status": {
-                "kind": "completed",
-                "success": true,
-                "turns_used": 3
-            }
-        })
-    );
-    let api_subagent: ApiSubAgentProjection = serde_json::from_value(subagent_json).unwrap();
-    assert_eq!(api_subagent, subagent);
-
     let skill = SkillSummary {
         name:        "rust".to_string(),
         description: "Rust workflow help".to_string(),
@@ -456,103 +412,6 @@ fn nested_agent_state_types_match_openapi_json_shape() {
     assert_eq!(source_json, json!("slash"));
     let api_source: ApiSkillActivationSource = serde_json::from_value(source_json).unwrap();
     assert_eq!(api_source, SkillActivationSource::Slash);
-
-    let activated = ActivatedSkill {
-        name:   "rust".to_string(),
-        source: SkillActivationSource::Slash,
-    };
-    let skills = SkillsProjection {
-        available: vec![skill],
-        activated: vec![activated],
-    };
-    let skills_json = serde_json::to_value(&skills).unwrap();
-    assert_eq!(
-        skills_json,
-        json!({
-            "available": [
-                {
-                    "name": "rust",
-                    "description": "Rust workflow help"
-                }
-            ],
-            "activated": [
-                {
-                    "name": "rust",
-                    "source": "slash"
-                }
-            ]
-        })
-    );
-    let api_skills: ApiSkillsProjection = serde_json::from_value(skills_json).unwrap();
-    assert_eq!(api_skills, skills);
-
-    let tool = AgentMcpToolSummary {
-        name:          "read_file".to_string(),
-        original_name: "read_file".to_string(),
-    };
-    let tool_json = serde_json::to_value(&tool).unwrap();
-    assert_eq!(
-        tool_json,
-        json!({
-            "name": "read_file",
-            "original_name": "read_file"
-        })
-    );
-    let api_tool: ApiAgentMcpToolSummary = serde_json::from_value(tool_json).unwrap();
-    assert_eq!(api_tool, tool);
-
-    let mcp_server = McpServerProjection {
-        server_name: "filesystem".to_string(),
-        tool_count:  1,
-        status:      McpServerStatus::Ready { tools: vec![tool] },
-        invoked:     true,
-    };
-    let mcp_json = serde_json::to_value(&mcp_server).unwrap();
-    assert_eq!(
-        mcp_json,
-        json!({
-            "server_name": "filesystem",
-            "tool_count": 1,
-            "status": {
-                "kind": "ready",
-                "tools": [
-                    {
-                        "name": "read_file",
-                        "original_name": "read_file"
-                    }
-                ]
-            },
-            "invoked": true,
-        })
-    );
-    let api_mcp: ApiMcpServerProjection = serde_json::from_value(mcp_json).unwrap();
-    assert_eq!(api_mcp, mcp_server);
-    assert_eq!(mcp_server.tool_count, 1);
-
-    let disconnected = McpServerProjection {
-        server_name: "filesystem".to_string(),
-        tool_count:  1,
-        status:      McpServerStatus::Disconnected {
-            error: "transport closed".to_string(),
-        },
-        invoked:     true,
-    };
-    let disconnected_json = serde_json::to_value(&disconnected).unwrap();
-    assert_eq!(
-        disconnected_json,
-        json!({
-            "server_name": "filesystem",
-            "tool_count": 1,
-            "status": {
-                "kind": "disconnected",
-                "error": "transport closed"
-            },
-            "invoked": true,
-        })
-    );
-    let api_disconnected: ApiMcpServerProjection =
-        serde_json::from_value(disconnected_json).unwrap();
-    assert_eq!(api_disconnected, disconnected);
 }
 
 #[test]

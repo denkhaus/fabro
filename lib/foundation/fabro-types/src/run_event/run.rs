@@ -31,8 +31,6 @@ pub struct RunCreatedProps {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub automation:          Option<AutomationRef>,
     pub provenance:          RunProvenance,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub manifest_blob:       Option<BlobHash>,
     /// Unredacted copy of the run spec in the blob store. The settings and
     /// graph on this event are redacted at the sink; execution loads the
     /// spec from this blob instead.

@@ -849,7 +849,6 @@ mod tests {
             source_directory: None,
             labels: std::collections::HashMap::default(),
             provenance: test_support::test_run_provenance(),
-            manifest_blob: None,
             definition_blob: None,
             spec_blob: None,
             git: None,

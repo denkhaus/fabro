@@ -14,14 +14,14 @@
 
 
 
-export interface SubAgentStatusCompleted {
-    'kind': SubAgentStatusCompletedKindEnum;
+export interface AgentSessionSubagentStatusCompleted {
+    'status': AgentSessionSubagentStatusCompletedStatusEnum;
     'success': boolean;
     'turns_used': number;
 }
 
-export const SubAgentStatusCompletedKindEnum = {
+export const AgentSessionSubagentStatusCompletedStatusEnum = {
     COMPLETED: 'completed'
 } as const;
 
-export type SubAgentStatusCompletedKindEnum = typeof SubAgentStatusCompletedKindEnum[keyof typeof SubAgentStatusCompletedKindEnum];
+export type AgentSessionSubagentStatusCompletedStatusEnum = typeof AgentSessionSubagentStatusCompletedStatusEnum[keyof typeof AgentSessionSubagentStatusCompletedStatusEnum];

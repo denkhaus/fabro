@@ -301,7 +301,6 @@ mod tests {
                 target:              None,
                 automation:          None,
                 provenance:          test_support::test_run_provenance(),
-                manifest_blob:       None,
                 spec_blob:           None,
                 git:                 None,
                 fork_source_ref:     None,
@@ -365,6 +364,7 @@ mod tests {
             ) -> Result<CodergenResult, Error> {
                 Ok(CodergenResult::Text {
                     text:              "one-shot response".to_string(),
+                    usage_by_model:    Vec::new(),
                     usage:             None,
                     files_touched:     Vec::new(),
                     last_file_touched: None,
@@ -423,6 +423,7 @@ mod tests {
             ) -> Result<CodergenResult, Error> {
                 Ok(CodergenResult::Text {
                     text:              "one-shot response".to_string(),
+                    usage_by_model:    Vec::new(),
                     usage:             None,
                     files_touched:     Vec::new(),
                     last_file_touched: None,
@@ -461,6 +462,7 @@ mod tests {
             ) -> Result<CodergenResult, Error> {
                 Ok(CodergenResult::Text {
                     text:              r#"{"passed": true}"#.to_string(),
+                    usage_by_model:    Vec::new(),
                     usage:             None,
                     files_touched:     Vec::new(),
                     last_file_touched: None,
@@ -509,6 +511,7 @@ mod tests {
             ) -> Result<CodergenResult, Error> {
                 Ok(CodergenResult::Text {
                     text:              r#"{"outcome": 123}"#.to_string(),
+                    usage_by_model:    Vec::new(),
                     usage:             None,
                     files_touched:     Vec::new(),
                     last_file_touched: None,
@@ -563,6 +566,7 @@ mod tests {
                 Ok(CodergenResult::Text {
                     text:              self.0.to_string(),
                     usage:             None,
+                    usage_by_model:    Vec::new(),
                     files_touched:     Vec::new(),
                     last_file_touched: None,
                     timing:            StageTiming::default(),
@@ -670,6 +674,7 @@ mod tests {
             ) -> Result<CodergenResult, Error> {
                 Ok(CodergenResult::Text {
                     text:              "one-shot response".to_string(),
+                    usage_by_model:    Vec::new(),
                     usage:             None,
                     files_touched:     Vec::new(),
                     last_file_touched: None,
@@ -730,6 +735,7 @@ mod tests {
                 Some(request.system_prompt.map(String::from));
             Ok(CodergenResult::Text {
                 text:              "classified".to_string(),
+                usage_by_model:    Vec::new(),
                 usage:             None,
                 files_touched:     Vec::new(),
                 last_file_touched: None,

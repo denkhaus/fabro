@@ -50,7 +50,6 @@ export interface RunSpec {
     'source_directory'?: string | null;
     'labels'?: { [key: string]: string; };
     'provenance': RunProvenance;
-    'manifest_blob'?: string | null;
     'definition_blob'?: string | null;
     'spec_blob'?: string | null;
     'git'?: GitContext | null;

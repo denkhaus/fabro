@@ -6,14 +6,14 @@ use chrono::{DateTime, Utc};
 use lithos_llm::types::{ReasoningEffort, Speed};
 use pebble_coding_agent::events::{
     ContextWindowBreakdownItem, ContextWindowCountMethod, ContextWindowSnapshot,
-    ContextWindowStaleness, ContextWindowWarning, LlmOutputKind, PermissionLevel,
-    SkillActivationSource, SkillSummary, TodoListProjection, ToolSummary,
+    ContextWindowStaleness, ContextWindowWarning, LlmOutputKind, PermissionLevel, ToolSummary,
 };
+use pebble_coding_agent::projection::SessionProjection;
 use strum::{Display, EnumString, IntoStaticStr};
 
 use crate::run_event::{AgentSessionActivatedProps, StagePromptProps};
 use crate::{
-    AgentBackend, AgentMcpToolSummary, BilledTokenCounts, Checkpoint, Conclusion, GitIdentity,
+    AgentBackend, BilledModelUsage, BilledTokenCounts, Checkpoint, Conclusion, GitIdentity,
     InterviewQuestionRecord, InvalidTransition, ModelRef, ParallelBranchId, PullRequestCreation,
     PullRequestLink, RunApproval, RunControlAction, RunDiff, RunId, RunSandbox, RunSpec, RunStatus,
     RunTiming, StageCompletion, StageHandler, StageId, StageState, StageTiming, StartRecord,
@@ -296,25 +296,17 @@ pub struct StageProjection {
     pub usage:                 BilledTokenCounts,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model:                 Option<ModelRef>,
-    /// Todo/task list owned by the stage's root agent session.
-    ///
-    /// OpenAI child sessions own separate per-session plans and do not appear
-    /// here. Anthropic task lists are root-scoped and shared with child
-    /// sessions, so child mutations of that shared list do appear here.
-    #[serde(default, rename = "todos", skip_serializing_if = "Option::is_none")]
-    pub root_agent_todos:      Option<TodoListProjection>,
+    /// The finished stage's billing split by model, as `stage.completed` or
+    /// `stage.failed` reported it: the root session's route and each
+    /// subagent's own model. Sums to `usage`. Empty while the stage runs and
+    /// for stages without a coding agent; the billing rollup then bills
+    /// `usage` to `model`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub subagents:             Vec<SubAgentProjection>,
-    #[serde(default, skip_serializing_if = "SkillsProjection::is_empty")]
-    pub skills:                SkillsProjection,
+    pub billing_by_model:      Vec<BilledModelUsage>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub permission_level:      Option<PermissionLevel>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub agent_tools:           Vec<ToolSummary>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub mcp_servers:           Vec<McpServerProjection>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub context_window:        Option<ContextWindowSnapshot>,
     /// Open inference bracket for this stage, if the event log contains one.
     ///
     /// `Some` means exactly *"an `agent.llm.started` was recorded and no
@@ -330,8 +322,22 @@ pub struct StageProjection {
     /// lifetime is the best available live inference estimate.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub acp_started_at:        Option<DateTime<Utc>>,
-    #[serde(default)]
-    pub agent_control:         AgentControlState,
+    /// Pebble's fold of this stage's agent events: the one agent projection,
+    /// fed every `agent.*` and `todo.*` event stored on the stage, and what
+    /// the stage view reads for todos, subagents, skills, MCP servers, files,
+    /// failovers, compactions, the context window, and where the agent
+    /// stands (`activity`, `waiting_for_steer` after an interrupted round).
+    /// Present for pebble-backed agent stages once their first agent event is
+    /// stored; `None` for prompt, command, ACP, human, parallel, and
+    /// conditional stages.
+    ///
+    /// Its lifetime fields are the stage's totals across every prompt the
+    /// stage ran, because each stage gets its own fold over its own events.
+    /// `activity` reads `running` on stages stored before
+    /// `agent.processing.end` was kept, so `state` is the authority on
+    /// whether a stage is done.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent:                 Option<SessionProjection>,
     pub state:                 StageState,
 }
 
@@ -385,88 +391,6 @@ pub struct StageInferenceProjection {
     pub retries:           u32,
 }
 
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    Default,
-    PartialEq,
-    Eq,
-    serde::Serialize,
-    serde::Deserialize,
-    Display,
-    EnumString,
-    IntoStaticStr,
-)]
-#[serde(rename_all = "snake_case")]
-#[strum(serialize_all = "snake_case")]
-pub enum AgentControlState {
-    #[default]
-    Running,
-    WaitingForSteer,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct SubAgentProjection {
-    pub agent_id: String,
-    pub depth:    usize,
-    pub task:     String,
-    pub status:   SubAgentStatus,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-pub enum SubAgentStatus {
-    Running,
-    Completed { success: bool, turns_used: usize },
-    Failed { error: serde_json::Value },
-    Closed,
-}
-
-#[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct SkillsProjection {
-    pub available: Vec<SkillSummary>,
-    pub activated: Vec<ActivatedSkill>,
-}
-
-impl SkillsProjection {
-    #[must_use]
-    pub fn is_empty(&self) -> bool {
-        self.available.is_empty() && self.activated.is_empty()
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct ActivatedSkill {
-    pub name:   String,
-    pub source: SkillActivationSource,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct McpServerProjection {
-    pub server_name: String,
-    pub tool_count:  usize,
-    pub status:      McpServerStatus,
-    /// True once any tool from this server has been invoked during the stage.
-    pub invoked:     bool,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-pub enum McpServerStatus {
-    Ready {
-        tools: Vec<AgentMcpToolSummary>,
-    },
-    Failed {
-        error: String,
-    },
-    /// The server was ready and then its connection closed during the
-    /// stage; its tools fail until the session ends.
-    Disconnected {
-        error: String,
-    },
-}
-
 /// Convert a 1-based event sequence number into the `NonZeroU32` form used for
 /// `StageProjection::first_event_seq`. Run event seqs always start at 1.
 #[must_use]
@@ -489,16 +413,12 @@ impl StageProjection {
             tool_batch: None,
             usage: BilledTokenCounts::default(),
             model: None,
-            root_agent_todos: None,
-            subagents: Vec::new(),
-            skills: SkillsProjection::default(),
             permission_level: None,
             agent_tools: Vec::new(),
-            mcp_servers: Vec::new(),
-            context_window: None,
             inference: None,
             acp_started_at: None,
-            agent_control: AgentControlState::default(),
+            agent: None,
+            billing_by_model: Vec::new(),
             provider_used: None,
             diff: None,
             script_invocation: None,
@@ -1018,7 +938,7 @@ mod iter_stages_tests {
     use serde_json::json;
 
     use super::RunProjection;
-    use crate::{AgentControlState, StageProjection, test_support};
+    use crate::{StageProjection, test_support};
 
     fn seq(n: u32) -> NonZeroU32 {
         NonZeroU32::new(n).unwrap()
@@ -1085,7 +1005,7 @@ mod iter_stages_tests {
 
         let stage: StageProjection = serde_json::from_value(value).unwrap();
         assert!(stage.agent_tools.is_empty());
-        assert_eq!(stage.agent_control, AgentControlState::Running);
+        assert!(stage.agent.is_none());
 
         let serialized = serde_json::to_value(stage).unwrap();
         assert!(

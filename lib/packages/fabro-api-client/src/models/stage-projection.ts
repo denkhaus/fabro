@@ -15,7 +15,10 @@
 
 // May contain unused imports in some cases
 // @ts-ignore
-import type { AgentControlState } from './agent-control-state';
+import type { AgentSessionProjection } from './agent-session-projection';
+// May contain unused imports in some cases
+// @ts-ignore
+import type { BilledModelUsage } from './billed-model-usage';
 // May contain unused imports in some cases
 // @ts-ignore
 import type { BilledTokenCounts } from './billed-token-counts';
@@ -27,19 +30,10 @@ import type { BillingModelRef } from './billing-model-ref';
 import type { CommandTermination } from './command-termination';
 // May contain unused imports in some cases
 // @ts-ignore
-import type { ContextWindowSnapshot } from './context-window-snapshot';
-// May contain unused imports in some cases
-// @ts-ignore
-import type { McpServerProjection } from './mcp-server-projection';
-// May contain unused imports in some cases
-// @ts-ignore
 import type { ParallelBranchResult } from './parallel-branch-result';
 // May contain unused imports in some cases
 // @ts-ignore
 import type { PermissionLevel } from './permission-level';
-// May contain unused imports in some cases
-// @ts-ignore
-import type { SkillsProjection } from './skills-projection';
 // May contain unused imports in some cases
 // @ts-ignore
 import type { StageCompletion } from './stage-completion';
@@ -58,12 +52,6 @@ import type { StageTiming } from './stage-timing';
 // May contain unused imports in some cases
 // @ts-ignore
 import type { StageToolBatchProjection } from './stage-tool-batch-projection';
-// May contain unused imports in some cases
-// @ts-ignore
-import type { SubAgentProjection } from './sub-agent-projection';
-// May contain unused imports in some cases
-// @ts-ignore
-import type { TodoListProjection } from './todo-list-projection';
 // May contain unused imports in some cases
 // @ts-ignore
 import type { ToolSummary } from './tool-summary';
@@ -114,34 +102,21 @@ export interface StageProjection {
     'tool_batch'?: StageToolBatchProjection | null;
     'usage': BilledTokenCounts;
     'model'?: BillingModelRef | null;
-    'todos'?: TodoListProjection | null;
-    /**
-     * Subagents spawned by this stage, in replay/insertion order.
-     */
-    'subagents'?: Array<SubAgentProjection>;
-    /**
-     * Agent skills discovered and activated during this stage.
-     */
-    'skills'?: SkillsProjection;
     'permission_level'?: PermissionLevel | null;
     /**
      * Effective model-callable tools exposed to this agent stage session. Tool parameter schemas are intentionally omitted from this projection.
      */
     'agent_tools'?: Array<ToolSummary>;
-    /**
-     * MCP servers observed by this stage.
-     */
-    'mcp_servers'?: Array<McpServerProjection>;
-    'context_window'?: ContextWindowSnapshot | null;
     'inference'?: StageInferenceProjection | null;
     /**
      * Start of an external ACP agent process, if one is running. ACP agents do not expose Fabro\'s internal LLM brackets, so the process lifetime supplies their live inference estimate.
      */
     'acp_started_at'?: string | null;
     /**
-     * Whether the agent is executing normally or waiting for steering after an interrupt.
+     * The completed stage\'s `usage` split by model, as `stage.completed` reported it: the root session\'s route and each subagent\'s own model, a subagent whose model the catalog does not know billed at the root\'s. Sums to `usage`. Empty while the stage runs and for stages without a coding agent; the billing rollup then bills `usage` to `model`.
      */
-    'agent_control': AgentControlState;
+    'billing_by_model'?: Array<BilledModelUsage>;
+    'agent'?: AgentSessionProjection | null;
     /**
      * Lifecycle state of the stage projection.
      */

@@ -3,19 +3,22 @@ use axum::http::{Request, StatusCode};
 use tower::ServiceExt;
 
 use crate::helpers::{
-    MINIMAL_DOT, api, create_and_start_run_from_manifest, minimal_manifest_json_with_dry_run,
+    MINIMAL_DOT, api, create_and_start_run_from_intent, minimal_intent_json_with_dry_run,
     response_json, response_status, test_app_state_with_options, test_app_with_scheduler,
     test_settings, wait_for_run_status,
 };
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn archived_runs_reject_mutations_with_actionable_body() {
+    let workspace = tempfile::tempdir().unwrap();
     let state = test_app_state_with_options(test_settings(), 5);
     let app = test_app_with_scheduler(state);
 
-    let run_id =
-        create_and_start_run_from_manifest(&app, minimal_manifest_json_with_dry_run(MINIMAL_DOT))
-            .await;
+    let run_id = create_and_start_run_from_intent(
+        &app,
+        minimal_intent_json_with_dry_run(&app, MINIMAL_DOT, workspace.path()).await,
+    )
+    .await;
     let status = wait_for_run_status(&app, &run_id, &["succeeded", "failed"]).await;
     assert_eq!(status, "succeeded");
 
@@ -149,14 +152,17 @@ async fn archived_runs_reject_mutations_with_actionable_body() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn appending_run_archived_event_directly_is_rejected() {
+    let workspace = tempfile::tempdir().unwrap();
     // Regression: archive/unarchive events must not be injectable via
     // `append_run_event` — clients must use the operation endpoints.
     let state = test_app_state_with_options(test_settings(), 5);
     let app = test_app_with_scheduler(state);
 
-    let run_id =
-        create_and_start_run_from_manifest(&app, minimal_manifest_json_with_dry_run(MINIMAL_DOT))
-            .await;
+    let run_id = create_and_start_run_from_intent(
+        &app,
+        minimal_intent_json_with_dry_run(&app, MINIMAL_DOT, workspace.path()).await,
+    )
+    .await;
     wait_for_run_status(&app, &run_id, &["succeeded", "failed"]).await;
 
     let req = Request::builder()
@@ -222,12 +228,15 @@ async fn archive_returns_404_for_unknown_run() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn list_runs_respects_include_archived_flag() {
+    let workspace = tempfile::tempdir().unwrap();
     let state = test_app_state_with_options(test_settings(), 5);
     let app = test_app_with_scheduler(state);
 
-    let run_id =
-        create_and_start_run_from_manifest(&app, minimal_manifest_json_with_dry_run(MINIMAL_DOT))
-            .await;
+    let run_id = create_and_start_run_from_intent(
+        &app,
+        minimal_intent_json_with_dry_run(&app, MINIMAL_DOT, workspace.path()).await,
+    )
+    .await;
     wait_for_run_status(&app, &run_id, &["succeeded", "failed"]).await;
 
     // Archive it.

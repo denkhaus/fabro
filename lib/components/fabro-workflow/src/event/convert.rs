@@ -70,7 +70,6 @@ fn event_body_from_event(event: &Event) -> EventBody {
             target,
             automation,
             provenance,
-            manifest_blob,
             spec_blob,
             git,
             fork_source_ref,
@@ -91,7 +90,6 @@ fn event_body_from_event(event: &Event) -> EventBody {
             target:           target.clone(),
             automation:       automation.clone(),
             provenance:       provenance.clone(),
-            manifest_blob:    *manifest_blob,
             spec_blob:        *spec_blob,
             git:              git.clone(),
             fork_source_ref:  fork_source_ref.clone(),
@@ -348,6 +346,7 @@ fn event_body_from_event(event: &Event) -> EventBody {
             preferred_label,
             suggested_next_ids,
             billing,
+            billing_by_model,
             failure,
             notes,
             files_touched,
@@ -368,6 +367,7 @@ fn event_body_from_event(event: &Event) -> EventBody {
             preferred_label: preferred_label.clone(),
             suggested_next_ids: suggested_next_ids.clone(),
             billing: billing.clone(),
+            billing_by_model: billing_by_model.clone(),
             failure: failure.clone(),
             notes: notes.clone(),
             files_touched: files_touched.clone(),
@@ -387,6 +387,7 @@ fn event_body_from_event(event: &Event) -> EventBody {
             will_retry,
             timing,
             billing,
+            billing_by_model,
             ..
         } => EventBody::StageFailed(fabro_types::StageFailedProps {
             index:      *index,
@@ -394,6 +395,7 @@ fn event_body_from_event(event: &Event) -> EventBody {
             will_retry: *will_retry,
             timing:     *timing,
             billing:    billing.clone(),
+            billing_by_model: billing_by_model.clone(),
         }),
         Event::StageRetrying {
             index,
@@ -846,42 +848,6 @@ fn event_body_from_event(event: &Event) -> EventBody {
                 visit: *visit,
             })
         }
-        Event::AgentMcpReady {
-            visit,
-            server_name,
-            tool_count,
-            tools,
-            startup_ms,
-            ..
-        } => EventBody::AgentMcpReady(fabro_types::AgentMcpReadyProps {
-            server_name: server_name.clone(),
-            tool_count:  *tool_count,
-            tools:       tools.clone(),
-            startup_ms:  *startup_ms,
-            visit:       *visit,
-        }),
-        Event::AgentMcpFailed {
-            visit,
-            server_name,
-            error,
-            startup_ms,
-            ..
-        } => EventBody::AgentMcpFailed(fabro_types::AgentMcpFailedProps {
-            server_name: server_name.clone(),
-            error:       error.clone(),
-            startup_ms:  *startup_ms,
-            visit:       *visit,
-        }),
-        Event::AgentMcpDisconnected {
-            visit,
-            server_name,
-            error,
-            ..
-        } => EventBody::AgentMcpDisconnected(fabro_types::AgentMcpDisconnectedProps {
-            server_name: server_name.clone(),
-            error:       error.clone(),
-            visit:       *visit,
-        }),
         Event::AgentInterruptInjected { visit, .. } => {
             EventBody::AgentInterruptInjected(fabro_types::AgentInterruptInjectedProps {
                 visit: *visit,
@@ -1111,6 +1077,7 @@ mod tests {
                 status: "succeeded".to_string(),
                 preferred_label: None,
                 suggested_next_ids: Vec::new(),
+                billing_by_model: Vec::new(),
                 billing: None,
                 failure: None,
                 notes: None,
@@ -1156,6 +1123,7 @@ mod tests {
             status: "succeeded".to_string(),
             preferred_label: None,
             suggested_next_ids: Vec::new(),
+            billing_by_model: Vec::new(),
             billing: None,
             failure: None,
             notes: None,
@@ -1181,17 +1149,18 @@ mod tests {
     fn run_event_stage_failure_keeps_failure_detail() {
         let usage = test_usage("gpt-5.2", 321, 54);
         let stored = to_run_event(&fixtures::RUN_3, &Event::StageFailed {
-            node_id:    "code".to_string(),
-            name:       "Code".to_string(),
-            index:      1,
-            failure:    FailureDetail::new(
+            node_id:          "code".to_string(),
+            name:             "Code".to_string(),
+            index:            1,
+            failure:          FailureDetail::new(
                 "lint failed",
                 crate::outcome::FailureCategory::Deterministic,
             ),
-            will_retry: true,
-            timing:     ::fabro_types::StageTiming::wall_only(5000),
-            billing:    Some(usage.clone()),
-            actor:      None,
+            will_retry:       true,
+            timing:           ::fabro_types::StageTiming::wall_only(5000),
+            billing_by_model: Vec::new(),
+            billing:          Some(usage.clone()),
+            actor:            None,
         });
 
         assert_eq!(stored.event_name(), "stage.failed");
@@ -2129,7 +2098,6 @@ mod tests {
             target: None,
             automation: Some(automation.clone()),
             provenance,
-            manifest_blob: None,
             spec_blob: None,
             git: None,
             fork_source_ref: None,

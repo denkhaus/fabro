@@ -66,7 +66,7 @@ fn format_output_snapshot(output: &Output, filters: &[(String, String)]) -> Stri
 }
 
 fn normalize_attach_json_progress_event(mut event: Value) -> Value {
-    // manifest_blob/definition_blob hashes are already rewritten to
+    // Definition and spec blob hashes are already rewritten to
     // [BLOB_HASH] by the shared json_snapshot_filters regexes.
     // Strip v2-shape server/version fields that the bridge emits,
     // since the test fixture's socket path is randomised per run.

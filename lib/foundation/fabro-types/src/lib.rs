@@ -137,8 +137,8 @@ pub use run::{
     RunServerProvenance, RunSpec,
 };
 pub use run_event::{
-    AgentEventProps, AgentMcpToolSummary, AgentToolsAvailableProps, CODING_EVENT_NAMES, EventBody,
-    FailoverProps, InterviewOption, MetadataSnapshotFailureKind, MetadataSnapshotPhase,
+    AgentEventProps, AgentToolsAvailableProps, CODING_EVENT_NAMES, EventBody, FailoverProps,
+    InterviewOption, MetadataSnapshotFailureKind, MetadataSnapshotPhase,
     RUN_EVENT_BODY_HEADROOM_BYTES, RunEvent, RunEventBodyBound, RunNoticeCode, RunNoticeLevel,
     RunPairEndedReason, RunPairFailedReason, RunRunnableSource, SessionCapability, bound_run_event,
     bound_run_event_with_budget, coding_event_name, is_coding_event_name, run_event_body_budget,
@@ -151,10 +151,9 @@ pub use run_intent::{
     TargetValidationError, ValidatedGitRunTarget, ValidatedRunTarget,
 };
 pub use run_projection::{
-    ActivatedSkill, AgentControlState, CheckpointRecord, McpServerProjection, McpServerStatus,
-    PendingInterviewRecord, RunProjection, SkillsProjection, StageContextWindow,
+    CheckpointRecord, PendingInterviewRecord, RunProjection, StageContextWindow,
     StageContextWindowUnavailableReason, StageInferenceProjection, StageModelUsage,
-    StageProjection, StageToolBatchProjection, SubAgentProjection, SubAgentStatus, first_event_seq,
+    StageProjection, StageToolBatchProjection, first_event_seq,
 };
 pub use run_sandbox::{
     RunSandbox, RunSandboxFailure, RunSandboxInstance, RunSandboxKind, RunSandboxPlan,

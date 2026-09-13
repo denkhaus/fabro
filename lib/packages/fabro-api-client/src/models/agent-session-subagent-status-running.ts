@@ -14,12 +14,12 @@
 
 
 
-export interface SubAgentStatusRunning {
-    'kind': SubAgentStatusRunningKindEnum;
+export interface AgentSessionSubagentStatusRunning {
+    'status': AgentSessionSubagentStatusRunningStatusEnum;
 }
 
-export const SubAgentStatusRunningKindEnum = {
+export const AgentSessionSubagentStatusRunningStatusEnum = {
     RUNNING: 'running'
 } as const;
 
-export type SubAgentStatusRunningKindEnum = typeof SubAgentStatusRunningKindEnum[keyof typeof SubAgentStatusRunningKindEnum];
+export type AgentSessionSubagentStatusRunningStatusEnum = typeof AgentSessionSubagentStatusRunningStatusEnum[keyof typeof AgentSessionSubagentStatusRunningStatusEnum];

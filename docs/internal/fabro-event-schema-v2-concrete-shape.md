@@ -364,30 +364,33 @@ V2 keeps the current durable family surface broadly intact.
 
 ### Agent Durable Events
 
-- `agent.session.started`
-- `agent.session.ended`
-- `agent.processing.end`
-- `agent.input`
-- `agent.message`
-- `agent.tool.started`
-- `agent.tool.completed`
-- `agent.error`
-- `agent.warning`
-- `agent.loop.detected`
-- `agent.steering.injected`
-- `agent.compaction.started`
-- `agent.compaction.completed`
-- `agent.llm.started`
-- `agent.llm.first_output`
-- `agent.llm.retry`
-- `agent.sub.spawned`
-- `agent.sub.completed`
-- `agent.sub.failed`
-- `agent.sub.closed`
-- `agent.mcp.ready`
-- `agent.mcp.failed`
-- `agent.mcp.disconnected`
-- `agent.failover`
+Pebble's events, stored verbatim under the names `fabro_types::CODING_EVENT_NAMES`
+lists (every `CodingEvent` variant except the streaming deltas):
+
+- `agent.session.started`, `agent.session.ended`, `agent.processing.end`
+- `agent.input`, `agent.message`
+- `agent.llm.started`, `agent.llm.first_output`, `agent.llm.retry`
+- `agent.tool.started`, `agent.tool.completed`, `agent.tool.process.completed`, `agent.tool.rounds.exhausted`
+- `agent.error`, `agent.warning`, `agent.loop.detected`
+- `agent.steering.injected`, `agent.round.interrupted`
+- `agent.compaction.started`, `agent.compaction.completed`, `agent.compaction.failed`, `agent.compaction.cancelled`
+- `agent.route.failover`, `agent.route.failover.stopped`
+- `agent.mcp.server.ready`, `agent.mcp.server.failed`, `agent.mcp.server.disconnected`
+- `agent.sub.spawned`, `agent.sub.turn.started`, `agent.sub.completed`, `agent.sub.failed`, `agent.sub.closed`
+- `agent.memory.loaded`, `agent.skills.discovered`, `agent.skill.activated`
+- `todo.created`, `todo.updated`, `todo.deleted`
+
+Fabro's own, for facts pebble cannot know:
+
+- `agent.session.activated`, `agent.session.deactivated`, `agent.tools.available`
+- `agent.pair.user_message`, `agent.pair.system_message`
+- `agent.interrupt.injected`, `agent.steer.buffered`, `agent.steer.dropped`
+- `agent.acp.started`, `agent.acp.completed`, `agent.acp.cancelled`, `agent.acp.timed_out`
+- `prompt.failover` (a one-shot prompt stage's move to a fallback route)
+
+The former mirrors `agent.mcp.ready`, `agent.mcp.failed`,
+`agent.mcp.disconnected`, and `agent.failover` are no longer emitted; runs
+recorded with them read them back as generic events.
 
 ### Git
 

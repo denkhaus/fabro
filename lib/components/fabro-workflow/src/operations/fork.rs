@@ -170,7 +170,6 @@ async fn persist_forked_run(
         target:              spec.target.clone(),
         automation:          spec.automation.clone(),
         provenance:          spec.provenance.clone(),
-        manifest_blob:       spec.manifest_blob,
         // Content-addressed, so the forked run reads the source run's
         // unredacted spec bytes through the same id.
         spec_blob:           spec.spec_blob,
@@ -403,7 +402,6 @@ mod tests {
             })),
             automation:          None,
             provenance:          test_support::test_run_provenance(),
-            manifest_blob:       None,
             spec_blob:           None,
             git:                 Some(fabro_types::GitContext {
                 origin_url: "https://github.com/example/repo".to_string(),
@@ -429,6 +427,7 @@ mod tests {
             status: "succeeded".to_string(),
             preferred_label: None,
             suggested_next_ids: Vec::new(),
+            billing_by_model: Vec::new(),
             billing: None,
             failure: None,
             notes: None,

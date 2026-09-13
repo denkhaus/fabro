@@ -14,13 +14,10 @@
 
 
 
-export interface McpServerStatusFailed {
-    'kind': McpServerStatusFailedKindEnum;
-    'error': string;
+/**
+ * The route a session runs on, as it reported it.
+ */
+export interface AgentSessionRoute {
+    'provider': string | null;
+    'model': string | null;
 }
-
-export const McpServerStatusFailedKindEnum = {
-    FAILED: 'failed'
-} as const;
-
-export type McpServerStatusFailedKindEnum = typeof McpServerStatusFailedKindEnum[keyof typeof McpServerStatusFailedKindEnum];

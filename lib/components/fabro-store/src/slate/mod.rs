@@ -475,7 +475,6 @@ mod tests {
             source_directory: Some(format!("/tmp/{label}")),
             labels: std::collections::HashMap::from([("team".to_string(), "infra".to_string())]),
             provenance: test_support::test_run_provenance(),
-            manifest_blob: None,
             definition_blob: None,
             spec_blob: None,
             git: Some(fabro_types::GitContext {

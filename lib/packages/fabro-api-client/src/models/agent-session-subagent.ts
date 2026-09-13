@@ -15,15 +15,14 @@
 
 // May contain unused imports in some cases
 // @ts-ignore
-import type { AgentMcpToolSummary } from './agent-mcp-tool-summary';
+import type { AgentSessionSubagentStatus } from './agent-session-subagent-status';
 
-export interface McpServerStatusReady {
-    'kind': McpServerStatusReadyKindEnum;
-    'tools': Array<AgentMcpToolSummary>;
+/**
+ * One child the root spawned. A reused child stays one row; every event after the spawn moves its status.
+ */
+export interface AgentSessionSubagent {
+    'agent_id': string;
+    'depth': number;
+    'task': string;
+    'status': AgentSessionSubagentStatus;
 }
-
-export const McpServerStatusReadyKindEnum = {
-    READY: 'ready'
-} as const;
-
-export type McpServerStatusReadyKindEnum = typeof McpServerStatusReadyKindEnum[keyof typeof McpServerStatusReadyKindEnum];

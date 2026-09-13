@@ -55,7 +55,6 @@ pub async fn retry_run(
         source_directory,
         labels,
         provenance: _,
-        manifest_blob,
         definition_blob,
         spec_blob,
         git,
@@ -78,7 +77,6 @@ pub async fn retry_run(
         target,
         automation,
         provenance: input.provenance.clone(),
-        manifest_blob,
         // Blobs are content-addressed, so the retried run reads the source
         // run's unredacted spec bytes through the same id.
         spec_blob,
@@ -178,7 +176,6 @@ mod tests {
     async fn append_created(
         store: &fabro_store::RunDatabase,
         run_id: RunId,
-        manifest_blob: Option<BlobHash>,
         fork_source_ref: Option<ForkSourceRef>,
     ) {
         let mut settings = WorkflowSettings::default();
@@ -200,7 +197,6 @@ mod tests {
             target: Some(run_target()),
             automation: None,
             provenance: provenance("source-user"),
-            manifest_blob,
             spec_blob: None,
             git: Some(git_context()),
             fork_source_ref,
@@ -266,14 +262,8 @@ mod tests {
     async fn seed_retryable_failed_source(
         store: &Database,
         source_run_id: RunId,
-    ) -> (Option<BlobHash>, Option<BlobHash>, ForkSourceRef) {
+    ) -> (Option<BlobHash>, ForkSourceRef) {
         let source_store = store.create_run(&source_run_id).await.unwrap();
-        let manifest_blob = Some(
-            source_store
-                .write_blob(br#"{\"manifest\":true}"#)
-                .await
-                .unwrap(),
-        );
         let definition_blob = Some(
             source_store
                 .write_blob(br#"{\"definition\":true}"#)
@@ -284,13 +274,7 @@ mod tests {
             source_run_id:  fixtures::RUN_3,
             checkpoint_sha: "fork-sha".to_string(),
         };
-        append_created(
-            &source_store,
-            source_run_id,
-            manifest_blob,
-            Some(fork_source_ref.clone()),
-        )
-        .await;
+        append_created(&source_store, source_run_id, Some(fork_source_ref.clone())).await;
         event::append_event(&source_store, &source_run_id, &Event::RunSubmitted {
             definition_blob,
         })
@@ -359,14 +343,14 @@ mod tests {
         .await
         .unwrap();
         append_failed(&source_store, source_run_id, FailureReason::WorkflowError).await;
-        (manifest_blob, definition_blob, fork_source_ref)
+        (definition_blob, fork_source_ref)
     }
 
     #[tokio::test]
     async fn retry_creates_fresh_run_from_durable_definition_only() {
         let store = memory_store();
         let source_run_id = fixtures::RUN_1;
-        let (manifest_blob, definition_blob, fork_source_ref) =
+        let (definition_blob, fork_source_ref) =
             seed_retryable_failed_source(&store, source_run_id).await;
         let source_event_count = store
             .open_run(&source_run_id)
@@ -416,7 +400,6 @@ mod tests {
         );
         assert_eq!(retry_state.spec.git, Some(git_context()));
         assert_eq!(retry_state.spec.target, Some(run_target()));
-        assert_eq!(retry_state.spec.manifest_blob, manifest_blob);
         assert_eq!(retry_state.spec.definition_blob, definition_blob);
         assert_eq!(retry_state.spec.fork_source_ref, Some(fork_source_ref));
         assert_eq!(retry_state.spec.provenance.subject, actor("retry-user"));
@@ -469,7 +452,6 @@ mod tests {
             target:              Some(RunTarget::None {}),
             automation:          None,
             provenance:          provenance("source-user"),
-            manifest_blob:       None,
             spec_blob:           None,
             git:                 None,
             fork_source_ref:     None,
@@ -534,7 +516,6 @@ mod tests {
             target:              Some(target.clone()),
             automation:          None,
             provenance:          provenance("source-user"),
-            manifest_blob:       None,
             spec_blob:           None,
             git:                 None,
             fork_source_ref:     None,
@@ -576,7 +557,7 @@ mod tests {
         let store = memory_store();
         let source_run_id = fixtures::RUN_1;
         let source_store = store.create_run(&source_run_id).await.unwrap();
-        append_created(&source_store, source_run_id, None, None).await;
+        append_created(&source_store, source_run_id, None).await;
         let definition_blob = Some(
             source_store
                 .write_blob(br#"{\"definition\":true}"#)
@@ -620,7 +601,7 @@ mod tests {
 
         let active = fixtures::RUN_2;
         let active_store = store.create_run(&active).await.unwrap();
-        append_created(&active_store, active, None, None).await;
+        append_created(&active_store, active, None).await;
         event::append_event(&active_store, &active, &Event::RunSubmitted {
             definition_blob: None,
         })
@@ -635,7 +616,7 @@ mod tests {
 
         let archived = fixtures::RUN_3;
         let archived_store = store.create_run(&archived).await.unwrap();
-        append_created(&archived_store, archived, None, None).await;
+        append_created(&archived_store, archived, None).await;
         append_failed(&archived_store, archived, FailureReason::WorkflowError).await;
         event::append_event(&archived_store, &archived, &Event::RunArchived {
             actor: None,

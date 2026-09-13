@@ -13,16 +13,17 @@
  */
 
 
-// May contain unused imports in some cases
-// @ts-ignore
-import type { SubAgentStatus } from './sub-agent-status';
 
 /**
- * Current projected state for one subagent spawned by an agent stage.
+ * One tool an MCP server advertised, as the coding agent\'s registry named it.
  */
-export interface SubAgentProjection {
-    'agent_id': string;
-    'depth': number;
-    'task': string;
-    'status': SubAgentStatus;
+export interface McpToolSummary {
+    /**
+     * The name the model calls: `mcp__{server}__{tool}`.
+     */
+    'name': string;
+    /**
+     * The server\'s own name for the tool.
+     */
+    'original_name': string;
 }

@@ -14,12 +14,15 @@
 
 
 
-export interface SubAgentStatusClosed {
-    'kind': SubAgentStatusClosedKindEnum;
+/**
+ * Repeating the call cannot succeed.
+ */
+export interface LlmRetryClassificationNever {
+    'type': LlmRetryClassificationNeverTypeEnum;
 }
 
-export const SubAgentStatusClosedKindEnum = {
-    CLOSED: 'closed'
+export const LlmRetryClassificationNeverTypeEnum = {
+    NEVER: 'never'
 } as const;
 
-export type SubAgentStatusClosedKindEnum = typeof SubAgentStatusClosedKindEnum[keyof typeof SubAgentStatusClosedKindEnum];
+export type LlmRetryClassificationNeverTypeEnum = typeof LlmRetryClassificationNeverTypeEnum[keyof typeof LlmRetryClassificationNeverTypeEnum];

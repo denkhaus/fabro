@@ -6,11 +6,11 @@
 //! ends and resumed by the next, which binds its own event scope, hooks, and
 //! interviewer. Model failover is pebble's: the stage hands it the resolved
 //! fallback routes, pebble keeps the conversation as it stands and asks the
-//! next route to continue it, and this module mirrors each move as the run's
-//! `agent.failover` event.
+//! next route to continue it, and reports each move as its own
+//! `agent.route.failover` event, stored like every other.
 
-use std::collections::{BTreeSet, HashMap, HashSet};
-use std::sync::{Arc, Mutex};
+use std::collections::{HashMap, HashSet};
+use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
@@ -24,7 +24,7 @@ use fabro_mcp::pebble::pebble_servers;
 use fabro_sandbox::{RunSandbox, SecretRedactor};
 use fabro_types::settings::run::RunModelControls;
 use fabro_types::{
-    AgentMcpToolSummary, AgentProfileKind, ModelRef, PermissionLevel, SessionCapability, StageId,
+    AgentProfileKind, BilledModelUsage, ModelRef, PermissionLevel, SessionCapability, StageId,
     StageTiming, UsdMicros, billing,
 };
 use fabro_util::home::Home;
@@ -32,8 +32,9 @@ use lithos_llm::catalog::{ModelId, ProviderId};
 use lithos_llm::types::{Message as LlmMessage, Role, TokenCounts};
 use pebble_agent::ToolMiddleware;
 use pebble_coding_agent::environment::Environment;
-use pebble_coding_agent::events::{CodingAgentEvent, CodingEvent, EventSink, EventSinkError};
+use pebble_coding_agent::events::{CodingAgentEvent, EventSink, EventSinkError};
 use pebble_coding_agent::extensions::HumanInputProvider;
+use pebble_coding_agent::projection::{DescendantAccount, SessionProjection};
 use pebble_coding_agent::state::Message;
 use pebble_coding_agent::steering::SteerableSession;
 use pebble_coding_agent::subagents::SubagentOptions;
@@ -64,7 +65,7 @@ use crate::context::keys::Fidelity;
 use crate::error::Error;
 use crate::event::{Emitter, Event, StageScope};
 use crate::model_fallback::{ModelFallbackNotice, ModelFallbackPolicy};
-use crate::outcome::billed_model_usage_from_llm;
+use crate::outcome::{Outcome, billed_model_usage_from_llm};
 use crate::services::FabroRunToolServices;
 use crate::steering_hub::SteeringHub;
 use crate::web_search::{self, SearchSecrets};
@@ -165,20 +166,29 @@ fn classify_agent_error(error: pebble_coding_agent::Error) -> AgentErrorDisposit
 // --- Event sink -----------------------------------------------------------
 
 /// Pebble's durable event sink for one stage: every agent event becomes a
-/// run event in the run's log before the agent goes on. A route failover and
-/// an MCP server's outcome or disconnect are facts the run already has
-/// events for, so those are mirrored onto the run's own `agent.failover`,
-/// `agent.mcp.ready`, `agent.mcp.failed`, and `agent.mcp.disconnected`
-/// events instead of being stored twice. A failover that stops short, with
-/// the chain exhausted or the error ineligible, has no event of fabro's own
-/// and is stored as pebble's `agent.route.failover.stopped`.
+/// run event in the run's log before the agent goes on, so the stage's
+/// `SessionProjection` rebuilt from the log sees what the live one saw.
+/// Pebble's stream is the agent event contract; fabro emits an agent event
+/// of its own only for a fact pebble cannot know.
 struct WorkflowEventSink {
-    emitter: Arc<Emitter>,
-    node_id: String,
-    scope:   StageScope,
-    /// The stage's resolved plan, for the controls and origin the mirrored
-    /// failover event names.
-    plan:    FallbackPlan,
+    emitter:    Arc<Emitter>,
+    node_id:    String,
+    scope:      StageScope,
+    /// Pebble's fold of every event this sink recorded: the stage's one
+    /// account of what its agent and subagents spent, wrote, and ran. The
+    /// store folds the same events the same way, so the stage's billing at
+    /// its end is the usage the run showed live.
+    projection: Mutex<SessionProjection>,
+}
+
+impl WorkflowEventSink {
+    /// The account as it stands.
+    fn snapshot(&self) -> SessionProjection {
+        self.projection
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
+    }
 }
 
 #[async_trait]
@@ -187,96 +197,16 @@ impl EventSink for WorkflowEventSink {
         // Every event, including streaming deltas, resets the run's activity
         // watchdog.
         self.emitter.touch();
-        match &event.event {
-            // The failed route's accounting (`usage`, `cost_usd_micros`,
-            // `inference_ms`, `tool_ms`) is not mirrored: the stage's totals
-            // already include it through the prompt report, and no run event
-            // of fabro's own carries per-route usage yet.
-            CodingEvent::RouteFailover {
-                from,
-                to,
-                attempt,
-                error,
-                usage: _,
-                cost_usd_micros: _,
-                inference_ms: _,
-                tool_ms: _,
-                continuation,
-            } => {
-                self.emitter.emit_scoped(
-                    &Event::Failover {
-                        stage: self.node_id.clone(),
-                        props: self.plan.failover_props(
-                            from,
-                            to,
-                            *attempt,
-                            &error.message,
-                            Some(*continuation),
-                        ),
-                    },
-                    &self.scope,
-                );
-                return Ok(());
-            }
-            CodingEvent::McpServerReady {
-                server,
-                tools,
-                startup_ms,
-            } => {
-                self.emitter.emit_scoped(
-                    &Event::AgentMcpReady {
-                        node_id:     self.node_id.clone(),
-                        visit:       self.scope.visit,
-                        server_name: server.clone(),
-                        tool_count:  tools.len(),
-                        tools:       tools
-                            .iter()
-                            .map(|tool| AgentMcpToolSummary {
-                                name:          tool.name.clone(),
-                                original_name: tool.original_name.clone(),
-                            })
-                            .collect(),
-                        startup_ms:  *startup_ms,
-                    },
-                    &self.scope,
-                );
-                return Ok(());
-            }
-            CodingEvent::McpServerFailed {
-                server,
-                error,
-                startup_ms,
-            } => {
-                self.emitter.emit_scoped(
-                    &Event::AgentMcpFailed {
-                        node_id:     self.node_id.clone(),
-                        visit:       self.scope.visit,
-                        server_name: server.clone(),
-                        error:       error.clone(),
-                        startup_ms:  *startup_ms,
-                    },
-                    &self.scope,
-                );
-                return Ok(());
-            }
-            CodingEvent::McpServerDisconnected { server, error } => {
-                self.emitter.emit_scoped(
-                    &Event::AgentMcpDisconnected {
-                        node_id:     self.node_id.clone(),
-                        visit:       self.scope.visit,
-                        server_name: server.clone(),
-                        error:       error.clone(),
-                    },
-                    &self.scope,
-                );
-                return Ok(());
-            }
-            _ => {}
-        }
-        // Deltas and the prompt's own durability barrier are not run history.
-        if event.event.is_streaming_noise() || matches!(event.event, CodingEvent::ProcessingEnd) {
+        // Streaming deltas are not run history. `ProcessingEnd` is: pebble's
+        // `SessionProjection` reads it to complete the prompt and mark the
+        // session idle, so a projection rebuilt from the run's log needs it.
+        if event.event.is_streaming_noise() {
             return Ok(());
         }
+        self.projection
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .apply(event);
         self.emitter
             .emit_durable(
                 &Event::Agent {
@@ -296,57 +226,47 @@ impl EventSink for WorkflowEventSink {
 
 // --- Live invocation ------------------------------------------------------
 
-/// One stage invocation's live agent and its accounting.
+/// One stage invocation's live agent, its timing, and the sink that
+/// accounts for it.
 ///
 /// A stage may run several prompts on one agent (the prompt, output repairs,
-/// late steering); the usage, cost, timing, and files of every one of them
-/// are summed here, across whatever routes pebble moved through.
+/// late steering). What every one of them spent and wrote, subagents
+/// included and across whatever routes pebble moved through, is the sink's
+/// fold of the events it recorded; the prompt reports here contribute their
+/// timing and the route the prompt ended on.
 struct LiveAgent {
     agent:              CodingAgent,
     handle:             CodingAgentControlHandle,
     lease:              Option<Arc<ActivationLease>>,
-    total_usage:        TokenCounts,
-    total_cost:         Option<UsdMicros>,
+    sink:               Arc<WorkflowEventSink>,
     inference_duration: Duration,
     tool_duration:      Duration,
-    /// Every file the stage's prompts wrote or edited, subagents included.
-    files_touched:      BTreeSet<String>,
-    /// The most recently written path.
-    last_file_touched:  Option<String>,
 }
 
 impl LiveAgent {
-    fn new(agent: CodingAgent, handle: CodingAgentControlHandle) -> Self {
+    fn new(
+        agent: CodingAgent,
+        handle: CodingAgentControlHandle,
+        sink: Arc<WorkflowEventSink>,
+    ) -> Self {
         Self {
             agent,
             handle,
             lease: None,
-            total_usage: TokenCounts::default(),
-            total_cost: None,
+            sink,
             inference_duration: Duration::ZERO,
             tool_duration: Duration::ZERO,
-            files_touched: BTreeSet::new(),
-            last_file_touched: None,
         }
     }
 
     fn record_report(&mut self, report: &pebble_coding_agent::PromptReport) {
-        billing::add_usage(&mut self.total_usage, TokenCounts::from(report.usage));
-        UsdMicros::accumulate(
-            &mut self.total_cost,
-            report
-                .cost_usd_micros
-                .map(|micros| UsdMicros(i64::try_from(micros).unwrap_or(i64::MAX))),
-        );
         self.inference_duration = self
             .inference_duration
             .saturating_add(report.timing.inference);
         self.tool_duration = self.tool_duration.saturating_add(report.timing.tool);
-        self.files_touched
-            .extend(report.files_touched.iter().cloned());
         for compaction in &report.compactions {
-            // The summary call's usage is already in `report.usage`; this is
-            // the breakdown, for anyone asking why a stage cost what it did.
+            // The summary call's usage is already in the stage's account; this
+            // is the breakdown, for anyone asking why a stage cost what it did.
             tracing::debug!(
                 reason = ?compaction.reason,
                 original_turns = compaction.original_turn_count,
@@ -356,9 +276,21 @@ impl LiveAgent {
                 "agent stage compacted its conversation"
             );
         }
-        if report.last_file_touched.is_some() {
-            self.last_file_touched.clone_from(&report.last_file_touched);
-        }
+    }
+
+    /// What the stage's prompts have spent and written so far.
+    fn account(&self) -> SessionProjection {
+        self.sink.snapshot()
+    }
+
+    /// The path written or edited most recently, when any was.
+    fn last_file_touched(&self) -> Option<String> {
+        self.sink
+            .projection
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .last_file_touched
+            .clone()
     }
 
     fn release_lease(&mut self) {
@@ -388,6 +320,111 @@ impl LiveAgent {
             })
             .unwrap_or_default()
     }
+}
+
+/// The route as billing names it: provider, model, and the speed tier the
+/// stage asked for.
+fn route_model(route: &LlmRoute) -> ModelRef {
+    ModelRef::new(
+        route.target.provider.clone(),
+        ModelId::new(route.target.model.as_str()),
+    )
+    .with_speed(route.controls.speed)
+}
+
+/// A stage's billing from its account: the whole tree under the root's
+/// route, and the rows that split it by model.
+struct StageBilling {
+    total:    BilledModelUsage,
+    by_model: Vec<BilledModelUsage>,
+}
+
+/// Bills the stage's account from the catalog: the root session at
+/// `root_model`, its route, and each descendant at its own route where the
+/// catalog knows it and at the root's otherwise, so a subagent on a cheaper
+/// or dearer model is priced as what it ran. A descendant on the root's
+/// route joins the root's row. Where pebble carried a provider-reported
+/// cost, that cost stands in for the catalog's estimate.
+fn stage_billing(
+    catalog: &Catalog,
+    root_model: &ModelRef,
+    account: &SessionProjection,
+) -> Result<StageBilling, Error> {
+    let mut groups: Vec<(ModelRef, TokenCounts, Option<u64>)> = vec![(
+        root_model.clone(),
+        TokenCounts::from(account.usage),
+        account.cost_usd_micros,
+    )];
+    for descendant in account.descendants.values() {
+        let model = descendant_model(catalog, root_model, descendant);
+        match groups.iter_mut().find(|(grouped, _, _)| *grouped == model) {
+            Some((_, tokens, cost)) => {
+                billing::add_usage(tokens, TokenCounts::from(descendant.usage));
+                add_reported_cost(cost, descendant.cost_usd_micros);
+            }
+            None => groups.push((
+                model,
+                TokenCounts::from(descendant.usage),
+                descendant.cost_usd_micros,
+            )),
+        }
+    }
+    // The root's row first, then the others by model.
+    groups[1..].sort_by(|left, right| left.0.sort_key().cmp(&right.0.sort_key()));
+
+    let mut by_model = Vec::with_capacity(groups.len());
+    let mut total_tokens = TokenCounts::default();
+    let mut total_cost = None;
+    for (model, tokens, reported) in groups {
+        let row = billed_model_usage_from_llm(catalog, &model, tokens)?
+            .with_reported_cost(reported.map(usd_micros));
+        billing::add_usage(&mut total_tokens, row.tokens);
+        UsdMicros::accumulate(&mut total_cost, row.total_usd_micros.map(UsdMicros));
+        by_model.push(row);
+    }
+    Ok(StageBilling {
+        total: BilledModelUsage {
+            model:            root_model.clone(),
+            tokens:           total_tokens,
+            total_usd_micros: total_cost.map(|cost| cost.0),
+        },
+        by_model,
+    })
+}
+
+/// The route a descendant is billed at: its own where its start named one
+/// the catalog knows, else the root's. A descendant whose start was not seen
+/// names only its answers' model, taken to be on the root's provider.
+fn descendant_model(
+    catalog: &Catalog,
+    root_model: &ModelRef,
+    account: &DescendantAccount,
+) -> ModelRef {
+    let Some(model) = account.model.as_deref() else {
+        return root_model.clone();
+    };
+    let provider = account
+        .provider
+        .as_deref()
+        .unwrap_or(root_model.provider.as_str());
+    if provider == root_model.provider.as_str() && model == root_model.model_id.as_str() {
+        return root_model.clone();
+    }
+    if catalog.enabled_provider(provider).is_none() {
+        return root_model.clone();
+    }
+    ModelRef::new(ProviderId::new(provider), ModelId::new(model))
+}
+
+/// Folds a reported cost into a total that stays `None` until one is seen.
+fn add_reported_cost(total: &mut Option<u64>, cost: Option<u64>) {
+    if let Some(cost) = cost {
+        *total = Some(total.unwrap_or(0).saturating_add(cost));
+    }
+}
+
+fn usd_micros(micros: u64) -> UsdMicros {
+    UsdMicros(i64::try_from(micros).unwrap_or(i64::MAX))
 }
 
 /// Everything one stage binds to an agent it builds or resumes.
@@ -622,21 +659,23 @@ impl PebbleBackend {
         plan: &FallbackPlan,
         provider: &ProviderContext,
         bindings: &StageBindings<'_>,
-    ) -> CodingAgentBuilder {
+    ) -> (CodingAgentBuilder, Arc<WorkflowEventSink>) {
         let route = plan.current();
         let max_tokens = node_max_output_tokens(node).map(i64::from);
+        let sink = Arc::new(WorkflowEventSink {
+            emitter:    Arc::clone(bindings.emitter),
+            node_id:    bindings.node_id.to_string(),
+            scope:      bindings.stage_scope.clone(),
+            projection: Mutex::new(SessionProjection::new()),
+        });
+        let event_sink = Arc::clone(&sink) as Arc<dyn EventSink>;
         builder = builder
             .tools(self.stage_tools(node, bindings))
             .mcp_servers(pebble_servers(&self.mcp_servers))
             .permission_level(PermissionLevel::Full)
             .options(self.agent_options(node, route.controls))
             .fallback_routes(plan.pebble_routes(max_tokens))
-            .event_sink(Arc::new(WorkflowEventSink {
-                emitter: Arc::clone(bindings.emitter),
-                node_id: bindings.node_id.to_string(),
-                scope:   bindings.stage_scope.clone(),
-                plan:    plan.clone(),
-            }))
+            .event_sink(event_sink)
             .redactor(Arc::new(SecretRedactor))
             .subagents(SubagentOptions::enabled());
         if let Some(routes) = bindings.sandbox.port_routes() {
@@ -657,7 +696,7 @@ impl PebbleBackend {
         if provider.profile_kind == AgentProfileKind::Claude5 {
             builder = builder.web_fetch_summarizer(route.selector());
         }
-        builder
+        (builder, sink)
     }
 
     /// A new agent on the plan's current route.
@@ -667,15 +706,17 @@ impl PebbleBackend {
         plan: &FallbackPlan,
         provider: &ProviderContext,
         bindings: &StageBindings<'_>,
-    ) -> Result<CodingAgent, Error> {
+    ) -> Result<(CodingAgent, Arc<WorkflowEventSink>), Error> {
         let client = self.build_llm_client().await?;
         let environment: Arc<dyn Environment> =
             Arc::clone(bindings.sandbox) as Arc<dyn Environment>;
         let builder = CodingAgent::builder(client, environment).model(plan.current().selector());
-        self.bind_builder(builder, node, plan, provider, bindings)
+        let (builder, sink) = self.bind_builder(builder, node, plan, provider, bindings);
+        let agent = builder
             .build()
             .await
-            .map_err(|error| Error::handler_with_source("Failed to start agent session", error))
+            .map_err(|error| Error::handler_with_source("Failed to start agent session", error))?;
+        Ok((agent, sink))
     }
 
     /// The exported conversation of an earlier stage, continued on the
@@ -687,15 +728,17 @@ impl PebbleBackend {
         plan: &FallbackPlan,
         provider: &ProviderContext,
         bindings: &StageBindings<'_>,
-    ) -> Result<CodingAgent, Error> {
+    ) -> Result<(CodingAgent, Arc<WorkflowEventSink>), Error> {
         let client = self.build_llm_client().await?;
         let environment: Arc<dyn Environment> =
             Arc::clone(bindings.sandbox) as Arc<dyn Environment>;
         let builder = CodingAgent::resume_from_export(client, environment, export);
-        self.bind_builder(builder, node, plan, provider, bindings)
+        let (builder, sink) = self.bind_builder(builder, node, plan, provider, bindings);
+        let agent = builder
             .build()
             .await
-            .map_err(|error| Error::handler_with_source("Failed to resume agent session", error))
+            .map_err(|error| Error::handler_with_source("Failed to resume agent session", error))?;
+        Ok((agent, sink))
     }
 
     /// Register `live` with the steering hub so steers reach it, and tell
@@ -786,6 +829,37 @@ impl PebbleBackend {
                 AgentErrorDisposition::Terminal(error) => Err(error),
             },
         }
+    }
+
+    /// The failed outcome of an agent stage that spent before it failed: the
+    /// failure itself, with the session tree's usage, the files it wrote, and
+    /// its active time, so the run bills what the stage spent. A billing the
+    /// catalog cannot price is logged and left off.
+    fn failed_outcome(&self, error: &Error, live: &LiveAgent, plan: &FallbackPlan) -> Outcome {
+        let mut outcome = error.to_fail_outcome();
+        let account = live.account();
+        match stage_billing(
+            self.catalog.as_ref(),
+            &route_model(plan.current()),
+            &account,
+        ) {
+            Ok(billing) => {
+                outcome.usage = Some(billing.total);
+                outcome.usage_by_model = billing.by_model;
+            }
+            Err(billing_error) => {
+                tracing::debug!(
+                    error = %billing_error,
+                    "failed agent stage could not be billed"
+                );
+            }
+        }
+        outcome.files_touched = account.files_touched;
+        outcome.timing = Some(StageTiming::active_only(
+            crate::millis_u64(live.inference_duration),
+            crate::millis_u64(live.tool_duration),
+        ));
+        outcome
     }
 
     /// Steers that landed between the answer and the hub's close-the-door
@@ -1052,6 +1126,7 @@ impl CodergenBackend for PebbleBackend {
 
             return Ok(CodergenResult::Text {
                 text:              response_text,
+                usage_by_model:    Vec::new(),
                 usage:             Some(stage_usage),
                 files_touched:     Vec::new(),
                 last_file_touched: None,
@@ -1096,13 +1171,13 @@ impl CodergenBackend for PebbleBackend {
 
         let cached = reuse_key.as_ref().and_then(|key| self.take_thread(key));
         let is_reused = cached.is_some();
-        let (agent, mut fallback_plan) = if let Some(thread) = cached {
+        let ((agent, sink), mut fallback_plan) = if let Some(thread) = cached {
             let route = thread.fallback_plan.current().clone();
             let provider = self.resolve_provider_context(
                 route.target.model.as_str(),
                 Some(route.target.provider.as_str()),
             )?;
-            let agent = self
+            let session = self
                 .resume_exported_agent(
                     thread.export,
                     node,
@@ -1111,7 +1186,7 @@ impl CodergenBackend for PebbleBackend {
                     &bindings,
                 )
                 .await?;
-            (agent, thread.fallback_plan)
+            (session, thread.fallback_plan)
         } else {
             let model = node.model().unwrap_or(&self.model);
             let provider = routing::resolve_node_provider_context(
@@ -1129,10 +1204,10 @@ impl CodergenBackend for PebbleBackend {
                 route.target.model.as_str(),
                 Some(route.target.provider.as_str()),
             )?;
-            let agent = self
+            let session = self
                 .build_agent(node, &fallback_plan, &route_provider, &bindings)
                 .await?;
-            (agent, fallback_plan)
+            (session, fallback_plan)
         };
         if cancel_token.is_cancelled() {
             let mut agent = agent;
@@ -1148,7 +1223,7 @@ impl CodergenBackend for PebbleBackend {
         );
 
         let handle = agent.control_handle();
-        let mut live = LiveAgent::new(agent, handle);
+        let mut live = LiveAgent::new(agent, handle, sink);
         let route = fallback_plan.current().clone();
         if let Err(error) = self.activate(
             &mut live,
@@ -1180,7 +1255,7 @@ impl CodergenBackend for PebbleBackend {
                 let mut repair_attempts = 0_i64;
                 let mut previous_validation_error = None;
                 loop {
-                    let last_file_touched = live.last_file_touched.clone();
+                    let last_file_touched = live.last_file_touched();
                     match validate_agent_output_sources(
                         schema,
                         &response,
@@ -1252,21 +1327,27 @@ impl CodergenBackend for PebbleBackend {
                     ShutdownReason::Error
                 };
                 live.discard(reason).await;
-                return Err(error);
+                // Cancellation and a retryable failure go up as the error, so
+                // the engine cancels or retries as before. A terminal failure
+                // becomes the stage's failed outcome, carrying what the
+                // session tree spent and wrote before it failed.
+                if matches!(error, Error::Cancelled) || error.is_retryable() {
+                    return Err(error);
+                }
+                return Ok(CodergenResult::Full(Box::new(self.failed_outcome(
+                    &error,
+                    &live,
+                    &fallback_plan,
+                ))));
             }
         };
 
-        let route = fallback_plan.current().clone();
-        let stage_usage = billed_model_usage_from_llm(
+        let account = live.account();
+        let billing = stage_billing(
             self.catalog.as_ref(),
-            &ModelRef::new(
-                route.target.provider.clone(),
-                ModelId::new(route.target.model.as_str()),
-            )
-            .with_speed(route.controls.speed),
-            live.total_usage,
-        )?
-        .with_reported_cost(live.total_cost);
+            &route_model(fallback_plan.current()),
+            &account,
+        )?;
 
         live.release_lease();
         match reuse_key {
@@ -1290,13 +1371,185 @@ impl CodergenBackend for PebbleBackend {
 
         Ok(CodergenResult::Text {
             text:              response,
-            usage:             Some(stage_usage),
-            files_touched:     live.files_touched.into_iter().collect(),
-            last_file_touched: live.last_file_touched,
+            usage:             Some(billing.total),
+            usage_by_model:    billing.by_model,
+            files_touched:     account.files_touched,
+            last_file_touched: account.last_file_touched,
             timing:            StageTiming::active_only(
                 crate::millis_u64(live.inference_duration),
                 crate::millis_u64(live.tool_duration),
             ),
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::SystemTime;
+
+    use fabro_llm::test_support::test_catalog;
+    use lithos_llm::catalog::builtin;
+    use pebble_coding_agent::events::{CodingAgentEvent, CodingEvent, InputSource, TokenUsage};
+
+    use super::*;
+
+    fn root(event: CodingEvent) -> CodingAgentEvent {
+        CodingAgentEvent::new("ses_root".to_string(), event, SystemTime::UNIX_EPOCH)
+    }
+
+    fn child(session_id: &str, event: CodingEvent) -> CodingAgentEvent {
+        CodingAgentEvent::new(session_id.to_string(), event, SystemTime::UNIX_EPOCH)
+            .with_parent_session_id("ses_root".to_string())
+    }
+
+    fn started(provider: &str, model: &str) -> CodingEvent {
+        CodingEvent::SessionStarted {
+            provider: Some(provider.to_string()),
+            model:    Some(model.to_string()),
+        }
+    }
+
+    fn message(model: &str, input: u64, output: u64, cost: Option<u64>) -> CodingEvent {
+        CodingEvent::AssistantMessage {
+            text:            "ok".to_string(),
+            model:           model.to_string(),
+            usage:           TokenUsage {
+                input,
+                output,
+                ..TokenUsage::default()
+            },
+            cost_usd_micros: cost,
+            cost_source:     None,
+            tool_call_count: 0,
+            context_window:  None,
+            reasoning:       None,
+        }
+    }
+
+    fn root_model() -> ModelRef {
+        ModelRef::new(builtin::openai(), ModelId::new("gpt-5.4"))
+    }
+
+    fn account(events: &[CodingAgentEvent]) -> SessionProjection {
+        let mut account = SessionProjection::new();
+        account.apply_all(events);
+        account
+    }
+
+    #[test]
+    fn stage_billing_prices_the_root_at_its_route_and_each_descendant_at_its_own() {
+        let catalog = test_catalog();
+        let account = account(&[
+            root(started("openai", "gpt-5.4")),
+            root(CodingEvent::UserInput {
+                text:    "go".to_string(),
+                content: None,
+                source:  InputSource::Prompt,
+            }),
+            root(message("gpt-5.4", 100_000, 25_000, None)),
+            // A child on the parent's route joins the parent's row.
+            child("ses_same", started("openai", "gpt-5.4")),
+            child("ses_same", message("gpt-5.4", 10_000, 1_000, None)),
+            // A child on another route is its own row, at that route's rate.
+            child("ses_other", started("anthropic", "claude-sonnet-5")),
+            child("ses_other", message("claude-sonnet-5", 20_000, 2_000, None)),
+            // A child on a route the catalog does not know bills at the root's.
+            child("ses_unknown", started("nowhere", "mystery")),
+            child("ses_unknown", message("mystery", 1_000, 100, None)),
+            root(CodingEvent::ProcessingEnd),
+        ]);
+
+        let billing = stage_billing(&catalog, &root_model(), &account).unwrap();
+
+        assert_eq!(billing.by_model.len(), 2, "{:?}", billing.by_model);
+        let root_row = &billing.by_model[0];
+        assert_eq!(root_row.model, root_model());
+        assert_eq!(
+            root_row.tokens.input, 111_000,
+            "the root, the same-route child, and the unknown-route child"
+        );
+        assert_eq!(root_row.tokens.output, 26_100);
+        let root_priced =
+            billed_model_usage_from_llm(&catalog, &root_model(), root_row.tokens).unwrap();
+        assert_eq!(root_row.total_usd_micros, root_priced.total_usd_micros);
+
+        let other_model = ModelRef::new(
+            ProviderId::new("anthropic"),
+            ModelId::new("claude-sonnet-5"),
+        );
+        let other_row = &billing.by_model[1];
+        assert_eq!(other_row.model, other_model);
+        assert_eq!(other_row.tokens.input, 20_000);
+        assert_eq!(other_row.tokens.output, 2_000);
+        let other_priced =
+            billed_model_usage_from_llm(&catalog, &other_model, other_row.tokens).unwrap();
+        assert_eq!(other_row.total_usd_micros, other_priced.total_usd_micros);
+        assert_ne!(
+            other_row.total_usd_micros,
+            billed_model_usage_from_llm(&catalog, &root_model(), other_row.tokens)
+                .unwrap()
+                .total_usd_micros,
+            "priced at its own rate, not the root's"
+        );
+
+        // The total is the tree's tokens under the root's route, at the rows' summed
+        // cost.
+        assert_eq!(billing.total.model, root_model());
+        assert_eq!(billing.total.tokens.input, 131_000);
+        assert_eq!(billing.total.tokens.output, 28_100);
+        assert_eq!(
+            billing.total.total_usd_micros,
+            Some(root_priced.total_usd_micros.unwrap() + other_priced.total_usd_micros.unwrap())
+        );
+    }
+
+    #[test]
+    fn a_provider_reported_cost_stands_in_for_the_catalogs_estimate() {
+        let catalog = test_catalog();
+        let account = account(&[
+            root(started("openai", "gpt-5.4")),
+            root(message("gpt-5.4", 1_000, 100, Some(4_321))),
+            child("ses_child", started("anthropic", "claude-sonnet-5")),
+            child("ses_child", message("claude-sonnet-5", 500, 50, None)),
+        ]);
+
+        let billing = stage_billing(&catalog, &root_model(), &account).unwrap();
+
+        assert_eq!(billing.by_model[0].total_usd_micros, Some(4_321));
+        let child_priced = billed_model_usage_from_llm(
+            &catalog,
+            &billing.by_model[1].model,
+            billing.by_model[1].tokens,
+        )
+        .unwrap();
+        assert_eq!(
+            billing.by_model[1].total_usd_micros,
+            child_priced.total_usd_micros
+        );
+        assert_eq!(
+            billing.total.total_usd_micros,
+            Some(4_321 + child_priced.total_usd_micros.unwrap())
+        );
+    }
+
+    #[test]
+    fn a_descendant_seen_only_through_its_answers_bills_on_the_roots_provider() {
+        let catalog = test_catalog();
+        let mut account = account(&[root(started("openai", "gpt-5.4"))]);
+        // No `SessionStarted` for the child: only its answer names a model.
+        account.apply(&child(
+            "ses_quiet",
+            message("gpt-5.4-mini", 1_000, 100, None),
+        ));
+
+        let billing = stage_billing(&catalog, &root_model(), &account).unwrap();
+
+        let child_row = billing
+            .by_model
+            .iter()
+            .find(|row| row.model.model_id.as_str() == "gpt-5.4-mini")
+            .expect("the child is billed as its answers' model on the root's provider");
+        assert_eq!(child_row.model.provider, root_model().provider);
+        assert_eq!(child_row.tokens.input, 1_000);
     }
 }

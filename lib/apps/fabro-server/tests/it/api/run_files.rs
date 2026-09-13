@@ -21,7 +21,7 @@ use object_store::memory::InMemory as MemoryObjectStore;
 use tower::ServiceExt;
 
 use crate::helpers::{
-    MINIMAL_DOT, api, minimal_manifest_json, response_json, response_status, test_app_state,
+    MINIMAL_DOT, api, minimal_intent_json, response_json, response_status, test_app_state,
     test_settings,
 };
 
@@ -70,7 +70,6 @@ async fn append_completed_run_with_final_patch(
         target:              None,
         automation:          None,
         provenance:          test_support::test_run_provenance(),
-        manifest_blob:       None,
         spec_blob:           None,
         git:                 None,
         fork_source_ref:     None,
@@ -273,16 +272,17 @@ async fn invalid_scope_returns_400() {
 
 #[tokio::test]
 async fn submitted_run_without_sandbox_returns_empty_envelope() {
+    let workspace = tempfile::tempdir().unwrap();
     // A run that has been created but not started has no base_sha or
     // run sandbox, so the handler returns an empty envelope. The UI
     // maps that to R4(a).
     let app = fabro_server::test_support::build_test_router(test_app_state());
-    let manifest = minimal_manifest_json(MINIMAL_DOT);
+    let intent = minimal_intent_json(&app, MINIMAL_DOT, workspace.path()).await;
     let create_req = Request::builder()
         .method("POST")
         .uri(api("/runs"))
         .header("content-type", "application/json")
-        .body(Body::from(serde_json::to_string(&manifest).unwrap()))
+        .body(Body::from(serde_json::to_string(&intent).unwrap()))
         .unwrap();
     let create_resp = app.clone().oneshot(create_req).await.unwrap();
     let create_body = response_json(create_resp, StatusCode::CREATED, "POST /api/v1/runs").await;

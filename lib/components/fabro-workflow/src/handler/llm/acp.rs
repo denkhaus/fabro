@@ -449,6 +449,7 @@ impl AgentAcpBackend {
 
         Ok(CodergenResult::Text {
             text: result.text,
+            usage_by_model: Vec::new(),
             usage: None,
             files_touched,
             last_file_touched,

@@ -376,7 +376,6 @@ fn main() {
         ("ParallelBranchId", "fabro_types::ParallelBranchId", &[]),
         ("StageHandler", "fabro_types::StageHandler", &[]),
         ("StageState", "fabro_types::StageState", &[]),
-        ("AgentControlState", "fabro_types::AgentControlState", &[]),
         ("CommandTermination", "fabro_types::CommandTermination", &[]),
         ("StageModelUsage", "fabro_types::StageModelUsage", &[]),
         (
@@ -385,6 +384,7 @@ fn main() {
             &[],
         ),
         ("StageProjection", "fabro_types::StageProjection", &[]),
+        ("BilledModelUsage", "fabro_types::BilledModelUsage", &[]),
         (
             "StageInferenceProjection",
             "fabro_types::StageInferenceProjection",
@@ -403,10 +403,6 @@ fn main() {
             &[],
         ),
         ("TodoListProjection", "fabro_types::TodoListProjection", &[]),
-        ("SubAgentProjection", "fabro_types::SubAgentProjection", &[]),
-        ("SubAgentStatus", "fabro_types::SubAgentStatus", &[]),
-        ("SkillsProjection", "fabro_types::SkillsProjection", &[]),
-        ("ActivatedSkill", "fabro_types::ActivatedSkill", &[]),
         ("SkillSummary", "fabro_types::SkillSummary", &[]),
         (
             "SkillActivationSource",
@@ -422,15 +418,120 @@ fn main() {
             "fabro_types::AgentToolsAvailableProps",
             &[],
         ),
+        // Pebble's own fold of a stage's agent events, embedded in
+        // `StageProjection.agent`. Every nested type is pebble's; the schema
+        // names carry an `AgentSession` prefix where fabro already has a
+        // schema of the same name for its own projection.
         (
-            "McpServerProjection",
-            "fabro_types::McpServerProjection",
+            "AgentSessionProjection",
+            "pebble_coding_agent::projection::SessionProjection",
             &[],
         ),
-        ("McpServerStatus", "fabro_types::McpServerStatus", &[]),
         (
-            "AgentMcpToolSummary",
-            "fabro_types::AgentMcpToolSummary",
+            "AgentSessionActivity",
+            "pebble_coding_agent::projection::SessionActivity",
+            &[],
+        ),
+        (
+            "AgentSessionRoute",
+            "pebble_coding_agent::projection::RouteProjection",
+            &[],
+        ),
+        (
+            "AgentSessionDescendantAccount",
+            "pebble_coding_agent::projection::DescendantAccount",
+            &[],
+        ),
+        (
+            "AgentSessionToolActivity",
+            "pebble_coding_agent::projection::ToolActivity",
+            &[],
+        ),
+        (
+            "AgentSessionSubagentCounts",
+            "pebble_coding_agent::projection::SubagentCounts",
+            &[],
+        ),
+        (
+            "AgentSessionMcpServer",
+            "pebble_coding_agent::projection::McpServerProjection",
+            &[],
+        ),
+        (
+            "AgentSessionSkills",
+            "pebble_coding_agent::projection::SkillsProjection",
+            &[],
+        ),
+        (
+            "AgentSessionActivatedSkill",
+            "pebble_coding_agent::projection::ActivatedSkill",
+            &[],
+        ),
+        (
+            "AgentSessionSubagent",
+            "pebble_coding_agent::projection::SubagentProjection",
+            &[],
+        ),
+        (
+            "AgentSessionSubagentStatus",
+            "pebble_coding_agent::projection::SubagentStatus",
+            &[],
+        ),
+        (
+            "AgentSessionCompaction",
+            "pebble_coding_agent::projection::CompactionProjection",
+            &[],
+        ),
+        (
+            "AgentSessionRouteFailover",
+            "pebble_coding_agent::projection::RouteFailoverProjection",
+            &[],
+        ),
+        (
+            "AgentSessionFailoverStop",
+            "pebble_coding_agent::projection::FailoverStopProjection",
+            &[],
+        ),
+        (
+            "AgentSessionPromptDelta",
+            "pebble_coding_agent::projection::PromptDelta",
+            &[],
+        ),
+        ("TokenUsage", "pebble_coding_agent::events::TokenUsage", &[]),
+        (
+            "McpToolSummary",
+            "pebble_coding_agent::events::McpToolSummary",
+            &[],
+        ),
+        (
+            "CompactionReason",
+            "pebble_coding_agent::events::CompactionReason",
+            &[],
+        ),
+        (
+            "FailoverContinuation",
+            "pebble_coding_agent::events::FailoverContinuation",
+            &[],
+        ),
+        (
+            "FailoverStop",
+            "pebble_coding_agent::events::FailoverStop",
+            &[],
+        ),
+        (
+            "AgentErrorData",
+            "pebble_coding_agent::events::ErrorData",
+            &[],
+        ),
+        (
+            "AgentErrorKind",
+            "pebble_coding_agent::events::ErrorKind",
+            &[],
+        ),
+        ("LlmErrorKind", "lithos_llm::types::ErrorKind", &[]),
+        (
+            "LlmRetryClassification",
+            "lithos_llm::types::RetryClassification",
             &[],
         ),
         (

@@ -650,6 +650,7 @@ mod tests {
             status: "succeeded".into(),
             preferred_label: None,
             suggested_next_ids: Vec::new(),
+            billing_by_model: Vec::new(),
             billing: Some(
                 billed_model_usage_from_llm(
                     &fabro_llm::test_support::test_catalog(),
@@ -780,6 +781,8 @@ mod tests {
                 summary_token_estimate: 500,
                 tracked_file_count:     3,
                 reason:                 CompactionReason::Threshold,
+                usage:                  TokenUsage::default(),
+                cost_usd_micros:        None,
             }),
         );
         assert!(ui.stage.active_stages["s1"].compaction_bar.is_none());

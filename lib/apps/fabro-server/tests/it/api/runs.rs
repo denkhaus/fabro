@@ -5,22 +5,17 @@ use fabro_types::SandboxProviderKind;
 use tower::ServiceExt;
 
 use crate::helpers::{
-    MINIMAL_DOT, api, body_json, minimal_manifest_json, response_json, response_status,
+    MINIMAL_DOT, api, body_json, minimal_intent_json, response_json, response_status,
     settings_from_toml, test_app_state_with_options,
 };
 
-async fn create_run(app: &axum::Router, mut manifest: serde_json::Value) -> serde_json::Value {
-    manifest
-        .as_object_mut()
-        .expect("manifest should be an object")
-        .entry("configs")
-        .or_insert_with(|| serde_json::json!([]));
+async fn create_run(app: &axum::Router, intent: serde_json::Value) -> serde_json::Value {
     let request = Request::builder()
         .method("POST")
         .uri(api("/runs"))
         .header("content-type", "application/json")
         .body(Body::from(
-            serde_json::to_string(&manifest).expect("manifest should serialize"),
+            serde_json::to_string(&intent).expect("intent should serialize"),
         ))
         .expect("create run request should build");
     response_json(
@@ -54,10 +49,12 @@ async fn request_json(
     .await
 }
 
-fn daytona_manifest() -> serde_json::Value {
-    let mut manifest = minimal_manifest_json(MINIMAL_DOT);
-    manifest["args"] = serde_json::json!({ "environment": "default" });
-    manifest
+async fn daytona_intent(app: &axum::Router) -> serde_json::Value {
+    let workspace = tempfile::tempdir().expect("run target workspace should be created");
+    let mut intent = minimal_intent_json(app, MINIMAL_DOT, workspace.path()).await;
+    intent["environment_id"] = serde_json::json!("default");
+    intent["target"] = serde_json::json!({ "kind": "none" });
+    intent
 }
 
 fn daytona_disabled_settings() -> crate::helpers::TestAppSettings {
@@ -94,11 +91,11 @@ async fn create_run_rejects_disabled_sandbox_provider() {
         .method("POST")
         .uri(api("/runs"))
         .header("content-type", "application/json")
-        .body(Body::from(daytona_manifest().to_string()))
+        .body(Body::from(daytona_intent(&app).await.to_string()))
         .expect("create run request should build");
     let body = response_json(
         app.clone().oneshot(request).await.unwrap(),
-        StatusCode::BAD_REQUEST,
+        StatusCode::SERVICE_UNAVAILABLE,
         "POST /api/v1/runs",
     )
     .await;
@@ -117,7 +114,9 @@ async fn preflight_reports_disabled_sandbox_provider() {
         .method("POST")
         .uri(api("/preflight"))
         .header("content-type", "application/json")
-        .body(Body::from(daytona_manifest().to_string()))
+        .body(Body::from(
+            crate::helpers::minimal_manifest_json(MINIMAL_DOT).to_string(),
+        ))
         .expect("preflight request should build");
     let body = response_json(
         app.clone().oneshot(request).await.unwrap(),
@@ -143,6 +142,7 @@ async fn preflight_reports_disabled_sandbox_provider() {
 
 #[tokio::test]
 async fn run_responses_include_ask_fabro_affordance() {
+    let workspace = tempfile::tempdir().expect("run target workspace should be created");
     let settings = settings_from_toml(
         r"
 _version = 1
@@ -153,7 +153,11 @@ _version = 1
         .vault_entries([("OPENAI_API_KEY", "test-key")])
         .build();
     let app = fabro_server::test_support::build_test_router(state);
-    let created = create_run(&app, minimal_manifest_json(MINIMAL_DOT)).await;
+    let created = create_run(
+        &app,
+        minimal_intent_json(&app, MINIMAL_DOT, workspace.path()).await,
+    )
+    .await;
     let run_id = created["id"].as_str().unwrap();
 
     assert_eq!(created["ask_fabro"]["available"], false);
@@ -200,7 +204,8 @@ _version = 1
 
 #[tokio::test]
 async fn retrieve_run_settings_returns_dense_snapshot() {
-    let storage_dir = tempfile::tempdir().unwrap();
+    let workspace = tempfile::tempdir().expect("run target workspace should be created");
+    let storage_dir = tempfile::tempdir().expect("run target workspace should be created");
     let settings = settings_from_toml(&format!(
         r#"
 _version = 1
@@ -231,26 +236,14 @@ slug = "fabro-app"
 
     let app =
         fabro_server::test_support::build_test_router(test_app_state_with_options(settings, 5));
-    let mut manifest = minimal_manifest_json(MINIMAL_DOT);
-    manifest["configs"] = serde_json::json!([{
-        "type": "user",
-        "path": "/tmp/home/.fabro/settings.toml",
-        "source": r#"
-_version = 1
-
-[run]
-goal = "Ship it"
-
-[cli.output]
-verbosity = "verbose"
-"#
-    }]);
+    let mut intent = minimal_intent_json(&app, MINIMAL_DOT, workspace.path()).await;
+    intent["goal"] = serde_json::json!("Ship it");
 
     let create_request = Request::builder()
         .method("POST")
         .uri(api("/runs"))
         .header("content-type", "application/json")
-        .body(Body::from(serde_json::to_string(&manifest).unwrap()))
+        .body(Body::from(serde_json::to_string(&intent).unwrap()))
         .unwrap();
     let create_response = app.clone().oneshot(create_request).await.unwrap();
     let create_status = create_response.status();
@@ -285,13 +278,18 @@ verbosity = "verbose"
 
 #[tokio::test]
 async fn create_run_can_set_parent_and_list_children() {
+    let workspace = tempfile::tempdir().expect("run target workspace should be created");
     let app = fabro_server::test_support::build_test_router(crate::helpers::test_app_state());
-    let parent = create_run(&app, minimal_manifest_json(MINIMAL_DOT)).await;
+    let parent = create_run(
+        &app,
+        minimal_intent_json(&app, MINIMAL_DOT, workspace.path()).await,
+    )
+    .await;
     let parent_id = parent["id"].as_str().unwrap();
-    let mut child_manifest = minimal_manifest_json(MINIMAL_DOT);
-    child_manifest["parent_id"] = serde_json::json!(parent_id);
+    let mut child_intent = minimal_intent_json(&app, MINIMAL_DOT, workspace.path()).await;
+    child_intent["parent_id"] = serde_json::json!(parent_id);
 
-    let child = create_run(&app, child_manifest).await;
+    let child = create_run(&app, child_intent).await;
     let child_id = child["id"].as_str().unwrap();
 
     assert_eq!(child["parent_id"], parent_id);
@@ -312,10 +310,23 @@ async fn create_run_can_set_parent_and_list_children() {
 
 #[tokio::test]
 async fn link_relink_and_unlink_parent_are_idempotent() {
+    let workspace = tempfile::tempdir().expect("run target workspace should be created");
     let app = fabro_server::test_support::build_test_router(crate::helpers::test_app_state());
-    let parent_1 = create_run(&app, minimal_manifest_json(MINIMAL_DOT)).await;
-    let parent_2 = create_run(&app, minimal_manifest_json(MINIMAL_DOT)).await;
-    let child = create_run(&app, minimal_manifest_json(MINIMAL_DOT)).await;
+    let parent_1 = create_run(
+        &app,
+        minimal_intent_json(&app, MINIMAL_DOT, workspace.path()).await,
+    )
+    .await;
+    let parent_2 = create_run(
+        &app,
+        minimal_intent_json(&app, MINIMAL_DOT, workspace.path()).await,
+    )
+    .await;
+    let child = create_run(
+        &app,
+        minimal_intent_json(&app, MINIMAL_DOT, workspace.path()).await,
+    )
+    .await;
     let parent_1_id = parent_1["id"].as_str().unwrap();
     let parent_2_id = parent_2["id"].as_str().unwrap();
     let child_id = child["id"].as_str().unwrap();
@@ -403,12 +414,17 @@ async fn link_relink_and_unlink_parent_are_idempotent() {
 
 #[tokio::test]
 async fn deleting_parent_leaves_child_parent_id_as_historical_reference() {
+    let workspace = tempfile::tempdir().expect("run target workspace should be created");
     let app = fabro_server::test_support::build_test_router(crate::helpers::test_app_state());
-    let parent = create_run(&app, minimal_manifest_json(MINIMAL_DOT)).await;
+    let parent = create_run(
+        &app,
+        minimal_intent_json(&app, MINIMAL_DOT, workspace.path()).await,
+    )
+    .await;
     let parent_id = parent["id"].as_str().unwrap();
-    let mut child_manifest = minimal_manifest_json(MINIMAL_DOT);
-    child_manifest["parent_id"] = serde_json::json!(parent_id);
-    let child = create_run(&app, child_manifest).await;
+    let mut child_intent = minimal_intent_json(&app, MINIMAL_DOT, workspace.path()).await;
+    child_intent["parent_id"] = serde_json::json!(parent_id);
+    let child = create_run(&app, child_intent).await;
     let child_id = child["id"].as_str().unwrap();
 
     let delete_request = Request::builder()
@@ -448,9 +464,18 @@ async fn deleting_parent_leaves_child_parent_id_as_historical_reference() {
 
 #[tokio::test]
 async fn parent_link_validation_rejects_missing_self_and_cycles() {
+    let workspace = tempfile::tempdir().expect("run target workspace should be created");
     let app = fabro_server::test_support::build_test_router(crate::helpers::test_app_state());
-    let parent = create_run(&app, minimal_manifest_json(MINIMAL_DOT)).await;
-    let child = create_run(&app, minimal_manifest_json(MINIMAL_DOT)).await;
+    let parent = create_run(
+        &app,
+        minimal_intent_json(&app, MINIMAL_DOT, workspace.path()).await,
+    )
+    .await;
+    let child = create_run(
+        &app,
+        minimal_intent_json(&app, MINIMAL_DOT, workspace.path()).await,
+    )
+    .await;
     let parent_id = parent["id"].as_str().unwrap();
     let child_id = child["id"].as_str().unwrap();
 

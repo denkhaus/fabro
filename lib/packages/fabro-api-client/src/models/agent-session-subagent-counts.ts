@@ -15,9 +15,12 @@
 
 
 /**
- * Summary of one tool exposed by an MCP server.
+ * How many child lifecycle events the tree recorded.
  */
-export interface AgentMcpToolSummary {
-    'name': string;
-    'original_name': string;
+export interface AgentSessionSubagentCounts {
+    'spawned': number;
+    'turns_started': number;
+    'completed': number;
+    'failed': number;
+    'closed': number;
 }

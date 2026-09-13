@@ -20,6 +20,7 @@ fabro-config = { path = "../fabro-config" }
 fabro-environment.workspace = true
 fabro-types = { path = "../fabro-types" }
 lithos-llm = { workspace = true, features = ["runtime"] }
+pebble-coding-agent.workspace = true
 progenitor-client = "0.13"
 regress = "0.10"
 reqwest.workspace = true
@@ -38,3 +39,5 @@ syn = "2"
 
 [dev-dependencies]
 fabro-types = { path = "../fabro-types", features = ["test-support"] }
+jsonschema.workspace = true
+serde_yaml = "0.9"

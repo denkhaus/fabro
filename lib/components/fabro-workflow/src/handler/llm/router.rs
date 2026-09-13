@@ -161,6 +161,7 @@ mod tests {
         async fn run(&self, _request: CodergenRunRequest<'_>) -> Result<CodergenResult, Error> {
             Ok(CodergenResult::Text {
                 text:              "api run".to_string(),
+                usage_by_model:    Vec::new(),
                 usage:             None,
                 files_touched:     Vec::new(),
                 last_file_touched: None,
@@ -171,6 +172,7 @@ mod tests {
         async fn one_shot(&self, _request: OneShotRequest<'_>) -> Result<CodergenResult, Error> {
             Ok(CodergenResult::Text {
                 text:              "api one-shot".to_string(),
+                usage_by_model:    Vec::new(),
                 usage:             None,
                 files_touched:     Vec::new(),
                 last_file_touched: None,

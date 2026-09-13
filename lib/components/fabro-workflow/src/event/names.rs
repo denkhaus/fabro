@@ -83,15 +83,12 @@ pub fn event_name(event: &Event) -> Cow<'static, str> {
         Event::StallWatchdogTimeout { .. } => "watchdog.timeout",
         Event::ArtifactCaptured { .. } => "artifact.captured",
         Event::SshAccessReady { .. } => "ssh.ready",
-        Event::Failover { .. } => "agent.failover",
+        Event::Failover { .. } => "prompt.failover",
         Event::CommandStarted { .. } => "command.started",
         Event::CommandCompleted { .. } => "command.completed",
         Event::AgentSessionActivated { .. } => "agent.session.activated",
         Event::AgentToolsAvailable { .. } => "agent.tools.available",
         Event::AgentSessionDeactivated { .. } => "agent.session.deactivated",
-        Event::AgentMcpReady { .. } => "agent.mcp.ready",
-        Event::AgentMcpFailed { .. } => "agent.mcp.failed",
-        Event::AgentMcpDisconnected { .. } => "agent.mcp.disconnected",
         Event::AgentInterruptInjected { .. } => "agent.interrupt.injected",
         Event::AgentPairUserMessage { .. } => "agent.pair.user_message",
         Event::AgentPairSystemMessage { .. } => "agent.pair.system_message",
@@ -134,13 +131,18 @@ mod tests {
             "parallel.branch.started"
         );
         assert_eq!(
-            event_name(&Event::AgentMcpDisconnected {
-                node_id:     "code".to_string(),
-                visit:       1,
-                server_name: "github".to_string(),
-                error:       "transport closed".to_string(),
+            event_name(&Event::Failover {
+                stage: "code".to_string(),
+                props: fabro_types::FailoverProps {
+                    from_provider: "anthropic".to_string(),
+                    from_model:    "claude-fable-5".to_string(),
+                    to_provider:   "openai".to_string(),
+                    to_model:      "gpt-5.6-sol".to_string(),
+                    attempt:       Some(1),
+                    error:         "overloaded".to_string(),
+                },
             }),
-            "agent.mcp.disconnected"
+            "prompt.failover"
         );
         assert_eq!(
             event_name(&Event::Agent {

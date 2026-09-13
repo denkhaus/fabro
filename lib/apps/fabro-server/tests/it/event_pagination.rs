@@ -34,7 +34,7 @@ async fn demo_stage_events_default_returns_all_fixture_events_with_no_more() {
     let body = get_json(&app, "/api/v1/runs/run-1/stages/detect-drift@1/events").await;
     let data = body["data"].as_array().expect("data is an array");
 
-    assert_eq!(data.len(), 7, "all seven fixture events should be returned");
+    assert_eq!(data.len(), 24, "every fixture event should be returned");
     assert_eq!(body["meta"]["has_more"], false);
 }
 
@@ -57,7 +57,7 @@ async fn demo_stage_events_limit_one_signals_has_more() {
 async fn demo_stage_events_since_seq_filters_out_earlier_events() {
     let app = fabro_server::test_support::build_test_router(test_app_state());
 
-    // The fixture seqs are 1..=7. since_seq=4 should skip the first three.
+    // The fixture seqs are 1..=24. since_seq=4 should skip the first three.
     let body = get_json(
         &app,
         "/api/v1/runs/run-1/stages/detect-drift@1/events?since_seq=4",
@@ -65,11 +65,49 @@ async fn demo_stage_events_since_seq_filters_out_earlier_events() {
     .await;
     let data = body["data"].as_array().expect("data is an array");
 
-    assert_eq!(data.len(), 4);
+    assert_eq!(data.len(), 21);
     let seqs: Vec<u64> = data
         .iter()
         .map(|envelope| envelope["seq"].as_u64().expect("seq is a number"))
         .collect();
-    assert_eq!(seqs, vec![4, 5, 6, 7]);
+    assert_eq!(seqs, (4..=24).collect::<Vec<u64>>());
     assert_eq!(body["meta"]["has_more"], false);
+}
+
+#[tokio::test]
+async fn demo_run_state_carries_the_agent_stages_fold() {
+    let app = fabro_server::test_support::build_test_router(test_app_state());
+
+    let body = get_json(&app, "/api/v1/runs/run-1/state").await;
+    let stage = &body["stages"]["detect-drift@1"];
+    assert_eq!(stage["handler"], "agent");
+    let agent = &stage["agent"];
+    assert_eq!(agent["root_session_id"], "ses_demo_detect_drift");
+    assert_eq!(
+        agent["route"]["model"], "gpt-5.4",
+        "the route after the failover"
+    );
+    assert_eq!(agent["activity"], "idle");
+    assert_eq!(
+        agent["mcp_servers"]["github"]["tools"]
+            .as_array()
+            .unwrap()
+            .len(),
+        2
+    );
+    assert_eq!(agent["mcp_servers"]["github"]["invoked"], true);
+    assert_eq!(
+        agent["mcp_servers"]["atlassian"]["error"],
+        "auth failed: the API token has expired"
+    );
+    assert_eq!(agent["skills"]["activated"][0]["name"], "drift-triage");
+    assert_eq!(agent["subagents"][0]["status"]["status"], "completed");
+    assert_eq!(agent["failovers"][0]["to"], "openai/gpt-5.4");
+    assert_eq!(agent["compactions"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        agent["files_touched"],
+        serde_json::json!(["reports/drift.md"])
+    );
+    assert!(agent.get("pending_writes").is_none());
+    assert!(body["stages"]["apply-changes@2"]["agent"].is_null());
 }

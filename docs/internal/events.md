@@ -422,6 +422,7 @@ Emitted when a workflow node finishes execution.
 | `usage.reasoning_tokens` | number? | Reasoning/thinking tokens |
 | `usage.speed` | string? | Speed tier |
 | `usage.cost` | number? | Estimated cost in USD |
+| `billing_by_model` | array? | For an agent stage, the stage's billing split by model: the root session's route and each subagent's own model, a subagent whose model the catalog does not know billed at the root's. Each row has `model`, `tokens`, and `total_usd_micros`, and the rows sum to the stage's billing. Empty for stages without a coding agent and on events written before it existed |
 | `error` | string? | Error message (flattened from failure detail) |
 | `failure_class` | string? | `"transient_infra"`, `"deterministic"`, `"budget_exhausted"`, `"compilation_loop"`, `"canceled"`, `"structural"` |
 | `failure_signature` | string? | Dedup key for repeated failures |
@@ -433,6 +434,12 @@ Emitted when a workflow node finishes execution.
 | `restart_failure_signatures` | object? | Restart failure signature counts |
 | `response` | string? | Full LLM or agent response text when produced by the stage |
 | `notes` | string? | Free-text notes |
+
+An agent stage's usage is its whole session tree's: the root session and
+every subagent, live in `StageProjection.usage` and here at completion, both
+read from the same fold of the stage's agent events. The root is priced at
+its route and each subagent at its own model; where the provider reported a
+cost, that cost stands.
 | `files_touched` | string[] | File paths modified |
 | `attempt` | number | Attempt number (1-based) |
 | `max_attempts` | number | Maximum attempts allowed |
@@ -466,6 +473,8 @@ Emitted when a stage fails (before retry decision).
 | `failure_class` | string | Failure category |
 | `failure_signature` | string? | Dedup key for repeated failures |
 | `will_retry` | boolean | Whether the stage will be retried |
+| `billing` | object? | What the stage spent before it failed, in the shape `stage.completed` uses. An agent stage that fails for good after answering model calls bills its whole session tree, as it would have on completion; a retried attempt and a cancelled stage carry none |
+| `billing_by_model` | array? | `billing` split by model, as on `stage.completed` |
 
 ### `stage.retrying`
 
@@ -874,7 +883,36 @@ Emitted when execution loops back to an earlier node.
 
 ## Agent events
 
-Most agent activity events are stage-scoped and carry `node_id` (the workflow stage), `node_label`, `stage_id`, `session_id`, and `parent_session_id` in the envelope. Session object lifecycle events are the exception: `agent.session.started` and `agent.session.ended` are not stage-scoped and intentionally omit `node_id`, `node_label`, `stage_id`, and `visit`.
+Pebble's `CodingAgentEvent` stream is the agent event contract. Every event
+the coding agent publishes for a stage, except streaming deltas, is stored
+verbatim as an `EventBody::Agent` under a name derived from its variant
+(`agent.message`, `agent.tool.started`, `agent.route.failover`,
+`agent.mcp.server.ready`, `todo.created`, and so on; the full list is
+`CODING_EVENT_NAMES`). Its `properties` are pebble's own envelope, so
+pebble's event types are part of fabro's stored format, and the store folds
+the same events into `StageProjection.agent` with pebble's
+`SessionProjection`, the one fold of that stream.
+
+Fabro emits an agent event of its own only for a fact pebble cannot know:
+
+- `agent.session.activated` and `agent.session.deactivated`: the stage's
+  route, controls, permission level, and steering capabilities, as fabro
+  resolved them.
+- `agent.tools.available`: the tool catalog fabro handed the agent.
+- `agent.pair.user_message` and `agent.pair.system_message`: pair mode.
+- `agent.interrupt.injected`, `agent.steer.buffered`, `agent.steer.dropped`:
+  run-level steering as it reaches, waits for, or misses a session.
+- `agent.acp.started`, `agent.acp.completed`, `agent.acp.cancelled`,
+  `agent.acp.timed_out`: an external ACP agent process, which pebble does
+  not run.
+- `prompt.failover`: a one-shot prompt stage moving to a fallback route,
+  which it does without pebble.
+
+Every agent activity event is stage-scoped and carries `node_id` (the
+workflow stage), `node_label`, `stage_id`, `session_id`, and
+`parent_session_id` in the envelope. Pebble's session lifecycle events
+(`agent.session.started`, `agent.session.ended`) are stored with the stage
+that ran the session like the rest.
 
 ### `agent.session.started`
 
@@ -951,7 +989,12 @@ Object-lifecycle event. `session_id` and `parent_session_id` are envelope fields
 }
 ```
 
-No properties.
+No properties. One per prompt, when the agent has nothing more to do for
+it. Pebble's `SessionProjection`, embedded in `StageProjection.agent`, reads
+it to mark the prompt complete and the session idle, so the projection
+rebuilt from the run's log needs it. Runs recorded before fabro stored it
+never have it; their `agent.activity` stays `running`, and
+`StageProjection.state` is the authority on whether the stage is done.
 
 ### `agent.input`
 
@@ -1400,94 +1443,6 @@ Emitted when a sub-agent is spawned.
 | `agent_id` | string | Sub-agent identifier |
 | `depth` | number | Nesting depth |
 
-### `agent.mcp.ready`
-
-```json
-{
-  "id": "...", "ts": "...", "run_id": "...",
-  "event": "agent.mcp.ready",
-  "node_id": "code", "node_label": "code",
-  "session_id": "ses_abc",
-  "properties": {
-    "server_name": "github",
-    "tool_count": 2,
-    "tools": [
-      {
-        "name": "mcp__github__create_issue",
-        "original_name": "create_issue"
-      },
-      {
-        "name": "mcp__github__list_issues",
-        "original_name": "list_issues"
-      }
-    ],
-    "startup_ms": 842,
-    "visit": 1
-  }
-}
-```
-
-| Property | Type | Description |
-|----------|------|-------------|
-| `server_name` | string | MCP server name |
-| `tool_count` | number | Number of tools available |
-| `tools` | array | Names-only tool summaries for the ready server, sorted by qualified `name`. Each entry has `name` (Fabro-qualified `mcp__{server}__{tool}` identifier) and `original_name` (server-provided tool name). Descriptions and input schemas are intentionally omitted. The field is omitted from serialized JSON for legacy parity when empty. |
-| `startup_ms` | number | Whole milliseconds from the server's launch to its tools being listed. Events written before the field existed read as `0`. |
-| `visit` | number | Stage visit count when the server became ready |
-
-### `agent.mcp.failed`
-
-```json
-{
-  "id": "...", "ts": "...", "run_id": "...",
-  "event": "agent.mcp.failed",
-  "node_id": "code", "node_label": "code",
-  "session_id": "ses_abc",
-  "properties": {
-    "server_name": "filesystem",
-    "error": "Connection refused",
-    "startup_ms": 4,
-    "visit": 1
-  }
-}
-```
-
-| Property | Type | Description |
-|----------|------|-------------|
-| `server_name` | string | MCP server name |
-| `error` | string | Error message |
-| `startup_ms` | number | Whole milliseconds from the server's launch to the failure. Events written before the field existed read as `0`. |
-| `visit` | number | Stage visit count when the server failed |
-
-### `agent.mcp.disconnected`
-
-An MCP server that was ready lost its connection during the stage. Pebble
-publishes the disconnect once per server, from whichever session's tool call
-first observed the closed connection, so the event can originate in a
-sub-agent. Every later call to that server's tools fails until the session
-ends. The stage projection moves the server's status from `ready` to
-`disconnected`; its `tool_count` and `invoked` flag are kept.
-
-```json
-{
-  "id": "...", "ts": "...", "run_id": "...",
-  "event": "agent.mcp.disconnected",
-  "node_id": "code", "node_label": "code",
-  "session_id": "ses_abc",
-  "properties": {
-    "server_name": "github",
-    "error": "transport closed",
-    "visit": 1
-  }
-}
-```
-
-| Property | Type | Description |
-|----------|------|-------------|
-| `server_name` | string | MCP server name |
-| `error` | string | What closed the connection, as the client observed it |
-| `visit` | number | Stage visit count when the disconnect was observed |
-
 ### `agent.memory.loaded`
 
 Emitted once per session right after memory discovery, before skills and MCP
@@ -1603,40 +1558,58 @@ Emitted whenever a skill is activated in the running session. Sources:
 > entirely; slash-skill expansion is reported through `agent.skill.activated`
 > with `source == "slash"` instead.
 
-### `agent.failover`
+### `prompt.failover`
 
-Emitted when the agent fails over to a different LLM provider/model.
+Emitted by a one-shot prompt stage when it moves to a fallback route. The
+prompt stage walks its fallback plan itself, so this is fabro's own event.
+An agent stage never emits it: pebble walks the routes and reports each
+move as `agent.route.failover`, stored verbatim (below).
 
 ```json
 {
   "id": "...", "ts": "...", "run_id": "...",
-  "event": "agent.failover",
-  "node_id": "code",
-  "node_label": "code",
+  "event": "prompt.failover",
+  "node_id": "summarize",
+  "node_label": "summarize",
   "properties": {
     "from_provider": "anthropic",
     "from_model": "claude-sonnet-4-20250514",
     "to_provider": "openai",
     "to_model": "gpt-4o",
-    "error": "rate limited",
-    "continuation": "continue_turn"
+    "attempt": 1,
+    "error": "rate limited"
   }
 }
 ```
 
 | Property | Type | Description |
 |----------|------|-------------|
-| `from_provider` | string | Original provider |
-| `from_model` | string | Original model |
-| `to_provider` | string | Failover provider |
-| `to_model` | string | Failover model |
-| `error` | string | Error that triggered failover |
-| `continuation` | string? | How the new route carried the prompt on, as pebble reported it: `replay_prompt` (nothing the prompt committed was in the conversation, so the new route was asked the prompt again) or `continue_turn` (the conversation held assistant output or tool results, so the new route continued from there). Absent on events written before pebble reported it and on one-shot prompt stages, which re-send their request themselves |
+| `from_provider` | string | The provider that failed |
+| `from_model` | string | The model that failed |
+| `to_provider` | string | The provider the prompt continued on |
+| `to_model` | string | The model the prompt continued on |
+| `attempt` | number? | How many routes the prompt had moved through, this one included. Absent only on events recorded before it was kept |
+| `error` | string | The failure that ended the previous route |
+
+Events recorded before this rename were named `agent.failover` and carried
+`original_provider`, `original_model`, `requested_reasoning_effort`,
+`effective_reasoning_effort`, and `continuation`; nothing read them.
+
+### `agent.route.failover`, `agent.mcp.server.ready`, `agent.mcp.server.failed`, `agent.mcp.server.disconnected`
+
+Pebble's `RouteFailover`, `McpServerReady`, `McpServerFailed`, and
+`McpServerDisconnected` events, stored verbatim with pebble's envelope in
+`properties` like every other pebble event. They are the only record of an
+agent stage's route moves and MCP server outcomes: the stage view reads
+both from `StageProjection.agent`, which they feed. Runs recorded before
+fabro stored them carry fabro's former mirrors, `agent.failover`,
+`agent.mcp.ready`, `agent.mcp.failed`, and `agent.mcp.disconnected`,
+which no reader folds any more.
 
 ### `agent.route.failover.stopped`
 
 Pebble's `RouteFailoverStopped` event, stored verbatim like every other
-pebble event fabro does not mirror. An agent stage with fallback routes
+pebble event. An agent stage with fallback routes
 publishes it when a model failure ends the prompt on its current route
 anyway: the failure does not qualify for failover (`reason: "ineligible"`)
 or every route has been taken (`reason: "exhausted"`). It follows the

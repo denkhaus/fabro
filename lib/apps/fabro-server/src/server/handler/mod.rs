@@ -93,7 +93,7 @@ pub(super) fn demo_routes() -> Router<Arc<AppState>> {
         .route("/runs/{id}", get(demo::get_run_status))
         .route("/runs/{id}/questions", get(demo::get_questions_stub))
         .route("/runs/{id}/questions/{qid}/answer", post(demo::answer_stub))
-        .route("/runs/{id}/state", get(not_implemented))
+        .route("/runs/{id}/state", get(demo::get_run_state))
         .route("/runs/{id}/logs", get(not_implemented))
         .route(
             "/runs/{id}/events",

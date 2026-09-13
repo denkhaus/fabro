@@ -738,10 +738,6 @@ impl Client {
         Ok(SessionEventStream::new(Box::pin(stream)))
     }
 
-    pub async fn create_run_from_manifest(&self, manifest: types::RunManifest) -> Result<RunId> {
-        self.submit_create_run(manifest.into()).await
-    }
-
     /// Retrieves one canonical server-managed environment by ID.
     pub async fn retrieve_environment(&self, id: &str) -> Result<types::Environment> {
         let response = self
@@ -799,7 +795,11 @@ impl Client {
     }
 
     pub async fn create_run_from_intent(&self, intent: types::RunIntent) -> Result<RunId> {
-        self.submit_create_run(intent.into()).await
+        let response = self
+            .send_api(|client| async move { client.create_run().body(intent.clone()).send().await })
+            .await?;
+        let status = response.into_inner();
+        Ok(status.id)
     }
 
     /// Create a run from a git-hosted workflow (fabro-e297): the server
@@ -810,12 +810,14 @@ impl Client {
         &self,
         intent: types::GitSourceRunIntent,
     ) -> Result<RunId> {
-        self.submit_create_run(intent.into()).await
-    }
-
-    async fn submit_create_run(&self, body: types::CreateRunRequest) -> Result<RunId> {
         let response = self
-            .send_api(|client| async move { client.create_run().body(body.clone()).send().await })
+            .send_api(|client| async move {
+                client
+                    .create_run()
+                    .body(types::CreateRunBody::GitSourceRunIntent(intent.clone()))
+                    .send()
+                    .await
+            })
             .await?;
         let status = response.into_inner();
         Ok(status.id)

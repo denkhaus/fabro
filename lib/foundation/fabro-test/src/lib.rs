@@ -1967,7 +1967,7 @@ pub fn json_snapshot_filters(mut filters: Vec<(String, String)>) -> Vec<(String,
         r#""id": "[EVENT_ID]""#.to_string(),
     ));
     filters = json_elapsed_ms_snapshot_filters(filters);
-    for field in ["manifest_blob", "definition_blob", "spec_blob"] {
+    for field in ["definition_blob", "spec_blob"] {
         filters.push((
             format!(r#""{field}":\s*"[0-9a-f]{{64}}""#),
             format!(r#""{field}": "[BLOB_HASH]""#),
@@ -2576,7 +2576,6 @@ mod tests {
             "inference_time_ms": 34567,
             "tool_time_ms": 45678,
             "active_time_ms": 80245,
-            "manifest_blob": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
             "definition_blob": "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
             "run_dir": "[STORAGE_DIR]/scratch/20260424-01ARZ3NDEKTSV4RRFFQ69G5FAV",
             "message": "custom-value"
@@ -2593,7 +2592,6 @@ mod tests {
   "inference_time_ms": "[INFERENCE_TIME_MS]",
   "tool_time_ms": "[TOOL_TIME_MS]",
   "active_time_ms": "[ACTIVE_TIME_MS]",
-  "manifest_blob": "[BLOB_HASH]",
   "definition_blob": "[BLOB_HASH]",
   "run_dir": "[RUN_DIR]",
   "message": "[CUSTOM]"

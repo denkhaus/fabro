@@ -15,17 +15,12 @@
 
 // May contain unused imports in some cases
 // @ts-ignore
-import type { McpServerStatus } from './mcp-server-status';
+import type { SkillActivationSource } from './skill-activation-source';
 
 /**
- * Projected state for one MCP server observed by an agent stage.
+ * A skill the session activated.
  */
-export interface McpServerProjection {
-    'server_name': string;
-    'tool_count': number;
-    'status': McpServerStatus;
-    /**
-     * True once the agent has invoked at least one tool from this server during the stage.
-     */
-    'invoked': boolean;
+export interface AgentSessionActivatedSkill {
+    'name': string;
+    'source': SkillActivationSource;
 }

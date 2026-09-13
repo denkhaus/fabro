@@ -14,7 +14,7 @@ use tokio::time::sleep;
 use tower::ServiceExt;
 
 use crate::helpers::{
-    POLL_ATTEMPTS, POLL_INTERVAL, api, minimal_manifest_json, response_json, response_status,
+    POLL_ATTEMPTS, POLL_INTERVAL, api, minimal_intent_json, response_json, response_status,
     run_json, test_settings, wait_for_run_status,
 };
 
@@ -117,6 +117,7 @@ const GATE_DOT: &str = r#"digraph GateTest {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn full_http_lifecycle_approve_and_complete() {
+    let workspace = tempfile::tempdir().unwrap();
     let settings = test_settings();
     let state = test_app_state_with_runtime_settings_and_registry_factory(
         settings.server_settings,
@@ -132,7 +133,8 @@ async fn full_http_lifecycle_approve_and_complete() {
         .uri(api("/runs"))
         .header("content-type", "application/json")
         .body(Body::from(
-            serde_json::to_string(&minimal_manifest_json(GATE_DOT)).unwrap(),
+            serde_json::to_string(&minimal_intent_json(&app, GATE_DOT, workspace.path()).await)
+                .unwrap(),
         ))
         .unwrap();
 
@@ -209,6 +211,7 @@ async fn full_http_lifecycle_approve_and_complete() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn full_http_lifecycle_cancel() {
+    let workspace = tempfile::tempdir().unwrap();
     let settings = test_settings();
     let state = test_app_state_with_runtime_settings_and_registry_factory(
         settings.server_settings,
@@ -224,7 +227,8 @@ async fn full_http_lifecycle_cancel() {
         .uri(api("/runs"))
         .header("content-type", "application/json")
         .body(Body::from(
-            serde_json::to_string(&minimal_manifest_json(GATE_DOT)).unwrap(),
+            serde_json::to_string(&minimal_intent_json(&app, GATE_DOT, workspace.path()).await)
+                .unwrap(),
         ))
         .unwrap();
     let response = app.clone().oneshot(req).await.unwrap();
@@ -291,6 +295,7 @@ async fn full_http_lifecycle_cancel() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn cancel_at_human_gate_persists_cancelled_terminal_event() {
+    let workspace = tempfile::tempdir().unwrap();
     let settings = test_settings();
     let state = test_app_state_with_runtime_settings_and_registry_factory(
         settings.server_settings,
@@ -305,7 +310,8 @@ async fn cancel_at_human_gate_persists_cancelled_terminal_event() {
         .uri(api("/runs"))
         .header("content-type", "application/json")
         .body(Body::from(
-            serde_json::to_string(&minimal_manifest_json(GATE_DOT)).unwrap(),
+            serde_json::to_string(&minimal_intent_json(&app, GATE_DOT, workspace.path()).await)
+                .unwrap(),
         ))
         .unwrap();
     let response = app.clone().oneshot(req).await.unwrap();

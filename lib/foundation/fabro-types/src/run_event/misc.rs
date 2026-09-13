@@ -1,4 +1,3 @@
-use lithos_llm::types::ReasoningEffort;
 use serde::{Deserialize, Serialize};
 
 use super::ExecOutputTail;
@@ -248,35 +247,20 @@ pub struct SshAccessReadyProps {
     pub ssh_command: String,
 }
 
+/// A one-shot prompt stage moved to a fallback route. The stage walks its
+/// plan itself, so this is fabro's own event; an agent stage's moves are
+/// pebble's `agent.route.failover`, stored verbatim.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FailoverProps {
-    /// `original_*` and `attempt` are `Option` only because failover events
-    /// recorded before model-keyed fallbacks lack them. New events always set
-    /// them; stored events are immutable, so absence stays a supported input.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub original_provider: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub original_model: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub attempt: Option<u32>,
     pub from_provider: String,
-    pub from_model: String,
-    pub to_provider: String,
-    pub to_model: String,
+    pub from_model:    String,
+    pub to_provider:   String,
+    pub to_model:      String,
+    /// How many routes the prompt had moved through, this one included.
+    /// `None` only on events recorded before it was kept.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub requested_reasoning_effort: Option<ReasoningEffort>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub effective_reasoning_effort: Option<ReasoningEffort>,
-    pub error: String,
-    /// How the new route carried the prompt on, as pebble reported it:
-    /// `replay_prompt` when nothing the prompt committed was in the
-    /// conversation and the new route was asked the prompt again, or
-    /// `continue_turn` when the conversation held assistant output or tool
-    /// results and the new route continued from there. Absent on events
-    /// written before pebble reported it, and on one-shot prompt stages,
-    /// which walk the plan themselves and always re-send the request.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub continuation: Option<String>,
+    pub attempt:       Option<u32>,
+    pub error:         String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

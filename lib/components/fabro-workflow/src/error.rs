@@ -2182,14 +2182,15 @@ mod tests {
         // 3. Outcome → StageFailed event
         let failure = outcome.failure.clone().unwrap();
         let event = Event::StageFailed {
-            node_id:    "code".into(),
-            name:       "code".into(),
-            index:      0,
-            failure:    failure.clone(),
-            will_retry: false,
-            timing:     fabro_types::StageTiming::wall_only(0),
-            billing:    None,
-            actor:      None,
+            node_id:          "code".into(),
+            name:             "code".into(),
+            index:            0,
+            failure:          failure.clone(),
+            will_retry:       false,
+            timing:           fabro_types::StageTiming::wall_only(0),
+            billing_by_model: Vec::new(),
+            billing:          None,
+            actor:            None,
         };
 
         // 4. Verify classification survived all the way through

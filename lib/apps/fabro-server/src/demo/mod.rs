@@ -449,6 +449,18 @@ pub(crate) async fn get_run_status(
     }
 }
 
+/// The demo run's projection: every stage with its state, and the agent
+/// stage carrying the coding agent's fold of its stored events, so the stage
+/// sidebar shows MCP servers, a failover, a subagent, files, skills, and a
+/// compaction in demo mode.
+pub(crate) async fn get_run_state(
+    _auth: RequiredUser,
+    State(_state): State<Arc<AppState>>,
+    Path(_id): Path<String>,
+) -> Response {
+    (StatusCode::OK, Json(runs::run_state())).into_response()
+}
+
 #[derive(Debug, serde::Deserialize)]
 pub(crate) struct ResolveRunParams {
     selector: String,
@@ -1444,10 +1456,18 @@ mod runs {
         ]
     }
 
+    /// The agent stage's stored events: what pebble reports for one prompt
+    /// that finds MCP servers, activates a skill, reads and writes files,
+    /// delegates to a subagent, moves to a fallback route, and compacts,
+    /// plus fabro's own `stage.prompt`.
     pub(super) fn stage_events() -> Vec<fabro_types::EventEnvelope> {
         use fabro_types::run_event::stage::StagePromptProps;
         use fabro_types::{AgentEventProps, EventBody, EventEnvelope, RunEvent};
-        use pebble_coding_agent::events::{CodingAgentEvent, CodingEvent, TokenUsage};
+        use pebble_coding_agent::events::{
+            CodingAgentEvent, CodingEvent, CompactionReason, ErrorData, ErrorKind,
+            FailoverContinuation, InputSource, McpToolSummary, SkillActivationSource, SkillSummary,
+            TokenUsage,
+        };
 
         let run_id = demo_run_id(1);
         let node_id = "detect-drift";
@@ -1479,28 +1499,40 @@ mod runs {
                 CodingAgentEvent::new("ses_demo_detect_drift", event, ts.into()),
             ))
         };
-        let message = |text: &str| {
-            agent(CodingEvent::AssistantMessage {
+        let subagent = |event: CodingEvent| {
+            EventBody::Agent(AgentEventProps::new(
+                node_id,
+                1,
+                CodingAgentEvent::new("ses_demo_sub_1", event, ts.into())
+                    .with_parent_session_id("ses_demo_detect_drift"),
+            ))
+        };
+        let answer =
+            |model: &str, text: &str, input: u64, output: u64| CodingEvent::AssistantMessage {
                 text:            text.into(),
-                model:           "claude-opus-4.6".into(),
-                usage:           TokenUsage::default(),
+                model:           model.into(),
+                usage:           TokenUsage {
+                    input,
+                    output,
+                    ..TokenUsage::default()
+                },
                 cost_usd_micros: None,
                 cost_source:     None,
                 tool_call_count: 0,
                 context_window:  None,
                 reasoning:       None,
-            })
-        };
-        let tool_started = |tool_call_id: &str, path: &str| {
+            };
+        let message = |text: &str| agent(answer("claude-opus-4.6", text, 1_200, 180));
+        let call_started = |tool: &str, tool_call_id: &str, arguments: serde_json::Value| {
             agent(CodingEvent::ToolCallStarted {
-                tool_name:    "read_file".into(),
+                tool_name: tool.into(),
                 tool_call_id: tool_call_id.into(),
-                arguments:    serde_json::json!({ "path": path }),
+                arguments,
             })
         };
-        let tool_completed = |tool_call_id: &str, output: &str| {
+        let call_completed = |tool: &str, tool_call_id: &str, output: &str| {
             agent(CodingEvent::ToolCallCompleted {
-                tool_name:             "read_file".into(),
+                tool_name:             tool.into(),
                 tool_call_id:          tool_call_id.into(),
                 output:                serde_json::json!(output),
                 metadata:              pebble_agent::ToolOutputMetadata::default(),
@@ -1511,52 +1543,221 @@ mod runs {
                 output_bytes_omitted:  0,
             })
         };
+        let tool_started = |tool_call_id: &str, path: &str| {
+            call_started(
+                "read_file",
+                tool_call_id,
+                serde_json::json!({ "path": path }),
+            )
+        };
+        let tool_completed =
+            |tool_call_id: &str, output: &str| call_completed("read_file", tool_call_id, output);
+        let started = |provider: &str, model: &str| CodingEvent::SessionStarted {
+            provider: Some(provider.into()),
+            model:    Some(model.into()),
+        };
 
-        vec![
-            make_envelope(
-                1,
-                "evt-detect-drift-1",
-                EventBody::StagePrompt(StagePromptProps {
-                    visit:    1,
-                    text:     "You are a drift detection agent. Compare the production and staging environments and identify any configuration or code drift.".into(),
-                    mode:     None,
-                    provider: None,
-                    model:    None,
-                    reasoning_effort: None,
-                    speed: None,
-                }),
+        let prompt = "You are a drift detection agent. Compare the production and staging environments and identify any configuration or code drift.";
+        let report = "# Drift report\n\n- redis.max_connections: 200 (production) vs 100 (staging)\n- redis.tls: enabled vs disabled\n- iam.session_duration: 3600s vs 1800s\n";
+        let events = vec![
+            EventBody::StagePrompt(StagePromptProps {
+                visit:            1,
+                text:             prompt.into(),
+                mode:             None,
+                provider:         None,
+                model:            None,
+                reasoning_effort: None,
+                speed:            None,
+            }),
+            agent(started("anthropic", "claude-opus-4.6")),
+            agent(CodingEvent::McpServerReady {
+                server:     "github".into(),
+                tools:      vec![
+                    McpToolSummary {
+                        name:          "mcp__github__list_issues".into(),
+                        original_name: "list_issues".into(),
+                    },
+                    McpToolSummary {
+                        name:          "mcp__github__create_issue".into(),
+                        original_name: "create_issue".into(),
+                    },
+                ],
+                startup_ms: 842,
+            }),
+            agent(CodingEvent::McpServerFailed {
+                server:     "atlassian".into(),
+                error:      "auth failed: the API token has expired".into(),
+                startup_ms: 3,
+            }),
+            agent(CodingEvent::SkillsDiscovered {
+                profile:     "anthropic".into(),
+                source_dirs: vec![".fabro/skills".into()],
+                skills:      vec![
+                    SkillSummary {
+                        name:        "drift-triage".into(),
+                        description: "Rank configuration drift by blast radius".into(),
+                    },
+                    SkillSummary {
+                        name:        "terraform".into(),
+                        description: "Read and plan Terraform modules".into(),
+                    },
+                ],
+                skipped:     Vec::new(),
+            }),
+            agent(CodingEvent::UserInput {
+                text:    prompt.into(),
+                content: None,
+                source:  InputSource::Prompt,
+            }),
+            message(
+                "I'll start by loading the environment configurations for both production and staging to compare them.",
             ),
-            make_envelope(
-                2,
-                "evt-detect-drift-2",
-                message("I'll start by loading the environment configurations for both production and staging to compare them."),
+            tool_started("toolu_01", "environments/production/config.toml"),
+            tool_completed(
+                "toolu_01",
+                "[redis]\nhost = \"redis-prod.internal\"\nport = 6379",
             ),
-            make_envelope(
-                3,
-                "evt-detect-drift-3",
-                tool_started("toolu_01", "environments/production/config.toml"),
+            tool_started("toolu_02", "environments/staging/config.toml"),
+            tool_completed(
+                "toolu_02",
+                "[redis]\nhost = \"redis-staging.internal\"\nport = 6379",
             ),
-            make_envelope(
-                4,
-                "evt-detect-drift-4",
-                tool_completed("toolu_01", "[redis]\nhost = \"redis-prod.internal\"\nport = 6379"),
+            agent(CodingEvent::SkillActivated {
+                skill_name: "drift-triage".into(),
+                source:     SkillActivationSource::Tool,
+            }),
+            call_started(
+                "mcp__github__list_issues",
+                "toolu_03",
+                serde_json::json!({ "labels": ["drift"] }),
             ),
-            make_envelope(
-                5,
-                "evt-detect-drift-5",
-                tool_started("toolu_02", "environments/staging/config.toml"),
+            call_completed("mcp__github__list_issues", "toolu_03", "[]"),
+            agent(CodingEvent::SubAgentSpawned {
+                agent_id:   "sub-1".into(),
+                depth:      1,
+                task:       "Check the IAM session policy in staging".into(),
+                generation: 1,
+            }),
+            subagent(started("anthropic", "claude-opus-4.6")),
+            subagent(answer(
+                "claude-opus-4.6",
+                "Staging sets iam.session_duration to 1800s; production uses 3600s.",
+                640,
+                90,
+            )),
+            agent(CodingEvent::SubAgentCompleted {
+                agent_id:   "sub-1".into(),
+                depth:      1,
+                generation: 1,
+                success:    true,
+                turns_used: 2,
+            }),
+            agent(CodingEvent::RouteFailover {
+                from:            "anthropic/claude-opus-4.6".into(),
+                to:              "openai/gpt-5.4".into(),
+                attempt:         1,
+                error:           ErrorData::new(ErrorKind::Llm, "rate limited: retry after 30s"),
+                usage:           TokenUsage {
+                    input: 3_600,
+                    output: 540,
+                    ..TokenUsage::default()
+                },
+                cost_usd_micros: None,
+                inference_ms:    4_200,
+                tool_ms:         900,
+                continuation:    FailoverContinuation::ContinueTurn,
+            }),
+            agent(CodingEvent::CompactionCompleted {
+                original_turn_count:    20,
+                preserved_turn_count:   6,
+                summary_token_estimate: 500,
+                tracked_file_count:     2,
+                reason:                 CompactionReason::Threshold,
+                usage:                  TokenUsage {
+                    input: 2_000,
+                    output: 500,
+                    ..TokenUsage::default()
+                },
+                cost_usd_micros:        None,
+            }),
+            call_started(
+                "write_file",
+                "toolu_04",
+                serde_json::json!({ "file_path": "reports/drift.md", "content": report }),
             ),
-            make_envelope(
-                6,
-                "evt-detect-drift-6",
-                tool_completed("toolu_02", "[redis]\nhost = \"redis-staging.internal\"\nport = 6379"),
-            ),
-            make_envelope(
-                7,
-                "evt-detect-drift-7",
-                message("I've detected drift in 3 resources between production and staging:\n\n1. **redis.max_connections** — production has 200, staging has 100\n2. **redis.tls** — enabled in production, disabled in staging\n3. **iam.session_duration** — production uses 3600s, staging uses 1800s"),
-            ),
-        ]
+            call_completed("write_file", "toolu_04", "wrote reports/drift.md"),
+            agent(answer(
+                "gpt-5.4",
+                "I've detected drift in 3 resources between production and staging:\n\n1. **redis.max_connections** — production has 200, staging has 100\n2. **redis.tls** — enabled in production, disabled in staging\n3. **iam.session_duration** — production uses 3600s, staging uses 1800s\n\nThe report is in `reports/drift.md`.",
+                1_500,
+                260,
+            )),
+            agent(CodingEvent::ProcessingEnd),
+        ];
+        events
+            .into_iter()
+            .enumerate()
+            .map(|(index, body)| {
+                let seq = u32::try_from(index + 1).expect("the demo stream is short");
+                make_envelope(seq, &format!("evt-detect-drift-{seq}"), body)
+            })
+            .collect()
+    }
+
+    /// The demo run's projection: each stage as `stages()` lists it, and the
+    /// agent stage carrying the coding agent's fold of `stage_events()`.
+    pub(super) fn run_state() -> fabro_types::RunProjection {
+        use fabro_types::{
+            EventBody, Graph, RunProjection, RunProvenance, RunSpec, StageTiming, WorkflowSettings,
+            first_event_seq,
+        };
+        use pebble_coding_agent::projection::SessionProjection;
+
+        let created_at = ts("2026-03-06T14:30:00Z");
+        let spec = RunSpec {
+            run_id:              demo_run_id(1),
+            settings:            WorkflowSettings::default(),
+            graph:               Graph::new("drift-remediation"),
+            graph_source:        Some(super::DEMO_GRAPH_DOT.to_string()),
+            workflow_slug:       Some("implement".to_string()),
+            workflow_version_id: None,
+            target:              None,
+            automation:          None,
+            source_directory:    Some("/demo/api-server".to_string()),
+            labels:              HashMap::new(),
+            provenance:          RunProvenance {
+                server:  None,
+                client:  None,
+                subject: DEMO_PRINCIPAL.clone(),
+            },
+            definition_blob:     None,
+            spec_blob:           None,
+            git:                 None,
+            fork_source_ref:     None,
+        };
+        let mut projection = RunProjection::new(
+            "Detect and fix environment drift".to_string(),
+            spec,
+            created_at,
+        );
+        for (index, stage) in stages().into_iter().enumerate() {
+            let seq = u32::try_from(index + 1).expect("the demo has a handful of stages");
+            let entry =
+                projection.stage_entry(stage.id.node_id(), stage.id.visit(), first_event_seq(seq));
+            entry.handler = Some(stage.handler);
+            entry.state = stage.status;
+            entry.started_at = stage.started_at;
+            entry.timing = stage.wall_time_ms.map(StageTiming::wall_only);
+        }
+        let mut agent = SessionProjection::new();
+        for envelope in stage_events() {
+            if let EventBody::Agent(props) = &envelope.event.body {
+                agent.apply(&props.event);
+            }
+        }
+        let detect = projection.stage_entry("detect-drift", 1, first_event_seq(1));
+        detect.agent = Some(agent);
+        projection
     }
 
     pub(super) fn billing() -> RunBilling {

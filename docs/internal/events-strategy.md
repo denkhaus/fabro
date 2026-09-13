@@ -175,11 +175,32 @@ Check:
 - store validation
 - tests or fixtures that inspect event names or fields
 
+## Agent Events
+
+Pebble's `CodingAgentEvent` stream is the agent event contract. The worker's
+event sink stores every event the coding agent publishes for a stage, except
+streaming deltas, verbatim as `EventBody::Agent` under a name derived from
+its variant (`fabro_types::coding_event_name`), and the store folds those
+events into `StageProjection.agent` with pebble's `SessionProjection`. Do not
+add a fabro event that restates a pebble event, and do not add a second fold
+of the stream: read `StageProjection.agent`, or the stored pebble event
+itself, instead.
+
+Fabro emits an agent event of its own only for a fact pebble cannot know.
+Today those are `agent.session.activated`, `agent.session.deactivated`,
+`agent.tools.available`, `agent.pair.user_message`,
+`agent.pair.system_message`, `agent.interrupt.injected`,
+`agent.steer.buffered`, `agent.steer.dropped`, the `agent.acp.*` family, and
+`prompt.failover` for a one-shot prompt stage that walks its fallback plan
+without pebble. A new fabro agent event needs the same justification: name
+the fact pebble does not have.
+
 ## Consumer Guidance
 
 When writing Rust consumers (listeners, store projections, CLI progress):
 
-- Match on `event.body` using `EventBody::*` variants. This gives you typed access to event-specific fields.
+- Match on `event.body` using `EventBody::*` variants. This gives you typed access to event-specific fields. For a pebble event, match `EventBody::Agent(props)` and then `props.coding_event()`.
+- For a stage's agent facts (usage, route, MCP servers, skills, todos, subagents, files, failovers, compactions), read `StageProjection.agent` rather than folding the events again.
 - Use `event.node_id`, `event.node_label`, `event.session_id`, and `event.parent_session_id` for envelope metadata.
 - Only use `event.event_name()` or `event.properties()` for generic/display purposes (logging, forwarding). These involve serialization and should not be used on hot paths.
 

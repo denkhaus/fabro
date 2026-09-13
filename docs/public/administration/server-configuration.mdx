@@ -307,11 +307,11 @@ Vault values and their migration backups retain Fabro's plaintext-at-rest behavi
 
 The `[run.*]` sections in `settings.toml` act as defaults for every run.
 
-On a same-machine setup, `settings.toml` is the shared machine-default layer under `workflow.toml` and `.fabro/project.toml`.
+Run creation uses the registered workflow version's `workflow.toml` above the server defaults, with explicit `RunIntent` arguments at highest precedence. The same rules apply to local and remote clients. Project and user config are not submitted to the create endpoint. Manifest-based preflight, validation, and graph previews still accept their bundled configuration layers.
 
-On a remote setup, the client bundles workflow, project, and user config into the run manifest. The server then layers those bundled client configs over its own local defaults for run-shaped fields. Server-owned values like `[server.storage]`, `[server.api]`, `[server.web]`, and `[server.scheduler]` always come from the server machine's own `settings.toml` or `fabro server start` flags.
+Server-owned values like `[server.storage]`, `[server.api]`, `[server.web]`, and `[server.scheduler]` come from the server machine's `settings.toml` or `fabro server start` flags. Environments and MCP server references resolve against the server's catalogs.
 
-Merge rules follow the normative matrix: TOML `[run.inputs]` tables replace wholesale, CLI `-I` / `--input` values replayed from run manifests merge per key at highest precedence, environment `env` and `labels` merge by key, `[run.prepare.steps]` replaces whole-list, and `[[run.hooks]]` merge by optional `id`. Most other fields use "higher-precedence wins" field-wise merging.
+Merge rules follow the normative matrix: TOML `[run.inputs]` tables replace wholesale, explicit intent inputs merge per key at highest precedence, environment `env` and `labels` merge by key, `[run.prepare.steps]` replaces whole-list, and `[[run.hooks]]` merge by optional `id`. Most other fields use "higher-precedence wins" field-wise merging.
 
 ### `[server.logging]` section
 

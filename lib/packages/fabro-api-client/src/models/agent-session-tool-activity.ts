@@ -13,14 +13,21 @@
  */
 
 
-// May contain unused imports in some cases
-// @ts-ignore
-import type { SkillActivationSource } from './skill-activation-source';
 
 /**
- * One observed agent skill activation.
+ * How one tool has been used across the tree.
  */
-export interface ActivatedSkill {
-    'name': string;
-    'source': SkillActivationSource;
+export interface AgentSessionToolActivity {
+    /**
+     * Calls started.
+     */
+    'calls': number;
+    /**
+     * Calls that completed as errors.
+     */
+    'errors': number;
+    /**
+     * Calls started and not yet completed.
+     */
+    'open': number;
 }

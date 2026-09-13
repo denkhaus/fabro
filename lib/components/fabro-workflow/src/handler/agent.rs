@@ -33,7 +33,12 @@ const LAST_FILE_ROUTING_EXTENSIONS: &[&str] = &["json", "md"];
 pub enum CodergenResult {
     Text {
         text:              String,
+        /// The stage's billing: for an agent, the whole session tree's
+        /// tokens under the root's route.
         usage:             Option<BilledModelUsage>,
+        /// `usage` split by model, when the backend billed subagents at
+        /// their own models. Empty when `usage` is the one row.
+        usage_by_model:    Vec<BilledModelUsage>,
         files_touched:     Vec<String>,
         last_file_touched: Option<String>,
         /// Active timing observed by the backend. The wall field is ignored by
@@ -328,57 +333,72 @@ impl Handler for AgentHandler {
                 hooks,
             )?))
         };
-        let (response_text, stage_usage, backend_files_touched, last_file_touched, timing) =
-            if let Some(backend) = &self.backend {
-                let context_read = ContextReadServices::new(
-                    context,
+        let (
+            response_text,
+            stage_usage,
+            stage_usage_by_model,
+            backend_files_touched,
+            last_file_touched,
+            timing,
+        ) = if let Some(backend) = &self.backend {
+            let context_read = ContextReadServices::new(
+                context,
+                node,
+                graph,
+                services.run.run_store.clone(),
+                Arc::clone(&services.run.sandbox),
+                run_dir.to_path_buf(),
+            );
+            let result = backend
+                .run(CodergenRunRequest {
                     node,
                     graph,
-                    services.run.run_store.clone(),
-                    Arc::clone(&services.run.sandbox),
-                    run_dir.to_path_buf(),
-                );
-                let result = backend
-                    .run(CodergenRunRequest {
-                        node,
-                        graph,
-                        prompt: &prompt,
-                        context,
-                        context_read,
-                        thread_id: thread_id.as_deref(),
-                        emitter: &services.run.emitter,
-                        sandbox: &services.run.sandbox,
-                        tool_middleware,
-                        cancel_token: services.run.cancel_token(),
-                        human_input: Some(human_input),
-                    })
-                    .await;
-                match result {
-                    Ok(CodergenResult::Full(outcome)) => return Ok(*outcome),
-                    Ok(CodergenResult::Text {
-                        text,
-                        usage,
-                        files_touched,
-                        last_file_touched,
-                        timing,
-                    }) => (text, usage, files_touched, last_file_touched, timing),
-                    Err(Error::Cancelled) => return Err(Error::Cancelled),
-                    Err(e) if e.is_retryable() => {
-                        return Err(e);
-                    }
-                    Err(e) => {
-                        return Ok(e.to_fail_outcome());
-                    }
+                    prompt: &prompt,
+                    context,
+                    context_read,
+                    thread_id: thread_id.as_deref(),
+                    emitter: &services.run.emitter,
+                    sandbox: &services.run.sandbox,
+                    tool_middleware,
+                    cancel_token: services.run.cancel_token(),
+                    human_input: Some(human_input),
+                })
+                .await;
+            match result {
+                Ok(CodergenResult::Full(outcome)) => return Ok(*outcome),
+                Ok(CodergenResult::Text {
+                    text,
+                    usage,
+                    usage_by_model,
+                    files_touched,
+                    last_file_touched,
+                    timing,
+                }) => (
+                    text,
+                    usage,
+                    usage_by_model,
+                    files_touched,
+                    last_file_touched,
+                    timing,
+                ),
+                Err(Error::Cancelled) => return Err(Error::Cancelled),
+                Err(e) if e.is_retryable() => {
+                    return Err(e);
                 }
-            } else {
-                (
-                    format!("[Simulated] Response for stage: {}", node.id),
-                    None,
-                    Vec::new(),
-                    None,
-                    StageTiming::default(),
-                )
-            };
+                Err(e) => {
+                    return Ok(e.to_fail_outcome());
+                }
+            }
+        } else {
+            (
+                format!("[Simulated] Response for stage: {}", node.id),
+                None,
+                Vec::new(),
+                Vec::new(),
+                None,
+                StageTiming::default(),
+            )
+        };
 
         let response_model = stage_usage
             .as_ref()
@@ -473,6 +493,7 @@ impl Handler for AgentHandler {
                         structured_output::exhausted_failure_outcome(node.output_retries());
                     failed.timing = Some(timing);
                     failed.usage = stage_usage;
+                    failed.usage_by_model = stage_usage_by_model;
                     failed.files_touched = backend_files_touched;
                     return Ok(failed);
                 }
@@ -501,6 +522,7 @@ impl Handler for AgentHandler {
             }
         }
         outcome.usage = stage_usage;
+        outcome.usage_by_model = stage_usage_by_model;
         outcome.files_touched = backend_files_touched;
         outcome.timing = Some(timing);
 
@@ -583,7 +605,6 @@ mod tests {
                 target:              None,
                 automation:          None,
                 provenance:          test_support::test_run_provenance(),
-                manifest_blob:       None,
                 spec_blob:           None,
                 git:                 None,
                 fork_source_ref:     None,
@@ -614,6 +635,7 @@ mod tests {
         async fn run(&self, _request: CodergenRunRequest<'_>) -> Result<CodergenResult, Error> {
             Ok(CodergenResult::Text {
                 text:              "Done writing results.".to_string(),
+                usage_by_model:    Vec::new(),
                 usage:             None,
                 files_touched:     vec![self.path.clone()],
                 last_file_touched: Some(self.path.clone()),
@@ -822,6 +844,7 @@ mod tests {
                     text:
                         r#"Done. {"outcome": "succeeded", "preferred_next_label": "approve"}"#
                             .to_string(),
+                    usage_by_model:    Vec::new(),
                     usage:             None,
                     files_touched:     Vec::new(),
                     last_file_touched: None,
@@ -869,6 +892,7 @@ mod tests {
             async fn run(&self, _request: CodergenRunRequest<'_>) -> Result<CodergenResult, Error> {
                 Ok(CodergenResult::Text {
                     text:              "done".to_string(),
+                    usage_by_model:    Vec::new(),
                     usage:             None,
                     files_touched:     Vec::new(),
                     last_file_touched: None,
@@ -1058,6 +1082,7 @@ All checks passed.
             async fn run(&self, _request: CodergenRunRequest<'_>) -> Result<CodergenResult, Error> {
                 Ok(CodergenResult::Text {
                     text:              r#"{"suggested_next_ids": [1]}"#.to_string(),
+                    usage_by_model:    Vec::new(),
                     usage:             None,
                     files_touched:     Vec::new(),
                     last_file_touched: None,
@@ -1122,6 +1147,7 @@ All checks passed.
                 Ok(CodergenResult::Text {
                     text:              self.0.to_string(),
                     usage:             None,
+                    usage_by_model:    Vec::new(),
                     files_touched:     Vec::new(),
                     last_file_touched: None,
                     timing:            StageTiming::default(),
@@ -1218,6 +1244,7 @@ All checks passed.
             async fn run(&self, _request: CodergenRunRequest<'_>) -> Result<CodergenResult, Error> {
                 Ok(CodergenResult::Text {
                     text:              r#"{"passed": true}"#.to_string(),
+                    usage_by_model:    Vec::new(),
                     usage:             None,
                     files_touched:     Vec::new(),
                     last_file_touched: None,
@@ -1264,6 +1291,7 @@ All checks passed.
                 *self.captured_prompt.lock().unwrap() = Some(request.prompt.to_string());
                 Ok(CodergenResult::Text {
                     text:              r#"{"passed": true}"#.to_string(),
+                    usage_by_model:    Vec::new(),
                     usage:             None,
                     files_touched:     Vec::new(),
                     last_file_touched: None,
@@ -1348,6 +1376,7 @@ All checks passed.
                 );
                 Ok(CodergenResult::Text {
                     text:              "done".to_string(),
+                    usage_by_model:    Vec::new(),
                     usage:             None,
                     files_touched:     Vec::new(),
                     last_file_touched: None,
@@ -1403,6 +1432,7 @@ All checks passed.
                     Some(request.thread_id.map(String::from));
                 Ok(CodergenResult::Text {
                     text:              "ok".to_string(),
+                    usage_by_model:    Vec::new(),
                     usage:             None,
                     files_touched:     Vec::new(),
                     last_file_touched: None,
@@ -1448,6 +1478,7 @@ All checks passed.
                     Some(request.thread_id.map(String::from));
                 Ok(CodergenResult::Text {
                     text:              "ok".to_string(),
+                    usage_by_model:    Vec::new(),
                     usage:             None,
                     files_touched:     Vec::new(),
                     last_file_touched: None,
@@ -1656,6 +1687,7 @@ Some text in between.
                 *self.captured_prompt.lock().unwrap() = Some(request.prompt.to_string());
                 Ok(CodergenResult::Text {
                     text:              "ok".to_string(),
+                    usage_by_model:    Vec::new(),
                     usage:             None,
                     files_touched:     Vec::new(),
                     last_file_touched: None,
@@ -1717,6 +1749,7 @@ Some text in between.
                 *self.captured_prompt.lock().unwrap() = Some(request.prompt.to_string());
                 Ok(CodergenResult::Text {
                     text:              "ok".to_string(),
+                    usage_by_model:    Vec::new(),
                     usage:             None,
                     files_touched:     Vec::new(),
                     last_file_touched: None,

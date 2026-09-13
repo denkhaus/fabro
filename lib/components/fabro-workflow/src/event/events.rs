@@ -43,8 +43,6 @@ pub enum Event {
         automation:          Option<AutomationRef>,
         provenance:          RunProvenance,
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        manifest_blob:       Option<BlobHash>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
         spec_blob:           Option<BlobHash>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         git:                 Option<GitContext>,
@@ -274,6 +272,8 @@ pub enum Event {
         preferred_label: Option<String>,
         suggested_next_ids: Vec<String>,
         billing: Option<BilledModelUsage>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        billing_by_model: Vec<BilledModelUsage>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         failure: Option<FailureDetail>,
         notes: Option<String>,
@@ -296,15 +296,17 @@ pub enum Event {
         max_attempts: usize,
     },
     StageFailed {
-        node_id:    String,
-        name:       String,
-        index:      usize,
-        failure:    FailureDetail,
-        will_retry: bool,
-        timing:     StageTiming,
-        billing:    Option<BilledModelUsage>,
+        node_id:          String,
+        name:             String,
+        index:            usize,
+        failure:          FailureDetail,
+        will_retry:       bool,
+        timing:           StageTiming,
+        billing:          Option<BilledModelUsage>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        billing_by_model: Vec<BilledModelUsage>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        actor:      Option<Principal>,
+        actor:            Option<Principal>,
     },
     StageRetrying {
         node_id:      String,
@@ -650,35 +652,6 @@ pub enum Event {
         node_id:    String,
         visit:      u32,
         session_id: String,
-    },
-    /// An MCP server configured for a stage connected and listed its tools.
-    AgentMcpReady {
-        node_id:     String,
-        visit:       u32,
-        server_name: String,
-        tool_count:  usize,
-        tools:       Vec<fabro_types::AgentMcpToolSummary>,
-        /// Whole milliseconds from launch to the tools being listed.
-        #[serde(default)]
-        startup_ms:  u64,
-    },
-    /// An MCP server configured for a stage failed to start or connect.
-    AgentMcpFailed {
-        node_id:     String,
-        visit:       u32,
-        server_name: String,
-        error:       String,
-        /// Whole milliseconds from launch to the failure.
-        #[serde(default)]
-        startup_ms:  u64,
-    },
-    /// An MCP server that was ready lost its connection during the stage;
-    /// its tools fail until the session ends.
-    AgentMcpDisconnected {
-        node_id:     String,
-        visit:       u32,
-        server_name: String,
-        error:       String,
     },
     /// A run-level interrupt was delivered to a concrete steerable agent
     /// session/stage.
@@ -1497,18 +1470,13 @@ impl Event {
             Self::Failover { stage, props } => {
                 warn!(
                     stage,
-                    original_provider = ?props.original_provider,
-                    original_model = ?props.original_model,
                     attempt = ?props.attempt,
                     from_provider = %props.from_provider,
                     from_model = %props.from_model,
                     to_provider = %props.to_provider,
                     to_model = %props.to_model,
-                    requested_reasoning_effort = ?props.requested_reasoning_effort,
-                    effective_reasoning_effort = ?props.effective_reasoning_effort,
-                    continuation = ?props.continuation,
                     error = %props.error,
-                    "LLM provider failover"
+                    "Prompt stage moved to a fallback route"
                 );
             }
             Self::CommandStarted {
@@ -1564,42 +1532,6 @@ impl Event {
                 session_id,
             } => {
                 debug!(node_id, visit, session_id, "Agent session deactivated");
-            }
-            Self::AgentMcpReady {
-                node_id,
-                visit,
-                server_name,
-                tool_count,
-                startup_ms,
-                ..
-            } => {
-                debug!(
-                    node_id,
-                    visit, server_name, tool_count, startup_ms, "MCP server ready"
-                );
-            }
-            Self::AgentMcpFailed {
-                node_id,
-                visit,
-                server_name,
-                error,
-                startup_ms,
-            } => {
-                warn!(
-                    node_id,
-                    visit, server_name, error, startup_ms, "MCP server failed"
-                );
-            }
-            Self::AgentMcpDisconnected {
-                node_id,
-                visit,
-                server_name,
-                error,
-            } => {
-                warn!(
-                    node_id,
-                    visit, server_name, error, "MCP server disconnected"
-                );
             }
             Self::AgentInterruptInjected {
                 node_id,
