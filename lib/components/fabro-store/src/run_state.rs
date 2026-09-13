@@ -1527,8 +1527,7 @@ mod tests {
     use fabro_types::run_event::run::RunFailedProps;
     use fabro_types::run_event::{
         AgentAcpCancelledProps, AgentAcpCompletedProps, AgentAcpStartedProps,
-        AgentAcpTimedOutProps, AgentEventProps, AgentMcpDisconnectedProps, AgentMcpFailedProps,
-        AgentMcpReadyProps, AgentMcpToolSummary, AgentSessionActivatedProps,
+        AgentAcpTimedOutProps, AgentEventProps, AgentSessionActivatedProps,
         AgentSessionDeactivatedProps, CheckpointCompletedProps, InterviewCompletedProps,
         InterviewOption, InterviewStartedProps, ParallelBranchCompletedProps,
         ParallelBranchStartedProps, RunCompletedProps, RunControlEffectProps, StageCompletedProps,
@@ -6859,9 +6858,7 @@ mod tests {
         }
 
         /// The stage's embedded fold sees the pebble `McpServer*` events the
-        /// sink stores, so its MCP view is the whole-session fold's; the
-        /// `agent.mcp.*` mirrors the sink still emits change nothing on the
-        /// stage.
+        /// sink stores, so its MCP view is the whole-session fold's.
         #[test]
         fn mcp_servers_agree_across_the_two_folds() {
             let code = StageId::new("code", 1);
@@ -6898,30 +6895,8 @@ mod tests {
 
             let mut run = initialized_projection();
             run.apply_event(&stored(1, &code, ready)).unwrap();
-            run.apply_event(&test_stage_event(
-                2,
-                EventBody::AgentMcpReady(AgentMcpReadyProps {
-                    server_name: "github".to_string(),
-                    tool_count:  tools.len(),
-                    tools:       mirrored_tools(&tools),
-                    startup_ms:  842,
-                    visit:       1,
-                }),
-                code.clone(),
-            ))
-            .unwrap();
-            run.apply_event(&stored(3, &code, call)).unwrap();
-            run.apply_event(&stored(4, &code, disconnected)).unwrap();
-            run.apply_event(&test_stage_event(
-                5,
-                EventBody::AgentMcpDisconnected(AgentMcpDisconnectedProps {
-                    server_name: "github".to_string(),
-                    error:       "transport closed".to_string(),
-                    visit:       1,
-                }),
-                code.clone(),
-            ))
-            .unwrap();
+            run.apply_event(&stored(2, &code, call)).unwrap();
+            run.apply_event(&stored(3, &code, disconnected)).unwrap();
 
             let agent = run.stage(&code).unwrap().agent.as_ref().unwrap();
             assert_eq!(agent.mcp_servers, projection.mcp_servers);
@@ -6970,22 +6945,11 @@ mod tests {
             }
         }
 
-        fn mirrored_tools(tools: &[McpToolSummary]) -> Vec<AgentMcpToolSummary> {
-            tools
-                .iter()
-                .map(|tool| AgentMcpToolSummary {
-                    name:          tool.name.clone(),
-                    original_name: tool.original_name.clone(),
-                })
-                .collect()
-        }
-
         /// The stage keeps `usage` and `model` as its own, derived from
         /// `stage.agent` under the rule each assertion states; everything
         /// else the stage view shows is read from `agent` directly. The
         /// stream is what the sink stores for one agent stage: fabro's own
-        /// `agent.session.activated` and the `agent.mcp.*` mirrors next to
-        /// pebble's events.
+        /// `agent.session.activated` next to pebble's events.
         #[test]
         fn the_stage_view_reads_the_embedded_fold() {
             let code = StageId::new("code", 1);
@@ -7030,17 +6994,6 @@ mod tests {
                         startup_ms: 842,
                     }),
                 ),
-                test_stage_event(
-                    4,
-                    EventBody::AgentMcpReady(AgentMcpReadyProps {
-                        server_name: "github".to_string(),
-                        tool_count:  tools.len(),
-                        tools:       mirrored_tools(&tools),
-                        startup_ms:  842,
-                        visit:       1,
-                    }),
-                    code.clone(),
-                ),
                 stored(
                     5,
                     &code,
@@ -7049,16 +7002,6 @@ mod tests {
                         error:      "could not launch".to_string(),
                         startup_ms: 3,
                     }),
-                ),
-                test_stage_event(
-                    6,
-                    EventBody::AgentMcpFailed(AgentMcpFailedProps {
-                        server_name: "broken".to_string(),
-                        error:       "could not launch".to_string(),
-                        startup_ms:  3,
-                        visit:       1,
-                    }),
-                    code.clone(),
                 ),
                 stored(
                     7,
@@ -7163,15 +7106,6 @@ mod tests {
                         server: "github".to_string(),
                         error:  "transport closed".to_string(),
                     }),
-                ),
-                test_stage_event(
-                    20,
-                    EventBody::AgentMcpDisconnected(AgentMcpDisconnectedProps {
-                        server_name: "github".to_string(),
-                        error:       "transport closed".to_string(),
-                        visit:       1,
-                    }),
-                    code.clone(),
                 ),
                 stored(21, &code, root(assistant_message(50, 5))),
                 stored(22, &code, root(CodingEvent::ProcessingEnd)),

@@ -6,8 +6,8 @@
 //! ends and resumed by the next, which binds its own event scope, hooks, and
 //! interviewer. Model failover is pebble's: the stage hands it the resolved
 //! fallback routes, pebble keeps the conversation as it stands and asks the
-//! next route to continue it, and this module mirrors each move as the run's
-//! `agent.failover` event.
+//! next route to continue it, and reports each move as its own
+//! `agent.route.failover` event, stored like every other.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex, PoisonError};
@@ -24,15 +24,15 @@ use fabro_mcp::pebble::pebble_servers;
 use fabro_sandbox::{RunSandbox, SecretRedactor};
 use fabro_types::settings::run::RunModelControls;
 use fabro_types::{
-    AgentMcpToolSummary, AgentProfileKind, BilledModelUsage, ModelRef, PermissionLevel,
-    SessionCapability, StageId, StageTiming, UsdMicros, billing,
+    AgentProfileKind, BilledModelUsage, ModelRef, PermissionLevel, SessionCapability, StageId,
+    StageTiming, UsdMicros, billing,
 };
 use fabro_util::home::Home;
 use lithos_llm::catalog::{ModelId, ProviderId};
 use lithos_llm::types::{Message as LlmMessage, Role, TokenCounts};
 use pebble_agent::ToolMiddleware;
 use pebble_coding_agent::environment::Environment;
-use pebble_coding_agent::events::{CodingAgentEvent, CodingEvent, EventSink, EventSinkError};
+use pebble_coding_agent::events::{CodingAgentEvent, EventSink, EventSinkError};
 use pebble_coding_agent::extensions::HumanInputProvider;
 use pebble_coding_agent::projection::{DescendantAccount, SessionProjection};
 use pebble_coding_agent::state::Message;
@@ -165,18 +165,13 @@ fn classify_agent_error(error: pebble_coding_agent::Error) -> AgentErrorDisposit
 
 /// Pebble's durable event sink for one stage: every agent event becomes a
 /// run event in the run's log before the agent goes on, so the stage's
-/// `SessionProjection` rebuilt from the log sees what the live one saw. A
-/// route failover and an MCP server's outcome or disconnect are also
-/// mirrored onto the run's own `agent.failover`, `agent.mcp.ready`,
-/// `agent.mcp.failed`, and `agent.mcp.disconnected` events, which the store
-/// still folds; those mirrors go once every reader is on the projection.
+/// `SessionProjection` rebuilt from the log sees what the live one saw.
+/// Pebble's stream is the agent event contract; fabro emits an agent event
+/// of its own only for a fact pebble cannot know.
 struct WorkflowEventSink {
     emitter:    Arc<Emitter>,
     node_id:    String,
     scope:      StageScope,
-    /// The stage's resolved plan, for the controls and origin the mirrored
-    /// failover event names.
-    plan:       FallbackPlan,
     /// Pebble's fold of every event this sink recorded: the stage's one
     /// account of what its agent and subagents spent, wrote, and ran. The
     /// store folds the same events the same way, so the stage's billing at
@@ -200,88 +195,6 @@ impl EventSink for WorkflowEventSink {
         // Every event, including streaming deltas, resets the run's activity
         // watchdog.
         self.emitter.touch();
-        match &event.event {
-            // The failed route's accounting (`usage`, `cost_usd_micros`,
-            // `inference_ms`, `tool_ms`) is not mirrored: the stage's totals
-            // already include it through the prompt report, and no run event
-            // of fabro's own carries per-route usage yet.
-            CodingEvent::RouteFailover {
-                from,
-                to,
-                attempt,
-                error,
-                usage: _,
-                cost_usd_micros: _,
-                inference_ms: _,
-                tool_ms: _,
-                continuation,
-            } => {
-                self.emitter.emit_scoped(
-                    &Event::Failover {
-                        stage: self.node_id.clone(),
-                        props: self.plan.failover_props(
-                            from,
-                            to,
-                            *attempt,
-                            &error.message,
-                            Some(*continuation),
-                        ),
-                    },
-                    &self.scope,
-                );
-            }
-            CodingEvent::McpServerReady {
-                server,
-                tools,
-                startup_ms,
-            } => {
-                self.emitter.emit_scoped(
-                    &Event::AgentMcpReady {
-                        node_id:     self.node_id.clone(),
-                        visit:       self.scope.visit,
-                        server_name: server.clone(),
-                        tool_count:  tools.len(),
-                        tools:       tools
-                            .iter()
-                            .map(|tool| AgentMcpToolSummary {
-                                name:          tool.name.clone(),
-                                original_name: tool.original_name.clone(),
-                            })
-                            .collect(),
-                        startup_ms:  *startup_ms,
-                    },
-                    &self.scope,
-                );
-            }
-            CodingEvent::McpServerFailed {
-                server,
-                error,
-                startup_ms,
-            } => {
-                self.emitter.emit_scoped(
-                    &Event::AgentMcpFailed {
-                        node_id:     self.node_id.clone(),
-                        visit:       self.scope.visit,
-                        server_name: server.clone(),
-                        error:       error.clone(),
-                        startup_ms:  *startup_ms,
-                    },
-                    &self.scope,
-                );
-            }
-            CodingEvent::McpServerDisconnected { server, error } => {
-                self.emitter.emit_scoped(
-                    &Event::AgentMcpDisconnected {
-                        node_id:     self.node_id.clone(),
-                        visit:       self.scope.visit,
-                        server_name: server.clone(),
-                        error:       error.clone(),
-                    },
-                    &self.scope,
-                );
-            }
-            _ => {}
-        }
         // Streaming deltas are not run history. `ProcessingEnd` is: pebble's
         // `SessionProjection` reads it to complete the prompt and mark the
         // session idle, so a projection rebuilt from the run's log needs it.
@@ -721,7 +634,6 @@ impl PebbleBackend {
             emitter:    Arc::clone(bindings.emitter),
             node_id:    bindings.node_id.to_string(),
             scope:      bindings.stage_scope.clone(),
-            plan:       plan.clone(),
             projection: Mutex::new(SessionProjection::new()),
         });
         let event_sink = Arc::clone(&sink) as Arc<dyn EventSink>;

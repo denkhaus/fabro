@@ -236,48 +236,6 @@ pub struct AgentSteerDroppedProps {
     pub count:  u32,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct AgentMcpReadyProps {
-    pub server_name: String,
-    pub tool_count:  usize,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub tools:       Vec<AgentMcpToolSummary>,
-    /// Whole milliseconds from the server's launch to its tools being
-    /// listed. Events written before the field existed read as `0`.
-    #[serde(default)]
-    pub startup_ms:  u64,
-    pub visit:       u32,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct AgentMcpToolSummary {
-    pub name:          String,
-    pub original_name: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct AgentMcpFailedProps {
-    pub server_name: String,
-    pub error:       String,
-    /// Whole milliseconds from the server's launch to the failure. Events
-    /// written before the field existed read as `0`.
-    #[serde(default)]
-    pub startup_ms:  u64,
-    pub visit:       u32,
-}
-
-/// An MCP server that was ready lost its connection during the stage; every
-/// later call to its tools fails until the session ends. Pebble reports the
-/// disconnect once per server, from whichever session's tool call first
-/// observed the closed connection.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct AgentMcpDisconnectedProps {
-    pub server_name: String,
-    /// What closed the connection, as the client observed it.
-    pub error:       String,
-    pub visit:       u32,
-}
-
 #[cfg(test)]
 mod tests {
     use std::time::{Duration, UNIX_EPOCH};

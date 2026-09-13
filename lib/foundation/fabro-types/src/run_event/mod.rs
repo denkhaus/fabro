@@ -223,12 +223,6 @@ pub enum EventBody {
     AgentSteerBuffered(AgentSteerBufferedProps),
     #[serde(rename = "agent.steer.dropped")]
     AgentSteerDropped(AgentSteerDroppedProps),
-    #[serde(rename = "agent.mcp.ready")]
-    AgentMcpReady(AgentMcpReadyProps),
-    #[serde(rename = "agent.mcp.failed")]
-    AgentMcpFailed(AgentMcpFailedProps),
-    #[serde(rename = "agent.mcp.disconnected")]
-    AgentMcpDisconnected(AgentMcpDisconnectedProps),
     #[serde(rename = "subgraph.started")]
     SubgraphStarted(SubgraphStartedProps),
     #[serde(rename = "subgraph.completed")]
@@ -270,7 +264,7 @@ pub enum EventBody {
     ArtifactCaptured(ArtifactCapturedProps),
     #[serde(rename = "ssh.ready")]
     SshAccessReady(SshAccessReadyProps),
-    #[serde(rename = "agent.failover")]
+    #[serde(rename = "prompt.failover")]
     Failover(FailoverProps),
     #[serde(rename = "cli.ensure.started")]
     CliEnsureStarted(CliEnsureStartedProps),
@@ -516,9 +510,6 @@ impl EventBody {
             Self::AgentInterruptInjected(_) => "agent.interrupt.injected",
             Self::AgentSteerBuffered(_) => "agent.steer.buffered",
             Self::AgentSteerDropped(_) => "agent.steer.dropped",
-            Self::AgentMcpReady(_) => "agent.mcp.ready",
-            Self::AgentMcpFailed(_) => "agent.mcp.failed",
-            Self::AgentMcpDisconnected(_) => "agent.mcp.disconnected",
             Self::SubgraphStarted(_) => "subgraph.started",
             Self::SubgraphCompleted(_) => "subgraph.completed",
             Self::SandboxInitializing(_) => "sandbox.initializing",
@@ -534,7 +525,7 @@ impl EventBody {
             Self::StallWatchdogTimeout(_) => "watchdog.timeout",
             Self::ArtifactCaptured(_) => "artifact.captured",
             Self::SshAccessReady(_) => "ssh.ready",
-            Self::Failover(_) => "agent.failover",
+            Self::Failover(_) => "prompt.failover",
             Self::CliEnsureStarted(_) => "cli.ensure.started",
             Self::CliEnsureCompleted(_) => "cli.ensure.completed",
             Self::CliEnsureFailed(_) => "cli.ensure.failed",
@@ -650,9 +641,6 @@ fn is_known_event_name(event: &str) -> bool {
                 | "agent.interrupt.injected"
                 | "agent.steer.buffered"
                 | "agent.steer.dropped"
-                | "agent.mcp.ready"
-                | "agent.mcp.failed"
-                | "agent.mcp.disconnected"
                 | "subgraph.started"
                 | "subgraph.completed"
                 | "sandbox.initializing"
@@ -674,7 +662,7 @@ fn is_known_event_name(event: &str) -> bool {
                 | "watchdog.timeout"
                 | "artifact.captured"
                 | "ssh.ready"
-                | "agent.failover"
+                | "prompt.failover"
                 | "cli.ensure.started"
                 | "cli.ensure.completed"
                 | "cli.ensure.failed"
@@ -1251,12 +1239,12 @@ mod tests {
     }
 
     #[test]
-    fn historical_failover_event_defaults_new_route_context() {
+    fn historical_prompt_failover_event_defaults_its_attempt() {
         let line = json!({
             "id": "evt_failover",
             "ts": "2026-04-04T12:00:00.000Z",
             "run_id": fixtures::RUN_1,
-            "event": "agent.failover",
+            "event": "prompt.failover",
             "properties": {
                 "from_provider": "anthropic",
                 "from_model": "claude-fable-5",
@@ -1268,51 +1256,37 @@ mod tests {
 
         let parsed = RunEvent::from_value(line).unwrap();
         let EventBody::Failover(props) = parsed.body else {
-            panic!("expected agent.failover");
+            panic!("expected prompt.failover");
         };
-        assert_eq!(props.original_provider, None);
-        assert_eq!(props.original_model, None);
         assert_eq!(props.attempt, None);
-        assert_eq!(props.requested_reasoning_effort, None);
-        assert_eq!(props.effective_reasoning_effort, None);
-        assert_eq!(props.continuation, None);
+        assert_eq!(props.to_model, "gpt-5.6-sol");
     }
 
     #[test]
-    fn failover_event_round_trips_its_continuation() {
+    fn prompt_failover_event_round_trips() {
         let body = EventBody::Failover(FailoverProps {
-            original_provider: Some("anthropic".to_string()),
-            original_model: Some("claude-fable-5".to_string()),
-            attempt: Some(1),
             from_provider: "anthropic".to_string(),
-            from_model: "claude-fable-5".to_string(),
-            to_provider: "openai".to_string(),
-            to_model: "gpt-5.6-sol".to_string(),
-            requested_reasoning_effort: None,
-            effective_reasoning_effort: None,
-            error: "overloaded".to_string(),
-            continuation: Some("continue_turn".to_string()),
+            from_model:    "claude-fable-5".to_string(),
+            to_provider:   "openai".to_string(),
+            to_model:      "gpt-5.6-sol".to_string(),
+            attempt:       Some(1),
+            error:         "overloaded".to_string(),
         });
         let value = serde_json::to_value(&body).unwrap();
-        assert_eq!(value["event"], "agent.failover");
-        assert_eq!(value["properties"]["continuation"], "continue_turn");
+        assert_eq!(value["event"], "prompt.failover");
+        assert_eq!(
+            value["properties"],
+            json!({
+                "from_provider": "anthropic",
+                "from_model": "claude-fable-5",
+                "to_provider": "openai",
+                "to_model": "gpt-5.6-sol",
+                "attempt": 1,
+                "error": "overloaded"
+            })
+        );
         let parsed: EventBody = serde_json::from_value(value).unwrap();
         assert_eq!(parsed, body);
-
-        // A one-shot stage, or an event written before pebble reported the
-        // continuation, omits the field rather than writing `null`.
-        let EventBody::Failover(mut props) = body else {
-            unreachable!()
-        };
-        props.continuation = None;
-        let value = serde_json::to_value(EventBody::Failover(props)).unwrap();
-        assert!(
-            value["properties"]
-                .as_object()
-                .unwrap()
-                .get("continuation")
-                .is_none()
-        );
     }
 
     #[test]
@@ -2301,108 +2275,6 @@ mod tests {
                     .is_none()
             );
         }
-    }
-
-    #[test]
-    fn agent_mcp_ready_serializes_with_tool_summaries() {
-        let body = EventBody::AgentMcpReady(AgentMcpReadyProps {
-            server_name: "github".to_string(),
-            tool_count:  1,
-            tools:       vec![AgentMcpToolSummary {
-                name:          "mcp__github__create_issue".to_string(),
-                original_name: "create_issue".to_string(),
-            }],
-            startup_ms:  0,
-            visit:       1,
-        });
-        let value = serde_json::to_value(&body).unwrap();
-        assert_eq!(value["event"], "agent.mcp.ready");
-        assert_eq!(
-            value["properties"]["tools"][0]["name"],
-            "mcp__github__create_issue"
-        );
-        assert_eq!(
-            value["properties"]["tools"][0]["original_name"],
-            "create_issue"
-        );
-    }
-
-    #[test]
-    fn agent_mcp_ready_and_failed_carry_startup_ms_and_default_it_when_absent() {
-        let ready = EventBody::AgentMcpReady(AgentMcpReadyProps {
-            server_name: "github".to_string(),
-            tool_count:  0,
-            tools:       Vec::new(),
-            startup_ms:  842,
-            visit:       1,
-        });
-        let value = serde_json::to_value(&ready).unwrap();
-        assert_eq!(value["properties"]["startup_ms"], 842);
-
-        let failed = EventBody::AgentMcpFailed(AgentMcpFailedProps {
-            server_name: "filesystem".to_string(),
-            error:       "could not launch `npx`".to_string(),
-            startup_ms:  4,
-            visit:       1,
-        });
-        let value = serde_json::to_value(&failed).unwrap();
-        assert_eq!(value["properties"]["startup_ms"], 4);
-
-        // Events written before pebble reported startup time.
-        let legacy: EventBody = serde_json::from_value(json!({
-            "event": "agent.mcp.failed",
-            "properties": {
-                "server_name": "filesystem",
-                "error": "Connection refused",
-                "visit": 1
-            }
-        }))
-        .unwrap();
-        match legacy {
-            EventBody::AgentMcpFailed(props) => assert_eq!(props.startup_ms, 0),
-            other => panic!("unexpected body: {other:?}"),
-        }
-    }
-
-    #[test]
-    fn agent_mcp_disconnected_round_trips() {
-        let body = EventBody::AgentMcpDisconnected(AgentMcpDisconnectedProps {
-            server_name: "github".to_string(),
-            error:       "transport closed".to_string(),
-            visit:       1,
-        });
-        let value = serde_json::to_value(&body).unwrap();
-        assert_eq!(value["event"], "agent.mcp.disconnected");
-        assert_eq!(
-            value["properties"],
-            json!({
-                "server_name": "github",
-                "error": "transport closed",
-                "visit": 1
-            })
-        );
-        let parsed: EventBody = serde_json::from_value(value).unwrap();
-        assert_eq!(parsed, body);
-    }
-
-    #[test]
-    fn agent_mcp_ready_omits_tools_when_empty() {
-        let body = EventBody::AgentMcpReady(AgentMcpReadyProps {
-            server_name: "github".to_string(),
-            tool_count:  0,
-            tools:       Vec::new(),
-            startup_ms:  0,
-            visit:       1,
-        });
-        let value = serde_json::to_value(&body).unwrap();
-        assert!(
-            value["properties"]
-                .as_object()
-                .unwrap()
-                .get("tools")
-                .is_none(),
-            "empty tools should be omitted for legacy parity"
-        );
     }
 
     #[test]
