@@ -163,13 +163,12 @@ fn classify_agent_error(error: pebble_coding_agent::Error) -> AgentErrorDisposit
 // --- Event sink -----------------------------------------------------------
 
 /// Pebble's durable event sink for one stage: every agent event becomes a
-/// run event in the run's log before the agent goes on. A route failover and
-/// an MCP server's outcome or disconnect are facts the run already has
-/// events for, so those are mirrored onto the run's own `agent.failover`,
-/// `agent.mcp.ready`, `agent.mcp.failed`, and `agent.mcp.disconnected`
-/// events instead of being stored twice. A failover that stops short, with
-/// the chain exhausted or the error ineligible, has no event of fabro's own
-/// and is stored as pebble's `agent.route.failover.stopped`.
+/// run event in the run's log before the agent goes on, so the stage's
+/// `SessionProjection` rebuilt from the log sees what the live one saw. A
+/// route failover and an MCP server's outcome or disconnect are also
+/// mirrored onto the run's own `agent.failover`, `agent.mcp.ready`,
+/// `agent.mcp.failed`, and `agent.mcp.disconnected` events, which the store
+/// still folds; those mirrors go once every reader is on the projection.
 struct WorkflowEventSink {
     emitter: Arc<Emitter>,
     node_id: String,
@@ -214,7 +213,6 @@ impl EventSink for WorkflowEventSink {
                     },
                     &self.scope,
                 );
-                return Ok(());
             }
             CodingEvent::McpServerReady {
                 server,
@@ -238,7 +236,6 @@ impl EventSink for WorkflowEventSink {
                     },
                     &self.scope,
                 );
-                return Ok(());
             }
             CodingEvent::McpServerFailed {
                 server,
@@ -255,7 +252,6 @@ impl EventSink for WorkflowEventSink {
                     },
                     &self.scope,
                 );
-                return Ok(());
             }
             CodingEvent::McpServerDisconnected { server, error } => {
                 self.emitter.emit_scoped(
@@ -267,12 +263,13 @@ impl EventSink for WorkflowEventSink {
                     },
                     &self.scope,
                 );
-                return Ok(());
             }
             _ => {}
         }
-        // Deltas and the prompt's own durability barrier are not run history.
-        if event.event.is_streaming_noise() || matches!(event.event, CodingEvent::ProcessingEnd) {
+        // Streaming deltas are not run history. `ProcessingEnd` is: pebble's
+        // `SessionProjection` reads it to complete the prompt and mark the
+        // session idle, so a projection rebuilt from the run's log needs it.
+        if event.event.is_streaming_noise() {
             return Ok(());
         }
         self.emitter
