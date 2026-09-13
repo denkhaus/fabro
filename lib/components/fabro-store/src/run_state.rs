@@ -759,6 +759,11 @@ fn apply_agent_event(
     ts: DateTime<Utc>,
 ) {
     let visit = props.visit;
+    // Pebble's own fold sees every agent event the stage stored, before the
+    // fabro-only arms below read the same event.
+    if let Some(stage) = stage_at_stored_or_visit(state, stored, visit, seq) {
+        stage.agent.get_or_insert_default().apply(&props.event);
+    }
     #[expect(
         clippy::wildcard_enum_match_arm,
         reason = "pebble's event vocabulary is non-exhaustive and only some events project"
@@ -8037,13 +8042,20 @@ mod tests {
     }
 
     /// Fabro's stage fold and pebble's `SessionProjection` read the same
-    /// stored events. The stage projection stays fabro's: it is the wire
-    /// contract the API serves and is applied to incrementally, so pebble's
-    /// value cannot stand in for it. These tests pin the two folds to each
-    /// other for a retained session that spans two stages, so a stage's live
-    /// account is the prompt delta pebble reports and the two never drift.
+    /// stored events, and every stage now carries pebble's fold of its own
+    /// events as `StageProjection.agent`. These tests pin the two folds to
+    /// each other: a stage's live account is the prompt delta pebble
+    /// reports, and every field the stage projection still keeps its own
+    /// arms for is derivable from `agent` under a stated rule. They are the
+    /// safety net for reading `agent.*` instead and deleting the old fields.
     mod session_projection_parity {
-        use pebble_coding_agent::events::{InputSource, McpToolSummary};
+        use fabro_types::{ModelRef, TodoListKind};
+        use lithos_llm::catalog::{ModelId, ProviderId};
+        use pebble_coding_agent::events::{
+            ContextWindowCountMethod, ContextWindowSnapshot, ContextWindowStaleness,
+            ErrorData as AgentErrorData, ErrorKind as AgentErrorKind, InputSource, McpToolSummary,
+            SkillActivationSource, SkillSummary, TodoCreatedProps, TodoStatus,
+        };
         use pebble_coding_agent::projection::{
             SessionActivity, SessionProjection, SubagentStatus as PebbleSubagentStatus,
         };
@@ -8185,6 +8197,25 @@ mod tests {
             assert_eq!(projection.usage.input, 170);
             assert_eq!(projection.descendant_usage().0.input, 7);
             assert_eq!(projection.prompts, 2);
+
+            // Each stage's embedded fold is fed that stage's events only, so
+            // its lifetime totals are the stage's own prompts: the delta the
+            // whole-session fold reports for them.
+            let code_agent = code_stage
+                .agent
+                .as_ref()
+                .expect("the code stage carries a fold");
+            assert_eq!(code_agent.usage, code_delta.usage);
+            assert_eq!(code_agent.descendant_usage(), code_delta.descendant_usage());
+            assert_eq!(code_agent.prompts, 1);
+            assert!(code_agent.prompt.completed);
+            let review_agent = review_stage
+                .agent
+                .as_ref()
+                .expect("the review stage carries a fold");
+            assert_eq!(review_agent.usage, review_delta.usage);
+            assert!(review_agent.descendants.is_empty());
+            assert_eq!(review_agent.prompts, 1);
         }
 
         #[test]
@@ -8233,6 +8264,15 @@ mod tests {
                 AgentControlState::Running,
                 "fabro moves control to idle on its own stage events, not pebble's"
             );
+            for stage in [&code, &review] {
+                let agent = run.stage(stage).unwrap().agent.as_ref().unwrap();
+                assert_eq!(
+                    agent.activity,
+                    SessionActivity::Idle,
+                    "the stored agent.processing.end completes the stage's own fold"
+                );
+                assert_eq!(agent.root_session_id.as_deref(), Some(ROOT));
+            }
         }
 
         #[test]
@@ -8259,10 +8299,13 @@ mod tests {
             assert_eq!(resumed, replayed);
         }
 
-        /// Pebble folds its own `McpServer*` events; fabro folds the
-        /// `agent.mcp.*` events the workflow sink mirrors them onto, since
-        /// the raw pebble event is not stored. The mirrored events are built
-        /// here the way the sink builds them.
+        /// Pebble folds its own `McpServer*` events; fabro's `mcp_servers`
+        /// arms fold the `agent.mcp.*` events the workflow sink mirrors them
+        /// onto. The mirrored events are built here the way the sink builds
+        /// them. The sink stores the pebble event as well, which is what
+        /// feeds `StageProjection.agent`;
+        /// `the_old_stage_fields_are_derived_from_the_embedded_fold`
+        /// drives both from one stream.
         #[test]
         fn mcp_servers_agree_across_the_two_folds() {
             let code = StageId::new("code", 1);
@@ -8343,6 +8386,375 @@ mod tests {
                     .clone()
                     .expect("pebble recorded the disconnect"),
             });
+        }
+
+        fn assistant_message_with_window(
+            input: u64,
+            output: u64,
+            window: ContextWindowSnapshot,
+        ) -> CodingEvent {
+            CodingEvent::AssistantMessage {
+                text:            "assistant text".to_string(),
+                model:           billed_usage().model().model_id.to_string(),
+                usage:           TokenUsage {
+                    input,
+                    output,
+                    ..TokenUsage::default()
+                },
+                cost_usd_micros: None,
+                cost_source:     None,
+                tool_call_count: 0,
+                context_window:  Some(window),
+                reasoning:       None,
+            }
+        }
+
+        fn todo(list_id: &str, list_kind: TodoListKind, todo_id: &str) -> TodoCreatedProps {
+            TodoCreatedProps {
+                list_id: list_id.to_string(),
+                list_kind,
+                todo_id: todo_id.to_string(),
+                status: TodoStatus::Pending,
+                order: 0,
+                subject: "write tests".to_string(),
+                description: String::new(),
+                active_form: None,
+                owner: None,
+                blocks: Vec::new(),
+                blocked_by: Vec::new(),
+                metadata: std::collections::BTreeMap::new(),
+            }
+        }
+
+        fn mirrored_tools(tools: &[McpToolSummary]) -> Vec<AgentMcpToolSummary> {
+            tools
+                .iter()
+                .map(|tool| AgentMcpToolSummary {
+                    name:          tool.name.clone(),
+                    original_name: tool.original_name.clone(),
+                })
+                .collect()
+        }
+
+        /// Every field the stage projection keeps its own fold for is
+        /// derivable from `stage.agent`, under the rule each assertion
+        /// states. The stream is what the sink stores for one agent stage:
+        /// fabro's own `agent.session.activated` and the `agent.mcp.*`
+        /// mirrors next to pebble's events.
+        #[test]
+        fn the_old_stage_fields_are_derived_from_the_embedded_fold() {
+            let code = StageId::new("code", 1);
+            let model = billed_usage().model().clone();
+            let provider = model.provider.to_string();
+            let model_id = model.model_id.to_string();
+            let tools = vec![McpToolSummary {
+                name:          "mcp__github__list_issues".to_string(),
+                original_name: "list_issues".to_string(),
+            }];
+            let root_list = TodoListKind::AnthropicTasks.list_id(ROOT);
+            let child_list = TodoListKind::OpenAiPlan.list_id(CHILD);
+            let window = ContextWindowSnapshot {
+                provider:              provider.clone(),
+                model:                 model_id.clone(),
+                context_window_tokens: 400_000,
+                input_tokens:          123_456,
+                usage_percent:         30.864,
+                count_method:          ContextWindowCountMethod::LocalEstimate,
+                staleness:             ContextWindowStaleness::Live,
+                generated_at:          SystemTime::UNIX_EPOCH,
+                event_seq:             None,
+                breakdown:             Vec::new(),
+                warnings:              Vec::new(),
+            };
+            let events = vec![
+                test_stage_event(1, activated(&provider, &model_id), code.clone()),
+                stored(
+                    2,
+                    &code,
+                    root(CodingEvent::SessionStarted {
+                        provider: Some(provider.clone()),
+                        model:    Some(model_id.clone()),
+                    }),
+                ),
+                stored(
+                    3,
+                    &code,
+                    root(CodingEvent::McpServerReady {
+                        server:     "github".to_string(),
+                        tools:      tools.clone(),
+                        startup_ms: 842,
+                    }),
+                ),
+                test_stage_event(
+                    4,
+                    EventBody::AgentMcpReady(AgentMcpReadyProps {
+                        server_name: "github".to_string(),
+                        tool_count:  tools.len(),
+                        tools:       mirrored_tools(&tools),
+                        startup_ms:  842,
+                        visit:       1,
+                    }),
+                    code.clone(),
+                ),
+                stored(
+                    5,
+                    &code,
+                    root(CodingEvent::McpServerFailed {
+                        server:     "broken".to_string(),
+                        error:      "could not launch".to_string(),
+                        startup_ms: 3,
+                    }),
+                ),
+                test_stage_event(
+                    6,
+                    EventBody::AgentMcpFailed(AgentMcpFailedProps {
+                        server_name: "broken".to_string(),
+                        error:       "could not launch".to_string(),
+                        startup_ms:  3,
+                        visit:       1,
+                    }),
+                    code.clone(),
+                ),
+                stored(
+                    7,
+                    &code,
+                    root(CodingEvent::SkillsDiscovered {
+                        profile:     "anthropic".to_string(),
+                        source_dirs: Vec::new(),
+                        skills:      vec![SkillSummary {
+                            name:        "rust".to_string(),
+                            description: "Rust workflow help".to_string(),
+                        }],
+                        skipped:     Vec::new(),
+                    }),
+                ),
+                stored(8, &code, root(prompt())),
+                stored(
+                    9,
+                    &code,
+                    root(assistant_message_with_window(100, 10, window)),
+                ),
+                stored(
+                    10,
+                    &code,
+                    root(CodingEvent::ToolCallStarted {
+                        tool_name:    "mcp__github__list_issues".to_string(),
+                        tool_call_id: "call_1".to_string(),
+                        arguments:    json!({}),
+                    }),
+                ),
+                stored(
+                    11,
+                    &code,
+                    root(CodingEvent::SkillActivated {
+                        skill_name: "rust".to_string(),
+                        source:     SkillActivationSource::Tool,
+                    }),
+                ),
+                stored(
+                    12,
+                    &code,
+                    root(CodingEvent::TodoCreated(todo(
+                        &root_list,
+                        TodoListKind::AnthropicTasks,
+                        "t1",
+                    ))),
+                ),
+                stored(
+                    13,
+                    &code,
+                    root(CodingEvent::SubAgentSpawned {
+                        agent_id:   "sub-1".to_string(),
+                        depth:      1,
+                        task:       "look around".to_string(),
+                        generation: 1,
+                    }),
+                ),
+                stored(
+                    14,
+                    &code,
+                    child(CodingEvent::TodoCreated(todo(
+                        &child_list,
+                        TodoListKind::OpenAiPlan,
+                        "p1",
+                    ))),
+                ),
+                stored(15, &code, child(assistant_message(7, 1))),
+                stored(
+                    16,
+                    &code,
+                    root(CodingEvent::SubAgentCompleted {
+                        agent_id:   "sub-1".to_string(),
+                        depth:      1,
+                        generation: 1,
+                        success:    true,
+                        turns_used: 1,
+                    }),
+                ),
+                stored(
+                    17,
+                    &code,
+                    root(CodingEvent::SubAgentSpawned {
+                        agent_id:   "sub-2".to_string(),
+                        depth:      1,
+                        task:       "check the tests".to_string(),
+                        generation: 1,
+                    }),
+                ),
+                stored(
+                    18,
+                    &code,
+                    root(CodingEvent::SubAgentFailed {
+                        agent_id:   "sub-2".to_string(),
+                        depth:      1,
+                        generation: 1,
+                        error:      AgentErrorData::new(AgentErrorKind::Agent, "boom"),
+                    }),
+                ),
+                stored(
+                    19,
+                    &code,
+                    child(CodingEvent::McpServerDisconnected {
+                        server: "github".to_string(),
+                        error:  "transport closed".to_string(),
+                    }),
+                ),
+                test_stage_event(
+                    20,
+                    EventBody::AgentMcpDisconnected(AgentMcpDisconnectedProps {
+                        server_name: "github".to_string(),
+                        error:       "transport closed".to_string(),
+                        visit:       1,
+                    }),
+                    code.clone(),
+                ),
+                stored(21, &code, root(assistant_message(50, 5))),
+                stored(22, &code, root(CodingEvent::ProcessingEnd)),
+            ];
+
+            let mut run = initialized_projection();
+            for event in &events {
+                run.apply_event(event).unwrap();
+            }
+            let stage = run.stage(&code).unwrap();
+            let agent = stage
+                .agent
+                .as_ref()
+                .expect("an agent stage carries pebble's fold");
+            assert_eq!(agent.root_session_id.as_deref(), Some(ROOT));
+            assert!(agent.prompt.completed);
+            assert_eq!(agent.activity, SessionActivity::Idle);
+
+            // Usage: the stage's live account is the tree's spend, the root's
+            // own plus every descendant's. (At completion fabro's billing
+            // replaces it with the root-only report; that rule goes next.)
+            let (descendants, _) = agent.descendant_usage();
+            assert_eq!(
+                stage.usage.input_tokens,
+                tokens(agent.usage.input + descendants.input)
+            );
+            assert_eq!(
+                stage.usage.output_tokens,
+                tokens(agent.usage.output + descendants.output)
+            );
+            assert_eq!(
+                stage.usage.total_tokens,
+                tokens(agent.usage.total() + descendants.total())
+            );
+            assert_eq!(stage.usage.input_tokens, 157, "100 + 7 + 50");
+
+            // Model: the route the session reported.
+            let route_provider = agent
+                .route
+                .provider
+                .as_deref()
+                .expect("route names a provider");
+            let route_model = agent.route.model.as_deref().expect("route names a model");
+            assert_eq!(
+                stage.model,
+                Some(ModelRef::new(
+                    ProviderId::new(route_provider),
+                    ModelId::new(route_model)
+                ))
+            );
+
+            // Context window: the same snapshot, except that fabro stamps the
+            // run event seq into `event_seq` and pebble keeps the event's own.
+            let mut fabro_window = stage
+                .context_window
+                .clone()
+                .expect("fabro kept the latest window");
+            assert_eq!(fabro_window.event_seq, Some(9));
+            fabro_window.event_seq = None;
+            assert_eq!(Some(fabro_window), agent.context_window);
+
+            // Todos: fabro keeps the root agent's list; pebble keeps every
+            // list in the tree, and the root's is the one keyed by its id.
+            let root_todos = agent
+                .todos
+                .values()
+                .find(|list| list.list_id == list.kind.list_id(ROOT));
+            assert_eq!(stage.root_agent_todos.as_ref(), root_todos);
+            assert!(root_todos.is_some());
+            assert_eq!(agent.todos.len(), 2, "the child's plan is only pebble's");
+            assert!(agent.todos.contains_key(&child_list));
+
+            // Subagents: the same rows; the status tag is `status`, not
+            // `kind`, and a failure carries pebble's `ErrorData`.
+            assert_eq!(stage.subagents.len(), agent.subagents.len());
+            assert_eq!(agent.subagents.len(), 2);
+            for (fabro, pebble) in stage.subagents.iter().zip(&agent.subagents) {
+                assert_eq!(fabro.agent_id, pebble.agent_id);
+                assert_eq!(fabro.depth, pebble.depth);
+                assert_eq!(fabro.task, pebble.task);
+                let mut pebble_status = serde_json::to_value(&pebble.status).unwrap();
+                let tag = pebble_status
+                    .as_object_mut()
+                    .unwrap()
+                    .remove("status")
+                    .expect("pebble tags the status");
+                pebble_status["kind"] = tag;
+                assert_eq!(serde_json::to_value(&fabro.status).unwrap(), pebble_status);
+            }
+            assert_eq!(
+                serde_json::to_value(&agent.subagents[1].status).unwrap()["status"],
+                "failed"
+            );
+
+            // Skills: the same shape.
+            assert_eq!(stage.skills.available, agent.skills.available);
+            assert_eq!(stage.skills.activated.len(), agent.skills.activated.len());
+            for (fabro, pebble) in stage.skills.activated.iter().zip(&agent.skills.activated) {
+                assert_eq!(fabro.name, pebble.name);
+                assert_eq!(fabro.source, pebble.source);
+            }
+
+            // MCP servers: `disconnected` set is Disconnected, else `error`
+            // set is Failed, else Ready; the tool count is `tools.len()`.
+            assert_eq!(stage.mcp_servers.len(), agent.mcp_servers.len());
+            assert_eq!(agent.mcp_servers.len(), 2);
+            for server in &stage.mcp_servers {
+                let pebble = &agent.mcp_servers[&server.server_name];
+                assert_eq!(server.invoked, pebble.invoked);
+                assert_eq!(server.tool_count, pebble.tools.len());
+                let expected = if let Some(error) = &pebble.disconnected {
+                    McpServerStatus::Disconnected {
+                        error: error.clone(),
+                    }
+                } else if let Some(error) = &pebble.error {
+                    McpServerStatus::Failed {
+                        error: error.clone(),
+                    }
+                } else {
+                    McpServerStatus::Ready {
+                        tools: mirrored_tools(&pebble.tools),
+                    }
+                };
+                assert_eq!(server.status, expected, "{}", server.server_name);
+            }
+            assert!(agent.mcp_servers["github"].invoked);
+            assert_eq!(agent.mcp_servers["github"].startup_ms, Some(842));
+            assert_eq!(agent.mcp_servers["broken"].startup_ms, Some(3));
         }
     }
 }
