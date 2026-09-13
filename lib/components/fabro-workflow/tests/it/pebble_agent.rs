@@ -44,7 +44,7 @@ use fabro_workflow::test_support::WorkflowRunner;
 use httpmock::Method::POST;
 use httpmock::MockServer;
 use lithos_llm::catalog::ProviderId;
-use pebble_coding_agent::events::{CodingEvent, FailoverStop};
+use pebble_coding_agent::events::{CodingEvent, FailoverContinuation, FailoverStop};
 use tokio_util::sync::CancellationToken;
 
 const MODEL: &str = "mock-model";
@@ -1139,18 +1139,17 @@ async fn an_mcp_tool_is_available_to_the_stage() {
 
     assert_eq!(echoed.calls_async().await, 1, "{:?}", names(&stage.events));
     assert_eq!(work_stage(&state).response.as_deref(), Some("Echoed"));
-    let ready = stage
-        .events
-        .lock()
-        .unwrap()
-        .iter()
-        .find_map(|event| match &event.body {
-            EventBody::AgentMcpReady(props) => Some(props.clone()),
+    // The server's outcome is pebble's own event, stored like every other.
+    let ready = coding_events(&stage.events)
+        .into_iter()
+        .find_map(|(_, event)| match event {
+            CodingEvent::McpServerReady { server, tools, .. } => Some((server, tools)),
             _ => None,
         })
         .expect("the MCP server reports ready");
-    assert_eq!(ready.server_name, "echo");
-    assert_eq!(ready.tool_count, 1);
+    assert_eq!(ready.0, "echo");
+    assert_eq!(ready.1.len(), 1);
+    assert_eq!(count(&stage.events, "agent.mcp.server.ready"), 1);
     let completed = coding_events(&stage.events)
         .into_iter()
         .find_map(|(_, event)| match event {
@@ -1264,29 +1263,35 @@ async fn failover_continues_the_conversation_without_rerunning_tools() {
         work_stage(&state).response.as_deref(),
         Some("Recovered on backup")
     );
-    let failover = stage
-        .events
-        .lock()
-        .unwrap()
-        .iter()
-        .find_map(|event| match &event.body {
-            EventBody::Failover(props) => Some(props.clone()),
+    // The move is pebble's own event, stored verbatim; fabro emits no
+    // failover event of its own for an agent stage.
+    let failover = coding_events(&stage.events)
+        .into_iter()
+        .find_map(|(_, event)| match event {
+            CodingEvent::RouteFailover {
+                from,
+                to,
+                error,
+                continuation,
+                ..
+            } => Some((from, to, error, continuation)),
             _ => None,
         })
-        .expect("the failover is emitted");
-    assert_eq!(failover.from_provider, "primary");
-    assert_eq!(failover.to_provider, "backup");
-    assert_eq!(failover.to_model, "backup-model");
+        .expect("the failover is stored");
+    assert!(failover.0.starts_with("primary/"), "got {}", failover.0);
+    assert_eq!(failover.1, "backup/backup-model");
     assert!(
-        failover.error.contains("primary key revoked"),
+        failover.2.message.contains("primary key revoked"),
         "got {}",
-        failover.error
+        failover.2.message
     );
     assert_eq!(
-        failover.continuation.as_deref(),
-        Some("continue_turn"),
+        failover.3,
+        FailoverContinuation::ContinueTurn,
         "the primary committed a tool result, so the backup continued the turn"
     );
+    assert_eq!(count(&stage.events, "agent.route.failover"), 1);
+    assert_eq!(count(&stage.events, "prompt.failover"), 0);
     let tool_completions = coding_events(&stage.events)
         .into_iter()
         .filter(|(_, event)| matches!(event, CodingEvent::ToolCallCompleted { .. }))
@@ -1390,9 +1395,10 @@ async fn an_exhausted_fallback_chain_stores_the_stopped_failover() {
         }
     );
 
-    // The move to the backup is fabro's own event; the stop on the backup
-    // is pebble's, stored under its derived name after the error it reports.
-    assert_eq!(count(&stage.events, "agent.failover"), 1);
+    // The move to the backup and the stop on the backup are both pebble's,
+    // stored under their derived names; the stop follows the error it
+    // reports.
+    assert_eq!(count(&stage.events, "agent.route.failover"), 1);
     assert_eq!(count(&stage.events, "agent.route.failover.stopped"), 1);
     let stopped_at = position(&stage.events, "agent.route.failover.stopped").unwrap();
     assert!(work_stage_event(&stage.events, stopped_at));
