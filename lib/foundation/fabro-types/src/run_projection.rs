@@ -297,10 +297,11 @@ pub struct StageProjection {
     pub usage:                 BilledTokenCounts,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model:                 Option<ModelRef>,
-    /// The completed stage's billing split by model, as `stage.completed`
-    /// reported it: the root session's route and each subagent's own model.
-    /// Sums to `usage`. Empty while the stage runs and for stages without a
-    /// coding agent; the billing rollup then bills `usage` to `model`.
+    /// The finished stage's billing split by model, as `stage.completed` or
+    /// `stage.failed` reported it: the root session's route and each
+    /// subagent's own model. Sums to `usage`. Empty while the stage runs and
+    /// for stages without a coding agent; the billing rollup then bills
+    /// `usage` to `model`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub billing_by_model:      Vec<BilledModelUsage>,
     /// Todo/task list owned by the stage's root agent session.

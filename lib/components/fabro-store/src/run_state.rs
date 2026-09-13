@@ -549,6 +549,7 @@ impl RunProjectionReducer for RunProjection {
                     stage.usage.replace_with_billed_usage(billing);
                     stage.model = Some(billing.model().clone());
                 }
+                stage.billing_by_model.clone_from(&props.billing_by_model);
                 stage.state =
                     stage_state_from_failure(props.will_retry, failure_category, stage.termination);
                 stage.agent_control = AgentControlState::Running;
@@ -3841,14 +3842,15 @@ mod tests {
             .apply_event(&test_stage_event(
                 3,
                 EventBody::StageFailed(StageFailedProps {
-                    index:      0,
-                    failure:    Some(fabro_types::FailureDetail::new(
+                    index:            0,
+                    failure:          Some(fabro_types::FailureDetail::new(
                         "try again",
                         fabro_types::FailureCategory::TransientInfra,
                     )),
-                    will_retry: true,
-                    timing:     fabro_types::StageTiming::wall_only(444),
-                    billing:    Some(usage.clone()),
+                    will_retry:       true,
+                    timing:           fabro_types::StageTiming::wall_only(444),
+                    billing_by_model: Vec::new(),
+                    billing:          Some(usage.clone()),
                 }),
                 scoped_stage_id.clone(),
             ))
@@ -5467,6 +5469,7 @@ mod tests {
             failure: Some(FailureDetail::new("boom", FailureCategory::TransientInfra)),
             will_retry,
             timing: fabro_types::StageTiming::wall_only(duration_ms),
+            billing_by_model: Vec::new(),
             billing: None,
         }
     }
@@ -5477,6 +5480,7 @@ mod tests {
             failure: Some(FailureDetail::new("cancelled", FailureCategory::Canceled)),
             will_retry,
             timing: fabro_types::StageTiming::wall_only(duration_ms),
+            billing_by_model: Vec::new(),
             billing: None,
         }
     }
@@ -6088,14 +6092,15 @@ mod tests {
             .apply_event(&test_event(
                 3,
                 EventBody::StageFailed(StageFailedProps {
-                    index:      0,
-                    failure:    Some(FailureDetail::new(
+                    index:            0,
+                    failure:          Some(FailureDetail::new(
                         "Script failed with exit code: 100\n\nCancelling due to test failure",
                         FailureCategory::Canceled,
                     )),
-                    will_retry: false,
-                    timing:     fabro_types::StageTiming::wall_only(10),
-                    billing:    None,
+                    will_retry:       false,
+                    timing:           fabro_types::StageTiming::wall_only(10),
+                    billing_by_model: Vec::new(),
+                    billing:          None,
                 }),
                 Some("build"),
             ))

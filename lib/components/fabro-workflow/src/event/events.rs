@@ -296,15 +296,17 @@ pub enum Event {
         max_attempts: usize,
     },
     StageFailed {
-        node_id:    String,
-        name:       String,
-        index:      usize,
-        failure:    FailureDetail,
-        will_retry: bool,
-        timing:     StageTiming,
-        billing:    Option<BilledModelUsage>,
+        node_id:          String,
+        name:             String,
+        index:            usize,
+        failure:          FailureDetail,
+        will_retry:       bool,
+        timing:           StageTiming,
+        billing:          Option<BilledModelUsage>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        billing_by_model: Vec<BilledModelUsage>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        actor:      Option<Principal>,
+        actor:            Option<Principal>,
     },
     StageRetrying {
         node_id:      String,

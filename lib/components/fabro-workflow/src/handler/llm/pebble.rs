@@ -63,7 +63,7 @@ use crate::context::keys::Fidelity;
 use crate::error::Error;
 use crate::event::{Emitter, Event, StageScope};
 use crate::model_fallback::{ModelFallbackNotice, ModelFallbackPolicy};
-use crate::outcome::billed_model_usage_from_llm;
+use crate::outcome::{Outcome, billed_model_usage_from_llm};
 use crate::services::FabroRunToolServices;
 use crate::steering_hub::SteeringHub;
 use crate::web_search::{self, SearchSecrets};
@@ -405,6 +405,16 @@ impl LiveAgent {
             })
             .unwrap_or_default()
     }
+}
+
+/// The route as billing names it: provider, model, and the speed tier the
+/// stage asked for.
+fn route_model(route: &LlmRoute) -> ModelRef {
+    ModelRef::new(
+        route.target.provider.clone(),
+        ModelId::new(route.target.model.as_str()),
+    )
+    .with_speed(route.controls.speed)
 }
 
 /// A stage's billing from its account: the whole tree under the root's
@@ -856,6 +866,37 @@ impl PebbleBackend {
         }
     }
 
+    /// The failed outcome of an agent stage that spent before it failed: the
+    /// failure itself, with the session tree's usage, the files it wrote, and
+    /// its active time, so the run bills what the stage spent. A billing the
+    /// catalog cannot price is logged and left off.
+    fn failed_outcome(&self, error: &Error, live: &LiveAgent, plan: &FallbackPlan) -> Outcome {
+        let mut outcome = error.to_fail_outcome();
+        let account = live.account();
+        match stage_billing(
+            self.catalog.as_ref(),
+            &route_model(plan.current()),
+            &account,
+        ) {
+            Ok(billing) => {
+                outcome.usage = Some(billing.total);
+                outcome.usage_by_model = billing.by_model;
+            }
+            Err(billing_error) => {
+                tracing::debug!(
+                    error = %billing_error,
+                    "failed agent stage could not be billed"
+                );
+            }
+        }
+        outcome.files_touched = account.files_touched;
+        outcome.timing = Some(StageTiming::active_only(
+            crate::millis_u64(live.inference_duration),
+            crate::millis_u64(live.tool_duration),
+        ));
+        outcome
+    }
+
     /// Steers that landed between the answer and the hub's close-the-door
     /// check run as further prompts, so the stage never ends with a steer
     /// nobody saw.
@@ -1291,18 +1332,27 @@ impl CodergenBackend for PebbleBackend {
                     ShutdownReason::Error
                 };
                 live.discard(reason).await;
-                return Err(error);
+                // Cancellation and a retryable failure go up as the error, so
+                // the engine cancels or retries as before. A terminal failure
+                // becomes the stage's failed outcome, carrying what the
+                // session tree spent and wrote before it failed.
+                if matches!(error, Error::Cancelled) || error.is_retryable() {
+                    return Err(error);
+                }
+                return Ok(CodergenResult::Full(Box::new(self.failed_outcome(
+                    &error,
+                    &live,
+                    &fallback_plan,
+                ))));
             }
         };
 
-        let route = fallback_plan.current().clone();
-        let root_model = ModelRef::new(
-            route.target.provider.clone(),
-            ModelId::new(route.target.model.as_str()),
-        )
-        .with_speed(route.controls.speed);
         let account = live.account();
-        let billing = stage_billing(self.catalog.as_ref(), &root_model, &account)?;
+        let billing = stage_billing(
+            self.catalog.as_ref(),
+            &route_model(fallback_plan.current()),
+            &account,
+        )?;
 
         live.release_lease();
         match reuse_key {

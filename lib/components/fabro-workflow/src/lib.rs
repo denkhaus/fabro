@@ -159,11 +159,12 @@ mod duration_tests {
             tool_call_id:       None,
             actor:              None,
             body:               EventBody::StageFailed(StageFailedProps {
-                index:      0,
-                failure:    None,
-                will_retry: true,
-                timing:     StageTiming::wall_only(wall_time_ms),
-                billing:    None,
+                index:            0,
+                failure:          None,
+                will_retry:       true,
+                timing:           StageTiming::wall_only(wall_time_ms),
+                billing_by_model: Vec::new(),
+                billing:          None,
             }),
         };
         EventEnvelope { seq, event }
