@@ -11077,7 +11077,6 @@ components:
       required:
         - first_event_seq
         - usage
-        - agent_control
         - state
       properties:
         first_event_seq:
@@ -11200,9 +11199,6 @@ components:
             Start of an external ACP agent process, if one is running. ACP
             agents do not expose Fabro's internal LLM brackets, so the process
             lifetime supplies their live inference estimate.
-        agent_control:
-          $ref: "#/components/schemas/AgentControlState"
-          description: Whether the agent is executing normally or waiting for steering after an interrupt.
         billing_by_model:
           type: array
           items:
@@ -13843,13 +13839,6 @@ components:
           description: Failure signature counts across loop_restart edges.
 
     # ── Stage / Turn Schemas ─────────────────────────────────────────────
-
-    AgentControlState:
-      description: Control state of a live agent stage.
-      type: string
-      enum:
-        - running
-        - waiting_for_steer
 
     StageId:
       description: Canonical stage execution identifier in `node_id@visit` form.
