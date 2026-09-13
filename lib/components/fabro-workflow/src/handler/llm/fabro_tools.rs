@@ -149,6 +149,54 @@ pub(crate) async fn execute_fabro_run_tool(
             let summary = fabro_tool::pair_run_text(&result);
             render_fabro_tool_result(&summary, &result)
         }
+        // The four arms below were lost when the #832 run-intent work
+        // replaced the old api.rs dispatch: the tools stayed in the
+        // fabro_tool catalog (advertised to agents via tool_definitions)
+        // but every call fell through to "unknown Fabro run tool" (live
+        // 2026-09-13: conductor survey's fabro_runs_list, first mirtuell
+        // cycle). Ported from the pre-merge dispatch.
+        fabro_tool::FABRO_RUN_WAIT_TOOL_NAME => {
+            let params = parse_fabro_tool_args::<fabro_tool::FabroRunWaitParams>(name, args)?;
+            let result = fabro_tool::run_wait(
+                Arc::clone(&services.backend),
+                fabro_tool::ValidatedRunWait::try_from(params)?,
+            )
+            .await?;
+            let summary = fabro_tool::run_wait_text(&result);
+            render_fabro_tool_result(&summary, &result)
+        }
+        fabro_tool::FABRO_RUN_LOG_TOOL_NAME => {
+            let params = parse_fabro_tool_args::<fabro_tool::FabroRunLogsParams>(name, args)?;
+            let result = fabro_tool::run_logs(
+                Arc::clone(&services.backend),
+                fabro_tool::ValidatedRunLogs::try_from(params)?,
+            )
+            .await?;
+            let summary = fabro_tool::run_logs_text(&result);
+            render_fabro_tool_result(&summary, &result)
+        }
+        fabro_tool::FABRO_RUNS_LIST_TOOL_NAME => {
+            let params = parse_fabro_tool_args::<fabro_tool::FabroRunsListParams>(name, args)?;
+            let result = fabro_tool::runs_list(
+                Arc::clone(&services.backend),
+                fabro_tool::ValidatedRunsList::try_from(params)?,
+                &services.inspects,
+            )
+            .await?;
+            let summary = fabro_tool::runs_list_text(&result);
+            render_fabro_tool_result(&summary, &result)
+        }
+        fabro_tool::FABRO_ASK_TOOL_NAME => {
+            let params = parse_fabro_tool_args::<fabro_tool::FabroAskParams>(name, args)?;
+            let result = fabro_tool::ask_run(
+                Arc::clone(&services.backend),
+                fabro_tool::ValidatedAsk::try_from(params)?,
+                &services.inspects,
+            )
+            .await?;
+            let summary = fabro_tool::ask_run_text(&result);
+            render_fabro_tool_result(&summary, &result)
+        }
         _ => Err(fabro_tool::ToolError::message(format!(
             "unknown Fabro run tool `{name}`"
         ))),
