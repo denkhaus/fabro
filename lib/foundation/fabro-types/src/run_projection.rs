@@ -14,11 +14,11 @@ use strum::{Display, EnumString, IntoStaticStr};
 
 use crate::run_event::{AgentSessionActivatedProps, StagePromptProps};
 use crate::{
-    AgentBackend, AgentMcpToolSummary, BilledTokenCounts, Checkpoint, Conclusion, GitIdentity,
-    InterviewQuestionRecord, InvalidTransition, ModelRef, ParallelBranchId, PullRequestCreation,
-    PullRequestLink, RunApproval, RunControlAction, RunDiff, RunId, RunSandbox, RunSpec, RunStatus,
-    RunTiming, StageCompletion, StageHandler, StageId, StageState, StageTiming, StartRecord,
-    timing,
+    AgentBackend, AgentMcpToolSummary, BilledModelUsage, BilledTokenCounts, Checkpoint, Conclusion,
+    GitIdentity, InterviewQuestionRecord, InvalidTransition, ModelRef, ParallelBranchId,
+    PullRequestCreation, PullRequestLink, RunApproval, RunControlAction, RunDiff, RunId,
+    RunSandbox, RunSpec, RunStatus, RunTiming, StageCompletion, StageHandler, StageId, StageState,
+    StageTiming, StartRecord, timing,
 };
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -297,6 +297,12 @@ pub struct StageProjection {
     pub usage:                 BilledTokenCounts,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model:                 Option<ModelRef>,
+    /// The completed stage's billing split by model, as `stage.completed`
+    /// reported it: the root session's route and each subagent's own model.
+    /// Sums to `usage`. Empty while the stage runs and for stages without a
+    /// coding agent; the billing rollup then bills `usage` to `model`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub billing_by_model:      Vec<BilledModelUsage>,
     /// Todo/task list owned by the stage's root agent session.
     ///
     /// OpenAI child sessions own separate per-session plans and do not appear
@@ -514,6 +520,7 @@ impl StageProjection {
             acp_started_at: None,
             agent_control: AgentControlState::default(),
             agent: None,
+            billing_by_model: Vec::new(),
             provider_used: None,
             diff: None,
             script_invocation: None,

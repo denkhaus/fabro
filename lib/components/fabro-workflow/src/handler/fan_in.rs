@@ -208,6 +208,7 @@ mod tests {
                 assert!(request.prompt.contains("Synthesize every result"));
                 Ok(CodergenResult::Text {
                     text:              "combined result".to_string(),
+                    usage_by_model:    Vec::new(),
                     usage:             None,
                     files_touched:     Vec::new(),
                     last_file_touched: None,

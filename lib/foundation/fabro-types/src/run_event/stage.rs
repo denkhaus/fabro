@@ -36,8 +36,16 @@ pub struct StageCompletedProps {
     pub preferred_label: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub suggested_next_ids: Vec<String>,
+    /// The stage's billing: for an agent stage, the whole session tree's
+    /// tokens (the root session and every subagent) under the root's route.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub billing: Option<BilledModelUsage>,
+    /// `billing` split by model: the root session's route and each
+    /// subagent's own model, a subagent whose model the catalog does not know
+    /// billed at the root's. Sums to `billing`. Empty for stages without a
+    /// coding agent and on events written before it existed.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub billing_by_model: Vec<BilledModelUsage>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub failure: Option<FailureDetail>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

@@ -873,6 +873,57 @@ async fn a_subagent_runs_under_its_parent_session() {
     assert_eq!(work_stage(&state).response.as_deref(), Some("Parent done"));
     assert_eq!(count(&stage.events, "agent.sub.spawned"), 1);
 
+    // One usage rule: the stage bills its whole session tree, live and at
+    // completion. Four model calls answered: the parent's three and the
+    // child's one.
+    let work = work_stage(&state);
+    assert_eq!(
+        work.usage.input_tokens,
+        4 * INPUT_TOKENS_PER_CALL,
+        "the child's call is the stage's too"
+    );
+    assert_eq!(work.usage.output_tokens, 4 * OUTPUT_TOKENS_PER_CALL);
+    assert_eq!(
+        work.usage.total_usd_micros,
+        Some(4 * (INPUT_TOKENS_PER_CALL + 2 * OUTPUT_TOKENS_PER_CALL)),
+        "priced from the catalog for every call"
+    );
+    let agent = work
+        .agent
+        .as_ref()
+        .expect("the stage carries pebble's fold");
+    let (descendants, _) = agent.descendant_usage();
+    assert_eq!(
+        u64::try_from(work.usage.input_tokens).unwrap(),
+        agent.usage.input + descendants.input,
+        "the completed usage is what the live fold showed"
+    );
+    assert_eq!(
+        descendants.input,
+        u64::try_from(INPUT_TOKENS_PER_CALL).unwrap()
+    );
+    // The child ran on its parent's model, so the split is one row carrying
+    // the tree.
+    assert_eq!(
+        work.billing_by_model.len(),
+        1,
+        "{:?}",
+        work.billing_by_model
+    );
+    assert_eq!(
+        work.billing_by_model[0].tokens.input,
+        u64::try_from(4 * INPUT_TOKENS_PER_CALL).unwrap()
+    );
+    assert_eq!(
+        Some(&work.billing_by_model[0].model),
+        work.model.as_ref(),
+        "billed under the root's route"
+    );
+    assert_eq!(
+        work.billing_by_model[0].total_usd_micros,
+        work.usage.total_usd_micros
+    );
+
     let agent_events = coding_events(&stage.events);
     let root_session = agent_events
         .iter()
