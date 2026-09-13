@@ -1237,6 +1237,21 @@ fn stored_seq(value: i64) -> Option<u32> {
         .filter(|seq| (1..=keys::MAX_EVENT_SEQ).contains(seq))
 }
 
+/// Test/diagnostic view: the `summary_json` value verification compares for
+/// one projected run (mirrors `PreparedRunSummary::from_entry`'s run).
+#[cfg(test)]
+pub(crate) fn summary_json_value(entry: &ProjectedRun) -> serde_json::Value {
+    let mut run = build_summary(&entry.projection, &entry.run_id);
+    if run.timing.is_none() {
+        let at = run
+            .timestamps
+            .last_event_at
+            .unwrap_or(run.timestamps.created_at);
+        run.timing = entry.projection.live_run_timing(at);
+    }
+    serde_json::to_value(&run).expect("run summary serializes")
+}
+
 fn decode_event_rows(rows: &[SqliteRow], run_id: &RunId) -> Result<Vec<EventEnvelope>> {
     let run_id_text = run_id.to_string();
     rows.iter()

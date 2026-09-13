@@ -1687,6 +1687,123 @@ mod tests {
         Ok(())
     }
 
+    /// Diagnostic (env-gated): replay a real run's stored SQLite events
+    /// through the current projection and print the first JSON pointer
+    /// where the recomputed summary diverges from the stored row. Used to
+    /// root-cause the 2026-09-13 activation crash-loop on run 01M0NGQXB.
+    #[test]
+    fn diag_replay_real_run_and_diff_summary_json() {
+        let Ok(path) = std::env::var("FABRO_DIAG_DB") else {
+            eprintln!("FABRO_DIAG_DB not set; skipping");
+            return;
+        };
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime");
+        runtime.block_on(async move {
+            use sqlx::Row as _;
+
+            let options = sqlx::sqlite::SqliteConnectOptions::new()
+                .filename(&path)
+                .read_only(true);
+            let pool = sqlx::sqlite::SqlitePoolOptions::new()
+                .max_connections(1)
+                .connect_with(options)
+                .await
+                .expect("open diagnostic db");
+            let mut connection = pool.acquire().await.expect("acquire connection");
+            let run_id_text = "01M0NGQXB67674XQ5YCR1MB4BN";
+            let run_id: RunId = run_id_text.parse().expect("run id");
+            let rows = sqlx::query(
+                "SELECT seq, event_json FROM run_events WHERE run_id = ? ORDER BY seq ASC",
+            )
+            .bind(run_id_text)
+            .fetch_all(&mut *connection)
+            .await
+            .expect("read events");
+
+            let mut envelopes = Vec::new();
+            for row in &rows {
+                let event_json: String = row.try_get("event_json").expect("event_json");
+                let payload: EventPayload =
+                    serde_json::from_str(&event_json).expect("payload parses");
+                let event = RunEvent::try_from(&payload).expect("event normalizes");
+                envelopes.push(EventEnvelope {
+                    seq: row.try_get::<i64, _>("seq").expect("seq") as u32,
+                    event,
+                });
+            }
+            eprintln!("replaying {} events", envelopes.len());
+            let entry = ProjectedRun::replay(run_id, &envelopes).expect("replay");
+
+            let recomputed = crate::run_summary_store::summary_json_value(&entry);
+            let stored_json: String =
+                sqlx::query_scalar("SELECT summary_json FROM runs WHERE id = ?")
+                    .bind(run_id_text)
+                    .fetch_one(&mut *connection)
+                    .await
+                    .expect("stored summary");
+            let stored: serde_json::Value =
+                serde_json::from_str(&stored_json).expect("stored json");
+
+            fn strip(mut v: serde_json::Value) -> serde_json::Value {
+                if let Some(w) = v
+                    .get_mut("workflow")
+                    .and_then(serde_json::Value::as_object_mut)
+                {
+                    w.remove("workflow_version_id");
+                }
+                v
+            }
+            let a = strip(stored);
+            let b = strip(recomputed);
+            if a == b {
+                eprintln!("SUMMARY MATCHES");
+                return;
+            }
+            fn walk(
+                pointer: &str,
+                a: &serde_json::Value,
+                b: &serde_json::Value,
+                out: &mut Vec<String>,
+            ) {
+                if a == b {
+                    return;
+                }
+                match (a, b) {
+                    (serde_json::Value::Object(x), serde_json::Value::Object(y)) => {
+                        for k in x.keys().chain(y.keys()) {
+                            walk(
+                                &format!("{pointer}/{k}"),
+                                x.get(k).unwrap_or(&serde_json::Value::Null),
+                                y.get(k).unwrap_or(&serde_json::Value::Null),
+                                out,
+                            );
+                        }
+                    }
+                    (serde_json::Value::Array(x), serde_json::Value::Array(y)) => {
+                        for i in 0..x.len().max(y.len()) {
+                            walk(
+                                &format!("{pointer}/{i}"),
+                                x.get(i).unwrap_or(&serde_json::Value::Null),
+                                y.get(i).unwrap_or(&serde_json::Value::Null),
+                                out,
+                            );
+                        }
+                    }
+                    _ => out.push(format!("{pointer}: stored={a} recomputed={b}")),
+                }
+            }
+            let mut diffs = Vec::new();
+            walk("", &a, &b, &mut diffs);
+            for d in diffs.iter().take(30) {
+                eprintln!("DIFF {d}");
+            }
+            panic!("summary diverges: {} pointer(s)", diffs.len());
+        });
+    }
+
     #[tokio::test]
     async fn legacy_run_history_retry_and_verification_compare_summary_json_semantically()
     -> TestResult<()> {
