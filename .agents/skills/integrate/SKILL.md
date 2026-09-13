@@ -142,6 +142,16 @@ commit, line).
 - Then verify at HEAD yourself: `cargo nextest run -p <touched crates>`
   after the pull (2026-09-09: 3133 tests green across five touched
   crates). A green per-PR gate does not replace an at-HEAD batch check.
+- Fork-feature regression net (user directive 2026-09-13): always run
+  the FORK-ONLY presence suites at HEAD after the pull — `cargo
+  nextest run -p fabro-workflow -- fork_seam` plus any newer fork-only
+  test files. They pin fork features upstream does not have; a red
+  fork-only test at HEAD means an incoming commit (usually an upstream
+  merge, 00ffd60f6/fabro-8ee1 class) dropped a fork feature together
+  with its inline tests — that is an ABSORBED-REGRESSION finding:
+  restore the feature, file/extend the seed, never relax the test.
+  A merged fork feature arriving WITHOUT its presence pin is a gap
+  finding on Axis 2.
 - Twin-mode trap: `--profile e2e` NO-OPs twin tests; run those in the
   default profile (iterate: fabro-47b5).
 
@@ -261,6 +271,12 @@ line work. Rules:
 - The report's factual premises get verified, not trusted: a reviewer
   (human or agent) asserting a runtime state gets the same live check
   as a seed premise (Axis 3).
+- Fork-only presence suites are the mechanical regression net of every
+  integrate pass (Axis 5): run them at HEAD, treat red as absorbed
+  regression, treat pin-less merged fork features as gaps. Their
+  canonical file list lives in the iterate skill's fork-feature
+  presence-pinning standing rule; extend it when a new fork-only test
+  file lands.
 - Nothing reviewed here stays chat-only: gaps -> seeds, decisions ->
   ADRs, expertise -> mulch, process -> skill edits.
 - Engine-mediated reads only for forge state during review; operator

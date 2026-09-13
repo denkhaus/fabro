@@ -194,6 +194,14 @@ decision, not an accident - it needs the user plus an ADR.
   docs): reviewers load `workflows/code-review-refactor.md` and the
   guideline pages covering the diff. Guide findings are findings, not
   opinions.
+- FORK-FEATURE REGRESSION CHECK (user directive 2026-09-13): run the
+  fork-only presence suites on the reviewed tree (`cargo nextest run -p
+  fabro-workflow -- fork_seam` + any newer fork-only test files) and
+  check every NEW fork feature in the diff carries a presence pin
+  (fork-only test file + touchpoints row). A red fork-only test means
+  a landed fork feature regressed — fix or revert, never relax the
+  test; a pin-less fork feature ships only with a filed seed for the
+  missing pin (fabro-8ee1/00ffd60f6 class).
 - Verify a reviewer's FACTUAL premise in code before fixing (e804
   lesson, 2026-09-02): the spec axis claimed raw blob:// refs reach the
   tool; the dispatch path had already resolved them to file:// pointers.
@@ -414,6 +422,21 @@ decision, not an accident - it needs the user plus an ADR.
   one working world - `denkhaus` locally, the fabro server for runs.
   Do not reintroduce world/branch switching or worktree setups; retired
   contexts live only as archive tags and docs/lab/ history.
+- Fork-feature presence pinning (user directive 2026-09-13, after the
+  00ffd60f6 regression): every durable fork feature (engine guards,
+  seam contracts, asset/engine couplings) gets a presence test in a
+  FORK-ONLY test file — a file upstream does not have, canonically
+  `lib/components/fabro-workflow/src/handler/llm/fork_seam_tests.rs` —
+  plus a touchpoints row (`.agents/skills/merge-upstream/references/touchpoints.md`).
+  Upstream merges cannot conflict away or silently drop a fork-only
+  file, so a dropped feature reds the gate instead of regressing
+  quietly (the #832 salvage merge removed the fabro-8ee1 guard AND its
+  inline tests in one resolution; inline tests cannot catch their own
+  removal). Every cycle phase can regression-test against these
+  suites: `cargo nextest run -p fabro-workflow -- fork_seam` (+ newer
+  fork-only files). Phase 3 review runs them on the frozen diff's
+  tree; Phase 5 integrate runs them at HEAD before pushing; new fork
+  features without a presence pin are a review finding, not style.
 - Boundaries: mulch = expertise, seeds = actionable work, ADRs =
   decisions, this skill = process. Nothing stays in chat that belongs
   in one of them.

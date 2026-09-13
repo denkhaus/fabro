@@ -3,6 +3,15 @@
 Our fork features that must not regress. For each: name the seed, the
 code locations, and the fast verification when the touched area overlaps.
 
+Every durable fork feature gets TWO pins, not one: a row in this list
+(LLM-walked, can go stale) AND a presence test in a fork-only test file
+(gate-enforced, a merge can never drop it — files upstream does not
+have, canonically `lib/components/fabro-workflow/src/handler/llm/fork_seam_tests.rs`).
+A row without a presence test is a gap; a presence test without a row
+is invisible to the merge walk. The 00ffd60f6 incident (duplicate-child
+guard + its inline tests silently removed in one merge resolution) is
+the reason both layers exist.
+
 | Feature (seed) | Code locations | Fast verification |
 |---|---|---|
 | Publish-blocked taxonomy (fabro-67e5, closed) | fabro-types status.rs SuccessReason; workflow pipeline/finalize.rs build_terminal_event; server.rs event application + slack; cli run/wait.rs; web header.tsx | nextest -p fabro-workflow pipeline::finalize + fabro-server publish_blocked |
@@ -16,6 +25,7 @@ code locations, and the fast verification when the touched area overlaps.
 | just-up lock + smoke (landed) | justfile, scripts/smoke.nu, scripts/wait-healthy.nu | just up full pipeline |
 | run_workflow.nu pipeline (landed) | scripts/run_workflow.nu, scripts/prompts/improve.md | just run hello --adopt <id> |
 | Auto-merge wiring (fabro-ab2c, CLOSED via branch protection) | .github/workflows/lab-check.yml; repo settings; run_workflow auto-merge poll | run_workflow integrates via ff-pull |
+| Duplicate-child guard (fabro-8ee1, OPEN — re-demand: dropped by 00ffd60f6) | fabro-tool create.rs (reject_duplicate_active_child, re-land pending); presence test belongs in fork_seam_tests.rs | grep reject_duplicate_active_child lib/components/fabro-tool/src/create.rs; until re-landed, absence = the documented regression, not a pass |
 
 ## Obsolescence watchlist
 
