@@ -16,3 +16,6 @@ pub use controls::EffectiveRequestControls;
 pub use fabro_tools::{register_fabro_run_tools, register_named_fabro_run_tools};
 pub use pebble::PebbleBackend;
 pub use router::BackendRouter;
+
+#[cfg(test)]
+mod fork_seam_tests;
