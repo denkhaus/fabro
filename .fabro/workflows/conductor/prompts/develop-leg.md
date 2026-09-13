@@ -26,11 +26,14 @@ b. Create the child: `fabro_run_create {"runs": [{"workflow_version_id": "<id fr
    - `reached=closed_unmerged` -> journal it and route "Develop child failed".
    - Failure routing keys on CHILD status, NEVER on PR state: only a terminal-FAILED child or `closed_unmerged` routes "Develop child failed". A succeeded child with any gate state never routes the failed exit.
 
-## Workflow addressing (fabro-e297, server-side resolution)
+## Workflow addressing (#832 run-intent contract)
 
-Create child runs with the git workflow source — the server resolves and
-registers the workflow versions; the sandbox filesystem never participates:
-`{"runs": [{"workflow": "<name>", "workflow_source": {"repo": "denkhaus/fabro", "branch": "denkhaus", "workflow": "<name>"}, "environment": "toolchain"}]}`. The `workflow` slug is REQUIRED alongside `workflow_source` (the spec schema rejects workflow_source-only payloads).
+The server no longer resolves git workflow sources for tool-created runs:
+register the workflow version with fabro_workflow_version_create FIRST
+(step 1a above — read the file closure from the cloned repo), then create
+with the returned workflow_version_id. Inline {workflow, workflow_source}
+payloads are REJECTED (deny_unknown_fields). The sandbox filesystem is the
+SOURCE for registration reads only; runs reference immutable versions.
 ## Hard rule — exactly ONE child
 
 Create AT MOST ONE develop child per pass. If the create call returns an

@@ -27,11 +27,13 @@ pass child). The revisor itself selects the newest revisable run
 (ADR-0015) — no goal needed.
 3. Wait terminal: ONE call `fabro_run_wait {"run_id": "<child_run_id>", "until": "terminal", "timeout_ms": 1800000}`; on `reached=timeout` call again (fabro-571e, no sleep loops). Route "Cycle complete" on any terminal state (the revisor's own soft exits are legitimate outcomes); route "Revisor child failed" only when the run failed hard.
 
-## Workflow addressing (fabro-e297, server-side resolution)
+## Workflow addressing (#832 run-intent contract)
 
-Create child runs with the git workflow source — the server resolves and
-registers the workflow versions; the sandbox filesystem never participates:
-`{"runs": [{"workflow": "<name>", "workflow_source": {"repo": "denkhaus/fabro", "branch": "denkhaus", "workflow": "<name>"}, "environment": "toolchain"}]}`. The `workflow` slug is REQUIRED alongside `workflow_source` (the spec schema rejects workflow_source-only payloads).
+Registration is the two-step dance from the create section above:
+fabro_workflow_version_create (read the revisor file closure from the
+cloned repo), then fabro_run_create with the workflow_version_id.
+Inline {workflow, workflow_source} payloads are REJECTED.
+
 ## Journal — every pass
 
 Report through `context_updates.journal` on EVERY pass. Silence is a missing report, not an empty one. Always emit BOTH keys:
