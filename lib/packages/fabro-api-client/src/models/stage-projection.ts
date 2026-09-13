@@ -18,6 +18,9 @@
 import type { AgentControlState } from './agent-control-state';
 // May contain unused imports in some cases
 // @ts-ignore
+import type { AgentSessionProjection } from './agent-session-projection';
+// May contain unused imports in some cases
+// @ts-ignore
 import type { BilledTokenCounts } from './billed-token-counts';
 // May contain unused imports in some cases
 // @ts-ignore
@@ -142,6 +145,7 @@ export interface StageProjection {
      * Whether the agent is executing normally or waiting for steering after an interrupt.
      */
     'agent_control': AgentControlState;
+    'agent'?: AgentSessionProjection | null;
     /**
      * Lifecycle state of the stage projection.
      */

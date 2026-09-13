@@ -75,11 +75,30 @@ pub mod types {
     };
     pub use lithos_llm::catalog::{ModelHandle, ProviderId};
     pub use lithos_llm::types::{
-        ContentPart, Cost as CompletionCost, CostSource, Message, ReasoningEffort, ReasoningOutput,
-        ResponseFormat as CompletionResponseFormat, Role, Speed as BillingSpeed,
+        ContentPart, Cost as CompletionCost, CostSource, ErrorKind as LlmErrorKind, Message,
+        ReasoningEffort, ReasoningOutput, ResponseFormat as CompletionResponseFormat,
+        RetryClassification as LlmRetryClassification, Role, Speed as BillingSpeed,
         TokenCounts as CompletionUsage, ToolChoice as CompletionToolChoice,
         ToolDefinition as CompletionToolDefinition,
         ToolDefinitionKind as CompletionToolDefinitionKind,
+    };
+    /// `StageProjection.agent` is the coding agent's own fold of the stage's
+    /// events; the API reuses pebble's types under the schema names.
+    pub use pebble_coding_agent::events::{
+        CompactionReason, ErrorData as AgentErrorData, ErrorKind as AgentErrorKind,
+        FailoverContinuation, FailoverStop, McpToolSummary, TokenUsage,
+    };
+    pub use pebble_coding_agent::projection::{
+        ActivatedSkill as AgentSessionActivatedSkill,
+        CompactionProjection as AgentSessionCompaction,
+        DescendantAccount as AgentSessionDescendantAccount,
+        FailoverStopProjection as AgentSessionFailoverStop,
+        McpServerProjection as AgentSessionMcpServer, PromptDelta as AgentSessionPromptDelta,
+        RouteFailoverProjection as AgentSessionRouteFailover, RouteProjection as AgentSessionRoute,
+        SessionActivity as AgentSessionActivity, SessionProjection as AgentSessionProjection,
+        SkillsProjection as AgentSessionSkills, SubagentCounts as AgentSessionSubagentCounts,
+        SubagentProjection as AgentSessionSubagent, SubagentStatus as AgentSessionSubagentStatus,
+        ToolActivity as AgentSessionToolActivity,
     };
     /// A sandbox's status on the API is the sandbox driver's own type.
     pub use sandbox_driver::{
