@@ -98,10 +98,24 @@ pub(crate) enum StructuredOutputErrorKind {
     NoJsonObject,
     NoRelevantJsonObject,
     InvalidJson,
+    /// The response ends mid-string/mid-array/mid-object: truncation-shaped
+    /// (the output length cap cut the payload, fabro-274d). Classified
+    /// distinctly from ordinary invalid JSON so repair turns can ask the
+    /// model to shorten instead of re-emitting full size.
+    TruncatedJson,
     SchemaValidation,
 }
 
 const MAX_SCHEMA_FRAGMENT_CHARS: usize = 320;
+
+/// Explicit length budget for truncation-shaped repair turns (fabro-274d):
+/// comfortably under the output caps that truncate multi-KB payloads
+/// (observed ~7,018 chars), so a compliant shortened response fits.
+const TRUNCATED_REPAIR_BUDGET_CHARS: usize = 6_000;
+
+/// Marker written into the best-effort payload persisted when repairs are
+/// exhausted on a truncation-shaped failure (fabro-274d).
+pub(crate) const TRUNCATION_MARKER: &str = "output_truncated";
 
 /// `additionalProperties` errors carry one entry per unexpected key, and the
 /// keys come from model output. Cap them so a wide object can't turn the repair
@@ -268,6 +282,11 @@ impl StructuredOutputError {
     }
 
     #[must_use]
+    pub(crate) fn is_truncated(&self) -> bool {
+        self.kind == StructuredOutputErrorKind::TruncatedJson
+    }
+
+    #[must_use]
     pub(crate) fn allows_routing_fallback(&self) -> bool {
         matches!(
             self.kind,
@@ -299,11 +318,29 @@ impl StructuredOutputError {
         }
         sections.push(format!("Validation errors:\n{errors}"));
         sections.push(expectation);
-        if self.kind == StructuredOutputErrorKind::SchemaValidation {
-            sections.push(
-                "Apply each correction at the exact JSON Pointer shown and return the complete object."
-                    .to_string(),
-            );
+        match self.kind {
+            StructuredOutputErrorKind::TruncatedJson => {
+                // Length-aware repair (fabro-274d): the response was cut off
+                // by the output length cap, so re-emitting the complete
+                // object just re-truncates. Instruct the model to SHORTEN
+                // the payload within an explicit budget instead.
+                sections.push(format!(
+                    "Your previous response was cut off by the output length limit before the \
+                     JSON closed — re-sending the full object will truncate again. Do NOT \
+                     re-emit the complete object: SHORTEN the payload instead. Emit compact \
+                     JSON with no whitespace or indentation, trim arrays to the most essential \
+                     items, and drop optional fields. Your entire response must stay within a \
+                     length budget of {TRUNCATED_REPAIR_BUDGET_CHARS} characters."
+                ));
+            }
+            StructuredOutputErrorKind::SchemaValidation => {
+                sections.push(
+                    "Apply each correction at the exact JSON Pointer shown and return the \
+                     complete object."
+                        .to_string(),
+                );
+            }
+            _ => {}
         }
         sections.push(
             "Do not include Markdown fences or explanatory prose; reply only with the corrected JSON object."
@@ -380,6 +417,52 @@ fn truncate_chars(text: &str, max_chars: usize) -> String {
 #[must_use]
 pub(crate) fn exhausted_failure_reason(repair_attempts: i64) -> String {
     format!("output schema validation failed after {repair_attempts} repair attempt(s)")
+}
+
+#[must_use]
+pub(crate) fn truncated_failure_reason(repair_attempts: i64) -> String {
+    format!(
+        "structured output truncated at the output length cap after {repair_attempts} repair \
+         attempt(s); best-effort payload persisted with truncation marker"
+    )
+}
+
+/// Failure outcome for exhausted repairs on a truncation-shaped failure
+/// (fabro-274d): deterministic failure (routing follows the node's normal
+/// failure path) with a reason that names the truncation, so the run does
+/// not park as an opaque schema-validation soft stop.
+#[must_use]
+pub(crate) fn truncated_failure_outcome(repair_attempts: i64) -> Outcome {
+    Outcome {
+        status: StageOutcome::Failed {
+            retry_requested: false,
+        },
+        failure: Some(FailureDetail::new(
+            truncated_failure_reason(repair_attempts),
+            FailureCategory::Deterministic,
+        )),
+        ..Outcome::default()
+    }
+}
+
+/// Persist the truncated response as a best-effort payload under
+/// `output.<node>` with an explicit truncation marker, so downstream
+/// consumers can see the payload is partial instead of losing the drafted
+/// work entirely (fabro-274d).
+pub(crate) fn apply_truncated_best_effort_output(
+    node_id: &str,
+    response_text: &str,
+    outcome: &mut Outcome,
+) {
+    outcome.context_updates.insert(
+        output_key(node_id),
+        serde_json::json!({
+            "truncated": true,
+            "marker": TRUNCATION_MARKER,
+            "chars": response_text.len(),
+            "partial_response": response_text,
+        }),
+    );
 }
 
 #[must_use]
@@ -483,6 +566,37 @@ pub(crate) fn apply_validated_output(
                 .insert(output_key(&node.id), validated.value.clone());
         }
     }
+}
+
+/// Truncation-shape classifier (fabro-274d): true when the text ends while
+/// still inside a JSON structure — an unterminated string or an unclosed
+/// object opened by a `{`. Braces inside strings don't count; quotes and
+/// brackets in top-level prose (outside any object) are ignored, so
+/// balanced prose around a complete JSON object never classifies as
+/// truncated.
+fn ends_mid_json(text: &str) -> bool {
+    let trimmed = text.trim_end();
+    let mut depth = 0_usize;
+    let mut in_string = false;
+    let mut escape = false;
+    for &c in trimmed.as_bytes() {
+        if escape {
+            escape = false;
+        } else if in_string {
+            if c == b'\\' {
+                escape = true;
+            } else if c == b'"' {
+                in_string = false;
+            }
+        } else if c == b'"' && depth > 0 {
+            in_string = true;
+        } else if c == b'{' {
+            depth += 1;
+        } else if c == b'}' {
+            depth = depth.saturating_sub(1);
+        }
+    }
+    depth > 0 || in_string
 }
 
 /// Find the outermost balanced `{...}` JSON object substrings in the text, in
@@ -605,6 +719,21 @@ fn validate_custom_response_text(
     schema: &Value,
     text: &str,
 ) -> Result<ValidatedStructuredOutput, StructuredOutputError> {
+    // Truncation-shape detection (fabro-274d): a response cut at the output
+    // length cap ends mid-string/mid-array/mid-object. Check BEFORE scanning
+    // candidates: a truncated outer object can still contain complete inner
+    // objects, whose schema errors would otherwise misdirect the repair turn
+    // (or, against a permissive schema, silently validate a partial payload).
+    if ends_mid_json(text) {
+        return Err(StructuredOutputError::new(
+            StructuredOutputErrorKind::TruncatedJson,
+            format!(
+                "final structured response is truncated: it ends mid-JSON after {} chars \
+                 (likely cut off by the output length limit)",
+                text.trim_end().len()
+            ),
+        ));
+    }
     // Prose after the object can contain braces, so the last candidate is not
     // always JSON. Take the last one that parses; report its schema errors
     // rather than falling back to an earlier object that happens to validate.
@@ -1464,6 +1593,140 @@ mod tests {
 
         assert_eq!(error.kind(), StructuredOutputErrorKind::InvalidJson);
         assert!(error.messages()[0].contains("invalid JSON object"));
+    }
+
+    #[test]
+    fn truncated_final_response_is_classified_distinctly() {
+        // Shape of fabro-274d: a findings JSON cut mid-array by the output
+        // length cap. Complete inner objects exist, so without truncation-shape
+        // detection the failure would misreport as a schema error on the last
+        // inner object (or, against a permissive schema, silently validate a
+        // partial payload).
+        let schema = schema(serde_json::json!({
+            "type": "object",
+            "required": ["findings"],
+            "properties": {
+                "findings": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "required": ["id"],
+                        "properties": {
+                            "id": { "type": "integer" },
+                            "rationale": { "type": "string" }
+                        }
+                    }
+                }
+            }
+        }));
+        let mut items = String::new();
+        for i in 0..200 {
+            let _ = write!(items, r#"{{"id":{i},"rationale":"finding {i}}},"#);
+        }
+        let truncated = format!(r#"{{"findings":[{items}"#);
+
+        let error = validate_response_text(&schema, &truncated).unwrap_err();
+
+        assert!(error.is_truncated());
+        assert_eq!(error.kind(), StructuredOutputErrorKind::TruncatedJson);
+        assert!(
+            error.messages()[0].contains("truncated"),
+            "unexpected message: {}",
+            error.messages()[0],
+        );
+    }
+
+    #[test]
+    fn truncation_classification_covers_mid_string_and_mid_object_cuts() {
+        let schema = schema(serde_json::json!({"type": "object"}));
+        let cases = [
+            r#"{"findings":[{"id":1"#,       // mid-object
+            r#"{"summary":"the finding ne"#, // mid-string
+            r#"{"a":{"b":{"c":1}"#,          // nested unclosed
+        ];
+        for text in cases {
+            let error = validate_response_text(&schema, text).unwrap_err();
+            assert!(
+                error.is_truncated(),
+                "expected truncation classification for: {text}"
+            );
+        }
+
+        // Balanced prose and complete objects never classify as truncated.
+        let balanced = [
+            r#"{"passed":true}"#,
+            "{\"passed\":true}\n\nLet me know if {this works} for you.",
+            r#"{"a":"quotes \" and } braces"}"#,
+        ];
+        for text in balanced {
+            assert!(!ends_mid_json(text), "false truncation for: {text}");
+        }
+    }
+
+    #[test]
+    fn truncation_repair_message_instructs_shortening_with_budget() {
+        let schema = schema(serde_json::json!({
+            "type": "object",
+            "required": ["findings"],
+            "properties": { "findings": { "type": "array" } }
+        }));
+        let error = validate_response_text(&schema, r#"{"findings":[{"id":1"#).unwrap_err();
+
+        let repair = error.repair_message(&schema, None);
+
+        assert!(
+            repair.contains("SHORTEN"),
+            "repair must instruct shortening, not re-emitting: {repair}"
+        );
+        assert!(
+            repair.contains("length budget"),
+            "repair must carry an explicit length budget: {repair}"
+        );
+        assert!(
+            !repair.contains("return the complete object"),
+            "repair must not ask for the complete object: {repair}"
+        );
+    }
+
+    #[test]
+    fn truncation_exhaustion_persists_marked_best_effort_output() {
+        let truncated_text = r#"{"findings":[{"id":1},{"id":2"#;
+        let mut outcome = truncated_failure_outcome(2);
+
+        apply_truncated_best_effort_output("audit", truncated_text, &mut outcome);
+
+        assert_eq!(outcome.status, StageOutcome::Failed {
+            retry_requested: false,
+        });
+        let failure = outcome.failure.expect("failure detail");
+        assert!(
+            failure.message.contains("truncated"),
+            "failure reason must name the truncation: {}",
+            failure.message
+        );
+        assert_eq!(
+            failure.message,
+            truncated_failure_reason(2),
+            "must not reuse the plain exhaustion reason"
+        );
+        assert_ne!(
+            failure.message,
+            exhausted_failure_reason(2),
+            "plain exhaustion semantics stay for non-truncation failures"
+        );
+        let payload = outcome
+            .context_updates
+            .get("output.audit")
+            .expect("best-effort payload persisted");
+        assert_eq!(payload.get("truncated"), Some(&serde_json::json!(true)));
+        assert_eq!(
+            payload.get("marker"),
+            Some(&serde_json::json!(TRUNCATION_MARKER))
+        );
+        assert_eq!(
+            payload.get("partial_response"),
+            Some(&serde_json::json!(truncated_text))
+        );
     }
 
     #[test]

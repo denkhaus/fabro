@@ -14,7 +14,7 @@ use super::{EngineServices, Handler, structured_output};
 use crate::agent_memory;
 use crate::context::{Context, WorkflowContext, keys};
 use crate::error::Error;
-use crate::event::{Emitter, Event};
+use crate::event::{Emitter, Event, RunNoticeCode, RunNoticeLevel};
 use crate::outcome::Outcome;
 
 /// Handler for single-shot LLM calls (no tools, no agent loop).
@@ -172,24 +172,58 @@ impl Handler for PromptHandler {
         );
 
         if let Some(schema) = structured_output::parse_node_output_schema(graph, node)? {
-            if let Ok(validated) =
-                structured_output::validate_response_text(&schema, &response_text)
-            {
-                structured_output::apply_validated_output(node, &schema, &validated, &mut outcome);
-                // Response dedup (fabro-b907): payload lives under
-                // output.<node>; replace the full-text echo with a compact
-                // reference (see agent.rs for the twin).
-                outcome.context_updates.insert(
-                    keys::response_key(&node.id),
-                    structured_output::compact_response_value(&node.id, &response_text),
-                );
-            } else {
-                let mut failed =
-                    structured_output::exhausted_failure_outcome(node.output_retries());
-                failed.timing = Some(timing);
-                failed.usage = stage_usage;
-                failed.files_touched = backend_files_touched;
-                return Ok(failed);
+            match structured_output::validate_response_text(&schema, &response_text) {
+                Ok(validated) => {
+                    structured_output::apply_validated_output(
+                        node,
+                        &schema,
+                        &validated,
+                        &mut outcome,
+                    );
+                    // Response dedup (fabro-b907): payload lives under
+                    // output.<node>; replace the full-text echo with a compact
+                    // reference (see agent.rs for the twin).
+                    outcome.context_updates.insert(
+                        keys::response_key(&node.id),
+                        structured_output::compact_response_value(&node.id, &response_text),
+                    );
+                }
+                // Truncation-shaped exhaustion (fabro-274d): persist the
+                // best-effort payload with a truncation marker, warn via a
+                // run notice, and fail deterministically — see agent.rs for
+                // the twin.
+                Err(error) if error.is_truncated() => {
+                    let mut failed =
+                        structured_output::truncated_failure_outcome(node.output_retries());
+                    structured_output::apply_truncated_best_effort_output(
+                        &node.id,
+                        &response_text,
+                        &mut failed,
+                    );
+                    services.run.emitter.notice(
+                        RunNoticeLevel::Warn,
+                        RunNoticeCode::StructuredOutputTruncated,
+                        format!(
+                            "stage {}: structured output truncated at the output length cap \
+                             after {} repair attempt(s); best-effort payload persisted under {}",
+                            node.id,
+                            node.output_retries(),
+                            structured_output::output_key(&node.id),
+                        ),
+                    );
+                    failed.timing = Some(timing);
+                    failed.usage = stage_usage;
+                    failed.files_touched = backend_files_touched;
+                    return Ok(failed);
+                }
+                Err(_) => {
+                    let mut failed =
+                        structured_output::exhausted_failure_outcome(node.output_retries());
+                    failed.timing = Some(timing);
+                    failed.usage = stage_usage;
+                    failed.files_touched = backend_files_touched;
+                    return Ok(failed);
+                }
             }
         } else {
             extract_status_fields(&response_text, &mut outcome);

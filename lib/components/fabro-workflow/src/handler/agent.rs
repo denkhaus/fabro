@@ -19,7 +19,7 @@ use super::structured_output::{
 use super::{EngineServices, Handler, NodeTimeoutPolicy};
 use crate::context::{Context, WorkflowContext, keys};
 use crate::error::Error;
-use crate::event::{Emitter, Event, StageScope};
+use crate::event::{Emitter, Event, RunNoticeCode, RunNoticeLevel, StageScope};
 use crate::interview_runtime::WorkflowHumanInput;
 use crate::outcome::{BilledModelUsage, Outcome, OutcomeExt};
 
@@ -417,7 +417,7 @@ impl Handler for AgentHandler {
         );
 
         if let Some(schema) = output_schema.as_ref() {
-            if let Ok(validated) = validate_agent_output_sources(
+            match validate_agent_output_sources(
                 schema,
                 &response_text,
                 &services.run.sandbox,
@@ -425,22 +425,61 @@ impl Handler for AgentHandler {
             )
             .await
             {
-                structured_output::apply_validated_output(node, schema, &validated, &mut outcome);
-                // Response dedup (fabro-b907): the validated payload now
-                // lives under output.<node>; persisting the full response
-                // text would duplicate it (up to 4x per checkpoint). Swap
-                // the full text for a compact reference.
-                outcome.context_updates.insert(
-                    keys::response_key(&node.id),
-                    structured_output::compact_response_value(&node.id, &response_text),
-                );
-            } else {
-                let mut failed =
-                    structured_output::exhausted_failure_outcome(node.output_retries());
-                failed.timing = Some(timing);
-                failed.usage = stage_usage;
-                failed.files_touched = backend_files_touched;
-                return Ok(failed);
+                Ok(validated) => {
+                    structured_output::apply_validated_output(
+                        node,
+                        schema,
+                        &validated,
+                        &mut outcome,
+                    );
+                    // Response dedup (fabro-b907): the validated payload now
+                    // lives under output.<node>; persisting the full response
+                    // text would duplicate it (up to 4x per checkpoint). Swap
+                    // the full text for a compact reference.
+                    outcome.context_updates.insert(
+                        keys::response_key(&node.id),
+                        structured_output::compact_response_value(&node.id, &response_text),
+                    );
+                }
+                // Truncation-shaped exhaustion (fabro-274d): the response was
+                // cut at the output length cap and repairs could not shorten
+                // it under the cap. Do not park the run with drafted work
+                // lost — persist the best-effort payload with an explicit
+                // truncation marker, warn downstream consumers via a run
+                // notice, and fail deterministically so routing follows the
+                // node's normal failure path.
+                Err(error) if error.is_truncated() => {
+                    let mut failed =
+                        structured_output::truncated_failure_outcome(node.output_retries());
+                    structured_output::apply_truncated_best_effort_output(
+                        &node.id,
+                        &response_text,
+                        &mut failed,
+                    );
+                    services.run.emitter.notice(
+                        RunNoticeLevel::Warn,
+                        RunNoticeCode::StructuredOutputTruncated,
+                        format!(
+                            "stage {}: structured output truncated at the output length cap \
+                             after {} repair attempt(s); best-effort payload persisted under {}",
+                            node.id,
+                            node.output_retries(),
+                            structured_output::output_key(&node.id),
+                        ),
+                    );
+                    failed.timing = Some(timing);
+                    failed.usage = stage_usage;
+                    failed.files_touched = backend_files_touched;
+                    return Ok(failed);
+                }
+                Err(_) => {
+                    let mut failed =
+                        structured_output::exhausted_failure_outcome(node.output_retries());
+                    failed.timing = Some(timing);
+                    failed.usage = stage_usage;
+                    failed.files_touched = backend_files_touched;
+                    return Ok(failed);
+                }
             }
         } else {
             // 7b. Parse routing directives from response text, falling back to

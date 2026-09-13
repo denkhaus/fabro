@@ -46,6 +46,10 @@ pub enum RunNoticeCode {
     SandboxCleanupFailed,
     SandboxGitUnavailable,
     SandboxPreserved,
+    /// A node's structured output was truncated at the output length cap and
+    /// persisted best-effort with an explicit truncation marker (seed
+    /// fabro-274d) — the payload under `output.<node>` is partial.
+    StructuredOutputTruncated,
     WorktreeSkippedNoGit,
 }
 

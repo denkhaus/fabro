@@ -1025,6 +1025,29 @@ impl CodergenBackend for PebbleBackend {
 
             if let Some((schema, error)) = validation_error {
                 if repair_attempts >= node.output_retries() {
+                    // Truncation-shaped exhaustion (fabro-274d): return the
+                    // truncated text so the handler persists the best-effort
+                    // payload with a truncation marker and emits a run
+                    // notice, instead of parking via the generic schema
+                    // error.
+                    if error.is_truncated() {
+                        let stage_usage = billed_model_usage_from_llm(
+                            self.catalog.as_ref(),
+                            &completion.model,
+                            total_usage,
+                        )?
+                        .with_reported_cost(total_cost);
+                        return Ok(CodergenResult::Text {
+                            text:              response_text,
+                            usage:             Some(stage_usage),
+                            files_touched:     Vec::new(),
+                            last_file_touched: None,
+                            timing:            StageTiming::active_only(
+                                crate::millis_u64(inference_duration),
+                                0,
+                            ),
+                        });
+                    }
                     return Err(Error::OutputSchemaValidation(
                         structured_output::exhausted_failure_reason(node.output_retries()),
                     ));
@@ -1184,6 +1207,15 @@ impl CodergenBackend for PebbleBackend {
                         Ok(_) => break,
                         Err(error) => {
                             if repair_attempts >= node.output_retries() {
+                                // Truncation-shaped exhaustion (fabro-274d):
+                                // surface the truncated text to the handler
+                                // so it persists the best-effort payload with
+                                // a truncation marker and emits a run notice,
+                                // instead of parking via the generic schema
+                                // error.
+                                if error.is_truncated() {
+                                    break;
+                                }
                                 return Err(Error::OutputSchemaValidation(
                                     structured_output::exhausted_failure_reason(
                                         node.output_retries(),
