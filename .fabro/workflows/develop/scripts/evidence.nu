@@ -168,13 +168,38 @@ def worktree-state []: nothing -> record<lines: list<string>, label: string> {
     {lines: $lines, label: $label}
 }
 
-def in-progress-seed []: nothing -> any {
-    sd list --status in_progress --format json
-    | from json
-    | get -o issues
-    | default []
-    | get -o 0
-    | default null
+# The claimed seed comes from CONTEXT via the engine (stdin_source=
+# "current_seed_id" on the evidence node) — never from scanning the tracker
+# for in_progress claims: run 01M294HH captured a DIFFERENT concurrent
+# seed's spec and diff base that way. Non-tty stdin: nu 0.115's `input`
+# only works on a tty (see closeout.nu), so read the pipe through `cat`.
+# Hard-fail on any mismatch (missing id, unresolvable seed) — a silent
+# fallback to scanning would reintroduce the wrong-seed capture class.
+def stdin-seed-id []: nothing -> string {
+    let seed_id = (cat | str join | str trim)
+    if ($seed_id | is-empty) {
+        print -e "evidence: stdin carried no seed id (stdin_source misconfigured?)"
+        exit 1
+    }
+    $seed_id
+}
+
+# Resolve the claimed seed's spec by id; exit non-zero when the tracker
+# does not know it. Returns the issue record (id, title, description, ...).
+def claimed-seed []: nothing -> any {
+    let seed_id = (stdin-seed-id)
+    let res = (do { sd show $seed_id --format json } | complete)
+    if $res.exit_code != 0 {
+        print -e $"evidence: sd show ($seed_id) failed — seed not resolvable in tracker: ($res.stderr | str trim)"
+        exit 1
+    }
+    let parsed = (do -i { $res.stdout | from json })
+    let issue = ($parsed | get -o issue | default null)
+    if $issue == null or (($issue | get -o id | default '') != $seed_id) {
+        print -e $"evidence: sd show \($seed_id\) returned no matching seed record"
+        exit 1
+    }
+    $issue
 }
 
 # The seed's status as recorded in the tracker file at a given commit, or
@@ -410,7 +435,7 @@ def main []: nothing -> nothing {
     let churn_rows = ($rows | where {|r| is-loop-path $r.path} | sort-by path)
 
     let wt = (worktree-state)
-    let wip = (in-progress-seed)
+    let wip = (claimed-seed)
     let seed_desc = (if $wip == null { "none-in-progress" } else { $"($wip.id): ($wip.title)" })
 
     # Diff anchor: the commit where this seed was claimed. Only the diff
