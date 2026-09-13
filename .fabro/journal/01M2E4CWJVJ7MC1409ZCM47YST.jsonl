@@ -1,0 +1,2 @@
+{"$schema":"fabro-journal-v1","run_id":"01M2E4CWJVJ7MC1409ZCM47YST","node":"start","visit":1,"status":"succeeded","ts":"2026-09-13T19:37:44Z","data":{}}
+{"$schema":"fabro-journal-v1","run_id":"01M2E4CWJVJ7MC1409ZCM47YST","node":"select","visit":1,"status":"succeeded","ts":"2026-09-13T19:37:54Z","data":{"painpoints":[],"observations":["0 runs listed for develop and 0 for merge-upstream via fabro_runs_list; pool empty (0 stale-evidence, 0 no live sandbox), nothing selectable"]}}
