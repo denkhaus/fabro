@@ -1025,17 +1025,25 @@ impl CodergenBackend for PebbleBackend {
 
             if let Some((schema, error)) = validation_error {
                 if repair_attempts >= node.output_retries() {
-                    return Err(Error::OutputSchemaValidation(
-                        structured_output::exhausted_failure_reason(node.output_retries()),
-                    ));
+                    if !error.is_truncated() {
+                        return Err(Error::OutputSchemaValidation(
+                            structured_output::exhausted_failure_reason(node.output_retries()),
+                        ));
+                    }
+                    // fabro-274d: the output was cut off at the length cap
+                    // even after length-aware repair — size overflow is not a
+                    // correctness failure. Fall through with the best-effort
+                    // text; handler-level validation persists it with an
+                    // explicit truncation marker.
+                } else {
+                    let repair_message =
+                        error.repair_message(schema, previous_validation_error.as_ref());
+                    previous_validation_error = Some(error);
+                    messages.push(LlmMessage::text(Role::Assistant, response_text));
+                    messages.push(LlmMessage::text(Role::User, repair_message));
+                    repair_attempts += 1;
+                    continue;
                 }
-                let repair_message =
-                    error.repair_message(schema, previous_validation_error.as_ref());
-                previous_validation_error = Some(error);
-                messages.push(LlmMessage::text(Role::Assistant, response_text));
-                messages.push(LlmMessage::text(Role::User, repair_message));
-                repair_attempts += 1;
-                continue;
             }
 
             let stage_usage =
@@ -1184,11 +1192,19 @@ impl CodergenBackend for PebbleBackend {
                         Ok(_) => break,
                         Err(error) => {
                             if repair_attempts >= node.output_retries() {
-                                return Err(Error::OutputSchemaValidation(
-                                    structured_output::exhausted_failure_reason(
-                                        node.output_retries(),
-                                    ),
-                                ));
+                                if !error.is_truncated() {
+                                    return Err(Error::OutputSchemaValidation(
+                                        structured_output::exhausted_failure_reason(
+                                            node.output_retries(),
+                                        ),
+                                    ));
+                                }
+                                // fabro-274d: exhausted repairs on a truncated
+                                // output are size overflow, not a correctness
+                                // failure. Break with the best-effort text;
+                                // handler-level validation persists it with an
+                                // explicit truncation marker.
+                                break;
                             }
                             let repair_message =
                                 error.repair_message(schema, previous_validation_error.as_ref());

@@ -14,9 +14,9 @@ use fabro_checkpoint::trailer::Trailer;
 use fabro_sandbox::RunSandbox;
 use fabro_types::settings::run::RunCheckpointSettings;
 use fabro_util::error::SharedError;
+use fabro_util::shell::shell_quote;
 use sandbox_driver::{
-    Git as _, GitChange, GitCommitOptions, GitDiffEntry, GitDiffOptions, GitFacet, GitFailureKind,
-    GitRevisionRange,
+    Git as _, GitChange, GitDiffEntry, GitDiffOptions, GitFacet, GitFailureKind, GitRevisionRange,
 };
 
 use crate::artifact_snapshot;
@@ -37,6 +37,17 @@ const FIND_RENAMES_PERCENT: u8 = 50;
 
 /// Budget for the machine-readable diffs behind the Run Files endpoint.
 const RUN_FILES_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// Hardened git invocation for the checkpoint commit, mirroring the
+/// driver's derived git facet prefix (`sandbox-driver/src/derived/git.rs`)
+/// so the exec-routed commit keeps the same protections: no background
+/// maintenance, no repository hooks, no fsmonitor, no signing.
+const GIT_COMMIT_PREFIX: &str = "git -c maintenance.auto=0 -c gc.auto=0 \
+                                 -c core.hooksPath=/dev/null -c core.fsmonitor=false \
+                                 -c core.quotePath=false -c commit.gpgsign=false";
+
+/// Checkpoint commit budget, matching the driver's per-command git timeout.
+const GIT_COMMIT_TIMEOUT_MS: u64 = 60_000;
 
 /// The sandbox's git facet, or the error a git operation reports when the
 /// provider has none.
@@ -101,11 +112,59 @@ pub async fn git_checkpoint(
     let mut message = trailerlink::format_message(&subject, "", &trailers);
     author.append_footer(&mut message);
 
-    let mut options = GitCommitOptions::new(message, &author.name, &author.email);
-    options.allow_empty = true;
-    git.commit(repo, &options)
+    // The commit runs through the exec facet — not the git facet's
+    // `commit` — because git's `GIT_AUTHOR_*`/`GIT_COMMITTER_*` environment
+    // variables outrank the `-c user.*` config the driver stamps, and the
+    // host environment a run executes in may export its own (every fabro
+    // run injects its identity into stage environments). The explicit env
+    // below makes the run identity win, mirroring `git_identity.rs` for
+    // workflow commands; the hardening prefix keeps parity with the
+    // driver's derived git facet (`sandbox-driver/src/derived/git.rs`).
+    let identity_env = HashMap::from([
+        ("GIT_AUTHOR_NAME".to_string(), author.name.clone()),
+        ("GIT_AUTHOR_EMAIL".to_string(), author.email.clone()),
+        ("GIT_COMMITTER_NAME".to_string(), author.name.clone()),
+        ("GIT_COMMITTER_EMAIL".to_string(), author.email.clone()),
+    ]);
+    let script = format!(
+        "{GIT_COMMIT_PREFIX} -c user.name={} -c user.email={} commit -m {} --allow-empty",
+        shell_quote(&author.name),
+        shell_quote(&author.email),
+        shell_quote(&message),
+    );
+    let result = sandbox
+        .exec_command(
+            &script,
+            GIT_COMMIT_TIMEOUT_MS,
+            Some(repo),
+            Some(&identity_env),
+            None,
+        )
         .await
-        .map_err(|error| git_error("git commit", error))
+        .map_err(|source| GitCommandError {
+            message: "git commit failed".to_string(),
+            source,
+        })?;
+    if !result.success() {
+        let failure = sandbox_driver::GitFailure::from_command(
+            "git commit",
+            sandbox_driver::ExecFailure::new(
+                "git commit",
+                result.termination,
+                result.exit_code,
+                result.stdout,
+                result.stderr,
+            ),
+        );
+        return Err(git_error("git commit", sandbox_driver::Error::Git(failure)));
+    }
+    // A failed HEAD read after a successful commit is reported as the
+    // commit failing — the sha read is part of the checkpoint commit.
+    let sha = git
+        .rev_parse(repo, "HEAD")
+        .await
+        .map_err(|error| git_error("git commit", error))?;
+    Ok(sha)
 }
 
 /// Run a git checkpoint after the per-run sandbox git capability probe.
@@ -638,9 +697,11 @@ mod tests {
         assert_eq!(err.to_string(), "git commit failed");
     }
 
-    /// The commit message and author travel in the driver's own commit
-    /// command, and repository hooks never run: the driver disables them
-    /// whatever the checkpoint settings say.
+    /// The commit message and author travel in the checkpoint's own
+    /// hardened commit command, and repository hooks never run: hooks are
+    /// disabled whatever the checkpoint settings say. The run identity is
+    /// also stamped as `GIT_AUTHOR_*`/`GIT_COMMITTER_*` env so an ambient
+    /// host identity cannot claim the commit.
     #[tokio::test]
     async fn git_checkpoint_commits_through_the_hardened_driver_command() {
         let mut sha = exec_ok();
@@ -676,11 +737,11 @@ mod tests {
         );
         let commit = commands
             .iter()
-            .find(|command| command.contains("'commit'"))
+            .find(|command| command.contains("commit -m"))
             .expect("the commit ran");
         assert!(commit.contains("core.hooksPath=/dev/null"), "{commit}");
         assert!(commit.contains("commit.gpgsign=false"), "{commit}");
-        assert!(commit.contains("'--allow-empty'"), "{commit}");
+        assert!(commit.contains("--allow-empty"), "{commit}");
         assert!(
             commit.contains("fabro(run1): work (success)")
                 && commit.contains("Fabro-Run: run1")
