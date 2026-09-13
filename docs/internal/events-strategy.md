@@ -196,6 +196,18 @@ Do not rebuild or mutate the `RunEvent` in downstream listeners.
 
 Any JSONL sink, the run store, and SSE should reflect the same canonical envelope bytes after redaction.
 
+### Oversized events (fabro-5082)
+
+An event whose serialized body exceeds `run_event_body_budget` must never
+kill the run at the store append (the 413 class). The run-store sink
+first offloads oversized payload fields into the run's blob store as
+content-addressed blobs, replacing them with inline `blob://sha256/...`
+references (lossless; readers hydrate via the existing blob-ref parser).
+Only when offloading fails — no blob access, or the event still exceeds
+the budget afterwards — does the lossy `bound_run_event` truncation
+apply, logged as a warning with original/bounded byte counts. Blob-less
+sinks keep the bounded envelope unconditionally.
+
 An active workflow treats any run-event sink write failure as fatal. It cancels execution and
 attempts to persist `run.failed` through the direct sink path. Persistence-error logs must include
 the full source chain so an HTTP status or transport failure remains visible.
