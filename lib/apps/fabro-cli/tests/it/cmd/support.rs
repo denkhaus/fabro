@@ -9,6 +9,7 @@
     reason = "These CLI integration test helpers shell out to real git and fabro binaries while constructing fixtures."
 )]
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::Output;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -17,13 +18,17 @@ use std::time::{Duration, Instant};
 
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
+use fabro_client::Client;
 use fabro_config::bind::Bind;
 use fabro_config::daemon::ServerDaemon;
 use fabro_config::{Storage, envfile};
 use fabro_store::EventEnvelope;
 use fabro_test::{TestContext, expect_reqwest_status};
 use fabro_types::test_support::test_principal;
-use fabro_types::{RunId, StageId};
+use fabro_types::{
+    GitRunTarget, RunId, RunIntent, RunIntentArgs, RunTarget, StageId, WorkflowPath,
+    WorkflowVersion,
+};
 use httpmock::{HttpMockResponse, Mock, MockServer};
 use serde_json::Value;
 use shlex::try_quote;
@@ -791,6 +796,10 @@ pub(crate) fn server_endpoint(storage_dir: &Path) -> Option<(fabro_http::HttpCli
     let runtime_directory = Storage::new(storage_dir).runtime_directory();
     let daemon = ServerDaemon::read(&runtime_directory).ok().flatten()?;
     let mut headers = fabro_http::HeaderMap::new();
+    headers.insert(
+        fabro_http::header::USER_AGENT,
+        fabro_http::HeaderValue::from_static("fabro-cli/test"),
+    );
     if let Some(token) = local_dev_token(storage_dir) {
         headers.insert(
             fabro_http::header::AUTHORIZATION,
@@ -934,11 +943,12 @@ async fn seed_dry_run(context: &TestContext, state: SeededRunState) -> RunSetup 
         context,
         "simple.fabro",
         fast_simple_workflow_source(),
-        serde_json::json!({
-            "dry_run": true,
-            "auto_approve": true,
-            "labels": test_label_map(context),
-        }),
+        RunIntentArgs {
+            dry_run: Some(true),
+            auto_approve: Some(true),
+            labels: test_label_map(context),
+            ..Default::default()
+        },
         false,
     )
     .await;
@@ -959,10 +969,11 @@ async fn seed_git_backed_changed_run(context: &TestContext) -> SeededGitRunSetup
         context,
         "flow.fabro",
         changed_git_workflow_source(),
-        serde_json::json!({
-            "provider": "openai",
-            "labels": test_label_map(context),
-        }),
+        RunIntentArgs {
+            provider: Some("openai".to_string()),
+            labels: test_label_map(context),
+            ..Default::default()
+        },
         true,
     )
     .await;
@@ -993,10 +1004,11 @@ async fn seed_git_backed_noop_run(context: &TestContext) -> RunSetup {
         context,
         "flow.fabro",
         noop_git_workflow_source(),
-        serde_json::json!({
-            "provider": "openai",
-            "labels": test_label_map(context),
-        }),
+        RunIntentArgs {
+            provider: Some("openai".to_string()),
+            labels: test_label_map(context),
+            ..Default::default()
+        },
         true,
     )
     .await;
@@ -1014,9 +1026,10 @@ async fn seed_artifact_run(context: &TestContext) -> RunSetup {
         context,
         "artifact_run.fabro",
         artifact_workflow_source(),
-        serde_json::json!({
-            "labels": test_label_map(context),
-        }),
+        RunIntentArgs {
+            labels: test_label_map(context),
+            ..Default::default()
+        },
         false,
     )
     .await;
@@ -1052,7 +1065,7 @@ async fn create_seeded_run(
     context: &TestContext,
     target_path: &str,
     source: &str,
-    args: serde_json::Value,
+    args: RunIntentArgs,
     git: bool,
 ) -> RunSetup {
     let target = if git {
@@ -1063,64 +1076,41 @@ async fn create_seeded_run(
             "origin",
             "https://github.com/fabro-sh/seeded-fixture.git",
         ]);
-        serde_json::json!({"kind": "git", "repo": "fabro-sh/seeded-fixture", "branch": "main", "sha": sha})
+        RunTarget::Git(GitRunTarget {
+            repo:   "fabro-sh/seeded-fixture".to_string(),
+            branch: "main".to_string(),
+            sha:    Some(sha),
+            tag:    None,
+        })
     } else {
-        serde_json::json!({"kind": "none"})
+        RunTarget::None {}
     };
     let (client, base_url) = server_endpoint(&context.storage_dir)
         .expect("test server endpoint should be available for seeded run creation");
-    let path =
-        fabro_types::WorkflowPath::new(target_path).expect("seeded workflow path should be valid");
-    let version = fabro_types::WorkflowVersion::new(
+    let client = Client::from_http_client(base_url, client);
+    let path = WorkflowPath::new(target_path).expect("seeded workflow path should be valid");
+    let version = WorkflowVersion::new(
         path.clone(),
-        std::collections::BTreeMap::from([(path, source.to_string())]),
-        std::collections::BTreeMap::new(),
+        BTreeMap::from([(path, source.to_string())]),
+        BTreeMap::new(),
     )
-    .expect("seeded workflow registration should succeed");
-    let registered = client
-        .post(format!("{base_url}/api/v1/workflow-versions"))
-        .json(&version)
-        .send()
+    .expect("seeded workflow should be valid");
+    let workflow_version_id = client
+        .create_workflow_version(&version)
         .await
         .expect("seeded workflow registration should succeed");
-    let registered = expect_reqwest_status(
-        registered,
-        fabro_http::StatusCode::CREATED,
-        "register seeded workflow",
-    )
-    .await;
-    let registered: serde_json::Value = registered
-        .json()
+    let run_id = client
+        .create_run_from_intent(RunIntent {
+            workflow_version_id,
+            target,
+            environment_id: Some("default".to_string()),
+            args,
+            parent_id: None,
+            title: None,
+            goal: None,
+        })
         .await
-        .expect("workflow registration response should be JSON");
-    let intent = serde_json::json!({
-        "workflow_version_id": registered["workflow_version_id"],
-        "target": target,
-        "environment_id": "default",
-        "args": args,
-    });
-    let response = client
-        .post(format!("{base_url}/api/v1/runs"))
-        .header("user-agent", "fabro-cli/test")
-        .json(&intent)
-        .send()
-        .await
-        .expect("seeded run create request should execute");
-    let response = expect_reqwest_status(
-        response,
-        fabro_http::StatusCode::CREATED,
-        "POST /api/v1/runs for seeded fixture",
-    )
-    .await;
-    let body: serde_json::Value = response
-        .json()
-        .await
-        .expect("seeded run create response should parse");
-    let run_id = body["id"]
-        .as_str()
-        .expect("seeded run create response should contain an id")
-        .parse::<RunId>()
-        .expect("seeded run create response id should be valid")
+        .expect("seeded run creation should succeed")
         .to_string();
 
     RunSetup {

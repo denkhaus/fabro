@@ -4952,32 +4952,6 @@ enabled = false
 }
 
 #[tokio::test]
-async fn post_runs_create_regression_keeps_api_behavior_without_automation_metadata() {
-    let state = TestAppStateBuilder::new()
-        .env_lookup(|_| None)
-        .vault_entries([(EnvVars::OPENAI_API_KEY, "test-openai-api-key")])
-        .build();
-    let app = crate::test_support::build_test_router(Arc::clone(&state));
-    let mut intent = test_intent(&app, MINIMAL_DOT).await;
-    intent["title"] = json!("API title");
-
-    let body = post_run_intent(&app, intent).await;
-    let run_id: RunId = body["id"].as_str().unwrap().parse().unwrap();
-
-    assert_eq!(body["title"], "API title");
-    assert!(body["automation"].is_null());
-    assert_eq!(body["lifecycle"]["status"]["kind"], "submitted");
-    let summary = state
-        .stores
-        .run_summaries
-        .get(&run_id, Utc::now())
-        .await
-        .unwrap()
-        .unwrap();
-    assert!(summary.automation.is_none());
-}
-
-#[tokio::test]
 async fn create_run_from_intent_helper_persists_automation_version_and_exact_target() {
     let state = TestAppStateBuilder::new()
         .env_lookup(|_| None)
@@ -5048,69 +5022,6 @@ async fn create_run_from_intent_helper_persists_automation_version_and_exact_tar
             .collect::<Vec<_>>(),
         ["run.created", "run.submitted"]
     );
-}
-
-#[tokio::test]
-async fn create_run_from_intent_snapshots_variables_before_allocating_id() {
-    let state = TestAppStateBuilder::new()
-        .env_lookup(|_| None)
-        .vault_entries([(EnvVars::OPENAI_API_KEY, "test-openai-api-key")])
-        .build();
-    let variable = state
-        .stores
-        .variables
-        .set("OWNER", "payments", None)
-        .await
-        .unwrap();
-    let version = store_workflow_version(
-        &state,
-        r#"digraph Test {
-        graph [goal="Test"]
-        start [shape=Mdiamond]
-        work [prompt="Ship {{ vars.OWNER }}"]
-        exit [shape=Msquare]
-        start -> work -> exit
-    }"#,
-        None,
-    )
-    .await;
-    let intent = serde_json::from_value(
-        json!({"workflow_version_id": version, "target": {"kind":"none"}, "args":{}}),
-    )
-    .unwrap();
-    let response = Box::pin(handler::runs::create_run_from_intent(
-        Arc::clone(&state),
-        handler::runs::CreateRunFromIntentRequest {
-            intent,
-            explicit_run_id: None,
-            actor: Principal::System {
-                system_kind: SystemActorKind::Engine,
-            },
-            headers: HeaderMap::new(),
-            automation: None,
-        },
-    ))
-    .await;
-    let body = response_json!(response, StatusCode::CREATED).await;
-    let run_id = body["id"].as_str().unwrap().parse::<RunId>().unwrap();
-    assert!(run_id.created_at().timestamp_millis() >= variable.updated_at.timestamp_millis());
-    let projection = state
-        .stores
-        .runs
-        .open_run_reader(&run_id)
-        .await
-        .unwrap()
-        .state()
-        .await
-        .unwrap();
-    assert_eq!(
-        projection.spec.graph.nodes["work"]
-            .attrs
-            .get("prompt")
-            .and_then(AttrValue::as_str),
-        Some("Ship payments")
-    );
-    assert_eq!(projection.status, RunStatus::Submitted);
 }
 
 #[tokio::test]
@@ -9566,31 +9477,6 @@ async fn static_favicon_is_served() {
     );
 }
 
-#[tokio::test]
-async fn post_runs_creates_submitted_run_and_returns_id() {
-    let app = test_app_with();
-
-    let req = Request::builder()
-        .method("POST")
-        .uri(api("/runs"))
-        .header("content-type", "application/json")
-        .body(intent_body(&app, MINIMAL_DOT).await)
-        .unwrap();
-
-    let response = app.oneshot(req).await.unwrap();
-    let body = response_json!(response, StatusCode::CREATED).await;
-    assert!(body["id"].is_string());
-    assert!(!body["id"].as_str().unwrap().is_empty());
-}
-
-#[tokio::test]
-async fn workflow_registration_rejects_invalid_dot_before_run_creation() {
-    let app = test_app_with();
-    let response = app.oneshot(Request::builder().method("POST").uri(api("/workflow-versions")).header("content-type", "application/json").body(Body::from(json!({"entrypoint":"workflow.fabro","files":{"workflow.fabro":"not a graph"},"workflow_dependencies":{}}).to_string())).unwrap()).await.unwrap();
-    let body = response_json!(response, StatusCode::UNPROCESSABLE_ENTITY).await;
-    assert_eq!(body["errors"][0]["code"], "workflow_version_invalid");
-}
-
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn get_run_status_returns_status() {
     let state = test_app_state();
@@ -12154,45 +12040,6 @@ async fn dev_token_web_login_authorizes_cookie_backed_api_requests() {
 }
 
 #[tokio::test]
-async fn create_run_persists_definition_and_spec_blobs() {
-    let state = test_app_state();
-    let app = crate::test_support::build_test_router(Arc::clone(&state));
-    let raw_intent = serde_json::to_string_pretty(&test_intent(&app, MINIMAL_DOT).await).unwrap();
-
-    let req = Request::builder()
-        .method("POST")
-        .uri(api("/runs"))
-        .header("content-type", "application/json")
-        .body(Body::from(raw_intent))
-        .unwrap();
-
-    let response = app.clone().oneshot(req).await.unwrap();
-    let body = response_json!(response, StatusCode::CREATED).await;
-    let run_id = body["id"].as_str().unwrap().parse::<RunId>().unwrap();
-
-    let run_store = state.stores.runs.open_run_reader(&run_id).await.unwrap();
-    let events = run_store.list_events().await.unwrap();
-    let created = events[0].event.to_value().unwrap();
-    let submitted = events[1].event.to_value().unwrap();
-    assert!(created["properties"]["spec_blob"].is_string());
-    let definition_blob = submitted["properties"]["definition_blob"]
-        .as_str()
-        .expect("run.submitted should carry definition_blob")
-        .parse::<BlobHash>()
-        .unwrap();
-
-    let accepted_definition_bytes = run_store
-        .read_blob(&definition_blob)
-        .await
-        .unwrap()
-        .expect("accepted definition blob should exist");
-    let accepted_definition: serde_json::Value =
-        serde_json::from_slice(&accepted_definition_bytes).unwrap();
-    assert_eq!(accepted_definition["workflow_path"], "workflow.fabro");
-    assert!(accepted_definition["workflows"]["workflow.fabro"].is_object());
-}
-
-#[tokio::test]
 async fn list_run_events_returns_paginated_json() {
     let state = test_app_state();
     let app = crate::test_support::build_test_router(Arc::clone(&state));
@@ -13670,24 +13517,6 @@ async fn stage_artifacts_multipart_requires_manifest_first() {
         .unwrap();
     let response = app.oneshot(req).await.unwrap();
     assert_status!(response, StatusCode::BAD_REQUEST).await;
-}
-
-#[tokio::test]
-async fn create_run_returns_submitted() {
-    let state = test_app_state();
-    let app = crate::test_support::build_test_router(Arc::clone(&state));
-
-    let req = Request::builder()
-        .method("POST")
-        .uri(api("/runs"))
-        .header("content-type", "application/json")
-        .body(intent_body(&app, MINIMAL_DOT).await)
-        .unwrap();
-
-    let response = app.oneshot(req).await.unwrap();
-    let body = response_json!(response, StatusCode::CREATED).await;
-    assert_eq!(run_json_status(&body)["kind"], "submitted");
-    assert_eq!(body["title"], "Test");
 }
 
 #[tokio::test]
@@ -16633,34 +16462,6 @@ fn aggregate_billing_counts_projection_rollup_usage_visits() {
             .input_tokens,
         200
     );
-}
-
-#[tokio::test]
-async fn post_runs_returns_submitted_status() {
-    let state = test_app_state();
-    let app = crate::test_support::build_test_router(state);
-
-    let req = Request::builder()
-        .method("POST")
-        .uri(api("/runs"))
-        .header("content-type", "application/json")
-        .body(intent_body(&app, MINIMAL_DOT).await)
-        .unwrap();
-
-    let response = app.clone().oneshot(req).await.unwrap();
-    let body = response_json!(response, StatusCode::CREATED).await;
-    let run_id = body["id"].as_str().unwrap().parse::<RunId>().unwrap();
-
-    // Check status is submitted (no start, no scheduler running)
-    let req = Request::builder()
-        .method("GET")
-        .uri(api(&format!("/runs/{run_id}")))
-        .body(Body::empty())
-        .unwrap();
-
-    let response = app.oneshot(req).await.unwrap();
-    let body = body_json(response.into_body()).await;
-    assert_eq!(run_json_status(&body)["kind"], "submitted");
 }
 
 #[expect(

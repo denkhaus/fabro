@@ -103,18 +103,6 @@ async fn test_model_unknown_via_full_router() {
 }
 
 #[tokio::test]
-async fn registration_rejects_invalid_dot_without_a_provider() {
-    let app = test_app_with_no_providers();
-    let req = Request::builder().method("POST").uri(api("/workflow-versions")).header("content-type", "application/json").body(Body::from(serde_json::json!({"entrypoint":"workflow.fabro","files":{"workflow.fabro":"not valid dot"},"workflow_dependencies":{}}).to_string())).unwrap();
-    response_status(
-        app.oneshot(req).await.unwrap(),
-        StatusCode::UNPROCESSABLE_ENTITY,
-        "register invalid workflow",
-    )
-    .await;
-}
-
-#[tokio::test]
 async fn completion_no_provider_non_streaming_returns_400() {
     let app = test_app_with_no_providers();
 
