@@ -13,7 +13,7 @@ import {
 } from "./runs";
 import { summarizeBatchLifecycleAction } from "../components/runs-list/batch-lifecycle";
 import { mapRunListItem } from "../data/runs";
-import { TEST_PRINCIPAL } from "../lib/test-fixtures";
+import { TEST_PRINCIPAL, makeUsage } from "../lib/test-fixtures";
 
 function boardRun(id: string, column: BoardColumn, questionText?: string): Run {
   const status =
@@ -58,7 +58,7 @@ function boardRun(id: string, column: BoardColumn, questionText?: string): Run {
       last_event_at:  null,
       completed_at:   null,
     },
-    billing:          null,
+    usage:          makeUsage(),
     size:             "XS",
     diff:             null,
     pull_request:     null,

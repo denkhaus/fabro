@@ -2,11 +2,11 @@ import { afterEach, describe, expect, mock, test } from "bun:test";
 import TestRenderer from "react-test-renderer";
 
 import type {
-  RunBilling,
+  RunUsage,
   StageTiming,
 } from "@qltysh/fabro-api-client";
 
-import { makeBilledTokenCounts } from "../lib/test-fixtures";
+import { makeUsage } from "../lib/test-fixtures";
 
 function stageTiming(wall_time_ms = 0, inference_time_ms = 0, tool_time_ms = 0): StageTiming {
   return {
@@ -17,33 +17,33 @@ function stageTiming(wall_time_ms = 0, inference_time_ms = 0, tool_time_ms = 0):
   };
 }
 
-let currentBilling: RunBilling | undefined;
+let currentUsage: RunUsage | undefined;
 
 mock.module("../lib/queries", () => ({
-  useRunBilling: () => ({ data: currentBilling }),
+  useRunUsage: () => ({ data: currentUsage }),
 }));
 
-const { default: RunBillingRoute } = await import("./run-billing");
+const { default: RunUsageRoute } = await import("./run-usage");
 
-function billing(overrides: Partial<RunBilling> = {}): RunBilling {
+function runUsage(overrides: Partial<RunUsage> = {}): RunUsage {
   return {
     stages: [],
     totals: {
       timing: stageTiming(),
-      ...makeBilledTokenCounts(),
+      usage: makeUsage(),
     },
     by_model: [],
     ...overrides,
   };
 }
 
-function renderBilling(data: RunBilling): TestRenderer.ReactTestRenderer {
-  currentBilling = data;
+function renderUsage(data: RunUsage): TestRenderer.ReactTestRenderer {
+  currentUsage = data;
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
   let renderer: TestRenderer.ReactTestRenderer | undefined;
   TestRenderer.act(() => {
-    renderer = TestRenderer.create(<RunBillingRoute params={{ id: "run_1" }} />);
+    renderer = TestRenderer.create(<RunUsageRoute params={{ id: "run_1" }} />);
   });
   return renderer!;
 }
@@ -61,34 +61,34 @@ function textFromInstance(node: TestRenderer.ReactTestInstance): string {
     .join("");
 }
 
-describe("RunBilling", () => {
+describe("RunUsage", () => {
   afterEach(() => {
-    currentBilling = undefined;
+    currentUsage = undefined;
     delete (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT;
   });
 
-  test("shows a no-model-usage empty state when every stage is non-billable", () => {
-    const renderer = renderBilling(
-      billing({
+  test("shows a no-model-usage empty state when every stage called no model", () => {
+    const renderer = renderUsage(
+      runUsage({
         stages: [
           {
             stage: { id: "start", name: "start" },
             model: null,
-            billing: makeBilledTokenCounts(),
+            usage: makeUsage(),
             timing: stageTiming(),
             state: "succeeded",
           },
           {
             stage: { id: "command", name: "command" },
             model: null,
-            billing: makeBilledTokenCounts(),
+            usage: makeUsage(),
             timing: stageTiming(61000),
             state: "succeeded",
           },
         ],
         totals: {
           timing: stageTiming(61000),
-          ...makeBilledTokenCounts(),
+          usage: makeUsage(),
         },
       }),
     );
@@ -103,13 +103,13 @@ describe("RunBilling", () => {
   });
 
   test("renders mixed LLM and non-LLM rows while counting only LLM rows by model", () => {
-    const renderer = renderBilling(
-      billing({
+    const renderer = renderUsage(
+      runUsage({
         stages: [
           {
             stage: { id: "start", name: "start" },
             model: null,
-            billing: makeBilledTokenCounts(),
+            usage: makeUsage(),
             timing: stageTiming(),
             state: "succeeded",
           },
@@ -119,24 +119,14 @@ describe("RunBilling", () => {
               provider: "anthropic",
               model_id: "claude-sonnet-4-5",
             },
-            billing: makeBilledTokenCounts({
-              input_tokens: 1200,
-              output_tokens: 300,
-              total_tokens: 1500,
-              total_usd_micros: 240000,
-            }),
+            usage: makeUsage({ input: 1200, output: 300 }, 240000),
             timing: stageTiming(42000),
             state: "succeeded",
           },
         ],
         totals: {
           timing: stageTiming(42000),
-          ...makeBilledTokenCounts({
-            input_tokens: 1200,
-            output_tokens: 300,
-            total_tokens: 1500,
-            total_usd_micros: 240000,
-          }),
+          usage: makeUsage({ input: 1200, output: 300 }, 240000),
         },
         by_model: [
           {
@@ -145,12 +135,7 @@ describe("RunBilling", () => {
               model_id: "claude-sonnet-4-5",
             },
             stages: 1,
-            billing: makeBilledTokenCounts({
-              input_tokens: 1200,
-              output_tokens: 300,
-              total_tokens: 1500,
-              total_usd_micros: 240000,
-            }),
+            usage: makeUsage({ input: 1200, output: 300 }, 240000),
           },
         ],
       }),
@@ -160,21 +145,56 @@ describe("RunBilling", () => {
     expect(text).not.toContain("start");
     expect(text).toContain("agent");
     expect(text).toContain("By model");
+    expect(text).toContain("$0.24");
+    // A catalog estimate carries no source tag.
+    expect(text).not.toContain("reported");
 
     const footers = renderer.root.findAll((node) => node.type === "tfoot");
     const byModelFooterCells = footers[1].findAll((node) => node.type === "td");
     expect(textFromInstance(byModelFooterCells[1])).toBe("1");
   });
 
+  test("tags a provider-reported cost with its source", () => {
+    const reported = makeUsage({ input: 1200, output: 300 }, {
+      usd_micros: 240000,
+      source: "provider",
+    });
+    const renderer = renderUsage(
+      runUsage({
+        stages: [
+          {
+            stage: { id: "agent", name: "agent" },
+            model: { provider: "openrouter", model_id: "kimi-k3" },
+            usage: reported,
+            timing: stageTiming(42000),
+            state: "succeeded",
+          },
+        ],
+        totals: { timing: stageTiming(42000), usage: reported },
+        by_model: [
+          {
+            model: { provider: "openrouter", model_id: "kimi-k3" },
+            stages: 1,
+            usage: reported,
+          },
+        ],
+      }),
+    );
+
+    const text = textFromNode(renderer.toJSON());
+    expect(text).toContain("$0.24");
+    expect(text).toContain("reported");
+  });
+
   test("keeps the empty state for runs with no stages", () => {
-    const renderer = renderBilling(billing());
+    const renderer = renderUsage(runUsage());
 
     const text = textFromNode(renderer.toJSON());
     expect(text).toContain("No stages yet");
     expect(text).toContain("Stages will appear as soon as the run starts executing.");
   });
 
-  test("renders an in-flight row with live billing and includes its elapsed time in the footer", () => {
+  test("renders an in-flight row with live usage and includes its elapsed time in the footer", () => {
     const originalNow = Date.now;
     // Pin "now" to 30s after the in-flight row started.
     const startedAt = "2026-04-29T12:00:00.000Z";
@@ -182,8 +202,8 @@ describe("RunBilling", () => {
     Date.now = () => fakeNow;
 
     try {
-      const renderer = renderBilling(
-        billing({
+      const renderer = renderUsage(
+        runUsage({
           stages: [
             {
               stage: { id: "in-flight", name: "in-flight" },
@@ -192,12 +212,7 @@ describe("RunBilling", () => {
                 model_id: "claude-opus-4-6",
                 speed: "fast",
               },
-              billing: makeBilledTokenCounts({
-                input_tokens: 1200,
-                output_tokens: 300,
-                total_tokens: 1500,
-                total_usd_micros: 240000,
-              }),
+              usage: makeUsage({ input: 1200, output: 300 }, 240000),
               timing: stageTiming(),
               started_at: startedAt,
               state: "running",
@@ -205,12 +220,7 @@ describe("RunBilling", () => {
           ],
           totals: {
             timing: stageTiming(),
-            ...makeBilledTokenCounts({
-              input_tokens: 1200,
-              output_tokens: 300,
-              total_tokens: 1500,
-              total_usd_micros: 240000,
-            }),
+            usage: makeUsage({ input: 1200, output: 300 }, 240000),
           },
           by_model: [
             {
@@ -220,12 +230,7 @@ describe("RunBilling", () => {
                 speed: "fast",
               },
               stages: 1,
-              billing: makeBilledTokenCounts({
-                input_tokens: 1200,
-                output_tokens: 300,
-                total_tokens: 1500,
-                total_usd_micros: 240000,
-              }),
+              usage: makeUsage({ input: 1200, output: 300 }, 240000),
             },
           ],
         }),
@@ -249,7 +254,7 @@ describe("RunBilling", () => {
       const footers = renderer.root.findAll((node) => node.type === "tfoot");
       const footerCells = footers[0].findAll((node) => node.type === "td");
       // The Run time column in the footer is index 3 (Total / [empty Model] /
-      // Tokens / Run time / Billing).
+      // Tokens / Run time / Cost).
       const footerRuntime = textFromInstance(footerCells[3]);
       expect(footerRuntime).toContain("30s");
     } finally {

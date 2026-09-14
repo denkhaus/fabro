@@ -269,7 +269,7 @@ describe("parseReducerTranscript", () => {
         event: "prompt.completed",
         properties: {
           response: "The branch results are joined.",
-          billing: { input_tokens: 1200, output_tokens: 340 },
+          usage: { model: { provider: "anthropic", model_id: "claude-sonnet-4-6" }, usage: { tokens: { input: 1200, output: 340 } } },
         },
       }),
     ];

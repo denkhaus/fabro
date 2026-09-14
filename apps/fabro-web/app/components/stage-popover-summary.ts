@@ -33,7 +33,7 @@ export function deriveStageSummary(events: EventEnvelope[]): StageSummary {
       }
       case "stage.completed": {
         readFailure(summary, getObject(props, "failure"));
-        readBilling(summary, getObject(props, "billing"));
+        readUsage(summary, getObject(props, "usage"));
         readTermination(summary, getObject(props, "termination"));
         const notes = getString(props, "notes");
         if (notes !== undefined) summary.notes = notes;
@@ -43,7 +43,7 @@ export function deriveStageSummary(events: EventEnvelope[]): StageSummary {
       }
       case "stage.failed": {
         readFailure(summary, getObject(props, "failure"));
-        readBilling(summary, getObject(props, "billing"));
+        readUsage(summary, getObject(props, "usage"));
         break;
       }
     }
@@ -59,10 +59,13 @@ function readFailure(summary: StageSummary, failure: unknown) {
   if (actor !== undefined) summary.systemActor = actor;
 }
 
-function readBilling(summary: StageSummary, billing: unknown) {
-  if (!billing) return;
-  const input = getNumber(billing, "input_tokens");
-  const output = getNumber(billing, "output_tokens");
+/** `stage.completed.usage` is a `ModelUsage`: the model, then the usage. */
+function readUsage(summary: StageSummary, modelUsage: unknown) {
+  if (!modelUsage) return;
+  const tokens = getObject(getObject(modelUsage, "usage"), "tokens");
+  if (!tokens) return;
+  const input = getNumber(tokens, "input");
+  const output = getNumber(tokens, "output");
   if (input !== undefined) summary.inputTokens = input;
   if (output !== undefined) summary.outputTokens = output;
 }

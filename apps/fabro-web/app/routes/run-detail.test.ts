@@ -14,7 +14,7 @@ import {
 
 import { ToastProvider } from "../components/toast";
 import { DemoModeProvider } from "../lib/demo-mode";
-import { TEST_PRINCIPAL } from "../lib/test-fixtures";
+import { TEST_PRINCIPAL, makeUsage } from "../lib/test-fixtures";
 
 let currentRunSummary: any = null;
 let currentRunState: any = null;
@@ -267,7 +267,7 @@ function makeRunSummary({
       completed_at:   null,
     },
     timing:           null,
-    billing:          null,
+    usage:          makeUsage(),
     size:             "XS",
     diff:             diffSummary,
     pull_request:     pullRequest,

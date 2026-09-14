@@ -3,23 +3,24 @@ import { Fragment, useMemo } from "react";
 import { EmptyState } from "../components/state";
 import { Tooltip } from "../components/ui";
 import {
-  billableOutputTokens,
-  billingTokenBuckets,
-  hasBillingUsage,
-} from "../lib/billing";
-import {
   formatDurationMs,
   formatTokenCount,
   formatUsdMicros,
 } from "../lib/format";
-import { useRunBilling } from "../lib/queries";
+import { useRunUsage } from "../lib/queries";
 import { IN_FLIGHT_STAGE_STATES } from "../lib/stage-sidebar";
 import { useTickingNow } from "../lib/time";
+import {
+  billableOutputTokens,
+  costSourceTag,
+  hasUsage,
+  usageTokenBuckets,
+} from "../lib/usage";
 import type {
-  BilledTokenCounts,
-  BillingModelRef,
-  RunBilling,
-  RunBillingStage,
+  RunUsage,
+  RunUsageStage,
+  Usage,
+  UsageModelRef,
 } from "@qltysh/fabro-api-client";
 
 const EMPTY_VALUE = "—";
@@ -29,34 +30,30 @@ function formatTokens(n: number | null | undefined) {
   return formatTokenCount(n, { compactDecimal: true });
 }
 
-function formatUsdMicrosOrDash(usdMicros?: number | null): string {
-  return formatUsdMicros(usdMicros) ?? EMPTY_VALUE;
-}
-
-function formatModelRef(model?: BillingModelRef | null): string | null {
+function formatModelRef(model?: UsageModelRef | null): string | null {
   if (!model) return null;
   const speed = model.speed ? ` · ${model.speed}` : "";
   return `${model.provider}:${model.model_id}${speed}`;
 }
 
-function isInFlight(stage: RunBillingStage): boolean {
+function isInFlight(stage: RunUsageStage): boolean {
   return stage.state != null && IN_FLIGHT_STAGE_STATES.has(stage.state);
 }
 
 function isVisibleRow(row: MappedStageRow): boolean {
   if (row.inFlight) return true;
-  return row.billing != null && hasBillingUsage(row.billing);
+  return row.usage != null && hasUsage(row.usage);
 }
 
 interface MappedStageRow {
   stage:      string;
   model:      string | null;
-  billing:    BilledTokenCounts | null;
+  usage:      Usage | null;
   wallTimeMs: number;
   inFlight:   boolean;
 }
 
-function liveWallTimeMs(stage: RunBillingStage, now: number): number {
+function liveWallTimeMs(stage: RunUsageStage, now: number): number {
   if (stage.started_at) {
     const startedMs = new Date(stage.started_at).getTime();
     if (Number.isFinite(startedMs)) {
@@ -68,20 +65,20 @@ function liveWallTimeMs(stage: RunBillingStage, now: number): number {
 
 export const handle = { wide: true };
 
-function mapStageRow(stage: RunBillingStage, wallTimeMs: number): MappedStageRow {
+function mapStageRow(stage: RunUsageStage, wallTimeMs: number): MappedStageRow {
   const hasModel = stage.model != null;
   return {
     stage: stage.stage.name,
     model: formatModelRef(stage.model),
-    billing: hasModel ? stage.billing : null,
+    usage: hasModel ? stage.usage : null,
     wallTimeMs,
     inFlight: isInFlight(stage),
   };
 }
 
 /** Hover breakdown of the disjoint token buckets behind an `in / out` count. */
-function TokenBreakdown({ billing }: { billing: BilledTokenCounts }) {
-  const buckets = billingTokenBuckets(billing);
+function TokenBreakdown({ usage }: { usage: Usage }) {
+  const buckets = usageTokenBuckets(usage);
   return (
     <div className="min-w-44 py-0.5">
       <div className="border-line text-fg-2 mb-1.5 border-b pb-1 font-medium">
@@ -108,71 +105,91 @@ function TokenBreakdown({ billing }: { billing: BilledTokenCounts }) {
  * Renders an `input / output` token count. When the row has model usage,
  * hovering the count reveals the cache breakdown.
  */
-function TokensCell({ billing }: { billing: BilledTokenCounts | null }) {
+function TokensCell({ usage }: { usage: Usage | null }) {
   const display = (
     <>
-      {formatTokens(billing?.input_tokens)} <span className="text-fg-muted">/</span>{" "}
-      {formatTokens(billing ? billableOutputTokens(billing) : null)}
+      {formatTokens(usage?.tokens.input)} <span className="text-fg-muted">/</span>{" "}
+      {formatTokens(usage ? billableOutputTokens(usage.tokens) : null)}
     </>
   );
-  if (!billing) return display;
+  if (!usage) return display;
   return (
-    <Tooltip label={<TokenBreakdown billing={billing} />}>
+    <Tooltip label={<TokenBreakdown usage={usage} />}>
       <span>{display}</span>
     </Tooltip>
   );
 }
 
-export default function RunBilling({ params }: { params: { id: string } }) {
-  const billingQuery = useRunBilling(params.id);
-  const billing = billingQuery.data;
-  const hasInFlight = billing?.stages.some(isInFlight) ?? false;
+/**
+ * Renders a cost, or a dash when the usage carries none. A cost that did not
+ * come from the catalog is tagged with where it came from.
+ */
+function CostCell({ usage }: { usage: Usage | null | undefined }) {
+  const cost = usage?.cost;
+  const formatted = formatUsdMicros(cost?.usd_micros);
+  if (formatted == null) return <>{EMPTY_VALUE}</>;
+  const tag = costSourceTag(cost);
+  return (
+    <>
+      {formatted}
+      {tag ? (
+        <span className="text-fg-muted ml-1.5 font-sans text-[10px] uppercase tracking-wide">
+          {tag}
+        </span>
+      ) : null}
+    </>
+  );
+}
+
+export default function RunUsageRoute({ params }: { params: { id: string } }) {
+  const usageQuery = useRunUsage(params.id);
+  const runUsage: RunUsage | undefined = usageQuery.data;
+  const hasInFlight = runUsage?.stages.some(isInFlight) ?? false;
 
   // Tick once per second only while a stage is in-flight.
   const now = useTickingNow(hasInFlight);
 
-  // Completed rows don't depend on `now`; memoize them by `billing` so we
+  // Completed rows don't depend on `now`; memoize them by `runUsage` so we
   // don't reallocate them every tick.
   const completedRows = useMemo<MappedStageRow[]>(() => {
-    if (!billing) return [];
-    return billing.stages.map((stage) => mapStageRow(stage, stage.timing.wall_time_ms));
-  }, [billing]);
+    if (!runUsage) return [];
+    return runUsage.stages.map((stage) => mapStageRow(stage, stage.timing.wall_time_ms));
+  }, [runUsage]);
 
   // The model breakdown is server-derived and stable across ticks too.
   const modelBreakdown = useMemo(() => {
-    if (!billing) return [];
-    return billing.by_model
+    if (!runUsage) return [];
+    return runUsage.by_model
       .map((entry) => ({
-        model:   formatModelRef(entry.model) ?? EMPTY_VALUE,
-        stages:  entry.stages,
-        billing: entry.billing,
+        model:  formatModelRef(entry.model) ?? EMPTY_VALUE,
+        stages: entry.stages,
+        usage:  entry.usage,
       }))
       .sort(
         (a, b) =>
-          (b.billing.total_usd_micros ?? -1) - (a.billing.total_usd_micros ?? -1),
+          (b.usage.cost?.usd_micros ?? -1) - (a.usage.cost?.usd_micros ?? -1),
       );
-  }, [billing]);
+  }, [runUsage]);
 
   // Re-derive only the in-flight rows on each tick; everything else stays put.
   const rows = useMemo<MappedStageRow[]>(() => {
-    if (!billing) return [];
+    if (!runUsage) return [];
     if (!hasInFlight) return completedRows;
-    return billing.stages.map((stage, idx) =>
+    return runUsage.stages.map((stage, idx) =>
       isInFlight(stage)
         ? mapStageRow(stage, liveWallTimeMs(stage, now))
         : completedRows[idx],
     );
-  }, [billing, completedRows, hasInFlight, now]);
+  }, [runUsage, completedRows, hasInFlight, now]);
 
   // While ticking, sum the displayed row runtimes so the footer updates in
   // lock-step. Otherwise trust the server's authoritative total.
   const totalWallTimeMs = hasInFlight
     ? rows.reduce((sum, row) => sum + row.wallTimeMs, 0)
-    : (billing?.totals.timing.wall_time_ms ?? 0);
+    : (runUsage?.totals.timing.wall_time_ms ?? 0);
 
-  const hasLlmStages = (billing?.by_model.length ?? 0) > 0;
-  const totalBilling = hasLlmStages && billing ? billing.totals : null;
-  const totalUsdMicros = billing?.totals.total_usd_micros;
+  const hasLlmStages = (runUsage?.by_model.length ?? 0) > 0;
+  const totalUsage = hasLlmStages && runUsage ? runUsage.totals.usage : null;
   const modelStageCount = modelBreakdown.reduce((sum, row) => sum + row.stages, 0);
   const visibleRows = rows.filter(isVisibleRow);
 
@@ -201,7 +218,7 @@ export default function RunBilling({ params }: { params: { id: string } }) {
               <th className="px-4 py-2.5 font-medium">Model</th>
               <th className="px-4 py-2.5 font-medium text-right">Tokens</th>
               <th className="px-4 py-2.5 font-medium text-right">Run time</th>
-              <th className="px-4 py-2.5 font-medium text-right">Billing</th>
+              <th className="px-4 py-2.5 font-medium text-right">Cost</th>
             </tr>
           </thead>
           <tbody>
@@ -212,13 +229,13 @@ export default function RunBilling({ params }: { params: { id: string } }) {
                   {row.model ?? EMPTY_VALUE}
                 </td>
                 <td className="px-4 py-3 text-right font-mono text-xs tabular-nums text-fg-3">
-                  <TokensCell billing={row.billing} />
+                  <TokensCell usage={row.usage} />
                 </td>
                 <td className="px-4 py-3 text-right font-mono text-xs text-fg-3">
                   {formatDurationMs(row.wallTimeMs)}
                 </td>
                 <td className="px-4 py-3 text-right font-mono text-xs text-fg-3">
-                  {formatUsdMicrosOrDash(row.billing?.total_usd_micros)}
+                  <CostCell usage={row.usage} />
                 </td>
               </tr>
             ))}
@@ -228,13 +245,13 @@ export default function RunBilling({ params }: { params: { id: string } }) {
               <td className="px-4 py-3 font-medium text-fg">Total</td>
               <td className="px-4 py-3 text-xs text-fg-muted">All models</td>
               <td className="px-4 py-3 text-right font-mono text-xs tabular-nums font-medium text-fg">
-                <TokensCell billing={totalBilling} />
+                <TokensCell usage={totalUsage} />
               </td>
               <td className="px-4 py-3 text-right font-mono text-xs font-medium text-fg">
                 {formatDurationMs(totalWallTimeMs)}
               </td>
               <td className="px-4 py-3 text-right font-mono text-xs font-medium text-fg">
-                {formatUsdMicrosOrDash(totalUsdMicros)}
+                <CostCell usage={totalUsage} />
               </td>
             </tr>
           </tfoot>
@@ -251,7 +268,7 @@ export default function RunBilling({ params }: { params: { id: string } }) {
                   <th className="px-4 py-2.5 font-medium">Model</th>
                   <th className="px-4 py-2.5 font-medium text-right">Stages</th>
                   <th className="px-4 py-2.5 font-medium text-right">Tokens</th>
-                  <th className="px-4 py-2.5 font-medium text-right">Billing</th>
+                  <th className="px-4 py-2.5 font-medium text-right">Cost</th>
                 </tr>
               </thead>
               <tbody>
@@ -262,10 +279,10 @@ export default function RunBilling({ params }: { params: { id: string } }) {
                       {row.stages}
                     </td>
                     <td className="px-4 py-3 text-right font-mono text-xs tabular-nums text-fg-3">
-                      <TokensCell billing={row.billing} />
+                      <TokensCell usage={row.usage} />
                     </td>
                     <td className="px-4 py-3 text-right font-mono text-xs text-fg-3">
-                      {formatUsdMicrosOrDash(row.billing.total_usd_micros)}
+                      <CostCell usage={row.usage} />
                     </td>
                   </tr>
                 ))}
@@ -277,10 +294,10 @@ export default function RunBilling({ params }: { params: { id: string } }) {
                     {modelStageCount}
                   </td>
                   <td className="px-4 py-3 text-right font-mono text-xs tabular-nums font-medium text-fg">
-                    <TokensCell billing={totalBilling} />
+                    <TokensCell usage={totalUsage} />
                   </td>
                   <td className="px-4 py-3 text-right font-mono text-xs font-medium text-fg">
-                    {formatUsdMicrosOrDash(totalUsdMicros)}
+                    <CostCell usage={totalUsage} />
                   </td>
                 </tr>
               </tfoot>

@@ -240,9 +240,10 @@ export function parseReducerTranscript(events: EventEnvelope[]): ReducerTranscri
     } else if (event.event === "prompt.completed" && hasReducer) {
       response = getString(props, "response") ?? response;
       model = getString(props, "model") ?? model;
-      const billing = getObject(props, "billing") ?? {};
-      inputTokens = getNumber(billing, "input_tokens") ?? inputTokens;
-      outputTokens = getNumber(billing, "output_tokens") ?? outputTokens;
+      // `prompt.completed.usage` is a `ModelUsage`: the model, then the usage.
+      const tokens = getObject(getObject(getObject(props, "usage"), "usage"), "tokens") ?? {};
+      inputTokens = getNumber(tokens, "input") ?? inputTokens;
+      outputTokens = getNumber(tokens, "output") ?? outputTokens;
     }
   }
 

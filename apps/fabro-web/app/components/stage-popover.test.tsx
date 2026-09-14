@@ -58,11 +58,16 @@ describe("deriveStageSummary", () => {
     expect(summary.systemActor).toBe("agent");
   });
 
-  test("captures billing tokens from stage.completed", () => {
+  test("captures usage tokens from stage.completed", () => {
     const summary = deriveStageSummary([
       makeEvent({
         event:      "stage.completed",
-        properties: { billing: { input_tokens: 12400, output_tokens: 3120 } },
+        properties: {
+          usage: {
+            model: { provider: "anthropic", model_id: "claude-sonnet-4-6" },
+            usage: { tokens: { input: 12400, output: 3120 } },
+          },
+        },
       }),
     ]);
     expect(summary.inputTokens).toBe(12400);
@@ -118,7 +123,7 @@ describe("deriveStageSummary", () => {
   test("tolerates missing or non-numeric properties", () => {
     const summary = deriveStageSummary([
       makeEvent({ event: "stage.started", properties: {} }),
-      makeEvent({ event: "stage.completed", properties: { billing: null } }),
+      makeEvent({ event: "stage.completed", properties: { usage: null } }),
     ]);
     expect(summary).toEqual({});
   });
@@ -177,7 +182,10 @@ describe("StagePopover rendering", () => {
         makeEvent({
           event:      "stage.completed",
           properties: {
-            billing:       { input_tokens: 12400, output_tokens: 3120 },
+            usage:         {
+              model: { provider: "anthropic", model_id: "claude-sonnet-4-6" },
+              usage: { tokens: { input: 12400, output: 3120 } },
+            },
             files_touched: ["a.rs", "b.rs"],
           },
         }),

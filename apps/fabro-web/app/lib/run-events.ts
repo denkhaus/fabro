@@ -177,7 +177,7 @@ function liveTimingKeys(runId: string): Key[] {
   return [
     queryKeys.runs.detail(runId),
     queryKeys.runs.state(runId),
-    queryKeys.runs.billing(runId),
+    queryKeys.runs.usage(runId),
   ];
 }
 
@@ -199,7 +199,7 @@ export function queryKeysForRunEvent(
       queryKeys.runs.state(runId),
       ...queryKeys.runs.filesAllScopes(runId),
       queryKeys.runs.commits(runId),
-      queryKeys.runs.billing(runId),
+      queryKeys.runs.usage(runId),
       queryKeys.runs.stages(runId),
       queryKeys.runs.graph(runId, "LR"),
       queryKeys.runs.graph(runId, "TB"),
@@ -220,7 +220,7 @@ export function queryKeysForRunEvent(
   if (STAGE_EVENTS.has(event)) {
     const keys: Key[] = [
       queryKeys.runs.stages(runId),
-      queryKeys.runs.billing(runId),
+      queryKeys.runs.usage(runId),
       queryKeys.runs.events(runId, 1000),
       queryKeys.runs.graph(runId, "LR"),
       queryKeys.runs.graph(runId, "TB"),
@@ -255,7 +255,7 @@ export function queryKeysForRunEvent(
     if (event === "agent.round.interrupted") {
       keys.unshift(
         queryKeys.runs.detail(runId),
-        queryKeys.runs.billing(runId),
+        queryKeys.runs.usage(runId),
       );
     }
     if (stageId) {
@@ -372,7 +372,7 @@ function resyncKeysForRun(runId: string) {
     queryKeys.runs.state(runId),
     ...queryKeys.runs.filesAllScopes(runId),
     queryKeys.runs.commits(runId),
-    queryKeys.runs.billing(runId),
+    queryKeys.runs.usage(runId),
     queryKeys.runs.stages(runId),
     queryKeys.runs.events(runId, 1000),
     queryKeys.runs.graph(runId, "LR"),
