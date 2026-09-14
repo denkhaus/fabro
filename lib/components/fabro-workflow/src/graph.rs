@@ -10,6 +10,7 @@ use fabro_graphviz::graph::types::{Edge as GvEdge, Graph as GvGraph, Node as GvN
 use fabro_types::ResolvedOnFailure;
 
 use crate::context::{self, Context};
+use crate::fork_line_recovery;
 use crate::outcome::{BilledModelUsage, Outcome};
 
 // ---- WorkflowNode ----
@@ -115,6 +116,20 @@ impl Graph for WorkflowGraph {
         outcome: &Outcome,
         context: &Context,
     ) -> Option<CoreEdgeSelection<Self>> {
+        // Fork seam (fabro-986b): a provider usage-window rate limit parks
+        // the run — routing on re-enters an LLM that cannot answer until
+        // the provider reopens the window, and the loop ends as a
+        // deterministic goal-gate failure that hides the quota cause.
+        // Returning no edge ends the run with the failed outcome, which
+        // `pipeline::finalize` maps to a resumable `SoftStop`.
+        if outcome.status.is_failure()
+            && outcome
+                .failure
+                .as_ref()
+                .is_some_and(fork_line_recovery::failure_detail_parks)
+        {
+            return None;
+        }
         let selection = routing::select_edge(
             node.inner(),
             outcome,

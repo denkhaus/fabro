@@ -6,6 +6,9 @@ digraph Develop {
         // fabro_runs_list tool (server-side GitHub client), never gh.
         inspects="develop",
         rankdir=LR,
+        // fabro-0e11: legal blocking fabro_run_wait (60m) and long gate shells
+        // must not trip the default 1800s stall watchdog.
+        stall_timeout="63m",
         max_node_visits=40,
         // 24 KB (was 12): the reviewer's context usage peaked at 1.9% of
         // the 1M window while a 14 KB evidence capture got blob-ref'd,

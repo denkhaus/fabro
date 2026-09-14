@@ -3,6 +3,9 @@ digraph Conductor {
         goal="Run the serialized fabro line: one pass = upstream merge (when the threshold is met, infra-only) OR one develop+revisor cycle; children are created only after the previous child merged",
         inspects="develop,merge-upstream,revisor",
         rankdir=LR,
+        // fabro-0e11: legal blocking fabro_run_wait (60m) and long gate shells
+        // must not trip the default 1800s stall watchdog.
+        stall_timeout="63m",
         max_node_visits=12,
         preamble_budget_kb=12,
         cycle_counter_reset_key="pass_id"

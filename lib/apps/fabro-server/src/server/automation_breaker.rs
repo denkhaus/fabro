@@ -149,6 +149,12 @@ async fn evaluate_trigger(
         let status = run.lifecycle.status;
         if counts_as_breaker_failure(status) {
             let failure = terminal_failure(state, run).await;
+            // Fork seam (fabro-986b): quota-class parks never count toward
+            // the latch — the fixed 10-minute recheck owns their recovery
+            // and the breaker stays armed for real (non-quota) failures.
+            if super::fork_line_recovery::is_quota_park(status, failure.as_ref()) {
+                continue;
+            }
             let workflow_label = run.workflow.display_name().unwrap_or("unknown").to_string();
             let signature = breaker_signature(&workflow_label, status, failure.as_ref());
             counter.observe(true, &signature);
@@ -203,7 +209,12 @@ async fn evaluate_trigger(
 /// signature lives in the `run.completed`/`run.failed` event, not the
 /// summary). `None` for successes and unreadable histories — the fallback
 /// signature key still groups those runs.
-async fn terminal_failure(state: &AppState, run: &Run) -> Option<fabro_types::RunFailure> {
+/// Fork visibility seam (fabro-986b): the line-recovery recheck reads the
+/// terminal failure through the same reader the breaker uses.
+pub(crate) async fn terminal_failure(
+    state: &AppState,
+    run: &Run,
+) -> Option<fabro_types::RunFailure> {
     let reader = state
         .stores
         .runs

@@ -2,6 +2,9 @@ digraph MergeUpstream {
     graph [
         goal="Merge upstream/main into denkhaus per the conflict policy, gate the merged tree, and report; deploy is host-side",
         rankdir=LR,
+        // fabro-0e11: legal blocking fabro_run_wait (60m) and long gate shells
+        // must not trip the default 1800s stall watchdog.
+        stall_timeout="63m",
         max_node_visits=6,
         preamble_budget_kb=12,
         cycle_counter_reset_key="merge_target_sha"

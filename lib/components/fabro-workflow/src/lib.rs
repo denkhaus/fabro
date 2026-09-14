@@ -296,6 +296,12 @@ pub mod context;
 pub mod error;
 pub mod event;
 pub mod file_resolver;
+/// Fork-only (fabro-986b): merge-protected line-recovery classification.
+pub mod fork_line_recovery;
+/// Fork-only presence pin (fabro-986b, fabro-0e11): upstream does not have
+/// this file; red tests mean a fork seam regressed in a merge.
+#[cfg(test)]
+mod fork_line_recovery_tests;
 pub mod git;
 pub(crate) mod git_bridge;
 pub mod git_identity;

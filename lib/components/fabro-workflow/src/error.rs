@@ -14,6 +14,7 @@ use regex::Regex;
 use thiserror::Error as ThisError;
 
 use crate::event::RunEventPersistenceError;
+use crate::fork_line_recovery;
 use crate::outcome::{FailureDetail, Outcome, StageOutcome};
 
 /// Classify an LLM error into a `FailureCategory` based on its structure.
@@ -524,7 +525,12 @@ impl Error {
             Self::Stage { stage, .. } => {
                 matches!(stage, ErrorStage::Handler | ErrorStage::Engine)
             }
-            Self::Llm(sdk_err) => sdk_err.is_retryable(),
+            // Fork seam (fabro-986b): a usage-window rate limit cannot
+            // succeed before the provider reopens the window — park the
+            // run instead of burning retries against it (fabro-183f).
+            Self::Llm(sdk_err) => {
+                sdk_err.is_retryable() && !fork_line_recovery::parks_for_usage_window(sdk_err)
+            }
             Self::Parse(_)
             | Self::Validation(_)
             | Self::ValidationFailed { .. }

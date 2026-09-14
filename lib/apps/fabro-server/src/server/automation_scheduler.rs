@@ -174,6 +174,8 @@ impl AutomationSchedulePlanner {
 pub(crate) fn spawn_automation_scheduler(state: Arc<AppState>) {
     tokio::spawn(async move {
         let mut planner = AutomationSchedulePlanner::default();
+        // Fork state (fabro-986b): recheck probe cadence per automation.
+        let mut rechecks = super::fork_line_recovery::RecheckState::new();
         let shutdown = state.shutdown_token();
 
         loop {
@@ -213,6 +215,17 @@ pub(crate) fn spawn_automation_scheduler(state: Arc<AppState>) {
             } else {
                 automations
             };
+            // Fork seam (fabro-986b): fixed 10-minute recheck probes for
+            // quota-parked lines — server-autonomous recovery without an
+            // external trigger and without prose-parsed backoff (user
+            // decision 2026-09-14).
+            super::fork_line_recovery::fire_due_rechecks(
+                Arc::clone(&state),
+                &automations,
+                now,
+                &mut rechecks,
+            )
+            .await;
             for due in planner.tick(&automations, now) {
                 let state = Arc::clone(&state);
                 let span = info_span!(
@@ -241,7 +254,9 @@ pub(crate) fn spawn_automation_scheduler(state: Arc<AppState>) {
     });
 }
 
-async fn fire_scheduled_automation_run(
+/// Fork visibility seam (fabro-986b): the recheck probes in
+/// `fork_line_recovery` fire through this same serialized path.
+pub(crate) async fn fire_scheduled_automation_run(
     state: Arc<AppState>,
     automation: Automation,
     trigger_id: AutomationTriggerId,
@@ -1143,7 +1158,7 @@ mod tests {
         append_run_lifecycle_prefix(state, run_id).await;
         let run_store = state.stores.runs.open_run(run_id).await.unwrap();
         let mut detail = fabro_types::FailureDetail::new(
-            "zai quota exhausted",
+            "zai server error",
             fabro_types::FailureCategory::TransientInfra,
         );
         detail.signature = Some(fabro_types::FailureSignature(signature.to_string()));
@@ -1215,13 +1230,82 @@ mod tests {
         dt(&format!("2026-05-29T00:{minute:02}:00Z"))
     }
 
+    /// FORK PRESENCE PIN (fabro-986b, user decision 2026-09-14): quota-class
+    /// parks (SoftStop + TransientInfra + rate_limit signature) are EXEMPT
+    /// from the schedule breaker — the fixed 10-minute recheck in
+    /// `server::fork_line_recovery` owns their recovery, so the breaker must
+    /// stay armed (trigger enabled, counter clean) while a line rides out a
+    /// provider usage window. If this test fails after a merge, the fork
+    /// seam in `automation_breaker.rs` was dropped — restore it, never relax
+    /// the test.
+    #[tokio::test]
+    async fn quota_parks_are_breaker_exempt_and_keep_the_schedule_armed() {
+        let materializer = succeeding_materializer();
+        let (state, _notices) = breaker_test_state(materializer);
+        create_breakable_automation(state.as_ref(), "quota-recheck", Some(2)).await;
+        let mut planner = AutomationSchedulePlanner::default();
+        let quota_signature = "api_transient|zai|rate_limit";
+
+        // Baseline observation, then four quota parks — far beyond the
+        // threshold of 2. The breaker must not count any of them.
+        run_due_schedules_once(Arc::clone(&state), &mut planner, prime_time()).await;
+        for minute in 1..=4u32 {
+            run_due_schedules_once(Arc::clone(&state), &mut planner, due_minute(minute)).await;
+            let runs = stored_runs_chronological(state.as_ref()).await;
+            let run_id = runs[runs.len() - 1].id;
+            park_run_with_signature(state.as_ref(), &run_id, quota_signature).await;
+        }
+        run_due_schedules_once(Arc::clone(&state), &mut planner, due_minute(5)).await;
+
+        let automation = state
+            .automation_store()
+            .get(&AutomationId::new("quota-recheck").unwrap())
+            .await
+            .unwrap()
+            .expect("automation should exist");
+        let trigger = stored_breaker_trigger(&automation);
+        assert!(trigger.enabled, "quota parks never pause the schedule");
+        let facts = trigger.breaker.expect("high-water mark persists");
+        assert_eq!(
+            facts.consecutive_count, 0,
+            "quota parks count toward neither the latch nor a reset"
+        );
+
+        // Control: a NON-quota transient park still counts — the breaker
+        // stays armed for real defects.
+        let runs = stored_runs_chronological(state.as_ref()).await;
+        park_run_with_signature(
+            state.as_ref(),
+            &runs[runs.len() - 1].id,
+            "api_transient|zai|server_error",
+        )
+        .await;
+        run_due_schedules_once(Arc::clone(&state), &mut planner, due_minute(6)).await;
+        let automation = state
+            .automation_store()
+            .get(&AutomationId::new("quota-recheck").unwrap())
+            .await
+            .unwrap()
+            .expect("automation should exist");
+        let facts = stored_breaker_trigger(&automation)
+            .breaker
+            .expect("facts persist");
+        assert_eq!(
+            facts.consecutive_count, 1,
+            "non-quota parks keep counting toward the latch"
+        );
+    }
+
     #[tokio::test]
     async fn same_signature_parks_pause_the_schedule_with_one_aggregated_notification() {
         let materializer = succeeding_materializer();
         let (state, notices) = breaker_test_state(materializer);
         create_breakable_automation(state.as_ref(), "breakable", Some(2)).await;
         let mut planner = AutomationSchedulePlanner::default();
-        let signature = "api_transient|zai|rate_limited";
+        // Fork note (fabro-986b): a rate_limit signature is a quota park and
+        // breaker-exempt on the fork — breaker mechanics tests use a neutral
+        // transient signature instead.
+        let signature = "api_transient|zai|server_error";
 
         // Prime, then fire run 1 and park it.
         run_due_schedules_once(Arc::clone(&state), &mut planner, prime_time()).await;
@@ -1289,7 +1373,10 @@ mod tests {
         let (state, _notices) = breaker_test_state(materializer);
         create_breakable_automation(state.as_ref(), "resettable", Some(2)).await;
         let mut planner = AutomationSchedulePlanner::default();
-        let signature = "api_transient|zai|rate_limited";
+        // Fork note (fabro-986b): a rate_limit signature is a quota park and
+        // breaker-exempt on the fork — breaker mechanics tests use a neutral
+        // transient signature instead.
+        let signature = "api_transient|zai|server_error";
 
         run_due_schedules_once(Arc::clone(&state), &mut planner, prime_time()).await;
         // Runs 1..5: park(baseline), park(count 1), succeed(reset), park
@@ -1334,7 +1421,10 @@ mod tests {
         let (state, notices) = breaker_test_state(materializer);
         let automation = create_breakable_automation(state.as_ref(), "resumable", Some(1)).await;
         let mut planner = AutomationSchedulePlanner::default();
-        let signature = "api_transient|zai|rate_limited";
+        // Fork note (fabro-986b): a rate_limit signature is a quota park and
+        // breaker-exempt on the fork — breaker mechanics tests use a neutral
+        // transient signature instead.
+        let signature = "api_transient|zai|server_error";
 
         run_due_schedules_once(Arc::clone(&state), &mut planner, prime_time()).await;
         // Threshold 1: run 1 is the baseline, run 2 parks and pauses.

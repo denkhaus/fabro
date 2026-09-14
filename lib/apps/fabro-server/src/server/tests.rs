@@ -8569,9 +8569,14 @@ impl fabro_workflow::handler::Handler for BridgeCapturingWaitHandler {
 /// start -> work (wait 1ms) -> exit: the work node is the bridge
 /// observation point; the terminal exit node never dispatches a handler.
 async fn bridge_intent_run(app: &Router, bearer: Option<&str>, config: &str) -> String {
-    let intent =
-        test_intent_with_bearer(app, "workflow.fabro", BRIDGE_CAPTURE_DOT, Some(config), bearer)
-            .await;
+    let intent = test_intent_with_bearer(
+        app,
+        "workflow.fabro",
+        BRIDGE_CAPTURE_DOT,
+        Some(config),
+        bearer,
+    )
+    .await;
     let mut builder = Request::builder()
         .method("POST")
         .uri(api("/runs"))
@@ -8697,11 +8702,10 @@ contents = "read"
     // token gets Worker provenance; the same declared permissions must NOT
     // mint a bridge.
     let worker_token = issue_test_run_tools_worker_token(&user_run_id);
-    let worker_run_id =
-        bridge_intent_run(&app, Some(&worker_token), run_settings)
-            .await
-            .parse::<RunId>()
-            .unwrap();
+    let worker_run_id = bridge_intent_run(&app, Some(&worker_token), run_settings)
+        .await
+        .parse::<RunId>()
+        .unwrap();
     let response = app
         .clone()
         .oneshot(
@@ -15724,9 +15728,14 @@ async fn worker_started_child_with_auto_approve_starts_runnable() {
     let user_jwt = issue_test_user_jwt();
     let parent_run_id = create_run_with_bearer(&app, &user_jwt).await;
     let worker_token = issue_test_run_tools_worker_token(&parent_run_id);
-    let mut child_intent =
-        test_intent_with_bearer(&app, "workflow.fabro", MINIMAL_DOT, None, Some(&worker_token))
-            .await;
+    let mut child_intent = test_intent_with_bearer(
+        &app,
+        "workflow.fabro",
+        MINIMAL_DOT,
+        None,
+        Some(&worker_token),
+    )
+    .await;
     child_intent["parent_id"] = json!(parent_run_id.to_string());
     child_intent["args"] = json!({ "auto_approve": true });
 
