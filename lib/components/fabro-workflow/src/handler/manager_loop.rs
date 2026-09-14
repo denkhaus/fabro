@@ -4,6 +4,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
+use fabro_core::handler::AttemptInfo;
 use fabro_graphviz::graph::{AttrValue, Graph, Node};
 use fabro_store::ArtifactStore;
 use fabro_template::validate_static_reference;
@@ -149,6 +150,7 @@ impl Handler for SubWorkflowHandler {
         _graph: &Graph,
         run_dir: &Path,
         services: &EngineServices,
+        _attempt: &AttemptInfo,
     ) -> Result<Outcome, Error> {
         let poll_interval = node
             .attrs
@@ -389,7 +391,14 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
 
         let outcome = handler
-            .execute(&node, &context, &graph, dir.path(), &make_services())
+            .execute(
+                &node,
+                &context,
+                &graph,
+                dir.path(),
+                &make_services(),
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
         assert_eq!(outcome.status, StageOutcome::Succeeded);
@@ -422,7 +431,14 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
 
         let outcome = handler
-            .execute(&node, &context, &graph, dir.path(), &make_services())
+            .execute(
+                &node,
+                &context,
+                &graph,
+                dir.path(),
+                &make_services(),
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
         assert_eq!(outcome.status, StageOutcome::Failed {
@@ -456,7 +472,14 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
 
         let outcome = handler
-            .execute(&node, &context, &graph, dir.path(), &make_services())
+            .execute(
+                &node,
+                &context,
+                &graph,
+                dir.path(),
+                &make_services(),
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
         assert_eq!(outcome.status, StageOutcome::Failed {
@@ -484,6 +507,7 @@ mod tests {
                 _graph: &Graph,
                 _run_dir: &Path,
                 _services: &EngineServices,
+                _attempt: &AttemptInfo,
             ) -> Result<Outcome, Error> {
                 let target = context.get_string("review.target", "");
                 let mut outcome = Outcome::success();
@@ -528,7 +552,14 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
 
         let outcome = handler
-            .execute(&node, &context, &graph, dir.path(), &services)
+            .execute(
+                &node,
+                &context,
+                &graph,
+                dir.path(),
+                &services,
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
         assert_eq!(outcome.status, StageOutcome::Succeeded);
@@ -557,6 +588,7 @@ mod tests {
                 _graph: &Graph,
                 _run_dir: &Path,
                 services: &EngineServices,
+                _attempt: &AttemptInfo,
             ) -> Result<Outcome, Error> {
                 services
                     .run
@@ -599,6 +631,7 @@ mod tests {
                 &Graph::new("test"),
                 tempfile::tempdir().unwrap().path(),
                 &services,
+                &AttemptInfo::first(),
             )
             .await
             .unwrap();
@@ -640,7 +673,14 @@ mod tests {
         let graph = Graph::new("test");
 
         let outcome = handler
-            .execute(&node, &context, &graph, dir.path(), &make_services())
+            .execute(
+                &node,
+                &context,
+                &graph,
+                dir.path(),
+                &make_services(),
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
         assert_eq!(outcome.status, StageOutcome::Succeeded);
@@ -678,7 +718,14 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
 
         let outcome = handler
-            .execute(&node, &context, &graph, dir.path(), &services)
+            .execute(
+                &node,
+                &context,
+                &graph,
+                dir.path(),
+                &services,
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
         assert_eq!(outcome.status, StageOutcome::Succeeded);
@@ -711,7 +758,14 @@ mod tests {
         let graph = Graph::new("test");
 
         let outcome = handler
-            .execute(&node, &context, &graph, dir.path(), &services)
+            .execute(
+                &node,
+                &context,
+                &graph,
+                dir.path(),
+                &services,
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
         assert_eq!(outcome.status, StageOutcome::Failed {
@@ -747,6 +801,7 @@ mod tests {
                 _graph: &Graph,
                 _run_dir: &Path,
                 _services: &EngineServices,
+                _attempt: &AttemptInfo,
             ) -> Result<Outcome, Error> {
                 tokio::time::sleep(Duration::from_secs(10)).await;
                 Ok(Outcome::success())
@@ -780,7 +835,14 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
 
         let outcome = handler
-            .execute(&node, &context, &graph, dir.path(), &services)
+            .execute(
+                &node,
+                &context,
+                &graph,
+                dir.path(),
+                &services,
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
         assert_eq!(outcome.status, StageOutcome::Failed {
@@ -802,6 +864,7 @@ mod tests {
                 _graph: &Graph,
                 _run_dir: &Path,
                 _services: &EngineServices,
+                _attempt: &AttemptInfo,
             ) -> Result<Outcome, Error> {
                 tokio::time::sleep(Duration::from_secs(10)).await;
                 Ok(Outcome::success())
@@ -842,7 +905,14 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
 
         let outcome = handler
-            .execute(&node, &context, &graph, dir.path(), &services)
+            .execute(
+                &node,
+                &context,
+                &graph,
+                dir.path(),
+                &services,
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
         assert_eq!(outcome.status, StageOutcome::Succeeded);
@@ -888,6 +958,7 @@ mod tests {
                 _graph: &Graph,
                 _run_dir: &Path,
                 _services: &EngineServices,
+                _attempt: &AttemptInfo,
             ) -> Result<Outcome, Error> {
                 let target = context.get_string("review.target", "");
                 let mut outcome = Outcome::success();
@@ -930,7 +1001,14 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
 
         let outcome = handler
-            .execute(&node, &context, &graph, dir.path(), &services)
+            .execute(
+                &node,
+                &context,
+                &graph,
+                dir.path(),
+                &services,
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
 
@@ -970,6 +1048,7 @@ mod tests {
                 _graph: &Graph,
                 _run_dir: &Path,
                 _services: &EngineServices,
+                _attempt: &AttemptInfo,
             ) -> Result<Outcome, Error> {
                 let parent_preamble = context.get_string(keys::INTERNAL_PARENT_PREAMBLE, "");
                 let mut outcome = Outcome::success();
@@ -1014,7 +1093,14 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
 
         let outcome = handler
-            .execute(&node, &context, &graph, dir.path(), &services)
+            .execute(
+                &node,
+                &context,
+                &graph,
+                dir.path(),
+                &services,
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
 

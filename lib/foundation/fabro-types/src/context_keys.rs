@@ -36,6 +36,12 @@ pub const INTERNAL_NODE_VISIT_COUNT: &str = "internal.node_visit_count";
 /// [`INTERNAL_NODE_VISIT_COUNT`], which remains the checkpointed graph
 /// visit.
 pub const INTERNAL_STAGE_EXECUTION_ORDINAL: &str = "internal.stage_execution_ordinal";
+/// Prior `StageId` this stage execution supersedes on checkpoint resume
+/// (fabro-183f). Runtime-only: seeded by the lifecycle from the stage
+/// execution tracker's provenance link and stripped from durable context
+/// snapshots. Agent-stage handlers read it to re-enter a resumed stage
+/// with continuation semantics instead of a fresh full-prompt post.
+pub const INTERNAL_STAGE_RESUMED_FROM: &str = "internal.stage_resumed_from";
 pub const INTERNAL_PARENT_PREAMBLE: &str = "internal.parent_preamble";
 pub const INTERNAL_PARALLEL_GROUP_ID: &str = "internal.parallel_group_id";
 pub const INTERNAL_PARALLEL_BRANCH_ID: &str = "internal.parallel_branch_id";
@@ -92,6 +98,7 @@ pub const TRANSIENT_CONTEXT_KEYS: &[&str] = &[
     CURRENT_PREAMBLE,
     INTERNAL_PARALLEL_BRANCH_PREAMBLES,
     INTERNAL_STAGE_EXECUTION_ORDINAL,
+    INTERNAL_STAGE_RESUMED_FROM,
 ];
 
 // --- Prefix constants (for filtering and dynamic keys) ---

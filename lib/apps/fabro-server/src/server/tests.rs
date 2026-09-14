@@ -8548,6 +8548,7 @@ impl fabro_workflow::handler::Handler for BridgeCapturingWaitHandler {
         graph: &fabro_graphviz::graph::Graph,
         run_dir: &Path,
         services: &fabro_workflow::handler::EngineServices,
+        _attempt: &fabro_workflow::handler::AttemptInfo,
     ) -> Result<fabro_workflow::outcome::Outcome, fabro_workflow::error::Error> {
         let stage_env = services
             .env_for_stage()
@@ -8561,7 +8562,7 @@ impl fabro_workflow::handler::Handler for BridgeCapturingWaitHandler {
                 env_has_github_token: stage_env.contains_key(EnvVars::GITHUB_TOKEN),
             });
         fabro_workflow::handler::wait::WaitHandler
-            .execute(node, context, graph, run_dir, services)
+            .execute(node, context, graph, run_dir, services, _attempt)
             .await
     }
 }

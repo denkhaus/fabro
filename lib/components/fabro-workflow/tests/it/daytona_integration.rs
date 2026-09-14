@@ -22,6 +22,7 @@ use std::hash::{Hash, Hasher};
 use std::path::Path;
 use std::sync::Arc;
 
+use fabro_core::handler::AttemptInfo;
 use fabro_graphviz::graph::{AttrValue, Edge, Graph, Node};
 use fabro_sandbox::{
     CloneRequest, DaytonaCredentials, ProviderAccess, RunSandbox, SandboxProviderKind,
@@ -517,6 +518,7 @@ impl Handler for LargeOutputHandler {
         _graph: &Graph,
         _run_dir: &Path,
         _services: &fabro_workflow::handler::EngineServices,
+        _attempt: &AttemptInfo,
     ) -> Result<Outcome, Error> {
         let mut outcome = Outcome::success();
         let large_value = "x".repeat(150 * 1024);
@@ -635,6 +637,7 @@ impl Handler for FileWriterHandler {
         _graph: &Graph,
         _run_dir: &Path,
         services: &fabro_workflow::handler::EngineServices,
+        _attempt: &AttemptInfo,
     ) -> Result<Outcome, Error> {
         let content = format!("output from {}", node.id);
         let cmd = format!("echo '{content}' > {}.txt", node.id);
@@ -975,6 +978,7 @@ impl Handler for AssetCreatorHandler {
         _graph: &Graph,
         _run_dir: &Path,
         services: &fabro_workflow::handler::EngineServices,
+        _attempt: &AttemptInfo,
     ) -> Result<Outcome, Error> {
         let script = concat!(
             "mkdir -p test-results && ",

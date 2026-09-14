@@ -5,6 +5,7 @@ use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use fabro_core::error::Error as CoreError;
+use fabro_core::handler::AttemptInfo;
 use fabro_graphviz::graph::{AttrValue, Graph, Node, is_llm_handler_type};
 use fabro_hooks::{HookContext, HookEvent};
 use fabro_types::{ParallelBranchId, ParallelBranchResult, StageId, StageOutcome};
@@ -355,6 +356,7 @@ impl Handler for ParallelHandler {
         graph: &Graph,
         run_dir: &Path,
         services: &EngineServices,
+        _attempt: &AttemptInfo,
     ) -> Result<Outcome, Error> {
         run_branches(node, context, graph, run_dir, services, false).await
     }
@@ -528,14 +530,24 @@ async fn run_branches(
                     );
 
                     let mut attempt = 0_u32;
+                    // Why the previous attempt failed, when one did: attempt
+                    // 2+ of an agent branch continues the prior session with
+                    // this summary instead of re-sending the stage prompt
+                    // (fabro-183f), mirroring `Executor::execute_with_retry`.
+                    let mut prior_failure: Option<String> = None;
                     let mut outcome = loop {
                         attempt = attempt.saturating_add(1);
+                        let attempt_info = AttemptInfo {
+                            attempt,
+                            prior_failure: prior_failure.clone(),
+                        };
                         let attempt_result = node_handler::execute_single_attempt(
                             &target,
                             &branch_context,
                             &graph,
                             &run_dir,
                             &branch_services,
+                            &attempt_info,
                         )
                         .await;
                         // Back off outside the fan-out slot so a queued branch
@@ -546,13 +558,20 @@ async fn run_branches(
                         // that fall through are the retry cases.
                         let can_retry = attempt < retry_policy.max_attempts;
                         match attempt_result {
-                            Ok(outcome) if outcome.status.retry_requested() && can_retry => {}
+                            Ok(outcome) if outcome.status.retry_requested() && can_retry => {
+                                prior_failure = Some(outcome.failure.as_ref().map_or_else(
+                                    || "stage requested retry".to_string(),
+                                    |f| f.message.clone(),
+                                ));
+                            }
                             Ok(outcome) if outcome.status.retry_requested() => {
                                 break node_handler::finalize_retries_exhausted(&target, outcome);
                             }
                             Ok(outcome) => break outcome,
                             Err(CoreError::Cancelled) => return Err(Error::Cancelled),
-                            Err(err) if can_retry && err.is_retryable() => {}
+                            Err(err) if can_retry && err.is_retryable() => {
+                                prior_failure = Some(err.to_string());
+                            }
                             Err(err @ CoreError::Handler { .. }) => break err.to_fail_outcome(),
                             Err(err) => break Outcome::fail_classify(err.to_string()),
                         }
@@ -1116,6 +1135,7 @@ mod tests {
             _graph: &Graph,
             _run_dir: &Path,
             _services: &EngineServices,
+            _attempt: &AttemptInfo,
         ) -> Result<Outcome, Error> {
             let active = self.active.fetch_add(1, Ordering::SeqCst) + 1;
             self.max_active.fetch_max(active, Ordering::SeqCst);
@@ -1177,6 +1197,7 @@ mod tests {
             _graph: &Graph,
             _run_dir: &Path,
             services: &EngineServices,
+            _attempt: &AttemptInfo,
         ) -> Result<Outcome, Error> {
             self.calls.fetch_add(1, Ordering::SeqCst);
             match self.behavior {
@@ -1208,6 +1229,7 @@ mod tests {
             _graph: &Graph,
             _run_dir: &Path,
             _services: &EngineServices,
+            _attempt: &AttemptInfo,
         ) -> Result<Outcome, Error> {
             let prompt = node.prompt().unwrap_or_default();
             let label = if prompt.contains("\"name\": \"retry\"") {
@@ -1248,6 +1270,7 @@ mod tests {
             _graph: &Graph,
             _run_dir: &Path,
             _services: &EngineServices,
+            _attempt: &AttemptInfo,
         ) -> Result<Outcome, Error> {
             self.captures.lock().unwrap().push(BranchContextCapture {
                 node_id:  node.id.clone(),
@@ -1314,7 +1337,14 @@ mod tests {
 
         let run_dir = tempfile::tempdir().unwrap();
         ParallelHandler
-            .execute(&node, &context, &graph, run_dir.path(), &services)
+            .execute(
+                &node,
+                &context,
+                &graph,
+                run_dir.path(),
+                &services,
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
 
@@ -1418,6 +1448,7 @@ mod tests {
             _graph: &Graph,
             _run_dir: &Path,
             _services: &EngineServices,
+            _attempt: &AttemptInfo,
         ) -> Result<Outcome, Error> {
             if node.id == self.0 {
                 Ok(Outcome::fail_classify("branch boom"))
@@ -1442,6 +1473,7 @@ mod tests {
                 graph,
                 Path::new("/tmp/test"),
                 &services,
+                &AttemptInfo::first(),
             )
             .await
             .unwrap()
@@ -1531,6 +1563,7 @@ mod tests {
                 &Graph::new("test"),
                 Path::new("/tmp/test"),
                 &make_services(),
+                &AttemptInfo::first(),
             )
             .await
             .unwrap();
@@ -1562,7 +1595,14 @@ mod tests {
         context.set(keys::INTERNAL_NODE_VISIT_COUNT, serde_json::json!(2));
 
         let outcome = ParallelHandler
-            .execute(&node, &context, &graph, Path::new("/tmp/test"), &services)
+            .execute(
+                &node,
+                &context,
+                &graph,
+                Path::new("/tmp/test"),
+                &services,
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
         logger.flush().await.unwrap();
@@ -1744,7 +1784,14 @@ mod tests {
         );
 
         let outcome = ParallelHandler
-            .execute(&node, &context, &graph, Path::new("/tmp/test"), &services)
+            .execute(
+                &node,
+                &context,
+                &graph,
+                Path::new("/tmp/test"),
+                &services,
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
 
@@ -1844,7 +1891,14 @@ mod tests {
         );
 
         let outcome = ParallelHandler
-            .execute(&node, &context, &graph, run_dir.path(), &services)
+            .execute(
+                &node,
+                &context,
+                &graph,
+                run_dir.path(),
+                &services,
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
         assert_eq!(outcome.status, StageOutcome::Succeeded);
@@ -1901,7 +1955,14 @@ mod tests {
         );
 
         let outcome = ParallelHandler
-            .execute(&node, &context, &graph, Path::new("/tmp/test"), &services)
+            .execute(
+                &node,
+                &context,
+                &graph,
+                Path::new("/tmp/test"),
+                &services,
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
 
@@ -1939,7 +2000,14 @@ mod tests {
         );
 
         let outcome = ParallelHandler
-            .execute(&node, &context, &graph, Path::new("/tmp/test"), &services)
+            .execute(
+                &node,
+                &context,
+                &graph,
+                Path::new("/tmp/test"),
+                &services,
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
 
@@ -2043,7 +2111,14 @@ mod tests {
         context.set("items", serde_json::json!([]));
 
         let outcome = ParallelHandler
-            .execute(&node, &context, &graph, Path::new("/tmp/test"), &services)
+            .execute(
+                &node,
+                &context,
+                &graph,
+                Path::new("/tmp/test"),
+                &services,
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
 
@@ -2094,7 +2169,14 @@ mod tests {
             }
 
             let outcome = ParallelHandler
-                .execute(&node, &context, &graph, Path::new("/tmp/test"), &services)
+                .execute(
+                    &node,
+                    &context,
+                    &graph,
+                    Path::new("/tmp/test"),
+                    &services,
+                    &AttemptInfo::first(),
+                )
                 .await
                 .unwrap();
 
@@ -2127,6 +2209,7 @@ mod tests {
                     &graph,
                     Path::new("/tmp/test"),
                     &services,
+                    &AttemptInfo::first(),
                 )
                 .await
                 .unwrap();
@@ -2172,7 +2255,14 @@ mod tests {
         context.set("items", serde_json::json!(format_blob_ref(&blob_hash)));
 
         let outcome = ParallelHandler
-            .execute(&node, &context, &graph, sandbox_dir.path(), &services)
+            .execute(
+                &node,
+                &context,
+                &graph,
+                sandbox_dir.path(),
+                &services,
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
 
@@ -2199,7 +2289,14 @@ mod tests {
         );
 
         ParallelHandler
-            .execute(&node, &context, &graph, Path::new("/tmp/test"), &services)
+            .execute(
+                &node,
+                &context,
+                &graph,
+                Path::new("/tmp/test"),
+                &services,
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
 
@@ -2248,7 +2345,14 @@ mod tests {
         );
 
         let outcome = ParallelHandler
-            .execute(&node, &context, &graph, Path::new("/tmp/test"), &services)
+            .execute(
+                &node,
+                &context,
+                &graph,
+                Path::new("/tmp/test"),
+                &services,
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
 
@@ -2287,7 +2391,14 @@ mod tests {
         );
 
         let outcome = ParallelHandler
-            .execute(&node, &context, &graph, Path::new("/tmp/test"), &services)
+            .execute(
+                &node,
+                &context,
+                &graph,
+                Path::new("/tmp/test"),
+                &services,
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
 
@@ -2354,7 +2465,14 @@ mod tests {
         context.set("items", serde_json::json!([{"name": "retry"}]));
 
         let outcome = ParallelHandler
-            .execute(&node, &context, &graph, Path::new("/tmp/test"), &services)
+            .execute(
+                &node,
+                &context,
+                &graph,
+                Path::new("/tmp/test"),
+                &services,
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
 
@@ -2382,7 +2500,14 @@ mod tests {
         context.set("items", serde_json::json!([{"name": "slow"}]));
 
         let outcome = ParallelHandler
-            .execute(&node, &context, &graph, Path::new("/tmp/test"), &services)
+            .execute(
+                &node,
+                &context,
+                &graph,
+                Path::new("/tmp/test"),
+                &services,
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
 
@@ -2407,7 +2532,14 @@ mod tests {
         );
 
         let result = ParallelHandler
-            .execute(&node, &context, &graph, Path::new("/tmp/test"), &services)
+            .execute(
+                &node,
+                &context,
+                &graph,
+                Path::new("/tmp/test"),
+                &services,
+                &AttemptInfo::first(),
+            )
             .await;
 
         assert!(matches!(result, Err(Error::Cancelled)));

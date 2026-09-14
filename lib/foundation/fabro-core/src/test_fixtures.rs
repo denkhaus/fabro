@@ -8,7 +8,7 @@ use fabro_types::{OnFailure, ResolvedOnFailure};
 use crate::context::Context;
 use crate::error::{Error, HandlerErrorDetail, Result};
 use crate::graph::{EdgeSelection, EdgeSelectionReason, EdgeSpec, Graph, NodeSpec};
-use crate::handler::NodeHandler;
+use crate::handler::{AttemptInfo, NodeHandler};
 use crate::outcome::{FailureCategory, FailureDetail, Outcome, StageOutcome};
 use crate::retry::RetryPolicy;
 
@@ -281,6 +281,7 @@ impl NodeHandler<TestGraph> for AlwaysSucceedHandler {
         _node: &TestNode,
         _context: &Context,
         _graph: &TestGraph,
+        _attempt: &AttemptInfo,
     ) -> Result<Outcome> {
         Ok(Outcome::success())
     }
@@ -305,6 +306,7 @@ impl NodeHandler<TestGraph> for AlwaysFailHandler {
         _node: &TestNode,
         _context: &Context,
         _graph: &TestGraph,
+        _attempt: &AttemptInfo,
     ) -> Result<Outcome> {
         Ok(Outcome::fail(&self.message))
     }
@@ -343,6 +345,7 @@ impl NodeHandler<TestGraph> for CountingHandler {
         _node: &TestNode,
         _context: &Context,
         _graph: &TestGraph,
+        _attempt: &AttemptInfo,
     ) -> Result<Outcome> {
         let count = self.call_count.fetch_add(1, Ordering::Relaxed);
         let mut outcomes = self.outcomes.lock().unwrap();
@@ -386,9 +389,10 @@ impl NodeHandler<TestGraph> for DispatchHandler {
         node: &TestNode,
         context: &Context,
         graph: &TestGraph,
+        _attempt: &AttemptInfo,
     ) -> Result<Outcome> {
         let handler = self.handlers.get(node.id()).unwrap_or(&self.default);
-        handler.execute(node, context, graph).await
+        handler.execute(node, context, graph, _attempt).await
     }
 
     fn retry_policy(&self, node: &TestNode, graph: &TestGraph) -> RetryPolicy {
@@ -438,6 +442,7 @@ impl NodeHandler<TestGraph> for ErrorHandler {
         _node: &TestNode,
         _context: &Context,
         _graph: &TestGraph,
+        _attempt: &AttemptInfo,
     ) -> Result<Outcome> {
         Err(Error::handler(self.detail.clone()))
     }
@@ -584,7 +589,10 @@ mod tests {
         let g = linear_graph(&["start", "end"]);
         let node = g.get_node("start").unwrap();
         let ctx = Context::new();
-        let result = h.execute(&node, &ctx, &g).await.unwrap();
+        let result = h
+            .execute(&node, &ctx, &g, &AttemptInfo::first())
+            .await
+            .unwrap();
         assert_eq!(result.status, StageOutcome::Succeeded);
     }
 
@@ -594,7 +602,10 @@ mod tests {
         let g = linear_graph(&["start", "end"]);
         let node = g.get_node("start").unwrap();
         let ctx = Context::new();
-        let result = h.execute(&node, &ctx, &g).await.unwrap();
+        let result = h
+            .execute(&node, &ctx, &g, &AttemptInfo::first())
+            .await
+            .unwrap();
         assert_eq!(result.status, StageOutcome::Failed {
             retry_requested: false,
         });
@@ -608,18 +619,27 @@ mod tests {
         let node = g.get_node("start").unwrap();
         let ctx = Context::new();
 
-        let r1 = h.execute(&node, &ctx, &g).await.unwrap();
+        let r1 = h
+            .execute(&node, &ctx, &g, &AttemptInfo::first())
+            .await
+            .unwrap();
         assert_eq!(r1.status, StageOutcome::Failed {
             retry_requested: false,
         });
         assert_eq!(h.calls(), 1);
 
-        let r2 = h.execute(&node, &ctx, &g).await.unwrap();
+        let r2 = h
+            .execute(&node, &ctx, &g, &AttemptInfo::first())
+            .await
+            .unwrap();
         assert_eq!(r2.status, StageOutcome::Succeeded);
         assert_eq!(h.calls(), 2);
 
         // Past end of outcomes list → default success
-        let r3 = h.execute(&node, &ctx, &g).await.unwrap();
+        let r3 = h
+            .execute(&node, &ctx, &g, &AttemptInfo::first())
+            .await
+            .unwrap();
         assert_eq!(r3.status, StageOutcome::Succeeded);
         assert_eq!(h.calls(), 3);
     }

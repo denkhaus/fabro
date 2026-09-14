@@ -47,7 +47,7 @@ use pebble_coding_agent::{
 use tokio_util::sync::CancellationToken;
 
 use super::super::agent::{
-    CodergenBackend, CodergenResult, CodergenRunRequest, OneShotRequest,
+    CodergenBackend, CodergenResult, CodergenRunRequest, OneShotRequest, continuation_message,
     validate_agent_output_sources,
 };
 use super::super::structured_output;
@@ -1169,7 +1169,15 @@ impl CodergenBackend for PebbleBackend {
             context_read: &context_read,
         };
 
-        let cached = reuse_key.as_ref().and_then(|key| self.take_thread(key));
+        let cached = reuse_key
+            .as_ref()
+            .and_then(|key| self.take_thread(key))
+            .or_else(|| {
+                // fabro-183f: a stage without a thread that failed
+                // retryably parked its conversation under its stage id, so
+                // the retry continues it instead of restarting.
+                self.take_thread(&stage_id.to_string())
+            });
         let is_reused = cached.is_some();
         let ((agent, sink), mut fallback_plan) = if let Some(thread) = cached {
             let route = thread.fallback_plan.current().clone();
@@ -1238,11 +1246,20 @@ impl CodergenBackend for PebbleBackend {
         }
 
         let result = async {
+            // fabro-183f: a retry (or resumed execution) that found a
+            // continuable session sends the minimal continuation message,
+            // not the stage prompt; a fresh session — e.g. a cross-process
+            // resume with no parked conversation — still needs the full
+            // prompt to know the task.
+            let input = match (&request.retry_continuation, is_reused) {
+                (Some(continuation), true) => CodingInput::text(continuation_message(continuation)),
+                _ => CodingInput::text(request.prompt),
+            };
             let mut response = self
                 .prompt_live(
                     &mut live,
                     node,
-                    CodingInput::text(request.prompt),
+                    input,
                     &mut fallback_plan,
                     &stage_id,
                     request.thread_id,
@@ -1326,7 +1343,32 @@ impl CodergenBackend for PebbleBackend {
                 } else {
                     ShutdownReason::Error
                 };
-                live.discard(reason).await;
+                if error.is_retryable() {
+                    // fabro-183f: park the conversation so the retry (or an
+                    // in-process resume) continues this session instead of
+                    // re-sending the stage prompt to a fresh one. Under the
+                    // thread key when the stage runs one, else under the
+                    // stage id.
+                    live.release_lease();
+                    match live.agent.export_for_reuse(ShutdownReason::Error).await {
+                        Ok(export) => {
+                            let key = reuse_key.clone().unwrap_or_else(|| stage_id.to_string());
+                            self.store_thread(key, CachedThread {
+                                export,
+                                fallback_plan: fallback_plan.clone(),
+                            });
+                        }
+                        Err(export_error) => {
+                            tracing::debug!(
+                                error = %export_error,
+                                "agent session did not shut down cleanly"
+                            );
+                            live.discard(reason).await;
+                        }
+                    }
+                } else {
+                    live.discard(reason).await;
+                }
                 // Cancellation and a retryable failure go up as the error, so
                 // the engine cancels or retries as before. A terminal failure
                 // becomes the stage's failed outcome, carrying what the

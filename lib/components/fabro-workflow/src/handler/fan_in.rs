@@ -2,6 +2,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use fabro_core::handler::AttemptInfo;
 use fabro_graphviz::graph::{Graph, Node};
 use fabro_types::ParallelBranchResult;
 
@@ -40,6 +41,7 @@ impl FanInHandler {
         run_dir: &Path,
         services: &EngineServices,
         simulated: bool,
+        attempt: &AttemptInfo,
     ) -> Result<Outcome, Error> {
         let branch_count = validated_branch_count(context)?;
         if node
@@ -52,7 +54,7 @@ impl FanInHandler {
                     .await
             } else {
                 self.prompt_handler
-                    .execute(node, context, graph, run_dir, services)
+                    .execute(node, context, graph, run_dir, services, attempt)
                     .await
             };
         }
@@ -74,8 +76,16 @@ impl Handler for FanInHandler {
         run_dir: &Path,
         services: &EngineServices,
     ) -> Result<Outcome, Error> {
-        self.run_join(node, context, graph, run_dir, services, true)
-            .await
+        self.run_join(
+            node,
+            context,
+            graph,
+            run_dir,
+            services,
+            true,
+            &AttemptInfo::first(),
+        )
+        .await
     }
 
     async fn execute(
@@ -85,8 +95,9 @@ impl Handler for FanInHandler {
         graph: &Graph,
         run_dir: &Path,
         services: &EngineServices,
+        _attempt: &AttemptInfo,
     ) -> Result<Outcome, Error> {
-        self.run_join(node, context, graph, run_dir, services, false)
+        self.run_join(node, context, graph, run_dir, services, false, _attempt)
             .await
     }
 }
@@ -158,6 +169,7 @@ mod tests {
                 &Graph::new("test"),
                 Path::new("/tmp/test"),
                 &make_services(),
+                &AttemptInfo::first(),
             )
             .await
             .unwrap();
@@ -177,6 +189,7 @@ mod tests {
                 &Graph::new("test"),
                 Path::new("/tmp/test"),
                 &make_services(),
+                &AttemptInfo::first(),
             )
             .await;
         assert!(missing.is_err());
@@ -189,6 +202,7 @@ mod tests {
                 &Graph::new("test"),
                 Path::new("/tmp/test"),
                 &make_services(),
+                &AttemptInfo::first(),
             )
             .await;
         assert!(invalid.is_err());
@@ -231,6 +245,7 @@ mod tests {
                 &Graph::new("test"),
                 run_dir.path(),
                 &make_services(),
+                &AttemptInfo::first(),
             )
             .await
             .unwrap();

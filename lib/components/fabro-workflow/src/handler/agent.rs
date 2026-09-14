@@ -2,6 +2,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use fabro_core::handler::AttemptInfo;
 use fabro_graphviz::graph::{Graph, Node};
 use fabro_sandbox::RunSandbox;
 use fabro_types::{RunNoticeLevel, StageModelUsage, StageTiming};
@@ -49,24 +50,75 @@ pub enum CodergenResult {
 }
 
 pub struct CodergenRunRequest<'a> {
-    pub node:            &'a Node,
-    pub graph:           &'a Graph,
-    pub prompt:          &'a str,
-    pub context:         &'a Context,
+    pub node:               &'a Node,
+    pub graph:              &'a Graph,
+    pub prompt:             &'a str,
+    pub context:            &'a Context,
     /// Stage view served by the `context_read` tool (fabro-e804); built
     /// from the resolved per-node context, the node's envelope attributes,
     /// and the run-scoped materialization inputs.
-    pub context_read:    ContextReadServices,
-    pub thread_id:       Option<&'a str>,
-    pub emitter:         &'a Arc<Emitter>,
-    pub sandbox:         &'a Arc<RunSandbox>,
+    pub context_read:       ContextReadServices,
+    pub thread_id:          Option<&'a str>,
+    pub emitter:            &'a Arc<Emitter>,
+    pub sandbox:            &'a Arc<RunSandbox>,
     /// Tool hooks the stage's agent (and its subagents) run under, plus
     /// the fork's stage tool policy (fabro-47b5 allow-list + fabro-ba96
     /// fs scope) composed around them.
-    pub tool_middleware: Option<Arc<dyn ToolMiddleware>>,
-    pub cancel_token:    CancellationToken,
+    pub tool_middleware:    Option<Arc<dyn ToolMiddleware>>,
+    pub cancel_token:       CancellationToken,
     /// Where the agent's `ask_user` questions go.
-    pub human_input:     Option<Arc<dyn HumanInputProvider>>,
+    pub human_input:        Option<Arc<dyn HumanInputProvider>>,
+    /// Set when this invocation continues a prior failed attempt of the
+    /// same stage (fabro-183f): the full stage prompt above is NOT re-sent
+    /// to a session the backend can continue — the backend sends the
+    /// minimal continuation message built from this instead, and falls back
+    /// to the full prompt only when no continuable session exists.
+    pub retry_continuation: Option<RetryContinuation>,
+}
+
+/// Why this invocation continues a prior attempt of the same stage instead
+/// of starting fresh (fabro-183f).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RetryContinuation {
+    /// 1-based number of the attempt that failed; `None` when a resume
+    /// supersedes a prior execution of the stage rather than an automatic
+    /// retry continuing an attempt.
+    pub failed_attempt: Option<u32>,
+    /// Summary of the failure that ended the prior attempt or execution.
+    pub failure:        String,
+}
+
+/// The minimal continuation message sent to the continued session in place
+/// of the full stage prompt (fabro-183f).
+pub(crate) fn continuation_message(continuation: &RetryContinuation) -> String {
+    match continuation.failed_attempt {
+        Some(attempt) => format!(
+            "Attempt {attempt} of this stage failed with: {}\nContinue from your last state; the \
+             original task is unchanged.",
+            continuation.failure
+        ),
+        None => format!(
+            "The prior execution of this stage was interrupted: {}\nContinue from the state its \
+             work left behind; the original task is unchanged.",
+            continuation.failure
+        ),
+    }
+}
+
+/// The continuation a resumed stage execution carries: the lifecycle seeds
+/// `internal.stage_resumed_from` when this execution supersedes a prior
+/// post-checkpoint execution of the same node, so `fabro resume` re-enters
+/// an agent stage with continuation semantics instead of a fresh
+/// full-prompt post (fabro-183f).
+fn resumed_execution_continuation(context: &Context) -> Option<RetryContinuation> {
+    let prior = context
+        .get(keys::INTERNAL_STAGE_RESUMED_FROM)?
+        .as_str()?
+        .to_string();
+    Some(RetryContinuation {
+        failed_attempt: None,
+        failure:        format!("execution {prior} ended without completing"),
+    })
 }
 
 pub struct OneShotRequest<'a> {
@@ -272,6 +324,7 @@ impl Handler for AgentHandler {
         graph: &Graph,
         run_dir: &Path,
         services: &EngineServices,
+        attempt: &AttemptInfo,
     ) -> Result<Outcome, Error> {
         // 1. Build prompt (prepend fidelity preamble if present)
         let raw_prompt = node.prompt_or_label();
@@ -287,11 +340,29 @@ impl Handler for AgentHandler {
             None => prompt,
         };
 
+        // fabro-183f: from attempt 2 on (or when a resume supersedes a prior
+        // execution of this stage), the invocation continues the prior
+        // session with a minimal continuation message instead of re-posting
+        // the full stage prompt + preamble. The full prompt still travels
+        // with the request: the backend needs it when no continuable
+        // session exists (e.g. a cross-process resume starts fresh).
+        let retry_continuation = attempt
+            .prior_failure
+            .as_ref()
+            .map(|failure| RetryContinuation {
+                failed_attempt: Some(attempt.attempt.saturating_sub(1)),
+                failure:        failure.clone(),
+            })
+            .or_else(|| resumed_execution_continuation(context));
+        let sent_prompt = retry_continuation
+            .as_ref()
+            .map_or_else(|| prompt.clone(), continuation_message);
+
         let stage_scope = emit_stage_prompt(
             services,
             context,
             node,
-            &prompt,
+            &sent_prompt,
             StageModelUsage::MODE_AGENT,
             self.backend.as_deref(),
         )?;
@@ -354,6 +425,7 @@ impl Handler for AgentHandler {
                     node,
                     graph,
                     prompt: &prompt,
+                    retry_continuation,
                     context,
                     context_read,
                     thread_id: thread_id.as_deref(),
@@ -670,7 +742,14 @@ mod tests {
         services.run = services.run.with_sandbox(sandbox);
 
         handler
-            .execute(&node, &context, &graph, tmp.path(), &services)
+            .execute(
+                &node,
+                &context,
+                &graph,
+                tmp.path(),
+                &services,
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap()
     }
@@ -735,7 +814,14 @@ mod tests {
         let (services, run_store, logger) = make_services_with_run_store().await;
 
         handler
-            .execute(&node, &context, &graph, tmp.path(), &services)
+            .execute(
+                &node,
+                &context,
+                &graph,
+                tmp.path(),
+                &services,
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
         logger.flush().await.unwrap();
@@ -762,7 +848,14 @@ mod tests {
         let (services, run_store, logger) = make_services_with_run_store().await;
 
         handler
-            .execute(&node, &context, &graph, tmp.path(), &services)
+            .execute(
+                &node,
+                &context,
+                &graph,
+                tmp.path(),
+                &services,
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
         logger.flush().await.unwrap();
@@ -781,7 +874,14 @@ mod tests {
         let tmp = TempDir::new().unwrap();
 
         let outcome = handler
-            .execute(&node, &context, &graph, tmp.path(), &make_services())
+            .execute(
+                &node,
+                &context,
+                &graph,
+                tmp.path(),
+                &make_services(),
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
 
@@ -821,7 +921,14 @@ mod tests {
         ));
 
         let outcome = handler
-            .execute(&node, &context, &graph, tmp.path(), &services)
+            .execute(
+                &node,
+                &context,
+                &graph,
+                tmp.path(),
+                &services,
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
 
@@ -874,7 +981,14 @@ mod tests {
         ));
 
         let outcome = handler
-            .execute(&node, &context, &graph, tmp.path(), &services)
+            .execute(
+                &node,
+                &context,
+                &graph,
+                tmp.path(),
+                &services,
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
 
@@ -908,7 +1022,14 @@ mod tests {
         let tmp = TempDir::new().unwrap();
 
         let outcome = handler
-            .execute(&node, &context, &graph, tmp.path(), &make_services())
+            .execute(
+                &node,
+                &context,
+                &graph,
+                tmp.path(),
+                &make_services(),
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
 
@@ -987,7 +1108,14 @@ All checks passed.
         ));
 
         let outcome = handler
-            .execute(&node, &context, &graph, tmp.path(), &services)
+            .execute(
+                &node,
+                &context,
+                &graph,
+                tmp.path(),
+                &services,
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
 
@@ -1118,7 +1246,14 @@ All checks passed.
         ));
 
         let outcome = handler
-            .execute(&node, &context, &graph, tmp.path(), &services)
+            .execute(
+                &node,
+                &context,
+                &graph,
+                tmp.path(),
+                &services,
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
 
@@ -1189,7 +1324,14 @@ All checks passed.
             let tmp = TempDir::new().unwrap();
 
             let outcome = handler
-                .execute(&node, &context, &graph, tmp.path(), &make_services())
+                .execute(
+                    &node,
+                    &context,
+                    &graph,
+                    tmp.path(),
+                    &make_services(),
+                    &AttemptInfo::first(),
+                )
                 .await
                 .unwrap();
 
@@ -1267,7 +1409,14 @@ All checks passed.
         let tmp = TempDir::new().unwrap();
 
         let outcome = handler
-            .execute(&node, &context, &graph, tmp.path(), &make_services())
+            .execute(
+                &node,
+                &context,
+                &graph,
+                tmp.path(),
+                &make_services(),
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
 
@@ -1322,7 +1471,14 @@ All checks passed.
         let tmp = TempDir::new().unwrap();
 
         handler
-            .execute(&node, &context, &graph, tmp.path(), &make_services())
+            .execute(
+                &node,
+                &context,
+                &graph,
+                tmp.path(),
+                &make_services(),
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
 
@@ -1393,7 +1549,14 @@ All checks passed.
         let (services, run_store, logger) = make_services_with_run_store().await;
 
         handler
-            .execute(&node, &context, &graph, tmp.path(), &services)
+            .execute(
+                &node,
+                &context,
+                &graph,
+                tmp.path(),
+                &services,
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
         logger.flush().await.unwrap();
@@ -1455,7 +1618,14 @@ All checks passed.
         let tmp = TempDir::new().unwrap();
 
         handler
-            .execute(&node, &context, &graph, tmp.path(), &make_services())
+            .execute(
+                &node,
+                &context,
+                &graph,
+                tmp.path(),
+                &make_services(),
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
 
@@ -1500,7 +1670,14 @@ All checks passed.
         let tmp = TempDir::new().unwrap();
 
         handler
-            .execute(&node, &context, &graph, tmp.path(), &make_services())
+            .execute(
+                &node,
+                &context,
+                &graph,
+                tmp.path(),
+                &make_services(),
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
 
@@ -1526,7 +1703,14 @@ All checks passed.
         let tmp = TempDir::new().unwrap();
 
         let result = handler
-            .execute(&node, &context, &graph, tmp.path(), &make_services())
+            .execute(
+                &node,
+                &context,
+                &graph,
+                tmp.path(),
+                &make_services(),
+                &AttemptInfo::first(),
+            )
             .await;
         let err = result.unwrap_err();
         assert!(err.is_retryable());
@@ -1664,7 +1848,14 @@ Some text in between.
         let tmp = TempDir::new().unwrap();
 
         let outcome = handler
-            .execute(&node, &context, &graph, tmp.path(), &make_services())
+            .execute(
+                &node,
+                &context,
+                &graph,
+                tmp.path(),
+                &make_services(),
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
         assert_eq!(outcome.status, crate::outcome::StageOutcome::Failed {
@@ -1716,7 +1907,14 @@ Some text in between.
         let tmp = TempDir::new().unwrap();
 
         handler
-            .execute(&node, &context, &graph, tmp.path(), &make_services())
+            .execute(
+                &node,
+                &context,
+                &graph,
+                tmp.path(),
+                &make_services(),
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
 
@@ -1775,7 +1973,14 @@ Some text in between.
         let tmp = TempDir::new().unwrap();
 
         handler
-            .execute(&node, &context, &graph, tmp.path(), &make_services())
+            .execute(
+                &node,
+                &context,
+                &graph,
+                tmp.path(),
+                &make_services(),
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
 
@@ -1801,7 +2006,14 @@ Some text in between.
         let (services, run_store, logger) = make_services_with_run_store().await;
 
         handler
-            .execute(&node, &context, &graph, tmp.path(), &services)
+            .execute(
+                &node,
+                &context,
+                &graph,
+                tmp.path(),
+                &services,
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
         logger.flush().await.unwrap();

@@ -8,6 +8,8 @@ pub mod llm;
 pub mod manager_loop;
 pub mod parallel;
 pub mod prompt;
+#[cfg(test)]
+mod retry_continuation_tests;
 pub mod start;
 pub mod structured_output;
 pub mod wait;
@@ -18,6 +20,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use async_trait::async_trait;
+pub use fabro_core::handler::AttemptInfo;
 use fabro_graphviz::graph::{Graph, Node, shape_to_handler_type};
 use fabro_interview::Interviewer;
 
@@ -47,6 +50,7 @@ pub trait Handler: Send + Sync {
         graph: &Graph,
         run_dir: &Path,
         services: &EngineServices,
+        _attempt: &AttemptInfo,
     ) -> Result<Outcome, Error>;
 
     /// Produce a simulated result for dry-run mode.
@@ -95,6 +99,7 @@ pub async fn dispatch_handler(
     graph: &Graph,
     run_dir: &Path,
     services: &EngineServices,
+    attempt: &AttemptInfo,
 ) -> Result<Outcome, Error> {
     if services.dry_run {
         handler
@@ -102,7 +107,7 @@ pub async fn dispatch_handler(
             .await
     } else {
         handler
-            .execute(node, context, graph, run_dir, services)
+            .execute(node, context, graph, run_dir, services, attempt)
             .await
     }
 }
@@ -212,6 +217,7 @@ mod tests {
             _graph: &Graph,
             _run_dir: &Path,
             _services: &EngineServices,
+            _attempt: &AttemptInfo,
         ) -> Result<Outcome, Error> {
             Ok(Outcome::success())
         }
@@ -333,6 +339,7 @@ mod tests {
             _graph: &Graph,
             _run_dir: &Path,
             _services: &EngineServices,
+            _attempt: &AttemptInfo,
         ) -> Result<Outcome, Error> {
             Ok(Outcome::success())
         }
@@ -388,9 +395,17 @@ mod tests {
         let mut services = EngineServices::test_default();
         services.dry_run = true;
 
-        let outcome = dispatch_handler(&handler, &node, &context, &graph, run_dir, &services)
-            .await
-            .unwrap();
+        let outcome = dispatch_handler(
+            &handler,
+            &node,
+            &context,
+            &graph,
+            run_dir,
+            &services,
+            &AttemptInfo::first(),
+        )
+        .await
+        .unwrap();
         assert_eq!(outcome.status, crate::outcome::StageOutcome::Succeeded);
         assert_eq!(outcome.notes.as_deref(), Some("[Simulated] my_node"));
     }
@@ -407,9 +422,17 @@ mod tests {
         let mut services = EngineServices::test_default();
         services.dry_run = false;
 
-        let outcome = dispatch_handler(&handler, &node, &context, &graph, run_dir, &services)
-            .await
-            .unwrap();
+        let outcome = dispatch_handler(
+            &handler,
+            &node,
+            &context,
+            &graph,
+            run_dir,
+            &services,
+            &AttemptInfo::first(),
+        )
+        .await
+        .unwrap();
         assert_eq!(outcome.status, crate::outcome::StageOutcome::Succeeded);
         // execute() returns success with no notes
         assert!(outcome.notes.is_none());

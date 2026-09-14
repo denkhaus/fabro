@@ -772,6 +772,7 @@ mod tests {
 
     use fabro_acp::test_support::fake_acp_agent_script;
     use fabro_auth::test_support as auth_test_support;
+    use fabro_core::handler::AttemptInfo;
     use fabro_graphviz::graph::{AttrValue, Edge, Graph, Node};
     use fabro_interview::AutoApproveInterviewer;
     use fabro_sandbox::SandboxSpec;
@@ -1592,6 +1593,7 @@ mod tests {
                 &initialized.graph,
                 &initialized.run_options.run_dir,
                 &initialized.engine,
+                &AttemptInfo::first(),
             )
             .await
             .unwrap();

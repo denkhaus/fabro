@@ -2,6 +2,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use fabro_core::handler::AttemptInfo;
 use fabro_graphviz::graph::{Graph, Node};
 use fabro_types::{RunNoticeLevel, StageModelUsage, StageTiming};
 
@@ -55,6 +56,7 @@ impl Handler for PromptHandler {
         graph: &Graph,
         _run_dir: &Path,
         services: &EngineServices,
+        _attempt: &AttemptInfo,
     ) -> Result<Outcome, Error> {
         // 1. Build prompt (prepend fidelity preamble if present)
         let raw_prompt = node.prompt_or_label();
@@ -394,7 +396,14 @@ mod tests {
         let tmp = TempDir::new().unwrap();
 
         let outcome = handler
-            .execute(&node, &context, &graph, tmp.path(), &make_services())
+            .execute(
+                &node,
+                &context,
+                &graph,
+                tmp.path(),
+                &make_services(),
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
         assert_eq!(outcome.status, crate::outcome::StageOutcome::Succeeded);
@@ -439,7 +448,14 @@ mod tests {
         let tmp = TempDir::new().unwrap();
 
         let outcome = handler
-            .execute(&node, &context, &graph, tmp.path(), &make_services())
+            .execute(
+                &node,
+                &context,
+                &graph,
+                tmp.path(),
+                &make_services(),
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
 
@@ -485,7 +501,14 @@ mod tests {
         let tmp = TempDir::new().unwrap();
 
         let outcome = handler
-            .execute(&node, &context, &graph, tmp.path(), &make_services())
+            .execute(
+                &node,
+                &context,
+                &graph,
+                tmp.path(),
+                &make_services(),
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
 
@@ -533,7 +556,14 @@ mod tests {
         let tmp = TempDir::new().unwrap();
 
         let outcome = handler
-            .execute(&node, &context, &graph, tmp.path(), &make_services())
+            .execute(
+                &node,
+                &context,
+                &graph,
+                tmp.path(),
+                &make_services(),
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
 
@@ -612,7 +642,14 @@ mod tests {
             let tmp = TempDir::new().unwrap();
 
             let outcome = handler
-                .execute(&node, &context, &graph, tmp.path(), &make_services())
+                .execute(
+                    &node,
+                    &context,
+                    &graph,
+                    tmp.path(),
+                    &make_services(),
+                    &AttemptInfo::first(),
+                )
                 .await
                 .unwrap();
 
@@ -705,7 +742,14 @@ mod tests {
         let (services, run_store, logger) = make_services_with_run_store().await;
 
         handler
-            .execute(&node, &context, &graph, tmp.path(), &services)
+            .execute(
+                &node,
+                &context,
+                &graph,
+                tmp.path(),
+                &services,
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
         logger.flush().await.unwrap();
@@ -769,7 +813,14 @@ mod tests {
         let tmp = TempDir::new().unwrap();
 
         handler
-            .execute(&node, &context, &graph, tmp.path(), &make_services())
+            .execute(
+                &node,
+                &context,
+                &graph,
+                tmp.path(),
+                &make_services(),
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
 
@@ -804,7 +855,14 @@ mod tests {
         let tmp = TempDir::new().unwrap();
 
         handler
-            .execute(&node, &context, &graph, tmp.path(), &make_services())
+            .execute(
+                &node,
+                &context,
+                &graph,
+                tmp.path(),
+                &make_services(),
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
 
@@ -878,7 +936,14 @@ mod tests {
         let graph = Graph::new("test");
 
         handler
-            .execute(&node, &context, &graph, workspace.path(), &services)
+            .execute(
+                &node,
+                &context,
+                &graph,
+                workspace.path(),
+                &services,
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
 
@@ -956,7 +1021,14 @@ mod tests {
         let graph = Graph::new("test");
 
         handler
-            .execute(&node, &context, &graph, workspace.path(), &services)
+            .execute(
+                &node,
+                &context,
+                &graph,
+                workspace.path(),
+                &services,
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
 
@@ -991,7 +1063,14 @@ mod tests {
         let tmp = TempDir::new().unwrap();
 
         handler
-            .execute(&node, &context, &graph, tmp.path(), &make_services())
+            .execute(
+                &node,
+                &context,
+                &graph,
+                tmp.path(),
+                &make_services(),
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
 

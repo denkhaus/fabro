@@ -1,6 +1,7 @@
 use std::path::Path;
 
 use async_trait::async_trait;
+use fabro_core::handler::AttemptInfo;
 use fabro_graphviz::graph::{ContextKeyAttr, Graph, Node};
 use fabro_sandbox::{
     ExecControls, ExecResultExt, ExecSpec, OutputSink, Termination, TransportError,
@@ -61,6 +62,7 @@ impl Handler for CommandHandler {
         graph: &Graph,
         run_dir: &Path,
         services: &EngineServices,
+        _attempt: &AttemptInfo,
     ) -> Result<Outcome, Error> {
         let Some(script) = non_blank_script(node) else {
             return Ok(Outcome::fail_classify("No script specified"));
@@ -518,7 +520,14 @@ mod tests {
 
             let outcomes = [
                 handler
-                    .execute(&node, &context, &graph, run_dir.path(), &services)
+                    .execute(
+                        &node,
+                        &context,
+                        &graph,
+                        run_dir.path(),
+                        &services,
+                        &AttemptInfo::first(),
+                    )
                     .await
                     .unwrap(),
                 handler
@@ -584,6 +593,7 @@ mod tests {
             &graph,
             run_dir.path(),
             &services,
+            &fabro_core::handler::AttemptInfo::first(),
         )
         .await
         .unwrap();
@@ -605,7 +615,14 @@ mod tests {
 
         let services = make_services();
         let outcome = handler
-            .execute(&node, &context, &graph, run_dir.path(), &services)
+            .execute(
+                &node,
+                &context,
+                &graph,
+                run_dir.path(),
+                &services,
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
         assert_eq!(outcome.status, StageOutcome::Succeeded);
@@ -637,7 +654,14 @@ mod tests {
         let services = make_services();
 
         let outcome = handler
-            .execute(&node, &context, &graph, run_dir.path(), &services)
+            .execute(
+                &node,
+                &context,
+                &graph,
+                run_dir.path(),
+                &services,
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
 
@@ -677,7 +701,14 @@ mod tests {
         let run_dir = tempfile::tempdir().unwrap();
 
         let outcome = handler
-            .execute(&node, &context, &graph, run_dir.path(), &make_services())
+            .execute(
+                &node,
+                &context,
+                &graph,
+                run_dir.path(),
+                &make_services(),
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
 
@@ -708,7 +739,14 @@ mod tests {
         let services = make_services();
 
         let outcome = handler
-            .execute(&node, &context, &graph, run_dir.path(), &services)
+            .execute(
+                &node,
+                &context,
+                &graph,
+                run_dir.path(),
+                &services,
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
 
@@ -767,7 +805,14 @@ mod tests {
         let run_dir = tempfile::tempdir().unwrap();
 
         let outcome = handler
-            .execute(&node, &context, &graph, run_dir.path(), &make_services())
+            .execute(
+                &node,
+                &context,
+                &graph,
+                run_dir.path(),
+                &make_services(),
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
 
@@ -803,7 +848,14 @@ mod tests {
         let run_dir = tempfile::tempdir().unwrap();
 
         let outcome = handler
-            .execute(&node, &context, &graph, run_dir.path(), &make_services())
+            .execute(
+                &node,
+                &context,
+                &graph,
+                run_dir.path(),
+                &make_services(),
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
 
@@ -835,7 +887,14 @@ mod tests {
         let run_dir = tempfile::tempdir().unwrap();
 
         let outcome = handler
-            .execute(&node, &context, &graph, run_dir.path(), &make_services())
+            .execute(
+                &node,
+                &context,
+                &graph,
+                run_dir.path(),
+                &make_services(),
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
 
@@ -881,7 +940,14 @@ mod tests {
         services.run = services.run.with_emitter(emitter);
 
         let error = handler
-            .execute(&node, &context, &graph, run_dir.path(), &services)
+            .execute(
+                &node,
+                &context,
+                &graph,
+                run_dir.path(),
+                &services,
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap_err();
 
@@ -917,7 +983,14 @@ mod tests {
         let run_dir = tempfile::tempdir().unwrap();
 
         let outcome = handler
-            .execute(&node, &context, &graph, run_dir.path(), &make_services())
+            .execute(
+                &node,
+                &context,
+                &graph,
+                run_dir.path(),
+                &make_services(),
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
 
@@ -983,7 +1056,14 @@ mod tests {
         let run_dir = tempfile::tempdir().unwrap();
 
         let outcome = handler
-            .execute(&node, &context, &graph, run_dir.path(), &make_services())
+            .execute(
+                &node,
+                &context,
+                &graph,
+                run_dir.path(),
+                &make_services(),
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
 
@@ -1009,7 +1089,14 @@ mod tests {
 
         let services = make_services();
         let outcome = handler
-            .execute(&node, &context, &graph, run_dir.path(), &services)
+            .execute(
+                &node,
+                &context,
+                &graph,
+                run_dir.path(),
+                &services,
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
 
@@ -1034,7 +1121,14 @@ mod tests {
 
         let services = make_services();
         let outcome = handler
-            .execute(&node, &context, &graph, run_dir.path(), &services)
+            .execute(
+                &node,
+                &context,
+                &graph,
+                run_dir.path(),
+                &services,
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
         assert_eq!(outcome.status, StageOutcome::Failed {
@@ -1059,7 +1153,14 @@ mod tests {
         let run_dir = tempfile::tempdir().unwrap();
 
         let err = handler
-            .execute(&node, &context, &graph, run_dir.path(), &make_services())
+            .execute(
+                &node,
+                &context,
+                &graph,
+                run_dir.path(),
+                &make_services(),
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap_err();
         let msg = err.to_string();
@@ -1083,7 +1184,14 @@ mod tests {
         let (services, run_store, logger) = make_services_with_run_store().await;
 
         handler
-            .execute(&node, &context, &graph, run_dir.path(), &services)
+            .execute(
+                &node,
+                &context,
+                &graph,
+                run_dir.path(),
+                &services,
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
         logger.flush().await.unwrap();
@@ -1114,7 +1222,14 @@ mod tests {
         let (services, run_store, logger) = make_services_with_run_store().await;
 
         handler
-            .execute(&node, &context, &graph, run_dir.path(), &services)
+            .execute(
+                &node,
+                &context,
+                &graph,
+                run_dir.path(),
+                &services,
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
         logger.flush().await.unwrap();
@@ -1141,7 +1256,14 @@ mod tests {
         let (services, run_store, logger) = make_services_with_run_store().await;
 
         handler
-            .execute(&node, &context, &graph, run_dir.path(), &services)
+            .execute(
+                &node,
+                &context,
+                &graph,
+                run_dir.path(),
+                &services,
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
         logger.flush().await.unwrap();
@@ -1168,7 +1290,14 @@ mod tests {
         let (services, run_store, logger) = make_services_with_run_store().await;
 
         handler
-            .execute(&node, &context, &graph, run_dir.path(), &services)
+            .execute(
+                &node,
+                &context,
+                &graph,
+                run_dir.path(),
+                &services,
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
         logger.flush().await.unwrap();
@@ -1193,7 +1322,14 @@ mod tests {
         let (services, run_store, logger) = make_services_with_run_store().await;
 
         handler
-            .execute(&node, &context, &graph, run_dir.path(), &services)
+            .execute(
+                &node,
+                &context,
+                &graph,
+                run_dir.path(),
+                &services,
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
         logger.flush().await.unwrap();
@@ -1218,7 +1354,14 @@ mod tests {
         let (services, run_store, logger) = make_services_with_run_store().await;
 
         handler
-            .execute(&node, &context, &graph, run_dir.path(), &services)
+            .execute(
+                &node,
+                &context,
+                &graph,
+                run_dir.path(),
+                &services,
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
         logger.flush().await.unwrap();
@@ -1248,7 +1391,14 @@ mod tests {
         let (services, run_store, logger) = make_services_with_run_store().await;
 
         let _err = handler
-            .execute(&node, &context, &graph, run_dir.path(), &services)
+            .execute(
+                &node,
+                &context,
+                &graph,
+                run_dir.path(),
+                &services,
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap_err();
         logger.flush().await.unwrap();
@@ -1275,7 +1425,14 @@ mod tests {
         let (services, run_store, logger) = make_services_with_run_store().await;
 
         handler
-            .execute(&node, &context, &graph, run_dir.path(), &services)
+            .execute(
+                &node,
+                &context,
+                &graph,
+                run_dir.path(),
+                &services,
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
         logger.flush().await.unwrap();
@@ -1308,7 +1465,14 @@ mod tests {
 
         let services = make_services();
         let outcome = handler
-            .execute(&node, &context, &graph, run_dir.path(), &services)
+            .execute(
+                &node,
+                &context,
+                &graph,
+                run_dir.path(),
+                &services,
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
         assert_eq!(outcome.status, StageOutcome::Succeeded);
@@ -1337,7 +1501,14 @@ mod tests {
         let run_dir = tempfile::tempdir().unwrap();
 
         let outcome = handler
-            .execute(&node, &context, &graph, run_dir.path(), &make_services())
+            .execute(
+                &node,
+                &context,
+                &graph,
+                run_dir.path(),
+                &make_services(),
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
         assert_eq!(outcome.status, StageOutcome::Failed {
@@ -1362,7 +1533,14 @@ mod tests {
         let run_dir = tempfile::tempdir().unwrap();
 
         let outcome = handler
-            .execute(&node, &context, &graph, run_dir.path(), &make_services())
+            .execute(
+                &node,
+                &context,
+                &graph,
+                run_dir.path(),
+                &make_services(),
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
         assert_eq!(outcome.status, StageOutcome::Failed {
@@ -1390,7 +1568,14 @@ mod tests {
 
         let services = make_services();
         let outcome = handler
-            .execute(&node, &context, &graph, run_dir.path(), &services)
+            .execute(
+                &node,
+                &context,
+                &graph,
+                run_dir.path(),
+                &services,
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
         assert_eq!(outcome.status, StageOutcome::Failed {
@@ -1413,7 +1598,14 @@ mod tests {
 
         let services = make_services();
         let outcome = handler
-            .execute(&node, &context, &graph, run_dir.path(), &services)
+            .execute(
+                &node,
+                &context,
+                &graph,
+                run_dir.path(),
+                &services,
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
         assert_eq!(outcome.status, StageOutcome::Succeeded);
@@ -1458,7 +1650,14 @@ mod tests {
         let services = make_sandbox_services(mock.sandbox());
 
         let outcome = handler
-            .execute(&node, &context, &graph, run_dir.path(), &services)
+            .execute(
+                &node,
+                &context,
+                &graph,
+                run_dir.path(),
+                &services,
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
 
@@ -1494,7 +1693,14 @@ mod tests {
         let services = make_sandbox_services(mock.sandbox());
 
         let outcome = handler
-            .execute(&node, &context, &graph, run_dir.path(), &services)
+            .execute(
+                &node,
+                &context,
+                &graph,
+                run_dir.path(),
+                &services,
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
 
@@ -1526,7 +1732,14 @@ mod tests {
         let services = make_sandbox_services(mock.sandbox());
 
         let outcome = handler
-            .execute(&node, &context, &graph, run_dir.path(), &services)
+            .execute(
+                &node,
+                &context,
+                &graph,
+                run_dir.path(),
+                &services,
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
 
@@ -1614,7 +1827,14 @@ mod tests {
 
         let services = make_sandbox_services(spy.sandbox());
         let outcome = handler
-            .execute(&node, &context, &graph, run_dir.path(), &services)
+            .execute(
+                &node,
+                &context,
+                &graph,
+                run_dir.path(),
+                &services,
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
 
@@ -1660,6 +1880,7 @@ mod tests {
                 &graph,
                 run_dir.path(),
                 &make_sandbox_services(spy.sandbox()),
+                &AttemptInfo::first(),
             )
             .await
             .unwrap();
@@ -1693,7 +1914,14 @@ mod tests {
             .insert("MY_VAR".to_string(), "my_value".to_string());
 
         handler
-            .execute(&node, &context, &graph, run_dir.path(), &services)
+            .execute(
+                &node,
+                &context,
+                &graph,
+                run_dir.path(),
+                &services,
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
 
@@ -1728,7 +1956,14 @@ mod tests {
         let run_dir = tempfile::tempdir().unwrap();
 
         handler
-            .execute(&node, &context, &graph, run_dir.path(), &services)
+            .execute(
+                &node,
+                &context,
+                &graph,
+                run_dir.path(),
+                &services,
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
         assert_eq!(
@@ -1740,7 +1975,14 @@ mod tests {
         );
 
         handler
-            .execute(&node, &context, &graph, run_dir.path(), &services)
+            .execute(
+                &node,
+                &context,
+                &graph,
+                run_dir.path(),
+                &services,
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
         assert_eq!(
@@ -1774,7 +2016,14 @@ mod tests {
             .with_cancel_token(tokio_util::sync::CancellationToken::new());
 
         handler
-            .execute(&node, &context, &graph, run_dir.path(), &services)
+            .execute(
+                &node,
+                &context,
+                &graph,
+                run_dir.path(),
+                &services,
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
 
@@ -1811,6 +2060,7 @@ mod tests {
                 &graph,
                 run_dir.path(),
                 &make_sandbox_services(spy.sandbox()),
+                &AttemptInfo::first(),
             )
             .await
             .unwrap_err();
@@ -1840,7 +2090,14 @@ mod tests {
         let run_dir = tempfile::tempdir().unwrap();
 
         let outcome = handler
-            .execute(&node, &context, &graph, run_dir.path(), &make_services())
+            .execute(
+                &node,
+                &context,
+                &graph,
+                run_dir.path(),
+                &make_services(),
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
         assert_eq!(outcome.status, StageOutcome::Succeeded);
@@ -1865,7 +2122,14 @@ mod tests {
 
         let services = make_services();
         let outcome = handler
-            .execute(&node, &context, &graph, run_dir.path(), &services)
+            .execute(
+                &node,
+                &context,
+                &graph,
+                run_dir.path(),
+                &services,
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
         assert_eq!(outcome.status, StageOutcome::Failed {
@@ -1906,7 +2170,14 @@ mod tests {
         );
 
         let err = handler
-            .execute(&node, &context, &graph, run_dir.path(), &services)
+            .execute(
+                &node,
+                &context,
+                &graph,
+                run_dir.path(),
+                &services,
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap_err();
 
@@ -1932,7 +2203,14 @@ mod tests {
         let services = make_services();
 
         let outcome = handler
-            .execute(&node, &context, &graph, run_dir.path(), &services)
+            .execute(
+                &node,
+                &context,
+                &graph,
+                run_dir.path(),
+                &services,
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
         assert_eq!(outcome.status, StageOutcome::Failed {

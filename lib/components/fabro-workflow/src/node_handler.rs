@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use fabro_core::error::{Error as CoreError, HandlerErrorDetail, Result as CoreResult};
-use fabro_core::handler::NodeHandler;
+use fabro_core::handler::{AttemptInfo, NodeHandler};
 use fabro_core::outcome::FailureCategory;
 use fabro_core::retry::RetryPolicy as CoreRetryPolicy;
 use fabro_graphviz::graph::types::{Graph as GvGraph, Node as GvNode};
@@ -88,6 +88,7 @@ pub(crate) async fn execute_single_attempt(
     graph: &GvGraph,
     run_dir: &Path,
     services: &EngineServices,
+    attempt: &AttemptInfo,
 ) -> CoreResult<Outcome> {
     let handler = services.registry.resolve(node);
 
@@ -111,7 +112,15 @@ pub(crate) async fn execute_single_attempt(
         NodeTimeoutPolicy::HandlerManaged => None,
     };
 
-    let future = dispatch_handler(handler, node, &wf_context, graph, run_dir, services);
+    let future = dispatch_handler(
+        handler,
+        node,
+        &wf_context,
+        graph,
+        run_dir,
+        services,
+        attempt,
+    );
     let panic_safe = AssertUnwindSafe(future).catch_unwind();
     let timed_result = if let Some(duration) = node_timeout {
         let stage_id = StageScope::for_handler(&wf_context, &node.id).stage_id();
@@ -189,6 +198,7 @@ impl NodeHandler<WorkflowGraph> for WorkflowNodeHandler {
         node: &WorkflowNode,
         context: &Context,
         _graph: &WorkflowGraph,
+        attempt: &AttemptInfo,
     ) -> CoreResult<Outcome> {
         execute_single_attempt(
             node.inner(),
@@ -196,6 +206,7 @@ impl NodeHandler<WorkflowGraph> for WorkflowNodeHandler {
             &self.graph,
             &self.run_dir,
             &self.services,
+            attempt,
         )
         .await
     }
@@ -251,6 +262,7 @@ mod tests {
             _node: &WorkflowNode,
             _context: &Context,
             _graph: &WorkflowGraph,
+            _attempt: &AttemptInfo,
         ) -> CoreResult<Outcome> {
             Ok(Outcome::success())
         }
