@@ -184,14 +184,17 @@ impl Concluded {
             Error::publish_with_source("failed to create pull request", anyhow::anyhow!(error))
         })?;
 
-        self.services.emitter.emit(&Event::pull_request_created(
-            &created.link,
-            &created.base_branch,
-            &created.head_branch,
-            final_sha,
-            &created.title,
-            pr_config.draft,
-        ));
+        self.services
+            .emitter
+            .emit(&Event::pull_request_created_with_auto_merge(
+                &created.link,
+                &created.base_branch,
+                &created.head_branch,
+                final_sha,
+                &created.title,
+                pr_config.draft,
+                created.auto_merge.clone(),
+            ));
         outcome.pr_url = Some(created.link.html_url());
 
         Ok(())

@@ -1117,6 +1117,22 @@ pub async fn enable_auto_merge_with_client(
     Ok(())
 }
 
+/// Classify an `enablePullRequestAutoMerge` failure message (fabro-b4ed).
+///
+/// GitHub only accepts the mutation on a protected base branch. On an
+/// unprotected base it answers with "Protected branch rules not
+/// configured" or "Pull request is in clean status" (the PR is instantly
+/// mergeable, so there is nothing for auto-merge to gate on). Both mean
+/// the same dead end: no rule will ever merge this pull request
+/// automatically. Substring matching is intentional — GitHub surfaces
+/// these as GraphQL error strings, not typed error codes.
+#[must_use]
+pub fn is_unprotected_base_auto_merge_error(message: &str) -> bool {
+    let message = message.to_ascii_lowercase();
+    message.contains("protected branch rules not configured")
+        || message.contains("pull request is in clean status")
+}
+
 /// Convert a Git SSH URL to HTTPS format for token-based authentication.
 ///
 /// SSH URLs like `git@github.com:owner/repo.git` become
@@ -1906,6 +1922,29 @@ mod tests {
     fn decode_pem_env_accepts_raw_pem() {
         let pem = "-----BEGIN TEST KEY-----\nabc\n-----END TEST KEY-----";
         assert_eq!(decode_pem_env("GITHUB_APP_PRIVATE_KEY", pem).unwrap(), pem);
+    }
+
+    #[test]
+    fn unprotected_base_auto_merge_errors_are_recognized() {
+        // fabro-b4ed: both GraphQL failure strings an unprotected base
+        // produces must classify as the auto-merge dead end.
+        for message in [
+            "Auto-merge GraphQL error: [{\"message\":\"Protected branch rules not configured\"}]",
+            "Auto-merge GraphQL error: [{\"message\":\"Pull request is in clean status\"}]",
+        ] {
+            assert!(is_unprotected_base_auto_merge_error(message), "{message}");
+        }
+    }
+
+    #[test]
+    fn other_auto_merge_errors_are_not_unprotected_base() {
+        for message in [
+            "Failed to enable auto-merge",
+            "Auto-merge request failed (500)",
+            "Auto-merge GraphQL error: [{\"message\":\"Bad credentials\"}]",
+        ] {
+            assert!(!is_unprotected_base_auto_merge_error(message), "{message}");
+        }
     }
 
     #[test]

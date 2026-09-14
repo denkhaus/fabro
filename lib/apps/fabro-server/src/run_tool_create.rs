@@ -82,6 +82,13 @@ async fn run_create_child_checkout_contains_the_parents_pushed_work() {
         tag:    Some("v1.0.0".to_owned()),
         sha:    Some(base_sha),
     })));
+    // fabro-b4ed: only a parent that publishes a pull request of its own
+    // (a terminus for its run branch) chains children onto the run branch;
+    // an orchestration parent would hand down the base branch instead.
+    parent.spec.settings.run.pull_request = Some(fabro_types::settings::run::PullRequestSettings {
+        enabled: true,
+        ..Default::default()
+    });
     let sandbox = fabro_sandbox::local_sandbox(&workspace).await.unwrap();
     // Docker and Daytona use this same setup operation to create the run branch.
     let git = fabro_sandbox::setup_git(&sandbox, &fabro_sandbox::GitSetupIntent::NewRun {

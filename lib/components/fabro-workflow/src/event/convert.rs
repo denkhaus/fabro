@@ -951,6 +951,7 @@ fn event_body_from_event(event: &Event) -> EventBody {
             head_sha,
             title,
             draft,
+            auto_merge,
         } => EventBody::PullRequestCreated(fabro_types::PullRequestCreatedProps {
             pr_url:      pr_url.clone(),
             pr_number:   *pr_number,
@@ -961,6 +962,7 @@ fn event_body_from_event(event: &Event) -> EventBody {
             head_sha:    head_sha.clone(),
             title:       title.clone(),
             draft:       *draft,
+            auto_merge:  auto_merge.clone(),
         }),
         Event::PullRequestLinked { pull_request } => {
             EventBody::PullRequestLinked(fabro_types::PullRequestLinkedProps {

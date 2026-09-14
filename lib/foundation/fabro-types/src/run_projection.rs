@@ -14,10 +14,10 @@ use strum::{Display, EnumString, IntoStaticStr};
 use crate::run_event::{AgentSessionActivatedProps, StagePromptProps};
 use crate::{
     AgentBackend, BilledModelUsage, BilledTokenCounts, Checkpoint, Conclusion, GitIdentity,
-    InterviewQuestionRecord, InvalidTransition, ModelRef, ParallelBranchId, PullRequestCreation,
-    PullRequestLink, RunApproval, RunControlAction, RunDiff, RunId, RunSandbox, RunSpec, RunStatus,
-    RunTiming, StageCompletion, StageHandler, StageId, StageState, StageTiming, StartRecord,
-    timing,
+    InterviewQuestionRecord, InvalidTransition, ModelRef, ParallelBranchId,
+    PullRequestAutoMergeState, PullRequestCreation, PullRequestLink, RunApproval, RunControlAction,
+    RunDiff, RunId, RunSandbox, RunSpec, RunStatus, RunTiming, StageCompletion, StageHandler,
+    StageId, StageState, StageTiming, StartRecord, timing,
 };
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -42,6 +42,12 @@ pub struct RunProjection {
     pub conclusion:            Option<Conclusion>,
     pub sandbox:               Option<RunSandbox>,
     pub pull_request:          Option<PullRequestLink>,
+    /// The engine's auto-merge enable attempt for `pull_request`, recorded
+    /// when the run's publish requested auto-merge (fabro-b4ed). An
+    /// unprotected-base failure here is a stuck-gate signal for the merged
+    /// wait: nothing will ever merge the PR automatically.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auto_merge:            Option<PullRequestAutoMergeState>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pull_request_creation: Option<PullRequestCreation>,
     pub superseded_by:         Option<RunId>,
@@ -690,6 +696,7 @@ impl RunProjection {
             conclusion: None,
             sandbox: None,
             pull_request: None,
+            auto_merge: None,
             pull_request_creation: None,
             superseded_by: None,
             retried_from: None,
