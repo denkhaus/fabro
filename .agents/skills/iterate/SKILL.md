@@ -422,10 +422,12 @@ decision, not an accident - it needs the user plus an ADR.
   one working world - `denkhaus` locally, the fabro server for runs.
   Do not reintroduce world/branch switching or worktree setups; retired
   contexts live only as archive tags and docs/lab/ history.
-- Fork-feature presence pinning (user directive 2026-09-13, after the
-  00ffd60f6 regression): every durable fork feature (engine guards,
-  seam contracts, asset/engine couplings) gets a presence test in a
-  FORK-ONLY test file — a file upstream does not have, canonically
+- Fork-feature presence pinning (user directive 2026-09-13, extended
+  2026-09-14): every durable fork feature (engine guards, seam contracts,
+  asset/engine couplings) gets its IMPLEMENTATION in fork-only source
+  files (pattern: fork_line_recovery.rs in fabro-workflow and
+  fabro-server, ADR-0021 D7) wired through minimal one-line seams in
+  upstream files, plus a presence test in a FORK-ONLY test file — a file upstream does not have, canonically
   `lib/components/fabro-workflow/src/handler/llm/fork_seam_tests.rs` —
   plus a touchpoints row (`.agents/skills/merge-upstream/references/touchpoints.md`).
   Upstream merges cannot conflict away or silently drop a fork-only
