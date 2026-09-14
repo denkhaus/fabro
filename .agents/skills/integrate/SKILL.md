@@ -22,6 +22,13 @@ skill reviews, reconciles, and integrates. Never implement seeds here
 3. Window snapshot for later pushes: open run PRs, `git ls-remote
    --heads origin 'refs/heads/fabro/run/*'` newest branch, line state.
    A run branch head younger than the newest merged PR = run in flight.
+4. Server-side health of the incoming window: `rootprint hist -q
+   'service_name:fabro' --since <window covering the incoming commits>`
+   (skill `rootprint`) - pass-time server errors are invisible in the
+   PRs: hook exit failures, LLM fallback warns, scheduler noise. Real
+   findings feed Phase 4 as seeds (run id as Basis). WARN/ERROR only -
+   INFO is not ingested - and `severity_text` is unreliable (filter on
+   body text).
 
 **JSONL discipline (PR #81 + 2026-09-09 lessons):** git can merge
 `.seeds/.mulch` "cleanly" and STILL duplicate lines. After every merge:

@@ -34,6 +34,17 @@ decision, not an accident - it needs the user plus an ADR.
   run list for the line). The local server (127.0.0.1:32276) is for
   TESTS only. NEVER git worktrees - branch switches happen in the main
   checkout.
+- Server-side observation: rootprint (skill `rootprint`) queries the
+  production server's logs (fabro-tofu deployment in the mirtuell
+  cluster) without deployment access - use it to orient on line health
+  and diagnose incidents (hook failures, scheduler/gate behavior,
+  provider warns, log-noise shifts). Two gotchas: `severity_text` is
+  unreliable (the collector maps everything to ERROR - filter on body
+  text, e.g. `-q 'service_name:fabro AND body:"WARN"'`), and INFO is
+  not ingested (curated run-lifecycle INFO requested, fabro-tofu
+  seed fabro-tofu-cd74) - run timelines come from `fabro ps`/events, not
+  logs. Every real log finding becomes a seed the same turn; nothing
+  stays observation-only.
 - Is a workflow cycle in flight? (`fabro ps`, or a `just run`/`just
   cycle` process). Serialization principle (ADR-0015): while the
   develop/revisor workflow works the tracker, this agent session does
