@@ -95,7 +95,7 @@ function TokenBreakdown({ usage }: { usage: Usage }) {
         ))}
       </dl>
       <p className="border-line text-fg-3 mt-1.5 border-t pt-1">
-        Includes subagent tokens, priced at each subagent&apos;s model.
+        Includes subagent tokens, each priced at the model it ran on.
       </p>
     </div>
   );

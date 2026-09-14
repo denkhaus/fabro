@@ -101,7 +101,7 @@ export interface StageProjection {
     'live_tool_ms'?: number;
     'tool_batch'?: StageToolBatchProjection | null;
     /**
-     * The stage\'s usage: while the stage runs, its agent\'s own accounting of the session tree with whatever cost the provider reported; once it ends, the same tokens with the catalog\'s price where the provider reported none.
+     * The stage\'s usage: the session tree\'s tokens and cost, live and once the stage ends. Every answer is priced once by lithos-llm (the provider\'s reported cost, else the catalog\'s price for the route) and summed; the cost is absent only when an answer had neither.
      */
     'usage': Usage;
     'model'?: UsageModelRef | null;

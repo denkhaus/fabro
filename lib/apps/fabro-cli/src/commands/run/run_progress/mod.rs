@@ -461,12 +461,12 @@ mod tests {
     use fabro_workflow::event::{
         Event, RunNoticeLevel, SandboxLifecycle, to_run_event, to_run_event_at,
     };
-    use fabro_workflow::outcome::model_usage_from_llm;
+    use fabro_workflow::outcome::ModelUsage;
     use lithos_llm::catalog::{ModelId, builtin};
-    use lithos_llm::types::TokenCounts;
+    use lithos_llm::types::{Cost, CostSource, TokenCounts, Usage};
     use pebble_coding_agent::events::{
         CodingAgentEvent, CodingEvent, CompactionReason, ErrorData as AgentErrorData,
-        ErrorKind as AgentErrorKind, Usage,
+        ErrorKind as AgentErrorKind,
     };
 
     use super::*;
@@ -649,18 +649,22 @@ mod tests {
             preferred_label: None,
             suggested_next_ids: Vec::new(),
             usage_by_model: Vec::new(),
-            usage: Some(
-                model_usage_from_llm(
-                    &fabro_llm::test_support::test_catalog(),
-                    &ModelRef::new(builtin::openai(), ModelId::new("gpt-5.4")),
-                    TokenCounts {
+            // Priced as lithos-llm prices gpt-5.4: 1200 input at $2.50/M and
+            // 300 output at $15/M.
+            usage: Some(ModelUsage::new(
+                ModelRef::new(builtin::openai(), ModelId::new("gpt-5.4")),
+                Usage {
+                    tokens: TokenCounts {
                         input: 1200,
                         output: 300,
                         ..TokenCounts::default()
                     },
-                )
-                .unwrap(),
-            ),
+                    cost:   Some(Cost {
+                        usd_micros: 7_500,
+                        source:     CostSource::Catalog,
+                    }),
+                },
+            )),
             failure: None,
             notes: None,
             files_touched: Vec::new(),

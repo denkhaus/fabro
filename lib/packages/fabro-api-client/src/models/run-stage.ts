@@ -74,7 +74,7 @@ export interface RunStage {
      */
     'started_at'?: string | null;
     /**
-     * Usage for this stage execution alone. `cost` is the provider\'s reported cost when there is one, otherwise the server catalog\'s price for these tokens — the same pricing the `/runs/{id}/usage` rows use. All-zero counts mean the stage made no model calls. Unlike the usage rows, which sum every visit of a node, this covers only this visit.
+     * Usage for this stage execution alone. `cost` sums what lithos-llm attached to each answer: the provider\'s reported cost when there is one, otherwise the catalog\'s price for the route — the same figures the `/runs/{id}/usage` rows sum. All-zero counts mean the stage made no model calls. Unlike the usage rows, which sum every visit of a node, this covers only this visit.
      */
     'usage': Usage;
 }
