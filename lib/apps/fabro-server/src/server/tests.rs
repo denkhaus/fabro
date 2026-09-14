@@ -8570,7 +8570,7 @@ impl fabro_workflow::handler::Handler for BridgeCapturingWaitHandler {
 /// start -> work (wait 1ms) -> exit: the work node is the bridge
 /// observation point; the terminal exit node never dispatches a handler.
 async fn bridge_intent_run(app: &Router, bearer: Option<&str>, config: &str) -> String {
-    let intent = test_intent_with_bearer(
+    let mut intent = test_intent_with_bearer(
         app,
         "workflow.fabro",
         BRIDGE_CAPTURE_DOT,
@@ -8578,6 +8578,11 @@ async fn bridge_intent_run(app: &Router, bearer: Option<&str>, config: &str) -> 
         bearer,
     )
     .await;
+    // A folder target admits on the LOCAL provider (a `none` target requires
+    // a clone-based Docker/Daytona environment, which needs a Docker daemon).
+    // The tempdir is deliberately leaked for the run's lifetime.
+    let folder = tempfile::tempdir().unwrap().keep();
+    intent["target"] = json!({"kind": "folder", "path": folder});
     let mut builder = Request::builder()
         .method("POST")
         .uri(api("/runs"))
@@ -8628,9 +8633,13 @@ contents = "read"
 "#;
     let observations = StdArc::new(StdMutex::new(Vec::new()));
     let capturing = StdArc::clone(&observations);
-    let state = test_app_state_with_runtime_settings_and_registry_factory(
+    let state = test_app_state_with_runtime_settings_environment_and_registry_factory(
         server_settings_from_toml(source),
         manifest_run_defaults_from_toml(source),
+        // These runs execute a real in-process workflow; the default
+        // DOCKER-seeded environment would require a Docker daemon, which is
+        // absent in daemon-free test environments. Seed LOCAL instead.
+        Some(SandboxProviderKind::LOCAL),
         move |interviewer| {
             let mut registry = fabro_workflow::handler::default_registry(interviewer, || None);
             registry.register(
@@ -8776,9 +8785,13 @@ contents = "read"
 "#;
     let observations = StdArc::new(StdMutex::new(Vec::new()));
     let capturing = StdArc::clone(&observations);
-    let state = test_app_state_with_runtime_settings_and_registry_factory(
+    let state = test_app_state_with_runtime_settings_environment_and_registry_factory(
         server_settings_from_toml(source),
         manifest_run_defaults_from_toml(source),
+        // These runs execute a real in-process workflow; the default
+        // DOCKER-seeded environment would require a Docker daemon, which is
+        // absent in daemon-free test environments. Seed LOCAL instead.
+        Some(SandboxProviderKind::LOCAL),
         move |interviewer| {
             let mut registry = fabro_workflow::handler::default_registry(interviewer, || None);
             registry.register(
