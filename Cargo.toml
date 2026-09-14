@@ -106,16 +106,18 @@ futures-util = "0.3"
 # `main` (the `section-4-driver-items` work merged in #20; #21 gave the
 # protocol crate's `PluginSupervisor` numbered generations, a health probe
 # before a generation serves, and a refusal of a replacement that reports
-# another resource namespace). The CI plugin job installs the driver
+# another resource namespace; #22 made the Daytona exec decoder resync on a
+# torn frame and report what it dropped as `ExecStreamingResult::output_loss`
+# instead of failing the command). The CI plugin job installs the driver
 # executables at the same rev, read from this file.
-sandbox-driver = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "ddb32e19e763299319ecf6aebc8961298db80c0c" }
-sandbox-driver-protocol = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "ddb32e19e763299319ecf6aebc8961298db80c0c" }
-sandbox-driver-host = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "ddb32e19e763299319ecf6aebc8961298db80c0c" }
-sandbox-driver-docker = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "ddb32e19e763299319ecf6aebc8961298db80c0c" }
-sandbox-driver-docker-config = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "ddb32e19e763299319ecf6aebc8961298db80c0c" }
-sandbox-driver-daytona = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "ddb32e19e763299319ecf6aebc8961298db80c0c" }
-sandbox-driver-daytona-config = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "ddb32e19e763299319ecf6aebc8961298db80c0c" }
-sandbox-driver-testing = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "ddb32e19e763299319ecf6aebc8961298db80c0c" }
+sandbox-driver = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "64c14b89d078a4b34d1555092ad01d41541f7a7d" }
+sandbox-driver-protocol = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "64c14b89d078a4b34d1555092ad01d41541f7a7d" }
+sandbox-driver-host = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "64c14b89d078a4b34d1555092ad01d41541f7a7d" }
+sandbox-driver-docker = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "64c14b89d078a4b34d1555092ad01d41541f7a7d" }
+sandbox-driver-docker-config = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "64c14b89d078a4b34d1555092ad01d41541f7a7d" }
+sandbox-driver-daytona = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "64c14b89d078a4b34d1555092ad01d41541f7a7d" }
+sandbox-driver-daytona-config = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "64c14b89d078a4b34d1555092ad01d41541f7a7d" }
+sandbox-driver-testing = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "64c14b89d078a4b34d1555092ad01d41541f7a7d" }
 # pebble: the coding agent loop fabro runs its agent stages, Ask Fabro
 # sessions, hook evaluators, and `fabro exec` on. Pinned by rev to pebble
 # `main`. Pebble owns the `PortRoutes` trait fabro implements over its run

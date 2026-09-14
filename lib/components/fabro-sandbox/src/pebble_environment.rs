@@ -11,6 +11,10 @@
 //! pebble's: a glob that pebble rejects is rejected before the driver sees it,
 //! a directory listing is in tree order, and a command with no retention cap
 //! still drains under the driver's default buffer rather than without bound.
+//! Output a provider lost on its own transport
+//! ([`ExecStreamingResult::output_loss`]) has no slot in pebble's contract,
+//! so it is written where the model already reads: one line at the end of
+//! stderr.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -21,7 +25,10 @@ use pebble_coding_agent::environment::{
     DirEntry, EnvResult, Environment, EnvironmentError, EnvironmentErrorKind, ExecOutcome,
     ExecOutputSink, ExecOutputStream, ExecRequest, ExecResult, GrepOptions,
 };
-use sandbox_driver::{ExecControls, ExecSpec, FileKind, OutputSink, OutputStream};
+use sandbox_driver::{
+    ExecControls, ExecSpec, ExecStreamingResult, FileKind, OutputLoss, OutputSink, OutputStream,
+};
+use tracing::warn;
 
 use crate::driver_sandbox::RunSandbox;
 use crate::exec::{ExecResultExt as _, command_termination, program_exit_code};
@@ -214,26 +221,77 @@ impl Environment for RunSandbox {
                 };
                 EnvironmentError::with_source(kind, "Failed to run the command", error)
             })?;
-        let result = streaming.result;
-        Ok(ExecOutcome {
-            result:            ExecResult {
-                stdout:      result.stdout_lossy(),
-                stderr:      result.stderr_lossy(),
-                exit_code:   program_exit_code(result.termination, result.exit_code),
-                termination: command_termination(result.termination),
-                duration_ms: result.duration_ms(),
-            },
-            streams_separated: streaming.streams_separated,
-            stdout_capture:    capture_stats(
-                streaming.stdout_capture.observed_bytes,
-                output_bytes_cap,
-            ),
-            stderr_capture:    capture_stats(
-                streaming.stderr_capture.observed_bytes,
-                output_bytes_cap,
-            ),
-        })
+        Ok(exec_outcome(
+            streaming,
+            output_bytes_cap,
+            program_name(command),
+        ))
     }
+}
+
+/// Pebble's outcome for a finished command: the driver's result read the way
+/// fabro reads it, plus the provider's own output loss written where the
+/// model reads stderr.
+///
+/// A provider whose transport tore (Daytona's text-only toolbox) completes
+/// the command and reports what it discarded in
+/// [`ExecStreamingResult::output_loss`] rather than failing it. The frames
+/// are gone, the stream they belonged to is unknown, and the counts are of
+/// encoded bytes, so they cannot be folded into either stream's capture
+/// accounting without guessing; the loss is one line at the end of stderr,
+/// where the model and the run log see it, and one log event for the
+/// operator. The driver's `truncated` flags on the captures already say the
+/// counts undercount.
+fn exec_outcome(
+    streaming: ExecStreamingResult,
+    output_bytes_cap: Option<usize>,
+    program: &str,
+) -> ExecOutcome {
+    let loss = streaming.output_loss;
+    let result = streaming.result;
+    let mut stderr = result.stderr_lossy();
+    if loss.is_lossy() {
+        warn!(
+            program = %program,
+            dropped_frames = loss.dropped_frames,
+            dropped_bytes = loss.dropped_bytes,
+            "Sandbox provider dropped command output"
+        );
+        if !stderr.is_empty() && !stderr.ends_with('\n') {
+            stderr.push('\n');
+        }
+        stderr.push_str(&output_loss_line(loss));
+    }
+    ExecOutcome {
+        result:            ExecResult {
+            stdout: result.stdout_lossy(),
+            stderr,
+            exit_code: program_exit_code(result.termination, result.exit_code),
+            termination: command_termination(result.termination),
+            duration_ms: result.duration_ms(),
+        },
+        streams_separated: streaming.streams_separated,
+        stdout_capture:    capture_stats(streaming.stdout_capture.observed_bytes, output_bytes_cap),
+        stderr_capture:    capture_stats(streaming.stderr_capture.observed_bytes, output_bytes_cap),
+    }
+}
+
+/// The line stderr ends with when the provider dropped output.
+fn output_loss_line(loss: OutputLoss) -> String {
+    format!(
+        "[sandbox] {} output frame(s), {} bytes dropped by the provider\n",
+        loss.dropped_frames, loss.dropped_bytes
+    )
+}
+
+/// Bytes of a command's first word a log event carries.
+const PROGRAM_NAME_BYTES: usize = 64;
+
+/// The word a command starts with, bounded, for a log event that must not
+/// carry the command itself.
+fn program_name(command: &str) -> &str {
+    let word = command.split_whitespace().next().unwrap_or_default();
+    &word[..word.floor_char_boundary(PROGRAM_NAME_BYTES)]
 }
 
 impl RunSandbox {
@@ -297,10 +355,19 @@ fn environment_error(message: &str, error: crate::Error) -> EnvironmentError {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
+
+    use fabro_types::SandboxProviderKind;
     use pebble_coding_agent::test_support::EnvironmentContract;
+    use sandbox_driver::{
+        Capabilities, Exec, Filesystem, PlatformInfo, Sandbox, SandboxId, SandboxStatus, Search,
+        SpawnSpec, StdioProcess, Termination,
+    };
+    use sandbox_driver_testing::ScriptedSandbox;
 
     use super::*;
     use crate::local_sandbox;
+    use crate::test_support::{MockSandbox, exec_result};
 
     /// The run sandbox over the driver's Host provider, in a directory that
     /// goes away with the test.
@@ -369,5 +436,239 @@ mod tests {
         assert_eq!(parent_directory("/work/a/b.txt"), Some("/work/a"));
         assert_eq!(parent_directory("/b.txt"), Some("/"));
         assert_eq!(parent_directory("b.txt"), None);
+    }
+
+    fn request(command: &str) -> ExecRequest<'_> {
+        ExecRequest {
+            command,
+            timeout_ms: Some(10_000),
+            working_dir: None,
+            env_vars: None,
+            cancel_token: None,
+            output_bytes_cap: None,
+            output_sink: None,
+        }
+    }
+
+    fn output_loss(dropped_frames: u64, dropped_bytes: u64) -> OutputLoss {
+        let mut loss = OutputLoss::default();
+        loss.dropped_frames = dropped_frames;
+        loss.dropped_bytes = dropped_bytes;
+        loss
+    }
+
+    #[tokio::test]
+    async fn a_lossless_command_hands_back_stderr_as_the_provider_wrote_it() {
+        let mock = MockSandbox {
+            exec_result: exec_result(
+                "built\n",
+                "warning: unused\n",
+                Some(0),
+                Termination::Exited,
+                7,
+            ),
+            ..MockSandbox::linux()
+        };
+        let outcome = Environment::exec(&*mock.sandbox(), request("cargo build"))
+            .await
+            .expect("a scripted command");
+        assert_eq!(outcome.result.stdout, "built\n");
+        assert_eq!(outcome.result.stderr, "warning: unused\n");
+        assert_eq!(outcome.result.exit_code, Some(0));
+        assert_eq!(
+            outcome.stderr_capture.observed_bytes,
+            "warning: unused\n".len()
+        );
+    }
+
+    #[test]
+    fn a_provider_output_loss_ends_stderr_with_one_line() {
+        let mut streaming = ExecStreamingResult::new(exec_result(
+            "built\n",
+            "warning: torn",
+            Some(1),
+            Termination::Exited,
+            7,
+        ));
+        streaming.output_loss = output_loss(2, 4096);
+
+        let outcome = exec_outcome(streaming, Some(1024), "cargo");
+
+        assert_eq!(outcome.result.stdout, "built\n");
+        assert_eq!(
+            outcome.result.stderr,
+            "warning: torn\n[sandbox] 2 output frame(s), 4096 bytes dropped by the provider\n"
+        );
+        assert_eq!(outcome.result.exit_code, Some(1));
+        assert_eq!(outcome.result.duration_ms, 7);
+        // The loss is not folded into either stream's accounting.
+        assert_eq!(outcome.stdout_capture.observed_bytes, "built\n".len());
+        assert_eq!(outcome.stderr_capture.observed_bytes, "warning: torn".len());
+    }
+
+    #[test]
+    fn a_provider_output_loss_with_no_stderr_is_the_line_alone() {
+        let mut streaming =
+            ExecStreamingResult::new(exec_result("", "", Some(0), Termination::Exited, 1));
+        streaming.output_loss = output_loss(1, 80);
+        let outcome = exec_outcome(streaming, None, "sh");
+        assert_eq!(
+            outcome.result.stderr,
+            "[sandbox] 1 output frame(s), 80 bytes dropped by the provider\n"
+        );
+    }
+
+    #[test]
+    fn a_log_event_names_the_first_word_of_a_command_bounded() {
+        assert_eq!(program_name("cargo build --release"), "cargo");
+        assert_eq!(program_name("  \n  ls"), "ls");
+        assert_eq!(program_name(""), "");
+        let long = "x".repeat(PROGRAM_NAME_BYTES + 10);
+        assert_eq!(program_name(&long).len(), PROGRAM_NAME_BYTES);
+        let multibyte = "é".repeat(PROGRAM_NAME_BYTES);
+        assert!(program_name(&multibyte).len() <= PROGRAM_NAME_BYTES);
+    }
+
+    /// The driver's scripted sandbox with an exec facet that reports a
+    /// provider output loss on every command, as Daytona does after a torn
+    /// frame. The scripted double itself has no knob for the loss.
+    struct LossySandbox {
+        inner: Arc<ScriptedSandbox>,
+        exec:  LossyExec,
+    }
+
+    struct LossyExec {
+        inner: Arc<ScriptedSandbox>,
+        loss:  OutputLoss,
+    }
+
+    impl LossySandbox {
+        fn new(inner: Arc<ScriptedSandbox>, loss: OutputLoss) -> Self {
+            Self {
+                exec: LossyExec {
+                    inner: Arc::clone(&inner),
+                    loss,
+                },
+                inner,
+            }
+        }
+    }
+
+    #[async_trait]
+    impl Exec for LossyExec {
+        async fn run(&self, spec: &ExecSpec) -> sandbox_driver::Result<sandbox_driver::ExecResult> {
+            self.inner.scripted_exec().run(spec).await
+        }
+
+        async fn run_streaming(
+            &self,
+            spec: &ExecSpec,
+            controls: ExecControls,
+        ) -> sandbox_driver::Result<ExecStreamingResult> {
+            let mut streaming = self
+                .inner
+                .scripted_exec()
+                .run_streaming(spec, controls)
+                .await?;
+            streaming.output_loss = self.loss;
+            streaming.stdout_capture.truncated = true;
+            streaming.stderr_capture.truncated = true;
+            Ok(streaming)
+        }
+
+        async fn spawn_stdio(&self, spec: &SpawnSpec) -> sandbox_driver::Result<StdioProcess> {
+            self.inner.scripted_exec().spawn_stdio(spec).await
+        }
+    }
+
+    #[async_trait]
+    impl Sandbox for LossySandbox {
+        fn id(&self) -> &SandboxId {
+            self.inner.id()
+        }
+
+        fn capabilities(&self) -> &Capabilities {
+            // The scripted sandbox's builder method of the same name shadows
+            // the trait's.
+            Sandbox::capabilities(&*self.inner)
+        }
+
+        async fn describe(&self) -> sandbox_driver::Result<SandboxStatus> {
+            self.inner.describe().await
+        }
+
+        fn working_directory(&self) -> &str {
+            self.inner.working_directory()
+        }
+
+        async fn environment(&self) -> sandbox_driver::Result<BTreeMap<String, String>> {
+            self.inner.environment().await
+        }
+
+        fn runtime_directory(&self) -> Option<&str> {
+            Sandbox::runtime_directory(&*self.inner)
+        }
+
+        async fn platform_info(&self) -> sandbox_driver::Result<PlatformInfo> {
+            self.inner.platform_info().await
+        }
+
+        async fn start(&self) -> sandbox_driver::Result<()> {
+            self.inner.start().await
+        }
+
+        async fn stop(&self) -> sandbox_driver::Result<()> {
+            self.inner.stop().await
+        }
+
+        async fn delete(&self) -> sandbox_driver::Result<()> {
+            self.inner.delete().await
+        }
+
+        fn exec(&self) -> &dyn Exec {
+            &self.exec
+        }
+
+        fn fs(&self) -> &dyn Filesystem {
+            self.inner.fs()
+        }
+
+        fn provider_search(&self) -> Option<&dyn Search> {
+            self.inner.provider_search()
+        }
+    }
+
+    #[tokio::test]
+    async fn a_lossy_command_tells_the_model_what_the_provider_dropped() {
+        let scripted =
+            Arc::new(
+                ScriptedSandbox::with_id_and_working_dir("lossy", "/work")
+                    .platform(PlatformInfo::new("linux", "x86_64", "Linux 6.1.0")),
+            );
+        scripted.scripted_exec().set_default(exec_result(
+            "built\n",
+            "warning: torn",
+            Some(0),
+            Termination::Exited,
+            7,
+        ));
+        let sandbox = RunSandbox::new_with_platform(
+            SandboxProviderKind::DAYTONA,
+            Arc::new(LossySandbox::new(scripted, output_loss(3, 512))),
+            "linux",
+            "Linux 6.1.0",
+        );
+
+        let outcome = Environment::exec(&sandbox, request("cargo build"))
+            .await
+            .expect("a lossy command completes rather than fails");
+
+        assert_eq!(outcome.result.stdout, "built\n");
+        assert_eq!(
+            outcome.result.stderr,
+            "warning: torn\n[sandbox] 3 output frame(s), 512 bytes dropped by the provider\n"
+        );
+        assert_eq!(outcome.result.exit_code, Some(0));
+        assert!(outcome.streams_separated);
     }
 }
