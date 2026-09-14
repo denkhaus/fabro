@@ -6636,6 +6636,7 @@ channel = "#deploys"
             head_sha:    Some("final-sha".to_string()),
             title:       "Ship <prod> & notify".to_string(),
             draft:       false,
+            auto_merge:  None,
         },
     )
     .await
@@ -8933,6 +8934,7 @@ async fn create_run_with_pull_request_record(
             head_sha: Some("final-sha".to_string()),
             title: title.to_string(),
             draft: false,
+            auto_merge: None,
         },
     ])
     .await;
@@ -21082,6 +21084,7 @@ async fn list_runs_includes_live_metadata_from_run_state() {
             head_sha:    Some("final-sha".to_string()),
             title:       "Fix board metadata".to_string(),
             draft:       false,
+            auto_merge:  None,
         },
         workflow_event::Event::InterviewStarted {
             question_id:     "q-1".to_string(),

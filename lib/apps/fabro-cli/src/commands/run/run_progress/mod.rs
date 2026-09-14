@@ -1431,6 +1431,7 @@ mod tests {
             head_sha:    Some("final-sha".to_string()),
             title:       "Ship the change".into(),
             draft:       true,
+            auto_merge:  None,
         });
         emit(&mut ui, Event::PullRequestFailed {
             creation_id: None,

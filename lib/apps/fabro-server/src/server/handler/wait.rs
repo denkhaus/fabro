@@ -147,7 +147,18 @@ pub(super) enum GateVerdict {
 fn gate_verdict(
     mergeable_state: Option<&str>,
     checks: Option<&[fabro_github::CheckRunSnapshot]>,
+    auto_merge: Option<&fabro_types::PullRequestAutoMergeState>,
 ) -> GateVerdict {
+    // fabro-b4ed: the engine requested auto-merge and GitHub rejected the
+    // enable on an unprotected base ("Protected branch rules not
+    // configured" / "Pull request is in clean status"). No rule will ever
+    // merge this PR, and `mergeable_state` stays `clean` — without this
+    // record the wait would treat the gate as young until the deadline.
+    if auto_merge.is_some_and(|state| {
+        state.status == fabro_types::PullRequestAutoMergeStatus::UnprotectedBase
+    }) {
+        return GateVerdict::Stuck;
+    }
     let Some(state) = mergeable_state.map(str::to_ascii_lowercase) else {
         return GateVerdict::Young;
     };
@@ -257,30 +268,44 @@ async fn wait_until_merged(
                     let dirty_or_blocked = detail.mergeable_state.as_deref().is_some_and(|state| {
                         state.eq_ignore_ascii_case("dirty") || state.eq_ignore_ascii_case("blocked")
                     });
-                    let verdict = if dirty_or_blocked {
-                        let checks = match timeout(
-                            GITHUB_CALL_TIMEOUT,
-                            fabro_github::list_check_runs_for_ref(
-                                &github,
-                                &ctx.owner,
-                                &ctx.repo,
-                                &detail.head.ref_name,
-                            ),
-                        )
-                        .await
-                        {
-                            Ok(Ok(checks)) => Some(checks),
-                            Ok(Err(err)) => {
-                                tracing::warn!(
-                                    run_id = %id,
-                                    error = %err,
-                                    "Check-run fetch failed during blocked-gate verdict;                                      treating gate as young (no failure evidence)"
-                                );
-                                None
+                    // fabro-b4ed: a recorded unprotected-base auto-merge
+                    // failure is stuck evidence even while the PR reports
+                    // a `clean` mergeable_state.
+                    let auto_merge_dead = ctx.auto_merge.as_ref().is_some_and(|state| {
+                        state.status == fabro_types::PullRequestAutoMergeStatus::UnprotectedBase
+                    });
+                    let verdict = if dirty_or_blocked || auto_merge_dead {
+                        let checks = if dirty_or_blocked {
+                            match timeout(
+                                GITHUB_CALL_TIMEOUT,
+                                fabro_github::list_check_runs_for_ref(
+                                    &github,
+                                    &ctx.owner,
+                                    &ctx.repo,
+                                    &detail.head.ref_name,
+                                ),
+                            )
+                            .await
+                            {
+                                Ok(Ok(checks)) => Some(checks),
+                                Ok(Err(err)) => {
+                                    tracing::warn!(
+                                        run_id = %id,
+                                        error = %err,
+                                        "Check-run fetch failed during blocked-gate verdict;                                      treating gate as young (no failure evidence)"
+                                    );
+                                    None
+                                }
+                                Err(_) => None,
                             }
-                            Err(_) => None,
+                        } else {
+                            None
                         };
-                        gate_verdict(detail.mergeable_state.as_deref(), checks.as_deref())
+                        gate_verdict(
+                            detail.mergeable_state.as_deref(),
+                            checks.as_deref(),
+                            ctx.auto_merge.as_ref(),
+                        )
                     } else {
                         GateVerdict::Young
                     };
@@ -397,10 +422,10 @@ mod tests {
 
     #[test]
     fn dirty_state_is_structurally_stuck() {
-        assert_eq!(gate_verdict(Some("dirty"), None), GateVerdict::Stuck);
+        assert_eq!(gate_verdict(Some("dirty"), None, None), GateVerdict::Stuck);
         // Even with all checks green a conflict cannot clear itself.
         assert_eq!(
-            gate_verdict(Some("DIRTY"), Some(&[check(Some("success"))])),
+            gate_verdict(Some("DIRTY"), Some(&[check(Some("success"))]), None),
             GateVerdict::Stuck
         );
     }
@@ -411,7 +436,8 @@ mod tests {
             assert_eq!(
                 gate_verdict(
                     Some("blocked"),
-                    Some(&[check(Some("success")), check(Some(conclusion))])
+                    Some(&[check(Some("success")), check(Some(conclusion))]),
+                    None
                 ),
                 GateVerdict::Stuck,
                 "conclusion {conclusion} must be failure evidence"
@@ -423,14 +449,17 @@ mod tests {
     fn blocked_with_only_young_checks_stays_young() {
         // fabro-ee5d regression: a young gate reports `blocked` while the
         // required checks are queued or running (PR #121, 2026-09-10).
-        assert_eq!(gate_verdict(Some("blocked"), Some(&[])), GateVerdict::Young);
         assert_eq!(
-            gate_verdict(Some("blocked"), Some(&[check(None)])),
+            gate_verdict(Some("blocked"), Some(&[]), None),
+            GateVerdict::Young
+        );
+        assert_eq!(
+            gate_verdict(Some("blocked"), Some(&[check(None)]), None),
             GateVerdict::Young,
             "a run with no conclusion yet is still executing"
         );
         assert_eq!(
-            gate_verdict(Some("blocked"), Some(&[check(Some("success"))])),
+            gate_verdict(Some("blocked"), Some(&[check(Some("success"))]), None),
             GateVerdict::Young
         );
     }
@@ -438,15 +467,59 @@ mod tests {
     #[test]
     fn blocked_without_check_evidence_stays_young() {
         // Check-runs fetch failed: no evidence either way, keep waiting.
-        assert_eq!(gate_verdict(Some("blocked"), None), GateVerdict::Young);
+        assert_eq!(
+            gate_verdict(Some("blocked"), None, None),
+            GateVerdict::Young
+        );
+    }
+
+    #[test]
+    fn unprotected_base_auto_merge_failure_is_stuck_even_when_clean() {
+        // fabro-b4ed: enablePullRequestAutoMerge rejected on an
+        // unprotected base — nothing will ever merge the PR and
+        // mergeable_state stays `clean`, which alone reads as young.
+        let unprotected = fabro_types::PullRequestAutoMergeState {
+            status: fabro_types::PullRequestAutoMergeStatus::UnprotectedBase,
+            error:  Some("Protected branch rules not configured".to_string()),
+        };
+        assert_eq!(
+            gate_verdict(Some("clean"), None, Some(&unprotected)),
+            GateVerdict::Stuck
+        );
+        assert_eq!(
+            gate_verdict(None, None, Some(&unprotected)),
+            GateVerdict::Stuck
+        );
+        // Other enable failures keep the wait young (durable record only),
+        // and a successful enable is obviously not evidence.
+        let failed = fabro_types::PullRequestAutoMergeState {
+            status: fabro_types::PullRequestAutoMergeStatus::Failed,
+            error:  Some("transport".to_string()),
+        };
+        let enabled = fabro_types::PullRequestAutoMergeState {
+            status: fabro_types::PullRequestAutoMergeStatus::Enabled,
+            error:  None,
+        };
+        for state in [&failed, &enabled] {
+            assert_eq!(
+                gate_verdict(Some("clean"), None, Some(state)),
+                GateVerdict::Young
+            );
+        }
     }
 
     #[test]
     fn computing_and_unstable_states_are_young() {
-        assert_eq!(gate_verdict(None, None), GateVerdict::Young);
-        assert_eq!(gate_verdict(Some("unknown"), None), GateVerdict::Young);
-        assert_eq!(gate_verdict(Some("unstable"), None), GateVerdict::Young);
-        assert_eq!(gate_verdict(Some("behind"), None), GateVerdict::Young);
-        assert_eq!(gate_verdict(Some("clean"), None), GateVerdict::Young);
+        assert_eq!(gate_verdict(None, None, None), GateVerdict::Young);
+        assert_eq!(
+            gate_verdict(Some("unknown"), None, None),
+            GateVerdict::Young
+        );
+        assert_eq!(
+            gate_verdict(Some("unstable"), None, None),
+            GateVerdict::Young
+        );
+        assert_eq!(gate_verdict(Some("behind"), None, None), GateVerdict::Young);
+        assert_eq!(gate_verdict(Some("clean"), None, None), GateVerdict::Young);
     }
 }
