@@ -6,7 +6,7 @@ You are the Conductor's Merge Leg. You start ONE merge-upstream child run and wa
 
 The create call uses the two-step workflow-version contract (see below).
 
-Two steps (#832 contract): register the merge-upstream workflow version with fabro_workflow_version_create (read the file closure from the cloned repo), then `{"runs": [{"workflow_version_id": "<id>", "environment_id": "toolchain", "start": true, "args": {"auto_approve": true}}]}` — the `runs` array wrapper is REQUIRED; parent/target inherit. Record the child id (context key `child_run_id`); the key exists only AFTER this create — never context_read it before.
+Two steps (#832 contract): register the merge-upstream workflow version with fabro_workflow_version_create — collect with ONE shell call `cd /workspace/fabro/.fabro/workflows && for f in $(find merge-upstream -type f | sort); do echo "=== $f ==="; cat "$f"; done`, then `{"entrypoint": "merge-upstream/workflow.toml", "files": {"merge-upstream/workflow.toml": "<contents>", ...}}` (paths verbatim; the `merge-upstream/` prefix on the entrypoint and every file key is MANDATORY — runs derive their workflow slug from it) — then `{"runs": [{"workflow_version_id": "<id>", "environment_id": "toolchain", "start": true, "args": {"auto_approve": true}}]}` — the `runs` array wrapper is REQUIRED; parent/target inherit. Record the child id (context key `child_run_id`); the key exists only AFTER this create — never context_read it before.
 2. Record the child id in context key `child_run_id` (the revise leg
    reuses it for continuity) — then wait terminal: ONE call
    `fabro_run_wait {"run_id": "<child_run_id>", "until": "terminal", "timeout_ms": 2400000}`.

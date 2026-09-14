@@ -314,8 +314,8 @@ mod tests {
     async fn workflow_version_mcp_surface_matches_catalog_and_returns_minimal_result() {
         let mock = httpmock::MockServer::start_async().await;
         let version = fabro_types::WorkflowVersion::new(
-            "workflow".parse().unwrap(),
-            BTreeMap::from([("workflow".parse().unwrap(), "digraph W {}".to_string())]),
+            "demo/workflow".parse().unwrap(),
+            BTreeMap::from([("demo/workflow".parse().unwrap(), "digraph W {}".to_string())]),
             BTreeMap::new(),
         )
         .unwrap();
@@ -351,8 +351,10 @@ mod tests {
         actual.as_object_mut().unwrap().remove("$schema");
         assert_eq!(actual, expected);
         assert_eq!(tool.description.as_deref(), Some(definition.description));
-        let params =
-            serde_json::json!({"entrypoint":"workflow","files":{"workflow":"digraph W {}"}});
+        let params = serde_json::json!({
+            "entrypoint": "demo/workflow",
+            "files":      {"demo/workflow": "digraph W {}"}
+        });
         let result = server
             .fabro_workflow_version_create(Parameters(serde_json::from_value(params).unwrap()))
             .await

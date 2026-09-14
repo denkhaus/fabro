@@ -52,15 +52,17 @@ fabro mcp init claude --name fabro-testing --server https://fabro-testing.exampl
 
 Use shell and read tools in your sandbox to acquire the workflow and all its local
 config, graph, prompt, script, import, and child-workflow files. For example, clone
-a repository with your sandbox's shell tool, then read `workflow.fabro` and its
-referenced `prompt.md`. Submit the actual contents:
+a repository with your sandbox's shell tool, then read the files of the workflow
+directory you want to run. Submit the actual contents with their directory prefix
+kept intact — runs derive their workflow slug from the entrypoint's directory, so
+a bare `workflow.fabro` is rejected:
 
 ```json
 {
-  "entrypoint": "workflow.fabro",
+  "entrypoint": "review/workflow.fabro",
   "files": {
-    "workflow.fabro": "digraph W { start [shape=Mdiamond] work [prompt=\"@prompt.md\"] exit [shape=Msquare] start -> work -> exit }",
-    "prompt.md": "Review the implementation."
+    "review/workflow.fabro": "digraph W { start [shape=Mdiamond] work [prompt=\"@prompt.md\"] exit [shape=Msquare] start -> work -> exit }",
+    "review/prompt.md": "Review the implementation."
   }
 }
 ```

@@ -24,18 +24,18 @@ stage does it while it has slack; the legs only pass the id.
 When your decision is "Work":
 
 1. Collect each closure in ONE shell call — never one turn per file:
-   `cd /workspace/fabro && for f in $(find .fabro/workflows/develop -type f | sort); do echo "=== $f ==="; cat "$f"; done`
-   and the same for `.fabro/workflows/revisor`. The closure is every
-   file the packager needs: `workflow.toml`, `workflow.fabro`,
-   `prompts/*.md`, `schemas/*.json`, referenced `scripts/*.nu`.
+   `cd /workspace/fabro/.fabro/workflows && for f in $(find develop -type f | sort); do echo "=== $f ==="; cat "$f"; done`
+   and the same for `revisor`. The collected paths ARE the file keys —
+   use them verbatim. The closure is every file the packager needs:
+   `workflow.toml`, `workflow.fabro`, `prompts/*.md`, `schemas/*.json`,
+   referenced `scripts/*.nu`.
 2. Register: `fabro_workflow_version_create {"entrypoint": "<slug>/workflow.toml", "files": {"<slug>/workflow.toml": ..., "<slug>/workflow.fabro": ..., "<slug>/prompts/...": ...}}` —
    once for develop, once for revisor. The `<slug>/` DIRECTORY PREFIX on the
    entrypoint and EVERY file key is MANDATORY (fabro-9cb0: a bare
    `workflow.toml` entrypoint collapses the run's workflow_slug to
    "workflow", which makes the run invisible to every `workflow=<slug>`
    filter — the revisor selector and the backlog checks listed 0 runs while
-   terminal runs existed). Collect the closure from the REPO ROOT with
-   `<slug>/`-prefixed paths, never from inside the workflow directory.
+   terminal runs existed).
    If the packager names a missing dependency, add exactly that file and retry once.
 3. Emit BOTH ids as context keys — `develop_workflow_version_id` and
    `revisor_workflow_version_id` (64 hex each) via `context_updates` —

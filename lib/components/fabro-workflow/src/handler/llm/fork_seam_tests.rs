@@ -351,12 +351,22 @@ fn workflow_prompts_carry_no_expandable_slash_tokens() {
 
 /// Incident run 01M2DH2P56GP develop leg: the #832 run-intent contract
 /// replaced inline {workflow, workflow_source} payloads with registered
-/// workflow versions. The conductor legs' prompts must teach the two-step
+/// workflow versions. The conductor prompts must teach the two-step
 /// dance and must not carry JSON-teaching occurrences of the rejected
-/// shape (prose mentions inside REJECTED warnings are allowed).
+/// shape (prose mentions inside REJECTED warnings are allowed), and the
+/// taught registration shape must keep the slug-defining directory prefix
+/// on the entrypoint (fabro-9cb0).
 #[test]
 fn conductor_legs_teach_the_workflow_version_contract() {
-    for leg in ["develop-leg.md", "revise-leg.md"] {
+    // (prompt, mandated entrypoint prefix) — every prompt that teaches
+    // registration must teach the slug-prefixed shape (fabro-9cb0).
+    let legs = [
+        ("survey.md", "<slug>/workflow.toml"),
+        ("develop-leg.md", "develop/workflow.toml"),
+        ("revise-leg.md", "revisor/workflow.toml"),
+        ("merge-leg.md", "merge-upstream/workflow.toml"),
+    ];
+    for (leg, prefixed_entrypoint) in legs {
         let base = repo_root().join(".fabro/workflows/conductor/prompts");
         #[expect(
             clippy::disallowed_methods,
@@ -375,6 +385,14 @@ fn conductor_legs_teach_the_workflow_version_contract() {
         assert!(
             !source.contains("{\"runs\": [{\"workflow\":"),
             "{leg} still teaches the pre-#832 inline create shape"
+        );
+        assert!(
+            source.contains(prefixed_entrypoint),
+            "{leg} must teach the {prefixed_entrypoint} entrypoint prefix"
+        );
+        assert!(
+            !source.contains("\"entrypoint\": \"workflow"),
+            "{leg} still teaches a bare workflow entrypoint; its runs would              collapse to the invisible slug \"workflow\" (fabro-9cb0)"
         );
     }
 }

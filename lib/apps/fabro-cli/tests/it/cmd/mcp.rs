@@ -1380,7 +1380,7 @@ async fn mcp_lifecycle_tools_manage_real_run() {
             "workflow_name": null,
             "workflow_graph_name": "Simple",
             "workflow_slug": "simple",
-            "workflow_version_id": "387df37bc0038b0af5593abd4cbcc05f22243035a8a6c81ffd4d0c5bb4231ac2",
+            "workflow_version_id": "d36a85da9bbd1d4515b451a27dafe6f2721e98bcb21fcaa67f8e0e338186cc9a",
             "status": "failed",
             "archived": false,
             "created_at": "[TIMESTAMP]",
@@ -2816,11 +2816,14 @@ fn assert_create_schema_requires_version_ids(schema: &serde_json::Value) {
 }
 
 async fn register_mcp_workflow(client: &McpClient, workflow: &Path) -> serde_json::Value {
-    let entrypoint = workflow
+    // fabro-9cb0: the entrypoint must carry a directory component, so the
+    // bare fixture filename is registered under a `fixture/` prefix.
+    let file_name = workflow
         .file_name()
         .expect("fixture should have a filename")
         .to_str()
         .expect("fixture filename should be UTF-8");
+    let entrypoint = format!("fixture/{file_name}");
     let content = fs::read_to_string(workflow).expect("workflow fixture should be readable");
     let result = call_tool_json(
         client,

@@ -147,12 +147,12 @@ its snapshot, so make the rollback boundary explicit before restoring it.
 
 ## Submitting runs
 
-Register the workflow content, create a run from that version, then request execution. This example uses a clone-based default environment and an empty workspace target; add the authentication headers required by your server:
+Register the workflow content, create a run from that version, then request execution. The entrypoint keeps its workflow directory prefix — runs derive their workflow slug from that directory, so a bare `workflow.fabro` would name every run `workflow`. This example uses a clone-based default environment and an empty workspace target; add the authentication headers required by your server:
 
 ```bash
 version_id=$(curl --fail-with-body -sS http://localhost:3000/api/v1/workflow-versions \
   -H 'Content-Type: application/json' \
-  -d '{"entrypoint":"workflow.fabro","files":{"workflow.fabro":"digraph Demo { start [shape=Mdiamond]; exit [shape=Msquare]; start -> exit; }"},"workflow_dependencies":{}}' \
+  -d '{"entrypoint":"demo/workflow.fabro","files":{"demo/workflow.fabro":"digraph Demo { start [shape=Mdiamond]; exit [shape=Msquare]; start -> exit; }"},"workflow_dependencies":{}}' \
   | jq -r '.workflow_version_id')
 
 run_id=$(curl --fail-with-body -sS http://localhost:3000/api/v1/runs \

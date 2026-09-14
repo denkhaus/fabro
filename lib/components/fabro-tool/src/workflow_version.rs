@@ -15,7 +15,10 @@ use crate::{FabroToolBackend, ToolError, ToolResult};
 #[derive(Clone, Deserialize, Serialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct FabroWorkflowVersionCreateParams {
-    /// Exact package-relative key of the graph or workflow configuration file.
+    /// Exact package-relative key of the graph or workflow configuration
+    /// file, including its workflow directory (`<slug>/workflow.toml`). A
+    /// bare filename is rejected: runs derive their workflow slug from the
+    /// entrypoint's parent directory.
     #[schemars(with = "String")]
     pub entrypoint: WorkflowPath,
     /// All local dependencies, keyed by package-relative path. Values are text
@@ -34,6 +37,16 @@ pub struct ValidatedWorkflowVersionCreate {
     pub files:      BTreeMap<WorkflowPath, String>,
 }
 
+/// The entrypoint must name its parent directory: a run created from the
+/// version derives its workflow slug from that directory, and a bare
+/// conventional name (`workflow.toml`) collapses the slug to the ambiguous
+/// fallback `workflow` (fabro-9cb0).
+fn has_directory_component(path: &WorkflowPath) -> bool {
+    std::path::Path::new(path.as_str())
+        .parent()
+        .is_some_and(|parent| !parent.as_os_str().is_empty())
+}
+
 impl TryFrom<FabroWorkflowVersionCreateParams> for ValidatedWorkflowVersionCreate {
     type Error = ToolError;
 
@@ -41,6 +54,16 @@ impl TryFrom<FabroWorkflowVersionCreateParams> for ValidatedWorkflowVersionCreat
         let FabroWorkflowVersionCreateParams { entrypoint, files } = params;
         fabro_types::validate_workflow_files(&entrypoint, &files)
             .map_err(|err| ToolError::message(err.to_string()))?;
+        if !has_directory_component(&entrypoint) {
+            return Err(ToolError::message(format!(
+                "entrypoint `{ep}` has no directory component: runs derive their workflow slug \
+                 from the entrypoint's parent directory, so a bare name collapses every run to \
+                 the slug \"workflow\" and hides it from workflow=<slug> filters. Collect the \
+                 closure from the repository root and prefix the entrypoint and every file key \
+                 with the workflow's directory (e.g. `develop/workflow.toml`)",
+                ep = entrypoint.as_str()
+            )));
+        }
         let total: usize = files.values().map(String::len).sum();
         if total > MAX_WORKFLOW_VERSION_BYTES {
             return Err(ToolError::message(format!(
@@ -99,7 +122,8 @@ mod tests {
 
     #[test]
     fn workflow_version_request_rejects_unknown_fields_and_invalid_paths() {
-        let valid = json!({"entrypoint": "workflow", "files": {"workflow": "digraph W {}"}});
+        let valid =
+            json!({"entrypoint": "demo/workflow", "files": {"demo/workflow": "digraph W {}"}});
         validate(valid.clone()).unwrap();
         for field in [
             "cwd",
@@ -124,7 +148,7 @@ mod tests {
         ] {
             for value in [
                 json!({"entrypoint":path,"files":{"workflow":"x"}}),
-                json!({"entrypoint":"workflow","files":{path:"x"}}),
+                json!({"entrypoint":"demo/workflow","files":{path:"x"}}),
             ] {
                 assert!(serde_json::from_value::<FabroWorkflowVersionCreateParams>(value).is_err());
             }
@@ -134,7 +158,8 @@ mod tests {
     #[test]
     fn workflow_version_source_enforces_presence_collisions_and_budgets() {
         assert!(
-            validate(json!({"entrypoint":"missing","files":{"workflow":"digraph W {}"}})).is_err()
+            validate(json!({"entrypoint":"demo/missing","files":{"demo/workflow":"digraph W {}"}}))
+                .is_err()
         );
         for files in [
             json!({"A":"x","a":"y"}),
@@ -142,19 +167,19 @@ mod tests {
             json!({"a":"x","A/b.md":"y"}),
         ] {
             let mut files = files.as_object().unwrap().clone();
-            files.insert("workflow".into(), json!("digraph W {}"));
-            assert!(validate(json!({"entrypoint":"workflow","files":files})).is_err());
+            files.insert("demo/workflow".into(), json!("digraph W {}"));
+            assert!(validate(json!({"entrypoint":"demo/workflow","files":files})).is_err());
         }
         let oversized_file = FabroWorkflowVersionCreateParams {
-            entrypoint: "workflow".parse().unwrap(),
+            entrypoint: "demo/workflow".parse().unwrap(),
             files:      BTreeMap::from([(
-                "workflow".parse().unwrap(),
+                "demo/workflow".parse().unwrap(),
                 "x".repeat(MAX_WORKFLOW_VERSION_FILE_BYTES + 1),
             )]),
         };
         assert!(ValidatedWorkflowVersionCreate::try_from(oversized_file).is_err());
         let mut too_many_files = FabroWorkflowVersionCreateParams {
-            entrypoint: "workflow".parse().unwrap(),
+            entrypoint: "demo/workflow".parse().unwrap(),
             files:      (0..MAX_WORKFLOW_VERSION_FILES)
                 .map(|i| (format!("file{i}").parse().unwrap(), String::new()))
                 .collect(),
@@ -164,7 +189,7 @@ mod tests {
             .insert(too_many_files.entrypoint.clone(), String::new());
         assert!(ValidatedWorkflowVersionCreate::try_from(too_many_files).is_err());
         let mut oversized_total = FabroWorkflowVersionCreateParams {
-            entrypoint: "workflow".parse().unwrap(),
+            entrypoint: "demo/workflow".parse().unwrap(),
             files:      (0..5)
                 .map(|i| {
                     (
@@ -180,14 +205,35 @@ mod tests {
         assert!(ValidatedWorkflowVersionCreate::try_from(oversized_total).is_err());
     }
 
+    #[test]
+    fn workflow_version_request_rejects_entrypoint_without_directory() {
+        // fabro-9cb0: a bare entrypoint collapses every derived run slug to
+        // the ambiguous fallback "workflow", so registration must reject it
+        // with the corrective teaching in the error text.
+        for bare in ["workflow.toml", "workflow.fabro", "workflow", "graph.dot"] {
+            let error = validate(json!({"entrypoint":bare,"files":{bare:"digraph W {}"}}))
+                .expect_err("a bare entrypoint must be rejected");
+            let message = error.as_str();
+            assert!(message.contains("no directory component"), "{message}");
+            assert!(message.contains("workflow=<slug>"), "{message}");
+            assert!(message.contains(bare), "{message}");
+        }
+        for prefixed in ["develop/workflow.toml", "demo/workflow", "a/b/graph.dot"] {
+            validate(json!({"entrypoint":prefixed,"files":{prefixed:"digraph W {}"}}))
+                .unwrap_or_else(|error| panic!("dir-prefixed entrypoint must pass: {error}"));
+        }
+    }
+
     #[tokio::test]
     async fn workflow_version_same_run_backend_denies_before_packaging() {
         let client = fabro_client::Client::new_no_proxy("http://127.0.0.1:1").unwrap();
         let backend = ClientBackend::new(Arc::new(client))
             .with_workflow_version_packager(Arc::new(UnreachablePackager))
             .with_run_scope("01KRBZW4DW0000000000000002".parse().unwrap());
-        let source =
-            validate(json!({"entrypoint":"workflow","files":{"workflow":"digraph W {}"}})).unwrap();
+        let source = validate(
+            json!({"entrypoint":"demo/workflow","files":{"demo/workflow":"digraph W {}"}}),
+        )
+        .unwrap();
         let error = create_workflow_version(Arc::new(backend), source)
             .await
             .unwrap_err();

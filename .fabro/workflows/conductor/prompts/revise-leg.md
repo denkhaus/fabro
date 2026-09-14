@@ -13,10 +13,13 @@ a. Workflow version: read `revisor_workflow_version_id` from context —
 the survey stage pre-registered it (fabro-978d). If present, use it
 directly and do NOT re-register (the ~36 KB transcription is the cost
 this avoids). If ABSENT (continuity break), register yourself with ONE
-shell-collection call — `cd /workspace/fabro && for f in $(find
-.fabro/workflows/revisor -type f | sort); do echo "=== $f ==="; cat
-"$f"; done` — then `fabro_workflow_version_create {"entrypoint":
-"workflow.toml", "files": {"workflow.toml": "<contents>", ...}}`.
+shell-collection call — `cd /workspace/fabro/.fabro/workflows && for f in
+$(find revisor -type f | sort); do echo "=== $f ==="; cat "$f"; done` —
+then `fabro_workflow_version_create {"entrypoint":
+"revisor/workflow.toml", "files": {"revisor/workflow.toml": "<contents>",
+"revisor/workflow.fabro": "...", ...}}` (paths from the collection,
+verbatim; the `revisor/` prefix on the entrypoint and every file key is
+MANDATORY — runs derive their workflow slug from it).
 Content-addressed: identical files return the same id. If the packager
 names a missing dependency, add exactly that file and retry once.
 Record `workflow_version_id` (64 hex).

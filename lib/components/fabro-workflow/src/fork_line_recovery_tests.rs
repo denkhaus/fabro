@@ -13,6 +13,11 @@
 //! - fabro-0e11: the line graphs pin `stall_timeout` above the legal 60-minute
 //!   fabro_run_wait so the default 1800s watchdog cannot kill a healthy pass
 //!   mid-wait.
+//! - fabro-9cb0: `fabro_workflow_version_create` rejects an entrypoint without
+//!   a directory component — a bare `workflow.toml` collapses every run's
+//!   workflow slug to the invisible fallback `workflow`, which blinded the
+//!   revisor selector and backlog checks (run 01M2G8Q3SEN4 listed 0 runs while
+//!   terminal runs existed).
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -172,6 +177,40 @@ fn line_graphs_pin_stall_timeout_above_the_legal_wait() {
             "{workflow} must pin stall_timeout=63m (fabro-0e11): \
              the default 1800s watchdog kills legal 60m fabro_run_wait passes"
         );
+    }
+}
+
+// --- fabro-9cb0: bare entrypoints collapse run slugs ---
+
+#[test]
+fn workflow_version_tool_rejects_entrypoint_without_directory() {
+    use std::collections::BTreeMap;
+
+    use fabro_tool::{FabroWorkflowVersionCreateParams, ValidatedWorkflowVersionCreate};
+
+    fn validated(entrypoint: &str) -> Result<ValidatedWorkflowVersionCreate, String> {
+        let files = BTreeMap::from([(
+            entrypoint.parse().expect("test entrypoint parses"),
+            "digraph W { start [shape=Mdiamond] exit [shape=Msquare] start -> exit }".to_string(),
+        )]);
+        ValidatedWorkflowVersionCreate::try_from(FabroWorkflowVersionCreateParams {
+            entrypoint: entrypoint.parse().expect("test entrypoint parses"),
+            files,
+        })
+        .map_err(|err| err.as_str().to_string())
+    }
+
+    for bare in ["workflow.toml", "workflow.fabro", "workflow"] {
+        let error = validated(bare).expect_err("a bare entrypoint must be rejected");
+        assert!(
+            error.contains("no directory component"),
+            "the rejection must teach the fabro-9cb0 cause, got: {error}"
+        );
+    }
+    for prefixed in ["develop/workflow.toml", "demo/workflow"] {
+        validated(prefixed).unwrap_or_else(|error| {
+            panic!("dir-prefixed entrypoint must pass: {error}");
+        });
     }
 }
 

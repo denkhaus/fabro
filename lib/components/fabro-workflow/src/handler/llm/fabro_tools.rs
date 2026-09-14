@@ -321,8 +321,8 @@ mod tests {
     async fn workflow_version_native_dispatch_registers_and_returns_version() {
         let server = httpmock::MockServer::start_async().await;
         let version = WorkflowVersion::new(
-            "workflow".parse().unwrap(),
-            BTreeMap::from([("workflow".parse().unwrap(), "digraph W {}".into())]),
+            "demo/workflow".parse().unwrap(),
+            BTreeMap::from([("demo/workflow".parse().unwrap(), "digraph W {}".into())]),
             BTreeMap::new(),
         )
         .unwrap();
@@ -350,7 +350,7 @@ mod tests {
         assert_eq!(register_named_fabro_run_tools(&services, &[name]).len(), 1);
         let output = execute_fabro_run_tool(
             name,
-            json!({"entrypoint":"workflow", "files":{"workflow":"digraph W {}"}}),
+            json!({"entrypoint":"demo/workflow", "files":{"demo/workflow":"digraph W {}"}}),
             &services,
         )
         .await
@@ -363,7 +363,7 @@ mod tests {
         );
         let error = execute_fabro_run_tool(
             name,
-            json!({"entrypoint":"missing", "files":{"workflow":"digraph W {}"}}),
+            json!({"entrypoint":"demo/missing", "files":{"demo/workflow":"digraph W {}"}}),
             &services,
         )
         .await
