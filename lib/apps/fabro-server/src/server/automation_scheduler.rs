@@ -174,8 +174,8 @@ impl AutomationSchedulePlanner {
 pub(crate) fn spawn_automation_scheduler(state: Arc<AppState>) {
     tokio::spawn(async move {
         let mut planner = AutomationSchedulePlanner::default();
-        // Fork state (fabro-986b): recheck probe cadence per automation.
-        let mut rechecks = super::fork_line_recovery::RecheckState::new();
+        // Fork state (fabro-986b): provider window gate per automation.
+        let mut gate = super::fork_line_recovery::GateState::new();
         let shutdown = state.shutdown_token();
 
         loop {
@@ -215,18 +215,37 @@ pub(crate) fn spawn_automation_scheduler(state: Arc<AppState>) {
             } else {
                 automations
             };
-            // Fork seam (fabro-986b): fixed 10-minute recheck probes for
-            // quota-parked lines — server-autonomous recovery without an
-            // external trigger and without prose-parsed backoff (user
-            // decision 2026-09-14).
-            super::fork_line_recovery::fire_due_rechecks(
+            // Fork seam (fabro-986b, user decision 2026-09-14): the
+            // provider window gate probes the LLM BEFORE any scheduled
+            // fire (one basic completion) — closed windows create no runs;
+            // closed lines poll on the fixed 10-minute cadence and fire
+            // on reopen. No prose-parsed backoff.
+            let held = super::fork_line_recovery::provider_gate_tick(
                 Arc::clone(&state),
                 &automations,
                 now,
-                &mut rechecks,
+                &mut gate,
             )
             .await;
             for due in planner.tick(&automations, now) {
+                if held.contains(due.automation.id.as_str()) {
+                    info!(
+                        automation_id = %due.automation.id,
+                        trigger_id = %due.trigger_id,
+                        "Scheduled fire held: provider window closed (fabro-986b gate)"
+                    );
+                    continue;
+                }
+                if !super::fork_line_recovery::cron_fire_allowed(
+                    state.as_ref(),
+                    &due.automation,
+                    now,
+                    &mut gate,
+                )
+                .await
+                {
+                    continue;
+                }
                 let state = Arc::clone(&state);
                 let span = info_span!(
                     "automation_run",
@@ -461,7 +480,10 @@ fn run_due_schedules_once<'a>(
             .await
             .expect("test automations should load");
         // Mirror the production loop: the breaker runs before due triggers
-        // fire, with a reload when anything paused (fabro-3d97).
+        // fire, with a reload when anything paused (fabro-3d97). The
+        // provider window gate (fabro-986b) runs in the production loop
+        // only — its probe would hit the network; the gate's decision
+        // logic is unit-tested in fork_line_recovery.
         let automations = if super::automation_breaker::update_automation_breakers(
             state.as_ref(),
             &automations,

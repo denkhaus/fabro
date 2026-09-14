@@ -67,6 +67,33 @@ keeps runs resumable, an event-driven stall watchdog with a graph-level
    list. An upstream merge cannot conflict the files away; a dropped
    seam reds the gate.
 
+## Revision (2026-09-14, same day — user review)
+
+The first implementation fired recheck-probe RUNS every 10 minutes while a
+quota park sat on the line. User verdict: "die derzeitige implementation
+ist keine Lösung — vor jedem cron run muss der llm provider auf 429
+gecheckt werden." Revised decision (supersedes the run-probe shape):
+
+- **Pre-fire provider gate:** before EVERY scheduled fire the scheduler
+  probes the provider with the server's existing basic model test (a
+  one-word completion through the vault credential, ~20 input tokens) —
+  the same primitive as `POST /models/{id}/test`. Window closed → NO run
+  is created, the fire is skipped and logged.
+- **Closed-window polling:** while the gate sees a closed window it polls
+  on the fixed 10-minute cadence and fires the real pass the moment the
+  window reopens. An outage produces ZERO runs.
+- **Model resolution:** the probe selector derives from the automation's
+  newest terminal run (`provider/model`); unresolvable → fail-open (one
+  bounded parked run per window, never a dead line on a client hiccup).
+- The park classification (SoftStop, quota signature, no retry burn) and
+  the breaker exemption stay as defense in depth for windows that close
+  MID-FLIGHT.
+- The public z.ai API documents no usage/quota route (verified
+  2026-09-14: unauthenticated probes cannot distinguish routes — the auth
+  middleware 401s everything under /api/coding/paas/v4/*), and lithos-llm
+  has no usage endpoint; the basic model test is the provider-agnostic
+  substitute and needs no pebble support.
+
 ## Consequences
 
 - A quota hard-cut no longer takes the line down for good: probes every
