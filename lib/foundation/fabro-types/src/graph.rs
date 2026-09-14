@@ -554,6 +554,23 @@ impl Node {
         self.bool_attr("allow_partial").unwrap_or(false)
     }
 
+    /// Node-level `skills`: opt-in skill discovery for this agent stage
+    /// (fabro-4dd8). Unset or any other value = the stage session runs
+    /// with NO skills: pebble slash-expands standalone `/name` tokens in
+    /// every stage input, harness-assembled inputs (stage prompts,
+    /// flowed-in journal text, context values) legitimately contain bare
+    /// slash-paths, and a non-empty skill set turns any such token into a
+    /// session-killing "Unknown skill" error (conductor pass 01M2GJXV71TD
+    /// died in 0.3s on a journalled "/tmp"). `skills = "discover"` opts a
+    /// stage into the UseSkill tool and its discovery directories.
+    /// Interactive `fabro exec` sessions build their own discovery and
+    /// are unaffected.
+    #[must_use]
+    pub fn skills_discovery(&self) -> bool {
+        self.str_attr("skills")
+            .is_some_and(|value| value == "discover")
+    }
+
     #[must_use]
     pub fn project_memory(&self) -> bool {
         self.bool_attr("project_memory").unwrap_or(true)
@@ -1482,6 +1499,17 @@ mod tests {
         node.attrs
             .insert("output_retries".to_string(), AttrValue::Integer(-3));
         assert_eq!(node.output_retries(), 0);
+    }
+
+    #[test]
+    fn node_skills_discovery_is_opt_in() {
+        // fabro-4dd8: only the exact opt-in value enables discovery; unset
+        // and any other value keep the stage session skill-free so
+        // harness-assembled slash-paths can never expand as skills.
+        assert!(!node_with("work", &[]).skills_discovery());
+        assert!(!node_with("work", &[("skills", "")]).skills_discovery());
+        assert!(!node_with("work", &[("skills", "on")]).skills_discovery());
+        assert!(node_with("work", &[("skills", "discover")]).skills_discovery());
     }
 
     #[test]

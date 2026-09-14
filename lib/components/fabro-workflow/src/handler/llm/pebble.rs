@@ -586,8 +586,14 @@ impl PebbleBackend {
     /// Where a stage's skills come from: the directories the backend was
     /// given, else fabro's convention — the user's skills directory, then
     /// `.fabro/skills` and `skills` under the repository root — which pebble
-    /// resolves and searches.
-    fn skill_options(&self, options: CodingAgentOptions) -> CodingAgentOptions {
+    /// resolves and searches. Applies only to nodes that opt in with
+    /// `skills = "discover"` (fabro-4dd8): stage input is harness-assembled
+    /// and legitimately carries bare slash-paths, which a non-empty skill
+    /// set turns into session-killing "Unknown skill" expansion errors.
+    fn skill_options(&self, node: &Node, options: CodingAgentOptions) -> CodingAgentOptions {
+        if !node.skills_discovery() {
+            return options;
+        }
         match &self.skill_dirs {
             Some(dirs) => options.with_skill_dirs(dirs.clone()),
             None => options.with_skill_discovery(
@@ -607,7 +613,7 @@ impl PebbleBackend {
             .with_speed(controls.speed)
             .with_max_tokens(node_max_output_tokens(node).map(i64::from))
             .with_memory_discovery(MemoryDiscovery::from_git_root());
-        self.skill_options(options)
+        self.skill_options(node, options)
             .with_recorded_permission_level(PermissionLevel::Full)
             .with_context_compaction(true)
             .with_compaction_threshold_percent(COMPACTION_THRESHOLD_PERCENT)

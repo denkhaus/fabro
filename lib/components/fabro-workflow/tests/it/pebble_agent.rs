@@ -1767,3 +1767,83 @@ async fn a_retryable_failure_continues_the_same_session_on_retry() {
         names(&stage.events)
     );
 }
+
+/// fabro-4dd8: harness-assembled stage input legitimately carries bare
+/// slash-paths (a journalled "/tmp staging" painpoint killed conductor pass
+/// 01M2GJXV71TD in 0.3s — "expanding a skill reference: Unknown skill:
+/// /tmp"). Stage sessions therefore run skill-free unless the node opts in
+/// with `skills = "discover"`; the default must survive slash tokens even
+/// when a skill directory exists and the backend could discover it.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_stage_prompt_with_bare_slash_tokens_survives_the_skill_free_default() {
+    let stage = Stage::new().await;
+    let answered = stage
+        .server
+        .mock_async(|when, then| {
+            when.method(POST).path(CHAT_PATH);
+            sse_headers(then, sse_text("route: fine"));
+        })
+        .await;
+    // A discoverable skill exists and the backend is wired to its
+    // directory — the node does NOT opt in, so it must stay unused.
+    let skill_dir = stage.dir.path().join("skills").join("demo");
+    std::fs::create_dir_all(&skill_dir).unwrap();
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "synchronous fixture write before the async stage runs"
+    )]
+    std::fs::write(
+        skill_dir.join("SKILL.md"),
+        "---\nname: demo\n---\nDo the demo thing.\n",
+    )
+    .unwrap();
+    let backend = stage
+        .backend("openai")
+        .with_skill_dirs(vec![stage.dir.path().join("skills").display().to_string()]);
+    let graph = agent_graph(
+        "SlashTokensDefault",
+        "The survey journalled: fs_write blocks /tmp staging for verification. Route accordingly.",
+    );
+    let state = stage.run_ok(backend, &graph).await;
+    assert_eq!(state.status.kind(), fabro_types::RunStatusKind::Succeeded);
+    assert!(answered.calls_async().await >= 1);
+}
+
+/// The opt-in keeps the capability: `skills = "discover"` loads the skill
+/// (its section reaches the model) while slash-free input still routes.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_skill_discovery_opt_in_loads_the_skill_section() {
+    let stage = Stage::new().await;
+    let answered = stage
+        .server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path(CHAT_PATH)
+                .body_includes("Available Skills")
+                .body_includes("demo");
+            sse_headers(then, sse_text("route: fine"));
+        })
+        .await;
+    let skill_dir = stage.dir.path().join("skills").join("demo");
+    std::fs::create_dir_all(&skill_dir).unwrap();
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "synchronous fixture write before the async stage runs"
+    )]
+    std::fs::write(
+        skill_dir.join("SKILL.md"),
+        "---\nname: demo\n---\nDo the demo thing.\n",
+    )
+    .unwrap();
+    let backend = stage
+        .backend("openai")
+        .with_skill_dirs(vec![stage.dir.path().join("skills").display().to_string()]);
+    let mut graph = agent_graph("SkillsOptIn", "Route the pass accordingly.");
+    graph.nodes.get_mut("work").unwrap().attrs.insert(
+        "skills".to_string(),
+        AttrValue::String("discover".to_string()),
+    );
+    let state = stage.run_ok(backend, &graph).await;
+    assert_eq!(state.status.kind(), fabro_types::RunStatusKind::Succeeded);
+    assert_eq!(answered.calls_async().await, 1);
+}
