@@ -33,8 +33,9 @@ export interface Stage {
   startedAt: string | null;
   providerUsed: StageModelUsage | null;
   /**
-   * Tokens and cost for this visit alone, priced the same way the Usage tab
-   * prices its per-node rows. All-zero counts mean the stage called no model.
+   * Tokens and cost for this visit alone, the same figures the Usage tab
+   * sums into its per-node rows. All-zero counts mean the stage called no
+   * model.
    */
   usage: Usage;
 }

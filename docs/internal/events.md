@@ -412,7 +412,7 @@ Emitted when a workflow node finishes execution.
 | `suggested_next_ids` | string[] | Suggested successor node ids |
 | `usage` | object? | The stage's usage under the model it ran on (`ModelUsage`): for an agent stage, the whole session tree's tokens under the root's route. Absent for a stage that made no model calls |
 | `usage.model` | object | `provider`, `model_id`, and optional `speed` tier |
-| `usage.usage` | object | lithos-llm's `Usage`: `tokens` (the five disjoint buckets) and an optional `cost` (`usd_micros`, `source`). The cost is the provider's reported figure when it gave one, else the catalog's price; absent when the catalog has no rates |
+| `usage.usage` | object | lithos-llm's `Usage`: `tokens` (the five disjoint buckets) and an optional `cost` (`usd_micros`, `source`). The cost sums what lithos-llm attached to each answer, the provider's reported figure when it gave one, else the catalog's price for the route; absent when an answer had neither |
 | `usage_by_model` | array? | For an agent stage, `usage` split by model: the root session's route and each subagent's own model, a subagent whose model the catalog does not know priced at the root's. Each row is a `ModelUsage`, and the rows sum to `usage`. Empty for stages without a coding agent and on events written before it existed |
 | `error` | string? | Error message (flattened from failure detail) |
 | `failure_class` | string? | `"transient_infra"`, `"deterministic"`, `"budget_exhausted"`, `"compilation_loop"`, `"canceled"`, `"structural"` |

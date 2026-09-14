@@ -716,8 +716,8 @@ fn apply_agent_event(
     // Pebble's own fold sees every agent event the stage stored, before the
     // fabro-only arms below read the same event. While the stage runs, its
     // usage is that fold's: the tree's tokens, the root's and every
-    // subagent's, with whatever cost the provider reported. The terminal
-    // usage then brings the catalog's price for the same tokens.
+    // subagent's, with the cost lithos-llm attached to each answer. The
+    // terminal usage is the same sum, split by model.
     if let Some(stage) = stage_at_stored_or_visit(state, stored, visit, seq) {
         let agent = stage.agent.get_or_insert_default();
         agent.apply(&props.event);
@@ -5342,11 +5342,105 @@ mod tests {
     }
 
     /// One usage rule: a stage's usage is its session tree's, live and at
-    /// completion. The terminal usage carries the tokens the fold already
-    /// showed plus the catalog's price, so completion changes the cost, not
-    /// the tokens, and keeps the split by model.
+    /// completion, cost included. lithos-llm prices each answer once, pebble
+    /// sums them, and the terminal usage is the same sum, so completion
+    /// changes neither the tokens nor the cost; it adds the split by model.
     #[test]
-    fn stage_completed_keeps_the_trees_live_usage_and_prices_it() {
+    fn stage_completed_keeps_the_trees_live_usage_and_its_cost() {
+        let mut state = initialized_projection();
+        let stage_id = StageId::new("build", 1);
+        let model = priced_usage().model().clone();
+        let catalog_priced = |input: u64, output: u64, usd_micros: u64| Usage {
+            tokens: TokenCounts {
+                input,
+                output,
+                ..TokenCounts::default()
+            },
+            cost:   Some(Cost {
+                usd_micros,
+                source: CostSource::Catalog,
+            }),
+        };
+        let message = |session: &str, usage: Usage| {
+            let mut event = CodingAgentEvent::new(
+                session,
+                CodingEvent::AssistantMessage {
+                    text: "assistant text".to_string(),
+                    model: model.model_id.to_string(),
+                    usage,
+                    tool_call_count: 0,
+                    context_window: None,
+                    reasoning: None,
+                },
+                SystemTime::UNIX_EPOCH,
+            );
+            if session != "ses_test" {
+                event = event.with_parent_session_id("ses_test");
+            }
+            EventBody::Agent(AgentEventProps::new("code", 1, event))
+        };
+
+        state
+            .apply_event(&test_stage_event(
+                1,
+                EventBody::StageStarted(started_props()),
+                stage_id.clone(),
+            ))
+            .unwrap();
+        state
+            .apply_event(&test_stage_event(
+                2,
+                activated(model.provider.as_str(), model.model_id.as_str()),
+                stage_id.clone(),
+            ))
+            .unwrap();
+        state
+            .apply_event(&test_stage_event(
+                3,
+                message("ses_test", catalog_priced(100, 50, 300)),
+                stage_id.clone(),
+            ))
+            .unwrap();
+        state
+            .apply_event(&test_stage_event(
+                4,
+                message("ses_child", catalog_priced(7, 1, 21)),
+                stage_id.clone(),
+            ))
+            .unwrap();
+        let live = state.stage(&stage_id).unwrap().usage;
+        assert_eq!(
+            live,
+            catalog_priced(107, 51, 321),
+            "the subagent's tokens and cost are the stage's too"
+        );
+
+        // The terminal usage is the same sum, under the root's route.
+        let tree = ModelUsage::new(model.clone(), live);
+        let mut props = completed_props(42, StageOutcome::Succeeded);
+        props.usage = Some(tree.clone());
+        props.usage_by_model = vec![tree.clone()];
+        state
+            .apply_event(&test_stage_event(
+                5,
+                EventBody::StageCompleted(props),
+                stage_id.clone(),
+            ))
+            .unwrap();
+
+        let stage = state.stage(&stage_id).unwrap();
+        assert_eq!(
+            stage.usage, live,
+            "completion keeps the usage the fold showed, cost included"
+        );
+        assert_eq!(stage.model.as_ref(), Some(&model));
+        assert_eq!(stage.usage_by_model, vec![tree]);
+    }
+
+    /// An answer nobody priced leaves the tree's cost unknown, live and at
+    /// completion alike; the tokens are still counted.
+    #[test]
+    fn an_unpriced_answer_leaves_the_stage_cost_unknown_live_and_at_completion() {
         let mut state = initialized_projection();
         let stage_id = StageId::new("build", 1);
         let model = priced_usage().model().clone();
@@ -5372,57 +5466,28 @@ mod tests {
                 stage_id.clone(),
             ))
             .unwrap();
+        let live = state.stage(&stage_id).unwrap().usage;
+        assert_eq!(live, live_counts(100, 50));
+        assert_eq!(live.cost, None);
+
+        let tree = ModelUsage::new(model.clone(), live);
+        let mut props = completed_props(42, StageOutcome::Succeeded);
+        props.usage = Some(tree.clone());
+        props.usage_by_model = vec![tree];
         state
             .apply_event(&test_stage_event(
                 4,
-                child_message_body(7, 1),
-                stage_id.clone(),
-            ))
-            .unwrap();
-        let live = state.stage(&stage_id).unwrap().usage;
-        assert_eq!(
-            live,
-            live_counts(107, 51),
-            "the subagent's tokens are the stage's too"
-        );
-
-        let tree = ModelUsage::new(model.clone(), Usage {
-            tokens: TokenCounts {
-                input: 107,
-                output: 51,
-                ..TokenCounts::default()
-            },
-            cost:   Some(Cost {
-                usd_micros: 321,
-                source:     CostSource::Catalog,
-            }),
-        });
-        let mut props = completed_props(42, StageOutcome::Succeeded);
-        props.usage = Some(tree.clone());
-        props.usage_by_model = vec![tree.clone()];
-        state
-            .apply_event(&test_stage_event(
-                5,
                 EventBody::StageCompleted(props),
                 stage_id.clone(),
             ))
             .unwrap();
 
         let stage = state.stage(&stage_id).unwrap();
+        assert_eq!(stage.usage, live);
         assert_eq!(
-            stage.usage.tokens, live.tokens,
-            "completion keeps the tokens the fold showed"
+            stage.usage.cost, None,
+            "nothing priced it, so nothing invents a cost"
         );
-        assert_eq!(
-            stage.usage.cost,
-            Some(Cost {
-                usd_micros: 321,
-                source:     CostSource::Catalog,
-            }),
-            "and brings the catalog's price"
-        );
-        assert_eq!(stage.model.as_ref(), Some(&model));
-        assert_eq!(stage.usage_by_model, vec![tree]);
     }
 
     #[test]
