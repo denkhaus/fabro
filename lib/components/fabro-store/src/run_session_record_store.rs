@@ -110,6 +110,7 @@ mod tests {
     use chrono::TimeZone;
     use fabro_types::fixtures;
     use pebble_coding_agent::SessionScope;
+    use pebble_coding_agent::state::SESSION_RECORD_FORMAT_VERSION;
 
     use super::*;
     use crate::test_support;
@@ -147,6 +148,44 @@ mod tests {
         assert_eq!(stored.run_id, fixtures::RUN_1);
         assert_eq!(stored.record, record);
         assert_eq!(stored.updated_at, updated_at);
+    }
+
+    /// A record an older build wrote is read back as it was stored: the
+    /// store parses the previous format, and pebble's version check, not a
+    /// parse error, is what refuses it on resume. Old runs get no migration.
+    #[tokio::test]
+    async fn get_reads_a_record_in_the_previous_format_for_pebble_to_refuse() {
+        const PREVIOUS_RECORD: &str = include_str!("fixtures/session_record_v4.json");
+
+        let pool =
+            test_support::in_memory_pool_with(&[fabro_db::RUN_SESSION_RECORDS_MIGRATION_SQL]);
+        let store = RunSessionRecordStore::new(pool.clone());
+        let session_id = SessionId::new();
+        sqlx::query(
+            "INSERT INTO run_session_records (session_id, run_id, record_json, updated_at_ms) \
+             VALUES (?, ?, ?, ?)",
+        )
+        .bind(session_id.to_string())
+        .bind(fixtures::RUN_1.to_string())
+        .bind(PREVIOUS_RECORD)
+        .bind(1_789_156_874_678_i64)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let stored = store.get(session_id).await.unwrap().expect("stored record");
+        assert_eq!(stored.run_id, fixtures::RUN_1);
+        assert_eq!(
+            stored.record.format_version,
+            SESSION_RECORD_FORMAT_VERSION - 1,
+            "the fixture is the previous format"
+        );
+        assert!(
+            !stored.record.is_supported(),
+            "pebble refuses the previous format on resume rather than reading it"
+        );
+        assert_eq!(stored.record.provider.as_deref(), Some("anthropic"));
+        assert_eq!(stored.record.model.as_deref(), Some("claude-sonnet-5"));
     }
 
     #[tokio::test]
