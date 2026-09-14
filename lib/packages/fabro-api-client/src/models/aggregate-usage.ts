@@ -15,21 +15,18 @@
 
 // May contain unused imports in some cases
 // @ts-ignore
-import type { ReasoningEffort } from './reasoning-effort';
+import type { AggregateUsageTotals } from './aggregate-usage-totals';
 // May contain unused imports in some cases
 // @ts-ignore
-import type { Speed } from './speed';
+import type { UsageByModel } from './usage-by-model';
 
 /**
- * Provider, model, and request-control metadata recorded for a stage attempt.
+ * Aggregate token counts and costs across all runs since server start.
  */
-export interface StageModelUsage {
+export interface AggregateUsage {
+    'totals': AggregateUsageTotals;
     /**
-     * Source of the stage\'s model usage metadata.
+     * Usage grouped by model.
      */
-    'mode': string;
-    'provider'?: string | null;
-    'model'?: string | null;
-    'reasoning_effort'?: ReasoningEffort | null;
-    'speed'?: Speed | null;
+    'by_model': Array<UsageByModel>;
 }

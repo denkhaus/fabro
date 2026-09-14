@@ -57,10 +57,10 @@ import type { ContextWindowSnapshot } from './context-window-snapshot';
 import type { TodoListProjection } from './todo-list-projection';
 // May contain unused imports in some cases
 // @ts-ignore
-import type { TokenUsage } from './token-usage';
+import type { Usage } from './usage';
 
 /**
- * The coding agent\'s fold of one stage\'s event stream: token counts and provider-reported cost for the root session and each descendant, the route and where it moved, the context window, tools, MCP servers, skills, todo lists, subagents, compactions, files touched, and the prompt in progress. Counts only; pricing a count from the catalog is fabro\'s, and lives in `StageProjection.usage`.
+ * The coding agent\'s fold of one stage\'s event stream: token counts and provider-reported cost for the root session and each descendant, the route and where it moved, the context window, tools, MCP servers, skills, todo lists, subagents, compactions, files touched, and the prompt in progress. Its costs are the provider\'s own; pricing from the catalog is fabro\'s, and lives in `StageProjection.usage`.
  */
 export interface AgentSessionProjection {
     /**
@@ -70,13 +70,9 @@ export interface AgentSessionProjection {
     'route': AgentSessionRoute;
     'activity': AgentSessionActivity;
     /**
-     * The root session\'s usage over the stage.
+     * The root session\'s usage over the stage, with the provider\'s reported cost when every answer carried one.
      */
-    'usage': TokenUsage;
-    /**
-     * The root session\'s provider-reported cost, when a provider reported one.
-     */
-    'cost_usd_micros': number | null;
+    'usage': Usage;
     /**
      * Committed assistant messages from the root session.
      */

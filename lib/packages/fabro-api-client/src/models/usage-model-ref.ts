@@ -15,21 +15,16 @@
 
 // May contain unused imports in some cases
 // @ts-ignore
-import type { ReasoningEffort } from './reasoning-effort';
-// May contain unused imports in some cases
-// @ts-ignore
 import type { Speed } from './speed';
 
 /**
- * Provider, model, and request-control metadata recorded for a stage attempt.
+ * Provider-qualified model identity a usage is grouped under. Carries the requested speed tier because providers price tiers differently.
  */
-export interface StageModelUsage {
+export interface UsageModelRef {
     /**
-     * Source of the stage\'s model usage metadata.
+     * LLM provider identifier.
      */
-    'mode': string;
-    'provider'?: string | null;
-    'model'?: string | null;
-    'reasoning_effort'?: ReasoningEffort | null;
+    'provider': string;
+    'model_id': string;
     'speed'?: Speed | null;
 }

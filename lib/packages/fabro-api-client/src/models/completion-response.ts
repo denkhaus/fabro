@@ -18,19 +18,19 @@
 import type { CompletionContentPart } from './completion-content-part';
 // May contain unused imports in some cases
 // @ts-ignore
-import type { CompletionCost } from './completion-cost';
-// May contain unused imports in some cases
-// @ts-ignore
 import type { CompletionResponseWarningsInner } from './completion-response-warnings-inner';
 // May contain unused imports in some cases
 // @ts-ignore
-import type { CompletionUsage } from './completion-usage';
+import type { Cost } from './cost';
 // May contain unused imports in some cases
 // @ts-ignore
 import type { ModelHandle } from './model-handle';
+// May contain unused imports in some cases
+// @ts-ignore
+import type { TokenCounts } from './token-counts';
 
 /**
- * A lithos `Response`, returned verbatim. The server is the billing authority: `cost` is the catalog estimate or the provider\'s own figure. When the request carried `schema`, `output` holds the parsed object.
+ * A lithos `Response`, returned verbatim. The server prices the response: `cost` is the catalog estimate or the provider\'s own figure. When the request carried `schema`, `output` holds the parsed object.
  */
 export interface CompletionResponse {
     'output'?: any;
@@ -45,8 +45,8 @@ export interface CompletionResponse {
      * Why generation stopped: stop, length, tool_call, content_filter, error, incomplete, or a provider-specific reason.
      */
     'finish_reason': string;
-    'usage': CompletionUsage;
-    'cost'?: CompletionCost;
+    'usage': TokenCounts;
+    'cost'?: Cost;
     'rate_limits'?: { [key: string]: any; };
     'warnings'?: Array<CompletionResponseWarningsInner>;
     'raw'?: any;

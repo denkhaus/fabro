@@ -15,21 +15,25 @@
 
 // May contain unused imports in some cases
 // @ts-ignore
-import type { StageTiming } from './stage-timing';
+import type { RunTiming } from './run-timing';
 // May contain unused imports in some cases
 // @ts-ignore
 import type { Usage } from './usage';
 
 /**
- * Terminal summary for one stage in a run conclusion.
+ * Aggregate usage totals across all runs.
  */
-export interface StageSummary {
-    'stage_id': string;
-    'stage_label': string;
-    'timing': StageTiming;
+export interface AggregateUsageTotals {
     /**
-     * Per-node usage summed across every visit of the node.
+     * Total number of completed runs.
+     */
+    'runs': number;
+    /**
+     * Tokens and cost summed across every completed run.
      */
     'usage': Usage;
-    'retries': number;
+    /**
+     * Aggregate timing rollup across every completed run. Active timing sums work across stage visits, so `active_time_ms` can exceed `wall_time_ms`.
+     */
+    'timing': RunTiming;
 }

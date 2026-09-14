@@ -15,21 +15,15 @@
 
 // May contain unused imports in some cases
 // @ts-ignore
-import type { ReasoningEffort } from './reasoning-effort';
+import type { Cost } from './cost';
 // May contain unused imports in some cases
 // @ts-ignore
-import type { Speed } from './speed';
+import type { TokenCounts } from './token-counts';
 
 /**
- * Provider, model, and request-control metadata recorded for a stage attempt.
+ * lithos `Usage`: token counts and, when known, what they cost. `cost` is absent when there is no cost data, never zero. A sum has a cost only when every part that used tokens was priced; its `source` is the parts\' shared source, or `application` when they differ.
  */
-export interface StageModelUsage {
-    /**
-     * Source of the stage\'s model usage metadata.
-     */
-    'mode': string;
-    'provider'?: string | null;
-    'model'?: string | null;
-    'reasoning_effort'?: ReasoningEffort | null;
-    'speed'?: Speed | null;
+export interface Usage {
+    'tokens': TokenCounts;
+    'cost'?: Cost;
 }

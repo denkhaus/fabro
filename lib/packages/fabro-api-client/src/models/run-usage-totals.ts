@@ -15,21 +15,21 @@
 
 // May contain unused imports in some cases
 // @ts-ignore
-import type { ReasoningEffort } from './reasoning-effort';
+import type { RunTiming } from './run-timing';
 // May contain unused imports in some cases
 // @ts-ignore
-import type { Speed } from './speed';
+import type { Usage } from './usage';
 
 /**
- * Provider, model, and request-control metadata recorded for a stage attempt.
+ * Aggregate usage totals across all stages of a run.
  */
-export interface StageModelUsage {
+export interface RunUsageTotals {
     /**
-     * Source of the stage\'s model usage metadata.
+     * Run-level timing rollup. `wall_time_ms` is summed across stage visits; active timing sums work across visits.
      */
-    'mode': string;
-    'provider'?: string | null;
-    'model'?: string | null;
-    'reasoning_effort'?: ReasoningEffort | null;
-    'speed'?: Speed | null;
+    'timing': RunTiming;
+    /**
+     * Tokens and cost summed across every stage visit. The cost is known only when every visit that used tokens was priced.
+     */
+    'usage': Usage;
 }

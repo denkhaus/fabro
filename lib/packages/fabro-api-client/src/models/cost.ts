@@ -13,17 +13,14 @@
  */
 
 
+// May contain unused imports in some cases
+// @ts-ignore
+import type { CostSource } from './cost-source';
 
 /**
- * Run size bucket derived from the run\'s current cost.
+ * lithos `Cost`: a USD amount in micros and where it came from.
  */
-
-export const RunSize = {
-    XS: 'XS',
-    S: 'S',
-    M: 'M',
-    L: 'L',
-    XL: 'XL'
-} as const;
-
-export type RunSize = typeof RunSize[keyof typeof RunSize];
+export interface Cost {
+    'usd_micros': number;
+    'source': CostSource;
+}

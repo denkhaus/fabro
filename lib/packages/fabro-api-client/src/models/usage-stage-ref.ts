@@ -15,15 +15,15 @@
 
 
 /**
- * Run size bucket derived from the run\'s current cost.
+ * Reference to a workflow node in a usage stage row.
  */
-
-export const RunSize = {
-    XS: 'XS',
-    S: 'S',
-    M: 'M',
-    L: 'L',
-    XL: 'XL'
-} as const;
-
-export type RunSize = typeof RunSize[keyof typeof RunSize];
+export interface UsageStageRef {
+    /**
+     * Stage identifier (slug).
+     */
+    'id': string;
+    /**
+     * Human-readable stage name.
+     */
+    'name': string;
+}

@@ -15,21 +15,15 @@
 
 // May contain unused imports in some cases
 // @ts-ignore
-import type { ReasoningEffort } from './reasoning-effort';
+import type { Usage } from './usage';
 // May contain unused imports in some cases
 // @ts-ignore
-import type { Speed } from './speed';
+import type { UsageModelRef } from './usage-model-ref';
 
 /**
- * Provider, model, and request-control metadata recorded for a stage attempt.
+ * Usage grouped under one model: one response, or one model\'s share of a stage.
  */
-export interface StageModelUsage {
-    /**
-     * Source of the stage\'s model usage metadata.
-     */
-    'mode': string;
-    'provider'?: string | null;
-    'model'?: string | null;
-    'reasoning_effort'?: ReasoningEffort | null;
-    'speed'?: Speed | null;
+export interface ModelUsage {
+    'model': UsageModelRef;
+    'usage': Usage;
 }

@@ -15,15 +15,13 @@
 
 
 /**
- * Run size bucket derived from the run\'s current cost.
+ * lithos `Speed`: the requested latency or cost tier.
  */
 
-export const RunSize = {
-    XS: 'XS',
-    S: 'S',
-    M: 'M',
-    L: 'L',
-    XL: 'XL'
+export const Speed = {
+    FAST: 'fast',
+    BALANCED: 'balanced',
+    ECONOMICAL: 'economical'
 } as const;
 
-export type RunSize = typeof RunSize[keyof typeof RunSize];
+export type Speed = typeof Speed[keyof typeof Speed];
