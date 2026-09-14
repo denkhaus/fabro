@@ -1198,7 +1198,8 @@ pub(crate) struct AgentArgs {
     #[arg(long)]
     pub(crate) debug: bool,
 
-    /// Print full LLM request/response JSON to stderr
+    /// Print tool results, the transcript, and full LLM request/response JSON
+    /// to stderr
     #[arg(long)]
     pub(crate) verbose: bool,
 
