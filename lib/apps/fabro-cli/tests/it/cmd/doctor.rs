@@ -103,6 +103,9 @@ enabled = false
     context.doctor().assert().success();
 }
 
+/// The provider probe runs inside the isolated server, which never sees the
+/// test process environment, so the twin's base URL reaches it through the
+/// operator `[llm]` overlay rather than `OPENAI_BASE_URL`.
 #[fabro_macros::e2e_test(twin)]
 async fn twin_doctor() {
     let mut context = test_context!();
@@ -123,8 +126,12 @@ strategy = "app"
 
 [server.sandbox.providers.docker]
 enabled = false
+
+[llm.providers.openai]
+base_url = "{}"
 "#,
-            toml_path(&storage_dir)
+            toml_path(&storage_dir),
+            twin.base_url,
         ),
     );
     seed_openai_vault(&storage_dir, &namespace);
