@@ -140,6 +140,12 @@ clean mode="stale":
 qualitygate:
     nu scripts/qualitygate.nu
 
+# Deterministic verification dispatcher (fabro-6e7f): stage-scoped checks
+# derived from the diff — `just verify implementer` is the one mechanical
+# verification call agent stages make; the tester gate stays authoritative.
+verify stage:
+    nu scripts/verify.nu {{ stage }}
+
 # Run a workflow end to end: create+start+attach, wait, integrate the run
 # branch (ff-pull when auto-merge landed, else provisional squash-merge).
 # No ask-based review — the revisor workflow owns run revisioning
