@@ -130,7 +130,7 @@ pub(crate) fn relative_path(path: &Path) -> String {
     tilde_path(path)
 }
 
-pub(crate) fn format_tokens_human(tokens: i64) -> String {
+pub(crate) fn format_tokens_human(tokens: u64) -> String {
     if tokens >= 1_000_000 {
         format!("{:.1}m", tokens as f64 / 1_000_000.0)
     } else if tokens >= 1000 {
@@ -140,7 +140,7 @@ pub(crate) fn format_tokens_human(tokens: i64) -> String {
     }
 }
 
-pub(crate) fn format_usd_micros(usd_micros: i64) -> String {
+pub(crate) fn format_usd_micros(usd_micros: u64) -> String {
     format!("${:.2}", usd_micros as f64 / 1_000_000.0)
 }
 

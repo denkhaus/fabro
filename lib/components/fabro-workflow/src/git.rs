@@ -572,7 +572,7 @@ mod tests {
             response: "world".into(),
             model:    "gpt-5.4".into(),
             provider: "openai".into(),
-            billing:  None,
+            usage:    None,
         })
         .await
         .unwrap();
@@ -584,8 +584,8 @@ mod tests {
             status: "succeeded".into(),
             preferred_label: None,
             suggested_next_ids: Vec::new(),
-            billing_by_model: Vec::new(),
-            billing: None,
+            usage_by_model: Vec::new(),
+            usage: None,
             failure: None,
             notes: None,
             files_touched: Vec::new(),

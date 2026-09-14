@@ -450,6 +450,7 @@ mod tests {
 
     use async_trait::async_trait;
     use chrono::{TimeZone, Utc};
+    use fabro_api::types::Usage;
     use fabro_types::{
         EventEnvelope, FailureReason, Run, RunId, RunLifecycle, RunLinks, RunOrigin, RunProjection,
         RunStatus, RunTimestamps, WorkflowRef, test_support,
@@ -711,7 +712,7 @@ mod tests {
                 completed_at:  None,
             },
             timing:           None,
-            billing:          None,
+            usage:            Usage::default(),
             size:             fabro_types::RunSize::default(),
             ask_fabro:        fabro_types::AskFabro::default(),
             diff:             None,

@@ -594,10 +594,10 @@ mod tests {
     use lithos_llm::types::TokenCounts;
 
     use super::*;
-    use crate::outcome::{BilledModelUsage, billed_model_usage_from_llm};
+    use crate::outcome::{ModelUsage, model_usage_from_llm};
 
-    fn stage_usage(model: &str, input: u64, output: u64) -> BilledModelUsage {
-        billed_model_usage_from_llm(
+    fn stage_usage(model: &str, input: u64, output: u64) -> ModelUsage {
+        model_usage_from_llm(
             &fabro_llm::test_support::test_catalog(),
             &ModelRef::new(builtin::anthropic(), ModelId::new(model)),
             TokenCounts {

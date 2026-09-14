@@ -5,9 +5,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use super::ExecOutputTail;
-use crate::{
-    BilledModelUsage, DiffSummary, FailureDetail, Outcome, StageId, StageOutcome, StageTiming,
-};
+use crate::{DiffSummary, FailureDetail, ModelUsage, Outcome, StageId, StageOutcome, StageTiming};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct StageStartedProps {
@@ -36,16 +34,16 @@ pub struct StageCompletedProps {
     pub preferred_label: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub suggested_next_ids: Vec<String>,
-    /// The stage's billing: for an agent stage, the whole session tree's
+    /// The stage's usage: for an agent stage, the whole session tree's
     /// tokens (the root session and every subagent) under the root's route.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub billing: Option<BilledModelUsage>,
-    /// `billing` split by model: the root session's route and each
-    /// subagent's own model, a subagent whose model the catalog does not know
-    /// billed at the root's. Sums to `billing`. Empty for stages without a
-    /// coding agent and on events written before it existed.
+    pub usage: Option<ModelUsage>,
+    /// `usage` split by model: the root session's route and each subagent's
+    /// own model, a subagent whose model the catalog does not know priced at
+    /// the root's. Sums to `usage`. Empty for stages without a coding agent
+    /// and on events written before it existed.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub billing_by_model: Vec<BilledModelUsage>,
+    pub usage_by_model: Vec<ModelUsage>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub failure: Option<FailureDetail>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -72,20 +70,20 @@ pub struct StageCompletedProps {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct StageFailedProps {
-    pub index:            usize,
+    pub index:          usize,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub failure:          Option<FailureDetail>,
-    pub will_retry:       bool,
+    pub failure:        Option<FailureDetail>,
+    pub will_retry:     bool,
     /// Per-attempt timing breakdown for this stage visit.
     #[serde(default)]
-    pub timing:           StageTiming,
-    /// The stage's billing: for an agent stage that failed after spending,
+    pub timing:         StageTiming,
+    /// The stage's usage: for an agent stage that failed after spending,
     /// the whole session tree's tokens under the root's route.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub billing:          Option<BilledModelUsage>,
-    /// `billing` split by model, as on `stage.completed`.
+    pub usage:          Option<ModelUsage>,
+    /// `usage` split by model, as on `stage.completed`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub billing_by_model: Vec<BilledModelUsage>,
+    pub usage_by_model: Vec<ModelUsage>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -118,7 +116,7 @@ pub struct PromptCompletedProps {
     pub model:    String,
     pub provider: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub billing:  Option<BilledModelUsage>,
+    pub usage:    Option<ModelUsage>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -132,7 +130,7 @@ pub struct CheckpointCompletedProps {
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub context_values: BTreeMap<String, Value>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub node_outcomes: BTreeMap<String, Outcome<Option<BilledModelUsage>>>,
+    pub node_outcomes: BTreeMap<String, Outcome<Option<ModelUsage>>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub next_node_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

@@ -18,7 +18,7 @@ use serde_json::{Map, Value, json};
 pub use session::*;
 pub use stage::*;
 
-use crate::{BilledTokenCounts, ParallelBranchId, Principal, RunId, StageId};
+use crate::{ParallelBranchId, Principal, RunId, StageId};
 
 /// Maximum accepted body size for `POST /runs/{id}/events`.
 ///
@@ -997,8 +997,8 @@ mod tests {
     use std::time::{Duration, UNIX_EPOCH};
 
     use pebble_coding_agent::events::{
-        CodingAgentEvent, CodingEvent, TodoCreatedProps, TodoListKind, TodoStatus, TokenUsage,
-        ToolCategory, ToolSource, ToolSummary,
+        CodingAgentEvent, CodingEvent, Cost, CostSource, TodoCreatedProps, TodoListKind,
+        TodoStatus, TokenCounts, ToolCategory, ToolSource, ToolSummary, Usage,
     };
     use serde_json::json;
 
@@ -1127,13 +1127,17 @@ mod tests {
         let body = EventBody::Agent(coding_event("code", 1, CodingEvent::AssistantMessage {
             text:            "ok".to_string(),
             model:           "gpt-5.4".to_string(),
-            usage:           TokenUsage {
-                input: 10,
-                output: 5,
-                ..TokenUsage::default()
+            usage:           Usage {
+                tokens: TokenCounts {
+                    input: 10,
+                    output: 5,
+                    ..TokenCounts::default()
+                },
+                cost:   Some(Cost {
+                    usd_micros: 42,
+                    source:     CostSource::Provider,
+                }),
             },
-            cost_usd_micros: Some(42),
-            cost_source:     None,
             tool_call_count: 0,
             context_window:  None,
             reasoning:       None,
@@ -1141,11 +1145,10 @@ mod tests {
         let value = serde_json::to_value(&body).unwrap();
         assert_eq!(
             value["properties"]["event"]["AssistantMessage"]["usage"],
-            json!({"input": 10, "output": 5, "reasoning": 0, "cache_read": 0, "cache_write": 0})
-        );
-        assert_eq!(
-            value["properties"]["event"]["AssistantMessage"]["cost_usd_micros"],
-            42
+            json!({
+                "tokens": {"input": 10, "output": 5, "reasoning": 0, "cache_read": 0, "cache_write": 0},
+                "cost": {"usd_micros": 42, "source": "provider"}
+            })
         );
     }
 
@@ -1190,8 +1193,8 @@ mod tests {
                 status: crate::StageOutcome::Succeeded,
                 preferred_label: None,
                 suggested_next_ids: vec!["next".to_string()],
-                billing_by_model: Vec::new(),
-                billing: None,
+                usage_by_model: Vec::new(),
+                usage: None,
                 failure: None,
                 notes: Some("done".to_string()),
                 files_touched: vec!["src/main.rs".to_string()],
@@ -1626,8 +1629,8 @@ mod tests {
             status: crate::StageOutcome::Succeeded,
             preferred_label: None,
             suggested_next_ids: vec!["next".to_string()],
-            billing_by_model: Vec::new(),
-            billing: None,
+            usage_by_model: Vec::new(),
+            usage: None,
             failure: None,
             notes: Some("done".to_string()),
             files_touched: vec!["src/main.rs".to_string()],

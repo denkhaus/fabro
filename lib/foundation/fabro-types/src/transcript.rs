@@ -11,11 +11,11 @@ use lithos_llm::types::{ContentPart, TokenCounts, ToolCall, ToolResult};
 use serde::{Deserialize, Serialize};
 use strum::{Display, EnumString, IntoStaticStr};
 
-use crate::billing::ModelRef;
 use crate::id::ulid_id;
 use crate::pair::{PairId, PairMessageId};
 use crate::principal::Principal;
 use crate::session::TurnId;
+use crate::usage::ModelRef;
 
 ulid_id!(MessageId);
 

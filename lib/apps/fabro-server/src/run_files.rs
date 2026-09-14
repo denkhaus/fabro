@@ -2308,7 +2308,7 @@ index 1111111..2222222 160000
             failure:              None,
             final_git_commit_sha: None,
             stages:               Vec::new(),
-            billing:              None,
+            usage:                None,
             total_retries:        0,
             diff:                 fabro_types::RunDiff {
                 patch:   Some(patch.to_string()),

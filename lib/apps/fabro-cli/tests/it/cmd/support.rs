@@ -338,7 +338,7 @@ pub(crate) fn remote_run_summary_json(
             "completed_at": null
         },
         "timing": null,
-        "billing": null,
+        "usage": {"tokens": {"input": 0, "output": 0, "reasoning": 0, "cache_read": 0, "cache_write": 0}},
         "diff": null,
         "pull_request": null,
         "current_question": null,
@@ -1253,10 +1253,9 @@ async fn append_seeded_simple_completion_events(
             "artifact_count": 0,
             "status": "succeeded",
             "reason": "completed",
-            "total_usd_micros": null,
             "final_git_commit_sha": null,
             "final_patch": null,
-            "billing": null,
+            "usage": null,
         }),
     )
     .await;
@@ -1428,10 +1427,9 @@ async fn append_seeded_git_completion_events(
             "artifact_count": 0,
             "status": "succeeded",
             "reason": "completed",
-            "total_usd_micros": null,
             "final_git_commit_sha": step_two_sha,
             "final_patch": final_story_patch(),
-            "billing": null,
+            "usage": null,
         }),
     )
     .await;
@@ -1498,10 +1496,9 @@ async fn append_seeded_git_noop_events(
             "artifact_count": 0,
             "status": "succeeded",
             "reason": "completed",
-            "total_usd_micros": null,
             "final_git_commit_sha": base_sha,
             "final_patch": null,
-            "billing": null,
+            "usage": null,
         }),
     )
     .await;
@@ -1567,10 +1564,9 @@ async fn append_seeded_artifact_run_events(
             "artifact_count": 7,
             "status": "succeeded",
             "reason": "completed",
-            "total_usd_micros": null,
             "final_git_commit_sha": null,
             "final_patch": null,
-            "billing": null,
+            "usage": null,
         }),
     )
     .await;
@@ -1728,7 +1724,7 @@ fn stage_completed_properties(index: usize, response: Option<&str>) -> serde_jso
         "status": "succeeded",
         "preferred_label": null,
         "suggested_next_ids": [],
-        "billing": null,
+        "usage": null,
         "failure": null,
         "notes": null,
         "files_touched": [],

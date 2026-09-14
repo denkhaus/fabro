@@ -12,6 +12,7 @@ use fabro_types::{
 };
 use httpmock::Method::{GET, POST};
 use httpmock::{HttpMockRequest, HttpMockResponse, MockServer};
+use lithos_llm::types::Usage;
 use serde_json::json;
 use tokio::fs;
 #[expect(
@@ -216,7 +217,7 @@ fn run_with_status(
             completed_at:  None,
         },
         timing: None,
-        billing: None,
+        usage: Usage::default(),
         size: fabro_types::RunSize::default(),
         ask_fabro: fabro_types::AskFabro::default(),
         diff: None,

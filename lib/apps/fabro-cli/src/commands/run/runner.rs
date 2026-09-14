@@ -1341,11 +1341,10 @@ mod tests {
                 artifact_count:       0,
                 status:               "succeeded".to_string(),
                 reason:               SuccessReason::Completed,
-                total_usd_micros:     None,
                 final_git_commit_sha: None,
                 final_patch:          None,
                 diff_summary:         None,
-                billing:              None,
+                usage:                None,
             })),
             Some(WorkerTitlePhase::Succeeded)
         );
@@ -1359,7 +1358,7 @@ mod tests {
                 final_git_commit_sha: None,
                 final_patch:          None,
                 diff_summary:         None,
-                billing:              None,
+                usage:                None,
             })),
             Some(WorkerTitlePhase::Cancelled)
         );
@@ -1373,7 +1372,7 @@ mod tests {
                 final_git_commit_sha: None,
                 final_patch:          None,
                 diff_summary:         None,
-                billing:              None,
+                usage:                None,
             })),
             Some(WorkerTitlePhase::Failed)
         );

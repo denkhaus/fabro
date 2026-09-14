@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use chrono::{DateTime, Utc};
+use lithos_llm::types::{Cost, Usage};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -66,8 +67,10 @@ pub struct Run {
     /// data; populated once a terminal event or partial rollup is available.
     #[serde(default)]
     pub timing:           Option<RunTiming>,
+    /// The run's usage summed across every stage visit so far: the
+    /// conclusion's total once the run ended, else the sum of the stages'.
     #[serde(default)]
-    pub billing:          Option<RunBillingSummary>,
+    pub usage:            Usage,
     #[serde(default)]
     pub size:             RunSize,
     #[serde(default)]
@@ -242,12 +245,6 @@ pub struct RunTimestamps {
     pub completed_at:  Option<DateTime<Utc>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct RunBillingSummary {
-    #[serde(default)]
-    pub total_usd_micros: Option<i64>,
-}
-
 #[derive(
     Debug,
     Clone,
@@ -279,16 +276,17 @@ impl RunSize {
     /// Inclusive upper bounds in USD micros for each bucket below [`Self::Xl`],
     /// ordered smallest to largest. Shared with the SQLite size sort so both
     /// stay in step.
-    pub const BUCKET_MAX_USD_MICROS: [(Self, i64); 4] = [
+    pub const BUCKET_MAX_USD_MICROS: [(Self, u64); 4] = [
         (Self::Xs, 20_000_000),
         (Self::S, 50_000_000),
         (Self::M, 100_000_000),
         (Self::L, 200_000_000),
     ];
 
+    /// The bucket for a run's cost; a run with no cost data is [`Self::Xs`].
     #[must_use]
-    pub fn from_total_usd_micros(total_usd_micros: Option<i64>) -> Self {
-        let total = total_usd_micros.unwrap_or(0);
+    pub fn from_cost(cost: Option<Cost>) -> Self {
+        let total = cost.map_or(0, |cost| cost.usd_micros);
         Self::BUCKET_MAX_USD_MICROS
             .iter()
             .find(|(_, max)| total <= *max)
@@ -298,34 +296,27 @@ impl RunSize {
 
 #[cfg(test)]
 mod tests {
+    use lithos_llm::types::{Cost, CostSource};
+
     use super::RunSize;
 
     #[test]
-    fn run_size_uses_billed_usage_thresholds() {
-        assert_eq!(RunSize::from_total_usd_micros(None), RunSize::Xs);
-        assert_eq!(
-            RunSize::from_total_usd_micros(Some(20_000_000)),
-            RunSize::Xs
-        );
-        assert_eq!(RunSize::from_total_usd_micros(Some(20_000_001)), RunSize::S);
-        assert_eq!(RunSize::from_total_usd_micros(Some(50_000_000)), RunSize::S);
-        assert_eq!(RunSize::from_total_usd_micros(Some(50_000_001)), RunSize::M);
-        assert_eq!(
-            RunSize::from_total_usd_micros(Some(100_000_000)),
-            RunSize::M
-        );
-        assert_eq!(
-            RunSize::from_total_usd_micros(Some(100_000_001)),
-            RunSize::L
-        );
-        assert_eq!(
-            RunSize::from_total_usd_micros(Some(200_000_000)),
-            RunSize::L
-        );
-        assert_eq!(
-            RunSize::from_total_usd_micros(Some(200_000_001)),
-            RunSize::Xl
-        );
+    fn run_size_uses_cost_thresholds() {
+        let cost = |usd_micros: u64| {
+            Some(Cost {
+                usd_micros,
+                source: CostSource::Catalog,
+            })
+        };
+        assert_eq!(RunSize::from_cost(None), RunSize::Xs);
+        assert_eq!(RunSize::from_cost(cost(20_000_000)), RunSize::Xs);
+        assert_eq!(RunSize::from_cost(cost(20_000_001)), RunSize::S);
+        assert_eq!(RunSize::from_cost(cost(50_000_000)), RunSize::S);
+        assert_eq!(RunSize::from_cost(cost(50_000_001)), RunSize::M);
+        assert_eq!(RunSize::from_cost(cost(100_000_000)), RunSize::M);
+        assert_eq!(RunSize::from_cost(cost(100_000_001)), RunSize::L);
+        assert_eq!(RunSize::from_cost(cost(200_000_000)), RunSize::L);
+        assert_eq!(RunSize::from_cost(cost(200_000_001)), RunSize::Xl);
     }
 
     #[test]

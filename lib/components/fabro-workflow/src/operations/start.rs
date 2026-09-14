@@ -297,7 +297,7 @@ pub(super) async fn execute_persisted_run(
 }
 
 /// Build a conclusion from the store and emit `run.failed` carrying the
-/// rolled-up timing and billing. Shared by the engine-failure terminal path,
+/// rolled-up timing and usage. Shared by the engine-failure terminal path,
 /// the bootstrap/completion drop guards, and `persist_detached_failure`.
 async fn emit_workflow_run_failed(
     run_id: RunId,
@@ -325,7 +325,7 @@ async fn emit_workflow_run_failed(
         None,
         None,
         None,
-        conclusion.billing,
+        conclusion.usage,
     );
     if let Err(err) = append_event_to_sink(event_sink, &run_id, &failure_event).await {
         let rendered_error = collect_chain(&err).join(": ");
@@ -1303,11 +1303,12 @@ mod tests {
         RunPrepareSettings,
     };
     use fabro_types::{
-        BilledModelUsage, GitContext, ManifestPath, RunTarget, StageTiming, WorkflowSettings,
-        fixtures, test_support,
+        GitContext, ManifestPath, ModelUsage, RunTarget, StageTiming, WorkflowSettings, fixtures,
+        test_support,
     };
     use fabro_vault::SecretType;
     use lithos_llm::catalog::builtin;
+    use lithos_llm::types::Usage;
     use object_store::memory::InMemory;
 
     use super::*;
@@ -2556,7 +2557,7 @@ mod tests {
         run_store: &fabro_store::RunDatabase,
         node_id: &str,
         timing: fabro_types::StageTiming,
-        billing: Option<BilledModelUsage>,
+        usage: Option<ModelUsage>,
     ) {
         crate::event::append_event(run_store, &fixtures::RUN_1, &Event::StageCompleted {
             node_id: node_id.to_string(),
@@ -2566,8 +2567,8 @@ mod tests {
             status: StageOutcome::Succeeded.to_string(),
             preferred_label: None,
             suggested_next_ids: Vec::new(),
-            billing,
-            billing_by_model: Vec::new(),
+            usage,
+            usage_by_model: Vec::new(),
             failure: None,
             notes: None,
             files_touched: Vec::new(),
@@ -2707,7 +2708,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn persist_terminal_engine_failure_uses_conclusion_timing_and_billing() {
+    async fn persist_terminal_engine_failure_uses_conclusion_timing_and_usage() {
         let temp = tempfile::tempdir().unwrap();
         let (storage_root, run_dir) = storage_root_and_run_dir(&temp);
         let (_persisted, store) = persisted_workflow(MINIMAL_DOT, &storage_root).await;
@@ -2748,17 +2749,11 @@ mod tests {
         assert_eq!(conclusion.timing.inference_time_ms, 225);
         assert_eq!(conclusion.timing.tool_time_ms, 375);
         assert_eq!(conclusion.timing.active_time_ms, 600);
-        assert_eq!(
-            conclusion
-                .billing
-                .as_ref()
-                .map(|billing| billing.total_tokens),
-            Some(150),
-        );
+        assert_eq!(conclusion.usage.map(Usage::total_tokens), Some(150),);
     }
 
     #[tokio::test]
-    async fn bootstrap_guard_failure_uses_conclusion_timing_and_billing() {
+    async fn bootstrap_guard_failure_uses_conclusion_timing_and_usage() {
         let temp = tempfile::tempdir().unwrap();
         let (storage_root, _run_dir) = storage_root_and_run_dir(&temp);
         let (_persisted, store) = persisted_workflow(MINIMAL_DOT, &storage_root).await;
@@ -2787,17 +2782,11 @@ mod tests {
         assert_eq!(conclusion.timing.inference_time_ms, 120);
         assert_eq!(conclusion.timing.tool_time_ms, 80);
         assert_eq!(conclusion.timing.active_time_ms, 200);
-        assert_eq!(
-            conclusion
-                .billing
-                .as_ref()
-                .map(|billing| billing.total_tokens),
-            Some(50),
-        );
+        assert_eq!(conclusion.usage.map(Usage::total_tokens), Some(50),);
     }
 
     #[tokio::test]
-    async fn completion_guard_failure_uses_conclusion_timing_and_billing() {
+    async fn completion_guard_failure_uses_conclusion_timing_and_usage() {
         let temp = tempfile::tempdir().unwrap();
         let (storage_root, _run_dir) = storage_root_and_run_dir(&temp);
         let (_persisted, store) = persisted_workflow(MINIMAL_DOT, &storage_root).await;
@@ -2826,13 +2815,7 @@ mod tests {
         assert_eq!(conclusion.timing.inference_time_ms, 70);
         assert_eq!(conclusion.timing.tool_time_ms, 30);
         assert_eq!(conclusion.timing.active_time_ms, 100);
-        assert_eq!(
-            conclusion
-                .billing
-                .as_ref()
-                .map(|billing| billing.total_tokens),
-            Some(25),
-        );
+        assert_eq!(conclusion.usage.map(Usage::total_tokens), Some(25),);
     }
 
     #[tokio::test]
@@ -3165,7 +3148,7 @@ mod tests {
             failure:              None,
             final_git_commit_sha: None,
             stages:               vec![],
-            billing:              None,
+            usage:                None,
             total_retries:        0,
             diff:                 fabro_types::RunDiff::default(),
         };
@@ -3215,11 +3198,10 @@ mod tests {
             artifact_count:       0,
             status:               "succeeded".to_string(),
             reason:               crate::run_status::SuccessReason::Completed,
-            total_usd_micros:     None,
             final_git_commit_sha: None,
             final_patch:          None,
             diff_summary:         None,
-            billing:              None,
+            usage:                None,
         })
         .await
         .unwrap();

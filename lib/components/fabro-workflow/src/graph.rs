@@ -10,7 +10,7 @@ use fabro_graphviz::graph::types::{Edge as GvEdge, Graph as GvGraph, Node as GvN
 use fabro_types::ResolvedOnFailure;
 
 use crate::context::{self, Context};
-use crate::outcome::{BilledModelUsage, Outcome};
+use crate::outcome::{ModelUsage, Outcome};
 
 // ---- WorkflowNode ----
 
@@ -78,7 +78,7 @@ impl WorkflowGraph {
 impl Graph for WorkflowGraph {
     type Node = WorkflowNode;
     type Edge = WorkflowEdge;
-    type Meta = Option<BilledModelUsage>;
+    type Meta = Option<ModelUsage>;
 
     fn get_node(&self, id: &str) -> Option<Self::Node> {
         self.0

@@ -1,8 +1,9 @@
 use std::collections::BTreeMap;
 
+use lithos_llm::types::Usage;
 use serde::{Deserialize, Serialize};
 
-use super::{BilledTokenCounts, ExecOutputTail, RunNoticeLevel};
+use super::{ExecOutputTail, RunNoticeLevel};
 use crate::status::{BlockedReason, PendingReason, SuccessReason};
 use crate::{
     AutomationRef, BlobHash, DiffSummary, ForkSourceRef, GitContext, Graph, PairId, PairTarget,
@@ -243,15 +244,15 @@ pub struct RunCompletedProps {
     pub status:               String,
     pub reason:               SuccessReason,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub total_usd_micros:     Option<i64>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub final_git_commit_sha: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub final_patch:          Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub diff_summary:         Option<DiffSummary>,
+    /// The run's usage summed across every stage visit; absent for a run
+    /// that made no model calls.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub billing:              Option<BilledTokenCounts>,
+    pub usage:                Option<Usage>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -265,8 +266,9 @@ pub struct RunFailedProps {
     pub final_patch:          Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub diff_summary:         Option<DiffSummary>,
+    /// What the run spent before it failed, as on `run.completed`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub billing:              Option<BilledTokenCounts>,
+    pub usage:                Option<Usage>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

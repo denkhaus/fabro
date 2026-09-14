@@ -26,7 +26,7 @@ const WAIT_DOT: &str = r#"digraph Test {
 }"#;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn aggregate_billing_increments_after_run_completes() {
+async fn aggregate_usage_increments_after_run_completes() {
     let workspace = tempfile::tempdir().unwrap();
     let state = test_app_state_with_options(test_settings(), 5);
     let app = test_app_with_scheduler(state);
@@ -45,7 +45,7 @@ async fn aggregate_billing_increments_after_run_completes() {
     for _ in 0..POLL_ATTEMPTS {
         let req = Request::builder()
             .method("GET")
-            .uri(api("/billing"))
+            .uri(api("/usage"))
             .body(Body::empty())
             .unwrap();
 
@@ -66,7 +66,7 @@ async fn aggregate_billing_increments_after_run_completes() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn run_billing_includes_completed_non_llm_stages() {
+async fn run_usage_includes_completed_non_llm_stages() {
     let workspace = tempfile::tempdir().unwrap();
     let state = test_app_state_with_options(test_settings(), 5);
     let app = test_app_with_scheduler(state);
@@ -80,12 +80,12 @@ async fn run_billing_includes_completed_non_llm_stages() {
     let status = wait_for_run_status(&app, &run_id, &["succeeded", "failed"]).await;
     assert_eq!(status, "succeeded");
 
-    let billing = run_billing(&app, &run_id).await;
-    assert_non_llm_billing(&billing, &["wait_task"]);
+    let usage = run_usage(&app, &run_id).await;
+    assert_non_llm_usage(&usage, &["wait_task"]);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn run_billing_includes_completed_command_stages() {
+async fn run_usage_includes_completed_command_stages() {
     let workspace = tempfile::tempdir().unwrap();
     let state = test_app_state_with_options(test_settings(), 5);
     let app = test_app_with_scheduler(state);
@@ -99,30 +99,30 @@ async fn run_billing_includes_completed_command_stages() {
     let status = wait_for_run_status(&app, &run_id, &["succeeded", "failed"]).await;
     assert_eq!(status, "succeeded");
 
-    let billing = run_billing(&app, &run_id).await;
-    assert_non_llm_billing(&billing, &["echo_task"]);
+    let usage = run_usage(&app, &run_id).await;
+    assert_non_llm_usage(&usage, &["echo_task"]);
 }
 
-async fn run_billing(app: &axum::Router, run_id: &str) -> serde_json::Value {
+async fn run_usage(app: &axum::Router, run_id: &str) -> serde_json::Value {
     let req = Request::builder()
         .method("GET")
-        .uri(api(&format!("/runs/{run_id}/billing")))
+        .uri(api(&format!("/runs/{run_id}/usage")))
         .body(Body::empty())
-        .expect("run billing request should build");
+        .expect("run usage request should build");
 
     let response = app.clone().oneshot(req).await.unwrap();
     crate::helpers::response_json(
         response,
         StatusCode::OK,
-        format!("GET /api/v1/runs/{run_id}/billing"),
+        format!("GET /api/v1/runs/{run_id}/usage"),
     )
     .await
 }
 
-fn assert_non_llm_billing(billing: &serde_json::Value, expected_stage_ids: &[&str]) {
-    let stages = billing["stages"]
+fn assert_non_llm_usage(usage: &serde_json::Value, expected_stage_ids: &[&str]) {
+    let stages = usage["stages"]
         .as_array()
-        .expect("billing response should include stages");
+        .expect("usage response should include stages");
     let mut stage_ids = stages
         .iter()
         .map(|stage| {
@@ -138,10 +138,10 @@ fn assert_non_llm_billing(billing: &serde_json::Value, expected_stage_ids: &[&st
     assert!(
         stages.iter().all(|stage| {
             stage["model"].is_null()
-                && stage["billing"]["input_tokens"] == 0
-                && stage["billing"]["output_tokens"] == 0
-                && stage["billing"]["reasoning_tokens"] == 0
-                && stage["billing"]["total_usd_micros"].is_null()
+                && stage["usage"]["tokens"]["input"] == 0
+                && stage["usage"]["tokens"]["output"] == 0
+                && stage["usage"]["tokens"]["reasoning"] == 0
+                && stage["usage"].get("cost").is_none()
         }),
         "every non-LLM stage should have null model and zero token counts: {stages:?}"
     );
@@ -156,17 +156,17 @@ fn assert_non_llm_billing(billing: &serde_json::Value, expected_stage_ids: &[&st
         .sum();
 
     assert_eq!(
-        billing["by_model"]
+        usage["by_model"]
             .as_array()
-            .expect("billing response should include by_model")
+            .expect("usage response should include by_model")
             .len(),
         0
     );
-    assert_eq!(billing["totals"]["input_tokens"], 0);
-    assert_eq!(billing["totals"]["output_tokens"], 0);
-    assert!(billing["totals"]["total_usd_micros"].is_null());
+    assert_eq!(usage["totals"]["usage"]["tokens"]["input"], 0);
+    assert_eq!(usage["totals"]["usage"]["tokens"]["output"], 0);
+    assert!(usage["totals"]["usage"].get("cost").is_none());
 
-    let total_wall_time_ms = billing["totals"]["timing"]["wall_time_ms"]
+    let total_wall_time_ms = usage["totals"]["timing"]["wall_time_ms"]
         .as_u64()
         .expect("totals should include timing.wall_time_ms");
     assert_eq!(

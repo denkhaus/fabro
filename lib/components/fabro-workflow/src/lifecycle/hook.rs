@@ -13,11 +13,11 @@ use fabro_types::RunId;
 
 use crate::graph::{WorkflowGraph, WorkflowNode};
 use crate::hook_context::set_hook_node;
-use crate::outcome::{BilledModelUsage, Outcome, OutcomeExt, StageOutcome};
+use crate::outcome::{ModelUsage, Outcome, OutcomeExt, StageOutcome};
 
-type WfRunState = ExecutionState<Option<BilledModelUsage>>;
-type WfNodeResult = NodeResult<Option<BilledModelUsage>>;
-type WfNodeDecision = NodeDecision<Option<BilledModelUsage>>;
+type WfRunState = ExecutionState<Option<ModelUsage>>;
+type WfNodeResult = NodeResult<Option<ModelUsage>>;
+type WfNodeDecision = NodeDecision<Option<ModelUsage>>;
 
 /// Sub-lifecycle responsible for running workflow hooks.
 pub(crate) struct HookLifecycle {

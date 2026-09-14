@@ -1,19 +1,21 @@
 use chrono::{DateTime, Utc};
+use lithos_llm::types::Usage;
 use serde::{Deserialize, Serialize};
 
 use crate::outcome::StageOutcome;
-use crate::{BilledTokenCounts, RunDiff, RunFailure, RunTiming, StageTiming};
+use crate::{RunDiff, RunFailure, RunTiming, StageTiming};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StageSummary {
-    pub stage_id:           String,
-    pub stage_label:        String,
+    pub stage_id:    String,
+    pub stage_label: String,
     /// Per-node timing summed across every visit of the node within this
     /// conclusion. `wall_time_ms` is the sum of visit wall times.
-    pub timing:             StageTiming,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub billing_usd_micros: Option<i64>,
-    pub retries:            u32,
+    pub timing:      StageTiming,
+    /// Per-node usage summed across every visit of the node.
+    #[serde(default)]
+    pub usage:       Usage,
+    pub retries:     u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -29,8 +31,10 @@ pub struct Conclusion {
     pub final_git_commit_sha: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub stages:               Vec<StageSummary>,
+    /// The run's usage summed across every stage visit; `None` for a run
+    /// that made no model calls.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub billing:              Option<BilledTokenCounts>,
+    pub usage:                Option<Usage>,
     #[serde(default)]
     pub total_retries:        u32,
     #[serde(default)]

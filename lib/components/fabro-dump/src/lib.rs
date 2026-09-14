@@ -558,7 +558,7 @@ mod tests {
             failure:              None,
             final_git_commit_sha: Some("abc123".to_string()),
             stages:               Vec::new(),
-            billing:              None,
+            usage:                None,
             total_retries:        0,
             diff:                 RunDiff::default(),
         });

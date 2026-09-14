@@ -153,7 +153,7 @@ impl RunTiming {
     }
 
     /// Sum two run timings field-by-field. Used to accumulate aggregate
-    /// billing totals across completed runs.
+    /// usage totals across completed runs.
     #[must_use]
     pub fn saturating_add(&self, other: &Self) -> Self {
         Self::new(

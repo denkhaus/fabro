@@ -3,7 +3,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::num::NonZeroU32;
 
 use chrono::{DateTime, Utc};
-use lithos_llm::types::{ReasoningEffort, Speed};
+use lithos_llm::types::{ReasoningEffort, Speed, Usage};
 use pebble_coding_agent::events::{
     ContextWindowBreakdownItem, ContextWindowCountMethod, ContextWindowSnapshot,
     ContextWindowStaleness, ContextWindowWarning, LlmOutputKind, PermissionLevel, ToolSummary,
@@ -13,11 +13,10 @@ use strum::{Display, EnumString, IntoStaticStr};
 
 use crate::run_event::{AgentSessionActivatedProps, StagePromptProps};
 use crate::{
-    AgentBackend, BilledModelUsage, BilledTokenCounts, Checkpoint, Conclusion, GitIdentity,
-    InterviewQuestionRecord, InvalidTransition, ModelRef, ParallelBranchId, PullRequestCreation,
-    PullRequestLink, RunApproval, RunControlAction, RunDiff, RunId, RunSandbox, RunSpec, RunStatus,
-    RunTiming, StageCompletion, StageHandler, StageId, StageState, StageTiming, StartRecord,
-    timing,
+    AgentBackend, Checkpoint, Conclusion, GitIdentity, InterviewQuestionRecord, InvalidTransition,
+    ModelRef, ModelUsage, ParallelBranchId, PullRequestCreation, PullRequestLink, RunApproval,
+    RunControlAction, RunDiff, RunId, RunSandbox, RunSpec, RunStatus, RunTiming, StageCompletion,
+    StageHandler, StageId, StageState, StageTiming, StartRecord, timing,
 };
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -293,16 +292,16 @@ pub struct StageProjection {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tool_batch:            Option<StageToolBatchProjection>,
     #[serde(default)]
-    pub usage:                 BilledTokenCounts,
+    pub usage:                 Usage,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model:                 Option<ModelRef>,
-    /// The finished stage's billing split by model, as `stage.completed` or
+    /// The finished stage's usage split by model, as `stage.completed` or
     /// `stage.failed` reported it: the root session's route and each
     /// subagent's own model. Sums to `usage`. Empty while the stage runs and
-    /// for stages without a coding agent; the billing rollup then bills
-    /// `usage` to `model`.
+    /// for stages without a coding agent; the usage rollup then puts
+    /// `usage` under `model`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub billing_by_model:      Vec<BilledModelUsage>,
+    pub usage_by_model:        Vec<ModelUsage>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub permission_level:      Option<PermissionLevel>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -411,14 +410,14 @@ impl StageProjection {
             live_inference_ms: 0,
             live_tool_ms: 0,
             tool_batch: None,
-            usage: BilledTokenCounts::default(),
+            usage: Usage::default(),
             model: None,
             permission_level: None,
             agent_tools: Vec::new(),
             inference: None,
             acp_started_at: None,
             agent: None,
-            billing_by_model: Vec::new(),
+            usage_by_model: Vec::new(),
             provider_used: None,
             diff: None,
             script_invocation: None,
@@ -784,7 +783,7 @@ impl RunProjection {
     /// Whether a graph node is one of the `start`/`exit` boundaries.
     ///
     /// Boundary nodes run no work, so callers that report what a run *did* —
-    /// billing, stage listings, artifact downloads — leave them out. The test
+    /// usage, stage listings, artifact downloads — leave them out. The test
     /// is the node's handler type, not its name: a node may be named
     /// `start` and still do real work.
     pub fn is_boundary_stage(&self, node_id: &str) -> bool {
