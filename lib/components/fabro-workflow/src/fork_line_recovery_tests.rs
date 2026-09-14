@@ -10,6 +10,10 @@
 //!   retries into a deterministic goal-gate failure. The recovery cadence is a
 //!   fixed 10-minute recheck in fabro-server — NEVER a backoff parsed from
 //!   provider prose.
+//! - fabro-5082: the run-event store sink offloads oversized payloads
+//!   (checkpoint diffs, context values) to content-addressed blobs before the
+//!   lossy truncation — 413 body-limit failures killed two 2h merge-upstream
+//!   runs before this seam existed.
 //! - fabro-0e11: the line graphs pin `stall_timeout` above the legal 60-minute
 //!   fabro_run_wait so the default 1800s watchdog cannot kill a healthy pass
 //!   mid-wait.
@@ -17,7 +21,8 @@
 //!   a directory component — a bare `workflow.toml` collapses every run's
 //!   workflow slug to the invisible fallback `workflow`, which blinded the
 //!   revisor selector and backlog checks (run 01M2G8Q3SEN4 listed 0 runs while
-//!   terminal runs existed).
+//!   terminal runs existed). Placeholder-shaped paths (`<slug>/…`, verbatim
+//!   copies from documentation) are rejected for the same reason.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -212,6 +217,33 @@ fn workflow_version_tool_rejects_entrypoint_without_directory() {
             panic!("dir-prefixed entrypoint must pass: {error}");
         });
     }
+    // Documentation teaches `<slug>/…` placeholders; a verbatim copy must
+    // fail loudly instead of registering runs under the literal slug `<slug>`.
+    let error =
+        validated("<slug>/workflow.toml").expect_err("a placeholder entrypoint must be rejected");
+    assert!(error.contains("placeholder"), "got: {error}");
+}
+
+// --- fabro-5082: oversized-event blob offload seam ---
+
+#[test]
+fn run_event_sink_keeps_the_blob_offload_seam() {
+    // The offload module is fork-only, but its seam call lives in the
+    // shared `event/sink.rs`: a merge that rewrites the sink can drop the
+    // call together with its inline tests (the #832 incident class). This
+    // pin goes red when the lossless path is no longer wired in.
+    let sink = repo_root().join("lib/components/fabro-workflow/src/event/sink.rs");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "presence pin reads shared sink source synchronously"
+    )]
+    let text = std::fs::read_to_string(&sink)
+        .unwrap_or_else(|error| panic!("read {}: {error}", sink.display()));
+    assert!(
+        text.contains("offload_oversized_run_event(event, run_store)"),
+        "the store sink must offload oversized event payloads to blobs \
+         before lossy truncation (fabro-5082)"
+    );
 }
 
 fn repo_root() -> PathBuf {

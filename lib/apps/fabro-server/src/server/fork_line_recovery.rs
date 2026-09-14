@@ -436,4 +436,52 @@ mod tests {
             links:            fabro_types::RunLinks { web: None },
         }
     }
+
+    // --- seam presence pins (fork-only file, merge-safe) ---
+    //
+    // The gate's seam call sites live in SHARED files
+    // (`automation_scheduler.rs`, `automation_breaker.rs`): an upstream
+    // merge that rewrites them can drop the fork calls silently, and the
+    // #832 incident class removes inline tests together with the code they
+    // covered. These source pins stay in this fork-only file and go red the
+    // moment a seam call disappears.
+
+    fn server_src(rel: &str) -> String {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .expect("manifest lives at lib/apps/fabro-server")
+            .join(rel);
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "presence pin reads shared scheduler source synchronously"
+        )]
+        std::fs::read_to_string(&path)
+            .unwrap_or_else(|error| panic!("read {}: {error}", path.display()))
+    }
+
+    #[test]
+    fn scheduler_consults_the_provider_window_gate_before_firing() {
+        let scheduler = server_src("lib/apps/fabro-server/src/server/automation_scheduler.rs");
+        assert!(
+            scheduler.contains("fork_line_recovery::provider_gate_tick("),
+            "the scheduler must tick the provider window gate (fabro-986b): \
+             without it, closed windows burn probe runs again"
+        );
+        assert!(
+            scheduler.contains("fork_line_recovery::cron_fire_allowed("),
+            "the scheduler must ask the gate before every fire (fabro-986b): \
+             without it, fires proceed while the provider window is closed"
+        );
+    }
+
+    #[test]
+    fn breaker_keeps_quota_parks_exempt_from_the_schedule_breaker() {
+        let breaker = server_src("lib/apps/fabro-server/src/server/automation_breaker.rs");
+        assert!(
+            breaker.contains("fork_line_recovery::is_quota_park("),
+            "quota-class parks must stay breaker-exempt (fabro-986b): the \
+             fixed recheck owns their recovery, the breaker must stay armed"
+        );
+    }
 }
