@@ -260,7 +260,7 @@ fn help() {
           --quiet                          Suppress non-essential output [env: FABRO_QUIET=]
           --auto-approve                   Skip interactive prompts; deny tools outside permission level
           --debug                          Print LLM request/response debug info to stderr
-          --verbose                        Print full LLM request/response JSON to stderr
+          --verbose                        Print tool results, the transcript, and full LLM request/response JSON to stderr
           --skills-dir <SKILLS_DIR>        Directory containing skill files (overrides default discovery)
           --output-format <OUTPUT_FORMAT>  Output format (text for human-readable, json for NDJSON event stream) [possible values: text, json]
       -h, --help                           Print help
@@ -914,7 +914,10 @@ async fn twin_exec_shell_command() {
                 .input_contains(
                     "Run the shell command `echo hello_from_shell` and tell me what it printed",
                 )
-                .tool_call(fabro_test::TwinToolCall::shell("echo hello_from_shell"))
+                .tool_call(fabro_test::TwinToolCall::shell("echo hello_from_shell")),
+        )
+        .scenario(
+            fabro_test::TwinScenario::responses("gpt-5.4-mini")
                 .text("It printed hello_from_shell."),
         )
         .load(twin)
@@ -934,9 +937,80 @@ async fn twin_exec_shell_command() {
     ]);
     let output = run_success_output(cmd).await;
     let stdout = String::from_utf8(output.stdout).expect("valid utf8");
+    let stderr = String::from_utf8(output.stderr).expect("valid utf8");
+    let stderr = console::strip_ansi_codes(&stderr);
+    assert_eq!(
+        stdout, "It printed hello_from_shell.\n",
+        "without --verbose, stdout carries the final answer only; stderr:\n{stderr}"
+    );
+    for absent in ["[result]", "[reasoning]", "[verbose]"] {
+        assert!(
+            !stderr.contains(absent),
+            "without --verbose, stderr should not carry {absent}:\n{stderr}"
+        );
+    }
+}
+
+#[fabro_macros::e2e_test(twin)]
+async fn twin_exec_verbose_prints_tool_calls_and_results() {
+    let context = test_context!();
+    let twin = fabro_test::twin_openai().await;
+    let namespace = format!("{}::{}", module_path!(), line!());
+    fabro_test::TwinScenarios::new(namespace.clone())
+        .scenario(
+            fabro_test::TwinScenario::responses("gpt-5.4-mini")
+                .input_contains(
+                    "Run the shell command `echo verbose_marker` and tell me what it printed",
+                )
+                .tool_call(fabro_test::TwinToolCall::shell("echo verbose_marker")),
+        )
+        .scenario(
+            fabro_test::TwinScenario::responses("gpt-5.4-mini").text("It printed verbose_marker."),
+        )
+        .load(twin)
+        .await;
+
+    let mut cmd = context.exec_cmd();
+    twin.configure_command(&mut cmd, &namespace);
+    cmd.args([
+        "--auto-approve",
+        "--permissions",
+        "full",
+        "--verbose",
+        "--provider",
+        "openai",
+        "--model",
+        "gpt-5.4-mini",
+        "Run the shell command `echo verbose_marker` and tell me what it printed",
+    ]);
+    let output = run_success_output(cmd).await;
+    let stdout = String::from_utf8(output.stdout).expect("valid utf8");
+    let stderr = String::from_utf8(output.stderr).expect("valid utf8");
+    let stderr = console::strip_ansi_codes(&stderr);
+    assert_eq!(
+        stdout, "It printed verbose_marker.\n",
+        "--verbose should leave the answer on stdout unchanged; stderr:\n{stderr}"
+    );
+    // Pebble prints the call's arguments in full under its `[tool]` line and
+    // what the call answered under a `[result]` line; fabro's middleware
+    // still dumps each model request. (A streamed response is not dumped.)
+    for expected in [
+        "[tool] shell\n",
+        "\"command\": \"echo verbose_marker\"",
+        "[result] shell\n",
+        "[verbose] request:",
+    ] {
+        assert!(
+            stderr.contains(expected),
+            "--verbose should print {expected:?} on stderr, got:\n{stderr}"
+        );
+    }
+    let (_, result) = stderr
+        .split_once("[result] shell\n")
+        .expect("the result block should follow the tool line");
     assert!(
-        stdout.contains("hello_from_shell"),
-        "expected shell marker in output, got: {stdout}"
+        result.contains("verbose_marker"),
+        "the [result] block should carry what the shell printed, got:\n{result}"
     );
 }
 
