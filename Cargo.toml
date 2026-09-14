@@ -122,9 +122,9 @@ sandbox-driver-testing = { git = "https://github.com/lithoscomputer/sandbox-driv
 # sandbox, so the pebble and sandbox-driver pins move independently. Pebble
 # pins the same lithos-llm rev as fabro, and its lockfile policy is that
 # every shared crate resolves to the version lithos-llm locks.
-pebble-agent = { git = "https://github.com/lithoscomputer/pebble", rev = "69969420c9017ca15ac6c175c820a0cb8090866a" }
-pebble-coding-agent = { git = "https://github.com/lithoscomputer/pebble", rev = "69969420c9017ca15ac6c175c820a0cb8090866a", features = ["mcp", "search-providers"] }
-pebble-cli-core = { git = "https://github.com/lithoscomputer/pebble", rev = "69969420c9017ca15ac6c175c820a0cb8090866a" }
+pebble-agent = { git = "https://github.com/lithoscomputer/pebble", rev = "6d802a9d2e9c356e76371089e94d4d80c0ba16c5" }
+pebble-coding-agent = { git = "https://github.com/lithoscomputer/pebble", rev = "6d802a9d2e9c356e76371089e94d4d80c0ba16c5", features = ["mcp", "search-providers"] }
+pebble-cli-core = { git = "https://github.com/lithoscomputer/pebble", rev = "6d802a9d2e9c356e76371089e94d4d80c0ba16c5" }
 sentry = { version = "0.35", default-features = false, features = ["backtrace", "contexts", "ureq", "rustls"] }
 fork = "0.2"
 exec = "0.3"
