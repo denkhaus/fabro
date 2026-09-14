@@ -1478,7 +1478,13 @@ impl fabro_tool::WorkflowFilesSource for SandboxWorkflowFiles {
                     "files_from walk below `{dir}` failed: {error}"
                 ))
             })?;
-        Ok(files.into_iter().map(|file| file.path).collect())
+        // `SandboxFile::path` is the provider-resolved ABSOLUTE path; the
+        // workflow keys need the workspace-relative `relative_path`, and
+        // `read_file_text` resolves relative paths against the working
+        // directory itself. Sort: walk order is not lexicographic.
+        let mut paths: Vec<String> = files.into_iter().map(|file| file.relative_path).collect();
+        paths.sort();
+        Ok(paths)
     }
 
     async fn read_text_file(&self, path: &str) -> Result<String, fabro_tool::ToolError> {
@@ -1498,6 +1504,61 @@ mod tests {
     use pebble_coding_agent::events::{CodingAgentEvent, CodingEvent, InputSource, TokenUsage};
 
     use super::*;
+
+    /// fabro files_from hotfix: `walk_files` returns the provider-resolved
+    /// ABSOLUTE path in `SandboxFile::path`; the file source must expose the
+    /// workspace-relative `relative_path` (production pass 01M2GVGMNGEK died
+    /// on `develop//workspace/…` keys built from the absolute path).
+    #[tokio::test]
+    async fn sandbox_files_source_lists_workspace_relative_paths() {
+        use fabro_tool::WorkflowFilesSource as _;
+        let dir = tempfile::tempdir().unwrap();
+        let workflow_dir = dir.path().join(".fabro").join("workflows").join("demo");
+        tokio::fs::create_dir_all(workflow_dir.join("prompts"))
+            .await
+            .unwrap();
+        tokio::fs::write(
+            workflow_dir.join("workflow.fabro"),
+            "digraph D { start [shape=Mdiamond] exit [shape=Msquare] start -> exit }",
+        )
+        .await
+        .unwrap();
+        tokio::fs::write(workflow_dir.join("prompts").join("p.md"), "plan")
+            .await
+            .unwrap();
+        let sandbox = Arc::new(
+            fabro_sandbox::local_sandbox(dir.path().to_path_buf())
+                .await
+                .expect("local sandbox should be created"),
+        );
+        let source = SandboxWorkflowFiles {
+            sandbox,
+            fs_scope: None,
+        };
+        let listed = source
+            .list_text_files(".fabro/workflows/demo")
+            .await
+            .unwrap();
+        assert_eq!(listed, vec![
+            ".fabro/workflows/demo/prompts/p.md".to_string(),
+            ".fabro/workflows/demo/workflow.fabro".to_string(),
+        ]);
+        let contents = source
+            .read_text_file(".fabro/workflows/demo/prompts/p.md")
+            .await
+            .unwrap();
+        assert_eq!(contents, "plan");
+        // The expanded keys keep the slug prefix and validate inline.
+        let files =
+            fabro_tool::expand_files_from(&source, &".fabro/workflows/demo".parse().unwrap())
+                .await
+                .unwrap();
+        let keys: Vec<&str> = files
+            .keys()
+            .map(fabro_types::WorkflowPath::as_str)
+            .collect();
+        assert_eq!(keys, ["demo/prompts/p.md", "demo/workflow.fabro"]);
+    }
 
     fn root(event: CodingEvent) -> CodingAgentEvent {
         CodingAgentEvent::new("ses_root".to_string(), event, SystemTime::UNIX_EPOCH)
