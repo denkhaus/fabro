@@ -201,6 +201,7 @@ fn workflow_version_tool_rejects_entrypoint_without_directory() {
         ValidatedWorkflowVersionCreate::try_from(FabroWorkflowVersionCreateParams {
             entrypoint: entrypoint.parse().expect("test entrypoint parses"),
             files,
+            files_from: None,
         })
         .map_err(|err| err.as_str().to_string())
     }

@@ -89,6 +89,11 @@ pub struct FabroRunToolServices {
     /// only those nodes get tools (named-only), and stages without the
     /// attribute register none — least privilege per stage.
     pub run_wide:       bool,
+    /// Workspace filesystem access for `files_from` workflow-version
+    /// registration. `None` on surfaces without a run sandbox (MCP,
+    /// ask-fabro sessions); stage registration fills a per-node source
+    /// with the node's `fs_hide` policy applied.
+    pub files:          Option<Arc<dyn fabro_tool::WorkflowFilesSource>>,
 }
 
 /// Services shared across workflow phases.

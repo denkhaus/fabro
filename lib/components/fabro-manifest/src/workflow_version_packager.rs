@@ -149,13 +149,16 @@ mod tests {
                         } else {
                             "digraph W {}".to_owned()
                         };
-                        (format!("f{index}.fabro").parse().unwrap(), graph)
+                        (format!("w/f{index}.fabro").parse().unwrap(), graph)
                     })
                     .collect();
                 let input = ValidatedWorkflowVersionCreate::try_from(
                     fabro_tool::FabroWorkflowVersionCreateParams {
-                        entrypoint: "f0.fabro".parse().unwrap(),
+                        // The entrypoint carries its directory: the 9cb0
+                        // guard rejects bare names at registration.
+                        entrypoint: "w/f0.fabro".parse().unwrap(),
                         files,
+                        files_from: None,
                     },
                 )
                 .unwrap();

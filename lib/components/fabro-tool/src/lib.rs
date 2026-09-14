@@ -73,6 +73,7 @@ pub use wait::{
     ValidatedRunWait, run_wait, run_wait_text,
 };
 pub use workflow_version::{
-    FabroWorkflowVersionCreateParams, ValidatedWorkflowVersionCreate, WorkflowVersionPackager,
-    create_workflow_version, workflow_version_create_text,
+    FabroWorkflowVersionCreateParams, ValidatedWorkflowVersionCreate, WorkflowFilesSource,
+    WorkflowVersionPackager, create_workflow_version, expand_files_from,
+    workflow_version_create_text,
 };

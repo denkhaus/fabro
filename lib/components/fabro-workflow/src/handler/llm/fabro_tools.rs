@@ -66,8 +66,23 @@ pub(crate) async fn execute_fabro_run_tool(
 ) -> fabro_tool::ToolResult<String> {
     match name {
         fabro_tool::FABRO_WORKFLOW_VERSION_CREATE_TOOL_NAME => {
-            let params =
+            let mut params =
                 parse_fabro_tool_args::<fabro_tool::FabroWorkflowVersionCreateParams>(name, args)?;
+            if let Some(dir) = params.files_from.take() {
+                // The sandbox supplies the closure; the model never
+                // transcribes file contents (files_from design).
+                if !params.files.is_empty() {
+                    return Err(fabro_tool::ToolError::message(
+                        "files and files_from are mutually exclusive",
+                    ));
+                }
+                let source = services.files.as_ref().ok_or_else(|| {
+                    fabro_tool::ToolError::message(
+                        "files_from requires this run's sandbox filesystem; inline `files` only",
+                    )
+                })?;
+                params.files = fabro_tool::expand_files_from(source.as_ref(), &dir).await?;
+            }
             let source = fabro_tool::ValidatedWorkflowVersionCreate::try_from(params)?;
             let result =
                 fabro_tool::create_workflow_version(Arc::clone(&services.backend), source).await?;
@@ -280,6 +295,7 @@ mod tests {
             current_run_id: parent_id,
             inspects:       Vec::new(),
             run_wide:       true,
+            files:          None,
         };
         let name = fabro_tool::FABRO_RUN_CREATE_TOOL_NAME;
         let mut args = json!({"runs":[{
@@ -317,6 +333,110 @@ mod tests {
         }
     }
 
+    struct FixedFiles;
+
+    #[async_trait]
+    impl fabro_tool::WorkflowFilesSource for FixedFiles {
+        async fn list_text_files(&self, dir: &str) -> Result<Vec<String>, fabro_tool::ToolError> {
+            if dir == ".fabro/workflows/demo" {
+                Ok(vec![
+                    ".fabro/workflows/demo/workflow.toml".to_string(),
+                    ".fabro/workflows/demo/workflow.fabro".to_string(),
+                ])
+            } else {
+                Ok(Vec::new())
+            }
+        }
+
+        async fn read_text_file(&self, path: &str) -> Result<String, fabro_tool::ToolError> {
+            match path {
+                ".fabro/workflows/demo/workflow.toml" => {
+                    Ok("_version = 1\n[workflow]\ngraph = \"workflow.fabro\"".to_string())
+                }
+                ".fabro/workflows/demo/workflow.fabro" => Ok(
+                    "digraph D { start [shape=Mdiamond] exit [shape=Msquare] start -> exit }"
+                        .to_string(),
+                ),
+                _ => Err(fabro_tool::ToolError::message(format!("no `{path}`"))),
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn workflow_version_files_from_registers_without_transcription() {
+        // files_from (fabro-9cb0 follow-up): the tool reads the closure from
+        // the run sandbox itself — the model passes two short strings, never
+        // file contents. Keys arrive slug-prefixed and flow through the
+        // unchanged inline validation.
+        let server = httpmock::MockServer::start_async().await;
+        // The SingleGraphPackager stub packages the graph as entrypoint
+        // directly; toml-entrypoint resolution is the production packager's
+        // tested domain.
+        let version = WorkflowVersion::new(
+            "demo/workflow.fabro".parse().unwrap(),
+            BTreeMap::from([
+                (
+                    "demo/workflow.fabro".parse().unwrap(),
+                    "digraph D { start [shape=Mdiamond] exit [shape=Msquare] start -> exit }"
+                        .to_string(),
+                ),
+                (
+                    "demo/workflow.toml".parse().unwrap(),
+                    "_version = 1\n[workflow]\ngraph = \"workflow.fabro\"".to_string(),
+                ),
+            ]),
+            BTreeMap::new(),
+        )
+        .unwrap();
+        let id = version.id().unwrap();
+        server
+            .mock_async(|when, then| {
+                when.method(httpmock::Method::POST)
+                    .path("/api/v1/workflow-versions")
+                    .json_body_obj(&version);
+                then.status(201)
+                    .json_body(json!({"workflow_version_id": id}));
+            })
+            .await;
+        let client = fabro_client::Client::new_no_proxy(&server.url("")).unwrap();
+        let mut services = FabroRunToolServices {
+            backend:        Arc::new(
+                ClientBackend::new(Arc::new(client))
+                    .with_workflow_version_packager(Arc::new(SingleGraphPackager)),
+            ),
+            current_run_id: "01KRBZW4DW0000000000000002".parse().unwrap(),
+            inspects:       Vec::new(),
+            run_wide:       true,
+            files:          Some(Arc::new(FixedFiles)),
+        };
+        let name = fabro_tool::FABRO_WORKFLOW_VERSION_CREATE_TOOL_NAME;
+        let output = execute_fabro_run_tool(
+            name,
+            json!({
+                "entrypoint": "demo/workflow.fabro",
+                "files_from": ".fabro/workflows/demo"
+            }),
+            &services,
+        )
+        .await
+        .unwrap();
+        let (summary, _) = output.split_once('\n').unwrap();
+        assert_eq!(summary, format!("Registered workflow version {id}"));
+        // Without a sandbox source the same call teaches the caller.
+        services.files = None;
+        let error = execute_fabro_run_tool(
+            name,
+            json!({
+                "entrypoint": "demo/workflow.fabro",
+                "files_from": ".fabro/workflows/demo"
+            }),
+            &services,
+        )
+        .await
+        .unwrap_err();
+        assert!(error.to_string().contains("sandbox"));
+    }
+
     #[tokio::test]
     async fn workflow_version_native_dispatch_registers_and_returns_version() {
         let server = httpmock::MockServer::start_async().await;
@@ -345,6 +465,7 @@ mod tests {
             current_run_id: "01KRBZW4DW0000000000000002".parse().unwrap(),
             inspects:       Vec::new(),
             run_wide:       true,
+            files:          None,
         };
         let name = fabro_tool::FABRO_WORKFLOW_VERSION_CREATE_TOOL_NAME;
         assert_eq!(register_named_fabro_run_tools(&services, &[name]).len(), 1);

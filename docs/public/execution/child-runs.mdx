@@ -110,6 +110,20 @@ the workflow's directory name (placeholder paths are rejected as-is):
 }
 ```
 
+Inside a run, `files_from` is the cheap form: the tool reads the closure from the
+run sandbox itself, so the agent passes two short strings instead of transcribing
+file contents. The file keys arrive slug-prefixed:
+
+```json
+{
+  "entrypoint": "child/workflow.fabro",
+  "files_from": ".fabro/workflows/child"
+}
+```
+
+`files` and `files_from` are mutually exclusive; the MCP surface supports inline
+`files` only.
+
 Use the returned `workflow_version_id` in `fabro_run_create`:
 
 ```json

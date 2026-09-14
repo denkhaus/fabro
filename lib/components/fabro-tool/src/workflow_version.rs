@@ -21,12 +21,26 @@ pub struct FabroWorkflowVersionCreateParams {
     /// entrypoint's parent directory.
     #[schemars(with = "String")]
     pub entrypoint: WorkflowPath,
-    /// All local dependencies, keyed by package-relative path. Values are text
-    /// contents. Tool arguments arrive as an already-parsed JSON value on
-    /// every production route, so duplicate keys have collapsed (last wins)
-    /// before this type sees them; there is no byte-level guard to add here.
+    /// All local dependencies, keyed by package-relative path. Values are
+    /// text contents. Tool arguments arrive as an already-parsed JSON value
+    /// on every production route, so duplicate keys have collapsed (last
+    /// wins) before this type sees them; there is no byte-level guard to
+    /// add here. Optional ONLY together with `files_from` (the run sandbox
+    /// supplies the contents); inline and sandbox sources are mutually
+    /// exclusive.
+    #[serde(default)]
     #[schemars(with = "BTreeMap<String, String>")]
     pub files:      BTreeMap<WorkflowPath, String>,
+    /// Workspace-relative directory whose contents become the file map —
+    /// the run sandbox reads the closure, so the model never transcribes
+    /// file contents through tool arguments (the 8-minute, 76k-output-token
+    /// survey cost of passes like 01M2GJXV71TD). File keys are the paths
+    /// RELATIVE TO THE DIRECTORY'S PARENT, so `.fabro/workflows/develop`
+    /// yields the mandated `develop/…` keys. Requires a run sandbox; the
+    /// MCP surface and ask-fabro sessions support inline `files` only.
+    #[serde(default)]
+    #[schemars(with = "Option<String>")]
+    pub files_from: Option<WorkflowPath>,
 }
 
 /// A supplied source tree whose entrypoint, budgets, and portable path
@@ -59,7 +73,17 @@ impl TryFrom<FabroWorkflowVersionCreateParams> for ValidatedWorkflowVersionCreat
     type Error = ToolError;
 
     fn try_from(params: FabroWorkflowVersionCreateParams) -> Result<Self, Self::Error> {
-        let FabroWorkflowVersionCreateParams { entrypoint, files } = params;
+        let FabroWorkflowVersionCreateParams {
+            entrypoint,
+            files,
+            files_from,
+        } = params;
+        if files_from.is_some() {
+            return Err(ToolError::message(
+                "files_from requires this run's sandbox filesystem; only the in-run \
+                 fabro_workflow_version_create tool resolves it (inline `files` here)",
+            ));
+        }
         fabro_types::validate_workflow_files(&entrypoint, &files)
             .map_err(|err| ToolError::message(err.to_string()))?;
         if looks_like_placeholder(&entrypoint) || files.keys().any(looks_like_placeholder) {
@@ -114,6 +138,67 @@ pub async fn create_workflow_version(
     Ok(CreateWorkflowVersionResponse {
         workflow_version_id,
     })
+}
+
+/// Workspace filesystem access for `files_from` registration: the run
+/// sandbox supplies the closure so the model never transcribes file
+/// contents through tool arguments. Implemented by the workflow engine
+/// over its sandbox handle with the stage's `fs_hide` policy applied.
+#[async_trait]
+pub trait WorkflowFilesSource: Send + Sync {
+    /// Sorted, workspace-relative paths of the regular text files under
+    /// `dir` (also workspace-relative), one entry per file.
+    async fn list_text_files(&self, dir: &str) -> Result<Vec<String>, ToolError>;
+
+    /// Reads one workspace-relative text file.
+    async fn read_text_file(&self, path: &str) -> Result<String, ToolError>;
+}
+
+/// Resolves `files_from` into an inline file map through `source`: every
+/// listed file becomes `<dir-basename>/<relative-path>` — the directory
+/// name is part of every key, so the mandated `<slug>/` prefix (and with
+/// it the run's workflow slug) survives without any transcription.
+///
+/// # Errors
+///
+/// Budget and UTF-8 failures name the offending path.
+pub async fn expand_files_from(
+    source: &dyn WorkflowFilesSource,
+    dir: &WorkflowPath,
+) -> Result<BTreeMap<WorkflowPath, String>, ToolError> {
+    let dir_str = dir.as_str();
+    let prefix = std::path::Path::new(dir_str)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .filter(|name| !name.is_empty())
+        .unwrap_or_else(|| unreachable!("a validated WorkflowPath always has a final component"));
+    let mut files = BTreeMap::new();
+    for path in source.list_text_files(dir_str).await? {
+        let relative = path.strip_prefix(&format!("{dir_str}/")).unwrap_or(&path);
+        let key: WorkflowPath = format!("{prefix}/{relative}").parse().map_err(|error| {
+            ToolError::message(format!("files_from produced `{relative}`: {error}"))
+        })?;
+        if files.len() >= fabro_types::MAX_WORKFLOW_VERSION_FILES {
+            return Err(ToolError::message(format!(
+                "files_from exceeds {} files",
+                fabro_types::MAX_WORKFLOW_VERSION_FILES
+            )));
+        }
+        let contents = source.read_text_file(&path).await?;
+        if contents.len() > fabro_types::MAX_WORKFLOW_VERSION_FILE_BYTES {
+            return Err(ToolError::message(format!(
+                "files_from file `{key}` exceeds {} bytes",
+                fabro_types::MAX_WORKFLOW_VERSION_FILE_BYTES
+            )));
+        }
+        files.insert(key, contents);
+    }
+    if files.is_empty() {
+        return Err(ToolError::message(format!(
+            "files_from directory `{dir_str}` contains no files"
+        )));
+    }
+    Ok(files)
 }
 
 #[must_use]
@@ -185,6 +270,7 @@ mod tests {
             assert!(validate(json!({"entrypoint":"demo/workflow","files":files})).is_err());
         }
         let oversized_file = FabroWorkflowVersionCreateParams {
+            files_from: None,
             entrypoint: "demo/workflow".parse().unwrap(),
             files:      BTreeMap::from([(
                 "demo/workflow".parse().unwrap(),
@@ -193,6 +279,7 @@ mod tests {
         };
         assert!(ValidatedWorkflowVersionCreate::try_from(oversized_file).is_err());
         let mut too_many_files = FabroWorkflowVersionCreateParams {
+            files_from: None,
             entrypoint: "demo/workflow".parse().unwrap(),
             files:      (0..MAX_WORKFLOW_VERSION_FILES)
                 .map(|i| (format!("file{i}").parse().unwrap(), String::new()))
@@ -203,6 +290,7 @@ mod tests {
             .insert(too_many_files.entrypoint.clone(), String::new());
         assert!(ValidatedWorkflowVersionCreate::try_from(too_many_files).is_err());
         let mut oversized_total = FabroWorkflowVersionCreateParams {
+            files_from: None,
             entrypoint: "demo/workflow".parse().unwrap(),
             files:      (0..5)
                 .map(|i| {
@@ -254,6 +342,71 @@ mod tests {
             validate(json!({"entrypoint":prefixed,"files":{prefixed:"digraph W {}"}}))
                 .unwrap_or_else(|error| panic!("dir-prefixed entrypoint must pass: {error}"));
         }
+    }
+
+    struct FakeSandboxFiles {
+        files: Vec<(&'static str, &'static str)>,
+    }
+
+    #[async_trait]
+    impl WorkflowFilesSource for FakeSandboxFiles {
+        async fn list_text_files(&self, dir: &str) -> Result<Vec<String>, ToolError> {
+            Ok(self
+                .files
+                .iter()
+                .filter(|(path, _)| path.starts_with(&format!("{dir}/")))
+                .map(|(path, _)| (*path).to_string())
+                .collect())
+        }
+
+        async fn read_text_file(&self, path: &str) -> Result<String, ToolError> {
+            self.files
+                .iter()
+                .find(|(candidate, _)| *candidate == path)
+                .map(|(_, contents)| (*contents).to_string())
+                .ok_or_else(|| ToolError::message(format!("no such file `{path}`")))
+        }
+    }
+
+    #[tokio::test]
+    async fn files_from_expands_to_slug_prefixed_keys() {
+        let source = FakeSandboxFiles {
+            files: vec![
+                (".fabro/workflows/develop/workflow.toml", "_version = 1"),
+                (".fabro/workflows/develop/workflow.fabro", "digraph D {}"),
+                (".fabro/workflows/develop/prompts/plan.md", "plan"),
+            ],
+        };
+        let files = expand_files_from(&source, &".fabro/workflows/develop".parse().unwrap())
+            .await
+            .unwrap();
+        let keys: Vec<&str> = files.keys().map(WorkflowPath::as_str).collect();
+        assert_eq!(keys, [
+            "develop/prompts/plan.md",
+            "develop/workflow.fabro",
+            "develop/workflow.toml"
+        ]);
+        // The expanded map satisfies inline validation unchanged: the
+        // entrypoint resolves and the 9cb0 directory guard passes.
+        validate(json!({"entrypoint":"develop/workflow.toml","files":files})).unwrap();
+    }
+
+    #[tokio::test]
+    async fn files_from_empty_directory_is_an_error() {
+        let source = FakeSandboxFiles { files: vec![] };
+        let error = expand_files_from(&source, &".fabro/workflows/develop".parse().unwrap())
+            .await
+            .unwrap_err();
+        assert!(error.as_str().contains("contains no files"));
+    }
+
+    #[test]
+    fn files_from_without_a_sandbox_refuses_with_teaching() {
+        let error = validate(
+            json!({"entrypoint":"develop/workflow.toml","files_from":".fabro/workflows/develop"}),
+        )
+        .unwrap_err();
+        assert!(error.as_str().contains("requires this run's sandbox"));
     }
 
     #[tokio::test]

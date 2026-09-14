@@ -466,11 +466,11 @@ mod tests {
             .expect("workflow version creation should be in the shared catalog");
         let schema = &definition.parameters;
         assert_eq!(schema["additionalProperties"], false);
-        assert_eq!(schema["properties"].as_object().unwrap().len(), 2);
-        assert_eq!(
-            schema["required"],
-            serde_json::json!(["entrypoint", "files"])
-        );
+        // entrypoint, files, files_from — the sandbox-supplied source is
+        // optional and never required.
+        assert_eq!(schema["properties"].as_object().unwrap().len(), 3);
+        // `files` is optional together with `files_from` (serde default).
+        assert_eq!(schema["required"], serde_json::json!(["entrypoint"]));
     }
 
     #[test]

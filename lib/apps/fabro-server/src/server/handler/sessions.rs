@@ -791,6 +791,9 @@ async fn build_agent(
         // Named-only registration: the ask-fabro session never uses the
         // run-wide full-set path (fabro-c419).
         run_wide:       false,
+        // No run sandbox here: ask-fabro analyst sessions support inline
+        // `files` only, `files_from` refuses with a teaching error.
+        files:          None,
     };
     let run_tools = register_named_fabro_run_tools(&services, ASK_FABRO_RUN_TOOL_NAMES);
     let selector = format!("{provider_id}/{model}");

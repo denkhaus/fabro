@@ -21,7 +21,7 @@ use fabro_llm::types::ResponseFormat;
 use fabro_llm::{Client, ClientOptions, Request, Response};
 use fabro_mcp::config::McpServerSettings;
 use fabro_mcp::pebble::pebble_servers;
-use fabro_sandbox::{RunSandbox, SecretRedactor};
+use fabro_sandbox::{FsScope, RunSandbox, SecretRedactor, WalkOptions};
 use fabro_types::settings::run::RunModelControls;
 use fabro_types::{
     AgentProfileKind, BilledModelUsage, ModelRef, PermissionLevel, SessionCapability, StageId,
@@ -59,7 +59,7 @@ use super::controls::{
 use super::fabro_tools::{register_fabro_run_tools, register_named_fabro_run_tools};
 use super::fallback::{self, FallbackPlan, LlmRoute};
 use super::routing::{self, ProviderContext};
-use super::stage_policy::node_admits_tool;
+use super::stage_policy::{node_admits_tool, node_fs_scope};
 use crate::context::WorkflowContext;
 use crate::context::keys::Fidelity;
 use crate::error::Error;
@@ -633,16 +633,23 @@ impl PebbleBackend {
     fn stage_tools(&self, node: &Node, bindings: &StageBindings<'_>) -> Vec<RegisteredTool> {
         let mut tools: Vec<RegisteredTool> = match &self.fabro_run_tools {
             Some(services) => {
+                // files_from registration reads through this stage's
+                // sandbox with its fs_hide policy applied.
+                let mut services = services.clone();
+                services.files = Some(Arc::new(SandboxWorkflowFiles {
+                    sandbox:  Arc::clone(bindings.sandbox),
+                    fs_scope: node_fs_scope(node).ok().flatten(),
+                }));
                 let named: Vec<String> = node
                     .fabro_tools()
                     .iter()
                     .map(|tool| (*tool).to_owned())
                     .collect();
                 if named.is_empty() {
-                    register_fabro_run_tools(services)
+                    register_fabro_run_tools(&services)
                 } else {
                     let names: Vec<&str> = named.iter().map(String::as_str).collect();
-                    register_named_fabro_run_tools(services, &names)
+                    register_named_fabro_run_tools(&services, &names)
                 }
             }
             None => Vec::new(),
@@ -1427,6 +1434,57 @@ impl CodergenBackend for PebbleBackend {
                 crate::millis_u64(live.inference_duration),
                 crate::millis_u64(live.tool_duration),
             ),
+        })
+    }
+}
+
+/// `files_from` file source over the stage's sandbox with the node's
+/// `fs_hide` policy applied to both listing and reads: a hidden path
+/// behaves as if it did not exist, matching the stage's other tools.
+struct SandboxWorkflowFiles {
+    sandbox:  Arc<RunSandbox>,
+    fs_scope: Option<Arc<FsScope>>,
+}
+
+impl SandboxWorkflowFiles {
+    fn admit(&self, path: &str) -> Result<(), fabro_tool::ToolError> {
+        if self
+            .fs_scope
+            .as_ref()
+            .is_some_and(|scope| scope.is_hidden(path))
+        {
+            return Err(fabro_tool::ToolError::message(format!(
+                "`{path}` is hidden from this stage by fs_hide"
+            )));
+        }
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl fabro_tool::WorkflowFilesSource for SandboxWorkflowFiles {
+    async fn list_text_files(&self, dir: &str) -> Result<Vec<String>, fabro_tool::ToolError> {
+        self.admit(dir)?;
+        let files = self
+            .sandbox
+            .walk_files(
+                self.sandbox.working_directory(),
+                dir,
+                &WalkOptions::default(),
+            )
+            .await
+            .map_err(|error| {
+                fabro_tool::ToolError::message(format!(
+                    "files_from walk below `{dir}` failed: {error}"
+                ))
+            })?;
+        Ok(files.into_iter().map(|file| file.path).collect())
+    }
+
+    async fn read_text_file(&self, path: &str) -> Result<String, fabro_tool::ToolError> {
+        self.admit(path)?;
+        self.sandbox.read_file_text(path).await.map_err(|error| {
+            fabro_tool::ToolError::message(format!("read `{path}` failed: {error}"))
         })
     }
 }

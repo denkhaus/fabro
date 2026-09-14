@@ -258,6 +258,7 @@ fn services() -> FabroRunToolServices {
             "revisor".to_string(),
         ],
         run_wide:       false,
+        files:          None,
     }
 }
 
@@ -361,7 +362,7 @@ fn conductor_legs_teach_the_workflow_version_contract() {
     // (prompt, mandated entrypoint prefix) — every prompt that teaches
     // registration must teach the slug-prefixed shape (fabro-9cb0).
     let legs = [
-        ("survey.md", "<slug>/workflow.toml"),
+        ("survey.md", "develop/workflow.toml"),
         ("develop-leg.md", "develop/workflow.toml"),
         ("revise-leg.md", "revisor/workflow.toml"),
         ("merge-leg.md", "merge-upstream/workflow.toml"),
@@ -393,6 +394,16 @@ fn conductor_legs_teach_the_workflow_version_contract() {
         assert!(
             !source.contains("\"entrypoint\": \"workflow"),
             "{leg} still teaches a bare workflow entrypoint; its runs would              collapse to the invisible slug \"workflow\" (fabro-9cb0)"
+        );
+        assert!(
+            source.contains("files_from"),
+            "{leg} must register via files_from — inline file transcription \
+             burned 8+ minutes and ~76k output tokens per pre-fix pass"
+        );
+        assert!(
+            !source.contains("$(find"),
+            "{leg} still teaches shell closure collection; files_from reads \
+             the closure without transcription"
         );
     }
 }

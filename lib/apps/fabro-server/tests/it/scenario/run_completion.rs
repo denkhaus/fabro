@@ -17,6 +17,9 @@ use crate::helpers::{
 
 const OPENAI_AGENT_MODEL: &str = "gpt-5.4";
 
+// skills="discover" opts the stage in (fabro-4dd8): stage sessions run
+// skill-free by default so harness-assembled input can never expand
+// slash tokens as skills.
 const PROJECT_SKILL_AGENT_DOT: &str = r#"digraph ProjectSkillAgent {
     graph [goal="Verify project skills are visible to agent runs"]
     rankdir=LR
@@ -24,7 +27,7 @@ const PROJECT_SKILL_AGENT_DOT: &str = r#"digraph ProjectSkillAgent {
     start [shape=Mdiamond, label="Start"]
     exit  [shape=Msquare, label="Exit"]
 
-    work [shape=box, label="Work", prompt="Respond with done."]
+    work [shape=box, label="Work", prompt="Respond with done.", skills="discover"]
 
     start -> work -> exit
 }"#;

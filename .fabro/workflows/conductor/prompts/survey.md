@@ -15,35 +15,26 @@ You are the Conductor's Surveyor. One decision: what does THIS pass run? You nev
 
 ## Workflow version pre-registration (fabro-978d, when routing "Work")
 
-The develop and revise legs used to transcribe their whole workflow
-closures (~118 KB develop, ~36 KB revisor) through tool arguments —
-5-minute stream stalls per big payload and JSON-mangling retries on the
-critical path. Registration is idempotent and content-addressed, so THIS
-stage does it while it has slack; the legs only pass the id.
-
 When your decision is "Work":
 
-1. Collect each closure in ONE shell call — never one turn per file:
-   `cd /workspace/fabro/.fabro/workflows && for f in $(find develop -type f | sort); do echo "=== $f ==="; cat "$f"; done`
-   and the same for `revisor`. The collected paths ARE the file keys —
-   use them verbatim. The closure is every file the packager needs:
-   `workflow.toml`, `workflow.fabro`, `prompts/*.md`, `schemas/*.json`,
-   referenced `scripts/*.nu`.
-2. Register: `fabro_workflow_version_create {"entrypoint": "<slug>/workflow.toml", "files": {"<slug>/workflow.toml": ..., "<slug>/workflow.fabro": ..., "<slug>/prompts/...": ...}}` —
-   once for develop, once for revisor. The `<slug>/` DIRECTORY PREFIX on the
-   entrypoint and EVERY file key is MANDATORY (fabro-9cb0: a bare
-   `workflow.toml` entrypoint collapses the run's workflow_slug to
-   "workflow", which makes the run invisible to every `workflow=<slug>`
-   filter — the revisor selector and the backlog checks listed 0 runs while
-   terminal runs existed).
-   If the packager names a missing dependency, add exactly that file and retry once.
-3. Emit BOTH ids as context keys — `develop_workflow_version_id` and
+1. Register each workflow with ONE small call — the tool reads the
+   closure from the run sandbox itself, you NEVER transcribe file
+   contents (pre-files_from passes burned 8+ minutes and ~76k output
+   tokens transcribing closures):
+   - develop: `fabro_workflow_version_create {"entrypoint": "develop/workflow.toml", "files_from": ".fabro/workflows/develop"}`
+   - revisor: `fabro_workflow_version_create {"entrypoint": "revisor/workflow.toml", "files_from": ".fabro/workflows/revisor"}`
+   The `files` key stays ABSENT; `files` and `files_from` are mutually
+   exclusive. Registration stays idempotent and content-addressed.
+   If the packager names a missing dependency, that file is missing from
+   the directory — journal it under `painpoints`; never hand-copy
+   contents.
+2. Emit BOTH ids as context keys — `develop_workflow_version_id` and
    `revisor_workflow_version_id` (64 hex each) via `context_updates` —
-   and journal them under `observations` with the closure path.
-4. A registration failure is NOT a pass failure: journal the error under
+   and journal them under `observations`.
+3. A registration failure is NOT a pass failure: journal the error under
    `painpoints`, emit no id for that workflow, and let the leg fall back
    to registering itself. Do not re-register after a success to
-   "make sure" — the transcription cost is the thing being avoided.
+   "make sure".
 
 ## Revisor backfill (best-effort, fabro-1dc9)
 

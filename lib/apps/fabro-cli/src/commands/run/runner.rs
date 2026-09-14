@@ -254,6 +254,10 @@ fn build_fabro_run_tool_services(
         current_run_id,
         inspects,
         run_wide,
+        // Per-stage registration replaces this with the stage's sandbox
+        // file source (pebble.rs stage_tools); base services carry none so
+        // MCP-adjacent paths refuse files_from with the teaching error.
+        files: None,
     })
 }
 
