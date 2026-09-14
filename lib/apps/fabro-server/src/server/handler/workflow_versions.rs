@@ -1,8 +1,10 @@
+use std::path::Path;
 use std::sync::Arc;
 
 use axum::extract::DefaultBodyLimit;
 use axum::extract::rejection::JsonRejection;
 use fabro_api::types::{CreateWorkflowVersionResponse, WorkflowVersion};
+use fabro_config::project;
 use fabro_types::MAX_WORKFLOW_VERSION_BYTES;
 use fabro_util::error;
 use fabro_workflow_version::{
@@ -42,6 +44,20 @@ async fn create_workflow_version(
     let blobs = state.store_ref().blobs();
     let store = WorkflowVersionStore::new(blobs);
     let workflow_version_id = store.put(&version).await.map_err(store_error)?;
+
+    // Registration milestone (fabro-68d6): the log platform's curated INFO
+    // set includes workflow-version registrations; Display identity fields
+    // only, never Debug (fabro-5c85).
+    let entrypoint = version.version().entrypoint();
+    tracing::info!(
+        workflow_version_id = %workflow_version_id,
+        workflow_slug = project::workflow_slug_from_path(Path::new(entrypoint.as_str()))
+            .as_deref()
+            .unwrap_or(""),
+        entrypoint = %entrypoint.as_str(),
+        files = version.version().files().len(),
+        "Workflow version registered"
+    );
 
     Ok((
         StatusCode::CREATED,

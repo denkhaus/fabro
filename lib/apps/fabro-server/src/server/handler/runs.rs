@@ -1011,10 +1011,18 @@ async fn finalize_created_run(
             }
         }
     }
+    // Display, never Debug: the log platform must be able to term-query
+    // the identity (Debug renders Some("…") and BlobHash byte arrays,
+    // fabro-5c85).
     info!(
         run_id = %created.run_id,
-        workflow_slug = ?summary.workflow.slug,
-        workflow_version_id = ?summary.workflow.workflow_version_id,
+        workflow_slug = summary.workflow.slug.as_deref().unwrap_or(""),
+        workflow_version_id = %summary
+            .workflow
+            .workflow_version_id
+            .as_ref()
+            .map(ToString::to_string)
+            .unwrap_or_default(),
         "Run created from intent"
     );
     (
