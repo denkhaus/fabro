@@ -102,6 +102,19 @@ async fn run_create_child_checkout_contains_the_parents_pushed_work() {
     run_git(&workspace, &["push", "--quiet", "origin", &git.run_branch]);
     let server = MockServer::start_async().await;
     let state_request = mock_parent(&server, &parent).await;
+    // Fork seam (fabro-8ee1): the duplicate-child guard lists the parent's
+    // children before creating — empty siblings pass.
+    server
+        .mock_async(|when, then| {
+            when.method(GET)
+                .path("/api/v1/runs")
+                .query_param("parent_id", parent.spec.id().to_string());
+            then.status(200).json_body(json!({
+                "data": [],
+                "meta": {"total": 0, "has_more": false}
+            }));
+        })
+        .await;
     let client = fabro_client::Client::new_no_proxy(&server.url("")).unwrap();
     let workflow_version_id: WorkflowVersionId = fabro_types::BlobHash::new(b"stored").into();
     let child_id = RunId::new();

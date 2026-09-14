@@ -6,7 +6,7 @@ use schemars::{JsonSchema, Schema, SchemaGenerator, json_schema};
 use serde::{Deserialize, Deserializer, Serialize, de};
 
 use super::common::{self, FabroToolBackend, ToolError, ToolResult};
-use super::manifest;
+use super::{fork_duplicate_child_guard, manifest};
 
 #[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -133,6 +133,17 @@ pub async fn create_runs_with_options(
                 title: spec.title,
                 goal: spec.goal,
             };
+            // Fork seam (fabro-8ee1): a parent must not gain a second
+            // non-terminal child of the same workflow version — prompt
+            // prose alone proved violable twice.
+            if let Some(parent_run_id) = parent_id {
+                fork_duplicate_child_guard::reject_duplicate_active_child(
+                    backend.as_ref(),
+                    parent_run_id,
+                    spec.workflow_version_id,
+                )
+                .await?;
+            }
             let run_id = backend.create_run_from_intent(intent).await?;
             created_ids.push(run_id);
             let start_requested = spec.start.unwrap_or(true);
@@ -486,6 +497,18 @@ mod tests {
                 then.status(500);
             })
             .await;
+        // Fork seam (fabro-8ee1): the guard's children listing — empty
+        // siblings pass; the test's own contract (no target-state lookup)
+        // is unaffected.
+        server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/api/v1/runs")
+                    .query_param("parent_id", parent_id.to_string());
+                then.status(200)
+                    .json_body(json!({"data": [], "meta": {"total": 0, "has_more": false}}));
+            })
+            .await;
         let result = create_runs(backend(&server), params(item)).await.unwrap();
         assert_eq!(result.runs[0].run_id, id.to_string());
         assert!(!result.runs[0].start_requested);
@@ -500,6 +523,17 @@ mod tests {
         let id = RunId::new();
         let p = parent(RunTarget::None {});
         let parent_id = p.spec.id();
+        // Fork seam (fabro-8ee1): the duplicate-child guard lists the
+        // parent's children before creating — an empty list passes.
+        server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/api/v1/runs")
+                    .query_param("parent_id", parent_id.to_string());
+                then.status(200)
+                    .json_body(json!({"data": [], "meta": {"total": 0, "has_more": false}}));
+            })
+            .await;
         let state = server
             .mock_async(|when, then| {
                 when.method(GET)

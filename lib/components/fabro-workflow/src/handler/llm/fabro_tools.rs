@@ -261,6 +261,19 @@ mod tests {
                 then.status(500);
             })
             .await;
+        // Fork seam (fabro-8ee1): the duplicate-child guard lists the
+        // parent's children before creating — empty siblings pass.
+        server
+            .mock_async(|when, then| {
+                when.method(httpmock::Method::GET)
+                    .path("/api/v1/runs")
+                    .query_param("parent_id", parent_id.to_string());
+                then.status(200).json_body(json!({
+                    "data": [],
+                    "meta": {"total": 0, "has_more": false}
+                }));
+            })
+            .await;
         let client = fabro_client::Client::new_no_proxy(&server.url("")).unwrap();
         let services = FabroRunToolServices {
             backend:        Arc::new(ClientBackend::new(Arc::new(client))),

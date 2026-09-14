@@ -9,6 +9,11 @@ mod common;
 mod create;
 mod events;
 pub mod fabro_client;
+/// Fork-only (fabro-8ee1): merge-protected duplicate-child guard.
+mod fork_duplicate_child_guard;
+/// Fork-only presence pin (fabro-8ee1): upstream does not have it.
+#[cfg(test)]
+mod fork_duplicate_child_guard_tests;
 mod gather;
 mod get;
 mod interact;
