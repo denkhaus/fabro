@@ -1346,6 +1346,7 @@ mod tests {
         EnvironmentImageLayer, EnvironmentNetworkLayer, EnvironmentResourcesLayer, RunCloneLayer,
         RunEnvironmentLayer, RunExecutionLayer, RunLayer, StickyMap, WorkflowSettingsBuilder,
     };
+    use fabro_core::handler::AttemptInfo;
     use fabro_sandbox::test_support::MockSandbox;
     use fabro_store::Database;
     use fabro_types::settings::InterpString;
@@ -1417,6 +1418,7 @@ mod tests {
             _graph: &fabro_graphviz::graph::Graph,
             _run_dir: &Path,
             _services: &EngineServices,
+            _attempt: &AttemptInfo,
         ) -> Result<Outcome, Error> {
             Ok(timed_success_outcome())
         }
@@ -1442,6 +1444,7 @@ mod tests {
             _graph: &fabro_graphviz::graph::Graph,
             _run_dir: &Path,
             _services: &EngineServices,
+            _attempt: &AttemptInfo,
         ) -> Result<Outcome, Error> {
             std::future::pending().await
         }

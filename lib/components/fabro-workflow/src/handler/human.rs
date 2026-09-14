@@ -4,6 +4,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use async_trait::async_trait;
+use fabro_core::handler::AttemptInfo;
 use fabro_graphviz::graph::{Graph, Node};
 use fabro_interview::{Answer, AnswerValue, Interviewer, Question, ask_with_timeout};
 use fabro_types::{InterviewOption, Principal, QuestionType, ReviewTarget, SystemActorKind};
@@ -236,6 +237,7 @@ impl Handler for HumanHandler {
         graph: &Graph,
         _run_dir: &Path,
         services: &EngineServices,
+        _attempt: &AttemptInfo,
     ) -> Result<Outcome, Error> {
         let HumanGateQuestion {
             choices,
@@ -716,6 +718,7 @@ mod tests {
                 &graph,
                 Path::new("/tmp/test"),
                 &make_services_with_events(Arc::clone(&events)),
+                &AttemptInfo::first(),
             )
             .await
             .unwrap();
@@ -763,6 +766,7 @@ mod tests {
                 &graph,
                 Path::new("/tmp/test"),
                 &make_services(),
+                &AttemptInfo::first(),
             )
             .await
             .unwrap();
@@ -800,6 +804,7 @@ mod tests {
                 &graph,
                 Path::new("/tmp/test"),
                 &make_services(),
+                &AttemptInfo::first(),
             )
             .await
             .unwrap();
@@ -836,6 +841,7 @@ mod tests {
                 &graph,
                 Path::new("/tmp/test"),
                 &make_services(),
+                &AttemptInfo::first(),
             )
             .await
             .unwrap();
@@ -856,7 +862,14 @@ mod tests {
         let run_dir = Path::new("/tmp/test");
 
         let outcome = handler
-            .execute(node, &context, &graph, run_dir, &make_services())
+            .execute(
+                node,
+                &context,
+                &graph,
+                run_dir,
+                &make_services(),
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
         assert_eq!(outcome.status, crate::outcome::StageOutcome::Succeeded);
@@ -880,7 +893,14 @@ mod tests {
         let run_dir = Path::new("/tmp/test");
 
         let outcome = handler
-            .execute(node, &context, &graph, run_dir, &make_services())
+            .execute(
+                node,
+                &context,
+                &graph,
+                run_dir,
+                &make_services(),
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
         assert_eq!(outcome.status, crate::outcome::StageOutcome::Failed {
@@ -898,7 +918,14 @@ mod tests {
         let run_dir = Path::new("/tmp/test");
 
         let outcome = handler
-            .execute(node, &context, &graph, run_dir, &make_services())
+            .execute(
+                node,
+                &context,
+                &graph,
+                run_dir,
+                &make_services(),
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
 
@@ -923,7 +950,14 @@ mod tests {
         let run_dir = Path::new("/tmp/test");
 
         let error = handler
-            .execute(node, &context, &graph, run_dir, &make_services())
+            .execute(
+                node,
+                &context,
+                &graph,
+                run_dir,
+                &make_services(),
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap_err();
 
@@ -940,7 +974,14 @@ mod tests {
         let run_dir = Path::new("/tmp/test");
 
         let outcome = handler
-            .execute(node, &context, &graph, run_dir, &make_services())
+            .execute(
+                node,
+                &context,
+                &graph,
+                run_dir,
+                &make_services(),
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
 
@@ -969,6 +1010,7 @@ mod tests {
                 &graph,
                 run_dir,
                 &make_services_with_events(Arc::clone(&events)),
+                &AttemptInfo::first(),
             )
             .await
             .unwrap();
@@ -1003,6 +1045,7 @@ mod tests {
                 &graph,
                 run_dir,
                 &make_services_with_events(Arc::clone(&events)),
+                &AttemptInfo::first(),
             )
             .await
             .unwrap();
@@ -1044,6 +1087,7 @@ mod tests {
                 &graph,
                 run_dir,
                 &make_services_with_events(Arc::clone(&events)),
+                &AttemptInfo::first(),
             )
             .await
             .unwrap();
@@ -1089,7 +1133,14 @@ mod tests {
         let run_dir = Path::new("/tmp/test");
 
         let outcome = handler
-            .execute(node, &context, &graph, run_dir, &make_services())
+            .execute(
+                node,
+                &context,
+                &graph,
+                run_dir,
+                &make_services(),
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
         assert_eq!(outcome.status, crate::outcome::StageOutcome::Succeeded);
@@ -1129,7 +1180,14 @@ mod tests {
         let run_dir = Path::new("/tmp/test");
 
         handler
-            .execute(node, &context, &graph, run_dir, &make_services())
+            .execute(
+                node,
+                &context,
+                &graph,
+                run_dir,
+                &make_services(),
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
 
@@ -1149,7 +1207,14 @@ mod tests {
         let run_dir = Path::new("/tmp/test");
 
         let outcome = handler
-            .execute(node, &context, &graph, run_dir, &make_services())
+            .execute(
+                node,
+                &context,
+                &graph,
+                run_dir,
+                &make_services(),
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
 
@@ -1189,6 +1254,7 @@ mod tests {
                 &graph,
                 run_dir,
                 &make_services_with_events(Arc::clone(&events)),
+                &AttemptInfo::first(),
             )
             .await
             .unwrap();
@@ -1220,7 +1286,14 @@ mod tests {
         let run_dir = Path::new("/tmp/test");
 
         let outcome = handler
-            .execute(node, &context, &graph, run_dir, &make_services())
+            .execute(
+                node,
+                &context,
+                &graph,
+                run_dir,
+                &make_services(),
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
 

@@ -1,6 +1,7 @@
 use std::path::Path;
 
 use async_trait::async_trait;
+use fabro_core::handler::AttemptInfo;
 use fabro_graphviz::graph::{Graph, Node};
 
 use super::{EngineServices, Handler};
@@ -21,6 +22,7 @@ impl Handler for ConditionalHandler {
         _graph: &Graph,
         _run_dir: &Path,
         _services: &EngineServices,
+        _attempt: &AttemptInfo,
     ) -> Result<Outcome, Error> {
         let mut outcome = Outcome::success();
         outcome.notes = Some(format!("Conditional node evaluated: {}", node.id));
@@ -43,7 +45,14 @@ mod tests {
         let graph = Graph::new("test");
         let run_dir = Path::new("/tmp/test");
         let outcome = handler
-            .execute(&node, &context, &graph, run_dir, &make_services())
+            .execute(
+                &node,
+                &context,
+                &graph,
+                run_dir,
+                &make_services(),
+                &AttemptInfo::first(),
+            )
             .await
             .unwrap();
         assert_eq!(outcome.status, crate::outcome::StageOutcome::Succeeded);

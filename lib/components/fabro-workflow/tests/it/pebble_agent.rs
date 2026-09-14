@@ -1460,17 +1460,19 @@ async fn a_failing_event_sink_ends_the_stage() {
 
     let result = backend
         .run(CodergenRunRequest {
-            node:            &node,
-            graph:           &graph,
-            prompt:          "Say hello",
-            context:         &context,
-            context_read:    fabro_workflow::test_support::context_read_services_for_tests().await,
-            thread_id:       None,
-            emitter:         &emitter,
-            sandbox:         &sandbox,
-            tool_middleware: None,
-            cancel_token:    CancellationToken::new(),
-            human_input:     None,
+            node:               &node,
+            graph:              &graph,
+            prompt:             "Say hello",
+            context:            &context,
+            context_read:       fabro_workflow::test_support::context_read_services_for_tests()
+                .await,
+            thread_id:          None,
+            emitter:            &emitter,
+            sandbox:            &sandbox,
+            tool_middleware:    None,
+            cancel_token:       CancellationToken::new(),
+            human_input:        None,
+            retry_continuation: None,
         })
         .await;
 
@@ -1631,4 +1633,137 @@ async fn daytona_sandbox_runs_an_agent_stage() {
     agent_stage_smoke(Arc::clone(&sandbox), "daytona").await;
 
     sandbox.delete().await.expect("Daytona cleanup failed");
+}
+
+// --- Retry continuation (fabro-183f) -----------------------------------------
+
+/// A retryable model failure parks the conversation; the retry continues
+/// the SAME session with a minimal continuation message instead of
+/// re-posting the stage prompt.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_retryable_failure_continues_the_same_session_on_retry() {
+    let stage = Stage::new().await;
+    let fail = stage
+        .server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path(CHAT_PATH)
+                .body_excludes("Attempt 1 of this stage failed with:");
+            then.status(500)
+                .header("content-type", "application/json")
+                .json_body(serde_json::json!({
+                    "error": { "message": "upstream exploded", "type": "server_error" }
+                }));
+        })
+        .await;
+    let continued = stage
+        .server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path(CHAT_PATH)
+                .body_includes("Attempt 1 of this stage failed with:");
+            sse_headers(then, sse_text("Recovered"));
+        })
+        .await;
+
+    let backend = stage.backend("openai");
+    let sandbox = local_sandbox(stage.dir.path()).await;
+    let mut graph = Graph::new("RetryContinuation");
+    graph.nodes.insert("work".to_string(), Node::new("work"));
+    let work = &graph.nodes["work"];
+    let context = Context::new();
+    context.set(
+        fabro_workflow::context::keys::INTERNAL_RUN_ID,
+        serde_json::json!(RunId::new().to_string()),
+    );
+    // Same stage execution ordinal on both calls, as the executor's retry
+    // loop sees it.
+    context.set(
+        fabro_workflow::context::keys::INTERNAL_STAGE_EXECUTION_ORDINAL,
+        serde_json::json!(1),
+    );
+    let context_read = fabro_workflow::test_support::context_read_services_for_tests().await;
+    let context_read_retry = context_read.clone();
+
+    // Attempt 1: full prompt, model explodes retryably.
+    let first = backend
+        .run(CodergenRunRequest {
+            node: work,
+            graph: &graph,
+            prompt: "Say the secret word",
+            retry_continuation: None,
+            context: &context,
+            context_read,
+            thread_id: None,
+            emitter: &stage.emitter,
+            sandbox: &sandbox,
+            tool_middleware: None,
+            cancel_token: CancellationToken::new(),
+            human_input: None,
+        })
+        .await;
+    let Err(error) = first else {
+        panic!("the retryable failure surfaces as an error")
+    };
+    assert!(error.is_retryable(), "got {error}");
+
+    // Attempt 2: the engine would now send the continuation marker.
+    let second = backend
+        .run(CodergenRunRequest {
+            node:               work,
+            graph:              &graph,
+            prompt:             "Say the secret word",
+            retry_continuation: Some(fabro_workflow::handler::agent::RetryContinuation {
+                failed_attempt: Some(1),
+                failure:        error.to_string(),
+            }),
+            context:            &context,
+            context_read:       context_read_retry,
+            thread_id:          None,
+            emitter:            &stage.emitter,
+            sandbox:            &sandbox,
+            tool_middleware:    None,
+            cancel_token:       CancellationToken::new(),
+            human_input:        None,
+        })
+        .await;
+    let text = match second.expect("the continued session answers") {
+        fabro_workflow::handler::agent::CodergenResult::Text { text, .. } => text,
+        fabro_workflow::handler::agent::CodergenResult::Full(_) => {
+            panic!("expected a text result")
+        }
+    };
+    assert_eq!(text, "Recovered");
+
+    // The LLM client retries a safe 500 itself before the error surfaces,
+    // so only the lower bound on the failing route is stable.
+    assert!(
+        fail.calls_async().await >= 1,
+        "the first attempt hit the failing route"
+    );
+    assert_eq!(
+        continued.calls_async().await,
+        1,
+        "the retry continued the parked session with the continuation \
+         message: {:?}",
+        names(&stage.events)
+    );
+    // The parked conversation's history still carries the original prompt:
+    // the continuation request's message list includes it as an EARLIER
+    // user turn, while the new input is the continuation message (asserted
+    // by the mock's body_includes/body_excludes pair above).
+    // The matcher pair proves the shape: a fresh-session fallback would
+    // have re-sent the full prompt (no "Attempt 1 ... failed" text, so the
+    // recovery mock would not have matched), while the continued session
+    // carries the original prompt only as EARLIER history around the new
+    // continuation turn.
+    let session_starts = coding_events(&stage.events)
+        .into_iter()
+        .filter(|(_, event)| matches!(event, CodingEvent::SessionStarted { .. }))
+        .count();
+    assert!(
+        session_starts <= 2,
+        "no session explosion across attempts: {session_starts} starts, {:?}",
+        names(&stage.events)
+    );
 }

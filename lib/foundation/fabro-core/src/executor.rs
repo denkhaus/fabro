@@ -10,7 +10,7 @@ use tokio_util::sync::CancellationToken;
 use crate::context::Context;
 use crate::error::{Error, Result, VisitLimitSource};
 use crate::graph::{EdgeSelection, EdgeSpec, Graph, NodeSpec};
-use crate::handler::NodeHandler;
+use crate::handler::{AttemptInfo, NodeHandler};
 use crate::lifecycle::{
     AttemptContext, AttemptResultContext, EdgeContext, EdgeDecision, NodeDecision, NoopLifecycle,
     RunLifecycle,
@@ -353,6 +353,11 @@ impl<G: Graph + 'static> Executor<G> {
     ) -> Result<NodeResult<G::Meta>> {
         let policy = self.handler.retry_policy(node, graph);
 
+        // Why the previous attempt failed, when one did: attempt 2+ of an
+        // agent stage continues the prior session with this summary instead
+        // of re-sending the stage prompt (fabro-183f).
+        let mut prior_failure: Option<String> = None;
+
         for attempt in 1..=policy.max_attempts {
             let attempt_start = Instant::now();
             let attempt_ctx = AttemptContext {
@@ -367,9 +372,21 @@ impl<G: Graph + 'static> Executor<G> {
             }
 
             let can_retry = attempt < policy.max_attempts;
+            let attempt_info = AttemptInfo {
+                attempt,
+                prior_failure: prior_failure.clone(),
+            };
 
-            match self.handler.execute(node, &state.context, graph).await {
+            match self
+                .handler
+                .execute(node, &state.context, graph, &attempt_info)
+                .await
+            {
                 Ok(outcome) if outcome.status.retry_requested() && can_retry => {
+                    prior_failure = Some(outcome.failure.as_ref().map_or_else(
+                        || "stage requested retry".to_string(),
+                        |f| f.message.clone(),
+                    ));
                     let delay = policy.backoff.delay_for_attempt(attempt);
                     let result = node_result_from_outcome(
                         outcome,
@@ -423,6 +440,7 @@ impl<G: Graph + 'static> Executor<G> {
                     return Ok(result);
                 }
                 Err(e) if can_retry && e.is_retryable() => {
+                    prior_failure = Some(e.to_string());
                     let delay = policy.backoff.delay_for_attempt(attempt);
                     let fail_result = NodeResult::from_error(
                         &e,
@@ -686,6 +704,7 @@ mod tests {
                 _node: &TestNode,
                 _context: &Context,
                 _graph: &TestGraph,
+                _attempt: &AttemptInfo,
             ) -> Result<Outcome> {
                 let mut outcome = Outcome::success();
                 outcome.timing = Some(fabro_types::StageTiming::new(999, 100, 50));
@@ -753,6 +772,7 @@ mod tests {
                 _node: &TestNode,
                 _context: &Context,
                 _g: &TestGraph,
+                _attempt: &AttemptInfo,
             ) -> Result<Outcome> {
                 self.0.cancel();
                 Ok(Outcome::success())
@@ -1037,6 +1057,7 @@ mod tests {
                 _n: &TestNode,
                 _c: &Context,
                 _g: &TestGraph,
+                _attempt: &AttemptInfo,
             ) -> Result<Outcome> {
                 let mut o = Outcome::success();
                 o.jump_to_node = Some("target".into());
@@ -1188,6 +1209,7 @@ mod tests {
                 _n: &TestNode,
                 _c: &Context,
                 _g: &TestGraph,
+                _attempt: &AttemptInfo,
             ) -> Result<Outcome> {
                 // Cancel after first node
                 self.0.cancel();
@@ -1355,6 +1377,7 @@ mod tests {
                 _n: &TestNode,
                 _c: &Context,
                 _g: &TestGraph,
+                _attempt: &AttemptInfo,
             ) -> Result<Outcome> {
                 Ok(Outcome {
                     status: StageOutcome::Failed {
@@ -1402,6 +1425,7 @@ mod tests {
                 _n: &TestNode,
                 _c: &Context,
                 _g: &TestGraph,
+                _attempt: &AttemptInfo,
             ) -> Result<Outcome> {
                 Ok(Outcome {
                     status: StageOutcome::Failed {
@@ -1537,6 +1561,7 @@ mod tests {
                 _n: &TestNode,
                 _c: &Context,
                 _g: &TestGraph,
+                _attempt: &AttemptInfo,
             ) -> Result<Outcome> {
                 sleep(Duration::from_millis(5)).await;
                 let call = self.0.fetch_add(1, Ordering::Relaxed);
@@ -1878,6 +1903,7 @@ mod tests {
                 _n: &TestNode,
                 _c: &Context,
                 _g: &TestGraph,
+                _attempt: &AttemptInfo,
             ) -> Result<Outcome> {
                 let mut o = Outcome::success();
                 o.jump_to_node = Some("target".into());
@@ -1916,6 +1942,7 @@ mod tests {
                 node: &TestNode,
                 context: &Context,
                 _g: &TestGraph,
+                _attempt: &AttemptInfo,
             ) -> Result<Outcome> {
                 if node.id() == "start" {
                     let mut o = Outcome::success();
@@ -2006,6 +2033,7 @@ mod tests {
                 node: &TestNode,
                 _context: &Context,
                 _g: &TestGraph,
+                _attempt: &AttemptInfo,
             ) -> Result<Outcome> {
                 let mut outcome = Outcome::success();
                 if node.id() == "start" {
@@ -2134,6 +2162,7 @@ mod tests {
                 node: &TestNode,
                 _c: &Context,
                 _g: &TestGraph,
+                _attempt: &AttemptInfo,
             ) -> Result<Outcome> {
                 let mut log = self.0.lock().unwrap();
                 log.push(node.id().to_string());
@@ -2190,6 +2219,7 @@ mod tests {
                 node: &TestNode,
                 context: &Context,
                 _g: &TestGraph,
+                _attempt: &AttemptInfo,
             ) -> Result<Outcome> {
                 if node.id() == "work" {
                     // Record whether "leaked_key" exists in context
@@ -2520,6 +2550,7 @@ mod tests {
                 node: &TestNode,
                 _context: &Context,
                 _graph: &TestGraph,
+                _attempt: &AttemptInfo,
             ) -> Result<Outcome> {
                 if node.id() == "work" {
                     Ok(Outcome::fail("boom"))
@@ -2590,6 +2621,7 @@ mod tests {
                 _node: &TestNode,
                 _context: &Context,
                 _graph: &TestGraph,
+                _attempt: &AttemptInfo,
             ) -> Result<Outcome> {
                 let mut outcome = Outcome::fail("boom");
                 outcome.jump_to_node = Some("recovery".to_string());
@@ -2718,6 +2750,7 @@ mod tests {
                 _node: &TestNode,
                 _context: &Context,
                 _graph: &TestGraph,
+                _attempt: &AttemptInfo,
             ) -> Result<Outcome> {
                 let mut outcome = Outcome::success();
                 outcome.status = StageOutcome::PartiallySucceeded;
@@ -2805,6 +2838,7 @@ mod tests {
                 _n: &TestNode,
                 _c: &Context,
                 _g: &TestGraph,
+                _attempt: &AttemptInfo,
             ) -> Result<Outcome> {
                 // Cancel stall token while "running"
                 self.0.cancel();
@@ -2847,6 +2881,7 @@ mod tests {
                 _n: &TestNode,
                 _c: &Context,
                 _g: &TestGraph,
+                _attempt: &AttemptInfo,
             ) -> Result<Outcome> {
                 let c = self.calls.fetch_add(1, Ordering::Relaxed);
                 if c == 0 {

@@ -511,6 +511,24 @@ pub fn test_app_state_with_runtime_settings_and_registry_factory(
         .build()
 }
 
+/// Same as [`test_app_state_with_runtime_settings_and_registry_factory`],
+/// but seeds the default environment with the given sandbox provider.
+/// Tests that execute a real in-process workflow (not dry-run) need a
+/// daemon-free provider such as [`SandboxProviderKind::LOCAL`] when no
+/// Docker socket is available in the test environment.
+pub fn test_app_state_with_runtime_settings_environment_and_registry_factory(
+    server_settings: ServerSettings,
+    manifest_run_defaults: RunLayer,
+    default_environment_provider: Option<SandboxProviderKind>,
+    registry_factory_override: impl Fn(Arc<dyn Interviewer>) -> HandlerRegistry + Send + Sync + 'static,
+) -> Arc<AppState> {
+    ready_test_app_state_builder()
+        .runtime_settings(server_settings, manifest_run_defaults)
+        .default_environment_provider(default_environment_provider)
+        .registry_factory(registry_factory_override)
+        .build()
+}
+
 pub fn test_app_state_with_runtime_settings_and_options_and_registry_factory(
     server_settings: ServerSettings,
     manifest_run_defaults: RunLayer,

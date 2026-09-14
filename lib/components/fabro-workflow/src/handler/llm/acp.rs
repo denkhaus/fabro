@@ -954,17 +954,18 @@ mod tests {
         let context = Context::new();
         let result = backend
             .run(CodergenRunRequest {
-                graph:           &fabro_graphviz::graph::Graph::new("test"),
-                node:            &node,
-                prompt:          "write hello",
-                context:         &context,
-                context_read:    ContextReadServices::for_tests().await,
-                thread_id:       None,
-                emitter:         &emitter,
-                sandbox:         &sandbox,
-                tool_middleware: None,
-                cancel_token:    CancellationToken::new(),
-                human_input:     None,
+                graph:              &fabro_graphviz::graph::Graph::new("test"),
+                node:               &node,
+                prompt:             "write hello",
+                context:            &context,
+                context_read:       ContextReadServices::for_tests().await,
+                thread_id:          None,
+                emitter:            &emitter,
+                sandbox:            &sandbox,
+                tool_middleware:    None,
+                cancel_token:       CancellationToken::new(),
+                human_input:        None,
+                retry_continuation: None,
             })
             .await
             .unwrap();
@@ -1005,17 +1006,18 @@ mod tests {
         let context = Context::new();
         let result = backend
             .run(CodergenRunRequest {
-                graph:           &fabro_graphviz::graph::Graph::new("test"),
-                node:            &node,
-                prompt:          "write hello",
-                context:         &context,
-                context_read:    ContextReadServices::for_tests().await,
-                thread_id:       None,
-                emitter:         &emitter,
-                sandbox:         &sandbox,
-                tool_middleware: None,
-                cancel_token:    CancellationToken::new(),
-                human_input:     None,
+                graph:              &fabro_graphviz::graph::Graph::new("test"),
+                node:               &node,
+                prompt:             "write hello",
+                context:            &context,
+                context_read:       ContextReadServices::for_tests().await,
+                thread_id:          None,
+                emitter:            &emitter,
+                sandbox:            &sandbox,
+                tool_middleware:    None,
+                cancel_token:       CancellationToken::new(),
+                human_input:        None,
+                retry_continuation: None,
             })
             .await;
 
@@ -1078,17 +1080,18 @@ mod tests {
         let context = Context::new();
         let result = backend
             .run(CodergenRunRequest {
-                graph:           &fabro_graphviz::graph::Graph::new("test"),
-                node:            &node,
-                prompt:          "write hello",
-                context:         &context,
-                context_read:    ContextReadServices::for_tests().await,
-                thread_id:       None,
-                emitter:         &emitter,
-                sandbox:         &sandbox,
-                tool_middleware: None,
-                cancel_token:    CancellationToken::new(),
-                human_input:     None,
+                graph:              &fabro_graphviz::graph::Graph::new("test"),
+                node:               &node,
+                prompt:             "write hello",
+                context:            &context,
+                context_read:       ContextReadServices::for_tests().await,
+                thread_id:          None,
+                emitter:            &emitter,
+                sandbox:            &sandbox,
+                tool_middleware:    None,
+                cancel_token:       CancellationToken::new(),
+                human_input:        None,
+                retry_continuation: None,
             })
             .await
             .unwrap();
@@ -1129,17 +1132,18 @@ mod tests {
         let context = Context::new();
         let result = backend
             .run(CodergenRunRequest {
-                graph:           &fabro_graphviz::graph::Graph::new("test"),
-                node:            &node,
-                prompt:          "write hello",
-                context:         &context,
-                context_read:    ContextReadServices::for_tests().await,
-                thread_id:       None,
-                emitter:         &emitter,
-                sandbox:         &sandbox,
-                tool_middleware: None,
-                cancel_token:    CancellationToken::new(),
-                human_input:     None,
+                graph:              &fabro_graphviz::graph::Graph::new("test"),
+                node:               &node,
+                prompt:             "write hello",
+                context:            &context,
+                context_read:       ContextReadServices::for_tests().await,
+                thread_id:          None,
+                emitter:            &emitter,
+                sandbox:            &sandbox,
+                tool_middleware:    None,
+                cancel_token:       CancellationToken::new(),
+                human_input:        None,
+                retry_continuation: None,
             })
             .await
             .unwrap();
@@ -1169,17 +1173,18 @@ mod tests {
         let context = Context::new();
         let result = backend
             .run(CodergenRunRequest {
-                graph:           &fabro_graphviz::graph::Graph::new("test"),
-                node:            &node,
-                prompt:          "write hello",
-                context:         &context,
-                context_read:    ContextReadServices::for_tests().await,
-                thread_id:       None,
-                emitter:         &emitter,
-                sandbox:         &sandbox_dyn,
-                tool_middleware: None,
-                cancel_token:    CancellationToken::new(),
-                human_input:     None,
+                graph:              &fabro_graphviz::graph::Graph::new("test"),
+                node:               &node,
+                prompt:             "write hello",
+                context:            &context,
+                context_read:       ContextReadServices::for_tests().await,
+                thread_id:          None,
+                emitter:            &emitter,
+                sandbox:            &sandbox_dyn,
+                tool_middleware:    None,
+                cancel_token:       CancellationToken::new(),
+                human_input:        None,
+                retry_continuation: None,
             })
             .await;
         assert!(result.is_err());
@@ -1217,17 +1222,18 @@ mod tests {
         let context = Context::new();
         let result = backend
             .run(CodergenRunRequest {
-                graph:           &fabro_graphviz::graph::Graph::new("test"),
-                node:            &node,
-                prompt:          "cancel",
-                context:         &context,
-                context_read:    ContextReadServices::for_tests().await,
-                thread_id:       None,
-                emitter:         &emitter,
-                sandbox:         &sandbox,
-                tool_middleware: None,
-                cancel_token:    CancellationToken::new(),
-                human_input:     None,
+                graph:              &fabro_graphviz::graph::Graph::new("test"),
+                node:               &node,
+                prompt:             "cancel",
+                context:            &context,
+                context_read:       ContextReadServices::for_tests().await,
+                thread_id:          None,
+                emitter:            &emitter,
+                sandbox:            &sandbox,
+                tool_middleware:    None,
+                cancel_token:       CancellationToken::new(),
+                human_input:        None,
+                retry_continuation: None,
             })
             .await;
         let Err(err) = result else {
@@ -1274,17 +1280,18 @@ mod tests {
         let context = Context::new();
         backend
             .run(CodergenRunRequest {
-                graph:           &fabro_graphviz::graph::Graph::new("test"),
-                node:            &node,
-                prompt:          "write hello",
-                context:         &context,
-                context_read:    ContextReadServices::for_tests().await,
-                thread_id:       None,
-                emitter:         &emitter,
-                sandbox:         &sandbox,
-                tool_middleware: None,
-                cancel_token:    CancellationToken::new(),
-                human_input:     None,
+                graph:              &fabro_graphviz::graph::Graph::new("test"),
+                node:               &node,
+                prompt:             "write hello",
+                context:            &context,
+                context_read:       ContextReadServices::for_tests().await,
+                thread_id:          None,
+                emitter:            &emitter,
+                sandbox:            &sandbox,
+                tool_middleware:    None,
+                cancel_token:       CancellationToken::new(),
+                human_input:        None,
+                retry_continuation: None,
             })
             .await
             .unwrap();
@@ -1317,17 +1324,18 @@ mod tests {
         let context = Context::new();
         let result = backend
             .run(CodergenRunRequest {
-                graph:           &fabro_graphviz::graph::Graph::new("test"),
-                node:            &node,
-                prompt:          "write hello",
-                context:         &context,
-                context_read:    ContextReadServices::for_tests().await,
-                thread_id:       None,
-                emitter:         &emitter,
-                sandbox:         &sandbox_dyn,
-                tool_middleware: None,
-                cancel_token:    CancellationToken::new(),
-                human_input:     None,
+                graph:              &fabro_graphviz::graph::Graph::new("test"),
+                node:               &node,
+                prompt:             "write hello",
+                context:            &context,
+                context_read:       ContextReadServices::for_tests().await,
+                thread_id:          None,
+                emitter:            &emitter,
+                sandbox:            &sandbox_dyn,
+                tool_middleware:    None,
+                cancel_token:       CancellationToken::new(),
+                human_input:        None,
+                retry_continuation: None,
             })
             .await;
         let Err(err) = result else {
@@ -1367,17 +1375,18 @@ mod tests {
         let context = Context::new();
         let result = backend
             .run(CodergenRunRequest {
-                graph:           &fabro_graphviz::graph::Graph::new("test"),
-                node:            &node,
-                prompt:          "write hello",
-                context:         &context,
-                context_read:    ContextReadServices::for_tests().await,
-                thread_id:       None,
-                emitter:         &emitter,
-                sandbox:         &sandbox_dyn,
-                tool_middleware: None,
-                cancel_token:    CancellationToken::new(),
-                human_input:     None,
+                graph:              &fabro_graphviz::graph::Graph::new("test"),
+                node:               &node,
+                prompt:             "write hello",
+                context:            &context,
+                context_read:       ContextReadServices::for_tests().await,
+                thread_id:          None,
+                emitter:            &emitter,
+                sandbox:            &sandbox_dyn,
+                tool_middleware:    None,
+                cancel_token:       CancellationToken::new(),
+                human_input:        None,
+                retry_continuation: None,
             })
             .await;
         let Err(err) = result else {

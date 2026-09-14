@@ -12,6 +12,7 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use fabro_auth::test_support as auth_test_support;
+use fabro_core::handler::AttemptInfo;
 use fabro_graphviz::graph::{AttrValue, Edge, Graph, Node};
 use fabro_hooks::HookSettings;
 use fabro_interview::AutoApproveInterviewer;
@@ -636,6 +637,7 @@ impl HandlerTrait for AlwaysFailHandler {
         _graph: &Graph,
         _run_dir: &Path,
         _services: &crate::handler::EngineServices,
+        _attempt: &AttemptInfo,
     ) -> std::result::Result<Outcome, Error> {
         Ok(Outcome::fail_classify("always fails"))
     }
@@ -654,6 +656,7 @@ impl HandlerTrait for SlowHandler {
         _graph: &Graph,
         _run_dir: &Path,
         _services: &crate::handler::EngineServices,
+        _attempt: &AttemptInfo,
     ) -> std::result::Result<Outcome, Error> {
         tokio::time::sleep(Duration::from_millis(self.sleep_ms)).await;
         Ok(Outcome::success())
@@ -674,6 +677,7 @@ impl HandlerTrait for InterviewWaitHandler {
         _graph: &Graph,
         _run_dir: &Path,
         services: &crate::handler::EngineServices,
+        _attempt: &AttemptInfo,
     ) -> std::result::Result<Outcome, Error> {
         let stage_id = StageScope::for_handler(context, &node.id).stage_id();
         let guard = services
@@ -726,6 +730,7 @@ impl HandlerTrait for StopsSandboxHandler {
         _graph: &Graph,
         _run_dir: &Path,
         _services: &crate::handler::EngineServices,
+        _attempt: &AttemptInfo,
     ) -> std::result::Result<Outcome, Error> {
         self.sandbox
             .stop()
@@ -746,6 +751,7 @@ impl HandlerTrait for PanickingHandler {
         _graph: &Graph,
         _run_dir: &Path,
         _services: &crate::handler::EngineServices,
+        _attempt: &AttemptInfo,
     ) -> std::result::Result<Outcome, Error> {
         panic!("test panic message");
     }
@@ -762,6 +768,7 @@ impl HandlerTrait for BlobCommandOutputHandler {
         _graph: &Graph,
         _run_dir: &Path,
         services: &crate::handler::EngineServices,
+        _attempt: &AttemptInfo,
     ) -> std::result::Result<Outcome, Error> {
         let blob = serde_json::to_vec("routed-ok").unwrap();
         let blob_hash = services.run.run_store.write_blob(&blob).await.unwrap();
@@ -787,6 +794,7 @@ impl HandlerTrait for FailOnceThenSucceedHandler {
         _graph: &Graph,
         _run_dir: &Path,
         _services: &crate::handler::EngineServices,
+        _attempt: &AttemptInfo,
     ) -> std::result::Result<Outcome, Error> {
         if self.call_count.fetch_add(1, Ordering::Relaxed) == 0 {
             Err(Error::handler("transient failure"))

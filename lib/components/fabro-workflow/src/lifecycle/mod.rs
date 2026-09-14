@@ -302,6 +302,10 @@ impl RunLifecycle<WorkflowGraph> for WorkflowLifecycle {
             context::keys::INTERNAL_STAGE_EXECUTION_ORDINAL,
             serde_json::Value::Null,
         );
+        state.context.set(
+            context::keys::INTERNAL_STAGE_RESUMED_FROM,
+            serde_json::Value::Null,
+        );
         self.fidelity.before_node(node, state).await
     }
 
@@ -325,6 +329,16 @@ impl RunLifecycle<WorkflowGraph> for WorkflowLifecycle {
             context::keys::INTERNAL_STAGE_EXECUTION_ORDINAL,
             serde_json::json!(execution.stage_id.visit()),
         );
+        // fabro-183f: a resumed execution that supersedes a prior
+        // post-checkpoint execution of this node tells the handler, so an
+        // agent stage re-enters with continuation semantics instead of a
+        // fresh full-prompt post.
+        if let Some(prior) = &execution.resumed_from {
+            state.context.set(
+                context::keys::INTERNAL_STAGE_RESUMED_FROM,
+                serde_json::json!(prior.to_string()),
+            );
+        }
         // Event emission
         self.event.before_attempt(ctx, state).await?;
         // Record epoch AFTER hook+event (engine.rs:968→1006)

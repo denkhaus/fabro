@@ -24,6 +24,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use fabro_config::RunScratch;
+use fabro_core::handler::AttemptInfo;
 use fabro_graphviz::graph::{AttrValue, Edge, Graph, Node};
 use fabro_graphviz::parser::parse;
 use fabro_interview::{
@@ -1111,6 +1112,7 @@ impl Handler for AlwaysFailHandler {
         _graph: &Graph,
         _run_dir: &Path,
         _services: &fabro_workflow::handler::EngineServices,
+        _attempt: &AttemptInfo,
     ) -> Result<Outcome, fabro_workflow::error::Error> {
         Ok(Outcome::fail_classify(format!(
             "forced failure for {}",
@@ -1132,6 +1134,7 @@ impl Handler for OnFailureRecordingHandler {
         _graph: &Graph,
         _run_dir: &Path,
         _services: &fabro_workflow::handler::EngineServices,
+        _attempt: &AttemptInfo,
     ) -> Result<Outcome, fabro_workflow::error::Error> {
         self.visits.lock().unwrap().push(node.id.clone());
         if node.id == "work" {
@@ -1557,6 +1560,7 @@ async fn goal_gate_routes_to_retry_target_when_present() {
             _graph: &Graph,
             _run_dir: &Path,
             _services: &fabro_workflow::handler::EngineServices,
+            _attempt: &AttemptInfo,
         ) -> Result<Outcome, fabro_workflow::error::Error> {
             let count = self
                 .call_count
@@ -1976,6 +1980,7 @@ async fn retry_on_failure_then_succeed() {
             _graph: &Graph,
             _run_dir: &Path,
             _services: &fabro_workflow::handler::EngineServices,
+            _attempt: &AttemptInfo,
         ) -> Result<Outcome, Error> {
             let count = self
                 .call_count
@@ -2230,6 +2235,7 @@ impl Handler for CounterHandler {
         _graph: &Graph,
         _run_dir: &Path,
         _services: &fabro_workflow::handler::EngineServices,
+        _attempt: &AttemptInfo,
     ) -> Result<Outcome, Error> {
         let count = self
             .call_count
@@ -2256,6 +2262,7 @@ impl Handler for LargeOutputHandler {
         _graph: &Graph,
         _run_dir: &Path,
         _services: &fabro_workflow::handler::EngineServices,
+        _attempt: &AttemptInfo,
     ) -> Result<Outcome, Error> {
         let mut outcome = Outcome::success();
         // 150KB string — well above the 100KB artifact threshold
@@ -2283,6 +2290,7 @@ impl Handler for ContextValueCaptureHandler {
         _graph: &Graph,
         _run_dir: &Path,
         _services: &fabro_workflow::handler::EngineServices,
+        _attempt: &AttemptInfo,
     ) -> Result<Outcome, Error> {
         let value = context
             .get(&self.key)
@@ -2305,6 +2313,7 @@ impl Handler for ContextSetterHandler {
         _graph: &Graph,
         _run_dir: &Path,
         _services: &fabro_workflow::handler::EngineServices,
+        _attempt: &AttemptInfo,
     ) -> Result<Outcome, Error> {
         let mut outcome = Outcome::success();
         outcome
@@ -2326,6 +2335,7 @@ impl Handler for EnvelopeSeederHandler {
         _graph: &Graph,
         _run_dir: &Path,
         _services: &fabro_workflow::handler::EngineServices,
+        _attempt: &AttemptInfo,
     ) -> Result<Outcome, Error> {
         let mut outcome = Outcome::success();
         outcome
@@ -2348,6 +2358,7 @@ impl Handler for EnvelopeWriterHandler {
         _graph: &Graph,
         _run_dir: &Path,
         _services: &fabro_workflow::handler::EngineServices,
+        _attempt: &AttemptInfo,
     ) -> Result<Outcome, Error> {
         let mut outcome = Outcome::success();
         outcome
@@ -3842,6 +3853,7 @@ async fn branching_loop_back_on_failure() {
             _graph: &Graph,
             _run_dir: &Path,
             _services: &fabro_workflow::handler::EngineServices,
+            _attempt: &AttemptInfo,
         ) -> Result<Outcome, Error> {
             let count = self
                 .call_count
@@ -4189,6 +4201,7 @@ async fn scenario_node_retries_on_retry_status() {
             _graph: &Graph,
             _run_dir: &Path,
             _services: &fabro_workflow::handler::EngineServices,
+            _attempt: &AttemptInfo,
         ) -> Result<Outcome, Error> {
             let count = self
                 .call_count
@@ -4478,6 +4491,7 @@ async fn manager_loop_stop_condition_satisfied_e2e() {
             _graph: &Graph,
             _run_dir: &Path,
             _services: &fabro_workflow::handler::EngineServices,
+            _attempt: &AttemptInfo,
         ) -> Result<Outcome, Error> {
             let mut outcome = Outcome::success();
             outcome
@@ -4499,6 +4513,7 @@ async fn manager_loop_stop_condition_satisfied_e2e() {
             _graph: &Graph,
             _run_dir: &Path,
             _services: &fabro_workflow::handler::EngineServices,
+            _attempt: &AttemptInfo,
         ) -> Result<Outcome, Error> {
             tokio::time::sleep(std::time::Duration::from_secs(10)).await;
             Ok(Outcome::success())
@@ -4597,6 +4612,7 @@ async fn manager_loop_max_cycles_exceeded_e2e() {
             _graph: &Graph,
             _run_dir: &Path,
             _services: &fabro_workflow::handler::EngineServices,
+            _attempt: &AttemptInfo,
         ) -> Result<Outcome, Error> {
             tokio::time::sleep(std::time::Duration::from_secs(10)).await;
             Ok(Outcome::success())
@@ -5185,6 +5201,7 @@ async fn custom_handler_registration_and_execution() {
             _graph: &Graph,
             _run_dir: &Path,
             _services: &fabro_workflow::handler::EngineServices,
+            _attempt: &AttemptInfo,
         ) -> Result<Outcome, Error> {
             let mut outcome = Outcome::success();
             outcome
@@ -5445,6 +5462,7 @@ async fn manager_loop_context_flows_e2e() {
             _graph: &Graph,
             _run_dir: &Path,
             _services: &fabro_workflow::handler::EngineServices,
+            _attempt: &AttemptInfo,
         ) -> Result<Outcome, Error> {
             let target = context.get_string("review.target", "");
             let mut outcome = Outcome::success();
@@ -5471,6 +5489,7 @@ async fn manager_loop_context_flows_e2e() {
             _graph: &Graph,
             _run_dir: &Path,
             _services: &fabro_workflow::handler::EngineServices,
+            _attempt: &AttemptInfo,
         ) -> Result<Outcome, Error> {
             let mut outcome = Outcome::success();
             outcome.context_updates.insert(
@@ -5821,6 +5840,7 @@ impl Handler for ParallelFidelitySeedHandler {
         _graph: &Graph,
         _run_dir: &Path,
         _services: &fabro_workflow::handler::EngineServices,
+        _attempt: &AttemptInfo,
     ) -> Result<Outcome, Error> {
         let mut outcome = Outcome::success();
         outcome.context_updates.insert(
@@ -5840,6 +5860,7 @@ impl Handler for FidelityCapturingHandler {
         _graph: &Graph,
         _run_dir: &Path,
         _services: &fabro_workflow::handler::EngineServices,
+        _attempt: &AttemptInfo,
     ) -> Result<Outcome, Error> {
         let fidelity = context.get_string("internal.fidelity", "none");
         self.captures
@@ -11160,6 +11181,7 @@ async fn node_dir_uses_visit_count_on_revisit() {
             _graph: &Graph,
             _run_dir: &Path,
             _services: &fabro_workflow::handler::EngineServices,
+            _attempt: &AttemptInfo,
         ) -> Result<Outcome, fabro_workflow::error::Error> {
             let n = self
                 .call_count
@@ -11287,6 +11309,7 @@ impl Handler for FileWriterHandler {
         _graph: &Graph,
         _run_dir: &Path,
         services: &fabro_workflow::handler::EngineServices,
+        _attempt: &AttemptInfo,
     ) -> Result<Outcome, Error> {
         let work_dir = services.run.sandbox.working_directory().to_string();
         let file_path = format!("{}/{}.txt", work_dir, node.id);
@@ -12101,6 +12124,7 @@ impl Handler for DeterministicFailHandler {
         _graph: &Graph,
         _run_dir: &Path,
         _services: &fabro_workflow::handler::EngineServices,
+        _attempt: &AttemptInfo,
     ) -> Result<Outcome, Error> {
         Ok(Outcome::fail_classify(&self.reason))
     }
@@ -12118,6 +12142,7 @@ impl Handler for TransientInfraFailHandler {
         _graph: &Graph,
         _run_dir: &Path,
         _services: &fabro_workflow::handler::EngineServices,
+        _attempt: &AttemptInfo,
     ) -> Result<Outcome, Error> {
         Ok(Outcome::fail_classify("connection refused"))
     }
@@ -12136,6 +12161,7 @@ impl Handler for SignatureHintHandler {
         _graph: &Graph,
         _run_dir: &Path,
         _services: &fabro_workflow::handler::EngineServices,
+        _attempt: &AttemptInfo,
     ) -> Result<Outcome, Error> {
         Ok(
             Outcome::fail_classify("error at line 42 in commit abc123def0")
@@ -12172,6 +12198,7 @@ impl Handler for VaryingReasonFailHandler {
         _graph: &Graph,
         _run_dir: &Path,
         _services: &fabro_workflow::handler::EngineServices,
+        _attempt: &AttemptInfo,
     ) -> Result<Outcome, Error> {
         let n = self
             .counter
@@ -12198,6 +12225,7 @@ impl Handler for SucceedOnNthHandler {
         _graph: &Graph,
         _run_dir: &Path,
         _services: &fabro_workflow::handler::EngineServices,
+        _attempt: &AttemptInfo,
     ) -> Result<Outcome, Error> {
         let n = self
             .counter
@@ -13154,6 +13182,7 @@ impl Handler for ClassifiedFailHandler {
         _graph: &Graph,
         _run_dir: &Path,
         _services: &fabro_workflow::handler::EngineServices,
+        _attempt: &AttemptInfo,
     ) -> Result<Outcome, Error> {
         let n = self
             .counter
@@ -13427,6 +13456,7 @@ impl Handler for HangingHandler {
         _graph: &Graph,
         _run_dir: &Path,
         _services: &fabro_workflow::handler::EngineServices,
+        _attempt: &AttemptInfo,
     ) -> Result<Outcome, Error> {
         tokio::time::sleep(std::time::Duration::from_mins(1)).await;
         Ok(Outcome::success())
@@ -13448,6 +13478,7 @@ impl Handler for KeepaliveHandler {
         _graph: &Graph,
         _run_dir: &Path,
         services: &fabro_workflow::handler::EngineServices,
+        _attempt: &AttemptInfo,
     ) -> Result<Outcome, Error> {
         let start = std::time::Instant::now();
         while start.elapsed() < std::time::Duration::from_millis(self.total_ms) {
@@ -13640,6 +13671,7 @@ impl Handler for SlowTestHandler {
         _graph: &Graph,
         _run_dir: &Path,
         _services: &fabro_workflow::handler::EngineServices,
+        _attempt: &AttemptInfo,
     ) -> Result<Outcome, Error> {
         tokio::time::sleep(std::time::Duration::from_millis(self.sleep_ms)).await;
         Ok(Outcome::success())
@@ -13730,6 +13762,7 @@ impl Handler for AssetCreatorHandler {
         _graph: &Graph,
         _run_dir: &Path,
         services: &fabro_workflow::handler::EngineServices,
+        _attempt: &AttemptInfo,
     ) -> Result<Outcome, Error> {
         // Create artifact files via the sandbox's exec_command
         let script = concat!(
