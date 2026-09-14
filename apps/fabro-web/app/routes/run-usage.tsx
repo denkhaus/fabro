@@ -121,13 +121,16 @@ function TokensCell({ usage }: { usage: Usage | null }) {
 }
 
 /**
- * Renders a cost, or a dash when the usage carries none. A cost that did not
- * come from the catalog is tagged with where it came from.
+ * Renders a cost. A row with no model usage shows a dash; a usage whose cost
+ * is unknown (a model the catalog cannot price, or a total with an unpriced
+ * part) says so rather than showing zero. A cost that did not come from the
+ * catalog is tagged with where it came from.
  */
 function CostCell({ usage }: { usage: Usage | null | undefined }) {
-  const cost = usage?.cost;
+  if (!usage) return <>{EMPTY_VALUE}</>;
+  const cost = usage.cost;
   const formatted = formatUsdMicros(cost?.usd_micros);
-  if (formatted == null) return <>{EMPTY_VALUE}</>;
+  if (formatted == null) return <span className="text-fg-muted">unknown</span>;
   const tag = costSourceTag(cost);
   return (
     <>

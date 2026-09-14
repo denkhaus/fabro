@@ -186,6 +186,48 @@ describe("RunUsage", () => {
     expect(text).toContain("reported");
   });
 
+  test("says unknown for a total whose cost is unknown, not zero", () => {
+    // One stage priced from the catalog, one the catalog could not price:
+    // the rows keep their own costs and the total has none.
+    const priced = makeUsage({ input: 1200, output: 300 }, 240000);
+    const unpriced = makeUsage({ input: 500, output: 50 });
+    const total = makeUsage({ input: 1700, output: 350 });
+    const renderer = renderUsage(
+      runUsage({
+        stages: [
+          {
+            stage: { id: "plan", name: "plan" },
+            model: { provider: "openai", model_id: "gpt-5.4" },
+            usage: priced,
+            timing: stageTiming(1000),
+            state: "succeeded",
+          },
+          {
+            stage: { id: "work", name: "work" },
+            model: { provider: "openai", model_id: "mystery" },
+            usage: unpriced,
+            timing: stageTiming(2000),
+            state: "succeeded",
+          },
+        ],
+        totals: { timing: stageTiming(3000), usage: total },
+        by_model: [
+          { model: { provider: "openai", model_id: "gpt-5.4" }, stages: 1, usage: priced },
+          { model: { provider: "openai", model_id: "mystery" }, stages: 1, usage: unpriced },
+        ],
+      }),
+    );
+
+    const text = textFromNode(renderer.toJSON());
+    expect(text).toContain("$0.24");
+    expect(text).toContain("unknown");
+    expect(text).not.toContain("$0.00");
+
+    const footers = renderer.root.findAll((node) => node.type === "tfoot");
+    const footerCells = footers[0].findAll((node) => node.type === "td");
+    expect(textFromInstance(footerCells[4])).toBe("unknown");
+  });
+
   test("keeps the empty state for runs with no stages", () => {
     const renderer = renderUsage(runUsage());
 
