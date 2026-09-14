@@ -1011,7 +1011,12 @@ async fn finalize_created_run(
             }
         }
     }
-    info!(run_id = %created.run_id, "Run created from intent");
+    info!(
+        run_id = %created.run_id,
+        workflow_slug = ?summary.workflow.slug,
+        workflow_version_id = ?summary.workflow.workflow_version_id,
+        "Run created from intent"
+    );
     (
         StatusCode::CREATED,
         Json(state.decorate_run_summary(summary).await),
