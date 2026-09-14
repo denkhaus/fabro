@@ -15,19 +15,15 @@
 
 // May contain unused imports in some cases
 // @ts-ignore
-import type { BilledTokenCounts } from './billed-token-counts';
+import type { Cost } from './cost';
 // May contain unused imports in some cases
 // @ts-ignore
-import type { BillingModelRef } from './billing-model-ref';
+import type { TokenCounts } from './token-counts';
 
 /**
- * Billing statistics grouped by model.
+ * lithos `Usage`: token counts and, when known, what they cost. `cost` is absent when there is no cost data, never zero. A sum has a cost only when every part that used tokens was priced; its `source` is the parts\' shared source, or `application` when they differ.
  */
-export interface BillingByModel {
-    'model': BillingModelRef;
-    /**
-     * Number of usage-bearing stage visits that used this model.
-     */
-    'stages': number;
-    'billing': BilledTokenCounts;
+export interface Usage {
+    'tokens': TokenCounts;
+    'cost'?: Cost;
 }

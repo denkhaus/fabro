@@ -33,9 +33,6 @@ import type { PullRequestLink } from './pull-request-link';
 import type { RepositoryRef } from './repository-ref';
 // May contain unused imports in some cases
 // @ts-ignore
-import type { RunBillingSummary } from './run-billing-summary';
-// May contain unused imports in some cases
-// @ts-ignore
 import type { RunLifecycle } from './run-lifecycle';
 // May contain unused imports in some cases
 // @ts-ignore
@@ -61,6 +58,9 @@ import type { RunTimestamps } from './run-timestamps';
 // May contain unused imports in some cases
 // @ts-ignore
 import type { RunTiming } from './run-timing';
+// May contain unused imports in some cases
+// @ts-ignore
+import type { Usage } from './usage';
 // May contain unused imports in some cases
 // @ts-ignore
 import type { WorkflowRef } from './workflow-ref';
@@ -92,7 +92,10 @@ export interface Run {
     'source_directory': string | null;
     'timestamps': RunTimestamps;
     'timing': RunTiming | null;
-    'billing': RunBillingSummary | null;
+    /**
+     * The run\'s usage summed across every stage visit so far: the conclusion\'s total once the run ended, else the sum of the stages\'.
+     */
+    'usage': Usage;
     'size': RunSize;
     'ask_fabro': AskFabro;
     'diff': DiffSummary | null;

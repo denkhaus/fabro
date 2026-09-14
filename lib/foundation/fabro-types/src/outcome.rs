@@ -9,7 +9,7 @@ use serde_json::Value;
 use strum::{Display, EnumString, IntoStaticStr};
 
 use crate::{
-    BilledModelUsage, ExecOutputTail, FailureSignature, OnFailure, ResolvedOnFailure, StageTiming,
+    ExecOutputTail, FailureSignature, ModelUsage, OnFailure, ResolvedOnFailure, StageTiming,
     SystemActorKind,
 };
 
@@ -275,11 +275,11 @@ pub struct Outcome<M: OutcomeMeta = ()> {
     pub failure:            Option<FailureDetail>,
     #[serde(default)]
     pub usage:              M,
-    /// The stage's billing split by model, for a stage whose agent ran
+    /// The stage's usage split by model, for a stage whose agent ran
     /// subagents: the root's route and each subagent's own model. Empty
     /// otherwise; `usage` is then the one row.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub usage_by_model:     Vec<BilledModelUsage>,
+    pub usage_by_model:     Vec<ModelUsage>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub files_touched:      Vec<String>,
     /// Stage timing breakdown captured by the workflow engine.

@@ -128,7 +128,7 @@ export function RunSummaryPanelView({
   artifactsLoading,
 }: RunSummaryPanelViewProps) {
   const diff = run?.diff ?? null;
-  const cost = formatUsdMicros(run?.billing?.total_usd_micros);
+  const cost = formatUsdMicros(run?.usage.cost?.usd_micros);
   const sandboxKind = sandboxLifecycleKind(run?.sandbox);
 
   return (

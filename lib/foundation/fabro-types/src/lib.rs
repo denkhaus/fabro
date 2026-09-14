@@ -2,8 +2,6 @@ extern crate self as fabro_types;
 
 pub mod artifact;
 pub mod auth;
-pub mod billing;
-pub mod billing_rollup;
 pub mod blob_hash;
 pub mod blob_ref;
 pub mod catalog_api;
@@ -56,6 +54,8 @@ pub mod system_integrations;
 pub mod test_support;
 pub mod timing;
 pub mod transcript;
+pub mod usage;
+pub mod usage_rollup;
 pub mod variable;
 pub mod workflow_path;
 pub mod workflow_version;
@@ -63,7 +63,6 @@ pub mod workflow_version_id;
 
 pub use artifact::ArtifactUpload;
 pub use auth::{IdpIdentity, IdpIdentityError};
-pub use billing::{BilledModelUsage, BilledTokenCounts, ModelRef, UsdMicros};
 pub use blob_hash::BlobHash;
 pub use blob_ref::{format_blob_ref, parse_blob_ref, parse_managed_blob_file_ref};
 pub use catalog_api::{Model, ModelControls, ModelCosts, ModelFeatures, ModelLimits, Provider};
@@ -153,8 +152,8 @@ pub use run_sandbox::{
 };
 pub use run_summary::{
     AskFabro, AskFabroUnavailableReason, AutomationRef, ResolvedAutomationGitWorkflowSource, Run,
-    RunApproval, RunApprovalState, RunBillingSummary, RunError, RunLifecycle, RunLinks, RunModel,
-    RunOrigin, RunOriginKind, RunSize, RunTimestamps, WorkflowRef,
+    RunApproval, RunApprovalState, RunError, RunLifecycle, RunLinks, RunModel, RunOrigin,
+    RunOriginKind, RunSize, RunTimestamps, WorkflowRef,
 };
 pub use run_title::{
     MAX_RUN_TITLE_CHARS, RunTitleError, infer_run_title, normalize_explicit_run_title,
@@ -190,6 +189,7 @@ pub use transcript::{
     MessageId, MessageKind, MessageSource, PairMessageRef, TranscriptMessage, text_of,
     tool_call_arguments, tool_result_from_json, tool_result_to_json,
 };
+pub use usage::{ModelRef, ModelUsage, sum_usage, usage_is_empty};
 pub use variable::{
     CreateVariableRequest, UpdateVariableRequest, Variable, VariableListResponse, is_env_style_name,
 };

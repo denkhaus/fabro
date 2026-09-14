@@ -1,7 +1,6 @@
 api.ts
 api/auth-api.ts
 api/automations-api.ts
-api/billing-api.ts
 api/completions-api.ts
 api/discovery-api.ts
 api/environments-api.ts
@@ -20,6 +19,7 @@ api/secrets-api.ts
 api/sessions-api.ts
 api/settings-api.ts
 api/system-api.ts
+api/usage-api.ts
 api/variables-api.ts
 api/workflow-versions-api.ts
 api/workflows-api.ts
@@ -51,8 +51,8 @@ models/agent-session-subagent-status.ts
 models/agent-session-subagent.ts
 models/agent-session-tool-activity.ts
 models/agent-tools-available-props.ts
-models/aggregate-billing-totals.ts
-models/aggregate-billing.ts
+models/aggregate-usage-totals.ts
+models/aggregate-usage.ts
 models/api-question.ts
 models/append-event-response.ts
 models/approval-mode.ts
@@ -84,12 +84,6 @@ models/batch-run-lifecycle-request.ts
 models/batch-run-lifecycle-response.ts
 models/batch-run-lifecycle-result.ts
 models/batch-run-lifecycle-summary.ts
-models/billed-model-usage.ts
-models/billed-token-counts.ts
-models/billing-by-model.ts
-models/billing-model-ref.ts
-models/billing-speed.ts
-models/billing-stage-ref.ts
 models/blocked-reason.ts
 models/board-column.ts
 models/check-run-status.ts
@@ -101,7 +95,6 @@ models/command-log-response.ts
 models/command-termination.ts
 models/compaction-reason.ts
 models/completion-content-part.ts
-models/completion-cost.ts
 models/completion-message.ts
 models/completion-response-format.ts
 models/completion-response-warnings-inner.ts
@@ -109,7 +102,6 @@ models/completion-response.ts
 models/completion-tool-choice.ts
 models/completion-tool-definition-kind.ts
 models/completion-tool-definition.ts
-models/completion-usage.ts
 models/conclusion.ts
 models/context-window-breakdown-item.ts
 models/context-window-category.ts
@@ -118,6 +110,7 @@ models/context-window-snapshot.ts
 models/context-window-staleness.ts
 models/context-window-warning.ts
 models/cost-source.ts
+models/cost.ts
 models/create-automation-request.ts
 models/create-completion-request.ts
 models/create-environment-request.ts
@@ -262,6 +255,7 @@ models/model-limits.ts
 models/model-reference.ts
 models/model-test-mode.ts
 models/model-test-result.ts
+models/model-usage.ts
 models/model.ts
 models/none-run-target.ts
 models/notification-provider-settings.ts
@@ -371,10 +365,6 @@ models/run-approval-state.ts
 models/run-approval.ts
 models/run-artifact-entry.ts
 models/run-artifact-list-response.ts
-models/run-billing-stage.ts
-models/run-billing-summary.ts
-models/run-billing-totals.ts
-models/run-billing.ts
 models/run-branch-settings.ts
 models/run-checkpoint-settings.ts
 models/run-checkpoint.ts
@@ -449,6 +439,9 @@ models/run-superseded-by-props.ts
 models/run-target.ts
 models/run-timestamps.ts
 models/run-timing.ts
+models/run-usage-stage.ts
+models/run-usage-totals.ts
+models/run-usage.ts
 models/run.ts
 models/sandbox-details.ts
 models/sandbox-file-entry.ts
@@ -500,6 +493,7 @@ models/session-turn.ts
 models/skill-activation-source.ts
 models/skill-summary.ts
 models/slack-integration-settings.ts
+models/speed.ts
 models/ssh-access-request.ts
 models/ssh-access-response.ts
 models/stage-completion.ts
@@ -545,7 +539,7 @@ models/todo-list-kind.ts
 models/todo-list-projection.ts
 models/todo-projection.ts
 models/todo-status.ts
-models/token-usage.ts
+models/token-counts.ts
 models/tool-category.ts
 models/tool-source-application.ts
 models/tool-source-mcp.ts
@@ -556,6 +550,10 @@ models/tool-summary.ts
 models/update-run-parent-request.ts
 models/update-run-request.ts
 models/update-variable-request.ts
+models/usage-by-model.ts
+models/usage-model-ref.ts
+models/usage-stage-ref.ts
+models/usage.ts
 models/user-response.ts
 models/validate-response.ts
 models/variable-list-response.ts

@@ -14,11 +14,11 @@ use crate::artifact;
 use crate::context::{Context, ParallelBranchPreamble, keys};
 use crate::graph::{WorkflowGraph, WorkflowNode};
 use crate::handler::llm::preamble::build_preamble;
-use crate::outcome::{BilledModelUsage, Outcome};
+use crate::outcome::{ModelUsage, Outcome};
 use crate::runtime_store::RunStoreHandle;
 
-type WfRunState = ExecutionState<Option<BilledModelUsage>>;
-type WfNodeDecision = NodeDecision<Option<BilledModelUsage>>;
+type WfRunState = ExecutionState<Option<ModelUsage>>;
+type WfNodeDecision = NodeDecision<Option<ModelUsage>>;
 
 /// Graphviz edge captured from edge selection, passed to the next node's
 /// before_node for fidelity/thread resolution.

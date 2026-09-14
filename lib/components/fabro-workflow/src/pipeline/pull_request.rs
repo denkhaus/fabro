@@ -12,7 +12,7 @@ use fabro_types::PullRequestLink;
 use fabro_types::settings::run::MergeStrategy;
 use fabro_util::text::strip_goal_decoration;
 use lithos_llm::catalog::ProviderId;
-use lithos_llm::types::{Message, Role};
+use lithos_llm::types::{Cost, Message, Role};
 use tokio::time::sleep;
 use tracing::{debug, info, warn};
 
@@ -149,9 +149,8 @@ fn truncate_pr_body(body: &str) -> String {
 }
 
 /// Format an optional cost as `$X.XX` or an en-dash when absent.
-fn format_cost(cost_usd_micros: Option<i64>) -> String {
-    cost_usd_micros
-        .map(|value| value as f64 / 1_000_000.0)
+fn format_cost(cost: Option<Cost>) -> String {
+    cost.map(|cost| cost.usd_micros as f64 / 1_000_000.0)
         .map_or_else(|| "\u{2013}".to_string(), outcome_format_cost)
 }
 
@@ -180,7 +179,7 @@ fn format_arc_details_section(
 
     // Cost table
     let total_duration = format_duration_ms(conclusion.timing.wall_time_ms);
-    let total_cost_str = format_cost(conclusion.billing.as_ref().and_then(|b| b.total_usd_micros));
+    let total_cost_str = format_cost(conclusion.usage.and_then(|usage| usage.cost));
     let stage_count = conclusion.stages.len();
     parts.push(format!(
         "<details>\n<summary>Ran {stage_count} {} in {total_duration} for {total_cost_str}</summary>",
@@ -192,7 +191,7 @@ fn format_arc_details_section(
     parts.push("|---|---|---|---|".to_string());
     for stage in &conclusion.stages {
         let dur = format_duration_ms(stage.timing.wall_time_ms);
-        let cost = format_cost(stage.billing_usd_micros);
+        let cost = format_cost(stage.usage.cost);
         parts.push(format!(
             "| {} | {} | {} | {} |",
             stage.stage_label, dur, cost, stage.retries
@@ -696,13 +695,13 @@ mod tests {
     use fabro_llm::{Response, ResponseStream};
     use fabro_store::Database;
     use fabro_types::{
-        BilledTokenCounts, RunProjection, RunSpec, SuccessReason, WorkflowSettings,
-        first_event_seq, fixtures, test_support,
+        RunProjection, RunSpec, SuccessReason, WorkflowSettings, first_event_seq, fixtures,
+        test_support,
     };
     use fabro_vault::{SecretType, Vault};
     use httpmock::Method::{GET, POST};
     use httpmock::MockServer;
-    use lithos_llm::types::{ContentPart, TokenCounts};
+    use lithos_llm::types::{ContentPart, CostSource, TokenCounts, Usage};
     use object_store::memory::InMemory;
     use tokio::sync::RwLock as AsyncRwLock;
 
@@ -871,6 +870,17 @@ capabilities = { text = true, tools = true, response_format = { json_object = tr
         .unwrap()
     }
 
+    /// A usage with only a catalog cost, for the cost table.
+    fn priced(usd_micros: u64) -> Usage {
+        Usage {
+            tokens: TokenCounts::default(),
+            cost:   Some(Cost {
+                usd_micros,
+                source: CostSource::Catalog,
+            }),
+        }
+    }
+
     fn make_test_conclusion() -> Conclusion {
         Conclusion {
             timestamp:            Utc::now(),
@@ -880,31 +890,28 @@ capabilities = { text = true, tools = true, response_format = { json_object = tr
             final_git_commit_sha: None,
             stages:               vec![
                 StageSummary {
-                    stage_id:           "plan".to_string(),
-                    stage_label:        "plan".to_string(),
-                    timing:             fabro_types::StageTiming::wall_only(45_000),
-                    billing_usd_micros: Some(120_000),
-                    retries:            0,
+                    stage_id:    "plan".to_string(),
+                    stage_label: "plan".to_string(),
+                    timing:      fabro_types::StageTiming::wall_only(45_000),
+                    usage:       priced(120_000),
+                    retries:     0,
                 },
                 StageSummary {
-                    stage_id:           "implement".to_string(),
-                    stage_label:        "implement".to_string(),
-                    timing:             fabro_types::StageTiming::wall_only(90_000),
-                    billing_usd_micros: Some(250_000),
-                    retries:            0,
+                    stage_id:    "implement".to_string(),
+                    stage_label: "implement".to_string(),
+                    timing:      fabro_types::StageTiming::wall_only(90_000),
+                    usage:       priced(250_000),
+                    retries:     0,
                 },
                 StageSummary {
-                    stage_id:           "simplify".to_string(),
-                    stage_label:        "simplify".to_string(),
-                    timing:             fabro_types::StageTiming::wall_only(15_000),
-                    billing_usd_micros: Some(50_000),
-                    retries:            0,
+                    stage_id:    "simplify".to_string(),
+                    stage_label: "simplify".to_string(),
+                    timing:      fabro_types::StageTiming::wall_only(15_000),
+                    usage:       priced(50_000),
+                    retries:     0,
                 },
             ],
-            billing:              Some(BilledTokenCounts {
-                total_usd_micros: Some(420_000),
-                ..BilledTokenCounts::default()
-            }),
+            usage:                Some(priced(420_000)),
             total_retries:        0,
             diff:                 fabro_types::RunDiff::default(),
         }
@@ -929,9 +936,9 @@ capabilities = { text = true, tools = true, response_format = { json_object = tr
     fn format_arc_details_no_cost() {
         let mut conclusion = make_test_conclusion();
         for stage in &mut conclusion.stages {
-            stage.billing_usd_micros = None;
+            stage.usage.cost = None;
         }
-        conclusion.billing = None;
+        conclusion.usage = None;
         let section = format_arc_details_section(&conclusion, None, None);
 
         // En-dash for missing costs
@@ -1217,8 +1224,8 @@ capabilities = { text = true, tools = true, response_format = { json_object = tr
             status: "succeeded".to_string(),
             preferred_label: None,
             suggested_next_ids: vec![],
-            billing_by_model: Vec::new(),
-            billing: None,
+            usage_by_model: Vec::new(),
+            usage: None,
             failure: None,
             notes: None,
             files_touched: vec![],
@@ -1639,8 +1646,8 @@ capabilities = { text = true, tools = true, response_format = { json_object = tr
             status: "succeeded".to_string(),
             preferred_label: None,
             suggested_next_ids: vec![],
-            billing_by_model: Vec::new(),
-            billing: None,
+            usage_by_model: Vec::new(),
+            usage: None,
             failure: None,
             notes: None,
             files_touched: vec![],
@@ -1870,13 +1877,12 @@ capabilities = { text = true, tools = true, response_format = { json_object = tr
             artifact_count:       0,
             status:               "succeeded".to_string(),
             reason:               SuccessReason::Completed,
-            total_usd_micros:     None,
             final_git_commit_sha: None,
             final_patch:          Some(
                 "diff --git a/src/lib.rs b/src/lib.rs\n+fn from_store() {}\n".to_string(),
             ),
             diff_summary:         None,
-            billing:              None,
+            usage:                None,
         })
         .await
         .unwrap();

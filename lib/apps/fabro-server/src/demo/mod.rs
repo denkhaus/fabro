@@ -335,12 +335,12 @@ fn demo_run_files() -> PaginatedRunFileList {
     }
 }
 
-pub(crate) async fn get_run_billing(
+pub(crate) async fn get_run_usage(
     _auth: RequiredUser,
     State(_state): State<Arc<AppState>>,
     Path(_id): Path<String>,
 ) -> Response {
-    (StatusCode::OK, Json(runs::billing())).into_response()
+    (StatusCode::OK, Json(runs::usage())).into_response()
 }
 
 pub(crate) async fn get_run_settings(
@@ -1073,11 +1073,11 @@ pub(crate) async fn prune_runs(
 
 // ── Usage ──────────────────────────────────────────────────────────────
 
-pub(crate) async fn get_aggregate_billing(
+pub(crate) async fn get_aggregate_usage(
     _auth: RequiredUser,
     State(_state): State<Arc<AppState>>,
 ) -> Response {
-    (StatusCode::OK, Json(billing::aggregate())).into_response()
+    (StatusCode::OK, Json(usage::aggregate())).into_response()
 }
 
 // ── Data modules ───────────────────────────────────────────────────────
@@ -1101,11 +1101,11 @@ mod runs {
     };
     use fabro_types::settings::{InterpString, ProjectNamespace, WorkflowNamespace};
     use fabro_types::{
-        AuthMethod, IdpIdentity, PendingReason, Principal, RepositoryRef, RunBillingSummary, RunId,
-        RunLifecycle, RunLinks, RunOrigin, RunSize, RunTimestamps, StageId, WorkflowRef,
-        WorkflowSettings,
+        AuthMethod, IdpIdentity, PendingReason, Principal, RepositoryRef, RunId, RunLifecycle,
+        RunLinks, RunOrigin, RunSize, RunTimestamps, StageId, WorkflowRef, WorkflowSettings,
     };
     use lithos_llm::catalog::ProviderId;
+    use lithos_llm::types::{Cost, CostSource, TokenCounts, Usage};
 
     use super::ts;
 
@@ -1124,11 +1124,26 @@ mod runs {
             .collect()
     }
 
-    fn billing_model(provider: ProviderId, model_id: &str) -> BillingModelRef {
-        BillingModelRef {
+    fn usage_model(provider: ProviderId, model_id: &str) -> UsageModelRef {
+        UsageModelRef {
             provider,
             model_id: model_id.into(),
             speed: None,
+        }
+    }
+
+    /// Demo usage priced from the catalog.
+    fn priced(input: u64, output: u64, usd_micros: u64) -> Usage {
+        Usage {
+            tokens: TokenCounts {
+                input,
+                output,
+                ..TokenCounts::default()
+            },
+            cost:   Some(Cost {
+                usd_micros,
+                source: CostSource::Catalog,
+            }),
         }
     }
 
@@ -1143,7 +1158,7 @@ mod runs {
             id: stage_id.clone(),
             name: name.to_owned(),
             handler,
-            billing: BilledTokenCounts::default(),
+            usage: Usage::default(),
             status,
             wall_time_ms,
             node_id: stage_id.node_id().to_owned(),
@@ -1188,7 +1203,7 @@ mod runs {
         elapsed_secs: Option<f64>,
         status_reason: Option<&str>,
         pending_control: Option<RunControlAction>,
-        total_usd_micros: Option<i64>,
+        cost_usd_micros: Option<u64>,
         entries: &[(&str, &str)],
     ) -> Run {
         let created_at = ts(created_at);
@@ -1197,6 +1212,10 @@ mod runs {
         let repo_origin_url = Some(format!("https://github.com/demo/{repo_name}.git"));
         let wall_time_ms = elapsed_secs.and_then(duration_ms_from_secs);
         let timing = wall_time_ms.map(fabro_types::RunTiming::wall_only);
+        let cost = cost_usd_micros.map(|usd_micros| Cost {
+            usd_micros,
+            source: CostSource::Catalog,
+        });
         Run {
             id: run_id,
             parent_id: None,
@@ -1238,10 +1257,11 @@ mod runs {
                 completed_at: Some(created_at),
             },
             timing,
-            billing: total_usd_micros.map(|total_usd_micros| RunBillingSummary {
-                total_usd_micros: Some(total_usd_micros),
-            }),
-            size: RunSize::from_total_usd_micros(total_usd_micros),
+            usage: Usage {
+                tokens: TokenCounts::default(),
+                cost,
+            },
+            size: RunSize::from_cost(cost),
             ask_fabro: Default::default(),
             diff: None,
             pull_request: None,
@@ -1463,7 +1483,6 @@ mod runs {
         use pebble_coding_agent::events::{
             CodingAgentEvent, CodingEvent, CompactionReason, ErrorData, ErrorKind,
             FailoverContinuation, InputSource, McpToolSummary, SkillActivationSource, SkillSummary,
-            TokenUsage,
         };
 
         let run_id = demo_run_id(1);
@@ -1508,13 +1527,11 @@ mod runs {
             |model: &str, text: &str, input: u64, output: u64| CodingEvent::AssistantMessage {
                 text:            text.into(),
                 model:           model.into(),
-                usage:           TokenUsage {
+                usage:           Usage::from(TokenCounts {
                     input,
                     output,
-                    ..TokenUsage::default()
-                },
-                cost_usd_micros: None,
-                cost_source:     None,
+                    ..TokenCounts::default()
+                }),
                 tool_call_count: 0,
                 context_window:  None,
                 reasoning:       None,
@@ -1650,19 +1667,18 @@ mod runs {
                 turns_used: 2,
             }),
             agent(CodingEvent::RouteFailover {
-                from:            "anthropic/claude-opus-4.6".into(),
-                to:              "openai/gpt-5.4".into(),
-                attempt:         1,
-                error:           ErrorData::new(ErrorKind::Llm, "rate limited: retry after 30s"),
-                usage:           TokenUsage {
+                from:         "anthropic/claude-opus-4.6".into(),
+                to:           "openai/gpt-5.4".into(),
+                attempt:      1,
+                error:        ErrorData::new(ErrorKind::Llm, "rate limited: retry after 30s"),
+                usage:        Usage::from(TokenCounts {
                     input: 3_600,
                     output: 540,
-                    ..TokenUsage::default()
-                },
-                cost_usd_micros: None,
-                inference_ms:    4_200,
-                tool_ms:         900,
-                continuation:    FailoverContinuation::ContinueTurn,
+                    ..TokenCounts::default()
+                }),
+                inference_ms: 4_200,
+                tool_ms:      900,
+                continuation: FailoverContinuation::ContinueTurn,
             }),
             agent(CodingEvent::CompactionCompleted {
                 original_turn_count:    20,
@@ -1670,12 +1686,11 @@ mod runs {
                 summary_token_estimate: 500,
                 tracked_file_count:     2,
                 reason:                 CompactionReason::Threshold,
-                usage:                  TokenUsage {
+                usage:                  Usage::from(TokenCounts {
                     input: 2_000,
                     output: 500,
-                    ..TokenUsage::default()
-                },
-                cost_usd_micros:        None,
+                    ..TokenCounts::default()
+                }),
             }),
             call_started(
                 "write_file",
@@ -1757,153 +1772,91 @@ mod runs {
         projection
     }
 
-    pub(super) fn billing() -> RunBilling {
-        RunBilling {
+    pub(super) fn usage() -> RunUsage {
+        RunUsage {
             stages:   vec![
-                RunBillingStage {
-                    stage:      BillingStageRef {
+                RunUsageStage {
+                    stage:      UsageStageRef {
                         id:   "detect-drift".into(),
                         name: "Detect Drift".into(),
                     },
-                    model:      Some(billing_model(
+                    model:      Some(usage_model(
                         lithos_llm::catalog::builtin::anthropic(),
                         "claude-opus-4-6",
                     )),
-                    billing:    BilledTokenCounts {
-                        cache_read_tokens:  0,
-                        cache_write_tokens: 0,
-                        input_tokens:       12480,
-                        output_tokens:      3210,
-                        reasoning_tokens:   0,
-                        total_tokens:       15690,
-                        total_usd_micros:   Some(480_000),
-                    },
+                    usage:      priced(12480, 3210, 480_000),
                     timing:     fabro_types::StageTiming::wall_only(72_000),
                     started_at: None,
                     state:      Some(StageState::Succeeded),
                 },
-                RunBillingStage {
-                    stage:      BillingStageRef {
+                RunUsageStage {
+                    stage:      UsageStageRef {
                         id:   "propose-changes".into(),
                         name: "Propose Changes".into(),
                     },
-                    model:      Some(billing_model(
+                    model:      Some(usage_model(
                         lithos_llm::catalog::builtin::gemini(),
                         "gemini-3.1-pro-preview",
                     )),
-                    billing:    BilledTokenCounts {
-                        cache_read_tokens:  0,
-                        cache_write_tokens: 0,
-                        input_tokens:       28640,
-                        output_tokens:      8750,
-                        reasoning_tokens:   0,
-                        total_tokens:       37390,
-                        total_usd_micros:   Some(720_000),
-                    },
+                    usage:      priced(28640, 8750, 720_000),
                     timing:     fabro_types::StageTiming::wall_only(154_000),
                     started_at: None,
                     state:      Some(StageState::Succeeded),
                 },
-                RunBillingStage {
-                    stage:      BillingStageRef {
+                RunUsageStage {
+                    stage:      UsageStageRef {
                         id:   "review-changes".into(),
                         name: "Review Changes".into(),
                     },
-                    model:      Some(billing_model(
+                    model:      Some(usage_model(
                         lithos_llm::catalog::builtin::openai(),
                         "gpt-5.3-codex",
                     )),
-                    billing:    BilledTokenCounts {
-                        cache_read_tokens:  0,
-                        cache_write_tokens: 0,
-                        input_tokens:       9120,
-                        output_tokens:      2640,
-                        reasoning_tokens:   0,
-                        total_tokens:       11760,
-                        total_usd_micros:   Some(190_000),
-                    },
+                    usage:      priced(9120, 2640, 190_000),
                     timing:     fabro_types::StageTiming::wall_only(45_000),
                     started_at: None,
                     state:      Some(StageState::Succeeded),
                 },
-                RunBillingStage {
-                    stage:      BillingStageRef {
+                RunUsageStage {
+                    stage:      UsageStageRef {
                         id:   "apply-changes".into(),
                         name: "Apply Changes".into(),
                     },
-                    model:      Some(billing_model(
+                    model:      Some(usage_model(
                         lithos_llm::catalog::builtin::anthropic(),
                         "claude-opus-4-6",
                     )),
-                    billing:    BilledTokenCounts {
-                        cache_read_tokens:  0,
-                        cache_write_tokens: 0,
-                        input_tokens:       21300,
-                        output_tokens:      6480,
-                        reasoning_tokens:   0,
-                        total_tokens:       27780,
-                        total_usd_micros:   Some(870_000),
-                    },
+                    usage:      priced(21300, 6480, 870_000),
                     timing:     fabro_types::StageTiming::wall_only(118_000),
                     started_at: None,
                     state:      Some(StageState::Running),
                 },
             ],
-            totals:   RunBillingTotals {
-                cache_read_tokens:  0,
-                cache_write_tokens: 0,
-                timing:             fabro_types::RunTiming::wall_only(389_000),
-                input_tokens:       71540,
-                output_tokens:      21080,
-                reasoning_tokens:   0,
-                total_tokens:       92620,
-                total_usd_micros:   Some(2_260_000),
+            totals:   RunUsageTotals {
+                timing: fabro_types::RunTiming::wall_only(389_000),
+                usage:  priced(71540, 21080, 2_260_000),
             },
             by_model: vec![
-                BillingByModel {
-                    billing: BilledTokenCounts {
-                        cache_read_tokens:  0,
-                        cache_write_tokens: 0,
-                        input_tokens:       33780,
-                        output_tokens:      9690,
-                        reasoning_tokens:   0,
-                        total_tokens:       43470,
-                        total_usd_micros:   Some(1_350_000),
-                    },
-                    model:   billing_model(
+                UsageByModel {
+                    usage:  priced(33780, 9690, 1_350_000),
+                    model:  usage_model(
                         lithos_llm::catalog::builtin::anthropic(),
                         "claude-opus-4-6",
                     ),
-                    stages:  2,
+                    stages: 2,
                 },
-                BillingByModel {
-                    billing: BilledTokenCounts {
-                        cache_read_tokens:  0,
-                        cache_write_tokens: 0,
-                        input_tokens:       28640,
-                        output_tokens:      8750,
-                        reasoning_tokens:   0,
-                        total_tokens:       37390,
-                        total_usd_micros:   Some(720_000),
-                    },
-                    model:   billing_model(
+                UsageByModel {
+                    usage:  priced(28640, 8750, 720_000),
+                    model:  usage_model(
                         lithos_llm::catalog::builtin::gemini(),
                         "gemini-3.1-pro-preview",
                     ),
-                    stages:  1,
+                    stages: 1,
                 },
-                BillingByModel {
-                    billing: BilledTokenCounts {
-                        cache_read_tokens:  0,
-                        cache_write_tokens: 0,
-                        input_tokens:       9120,
-                        output_tokens:      2640,
-                        reasoning_tokens:   0,
-                        total_tokens:       11760,
-                        total_usd_micros:   Some(190_000),
-                    },
-                    model:   billing_model(lithos_llm::catalog::builtin::openai(), "gpt-5.3-codex"),
-                    stages:  1,
+                UsageByModel {
+                    usage:  priced(9120, 2640, 190_000),
+                    model:  usage_model(lithos_llm::catalog::builtin::openai(), "gpt-5.3-codex"),
+                    stages: 1,
                 },
             ],
         }
@@ -2243,76 +2196,62 @@ mod workflows {
     }
 }
 
-mod billing {
+mod usage {
     use fabro_api::types::*;
     use lithos_llm::catalog::ProviderId;
+    use lithos_llm::types::{Cost, CostSource, TokenCounts, Usage};
 
-    fn billing_model(provider: ProviderId, model_id: &str) -> BillingModelRef {
-        BillingModelRef {
+    fn usage_model(provider: ProviderId, model_id: &str) -> UsageModelRef {
+        UsageModelRef {
             provider,
             model_id: model_id.into(),
             speed: None,
         }
     }
 
-    pub(super) fn aggregate() -> AggregateBilling {
-        AggregateBilling {
-            totals:   AggregateBillingTotals {
-                cache_read_tokens:  0,
-                cache_write_tokens: 0,
-                runs:               9,
-                input_tokens:       643_860,
-                output_tokens:      189_720,
-                reasoning_tokens:   0,
-                timing:             fabro_types::RunTiming::wall_only(3_501_000),
-                total_tokens:       833_580,
-                total_usd_micros:   Some(20_340_000),
+    /// Demo usage priced from the catalog.
+    fn priced(input: u64, output: u64, usd_micros: u64) -> Usage {
+        Usage {
+            tokens: TokenCounts {
+                input,
+                output,
+                ..TokenCounts::default()
+            },
+            cost:   Some(Cost {
+                usd_micros,
+                source: CostSource::Catalog,
+            }),
+        }
+    }
+
+    pub(super) fn aggregate() -> AggregateUsage {
+        AggregateUsage {
+            totals:   AggregateUsageTotals {
+                runs:   9,
+                timing: fabro_types::RunTiming::wall_only(3_501_000),
+                usage:  priced(643_860, 189_720, 20_340_000),
             },
             by_model: vec![
-                BillingByModel {
-                    billing: BilledTokenCounts {
-                        cache_read_tokens:  0,
-                        cache_write_tokens: 0,
-                        input_tokens:       304_020,
-                        output_tokens:      87_210,
-                        reasoning_tokens:   0,
-                        total_tokens:       391_230,
-                        total_usd_micros:   Some(12_150_000),
-                    },
-                    model:   billing_model(
+                UsageByModel {
+                    usage:  priced(304_020, 87_210, 12_150_000),
+                    model:  usage_model(
                         lithos_llm::catalog::builtin::anthropic(),
                         "claude-opus-4-6",
                     ),
-                    stages:  18,
+                    stages: 18,
                 },
-                BillingByModel {
-                    billing: BilledTokenCounts {
-                        cache_read_tokens:  0,
-                        cache_write_tokens: 0,
-                        input_tokens:       257_760,
-                        output_tokens:      78_750,
-                        reasoning_tokens:   0,
-                        total_tokens:       336_510,
-                        total_usd_micros:   Some(6_480_000),
-                    },
-                    model:   billing_model(
+                UsageByModel {
+                    usage:  priced(257_760, 78_750, 6_480_000),
+                    model:  usage_model(
                         lithos_llm::catalog::builtin::gemini(),
                         "gemini-3.1-pro-preview",
                     ),
-                    stages:  9,
+                    stages: 9,
                 },
-                BillingByModel {
-                    billing: BilledTokenCounts {
-                        cache_read_tokens:  0,
-                        cache_write_tokens: 0,
-                        input_tokens:       82_080,
-                        output_tokens:      23_760,
-                        reasoning_tokens:   0,
-                        total_tokens:       105_840,
-                        total_usd_micros:   Some(1_710_000),
-                    },
-                    model:   billing_model(lithos_llm::catalog::builtin::openai(), "gpt-5.3-codex"),
-                    stages:  9,
+                UsageByModel {
+                    usage:  priced(82_080, 23_760, 1_710_000),
+                    model:  usage_model(lithos_llm::catalog::builtin::openai(), "gpt-5.3-codex"),
+                    stages: 9,
                 },
             ],
         }

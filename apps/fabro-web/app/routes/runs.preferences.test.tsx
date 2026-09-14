@@ -5,7 +5,7 @@ import type { PaginatedRunList, Run } from "@qltysh/fabro-api-client";
 
 import { ToastProvider } from "../components/toast";
 import { CHILD_RUNS_LIST_PREFERENCES_STORAGE_KEY } from "../components/runs-list/preferences";
-import { TEST_PRINCIPAL } from "../lib/test-fixtures";
+import { TEST_PRINCIPAL, makeUsage } from "../lib/test-fixtures";
 import { setupReactTestEnv } from "../lib/test-utils";
 
 class MemoryStorage {
@@ -57,7 +57,7 @@ function run(id: string, repo = "qlty/fabro", workflow = "release"): Run {
       last_event_at:  "2026-04-19T12:04:00Z",
       completed_at:   "2026-04-19T12:05:00Z",
     },
-    billing:          null,
+    usage:          makeUsage(),
     size:             "XS",
     diff:             null,
     pull_request:     null,

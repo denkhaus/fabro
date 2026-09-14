@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
 use fabro_hooks::{HookContext, HookEvent};
-use fabro_types::{BilledTokenCounts, DiffSummary, EventBody, RunFailure, RunProjection};
+use fabro_types::{DiffSummary, EventBody, RunFailure, RunProjection};
+use lithos_llm::types::Usage;
 
 use super::types::{Concluded, Executed, FinalizeOptions, Finalized, PublishOutcome, Published};
-use crate::billing_rollup;
 use crate::error::{Error, run_failure_from_error, run_failure_from_outcome_failure};
 use crate::event::{Event, RunNoticeCode, RunNoticeLevel};
 use crate::outcome::{Outcome, StageOutcome};
@@ -14,6 +14,7 @@ use crate::run_status::{FailureReason, RunStatus, SuccessReason};
 use crate::runtime_store::RunStoreHandle;
 use crate::sandbox_git::{git_diff_with_timeout, list_diff_numstat, summarize_diff_numstat};
 use crate::services::RunServices;
+use crate::usage_rollup;
 
 pub fn classify_engine_result(
     engine_result: &Result<Outcome, Error>,
@@ -74,20 +75,20 @@ fn build_conclusion_from_projection(
     run_wall_time_ms: u64,
     final_git_commit_sha: Option<String>,
 ) -> Conclusion {
-    let billing = projection
-        .map(billing_rollup::billing_rollup_from_projection)
+    let rollup = projection
+        .map(usage_rollup::usage_rollup_from_projection)
         .unwrap_or_default();
     let (stages, total_retries) = projection
-        .map(|projection| billing.conclusion_stages(projection))
+        .map(|projection| rollup.conclusion_stages(projection))
         .unwrap_or_default();
     Conclusion {
         timestamp: chrono::Utc::now(),
         status,
-        timing: billing.timing.with_wall_time(run_wall_time_ms),
+        timing: rollup.timing.with_wall_time(run_wall_time_ms),
         failure,
         final_git_commit_sha,
         stages,
-        billing: billing.billing_if_present(),
+        usage: rollup.usage_if_present(),
         total_retries,
         diff: fabro_types::RunDiff::default(),
     }
@@ -139,8 +140,8 @@ async fn compute_final_patch(
 }
 
 #[cfg(any(test, feature = "test-support"))]
-pub(crate) fn billing_from_projection(projection: &RunProjection) -> Option<BilledTokenCounts> {
-    billing_rollup::billing_rollup_from_projection(projection).billing_if_present()
+pub(crate) fn usage_from_projection(projection: &RunProjection) -> Option<Usage> {
+    usage_rollup::usage_rollup_from_projection(projection).usage_if_present()
 }
 
 pub(crate) fn build_terminal_event(
@@ -150,7 +151,7 @@ pub(crate) fn build_terminal_event(
     final_git_commit_sha: Option<String>,
     final_patch: Option<String>,
     diff_summary: Option<DiffSummary>,
-    billing: Option<BilledTokenCounts>,
+    usage: Option<Usage>,
 ) -> Event {
     let outcome_status = outcome.as_ref().map_or(
         StageOutcome::Failed {
@@ -162,7 +163,6 @@ pub(crate) fn build_terminal_event(
     if outcome_status == StageOutcome::Succeeded
         || outcome_status == StageOutcome::PartiallySucceeded
     {
-        let total_usd_micros = billing.as_ref().and_then(|b| b.total_usd_micros);
         return Event::WorkflowRunCompleted {
             timing,
             artifact_count,
@@ -171,11 +171,10 @@ pub(crate) fn build_terminal_event(
                 StageOutcome::PartiallySucceeded => SuccessReason::PartialSuccess,
                 _ => SuccessReason::Completed,
             },
-            total_usd_micros,
             final_git_commit_sha,
             final_patch,
             diff_summary,
-            billing,
+            usage,
         };
     }
 
@@ -196,7 +195,7 @@ pub(crate) fn build_terminal_event(
         final_git_commit_sha,
         final_patch,
         diff_summary,
-        billing,
+        usage,
     }
 }
 
@@ -311,7 +310,7 @@ pub async fn finalize(published: Published, options: &FinalizeOptions) -> Result
         conclusion.final_git_commit_sha.clone(),
         conclusion.diff.patch.clone(),
         conclusion.diff.summary,
-        conclusion.billing.clone(),
+        conclusion.usage,
     );
     services.emitter.emit(&terminal_event);
 
@@ -368,8 +367,8 @@ mod tests {
     use fabro_sandbox::test_support::MockSandbox;
     use fabro_store::{Database, RunDatabase, RunProjection};
     use fabro_types::{
-        BilledTokenCounts, EventBody, RunEvent, RunId, RunSpec, StageCompletion, WorkflowSettings,
-        first_event_seq, fixtures, test_support,
+        EventBody, RunEvent, RunId, RunSpec, StageCompletion, WorkflowSettings, first_event_seq,
+        fixtures, test_support,
     };
     use object_store::memory::InMemory;
 
@@ -687,13 +686,13 @@ mod tests {
     }
 
     #[test]
-    fn conclusion_billing_sums_retry_visit_usage_from_projection() {
+    fn conclusion_usage_sums_retry_visit_usage_from_projection() {
         let mut projection = test_projection();
         let failed_usage = test_usage("gpt-old", 100, 10);
         let success_usage = test_usage("gpt-new", 200, 20);
         let failed = projection.stage_entry("verify", 1, first_event_seq(1));
         failed.timing = Some(fabro_types::StageTiming::wall_only(1200));
-        failed.usage = BilledTokenCounts::from_billed_usage(std::slice::from_ref(&failed_usage));
+        failed.usage = failed_usage.usage;
         failed.model = Some(failed_usage.model().clone());
         failed.completion = Some(StageCompletion {
             outcome:        StageOutcome::Failed {
@@ -705,8 +704,7 @@ mod tests {
         });
         let succeeded = projection.stage_entry("verify", 2, first_event_seq(2));
         succeeded.timing = Some(fabro_types::StageTiming::wall_only(800));
-        succeeded.usage =
-            BilledTokenCounts::from_billed_usage(std::slice::from_ref(&success_usage));
+        succeeded.usage = success_usage.usage;
         succeeded.model = Some(success_usage.model().clone());
         succeeded.completion = Some(StageCompletion {
             outcome:        StageOutcome::Succeeded,
@@ -737,16 +735,17 @@ mod tests {
             None,
         );
 
-        assert_eq!(conclusion.billing.as_ref().unwrap().input_tokens, 300);
-        assert_eq!(conclusion.billing.as_ref().unwrap().output_tokens, 30);
-        assert_eq!(
-            conclusion.billing.as_ref().unwrap().total_usd_micros,
-            Some(330)
-        );
+        let usage = conclusion.usage.unwrap();
+        assert_eq!(usage.tokens.input, 300);
+        assert_eq!(usage.tokens.output, 30);
+        assert_eq!(usage.cost.map(|cost| cost.usd_micros), Some(330));
         assert_eq!(conclusion.stages.len(), 1);
         assert_eq!(conclusion.stages[0].stage_id, "verify");
         assert_eq!(conclusion.stages[0].timing.wall_time_ms, 2000);
-        assert_eq!(conclusion.stages[0].billing_usd_micros, Some(330));
+        assert_eq!(
+            conclusion.stages[0].usage.cost.map(|cost| cost.usd_micros),
+            Some(330)
+        );
         assert_eq!(conclusion.stages[0].retries, 1);
     }
 

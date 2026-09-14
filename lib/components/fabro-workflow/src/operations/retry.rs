@@ -248,11 +248,10 @@ mod tests {
             artifact_count:       0,
             status:               "succeeded".to_string(),
             reason:               fabro_types::SuccessReason::Completed,
-            total_usd_micros:     None,
             final_git_commit_sha: None,
             final_patch:          None,
             diff_summary:         None,
-            billing:              None,
+            usage:                None,
         })
         .await
         .unwrap();

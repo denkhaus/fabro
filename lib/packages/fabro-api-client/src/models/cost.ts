@@ -13,17 +13,14 @@
  */
 
 
+// May contain unused imports in some cases
+// @ts-ignore
+import type { CostSource } from './cost-source';
 
 /**
- * Reference to a workflow node in a billing stage row.
+ * lithos `Cost`: a USD amount in micros and where it came from.
  */
-export interface BillingStageRef {
-    /**
-     * Stage identifier (slug).
-     */
-    'id': string;
-    /**
-     * Human-readable stage name.
-     */
-    'name': string;
+export interface Cost {
+    'usd_micros': number;
+    'source': CostSource;
 }

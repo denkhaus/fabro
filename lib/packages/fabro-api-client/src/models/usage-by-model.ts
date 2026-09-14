@@ -15,16 +15,19 @@
 
 // May contain unused imports in some cases
 // @ts-ignore
-import type { BillingSpeed } from './billing-speed';
+import type { Usage } from './usage';
+// May contain unused imports in some cases
+// @ts-ignore
+import type { UsageModelRef } from './usage-model-ref';
 
 /**
- * Provider-qualified billing model identity used for cost estimates.
+ * Usage grouped by model.
  */
-export interface BillingModelRef {
+export interface UsageByModel {
+    'model': UsageModelRef;
     /**
-     * LLM provider identifier.
+     * Number of usage-bearing stage visits that used this model.
      */
-    'provider': string;
-    'model_id': string;
-    'speed'?: BillingSpeed | null;
+    'stages': number;
+    'usage': Usage;
 }

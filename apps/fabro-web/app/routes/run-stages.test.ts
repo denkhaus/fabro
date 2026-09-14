@@ -382,7 +382,7 @@ describe("eventsToActivity", () => {
           response: "Refactored auth module",
           model: "claude-sonnet-4-6",
           provider: "anthropic",
-          billing: { input_tokens: 120, output_tokens: 30 },
+          usage: { model: { provider: "anthropic", model_id: "claude-sonnet-4-6" }, usage: { tokens: { input: 120, output: 30 } } },
         },
       }),
     ];
@@ -430,7 +430,7 @@ describe("eventsToActivity", () => {
           response: "Done.",
           model: "claude-sonnet-4-6",
           provider: "anthropic",
-          billing: { input_tokens: 10, output_tokens: 5 },
+          usage: { model: { provider: "anthropic", model_id: "claude-sonnet-4-6" }, usage: { tokens: { input: 10, output: 5 } } },
         },
       }),
     ];
@@ -464,7 +464,7 @@ describe("eventsToActivity", () => {
           response: "All clear.",
           model: "claude-sonnet-4-6",
           provider: "anthropic",
-          billing: { input_tokens: 0, output_tokens: 4 },
+          usage: { model: { provider: "anthropic", model_id: "claude-sonnet-4-6" }, usage: { tokens: { input: 0, output: 4 } } },
         },
       }),
     ];
@@ -1263,7 +1263,7 @@ describe("buildThreadDnaItems", () => {
 });
 
 describe("tool-call-only agent responses", () => {
-  test("retains an empty agent.message with its timestamp, billing, and tool-call count", () => {
+  test("retains an empty agent.message with its timestamp, usage, and tool-call count", () => {
     const events: EventEnvelope[] = [
       envelope(1, {
         event: "agent.message",
@@ -1307,7 +1307,7 @@ describe("tool-call-only agent responses", () => {
         node_id: "code",
         properties: {
           response: "",
-          billing: { input_tokens: 1, output_tokens: 2 },
+          usage: { model: { provider: "anthropic", model_id: "claude-sonnet-4-6" }, usage: { tokens: { input: 1, output: 2 } } },
         },
       }),
     ];

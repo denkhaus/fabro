@@ -15,19 +15,19 @@
 
 
 /**
- * lithos `TokenCounts`: five disjoint token buckets for one completion. `input` excludes cache reads and writes, while `output` excludes reasoning tokens when the provider reports them separately.
+ * lithos `TokenCounts`: five disjoint token buckets. Every token is counted in exactly one, so their plain sum is the total. `input` excludes cache reads and writes, while `output` excludes reasoning tokens when the provider reports them separately. A bucket that is absent reads as zero.
  */
-export interface CompletionUsage {
+export interface TokenCounts {
     /**
-     * Uncached prompt tokens.
+     * Prompt tokens that were neither read from nor written to a cache.
      */
     'input'?: number;
     /**
-     * Non-reasoning completion tokens.
+     * Completion tokens that are not reasoning tokens.
      */
     'output'?: number;
     /**
-     * Separately reported reasoning tokens.
+     * Completion tokens spent on reasoning, priced at the output rate.
      */
     'reasoning'?: number;
     /**
@@ -35,7 +35,7 @@ export interface CompletionUsage {
      */
     'cache_read'?: number;
     /**
-     * Prompt tokens written to a provider cache.
+     * Prompt tokens written into a provider cache.
      */
     'cache_write'?: number;
 }

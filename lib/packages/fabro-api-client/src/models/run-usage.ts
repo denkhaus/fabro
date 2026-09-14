@@ -15,25 +15,25 @@
 
 // May contain unused imports in some cases
 // @ts-ignore
-import type { BillingByModel } from './billing-by-model';
+import type { RunUsageStage } from './run-usage-stage';
 // May contain unused imports in some cases
 // @ts-ignore
-import type { RunBillingStage } from './run-billing-stage';
+import type { RunUsageTotals } from './run-usage-totals';
 // May contain unused imports in some cases
 // @ts-ignore
-import type { RunBillingTotals } from './run-billing-totals';
+import type { UsageByModel } from './usage-by-model';
 
 /**
- * Complete billing breakdown for a single run.
+ * Complete usage breakdown for a single run.
  */
-export interface RunBilling {
+export interface RunUsage {
     /**
-     * Per-node billing breakdown. Each row sums billing and runtime across all visits of that node.
+     * Per-node usage breakdown. Each row sums usage and runtime across all visits of that node.
      */
-    'stages': Array<RunBillingStage>;
-    'totals': RunBillingTotals;
+    'stages': Array<RunUsageStage>;
+    'totals': RunUsageTotals;
     /**
-     * Billing grouped by model.
+     * Usage grouped by model.
      */
-    'by_model': Array<BillingByModel>;
+    'by_model': Array<UsageByModel>;
 }

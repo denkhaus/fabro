@@ -51,8 +51,8 @@ const MODEL: &str = "mock-model";
 const PROVIDER: &str = "mock";
 const CHAT_PATH: &str = "/v1/chat/completions";
 const TOOL_RESULT_MARKER: &str = r#""role":"tool""#;
-const INPUT_TOKENS_PER_CALL: i64 = 11;
-const OUTPUT_TOKENS_PER_CALL: i64 = 7;
+const INPUT_TOKENS_PER_CALL: u64 = 11;
+const OUTPUT_TOKENS_PER_CALL: u64 = 7;
 
 // --- Scripted model ---------------------------------------------------------
 
@@ -396,17 +396,17 @@ async fn write_file_under_profile(profile: &str, tool: &str, path_key: &str) {
     let work = work_stage(&state);
     assert_eq!(work.response.as_deref(), Some("Done"), "{profile}");
     assert_eq!(
-        work.usage.input_tokens,
+        work.usage.tokens.input,
         2 * INPUT_TOKENS_PER_CALL,
         "{profile}: two model calls of input"
     );
     assert_eq!(
-        work.usage.output_tokens,
+        work.usage.tokens.output,
         2 * OUTPUT_TOKENS_PER_CALL,
         "{profile}"
     );
     assert_eq!(
-        work.usage.total_usd_micros,
+        work.usage.cost.map(|cost| cost.usd_micros),
         Some(2 * (INPUT_TOKENS_PER_CALL + 2 * OUTPUT_TOKENS_PER_CALL)),
         "{profile}: cost from the catalog's pricing"
     );
@@ -823,25 +823,20 @@ async fn a_stage_that_fails_after_spending_bills_what_it_spent() {
         }
     );
     assert_eq!(
-        work.usage.input_tokens,
+        work.usage.tokens.input,
         2 * INPUT_TOKENS_PER_CALL,
         "the two answered calls are billed"
     );
-    assert_eq!(work.usage.output_tokens, 2 * OUTPUT_TOKENS_PER_CALL);
+    assert_eq!(work.usage.tokens.output, 2 * OUTPUT_TOKENS_PER_CALL);
     assert_eq!(
-        work.usage.total_usd_micros,
+        work.usage.cost.map(|cost| cost.usd_micros),
         Some(2 * (INPUT_TOKENS_PER_CALL + 2 * OUTPUT_TOKENS_PER_CALL)),
         "priced from the catalog like a completed stage"
     );
+    assert_eq!(work.usage_by_model.len(), 1, "{:?}", work.usage_by_model);
     assert_eq!(
-        work.billing_by_model.len(),
-        1,
-        "{:?}",
-        work.billing_by_model
-    );
-    assert_eq!(
-        work.billing_by_model[0].tokens.input,
-        u64::try_from(2 * INPUT_TOKENS_PER_CALL).unwrap()
+        work.usage_by_model[0].usage.tokens.input,
+        2 * INPUT_TOKENS_PER_CALL
     );
     assert!(
         tokio::fs::try_exists(&second).await.unwrap(),
@@ -862,12 +857,9 @@ async fn a_stage_that_fails_after_spending_bills_what_it_spent() {
         panic!("stage.failed carries its props: {failed:?}");
     };
     assert!(!props.will_retry);
-    let billing = props.billing.as_ref().expect("the failed stage is billed");
-    assert_eq!(
-        billing.tokens.input,
-        u64::try_from(2 * INPUT_TOKENS_PER_CALL).unwrap()
-    );
-    assert_eq!(props.billing_by_model, vec![billing.clone()]);
+    let usage = props.usage.as_ref().expect("the failed stage is priced");
+    assert_eq!(usage.usage.tokens.input, 2 * INPUT_TOKENS_PER_CALL);
+    assert_eq!(props.usage_by_model, vec![usage.clone()]);
 }
 
 // --- Questions, subagents, MCP
@@ -1006,13 +998,13 @@ async fn a_subagent_runs_under_its_parent_session() {
     // child's one.
     let work = work_stage(&state);
     assert_eq!(
-        work.usage.input_tokens,
+        work.usage.tokens.input,
         4 * INPUT_TOKENS_PER_CALL,
         "the child's call is the stage's too"
     );
-    assert_eq!(work.usage.output_tokens, 4 * OUTPUT_TOKENS_PER_CALL);
+    assert_eq!(work.usage.tokens.output, 4 * OUTPUT_TOKENS_PER_CALL);
     assert_eq!(
-        work.usage.total_usd_micros,
+        work.usage.cost.map(|cost| cost.usd_micros),
         Some(4 * (INPUT_TOKENS_PER_CALL + 2 * OUTPUT_TOKENS_PER_CALL)),
         "priced from the catalog for every call"
     );
@@ -1020,37 +1012,26 @@ async fn a_subagent_runs_under_its_parent_session() {
         .agent
         .as_ref()
         .expect("the stage carries pebble's fold");
-    let (descendants, _) = agent.descendant_usage();
+    let descendants = agent.descendant_usage();
     assert_eq!(
-        u64::try_from(work.usage.input_tokens).unwrap(),
-        agent.usage.input + descendants.input,
+        work.usage.tokens.input,
+        agent.usage.tokens.input + descendants.tokens.input,
         "the completed usage is what the live fold showed"
     );
-    assert_eq!(
-        descendants.input,
-        u64::try_from(INPUT_TOKENS_PER_CALL).unwrap()
-    );
+    assert_eq!(descendants.tokens.input, INPUT_TOKENS_PER_CALL);
     // The child ran on its parent's model, so the split is one row carrying
     // the tree.
+    assert_eq!(work.usage_by_model.len(), 1, "{:?}", work.usage_by_model);
     assert_eq!(
-        work.billing_by_model.len(),
-        1,
-        "{:?}",
-        work.billing_by_model
+        work.usage_by_model[0].usage.tokens.input,
+        4 * INPUT_TOKENS_PER_CALL
     );
     assert_eq!(
-        work.billing_by_model[0].tokens.input,
-        u64::try_from(4 * INPUT_TOKENS_PER_CALL).unwrap()
-    );
-    assert_eq!(
-        Some(&work.billing_by_model[0].model),
+        Some(&work.usage_by_model[0].model),
         work.model.as_ref(),
         "billed under the root's route"
     );
-    assert_eq!(
-        work.billing_by_model[0].total_usd_micros,
-        work.usage.total_usd_micros
-    );
+    assert_eq!(work.usage_by_model[0].usage.cost, work.usage.cost);
 
     let agent_events = coding_events(&stage.events);
     let root_session = agent_events

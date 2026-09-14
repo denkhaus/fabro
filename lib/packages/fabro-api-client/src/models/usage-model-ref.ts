@@ -15,12 +15,16 @@
 
 // May contain unused imports in some cases
 // @ts-ignore
-import type { CostSource } from './cost-source';
+import type { Speed } from './speed';
 
 /**
- * lithos `Cost`: a USD amount in micros and where it came from.
+ * Provider-qualified model identity a usage is grouped under. Carries the requested speed tier because providers price tiers differently.
  */
-export interface CompletionCost {
-    'usd_micros': number;
-    'source': CostSource;
+export interface UsageModelRef {
+    /**
+     * LLM provider identifier.
+     */
+    'provider': string;
+    'model_id': string;
+    'speed'?: Speed | null;
 }

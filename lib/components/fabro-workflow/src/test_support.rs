@@ -16,7 +16,7 @@ use fabro_types::ModelRef;
 #[cfg(feature = "test-support")]
 use lithos_llm::catalog::ProviderId;
 use lithos_llm::catalog::{ModelId, builtin};
-use lithos_llm::types::TokenCounts;
+use lithos_llm::types::{Cost, CostSource, TokenCounts, Usage};
 use object_store::local::LocalFileSystem;
 
 use crate::artifact_upload::ArtifactSink;
@@ -26,7 +26,7 @@ use crate::handler::HandlerRegistry;
 use crate::outcome::Outcome;
 use crate::pipeline;
 use crate::pipeline::types::{Executed, Initialized};
-use crate::pipeline::{billing_from_projection, build_terminal_event};
+use crate::pipeline::{build_terminal_event, usage_from_projection};
 use crate::records::Checkpoint;
 use crate::run_options::RunOptions;
 use crate::sandbox_git_runtime::SandboxGitRuntime;
@@ -51,7 +51,7 @@ pub(crate) fn test_configured_provider_ids(
 /// (FINALIZE).
 ///
 /// The first flush is needed because `StoreProgressLogger` forwards events
-/// through an mpsc channel — without it, billing would read from a stale
+/// through an mpsc channel — without it, usage would read from a stale
 /// checkpoint. The second flush ensures the just-emitted terminal event is
 /// persisted before tests reopen the run store.
 async fn execute_and_emit_terminal(initialized: InitializedState) -> Executed {
@@ -62,7 +62,7 @@ async fn execute_and_emit_terminal(initialized: InitializedState) -> Executed {
         .await
         .expect("test run events should persist");
     let state = executed.engine.run.run_store.state().await.ok();
-    let billing = state.as_ref().and_then(billing_from_projection);
+    let usage = state.as_ref().and_then(usage_from_projection);
     let event = build_terminal_event(
         &executed.outcome,
         fabro_types::RunTiming::wall_only(executed.wall_time_ms),
@@ -70,7 +70,7 @@ async fn execute_and_emit_terminal(initialized: InitializedState) -> Executed {
         None,
         None,
         None,
-        billing,
+        usage,
     );
     executed.engine.run.emitter.emit(&event);
     initialized
@@ -81,25 +81,29 @@ async fn execute_and_emit_terminal(initialized: InitializedState) -> Executed {
     executed
 }
 
-/// Construct a fully-populated `BilledModelUsage` for tests. Centralised so
-/// callers don't keep rebuilding the same JSON skeleton.
+/// Construct a fully-populated `ModelUsage` for tests: `input_tokens` and
+/// `output_tokens` on an OpenAI model, priced from the catalog at one micro
+/// per token. Centralised so callers don't keep rebuilding the same skeleton.
 #[must_use]
 pub fn test_usage(
     model_id: &str,
     input_tokens: u64,
     output_tokens: u64,
-) -> fabro_types::BilledModelUsage {
-    let mut usage = fabro_types::BilledModelUsage::new(
+) -> fabro_types::ModelUsage {
+    fabro_types::ModelUsage::new(
         ModelRef::new(builtin::openai(), ModelId::new(model_id)),
-        TokenCounts {
-            input: input_tokens,
-            output: output_tokens,
-            ..TokenCounts::default()
+        Usage {
+            tokens: TokenCounts {
+                input: input_tokens,
+                output: output_tokens,
+                ..TokenCounts::default()
+            },
+            cost:   Some(Cost {
+                usd_micros: input_tokens.saturating_add(output_tokens),
+                source:     CostSource::Catalog,
+            }),
         },
-        None,
-    );
-    usage.total_usd_micros = Some(i64::try_from(input_tokens + output_tokens).unwrap_or(i64::MAX));
-    usage
+    )
 }
 
 /// Append the `RunStartRequested → RunRunnable → RunStarting → RunRunning`

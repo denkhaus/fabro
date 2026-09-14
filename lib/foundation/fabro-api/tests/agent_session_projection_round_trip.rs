@@ -30,15 +30,15 @@ use fabro_api::types::{
     CompactionReason as ApiCompactionReason, FailoverContinuation as ApiFailoverContinuation,
     FailoverStop as ApiFailoverStop, LlmErrorKind as ApiLlmErrorKind,
     LlmRetryClassification as ApiLlmRetryClassification, McpToolSummary as ApiMcpToolSummary,
-    StageProjection as ApiStageProjection, TokenUsage as ApiTokenUsage,
+    StageProjection as ApiStageProjection, Usage as ApiUsage,
 };
 use fabro_types::StageProjection;
-use lithos_llm::types::{ErrorKind as LlmErrorKind, RetryClassification};
+use lithos_llm::types::{Cost, CostSource, ErrorKind as LlmErrorKind, RetryClassification};
 use pebble_coding_agent::events::{
     CodingAgentEvent, CodingEvent, CompactionReason, ContextWindowCountMethod,
     ContextWindowSnapshot, ContextWindowStaleness, ErrorData, ErrorKind, FailoverContinuation,
     FailoverStop, InputSource, LlmRetryPhase, McpToolSummary, SkillActivationSource, SkillSummary,
-    TodoCreatedProps, TodoListKind, TodoStatus, TokenUsage,
+    TodoCreatedProps, TodoListKind, TodoStatus, TokenCounts, Usage,
 };
 use pebble_coding_agent::projection::{
     ActivatedSkill, CompactionProjection, DescendantAccount, FailoverStopProjection,
@@ -66,7 +66,7 @@ fn agent_session_projection_reuses_pebbles_types() {
     assert_same_type::<ApiAgentSessionRouteFailover, RouteFailoverProjection>();
     assert_same_type::<ApiAgentSessionFailoverStop, FailoverStopProjection>();
     assert_same_type::<ApiAgentSessionPromptDelta, PromptDelta>();
-    assert_same_type::<ApiTokenUsage, TokenUsage>();
+    assert_same_type::<ApiUsage, Usage>();
     assert_same_type::<ApiMcpToolSummary, McpToolSummary>();
     assert_same_type::<ApiCompactionReason, CompactionReason>();
     assert_same_type::<ApiFailoverContinuation, FailoverContinuation>();
@@ -393,19 +393,14 @@ fn scripted_events() -> Vec<CodingAgentEvent> {
             phase:      LlmRetryPhase::Open,
         }),
         root(CodingEvent::RouteFailover {
-            from:            "openai/gpt-5.2".to_string(),
-            to:              "anthropic/claude-fable-5".to_string(),
-            attempt:         1,
-            error:           llm_error(),
-            usage:           TokenUsage {
-                input: 100,
-                output: 10,
-                ..TokenUsage::default()
-            },
-            cost_usd_micros: Some(500),
-            inference_ms:    120,
-            tool_ms:         30,
-            continuation:    FailoverContinuation::ContinueTurn,
+            from:         "openai/gpt-5.2".to_string(),
+            to:           "anthropic/claude-fable-5".to_string(),
+            attempt:      1,
+            error:        llm_error(),
+            usage:        priced(100, 10, 500),
+            inference_ms: 120,
+            tool_ms:      30,
+            continuation: FailoverContinuation::ContinueTurn,
         }),
         root(CodingEvent::CompactionCompleted {
             original_turn_count:    20,
@@ -413,11 +408,7 @@ fn scripted_events() -> Vec<CodingAgentEvent> {
             summary_token_estimate: 500,
             tracked_file_count:     1,
             reason:                 CompactionReason::Threshold,
-            usage:                  TokenUsage {
-                input: 30,
-                ..TokenUsage::default()
-            },
-            cost_usd_micros:        Some(2),
+            usage:                  priced(30, 0, 2),
         }),
         root(message("anthropic", "claude-fable-5", 50, 5, Some(300))),
         root(CodingEvent::RouteFailoverStopped {
@@ -428,6 +419,21 @@ fn scripted_events() -> Vec<CodingAgentEvent> {
         }),
         root(CodingEvent::ProcessingEnd),
     ]
+}
+
+/// A usage the provider priced.
+fn priced(input: u64, output: u64, usd_micros: u64) -> Usage {
+    Usage {
+        tokens: TokenCounts {
+            input,
+            output,
+            ..TokenCounts::default()
+        },
+        cost:   Some(Cost {
+            usd_micros,
+            source: CostSource::Provider,
+        }),
+    }
 }
 
 fn root(event: CodingEvent) -> CodingAgentEvent {
@@ -443,13 +449,17 @@ fn message(provider: &str, model: &str, input: u64, output: u64, cost: Option<u6
     CodingEvent::AssistantMessage {
         text:            "ok".to_string(),
         model:           model.to_string(),
-        usage:           TokenUsage {
-            input,
-            output,
-            ..TokenUsage::default()
+        usage:           Usage {
+            tokens: TokenCounts {
+                input,
+                output,
+                ..TokenCounts::default()
+            },
+            cost:   cost.map(|usd_micros| Cost {
+                usd_micros,
+                source: CostSource::Provider,
+            }),
         },
-        cost_usd_micros: cost,
-        cost_source:     None,
         tool_call_count: 0,
         context_window:  Some(ContextWindowSnapshot {
             provider:              provider.to_string(),

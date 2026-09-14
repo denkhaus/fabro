@@ -77,11 +77,8 @@ impl ServerRunInfo {
         self.run.timing.as_ref().map(|t| t.wall_time_ms)
     }
 
-    pub(crate) fn total_usd_micros(&self) -> Option<i64> {
-        self.run
-            .billing
-            .as_ref()
-            .and_then(|billing| billing.total_usd_micros)
+    pub(crate) fn total_usd_micros(&self) -> Option<u64> {
+        self.run.usage.cost.map(|cost| cost.usd_micros)
     }
 
     pub(crate) fn source_directory(&self) -> Option<&str> {

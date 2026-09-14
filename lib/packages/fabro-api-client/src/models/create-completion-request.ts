@@ -15,9 +15,6 @@
 
 // May contain unused imports in some cases
 // @ts-ignore
-import type { BillingSpeed } from './billing-speed';
-// May contain unused imports in some cases
-// @ts-ignore
 import type { CompletionMessage } from './completion-message';
 // May contain unused imports in some cases
 // @ts-ignore
@@ -31,6 +28,9 @@ import type { CompletionToolDefinition } from './completion-tool-definition';
 // May contain unused imports in some cases
 // @ts-ignore
 import type { ReasoningEffort } from './reasoning-effort';
+// May contain unused imports in some cases
+// @ts-ignore
+import type { Speed } from './speed';
 
 /**
  * A lithos `Request` plus `stream`. Field names match the lithos wire form so a serialized lithos request can be posted as-is.
@@ -77,7 +77,7 @@ export interface CreateCompletionRequest {
     /**
      * Requested speed tier.
      */
-    'speed'?: BillingSpeed;
+    'speed'?: Speed;
     /**
      * Request tags forwarded to providers that accept them.
      */

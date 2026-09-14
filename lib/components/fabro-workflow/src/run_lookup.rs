@@ -141,16 +141,15 @@ impl RunInfo {
     }
 
     pub fn total_cost(&self) -> Option<f64> {
-        self.summary
-            .as_ref()
-            .and_then(|summary| summary.billing.as_ref()?.total_usd_micros)
+        self.total_usd_micros()
             .map(|value| value as f64 / 1_000_000.0)
     }
 
-    pub fn total_usd_micros(&self) -> Option<i64> {
+    pub fn total_usd_micros(&self) -> Option<u64> {
         self.summary
             .as_ref()
-            .and_then(|summary| summary.billing.as_ref()?.total_usd_micros)
+            .and_then(|summary| summary.usage.cost)
+            .map(|cost| cost.usd_micros)
     }
 
     pub fn source_directory(&self) -> Option<&str> {

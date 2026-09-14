@@ -15,9 +15,6 @@
 
 // May contain unused imports in some cases
 // @ts-ignore
-import type { BilledTokenCounts } from './billed-token-counts';
-// May contain unused imports in some cases
-// @ts-ignore
 import type { StageHandler } from './stage-handler';
 // May contain unused imports in some cases
 // @ts-ignore
@@ -25,6 +22,9 @@ import type { StageModelUsage } from './stage-model-usage';
 // May contain unused imports in some cases
 // @ts-ignore
 import type { StageState } from './stage-state';
+// May contain unused imports in some cases
+// @ts-ignore
+import type { Usage } from './usage';
 
 /**
  * A single stage in a run\'s workflow graph.
@@ -74,7 +74,7 @@ export interface RunStage {
      */
     'started_at'?: string | null;
     /**
-     * Token counts for this stage execution alone. `total_usd_micros` is the provider-reported cost when there is one, otherwise the server catalog\'s price for these tokens — the same pricing the `/runs/{id}/billing` rows use. All-zero counts mean the stage made no model calls. Unlike the billing rows, which sum every visit of a node, this covers only this visit.
+     * Usage for this stage execution alone. `cost` is the provider\'s reported cost when there is one, otherwise the server catalog\'s price for these tokens — the same pricing the `/runs/{id}/usage` rows use. All-zero counts mean the stage made no model calls. Unlike the usage rows, which sum every visit of a node, this covers only this visit.
      */
-    'billing': BilledTokenCounts;
+    'usage': Usage;
 }

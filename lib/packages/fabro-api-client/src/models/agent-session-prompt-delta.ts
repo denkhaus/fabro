@@ -27,7 +27,7 @@ import type { AgentSessionSubagentCounts } from './agent-session-subagent-counts
 import type { ContextWindowSnapshot } from './context-window-snapshot';
 // May contain unused imports in some cases
 // @ts-ignore
-import type { TokenUsage } from './token-usage';
+import type { Usage } from './usage';
 
 /**
  * What the prompt in progress, or the last one, did: reset when a prompt starts, complete once `completed` is set.
@@ -40,8 +40,7 @@ export interface AgentSessionPromptDelta {
     /**
      * The root session\'s usage over the prompt.
      */
-    'usage': TokenUsage;
-    'cost_usd_micros': number | null;
+    'usage': Usage;
     /**
      * Committed assistant messages.
      */

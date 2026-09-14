@@ -3,8 +3,8 @@ use std::sync::LazyLock;
 
 use chrono::{DateTime, Utc};
 use fabro_types::{
-    BilledTokenCounts, EventEnvelope, Run, RunEvent, RunId, RunSize, RunStatusKind, RunTiming,
-    SessionId, StageId, timing,
+    EventEnvelope, Run, RunEvent, RunId, RunSize, RunStatusKind, RunTiming, SessionId, StageId,
+    timing,
 };
 use sqlx::pool::PoolConnection;
 use sqlx::query::Query;
@@ -12,7 +12,7 @@ use sqlx::sqlite::{SqliteArguments, SqliteConnection, SqliteRow};
 use sqlx::{Connection as _, QueryBuilder, Row as _, Sqlite, SqlitePool, Transaction};
 use strum::VariantArray as _;
 
-use crate::run_state::{ProjectedRun, build_summary, projected_billing};
+use crate::run_state::{ProjectedRun, build_summary, projected_usage};
 use crate::{Error, EventPayload, Result, keys};
 
 const INSERT_RUN_SQL: &str = r"
@@ -1019,7 +1019,7 @@ impl PreparedRunSummary {
                 .unwrap_or(run.timestamps.created_at);
             run.timing = entry.projection.live_run_timing(at);
         }
-        let billing = normalize_billing_for_read_model(projected_billing(&entry.projection));
+        let usage = projected_usage(&entry.projection);
         let workflow_name = run.workflow.display_name().map(str::to_string);
         let repository_name = run
             .repository
@@ -1031,12 +1031,12 @@ impl PreparedRunSummary {
             last_seq: entry.last_seq,
             workflow_name,
             repository_name,
-            input_tokens: billing.input_tokens,
-            output_tokens: billing.output_tokens,
-            reasoning_tokens: billing.reasoning_tokens,
-            cache_read_tokens: billing.cache_read_tokens,
-            cache_write_tokens: billing.cache_write_tokens,
-            total_usd_micros: billing.total_usd_micros,
+            input_tokens: column_count(usage.tokens.input),
+            output_tokens: column_count(usage.tokens.output),
+            reasoning_tokens: column_count(usage.tokens.reasoning),
+            cache_read_tokens: column_count(usage.tokens.cache_read),
+            cache_write_tokens: column_count(usage.tokens.cache_write),
+            total_usd_micros: usage.cost.map(|cost| column_count(cost.usd_micros)),
         }
     }
 }
@@ -1250,31 +1250,10 @@ async fn select_run_head(connection: &mut SqliteConnection, run_id: &RunId) -> R
         .transpose()
 }
 
-/// Older provider codecs could persist a negative disjoint bucket when a
-/// detail count exceeded its inclusive parent total. The SQLite summary is a
-/// rebuildable, nonnegative read model, so normalize those legacy values here
-/// without rewriting the authoritative run events.
-fn normalize_billing_for_read_model(mut billing: BilledTokenCounts) -> BilledTokenCounts {
-    let input_total = billing
-        .input_tokens
-        .saturating_add(billing.cache_read_tokens)
-        .saturating_add(billing.cache_write_tokens)
-        .max(0);
-    billing.cache_read_tokens = billing.cache_read_tokens.clamp(0, input_total);
-    billing.cache_write_tokens = billing
-        .cache_write_tokens
-        .clamp(0, input_total - billing.cache_read_tokens);
-    billing.input_tokens = input_total - billing.cache_read_tokens - billing.cache_write_tokens;
-
-    let output_total = billing
-        .output_tokens
-        .saturating_add(billing.reasoning_tokens)
-        .max(0);
-    billing.reasoning_tokens = billing.reasoning_tokens.clamp(0, output_total);
-    billing.output_tokens = output_total - billing.reasoning_tokens;
-    billing.total_tokens = input_total.saturating_add(output_total);
-    billing.total_usd_micros = billing.total_usd_micros.map(|value| value.max(0));
-    billing
+/// A usage count as the SQLite read model stores it: the columns are signed,
+/// so a count past `i64::MAX` saturates rather than wrapping negative.
+fn column_count(count: u64) -> i64 {
+    i64::try_from(count).unwrap_or(i64::MAX)
 }
 
 #[cfg(test)]
@@ -1538,11 +1517,12 @@ mod tests {
 
     use chrono::{DateTime, Utc};
     use fabro_types::{
-        AutomationRef, BilledTokenCounts, BlockedReason, Conclusion, DiffSummary, EventEnvelope,
-        FailureReason, Graph, PendingReason, PullRequestCreationId, RunDiff, RunId, RunProjection,
-        RunSize, RunSpec, RunStatus, RunStatusKind, RunTiming, SessionId, StageId, StageOutcome,
-        SuccessReason, WorkflowSettings, test_support,
+        AutomationRef, BlockedReason, Conclusion, DiffSummary, EventEnvelope, FailureReason, Graph,
+        PendingReason, PullRequestCreationId, RunDiff, RunId, RunProjection, RunSize, RunSpec,
+        RunStatus, RunStatusKind, RunTiming, SessionId, StageId, StageOutcome, SuccessReason,
+        WorkflowSettings, test_support,
     };
+    use lithos_llm::types::{Cost, CostSource, TokenCounts, Usage};
     use strum::VariantArray as _;
     use tokio::time;
     use ulid::Ulid;
@@ -2908,7 +2888,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn projection_persists_billing_diff_and_derived_size() {
+    async fn projection_persists_usage_diff_and_derived_size() {
         let (_directory, store) = store().await;
         let created_at = dt("2026-07-11T12:00:00Z");
         let run_id = run_id(created_at.timestamp_millis().cast_unsigned(), 1);
@@ -2930,14 +2910,18 @@ mod tests {
             failure:              None,
             final_git_commit_sha: None,
             stages:               Vec::new(),
-            billing:              Some(BilledTokenCounts {
-                input_tokens:       100,
-                output_tokens:      20,
-                total_tokens:       135,
-                reasoning_tokens:   5,
-                cache_read_tokens:  10,
-                cache_write_tokens: 0,
-                total_usd_micros:   Some(21_000_000),
+            usage:                Some(Usage {
+                tokens: TokenCounts {
+                    input:       100,
+                    output:      20,
+                    reasoning:   5,
+                    cache_read:  10,
+                    cache_write: 0,
+                },
+                cost:   Some(Cost {
+                    usd_micros: 21_000_000,
+                    source:     CostSource::Catalog,
+                }),
             }),
             total_retries:        0,
             diff:                 RunDiff {
@@ -2995,47 +2979,6 @@ mod tests {
 
         let run = store.get(&run_id, created_at).await.unwrap().unwrap();
         assert_eq!(run.size, RunSize::S);
-    }
-
-    #[tokio::test]
-    async fn projection_normalizes_legacy_overlapping_reasoning_tokens() {
-        let (_directory, store) = store().await;
-        let created_at = dt("2026-07-11T12:00:00Z");
-        let run_id = run_id(created_at.timestamp_millis().cast_unsigned(), 1);
-        let mut projection = projection(run_id, "legacy billing", created_at);
-        projection.conclusion = Some(Conclusion {
-            timestamp:            created_at,
-            status:               StageOutcome::Succeeded,
-            timing:               RunTiming::default(),
-            failure:              None,
-            final_git_commit_sha: None,
-            stages:               Vec::new(),
-            billing:              Some(BilledTokenCounts {
-                input_tokens: 53,
-                output_tokens: -7,
-                total_tokens: 112,
-                reasoning_tokens: 66,
-                ..BilledTokenCounts::default()
-            }),
-            total_retries:        0,
-            diff:                 RunDiff::default(),
-        });
-
-        store
-            .upsert_projection(&entry(projection, 1))
-            .await
-            .unwrap();
-
-        let row = sqlx::query(
-            "SELECT input_tokens, output_tokens, reasoning_tokens FROM runs WHERE id = ?",
-        )
-        .bind(run_id.to_string())
-        .fetch_one(&store.pool)
-        .await
-        .unwrap();
-        assert_eq!(sqlx::Row::get::<i64, _>(&row, "input_tokens"), 53);
-        assert_eq!(sqlx::Row::get::<i64, _>(&row, "output_tokens"), 0);
-        assert_eq!(sqlx::Row::get::<i64, _>(&row, "reasoning_tokens"), 59);
     }
 
     #[tokio::test]

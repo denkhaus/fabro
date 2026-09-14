@@ -19,7 +19,7 @@ use crate::context::{Context, WorkflowContext, keys};
 use crate::error::Error;
 use crate::event::{Emitter, Event, StageScope};
 use crate::interview_runtime::WorkflowHumanInput;
-use crate::outcome::{BilledModelUsage, Outcome, OutcomeExt};
+use crate::outcome::{ModelUsage, Outcome, OutcomeExt};
 
 const LAST_FILE_ROUTING_EXTENSIONS: &[&str] = &["json", "md"];
 
@@ -31,12 +31,12 @@ const LAST_FILE_ROUTING_EXTENSIONS: &[&str] = &["json", "md"];
 pub enum CodergenResult {
     Text {
         text:              String,
-        /// The stage's billing: for an agent, the whole session tree's
+        /// The stage's usage: for an agent, the whole session tree's
         /// tokens under the root's route.
-        usage:             Option<BilledModelUsage>,
+        usage:             Option<ModelUsage>,
         /// `usage` split by model, when the backend billed subagents at
         /// their own models. Empty when `usage` is the one row.
-        usage_by_model:    Vec<BilledModelUsage>,
+        usage_by_model:    Vec<ModelUsage>,
         files_touched:     Vec<String>,
         last_file_touched: Option<String>,
         /// Active timing observed by the backend. The wall field is ignored by
@@ -380,7 +380,7 @@ impl Handler for AgentHandler {
                 response: response_text.clone(),
                 model:    response_model,
                 provider: response_provider,
-                billing:  stage_usage.clone(),
+                usage:    stage_usage.clone(),
             },
             &stage_scope,
         );

@@ -32,7 +32,7 @@ pub fn event_payload_from_redacted_json(line: &str, run_id: &RunId) -> Result<Ev
 mod tests {
     use ::fabro_types::{fixtures, run_event as fabro_types};
     use lithos_llm::types::ReasoningOutput;
-    use pebble_coding_agent::events::{CodingAgentEvent, CodingEvent, TokenUsage};
+    use pebble_coding_agent::events::{CodingAgentEvent, CodingEvent, Usage};
 
     use super::*;
     use crate::event::{Event, to_run_event};
@@ -128,9 +128,7 @@ mod tests {
                 CodingEvent::AssistantMessage {
                     text:            "done".to_string(),
                     model:           "gpt-5.4".to_string(),
-                    usage:           TokenUsage::default(),
-                    cost_usd_micros: None,
-                    cost_source:     None,
+                    usage:           Usage::default(),
                     tool_call_count: 0,
                     context_window:  None,
                     reasoning:       Some(ReasoningOutput::new(

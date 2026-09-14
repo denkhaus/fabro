@@ -1973,6 +1973,7 @@ mod resume_tests {
     use fabro_static::EnvVars;
     use fabro_test::{TwinScenario, TwinScenarios, twin_openai};
     use fabro_types::{RunId, SessionId};
+    use pebble_coding_agent::state::SESSION_RECORD_FORMAT_VERSION;
     use tower::ServiceExt;
 
     use crate::server::{AppState, spawn_scheduler};
@@ -2120,6 +2121,115 @@ mod resume_tests {
             "the turn should succeed: {events:#?}"
         );
         events
+    }
+
+    /// A record written by an older build is refused, not read: pebble checks
+    /// the format version before it reads the route, and fabro turns that
+    /// refusal into a turn failure naming both versions. Old runs get no
+    /// migration, so this is what a session persisted before the record
+    /// format moved sees on its next turn.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_stored_record_in_an_older_format_fails_the_turn_naming_both_versions() {
+        let twin = twin_openai().await;
+        let namespace = format!("{}::{}", module_path!(), line!());
+        TwinScenarios::new(namespace.clone())
+            .scenario(
+                TwinScenario::responses(MODEL)
+                    .input_contains("First question")
+                    .text("First answer"),
+            )
+            .load(twin)
+            .await;
+        let state = twin_backed_state(twin.base_url.clone(), &namespace);
+        spawn_scheduler(Arc::clone(&state));
+        let app = build_test_router(Arc::clone(&state));
+        let workspace = tempfile::tempdir().unwrap();
+        let run_id = completed_run(&app, workspace.path()).await;
+
+        let created = json_response(
+            &app,
+            post_json(
+                &format!("/runs/{run_id}/sessions"),
+                &serde_json::json!({ "title": "Ask Fabro", "model": MODEL }),
+            ),
+            StatusCode::CREATED,
+        )
+        .await;
+        let session_id: SessionId = created["id"].as_str().unwrap().parse().unwrap();
+
+        turn(&app, session_id, "First question").await;
+        let stored = state
+            .stores
+            .session_records
+            .get(session_id)
+            .await
+            .unwrap()
+            .expect("the first turn persists the record");
+
+        // The record as an older build wrote it: the previous format version.
+        // The store parses it, and the version check refuses it on resume.
+        let previous = SESSION_RECORD_FORMAT_VERSION - 1;
+        let mut older = stored.record.clone();
+        older.format_version = previous;
+        state
+            .stores
+            .session_records
+            .put(session_id, run_id, &older, chrono::Utc::now())
+            .await
+            .unwrap();
+        state
+            .session_runtimes()
+            .load_or_create_runtime(session_id)
+            .clear_agent()
+            .await;
+
+        let response = app
+            .clone()
+            .oneshot(post_json(
+                &format!("/sessions/{session_id}/turns"),
+                &serde_json::json!({ "input": "Second question" }),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let body = String::from_utf8(bytes.to_vec()).unwrap();
+        let events: Vec<serde_json::Value> = body
+            .lines()
+            .filter_map(|line| line.strip_prefix("data: "))
+            .map(|data| serde_json::from_str(data).unwrap())
+            .collect();
+        let failed = events
+            .iter()
+            .find(|event| event["event"] == "run.session.turn.failed")
+            .unwrap_or_else(|| panic!("the resumed turn fails: {events:#?}"));
+        assert_eq!(failed["properties"]["code"], "agent_error");
+        assert_eq!(failed["properties"]["retryable"], false);
+        let error = failed["properties"]["error"].as_str().unwrap();
+        let expected = format!(
+            "session record format version {previous} is not supported (this build requires {SESSION_RECORD_FORMAT_VERSION})"
+        );
+        assert!(
+            error.contains(&expected),
+            "the failure names both versions: {error}"
+        );
+        assert!(
+            !events
+                .iter()
+                .any(|event| event["event"] == "run.session.turn.succeeded"),
+            "a refused record runs no turn: {events:#?}"
+        );
+
+        // The stored record is untouched, so a build that reads its format
+        // can still resume it.
+        let after = state
+            .stores
+            .session_records
+            .get(session_id)
+            .await
+            .unwrap()
+            .expect("the refused record stays stored");
+        assert_eq!(after.record.format_version, previous);
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

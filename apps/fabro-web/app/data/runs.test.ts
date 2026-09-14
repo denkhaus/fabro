@@ -8,7 +8,7 @@ import {
   mapRunToRunItem,
   runStatusDisplay,
 } from "./runs";
-import { TEST_PRINCIPAL } from "../lib/test-fixtures";
+import { TEST_PRINCIPAL, makeUsage } from "../lib/test-fixtures";
 
 function makeRun(overrides: Partial<Run> = {}): Run {
   return {
@@ -45,7 +45,7 @@ function makeRun(overrides: Partial<Run> = {}): Run {
       tool_time_ms:      0,
       active_time_ms:    0,
     },
-    billing:          { total_usd_micros: 500000 },
+    usage:            makeUsage({}, 500000),
     size:             "XS",
     diff:             null,
     pull_request:     null,
@@ -108,10 +108,10 @@ describe("mapRunListItem", () => {
     expect(mapRunListItem(makeRun()).totalUsdMicros).toBe(500000);
   });
 
-  test("leaves the billed total undefined for runs without terminal billing", () => {
-    expect(mapRunListItem(makeRun({ billing: null })).totalUsdMicros).toBeUndefined();
+  test("leaves the cost undefined for runs whose usage carries none", () => {
+    expect(mapRunListItem(makeRun({ usage: makeUsage() })).totalUsdMicros).toBeUndefined();
     expect(
-      mapRunListItem(makeRun({ billing: { total_usd_micros: null } })).totalUsdMicros,
+      mapRunListItem(makeRun({ usage: makeUsage({ input: 12 }) })).totalUsdMicros,
     ).toBeUndefined();
   });
 });
@@ -154,7 +154,7 @@ describe("mapRunToRunItem", () => {
         completed_at:   null,
       },
       timing:           null,
-      billing:          null,
+      usage:          makeUsage(),
     });
     const item = mapRunToRunItem(summary);
     expect(item.id).toBe("01DEF");

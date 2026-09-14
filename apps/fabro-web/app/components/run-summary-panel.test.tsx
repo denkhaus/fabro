@@ -6,7 +6,7 @@ import {
   RunSummaryPanelView,
   type RunSummaryPanelViewProps,
 } from "./run-summary-panel";
-import { TEST_PRINCIPAL } from "../lib/test-fixtures";
+import { TEST_PRINCIPAL, makeUsage } from "../lib/test-fixtures";
 
 function instanceText(instance: TestRenderer.ReactTestInstance): string {
   const parts: string[] = [];
@@ -56,7 +56,7 @@ function makeRun(overrides: Record<string, any> = {}) {
     id:         "run_1",
     created_by: TEST_PRINCIPAL,
     diff:       null,
-    billing:    null,
+    usage:      makeUsage(),
     ...overrides,
   } as any;
 }
@@ -163,9 +163,9 @@ describe("RunSummaryPanelView", () => {
     );
   });
 
-  test("renders cost from total_usd_micros", () => {
+  test("renders cost from the run's usage", () => {
     const tree = render({
-      run: makeRun({ billing: { total_usd_micros: 840_000 } }),
+      run: makeRun({ usage: makeUsage({}, 840_000) }),
     });
     expect(instanceText(cellAfterLabel(tree, "Cost"))).toBe("$0.84");
   });

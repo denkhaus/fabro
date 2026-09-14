@@ -57,7 +57,7 @@ export const queryKeys = {
     settings: (id: string) => ["runs", "settings", id] as const,
     logs: (id: string) => ["runs", "logs", id] as const,
     artifacts: (id: string) => ["runs", "artifacts", id] as const,
-    billing: (id: string) => ["runs", "billing", id] as const,
+    usage: (id: string) => ["runs", "usage", id] as const,
     questions: (id: string, limit = 1, offset = 0) =>
       ["runs", "questions", id, limit, offset] as const,
     events: (id: string, limit = 1000) => ["runs", "events", id, limit] as const,

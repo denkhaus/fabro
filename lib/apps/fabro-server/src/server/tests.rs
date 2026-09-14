@@ -37,9 +37,9 @@ use httpmock::Method::{GET, POST};
 use httpmock::MockServer;
 use lithos_llm::catalog::ModelId;
 use lithos_llm::types::{
-    ReasoningEffort, ReasoningOutput, Request as LlmRequest, Speed, TokenCounts,
+    Cost, CostSource, ReasoningEffort, ReasoningOutput, Request as LlmRequest, Speed, TokenCounts,
 };
-use pebble_coding_agent::events::{CodingAgentEvent, CodingEvent, TokenUsage};
+use pebble_coding_agent::events::{CodingAgentEvent, CodingEvent, Usage};
 use serde_json::json;
 use tokio::sync::Notify;
 use tokio_stream::StreamExt as _;
@@ -5681,8 +5681,8 @@ fn stage_completed_event(node_id: &str) -> workflow_event::Event {
         status: "succeeded".to_string(),
         preferred_label: None,
         suggested_next_ids: Vec::new(),
-        billing_by_model: Vec::new(),
-        billing: None,
+        usage_by_model: Vec::new(),
+        usage: None,
         failure: None,
         notes: None,
         files_touched: Vec::new(),
@@ -5714,9 +5714,7 @@ fn agent_message_event(
             CodingEvent::AssistantMessage {
                 text: text.to_string(),
                 model: "gpt-5.4".to_string(),
-                usage: TokenUsage::default(),
-                cost_usd_micros: None,
-                cost_source: None,
+                usage: Usage::default(),
                 tool_call_count: 0,
                 context_window,
                 reasoning,
@@ -6017,11 +6015,10 @@ channel = "#deploys"
             artifact_count:       0,
             status:               "succeeded".to_string(),
             reason:               SuccessReason::Completed,
-            total_usd_micros:     None,
             final_git_commit_sha: None,
             final_patch:          None,
             diff_summary:         None,
-            billing:              None,
+            usage:                None,
         },
     )
     .await;
@@ -6088,7 +6085,7 @@ channel = "#deploys"
             final_git_commit_sha: None,
             final_patch:          None,
             diff_summary:         None,
-            billing:              None,
+            usage:                None,
         },
     )
     .await;
@@ -6252,11 +6249,10 @@ channel = "#deploys"
             artifact_count:       0,
             status:               "succeeded".to_string(),
             reason:               SuccessReason::Completed,
-            total_usd_micros:     None,
             final_git_commit_sha: None,
             final_patch:          None,
             diff_summary:         None,
-            billing:              None,
+            usage:                None,
         },
     )
     .await;
@@ -6369,11 +6365,10 @@ async fn persist_cancelled_run_status_ignores_already_terminal_runs() {
             artifact_count:       0,
             status:               "succeeded".to_string(),
             reason:               SuccessReason::Completed,
-            total_usd_micros:     None,
             final_git_commit_sha: None,
             final_patch:          None,
             diff_summary:         None,
-            billing:              None,
+            usage:                None,
         },
     ])
     .await;
@@ -6405,11 +6400,10 @@ async fn delete_terminal_managed_run_does_not_send_cancel_signal() {
             artifact_count:       0,
             status:               "succeeded".to_string(),
             reason:               SuccessReason::Completed,
-            total_usd_micros:     None,
             final_git_commit_sha: None,
             final_patch:          None,
             diff_summary:         None,
-            billing:              None,
+            usage:                None,
         },
     ])
     .await;
@@ -6528,8 +6522,8 @@ async fn list_run_stages_projects_retrying_until_completion() {
             status: "succeeded".to_string(),
             preferred_label: None,
             suggested_next_ids: Vec::new(),
-            billing_by_model: Vec::new(),
-            billing: None,
+            usage_by_model: Vec::new(),
+            usage: None,
             failure: None,
             notes: None,
             files_touched: Vec::new(),
@@ -6568,15 +6562,15 @@ async fn list_run_stages_projects_retrying_until_completion() {
         "work",
         1,
         &workflow_event::Event::StageFailed {
-            node_id:          "work".to_string(),
-            name:             "Work".to_string(),
-            index:            1,
-            failure:          FailureDetail::new("try again", FailureCategory::TransientInfra),
-            will_retry:       true,
-            timing:           fabro_types::StageTiming::wall_only(10),
-            billing_by_model: Vec::new(),
-            billing:          None,
-            actor:            None,
+            node_id:        "work".to_string(),
+            name:           "Work".to_string(),
+            index:          1,
+            failure:        FailureDetail::new("try again", FailureCategory::TransientInfra),
+            will_retry:     true,
+            timing:         fabro_types::StageTiming::wall_only(10),
+            usage_by_model: Vec::new(),
+            usage:          None,
+            actor:          None,
         },
     )
     .await;
@@ -6624,8 +6618,8 @@ async fn list_run_stages_projects_retrying_until_completion() {
             status: "partially_succeeded".to_string(),
             preferred_label: None,
             suggested_next_ids: Vec::new(),
-            billing_by_model: Vec::new(),
-            billing: None,
+            usage_by_model: Vec::new(),
+            usage: None,
             failure: None,
             notes: None,
             files_touched: Vec::new(),
@@ -6700,7 +6694,7 @@ async fn list_run_stages_projects_running_stage_as_cancelled_after_cancelled_run
             final_git_commit_sha: None,
             final_patch:          None,
             diff_summary:         None,
-            billing:              None,
+            usage:                None,
         },
     )
     .await
@@ -6801,28 +6795,31 @@ async fn list_run_stages_includes_stage_model_usage() {
     );
 }
 
-fn test_billed_usage(
+fn test_priced_usage(
     model_id: &str,
     input_tokens: u64,
     output_tokens: u64,
-) -> fabro_types::BilledModelUsage {
-    let mut usage = fabro_types::BilledModelUsage::new(
+) -> fabro_types::ModelUsage {
+    fabro_types::ModelUsage::new(
         ModelRef::new(
             lithos_llm::catalog::builtin::openai(),
             ModelId::new(model_id),
         ),
-        TokenCounts {
-            input: input_tokens,
-            output: output_tokens,
-            ..TokenCounts::default()
+        Usage {
+            tokens: TokenCounts {
+                input: input_tokens,
+                output: output_tokens,
+                ..TokenCounts::default()
+            },
+            cost:   Some(Cost {
+                usd_micros: input_tokens + output_tokens,
+                source:     CostSource::Catalog,
+            }),
         },
-        None,
-    );
-    usage.total_usd_micros = Some(i64::try_from(input_tokens + output_tokens).unwrap());
-    usage
+    )
 }
 
-async fn create_billed_retry_run(state: &Arc<AppState>, run_id: RunId) {
+async fn create_priced_retry_run(state: &Arc<AppState>, run_id: RunId) {
     create_durable_run_with_events(state, run_id, &[
         workflow_event::Event::RunSubmitted {
             definition_blob: None,
@@ -6838,15 +6835,15 @@ async fn create_billed_retry_run(state: &Arc<AppState>, run_id: RunId) {
         "verify",
         1,
         &workflow_event::Event::StageFailed {
-            node_id:          "verify".to_string(),
-            name:             "Verify".to_string(),
-            index:            1,
-            failure:          FailureDetail::new("try again", FailureCategory::TransientInfra),
-            will_retry:       true,
-            timing:           fabro_types::StageTiming::wall_only(1200),
-            billing_by_model: Vec::new(),
-            billing:          Some(test_billed_usage("gpt-old", 100, 10)),
-            actor:            None,
+            node_id:        "verify".to_string(),
+            name:           "Verify".to_string(),
+            index:          1,
+            failure:        FailureDetail::new("try again", FailureCategory::TransientInfra),
+            will_retry:     true,
+            timing:         fabro_types::StageTiming::wall_only(1200),
+            usage_by_model: Vec::new(),
+            usage:          Some(test_priced_usage("gpt-old", 100, 10)),
+            actor:          None,
         },
     )
     .await;
@@ -6863,8 +6860,8 @@ async fn create_billed_retry_run(state: &Arc<AppState>, run_id: RunId) {
             status: "succeeded".to_string(),
             preferred_label: None,
             suggested_next_ids: Vec::new(),
-            billing_by_model: Vec::new(),
-            billing: Some(test_billed_usage("gpt-new", 200, 20)),
+            usage_by_model: Vec::new(),
+            usage: Some(test_priced_usage("gpt-new", 200, 20)),
             failure: None,
             notes: None,
             files_touched: Vec::new(),
@@ -6951,8 +6948,8 @@ async fn list_run_stages_distinguishes_visits() {
             status: "failed".to_string(),
             preferred_label: None,
             suggested_next_ids: Vec::new(),
-            billing_by_model: Vec::new(),
-            billing: None,
+            usage_by_model: Vec::new(),
+            usage: None,
             failure: None,
             notes: None,
             files_touched: Vec::new(),
@@ -7198,7 +7195,7 @@ async fn list_run_stages_exposes_parallel_branch_identity() {
 }
 
 #[tokio::test]
-async fn run_billing_includes_live_stage_timing_in_rows_and_totals() {
+async fn run_usage_includes_live_stage_timing_in_rows_and_totals() {
     let state = test_app_state_with_isolated_storage();
     let app = crate::test_support::build_test_router(Arc::clone(&state));
     let run_id = RunId::new();
@@ -7225,7 +7222,7 @@ async fn run_billing_includes_live_stage_timing_in_rows_and_totals() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri(api(&format!("/runs/{run_id}/billing")))
+                .uri(api(&format!("/runs/{run_id}/usage")))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -7242,10 +7239,10 @@ async fn run_billing_includes_live_stage_timing_in_rows_and_totals() {
 }
 
 /// `checkpoint.completed_nodes` records every visit, so a looped node appears
-/// once per re-entry. Billing must dedup so a retried node renders as one row
+/// once per re-entry. Usage must dedup so a retried node renders as one row
 /// and `runtime_secs` is summed across all visits exactly once.
 #[tokio::test]
-async fn run_billing_dedups_retried_nodes_and_sums_their_durations() {
+async fn run_usage_dedups_retried_nodes_and_sums_their_durations() {
     let state = test_app_state_with_isolated_storage();
     let app = crate::test_support::build_test_router(Arc::clone(&state));
     let run_id = RunId::new();
@@ -7273,8 +7270,8 @@ async fn run_billing_dedups_retried_nodes_and_sums_their_durations() {
             status: "failed".to_string(),
             preferred_label: None,
             suggested_next_ids: Vec::new(),
-            billing_by_model: Vec::new(),
-            billing: None,
+            usage_by_model: Vec::new(),
+            usage: None,
             failure: None,
             notes: None,
             files_touched: Vec::new(),
@@ -7305,8 +7302,8 @@ async fn run_billing_dedups_retried_nodes_and_sums_their_durations() {
             status: "succeeded".to_string(),
             preferred_label: None,
             suggested_next_ids: Vec::new(),
-            billing_by_model: Vec::new(),
-            billing: None,
+            usage_by_model: Vec::new(),
+            usage: None,
             failure: None,
             notes: None,
             files_touched: Vec::new(),
@@ -7359,7 +7356,7 @@ async fn run_billing_dedups_retried_nodes_and_sums_their_durations() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri(api(&format!("/runs/{run_id}/billing")))
+                .uri(api(&format!("/runs/{run_id}/usage")))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -7390,14 +7387,14 @@ async fn run_billing_dedups_retried_nodes_and_sums_their_durations() {
 }
 
 #[tokio::test]
-async fn run_billing_sums_usage_across_retry_visits_and_uses_latest_model() {
+async fn run_usage_sums_usage_across_retry_visits_and_uses_latest_model() {
     let state = test_app_state_with_isolated_storage();
     let app = crate::test_support::build_test_router(Arc::clone(&state));
     let run_id = RunId::new();
 
-    create_billed_retry_run(&state, run_id).await;
-    let success_usage = test_billed_usage("gpt-new", 200, 20);
-    let mut latest_outcome: Outcome<Option<fabro_types::BilledModelUsage>> = Outcome::success();
+    create_priced_retry_run(&state, run_id).await;
+    let success_usage = test_priced_usage("gpt-new", 200, 20);
+    let mut latest_outcome: Outcome<Option<fabro_types::ModelUsage>> = Outcome::success();
     latest_outcome.usage = Some(success_usage);
     latest_outcome.timing = Some(fabro_types::StageTiming::wall_only(800));
     let run_store = state.stores.runs.open_run(&run_id).await.unwrap();
@@ -7433,7 +7430,7 @@ async fn run_billing_sums_usage_across_retry_visits_and_uses_latest_model() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri(api(&format!("/runs/{run_id}/billing")))
+                .uri(api(&format!("/runs/{run_id}/usage")))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -7446,14 +7443,14 @@ async fn run_billing_sums_usage_across_retry_visits_and_uses_latest_model() {
     assert_eq!(stages[0]["stage"]["id"], "verify");
     assert_eq!(stages[0]["model"]["provider"], "openai");
     assert_eq!(stages[0]["model"]["model_id"], "gpt-new");
-    assert_eq!(stages[0]["billing"]["input_tokens"], 300);
-    assert_eq!(stages[0]["billing"]["output_tokens"], 30);
-    assert_eq!(stages[0]["billing"]["total_usd_micros"], 330);
+    assert_eq!(stages[0]["usage"]["tokens"]["input"], 300);
+    assert_eq!(stages[0]["usage"]["tokens"]["output"], 30);
+    assert_eq!(stages[0]["usage"]["cost"]["usd_micros"], 330);
     assert!(stages[0]["timing"]["wall_time_ms"].as_u64().unwrap() == 2000);
 
-    assert_eq!(body["totals"]["input_tokens"], 300);
-    assert_eq!(body["totals"]["output_tokens"], 30);
-    assert_eq!(body["totals"]["total_usd_micros"], 330);
+    assert_eq!(body["totals"]["usage"]["tokens"]["input"], 300);
+    assert_eq!(body["totals"]["usage"]["tokens"]["output"], 30);
+    assert_eq!(body["totals"]["usage"]["cost"]["usd_micros"], 330);
     assert!(body["totals"]["timing"]["wall_time_ms"].as_u64().unwrap() == 2000);
 
     let by_model = body["by_model"].as_array().unwrap();
@@ -7469,21 +7466,21 @@ async fn run_billing_sums_usage_across_retry_visits_and_uses_latest_model() {
     assert_eq!(old_model["model"]["provider"], "openai");
     assert_eq!(new_model["model"]["provider"], "openai");
     assert_eq!(old_model["stages"], 1);
-    assert_eq!(old_model["billing"]["input_tokens"], 100);
+    assert_eq!(old_model["usage"]["tokens"]["input"], 100);
     assert_eq!(new_model["stages"], 1);
-    assert_eq!(new_model["billing"]["input_tokens"], 200);
+    assert_eq!(new_model["usage"]["tokens"]["input"], 200);
 }
 
-/// The stage popover reads `billing` off the stages list, so it must be scoped
-/// to one visit — unlike the Billing tab's rows, which sum every visit of a
+/// The stage popover reads `usage` off the stages list, so it must be scoped
+/// to one visit — unlike the Usage tab's rows, which sum every visit of a
 /// node.
 #[tokio::test]
-async fn list_run_stages_reports_billing_per_visit() {
+async fn list_run_stages_reports_usage_per_visit() {
     let state = test_app_state_with_isolated_storage();
     let app = crate::test_support::build_test_router(Arc::clone(&state));
     let run_id = RunId::new();
 
-    create_billed_retry_run(&state, run_id).await;
+    create_priced_retry_run(&state, run_id).await;
 
     let response = app
         .oneshot(
@@ -7498,18 +7495,18 @@ async fn list_run_stages_reports_billing_per_visit() {
     let body = response_json!(response, StatusCode::OK).await;
 
     let first = stage_entry(&body, "verify@1");
-    assert_eq!(first["billing"]["input_tokens"], 100);
-    assert_eq!(first["billing"]["output_tokens"], 10);
-    assert_eq!(first["billing"]["total_usd_micros"], 110);
+    assert_eq!(first["usage"]["tokens"]["input"], 100);
+    assert_eq!(first["usage"]["tokens"]["output"], 10);
+    assert_eq!(first["usage"]["cost"]["usd_micros"], 110);
 
     let second = stage_entry(&body, "verify@2");
-    assert_eq!(second["billing"]["input_tokens"], 200);
-    assert_eq!(second["billing"]["output_tokens"], 20);
-    assert_eq!(second["billing"]["total_usd_micros"], 220);
+    assert_eq!(second["usage"]["tokens"]["input"], 200);
+    assert_eq!(second["usage"]["tokens"]["output"], 20);
+    assert_eq!(second["usage"]["cost"]["usd_micros"], 220);
 }
 
 #[tokio::test]
-async fn list_run_stages_reports_zero_billing_for_a_stage_that_called_no_model() {
+async fn list_run_stages_reports_zero_usage_for_a_stage_that_called_no_model() {
     let state = test_app_state_with_isolated_storage();
     let app = crate::test_support::build_test_router(Arc::clone(&state));
     let run_id = RunId::new();
@@ -7537,11 +7534,11 @@ async fn list_run_stages_reports_zero_billing_for_a_stage_that_called_no_model()
         .unwrap();
     let body = response_json!(response, StatusCode::OK).await;
 
-    let billing = &stage_entry(&body, "script@1")["billing"];
-    assert_eq!(billing["input_tokens"], 0);
-    assert_eq!(billing["output_tokens"], 0);
+    let usage = &stage_entry(&body, "script@1")["usage"];
+    assert_eq!(usage["tokens"]["input"], 0);
+    assert_eq!(usage["tokens"]["output"], 0);
     // No model ran, so there is nothing to price — not a $0.00 cost.
-    assert!(billing.get("total_usd_micros").is_none());
+    assert!(usage.get("cost").is_none());
 }
 
 #[tokio::test]
@@ -7582,15 +7579,15 @@ async fn list_run_stages_shows_retrying_after_failed_event() {
         "work",
         1,
         &workflow_event::Event::StageFailed {
-            node_id:          "work".to_string(),
-            name:             "Work".to_string(),
-            index:            0,
-            failure:          FailureDetail::new("flake", FailureCategory::TransientInfra),
-            will_retry:       true,
-            timing:           fabro_types::StageTiming::wall_only(5),
-            billing_by_model: Vec::new(),
-            billing:          None,
-            actor:            None,
+            node_id:        "work".to_string(),
+            name:           "Work".to_string(),
+            index:          0,
+            failure:        FailureDetail::new("flake", FailureCategory::TransientInfra),
+            will_retry:     true,
+            timing:         fabro_types::StageTiming::wall_only(5),
+            usage_by_model: Vec::new(),
+            usage:          None,
+            actor:          None,
         },
     )
     .await;
@@ -7665,15 +7662,15 @@ async fn list_run_stages_shows_retrying_when_failed_will_retry() {
         "work",
         1,
         &workflow_event::Event::StageFailed {
-            node_id:          "work".to_string(),
-            name:             "Work".to_string(),
-            index:            0,
-            failure:          FailureDetail::new("flake", FailureCategory::TransientInfra),
-            will_retry:       true,
-            timing:           fabro_types::StageTiming::wall_only(5),
-            billing_by_model: Vec::new(),
-            billing:          None,
-            actor:            None,
+            node_id:        "work".to_string(),
+            name:           "Work".to_string(),
+            index:          0,
+            failure:        FailureDetail::new("flake", FailureCategory::TransientInfra),
+            will_retry:     true,
+            timing:         fabro_types::StageTiming::wall_only(5),
+            usage_by_model: Vec::new(),
+            usage:          None,
+            actor:          None,
         },
     )
     .await;
@@ -7694,7 +7691,7 @@ async fn list_run_stages_shows_retrying_when_failed_will_retry() {
 }
 
 #[tokio::test]
-async fn run_billing_retried_node_then_succeeded_emits_one_row_with_final_attempt_duration() {
+async fn run_usage_retried_node_then_succeeded_emits_one_row_with_final_attempt_duration() {
     let state = test_app_state_with_isolated_storage();
     let app = crate::test_support::build_test_router(Arc::clone(&state));
     let run_id = RunId::new();
@@ -7716,15 +7713,15 @@ async fn run_billing_retried_node_then_succeeded_emits_one_row_with_final_attemp
             max_attempts:          3,
         },
         workflow_event::Event::StageFailed {
-            node_id:          "work".to_string(),
-            name:             "Work".to_string(),
-            index:            0,
-            failure:          FailureDetail::new("transient", FailureCategory::TransientInfra),
-            will_retry:       true,
-            timing:           fabro_types::StageTiming::wall_only(10),
-            billing_by_model: Vec::new(),
-            billing:          None,
-            actor:            None,
+            node_id:        "work".to_string(),
+            name:           "Work".to_string(),
+            index:          0,
+            failure:        FailureDetail::new("transient", FailureCategory::TransientInfra),
+            will_retry:     true,
+            timing:         fabro_types::StageTiming::wall_only(10),
+            usage_by_model: Vec::new(),
+            usage:          None,
+            actor:          None,
         },
         workflow_event::Event::StageRetrying {
             node_id:      "work".to_string(),
@@ -7752,8 +7749,8 @@ async fn run_billing_retried_node_then_succeeded_emits_one_row_with_final_attemp
             status: "succeeded".to_string(),
             preferred_label: None,
             suggested_next_ids: Vec::new(),
-            billing_by_model: Vec::new(),
-            billing: None,
+            usage_by_model: Vec::new(),
+            usage: None,
             failure: None,
             notes: None,
             files_touched: Vec::new(),
@@ -7774,7 +7771,7 @@ async fn run_billing_retried_node_then_succeeded_emits_one_row_with_final_attemp
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri(api(&format!("/runs/{run_id}/billing")))
+                .uri(api(&format!("/runs/{run_id}/usage")))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -7824,8 +7821,8 @@ fn revisit_test_completed_with_visit(
         status: "succeeded".to_string(),
         preferred_label: None,
         suggested_next_ids: Vec::new(),
-        billing_by_model: Vec::new(),
-        billing: None,
+        usage_by_model: Vec::new(),
+        usage: None,
         failure: None,
         notes: None,
         files_touched: Vec::new(),
@@ -7842,7 +7839,7 @@ fn revisit_test_completed_with_visit(
 }
 
 #[tokio::test]
-async fn run_billing_revisited_node_collapses_to_two_rows_with_summed_visit_duration() {
+async fn run_usage_revisited_node_collapses_to_two_rows_with_summed_visit_duration() {
     let state = test_app_state_with_isolated_storage();
     let app = crate::test_support::build_test_router(Arc::clone(&state));
     let run_id = RunId::new();
@@ -7868,7 +7865,7 @@ async fn run_billing_revisited_node_collapses_to_two_rows_with_summed_visit_dura
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri(api(&format!("/runs/{run_id}/billing")))
+                .uri(api(&format!("/runs/{run_id}/usage")))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -7942,11 +7939,10 @@ async fn create_unreadable_durable_run(state: &Arc<AppState>, run_id: RunId) {
             artifact_count:       0,
             status:               "legacy-status".to_string(),
             reason:               SuccessReason::Completed,
-            total_usd_micros:     None,
             final_git_commit_sha: None,
             final_patch:          None,
             diff_summary:         None,
-            billing:              None,
+            usage:                None,
         },
         "2026-05-05T20:46:33Z".parse().unwrap(),
         None,
@@ -8280,11 +8276,10 @@ async fn create_completed_run_ready_for_pull_request(
             artifact_count:       0,
             status:               "succeeded".to_string(),
             reason:               SuccessReason::Completed,
-            total_usd_micros:     None,
             final_git_commit_sha: Some("final-sha".to_string()),
             final_patch:          Some(final_patch.to_string()),
             diff_summary:         None,
-            billing:              None,
+            usage:                None,
         },
     ])
     .await;
@@ -11889,18 +11884,18 @@ async fn run_projection_endpoints_reflect_events_appended_to_an_open_run() {
     let checkpoint = response_json!(checkpoint, StatusCode::OK).await;
     assert_eq!(checkpoint["git_commit_sha"].as_str(), Some("cache-sha"));
 
-    let billing = app
+    let usage = app
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri(api(&format!("/runs/{run_id}/billing")))
+                .uri(api(&format!("/runs/{run_id}/usage")))
                 .body(Body::empty())
                 .unwrap(),
         )
         .await
         .unwrap();
-    let billing = response_json!(billing, StatusCode::OK).await;
-    assert_eq!(billing["stages"][0]["stage"]["id"].as_str(), Some("review"));
+    let usage = response_json!(usage, StatusCode::OK).await;
+    assert_eq!(usage["stages"][0]["stage"]["id"].as_str(), Some("review"));
 }
 
 #[tokio::test]
@@ -13377,7 +13372,7 @@ async fn worker_token_is_rejected_on_user_only_routes() {
             Method::GET,
             format!("/runs/{run_id}/stages/code@2/artifacts/download"),
         ),
-        (Method::GET, format!("/runs/{run_id}/billing")),
+        (Method::GET, format!("/runs/{run_id}/usage")),
         (Method::GET, format!("/runs/{run_id}/settings")),
         (Method::POST, format!("/runs/{run_id}/preview")),
         (Method::POST, format!("/runs/{run_id}/ssh")),
@@ -13854,11 +13849,10 @@ async fn patch_run_title_updates_active_and_archived_runs() {
             artifact_count:       0,
             status:               "succeeded".to_string(),
             reason:               SuccessReason::Completed,
-            total_usd_micros:     None,
             final_git_commit_sha: None,
             final_patch:          None,
             diff_summary:         None,
-            billing:              None,
+            usage:                None,
         },
     )
     .await
@@ -14138,11 +14132,10 @@ async fn retry_succeeded_run_creates_and_queues_new_run() {
             artifact_count:       0,
             status:               "succeeded".to_string(),
             reason:               SuccessReason::Completed,
-            total_usd_micros:     None,
             final_git_commit_sha: None,
             final_patch:          None,
             diff_summary:         None,
-            billing:              None,
+            usage:                None,
         },
     ])
     .await;
@@ -14277,11 +14270,10 @@ async fn cancel_terminal_durable_run_returns_conflict() {
             artifact_count:       0,
             status:               "succeeded".to_string(),
             reason:               SuccessReason::Completed,
-            total_usd_micros:     None,
             final_git_commit_sha: None,
             final_patch:          None,
             diff_summary:         None,
-            billing:              None,
+            usage:                None,
         },
     ])
     .await;
@@ -14327,11 +14319,10 @@ async fn steer_terminal_durable_run_returns_run_not_steerable() {
             artifact_count:       0,
             status:               "succeeded".to_string(),
             reason:               SuccessReason::Completed,
-            total_usd_micros:     None,
             final_git_commit_sha: None,
             final_patch:          None,
             diff_summary:         None,
-            billing:              None,
+            usage:                None,
         },
     ])
     .await;
@@ -14768,8 +14759,8 @@ async fn active_acp_steerable_marker_clears_on_terminal_paths() {
             status: "success".to_string(),
             preferred_label: None,
             suggested_next_ids: Vec::new(),
-            billing_by_model: Vec::new(),
-            billing: None,
+            usage_by_model: Vec::new(),
+            usage: None,
             failure: None,
             notes: None,
             files_touched: Vec::new(),
@@ -14784,15 +14775,15 @@ async fn active_acp_steerable_marker_clears_on_terminal_paths() {
             max_attempts: 1,
         },
         workflow_event::Event::StageFailed {
-            node_id:          "agent".to_string(),
-            name:             "agent".to_string(),
-            index:            0,
-            failure:          FailureDetail::new("failed", FailureCategory::Deterministic),
-            will_retry:       false,
-            timing:           fabro_types::StageTiming::wall_only(1),
-            billing_by_model: Vec::new(),
-            billing:          None,
-            actor:            None,
+            node_id:        "agent".to_string(),
+            name:           "agent".to_string(),
+            index:          0,
+            failure:        FailureDetail::new("failed", FailureCategory::Deterministic),
+            will_retry:     false,
+            timing:         fabro_types::StageTiming::wall_only(1),
+            usage_by_model: Vec::new(),
+            usage:          None,
+            actor:          None,
         },
     ];
 
@@ -15154,7 +15145,8 @@ async fn list_runs_returns_started_run() {
     assert!(run_json_status(&items[0]).is_object());
     assert!(items[0]["labels"].is_object());
     assert!(run_json_pending_control(&items[0]).is_null());
-    assert!(items[0]["billing"].is_null());
+    assert_eq!(items[0]["usage"]["tokens"]["input"], 0);
+    assert!(items[0]["usage"].get("cost").is_none());
 }
 
 #[tokio::test]
@@ -15174,11 +15166,10 @@ async fn archive_and_unarchive_updates_listing_visibility() {
             artifact_count:       0,
             status:               "succeeded".to_string(),
             reason:               SuccessReason::Completed,
-            total_usd_micros:     None,
             final_git_commit_sha: None,
             final_patch:          None,
             diff_summary:         None,
-            billing:              None,
+            usage:                None,
         },
     ])
     .await;
@@ -15291,11 +15282,10 @@ fn workflow_completed_event() -> workflow_event::Event {
         artifact_count:       0,
         status:               "succeeded".to_string(),
         reason:               SuccessReason::Completed,
-        total_usd_micros:     None,
         final_git_commit_sha: None,
         final_patch:          None,
         diff_summary:         None,
-        billing:              None,
+        usage:                None,
     }
 }
 
@@ -16116,11 +16106,10 @@ async fn delete_run_retry_after_missing_provider_resource_removes_metadata() {
             artifact_count:       0,
             status:               "succeeded".to_string(),
             reason:               SuccessReason::Completed,
-            total_usd_micros:     None,
             final_git_commit_sha: None,
             final_patch:          None,
             diff_summary:         None,
-            billing:              None,
+            usage:                None,
         },
     ])
     .await;
@@ -16225,54 +16214,51 @@ async fn delete_active_run_force_succeeds() {
 }
 
 #[tokio::test]
-async fn get_aggregate_billing_returns_zeros_initially() {
+async fn get_aggregate_usage_returns_zeros_initially() {
     let state = test_app_state();
     let app = crate::test_support::build_test_router(Arc::clone(&state));
 
     let req = Request::builder()
         .method("GET")
-        .uri(api("/billing"))
+        .uri(api("/usage"))
         .body(Body::empty())
         .unwrap();
 
     let response = app.oneshot(req).await.unwrap();
     let body = response_json!(response, StatusCode::OK).await;
     assert_eq!(body["totals"]["runs"].as_i64().unwrap(), 0);
-    assert_eq!(body["totals"]["input_tokens"].as_i64().unwrap(), 0);
-    assert_eq!(body["totals"]["output_tokens"].as_i64().unwrap(), 0);
+    assert_eq!(
+        body["totals"]["usage"]["tokens"]["input"].as_u64().unwrap(),
+        0
+    );
+    assert_eq!(
+        body["totals"]["usage"]["tokens"]["output"]
+            .as_u64()
+            .unwrap(),
+        0
+    );
     assert_eq!(
         body["totals"]["timing"]["wall_time_ms"].as_u64().unwrap(),
         0
     );
-    assert!(body["totals"]["total_usd_micros"].is_null());
+    assert!(body["totals"]["usage"].get("cost").is_none());
     assert!(body["by_model"].as_array().unwrap().is_empty());
 }
 
 #[tokio::test]
-async fn get_aggregate_billing_returns_provider_model_speed_identity() {
+async fn get_aggregate_usage_returns_provider_model_speed_identity() {
     let state = test_app_state();
     {
-        let mut agg = state
-            .aggregate_billing
-            .lock()
-            .expect("aggregate billing lock");
+        let mut agg = state.aggregate_usage.lock().expect("aggregate usage lock");
         agg.total_runs = 1;
         agg.by_model.insert(
             ModelRef::new(
                 lithos_llm::catalog::builtin::anthropic(),
                 ModelId::new("claude-opus-4-6"),
             ),
-            ModelBillingTotals {
-                stages:  1,
-                billing: BilledTokenCounts {
-                    input_tokens:       10,
-                    output_tokens:      1,
-                    total_tokens:       11,
-                    reasoning_tokens:   0,
-                    cache_read_tokens:  0,
-                    cache_write_tokens: 0,
-                    total_usd_micros:   Some(11),
-                },
+            ModelUsageTotals {
+                stages: 1,
+                usage:  test_priced_usage("claude-opus-4-6", 10, 1).usage,
             },
         );
         agg.by_model.insert(
@@ -16281,17 +16267,9 @@ async fn get_aggregate_billing_returns_provider_model_speed_identity() {
                 ModelId::new("claude-opus-4-6"),
             )
             .with_speed(Some(Speed::Fast)),
-            ModelBillingTotals {
-                stages:  1,
-                billing: BilledTokenCounts {
-                    input_tokens:       20,
-                    output_tokens:      2,
-                    total_tokens:       22,
-                    reasoning_tokens:   0,
-                    cache_read_tokens:  0,
-                    cache_write_tokens: 0,
-                    total_usd_micros:   Some(22),
-                },
+            ModelUsageTotals {
+                stages: 1,
+                usage:  test_priced_usage("claude-opus-4-6", 20, 2).usage,
             },
         );
     }
@@ -16301,7 +16279,7 @@ async fn get_aggregate_billing_returns_provider_model_speed_identity() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri(api("/billing"))
+                .uri(api("/usage"))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -16321,31 +16299,31 @@ async fn get_aggregate_billing_returns_provider_model_speed_identity() {
         .unwrap();
     assert_eq!(standard["model"]["provider"], "anthropic");
     assert_eq!(standard["model"]["model_id"], "claude-opus-4-6");
-    assert_eq!(standard["billing"]["input_tokens"], 10);
+    assert_eq!(standard["usage"]["tokens"]["input"], 10);
     assert_eq!(fast["model"]["provider"], "anthropic");
     assert_eq!(fast["model"]["model_id"], "claude-opus-4-6");
-    assert_eq!(fast["billing"]["input_tokens"], 20);
+    assert_eq!(fast["usage"]["tokens"]["input"], 20);
 }
 
 #[tokio::test]
-async fn get_aggregate_billing_saturates_total_cost_across_models() {
+async fn get_aggregate_usage_saturates_total_cost_across_models() {
     let state = test_app_state();
     {
-        let mut agg = state
-            .aggregate_billing
-            .lock()
-            .expect("aggregate billing lock");
-        for (model_id, total_usd_micros) in [("maximum", i64::MAX), ("one", 1)] {
+        let mut agg = state.aggregate_usage.lock().expect("aggregate usage lock");
+        for (model_id, usd_micros) in [("maximum", u64::MAX), ("one", 1)] {
             agg.by_model.insert(
                 ModelRef::new(
                     lithos_llm::catalog::builtin::openai(),
                     ModelId::new(model_id),
                 ),
-                ModelBillingTotals {
-                    stages:  1,
-                    billing: BilledTokenCounts {
-                        total_usd_micros: Some(total_usd_micros),
-                        ..BilledTokenCounts::default()
+                ModelUsageTotals {
+                    stages: 1,
+                    usage:  Usage {
+                        tokens: TokenCounts::default(),
+                        cost:   Some(Cost {
+                            usd_micros,
+                            source: CostSource::Catalog,
+                        }),
                     },
                 },
             );
@@ -16357,7 +16335,7 @@ async fn get_aggregate_billing_saturates_total_cost_across_models() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri(api("/billing"))
+                .uri(api("/usage"))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -16365,63 +16343,42 @@ async fn get_aggregate_billing_saturates_total_cost_across_models() {
         .unwrap();
     let body = response_json!(response, StatusCode::OK).await;
 
-    assert_eq!(body["totals"]["total_usd_micros"].as_i64(), Some(i64::MAX));
+    assert_eq!(
+        body["totals"]["usage"]["cost"]["usd_micros"].as_u64(),
+        Some(u64::MAX)
+    );
 }
 
 #[test]
-fn aggregate_billing_counts_projection_rollup_usage_visits() {
-    let mut accumulator = BillingAccumulator::default();
-    let rollup = fabro_workflow::ProjectionBillingRollup {
-        stages:             Vec::new(),
-        totals:             BilledTokenCounts {
-            input_tokens:       300,
-            output_tokens:      30,
-            total_tokens:       330,
-            reasoning_tokens:   0,
-            cache_read_tokens:  0,
-            cache_write_tokens: 0,
-            total_usd_micros:   Some(330),
-        },
-        by_model:           vec![
-            fabro_workflow::ProjectionBillingByModel {
-                model:   ModelRef::new(
+fn aggregate_usage_counts_projection_rollup_usage_visits() {
+    let mut accumulator = UsageAccumulator::default();
+    let rollup = fabro_workflow::ProjectionUsageRollup {
+        stages:            Vec::new(),
+        totals:            test_priced_usage("gpt-5.4", 300, 30).usage,
+        by_model:          vec![
+            fabro_workflow::ProjectionUsageByModel {
+                model:  ModelRef::new(
                     lithos_llm::catalog::builtin::openai(),
                     ModelId::new("gpt-5.4"),
                 ),
-                stages:  1,
-                billing: BilledTokenCounts {
-                    input_tokens:       100,
-                    output_tokens:      10,
-                    total_tokens:       110,
-                    reasoning_tokens:   0,
-                    cache_read_tokens:  0,
-                    cache_write_tokens: 0,
-                    total_usd_micros:   Some(110),
-                },
+                stages: 1,
+                usage:  test_priced_usage("gpt-5.4", 100, 10).usage,
             },
-            fabro_workflow::ProjectionBillingByModel {
-                model:   ModelRef::new(
+            fabro_workflow::ProjectionUsageByModel {
+                model:  ModelRef::new(
                     lithos_llm::catalog::builtin::openai(),
                     ModelId::new("gpt-5.4"),
                 )
                 .with_speed(Some(Speed::Fast)),
-                stages:  1,
-                billing: BilledTokenCounts {
-                    input_tokens:       200,
-                    output_tokens:      20,
-                    total_tokens:       220,
-                    reasoning_tokens:   0,
-                    cache_read_tokens:  0,
-                    cache_write_tokens: 0,
-                    total_usd_micros:   Some(220),
-                },
+                stages: 1,
+                usage:  test_priced_usage("gpt-5.4", 200, 20).usage,
             },
         ],
-        timing:             fabro_types::RunTiming::wall_only(2000),
-        billed_visit_count: 2,
+        timing:            fabro_types::RunTiming::wall_only(2000),
+        usage_visit_count: 2,
     };
 
-    accumulate_billing_rollup(&mut accumulator, &rollup);
+    accumulate_usage_rollup(&mut accumulator, &rollup);
 
     assert_eq!(accumulator.total_runs, 1);
     assert_eq!(accumulator.total_timing.wall_time_ms, 2000);
@@ -16439,8 +16396,9 @@ fn aggregate_billing_counts_projection_rollup_usage_visits() {
             lithos_llm::catalog::builtin::openai(),
             ModelId::new("gpt-5.4")
         )]
-            .billing
-            .input_tokens,
+            .usage
+            .tokens
+            .input,
         100
     );
     assert_eq!(
@@ -16458,8 +16416,9 @@ fn aggregate_billing_counts_projection_rollup_usage_visits() {
             ModelId::new("gpt-5.4")
         )
         .with_speed(Some(Speed::Fast))]
-            .billing
-            .input_tokens,
+            .usage
+            .tokens
+            .input,
         200
     );
 }
@@ -17797,11 +17756,10 @@ async fn attach_stream_replays_agent_message_reasoning() {
             artifact_count:       0,
             status:               "succeeded".to_string(),
             reason:               SuccessReason::Completed,
-            total_usd_micros:     None,
             final_git_commit_sha: None,
             final_patch:          None,
             diff_summary:         None,
-            billing:              None,
+            usage:                None,
         },
     ])
     .await;
@@ -18388,7 +18346,8 @@ async fn list_runs_returns_run_list_items() {
     assert!(run_json_status(item).is_object());
     assert!(item["timestamps"]["created_at"].is_string());
     assert!(run_json_pending_control(item).is_null());
-    assert!(item["billing"].is_null());
+    assert_eq!(item["usage"]["tokens"]["input"], 0);
+    assert!(item["usage"].get("cost").is_none());
 }
 
 #[tokio::test]
@@ -18456,11 +18415,10 @@ async fn list_runs_excludes_archived_by_default() {
             artifact_count:       0,
             status:               "succeeded".to_string(),
             reason:               SuccessReason::Completed,
-            total_usd_micros:     None,
             final_git_commit_sha: None,
             final_patch:          None,
             diff_summary:         None,
-            billing:              None,
+            usage:                None,
         },
         workflow_event::Event::RunArchived { actor: None },
     ])
@@ -18500,11 +18458,10 @@ async fn list_runs_includes_archived_when_flag_set() {
             artifact_count:       0,
             status:               "succeeded".to_string(),
             reason:               SuccessReason::Completed,
-            total_usd_micros:     None,
             final_git_commit_sha: None,
             final_patch:          None,
             diff_summary:         None,
-            billing:              None,
+            usage:                None,
         },
         workflow_event::Event::RunArchived { actor: None },
     ])
@@ -18520,11 +18477,10 @@ async fn list_runs_includes_archived_when_flag_set() {
             artifact_count:       0,
             status:               "succeeded".to_string(),
             reason:               SuccessReason::Completed,
-            total_usd_micros:     None,
             final_git_commit_sha: None,
             final_patch:          None,
             diff_summary:         None,
-            billing:              None,
+            usage:                None,
         },
     ])
     .await;
@@ -18578,11 +18534,10 @@ async fn get_run_exposes_canonical_operator_statuses() {
             artifact_count:       0,
             status:               "succeeded".to_string(),
             reason:               SuccessReason::Completed,
-            total_usd_micros:     None,
             final_git_commit_sha: None,
             final_patch:          None,
             diff_summary:         None,
-            billing:              None,
+            usage:                None,
         },
     ])
     .await;
@@ -18663,11 +18618,10 @@ async fn list_runs_preserves_underlying_run_status_payloads() {
             artifact_count:       0,
             status:               "succeeded".to_string(),
             reason:               SuccessReason::Completed,
-            total_usd_micros:     None,
             final_git_commit_sha: None,
             final_patch:          None,
             diff_summary:         None,
-            billing:              None,
+            usage:                None,
         },
     ])
     .await;
@@ -18948,11 +18902,10 @@ async fn list_runs_status_filter_accepts_repeated_values() {
             artifact_count:       0,
             status:               "succeeded".to_string(),
             reason:               SuccessReason::Completed,
-            total_usd_micros:     None,
             final_git_commit_sha: None,
             final_patch:          None,
             diff_summary:         None,
-            billing:              None,
+            usage:                None,
         },
     ])
     .await;
@@ -19085,11 +19038,10 @@ async fn list_runs_sort_by_status_groups_by_bucket() {
             artifact_count:       0,
             status:               "succeeded".to_string(),
             reason:               SuccessReason::Completed,
-            total_usd_micros:     None,
             final_git_commit_sha: None,
             final_patch:          None,
             diff_summary:         None,
-            billing:              None,
+            usage:                None,
         },
     ])
     .await;

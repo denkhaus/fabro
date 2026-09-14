@@ -12,7 +12,7 @@ mod validate;
 pub use execute::execute;
 pub(crate) use finalize::build_conclusion_from_store;
 #[cfg(any(test, feature = "test-support"))]
-pub(crate) use finalize::{billing_from_projection, build_terminal_event};
+pub(crate) use finalize::{build_terminal_event, usage_from_projection};
 pub use finalize::{classify_engine_result, conclude, finalize};
 pub use initialize::initialize;
 pub use parse::parse;

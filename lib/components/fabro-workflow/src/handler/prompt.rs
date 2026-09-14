@@ -150,7 +150,7 @@ impl Handler for PromptHandler {
                 response: response_text.clone(),
                 model:    response_model,
                 provider: response_provider,
-                billing:  stage_usage.clone(),
+                usage:    stage_usage.clone(),
             },
             &stage_scope,
         );

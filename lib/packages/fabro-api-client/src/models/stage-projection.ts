@@ -18,16 +18,10 @@
 import type { AgentSessionProjection } from './agent-session-projection';
 // May contain unused imports in some cases
 // @ts-ignore
-import type { BilledModelUsage } from './billed-model-usage';
-// May contain unused imports in some cases
-// @ts-ignore
-import type { BilledTokenCounts } from './billed-token-counts';
-// May contain unused imports in some cases
-// @ts-ignore
-import type { BillingModelRef } from './billing-model-ref';
-// May contain unused imports in some cases
-// @ts-ignore
 import type { CommandTermination } from './command-termination';
+// May contain unused imports in some cases
+// @ts-ignore
+import type { ModelUsage } from './model-usage';
 // May contain unused imports in some cases
 // @ts-ignore
 import type { ParallelBranchResult } from './parallel-branch-result';
@@ -55,6 +49,12 @@ import type { StageToolBatchProjection } from './stage-tool-batch-projection';
 // May contain unused imports in some cases
 // @ts-ignore
 import type { ToolSummary } from './tool-summary';
+// May contain unused imports in some cases
+// @ts-ignore
+import type { Usage } from './usage';
+// May contain unused imports in some cases
+// @ts-ignore
+import type { UsageModelRef } from './usage-model-ref';
 
 /**
  * Observable projection data for one workflow stage execution.
@@ -100,8 +100,11 @@ export interface StageProjection {
      */
     'live_tool_ms'?: number;
     'tool_batch'?: StageToolBatchProjection | null;
-    'usage': BilledTokenCounts;
-    'model'?: BillingModelRef | null;
+    /**
+     * The stage\'s usage: while the stage runs, its agent\'s own accounting of the session tree with whatever cost the provider reported; once it ends, the same tokens with the catalog\'s price where the provider reported none.
+     */
+    'usage': Usage;
+    'model'?: UsageModelRef | null;
     'permission_level'?: PermissionLevel | null;
     /**
      * Effective model-callable tools exposed to this agent stage session. Tool parameter schemas are intentionally omitted from this projection.
@@ -113,9 +116,9 @@ export interface StageProjection {
      */
     'acp_started_at'?: string | null;
     /**
-     * The completed stage\'s `usage` split by model, as `stage.completed` reported it: the root session\'s route and each subagent\'s own model, a subagent whose model the catalog does not know billed at the root\'s. Sums to `usage`. Empty while the stage runs and for stages without a coding agent; the billing rollup then bills `usage` to `model`.
+     * The completed stage\'s `usage` split by model, as `stage.completed` reported it: the root session\'s route and each subagent\'s own model, a subagent whose model the catalog does not know priced at the root\'s. Sums to `usage`. Empty while the stage runs and for stages without a coding agent; the usage rollup then puts `usage` under `model`.
      */
-    'billing_by_model'?: Array<BilledModelUsage>;
+    'usage_by_model'?: Array<ModelUsage>;
     'agent'?: AgentSessionProjection | null;
     /**
      * Lifecycle state of the stage projection.

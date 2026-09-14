@@ -36,7 +36,7 @@ fn run_failed_serializes_nested_failure_contract() {
         final_git_commit_sha: Some("abc123".to_string()),
         final_patch:          Some("diff --git a/file b/file".to_string()),
         diff_summary:         None,
-        billing:              None,
+        usage:                None,
     });
 
     let value = serde_json::to_value(&body).expect("run.failed body should serialize");
@@ -90,7 +90,7 @@ fn run_failed_omits_empty_failure_optional_fields() {
         final_git_commit_sha: None,
         final_patch:          None,
         diff_summary:         None,
-        billing:              None,
+        usage:                None,
     });
 
     let value = serde_json::to_value(&body).expect("run.failed body should serialize");
@@ -135,7 +135,7 @@ fn conclusion_serializes_rich_failure() {
         }),
         final_git_commit_sha: None,
         stages:               Vec::new(),
-        billing:              None,
+        usage:                None,
         total_retries:        0,
         diff:                 RunDiff::default(),
     };
