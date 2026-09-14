@@ -28,9 +28,15 @@ When your decision is "Work":
    and the same for `.fabro/workflows/revisor`. The closure is every
    file the packager needs: `workflow.toml`, `workflow.fabro`,
    `prompts/*.md`, `schemas/*.json`, referenced `scripts/*.nu`.
-2. Register: `fabro_workflow_version_create {"entrypoint": "workflow.toml", "files": {...}}` —
-   once for develop, once for revisor. If the packager names a missing
-   dependency, add exactly that file and retry once.
+2. Register: `fabro_workflow_version_create {"entrypoint": "<slug>/workflow.toml", "files": {"<slug>/workflow.toml": ..., "<slug>/workflow.fabro": ..., "<slug>/prompts/...": ...}}` —
+   once for develop, once for revisor. The `<slug>/` DIRECTORY PREFIX on the
+   entrypoint and EVERY file key is MANDATORY (fabro-9cb0: a bare
+   `workflow.toml` entrypoint collapses the run's workflow_slug to
+   "workflow", which makes the run invisible to every `workflow=<slug>`
+   filter — the revisor selector and the backlog checks listed 0 runs while
+   terminal runs existed). Collect the closure from the REPO ROOT with
+   `<slug>/`-prefixed paths, never from inside the workflow directory.
+   If the packager names a missing dependency, add exactly that file and retry once.
 3. Emit BOTH ids as context keys — `develop_workflow_version_id` and
    `revisor_workflow_version_id` (64 hex each) via `context_updates` —
    and journal them under `observations` with the closure path.
