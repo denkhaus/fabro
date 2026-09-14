@@ -43,6 +43,16 @@ def main [target: string = ""] {
         print -e $result.stderr
         exit $result.exit_code
     }
+    # Loop assets are code, not just graph references: the nushell tier
+    # (parse + interpolated-regex scan) runs with graph validation so a
+    # broken script never ships past the host check (scripts/verify.nu
+    # class, run 01M2GVW7GGGB).
+    let lint = (do { ^nu scripts/lint-nu.nu } | complete)
+    print $lint.stdout
+    if ($lint.exit_code != 0) {
+        print -e $lint.stderr
+        exit $lint.exit_code
+    }
 }
 
 # Resolve the target (or all workflows) to a list of graph file paths.

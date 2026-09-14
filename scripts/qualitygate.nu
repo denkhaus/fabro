@@ -100,20 +100,17 @@ def check-fmt [] {
 # no-op gate (run 01M23TE61D4Y).
 def check-loop-assets [] {
     print '== checking loop-asset scripts =='
-    let scripts = (ls .fabro/workflows/develop/scripts/*.nu | get name | sort)
-    mut green = true
-    for s in $scripts {
-        # --ide-check exits 0 even on parse errors: diagnostics are JSON
-        # lines on stdout; an Error-severity line is the failure signal.
-        let res = (do { ^nu --ide-check 10 $s } | complete)
-        let errors = ($res.stdout | lines | where {|l| $l | str contains '"severity":"Error"' })
-        if ($errors | is-not-empty) {
-            print $"loop-asset parse check FAILED: ($s)"
-            print ($errors | last 5)
-            $green = false
-        }
+    # Full-repo nushell tier (lint-nu.nu): parse check of EVERY script —
+    # repo scripts/ and all workflow assets, not just develop's — plus the
+    # interpolated-regex scan that parse checks cannot see (verify.nu
+    # class, run 01M2GVW7GGGB). The gate previously walked develop
+    # scripts only; scripts/verify.nu shipped broken through that gap.
+    let lint = (do { ^nu scripts/lint-nu.nu } | complete)
+    print $lint.stdout
+    if ($lint.exit_code != 0) {
+        print $lint.stderr
+        return false
     }
-    if not $green { return false }
     let smoke = '.fabro/workflows/develop/scripts/evidence-smoke.nu'
     let res = (do { ^nu $smoke } | complete)
     if $res.exit_code != 0 {

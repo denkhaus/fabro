@@ -190,3 +190,8 @@ cycle *args:
 #   just validate-workflows develop
 validate-workflows target="":
     nu scripts/validate-workflows.nu {{ if target == "" { "" } else { target } }}
+
+# Lint every nushell script: parse check (nu --ide-check) + the
+# interpolated-regex scan that parse tools cannot see (verify.nu class).
+lint-nu:
+    nu scripts/lint-nu.nu

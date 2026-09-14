@@ -38,7 +38,11 @@ def run-base [] {
     if ($run_id | is-not-empty) {
         let subjects = (git log --format='%H %s' -n 40)
         let checkpoint = ($subjects | lines | where {|l|
-            ($l | parse --regex $'^(?P<sha>[0-9a-f]+) fabro\(($run_id)\): ' | get -o sha.0 | is-not-empty)
+            # Plain-string concatenation, NOT $'...' interpolation: an
+            # interpolated string parses every (...) — including the regex
+            # group (?P<sha>...) — as a subexpression (parse bug found by
+            # run 01M2GVW7GGGB's implementer; lint-nu guards the class).
+            ($l | parse --regex ('^(?P<sha>[0-9a-f]+) fabro\(' + $run_id + '\): ') | get -o sha.0 | is-not-empty)
         })
         if ($checkpoint | is-not-empty) {
             let sha = ($checkpoint | first | parse --regex '^(?P<sha>[0-9a-f]+)' | get sha.0)
