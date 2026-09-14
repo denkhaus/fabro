@@ -97,14 +97,15 @@ When a workflow agent calls `fabro_run_create`, Fabro always parents the created
 Acquire workflow files with the agent's shell/read tools, then call
 `fabro_workflow_version_create` with their contents. Keep each file's workflow
 directory prefix: runs derive their workflow slug from the entrypoint's
-directory, and a bare `workflow.fabro` is rejected:
+directory, and a bare `workflow.fabro` is rejected. Replace `<slug>` below with
+the workflow's directory name (placeholder paths are rejected as-is):
 
 ```json
 {
-  "entrypoint": "child/workflow.fabro",
+  "entrypoint": "<slug>/workflow.fabro",
   "files": {
-    "child/workflow.fabro": "digraph Child { start [shape=Mdiamond] work [prompt=\"@prompt.md\"] exit [shape=Msquare] start -> work -> exit }",
-    "child/prompt.md": "Implement the requested change and run the relevant tests."
+    "<slug>/workflow.fabro": "digraph Child { start [shape=Mdiamond] work [prompt=\"@prompt.md\"] exit [shape=Msquare] start -> work -> exit }",
+    "<slug>/prompt.md": "Implement the requested change and run the relevant tests."
   }
 }
 ```

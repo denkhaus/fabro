@@ -41,6 +41,14 @@ pub struct ValidatedWorkflowVersionCreate {
 /// version derives its workflow slug from that directory, and a bare
 /// conventional name (`workflow.toml`) collapses the slug to the ambiguous
 /// fallback `workflow` (fabro-9cb0).
+/// `<slug>`-style placeholders pass path validation, so a verbatim copy from
+/// documentation would register a version whose runs carry the literal slug
+/// `<slug>`. Angle brackets never occur in real workflow directories, so they
+/// are rejected loudly instead.
+fn looks_like_placeholder(path: &WorkflowPath) -> bool {
+    path.as_str().contains('<') || path.as_str().contains('>')
+}
+
 fn has_directory_component(path: &WorkflowPath) -> bool {
     std::path::Path::new(path.as_str())
         .parent()
@@ -54,13 +62,19 @@ impl TryFrom<FabroWorkflowVersionCreateParams> for ValidatedWorkflowVersionCreat
         let FabroWorkflowVersionCreateParams { entrypoint, files } = params;
         fabro_types::validate_workflow_files(&entrypoint, &files)
             .map_err(|err| ToolError::message(err.to_string()))?;
+        if looks_like_placeholder(&entrypoint) || files.keys().any(looks_like_placeholder) {
+            return Err(ToolError::message(
+                "workflow version paths contain a placeholder (<...>): replace it with the \
+                 workflow's actual directory name before registering",
+            ));
+        }
         if !has_directory_component(&entrypoint) {
             return Err(ToolError::message(format!(
                 "entrypoint `{ep}` has no directory component: runs derive their workflow slug \
                  from the entrypoint's parent directory, so a bare name collapses every run to \
                  the slug \"workflow\" and hides it from workflow=<slug> filters. Collect the \
                  closure from the repository root and prefix the entrypoint and every file key \
-                 with the workflow's directory (e.g. `develop/workflow.toml`)",
+                 with the workflow's directory (`<slug>/workflow.toml`)",
                 ep = entrypoint.as_str()
             )));
         }
@@ -203,6 +217,24 @@ mod tests {
             .files
             .insert(oversized_total.entrypoint.clone(), String::new());
         assert!(ValidatedWorkflowVersionCreate::try_from(oversized_total).is_err());
+    }
+
+    #[test]
+    fn workflow_version_request_rejects_placeholder_paths() {
+        // Documentation uses `<slug>/…` placeholders; a verbatim copy must
+        // fail loudly instead of registering runs under the literal slug
+        // `<slug>`.
+        for placeholder in ["<slug>/workflow.toml", "<folder>/graph.fabro"] {
+            let error =
+                validate(json!({"entrypoint":placeholder,"files":{placeholder:"digraph W {}"}}))
+                    .expect_err("a placeholder path must be rejected");
+            assert!(error.as_str().contains("placeholder"), "{}", error.as_str());
+        }
+        let error = validate(
+            json!({"entrypoint":"demo/workflow","files":{"demo/workflow":"digraph W {}","<slug>/prompt.md":"x"}}),
+        )
+        .expect_err("placeholder file keys must be rejected too");
+        assert!(error.as_str().contains("placeholder"));
     }
 
     #[test]
