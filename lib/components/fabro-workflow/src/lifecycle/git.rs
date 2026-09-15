@@ -534,9 +534,21 @@ mod tests {
     }
 
     fn checkpoint_result(failed: bool) -> WfNodeResult {
+        checkpoint_result_with(failed, false)
+    }
+
+    fn checkpoint_result_retry() -> WfNodeResult {
+        checkpoint_result_with(true, true)
+    }
+
+    fn checkpoint_result_with(failed: bool, retry_requested: bool) -> WfNodeResult {
         use crate::outcome::OutcomeExt;
         let outcome = if failed {
-            crate::outcome::Outcome::fail_deterministic("stage abandoned mid-edit")
+            if retry_requested {
+                crate::outcome::Outcome::retry_classify("stage failed; graph-level retry requested")
+            } else {
+                crate::outcome::Outcome::fail_deterministic("stage abandoned mid-edit")
+            }
         } else {
             crate::outcome::Outcome::success()
         };
@@ -559,29 +571,44 @@ mod tests {
         struct Case {
             name:           &'static str,
             stage1_failed:  bool,
+            stage1_retry:   bool,
             modify_tracked: bool,
             add_untracked:  bool,
         }
         let cases = vec![
             Case {
                 name:           "failed stage's tracked modification is reverted before the next \
-                                  cycle's commit",
+                                   cycle's commit",
                 stage1_failed:  true,
+                stage1_retry:   false,
                 modify_tracked: true,
                 add_untracked:  false,
             },
             Case {
                 name:           "failed stage's untracked file is removed before the next cycle's \
-                                  commit",
+                                   commit",
                 stage1_failed:  true,
+                stage1_retry:   false,
                 modify_tracked: false,
                 add_untracked:  true,
             },
             Case {
                 name:           "happy-path stage diff is committed",
                 stage1_failed:  false,
+                stage1_retry:   false,
                 modify_tracked: true,
                 add_untracked:  true,
+            },
+            // A failed stage a graph-level retry jumps back to also restarts
+            // from the last checkpoint (git.rs quarantine comment), so its
+            // half-edit must be quarantined like any other failed stage.
+            Case {
+                name:           "retry-jump: failed stage with retry_requested restarts from the \
+                                   last checkpoint, tracked residue reverted",
+                stage1_failed:  true,
+                stage1_retry:   true,
+                modify_tracked: true,
+                add_untracked:  false,
             },
         ];
 
@@ -617,13 +644,13 @@ mod tests {
             let mut state = ExecutionState::new(&graph).unwrap();
             state.increment_visits("build");
 
+            let stage1_result = if case.stage1_retry {
+                checkpoint_result_retry()
+            } else {
+                checkpoint_result(case.stage1_failed)
+            };
             lifecycle
-                .on_checkpoint(
-                    &node,
-                    &checkpoint_result(case.stage1_failed),
-                    Some("exit"),
-                    &state,
-                )
+                .on_checkpoint(&node, &stage1_result, Some("exit"), &state)
                 .await
                 .unwrap();
 

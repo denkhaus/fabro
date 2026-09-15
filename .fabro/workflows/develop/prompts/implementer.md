@@ -41,6 +41,12 @@ validation + TestCountFlagRejects`. The reviewer judges from context
 first — this report is what lets it approve without hunting. A FAIL you
 cannot resolve is a deviation: say so explicitly instead of hiding it.
 
+Material semantic-risk observations (e.g. changed retry semantics,
+contract changes, ordering assumptions) MUST be repeated inside
+`implementation_summary` itself — not left only in journal
+painpoints/observations — so the reviewer (whose preamble_allow_keys
+excludes journal) always sees them.
+
 Routing-consistency self-check: before finishing, re-read every routing
 instruction you wrote — each branch must yield exactly ONE route. Two
 routing sentences in one branch (e.g. both a route label and a fallback
@@ -142,7 +148,7 @@ Implemented:
   "outcome": "succeeded",
   "preferred_next_label": "Implemented",
   "context_updates": {
-    "implementation_summary": "<files touched and what was built, one short paragraph, including one clause naming the lesson-capture mx-id or the skip; then the per-criterion PASS/FAIL verification report>",
+    "implementation_summary": "<files touched and what was built, one short paragraph, including one clause naming the lesson-capture mx-id or the skip; then the per-criterion PASS/FAIL verification report, naming any flagged material semantic risks (changed retry semantics, contract changes, ordering assumptions)>",
     "lesson_capture": "<mx-xxxxxx | nothing durable — skipped>",
     "journal": {"painpoints": [], "observations": ["none"]}
   }
