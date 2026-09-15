@@ -247,3 +247,10 @@ upstream's new signatures; never revert upstream, never drop our features.
   472b9a4a4): merges are local /merge-upstream sessions until fabro-5082 is
   fixed; survey routes Work on drift. Watch: when re-enabling run merges,
   re-check the deploy-proven data-migration tolerance first.
+
+- usage-rename class (v0.356 merge, 2026-09-15): upstream renamed the
+  billing vocabulary to usage end to end (#874/#875). Adapt fork emitters to
+  the NEW vocabulary while fork_legacy_read keeps reading the OLD one;
+  fixtures fail as E0559/E0425 (billing fields, BilledModelUsage) — the
+  compiler lists every site, fix mechanically (BilledModelUsage ->
+  ModelUsage, billing/billing_by_model -> usage/usage_by_model).
