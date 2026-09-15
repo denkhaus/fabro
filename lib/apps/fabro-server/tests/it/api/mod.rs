@@ -5,6 +5,7 @@ mod compression;
 mod docs;
 mod environments;
 mod events;
+mod fork_resume;
 mod install;
 mod install_openai_compatible;
 mod mcp_servers;

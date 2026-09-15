@@ -167,6 +167,7 @@ mock.module("../lib/mutations", () => ({
   useDenyRun:              mutationState,
   useInterruptRun:         mutationState,
   usePreviewRun:           mutationState,
+  useResumeRun:            mutationState,
   useRetryRun:             mutationState,
   useSteerRun:             mutationState,
   useSubmitInterviewAnswer: mutationState,

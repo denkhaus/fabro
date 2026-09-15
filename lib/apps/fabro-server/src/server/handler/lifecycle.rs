@@ -36,13 +36,17 @@ pub(super) fn routes() -> Router<Arc<AppState>> {
         .route("/runs/{id}/archive", post(archive_run))
         .route("/runs/{id}/rewind", post(rewind_run))
         .route("/runs/{id}/retry", post(retry_run))
-        .route("/runs/{id}/resume", post(resume_run))
+        .merge(super::fork_resume::routes())
         .route("/runs/{id}/fork", post(fork_run))
         .route("/runs/{id}/timeline", get(run_timeline))
         .route("/runs/{id}/unarchive", post(unarchive_run))
 }
 
-async fn run_response(state: &AppState, id: RunId, status: StatusCode) -> Response {
+pub(in crate::server) async fn run_response(
+    state: &AppState,
+    id: RunId,
+    status: StatusCode,
+) -> Response {
     match state.stores.run_summaries.get(&id, Utc::now()).await {
         Ok(Some(summary)) => {
             (status, Json(state.decorate_run_summary(summary).await)).into_response()
@@ -872,36 +876,6 @@ async fn batch_delete_runs(
         .into_response()
 }
 
-async fn resume_run(
-    RequireRunManagementTarget(id, actor): RequireRunManagementTarget,
-    State(state): State<Arc<AppState>>,
-) -> Response {
-    if let Some(response) = reject_if_archived(state.as_ref(), &id).await {
-        return response;
-    }
-    let input = operations::ResumeFailureInput { run_id: id };
-    let outcome = Box::pin(operations::resume_from_failure(
-        &state.stores.runs,
-        &input,
-        Some(actor.clone()),
-    ))
-    .await;
-    match outcome {
-        Ok(outcome) => {
-            let new_run_id = outcome.new_run_id();
-            if let Err(err) = queue_run_start(state.as_ref(), new_run_id, false, actor).await {
-                return err.into_response();
-            }
-            let status = match outcome {
-                operations::RewindOutcome::Full { .. } => StatusCode::CREATED,
-                operations::RewindOutcome::Partial { .. } => StatusCode::MULTI_STATUS,
-            };
-            run_response(state.as_ref(), new_run_id, status).await
-        }
-        Err(err) => workflow_operation_error_response(err),
-    }
-}
-
 async fn rewind_run(
     subject: RequiredUser,
     State(state): State<Arc<AppState>>,
@@ -1069,7 +1043,7 @@ fn parse_fork_target(target: Option<String>) -> Result<Option<operations::ForkTa
         .transpose()
 }
 
-fn workflow_operation_error_response(err: WorkflowError) -> Response {
+pub(in crate::server) fn workflow_operation_error_response(err: WorkflowError) -> Response {
     match err {
         WorkflowError::Parse(message) | WorkflowError::Validation(message) => {
             ApiError::bad_request(message).into_response()

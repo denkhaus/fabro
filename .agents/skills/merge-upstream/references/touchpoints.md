@@ -239,3 +239,16 @@ Upstream directions that may supersede our work — re-evaluate per merge:
 - Read-path tolerance: legacy variantless event names read as Unknown
   (ca770f6b8); when upstream removes more EventBody variants, extend
   is_legacy_variantless_event_name BEFORE deploying.
+- Resume-from-failure (fabro-7627, salvaged 2026-09-15): engine core in
+  fork-only `lib/components/fabro-workflow/src/operations/fork_resume_from_failure.rs`
+  (ResumeFailureInput, resume_from_failure, resolve_failure_rewind_target + tests),
+  re-export seam in `operations/mod.rs`; server handler in fork-only
+  `lib/apps/fabro-server/src/server/handler/fork_resume.rs` wired via one
+  `.merge(...)` line in `handler/lifecycle.rs::routes()` (run_response +
+  workflow_operation_error_response visibility raised to pub(in crate::server))
+  and one `mod fork_resume;` in `handler/mod.rs`; API path
+  `/api/v1/runs/{id}/resume` in the OpenAPI yaml + generated clients; web
+  `resumeRun`/`canResume` in run-actions.ts + toast/menu wiring. Presence
+  pins: `fork_seam_tests.rs` (entry-checkpoint semantics + OpenAPI path),
+  `tests/it/api/fork_resume.rs` (wire conflict conformance),
+  `apps/fabro-web/app/lib/run-actions.resume.fork.test.ts` (gating).

@@ -34,6 +34,7 @@ export function createLifecycleToastState(): LifecycleToastState {
       deny:      null,
       archive:   null,
       unarchive: null,
+      resume:    null,
       retry:     null,
     },
   };

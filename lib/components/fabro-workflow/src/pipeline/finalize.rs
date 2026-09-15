@@ -447,8 +447,6 @@ mod tests {
 
     use anyhow::Result;
     use fabro_auth::test_support as auth_test_support;
-
-    use crate::outcome::FailureDetail;
     use fabro_graphviz::graph::Graph;
     use fabro_sandbox::test_support::MockSandbox;
     use fabro_store::{Database, RunDatabase, RunProjection};
@@ -462,6 +460,7 @@ mod tests {
     use crate::context::Context;
     use crate::error::ErrorStage;
     use crate::event::{Emitter, StoreProgressLogger, append_event};
+    use crate::outcome::FailureDetail;
     use crate::records::Checkpoint;
     use crate::run_options::{GitCheckpointOptions, RunOptions};
     use crate::runtime_store::RunStoreHandle;

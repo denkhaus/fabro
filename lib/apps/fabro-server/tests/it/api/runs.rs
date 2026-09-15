@@ -525,38 +525,3 @@ async fn parent_link_validation_rejects_missing_self_and_cycles() {
     )
     .await;
 }
-
-#[tokio::test]
-async fn resume_endpoint_rejects_non_terminal_run_with_conflict() {
-    let workspace = tempfile::tempdir().expect("run target workspace should be created");
-    let settings = settings_from_toml(
-        r"
-_version = 1
-",
-    );
-    let state = fabro_server::test_support::TestAppStateBuilder::new()
-        .runtime_settings(settings.server_settings, settings.manifest_run_defaults)
-        .vault_entries([("OPENAI_API_KEY", "test-key")])
-        .build();
-    let app = fabro_server::test_support::build_test_router(state);
-    let created = create_run(
-        &app,
-        minimal_intent_json(&app, MINIMAL_DOT, workspace.path()).await,
-    )
-    .await;
-    let run_id = created["id"].as_str().unwrap();
-
-    let request = Request::builder()
-        .method("POST")
-        .uri(api(&format!("/runs/{run_id}/resume")))
-        .body(Body::empty())
-        .expect("resume request should build");
-    let response = app.clone().oneshot(request).await.unwrap();
-    let body = response_json(response, StatusCode::CONFLICT, "POST resume").await;
-    assert!(
-        body["errors"][0]["detail"]
-            .as_str()
-            .is_some_and(|detail| detail.contains("must be terminal")),
-        "expected a must-be-terminal conflict, got: {body}"
-    );
-}
