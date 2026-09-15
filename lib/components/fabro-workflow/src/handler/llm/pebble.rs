@@ -24,12 +24,12 @@ use fabro_mcp::pebble::pebble_servers;
 use fabro_sandbox::{FsScope, RunSandbox, SecretRedactor, WalkOptions};
 use fabro_types::settings::run::RunModelControls;
 use fabro_types::{
-    AgentProfileKind, BilledModelUsage, ModelRef, PermissionLevel, SessionCapability, StageId,
-    StageTiming, UsdMicros, billing,
+    AgentProfileKind, ModelRef, ModelUsage, PermissionLevel, SessionCapability, StageId,
+    StageTiming,
 };
 use fabro_util::home::Home;
 use lithos_llm::catalog::{ModelId, ProviderId};
-use lithos_llm::types::{Message as LlmMessage, Role, TokenCounts};
+use lithos_llm::types::{Message as LlmMessage, Role, Usage};
 use pebble_agent::ToolMiddleware;
 use pebble_coding_agent::environment::Environment;
 use pebble_coding_agent::events::{CodingAgentEvent, EventSink, EventSinkError};
@@ -65,7 +65,7 @@ use crate::context::keys::Fidelity;
 use crate::error::Error;
 use crate::event::{Emitter, Event, StageScope};
 use crate::model_fallback::{ModelFallbackNotice, ModelFallbackPolicy};
-use crate::outcome::{Outcome, billed_model_usage_from_llm};
+use crate::outcome::Outcome;
 use crate::services::FabroRunToolServices;
 use crate::steering_hub::SteeringHub;
 use crate::web_search::{self, SearchSecrets};
@@ -176,7 +176,7 @@ struct WorkflowEventSink {
     scope:      StageScope,
     /// Pebble's fold of every event this sink recorded: the stage's one
     /// account of what its agent and subagents spent, wrote, and ran. The
-    /// store folds the same events the same way, so the stage's billing at
+    /// store folds the same events the same way, so the stage's usage at
     /// its end is the usage the run showed live.
     projection: Mutex<SessionProjection>,
 }
@@ -272,7 +272,6 @@ impl LiveAgent {
                 original_turns = compaction.original_turn_count,
                 preserved_turns = compaction.preserved_turn_count,
                 usage = ?compaction.usage,
-                cost_usd_micros = ?compaction.cost_usd_micros,
                 "agent stage compacted its conversation"
             );
         }
@@ -322,7 +321,7 @@ impl LiveAgent {
     }
 }
 
-/// The route as billing names it: provider, model, and the speed tier the
+/// The route as usage names it: provider, model, and the speed tier the
 /// stage asked for.
 fn route_model(route: &LlmRoute) -> ModelRef {
     ModelRef::new(
@@ -332,69 +331,50 @@ fn route_model(route: &LlmRoute) -> ModelRef {
     .with_speed(route.controls.speed)
 }
 
-/// A stage's billing from its account: the whole tree under the root's
+/// A stage's usage from its account: the whole tree under the root's
 /// route, and the rows that split it by model.
-struct StageBilling {
-    total:    BilledModelUsage,
-    by_model: Vec<BilledModelUsage>,
+struct StageUsage {
+    total:    ModelUsage,
+    by_model: Vec<ModelUsage>,
 }
 
-/// Bills the stage's account from the catalog: the root session at
-/// `root_model`, its route, and each descendant at its own route where the
-/// catalog knows it and at the root's otherwise, so a subagent on a cheaper
-/// or dearer model is priced as what it ran. A descendant on the root's
-/// route joins the root's row. Where pebble carried a provider-reported
-/// cost, that cost stands in for the catalog's estimate.
-fn stage_billing(
+/// The stage's account grouped by model: the root session at `root_model`,
+/// its route, and each descendant at its own route where the catalog knows
+/// it and at the root's otherwise. A descendant on the root's route joins
+/// the root's row. Every cost is the one pebble carried: lithos-llm attaches
+/// the provider's reported cost or the catalog's price to each answer, and
+/// pebble sums them per session, so fabro prices nothing of its own. A row,
+/// and the total, has a cost only when every answer in it was priced.
+fn stage_usage(
     catalog: &Catalog,
     root_model: &ModelRef,
     account: &SessionProjection,
-) -> Result<StageBilling, Error> {
-    let mut groups: Vec<(ModelRef, TokenCounts, Option<u64>)> = vec![(
-        root_model.clone(),
-        TokenCounts::from(account.usage),
-        account.cost_usd_micros,
-    )];
+) -> StageUsage {
+    let mut groups: Vec<(ModelRef, Usage)> = vec![(root_model.clone(), account.usage)];
     for descendant in account.descendants.values() {
         let model = descendant_model(catalog, root_model, descendant);
-        match groups.iter_mut().find(|(grouped, _, _)| *grouped == model) {
-            Some((_, tokens, cost)) => {
-                billing::add_usage(tokens, TokenCounts::from(descendant.usage));
-                add_reported_cost(cost, descendant.cost_usd_micros);
-            }
-            None => groups.push((
-                model,
-                TokenCounts::from(descendant.usage),
-                descendant.cost_usd_micros,
-            )),
+        match groups.iter_mut().find(|(grouped, _)| *grouped == model) {
+            Some((_, usage)) => *usage = usage.saturating_add(descendant.usage),
+            None => groups.push((model, descendant.usage)),
         }
     }
     // The root's row first, then the others by model.
     groups[1..].sort_by(|left, right| left.0.sort_key().cmp(&right.0.sort_key()));
 
-    let mut by_model = Vec::with_capacity(groups.len());
-    let mut total_tokens = TokenCounts::default();
-    let mut total_cost = None;
-    for (model, tokens, reported) in groups {
-        let row = billed_model_usage_from_llm(catalog, &model, tokens)?
-            .with_reported_cost(reported.map(usd_micros));
-        billing::add_usage(&mut total_tokens, row.tokens);
-        UsdMicros::accumulate(&mut total_cost, row.total_usd_micros.map(UsdMicros));
-        by_model.push(row);
+    let total = fabro_types::sum_usage(groups.iter().map(|(_, usage)| *usage));
+    StageUsage {
+        total:    ModelUsage::new(root_model.clone(), total),
+        by_model: groups
+            .into_iter()
+            .map(|(model, usage)| ModelUsage::new(model, usage))
+            .collect(),
     }
-    Ok(StageBilling {
-        total: BilledModelUsage {
-            model:            root_model.clone(),
-            tokens:           total_tokens,
-            total_usd_micros: total_cost.map(|cost| cost.0),
-        },
-        by_model,
-    })
 }
 
-/// The route a descendant is billed at: its own where its start named one
-/// the catalog knows, else the root's. A descendant whose start was not seen
-/// names only its answers' model, taken to be on the root's provider.
+/// The route a descendant's usage is grouped under: its own where its start
+/// named one the catalog knows, else the root's. A descendant whose start
+/// was not seen names only its answers' model, taken to be on the root's
+/// provider.
 fn descendant_model(
     catalog: &Catalog,
     root_model: &ModelRef,
@@ -414,17 +394,6 @@ fn descendant_model(
         return root_model.clone();
     }
     ModelRef::new(ProviderId::new(provider), ModelId::new(model))
-}
-
-/// Folds a reported cost into a total that stays `None` until one is seen.
-fn add_reported_cost(total: &mut Option<u64>, cost: Option<u64>) {
-    if let Some(cost) = cost {
-        *total = Some(total.unwrap_or(0).saturating_add(cost));
-    }
-}
-
-fn usd_micros(micros: u64) -> UsdMicros {
-    UsdMicros(i64::try_from(micros).unwrap_or(i64::MAX))
 }
 
 /// Everything one stage binds to an agent it builds or resumes.
@@ -846,27 +815,17 @@ impl PebbleBackend {
 
     /// The failed outcome of an agent stage that spent before it failed: the
     /// failure itself, with the session tree's usage, the files it wrote, and
-    /// its active time, so the run bills what the stage spent. A billing the
-    /// catalog cannot price is logged and left off.
+    /// its active time, so the run records what the stage spent.
     fn failed_outcome(&self, error: &Error, live: &LiveAgent, plan: &FallbackPlan) -> Outcome {
         let mut outcome = error.to_fail_outcome();
         let account = live.account();
-        match stage_billing(
+        let usage = stage_usage(
             self.catalog.as_ref(),
             &route_model(plan.current()),
             &account,
-        ) {
-            Ok(billing) => {
-                outcome.usage = Some(billing.total);
-                outcome.usage_by_model = billing.by_model;
-            }
-            Err(billing_error) => {
-                tracing::debug!(
-                    error = %billing_error,
-                    "failed agent stage could not be billed"
-                );
-            }
-        }
+        );
+        outcome.usage = Some(usage.total);
+        outcome.usage_by_model = usage.by_model;
         outcome.files_touched = account.files_touched;
         outcome.timing = Some(StageTiming::active_only(
             crate::millis_u64(live.inference_duration),
@@ -1069,8 +1028,7 @@ impl CodergenBackend for PebbleBackend {
             .map(structured_output::prompt_response_format);
         let mut repair_attempts = 0_i64;
         let mut previous_validation_error = None;
-        let mut total_usage = TokenCounts::default();
-        let mut total_cost = None;
+        let mut total_usage = Usage::default();
         let mut inference_duration = Duration::ZERO;
 
         loop {
@@ -1094,11 +1052,7 @@ impl CodergenBackend for PebbleBackend {
                 .await;
             inference_duration = inference_duration.saturating_add(inference_start.elapsed());
             let completion = completion_result?;
-            billing::add_usage(&mut total_usage, completion.response.usage);
-            UsdMicros::accumulate(
-                &mut total_cost,
-                completion.response.cost.as_ref().map(UsdMicros::from_cost),
-            );
+            total_usage = total_usage.saturating_add(completion.response.usage_with_cost());
             let response_text = completion.response.text();
 
             let validation_error = if let Some(schema) = &output_schema {
@@ -1133,9 +1087,10 @@ impl CodergenBackend for PebbleBackend {
                 }
             }
 
-            let stage_usage =
-                billed_model_usage_from_llm(self.catalog.as_ref(), &completion.model, total_usage)?
-                    .with_reported_cost(total_cost);
+            // Each response came priced by lithos-llm: the provider's reported
+            // cost, or the catalog's price for the route. The stage's cost is
+            // their sum, known only when every answer was priced.
+            let stage_usage = ModelUsage::new(completion.model.clone(), total_usage);
 
             return Ok(CodergenResult::Text {
                 text:              response_text,
@@ -1398,11 +1353,11 @@ impl CodergenBackend for PebbleBackend {
         };
 
         let account = live.account();
-        let billing = stage_billing(
+        let usage = stage_usage(
             self.catalog.as_ref(),
             &route_model(fallback_plan.current()),
             &account,
-        )?;
+        );
 
         live.release_lease();
         match reuse_key {
@@ -1426,8 +1381,8 @@ impl CodergenBackend for PebbleBackend {
 
         Ok(CodergenResult::Text {
             text:              response,
-            usage:             Some(billing.total),
-            usage_by_model:    billing.by_model,
+            usage:             Some(usage.total),
+            usage_by_model:    usage.by_model,
             files_touched:     account.files_touched,
             last_file_touched: account.last_file_touched,
             timing:            StageTiming::active_only(
@@ -1501,7 +1456,10 @@ mod tests {
 
     use fabro_llm::test_support::test_catalog;
     use lithos_llm::catalog::builtin;
-    use pebble_coding_agent::events::{CodingAgentEvent, CodingEvent, InputSource, TokenUsage};
+    use lithos_llm::types::TokenCounts;
+    use pebble_coding_agent::events::{
+        CodingAgentEvent, CodingEvent, Cost, CostSource, InputSource, Usage,
+    };
 
     use super::*;
 
@@ -1576,20 +1534,28 @@ mod tests {
         }
     }
 
-    fn message(model: &str, input: u64, output: u64, cost: Option<u64>) -> CodingEvent {
+    fn message(model: &str, input: u64, output: u64, cost: Option<Cost>) -> CodingEvent {
         CodingEvent::AssistantMessage {
             text:            "ok".to_string(),
             model:           model.to_string(),
-            usage:           TokenUsage {
-                input,
-                output,
-                ..TokenUsage::default()
+            usage:           Usage {
+                tokens: TokenCounts {
+                    input,
+                    output,
+                    ..TokenCounts::default()
+                },
+                cost,
             },
-            cost_usd_micros: cost,
-            cost_source:     None,
             tool_call_count: 0,
             context_window:  None,
             reasoning:       None,
+        }
+    }
+
+    fn catalog_cost(usd_micros: u64) -> Cost {
+        Cost {
+            usd_micros,
+            source: CostSource::Catalog,
         }
     }
 
@@ -1603,8 +1569,10 @@ mod tests {
         account
     }
 
+    /// Every cost comes from pebble's stream, where lithos-llm attached it
+    /// to each answer; fabro groups and sums, and prices nothing itself.
     #[test]
-    fn stage_billing_prices_the_root_at_its_route_and_each_descendant_at_its_own() {
+    fn stage_usage_groups_pebbles_priced_accounts_by_route_and_sums_them() {
         let catalog = test_catalog();
         let account = account(&[
             root(started("openai", "gpt-5.4")),
@@ -1613,110 +1581,150 @@ mod tests {
                 content: None,
                 source:  InputSource::Prompt,
             }),
-            root(message("gpt-5.4", 100_000, 25_000, None)),
+            root(message(
+                "gpt-5.4",
+                100_000,
+                25_000,
+                Some(catalog_cost(300_000)),
+            )),
             // A child on the parent's route joins the parent's row.
             child("ses_same", started("openai", "gpt-5.4")),
-            child("ses_same", message("gpt-5.4", 10_000, 1_000, None)),
-            // A child on another route is its own row, at that route's rate.
+            child(
+                "ses_same",
+                message("gpt-5.4", 10_000, 1_000, Some(catalog_cost(30_000))),
+            ),
+            // A child on another route is its own row, at the cost its
+            // provider reported.
             child("ses_other", started("anthropic", "claude-sonnet-5")),
-            child("ses_other", message("claude-sonnet-5", 20_000, 2_000, None)),
-            // A child on a route the catalog does not know bills at the root's.
+            child(
+                "ses_other",
+                message(
+                    "claude-sonnet-5",
+                    20_000,
+                    2_000,
+                    Some(Cost {
+                        usd_micros: 70_000,
+                        source:     CostSource::Provider,
+                    }),
+                ),
+            ),
+            // A child on a route the catalog does not know joins the root's row.
             child("ses_unknown", started("nowhere", "mystery")),
-            child("ses_unknown", message("mystery", 1_000, 100, None)),
+            child(
+                "ses_unknown",
+                message("mystery", 1_000, 100, Some(catalog_cost(5_000))),
+            ),
             root(CodingEvent::ProcessingEnd),
         ]);
 
-        let billing = stage_billing(&catalog, &root_model(), &account).unwrap();
+        let usage = stage_usage(&catalog, &root_model(), &account);
 
-        assert_eq!(billing.by_model.len(), 2, "{:?}", billing.by_model);
-        let root_row = &billing.by_model[0];
+        assert_eq!(usage.by_model.len(), 2, "{:?}", usage.by_model);
+        let root_row = &usage.by_model[0];
         assert_eq!(root_row.model, root_model());
         assert_eq!(
-            root_row.tokens.input, 111_000,
+            root_row.usage.tokens.input, 111_000,
             "the root, the same-route child, and the unknown-route child"
         );
-        assert_eq!(root_row.tokens.output, 26_100);
-        let root_priced =
-            billed_model_usage_from_llm(&catalog, &root_model(), root_row.tokens).unwrap();
-        assert_eq!(root_row.total_usd_micros, root_priced.total_usd_micros);
-
-        let other_model = ModelRef::new(
-            ProviderId::new("anthropic"),
-            ModelId::new("claude-sonnet-5"),
-        );
-        let other_row = &billing.by_model[1];
-        assert_eq!(other_row.model, other_model);
-        assert_eq!(other_row.tokens.input, 20_000);
-        assert_eq!(other_row.tokens.output, 2_000);
-        let other_priced =
-            billed_model_usage_from_llm(&catalog, &other_model, other_row.tokens).unwrap();
-        assert_eq!(other_row.total_usd_micros, other_priced.total_usd_micros);
-        assert_ne!(
-            other_row.total_usd_micros,
-            billed_model_usage_from_llm(&catalog, &root_model(), other_row.tokens)
-                .unwrap()
-                .total_usd_micros,
-            "priced at its own rate, not the root's"
-        );
-
-        // The total is the tree's tokens under the root's route, at the rows' summed
-        // cost.
-        assert_eq!(billing.total.model, root_model());
-        assert_eq!(billing.total.tokens.input, 131_000);
-        assert_eq!(billing.total.tokens.output, 28_100);
+        assert_eq!(root_row.usage.tokens.output, 26_100);
         assert_eq!(
-            billing.total.total_usd_micros,
-            Some(root_priced.total_usd_micros.unwrap() + other_priced.total_usd_micros.unwrap())
+            root_row.usage.cost,
+            Some(catalog_cost(335_000)),
+            "the row's cost is the sum of what pebble carried, still the catalog's"
+        );
+
+        let other_row = &usage.by_model[1];
+        assert_eq!(
+            other_row.model,
+            ModelRef::new(
+                ProviderId::new("anthropic"),
+                ModelId::new("claude-sonnet-5"),
+            )
+        );
+        assert_eq!(other_row.usage.tokens.input, 20_000);
+        assert_eq!(
+            other_row.usage.cost,
+            Some(Cost {
+                usd_micros: 70_000,
+                source:     CostSource::Provider,
+            }),
+            "a provider-reported cost is kept as reported"
+        );
+
+        // The total is the tree's tokens under the root's route; its cost is
+        // the rows' sum, assembled from two sources.
+        assert_eq!(usage.total.model, root_model());
+        assert_eq!(usage.total.usage.tokens.input, 131_000);
+        assert_eq!(usage.total.usage.tokens.output, 28_100);
+        assert_eq!(
+            usage.total.usage.cost,
+            Some(Cost {
+                usd_micros: 405_000,
+                source:     CostSource::Application,
+            })
         );
     }
 
+    /// An answer pebble could not price (a model with no catalog price and
+    /// no provider cost) leaves its row's cost, and the total's, unknown; the
+    /// tokens are still counted. Live and completed usage agree because both
+    /// are the same sum of pebble's accounts.
     #[test]
-    fn a_provider_reported_cost_stands_in_for_the_catalogs_estimate() {
+    fn stage_usage_leaves_the_cost_unknown_once_an_answer_was_unpriced() {
         let catalog = test_catalog();
-        let account = account(&[
+        let priced_only = account(&[
             root(started("openai", "gpt-5.4")),
-            root(message("gpt-5.4", 1_000, 100, Some(4_321))),
+            root(message("gpt-5.4", 1_000, 100, Some(catalog_cost(4_321)))),
+        ]);
+        let priced = stage_usage(&catalog, &root_model(), &priced_only);
+        assert_eq!(priced.total.usage.cost, Some(catalog_cost(4_321)));
+        assert_eq!(
+            priced.total.usage,
+            priced_only
+                .usage
+                .saturating_add(priced_only.descendant_usage()),
+            "the completed usage is the live fold's, cost included"
+        );
+
+        let tree = account(&[
+            root(started("openai", "gpt-5.4")),
+            root(message("gpt-5.4", 1_000, 100, Some(catalog_cost(4_321)))),
             child("ses_child", started("anthropic", "claude-sonnet-5")),
             child("ses_child", message("claude-sonnet-5", 500, 50, None)),
         ]);
 
-        let billing = stage_billing(&catalog, &root_model(), &account).unwrap();
+        let usage = stage_usage(&catalog, &root_model(), &tree);
 
-        assert_eq!(billing.by_model[0].total_usd_micros, Some(4_321));
-        let child_priced = billed_model_usage_from_llm(
-            &catalog,
-            &billing.by_model[1].model,
-            billing.by_model[1].tokens,
-        )
-        .unwrap();
+        assert_eq!(usage.by_model[0].usage.cost, Some(catalog_cost(4_321)));
+        assert_eq!(usage.by_model[1].usage.tokens.input, 500);
+        assert_eq!(usage.by_model[1].usage.cost, None);
+        assert_eq!(usage.total.usage.tokens.input, 1_500);
+        assert_eq!(usage.total.usage.cost, None);
         assert_eq!(
-            billing.by_model[1].total_usd_micros,
-            child_priced.total_usd_micros
-        );
-        assert_eq!(
-            billing.total.total_usd_micros,
-            Some(4_321 + child_priced.total_usd_micros.unwrap())
+            usage.total.usage,
+            tree.usage.saturating_add(tree.descendant_usage()),
+            "the completed usage is the live fold's, cost unknown at both"
         );
     }
 
     #[test]
-    fn a_descendant_seen_only_through_its_answers_bills_on_the_roots_provider() {
+    fn a_descendant_seen_only_through_its_answers_groups_under_the_roots_provider() {
         let catalog = test_catalog();
         let mut account = account(&[root(started("openai", "gpt-5.4"))]);
         // No `SessionStarted` for the child: only its answer names a model.
         account.apply(&child(
             "ses_quiet",
-            message("gpt-5.4-mini", 1_000, 100, None),
+            message("gpt-5.4-mini", 1_000, 100, Some(catalog_cost(1))),
         ));
 
-        let billing = stage_billing(&catalog, &root_model(), &account).unwrap();
+        let usage = stage_usage(&catalog, &root_model(), &account);
 
-        let child_row = billing
+        let child_row = usage
             .by_model
             .iter()
             .find(|row| row.model.model_id.as_str() == "gpt-5.4-mini")
-            .expect("the child is billed as its answers' model on the root's provider");
+            .expect("the child is grouped as its answers' model on the root's provider");
         assert_eq!(child_row.model.provider, root_model().provider);
-        assert_eq!(child_row.tokens.input, 1_000);
+        assert_eq!(child_row.usage.tokens.input, 1_000);
     }
 }

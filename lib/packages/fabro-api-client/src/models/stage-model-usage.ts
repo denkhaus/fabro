@@ -15,10 +15,10 @@
 
 // May contain unused imports in some cases
 // @ts-ignore
-import type { BillingSpeed } from './billing-speed';
+import type { ReasoningEffort } from './reasoning-effort';
 // May contain unused imports in some cases
 // @ts-ignore
-import type { ReasoningEffort } from './reasoning-effort';
+import type { Speed } from './speed';
 
 /**
  * Provider, model, and request-control metadata recorded for a stage attempt.
@@ -31,5 +31,5 @@ export interface StageModelUsage {
     'provider'?: string | null;
     'model'?: string | null;
     'reasoning_effort'?: ReasoningEffort | null;
-    'speed'?: BillingSpeed | null;
+    'speed'?: Speed | null;
 }

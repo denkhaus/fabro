@@ -873,7 +873,7 @@ mod tests {
         fixtures, test_support,
     };
     use fabro_workflow::event as workflow_event;
-    use pebble_coding_agent::events::{CodingAgentEvent, TokenUsage};
+    use pebble_coding_agent::events::{CodingAgentEvent, Usage};
     use tower::ServiceExt;
 
     use super::*;
@@ -908,9 +908,7 @@ mod tests {
                         CodingEvent::AssistantMessage {
                             text:            "I found the issue.".to_string(),
                             model:           "gpt-5.4".to_string(),
-                            usage:           TokenUsage::default(),
-                            cost_usd_micros: None,
-                            cost_source:     None,
+                            usage:           Usage::default(),
                             tool_call_count: 0,
                             context_window:  None,
                             reasoning:       None,
@@ -945,9 +943,7 @@ mod tests {
                             CodingEvent::AssistantMessage {
                                 text:            "wrong stage".to_string(),
                                 model:           "gpt-5.4".to_string(),
-                                usage:           TokenUsage::default(),
-                                cost_usd_micros: None,
-                                cost_source:     None,
+                                usage:           Usage::default(),
                                 tool_call_count: 0,
                                 context_window:  None,
                                 reasoning:       None,

@@ -5,7 +5,7 @@ import { MemoryRouter, Route, Routes } from "react-router";
 import { toast as sonnerToast } from "sonner";
 
 import { ToastProvider } from "../components/toast";
-import { TEST_PRINCIPAL } from "../lib/test-fixtures";
+import { TEST_PRINCIPAL, makeUsage } from "../lib/test-fixtures";
 
 let currentFilesPayload: any = null;
 let currentCommitsPayload: any = null;
@@ -73,7 +73,7 @@ mock.module("../lib/queries", () => ({
         last_event_at: null,
         completed_at:  null,
       },
-      billing:          null,
+      usage:          makeUsage(),
       size:             "XS",
       diff:             null,
       pull_request:     null,

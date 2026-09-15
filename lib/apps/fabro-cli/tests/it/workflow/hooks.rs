@@ -66,26 +66,6 @@ fn twin_server_storage_dir(context: &fabro_test::TestContext) -> std::path::Path
     context.temp_dir.join("hook-server-storage")
 }
 
-/// The twin-mode server settings: a private storage root and dev-token auth.
-/// Live mode runs against the developer's own settings.
-fn write_server_settings(context: &fabro_test::TestContext) {
-    if !TestMode::from_env().is_twin() {
-        return;
-    }
-    context.write_home(
-        ".fabro/settings.toml",
-        format!(
-            r#"[server.storage]
-root = "{}"
-
-[server.auth]
-methods = ["dev-token"]
-"#,
-            toml_path(&twin_server_storage_dir(context)),
-        ),
-    );
-}
-
 fn seed_openai_vault(storage_dir: &std::path::Path, api_key: &str) {
     let mut vault =
         Vault::load(Storage::new(storage_dir).secrets_path()).expect("test vault should load");
@@ -94,13 +74,42 @@ fn seed_openai_vault(storage_dir: &std::path::Path, api_key: &str) {
         .expect("OpenAI credential should store in test vault");
 }
 
+/// The twin-mode server: a private storage root, dev-token auth, and the
+/// `openai` provider repointed at the twin through the operator `[llm]`
+/// overlay. The run executes in the isolated server, which never sees the
+/// test process environment, so `OPENAI_BASE_URL` on the CLI command alone
+/// would leave the server calling the real API with the namespace as its
+/// key. Live mode runs against the developer's own settings.
 fn configure_twin_server(
     context: &mut fabro_test::TestContext,
-    _twin: &TwinOpenAi,
+    twin: &TwinOpenAi,
     namespace: &str,
 ) {
+    context.write_home(
+        ".fabro/settings.toml",
+        format!(
+            r#"[server.storage]
+root = "{}"
+
+[server.auth]
+methods = ["dev-token"]
+
+[llm.providers.openai]
+base_url = "{}"
+"#,
+            toml_path(&twin_server_storage_dir(context)),
+            twin.base_url,
+        ),
+    );
     seed_openai_vault(&twin_server_storage_dir(context), namespace);
     context.isolated_server();
+}
+
+/// A twin scenario the hook evaluator's request matches. The server also
+/// asks the model for a run title in the same namespace before the hook
+/// fires, so an unscoped scenario would answer the title request instead.
+fn hook_scenario() -> TwinScenario {
+    TwinScenario::responses("gpt-5.4-mini").input_contains("Hook prompt:")
 }
 
 fn write_workflow(context: &fabro_test::TestContext, name: &str, dot: &str) -> std::path::PathBuf {
@@ -110,7 +119,9 @@ fn write_workflow(context: &fabro_test::TestContext, name: &str, dot: &str) -> s
 
 /// A workflow config that bundles the graph `<name>.fabro` with `hooks`,
 /// which is where run hooks live: `fabro run` does not transmit `run`
-/// settings from the user's settings file. Returns the config path to run.
+/// settings from the user's settings file. The pair lives in its own
+/// `<name>/` directory because version packaging accepts a config only as
+/// `workflow.toml` beside its graph. Returns the config path to run.
 fn write_hooked_workflow(
     context: &fabro_test::TestContext,
     name: &str,
@@ -118,8 +129,8 @@ fn write_hooked_workflow(
     hooks: &str,
 ) -> std::path::PathBuf {
     let graph = format!("{name}.fabro");
-    context.write_temp(&graph, dot);
-    let config = format!("{name}.toml");
+    context.write_temp(format!("{name}/{graph}"), dot);
+    let config = format!("{name}/workflow.toml");
     context.write_temp(
         &config,
         format!(
@@ -161,7 +172,6 @@ async fn conclusion_status(context: &fabro_test::TestContext) -> String {
 #[fabro_macros::e2e_test(twin, live("ANTHROPIC_API_KEY"))]
 async fn hook_prompt_proceed_allows_run() {
     let mut context = test_context!();
-    write_server_settings(&context);
     let workflow = write_hooked_workflow(
         &context,
         "hook_prompt_proceed",
@@ -186,7 +196,7 @@ model = "{model}"
         let twin = twin_openai().await;
         let namespace = format!("{}::{}", module_path!(), line!());
         TwinScenarios::new(namespace.clone())
-            .scenario(TwinScenario::responses("gpt-5.4-mini").text(r#"{"ok":true}"#))
+            .scenario(hook_scenario().text(r#"{"ok":true}"#))
             .load(twin)
             .await;
         configure_twin_server(&mut context, twin, &namespace);
@@ -208,7 +218,6 @@ model = "{model}"
 #[fabro_macros::e2e_test(twin, live("ANTHROPIC_API_KEY"))]
 async fn hook_prompt_block_prevents_run() {
     let mut context = test_context!();
-    write_server_settings(&context);
     let workflow = write_hooked_workflow(
         &context,
         "hook_prompt_block",
@@ -233,10 +242,7 @@ model = "{model}"
         let twin = twin_openai().await;
         let namespace = format!("{}::{}", module_path!(), line!());
         TwinScenarios::new(namespace.clone())
-            .scenario(
-                TwinScenario::responses("gpt-5.4-mini")
-                    .text(r#"{"ok":false,"reason":"math check failed"}"#),
-            )
+            .scenario(hook_scenario().text(r#"{"ok":false,"reason":"math check failed"}"#))
             .load(twin)
             .await;
         configure_twin_server(&mut context, twin, &namespace);
@@ -262,7 +268,6 @@ model = "{model}"
 #[fabro_macros::e2e_test(twin, live("ANTHROPIC_API_KEY"))]
 async fn hook_agent_proceed_allows_run() {
     let mut context = test_context!();
-    write_server_settings(&context);
     let workflow = write_hooked_workflow(
         &context,
         "hook_agent_proceed",
@@ -289,7 +294,7 @@ agent = "enabled"
         let twin = twin_openai().await;
         let namespace = format!("{}::{}", module_path!(), line!());
         TwinScenarios::new(namespace.clone())
-            .scenario(TwinScenario::responses("gpt-5.4-mini").text(r#"{"ok":true}"#))
+            .scenario(hook_scenario().text(r#"{"ok":true}"#))
             .load(twin)
             .await;
         configure_twin_server(&mut context, twin, &namespace);
@@ -313,7 +318,6 @@ async fn hook_agent_with_tool_use() {
     let mut context = test_context!();
     let marker = context.temp_dir.join("hook_check.txt");
     std::fs::write(&marker, "READY").unwrap();
-    write_server_settings(&context);
     let workflow = write_hooked_workflow(
         &context,
         "hook_agent_tools",
@@ -342,10 +346,9 @@ agent = "enabled"
         let namespace = format!("{}::{}", module_path!(), line!());
         TwinScenarios::new(namespace.clone())
             .scenario(
-                TwinScenario::responses("gpt-5.4-mini")
-                    .tool_call(TwinToolCall::read_file(marker.display().to_string())),
+                hook_scenario().tool_call(TwinToolCall::read_file(marker.display().to_string())),
             )
-            .scenario(TwinScenario::responses("gpt-5.4-mini").text(r#"{"ok":true}"#))
+            .scenario(hook_scenario().text(r#"{"ok":true}"#))
             .load(twin)
             .await;
         configure_twin_server(&mut context, twin, &namespace);
@@ -367,7 +370,6 @@ agent = "enabled"
 #[fabro_macros::e2e_test(twin, live("ANTHROPIC_API_KEY"))]
 async fn arc_e2e_with_real_llm() {
     let mut context = test_context!();
-    write_server_settings(&context);
     let hello = context.temp_dir.join("hello.txt");
     let workflow = write_workflow(
         &context,

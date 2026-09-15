@@ -2,16 +2,15 @@ use std::any::{TypeId, type_name};
 
 use fabro_api::types::{
     AgentToolsAvailableProps as ApiAgentToolsAvailableProps,
-    BilledModelUsage as ApiBilledModelUsage,
     ContextWindowBreakdownItem as ApiContextWindowBreakdownItem,
     ContextWindowCategory as ApiContextWindowCategory,
     ContextWindowCountMethod as ApiContextWindowCountMethod,
     ContextWindowSnapshot as ApiContextWindowSnapshot,
     ContextWindowStaleness as ApiContextWindowStaleness,
     ContextWindowWarning as ApiContextWindowWarning, LlmOutputKind as ApiLlmOutputKind,
-    ParallelBranchResult as ApiParallelBranchResult, PermissionLevel as ApiPermissionLevel,
-    SkillActivationSource as ApiSkillActivationSource, SkillSummary as ApiSkillSummary,
-    StageContextWindow as ApiStageContextWindow,
+    ModelUsage as ApiModelUsage, ParallelBranchResult as ApiParallelBranchResult,
+    PermissionLevel as ApiPermissionLevel, SkillActivationSource as ApiSkillActivationSource,
+    SkillSummary as ApiSkillSummary, StageContextWindow as ApiStageContextWindow,
     StageContextWindowUnavailableReason as ApiStageContextWindowUnavailableReason,
     StageInferenceProjection as ApiStageInferenceProjection, StageProjection as ApiStageProjection,
     StageToolBatchProjection as ApiStageToolBatchProjection,
@@ -19,57 +18,64 @@ use fabro_api::types::{
     ToolSource as ApiToolSource, ToolSummary as ApiToolSummary,
 };
 use fabro_types::{
-    AgentToolsAvailableProps, BilledModelUsage, ContextWindowBreakdownItem, ContextWindowCategory,
+    AgentToolsAvailableProps, ContextWindowBreakdownItem, ContextWindowCategory,
     ContextWindowCountMethod, ContextWindowSnapshot, ContextWindowStaleness, ContextWindowWarning,
-    LlmOutputKind, ModelRef, ParallelBranchId, ParallelBranchResult, PermissionLevel,
+    LlmOutputKind, ModelRef, ModelUsage, ParallelBranchId, ParallelBranchResult, PermissionLevel,
     SkillActivationSource, SkillSummary, StageContextWindow, StageContextWindowUnavailableReason,
     StageId, StageInferenceProjection, StageProjection, StageToolBatchProjection, TodoListKind,
     TodoListProjection, ToolCategory, ToolSource, ToolSummary,
 };
 use lithos_llm::catalog::{ModelId, ProviderId};
-use lithos_llm::types::TokenCounts;
+use lithos_llm::types::{Cost, CostSource, TokenCounts, Usage};
 use serde_json::json;
 
 #[test]
 fn stage_projection_reuses_canonical_type() {
     assert_same_type::<ApiStageProjection, StageProjection>();
-    assert_same_type::<ApiBilledModelUsage, BilledModelUsage>();
+    assert_same_type::<ApiModelUsage, ModelUsage>();
 }
 
 #[test]
-fn billing_by_model_rows_match_openapi_json_shape() {
-    let row = BilledModelUsage {
-        model:            ModelRef::new(ProviderId::new("openai"), ModelId::new("gpt-5.4")),
-        tokens:           TokenCounts {
-            input: 107,
-            output: 51,
-            ..TokenCounts::default()
+fn usage_by_model_rows_match_openapi_json_shape() {
+    let row = ModelUsage::new(
+        ModelRef::new(ProviderId::new("openai"), ModelId::new("gpt-5.4")),
+        Usage {
+            tokens: TokenCounts {
+                input: 107,
+                output: 51,
+                ..TokenCounts::default()
+            },
+            cost:   Some(Cost {
+                usd_micros: 321,
+                source:     CostSource::Catalog,
+            }),
         },
-        total_usd_micros: Some(321),
-    };
+    );
     let value = serde_json::to_value(&row).unwrap();
     assert_eq!(
         value,
         json!({
             "model": { "provider": "openai", "model_id": "gpt-5.4" },
-            "tokens": {
-                "input": 107,
-                "output": 51,
-                "reasoning": 0,
-                "cache_read": 0,
-                "cache_write": 0
-            },
-            "total_usd_micros": 321
+            "usage": {
+                "tokens": {
+                    "input": 107,
+                    "output": 51,
+                    "reasoning": 0,
+                    "cache_read": 0,
+                    "cache_write": 0
+                },
+                "cost": { "usd_micros": 321, "source": "catalog" }
+            }
         })
     );
-    let api_row: ApiBilledModelUsage = serde_json::from_value(value).unwrap();
+    let api_row: ApiModelUsage = serde_json::from_value(value).unwrap();
     assert_eq!(api_row, row);
 
     let mut stage = StageProjection::new(std::num::NonZeroU32::new(1).unwrap());
-    stage.billing_by_model = vec![row.clone()];
+    stage.usage_by_model = vec![row.clone()];
     let stage_json = serde_json::to_value(&stage).unwrap();
     assert_eq!(
-        stage_json["billing_by_model"],
+        stage_json["usage_by_model"],
         json!([serde_json::to_value(&row).unwrap()])
     );
     let without: StageProjection = serde_json::from_value(json!({
@@ -84,21 +90,22 @@ fn billing_by_model_rows_match_openapi_json_shape() {
         "parallel_results": null,
         "output": null,
         "usage": {
-            "input_tokens": 0,
-            "output_tokens": 0,
-            "total_tokens": 0,
-            "reasoning_tokens": 0,
-            "cache_read_tokens": 0,
-            "cache_write_tokens": 0
+            "tokens": {
+                "input": 0,
+                "output": 0,
+                "reasoning": 0,
+                "cache_read": 0,
+                "cache_write": 0
+            }
         },
         "state": "running"
     }))
     .unwrap();
-    assert!(without.billing_by_model.is_empty());
+    assert!(without.usage_by_model.is_empty());
     assert!(
         serde_json::to_value(&without)
             .unwrap()
-            .get("billing_by_model")
+            .get("usage_by_model")
             .is_none(),
         "no rows, nothing on the wire"
     );
@@ -207,12 +214,13 @@ fn stage_projection_without_inference_round_trips() {
         "parallel_results": null,
         "output": null,
         "usage": {
-            "input_tokens": 0,
-            "output_tokens": 0,
-            "total_tokens": 0,
-            "reasoning_tokens": 0,
-            "cache_read_tokens": 0,
-            "cache_write_tokens": 0
+            "tokens": {
+                "input": 0,
+                "output": 0,
+                "reasoning": 0,
+                "cache_read": 0,
+                "cache_write": 0
+            }
         },
         "state": "running"
     });
@@ -277,12 +285,13 @@ fn stage_projection_round_trips_representative_json() {
             "active_time_ms": 0
         },
         "usage": {
-            "input_tokens": 0,
-            "output_tokens": 0,
-            "total_tokens": 0,
-            "reasoning_tokens": 0,
-            "cache_read_tokens": 0,
-            "cache_write_tokens": 0
+            "tokens": {
+                "input": 0,
+                "output": 0,
+                "reasoning": 0,
+                "cache_read": 0,
+                "cache_write": 0
+            }
         },
         "permission_level": "read-only",
         "agent_tools": [

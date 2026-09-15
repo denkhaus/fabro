@@ -15,27 +15,27 @@
 
 // May contain unused imports in some cases
 // @ts-ignore
-import type { BilledTokenCounts } from './billed-token-counts';
-// May contain unused imports in some cases
-// @ts-ignore
-import type { BillingModelRef } from './billing-model-ref';
-// May contain unused imports in some cases
-// @ts-ignore
-import type { BillingStageRef } from './billing-stage-ref';
-// May contain unused imports in some cases
-// @ts-ignore
 import type { StageState } from './stage-state';
 // May contain unused imports in some cases
 // @ts-ignore
 import type { StageTiming } from './stage-timing';
+// May contain unused imports in some cases
+// @ts-ignore
+import type { Usage } from './usage';
+// May contain unused imports in some cases
+// @ts-ignore
+import type { UsageModelRef } from './usage-model-ref';
+// May contain unused imports in some cases
+// @ts-ignore
+import type { UsageStageRef } from './usage-stage-ref';
 
 /**
- * Token counts and billed totals for one workflow node within a run. Rows are grouped by node; billing and timing sum every visit of that node.
+ * Token counts and cost for one workflow node within a run. Rows are grouped by node; usage and timing sum every visit of that node.
  */
-export interface RunBillingStage {
-    'stage': BillingStageRef;
-    'model': BillingModelRef | null;
-    'billing': BilledTokenCounts;
+export interface RunUsageStage {
+    'stage': UsageStageRef;
+    'model': UsageModelRef | null;
+    'usage': Usage;
     /**
      * Per-node timing summed across every visit. `wall_time_ms` is the sum of visit wall times; the active breakdown sums work timing.
      */

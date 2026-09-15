@@ -138,16 +138,16 @@ Emitted when the workflow run finishes successfully (or with partial success).
     "duration_ms": 45000,
     "artifact_count": 3,
     "status": "succeeded",
-    "total_cost": 0.15,
     "final_git_commit_sha": "def456...",
     "usage": {
-      "input_tokens": 15000,
-      "output_tokens": 5000,
-      "total_tokens": 20000,
-      "reasoning_tokens": 2000,
-      "cache_read_tokens": 8000,
-      "cache_write_tokens": 3000,
-      "speed": "standard"
+      "tokens": {
+        "input": 15000,
+        "output": 5000,
+        "reasoning": 2000,
+        "cache_read": 8000,
+        "cache_write": 3000
+      },
+      "cost": { "usd_micros": 150000, "source": "catalog" }
     }
   }
 }
@@ -158,17 +158,10 @@ Emitted when the workflow run finishes successfully (or with partial success).
 | `duration_ms` | number | Total run duration in milliseconds |
 | `artifact_count` | number | Number of artifacts produced |
 | `status` | string | Final stage outcome (`"succeeded"`, `"failed"`, `"partially_succeeded"`, `"skipped"`) |
-| `total_cost` | number? | Aggregate cost in USD |
 | `final_git_commit_sha` | string? | Final HEAD SHA |
-| `usage` | object? | Aggregate token usage |
-| `usage.input_tokens` | number | Total input tokens |
-| `usage.output_tokens` | number | Total output tokens |
-| `usage.total_tokens` | number | Total tokens (input + output) |
-| `usage.reasoning_tokens` | number? | Total reasoning/thinking tokens |
-| `usage.cache_read_tokens` | number? | Total cache read tokens |
-| `usage.cache_write_tokens` | number? | Total cache write tokens |
-| `usage.speed` | string? | Speed tier |
-| `usage.raw` | object? | Raw provider-specific usage data |
+| `usage` | object? | The run's usage summed across every stage visit, as lithos-llm's `Usage`. Absent for a run that made no model calls |
+| `usage.tokens` | object | The five disjoint token buckets: `input`, `output`, `reasoning`, `cache_read`, `cache_write`. Their plain sum is the total |
+| `usage.cost` | object? | `usd_micros` and `source` (`catalog`, `provider`, or `application`). Absent when the cost is unknown, never zero: a sum has a cost only when every part that used tokens was priced |
 
 ### `run.failed`
 
@@ -379,15 +372,19 @@ Emitted when a workflow node finishes execution.
     "preferred_label": "tests_pass",
     "suggested_next_ids": ["review"],
     "usage": {
-      "model": "claude-sonnet-4-20250514",
-      "input_tokens": 5000,
-      "output_tokens": 2000,
-      "cache_read_tokens": 3000,
-      "cache_write_tokens": 1000,
-      "reasoning_tokens": 500,
-      "speed": "standard",
-      "cost": 0.05
+      "model": { "provider": "anthropic", "model_id": "claude-sonnet-4-20250514" },
+      "usage": {
+        "tokens": {
+          "input": 5000,
+          "output": 2000,
+          "reasoning": 500,
+          "cache_read": 3000,
+          "cache_write": 1000
+        },
+        "cost": { "usd_micros": 50000, "source": "catalog" }
+      }
     },
+    "usage_by_model": [],
     "error": "lint failed",
     "failure_class": "deterministic",
     "failure_signature": "clippy::unused_import",
@@ -413,16 +410,10 @@ Emitted when a workflow node finishes execution.
 | `status` | string | `"succeeded"`, `"failed"`, `"skipped"`, `"partially_succeeded"` |
 | `preferred_label` | string? | Edge label hint for routing |
 | `suggested_next_ids` | string[] | Suggested successor node ids |
-| `usage` | object? | Token usage for this stage |
-| `usage.model` | string | Model identifier |
-| `usage.input_tokens` | number | Input tokens |
-| `usage.output_tokens` | number | Output tokens |
-| `usage.cache_read_tokens` | number? | Cache read tokens |
-| `usage.cache_write_tokens` | number? | Cache write tokens |
-| `usage.reasoning_tokens` | number? | Reasoning/thinking tokens |
-| `usage.speed` | string? | Speed tier |
-| `usage.cost` | number? | Estimated cost in USD |
-| `billing_by_model` | array? | For an agent stage, the stage's billing split by model: the root session's route and each subagent's own model, a subagent whose model the catalog does not know billed at the root's. Each row has `model`, `tokens`, and `total_usd_micros`, and the rows sum to the stage's billing. Empty for stages without a coding agent and on events written before it existed |
+| `usage` | object? | The stage's usage under the model it ran on (`ModelUsage`): for an agent stage, the whole session tree's tokens under the root's route. Absent for a stage that made no model calls |
+| `usage.model` | object | `provider`, `model_id`, and optional `speed` tier |
+| `usage.usage` | object | lithos-llm's `Usage`: `tokens` (the five disjoint buckets) and an optional `cost` (`usd_micros`, `source`). The cost sums what lithos-llm attached to each answer, the provider's reported figure when it gave one, else the catalog's price for the route; absent when an answer had neither |
+| `usage_by_model` | array? | For an agent stage, `usage` split by model: the root session's route and each subagent's own model, a subagent whose model the catalog does not know priced at the root's. Each row is a `ModelUsage`, and the rows sum to `usage`. Empty for stages without a coding agent and on events written before it existed |
 | `error` | string? | Error message (flattened from failure detail) |
 | `failure_class` | string? | `"transient_infra"`, `"deterministic"`, `"budget_exhausted"`, `"compilation_loop"`, `"canceled"`, `"structural"` |
 | `failure_signature` | string? | Dedup key for repeated failures |
@@ -473,8 +464,8 @@ Emitted when a stage fails (before retry decision).
 | `failure_class` | string | Failure category |
 | `failure_signature` | string? | Dedup key for repeated failures |
 | `will_retry` | boolean | Whether the stage will be retried |
-| `billing` | object? | What the stage spent before it failed, in the shape `stage.completed` uses. An agent stage that fails for good after answering model calls bills its whole session tree, as it would have on completion; a retried attempt and a cancelled stage carry none |
-| `billing_by_model` | array? | `billing` split by model, as on `stage.completed` |
+| `usage` | object? | What the stage spent before it failed, in the shape `stage.completed` uses. An agent stage that fails for good after answering model calls records its whole session tree, as it would have on completion; a retried attempt and a cancelled stage carry none |
+| `usage_by_model` | array? | `usage` split by model, as on `stage.completed` |
 
 ### `stage.retrying`
 
@@ -1085,12 +1076,14 @@ Emitted when the assistant produces a complete message.
     "text": "I've fixed the bug in auth.rs by...",
     "model": "claude-sonnet-4-20250514",
     "usage": {
-      "input_tokens": 3000,
-      "output_tokens": 1500,
-      "total_tokens": 4500,
-      "reasoning_tokens": 200,
-      "cache_read_tokens": 1000,
-      "cache_write_tokens": 500
+      "tokens": {
+        "input": 3000,
+        "output": 1500,
+        "reasoning": 200,
+        "cache_read": 1000,
+        "cache_write": 500
+      },
+      "cost": { "usd_micros": 12500, "source": "provider" }
     },
     "tool_call_count": 2
   }
@@ -1101,13 +1094,9 @@ Emitted when the assistant produces a complete message.
 |----------|------|-------------|
 | `text` | string | Assistant message text |
 | `model` | string | Model identifier |
-| `usage` | object | Token usage for this message |
-| `usage.input_tokens` | number | Input tokens |
-| `usage.output_tokens` | number | Output tokens |
-| `usage.total_tokens` | number | Total tokens |
-| `usage.reasoning_tokens` | number? | Reasoning tokens |
-| `usage.cache_read_tokens` | number? | Cache read tokens |
-| `usage.cache_write_tokens` | number? | Cache write tokens |
+| `usage` | object | lithos-llm's `Usage` for this message, as pebble reported it |
+| `usage.tokens` | object | The five disjoint token buckets: `input`, `output`, `reasoning`, `cache_read`, `cache_write` |
+| `usage.cost` | object? | `usd_micros` and `source`, when the provider reported a cost |
 | `usage.speed` | string? | Speed tier |
 | `usage.raw` | object? | Raw provider-specific usage |
 | `tool_call_count` | number | Number of tool calls in this turn |

@@ -21,27 +21,23 @@ import type {
   McpToolSummary,
   StageContextWindow,
   StageProjection,
-  TokenUsage,
+  Usage,
 } from "@qltysh/fabro-api-client";
 
 import { StageInsightsSidebar } from "./stage-insights-sidebar";
+
+const NO_USAGE: Usage = {
+  tokens: { input: 0, output: 0, reasoning: 0, cache_read: 0, cache_write: 0 },
+};
 
 function makeStage(overrides: Partial<StageProjection> = {}): StageProjection {
   return {
     first_event_seq: 1,
     state:           "running",
-    usage:           {
-      input_tokens:        0,
-      output_tokens:       0,
-      cache_read_tokens:   0,
-      cache_create_tokens: 0,
-      total_tokens:        0,
-    } as StageProjection["usage"],
+    usage:           NO_USAGE,
     ...overrides,
   };
 }
-
-const NO_TOKENS: TokenUsage = { input: 0, output: 0, reasoning: 0, cache_read: 0, cache_write: 0 };
 
 /** The coding agent's fold of a stage that has seen nothing yet. */
 function makeAgent(overrides: Partial<AgentSessionProjection> = {}): AgentSessionProjection {
@@ -49,8 +45,7 @@ function makeAgent(overrides: Partial<AgentSessionProjection> = {}): AgentSessio
     root_session_id: "ses_root",
     route:           { provider: "anthropic", model: "claude-opus-4-7" },
     activity:        AgentSessionActivity.RUNNING,
-    usage:           NO_TOKENS,
-    cost_usd_micros: null,
+    usage:           NO_USAGE,
     messages:        0,
     descendants:     {},
     context_window:  null,
@@ -67,8 +62,7 @@ function makeAgent(overrides: Partial<AgentSessionProjection> = {}): AgentSessio
     prompts:         1,
     prompt:          {
       completed:         false,
-      usage:             NO_TOKENS,
-      cost_usd_micros:   null,
+      usage:             NO_USAGE,
       messages:          0,
       context_window:    null,
       tool_calls:        0,
@@ -386,7 +380,7 @@ describe("StageInsightsSidebar", () => {
               to:           "openai/gpt-5.4",
               attempt:      1,
               error:        agentError("rate limited"),
-              usage:        NO_TOKENS,
+              usage:        NO_USAGE,
               inference_ms: 120,
               tool_ms:      30,
               continuation: FailoverContinuation.CONTINUE_TURN,

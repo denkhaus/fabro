@@ -15,7 +15,7 @@
 
 // May contain unused imports in some cases
 // @ts-ignore
-import type { TokenUsage } from './token-usage';
+import type { Usage } from './usage';
 
 /**
  * What one descendant session spent, as its own events reported it.
@@ -33,8 +33,7 @@ export interface AgentSessionDescendantAccount {
      * The model it runs on, from its `SessionStarted`; when the start was not seen, the model of its first answer.
      */
     'model'?: string;
-    'usage': TokenUsage;
-    'cost_usd_micros': number | null;
+    'usage': Usage;
     /**
      * Committed assistant messages.
      */

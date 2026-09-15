@@ -29,7 +29,7 @@ import {
   unarchiveRuns,
 } from "./run-actions";
 import { generatedAxios } from "./api-client";
-import { TEST_PRINCIPAL } from "./test-fixtures";
+import { TEST_PRINCIPAL, makeUsage } from "./test-fixtures";
 
 type StubResponseInit = {
   status: number;
@@ -74,7 +74,7 @@ function makeRun(status: RunStatus, archived = false): Run {
       last_event_at:  null,
       completed_at:   null,
     },
-    billing:          null,
+    usage:          makeUsage(),
     size:             "XS",
     diff:             null,
     pull_request:     null,

@@ -14,7 +14,7 @@ use std::collections::BTreeMap;
 use serde_json::{Value, json};
 
 use super::{CheckpointCompletedProps, EventBody, RunNoticeLevel, RunNoticeProps};
-use crate::{BilledModelUsage, Outcome, RunEvent};
+use crate::{ModelUsage, Outcome, RunEvent};
 
 /// Headroom subtracted from [`MAX_RUN_EVENT_BODY_BYTES`] when bounding an
 /// event. Covers the envelope fields, redaction rewriting, and serializer
@@ -186,7 +186,7 @@ fn replace_value_map(map: &mut BTreeMap<String, Value>) {
     );
 }
 
-fn bound_outcome_map(map: &mut BTreeMap<String, Outcome<Option<BilledModelUsage>>>) {
+fn bound_outcome_map(map: &mut BTreeMap<String, Outcome<Option<ModelUsage>>>) {
     for outcome in map.values_mut() {
         let Some(len) = serde_json::to_vec(outcome).ok().map(|body| body.len()) else {
             continue;
@@ -207,7 +207,7 @@ fn bound_outcome_map(map: &mut BTreeMap<String, Outcome<Option<BilledModelUsage>
     }
 }
 
-fn replace_outcome_map(map: &mut BTreeMap<String, Outcome<Option<BilledModelUsage>>>) {
+fn replace_outcome_map(map: &mut BTreeMap<String, Outcome<Option<ModelUsage>>>) {
     let omitted_bytes = serde_json::to_vec(map).ok().map_or(0, |body| body.len());
     let entries = map.len();
     map.clear();

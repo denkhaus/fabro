@@ -36,6 +36,15 @@ leak-timeout = "500ms"
 slow-timeout = { period = "10s", terminate-after = 3 }
 leak-timeout = "500ms"
 
+    # Daytona live tests create a remote sandbox, install tools in it (the
+    # Playwright MCP test fetches a 114 MiB browser), and wait for an MCP
+    # handshake through the preview URL. The measured run is ~41s, past the
+    # 30s hard kill above; 20 minutes leaves room for a slow provider without
+    # letting a hung test run forever.
+    [[profile.e2e.overrides]]
+    filter = "test(/daytona_/)"
+    slow-timeout = { period = "60s", terminate-after = 20 }
+
 [profile.ci]
 # CI runners are slower and more variable than dev machines; give tests room
 # before flagging them as hung. CI uses one uniform timeout for every test.

@@ -20,7 +20,14 @@ use serde_json::{Map, Value, json};
 pub use session::*;
 pub use stage::*;
 
-use crate::{BilledTokenCounts, ParallelBranchId, Principal, RunId, StageId};
+use crate::{ParallelBranchId, Principal, RunId, StageId};
+mod fork_legacy_read;
+// Fork seam (ADR-0021 D7): the legacy read normalizers live in a fork-only
+// file so upstream merges cannot drop them.
+use fork_legacy_read::{
+    is_legacy_flat_agent_row, is_legacy_payloadless_coding_row, is_legacy_variantless_event_name,
+    normalize_legacy_agent_message, normalize_legacy_billing, normalize_legacy_cost_source,
+};
 
 /// Maximum accepted body size for `POST /runs/{id}/events`.
 ///
@@ -573,28 +580,6 @@ impl EventBody {
     }
 }
 
-/// Event names that no longer carry an `EventBody` variant but may still
-/// appear in stored run history from before the sandbox-driver adoption
-/// (upstream #849 removed the variants, the names stayed in
-/// [`is_known_event_name`]). Reads must tolerate them as
-/// [`EventBody::Unknown`] instead of aborting startup: run-history
-/// activation replays every stored event, and one legacy name would
-/// otherwise crash-loop the server on real production data
-/// (2026-09-12, same class as the v0.353 billing normalizer). Delete
-/// together with the other legacy normalizers once no pre-adoption store
-/// can be read.
-fn is_legacy_variantless_event_name(event: &str) -> bool {
-    matches!(
-        event,
-        "sandbox.git.started"
-            | "sandbox.git.completed"
-            | "sandbox.git.failed"
-            | "sandbox.cleanup.started"
-            | "sandbox.cleanup.completed"
-            | "sandbox.cleanup.failed"
-    )
-}
-
 fn is_known_event_name(event: &str) -> bool {
     is_coding_event_name(event)
         || matches!(
@@ -987,246 +972,6 @@ fn normalize_legacy_event(value: &mut Value) {
     }
 }
 
-/// Whether `event` names a payload-less CodingEvent and `properties` is a
-/// flat pre-v0.354 row for it (no envelope `event` key; `{}` or
-/// bookkeeping-only).
-fn is_legacy_payloadless_coding_row(event: &str, properties: &Value) -> bool {
-    if !matches!(
-        event,
-        "agent.session.ended" | "agent.loop.detected" | "agent.processing.end"
-    ) {
-        return false;
-    }
-    properties
-        .as_object()
-        .is_some_and(|object| !object.contains_key("event"))
-}
-
-/// Whether `properties` is a flat pre-v0.354 agent event row: no envelope
-/// `event` key, and either no fields at all (the payload-less events —
-/// `agent.session.ended`, `agent.loop.detected` — stored `{}`) or at least
-/// one field beyond the envelope's own `stage`/`visit`/`seq` bookkeeping.
-/// Every event family the old writer stored carried its own props beside
-/// those; a row that has ONLY the bookkeeping keys is a malformed envelope,
-/// not a legacy row, and strict reading keeps rejecting it.
-fn is_legacy_flat_agent_row(properties: &Value) -> bool {
-    let Some(object) = properties.as_object() else {
-        return false;
-    };
-    if object.contains_key("event") {
-        return false;
-    }
-    object.is_empty()
-        || object
-            .keys()
-            .any(|key| !matches!(key.as_str(), "stage" | "visit" | "seq"))
-}
-
-/// Rewrite one flat legacy `agent.message` row into a
-/// `CodingAgentEvent`-shaped envelope the current `EventBody::Agent`
-/// reader accepts. Called from the value and parts readers alike, after
-/// the property normalizers.
-///
-/// Legacy: `{text, model: {provider, model_id}, billing: {flat counts},
-/// tool_call_count}`. Target: AssistantMessage with a `provider/model`
-/// catalog id string, a pebble `TokenUsage`, and the cost total hoisted to
-/// `cost_usd_micros`. Rows that already carry an `event` key are envelopes
-/// and pass through untouched.
-fn normalize_legacy_agent_message(properties: &mut Value, timestamp: Value) {
-    if !is_legacy_flat_agent_row(properties)
-        || !properties
-            .as_object()
-            .is_some_and(|object| object.contains_key("text"))
-    {
-        return;
-    }
-    let Some(object) = properties.as_object_mut() else {
-        return;
-    };
-    let text = object
-        .get("text")
-        .and_then(Value::as_str)
-        .unwrap_or_default()
-        .to_string();
-    let model = match object.get("model") {
-        Some(Value::String(model)) => model.clone(),
-        Some(Value::Object(model)) => {
-            // The legacy row carries the full ModelRef (provider + model_id);
-            // the current AssistantMessage contract is the bare catalog model
-            // id, with the provider sourced from the session-activation
-            // evidence on the stage (run_state's stage_model_ref). Joining
-            // "provider/model_id" here produced a wrong model name on replay
-            // and aborted run-history activation on healthy stored rows
-            // (observed live 2026-09-13, run 01M0NGQXB67674XQ5YCR1MB4BN).
-            model
-                .get("model_id")
-                .and_then(Value::as_str)
-                .unwrap_or_default()
-                .to_string()
-        }
-        _ => String::new(),
-    };
-    let mut usage = serde_json::Map::new();
-    let mut cost_usd_micros = None;
-    if let Some(billing) = object.get("billing").and_then(Value::as_object) {
-        for (legacy, current) in [
-            ("input_tokens", "input"),
-            ("output_tokens", "output"),
-            ("reasoning_tokens", "reasoning"),
-            ("cache_read_tokens", "cache_read"),
-            ("cache_write_tokens", "cache_write"),
-        ] {
-            if let Some(count) = billing.get(legacy).and_then(Value::as_u64) {
-                usage.insert(current.to_string(), Value::from(count));
-            }
-        }
-        cost_usd_micros = billing
-            .get("total_usd_micros")
-            .and_then(Value::as_u64)
-            .or_else(|| {
-                billing
-                    .get("input")
-                    .and_then(Value::as_object)
-                    .and_then(|input| input.get("total_usd_micros"))
-                    .and_then(Value::as_u64)
-            });
-    }
-    let tool_call_count = object
-        .get("tool_call_count")
-        .and_then(Value::as_u64)
-        .unwrap_or_default();
-    let visit = object.get("visit").and_then(Value::as_u64).unwrap_or(1);
-    let mut message = serde_json::Map::new();
-    message.insert("text".to_string(), Value::String(text));
-    message.insert("model".to_string(), Value::String(model));
-    message.insert("usage".to_string(), Value::Object(usage));
-    if let Some(cost) = cost_usd_micros {
-        message.insert("cost_usd_micros".to_string(), Value::from(cost));
-    }
-    if let Some(cost_source) = object.get("cost_source") {
-        message.insert("cost_source".to_string(), cost_source.clone());
-    }
-    message.insert("tool_call_count".to_string(), Value::from(tool_call_count));
-    let mut envelope = serde_json::Map::new();
-    // AgentEventProps flattens the CodingAgentEvent beside `stage`/`visit`;
-    // legacy rows carry `visit` but never `stage` (the old props had none),
-    // so the stage is empty and the projection's node attribution comes
-    // from the run's stage sequencing instead.
-    envelope.insert("stage".to_string(), Value::String(String::new()));
-    envelope.insert("visit".to_string(), Value::from(visit));
-    envelope.insert("seq".to_string(), Value::from(0_u64));
-    envelope.insert("stream_id".to_string(), Value::String(String::new()));
-    envelope.insert(
-        "event".to_string(),
-        serde_json::json!({ "AssistantMessage": Value::Object(message) }),
-    );
-    envelope.insert("timestamp".to_string(), timestamp);
-    envelope.insert("session_id".to_string(), Value::String(String::new()));
-    *properties = Value::Object(envelope);
-}
-
-/// Rewrite the legacy lithos billing wrapper stored before v0.353:
-///
-/// ```json
-/// {"input": {"usage": {"model": {"provider": "zai", "model_id": "glm-5.3"},
-///                       "tokens": {"input_tokens": 1, ...}, "facts": ...}},
-///  "total_usd_micros": 45294}
-/// ```
-///
-/// into the shapes the current billing types expect: a `provider:model`
-/// ModelRef string plus flat token counts. Run-history activation replays
-/// every stored event; one legacy wrapper aborts server startup
-/// (2026-09-11, v0.353.0 upgrade, fabro-7893 follow-up). Delete together
-/// with the other legacy normalizers once no pre-v0.353 store can be read.
-fn normalize_legacy_billing(event: &str, value: &mut Value) {
-    let Some(map) = value.as_object_mut() else {
-        return;
-    };
-    for (key, item) in map.iter_mut() {
-        if key != "billing" && key != "usage" {
-            normalize_legacy_billing(event, item);
-            continue;
-        }
-        let Some(wrapper) = item.as_object_mut() else {
-            continue;
-        };
-        let Some(usage) = wrapper
-            .get_mut("input")
-            .and_then(|input| input.get_mut("usage"))
-            .and_then(|usage| usage.as_object_mut())
-        else {
-            continue;
-        };
-        // billing::ModelRef (the struct) already matches the stored
-        // {provider, model_id} object - keep it verbatim.
-        let model_ref = usage.get("model").cloned();
-        let tokens = usage.get("tokens").cloned();
-        let total_usd_micros = wrapper.get("total_usd_micros").cloned();
-        let Some(tokens) = tokens else {
-            continue;
-        };
-        if event == "agent.message" {
-            // AgentMessageProps.billing is BilledTokenCounts: flat token
-            // buckets (legacy names already match) plus the required
-            // `total_tokens` sum and the optional cost total.
-            let mut counts = tokens;
-            if let (Some(counts_map), true) = (counts.as_object_mut(), total_usd_micros.is_some()) {
-                let sum = [
-                    "input_tokens",
-                    "output_tokens",
-                    "reasoning_tokens",
-                    "cache_read_tokens",
-                    "cache_write_tokens",
-                ]
-                .iter()
-                .filter_map(|key| counts_map.get(*key))
-                .filter_map(Value::as_i64)
-                .sum::<i64>();
-                counts_map.insert("total_tokens".to_string(), Value::from(sum));
-                if let Some(total) = total_usd_micros {
-                    counts_map.insert("total_usd_micros".to_string(), total);
-                }
-            }
-            *item = counts;
-        } else {
-            // BilledModelUsage: ModelRef string plus lithos TokenCounts,
-            // whose field names dropped the `_tokens` suffix.
-            let mut tokens_map = match tokens {
-                Value::Object(map) => map,
-                other => {
-                    *item = other;
-                    continue;
-                }
-            };
-            for (from, to) in [
-                ("input_tokens", "input"),
-                ("output_tokens", "output"),
-                ("reasoning_tokens", "reasoning"),
-                ("cache_read_tokens", "cache_read"),
-                ("cache_write_tokens", "cache_write"),
-            ] {
-                if let Some(value) = tokens_map.remove(from) {
-                    tokens_map.insert(to.to_string(), value);
-                }
-            }
-            // A usage entry without an extractable model cannot satisfy
-            // BilledModelUsage's required ModelRef; null keeps the enclosing
-            // Option field valid instead of failing deserialization.
-            let Some(model_ref) = model_ref else {
-                *item = Value::Null;
-                continue;
-            };
-            let mut usage_out = serde_json::Map::new();
-            usage_out.insert("model".to_string(), model_ref);
-            usage_out.insert("tokens".to_string(), Value::Object(tokens_map));
-            if let Some(total) = total_usd_micros {
-                usage_out.insert("total_usd_micros".to_string(), total);
-            }
-            *item = Value::Object(usage_out);
-        }
-    }
-}
-
 fn normalize_legacy_event_properties(event: &str, properties: &mut Value) {
     // Billing wrapper normalization runs before the cost-source pass: it
     // reshapes the legacy usage envelope the cost fields live in.
@@ -1246,43 +991,6 @@ fn normalize_legacy_event_properties(event: &str, properties: &mut Value) {
         "stage.completed" => normalize_legacy_timing(object, true),
         "sandbox.initialized" => normalize_legacy_sandbox_id(object),
         _ => {}
-    }
-}
-
-/// Rewrite the removed `CostSource::Estimated` variant (`estimated`) to
-/// `catalog`.
-///
-/// lithos-llm replaced `estimated` with `catalog`/`provider`/`application`
-/// semantics; legacy events priced by Fabro from the model catalog carry
-/// `estimated`, which the current deserializer rejects. Run-history
-/// activation replays every stored event through the current types, so one
-/// legacy value aborts server startup (2026-09-11, v0.353.0 upgrade).
-/// Catalog pricing is the correct mapping for estimated costs.
-///
-/// Delete together with the other legacy normalizers once no pre-v0.353
-/// event sources can be read anymore.
-const LEGACY_COST_SOURCE: &str = "estimated";
-const LEGACY_COST_SOURCE_REPLACEMENT: &str = "catalog";
-
-fn normalize_legacy_cost_source(value: &mut Value) {
-    match value {
-        Value::Object(map) => {
-            for (key, item) in map.iter_mut() {
-                if (key == "cost_source" || key == "source")
-                    && item.as_str() == Some(LEGACY_COST_SOURCE)
-                {
-                    *item = Value::String(LEGACY_COST_SOURCE_REPLACEMENT.to_string());
-                } else {
-                    normalize_legacy_cost_source(item);
-                }
-            }
-        }
-        Value::Array(items) => {
-            for item in items.iter_mut() {
-                normalize_legacy_cost_source(item);
-            }
-        }
-        Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => {}
     }
 }
 
@@ -1369,116 +1077,11 @@ impl<'de> Deserialize<'de> for RunEvent {
 
 #[cfg(test)]
 mod tests {
-
-    #[test]
-    fn legacy_variantless_event_names_read_back_as_unknown() {
-        // Pre-sandbox-driver stores (before upstream #849) wrote
-        // sandbox.git.* / sandbox.cleanup.* progress events. The variants
-        // are gone; the names stayed "known", so the strict read path
-        // would abort startup on real production history
-        // (2026-09-12). They must read back as Unknown instead.
-        for name in [
-            "sandbox.git.started",
-            "sandbox.git.completed",
-            "sandbox.git.failed",
-            "sandbox.cleanup.started",
-            "sandbox.cleanup.completed",
-            "sandbox.cleanup.failed",
-        ] {
-            let line = format!(
-                "{{\"id\":\"00000000-0000-0000-0000-000000000002\",\"ts\":\"2026-01-01T14:25:00Z\",                 \"run_id\":\"01M20DMYEK5B3GDQAYFR83DNGN\",\"event\":\"{name}\",\"properties\":{{}}}}"
-            );
-            let event = RunEvent::from_json_str(&line)
-                .unwrap_or_else(|err| panic!("{name} should read back as Unknown: {err}"));
-            assert!(
-                matches!(event.body, EventBody::Unknown { .. }),
-                "{name} should be Unknown, got {:?}",
-                event.body
-            );
-        }
-    }
-
-    #[test]
-    fn legacy_billing_wrapper_parses_through_prompt_completed() {
-        // Exact stored row (run 01M20DMYEK, 2026-09-11 crash-loop incident):
-        // the legacy lithos billing wrapper must normalize into
-        // BilledModelUsage (ModelRef string + token counts).
-        let raw = r#"{"id":"01a080e1-d4fa-7d82-afc5-b53695397b4c","ts":"2026-09-08T08:00:00Z","run_id":"01M20DMYEK5B3GDQAYFR83DNGN","event":"prompt.completed","properties":{"response":"{\"preferred_next_label\":\"Merge needed\"}","model":"glm-5.3","provider":"zai","billing":{"input":{"usage":{"model":{"provider":"zai","model_id":"glm-5.3"},"tokens":{"input_tokens":22308,"output_tokens":681,"reasoning_tokens":73,"cache_read_tokens":41344,"cache_write_tokens":0}}},"total_usd_micros":45294}}}"#;
-        let event = RunEvent::from_value(
-            serde_json::from_str::<serde_json::Value>(raw).expect("fixture should be valid JSON"),
-        )
-        .expect("legacy billing wrapper should normalize and parse");
-        match event.body {
-            EventBody::PromptCompleted(props) => {
-                let billing = props.billing.expect("billing should survive normalization");
-                assert_eq!(billing.model.provider.to_string(), "zai");
-                assert_eq!(billing.model.model_id.to_string(), "glm-5.3");
-                assert_eq!(billing.tokens.input, 22308);
-                assert_eq!(billing.total_usd_micros, Some(45294));
-            }
-            other => panic!("expected PromptCompleted, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn legacy_billing_normalizer_leaves_current_agent_message_untouched() {
-        // Stored agent.message rows already use the current shapes: since
-        // the pebble adoption they are CodingAgentEvent envelopes whose
-        // AssistantMessage carries a flat TokenUsage. The normalizer must
-        // rewrite the pre-v0.354 flat row into that envelope (exact row
-        // shape from the 2026-09-11 incident store).
-        let raw = r#"{"id":"00000000-0000-0000-0000-000000000001","ts":"2026-09-08T08:00:00Z","run_id":"01M20DMYEK5B3GDQAYFR83DNGN","event":"agent.message","properties":{"text":"ok","model":{"provider":"zai","model_id":"glm-5.3"},"billing":{"input_tokens":10,"output_tokens":2,"total_tokens":12,"reasoning_tokens":0,"cache_read_tokens":0,"cache_write_tokens":0,"total_usd_micros":7},"tool_call_count":0,"visit":1}}"#;
-        let event = RunEvent::from_value(
-            serde_json::from_str::<serde_json::Value>(raw).expect("fixture should be valid JSON"),
-        )
-        .expect("legacy agent.message row should read back as an envelope");
-        match event.body {
-            EventBody::Agent(props) => match props.event.event {
-                CodingEvent::AssistantMessage {
-                    ref model,
-                    ref usage,
-                    cost_usd_micros,
-                    ..
-                } => {
-                    // The bare catalog id, NOT "zai/glm-5.3": the fold's
-                    // stage_model_ref pairs it with the session-activation
-                    // provider, and a slash-joined name failed the
-                    // run-history activation verification on healthy rows
-                    // (2026-09-13, run 01M0NGQXB67674XQ5YCR1MB4BN).
-                    assert_eq!(model, "glm-5.3");
-                    assert_eq!(usage.input, 10);
-                    assert_eq!(usage.output, 2);
-                    assert_eq!(cost_usd_micros, Some(7));
-                }
-                other => panic!("expected AssistantMessage, got {other:?}"),
-            },
-            other => panic!("expected Agent, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn flat_legacy_coding_rows_degrade_to_unknown_instead_of_failing() {
-        // A flat pre-v0.354 agent.* row that has no targeted rewriter (a
-        // tool event) must not abort run-history activation: the row reads
-        // back as Unknown, the same tolerance variantless names got in
-        // v0.353.
-        let raw = r#"{"id":"00000000-0000-0000-0000-000000000003","ts":"2026-09-08T08:00:00Z","run_id":"01M20DMYEK5B3GDQAYFR83DNGN","event":"agent.tool.started","properties":{"call":{"id":"call_1","name":"read_file","arguments":{"file_path":"/w/x"}}}}"#;
-        let event = RunEvent::from_value(
-            serde_json::from_str::<serde_json::Value>(raw).expect("fixture should be valid JSON"),
-        )
-        .expect("flat legacy tool row should degrade to Unknown");
-        assert!(
-            matches!(event.body, EventBody::Unknown { .. }),
-            "expected Unknown, got {:?}",
-            event.body
-        );
-    }
-
     use std::time::{Duration, UNIX_EPOCH};
 
     use pebble_coding_agent::events::{
-        CodingEvent, CostSource, TodoCreatedProps, TodoListKind, TodoStatus, TokenUsage,
-        ToolCategory, ToolSource, ToolSummary,
+        CodingAgentEvent, CodingEvent, Cost, CostSource, TodoCreatedProps, TodoListKind,
+        TodoStatus, TokenCounts, ToolCategory, ToolSource, ToolSummary, Usage,
     };
     use serde_json::json;
 
@@ -1607,13 +1210,17 @@ mod tests {
         let body = EventBody::Agent(coding_event("code", 1, CodingEvent::AssistantMessage {
             text:            "ok".to_string(),
             model:           "gpt-5.4".to_string(),
-            usage:           TokenUsage {
-                input: 10,
-                output: 5,
-                ..TokenUsage::default()
+            usage:           Usage {
+                tokens: TokenCounts {
+                    input: 10,
+                    output: 5,
+                    ..TokenCounts::default()
+                },
+                cost:   Some(Cost {
+                    usd_micros: 42,
+                    source:     CostSource::Provider,
+                }),
             },
-            cost_usd_micros: Some(42),
-            cost_source:     None,
             tool_call_count: 0,
             context_window:  None,
             reasoning:       None,
@@ -1621,11 +1228,10 @@ mod tests {
         let value = serde_json::to_value(&body).unwrap();
         assert_eq!(
             value["properties"]["event"]["AssistantMessage"]["usage"],
-            json!({"input": 10, "output": 5, "reasoning": 0, "cache_read": 0, "cache_write": 0})
-        );
-        assert_eq!(
-            value["properties"]["event"]["AssistantMessage"]["cost_usd_micros"],
-            42
+            json!({
+                "tokens": {"input": 10, "output": 5, "reasoning": 0, "cache_read": 0, "cache_write": 0},
+                "cost": {"usd_micros": 42, "source": "provider"}
+            })
         );
     }
 
@@ -1670,8 +1276,8 @@ mod tests {
                 status: crate::StageOutcome::Succeeded,
                 preferred_label: None,
                 suggested_next_ids: vec!["next".to_string()],
-                billing_by_model: Vec::new(),
-                billing: None,
+                usage_by_model: Vec::new(),
+                usage: None,
                 failure: None,
                 notes: Some("done".to_string()),
                 files_touched: vec!["src/main.rs".to_string()],
@@ -2106,8 +1712,8 @@ mod tests {
             status: crate::StageOutcome::Succeeded,
             preferred_label: None,
             suggested_next_ids: vec!["next".to_string()],
-            billing_by_model: Vec::new(),
-            billing: None,
+            usage_by_model: Vec::new(),
+            usage: None,
             failure: None,
             notes: Some("done".to_string()),
             files_touched: vec!["src/main.rs".to_string()],
@@ -2869,13 +2475,13 @@ mod tests {
         let parsed = RunEvent::from_value(value).expect("legacy event deserializes");
         match parsed.body {
             EventBody::Agent(props) => match props.event.event {
-                CodingEvent::AssistantMessage {
-                    ref usage,
-                    cost_source,
-                    ..
-                } => {
-                    let _ = usage; // TokenUsage carries no cost source
-                    assert_eq!(cost_source, Some(CostSource::Catalog),);
+                CodingEvent::AssistantMessage { ref usage, .. } => {
+                    let source = usage
+                        .cost
+                        .as_ref()
+                        .expect("normalized cost keeps its source")
+                        .source;
+                    assert_eq!(source, CostSource::Catalog);
                 }
                 other => panic!("expected AssistantMessage, got {other:?}"),
             },
@@ -2930,9 +2536,13 @@ mod tests {
                     .expect("usage survives normalization");
                 assert_eq!(usage.model.provider.to_string(), "zai");
                 assert_eq!(usage.model.model_id.to_string(), "glm-5.3");
-                assert_eq!(usage.tokens.input, 22308);
-                assert_eq!(usage.tokens.cache_read, 41344);
-                assert_eq!(usage.total_usd_micros, Some(45294));
+                assert_eq!(usage.usage.tokens.input, 22308);
+                assert_eq!(usage.usage.tokens.cache_read, 41344);
+                let cost = usage
+                    .usage
+                    .cost
+                    .expect("legacy total becomes a catalog cost");
+                assert_eq!(cost.usd_micros, 45294);
             }
             other => panic!("expected CheckpointCompleted, got {other:?}"),
         }

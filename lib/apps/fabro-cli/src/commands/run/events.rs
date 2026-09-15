@@ -390,8 +390,11 @@ fn format_event_pretty_value(envelope: &serde_json::Value, styles: &Styles) -> O
                 "succeeded" | "partially_succeeded" => &styles.bold_green,
                 _ => &styles.bold_red,
             };
+            let usage = prop_field(envelope, "usage");
             let cost = format_cost(
-                prop_field(envelope, "total_usd_micros")
+                usage
+                    .and_then(|value| value.get("cost"))
+                    .and_then(|value| value.get("usd_micros"))
                     .or_else(|| prop_field(envelope, "total_cost")),
             );
 
@@ -407,13 +410,12 @@ fn format_event_pretty_value(envelope: &serde_json::Value, styles: &Styles) -> O
 
             let mut lines = vec![summary];
 
-            if let Some(billing) =
-                prop_field(envelope, "billing").or_else(|| prop_field(envelope, "usage"))
-            {
-                let total = billing
-                    .get("total_tokens")
-                    .and_then(serde_json::Value::as_u64)
-                    .unwrap_or(0);
+            if let Some(tokens) = usage.and_then(|value| value.get("tokens")) {
+                let bucket = |name: &str| tokens.get(name).and_then(serde_json::Value::as_u64);
+                let total = ["input", "output", "reasoning", "cache_read", "cache_write"]
+                    .into_iter()
+                    .filter_map(bucket)
+                    .fold(0_u64, u64::saturating_add);
                 let pad = " ".repeat(ts.len() + 1);
                 if total > 0 {
                     lines.push(format!(
@@ -424,14 +426,8 @@ fn format_event_pretty_value(envelope: &serde_json::Value, styles: &Styles) -> O
                             .apply_to(format!("Tokens: {}", format_tokens(total)))
                     ));
                 }
-                if let Some(cache_read) = billing
-                    .get("cache_read_tokens")
-                    .and_then(serde_json::Value::as_u64)
-                {
-                    let cache_write = billing
-                        .get("cache_write_tokens")
-                        .and_then(serde_json::Value::as_u64)
-                        .unwrap_or(0);
+                if let Some(cache_read) = bucket("cache_read") {
+                    let cache_write = bucket("cache_write").unwrap_or(0);
                     lines.push(format!(
                         "{}{}",
                         pad,
@@ -442,10 +438,7 @@ fn format_event_pretty_value(envelope: &serde_json::Value, styles: &Styles) -> O
                         ))
                     ));
                 }
-                if let Some(reasoning) = billing
-                    .get("reasoning_tokens")
-                    .and_then(serde_json::Value::as_u64)
-                {
+                if let Some(reasoning) = bucket("reasoning") {
                     if reasoning > 0 {
                         lines.push(format!(
                             "{}{}",
@@ -535,18 +528,20 @@ fn format_event_pretty_value(envelope: &serde_json::Value, styles: &Styles) -> O
         "stage.completed" => {
             let label = str_field(envelope, "node_label").unwrap_or("?");
             let duration = format_duration_ms(timing_wall_field(envelope));
-            let billing = prop_field(envelope, "billing").or_else(|| prop_field(envelope, "usage"));
+            // `stage.completed.usage` is a `ModelUsage`: the model, then the usage.
+            let usage = prop_field(envelope, "usage").and_then(|value| value.get("usage"));
             let cost = format_cost(
-                billing
-                    .and_then(|value| value.get("total_usd_micros"))
-                    .or_else(|| billing.and_then(|value| value.get("cost"))),
+                usage
+                    .and_then(|value| value.get("cost"))
+                    .and_then(|value| value.get("usd_micros")),
             );
-            let input_tokens = billing
-                .and_then(|value| value.get("input_tokens"))
+            let tokens = usage.and_then(|value| value.get("tokens"));
+            let input_tokens = tokens
+                .and_then(|value| value.get("input"))
                 .and_then(serde_json::Value::as_u64)
                 .unwrap_or(0);
-            let output_tokens = billing
-                .and_then(|value| value.get("output_tokens"))
+            let output_tokens = tokens
+                .and_then(|value| value.get("output"))
                 .and_then(serde_json::Value::as_u64)
                 .unwrap_or(0);
             let token_total = input_tokens.saturating_add(output_tokens);
@@ -921,7 +916,7 @@ fn format_duration_ms(value: Option<&serde_json::Value>) -> String {
 fn format_cost(value: Option<&serde_json::Value>) -> String {
     match value {
         Some(value) => {
-            if let Some(usd_micros) = value.as_i64() {
+            if let Some(usd_micros) = value.as_u64() {
                 if usd_micros > 0 {
                     return format_usd_micros(usd_micros);
                 }
@@ -1091,7 +1086,7 @@ mod tests {
     #[test]
     fn pretty_stage_completed() {
         let styles = no_color_styles();
-        let line = r#"{"ts":"2026-01-01T14:23:15Z","event":"stage.completed","node_label":"plan","properties":{"timing":{"wall_time_ms":8000,"inference_time_ms":0,"tool_time_ms":0,"active_time_ms":0},"status":"succeeded","usage":{"cost":0.12,"input_tokens":10000,"output_tokens":5200}}}"#;
+        let line = r#"{"ts":"2026-01-01T14:23:15Z","event":"stage.completed","node_label":"plan","properties":{"timing":{"wall_time_ms":8000,"inference_time_ms":0,"tool_time_ms":0,"active_time_ms":0},"status":"succeeded","usage":{"model":{"provider":"openai","model_id":"gpt-5.4"},"usage":{"tokens":{"input":10000,"output":5200},"cost":{"usd_micros":120000,"source":"catalog"}}}}}"#;
         let result = format_event_pretty(line, &styles).unwrap();
         assert!(result.contains("plan"), "got: {result}");
         assert!(result.contains("$0.12"), "got: {result}");
@@ -1170,12 +1165,12 @@ mod tests {
     #[test]
     fn pretty_workflow_run_completed() {
         let styles = no_color_styles();
-        let line = r#"{"ts":"2026-01-01T14:23:32Z","run_id":"abc123","event":"run.completed","properties":{"timing":{"wall_time_ms":25000,"inference_time_ms":0,"tool_time_ms":0,"active_time_ms":0},"status":"succeeded","total_usd_micros":570000,"billing":{"input_tokens":5000,"output_tokens":2000,"total_tokens":7000,"cache_read_tokens":3000,"cache_write_tokens":500,"reasoning_tokens":800}}}"#;
+        let line = r#"{"ts":"2026-01-01T14:23:32Z","run_id":"abc123","event":"run.completed","properties":{"timing":{"wall_time_ms":25000,"inference_time_ms":0,"tool_time_ms":0,"active_time_ms":0},"status":"succeeded","usage":{"tokens":{"input":5000,"output":2000,"cache_read":3000,"cache_write":500,"reasoning":800},"cost":{"usd_micros":570000,"source":"catalog"}}}}"#;
         let result = format_event_pretty(line, &styles).unwrap();
         assert!(result.contains("SUCCEEDED"), "got: {result}");
         assert!(result.contains("25s"), "got: {result}");
         assert!(result.contains("$0.57"), "got: {result}");
-        assert!(result.contains("7.0k toks"), "got: {result}");
+        assert!(result.contains("11.3k toks"), "got: {result}");
         assert!(result.contains("Cache:"), "got: {result}");
         assert!(result.contains("3.0k toks read"), "got: {result}");
         assert!(result.contains("Reasoning:"), "got: {result}");

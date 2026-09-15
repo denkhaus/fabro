@@ -11,7 +11,7 @@ use fabro_types::{DiffSummary, RunId};
 use crate::event::{Emitter, Event, RunNoticeCode, RunNoticeLevel};
 use crate::graph::{WorkflowGraph, WorkflowNode};
 use crate::lifecycle::event::stage_scope_for;
-use crate::outcome::BilledModelUsage;
+use crate::outcome::ModelUsage;
 use crate::run_options::RunOptions;
 use crate::sandbox_git::{
     checked_git_checkpoint, git_diff, list_diff_numstat, summarize_diff_numstat,
@@ -19,8 +19,8 @@ use crate::sandbox_git::{
 use crate::sandbox_git_runtime::SandboxGitRuntime;
 use crate::stage_execution::StageExecutionTracker;
 
-type WfRunState = ExecutionState<Option<BilledModelUsage>>;
-type WfNodeResult = NodeResult<Option<BilledModelUsage>>;
+type WfRunState = ExecutionState<Option<ModelUsage>>;
+type WfNodeResult = NodeResult<Option<ModelUsage>>;
 
 /// Result of a git checkpoint operation, shared with EventLifecycle.
 #[derive(Debug, Clone)]

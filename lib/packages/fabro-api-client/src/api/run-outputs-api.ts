@@ -28,7 +28,7 @@ import type { PaginatedRunCommitList } from '../models';
 // @ts-ignore
 import type { PaginatedRunFileList } from '../models';
 // @ts-ignore
-import type { RunBilling } from '../models';
+import type { RunUsage } from '../models';
 /**
  * RunOutputsApi - axios parameter creator
  */
@@ -145,16 +145,16 @@ export const RunOutputsApiAxiosParamCreator = function (configuration?: Configur
             };
         },
         /**
-         * Returns token counts and billed totals broken down by stage and model for a specific run.
-         * @summary Retrieve Run Billing
+         * Returns token counts and costs broken down by stage and model for a specific run.
+         * @summary Retrieve Run Usage
          * @param {string} id Unique run identifier (ULID).
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        retrieveRunBilling: async (id: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+        retrieveRunUsage: async (id: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
             // verify required parameter 'id' is not null or undefined
-            assertParamExists('retrieveRunBilling', 'id', id)
-            const localVarPath = `/api/v1/runs/{id}/billing`
+            assertParamExists('retrieveRunUsage', 'id', id)
+            const localVarPath = `/api/v1/runs/{id}/usage`
                 .replace(`{${"id"}}`, encodeURIComponent(String(id)));
             // use dummy base URL string because the URL constructor only accepts absolute URLs.
             const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
@@ -226,16 +226,16 @@ export const RunOutputsApiFp = function(configuration?: Configuration) {
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
-         * Returns token counts and billed totals broken down by stage and model for a specific run.
-         * @summary Retrieve Run Billing
+         * Returns token counts and costs broken down by stage and model for a specific run.
+         * @summary Retrieve Run Usage
          * @param {string} id Unique run identifier (ULID).
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        async retrieveRunBilling(id: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<RunBilling>> {
-            const localVarAxiosArgs = await localVarAxiosParamCreator.retrieveRunBilling(id, options);
+        async retrieveRunUsage(id: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<RunUsage>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.retrieveRunUsage(id, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
-            const localVarOperationServerBasePath = operationServerMap['RunOutputsApi.retrieveRunBilling']?.[localVarOperationServerIndex]?.url;
+            const localVarOperationServerBasePath = operationServerMap['RunOutputsApi.retrieveRunUsage']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
     }
@@ -274,14 +274,14 @@ export const RunOutputsApiFactory = function (configuration?: Configuration, bas
             return localVarFp.listRunFiles(id, pageLimit, pageOffset, scope, fromSha, toSha, options).then((request) => request(axios, basePath));
         },
         /**
-         * Returns token counts and billed totals broken down by stage and model for a specific run.
-         * @summary Retrieve Run Billing
+         * Returns token counts and costs broken down by stage and model for a specific run.
+         * @summary Retrieve Run Usage
          * @param {string} id Unique run identifier (ULID).
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        retrieveRunBilling(id: string, options?: RawAxiosRequestConfig): AxiosPromise<RunBilling> {
-            return localVarFp.retrieveRunBilling(id, options).then((request) => request(axios, basePath));
+        retrieveRunUsage(id: string, options?: RawAxiosRequestConfig): AxiosPromise<RunUsage> {
+            return localVarFp.retrieveRunUsage(id, options).then((request) => request(axios, basePath));
         },
     };
 };
@@ -319,14 +319,14 @@ export class RunOutputsApi extends BaseAPI {
     }
 
     /**
-     * Returns token counts and billed totals broken down by stage and model for a specific run.
-     * @summary Retrieve Run Billing
+     * Returns token counts and costs broken down by stage and model for a specific run.
+     * @summary Retrieve Run Usage
      * @param {string} id Unique run identifier (ULID).
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      */
-    public retrieveRunBilling(id: string, options?: RawAxiosRequestConfig) {
-        return RunOutputsApiFp(this.configuration).retrieveRunBilling(id, options).then((request) => request(this.axios, this.basePath));
+    public retrieveRunUsage(id: string, options?: RawAxiosRequestConfig) {
+        return RunOutputsApiFp(this.configuration).retrieveRunUsage(id, options).then((request) => request(this.axios, this.basePath));
     }
 }
 

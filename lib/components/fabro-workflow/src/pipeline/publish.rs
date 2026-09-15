@@ -346,7 +346,7 @@ mod tests {
                 failure:              None,
                 final_git_commit_sha: Some("final-sha".to_string()),
                 stages:               Vec::new(),
-                billing:              None,
+                usage:                None,
                 total_retries:        0,
                 diff:                 RunDiff {
                     patch:   Some("diff --git a/src/lib.rs b/src/lib.rs".to_string()),

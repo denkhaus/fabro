@@ -1,0 +1,116 @@
+{
+  "format_version": 4,
+  "scope": {
+    "session_id": "ses_root",
+    "root_session_id": "ses_root",
+    "parent_session_id": null,
+    "depth": 0
+  },
+  "provider": "anthropic",
+  "model": "claude-sonnet-5",
+  "created_at": "2026-01-01T00:00:00.500Z",
+  "updated_at": "2026-01-01T00:00:00.500Z",
+  "last_event_seq": 41,
+  "messages": [
+    {
+      "kind": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "read the crate root"
+        }
+      ],
+      "timestamp": "2026-01-01T00:00:00.500Z"
+    },
+    {
+      "kind": "assistant",
+      "content": "Reading it now.",
+      "tool_calls": [
+        {
+          "id": "call_1",
+          "name": "read_file",
+          "input": {
+            "type": "function",
+            "value": "{\"path\":\"src/lib.rs\"}"
+          },
+          "provider_metadata": {
+            "openai": {
+              "item_id": "fc_1"
+            }
+          }
+        }
+      ],
+      "provider_parts": [
+        {
+          "type": "reasoning",
+          "text": "the root is a facade",
+          "signature": "sig_1",
+          "signature_origin": "anthropic"
+        },
+        {
+          "type": "opaque",
+          "kind": "openai.reasoning",
+          "data": {
+            "id": "rs_1"
+          }
+        }
+      ],
+      "usage": {
+        "input": 1200,
+        "output": 340,
+        "reasoning": 96,
+        "cache_read": 800,
+        "cache_write": 64
+      },
+      "response_id": "resp_1",
+      "timestamp": "2026-01-01T00:00:00.500Z"
+    },
+    {
+      "kind": "tool_results",
+      "results": [
+        {
+          "tool_call_id": "call_1",
+          "name": "read_file",
+          "content": [
+            {
+              "type": "text",
+              "text": "//! Pebble is a coding-agent loop library."
+            }
+          ],
+          "is_error": false
+        }
+      ],
+      "timestamp": "2026-01-01T00:00:00.500Z"
+    },
+    {
+      "kind": "compaction",
+      "summary": "[Context Summary]\nThe session read the crate root.",
+      "reason": "manual",
+      "original_turn_count": 8,
+      "preserved_turn_count": 2,
+      "estimated_tokens_before": 12000,
+      "summary_token_estimate": 24,
+      "tracked_file_count": 1,
+      "summary_truncated": false,
+      "usage": {
+        "input": 1200,
+        "output": 340,
+        "reasoning": 96,
+        "cache_read": 800,
+        "cache_write": 64
+      },
+      "cost_usd_micros": 1250,
+      "timestamp": "2026-01-01T00:00:00.500Z"
+    },
+    {
+      "kind": "steering",
+      "content": [
+        {
+          "type": "text",
+          "text": "also update the changelog"
+        }
+      ],
+      "timestamp": "2026-01-01T00:00:00.500Z"
+    }
+  ]
+}

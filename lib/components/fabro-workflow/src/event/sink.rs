@@ -416,7 +416,7 @@ mod tests {
     use fabro_types::test_support;
     use lithos_llm::types::ReasoningOutput;
     use object_store::memory::InMemory;
-    use pebble_coding_agent::events::{CodingAgentEvent, CodingEvent, TokenUsage};
+    use pebble_coding_agent::events::{CodingAgentEvent, CodingEvent, Usage};
     use tokio::sync::Mutex as AsyncMutex;
 
     use super::*;
@@ -512,9 +512,7 @@ mod tests {
                 CodingEvent::AssistantMessage {
                     text:            String::new(),
                     model:           "gpt-5.4".to_string(),
-                    usage:           TokenUsage::default(),
-                    cost_usd_micros: None,
-                    cost_source:     None,
+                    usage:           Usage::default(),
                     tool_call_count: 1,
                     context_window:  None,
                     reasoning:       Some(ReasoningOutput::new(

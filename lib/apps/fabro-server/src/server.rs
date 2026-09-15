@@ -23,30 +23,30 @@ use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use bytes::Bytes;
 use chrono::{DateTime, Utc};
 pub use fabro_api::types::{
-    AggregateBilling, AggregateBillingTotals, ApiQuestion, AppendEventResponse, ArtifactEntry,
+    AggregateUsage, AggregateUsageTotals, ApiQuestion, AppendEventResponse, ArtifactEntry,
     ArtifactListResponse, BatchDeleteRunsRequest, BatchDeleteRunsResponse, BatchDeleteRunsResult,
     BatchDeleteRunsResultOutcome, BatchDeleteRunsSummary, BatchRunLifecycleRequest,
     BatchRunLifecycleResponse, BatchRunLifecycleResult, BatchRunLifecycleResultOutcome,
-    BatchRunLifecycleSummary, BillingByModel, BillingStageRef, CloseRunPullRequestResponse,
-    CompletionResponse, CompletionUsage, CreateCompletionRequest, CreateRunPullRequestRequest,
-    CreateSecretRequest, CreateVariableRequest, DeleteRunResponse, DeleteRunSandbox,
-    DeleteSecretRequest, DenyRunRequest, DiskUsageResponse, DiskUsageRunRow, DiskUsageSummaryRow,
-    ErrorResponseEntry, ForkRequest, ForkResponse, IntegrationConnectionKind,
-    IntegrationConnectionState, IntegrationConnectionStatus, IntegrationProvider,
-    IntegrationStatus, LinkRunPullRequestRequest, MergeRunPullRequestRequest,
-    MergeRunPullRequestResponse, ModelReference, PaginatedEventList, PaginatedRunList,
-    PaginationMeta, PreflightResponse, PreviewUrlRequest, PreviewUrlResponse, Provider,
-    ProviderCredentialTestRequest, ProviderCredentialTestResponse, ProviderList, PruneRunEntry,
-    PruneRunsRequest, PruneRunsResponse, RenderWorkflowGraphDirection, RenderWorkflowGraphRequest,
-    RewindRequest, RewindResponse, Run, RunArtifactEntry, RunArtifactListResponse, RunBilling,
-    RunBillingStage, RunBillingTotals, RunError, RunManifest, RunStage, SandboxDetails,
-    SandboxFileEntry, SandboxFileListResponse, SandboxService, SandboxServiceListResponse,
-    SshAccessRequest, SshAccessResponse, StageHandler, StageState, StartRunRequest,
-    SubmitAnswerRequest, SystemCpuResourceScope, SystemCpuResources, SystemDiskResourceScope,
-    SystemDiskResources, SystemInfoResponse, SystemIntegrationStatus, SystemIntegrationsResponse,
-    SystemMemoryResourceScope, SystemMemoryResources, SystemRepairRunIssue,
-    SystemRepairRunsResponse, SystemResourcesResponse, SystemRunCounts, TimelineEntryResponse,
-    UpdateVariableRequest, VariableListResponse, VncPreviewResponse, WriteBlobResponse,
+    BatchRunLifecycleSummary, CloseRunPullRequestResponse, CompletionResponse,
+    CreateCompletionRequest, CreateRunPullRequestRequest, CreateSecretRequest,
+    CreateVariableRequest, DeleteRunResponse, DeleteRunSandbox, DeleteSecretRequest,
+    DenyRunRequest, DiskUsageResponse, DiskUsageRunRow, DiskUsageSummaryRow, ErrorResponseEntry,
+    ForkRequest, ForkResponse, IntegrationConnectionKind, IntegrationConnectionState,
+    IntegrationConnectionStatus, IntegrationProvider, IntegrationStatus, LinkRunPullRequestRequest,
+    MergeRunPullRequestRequest, MergeRunPullRequestResponse, ModelReference, PaginatedEventList,
+    PaginatedRunList, PaginationMeta, PreflightResponse, PreviewUrlRequest, PreviewUrlResponse,
+    Provider, ProviderCredentialTestRequest, ProviderCredentialTestResponse, ProviderList,
+    PruneRunEntry, PruneRunsRequest, PruneRunsResponse, RenderWorkflowGraphDirection,
+    RenderWorkflowGraphRequest, RewindRequest, RewindResponse, Run, RunArtifactEntry,
+    RunArtifactListResponse, RunError, RunManifest, RunStage, RunUsage, RunUsageStage,
+    RunUsageTotals, SandboxDetails, SandboxFileEntry, SandboxFileListResponse, SandboxService,
+    SandboxServiceListResponse, SshAccessRequest, SshAccessResponse, StageHandler, StageState,
+    StartRunRequest, SubmitAnswerRequest, SystemCpuResourceScope, SystemCpuResources,
+    SystemDiskResourceScope, SystemDiskResources, SystemInfoResponse, SystemIntegrationStatus,
+    SystemIntegrationsResponse, SystemMemoryResourceScope, SystemMemoryResources,
+    SystemRepairRunIssue, SystemRepairRunsResponse, SystemResourcesResponse, SystemRunCounts,
+    TimelineEntryResponse, UpdateVariableRequest, UsageByModel, UsageStageRef,
+    VariableListResponse, VncPreviewResponse, WriteBlobResponse,
 };
 use fabro_auth::SqlVaultCredentialSource;
 use fabro_automation::{self, AutomationId, AutomationStore};
@@ -89,11 +89,11 @@ use fabro_types::settings::server::{
     GithubIntegrationSettings, GithubIntegrationStrategy, LogDestination,
 };
 use fabro_types::{
-    AgentBackend, AskFabro, AskFabroUnavailableReason, BilledTokenCounts, BlobHash, EventBody,
-    GitRunTarget, InterviewQuestionRecord, ModelRef, ModelTestMode, PairId, PairMessageId,
-    PairTarget, PendingReason, Principal, PullRequestLink, QuestionType, RunControlAction,
-    RunEvent, RunId, RunRunnableSource, RunStatusKind, SandboxProviderKind, ServerSettings,
-    SessionCapability, WorkflowVersionId,
+    AgentBackend, AskFabro, AskFabroUnavailableReason, BlobHash, EventBody, GitRunTarget,
+    InterviewQuestionRecord, ModelRef, ModelTestMode, PairId, PairMessageId, PairTarget,
+    PendingReason, Principal, PullRequestLink, QuestionType, RunControlAction, RunEvent, RunId,
+    RunRunnableSource, RunStatusKind, SandboxProviderKind, ServerSettings, SessionCapability,
+    WorkflowVersionId,
 };
 use fabro_util::error::{
     SharedError, collect_causes, render_compact_with_causes, render_with_causes,
@@ -116,6 +116,7 @@ use fabro_workflow::run_status::{FailureReason, RunStatus, SuccessReason};
 use fabro_workflow::{Error as WorkflowError, operations, pull_request};
 use futures_util::future::join_all;
 use lithos_llm::catalog::ProviderId;
+use lithos_llm::types::Usage;
 use sha2::{Digest, Sha256};
 use tempfile::NamedTempFile;
 use tokio::fs;
@@ -329,19 +330,19 @@ enum ExecutionResult {
 const WORKER_CANCEL_GRACE: Duration = Duration::from_secs(5);
 const TERMINAL_DELETE_WORKER_GRACE: Duration = Duration::from_millis(50);
 const WORKER_CONTROL_ENQUEUE_TIMEOUT: Duration = Duration::from_secs(1);
-/// Per-model billing totals.
+/// Per-model usage totals.
 #[derive(Default)]
-struct ModelBillingTotals {
-    stages:  i64,
-    billing: BilledTokenCounts,
+pub(crate) struct ModelUsageTotals {
+    pub(crate) stages: i64,
+    pub(crate) usage:  Usage,
 }
 
-/// In-memory aggregate billing counters, reset on server restart.
+/// In-memory aggregate usage counters, reset on server restart.
 #[derive(Default)]
-struct BillingAccumulator {
-    total_runs:   i64,
-    total_timing: fabro_types::RunTiming,
-    by_model:     HashMap<ModelRef, ModelBillingTotals>,
+pub(crate) struct UsageAccumulator {
+    pub(crate) total_runs:   i64,
+    pub(crate) total_timing: fabro_types::RunTiming,
+    pub(crate) by_model:     HashMap<ModelRef, ModelUsageTotals>,
 }
 
 pub(crate) type RegistryFactoryOverride =
@@ -1211,7 +1212,7 @@ fn resolve_slack_lifecycle_route_channel(
 /// Shared application state for the server.
 pub struct AppState {
     runs: Mutex<HashMap<RunId, ManagedRun>>,
-    aggregate_billing: Mutex<BillingAccumulator>,
+    aggregate_usage: Mutex<UsageAccumulator>,
     pub(crate) stores: AppStores,
     session_runtimes: SessionRuntimeManager,
     artifact_store: ArtifactStore,
@@ -1440,16 +1441,16 @@ pub(crate) struct ResolvedAppStateSettings {
     pub(crate) llm_overlay:           LlmLayer,
 }
 
-fn accumulate_billing_rollup(
-    accumulator: &mut BillingAccumulator,
-    rollup: &fabro_workflow::ProjectionBillingRollup,
+fn accumulate_usage_rollup(
+    accumulator: &mut UsageAccumulator,
+    rollup: &fabro_workflow::ProjectionUsageRollup,
 ) {
     accumulator.total_runs += 1;
     accumulator.total_timing = accumulator.total_timing.saturating_add(&rollup.timing);
     for model in &rollup.by_model {
         let entry = accumulator.by_model.entry(model.model.clone()).or_default();
         entry.stages += model.stages;
-        entry.billing.add_counts(&model.billing);
+        entry.usage = entry.usage.saturating_add(model.usage);
     }
 }
 
@@ -2717,7 +2718,7 @@ pub(crate) fn build_app_state(config: AppStateConfig) -> anyhow::Result<Arc<AppS
     };
     Ok(Arc::new(AppState {
         runs: Mutex::new(HashMap::new()),
-        aggregate_billing: Mutex::new(BillingAccumulator::default()),
+        aggregate_usage: Mutex::new(UsageAccumulator::default()),
         stores: AppStores {
             runs: store,
             run_summaries,
@@ -4395,12 +4396,12 @@ async fn execute_run_in_process(state: Arc<AppState>, run_id: RunId) {
     if let Some(ref projection) = final_projection {
         if projection.current_checkpoint().is_some() {
             let mut agg = state
-                .aggregate_billing
+                .aggregate_usage
                 .lock()
-                .expect("aggregate_billing lock poisoned");
-            accumulate_billing_rollup(
+                .expect("aggregate_usage lock poisoned");
+            accumulate_usage_rollup(
                 &mut agg,
-                &fabro_workflow::billing_rollup_from_projection(projection),
+                &fabro_workflow::usage_rollup_from_projection(projection),
             );
         }
     }
@@ -4665,12 +4666,12 @@ async fn execute_run_subprocess(state: Arc<AppState>, run_id: RunId) {
 
     if final_state.current_checkpoint().is_some() {
         let mut agg = state
-            .aggregate_billing
+            .aggregate_usage
             .lock()
-            .expect("aggregate_billing lock poisoned");
-        accumulate_billing_rollup(
+            .expect("aggregate_usage lock poisoned");
+        accumulate_usage_rollup(
             &mut agg,
-            &fabro_workflow::billing_rollup_from_projection(&final_state),
+            &fabro_workflow::usage_rollup_from_projection(&final_state),
         );
     }
 
@@ -4796,3 +4797,6 @@ async fn reject_if_archived(state: &AppState, run_id: &RunId) -> Option<Response
     reason = "server unit tests stage fixtures with sync std::fs writes"
 )]
 mod tests;
+// Fork seam (ADR-0021 D7): fork taxonomy tests live in a fork-only file.
+#[cfg(test)]
+mod fork_taxonomy_tests;

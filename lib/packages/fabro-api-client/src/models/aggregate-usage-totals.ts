@@ -16,43 +16,22 @@
 // May contain unused imports in some cases
 // @ts-ignore
 import type { RunTiming } from './run-timing';
+// May contain unused imports in some cases
+// @ts-ignore
+import type { Usage } from './usage';
 
 /**
- * Aggregate billing totals across all runs.
+ * Aggregate usage totals across all runs.
  */
-export interface AggregateBillingTotals {
+export interface AggregateUsageTotals {
     /**
      * Total number of completed runs.
      */
     'runs': number;
     /**
-     * Total input tokens.
+     * Tokens and cost summed across every completed run.
      */
-    'input_tokens': number;
-    /**
-     * Total output tokens.
-     */
-    'output_tokens': number;
-    /**
-     * Total tokens aggregated across all billing categories.
-     */
-    'total_tokens': number;
-    /**
-     * Total reasoning tokens.
-     */
-    'reasoning_tokens': number;
-    /**
-     * Total cache read tokens.
-     */
-    'cache_read_tokens': number;
-    /**
-     * Total cache write tokens.
-     */
-    'cache_write_tokens': number;
-    /**
-     * Total billed USD amount in micros.
-     */
-    'total_usd_micros'?: number | null;
+    'usage': Usage;
     /**
      * Aggregate timing rollup across every completed run. Active timing sums work across stage visits, so `active_time_ms` can exceed `wall_time_ms`.
      */

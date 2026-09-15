@@ -9,10 +9,10 @@ use fabro_core::state::ExecutionState;
 
 use crate::error::{FailureCategory, FailureSignature, FailureSignatureExt};
 use crate::graph::{WorkflowGraph, WorkflowNode};
-use crate::outcome::{BilledModelUsage, OutcomeExt};
+use crate::outcome::{ModelUsage, OutcomeExt};
 
-type WfRunState = ExecutionState<Option<BilledModelUsage>>;
-type WfNodeResult = NodeResult<Option<BilledModelUsage>>;
+type WfRunState = ExecutionState<Option<ModelUsage>>;
+type WfNodeResult = NodeResult<Option<ModelUsage>>;
 
 /// Sub-lifecycle responsible for tracking failure signatures and tripping the
 /// circuit breaker when deterministic failure cycles are detected.

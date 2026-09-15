@@ -9,7 +9,6 @@ use super::{ApiError, AppState, IntoResponse, Json, Response, StatusCode, demo};
 
 mod artifacts;
 pub(in crate::server) mod automations;
-mod billing;
 mod completions;
 mod environments;
 pub(in crate::server) mod events;
@@ -27,6 +26,7 @@ mod secrets;
 mod sessions;
 mod steer;
 pub(in crate::server) mod system;
+mod usage;
 mod variables;
 mod wait;
 mod worker_control;
@@ -136,7 +136,7 @@ pub(super) fn demo_routes() -> Router<Arc<AppState>> {
             "/runs/{id}/stages/{stageId}/artifacts/download",
             get(not_implemented),
         )
-        .route("/runs/{id}/billing", get(demo::get_run_billing))
+        .route("/runs/{id}/usage", get(demo::get_run_usage))
         .route("/runs/{id}/settings", get(demo::get_run_settings))
         .route("/runs/{id}/preview", post(demo::generate_preview_url_stub))
         .route("/runs/{id}/ssh", post(demo::create_ssh_access_stub))
@@ -179,7 +179,7 @@ pub(super) fn demo_routes() -> Router<Arc<AppState>> {
         .route("/system/df", get(demo::get_system_disk_usage))
         .route("/system/repair/runs", get(demo::get_system_repair_runs))
         .route("/system/prune/runs", post(demo::prune_runs))
-        .route("/billing", get(demo::get_aggregate_billing))
+        .route("/usage", get(demo::get_aggregate_usage))
         .route("/workflows", get(demo::list_workflows))
         .route("/workflows/{name}", get(demo::get_workflow))
         .route("/workflows/{name}/runs", get(demo::list_workflow_runs))
@@ -210,7 +210,7 @@ pub(super) fn real_routes() -> Router<Arc<AppState>> {
         .merge(runs::routes())
         .merge(wait::routes())
         .merge(events::routes())
-        .merge(billing::routes())
+        .merge(usage::routes())
         .merge(pull_requests::routes())
         .merge(artifacts::routes())
         .merge(automations::routes())

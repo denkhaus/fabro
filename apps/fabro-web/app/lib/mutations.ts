@@ -122,7 +122,7 @@ function useLifecycleMutation(
           // Keep the returned lifecycle state visible while revalidation
           // observes the durable follow-up event (notably a 202 cancel).
           void mutate(queryKeys.runs.detail(id), result.run, { revalidate: true });
-          void mutate(queryKeys.runs.billing(id));
+          void mutate(queryKeys.runs.usage(id));
         }
         mutateRunListCaches(mutate);
         onSuccessExtra?.(result.run, mutate);

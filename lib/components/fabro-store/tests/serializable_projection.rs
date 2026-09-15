@@ -5,10 +5,10 @@ use fabro_store::{RunProjection, SerializableProjection, StageId};
 use fabro_types::graph::Graph;
 use fabro_types::run::RunSpec;
 use fabro_types::{
-    BilledModelUsage, BilledTokenCounts, Checkpoint, CheckpointRecord, InterviewQuestionRecord,
-    ParallelBranchResult, QuestionType, RunDiff, RunSandbox, RunSandboxInstance, RunSandboxPlan,
-    RunSandboxRuntime, RunStatus, SandboxProviderKind, StageCompletion, StageModelUsage,
-    StageOutcome, StartRecord, first_event_seq, fixtures, test_support,
+    Checkpoint, CheckpointRecord, InterviewQuestionRecord, ModelUsage, ParallelBranchResult,
+    QuestionType, RunDiff, RunSandbox, RunSandboxInstance, RunSandboxPlan, RunSandboxRuntime,
+    RunStatus, SandboxProviderKind, StageCompletion, StageModelUsage, StageOutcome, StartRecord,
+    first_event_seq, fixtures, test_support,
 };
 use serde_json::json;
 
@@ -47,14 +47,16 @@ fn sample_checkpoint() -> Checkpoint {
     }
 }
 
-fn sample_usage() -> BilledModelUsage {
+fn sample_usage() -> ModelUsage {
     serde_json::from_value(json!({
         "model": { "provider": "openai", "model_id": "gpt-5.2" },
-        "tokens": {
-            "input": 123,
-            "output": 45
-        },
-        "total_usd_micros": 168
+        "usage": {
+            "tokens": {
+                "input": 123,
+                "output": 45
+            },
+            "cost": { "usd_micros": 168, "source": "catalog" }
+        }
     }))
     .expect("sample usage should deserialize")
 }
@@ -137,15 +139,14 @@ fn serializable_projection_round_trips_and_trims_bulky_node_fields() {
     stage.parallel_results = Some(parallel_results.clone());
     stage.timing = Some(fabro_types::StageTiming::wall_only(1234));
     let usage = sample_usage();
-    let usage_counts = BilledTokenCounts::from_billed_usage(std::slice::from_ref(&usage));
-    stage.usage = usage_counts.clone();
+    stage.usage = usage.usage;
     stage.model = Some(usage.model().clone());
     stage.output = Some("output".to_string());
 
     let serialized = serde_json::to_value(SerializableProjection(&projection))
         .expect("projection should serialize");
     assert_eq!(
-        serialized["stages"]["build@2"]["usage"]["input_tokens"],
+        serialized["stages"]["build@2"]["usage"]["tokens"]["input"],
         json!(123)
     );
     assert_eq!(
@@ -196,7 +197,7 @@ fn serializable_projection_round_trips_and_trims_bulky_node_fields() {
     assert_eq!(node.script_timing, Some(json!({ "duration_ms": 10 })));
     assert_eq!(node.parallel_results, Some(parallel_results));
     assert_eq!(node.timing.map(|t| t.wall_time_ms), Some(1234));
-    assert_eq!(node.usage, usage_counts);
+    assert_eq!(node.usage, usage.usage);
     assert_eq!(node.model.as_ref(), Some(usage.model()));
 }
 

@@ -29,6 +29,10 @@ use crate::driver_sandbox::RunSandbox;
 use crate::managed_labels::{MANAGED_LABEL, MANAGED_LABEL_VALUE, RUN_ID_LABEL};
 use crate::sandbox::SandboxFile;
 
+mod deleted_on_drop;
+
+pub use deleted_on_drop::DeletedOnDrop;
+
 /// The id a run record carries for a local sandbox at `working_directory`,
 /// as the Host provider derives it from the canonical path. A record a test
 /// writes by hand reconnects the way one fabro wrote would. The directory

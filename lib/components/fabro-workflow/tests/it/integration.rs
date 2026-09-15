@@ -62,6 +62,7 @@ use fabro_workflow::test_support::{
 use fabro_workflow::transforms::stylesheet::{apply_stylesheet, parse_stylesheet};
 use fabro_workflow::transforms::{StylesheetApplicationTransform, TemplateTransform, Transform};
 use lithos_llm::catalog::ProviderId;
+use lithos_llm::types::{Cost, CostSource};
 use object_store::local::LocalFileSystem;
 use tokio_util::sync::CancellationToken;
 use ulid::Ulid;
@@ -3060,7 +3061,7 @@ async fn workflow_persists_authoritative_openrouter_cost_for_agent_stage() {
     use httpmock::MockServer;
 
     const AUTHORITATIVE_COST_USD: f64 = 0.125;
-    const AUTHORITATIVE_COST_USD_MICROS: i64 = 125_000;
+    const AUTHORITATIVE_COST_USD_MICROS: u64 = 125_000;
 
     let server = MockServer::start_async().await;
     let text_chunk = serde_json::json!({
@@ -3168,11 +3169,14 @@ enabled = true
     let work = state
         .stage(&fabro_types::StageId::new("work", 1))
         .expect("agent stage should be projected");
-    assert_eq!(work.usage.input_tokens, 11);
-    assert_eq!(work.usage.output_tokens, 7);
+    assert_eq!(work.usage.tokens.input, 11);
+    assert_eq!(work.usage.tokens.output, 7);
     assert_eq!(
-        work.usage.total_usd_micros,
-        Some(AUTHORITATIVE_COST_USD_MICROS),
+        work.usage.cost,
+        Some(Cost {
+            usd_micros: AUTHORITATIVE_COST_USD_MICROS,
+            source:     CostSource::Provider,
+        }),
         "provider-reported usage.cost should override the catalog estimate"
     );
 
@@ -8644,7 +8648,7 @@ async fn workflow_run_with_vault_only_openai_codex_builds_pr_body() {
             failure:              None,
             final_git_commit_sha: None,
             stages:               Vec::new(),
-            billing:              None,
+            usage:                None,
             total_retries:        0,
             diff:                 fabro_types::RunDiff::default(),
             exit_kind:            String::new(),

@@ -45,7 +45,7 @@ describe("SizeChip", () => {
       .toBe("Size M · $12.34");
   });
 
-  test("omits the cost when the run has no billing yet", () => {
+  test("omits the cost when the run has no cost yet", () => {
     expect(tooltipLabel(<SizeChip size="M" />)).toBe("Size M");
     expect(tooltipLabel(<SizeChip size="M" totalUsdMicros={null} />)).toBe("Size M");
   });

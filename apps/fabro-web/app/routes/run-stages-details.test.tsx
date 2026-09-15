@@ -2,12 +2,12 @@ import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import type {
-  BilledTokenCounts,
+  Usage,
   ReasoningOutput,
   StageModelUsage,
 } from "@qltysh/fabro-api-client";
 
-import { makeBilledTokenCounts } from "../lib/test-fixtures";
+import { makeUsage } from "../lib/test-fixtures";
 import { EventDetails, ModelUsagePopover } from "./run-stages";
 
 const RUN_START = "2026-04-09T12:00:00Z";
@@ -85,24 +85,25 @@ const PROVIDER_USED: StageModelUsage = {
   reasoning_effort: "max",
 };
 
-function popoverMarkup(counts: BilledTokenCounts): string {
+function popoverMarkup(usage: Usage): string {
   return renderToStaticMarkup(
-    <ModelUsagePopover providerUsed={PROVIDER_USED} billing={counts} />,
+    <ModelUsagePopover providerUsed={PROVIDER_USED} usage={usage} />,
   );
 }
 
-describe("ModelUsagePopover billing", () => {
+describe("ModelUsagePopover usage", () => {
   test("shows the visit's token buckets and cost next to the model", () => {
     const html = popoverMarkup(
-      makeBilledTokenCounts({
-        input_tokens: 28_640,
-        output_tokens: 7_550,
-        reasoning_tokens: 1_200,
-        cache_read_tokens: 4_800,
-        cache_write_tokens: 1_500,
-        total_tokens: 43_690,
-        total_usd_micros: 720_000,
-      }),
+      makeUsage(
+        {
+          input: 28_640,
+          output: 7_550,
+          reasoning: 1_200,
+          cache_read: 4_800,
+          cache_write: 1_500,
+        },
+        720_000,
+      ),
     );
 
     expect(html).toContain("kimi-k3");
@@ -112,7 +113,7 @@ describe("ModelUsagePopover billing", () => {
     expect(html).toContain("1.5k");
     expect(html).toContain("Uncached");
     expect(html).toContain("28.6k");
-    // Output folds in reasoning tokens, matching the Billing tab.
+    // Output folds in reasoning tokens, matching the Usage tab.
     expect(html).toContain("Output");
     expect(html).toContain("8.8k");
     expect(html).toContain("Cost");
@@ -120,7 +121,7 @@ describe("ModelUsagePopover billing", () => {
   });
 
   test("omits the token section for a stage that called no model", () => {
-    const html = popoverMarkup(makeBilledTokenCounts());
+    const html = popoverMarkup(makeUsage());
 
     expect(html).toContain("kimi-k3");
     expect(html).not.toContain("Tokens");
@@ -129,11 +130,7 @@ describe("ModelUsagePopover billing", () => {
 
   test("still shows tokens when nothing priced the stage", () => {
     const html = popoverMarkup(
-      makeBilledTokenCounts({
-        input_tokens: 1_000,
-        output_tokens: 500,
-        total_tokens: 1_500,
-      }),
+      makeUsage({ input: 1_000, output: 500 }),
     );
 
     expect(html).toContain("Uncached");
@@ -143,7 +140,7 @@ describe("ModelUsagePopover billing", () => {
 
   test("shows a provider-reported cost when token counts are unavailable", () => {
     const html = popoverMarkup(
-      makeBilledTokenCounts({ total_usd_micros: 720_000 }),
+      makeUsage({}, { usd_micros: 720_000, source: "provider" }),
     );
 
     expect(html).toContain("kimi-k3");

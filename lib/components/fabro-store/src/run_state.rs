@@ -9,20 +9,19 @@ use fabro_types::run_event::{
 };
 use fabro_types::settings::run::RunEnvironmentSettings;
 use fabro_types::{
-    AskFabro, BilledModelUsage, BilledTokenCounts, Checkpoint, CheckpointRecord,
-    CommandTermination, Conclusion, EventBody, FailureCategory, FailureSignature,
-    InterviewQuestionRecord, ModelRef, Outcome, PendingInterviewRecord, PendingReason,
-    PullRequestCreation, PullRequestCreationStatus, PullRequestLink, RepositoryRef, Run,
-    RunApproval, RunApprovalState, RunBillingSummary, RunControlAction, RunDiff, RunEvent, RunId,
-    RunLifecycle, RunLinks, RunModel, RunOrigin, RunProjection, RunSandbox, RunSandboxFailure,
-    RunSandboxInstance, RunSandboxPlan, RunSandboxRuntime, RunSize, RunSpec, RunTimestamps,
-    SandboxProviderKind, StageCompletion, StageHandler, StageId, StageInferenceProjection,
-    StageModelUsage, StageOutcome, StageProjection, StageState, StartRecord, WorkflowRef,
-    billing_rollup, first_event_seq, timing,
+    AskFabro, Checkpoint, CheckpointRecord, CommandTermination, Conclusion, EventBody,
+    FailureCategory, FailureSignature, InterviewQuestionRecord, ModelRef, ModelUsage, Outcome,
+    PendingInterviewRecord, PendingReason, PullRequestCreation, PullRequestCreationStatus,
+    PullRequestLink, RepositoryRef, Run, RunApproval, RunApprovalState, RunControlAction, RunDiff,
+    RunEvent, RunId, RunLifecycle, RunLinks, RunModel, RunOrigin, RunProjection, RunSandbox,
+    RunSandboxFailure, RunSandboxInstance, RunSandboxPlan, RunSandboxRuntime, RunSize, RunSpec,
+    RunTimestamps, SandboxProviderKind, StageCompletion, StageHandler, StageId,
+    StageInferenceProjection, StageModelUsage, StageOutcome, StageProjection, StageState,
+    StartRecord, WorkflowRef, first_event_seq, sum_usage, timing, usage_rollup,
 };
 use fabro_util::error::render_compact_with_causes;
 use lithos_llm::catalog::{ModelId, ProviderId};
-use lithos_llm::types::TokenCounts;
+use lithos_llm::types::Usage;
 use pebble_coding_agent::events::CodingEvent;
 use pebble_coding_agent::projection::SessionProjection;
 
@@ -445,9 +444,9 @@ impl RunProjectionReducer for RunProjection {
                     return Ok(());
                 };
                 stage.response = Some(props.response.clone());
-                if let Some(billing) = &props.billing {
-                    stage.usage.replace_with_billed_usage(billing);
-                    stage.model = Some(billing.model().clone());
+                if let Some(usage) = &props.usage {
+                    stage.usage = usage.usage;
+                    stage.model = Some(usage.model().clone());
                 }
             }
             EventBody::StageCompleted(props) => {
@@ -462,11 +461,11 @@ impl RunProjectionReducer for RunProjection {
                 stage.response = response;
                 stage.completion = Some(completion);
                 stage.set_authoritative_timing(props.timing);
-                if let Some(billing) = &props.billing {
-                    stage.usage.replace_with_billed_usage(billing);
-                    stage.model = Some(billing.model().clone());
+                if let Some(usage) = &props.usage {
+                    stage.usage = usage.usage;
+                    stage.model = Some(usage.model().clone());
                 }
-                stage.billing_by_model.clone_from(&props.billing_by_model);
+                stage.usage_by_model.clone_from(&props.usage_by_model);
                 stage.state = StageState::from(outcome.status);
             }
             EventBody::StageFailed(props) => {
@@ -485,11 +484,11 @@ impl RunProjectionReducer for RunProjection {
                     timestamp: ts,
                 });
                 stage.set_authoritative_timing(props.timing);
-                if let Some(billing) = &props.billing {
-                    stage.usage.replace_with_billed_usage(billing);
-                    stage.model = Some(billing.model().clone());
+                if let Some(usage) = &props.usage {
+                    stage.usage = usage.usage;
+                    stage.model = Some(usage.model().clone());
                 }
-                stage.billing_by_model.clone_from(&props.billing_by_model);
+                stage.usage_by_model.clone_from(&props.usage_by_model);
                 stage.state =
                     stage_state_from_failure(props.will_retry, failure_category, stage.termination);
             }
@@ -661,8 +660,8 @@ fn apply_agent_event(
     // Pebble's own fold sees every agent event the stage stored, before the
     // fabro-only arms below read the same event. While the stage runs, its
     // usage is that fold's: the tree's tokens, the root's and every
-    // subagent's, with whatever cost the provider reported. The terminal
-    // billing then brings the catalog's price for the same tokens.
+    // subagent's, with the cost lithos-llm attached to each answer. The
+    // terminal usage is the same sum, split by model.
     if let Some(stage) = stage_at_stored_or_visit(state, stored, visit, seq) {
         let agent = stage.agent.get_or_insert_default();
         agent.apply(&props.event);
@@ -758,17 +757,10 @@ fn apply_agent_event(
 }
 
 /// A running stage's usage, from its agent's fold: the tree's tokens and the
-/// cost the provider reported for them, `None` when it reported none.
-fn live_usage(agent: &SessionProjection) -> BilledTokenCounts {
-    let (descendants, descendant_cost) = agent.descendant_usage();
-    let mut cost = agent.cost_usd_micros;
-    if let Some(descendant_cost) = descendant_cost {
-        cost = Some(cost.unwrap_or(0).saturating_add(descendant_cost));
-    }
-    BilledTokenCounts::from_token_counts(
-        TokenCounts::from(agent.usage.saturating_add(descendants)),
-        cost.map(|cost| i64::try_from(cost).unwrap_or(i64::MAX)),
-    )
+/// cost the provider reported for them, `None` once any of them went
+/// unpriced.
+fn live_usage(agent: &SessionProjection) -> Usage {
+    agent.usage.saturating_add(agent.descendant_usage())
 }
 
 /// The model reference for a message the stage's session produced.
@@ -1132,7 +1124,7 @@ pub(crate) fn build_summary(state: &RunProjection, run_id: &RunId) -> Run {
         .conclusion
         .as_ref()
         .map(|conclusion| conclusion.timing);
-    let total_usd_micros = projected_billing(state).total_usd_micros;
+    let usage = projected_usage(state);
 
     Run {
         id: *run_id,
@@ -1179,10 +1171,8 @@ pub(crate) fn build_summary(state: &RunProjection, run_id: &RunId) -> Run {
             completed_at,
         },
         timing: run_timing,
-        billing: total_usd_micros.map(|total_usd_micros| RunBillingSummary {
-            total_usd_micros: Some(total_usd_micros),
-        }),
-        size: RunSize::from_total_usd_micros(total_usd_micros),
+        usage,
+        size: RunSize::from_cost(usage.cost),
         ask_fabro: AskFabro::default(),
         diff: diff_summary,
         pull_request: state.pull_request.clone(),
@@ -1195,22 +1185,23 @@ pub(crate) fn build_summary(state: &RunProjection, run_id: &RunId) -> Run {
     }
 }
 
-pub(crate) fn projected_billing(state: &RunProjection) -> BilledTokenCounts {
-    if let Some(billing) = state
+/// The run's usage: the conclusion's total once the run ended, else the sum
+/// of every non-boundary stage's usage so far.
+pub(crate) fn projected_usage(state: &RunProjection) -> Usage {
+    if let Some(usage) = state
         .conclusion
         .as_ref()
-        .and_then(|conclusion| conclusion.billing.as_ref())
+        .and_then(|conclusion| conclusion.usage)
     {
-        return billing.clone();
+        return usage;
     }
 
-    let mut billing = BilledTokenCounts::default();
-    for (stage_id, stage) in state.iter_stages() {
-        if !state.is_boundary_stage(stage_id.node_id()) {
-            billing.add_counts(&stage.usage);
-        }
-    }
-    billing
+    sum_usage(
+        state
+            .iter_stages()
+            .filter(|(stage_id, _)| !state.is_boundary_stage(stage_id.node_id()))
+            .map(|(_, stage)| stage.usage),
+    )
 }
 
 fn run_models(state: &RunProjection) -> Vec<RunModel> {
@@ -1273,7 +1264,7 @@ fn conclusion_from_completed(
     timestamp: DateTime<Utc>,
 ) -> Result<Conclusion> {
     let (stages, total_retries) =
-        billing_rollup::billing_rollup_from_projection(projection).conclusion_stages(projection);
+        usage_rollup::usage_rollup_from_projection(projection).conclusion_stages(projection);
     Ok(Conclusion {
         timestamp,
         status: StageOutcome::from_str(&props.status)
@@ -1282,7 +1273,7 @@ fn conclusion_from_completed(
         failure: None,
         final_git_commit_sha: props.final_git_commit_sha.clone(),
         stages,
-        billing: props.billing.clone(),
+        usage: props.usage,
         total_retries,
         diff: RunDiff {
             patch:   props.final_patch.clone(),
@@ -1298,7 +1289,7 @@ fn conclusion_from_failed(
     timestamp: DateTime<Utc>,
 ) -> Conclusion {
     let (stages, total_retries) =
-        billing_rollup::billing_rollup_from_projection(projection).conclusion_stages(projection);
+        usage_rollup::usage_rollup_from_projection(projection).conclusion_stages(projection);
     Conclusion {
         timestamp,
         status: StageOutcome::Failed {
@@ -1308,7 +1299,7 @@ fn conclusion_from_failed(
         failure: Some(props.failure.clone()),
         final_git_commit_sha: props.final_git_commit_sha.clone(),
         stages,
-        billing: props.billing.clone(),
+        usage: props.usage,
         total_retries,
         diff: RunDiff {
             patch:   props.final_patch.clone(),
@@ -1381,7 +1372,7 @@ fn stage_visit(
         .or_else(|| state.current_visit_for(node_id))
 }
 
-fn stage_outcome_from_props(props: &StageCompletedProps) -> Outcome<Option<BilledModelUsage>> {
+fn stage_outcome_from_props(props: &StageCompletedProps) -> Outcome<Option<ModelUsage>> {
     Outcome {
         status:             props.status,
         preferred_label:    props.preferred_label.clone(),
@@ -1395,15 +1386,15 @@ fn stage_outcome_from_props(props: &StageCompletedProps) -> Outcome<Option<Bille
         jump_to_node:       props.jump_to_node.clone(),
         notes:              props.notes.clone(),
         failure:            props.failure.clone(),
-        usage:              props.billing.clone(),
-        usage_by_model:     props.billing_by_model.clone(),
+        usage:              props.usage.clone(),
+        usage_by_model:     props.usage_by_model.clone(),
         files_touched:      props.files_touched.clone(),
         timing:             Some(props.timing),
     }
 }
 
 fn stage_completion_from_outcome(
-    outcome: &Outcome<Option<BilledModelUsage>>,
+    outcome: &Outcome<Option<ModelUsage>>,
     timestamp: DateTime<Utc>,
 ) -> StageCompletion {
     StageCompletion {
@@ -1460,17 +1451,17 @@ mod tests {
     };
     use fabro_types::settings::run::DockerfileSource;
     use fabro_types::{
-        AgentBackend, AttrValue, AutomationRef, BilledModelUsage, BilledTokenCounts, BlobHash,
-        BlockedReason, Checkpoint, CheckpointRecord, CommandTermination, EventBody,
-        FailureCategory, FailureDetail, FailureReason, Graph, Node, Outcome, ParallelBranchId,
-        PendingReason, PullRequestCreationStatus, PullRequestLink, QuestionType, RunApprovalState,
-        RunBillingSummary, RunControlAction, RunDiff, RunEvent, RunSize, RunSpec, RunStatus,
-        SandboxProviderKind, StageHandler, StageModelUsage, StageOutcome, StageState, StageTiming,
-        SuccessReason, WorkflowSettings, first_event_seq, fixtures, test_support,
+        AgentBackend, AttrValue, AutomationRef, BlobHash, BlockedReason, Checkpoint,
+        CheckpointRecord, CommandTermination, EventBody, FailureCategory, FailureDetail,
+        FailureReason, Graph, ModelUsage, Node, Outcome, ParallelBranchId, PendingReason,
+        PullRequestCreationStatus, PullRequestLink, QuestionType, RunApprovalState,
+        RunControlAction, RunDiff, RunEvent, RunSize, RunSpec, RunStatus, SandboxProviderKind,
+        StageHandler, StageModelUsage, StageOutcome, StageState, StageTiming, SuccessReason,
+        WorkflowSettings, first_event_seq, fixtures, test_support,
     };
-    use lithos_llm::types::{ReasoningEffort, Speed, TokenCounts};
+    use lithos_llm::types::{Cost, CostSource, ReasoningEffort, Speed, TokenCounts, Usage};
     use pebble_coding_agent::events::{
-        CodingAgentEvent, CodingEvent, CompactionReason, ErrorData, ErrorKind, TokenUsage,
+        CodingAgentEvent, CodingEvent, CompactionReason, ErrorData, ErrorKind,
     };
     use pebble_coding_agent::tools::ToolOutputMetadata;
     use serde_json::json;
@@ -2009,24 +2000,22 @@ mod tests {
         event
     }
 
-    fn test_usage(model_id: &str, input_tokens: i64, output_tokens: i64) -> BilledModelUsage {
+    fn test_usage(model_id: &str, input_tokens: u64, output_tokens: u64) -> ModelUsage {
         serde_json::from_value(json!({
             "model": { "provider": "openai", "model_id": model_id },
-            "tokens": {
-                "input": input_tokens,
-                "output": output_tokens
-            },
-            "total_usd_micros": input_tokens + output_tokens
+            "usage": {
+                "tokens": {
+                    "input": input_tokens,
+                    "output": output_tokens
+                },
+                "cost": { "usd_micros": input_tokens + output_tokens, "source": "catalog" }
+            }
         }))
         .unwrap()
     }
 
-    fn usage_json(usage: &BilledModelUsage) -> serde_json::Value {
+    fn usage_json(usage: &ModelUsage) -> serde_json::Value {
         serde_json::to_value(usage).unwrap()
-    }
-
-    fn usage_counts(usage: &BilledModelUsage) -> BilledTokenCounts {
-        BilledTokenCounts::from_billed_usage(std::slice::from_ref(usage))
     }
 
     fn test_run_spec() -> RunSpec {
@@ -2585,11 +2574,10 @@ mod tests {
                 status:               "succeeded".to_string(),
                 reason:               SuccessReason::Completed,
                 failure:              None,
-                total_usd_micros:     None,
                 final_git_commit_sha: None,
                 final_patch:          None,
                 diff_summary:         None,
-                billing:              None,
+                usage:                None,
             }),
             None,
         );
@@ -3321,8 +3309,8 @@ mod tests {
                     status: StageOutcome::Succeeded,
                     preferred_label: None,
                     suggested_next_ids: Vec::new(),
-                    billing_by_model: Vec::new(),
-                    billing: Some(usage.clone()),
+                    usage_by_model: Vec::new(),
+                    usage: Some(usage.clone()),
                     failure: None,
                     notes: None,
                     files_touched: Vec::new(),
@@ -3342,7 +3330,7 @@ mod tests {
 
         let stage = state.stage(&StageId::new("build", 1)).unwrap();
         assert_eq!(stage.timing.map(|t| t.wall_time_ms), Some(789));
-        assert_eq!(stage.usage, usage_counts(&usage));
+        assert_eq!(stage.usage, usage.usage);
         assert_eq!(stage.model.as_ref(), Some(usage.model()));
     }
 
@@ -3378,7 +3366,7 @@ mod tests {
                     },
                     "will_retry": false,
                     "timing": {"wall_time_ms": 654, "inference_time_ms": 0, "tool_time_ms": 0, "active_time_ms": 0},
-                    "billing": usage_json(&usage)
+                    "usage": usage_json(&usage)
                 }),
                 Some("build"),
             ))
@@ -3386,7 +3374,7 @@ mod tests {
 
         let stage = state.stage(&stage_id).unwrap();
         assert_eq!(stage.timing.map(|t| t.wall_time_ms), Some(654));
-        assert_eq!(stage.usage, usage_counts(&usage));
+        assert_eq!(stage.usage, usage.usage);
         assert_eq!(stage.model.as_ref(), Some(usage.model()));
     }
 
@@ -3409,8 +3397,8 @@ mod tests {
                         status: StageOutcome::Succeeded,
                         preferred_label: None,
                         suggested_next_ids: Vec::new(),
-                        billing_by_model: Vec::new(),
-                        billing: Some(usage),
+                        usage_by_model: Vec::new(),
+                        usage: Some(usage),
                         failure: None,
                         notes: None,
                         files_touched: Vec::new(),
@@ -3432,10 +3420,10 @@ mod tests {
         let first_stage = state.stage(&StageId::new("build", 1)).unwrap();
         let second_stage = state.stage(&StageId::new("build", 2)).unwrap();
         assert_eq!(first_stage.timing.map(|t| t.wall_time_ms), Some(111));
-        assert_eq!(first_stage.usage, usage_counts(&first_usage));
+        assert_eq!(first_stage.usage, first_usage.usage);
         assert_eq!(first_stage.model.as_ref(), Some(first_usage.model()));
         assert_eq!(second_stage.timing.map(|t| t.wall_time_ms), Some(222));
-        assert_eq!(second_stage.usage, usage_counts(&second_usage));
+        assert_eq!(second_stage.usage, second_usage.usage);
         assert_eq!(second_stage.model.as_ref(), Some(second_usage.model()));
     }
 
@@ -3454,8 +3442,8 @@ mod tests {
                     status: StageOutcome::Succeeded,
                     preferred_label: None,
                     suggested_next_ids: Vec::new(),
-                    billing_by_model: Vec::new(),
-                    billing: Some(usage.clone()),
+                    usage_by_model: Vec::new(),
+                    usage: Some(usage.clone()),
                     failure: None,
                     notes: None,
                     files_touched: Vec::new(),
@@ -3479,7 +3467,7 @@ mod tests {
         );
         let stage = state.stage(&scoped_stage_id).unwrap();
         assert_eq!(stage.timing.map(|t| t.wall_time_ms), Some(333));
-        assert_eq!(stage.usage, usage_counts(&usage));
+        assert_eq!(stage.usage, usage.usage);
         assert_eq!(stage.model.as_ref(), Some(usage.model()));
         assert_eq!(stage.response.as_deref(), Some("done"));
     }
@@ -3494,15 +3482,15 @@ mod tests {
             .apply_event(&test_stage_event(
                 3,
                 EventBody::StageFailed(StageFailedProps {
-                    index:            0,
-                    failure:          Some(fabro_types::FailureDetail::new(
+                    index:          0,
+                    failure:        Some(fabro_types::FailureDetail::new(
                         "try again",
                         fabro_types::FailureCategory::TransientInfra,
                     )),
-                    will_retry:       true,
-                    timing:           fabro_types::StageTiming::wall_only(444),
-                    billing_by_model: Vec::new(),
-                    billing:          Some(usage.clone()),
+                    will_retry:     true,
+                    timing:         fabro_types::StageTiming::wall_only(444),
+                    usage_by_model: Vec::new(),
+                    usage:          Some(usage.clone()),
                 }),
                 scoped_stage_id.clone(),
             ))
@@ -3514,7 +3502,7 @@ mod tests {
         );
         let stage = state.stage(&scoped_stage_id).unwrap();
         assert_eq!(stage.timing.map(|t| t.wall_time_ms), Some(444));
-        assert_eq!(stage.usage, usage_counts(&usage));
+        assert_eq!(stage.usage, usage.usage);
         assert_eq!(stage.model.as_ref(), Some(usage.model()));
         let completion = stage.completion.as_ref().unwrap();
         assert_eq!(completion.outcome, StageOutcome::Failed {
@@ -4254,39 +4242,44 @@ mod tests {
                 (7, "zebra", 2, 800, 200),
             ] {
                 let mut props = completed_props(millis, StageOutcome::Succeeded);
-                props.billing = Some(test_usage("test-model", tokens, 10));
+                props.usage = Some(test_usage("test-model", tokens, 10));
                 events.push(test_stage_event(
                     seq,
                     EventBody::StageCompleted(props),
                     StageId::new(node, visit),
                 ));
             }
-            events.push(test_raw_event(8, "checkpoint.completed", &json!({
-                "status": "succeeded",
-                "current_node": "zebra",
-                "completed_nodes": ["apple", "zebra", "zebra"],
-                "node_retries": { "zebra": 3, "apple": 1 },
-                "node_outcomes": {
-                    "apple": Outcome::<Option<BilledModelUsage>>::success(),
-                    "zebra": Outcome::<Option<BilledModelUsage>>::success(),
-                    "skipped": Outcome::<Option<BilledModelUsage>>::skipped("condition was false")
-                },
-                "context_values": {},
-                "node_visits": { "zebra": 2, "apple": 1, "skipped": 1 },
-                "git_commit_sha": "checkpoint-sha"
-            }), Some("zebra")));
-            let terminal_billing = usage_counts(&test_usage("test-model", 320, 30));
+            events.push(test_raw_event(
+                8,
+                "checkpoint.completed",
+                &json!({
+                    "status": "succeeded",
+                    "current_node": "zebra",
+                    "completed_nodes": ["apple", "zebra", "zebra"],
+                    "node_retries": { "zebra": 3, "apple": 1 },
+                    "node_outcomes": {
+                        "apple": Outcome::<Option<ModelUsage>>::success(),
+                        "zebra": Outcome::<Option<ModelUsage>>::success(),
+                        "skipped": Outcome::<Option<ModelUsage>>::skipped("condition was false")
+                    },
+                    "context_values": {},
+                    "node_visits": { "zebra": 2, "apple": 1, "skipped": 1 },
+                    "git_commit_sha": "checkpoint-sha"
+                }),
+                Some("zebra"),
+            ));
+            let terminal_usage = test_usage("test-model", 320, 30).usage;
             let terminal_props = if terminal_name == "run.completed" {
                 json!({
                     "status": "succeeded", "reason": "completed",
                     "timing": fabro_types::RunTiming::wall_only(9000),
-                    "artifact_count": 0, "billing": terminal_billing,
+                    "artifact_count": 0, "usage": terminal_usage,
                     "final_git_commit_sha": "final-sha", "final_patch": "final patch"
                 })
             } else {
                 let mut props = run_failed_props(FailureReason::WorkflowError);
                 props.timing = fabro_types::RunTiming::wall_only(9000);
-                props.billing = Some(terminal_billing.clone());
+                props.usage = Some(terminal_usage);
                 props.final_git_commit_sha = Some("final-sha".to_string());
                 props.final_patch = Some("final patch".to_string());
                 serde_json::to_value(props).unwrap()
@@ -4312,7 +4305,7 @@ mod tests {
             );
             assert_eq!(conclusion.timestamp, events.last().unwrap().event.ts);
             assert_eq!(conclusion.timing.wall_time_ms, 9000);
-            assert_eq!(conclusion.billing, Some(terminal_billing));
+            assert_eq!(conclusion.usage, Some(terminal_usage));
             assert_eq!(
                 conclusion.final_git_commit_sha.as_deref(),
                 Some("final-sha")
@@ -4335,7 +4328,19 @@ mod tests {
                         "tool_time_ms": 0,
                         "active_time_ms": 0
                       },
-                      "billing_usd_micros": 320,
+                      "usage": {
+                        "tokens": {
+                          "input": 300,
+                          "output": 20,
+                          "reasoning": 0,
+                          "cache_read": 0,
+                          "cache_write": 0
+                        },
+                        "cost": {
+                          "usd_micros": 320,
+                          "source": "catalog"
+                        }
+                      },
                       "retries": 2
                     },
                     {
@@ -4347,7 +4352,19 @@ mod tests {
                         "tool_time_ms": 0,
                         "active_time_ms": 0
                       },
-                      "billing_usd_micros": 30,
+                      "usage": {
+                        "tokens": {
+                          "input": 20,
+                          "output": 10,
+                          "reasoning": 0,
+                          "cache_read": 0,
+                          "cache_write": 0
+                        },
+                        "cost": {
+                          "usd_micros": 30,
+                          "source": "catalog"
+                        }
+                      },
                       "retries": 0
                     },
                     {
@@ -4358,6 +4375,15 @@ mod tests {
                         "inference_time_ms": 0,
                         "tool_time_ms": 0,
                         "active_time_ms": 0
+                      },
+                      "usage": {
+                        "tokens": {
+                          "input": 0,
+                          "output": 0,
+                          "reasoning": 0,
+                          "cache_read": 0,
+                          "cache_write": 0
+                        }
                       },
                       "retries": 0
                     }
@@ -4400,7 +4426,7 @@ mod tests {
                     final_git_commit_sha: Some("abc123".to_string()),
                     final_patch:          Some(patch.to_string()),
                     diff_summary:         None,
-                    billing:              None,
+                    usage:                None,
                 }),
                 None,
             ))
@@ -4546,7 +4572,7 @@ mod tests {
                     final_git_commit_sha: None,
                     final_patch:          None,
                     diff_summary:         None,
-                    billing:              None,
+                    usage:                None,
                 }),
                 None,
             ))
@@ -4587,7 +4613,7 @@ mod tests {
                     final_git_commit_sha: Some("abc123".to_string()),
                     final_patch:          None,
                     diff_summary:         None,
-                    billing:              None,
+                    usage:                None,
                 }),
                 None,
             ))
@@ -4681,11 +4707,10 @@ mod tests {
                     status:               "succeeded".to_string(),
                     reason:               SuccessReason::Completed,
                     failure:              None,
-                    total_usd_micros:     None,
                     final_git_commit_sha: None,
                     final_patch:          None,
                     diff_summary:         None,
-                    billing:              None,
+                    usage:                None,
                 }),
                 None,
             ))
@@ -4941,11 +4966,10 @@ mod tests {
                     status:               "succeeded".to_string(),
                     reason:               SuccessReason::PartialSuccess,
                     failure:              None,
-                    total_usd_micros:     None,
                     final_git_commit_sha: None,
                     final_patch:          None,
                     diff_summary:         None,
-                    billing:              None,
+                    usage:                None,
                 }),
                 None,
             ))
@@ -5079,11 +5103,10 @@ mod tests {
                     status:               "succeeded".to_string(),
                     reason:               SuccessReason::Completed,
                     failure:              None,
-                    total_usd_micros:     None,
                     final_git_commit_sha: None,
                     final_patch:          None,
                     diff_summary:         None,
-                    billing:              None,
+                    usage:                None,
                 }),
                 None,
             ))
@@ -5121,8 +5144,8 @@ mod tests {
             failure: Some(FailureDetail::new("boom", FailureCategory::TransientInfra)),
             will_retry,
             timing: fabro_types::StageTiming::wall_only(duration_ms),
-            billing_by_model: Vec::new(),
-            billing: None,
+            usage_by_model: Vec::new(),
+            usage: None,
         }
     }
 
@@ -5132,8 +5155,8 @@ mod tests {
             failure: Some(FailureDetail::new("cancelled", FailureCategory::Canceled)),
             will_retry,
             timing: fabro_types::StageTiming::wall_only(duration_ms),
-            billing_by_model: Vec::new(),
-            billing: None,
+            usage_by_model: Vec::new(),
+            usage: None,
         }
     }
 
@@ -5153,7 +5176,7 @@ mod tests {
             final_git_commit_sha: None,
             final_patch:          None,
             diff_summary:         None,
-            billing:              None,
+            usage:                None,
         }
     }
 
@@ -5173,8 +5196,8 @@ mod tests {
             status,
             preferred_label: None,
             suggested_next_ids: Vec::new(),
-            billing_by_model: Vec::new(),
-            billing: None,
+            usage_by_model: Vec::new(),
+            usage: None,
             failure: None,
             notes: None,
             files_touched: Vec::new(),
@@ -5190,19 +5213,21 @@ mod tests {
         }
     }
 
-    fn billed_usage() -> BilledModelUsage {
+    fn priced_usage() -> ModelUsage {
         serde_json::from_value(json!({
             "model": { "provider": "openai", "model_id": "gpt-test" },
-            "tokens": {
-                "input": 10,
-                "output": 5,
-                "reasoning": 2,
-                "cache_read": 3,
-                "cache_write": 4
-            },
-            "total_usd_micros": 123
+            "usage": {
+                "tokens": {
+                    "input": 10,
+                    "output": 5,
+                    "reasoning": 2,
+                    "cache_read": 3,
+                    "cache_write": 4
+                },
+                "cost": { "usd_micros": 123, "source": "catalog" }
+            }
         }))
-        .expect("billing fixture should deserialize")
+        .expect("usage fixture should deserialize")
     }
 
     fn agent_body(event: CodingEvent) -> EventBody {
@@ -5216,14 +5241,12 @@ mod tests {
     fn assistant_message(input: u64, output: u64) -> CodingEvent {
         CodingEvent::AssistantMessage {
             text:            "assistant text".to_string(),
-            model:           billed_usage().model().model_id.to_string(),
-            usage:           TokenUsage {
+            model:           priced_usage().model().model_id.to_string(),
+            usage:           Usage::from(TokenCounts {
                 input,
                 output,
-                ..TokenUsage::default()
-            },
-            cost_usd_micros: None,
-            cost_source:     None,
+                ..TokenCounts::default()
+            }),
             tool_call_count: 0,
             context_window:  None,
             reasoning:       None,
@@ -5247,16 +5270,12 @@ mod tests {
         })
     }
 
-    fn live_counts(input_tokens: i64, output_tokens: i64) -> BilledTokenCounts {
-        BilledTokenCounts {
-            input_tokens,
-            output_tokens,
-            total_tokens: input_tokens + output_tokens,
-            reasoning_tokens: 0,
-            cache_read_tokens: 0,
-            cache_write_tokens: 0,
-            total_usd_micros: None,
-        }
+    fn live_counts(input: u64, output: u64) -> Usage {
+        Usage::from(TokenCounts {
+            input,
+            output,
+            ..TokenCounts::default()
+        })
     }
 
     #[test]
@@ -5282,7 +5301,7 @@ mod tests {
     fn agent_message_accumulates_live_usage_on_stage_projection() {
         let mut state = initialized_projection();
         let stage_id = StageId::new("build", 1);
-        let model = billed_usage().model().clone();
+        let model = priced_usage().model().clone();
 
         state
             .apply_event(&test_stage_event(
@@ -5332,14 +5351,108 @@ mod tests {
     }
 
     /// One usage rule: a stage's usage is its session tree's, live and at
-    /// completion. The terminal billing carries the tokens the fold already
-    /// showed plus the catalog's price, so completion changes the cost, not
-    /// the tokens, and keeps the split by model.
+    /// completion, cost included. lithos-llm prices each answer once, pebble
+    /// sums them, and the terminal usage is the same sum, so completion
+    /// changes neither the tokens nor the cost; it adds the split by model.
     #[test]
-    fn stage_completed_keeps_the_trees_live_usage_and_prices_it() {
+    fn stage_completed_keeps_the_trees_live_usage_and_its_cost() {
         let mut state = initialized_projection();
         let stage_id = StageId::new("build", 1);
-        let model = billed_usage().model().clone();
+        let model = priced_usage().model().clone();
+        let catalog_priced = |input: u64, output: u64, usd_micros: u64| Usage {
+            tokens: TokenCounts {
+                input,
+                output,
+                ..TokenCounts::default()
+            },
+            cost:   Some(Cost {
+                usd_micros,
+                source: CostSource::Catalog,
+            }),
+        };
+        let message = |session: &str, usage: Usage| {
+            let mut event = CodingAgentEvent::new(
+                session,
+                CodingEvent::AssistantMessage {
+                    text: "assistant text".to_string(),
+                    model: model.model_id.to_string(),
+                    usage,
+                    tool_call_count: 0,
+                    context_window: None,
+                    reasoning: None,
+                },
+                SystemTime::UNIX_EPOCH,
+            );
+            if session != "ses_test" {
+                event = event.with_parent_session_id("ses_test");
+            }
+            EventBody::Agent(AgentEventProps::new("code", 1, event))
+        };
+
+        state
+            .apply_event(&test_stage_event(
+                1,
+                EventBody::StageStarted(started_props()),
+                stage_id.clone(),
+            ))
+            .unwrap();
+        state
+            .apply_event(&test_stage_event(
+                2,
+                activated(model.provider.as_str(), model.model_id.as_str()),
+                stage_id.clone(),
+            ))
+            .unwrap();
+        state
+            .apply_event(&test_stage_event(
+                3,
+                message("ses_test", catalog_priced(100, 50, 300)),
+                stage_id.clone(),
+            ))
+            .unwrap();
+        state
+            .apply_event(&test_stage_event(
+                4,
+                message("ses_child", catalog_priced(7, 1, 21)),
+                stage_id.clone(),
+            ))
+            .unwrap();
+        let live = state.stage(&stage_id).unwrap().usage;
+        assert_eq!(
+            live,
+            catalog_priced(107, 51, 321),
+            "the subagent's tokens and cost are the stage's too"
+        );
+
+        // The terminal usage is the same sum, under the root's route.
+        let tree = ModelUsage::new(model.clone(), live);
+        let mut props = completed_props(42, StageOutcome::Succeeded);
+        props.usage = Some(tree.clone());
+        props.usage_by_model = vec![tree.clone()];
+        state
+            .apply_event(&test_stage_event(
+                5,
+                EventBody::StageCompleted(props),
+                stage_id.clone(),
+            ))
+            .unwrap();
+
+        let stage = state.stage(&stage_id).unwrap();
+        assert_eq!(
+            stage.usage, live,
+            "completion keeps the usage the fold showed, cost included"
+        );
+        assert_eq!(stage.model.as_ref(), Some(&model));
+        assert_eq!(stage.usage_by_model, vec![tree]);
+    }
+
+    /// An answer nobody priced leaves the tree's cost unknown, live and at
+    /// completion alike; the tokens are still counted.
+    #[test]
+    fn an_unpriced_answer_leaves_the_stage_cost_unknown_live_and_at_completion() {
+        let mut state = initialized_projection();
+        let stage_id = StageId::new("build", 1);
+        let model = priced_usage().model().clone();
 
         state
             .apply_event(&test_stage_event(
@@ -5362,53 +5475,28 @@ mod tests {
                 stage_id.clone(),
             ))
             .unwrap();
+        let live = state.stage(&stage_id).unwrap().usage;
+        assert_eq!(live, live_counts(100, 50));
+        assert_eq!(live.cost, None);
+
+        let tree = ModelUsage::new(model.clone(), live);
+        let mut props = completed_props(42, StageOutcome::Succeeded);
+        props.usage = Some(tree.clone());
+        props.usage_by_model = vec![tree];
         state
             .apply_event(&test_stage_event(
                 4,
-                child_message_body(7, 1),
-                stage_id.clone(),
-            ))
-            .unwrap();
-        let live = state.stage(&stage_id).unwrap().usage.clone();
-        assert_eq!(
-            live,
-            live_counts(107, 51),
-            "the subagent's tokens are the stage's too"
-        );
-
-        let tree = BilledModelUsage {
-            model:            model.clone(),
-            tokens:           TokenCounts {
-                input: 107,
-                output: 51,
-                ..TokenCounts::default()
-            },
-            total_usd_micros: Some(321),
-        };
-        let mut props = completed_props(42, StageOutcome::Succeeded);
-        props.billing = Some(tree.clone());
-        props.billing_by_model = vec![tree.clone()];
-        state
-            .apply_event(&test_stage_event(
-                5,
                 EventBody::StageCompleted(props),
                 stage_id.clone(),
             ))
             .unwrap();
 
         let stage = state.stage(&stage_id).unwrap();
+        assert_eq!(stage.usage, live);
         assert_eq!(
-            stage.usage.token_counts(),
-            live.token_counts(),
-            "completion keeps the tokens the fold showed"
+            stage.usage.cost, None,
+            "nothing priced it, so nothing invents a cost"
         );
-        assert_eq!(
-            stage.usage.total_usd_micros,
-            Some(321),
-            "and brings the catalog's price"
-        );
-        assert_eq!(stage.model.as_ref(), Some(&model));
-        assert_eq!(stage.billing_by_model, vec![tree]);
     }
 
     #[test]
@@ -5420,7 +5508,6 @@ mod tests {
                 text,
                 model,
                 usage,
-                cost_source,
                 tool_call_count,
                 context_window,
                 reasoning,
@@ -5432,9 +5519,13 @@ mod tests {
             agent_body(CodingEvent::AssistantMessage {
                 text,
                 model,
-                usage,
-                cost_usd_micros: Some(cost),
-                cost_source,
+                usage: Usage {
+                    tokens: usage.tokens,
+                    cost:   Some(Cost {
+                        usd_micros: cost,
+                        source:     CostSource::Provider,
+                    }),
+                },
                 tool_call_count,
                 context_window,
                 reasoning,
@@ -5471,11 +5562,16 @@ mod tests {
                     summary_token_estimate: 500,
                     tracked_file_count:     1,
                     reason:                 CompactionReason::Threshold,
-                    usage:                  TokenUsage {
-                        input: 30,
-                        ..TokenUsage::default()
+                    usage:                  Usage {
+                        tokens: TokenCounts {
+                            input: 30,
+                            ..TokenCounts::default()
+                        },
+                        cost:   Some(Cost {
+                            usd_micros: 2,
+                            source:     CostSource::Provider,
+                        }),
                     },
-                    cost_usd_micros:        Some(2),
                 }),
                 stage_id.clone(),
             ))
@@ -5483,20 +5579,21 @@ mod tests {
 
         let stage = state.stage(&stage_id).unwrap();
         assert_eq!(
-            stage.usage,
-            BilledTokenCounts {
-                total_usd_micros: Some(7),
-                ..live_counts(47, 6)
-            },
-            "the root's messages and compaction, the child's message, and the provider's cost"
+            stage.usage.tokens,
+            live_counts(47, 6).tokens,
+            "the root's messages and compaction, and the child's message"
+        );
+        assert_eq!(
+            stage.usage.cost, None,
+            "the child's unpriced message leaves the tree's cost unknown"
         );
     }
 
     #[test]
-    fn stage_completed_without_billing_preserves_live_usage() {
+    fn stage_completed_without_usage_preserves_live_usage() {
         let mut state = initialized_projection();
         let stage_id = StageId::new("build", 1);
-        let model = billed_usage().model().clone();
+        let model = priced_usage().model().clone();
 
         state
             .apply_event(&test_stage_event(
@@ -5546,7 +5643,7 @@ mod tests {
             ))
             .unwrap();
         let mut props = completed_props(42, StageOutcome::Succeeded);
-        props.billing = Some(usage);
+        props.usage = Some(usage);
         state
             .apply_event(&test_stage_event(
                 2,
@@ -5558,18 +5655,16 @@ mod tests {
         let summary = build_summary(&state, &fixtures::RUN_1);
         assert_eq!(summary.size, RunSize::S);
         assert_eq!(
-            summary.billing,
-            Some(RunBillingSummary {
-                total_usd_micros: Some(20_000_001),
-            })
+            summary.usage.cost.map(|cost| cost.usd_micros),
+            Some(20_000_001)
         );
     }
 
     #[test]
-    fn stage_failed_replaces_live_usage_with_terminal_billing() {
+    fn stage_failed_replaces_live_usage_with_terminal_usage() {
         let mut state = initialized_projection();
         let stage_id = StageId::new("build", 1);
-        let usage = billed_usage();
+        let usage = priced_usage();
 
         state
             .apply_event(&test_stage_event(
@@ -5586,7 +5681,7 @@ mod tests {
             ))
             .unwrap();
         let mut props = failed_props(42, false);
-        props.billing = Some(usage.clone());
+        props.usage = Some(usage.clone());
         state
             .apply_event(&test_stage_event(
                 3,
@@ -5596,7 +5691,7 @@ mod tests {
             .unwrap();
 
         let stage = state.stage(&stage_id).unwrap();
-        assert_eq!(stage.usage, usage_counts(&usage));
+        assert_eq!(stage.usage, usage.usage);
         assert_eq!(stage.model.as_ref(), Some(usage.model()));
     }
 
@@ -5628,7 +5723,7 @@ mod tests {
             .unwrap();
 
         let stage = state.stage(&stage_id).unwrap();
-        assert!(stage.usage.is_zero());
+        assert_eq!(stage.usage, Usage::default());
         assert_eq!(stage.model, None);
         assert_eq!(stage.state, StageState::Running);
     }
@@ -5637,7 +5732,7 @@ mod tests {
     fn stage_completed_records_duration_usage_and_terminal_state() {
         let mut state = initialized_projection();
         let stage_id = StageId::new("build", 1);
-        let usage = billed_usage();
+        let usage = priced_usage();
 
         state
             .apply_event(&test_stage_event(
@@ -5647,7 +5742,7 @@ mod tests {
             ))
             .unwrap();
         let mut props = completed_props(42, StageOutcome::Succeeded);
-        props.billing = Some(usage.clone());
+        props.usage = Some(usage.clone());
         state
             .apply_event(&test_event(
                 2,
@@ -5658,7 +5753,7 @@ mod tests {
 
         let stage = state.stage(&stage_id).unwrap();
         assert_eq!(stage.timing.map(|t| t.wall_time_ms), Some(42));
-        assert_eq!(stage.usage, usage_counts(&usage));
+        assert_eq!(stage.usage, usage.usage);
         assert_eq!(stage.model.as_ref(), Some(usage.model()));
         assert_eq!(stage.state, StageState::Succeeded);
         assert_eq!(stage.effective_state(), StageState::Succeeded);
@@ -5744,15 +5839,15 @@ mod tests {
             .apply_event(&test_event(
                 3,
                 EventBody::StageFailed(StageFailedProps {
-                    index:            0,
-                    failure:          Some(FailureDetail::new(
+                    index:          0,
+                    failure:        Some(FailureDetail::new(
                         "Script failed with exit code: 100\n\nCancelling due to test failure",
                         FailureCategory::Canceled,
                     )),
-                    will_retry:       false,
-                    timing:           fabro_types::StageTiming::wall_only(10),
-                    billing_by_model: Vec::new(),
-                    billing:          None,
+                    will_retry:     false,
+                    timing:         fabro_types::StageTiming::wall_only(10),
+                    usage_by_model: Vec::new(),
+                    usage:          None,
                 }),
                 Some("build"),
             ))
@@ -6444,7 +6539,7 @@ mod tests {
 
             assert!(open_bracket(&state).is_none());
             // The close must not undo the rest of the message's work.
-            assert_eq!(state.stage(&stage_id()).unwrap().usage.input_tokens, 10);
+            assert_eq!(state.stage(&stage_id()).unwrap().usage.tokens.input, 10);
         }
 
         #[test]
@@ -6623,7 +6718,7 @@ mod tests {
                 final_git_commit_sha: None,
                 final_patch:          None,
                 diff_summary:         None,
-                billing:              None,
+                usage:                None,
             }
         }
 
@@ -6634,11 +6729,10 @@ mod tests {
                 status: "succeeded".to_string(),
                 reason,
                 failure: None,
-                total_usd_micros: None,
                 final_git_commit_sha: None,
                 final_patch: None,
                 diff_summary: None,
-                billing: None,
+                usage: None,
             }
         }
 

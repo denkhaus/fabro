@@ -77,7 +77,7 @@ fn conclusion_json_uses_failure_object() {
             }),
             final_git_commit_sha: None,
             stages:               Vec::new(),
-            billing:              None,
+            usage:                None,
             total_retries:        0,
             diff:                 Default::default(),
             exit_kind:            String::new(),

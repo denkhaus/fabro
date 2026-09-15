@@ -18,10 +18,10 @@
  * lithos `Speed`: the requested latency or cost tier.
  */
 
-export const BillingSpeed = {
+export const Speed = {
     FAST: 'fast',
     BALANCED: 'balanced',
     ECONOMICAL: 'economical'
 } as const;
 
-export type BillingSpeed = typeof BillingSpeed[keyof typeof BillingSpeed];
+export type Speed = typeof Speed[keyof typeof Speed];

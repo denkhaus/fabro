@@ -4,7 +4,7 @@ import TestRenderer, { act } from "react-test-renderer";
 import { createMemoryRouter, RouterProvider } from "react-router";
 
 import { ToastProvider } from "../components/toast";
-import { TEST_PRINCIPAL } from "../lib/test-fixtures";
+import { TEST_PRINCIPAL, makeUsage } from "../lib/test-fixtures";
 import { setupReactTestEnv } from "../lib/test-utils";
 
 let currentRun: any = null;
@@ -176,7 +176,7 @@ function makeRun(overrides: Record<string, unknown> = {}) {
       completed_at:   null,
     },
     timing:           null,
-    billing:          null,
+    usage:          makeUsage(),
     size:             "XS",
     ask_fabro:        {
       available:          false,

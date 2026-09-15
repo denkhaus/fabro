@@ -1,13 +1,14 @@
 use std::sync::Arc;
-use std::time::SystemTime;
 
 use fabro_hooks::{HookContext, HookEvent};
-use fabro_llm::LONG_RATE_LIMIT_WINDOW;
-use fabro_llm::gateway::{RateLimitWindow, reset_window};
-use fabro_types::{BilledTokenCounts, DiffSummary, EventBody, RunFailure, RunProjection};
+use fabro_types::{DiffSummary, EventBody, RunFailure, RunProjection};
+use lithos_llm::types::Usage;
 
+use super::fork_terminal_taxonomy::{
+    apply_boundary_upgrade, apply_soft_exit_downgrade, publish_failure_from_error,
+    soft_stop_failure_reason,
+};
 use super::types::{Concluded, Executed, FinalizeOptions, Finalized, PublishOutcome, Published};
-use crate::billing_rollup;
 use crate::context::keys;
 use crate::error::{Error, run_failure_from_error, run_failure_from_outcome_failure};
 use crate::event::{Event, RunNoticeCode, RunNoticeLevel};
@@ -18,26 +19,7 @@ use crate::run_status::{FailureReason, RunStatus, SuccessReason};
 use crate::runtime_store::RunStoreHandle;
 use crate::sandbox_git::{git_diff_with_timeout, list_diff_numstat, summarize_diff_numstat};
 use crate::services::RunServices;
-
-/// The failure reason a failed outcome's detail parks under (fabro-a3d8).
-///
-/// A provider usage-window reset hours away arrives only as message prose.
-/// Count-based retries cannot bridge it, so the run parks as a soft stop —
-/// infrastructure could not finish, the run stays resumable and the next
-/// pass re-enters after the window reopens — instead of a hard
-/// `workflow_error`. Failures without a long reset window keep today's
-/// hard-error mapping.
-fn soft_stop_failure_reason(failure: &FailureDetail) -> FailureReason {
-    match reset_window(&failure.message, SystemTime::now()) {
-        // A naive (offset-less) reset timestamp has an unknown true wait;
-        // park rather than guess a duration (fabro-0607).
-        Some(RateLimitWindow::UnknownEta) => FailureReason::SoftStop,
-        Some(RateLimitWindow::Reopens(window)) if window > LONG_RATE_LIMIT_WINDOW => {
-            FailureReason::SoftStop
-        }
-        _ => FailureReason::WorkflowError,
-    }
-}
+use crate::usage_rollup;
 
 pub fn classify_engine_result(
     engine_result: &Result<Outcome, Error>,
@@ -79,99 +61,6 @@ pub fn classify_engine_result(
     }
 }
 
-/// Upgrade a terminal engine error parked at a boundary exit into a
-/// success-shaped outcome (fabro-08b4).
-///
-/// `kind="boundary"` on the exit edge declares: the failure parked the
-/// loop, it did not break it. The error becomes the attached failure
-/// detail (same surface as publish-blocked), so conclusion and terminal
-/// event agree on green plus why-it-parked. Every other exit kind passes
-/// the outcome through untouched.
-fn apply_boundary_upgrade(
-    outcome: Result<Outcome, Error>,
-    exit_kind: &str,
-) -> (Result<Outcome, Error>, Option<RunFailure>) {
-    match outcome {
-        Err(error) if exit_kind == "boundary" => {
-            let mut parked = Outcome::success();
-            parked.failure = Some(error.to_failure_detail());
-            (
-                Ok(parked),
-                Some(run_failure_from_error(&error, error.failure_reason())),
-            )
-        }
-        other => (other, None),
-    }
-}
-
-/// Downgrade a success-shaped terminal routed through a `kind="deadlock"`
-/// or `kind="soft"` exit into a failed terminal (fabro-18a5).
-///
-/// The exit stage itself usually succeeds — the guard noticed the deadlock
-/// and routed the graph to the exit node — so the outcome alone reads green.
-/// That misclassification let publish run (a pull request opened for code
-/// whose gates never passed) and blocked resume in the CLI and web UI,
-/// because a succeeded run has nothing to resume. The downgrade restores the
-/// intended semantics before both decisions: the run fails with
-/// [`FailureReason::Deadlock`] (work preserved, a human decides) or
-/// [`FailureReason::SoftStop`] (infrastructure could not finish, the next
-/// run re-enters). Work preservation does not depend on the terminal publish
-/// push: checkpoint pushes during execution already carried the run branch.
-fn apply_soft_exit_downgrade(
-    outcome: Result<Outcome, Error>,
-    exit_kind: &str,
-) -> (Result<Outcome, Error>, Option<RunFailure>) {
-    let reason = match exit_kind {
-        "deadlock" => Some(FailureReason::Deadlock),
-        "soft" => Some(FailureReason::SoftStop),
-        _ => None,
-    };
-    match (outcome, reason) {
-        (Ok(outcome), Some(reason))
-            if matches!(
-                outcome.status,
-                StageOutcome::Succeeded | StageOutcome::PartiallySucceeded
-            ) =>
-        {
-            let message = if reason == FailureReason::Deadlock {
-                "run parked at a deadlock exit (kind=\"deadlock\") — work is preserved in \
-                 checkpoints and the pushed run branch; a human decides next"
-            } else {
-                "run parked at a soft exit (kind=\"soft\") — infrastructure could not finish; \
-                 the next run re-enters autonomously"
-            };
-            let error = Error::engine(message);
-            let failure = run_failure_from_error(&error, reason);
-            (Err(error), Some(failure))
-        }
-        (outcome, _) => (outcome, None),
-    }
-}
-
-/// Convert a publish error into the terminal failure detail for a
-/// publish-blocked run (fabro-67e5).
-///
-/// The remediation differs by how far delivery got: a pushed branch means the
-/// work is safely on the remote and only the pull request is missing, while a
-/// failed push keeps the work in checkpoints and the sandbox.
-fn publish_failure_from_error(error: &Error, pushed_branch: Option<&str>) -> RunFailure {
-    let mut failure = run_failure_from_error(error, FailureReason::PublishFailed);
-    let remediation = match pushed_branch {
-        Some(branch) => format!(
-            "Work done, publish blocked — the run branch '{branch}' was pushed; fix the \
-             token's pull-requests scope or open the pull request manually."
-        ),
-        None => "Work done, publish blocked — the run branch was NOT pushed; the work is \
-                 preserved in checkpoints, retry the run or push the checkpoint manually."
-            .to_string(),
-    };
-    if !failure.detail.message.is_empty() {
-        failure.detail.message.push(' ');
-    }
-    failure.detail.message.push_str(&remediation);
-    failure
-}
-
 pub(crate) async fn build_conclusion_from_store(
     run_store: &RunStoreHandle,
     status: StageOutcome,
@@ -196,20 +85,20 @@ fn build_conclusion_from_projection(
     run_wall_time_ms: u64,
     final_git_commit_sha: Option<String>,
 ) -> Conclusion {
-    let billing = projection
-        .map(billing_rollup::billing_rollup_from_projection)
+    let rollup = projection
+        .map(usage_rollup::usage_rollup_from_projection)
         .unwrap_or_default();
     let (stages, total_retries) = projection
-        .map(|projection| billing.conclusion_stages(projection))
+        .map(|projection| rollup.conclusion_stages(projection))
         .unwrap_or_default();
     Conclusion {
         timestamp: chrono::Utc::now(),
         status,
-        timing: billing.timing.with_wall_time(run_wall_time_ms),
+        timing: rollup.timing.with_wall_time(run_wall_time_ms),
         failure,
         final_git_commit_sha,
         stages,
-        billing: billing.billing_if_present(),
+        usage: rollup.usage_if_present(),
         total_retries,
         diff: fabro_types::RunDiff::default(),
         exit_kind: String::new(),
@@ -262,8 +151,8 @@ async fn compute_final_patch(
 }
 
 #[cfg(any(test, feature = "test-support"))]
-pub(crate) fn billing_from_projection(projection: &RunProjection) -> Option<BilledTokenCounts> {
-    billing_rollup::billing_rollup_from_projection(projection).billing_if_present()
+pub(crate) fn usage_from_projection(projection: &RunProjection) -> Option<Usage> {
+    usage_rollup::usage_rollup_from_projection(projection).usage_if_present()
 }
 
 pub(crate) fn build_terminal_event(
@@ -273,7 +162,7 @@ pub(crate) fn build_terminal_event(
     final_git_commit_sha: Option<String>,
     final_patch: Option<String>,
     diff_summary: Option<DiffSummary>,
-    billing: Option<BilledTokenCounts>,
+    usage: Option<Usage>,
     exit_kind: Option<&str>,
     publish_failure: Option<RunFailure>,
     boundary_failure: Option<RunFailure>,
@@ -288,7 +177,6 @@ pub(crate) fn build_terminal_event(
     if outcome_status == StageOutcome::Succeeded
         || outcome_status == StageOutcome::PartiallySucceeded
     {
-        let total_usd_micros = billing.as_ref().and_then(|b| b.total_usd_micros);
         return Event::WorkflowRunCompleted {
             timing,
             artifact_count,
@@ -305,11 +193,10 @@ pub(crate) fn build_terminal_event(
                 _ => SuccessReason::Completed,
             },
             failure: boundary_failure.or(publish_failure),
-            total_usd_micros,
             final_git_commit_sha,
             final_patch,
             diff_summary,
-            billing,
+            usage,
         };
     }
 
@@ -352,7 +239,7 @@ pub(crate) fn build_terminal_event(
         final_git_commit_sha,
         final_patch,
         diff_summary,
-        billing,
+        usage,
     }
 }
 
@@ -503,7 +390,7 @@ pub async fn finalize(published: Published, options: &FinalizeOptions) -> Result
         conclusion.final_git_commit_sha.clone(),
         conclusion.diff.patch.clone(),
         conclusion.diff.summary,
-        conclusion.billing.clone(),
+        conclusion.usage,
         exit_kind,
         publish_failure.clone(),
         boundary_failure.clone(),
@@ -564,8 +451,8 @@ mod tests {
     use fabro_sandbox::test_support::MockSandbox;
     use fabro_store::{Database, RunDatabase, RunProjection};
     use fabro_types::{
-        BilledTokenCounts, EventBody, RunEvent, RunId, RunSpec, StageCompletion, WorkflowSettings,
-        first_event_seq, fixtures, test_support,
+        EventBody, RunEvent, RunId, RunSpec, StageCompletion, WorkflowSettings, first_event_seq,
+        fixtures, test_support,
     };
     use object_store::memory::InMemory;
 
@@ -1283,13 +1170,13 @@ mod tests {
     }
 
     #[test]
-    fn conclusion_billing_sums_retry_visit_usage_from_projection() {
+    fn conclusion_usage_sums_retry_visit_usage_from_projection() {
         let mut projection = test_projection();
         let failed_usage = test_usage("gpt-old", 100, 10);
         let success_usage = test_usage("gpt-new", 200, 20);
         let failed = projection.stage_entry("verify", 1, first_event_seq(1));
         failed.timing = Some(fabro_types::StageTiming::wall_only(1200));
-        failed.usage = BilledTokenCounts::from_billed_usage(std::slice::from_ref(&failed_usage));
+        failed.usage = failed_usage.usage;
         failed.model = Some(failed_usage.model().clone());
         failed.completion = Some(StageCompletion {
             outcome:        StageOutcome::Failed {
@@ -1301,8 +1188,7 @@ mod tests {
         });
         let succeeded = projection.stage_entry("verify", 2, first_event_seq(2));
         succeeded.timing = Some(fabro_types::StageTiming::wall_only(800));
-        succeeded.usage =
-            BilledTokenCounts::from_billed_usage(std::slice::from_ref(&success_usage));
+        succeeded.usage = success_usage.usage;
         succeeded.model = Some(success_usage.model().clone());
         succeeded.completion = Some(StageCompletion {
             outcome:        StageOutcome::Succeeded,
@@ -1333,16 +1219,17 @@ mod tests {
             None,
         );
 
-        assert_eq!(conclusion.billing.as_ref().unwrap().input_tokens, 300);
-        assert_eq!(conclusion.billing.as_ref().unwrap().output_tokens, 30);
-        assert_eq!(
-            conclusion.billing.as_ref().unwrap().total_usd_micros,
-            Some(330)
-        );
+        let usage = conclusion.usage.unwrap();
+        assert_eq!(usage.tokens.input, 300);
+        assert_eq!(usage.tokens.output, 30);
+        assert_eq!(usage.cost.map(|cost| cost.usd_micros), Some(330));
         assert_eq!(conclusion.stages.len(), 1);
         assert_eq!(conclusion.stages[0].stage_id, "verify");
         assert_eq!(conclusion.stages[0].timing.wall_time_ms, 2000);
-        assert_eq!(conclusion.stages[0].billing_usd_micros, Some(330));
+        assert_eq!(
+            conclusion.stages[0].usage.cost.map(|cost| cost.usd_micros),
+            Some(330)
+        );
         assert_eq!(conclusion.stages[0].retries, 1);
     }
 

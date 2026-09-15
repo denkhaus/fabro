@@ -22,20 +22,20 @@ import { DUMMY_BASE_URL, assertParamExists, setApiKeyToObject, setBasicAuthToObj
 // @ts-ignore
 import { BASE_PATH, COLLECTION_FORMATS, type RequestArgs, BaseAPI, RequiredError, operationServerMap } from '../base';
 // @ts-ignore
-import type { AggregateBilling } from '../models';
+import type { AggregateUsage } from '../models';
 /**
- * BillingApi - axios parameter creator
+ * UsageApi - axios parameter creator
  */
-export const BillingApiAxiosParamCreator = function (configuration?: Configuration) {
+export const UsageApiAxiosParamCreator = function (configuration?: Configuration) {
     return {
         /**
-         * Returns aggregate token counts and billed totals across all completed runs since server start.
-         * @summary Aggregate Billing
+         * Returns aggregate token counts and costs across all completed runs since server start.
+         * @summary Aggregate Usage
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        getAggregateBilling: async (options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
-            const localVarPath = `/api/v1/billing`;
+        getAggregateUsage: async (options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            const localVarPath = `/api/v1/usage`;
             // use dummy base URL string because the URL constructor only accepts absolute URLs.
             const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
             let baseOptions;
@@ -68,55 +68,55 @@ export const BillingApiAxiosParamCreator = function (configuration?: Configurati
 };
 
 /**
- * BillingApi - functional programming interface
+ * UsageApi - functional programming interface
  */
-export const BillingApiFp = function(configuration?: Configuration) {
-    const localVarAxiosParamCreator = BillingApiAxiosParamCreator(configuration)
+export const UsageApiFp = function(configuration?: Configuration) {
+    const localVarAxiosParamCreator = UsageApiAxiosParamCreator(configuration)
     return {
         /**
-         * Returns aggregate token counts and billed totals across all completed runs since server start.
-         * @summary Aggregate Billing
+         * Returns aggregate token counts and costs across all completed runs since server start.
+         * @summary Aggregate Usage
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        async getAggregateBilling(options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<AggregateBilling>> {
-            const localVarAxiosArgs = await localVarAxiosParamCreator.getAggregateBilling(options);
+        async getAggregateUsage(options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<AggregateUsage>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.getAggregateUsage(options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
-            const localVarOperationServerBasePath = operationServerMap['BillingApi.getAggregateBilling']?.[localVarOperationServerIndex]?.url;
+            const localVarOperationServerBasePath = operationServerMap['UsageApi.getAggregateUsage']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
     }
 };
 
 /**
- * BillingApi - factory interface
+ * UsageApi - factory interface
  */
-export const BillingApiFactory = function (configuration?: Configuration, basePath?: string, axios?: AxiosInstance) {
-    const localVarFp = BillingApiFp(configuration)
+export const UsageApiFactory = function (configuration?: Configuration, basePath?: string, axios?: AxiosInstance) {
+    const localVarFp = UsageApiFp(configuration)
     return {
         /**
-         * Returns aggregate token counts and billed totals across all completed runs since server start.
-         * @summary Aggregate Billing
+         * Returns aggregate token counts and costs across all completed runs since server start.
+         * @summary Aggregate Usage
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        getAggregateBilling(options?: RawAxiosRequestConfig): AxiosPromise<AggregateBilling> {
-            return localVarFp.getAggregateBilling(options).then((request) => request(axios, basePath));
+        getAggregateUsage(options?: RawAxiosRequestConfig): AxiosPromise<AggregateUsage> {
+            return localVarFp.getAggregateUsage(options).then((request) => request(axios, basePath));
         },
     };
 };
 
 /**
- * BillingApi - object-oriented interface
+ * UsageApi - object-oriented interface
  */
-export class BillingApi extends BaseAPI {
+export class UsageApi extends BaseAPI {
     /**
-     * Returns aggregate token counts and billed totals across all completed runs since server start.
-     * @summary Aggregate Billing
+     * Returns aggregate token counts and costs across all completed runs since server start.
+     * @summary Aggregate Usage
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      */
-    public getAggregateBilling(options?: RawAxiosRequestConfig) {
-        return BillingApiFp(this.configuration).getAggregateBilling(options).then((request) => request(this.axios, this.basePath));
+    public getAggregateUsage(options?: RawAxiosRequestConfig) {
+        return UsageApiFp(this.configuration).getAggregateUsage(options).then((request) => request(this.axios, this.basePath));
     }
 }

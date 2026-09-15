@@ -18,7 +18,7 @@
 import type { CompactionReason } from './compaction-reason';
 // May contain unused imports in some cases
 // @ts-ignore
-import type { TokenUsage } from './token-usage';
+import type { Usage } from './usage';
 
 /**
  * One compaction the root session completed.
@@ -30,11 +30,7 @@ export interface AgentSessionCompaction {
     'summary_token_estimate': number;
     'tracked_file_count': number;
     /**
-     * The summary call\'s tokens: a breakdown of the session\'s and the prompt\'s usage, which already include them. Zero on compactions recorded before it was kept.
+     * The summary call\'s usage: a breakdown of the session\'s and the prompt\'s usage, which already include it. Zero on compactions recorded before it was kept.
      */
-    'usage'?: TokenUsage;
-    /**
-     * The summary call\'s provider-reported cost, included in the totals the same way.
-     */
-    'cost_usd_micros'?: number;
+    'usage'?: Usage;
 }

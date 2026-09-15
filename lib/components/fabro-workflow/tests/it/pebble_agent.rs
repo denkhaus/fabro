@@ -44,6 +44,7 @@ use fabro_workflow::test_support::WorkflowRunner;
 use httpmock::Method::POST;
 use httpmock::MockServer;
 use lithos_llm::catalog::ProviderId;
+use lithos_llm::types::{Cost, CostSource};
 use pebble_coding_agent::events::{CodingEvent, FailoverContinuation, FailoverStop};
 use tokio_util::sync::CancellationToken;
 
@@ -51,8 +52,8 @@ const MODEL: &str = "mock-model";
 const PROVIDER: &str = "mock";
 const CHAT_PATH: &str = "/v1/chat/completions";
 const TOOL_RESULT_MARKER: &str = r#""role":"tool""#;
-const INPUT_TOKENS_PER_CALL: i64 = 11;
-const OUTPUT_TOKENS_PER_CALL: i64 = 7;
+const INPUT_TOKENS_PER_CALL: u64 = 11;
+const OUTPUT_TOKENS_PER_CALL: u64 = 7;
 
 // --- Scripted model ---------------------------------------------------------
 
@@ -235,6 +236,19 @@ fn agent_registry(backend: PebbleBackend) -> HandlerRegistry {
     registry
 }
 
+fn prompt_registry(backend: PebbleBackend) -> HandlerRegistry {
+    let mut registry = HandlerRegistry::new(Box::new(StartHandler));
+    registry.register("start", Box::new(StartHandler));
+    registry.register("exit", Box::new(ExitHandler));
+    registry.register(
+        "prompt",
+        Box::new(fabro_workflow::handler::prompt::PromptHandler::new(Some(
+            Box::new(backend),
+        ))),
+    );
+    registry
+}
+
 /// Every run event the run emitted, in order.
 type Events = Arc<Mutex<Vec<RunEvent>>>;
 
@@ -339,6 +353,25 @@ impl Stage {
         state
     }
 
+    /// Runs `graph` with `work` as a one-shot prompt stage and returns the
+    /// projection.
+    async fn run_prompt_ok(
+        &self,
+        backend: PebbleBackend,
+        graph: &Graph,
+    ) -> fabro_types::RunProjection {
+        let sandbox = local_sandbox(self.dir.path()).await;
+        let runner =
+            WorkflowRunner::new(prompt_registry(backend), Arc::clone(&self.emitter), sandbox);
+        let options = run_options(self.dir.path(), CancellationToken::new());
+        let (outcome, state) = runner
+            .run_with_state(graph, &options)
+            .await
+            .expect("workflow execution should complete");
+        assert_eq!(outcome.status, StageOutcome::Succeeded, "{outcome:?}");
+        state
+    }
+
     /// Fires `action` once, when the stage's first model call starts.
     fn on_first_llm_call(&self, action: impl Fn() + Send + Sync + 'static) {
         let fired = AtomicBool::new(false);
@@ -396,19 +429,19 @@ async fn write_file_under_profile(profile: &str, tool: &str, path_key: &str) {
     let work = work_stage(&state);
     assert_eq!(work.response.as_deref(), Some("Done"), "{profile}");
     assert_eq!(
-        work.usage.input_tokens,
+        work.usage.tokens.input,
         2 * INPUT_TOKENS_PER_CALL,
         "{profile}: two model calls of input"
     );
     assert_eq!(
-        work.usage.output_tokens,
+        work.usage.tokens.output,
         2 * OUTPUT_TOKENS_PER_CALL,
         "{profile}"
     );
     assert_eq!(
-        work.usage.total_usd_micros,
+        work.usage.cost.map(|cost| cost.usd_micros),
         Some(2 * (INPUT_TOKENS_PER_CALL + 2 * OUTPUT_TOKENS_PER_CALL)),
-        "{profile}: cost from the catalog's pricing"
+        "{profile}: every answer came priced from the catalog"
     );
     let checkpoint = state.current_checkpoint().expect("a checkpoint");
     let outcome = checkpoint
@@ -823,25 +856,20 @@ async fn a_stage_that_fails_after_spending_bills_what_it_spent() {
         }
     );
     assert_eq!(
-        work.usage.input_tokens,
+        work.usage.tokens.input,
         2 * INPUT_TOKENS_PER_CALL,
         "the two answered calls are billed"
     );
-    assert_eq!(work.usage.output_tokens, 2 * OUTPUT_TOKENS_PER_CALL);
+    assert_eq!(work.usage.tokens.output, 2 * OUTPUT_TOKENS_PER_CALL);
     assert_eq!(
-        work.usage.total_usd_micros,
+        work.usage.cost.map(|cost| cost.usd_micros),
         Some(2 * (INPUT_TOKENS_PER_CALL + 2 * OUTPUT_TOKENS_PER_CALL)),
-        "priced from the catalog like a completed stage"
+        "every answer came priced from the catalog"
     );
+    assert_eq!(work.usage_by_model.len(), 1, "{:?}", work.usage_by_model);
     assert_eq!(
-        work.billing_by_model.len(),
-        1,
-        "{:?}",
-        work.billing_by_model
-    );
-    assert_eq!(
-        work.billing_by_model[0].tokens.input,
-        u64::try_from(2 * INPUT_TOKENS_PER_CALL).unwrap()
+        work.usage_by_model[0].usage.tokens.input,
+        2 * INPUT_TOKENS_PER_CALL
     );
     assert!(
         tokio::fs::try_exists(&second).await.unwrap(),
@@ -862,12 +890,9 @@ async fn a_stage_that_fails_after_spending_bills_what_it_spent() {
         panic!("stage.failed carries its props: {failed:?}");
     };
     assert!(!props.will_retry);
-    let billing = props.billing.as_ref().expect("the failed stage is billed");
-    assert_eq!(
-        billing.tokens.input,
-        u64::try_from(2 * INPUT_TOKENS_PER_CALL).unwrap()
-    );
-    assert_eq!(props.billing_by_model, vec![billing.clone()]);
+    let usage = props.usage.as_ref().expect("the failed stage is priced");
+    assert_eq!(usage.usage.tokens.input, 2 * INPUT_TOKENS_PER_CALL);
+    assert_eq!(props.usage_by_model, vec![usage.clone()]);
 }
 
 // --- Questions, subagents, MCP
@@ -1006,51 +1031,45 @@ async fn a_subagent_runs_under_its_parent_session() {
     // child's one.
     let work = work_stage(&state);
     assert_eq!(
-        work.usage.input_tokens,
+        work.usage.tokens.input,
         4 * INPUT_TOKENS_PER_CALL,
         "the child's call is the stage's too"
     );
-    assert_eq!(work.usage.output_tokens, 4 * OUTPUT_TOKENS_PER_CALL);
+    assert_eq!(work.usage.tokens.output, 4 * OUTPUT_TOKENS_PER_CALL);
     assert_eq!(
-        work.usage.total_usd_micros,
+        work.usage.cost.map(|cost| cost.usd_micros),
         Some(4 * (INPUT_TOKENS_PER_CALL + 2 * OUTPUT_TOKENS_PER_CALL)),
-        "priced from the catalog for every call"
+        "every answer came priced from the catalog"
     );
     let agent = work
         .agent
         .as_ref()
         .expect("the stage carries pebble's fold");
-    let (descendants, _) = agent.descendant_usage();
+    let descendants = agent.descendant_usage();
     assert_eq!(
-        u64::try_from(work.usage.input_tokens).unwrap(),
-        agent.usage.input + descendants.input,
-        "the completed usage is what the live fold showed"
+        work.usage,
+        agent.usage.saturating_add(descendants),
+        "the completed usage is what the live fold showed, cost included"
     );
     assert_eq!(
-        descendants.input,
-        u64::try_from(INPUT_TOKENS_PER_CALL).unwrap()
+        work.usage.cost.map(|cost| cost.source),
+        Some(CostSource::Catalog),
+        "lithos-llm priced every answer from the catalog; fabro priced nothing"
     );
+    assert_eq!(descendants.tokens.input, INPUT_TOKENS_PER_CALL);
     // The child ran on its parent's model, so the split is one row carrying
     // the tree.
+    assert_eq!(work.usage_by_model.len(), 1, "{:?}", work.usage_by_model);
     assert_eq!(
-        work.billing_by_model.len(),
-        1,
-        "{:?}",
-        work.billing_by_model
+        work.usage_by_model[0].usage.tokens.input,
+        4 * INPUT_TOKENS_PER_CALL
     );
     assert_eq!(
-        work.billing_by_model[0].tokens.input,
-        u64::try_from(4 * INPUT_TOKENS_PER_CALL).unwrap()
-    );
-    assert_eq!(
-        Some(&work.billing_by_model[0].model),
+        Some(&work.usage_by_model[0].model),
         work.model.as_ref(),
         "billed under the root's route"
     );
-    assert_eq!(
-        work.billing_by_model[0].total_usd_micros,
-        work.usage.total_usd_micros
-    );
+    assert_eq!(work.usage_by_model[0].usage.cost, work.usage.cost);
 
     let agent_events = coding_events(&stage.events);
     let root_session = agent_events
@@ -1846,4 +1865,71 @@ async fn a_skill_discovery_opt_in_loads_the_skill_section() {
     let state = stage.run_ok(backend, &graph).await;
     assert_eq!(state.status.kind(), fabro_types::RunStatusKind::Succeeded);
     assert_eq!(answered.calls_async().await, 1);
+}
+
+// --- One-shot prompt stages --------------------------------------------------
+
+/// A one-shot prompt stage calls lithos-llm's client directly, and the
+/// response comes back priced: the resolver fills the catalog's price for
+/// the route when the provider reported none. Fabro records that cost as
+/// is; it estimates nothing itself.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_prompt_stage_records_the_catalog_cost_lithos_attached_to_the_response() {
+    let stage = Stage::new().await;
+    let completion = serde_json::json!({
+        "id": "chatcmpl-prompt",
+        "object": "chat.completion",
+        "model": MODEL,
+        "choices": [{
+            "index": 0,
+            "message": { "role": "assistant", "content": "Summarized." },
+            "finish_reason": "stop"
+        }],
+        "usage": {
+            "prompt_tokens": INPUT_TOKENS_PER_CALL,
+            "completion_tokens": OUTPUT_TOKENS_PER_CALL,
+            "total_tokens": INPUT_TOKENS_PER_CALL + OUTPUT_TOKENS_PER_CALL,
+        }
+    });
+    let mock = stage
+        .server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path(CHAT_PATH)
+                .body_includes("Summarize the change");
+            then.status(200)
+                .header("content-type", "application/json")
+                .body(completion.to_string());
+        })
+        .await;
+
+    let mut graph = agent_graph("Prompt", "Summarize the change");
+    graph
+        .nodes
+        .get_mut("work")
+        .expect("the work node")
+        .attrs
+        .insert("type".to_string(), AttrValue::String("prompt".to_string()));
+    let state = stage.run_prompt_ok(stage.backend("openai"), &graph).await;
+
+    assert_eq!(mock.calls_async().await, 1);
+    let work = work_stage(&state);
+    assert_eq!(work.response.as_deref(), Some("Summarized."));
+    assert_eq!(work.usage.tokens.input, INPUT_TOKENS_PER_CALL);
+    assert_eq!(work.usage.tokens.output, OUTPUT_TOKENS_PER_CALL);
+    assert_eq!(
+        work.usage.cost,
+        Some(Cost {
+            usd_micros: INPUT_TOKENS_PER_CALL + 2 * OUTPUT_TOKENS_PER_CALL,
+            source:     CostSource::Catalog,
+        }),
+        "the response came priced from the catalog by lithos-llm's resolver"
+    );
+    let model = work.model.as_ref().expect("the stage names its model");
+    assert_eq!(model.provider.as_str(), PROVIDER);
+    assert_eq!(model.model_id.as_str(), MODEL);
+    assert!(
+        work.usage_by_model.is_empty(),
+        "a one-shot stage has one route; the split is the usage itself"
+    );
 }

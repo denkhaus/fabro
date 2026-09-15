@@ -240,7 +240,7 @@ pub struct AgentSteerDroppedProps {
 mod tests {
     use std::time::{Duration, UNIX_EPOCH};
 
-    use pebble_coding_agent::events::{ErrorData, ErrorKind, FailoverStop, TokenUsage};
+    use pebble_coding_agent::events::{ErrorData, ErrorKind, FailoverStop, Usage};
     use serde_json::json;
 
     use super::*;
@@ -302,9 +302,7 @@ mod tests {
             CodingEvent::AssistantMessage {
                 text:            String::new(),
                 model:           "gpt-5.4".to_string(),
-                usage:           TokenUsage::default(),
-                cost_usd_micros: None,
-                cost_source:     None,
+                usage:           Usage::default(),
                 tool_call_count: 0,
                 context_window:  None,
                 reasoning:       None,

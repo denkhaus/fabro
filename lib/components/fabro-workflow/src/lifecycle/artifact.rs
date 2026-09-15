@@ -23,12 +23,12 @@ use crate::artifact_upload::ArtifactSink;
 use crate::event::{Emitter, Event, RunNoticeCode, RunNoticeLevel};
 use crate::graph::{WorkflowGraph, WorkflowNode};
 use crate::lifecycle::event::stage_scope_for;
-use crate::outcome::BilledModelUsage;
+use crate::outcome::ModelUsage;
 use crate::runtime_store::RunStoreHandle;
 use crate::stage_execution::StageExecutionTracker;
 
-type WfRunState = ExecutionState<Option<BilledModelUsage>>;
-type WfNodeResult = NodeResult<Option<BilledModelUsage>>;
+type WfRunState = ExecutionState<Option<ModelUsage>>;
+type WfNodeResult = NodeResult<Option<ModelUsage>>;
 type ArtifactIdentity = (String, String);
 
 const ARTIFACT_UPLOAD_RETRY_DELAYS: [Duration; 3] = [

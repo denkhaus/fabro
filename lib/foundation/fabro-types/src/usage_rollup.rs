@@ -1,14 +1,14 @@
 use std::collections::HashMap;
 
-use crate::{
-    BilledTokenCounts, ModelRef, RunProjection, RunTiming, StageProjection, StageSummary,
-    StageTiming,
-};
+use lithos_llm::types::Usage;
+
+use crate::usage::usage_is_empty;
+use crate::{ModelRef, RunProjection, RunTiming, StageProjection, StageSummary, StageTiming};
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct ProjectionBillingStage {
+pub struct ProjectionUsageStage {
     pub node_id: String,
-    pub billing: BilledTokenCounts,
+    pub usage:   Usage,
     /// Per-node timing summed across every visit of that node within this
     /// projection. `wall_time_ms`, `inference_time_ms`, `tool_time_ms`, and
     /// `active_time_ms` are all summed in lockstep.
@@ -17,27 +17,30 @@ pub struct ProjectionBillingStage {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ProjectionBillingByModel {
-    pub model:   ModelRef,
-    pub stages:  i64,
-    pub billing: BilledTokenCounts,
+pub struct ProjectionUsageByModel {
+    pub model:  ModelRef,
+    pub stages: i64,
+    pub usage:  Usage,
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
-pub struct ProjectionBillingRollup {
-    pub stages:             Vec<ProjectionBillingStage>,
-    pub totals:             BilledTokenCounts,
-    pub by_model:           Vec<ProjectionBillingByModel>,
+pub struct ProjectionUsageRollup {
+    pub stages:            Vec<ProjectionUsageStage>,
+    pub totals:            Usage,
+    pub by_model:          Vec<ProjectionUsageByModel>,
     /// Run-level timing summed across every stage visit. `wall_time_ms` is
     /// the sum of stage visit wall times (not the run clock duration).
-    pub timing:             RunTiming,
-    pub billed_visit_count: usize,
+    pub timing:            RunTiming,
+    /// Stage visits that used tokens or carried a cost.
+    pub usage_visit_count: usize,
 }
 
-impl ProjectionBillingRollup {
+impl ProjectionUsageRollup {
+    /// The totals, once at least one stage visit used tokens; `None` for a
+    /// run that made no model calls.
     #[must_use]
-    pub fn billing_if_present(&self) -> Option<BilledTokenCounts> {
-        (self.billed_visit_count > 0).then(|| self.totals.clone())
+    pub fn usage_if_present(&self) -> Option<Usage> {
+        (self.usage_visit_count > 0).then_some(self.totals)
     }
 
     /// Reconstruct the conclusion's per-node summaries from checkpoint and
@@ -48,9 +51,9 @@ impl ProjectionBillingRollup {
         let projection_order = stage_projection_order(projection);
         // Looping workflows revisit nodes; `completed_nodes` accumulates duplicates
         // while the other checkpoint maps are keyed by node_id. Dedupe to one row
-        // per node so the stages table matches the deduped billing total.
+        // per node so the stages table matches the deduped usage total.
         if let Some(cp) = projection.current_checkpoint() {
-            let billing_by_node = self
+            let usage_by_node = self
                 .stages
                 .iter()
                 .map(|stage| (stage.node_id.as_str(), stage))
@@ -87,13 +90,13 @@ impl ProjectionBillingRollup {
                     .unwrap_or(1)
                     .saturating_sub(1);
                 retries_sum += retries;
-                let billing = billing_by_node.get(node_id);
+                let row = usage_by_node.get(node_id);
 
                 let summary = StageSummary {
                     stage_id: node_id.to_string(),
                     stage_label: node_id.to_string(),
-                    timing: billing.map_or_else(StageTiming::default, |stage| stage.timing),
-                    billing_usd_micros: billing.and_then(|stage| stage.billing.total_usd_micros),
+                    timing: row.map_or_else(StageTiming::default, |stage| stage.timing),
+                    usage: row.map_or_else(Usage::default, |stage| stage.usage),
                     retries,
                 };
                 stage_rows.push((
@@ -120,29 +123,29 @@ impl ProjectionBillingRollup {
 }
 
 #[must_use]
-pub fn billing_rollup_from_projection(projection: &RunProjection) -> ProjectionBillingRollup {
+pub fn usage_rollup_from_projection(projection: &RunProjection) -> ProjectionUsageRollup {
     let mut stage_indices = HashMap::<String, usize>::new();
-    let mut stages = Vec::<ProjectionBillingStage>::new();
-    let mut by_model = HashMap::<ModelRef, ProjectionBillingByModel>::new();
-    let mut totals = BilledTokenCounts::default();
+    let mut stages = Vec::<ProjectionUsageStage>::new();
+    let mut by_model = HashMap::<ModelRef, ProjectionUsageByModel>::new();
+    let mut totals = Usage::default();
     let mut run_timing = RunTiming::default();
-    let mut billed_visit_count = 0_usize;
+    let mut usage_visit_count = 0_usize;
 
     for (stage_id, stage) in projection.iter_stages() {
         if projection.is_boundary_stage(stage_id.node_id()) {
             continue;
         }
-        let usage = &stage.usage;
-        if stage.completion.is_none() && stage.timing.is_none() && usage.is_zero() {
+        let usage = stage.usage;
+        if stage.completion.is_none() && stage.timing.is_none() && usage_is_empty(&usage) {
             continue;
         }
 
         let node_id = stage_id.node_id();
         let index = *stage_indices.entry(node_id.to_string()).or_insert_with(|| {
             let index = stages.len();
-            stages.push(ProjectionBillingStage {
+            stages.push(ProjectionUsageStage {
                 node_id: node_id.to_string(),
-                billing: BilledTokenCounts::default(),
+                usage:   Usage::default(),
                 timing:  StageTiming::default(),
                 model:   None,
             });
@@ -155,28 +158,28 @@ pub fn billing_rollup_from_projection(projection: &RunProjection) -> ProjectionB
             run_timing = run_timing.saturating_add(&RunTiming::from(timing));
         }
 
-        if !usage.is_zero() {
-            billed_visit_count += 1;
-            row.billing.add_counts(usage);
-            totals.add_counts(usage);
+        if !usage_is_empty(&usage) {
+            usage_visit_count += 1;
+            row.usage = row.usage.saturating_add(usage);
+            totals = totals.saturating_add(usage);
 
             if let Some(model) = &stage.model {
                 row.model = Some(model.clone());
             }
-            // A completed agent stage says which model billed which tokens:
+            // A completed agent stage says which model used which tokens:
             // the root's route and each subagent's own. Until then, and for
-            // a stage without a coding agent, `usage` bills to `model`.
-            for (model, billing) in model_rows(stage) {
+            // a stage without a coding agent, `usage` goes under `model`.
+            for (model, usage) in model_rows(stage) {
                 let model_entry =
                     by_model
                         .entry(model.clone())
-                        .or_insert_with(|| ProjectionBillingByModel {
+                        .or_insert_with(|| ProjectionUsageByModel {
                             model,
                             stages: 0,
-                            billing: BilledTokenCounts::default(),
+                            usage: Usage::default(),
                         });
                 model_entry.stages += 1;
-                model_entry.billing.add_counts(&billing);
+                model_entry.usage = model_entry.usage.saturating_add(usage);
             }
         }
     }
@@ -184,34 +187,29 @@ pub fn billing_rollup_from_projection(projection: &RunProjection) -> ProjectionB
     let mut by_model = by_model.into_values().collect::<Vec<_>>();
     by_model.sort_by(|left, right| left.model.sort_key().cmp(&right.model.sort_key()));
 
-    ProjectionBillingRollup {
+    ProjectionUsageRollup {
         stages,
         totals,
         by_model,
         timing: run_timing,
-        billed_visit_count,
+        usage_visit_count,
     }
 }
 
-/// The stage's usage by model: its `billing_by_model` rows when the stage
+/// The stage's usage by model: its `usage_by_model` rows when the stage
 /// completed with them, else its `usage` under its `model`.
-fn model_rows(stage: &StageProjection) -> Vec<(ModelRef, BilledTokenCounts)> {
-    if stage.billing_by_model.is_empty() {
+fn model_rows(stage: &StageProjection) -> Vec<(ModelRef, Usage)> {
+    if stage.usage_by_model.is_empty() {
         return stage
             .model
             .iter()
-            .map(|model| (model.clone(), stage.usage.clone()))
+            .map(|model| (model.clone(), stage.usage))
             .collect();
     }
     stage
-        .billing_by_model
+        .usage_by_model
         .iter()
-        .map(|row| {
-            (
-                row.model.clone(),
-                BilledTokenCounts::from_token_counts(row.tokens, row.total_usd_micros),
-            )
-        })
+        .map(|row| (row.model.clone(), row.usage))
         .collect()
 }
 

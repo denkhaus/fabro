@@ -15,9 +15,6 @@
 
 // May contain unused imports in some cases
 // @ts-ignore
-import type { BilledTokenCounts } from './billed-token-counts';
-// May contain unused imports in some cases
-// @ts-ignore
 import type { RunDiff } from './run-diff';
 // May contain unused imports in some cases
 // @ts-ignore
@@ -31,6 +28,9 @@ import type { StageOutcome } from './stage-outcome';
 // May contain unused imports in some cases
 // @ts-ignore
 import type { StageSummary } from './stage-summary';
+// May contain unused imports in some cases
+// @ts-ignore
+import type { Usage } from './usage';
 
 /**
  * Terminal run conclusion derived from final workflow execution.
@@ -42,7 +42,7 @@ export interface Conclusion {
     'failure'?: RunFailure | null;
     'final_git_commit_sha'?: string | null;
     'stages': Array<StageSummary>;
-    'billing'?: BilledTokenCounts | null;
+    'usage'?: Usage | null;
     'total_retries': number;
     'diff': RunDiff;
     /**

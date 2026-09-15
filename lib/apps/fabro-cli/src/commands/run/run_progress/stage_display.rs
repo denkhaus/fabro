@@ -161,7 +161,6 @@ impl StageDisplay {
                 self.stage_counts.get(node_id).copied().unwrap_or((0, 0));
             let total_tokens = usage.map_or(0, ProgressUsage::total_tokens);
             if turn_count > 0 || tool_call_count > 0 || total_tokens > 0 {
-                let total_tokens = i64::try_from(total_tokens).unwrap_or(i64::MAX);
                 format!(
                     "  {}",
                     renderer.styles().dim.apply_to(format!(
