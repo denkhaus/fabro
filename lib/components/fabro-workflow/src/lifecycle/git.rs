@@ -14,7 +14,8 @@ use crate::lifecycle::event::stage_scope_for;
 use crate::outcome::ModelUsage;
 use crate::run_options::RunOptions;
 use crate::sandbox_git::{
-    checked_git_checkpoint, git_diff, list_diff_numstat, summarize_diff_numstat,
+    checked_git_checkpoint, git_diff, list_diff_numstat, quarantine_stage_residue,
+    summarize_diff_numstat,
 };
 use crate::sandbox_git_runtime::SandboxGitRuntime;
 use crate::stage_execution::StageExecutionTracker;
@@ -99,6 +100,38 @@ impl RunLifecycle<WorkflowGraph> for GitLifecycle {
             *self.checkpoint_git_result.lock()
                 .expect("git lifecycle mutex should not be poisoned: no code panics while holding this lock") = None;
             return Ok(());
+        }
+
+        // Residue quarantine (fabro-9d2f): a stage that did not complete
+        // normally — steered away mid-edit or failed — leaves its abandoned
+        // worktree diff in the sandbox. Revert it at this cycle boundary so
+        // later checkpoints attribute only the completing stage's own work;
+        // happy-path (successful/partial) stages keep their diff for the
+        // commit below. A failed stage that a graph-level retry jumps back
+        // to also restarts from the last checkpoint, not from its own dead
+        // half-edit. This never disposes the sandbox: lifecycle stays
+        // driver-owned, with environment `lifecycle.auto_stop` as the
+        // disposal safety net. A quarantine failure is observable (warn
+        // notice) but does not fail the checkpoint — the commit still runs,
+        // attributing any unreverted residue to this failed stage itself
+        // rather than to a later live one.
+        if result.outcome.status.is_failure() {
+            if let Err(err) =
+                quarantine_stage_residue(&self.sandbox, self.run_options.checkpoint()).await
+            {
+                let exec_output_tail = fabro_sandbox::default_redacted_output_tail(&err);
+                tracing::warn!(
+                    node_id,
+                    error = %fabro_sandbox::display_for_log(&err),
+                    "stage residue quarantine failed"
+                );
+                self.emitter.notice_with_tail(
+                    RunNoticeLevel::Warn,
+                    RunNoticeCode::ResidueQuarantineFailed,
+                    format!("[node: {node_id}] residue quarantine failed: {err}"),
+                    exec_output_tail,
+                );
+            }
         }
 
         // Run branch commit via sandbox
@@ -477,6 +510,170 @@ mod tests {
         assert_eq!(diff_summary.files_changed, 1);
         assert_eq!(diff_summary.additions, 2);
         assert_eq!(diff_summary.deletions, 0);
+    }
+
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "quarantine tests read git state with synchronous commands"
+    )]
+    fn git_changed_files_since(repo: &Path, base: &str) -> Vec<String> {
+        let out = std::process::Command::new("git")
+            .args(["diff", "--name-only", &format!("{base}..HEAD")])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        assert!(
+            out.status.success(),
+            "git diff failed: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        String::from_utf8_lossy(&out.stdout)
+            .lines()
+            .map(str::to_string)
+            .collect()
+    }
+
+    fn checkpoint_result(failed: bool) -> WfNodeResult {
+        use crate::outcome::OutcomeExt;
+        let outcome = if failed {
+            crate::outcome::Outcome::fail_deterministic("stage abandoned mid-edit")
+        } else {
+            crate::outcome::Outcome::success()
+        };
+        WfNodeResult::new(
+            outcome,
+            Duration::from_millis(10),
+            Duration::ZERO,
+            Duration::ZERO,
+            1,
+            1,
+        )
+    }
+
+    /// Table-driven residue-quarantine coverage (fabro-9d2f): residue from a
+    /// stage that did not complete normally must not survive into the next
+    /// cycle's commit, untracked files included, while a happy-path stage's
+    /// own diff must still be committed.
+    #[tokio::test]
+    async fn quarantine_between_cycles_keeps_failed_stage_residue_out_of_later_checkpoints() {
+        struct Case {
+            name:           &'static str,
+            stage1_failed:  bool,
+            modify_tracked: bool,
+            add_untracked:  bool,
+        }
+        let cases = vec![
+            Case {
+                name:           "failed stage's tracked modification is reverted before the next \
+                                  cycle's commit",
+                stage1_failed:  true,
+                modify_tracked: true,
+                add_untracked:  false,
+            },
+            Case {
+                name:           "failed stage's untracked file is removed before the next cycle's \
+                                  commit",
+                stage1_failed:  true,
+                modify_tracked: false,
+                add_untracked:  true,
+            },
+            Case {
+                name:           "happy-path stage diff is committed",
+                stage1_failed:  false,
+                modify_tracked: true,
+                add_untracked:  true,
+            },
+        ];
+
+        for case in cases {
+            let repo_dir = tempfile::tempdir().unwrap();
+            let repo = repo_dir.path();
+            init_git_repo(repo);
+            tokio::fs::write(repo.join("tracked.txt"), "base\n")
+                .await
+                .unwrap();
+            let base = git_commit_all(repo, "base");
+
+            // The abandoned stage's residue.
+            if case.modify_tracked {
+                tokio::fs::write(repo.join("tracked.txt"), "abandoned edit\n")
+                    .await
+                    .unwrap();
+            }
+            if case.add_untracked {
+                tokio::fs::write(repo.join("untracked.txt"), "abandoned new file\n")
+                    .await
+                    .unwrap();
+            }
+
+            let lifecycle = git_lifecycle(
+                repo,
+                Arc::new(Emitter::new(fixtures::RUN_1)),
+                run_options(repo),
+            )
+            .await;
+            let graph = workflow_graph();
+            let node = graph.get_node("build").unwrap();
+            let mut state = ExecutionState::new(&graph).unwrap();
+            state.increment_visits("build");
+
+            lifecycle
+                .on_checkpoint(
+                    &node,
+                    &checkpoint_result(case.stage1_failed),
+                    Some("exit"),
+                    &state,
+                )
+                .await
+                .unwrap();
+
+            if case.stage1_failed {
+                // Quarantine: the residue is gone from the worktree.
+                if case.modify_tracked {
+                    assert_eq!(
+                        tokio::fs::read_to_string(repo.join("tracked.txt"))
+                            .await
+                            .unwrap(),
+                        "base\n",
+                        "{}: tracked residue must be reverted",
+                        case.name
+                    );
+                }
+                if case.add_untracked {
+                    assert!(
+                        !repo.join("untracked.txt").exists(),
+                        "{}: untracked residue must be removed",
+                        case.name
+                    );
+                }
+
+                // The next cycle commits only its own work.
+                tokio::fs::write(repo.join("stage2.txt"), "live work\n")
+                    .await
+                    .unwrap();
+                state.increment_visits("build");
+                lifecycle
+                    .on_checkpoint(&node, &checkpoint_result(false), Some("exit"), &state)
+                    .await
+                    .unwrap();
+                let changed = git_changed_files_since(repo, &base);
+                assert_eq!(
+                    changed,
+                    vec!["stage2.txt".to_string()],
+                    "{}: next cycle's commit must contain only the live stage's work",
+                    case.name
+                );
+            } else {
+                // Happy path: the stage's own diff IS committed.
+                let changed = git_changed_files_since(repo, &base);
+                assert!(
+                    changed.contains(&"tracked.txt".to_string())
+                        && changed.contains(&"untracked.txt".to_string()),
+                    "{}: happy-path diff must be committed, got {changed:?}",
+                    case.name
+                );
+            }
+        }
     }
 
     #[tokio::test]
