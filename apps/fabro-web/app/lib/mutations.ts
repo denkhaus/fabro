@@ -23,6 +23,7 @@ import {
   cancelRun,
   denyRun,
   isLifecycleActionError,
+  resumeRun,
   retryRun,
   unarchiveRun,
 } from "./run-actions";
@@ -80,6 +81,15 @@ export function useArchiveRun(id: string | undefined) {
 
 export function useUnarchiveRun(id: string | undefined) {
   return useLifecycleMutation(id, "unarchive", unarchiveRun);
+}
+
+export function useResumeRun(id: string | undefined) {
+  return useLifecycleMutation(id, "resume", resumeRun, (run, mutate) => {
+    // The resumed run is a NEW run (rewind fork); seed its detail cache and
+    // refresh the list so both the source and replacement appear.
+    void mutate(queryKeys.runs.detail(run.id), run, { revalidate: false });
+    mutateRunListCaches(mutate);
+  });
 }
 
 export function useRetryRun(id: string | undefined) {
