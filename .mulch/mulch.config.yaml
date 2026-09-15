@@ -19,6 +19,7 @@ domains:
   tooling: {}
   dev-loop: {}
   develop-workflow: {}
+  loop: {}
 governance:
   max_entries: 100
   warn_entries: 150
