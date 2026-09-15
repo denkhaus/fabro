@@ -38,15 +38,17 @@ const FIND_RENAMES_PERCENT: u8 = 50;
 /// Budget for the machine-readable diffs behind the Run Files endpoint.
 const RUN_FILES_TIMEOUT: Duration = Duration::from_secs(10);
 
-/// Hardened git invocation for the checkpoint commit, mirroring the
-/// driver's derived git facet prefix (`sandbox-driver/src/derived/git.rs`)
-/// so the exec-routed commit keeps the same protections: no background
-/// maintenance, no repository hooks, no fsmonitor, no signing.
-const GIT_COMMIT_PREFIX: &str = "git -c maintenance.auto=0 -c gc.auto=0 \
-                                 -c core.hooksPath=/dev/null -c core.fsmonitor=false \
-                                 -c core.quotePath=false -c commit.gpgsign=false";
+/// Hardened git invocation prefix shared by the checkpoint commit and the
+/// residue quarantine, mirroring the driver's derived git facet prefix
+/// (`sandbox-driver/src/derived/git.rs`) so the exec-routed commands keep
+/// the same protections: no background maintenance, no repository hooks,
+/// no fsmonitor, no signing.
+const GIT_HARDENED_PREFIX: &str = "git -c maintenance.auto=0 -c gc.auto=0 \
+                                   -c core.hooksPath=/dev/null -c core.fsmonitor=false \
+                                   -c core.quotePath=false -c commit.gpgsign=false";
 
-/// Checkpoint commit budget, matching the driver's per-command git timeout.
+/// Checkpoint commit and residue-quarantine budget, matching the driver's
+/// per-command git timeout.
 const GIT_COMMIT_TIMEOUT_MS: u64 = 60_000;
 
 /// The sandbox's git facet, or the error a git operation reports when the
@@ -127,7 +129,7 @@ pub async fn git_checkpoint(
         ("GIT_COMMITTER_EMAIL".to_string(), author.email.clone()),
     ]);
     let script = format!(
-        "{GIT_COMMIT_PREFIX} -c user.name={} -c user.email={} commit -m {} --allow-empty",
+        "{GIT_HARDENED_PREFIX} -c user.name={} -c user.email={} commit -m {} --allow-empty",
         shell_quote(&author.name),
         shell_quote(&author.email),
         shell_quote(&message),
@@ -165,6 +167,58 @@ pub async fn git_checkpoint(
         .await
         .map_err(|error| git_error("git commit", error))?;
     Ok(sha)
+}
+
+/// Quarantine the worktree residue of a stage that did not complete
+/// normally (steered away or failed mid-edit): revert tracked changes
+/// (`reset --hard HEAD`) and remove untracked paths (`clean -fd`), so a
+/// later cycle's checkpoint commits only the completing stage's own work.
+///
+/// Excluded directories (built-in `EXCLUDE_DIRS` plus the checkpoint's
+/// configured `exclude_globs`) are preserved by `clean -e` — dependency
+/// caches and build outputs the next stage still depends on must survive
+/// the quarantine. This is a git operation on the live run sandbox only;
+/// sandbox lifecycle stays driver-owned (attach never starts, explicit
+/// activate, environment `lifecycle.auto_stop` as the disposal safety
+/// net) — the engine never disposes or recreates the sandbox here.
+pub async fn quarantine_stage_residue(
+    sandbox: &RunSandbox,
+    checkpoint: &RunCheckpointSettings,
+) -> std::result::Result<(), GitCommandError> {
+    use std::fmt::Write as _;
+    let repo = sandbox.working_directory();
+    let mut clean = format!("{GIT_HARDENED_PREFIX} clean -fd");
+    for dir in artifact_snapshot::EXCLUDE_DIRS {
+        let _ = write!(clean, " -e {}", shell_quote(dir));
+    }
+    for glob in &checkpoint.exclude_globs {
+        let _ = write!(clean, " -e {}", shell_quote(glob));
+    }
+    let script = format!("{GIT_HARDENED_PREFIX} reset --hard HEAD && {clean}");
+    let result = sandbox
+        .exec_command(&script, GIT_COMMIT_TIMEOUT_MS, Some(repo), None, None)
+        .await
+        .map_err(|source| GitCommandError {
+            message: "residue quarantine failed".to_string(),
+            source,
+        })?;
+    if !result.success() {
+        let failure = sandbox_driver::GitFailure::from_command(
+            "residue quarantine",
+            sandbox_driver::ExecFailure::new(
+                "residue quarantine",
+                result.termination,
+                result.exit_code,
+                result.stdout,
+                result.stderr,
+            ),
+        );
+        return Err(git_error(
+            "residue quarantine",
+            sandbox_driver::Error::Git(failure),
+        ));
+    }
+    Ok(())
 }
 
 /// Run a git checkpoint after the per-run sandbox git capability probe.

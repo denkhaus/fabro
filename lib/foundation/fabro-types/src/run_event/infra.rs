@@ -43,6 +43,10 @@ pub enum RunNoticeCode {
     ModelFallbackChainEmpty,
     ModelFallbackSkipped,
     PullRequestFailed,
+    /// Reverting the worktree residue of a stage that did not complete
+    /// normally (steered away or failed mid-edit) failed; any unreverted
+    /// residue may surface in a later checkpoint (seed fabro-9d2f).
+    ResidueQuarantineFailed,
     SandboxCleanupFailed,
     SandboxGitUnavailable,
     SandboxPreserved,
