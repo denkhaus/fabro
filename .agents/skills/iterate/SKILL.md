@@ -68,8 +68,12 @@ decision, not an accident - it needs the user plus an ADR.
 - Interrupted cycle? Reconstruct BEFORE selecting: `git status` (uncommitted
   diff is the interrupted operation) + `sd list --status in_progress` tell
   you what was mid-flight; continue that work instead of picking a new seed.
-- `sd ready` and the open-seed list for candidates. `ml prime <domain>`
-  only when the cycle touches that domain.
+- `sd ready` and the open-seed list for candidates, ALWAYS with
+  `--limit 200` on any `sd list`: the default caps at 50 and silently
+  truncates (2026-09-15: the line-watch dispatch view itself ran on a
+  capped 50-entry listing while the tracker held 447 seeds; the same cap
+  bit the revisor, fabro-c16d/fabro-5ff7). `ml prime <domain>` only
+  when the cycle touches that domain.
 - Seeds are git-native: `git fetch` + `git pull --ff-only` BEFORE reading
   `sd` state when another machine may have run the line - the tracker
   view is branch-local and goes stale (2026-09-08: fabro-16ff read as
@@ -224,6 +228,17 @@ decision, not an accident - it needs the user plus an ADR.
   a landed fork feature regressed — fix or revert, never relax the
   test; a pin-less fork feature ships only with a filed seed for the
   missing pin (fabro-8ee1/00ffd60f6 class).
+- Landed prompt diffs get a FACT-CHECK against repo reality (2026-09-15,
+  PR #159): a workflow-prompt change that reads plausible can encode a
+  wrong repo fact - the duplicate-run preflight shipped grepping
+  origin/main while the line merges run PRs into denkhaus, a silent
+  no-op guard. Verify claimed branches, paths, and command behavior in
+  the tree; branch/merge assumptions belong in PROJECT_FACTS, never
+  hard-coded literals in stage prompts. PROMPT HYGIENE (user directive
+  2026-09-15, seed fabro-41de): workflow prompts land WITHOUT seed-id
+  literals - status assertions about tracker state rot, provenance
+  lives in seeds/journals/ADRs; flag id literals in reviewed prompt
+  diffs.
 - Verify a reviewer's FACTUAL premise in code before fixing (e804
   lesson, 2026-09-02): the spec axis claimed raw blob:// refs reach the
   tool; the dispatch path had already resolved them to file:// pointers.
@@ -312,11 +327,16 @@ decision, not an accident - it needs the user plus an ADR.
   any lib/ path (even a small crate like fabro-validate) changes the
   server/CLI image and needs the next just up.
 - PUSH/PR COORDINATION: pushing to denkhaus while a run PR is open can
-  turn it DIRTY and stall auto-merge. Check open run PRs in a step
-  SEPARATE from the push cell - if one is open, DEFER the push until it
-  merges (2026-09-09: the check ran in the same cell as the push, PR
-  #81 went CONFLICTING anyway). If one goes dirty with a green gate,
-  update its branch (merge denkhaus into the run branch). JSONL repair
+  turn it DIRTY and stall auto-merge. The gate must be MECHANICAL, not
+  cell sequencing: one helper function (safe_push) that queries open PRs
+  and only runs git push when the list is empty, returning the refusal
+  otherwise (2026-09-09: check and push in one cell, PR #81
+  CONFLICTING; 2026-09-15: the check SAW one open PR and the push still
+  ran because they shared a cell - PR #156 went dirty, branch repair
+  needed). If one goes dirty (with checks running OR a green gate),
+  update its branch (merge denkhaus into the run branch). A clean LOCAL
+  `git merge-tree` does NOT prove GitHub reports mergeable - verify the
+  PR's mergeable state after any push that raced a run PR. JSONL repair
   discipline: git may auto-merge .seeds/.mulch "cleanly" and STILL
   duplicate lines (PR #81 repair: 7 seeds present in old AND new
   versions) - a clean merge is not a correct merge. Dedupe by id with
@@ -386,10 +406,20 @@ decision, not an accident - it needs the user plus an ADR.
    correlation pass: sweep the run's log window and join engine-side
    patterns with the run's journal painpoints (user directive
    2026-09-15 - connect engine painpoints with agent painpoints;
-   both halves into one seed). RLM heartbeats are SESSION-scoped: if
-   `rlm_heartbeat
+   both halves into one seed). DISPATCH DEDUPE: when dispatching new
+   revisor seeds, check whether you filed the SAME finding in parallel
+   (your own recent seeds, sd search before assigning); keep the
+   RICHER seed regardless of author, fold the lesser's unique content
+   into it, close the lesser with a duplicate reason naming both ids
+   and queue exposure (2x on 2026-09-15: d76c/96e7, 7280/58cb).
+   Tracker reads in the ceremony carry `--limit 200` (Phase 0 cap
+   rule). RLM heartbeats are SESSION-scoped: if `rlm_heartbeat
    .list()` shows no active `line-watch` at session start, recreate
-   it from this spec before doing anything else.
+   it from this spec; if the session host rejects rlm_heartbeat
+   requests entirely (no heartbeat controller attached), fall back to
+   asking the user to set the visible /heartbeat with this ceremony
+   as the prompt text (2026-09-15: exactly that fallback ran the
+   whole evening) - do not silently run without a watch.
 
 ## Standing rules
 
