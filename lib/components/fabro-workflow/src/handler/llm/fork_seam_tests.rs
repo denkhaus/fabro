@@ -10,6 +10,7 @@
 //! slash tokens. Engine test suites stayed green throughout — only live
 //! conductor passes found the damage.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use fabro_types::RunId;
@@ -406,6 +407,73 @@ fn conductor_legs_teach_the_workflow_version_contract() {
              the closure without transcription"
         );
     }
+}
+
+/// Fork presence pin (fabro-7627, salvaged 2026-09-15): the one-click
+/// Resume feature MUST stay anchored in fork-only files wired through
+/// minimal seams — an upstream merge that drops the fork module, the
+/// seam re-export, or the API path reds this gate instead of silently
+/// regressing the capability (fabro-8ee1 class: inline tests cannot
+/// catch their own removal).
+#[test]
+fn resume_from_failure_targets_the_failed_stages_entry_checkpoint() {
+    use fabro_types::CheckpointRecord;
+
+    use crate::operations::resolve_failure_rewind_target;
+
+    let record = |node: &str, failed: bool| CheckpointRecord {
+        seq:        0,
+        checkpoint: fabro_types::Checkpoint {
+            timestamp:                  chrono::Utc::now(),
+            current_node:               node.to_string(),
+            completed_nodes:            [node].iter().map(ToString::to_string).collect(),
+            node_retries:               HashMap::default(),
+            context_values:             HashMap::default(),
+            node_outcomes:              [(
+                node.to_string(),
+                if failed {
+                    fabro_types::Outcome::fail("429 usage window")
+                } else {
+                    fabro_types::Outcome::success()
+                },
+            )]
+            .into_iter()
+            .collect(),
+            next_node_id:               Some("exit".to_string()),
+            git_commit_sha:             Some("sha".to_string()),
+            loop_failure_signatures:    HashMap::default(),
+            restart_failure_signatures: HashMap::default(),
+            node_visits:                HashMap::default(),
+        },
+        diff:       fabro_types::RunDiff::default(),
+    };
+
+    // Soft-exit park: the failed stage committed its own checkpoint, so the
+    // rewind target is the PREVIOUS (entry) checkpoint.
+    let checkpoints = vec![record("planner", false), record("implementer", true)];
+    let target = resolve_failure_rewind_target(&checkpoints)
+        .expect("park-class failure resolves to an entry checkpoint");
+    assert_eq!(
+        target,
+        Some(crate::operations::ForkTarget::Ordinal(1)),
+        "resume must re-run exactly the failed stage, keeping earlier work"
+    );
+}
+
+#[test]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "synchronous repo-asset read in tests (single small file, contract pin)"
+)]
+fn openapi_spec_still_carries_the_resume_endpoint() {
+    let spec =
+        std::fs::read_to_string(repo_root().join("docs/public/api-reference/fabro-api.yaml"))
+            .expect("OpenAPI spec readable from repo root");
+    assert!(
+        spec.contains("/api/v1/runs/{id}/resume:"),
+        "the fork resume endpoint must stay in the OpenAPI spec (fabro-7627); \
+         an upstream merge dropped it or the yaml regressed"
+    );
 }
 
 fn repo_root() -> std::path::PathBuf {

@@ -36,12 +36,17 @@ pub(super) fn routes() -> Router<Arc<AppState>> {
         .route("/runs/{id}/archive", post(archive_run))
         .route("/runs/{id}/rewind", post(rewind_run))
         .route("/runs/{id}/retry", post(retry_run))
+        .merge(super::fork_resume::routes())
         .route("/runs/{id}/fork", post(fork_run))
         .route("/runs/{id}/timeline", get(run_timeline))
         .route("/runs/{id}/unarchive", post(unarchive_run))
 }
 
-async fn run_response(state: &AppState, id: RunId, status: StatusCode) -> Response {
+pub(in crate::server) async fn run_response(
+    state: &AppState,
+    id: RunId,
+    status: StatusCode,
+) -> Response {
     match state.stores.run_summaries.get(&id, Utc::now()).await {
         Ok(Some(summary)) => {
             (status, Json(state.decorate_run_summary(summary).await)).into_response()
@@ -1038,7 +1043,7 @@ fn parse_fork_target(target: Option<String>) -> Result<Option<operations::ForkTa
         .transpose()
 }
 
-fn workflow_operation_error_response(err: WorkflowError) -> Response {
+pub(in crate::server) fn workflow_operation_error_response(err: WorkflowError) -> Response {
     match err {
         WorkflowError::Parse(message) | WorkflowError::Validation(message) => {
             ApiError::bad_request(message).into_response()

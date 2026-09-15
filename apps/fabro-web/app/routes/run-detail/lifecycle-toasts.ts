@@ -34,6 +34,7 @@ export function createLifecycleToastState(): LifecycleToastState {
       deny:      null,
       archive:   null,
       unarchive: null,
+      resume:    null,
       retry:     null,
     },
   };
@@ -109,6 +110,14 @@ export function handleLifecycleToastResult(
 
   if (intent === "retry") {
     toastApi.push({ message: "Retry started." });
+    navigate?.(`/runs/${result.run.id}`);
+    return nextState;
+  }
+
+  if (intent === "resume") {
+    toastApi.push({
+      message: "Resume started — re-running the failed stage with earlier progress kept.",
+    });
     navigate?.(`/runs/${result.run.id}`);
     return nextState;
   }

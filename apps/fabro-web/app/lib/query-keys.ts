@@ -80,6 +80,7 @@ export const queryKeys = {
     approve: (id: string) => ["runs", "approve", id] as const,
     deny: (id: string) => ["runs", "deny", id] as const,
     retry: (id: string) => ["runs", "retry", id] as const,
+    resume: (id: string) => ["runs", "resume", id] as const,
     archive: (id: string) => ["runs", "archive", id] as const,
     unarchive: (id: string) => ["runs", "unarchive", id] as const,
     updateTitle: (id: string) => ["runs", "update-title", id] as const,

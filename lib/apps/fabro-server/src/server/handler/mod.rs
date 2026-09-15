@@ -12,6 +12,7 @@ pub(in crate::server) mod automations;
 mod completions;
 mod environments;
 pub(in crate::server) mod events;
+mod fork_resume;
 pub(in crate::server) mod graph;
 pub(in crate::server) mod lifecycle;
 mod llm_sse;
