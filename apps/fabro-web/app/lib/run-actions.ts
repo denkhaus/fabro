@@ -24,6 +24,7 @@ export type LifecycleAction =
   | "deny"
   | "archive"
   | "unarchive"
+  | "resume"
   | "retry";
 
 export interface LifecycleActionError {
@@ -122,6 +123,13 @@ export async function retryRun(id: string, request?: Request): Promise<Run> {
   return runLifecycleAction(id, "retry", request);
 }
 
+// Resume re-runs exactly the last failed stage from its entry checkpoint,
+// keeping all earlier committed work (engine auto-rewinds). Distinct from
+// retryRun, which starts a fresh run and discards committed stages.
+export async function resumeRun(id: string, request?: Request): Promise<Run> {
+  return runLifecycleAction(id, "resume", request);
+}
+
 export async function deleteRun(id: string, request?: Request): Promise<void> {
   try {
     await apiResponse(() => runsApi.deleteRun(id, undefined, requestSignalOptions(request)));
@@ -150,6 +158,20 @@ export function canUnarchive(status: string | null | undefined): boolean {
 export function canRetry(run: Pick<Run, "lifecycle"> | null | undefined): boolean {
   if (!run || run.lifecycle.archived) return false;
   return isTerminalRunStatus(run.lifecycle.status.kind);
+}
+
+// Resume is offered for terminal runs that can have checkpoints: failed or
+// dead git-backed runs. Cancelled failures and archived runs have nothing to
+// resume; succeeded runs have nothing failed to re-run (use rewind for
+// explicit replay of a succeeded run).
+export function canResume(run: Run | null | undefined): boolean {
+  if (!run || run.lifecycle.archived) return false;
+  if (run.repository == null) return false;
+  return (
+    run.lifecycle.status.kind === "failed"
+      ? run.lifecycle.status.reason !== "cancelled"
+      : run.lifecycle.status.kind === "dead"
+  );
 }
 
 export function isTerminalRunStatus(
@@ -225,6 +247,8 @@ export function mapError(error: unknown, action: LifecycleAction): string {
           return "Active runs can't be unarchived.";
         case "retry":
           return "This run can no longer be retried.";
+        case "resume":
+          return "This run can no longer be resumed.";
       }
     }
 
@@ -245,6 +269,8 @@ export function mapError(error: unknown, action: LifecycleAction): string {
       return "Couldn't archive the run right now. Try again.";
     case "unarchive":
       return "Couldn't unarchive the run right now. Try again.";
+    case "resume":
+      return "Couldn't resume the run right now. Try again.";
     case "retry":
       return "Couldn't retry the run right now. Try again.";
   }
@@ -269,6 +295,8 @@ async function runLifecycleAction(
         return await apiData(() => runsApi.unarchiveRun(id, requestSignalOptions(request)));
       case "retry":
         return await apiData(() => runsApi.retryRun(id, requestSignalOptions(request)));
+      case "resume":
+        return await apiData(() => runsApi.resumeRun(id, requestSignalOptions(request)));
     }
   } catch (error) {
     throw lifecycleActionErrorFromError(error);

@@ -28,6 +28,7 @@ import {
   useDenyRun,
   useInterruptRun,
   usePreviewRun,
+  useResumeRun,
   useRetryRun,
   useUnarchiveRun,
   type LifecycleMutationResult,
@@ -37,6 +38,7 @@ import { useRunToasts } from "../hooks/use-run-toasts";
 import { useRun, useRunQuestions, useRunState } from "../lib/queries";
 import {
   canApprove,
+  canResume,
   canRetry,
   deleteErrorMessage,
   deleteRun,
@@ -114,6 +116,7 @@ export default function RunDetail({ params }: { params: { id: string } }) {
   const archiveMutation = useArchiveRun(params.id);
   const unarchiveMutation = useUnarchiveRun(params.id);
   const retryMutation = useRetryRun(params.id);
+  const resumeMutation = useResumeRun(params.id);
   const interruptMutation = useInterruptRun(params.id);
   const navigate = useNavigate();
   const { mutate } = useSWRConfig();
@@ -160,7 +163,7 @@ export default function RunDetail({ params }: { params: { id: string } }) {
         result,
         lifecycleToastStateRef,
         { push, dismiss },
-        intent === "retry" ? navigate : undefined,
+        intent === "retry" || intent === "resume" ? navigate : undefined,
       );
     },
     [dismiss, navigate, push],
@@ -206,6 +209,7 @@ export default function RunDetail({ params }: { params: { id: string } }) {
   const archivePending = archiveMutation.isMutating;
   const unarchivePending = unarchiveMutation.isMutating;
   const retryPending = retryMutation.isMutating;
+  const resumePending = resumeMutation.isMutating;
   const handlePreview = async () => {
     const previewWindow = window.open("about:blank", "_blank");
     try {
@@ -284,10 +288,19 @@ export default function RunDetail({ params }: { params: { id: string } }) {
       },
     ],
     lifecycle: [
+      ...(!demoMode && canResume(summary)
+        ? [{
+          key:          "resume",
+          label:        "Resume from failure",
+          pendingLabel: "Resuming…",
+          pending:      resumePending,
+          onSelect:     () => void triggerLifecycleAction("resume", resumeMutation.trigger),
+        }]
+        : []),
       ...(!demoMode && canRetry(summary)
         ? [{
           key:          "retry",
-          label:        "Retry",
+          label:        "Retry from scratch",
           pendingLabel: "Retrying…",
           pending:      retryPending,
           onSelect:     () => void triggerLifecycleAction("retry", retryMutation.trigger),

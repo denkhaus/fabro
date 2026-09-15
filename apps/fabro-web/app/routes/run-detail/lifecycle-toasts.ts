@@ -113,6 +113,14 @@ export function handleLifecycleToastResult(
     return nextState;
   }
 
+  if (intent === "resume") {
+    toastApi.push({
+      message: "Resume started — re-running the failed stage with earlier progress kept.",
+    });
+    navigate?.(`/runs/${result.run.id}`);
+    return nextState;
+  }
+
   if (state.activeArchiveToastId) {
     toastApi.dismiss(state.activeArchiveToastId);
   }

@@ -20,6 +20,7 @@ import {
   denyRun,
   isCancellationPendingState,
   mapError,
+  resumeRun,
   retryRun,
   unarchiveRun,
 } from "../../lib/run-actions";
@@ -44,6 +45,7 @@ export function RowActionsMenu({ run }: { run: RunWithStatus }) {
   const status = run.lifecycleStatus;
   const showApprove = run.pendingApproval === true;
   const showDeny = run.pendingApproval === true;
+  const showResume = status === "failed" || status === "dead";
   const showRetry = status === "failed" || status === "dead";
   const showArchive = canArchive(status);
   const showUnarchive = canUnarchive(status);
@@ -56,7 +58,7 @@ export function RowActionsMenu({ run }: { run: RunWithStatus }) {
   );
   const pending = pendingAction !== null || cancellationPending;
 
-  const hasLifecycle = showRetry || showArchive || showUnarchive;
+  const hasLifecycle = showResume || showRetry || showArchive || showUnarchive;
   const hasDestructive = showDeny || showCancel || showDelete;
 
   async function runAction<T>(
@@ -162,6 +164,25 @@ export function RowActionsMenu({ run }: { run: RunWithStatus }) {
               </button>
             </MenuItem>
           )}
+          {showResume && (
+            <MenuItem>
+              <button
+                type="button"
+                onClick={() =>
+                  void runAction(
+                    "resume",
+                    () => resumeRun(run.id),
+                    "Resumed run from the failed stage — earlier progress is kept.",
+                  )
+                }
+                disabled={pending}
+                className={MENU_ITEM_CLASS}
+              >
+                Resume
+                <span className="ml-auto text-xs text-fg-muted">keep progress</span>
+              </button>
+            </MenuItem>
+          )}
           {showRetry && (
             <MenuItem>
               <button
@@ -173,6 +194,7 @@ export function RowActionsMenu({ run }: { run: RunWithStatus }) {
                 className={MENU_ITEM_CLASS}
               >
                 Retry
+                <span className="ml-auto text-xs text-fg-muted">start over</span>
               </button>
             </MenuItem>
           )}
