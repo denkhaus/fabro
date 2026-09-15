@@ -12,7 +12,7 @@ use super::types::{Concluded, Executed, FinalizeOptions, Finalized, PublishOutco
 use crate::context::keys;
 use crate::error::{Error, run_failure_from_error, run_failure_from_outcome_failure};
 use crate::event::{Event, RunNoticeCode, RunNoticeLevel};
-use crate::outcome::{FailureDetail, Outcome, StageOutcome};
+use crate::outcome::{Outcome, StageOutcome};
 use crate::records::Conclusion;
 use crate::run_options::RunOptions;
 use crate::run_status::{FailureReason, RunStatus, SuccessReason};
@@ -447,6 +447,8 @@ mod tests {
 
     use anyhow::Result;
     use fabro_auth::test_support as auth_test_support;
+
+    use crate::outcome::FailureDetail;
     use fabro_graphviz::graph::Graph;
     use fabro_sandbox::test_support::MockSandbox;
     use fabro_store::{Database, RunDatabase, RunProjection};
