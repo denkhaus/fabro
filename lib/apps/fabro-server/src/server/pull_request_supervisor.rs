@@ -17,6 +17,9 @@ use tracing::{Instrument as _, info_span, warn};
 use super::handler::pull_requests::{
     RunPrInputs, load_server_github_credentials, server_github_context,
 };
+use super::pull_request_conflict::{
+    ConflictResolutionClient, all_bookkeeping_paths, all_tracker_paths,
+};
 use super::{AppState, pull_request, workflow_event};
 
 const PULL_REQUEST_CREATION_TIMEOUT: Duration = Duration::from_mins(10);
@@ -37,6 +40,17 @@ const PULL_REQUEST_MAX_AGE: chrono::Duration = chrono::Duration::hours(24);
 /// Close reason recorded on the `pull_request.closed` event when the
 /// supervisor retires a pull request it could no longer converge.
 const CLOSE_REASON_STALE_BASE: &str = "stale_base";
+/// In-memory staleness counters for the supervisor loop: per-run strike
+/// counts plus parked runs. A parked run's pull request stays open and
+/// receives no further update attempts (fabro-895d): tracker-JSONL
+/// resolution failed, and silently retiring a bookkeeping PR must be
+/// impossible. Like the strike counters, parking resets on restart; the next
+/// scan re-attempts resolution once and parks again if it still fails.
+#[derive(Default)]
+pub(super) struct StalePrState {
+    pub(super) update_failures: HashMap<RunId, u32>,
+    pub(super) parked:          HashMap<RunId, String>,
+}
 const MAX_CONCURRENT_PULL_REQUEST_CREATIONS: usize = 4;
 const PULL_REQUEST_CREATION_QUEUE_CAPACITY: usize = MAX_CONCURRENT_PULL_REQUEST_CREATIONS * 4;
 /// Stop retrying a run after this many worker attempts that could not even
@@ -277,14 +291,14 @@ async fn run_pull_request_staleness_supervisor(state: Arc<AppState>) {
     scan_interval.set_missed_tick_behavior(time::MissedTickBehavior::Delay);
     // In-memory failed-update counters: a server restart resets the 3-strike
     // cap, which only delays retirement by at most three more polls.
-    let mut update_failures: HashMap<RunId, u32> = HashMap::new();
+    let mut counters = StalePrState::default();
 
     loop {
         tokio::select! {
             () = shutdown.cancelled() => break,
             _ = scan_interval.tick() => {
                 if let Err(error) =
-                    process_stale_pull_requests(&state, &mut update_failures).await
+                    process_stale_pull_requests(&state, &mut counters).await
                 {
                     warn!(%error, "Failed to scan stale run pull requests");
                 }
@@ -298,7 +312,7 @@ async fn run_pull_request_staleness_supervisor(state: Arc<AppState>) {
 /// interval.
 pub(super) async fn process_stale_pull_requests(
     state: &AppState,
-    update_failures: &mut HashMap<RunId, u32>,
+    counters: &mut StalePrState,
 ) -> anyhow::Result<()> {
     let candidates = state
         .stores
@@ -319,6 +333,10 @@ pub(super) async fn process_stale_pull_requests(
         .map_err(|err| anyhow::anyhow!("GitHub integration unavailable: {}", err.detail()))?;
 
     for run_id in candidates {
+        // Parked PRs (fabro-895d) stay open untouched: no updates, no close.
+        if counters.parked.contains_key(&run_id) {
+            continue;
+        }
         let projection = match state.stores.runs.load_run_projection(&run_id).await {
             Ok(Some(projection)) => projection,
             Ok(None) => continue,
@@ -350,19 +368,34 @@ pub(super) async fn process_stale_pull_requests(
         };
 
         if detail.merged || !detail.state.eq_ignore_ascii_case("open") {
-            update_failures.remove(&run_id);
+            counters.update_failures.remove(&run_id);
+            counters.parked.remove(&run_id);
             continue;
         }
 
         // Age cap first: a run PR older than 24h is retired regardless of its
-        // current merge state (fabro-94e8 Q4).
+        // current merge state (fabro-94e8 Q4) — unless every changed path is
+        // dev-loop bookkeeping, in which case the PR parks instead of closing
+        // so its tracker state is never silently dropped (fabro-895d).
         let created_at = chrono::DateTime::parse_from_rfc3339(&detail.created_at)
             .map(|parsed| parsed.with_timezone(&chrono::Utc))
             .ok();
         match created_at {
             Some(created_at) if created_at < chrono::Utc::now() - PULL_REQUEST_MAX_AGE => {
-                close_stale_pull_request(state, &github, &run_id, &record).await?;
-                update_failures.remove(&run_id);
+                match over_age_disposition(state, &creds, &run_id, &record).await {
+                    OverAgeDisposition::Park => {
+                        park_stale_pull_request(
+                            counters,
+                            &run_id,
+                            &record,
+                            "over-age pull request only carries dev-loop bookkeeping changes",
+                        );
+                    }
+                    OverAgeDisposition::Close => {
+                        close_stale_pull_request(state, &github, &run_id, &record).await?;
+                    }
+                }
+                counters.update_failures.remove(&run_id);
                 continue;
             }
             Some(_) => {}
@@ -380,14 +413,14 @@ pub(super) async fn process_stale_pull_requests(
                 .as_deref()
                 .is_some_and(|state| state.eq_ignore_ascii_case("dirty"));
         if !dirty {
-            update_failures.remove(&run_id);
+            counters.update_failures.remove(&run_id);
             continue;
         }
 
-        let failed = update_failures.get(&run_id).copied().unwrap_or(0);
+        let failed = counters.update_failures.get(&run_id).copied().unwrap_or(0);
         if failed >= MAX_UPDATE_BRANCH_ATTEMPTS {
             close_stale_pull_request(state, &github, &run_id, &record).await?;
-            update_failures.remove(&run_id);
+            counters.update_failures.remove(&run_id);
             continue;
         }
 
@@ -403,21 +436,39 @@ pub(super) async fn process_stale_pull_requests(
         .await;
         match update {
             Ok(Ok(())) => {
-                update_failures.remove(&run_id);
+                counters.update_failures.remove(&run_id);
                 tracing::info!(%run_id, pr_number = record.number, "Update-branch requested for stale run pull request");
             }
             Ok(Err(fabro_github::PullRequestApiError::Conflict { status, .. })) => {
                 // Q3: the PR stays open; the run wait observes
                 // closed_unmerged/timeout and the conductor routes manual.
-                let attempts = update_failures.entry(run_id).or_default();
-                *attempts += 1;
-                warn!(
-                    %run_id,
-                    pr_number = record.number,
-                    status,
-                    attempts = *attempts,
-                    "Update-branch conflicted for run pull request"
-                );
+                match handle_update_conflict(state, &creds, &run_id, &record, &detail, status).await
+                {
+                    ConflictOutcome::Resolved => {
+                        counters.update_failures.remove(&run_id);
+                        tracing::info!(
+                            %run_id,
+                            pr_number = record.number,
+                            "Resolved tracker JSONL update-branch conflict with a closed-wins union merge"
+                        );
+                    }
+                    ConflictOutcome::Parked { reason } => {
+                        park_stale_pull_request(counters, &run_id, &record, &reason);
+                    }
+                    ConflictOutcome::Struck => {
+                        // A strike stays a strike only when the conflict is
+                        // not confined to loop tracker JSONL (fabro-895d).
+                        let attempts = counters.update_failures.entry(run_id).or_default();
+                        *attempts += 1;
+                        warn!(
+                            %run_id,
+                            pr_number = record.number,
+                            status,
+                            attempts = *attempts,
+                            "Update-branch conflicted for run pull request"
+                        );
+                    }
+                }
             }
             Ok(Err(fabro_github::PullRequestApiError::NotFound { .. })) => {}
             Ok(Err(error)) => {
@@ -429,6 +480,162 @@ pub(super) async fn process_stale_pull_requests(
         }
     }
     Ok(())
+}
+
+/// What the supervisor does with an over-age run pull request (fabro-895d):
+/// bookkeeping-only PRs park so their tracker state survives; everything
+/// else keeps the historical close.
+enum OverAgeDisposition {
+    Park,
+    Close,
+}
+
+async fn over_age_disposition(
+    state: &AppState,
+    creds: &fabro_github::GitHubCredentials,
+    run_id: &RunId,
+    record: &fabro_types::PullRequestLink,
+) -> OverAgeDisposition {
+    let client =
+        match ConflictResolutionClient::new(state, creds, &record.owner, &record.repo).await {
+            Ok(client) => client,
+            Err(error) => {
+                warn!(
+                    %run_id,
+                    pr_number = record.number,
+                    %error,
+                    "Cannot classify over-age pull request changes; keeping the close disposition"
+                );
+                return OverAgeDisposition::Close;
+            }
+        };
+    match client.list_pull_request_files(record.number).await {
+        Ok(files) if all_bookkeeping_paths(&files) => OverAgeDisposition::Park,
+        Ok(_) => OverAgeDisposition::Close,
+        Err(error) => {
+            warn!(
+                %run_id,
+                pr_number = record.number,
+                %error,
+                "Cannot list over-age pull request files; keeping the close disposition"
+            );
+            OverAgeDisposition::Close
+        }
+    }
+}
+
+/// Outcome of one conflicted update-branch attempt (fabro-895d).
+enum ConflictOutcome {
+    /// Tracker JSONL conflict was union-merged and pushed: reset the strike
+    /// counter.
+    Resolved,
+    /// Resolution failed: park the PR — leave it open and stop updates.
+    Parked { reason: String },
+    /// Conflict not confined to loop tracker JSONL (or unclassifiable):
+    /// count a strike as before.
+    Struck,
+}
+
+/// Classify and, when possible, resolve a 422 update-branch conflict.
+///
+/// Conflicting paths are the intersection of head-side and base-side changes
+/// since the merge base (both fetched via the compare API). An intersection
+/// confined to `.seeds/**`/`.mulch/**` is resolved by unioning both sides of
+/// each file with closed-wins semantics and pushing the merge commit; a
+/// resolution failure parks the PR. Anything else (mixed conflicts, or a
+/// failed classification) keeps the historical strike.
+async fn handle_update_conflict(
+    state: &AppState,
+    creds: &fabro_github::GitHubCredentials,
+    run_id: &RunId,
+    record: &fabro_types::PullRequestLink,
+    detail: &fabro_types::PullRequestGithubDetail,
+    status: u16,
+) -> ConflictOutcome {
+    let client =
+        match ConflictResolutionClient::new(state, creds, &record.owner, &record.repo).await {
+            Ok(client) => client,
+            Err(error) => {
+                warn!(
+                    %run_id,
+                    pr_number = record.number,
+                    %error,
+                    "Cannot classify update-branch conflict; counting a strike"
+                );
+                return ConflictOutcome::Struck;
+            }
+        };
+
+    let base_ref = detail.base.ref_name.as_str();
+    let head_ref = detail.head.ref_name.as_str();
+    let head_side = client
+        .compare_filenames(&format!("{base_ref}...{head_ref}"))
+        .await;
+    let base_side = client
+        .compare_filenames(&format!("{head_ref}...{base_ref}"))
+        .await;
+    let (head_side, base_side) = match (head_side, base_side) {
+        (Ok(head_side), Ok(base_side)) => (head_side, base_side),
+        (Err(error), _) | (_, Err(error)) => {
+            warn!(
+                %run_id,
+                pr_number = record.number,
+                %error,
+                "Cannot compare base/head sides of the update-branch conflict; counting a strike"
+            );
+            return ConflictOutcome::Struck;
+        }
+    };
+
+    let head_set: HashSet<&str> = head_side.iter().map(String::as_str).collect();
+    let conflicting: Vec<String> = base_side
+        .into_iter()
+        .filter(|path| head_set.contains(path.as_str()))
+        .collect();
+
+    if !all_tracker_paths(&conflicting) {
+        if conflicting.is_empty() {
+            warn!(
+                %run_id,
+                pr_number = record.number,
+                status,
+                "Update-branch conflict has no overlapping changed paths to resolve; counting a strike"
+            );
+        }
+        return ConflictOutcome::Struck;
+    }
+
+    match client
+        .resolve_tracker_conflict(base_ref, head_ref, &conflicting)
+        .await
+    {
+        Ok(()) => ConflictOutcome::Resolved,
+        Err(reason) => ConflictOutcome::Parked {
+            reason: format!("tracker JSONL conflict resolution failed: {reason}"),
+        },
+    }
+}
+
+/// Park a run pull request (fabro-895d): leave it open on GitHub, stop
+/// update-branch attempts for it, and record a warning naming the run, the
+/// PR number, and why parking happened. Silent retirement of a bookkeeping
+/// PR must be impossible.
+fn park_stale_pull_request(
+    counters: &mut StalePrState,
+    run_id: &RunId,
+    record: &fabro_types::PullRequestLink,
+    reason: &str,
+) {
+    warn!(
+        run_id = %run_id,
+        pr_number = record.number,
+        owner = %record.owner,
+        repo = %record.repo,
+        reason,
+        "Parking run pull request: it stays open and receives no further update attempts"
+    );
+    counters.update_failures.remove(run_id);
+    counters.parked.insert(*run_id, reason.to_string());
 }
 
 /// Close `record` on GitHub and record the durable `pull_request.closed` run

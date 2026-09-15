@@ -173,6 +173,7 @@ pub(crate) mod capability_gate;
 /// Fork-only (fabro-986b): merge-protected line-recovery recheck logic.
 pub(crate) mod fork_line_recovery;
 mod handler;
+mod pull_request_conflict;
 mod pull_request_supervisor;
 pub(crate) mod resource_sampler;
 mod session_runtime;
