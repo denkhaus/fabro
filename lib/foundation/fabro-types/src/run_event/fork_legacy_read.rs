@@ -11,6 +11,8 @@
 
 use serde_json::{Value, json};
 
+use super::agent::is_coding_event_name;
+
 /// Event names that no longer carry an `EventBody` variant but may still
 /// appear in stored run history from before the sandbox-driver adoption
 /// (upstream #849 removed the variants, the names stayed in
@@ -239,98 +241,18 @@ pub(super) fn normalize_legacy_billing(event: &str, value: &mut Value) {
         let Some(wrapper) = item.as_object_mut() else {
             continue;
         };
-        let Some(usage) = wrapper
-            .get_mut("input")
-            .and_then(|input| input.get_mut("usage"))
-            .and_then(|usage| usage.as_object_mut())
-        else {
+        // Coding events (agent.*, todo.*) own their dedicated flat-row
+        // rewriter (`normalize_legacy_agent_message`) — the flat shapes
+        // here are the stage/prompt/run carriers only, so leave the
+        // agent path's input untouched.
+        if is_coding_event_name(event) {
             continue;
-        };
-        // billing::ModelRef (the struct) already matches the stored
-        // {provider, model_id} object - keep it verbatim.
-        let model_ref = usage.get("model").cloned();
-        let Some(mut tokens) = usage.get("tokens").cloned() else {
-            continue;
-        };
-        let total_usd_micros = wrapper.get("total_usd_micros").cloned();
-        if let Some(map) = tokens.as_object_mut() {
-            clamp_legacy_token_counts(map);
         }
-        if event == "agent.message" {
-            // The envelope's AssistantMessage carries lithos `Usage`
-            // (TokenCounts + optional Cost): rename the legacy suffixed
-            // buckets into it; the fork's catalog pricing made any legacy
-            // total a catalog cost.
-            let mut tokens_map = match tokens {
-                Value::Object(map) => map,
-                other => {
-                    *item = other;
-                    continue;
-                }
-            };
-            for (from, to) in [
-                ("input_tokens", "input"),
-                ("output_tokens", "output"),
-                ("reasoning_tokens", "reasoning"),
-                ("cache_read_tokens", "cache_read"),
-                ("cache_write_tokens", "cache_write"),
-            ] {
-                if let Some(value) = tokens_map.remove(from) {
-                    tokens_map.insert(to.to_string(), value);
-                }
-            }
-            let mut usage_out = serde_json::Map::new();
-            usage_out.insert("tokens".to_string(), Value::Object(tokens_map));
-            if let Some(total) = total_usd_micros {
-                usage_out.insert(
-                    "cost".to_string(),
-                    json!({ "usd_micros": total, "source": "catalog" }),
-                );
-            }
-            *item = Value::Object(usage_out);
-            rename_billing_to_usage = true;
-        } else {
-            // ModelUsage: ModelRef plus lithos Usage, whose TokenCounts
-            // field names dropped the `_tokens` suffix.
-            let mut tokens_map = match tokens {
-                Value::Object(map) => map,
-                other => {
-                    *item = other;
-                    continue;
-                }
-            };
-            for (from, to) in [
-                ("input_tokens", "input"),
-                ("output_tokens", "output"),
-                ("reasoning_tokens", "reasoning"),
-                ("cache_read_tokens", "cache_read"),
-                ("cache_write_tokens", "cache_write"),
-            ] {
-                if let Some(value) = tokens_map.remove(from) {
-                    tokens_map.insert(to.to_string(), value);
-                }
-            }
-            // A usage entry without an extractable model cannot satisfy
-            // ModelUsage's required ModelRef; null keeps the enclosing
-            // Option field valid instead of failing deserialization.
-            let Some(model_ref) = model_ref else {
-                *item = Value::Null;
-                continue;
-            };
-            // ModelUsage { model, usage: Usage { tokens, cost } }; the
-            // fork's catalog pricing made any legacy total a catalog cost.
-            let mut inner = serde_json::Map::new();
-            inner.insert("tokens".to_string(), Value::Object(tokens_map));
-            if let Some(total) = total_usd_micros {
-                inner.insert(
-                    "cost".to_string(),
-                    json!({ "usd_micros": total, "source": "catalog" }),
-                );
-            }
-            let mut usage_out = serde_json::Map::new();
-            usage_out.insert("model".to_string(), model_ref);
-            usage_out.insert("usage".to_string(), Value::Object(inner));
-            *item = Value::Object(usage_out);
+        if let Some(normalized) = normalize_wrapped_legacy_billing(event, wrapper)
+            .or_else(|| normalize_flat_legacy_model_usage(wrapper))
+            .or_else(|| normalize_flat_legacy_usage(wrapper))
+        {
+            *item = normalized;
             rename_billing_to_usage = true;
         }
     }
@@ -342,6 +264,178 @@ pub(super) fn normalize_legacy_billing(event: &str, value: &mut Value) {
             map.insert("usage".to_string(), billing);
         }
     }
+}
+
+/// Pre-v0.353 lithos billing wrapper: `{"input": {"usage": {model,
+/// tokens}}, "total_usd_micros"}`. Called with the wrapper object and its
+/// nested `input.usage` map already borrowed.
+fn normalize_wrapped_legacy_billing(
+    event: &str,
+    wrapper: &mut serde_json::Map<String, Value>,
+) -> Option<Value> {
+    let usage = wrapper
+        .get_mut("input")?
+        .get_mut("usage")?
+        .as_object_mut()?;
+    // billing::ModelRef (the struct) already matches the stored
+    // {provider, model_id} object - keep it verbatim.
+    let model_ref = usage.get("model").cloned();
+    let mut tokens = usage.get("tokens").cloned()?;
+    let total_usd_micros = wrapper.get("total_usd_micros").cloned();
+    if let Some(map) = tokens.as_object_mut() {
+        clamp_legacy_token_counts(map);
+    }
+    let mut tokens_map = match tokens {
+        Value::Object(map) => map,
+        // A non-object tokens value is corrupt data; leave the row
+        // untouched so the unknown `billing` key is ignored on parse
+        // instead of renamed into a field the typed read rejects.
+        _other => return None,
+    };
+    for (from, to) in [
+        ("input_tokens", "input"),
+        ("output_tokens", "output"),
+        ("reasoning_tokens", "reasoning"),
+        ("cache_read_tokens", "cache_read"),
+        ("cache_write_tokens", "cache_write"),
+    ] {
+        if let Some(value) = tokens_map.remove(from) {
+            tokens_map.insert(to.to_string(), value);
+        }
+    }
+    if event == "agent.message" {
+        // The envelope's AssistantMessage carries lithos `Usage`
+        // (TokenCounts + optional Cost); the fork's catalog pricing made
+        // any legacy total a catalog cost.
+        let mut usage_out = serde_json::Map::new();
+        usage_out.insert("tokens".to_string(), Value::Object(tokens_map));
+        if let Some(total) = total_usd_micros {
+            usage_out.insert(
+                "cost".to_string(),
+                json!({ "usd_micros": total, "source": "catalog" }),
+            );
+        }
+        return Some(Value::Object(usage_out));
+    }
+    // ModelUsage: ModelRef plus lithos Usage, whose TokenCounts field
+    // names dropped the `_tokens` suffix. A usage entry without an
+    // extractable model cannot satisfy ModelUsage's required ModelRef;
+    // null keeps the enclosing Option field valid instead of failing
+    // deserialization.
+    let Some(model_ref) = model_ref else {
+        return Some(Value::Null);
+    };
+    let mut inner = serde_json::Map::new();
+    inner.insert("tokens".to_string(), Value::Object(tokens_map));
+    if let Some(total) = total_usd_micros {
+        inner.insert(
+            "cost".to_string(),
+            json!({ "usd_micros": total, "source": "catalog" }),
+        );
+    }
+    let mut usage_out = serde_json::Map::new();
+    usage_out.insert("model".to_string(), model_ref);
+    usage_out.insert("usage".to_string(), Value::Object(inner));
+    Some(Value::Object(usage_out))
+}
+
+/// Rewrite the flat fork-era `ModelUsage` billing stored between v0.353
+/// and the v0.357 usage rename:
+///
+/// ```json
+/// {"model": {"provider": "zai", "model_id": "glm-5.3"},
+///  "tokens": {"input": 15108, "output": 894, "reasoning": 1230,
+///             "cache_read": 72896, "cache_write": 0},
+///  "total_usd_micros": 49441}
+/// ```
+///
+/// into the current `{model, usage}` shape. The rename moved the field the
+/// projection reads from `billing` to `usage`, so one unrewritten row
+/// replays with zero usage and aborts run-history activation on healthy
+/// stored rows (2026-09-15 crash loop, run 01M2DDACRPS4WT349ZNEFCPX6P:
+/// every pre-rename row failed the summary verification). Returns `None`
+/// for every other shape, including the current one — `usage` nested
+/// inside means the row is already renamed.
+fn normalize_flat_legacy_model_usage(wrapper: &serde_json::Map<String, Value>) -> Option<Value> {
+    if wrapper.contains_key("usage") || !wrapper.contains_key("model") {
+        return None;
+    }
+    let tokens = short_token_names(wrapper.get("tokens")?.as_object()?);
+    let model = wrapper.get("model")?.clone();
+    let mut inner = serde_json::Map::new();
+    inner.insert("tokens".to_string(), Value::Object(tokens));
+    if let Some(total) = wrapper.get("total_usd_micros").and_then(Value::as_u64) {
+        inner.insert(
+            "cost".to_string(),
+            json!({ "usd_micros": total, "source": "catalog" }),
+        );
+    }
+    let mut usage_out = serde_json::Map::new();
+    usage_out.insert("model".to_string(), model);
+    usage_out.insert("usage".to_string(), Value::Object(inner));
+    Some(Value::Object(usage_out))
+}
+
+/// Rewrite the flat fork-era run-level billing stored between v0.353 and
+/// the v0.357 usage rename:
+///
+/// ```json
+/// {"input_tokens": 15108, "output_tokens": 894, "total_tokens": 90128,
+///  "reasoning_tokens": 1230, "cache_read_tokens": 72896,
+///  "cache_write_tokens": 0, "total_usd_micros": 49441}
+/// ```
+///
+/// into the current `Usage` shape (`run.completed`'s conclusion field).
+/// Same incident class as [`normalize_flat_legacy_model_usage`]; the
+/// suffixed buckets clamp like the pre-v0.353 wrapper because both were
+/// written by pre-v0.357 codecs that could persist a negative disjoint
+/// bucket. Returns `None` for every other shape.
+fn normalize_flat_legacy_usage(wrapper: &mut serde_json::Map<String, Value>) -> Option<Value> {
+    if !wrapper.contains_key("input_tokens") {
+        return None;
+    }
+    clamp_legacy_token_counts(wrapper);
+    let tokens = short_token_names(wrapper);
+    let mut usage_out = serde_json::Map::new();
+    usage_out.insert("tokens".to_string(), Value::Object(tokens));
+    if let Some(total) = wrapper.get("total_usd_micros").and_then(Value::as_u64) {
+        usage_out.insert(
+            "cost".to_string(),
+            json!({ "usd_micros": total, "source": "catalog" }),
+        );
+    }
+    Some(Value::Object(usage_out))
+}
+
+/// Token-count map keyed the current way: the five short bucket names.
+/// Accepts the suffixed pre-rename names and passes short ones through.
+fn short_token_names(map: &serde_json::Map<String, Value>) -> serde_json::Map<String, Value> {
+    let mut out = serde_json::Map::new();
+    for (from, to) in [
+        ("input_tokens", "input"),
+        ("output_tokens", "output"),
+        ("reasoning_tokens", "reasoning"),
+        ("cache_read_tokens", "cache_read"),
+        ("cache_write_tokens", "cache_write"),
+    ] {
+        if let Some(count) = map.get(from).and_then(Value::as_u64) {
+            out.insert(to.to_string(), Value::from(count));
+        }
+    }
+    for (key, value) in map {
+        if !matches!(
+            key.as_str(),
+            "input_tokens"
+                | "output_tokens"
+                | "reasoning_tokens"
+                | "cache_read_tokens"
+                | "cache_write_tokens"
+                | "total_tokens"
+        ) {
+            out.insert(key.clone(), value.clone());
+        }
+    }
+    out
 }
 
 /// Rewrite the removed `CostSource::Estimated` variant (`estimated`) to
@@ -412,6 +506,90 @@ mod tests {
                 "{name} should be Unknown, got {:?}",
                 event.body
             );
+        }
+    }
+
+    #[test]
+    fn flat_legacy_stage_billing_normalizes_into_model_usage() {
+        // Exact billing shape stored between v0.353 and the v0.357 usage
+        // rename (run 01M2DDFXBSR7Z64D43BSFM2HEP, stage.completed seq 77,
+        // 2026-09-15 crash-loop incident): the fork wrote `billing` with
+        // short token names and the total at the wrapper level. The rename
+        // moved the projection's read to `usage`, so these rows replayed
+        // with zero usage and failed the run-history verification on
+        // every pre-rename row.
+        let raw = r#"{"id":"01a09ad9-46d0-7b50-aa62-c8da101264ad","ts":"2026-09-13T12:58:45.840224622Z","run_id":"01M2DDFXBSR7Z64D43BSFM2HEP","event":"stage.completed","node_id":"greet","node_label":"Greet","stage_id":"greet@1","actor":{"kind":"worker","run_id":"01M2DDFXBSR7Z64D43BSFM2HEP"},"properties":{"index":1,"attempt":1,"max_attempts":1,"timing":{"wall_time_ms":79367,"inference_time_ms":78653,"tool_time_ms":376,"active_time_ms":79029},"status":"succeeded","billing":{"model":{"provider":"zai","model_id":"glm-5.3"},"tokens":{"input":15108,"output":894,"reasoning":1230,"cache_read":72896,"cache_write":0},"total_usd_micros":49441}}}"#;
+        let event = RunEvent::from_value(
+            serde_json::from_str::<serde_json::Value>(raw).expect("fixture should be valid JSON"),
+        )
+        .expect("flat legacy stage billing should normalize and parse");
+        match event.body {
+            EventBody::StageCompleted(props) => {
+                let usage = props.usage.expect("usage should survive normalization");
+                assert_eq!(usage.model.provider.to_string(), "zai");
+                assert_eq!(usage.model.model_id.to_string(), "glm-5.3");
+                assert_eq!(usage.usage.tokens.input, 15108);
+                assert_eq!(usage.usage.tokens.output, 894);
+                assert_eq!(usage.usage.tokens.reasoning, 1230);
+                assert_eq!(usage.usage.tokens.cache_read, 72896);
+                assert_eq!(usage.usage.tokens.cache_write, 0);
+                let cost = usage
+                    .usage
+                    .cost
+                    .expect("legacy total becomes a catalog cost");
+                assert_eq!(cost.usd_micros, 49441);
+                assert_eq!(cost.source, CostSource::Catalog);
+            }
+            other => panic!("expected StageCompleted, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn flat_legacy_run_billing_normalizes_into_usage() {
+        // Exact billing shape of the run.completed conclusion before the
+        // v0.357 usage rename (same incident run, seq 85): suffixed token
+        // buckets plus `total_tokens`, flat beside `total_usd_micros`.
+        let raw = r#"{"id":"01a09ad9-53b2-7be1-8a8d-0efe6c43e636","ts":"2026-09-13T12:58:49.138137692Z","run_id":"01M2DDFXBSR7Z64D43BSFM2HEP","event":"run.completed","actor":{"kind":"worker","run_id":"01M2DDFXBSR7Z64D43BSFM2HEP"},"properties":{"timing":{"wall_time_ms":81791,"inference_time_ms":78653,"tool_time_ms":376,"active_time_ms":79029},"artifact_count":0,"status":"succeeded","reason":"completed","total_usd_micros":49441,"diff_summary":{"files_changed":1,"additions":10,"deletions":0},"billing":{"input_tokens":15108,"output_tokens":894,"total_tokens":90128,"reasoning_tokens":1230,"cache_read_tokens":72896,"cache_write_tokens":0,"total_usd_micros":49441}}}"#;
+        let event = RunEvent::from_value(
+            serde_json::from_str::<serde_json::Value>(raw).expect("fixture should be valid JSON"),
+        )
+        .expect("flat legacy run billing should normalize and parse");
+        match event.body {
+            EventBody::RunCompleted(props) => {
+                let usage = props.usage.expect("usage should survive normalization");
+                assert_eq!(usage.tokens.input, 15108);
+                assert_eq!(usage.tokens.output, 894);
+                assert_eq!(usage.tokens.reasoning, 1230);
+                assert_eq!(usage.tokens.cache_read, 72896);
+                assert_eq!(usage.tokens.cache_write, 0);
+                let cost = usage.cost.expect("legacy total becomes a catalog cost");
+                assert_eq!(cost.usd_micros, 49441);
+                assert_eq!(cost.source, CostSource::Catalog);
+            }
+            other => panic!("expected RunCompleted, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn flat_legacy_billing_normalizer_leaves_current_shapes_untouched() {
+        // Era gating: a row already carrying the current `{model, usage}`
+        // ModelUsage (or plain `Usage`) under the `usage` key must pass
+        // through unchanged — the flat rewriters only fire on rows that
+        // predate the rename.
+        let raw = r#"{"id":"01a09ad9-46d0-7b50-aa62-c8da101264ad","ts":"2026-09-13T12:58:45.840224622Z","run_id":"01M2DDFXBSR7Z64D43BSFM2HEP","event":"stage.completed","node_id":"greet","node_label":"Greet","stage_id":"greet@1","actor":{"kind":"worker","run_id":"01M2DDFXBSR7Z64D43BSFM2HEP"},"properties":{"index":1,"attempt":1,"max_attempts":1,"timing":{"wall_time_ms":79367,"inference_time_ms":78653,"tool_time_ms":376,"active_time_ms":79029},"status":"succeeded","usage":{"model":{"provider":"zai","model_id":"glm-5.3"},"usage":{"tokens":{"input":15108,"output":894,"reasoning":1230,"cache_read":72896,"cache_write":0},"cost":{"usd_micros":49441,"source":"catalog"}}}}}"#;
+        let event = RunEvent::from_value(
+            serde_json::from_str::<serde_json::Value>(raw).expect("fixture should be valid JSON"),
+        )
+        .expect("current shape should parse without rewriting");
+        match event.body {
+            EventBody::StageCompleted(props) => {
+                let usage = props.usage.expect("usage stays present");
+                assert_eq!(usage.usage.tokens.input, 15108);
+                let cost = usage.usage.cost.expect("cost stays present");
+                assert_eq!(cost.usd_micros, 49441);
+                assert_eq!(cost.source, CostSource::Catalog);
+            }
+            other => panic!("expected StageCompleted, got {other:?}"),
         }
     }
 

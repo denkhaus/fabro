@@ -2252,6 +2252,75 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn verification_accepts_pre_usage_rename_rows() -> TestResult<()> {
+        // 2026-09-15 crash loop: rows written before the v0.357 usage rename
+        // store `billing.total_usd_micros` and no `usage` key, while the
+        // replayed projection always emits `usage`. Unstripped, the
+        // semantic comparison rejected run 01M2DDACRPS4WT349ZNEFCPX6P
+        // (first row by id) and crash-looped the deployed nightly.
+        let context = TestContext::new().await?;
+        let legacy_run = run_id(90);
+        let created = serde_json::to_string(&created_value(&legacy_run, "billing-era"))?;
+        seed_destination_history(&context.sqlite, &legacy_run, &[(1, created)]).await?;
+        // Rewrite the stored row into the pre-rename shape: `billing`
+        // instead of `usage` — exactly what the old writer left behind.
+        sqlx::query(
+            "UPDATE runs SET summary_json = json_set(json_remove(summary_json, '$.usage'),
+                             '$.billing', json_object('total_usd_micros', 49441))
+             WHERE id = ?",
+        )
+        .bind(legacy_run.to_string())
+        .execute(&context.sqlite)
+        .await?;
+
+        let report = context
+            .source
+            .verify_legacy_run_history_in(&context.sqlite)
+            .await?;
+
+        assert_eq!(report.target_runs, 1);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn verification_still_rejects_usage_divergence_on_renamed_rows() -> TestResult<()> {
+        // The era strip is gated on the stored row's shape: a row that
+        // carries `usage` keeps the strict comparison, so a tampered cost
+        // must still fail verification.
+        let context = TestContext::new().await?;
+        let strict_run = run_id(91);
+        let created = serde_json::to_string(&created_value(&strict_run, "strict"))?;
+        seed_destination_history(&context.sqlite, &strict_run, &[(1, created)]).await?;
+        sqlx::query(
+            "UPDATE runs SET summary_json = json_set(summary_json,
+                             '$.usage.tokens.input', 424242)
+             WHERE id = ?",
+        )
+        .bind(strict_run.to_string())
+        .execute(&context.sqlite)
+        .await?;
+
+        let failure = context
+            .source
+            .verify_legacy_run_history_in(&context.sqlite)
+            .await
+            .expect_err("tampered usage on a renamed row must fail verification");
+
+        let mut chain = format!("{failure}");
+        let mut source: Option<&dyn std::error::Error> = failure.source();
+        while let Some(error) = source {
+            chain.push_str(" :: ");
+            chain.push_str(&error.to_string());
+            source = error.source();
+        }
+        assert!(
+            chain.contains("inconsistent field summary_json"),
+            "tampered usage must surface the summary mismatch, got: {chain}"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn legacy_run_history_verification_rejects_invalid_sql_only_histories() -> TestResult<()>
     {
         let missing_first = TestContext::new().await?;

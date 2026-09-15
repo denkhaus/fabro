@@ -1296,7 +1296,11 @@ fn verify_run_json_field(row: &SqliteRow, run: &Run) -> Result<()> {
     // divergence is schema, not data; new event appends refresh the row
     // in the full shape anyway. Strip it on both sides before comparing.
     // Remove when no supported release writes rows without the field.
-    if strip_workflow_version_id(stored) != strip_workflow_version_id(expected) {
+    let (stored, expected) = strip_usage_era_divergence(
+        strip_workflow_version_id(stored),
+        strip_workflow_version_id(expected),
+    );
+    if stored != expected {
         return Err(Error::RunSummaryMismatch {
             run_id: run.id.to_string(),
             field:  "summary_json",
@@ -1305,9 +1309,64 @@ fn verify_run_json_field(row: &SqliteRow, run: &Run) -> Result<()> {
     Ok(())
 }
 
+/// Schema-era tolerance (2026-09-15, ADR-0015 class): rows written before
+/// the v0.357 usage rename serialize the run's cost as `billing:
+/// {total_usd_micros}` and carry no `usage` key, while the projection now
+/// always emits `usage` — token counts the old row never stored plus the
+/// same cost. The divergence is schema, not data: byte equality fails
+/// healthy rows and aborts startup (observed live 2026-09-15: the
+/// run-history activation rejected run 01M2DDACRPS4WT349ZNEFCPX6P and
+/// crash-looped the deployed nightly). Strip both sides for old-era rows
+/// only — a row that HAS `usage` keeps the strict comparison. Remove when
+/// no supported release writes `billing` rows; the activation migration
+/// itself retires 2026-09-22.
+fn strip_usage_era_divergence(
+    mut stored: serde_json::Value,
+    mut expected: serde_json::Value,
+) -> (serde_json::Value, serde_json::Value) {
+    let old_era = stored
+        .as_object()
+        .is_some_and(|object| !object.contains_key("usage"));
+    if old_era {
+        if let Some(object) = stored.as_object_mut() {
+            object.remove("billing");
+        }
+        if let Some(object) = expected.as_object_mut() {
+            object.remove("usage");
+        }
+    }
+    (stored, expected)
+}
+
 /// Remove `workflow.workflow_version_id` from a serialized run summary so
 /// verification compares data divergence, not projection schema era. See
 /// [`verify_run_json_field`] for the rationale.
+/// Carry a pre-rename row's cost into the current `usage` field on read
+/// (2026-09-15 usage rename): old rows store `billing.total_usd_micros`
+/// and no token counts. Without the lift every historical run serves —
+/// and, once any event rewrites the row, permanently stores — a zero
+/// cost. Token counts stay unknown (zero); the era ends when the last
+/// pre-rename row is rewritten or retired.
+fn lift_legacy_billing_into_usage(value: &mut serde_json::Value) {
+    let Some(object) = value.as_object_mut() else {
+        return;
+    };
+    if object.contains_key("usage") {
+        return;
+    }
+    let Some(total) = object
+        .get("billing")
+        .and_then(|billing| billing.get("total_usd_micros"))
+        .and_then(serde_json::Value::as_u64)
+    else {
+        return;
+    };
+    object.insert(
+        "usage".to_string(),
+        serde_json::json!({ "cost": { "usd_micros": total, "source": "catalog" } }),
+    );
+}
+
 fn strip_workflow_version_id(mut value: serde_json::Value) -> serde_json::Value {
     if let Some(workflow) = value
         .get_mut("workflow")
@@ -1624,7 +1683,9 @@ fn decode_run_row(row: &SqliteRow, now: DateTime<Utc>) -> Result<Run> {
     let stored_id: String = row.try_get("id")?;
     let summary_json: String = row.try_get("summary_json")?;
     let children_count: i64 = row.try_get("children_count")?;
-    let mut run: Run = serde_json::from_str(&summary_json)?;
+    let mut stored: serde_json::Value = serde_json::from_str(&summary_json)?;
+    lift_legacy_billing_into_usage(&mut stored);
+    let mut run: Run = serde_json::from_value(stored)?;
     if stored_id != run.id.to_string() {
         return Err(Error::RunSummaryMismatch {
             run_id: stored_id,
@@ -1826,6 +1887,49 @@ mod tests {
             },
             RunStatusKind::Dead => RunStatus::Dead,
         }
+    }
+
+    #[tokio::test]
+    async fn get_run_lifts_pre_usage_rename_billing_into_usage() {
+        // 2026-09-15 usage rename: rows written before it carry
+        // `billing.total_usd_micros` and no `usage` key. Reading such a row
+        // must surface the cost under `usage` instead of silently zeroing
+        // every historical run (and re-storing the zero on the next event
+        // append).
+        let (_directory, store) = store().await;
+        let created_at = dt("2026-09-13T12:54:18Z");
+        let id = run_id(created_at.timestamp_millis().cast_unsigned(), 7);
+        let first = entry(projection(id, "billing-era", created_at), 1);
+        let first_payload = created_payload(&id);
+
+        let mut transaction = store.pool.begin().await.unwrap();
+        RunSummaryStore::insert_first_event_on_connection(&mut transaction, &first, &first_payload)
+            .await
+            .unwrap();
+        transaction.commit().await.unwrap();
+
+        sqlx::query(
+            "UPDATE runs SET summary_json = json_set(json_remove(summary_json, '$.usage'),
+                             '$.billing', json_object('total_usd_micros', 49441))
+             WHERE id = ?",
+        )
+        .bind(id.to_string())
+        .execute(&store.pool)
+        .await
+        .unwrap();
+
+        let run = store
+            .get(&id, dt("2026-09-15T18:00:00Z"))
+            .await
+            .unwrap()
+            .expect("run should be readable");
+        assert_eq!(run.usage.tokens.input, 0, "token counts stay unknown");
+        let cost = run
+            .usage
+            .cost
+            .expect("billing total survives as usage cost");
+        assert_eq!(cost.usd_micros, 49441);
+        assert_eq!(cost.source, CostSource::Catalog);
     }
 
     #[tokio::test]
