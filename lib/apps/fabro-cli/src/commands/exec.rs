@@ -2,9 +2,12 @@
 //!
 //! The session is pebble's coding agent over a local sandbox, run through
 //! pebble's own command-line session: its event renderer, closing summary,
-//! and terminal approval prompt. What is fabro's here is the client (model
-//! calls go either straight to the provider with the CLI's credentials or
-//! through a Fabro server's completions endpoint when a server target is
+//! and terminal approval prompt. `--verbose` asks that renderer for each
+//! tool call's arguments and result in full and for the transcript, and adds
+//! fabro's own dump of every model request and response; without it the
+//! renderer prints what it always has. What is fabro's here is the client
+//! (model calls go either straight to the provider with the CLI's credentials
+//! or through a Fabro server's completions endpoint when a server target is
 //! set), the sandbox, the MCP servers, skills, search, and redaction.
 
 use std::collections::HashMap;
@@ -31,8 +34,8 @@ use fabro_util::terminal::Styles;
 use fabro_workflow::web_search::{self, SearchSecrets};
 use lithos_llm::catalog::ProviderId;
 use pebble_cli_core::approval::TerminalApproval;
-use pebble_cli_core::render::{self, JsonStream, Style};
-use pebble_cli_core::session::{SessionOptions, run_prompt};
+use pebble_cli_core::render::{self, JsonStream, RenderOptions, Style};
+use pebble_cli_core::session::{SessionOptions, run_prompt_with};
 use pebble_coding_agent::environment::Environment;
 use pebble_coding_agent::subagents::SubagentOptions;
 use pebble_coding_agent::tools::{PermissionLevelPolicy, PermissionMiddleware};
@@ -497,7 +500,16 @@ async fn run_session(
         sigint_token.cancel();
     });
 
-    let report = run_prompt(agent, args.prompt.as_str(), &cancel_token, session).await?;
+    // `--verbose` asks the renderer for everything it can say: each tool
+    // call's arguments and result in full, and the transcript. The answer on
+    // stdout is the session's and is not changed by it.
+    let render = if args.verbose {
+        RenderOptions::verbose()
+    } else {
+        RenderOptions::default()
+    };
+    let report =
+        run_prompt_with(agent, args.prompt.as_str(), &cancel_token, session, render).await?;
     report
         .result
         .map(|_| ())

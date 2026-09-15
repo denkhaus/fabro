@@ -7,7 +7,7 @@
 use std::sync::{Arc, Mutex};
 
 use chrono::TimeZone as _;
-use fabro_api::types::{ApiQuestion, RunWaitResult, SubmitAnswerRequest};
+use fabro_api::types::{ApiQuestion, RunWaitResult, SubmitAnswerRequest, Usage};
 use fabro_types::test_support::test_principal;
 use fabro_types::{EventEnvelope, RunProjection, RunStatus, WorkflowVersionId};
 use serde_json::json;
@@ -73,7 +73,7 @@ fn run_body() -> fabro_types::Run {
             completed_at:  None,
         },
         timing:           None,
-        billing:          None,
+        usage:            Usage::default(),
         size:             fabro_types::RunSize::default(),
         ask_fabro:        fabro_types::AskFabro::default(),
         diff:             None,

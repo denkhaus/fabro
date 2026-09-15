@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { StageState } from "@qltysh/fabro-api-client";
 
 import type { Stage } from "../lib/stage-sidebar";
-import { makeBilledTokenCounts } from "../lib/test-fixtures";
+import { makeUsage } from "../lib/test-fixtures";
 import { StageChatView } from "./run-stages";
 
 function stage(overrides: Partial<Stage> = {}): Stage {
@@ -19,7 +19,7 @@ function stage(overrides: Partial<Stage> = {}): Stage {
     resumedFromStageId: null,
     startedAt: "2026-04-09T12:00:00Z",
     providerUsed: null,
-    billing: makeBilledTokenCounts(),
+    usage: makeUsage(),
     ...overrides,
   };
 }

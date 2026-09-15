@@ -4,18 +4,19 @@ use std::sync::Arc;
 use chrono::{DateTime, Utc};
 use fabro_types::{
     Graph, RunProjection, StageHandler, StageId, StageProjection, StageState, StageTiming,
+    usage_is_empty,
 };
 
 use super::super::{
-    AppState, BillingByModel, BillingStageRef, IntoResponse, Json, ListResponse, PaginationParams,
-    Path, Query, RequiredUser, Response, Router, RunBilling, RunBillingStage, RunBillingTotals,
-    RunId, RunStage, State, StatusCode, get, parse_run_id_path,
+    AppState, IntoResponse, Json, ListResponse, PaginationParams, Path, Query, RequiredUser,
+    Response, Router, RunId, RunStage, RunUsage, RunUsageStage, RunUsageTotals, State, StatusCode,
+    UsageByModel, UsageStageRef, get, parse_run_id_path,
 };
 
 pub(super) fn routes() -> Router<Arc<AppState>> {
     Router::new()
         .route("/runs/{id}/stages", get(list_run_stages))
-        .route("/runs/{id}/billing", get(get_run_billing))
+        .route("/runs/{id}/usage", get(get_run_usage))
 }
 
 fn run_stage_from_projection(
@@ -41,7 +42,7 @@ fn run_stage_from_projection(
         id: stage_id.clone(),
         name: stage_id.node_id().to_owned(),
         handler,
-        billing: stage.usage.clone(),
+        usage: stage.usage,
         status: stage.effective_state(),
         wall_time_ms: stage.live_wall_time_ms(now),
         node_id: stage_id.node_id().to_owned(),
@@ -82,7 +83,7 @@ async fn list_run_stages(
     (StatusCode::OK, Json(ListResponse::new(stages))).into_response()
 }
 
-async fn get_run_billing(
+async fn get_run_usage(
     _auth: RequiredUser,
     State(state): State<Arc<AppState>>,
     Path(id): Path<RunId>,
@@ -92,14 +93,14 @@ async fn get_run_billing(
         Err(err) => return err.into_response(),
     };
 
-    let rollup = fabro_workflow::billing_rollup_from_projection(&projection);
+    let rollup = fabro_workflow::usage_rollup_from_projection(&projection);
     let by_model = rollup
         .by_model
         .iter()
-        .map(|model| BillingByModel {
-            billing: model.billing.clone(),
-            model:   model.model.clone(),
-            stages:  model.stages,
+        .map(|model| UsageByModel {
+            model:  model.model.clone(),
+            stages: model.stages,
+            usage:  model.usage,
         })
         .collect::<Vec<_>>();
 
@@ -108,7 +109,7 @@ async fn get_run_billing(
         .iter()
         .map(|stage| (stage.node_id.as_str(), stage))
         .collect::<HashMap<_, _>>();
-    let live_rows = live_billing_rows(&projection, Utc::now());
+    let live_rows = live_usage_rows(&projection, Utc::now());
     let totals_timing = live_rows.iter().fold(StageTiming::default(), |acc, row| {
         acc.saturating_add(&row.timing)
     });
@@ -116,13 +117,11 @@ async fn get_run_billing(
         .into_iter()
         .map(|row| {
             let rollup_stage = rollup_by_node.get(row.node_id.as_str());
-            RunBillingStage {
-                billing:    rollup_stage
-                    .map(|stage| stage.billing.clone())
-                    .unwrap_or_default(),
+            RunUsageStage {
+                usage:      rollup_stage.map(|stage| stage.usage).unwrap_or_default(),
                 model:      rollup_stage.and_then(|stage| stage.model.as_ref()).cloned(),
                 timing:     row.timing,
-                stage:      BillingStageRef {
+                stage:      UsageStageRef {
                     id:   row.node_id.clone(),
                     name: row.node_id,
                 },
@@ -132,25 +131,19 @@ async fn get_run_billing(
         })
         .collect::<Vec<_>>();
 
-    let response = RunBilling {
+    let response = RunUsage {
         by_model,
         stages,
-        totals: RunBillingTotals {
-            cache_read_tokens:  rollup.totals.cache_read_tokens,
-            cache_write_tokens: rollup.totals.cache_write_tokens,
-            input_tokens:       rollup.totals.input_tokens,
-            output_tokens:      rollup.totals.output_tokens,
-            reasoning_tokens:   rollup.totals.reasoning_tokens,
-            timing:             totals_timing.into(),
-            total_tokens:       rollup.totals.total_tokens,
-            total_usd_micros:   rollup.totals.total_usd_micros,
+        totals: RunUsageTotals {
+            timing: totals_timing.into(),
+            usage:  rollup.totals,
         },
     };
 
     (StatusCode::OK, Json(response)).into_response()
 }
 
-struct LiveBillingRow {
+struct LiveUsageRow {
     node_id:      String,
     timing:       StageTiming,
     started_at:   Option<DateTime<Utc>>,
@@ -158,19 +151,19 @@ struct LiveBillingRow {
     latest_visit: u32,
 }
 
-fn live_billing_rows(projection: &RunProjection, now: DateTime<Utc>) -> Vec<LiveBillingRow> {
+fn live_usage_rows(projection: &RunProjection, now: DateTime<Utc>) -> Vec<LiveUsageRow> {
     let mut row_indices = HashMap::<String, usize>::new();
-    let mut rows = Vec::<LiveBillingRow>::new();
+    let mut rows = Vec::<LiveUsageRow>::new();
 
     for (stage_id, stage) in projection.iter_stages() {
         let node_id = stage_id.node_id();
-        if projection.is_boundary_stage(node_id) || !stage_has_billing_row(stage) {
+        if projection.is_boundary_stage(node_id) || !stage_has_usage_row(stage) {
             continue;
         }
 
         let index = *row_indices.entry(node_id.to_string()).or_insert_with(|| {
             let index = rows.len();
-            rows.push(LiveBillingRow {
+            rows.push(LiveUsageRow {
                 node_id:      node_id.to_string(),
                 timing:       StageTiming::default(),
                 started_at:   None,
@@ -193,9 +186,9 @@ fn live_billing_rows(projection: &RunProjection, now: DateTime<Utc>) -> Vec<Live
     rows
 }
 
-fn stage_has_billing_row(stage: &StageProjection) -> bool {
+fn stage_has_usage_row(stage: &StageProjection) -> bool {
     stage.completion.is_some()
         || stage.timing.is_some()
-        || !stage.usage.is_zero()
+        || !usage_is_empty(&stage.usage)
         || stage.started_at.is_some()
 }

@@ -12,11 +12,11 @@ use super::event::stage_scope_for;
 use crate::context;
 use crate::event::Emitter;
 use crate::graph::{WorkflowGraph, WorkflowNode};
-use crate::outcome::BilledModelUsage;
+use crate::outcome::ModelUsage;
 use crate::stage_execution::StageExecutionTracker;
 
-type WfRunState = ExecutionState<Option<BilledModelUsage>>;
-type WfNodeResult = NodeResult<Option<BilledModelUsage>>;
+type WfRunState = ExecutionState<Option<ModelUsage>>;
+type WfNodeResult = NodeResult<Option<ModelUsage>>;
 
 /// Stage envelope lifecycle (fabro-900e, ADR-0009 family): enforces the
 /// per-node context key ownership (`context_allow_keys`) and append-only

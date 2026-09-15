@@ -17,12 +17,12 @@ use super::git::GitCheckpointResult;
 use crate::context::{Context, WorkflowContext};
 use crate::event::{Emitter, Event, StageScope};
 use crate::graph::{WorkflowGraph, WorkflowNode};
-use crate::outcome::{BilledModelUsage, FailureCategory, FailureDetail, Outcome, StageOutcome};
+use crate::outcome::{FailureCategory, FailureDetail, ModelUsage, Outcome, StageOutcome};
 use crate::stage_execution::{StageExecution, StageExecutionTracker};
 use crate::{artifact, context};
 
-type WfRunState = ExecutionState<Option<BilledModelUsage>>;
-type WfNodeResult = NodeResult<Option<BilledModelUsage>>;
+type WfRunState = ExecutionState<Option<ModelUsage>>;
+type WfNodeResult = NodeResult<Option<ModelUsage>>;
 type FailureSignatureSnapshot = (
     Option<BTreeMap<String, usize>>,
     Option<BTreeMap<String, usize>>,
@@ -215,8 +215,8 @@ impl RunLifecycle<WorkflowGraph> for EventLifecycle {
                 status: StageOutcome::Succeeded.to_string(),
                 preferred_label: None,
                 suggested_next_ids: Vec::new(),
-                billing_by_model: Vec::new(),
-                billing: None,
+                usage_by_model: Vec::new(),
+                usage: None,
                 failure: None,
                 notes: None,
                 files_touched: Vec::new(),
@@ -241,7 +241,7 @@ impl RunLifecycle<WorkflowGraph> for EventLifecycle {
         &self,
         ctx: &AttemptContext<'_, WorkflowGraph>,
         state: &WfRunState,
-    ) -> CoreResult<NodeDecision<Option<BilledModelUsage>>> {
+    ) -> CoreResult<NodeDecision<Option<ModelUsage>>> {
         let gv = ctx.node.inner();
         let execution = self.stage_executions.active(&gv.id);
         let scope = stage_scope_from_execution(execution.as_deref(), state, &gv.id);
@@ -290,8 +290,8 @@ impl RunLifecycle<WorkflowGraph> for EventLifecycle {
                     failure,
                     will_retry: true,
                     timing,
-                    billing: outcome.usage.clone(),
-                    billing_by_model: outcome.usage_by_model.clone(),
+                    usage: outcome.usage.clone(),
+                    usage_by_model: outcome.usage_by_model.clone(),
                     actor,
                 },
                 &scope,
@@ -343,8 +343,8 @@ impl RunLifecycle<WorkflowGraph> for EventLifecycle {
                     failure,
                     will_retry: false,
                     timing,
-                    billing: outcome.usage.clone(),
-                    billing_by_model: outcome.usage_by_model.clone(),
+                    usage: outcome.usage.clone(),
+                    usage_by_model: outcome.usage_by_model.clone(),
                     actor,
                 },
                 &scope,
@@ -359,8 +359,8 @@ impl RunLifecycle<WorkflowGraph> for EventLifecycle {
                     status: outcome.status.to_string(),
                     preferred_label: outcome.preferred_label.clone(),
                     suggested_next_ids: outcome.suggested_next_ids.clone(),
-                    billing: outcome.usage.clone(),
-                    billing_by_model: outcome.usage_by_model.clone(),
+                    usage: outcome.usage.clone(),
+                    usage_by_model: outcome.usage_by_model.clone(),
                     failure: outcome.failure.clone(),
                     notes: outcome.notes.clone(),
                     files_touched: outcome.files_touched.clone(),

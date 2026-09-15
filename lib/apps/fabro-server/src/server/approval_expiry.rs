@@ -279,11 +279,10 @@ mod tests {
                 status:               "succeeded".to_string(),
                 reason:               SuccessReason::Completed,
                 failure:              None,
-                total_usd_micros:     None,
                 final_git_commit_sha: None,
                 final_patch:          Some(String::new()),
                 diff_summary:         None,
-                billing:              None,
+                usage:                None,
             },
         )
         .await

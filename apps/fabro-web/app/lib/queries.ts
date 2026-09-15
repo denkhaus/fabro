@@ -25,9 +25,9 @@ import type {
   ProviderList,
   PullRequestResponse,
   RunArtifactListResponse,
-  RunBilling,
   RunProjection,
   Run,
+  RunUsage,
   SandboxDetails,
   SecretListResponse,
   SandboxFileListResponse,
@@ -290,10 +290,10 @@ export function useRunSettings<T = WorkflowSettings>(id: string | undefined) {
   );
 }
 
-export function useRunBilling(id: string | undefined) {
-  return useSWR<RunBilling>(
-    id ? queryKeys.runs.billing(id) : null,
-    () => apiData(() => runOutputsApi.retrieveRunBilling(id!)),
+export function useRunUsage(id: string | undefined) {
+  return useSWR<RunUsage>(
+    id ? queryKeys.runs.usage(id) : null,
+    () => apiData(() => runOutputsApi.retrieveRunUsage(id!)),
   );
 }
 

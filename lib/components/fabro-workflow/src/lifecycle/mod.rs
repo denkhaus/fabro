@@ -37,7 +37,7 @@ use crate::context;
 use crate::error::FailureSignature;
 use crate::event::Emitter;
 use crate::graph::{WorkflowGraph, WorkflowNode};
-use crate::outcome::{BilledModelUsage, Outcome};
+use crate::outcome::{ModelUsage, Outcome};
 use crate::run_control::RunControlState;
 use crate::run_options::RunOptions;
 use crate::runtime_store::RunStoreHandle;
@@ -45,9 +45,9 @@ use crate::sandbox_git_runtime::SandboxGitRuntime;
 use crate::services::RunLocations;
 use crate::stage_execution::StageExecutionTracker;
 
-type WfRunState = ExecutionState<Option<BilledModelUsage>>;
-type WfNodeResult = NodeResult<Option<BilledModelUsage>>;
-type WfNodeDecision = NodeDecision<Option<BilledModelUsage>>;
+type WfRunState = ExecutionState<Option<ModelUsage>>;
+type WfNodeResult = NodeResult<Option<ModelUsage>>;
+type WfNodeDecision = NodeDecision<Option<ModelUsage>>;
 
 /// Orchestrates all sub-lifecycles with explicit per-callback ordering.
 /// Implements `RunLifecycle<WorkflowGraph>` by delegating to focused structs.

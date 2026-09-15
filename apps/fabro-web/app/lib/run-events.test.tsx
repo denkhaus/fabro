@@ -46,7 +46,7 @@ describe("queryKeysForRunEvent", () => {
       queryKeys.runs.state("run-1"),
       ...queryKeys.runs.filesAllScopes("run-1"),
       queryKeys.runs.commits("run-1"),
-      queryKeys.runs.billing("run-1"),
+      queryKeys.runs.usage("run-1"),
       queryKeys.runs.stages("run-1"),
       queryKeys.runs.graph("run-1", "LR"),
       queryKeys.runs.graph("run-1", "TB"),
@@ -56,7 +56,7 @@ describe("queryKeysForRunEvent", () => {
   test("stage.retrying invalidates stage-scoped and run-scoped resources", () => {
     expect(queryKeysForRunEvent("run-1", "stage.retrying", "verify@2")).toEqual([
       queryKeys.runs.stages("run-1"),
-      queryKeys.runs.billing("run-1"),
+      queryKeys.runs.usage("run-1"),
       queryKeys.runs.events("run-1", 1000),
       queryKeys.runs.graph("run-1", "LR"),
       queryKeys.runs.graph("run-1", "TB"),
@@ -86,7 +86,7 @@ describe("queryKeysForRunEvent", () => {
   test("interrupt settlement invalidates projected control state and stage activity", () => {
     expect(queryKeysForRunEvent("run-1", "agent.round.interrupted", "nap@1")).toEqual([
       queryKeys.runs.detail("run-1"),
-      queryKeys.runs.billing("run-1"),
+      queryKeys.runs.usage("run-1"),
       queryKeys.runs.state("run-1"),
       queryKeys.runs.events("run-1", 1000),
       queryKeys.runs.stageEvents("run-1", "nap@1"),
@@ -166,7 +166,7 @@ describe("queryKeysForRunEvent", () => {
       expect(queryKeysForRunEvent("run-1", event, "code@1")).toEqual([
         queryKeys.runs.detail("run-1"),
         queryKeys.runs.state("run-1"),
-        queryKeys.runs.billing("run-1"),
+        queryKeys.runs.usage("run-1"),
         queryKeys.runs.stageEvents("run-1", "code@1"),
       ]);
     }
@@ -181,14 +181,14 @@ describe("queryKeysForRunEvent", () => {
     ).toEqual([
       queryKeys.runs.detail("run-1"),
       queryKeys.runs.state("run-1"),
-      queryKeys.runs.billing("run-1"),
+      queryKeys.runs.usage("run-1"),
       queryKeys.runs.stageEvents("run-1", "code@1"),
       queryKeys.runs.stageContextWindow("run-1", "code@1"),
     ]);
     expect(queryKeysForRunEvent("run-1", "agent.session.ended")).toEqual([
       queryKeys.runs.detail("run-1"),
       queryKeys.runs.state("run-1"),
-      queryKeys.runs.billing("run-1"),
+      queryKeys.runs.usage("run-1"),
     ]);
   });
 
@@ -202,7 +202,7 @@ describe("queryKeysForRunEvent", () => {
       expect(queryKeysForRunEvent("run-1", event, "code@1")).toEqual([
         queryKeys.runs.detail("run-1"),
         queryKeys.runs.state("run-1"),
-        queryKeys.runs.billing("run-1"),
+        queryKeys.runs.usage("run-1"),
         queryKeys.runs.stageEvents("run-1", "code@1"),
       ]);
     }
@@ -213,7 +213,7 @@ describe("queryKeysForRunEvent", () => {
       expect(queryKeysForRunEvent("run-1", event, "code@1")).toEqual([
         queryKeys.runs.detail("run-1"),
         queryKeys.runs.state("run-1"),
-        queryKeys.runs.billing("run-1"),
+        queryKeys.runs.usage("run-1"),
         queryKeys.runs.stageEvents("run-1", "code@1"),
         queryKeys.runs.stageContextWindow("run-1", "code@1"),
       ]);
@@ -285,7 +285,7 @@ describe("subscribeToRunEvents", () => {
     source.emit({ event: "run.failed", run_id: "run-terminal" });
     expect(source.closed).toBe(false);
     expect(keys).toContainEqual(queryKeys.runs.files("run-terminal"));
-    expect(keys).toContainEqual(queryKeys.runs.billing("run-terminal"));
+    expect(keys).toContainEqual(queryKeys.runs.usage("run-terminal"));
 
     keys.length = 0;
     source.emit({ event: "run.archived", run_id: "run-terminal" });
@@ -383,7 +383,7 @@ describe("subscribeToRunEvents", () => {
 
     expect(source.closed).toBe(true);
     expect(keys).toContainEqual(queryKeys.runs.files("run-terminal"));
-    expect(keys).toContainEqual(queryKeys.runs.billing("run-terminal"));
+    expect(keys).toContainEqual(queryKeys.runs.usage("run-terminal"));
 
     cleanup();
     coordinator.close();

@@ -24,6 +24,7 @@ use std::sync::Arc;
 
 use fabro_core::handler::AttemptInfo;
 use fabro_graphviz::graph::{AttrValue, Edge, Graph, Node};
+use fabro_sandbox::test_support::DeletedOnDrop;
 use fabro_sandbox::{
     CloneRequest, DaytonaCredentials, ProviderAccess, RunSandbox, SandboxProviderKind,
     provider_sandbox,
@@ -198,7 +199,7 @@ fn live_daytona_credentials() -> DaytonaCredentials {
     DaytonaCredentials::from_api_key(api_key, |name| std::env::var(name).ok())
 }
 
-async fn create_env() -> RunSandbox {
+async fn create_env() -> DeletedOnDrop {
     let creds = load_github_app_credentials();
     create_env_with_github_app(Some(creds)).await
 }
@@ -213,17 +214,19 @@ fn test_artifact_store(run_dir: &Path) -> ArtifactStore {
 
 async fn create_env_with_github_app(
     github_app: Option<fabro_github::GitHubCredentials>,
-) -> RunSandbox {
-    provider_sandbox(
+) -> DeletedOnDrop {
+    let access = daytona_access(live_daytona_credentials());
+    let sandbox = provider_sandbox(
         SandboxProviderKind::DAYTONA,
-        &daytona_access(live_daytona_credentials()),
+        &access,
         SandboxSpec::new(SandboxSource::HostDirectory),
         &CloneRequest::default(),
         github_app.as_ref(),
         None,
     )
     .await
-    .expect("Failed to create Daytona client — is DAYTONA_API_KEY set?")
+    .expect("Failed to create Daytona client — is DAYTONA_API_KEY set?");
+    DeletedOnDrop::new(sandbox, &access)
 }
 
 fn load_github_app_credentials() -> fabro_github::GitHubCredentials {
@@ -426,9 +429,10 @@ async fn daytona_snapshot_sandbox() {
     .timers(timers);
 
     let creds = load_github_app_credentials();
+    let access = daytona_access(live_daytona_credentials());
     let env = provider_sandbox(
         SandboxProviderKind::DAYTONA,
-        &daytona_access(live_daytona_credentials()),
+        &access,
         spec,
         &CloneRequest::default(),
         Some(&creds),
@@ -436,6 +440,7 @@ async fn daytona_snapshot_sandbox() {
     )
     .await
     .expect("Failed to create Daytona client — is DAYTONA_API_KEY set?");
+    let env = DeletedOnDrop::new(env, &access);
     env.initialize().await.unwrap();
 
     // Verify rg is available (installed by snapshot)
@@ -534,7 +539,6 @@ impl Handler for LargeOutputHandler {
 async fn daytona_pipeline_artifact_offload_and_sync() {
     let env = create_env().await;
     env.initialize().await.unwrap();
-    let env: Arc<RunSandbox> = Arc::new(env);
 
     // Pipeline: start -> big_output -> exit
     let mut graph = Graph::new("DaytonaArtifactPipeline");
@@ -572,7 +576,7 @@ async fn daytona_pipeline_artifact_offload_and_sync() {
     registry.register("start", Box::new(StartHandler));
     registry.register("exit", Box::new(ExitHandler));
 
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), env.clone());
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), env.shared());
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -690,7 +694,6 @@ async fn setup_daytona_git(sandbox: &RunSandbox) -> (RunId, String, String) {
 async fn daytona_git_checkpoint_remote_emits_events() {
     let env = create_env().await;
     env.initialize().await.unwrap();
-    let env: Arc<RunSandbox> = Arc::new(env);
 
     // Install git if not available (the default ubuntu:22.04 image may not have it)
     let git_check = env
@@ -762,7 +765,7 @@ async fn daytona_git_checkpoint_remote_emits_events() {
     registry.register("start", Box::new(StartHandler));
     registry.register("exit", Box::new(ExitHandler));
 
-    let engine = WorkflowRunner::new(registry, Arc::new(emitter), env.clone());
+    let engine = WorkflowRunner::new(registry, Arc::new(emitter), env.shared());
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -839,7 +842,6 @@ async fn daytona_git_checkpoint_remote_emits_events() {
 async fn daytona_git_checkpoint_without_metadata_branch() {
     let env = create_env().await;
     env.initialize().await.unwrap();
-    let env: Arc<RunSandbox> = Arc::new(env);
 
     // Install git if not available
     let git_check = env
@@ -904,7 +906,7 @@ async fn daytona_git_checkpoint_without_metadata_branch() {
     registry.register("start", Box::new(StartHandler));
     registry.register("exit", Box::new(ExitHandler));
 
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), env.clone());
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), env.shared());
     let run_options = RunOptions {
         settings: WorkflowSettings::default(),
         run_dir: dir.path().to_path_buf(),
@@ -1001,7 +1003,6 @@ impl Handler for AssetCreatorHandler {
 async fn daytona_asset_collection() {
     let env = create_env().await;
     env.initialize().await.unwrap();
-    let env: Arc<RunSandbox> = Arc::new(env);
 
     let dir = tempfile::tempdir().unwrap();
 
@@ -1009,7 +1010,7 @@ async fn daytona_asset_collection() {
     registry.register("start", Box::new(StartHandler));
     registry.register("exit", Box::new(ExitHandler));
 
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), env.clone());
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), env.shared());
 
     let mut graph = Graph::new("DaytonaAssetTest");
     graph.attrs.insert(
@@ -1260,7 +1261,6 @@ async fn daytona_git_push_run_branch_to_origin() {
     let creds = load_github_app_credentials();
     let env = create_env_with_github_app(Some(creds)).await;
     env.initialize().await.unwrap();
-    let env: Arc<RunSandbox> = Arc::new(env);
 
     // Install git if not available
     let git_check = env
@@ -1323,7 +1323,7 @@ async fn daytona_git_push_run_branch_to_origin() {
     registry.register("start", Box::new(StartHandler));
     registry.register("exit", Box::new(ExitHandler));
 
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), env.clone());
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), env.shared());
     let run_options = RunOptions {
         settings: WorkflowSettings::default(),
         run_dir: dir.path().to_path_buf(),
@@ -1627,9 +1627,10 @@ async fn daytona_cp_upload_download_round_trip() {
 
 #[fabro_macros::e2e_test(live("DAYTONA_API_KEY"))]
 async fn daytona_computer_use_browser_screenshot() {
+    let access = daytona_access(live_daytona_credentials());
     let env = provider_sandbox(
         SandboxProviderKind::DAYTONA,
-        &daytona_access(live_daytona_credentials()),
+        &access,
         SandboxSpec::new(SandboxSource::HostDirectory),
         &CloneRequest::none(),
         None,
@@ -1637,6 +1638,7 @@ async fn daytona_computer_use_browser_screenshot() {
     )
     .await
     .expect("DAYTONA_API_KEY must be set");
+    let env = DeletedOnDrop::new(env, &access);
     env.initialize().await.unwrap();
 
     // 1. Start the computer use desktop environment (Xvfb, xfce4, etc.) through the
@@ -1768,9 +1770,10 @@ async fn daytona_computer_use_browser_screenshot() {
 #[fabro_macros::e2e_test(live("DAYTONA_API_KEY"))]
 async fn daytona_playwright_mcp_sandbox_transport() {
     // Create sandbox from daytona-medium (has Node.js + Chromium)
+    let access = daytona_access(live_daytona_credentials());
     let sandbox = provider_sandbox(
         SandboxProviderKind::DAYTONA,
-        &daytona_access(live_daytona_credentials()),
+        &access,
         SandboxSpec::new(SandboxSource::HostDirectory),
         &CloneRequest::none(),
         None,
@@ -1778,6 +1781,7 @@ async fn daytona_playwright_mcp_sandbox_transport() {
     )
     .await
     .expect("DAYTONA_API_KEY must be set");
+    let sandbox = DeletedOnDrop::new(sandbox, &access);
     sandbox.initialize().await.unwrap();
 
     // 1. Install Playwright MCP server and its browser
@@ -1862,13 +1866,13 @@ async fn daytona_playwright_mcp_sandbox_transport() {
             ),
         ]),
     );
-    let sandbox = Arc::new(sandbox);
     let routes = sandbox
+        .shared()
         .port_routes()
         .expect("Daytona forwards ports through preview URLs");
     let mut agent = pebble_coding_agent::CodingAgent::builder(
         client,
-        Arc::clone(&sandbox) as Arc<dyn pebble_coding_agent::environment::Environment>,
+        sandbox.shared() as Arc<dyn pebble_coding_agent::environment::Environment>,
     )
     .model("test/model")
     .permission_level(pebble_coding_agent::events::PermissionLevel::Full)

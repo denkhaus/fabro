@@ -61,7 +61,7 @@ pub fn extract_stage_timings_by_stage_id(
     timings
 }
 
-/// Sum of timing in each node across every visit. Use for billing/usage
+/// Sum of timing in each node across every visit. Use for usage
 /// where a retried node should count its full time. `wall_time_ms`,
 /// `inference_time_ms`, `tool_time_ms`, and `active_time_ms` are all summed
 /// per node.
@@ -125,8 +125,8 @@ mod duration_tests {
                 status: StageOutcome::Succeeded,
                 preferred_label: None,
                 suggested_next_ids: vec![],
-                billing_by_model: Vec::new(),
-                billing: None,
+                usage_by_model: Vec::new(),
+                usage: None,
                 failure: None,
                 notes: None,
                 files_touched: vec![],
@@ -159,12 +159,12 @@ mod duration_tests {
             tool_call_id:       None,
             actor:              None,
             body:               EventBody::StageFailed(StageFailedProps {
-                index:            0,
-                failure:          None,
-                will_retry:       true,
-                timing:           StageTiming::wall_only(wall_time_ms),
-                billing_by_model: Vec::new(),
-                billing:          None,
+                index:          0,
+                failure:        None,
+                will_retry:     true,
+                timing:         StageTiming::wall_only(wall_time_ms),
+                usage_by_model: Vec::new(),
+                usage:          None,
             }),
         };
         EventEnvelope { seq, event }
@@ -252,8 +252,8 @@ mod duration_tests {
                     status: StageOutcome::Succeeded,
                     preferred_label: None,
                     suggested_next_ids: vec![],
-                    billing_by_model: Vec::new(),
-                    billing: None,
+                    usage_by_model: Vec::new(),
+                    usage: None,
                     failure: None,
                     notes: None,
                     files_touched: vec![],
@@ -289,7 +289,6 @@ pub mod agent_memory;
 pub mod artifact;
 pub mod artifact_snapshot;
 pub mod artifact_upload;
-pub mod billing_rollup;
 pub mod command_log;
 pub(crate) mod condition;
 pub mod context;
@@ -325,14 +324,15 @@ mod retry;
 pub mod run_control;
 pub(crate) mod run_dir;
 pub mod run_lookup;
+pub mod usage_rollup;
 
-pub use billing_rollup::{
-    ProjectionBillingByModel, ProjectionBillingRollup, ProjectionBillingStage,
-    billing_rollup_from_projection,
-};
 pub use error::{Error, FailureCategory, FailureSignature, FailureSignatureExt, Result};
 pub use fabro_types::ManifestPath;
 pub use steering_hub::{PairControlError, SteeringHub};
+pub use usage_rollup::{
+    ProjectionUsageByModel, ProjectionUsageRollup, ProjectionUsageStage,
+    usage_rollup_from_projection,
+};
 pub mod run_materialization;
 pub mod run_options;
 pub mod run_status;

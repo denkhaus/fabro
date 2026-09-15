@@ -15,7 +15,7 @@
 
 
 /**
- * Run size bucket derived from current best-effort billed usage.
+ * Run size bucket derived from the run\'s current cost.
  */
 
 export const RunSize = {

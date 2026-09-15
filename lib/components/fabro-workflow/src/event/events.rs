@@ -1,20 +1,20 @@
 use std::collections::BTreeMap;
 
 use ::fabro_types::{
-    AutomationRef, BilledTokenCounts, BlobHash, BlockedReason, CommandTermination, DiffSummary,
-    FailureReason, ForkSourceRef, GitContext, PairId, PairMessageId, PairSystemMessageKind,
-    PairTarget, ParallelBranchId, ParallelBranchResult, PendingReason, PermissionLevel, Principal,
+    AutomationRef, BlobHash, BlockedReason, CommandTermination, DiffSummary, FailureReason,
+    ForkSourceRef, GitContext, PairId, PairMessageId, PairSystemMessageKind, PairTarget,
+    ParallelBranchId, ParallelBranchResult, PendingReason, PermissionLevel, Principal,
     PullRequestAutoMergeState, PullRequestCreationId, PullRequestLink, ReviewTarget, RunFailure,
     RunId, RunNoticeLevel, RunPairEndedReason, RunPairFailedReason, RunProvenance,
     RunRunnableSource, RunTarget, RunTiming, SandboxProviderKind, StageId, StageOutcome,
     StageTiming, SuccessReason, WorkflowVersionId, run_event as fabro_types,
 };
-use lithos_llm::types::{ReasoningEffort, Speed};
+use lithos_llm::types::{ReasoningEffort, Speed, Usage};
 use pebble_coding_agent::events::CodingAgentEvent;
 use serde::{Deserialize, Serialize};
 
 use crate::error::{Error, run_failure_from_error};
-use crate::outcome::{BilledModelUsage, FailureDetail, Outcome};
+use crate::outcome::{FailureDetail, ModelUsage, Outcome};
 
 /// Events emitted during workflow run execution for observability.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -187,15 +187,13 @@ pub enum Event {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         failure:              Option<RunFailure>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        total_usd_micros:     Option<i64>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
         final_git_commit_sha: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         final_patch:          Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         diff_summary:         Option<DiffSummary>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        billing:              Option<BilledTokenCounts>,
+        usage:                Option<Usage>,
     },
     WorkflowRunFailed {
         failure:              RunFailure,
@@ -207,7 +205,7 @@ pub enum Event {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         diff_summary:         Option<DiffSummary>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        billing:              Option<BilledTokenCounts>,
+        usage:                Option<Usage>,
     },
     RunNotice {
         level:            RunNoticeLevel,
@@ -271,9 +269,9 @@ pub enum Event {
         status: String,
         preferred_label: Option<String>,
         suggested_next_ids: Vec<String>,
-        billing: Option<BilledModelUsage>,
+        usage: Option<ModelUsage>,
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
-        billing_by_model: Vec<BilledModelUsage>,
+        usage_by_model: Vec<ModelUsage>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         failure: Option<FailureDetail>,
         notes: Option<String>,
@@ -296,17 +294,17 @@ pub enum Event {
         max_attempts: usize,
     },
     StageFailed {
-        node_id:          String,
-        name:             String,
-        index:            usize,
-        failure:          FailureDetail,
-        will_retry:       bool,
-        timing:           StageTiming,
-        billing:          Option<BilledModelUsage>,
+        node_id:        String,
+        name:           String,
+        index:          usize,
+        failure:        FailureDetail,
+        will_retry:     bool,
+        timing:         StageTiming,
+        usage:          Option<ModelUsage>,
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
-        billing_by_model: Vec<BilledModelUsage>,
+        usage_by_model: Vec<ModelUsage>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        actor:            Option<Principal>,
+        actor:          Option<Principal>,
     },
     StageRetrying {
         node_id:      String,
@@ -497,7 +495,7 @@ pub enum Event {
         model:    String,
         provider: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        billing:  Option<BilledModelUsage>,
+        usage:    Option<ModelUsage>,
     },
     /// One coding-agent event, tagged with the workflow stage that produced
     /// it. Pebble's envelope is kept whole: `seq`, `stream_id`, session ids,
@@ -831,7 +829,7 @@ impl Event {
         final_git_commit_sha: Option<String>,
         final_patch: Option<String>,
         diff_summary: Option<DiffSummary>,
-        billing: Option<BilledTokenCounts>,
+        usage: Option<Usage>,
     ) -> Self {
         Self::WorkflowRunFailed {
             failure: run_failure_from_error(error, reason),
@@ -839,7 +837,7 @@ impl Event {
             final_git_commit_sha,
             final_patch,
             diff_summary,
-            billing,
+            usage,
         }
     }
 

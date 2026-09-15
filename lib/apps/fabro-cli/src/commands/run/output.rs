@@ -208,10 +208,11 @@ pub(crate) fn print_run_conclusion(
         HumanDuration(Duration::from_millis(conclusion.timing.wall_time_ms))
     );
 
-    if let Some(billing) = conclusion.billing.as_ref() {
-        let total_tokens = billing.total_tokens;
+    if let Some(usage) = conclusion.usage {
+        let total_tokens = usage.total_tokens();
+        let cost_usd_micros = usage.cost.map(|cost| cost.usd_micros);
         if total_tokens > 0 {
-            if let Some(total_usd_micros) = billing.total_usd_micros {
+            if let Some(total_usd_micros) = cost_usd_micros {
                 if total_usd_micros > 0 {
                     fabro_util::printerr!(
                         printer,
@@ -232,28 +233,28 @@ pub(crate) fn print_run_conclusion(
                         .apply_to(format!("Toks:      {}", format_tokens_human(total_tokens)))
                 );
             }
-            if billing.cache_read_tokens > 0 || billing.cache_write_tokens > 0 {
+            if usage.tokens.cache_read > 0 || usage.tokens.cache_write > 0 {
                 fabro_util::printerr!(
                     printer,
                     "{}",
                     styles.dim.apply_to(format!(
                         "Cache:     {} read, {} write",
-                        format_tokens_human(billing.cache_read_tokens),
-                        format_tokens_human(billing.cache_write_tokens),
+                        format_tokens_human(usage.tokens.cache_read),
+                        format_tokens_human(usage.tokens.cache_write),
                     )),
                 );
             }
-            if billing.reasoning_tokens > 0 {
+            if usage.tokens.reasoning > 0 {
                 fabro_util::printerr!(
                     printer,
                     "{}",
                     styles.dim.apply_to(format!(
                         "Reasoning: {} tokens",
-                        format_tokens_human(billing.reasoning_tokens),
+                        format_tokens_human(usage.tokens.reasoning),
                     )),
                 );
             }
-        } else if billing.total_usd_micros.is_none() {
+        } else if cost_usd_micros.is_none() {
             fabro_util::printerr!(
                 printer,
                 "{}",

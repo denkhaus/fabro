@@ -3,7 +3,7 @@ import type { EventEnvelope } from "@qltysh/fabro-api-client";
 import TestRenderer, { act } from "react-test-renderer";
 
 import { makeEventEnvelope, setupReactTestEnv } from "../../lib/test-utils";
-import { makeBilledTokenCounts } from "../../lib/test-fixtures";
+import { makeUsage } from "../../lib/test-fixtures";
 import type { Stage } from "../stage-sidebar";
 import { FanInResults } from "./fan-in-results";
 
@@ -23,7 +23,7 @@ const fanInStage: Stage = {
   visit: 1,
   startedAt: "2026-04-09T12:00:00Z",
   providerUsed: null,
-  billing: makeBilledTokenCounts(),
+  usage: makeUsage(),
 };
 
 function event(seq: number, partial: Partial<EventEnvelope>): EventEnvelope {
@@ -63,7 +63,7 @@ describe("FanInResults", () => {
         event: "prompt.completed",
         properties: {
           response: "All branch findings are now available.",
-          billing: { input_tokens: 1200, output_tokens: 340 },
+          usage: { model: { provider: "anthropic", model_id: "claude-sonnet-4-6" }, usage: { tokens: { input: 1200, output: 340 } } },
         },
       }),
     ]);

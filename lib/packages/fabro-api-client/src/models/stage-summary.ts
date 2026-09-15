@@ -16,6 +16,9 @@
 // May contain unused imports in some cases
 // @ts-ignore
 import type { StageTiming } from './stage-timing';
+// May contain unused imports in some cases
+// @ts-ignore
+import type { Usage } from './usage';
 
 /**
  * Terminal summary for one stage in a run conclusion.
@@ -24,6 +27,9 @@ export interface StageSummary {
     'stage_id': string;
     'stage_label': string;
     'timing': StageTiming;
-    'billing_usd_micros'?: number | null;
+    /**
+     * Per-node usage summed across every visit of the node.
+     */
+    'usage': Usage;
     'retries': number;
 }

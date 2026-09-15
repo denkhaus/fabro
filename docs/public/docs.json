@@ -230,7 +230,7 @@
             "pages": [
               "GET /api/v1/runs/{id}/artifacts",
               "GET /api/v1/runs/{id}/artifacts/download",
-              "GET /api/v1/runs/{id}/billing",
+              "GET /api/v1/runs/{id}/usage",
               {
                 "group": "Run Internals",
                 "icon": "microchip",

@@ -89,12 +89,9 @@ fn build_json_output(
     if let Some(c) = conclusion {
         value["timing"] =
             serde_json::to_value(c.timing).unwrap_or_else(|_| serde_json::Value::Null);
-        if let Some(total_usd_micros) = c
-            .billing
-            .as_ref()
-            .and_then(|billing| billing.total_usd_micros)
-        {
-            value["total_usd_micros"] = total_usd_micros.into();
+        if let Some(usage) = c.usage {
+            value["usage"] =
+                serde_json::to_value(usage).unwrap_or_else(|_| serde_json::Value::Null);
         }
         if let Some(failure) = c.failure.as_ref() {
             value["failure"] =
@@ -132,10 +129,9 @@ fn print_human_output(
         Some(c) => {
             let duration = format_duration_ms(c.timing.wall_time_ms);
             let cost = c
-                .billing
-                .as_ref()
-                .and_then(|billing| billing.total_usd_micros)
-                .map(|value| format!("  {}", format_usd_micros(value)))
+                .usage
+                .and_then(|usage| usage.cost)
+                .map(|cost| format!("  {}", format_usd_micros(cost.usd_micros)))
                 .unwrap_or_default();
             format!("  {duration}{cost}")
         }
@@ -177,12 +173,24 @@ fn print_human_output(
 #[cfg(test)]
 mod tests {
     use fabro_types::{
-        BilledTokenCounts, FailureCategory, FailureDetail, FailureReason, RunDiff, RunFailure,
-        RunStatus, StageOutcome, SuccessReason, fixtures,
+        FailureCategory, FailureDetail, FailureReason, RunDiff, RunFailure, RunStatus,
+        StageOutcome, SuccessReason, fixtures,
     };
     use fabro_workflow::records::Conclusion;
+    use lithos_llm::types::{Cost, CostSource, TokenCounts, Usage};
 
     use super::*;
+
+    /// A usage with only a catalog cost.
+    fn priced(usd_micros: u64) -> Usage {
+        Usage {
+            tokens: TokenCounts::default(),
+            cost:   Some(Cost {
+                usd_micros,
+                source: CostSource::Catalog,
+            }),
+        }
+    }
 
     fn no_color_styles() -> Styles {
         Styles::new(false)
@@ -198,15 +206,7 @@ mod tests {
             failure:              None,
             final_git_commit_sha: None,
             stages:               vec![],
-            billing:              Some(BilledTokenCounts {
-                input_tokens:       0,
-                output_tokens:      0,
-                total_tokens:       0,
-                reasoning_tokens:   0,
-                cache_read_tokens:  0,
-                cache_write_tokens: 0,
-                total_usd_micros:   Some(420_000),
-            }),
+            usage:                Some(priced(420_000)),
             total_retries:        0,
             diff:                 RunDiff::default(),
             exit_kind:            String::new(),
@@ -221,7 +221,8 @@ mod tests {
         assert_eq!(json["run_id"], run_id.to_string());
         assert_eq!(json["status"], "succeeded");
         assert_eq!(json["timing"]["wall_time_ms"], 12345);
-        assert_eq!(json["total_usd_micros"], 420_000);
+        assert_eq!(json["usage"]["cost"]["usd_micros"], 420_000);
+        assert_eq!(json["usage"]["cost"]["source"], "catalog");
     }
 
     #[test]
@@ -237,7 +238,7 @@ mod tests {
         assert_eq!(json["run_id"], run_id.to_string());
         assert_eq!(json["status"], "failed");
         assert!(json.get("timing").is_none());
-        assert!(json.get("total_usd_micros").is_none());
+        assert!(json.get("usage").is_none());
     }
 
     #[test]
@@ -261,7 +262,7 @@ mod tests {
             }),
             final_git_commit_sha: None,
             stages:               vec![],
-            billing:              None,
+            usage:                None,
             total_retries:        0,
             diff:                 RunDiff::default(),
             exit_kind:            String::new(),
@@ -273,7 +274,7 @@ mod tests {
             &run_id,
             Some(&conclusion),
         );
-        assert!(json.get("total_usd_micros").is_none());
+        assert!(json.get("usage").is_none());
         assert_eq!(json["timing"]["wall_time_ms"], 500);
     }
 
@@ -288,15 +289,7 @@ mod tests {
             failure:              None,
             final_git_commit_sha: None,
             stages:               vec![],
-            billing:              Some(BilledTokenCounts {
-                input_tokens:       0,
-                output_tokens:      0,
-                total_tokens:       0,
-                reasoning_tokens:   0,
-                cache_read_tokens:  0,
-                cache_write_tokens: 0,
-                total_usd_micros:   Some(150_000),
-            }),
+            usage:                Some(priced(150_000)),
             total_retries:        0,
             diff:                 RunDiff::default(),
             exit_kind:            String::new(),

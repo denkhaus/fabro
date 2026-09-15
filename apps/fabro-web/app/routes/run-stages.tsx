@@ -69,7 +69,7 @@ import {
   formatTokenCount,
   formatUsdMicros,
 } from "../lib/format";
-import { billingTokenBuckets, hasBillingUsage } from "../lib/billing";
+import { costSourceTag, hasUsage, usageTokenBuckets } from "../lib/usage";
 import { plural } from "../lib/plural";
 import {
   useRun,
@@ -96,11 +96,11 @@ import {
   type UnknownRecord,
 } from "../lib/unknown";
 import type {
-  BilledTokenCounts,
   EventEnvelope,
   ReasoningOutput,
   StageHandler,
   StageModelUsage,
+  Usage,
 } from "@qltysh/fabro-api-client";
 
 export const handle = { wide: true, fullHeight: true };
@@ -370,13 +370,15 @@ export function buildStageActivity(
       }
       case "prompt.completed": {
         if (!sawAssistantMessage) {
-          const billing = (props.billing ?? {}) as UnknownRecord;
+          // `prompt.completed.usage` is a `ModelUsage`: the model, then the usage.
+          const tokens =
+            getObject(getObject(getObject(props, "usage"), "usage"), "tokens") ?? {};
           turns.push({
             kind: "assistant",
             ts: e.ts,
             content: getString(props, "response") ?? "",
-            inputTokens: getNumber(billing, "input_tokens") ?? 0,
-            outputTokens: getNumber(billing, "output_tokens") ?? 0,
+            inputTokens: getNumber(tokens, "input") ?? 0,
+            outputTokens: getNumber(tokens, "output") ?? 0,
             toolCallCount: null,
             // Only agent.message carries reasoning; prompt stages have none.
             reasoning: null,
@@ -887,10 +889,11 @@ export function formatStageModelUsageLabel(
 const POPOVER_NUMBER = "block text-right font-mono tabular-nums";
 
 /** Tokens and cost for this stage visit alone. */
-function StageBillingRows({ billing }: { billing: BilledTokenCounts }) {
-  if (!hasBillingUsage(billing)) return null;
-  const buckets = billingTokenBuckets(billing);
-  const cost = formatUsdMicros(billing.total_usd_micros);
+function StageUsageRows({ usage }: { usage: Usage }) {
+  if (!hasUsage(usage)) return null;
+  const buckets = usageTokenBuckets(usage);
+  const cost = formatUsdMicros(usage.cost?.usd_micros);
+  const costTag = costSourceTag(usage.cost);
   return (
     <div className="mt-3">
       <PopoverHeader>Tokens</PopoverHeader>
@@ -905,7 +908,7 @@ function StageBillingRows({ billing }: { billing: BilledTokenCounts }) {
           </PopoverRow>
         ))}
         {cost && (
-          <PopoverRow label="Cost">
+          <PopoverRow label={costTag ? `Cost (${costTag})` : "Cost"}>
             <span className={POPOVER_NUMBER}>{cost}</span>
           </PopoverRow>
         )}
@@ -916,10 +919,10 @@ function StageBillingRows({ billing }: { billing: BilledTokenCounts }) {
 
 export function ModelUsagePopover({
   providerUsed,
-  billing,
+  usage,
 }: {
   providerUsed: StageModelUsage;
-  billing: BilledTokenCounts;
+  usage: Usage;
 }) {
   return (
     <>
@@ -942,7 +945,7 @@ export function ModelUsagePopover({
           <PopoverRow label="Speed">{providerUsed.speed}</PopoverRow>
         )}
       </PopoverRows>
-      <StageBillingRows billing={billing} />
+      <StageUsageRows usage={usage} />
     </>
   );
 }
@@ -1956,7 +1959,7 @@ function EventsToolbar({
   filteredCount,
   totalCount,
   providerUsed,
-  billing,
+  usage,
   events,
   runId,
   stageId,
@@ -1976,7 +1979,7 @@ function EventsToolbar({
   filteredCount: number;
   totalCount: number;
   providerUsed: StageModelUsage | null;
-  billing: BilledTokenCounts;
+  usage: Usage;
   events: EventEnvelope[];
   runId: string;
   stageId: string;
@@ -2058,7 +2061,7 @@ function EventsToolbar({
             showFilters ? "" : "ml-auto"
           }`}
           content={
-            <ModelUsagePopover providerUsed={providerUsed} billing={billing} />
+            <ModelUsagePopover providerUsed={providerUsed} usage={usage} />
           }
         >
           <CpuChipIcon className="size-3.5" aria-hidden="true" />
@@ -2414,7 +2417,7 @@ function RunStageActivityStage({
                 effectiveTab === "primary" ? turns.length : debugEvents.length
               }
               providerUsed={selectedStage.providerUsed}
-              billing={selectedStage.billing}
+              usage={selectedStage.usage}
               events={stageEventsQuery.data ?? []}
               runId={runId}
               stageId={selectedStageId}

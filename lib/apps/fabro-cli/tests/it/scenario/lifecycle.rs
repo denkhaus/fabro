@@ -49,10 +49,16 @@ fn local_run_lifecycle() {
         .as_str()
         .expect("run should have run_id")
         .to_string();
+    // A bare `.fabro` file has no `[workflow] name`, so `ps --json` reports
+    // the digraph name only as `workflow_graph_name`.
+    assert!(
+        runs[0]["workflow_name"].is_null(),
+        "workflow_name should be null for a bare graph file: {ps_stdout}"
+    );
     assert_eq!(
-        runs[0]["workflow_name"].as_str(),
+        runs[0]["workflow_graph_name"].as_str(),
         Some("CommandPipeline"),
-        "workflow_name should be CommandPipeline"
+        "workflow_graph_name should be CommandPipeline: {ps_stdout}"
     );
 
     // 3. inspect <run_id> — JSON array with run_spec and conclusion

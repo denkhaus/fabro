@@ -425,7 +425,7 @@ mod tests {
                 completed_at:  None,
             },
             timing:           None,
-            billing:          None,
+            usage:            fabro_api::types::Usage::default(),
             size:             fabro_types::RunSize::default(),
             ask_fabro:        fabro_types::AskFabro::default(),
             diff:             None,

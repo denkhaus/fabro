@@ -15,18 +15,15 @@
 
 // May contain unused imports in some cases
 // @ts-ignore
-import type { AggregateBillingTotals } from './aggregate-billing-totals';
+import type { Usage } from './usage';
 // May contain unused imports in some cases
 // @ts-ignore
-import type { BillingByModel } from './billing-by-model';
+import type { UsageModelRef } from './usage-model-ref';
 
 /**
- * Aggregate token counts and billed totals across all runs since server start.
+ * Usage grouped under one model: one response, or one model\'s share of a stage.
  */
-export interface AggregateBilling {
-    'totals': AggregateBillingTotals;
-    /**
-     * Billing grouped by model.
-     */
-    'by_model': Array<BillingByModel>;
+export interface ModelUsage {
+    'model': UsageModelRef;
+    'usage': Usage;
 }

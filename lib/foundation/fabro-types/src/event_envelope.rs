@@ -41,11 +41,10 @@ mod tests {
                 status:               "success".to_string(),
                 reason:               SuccessReason::Completed,
                 failure:              None,
-                total_usd_micros:     None,
                 final_git_commit_sha: None,
                 final_patch:          None,
                 diff_summary:         None,
-                billing:              None,
+                usage:                None,
             }),
         };
         let envelope = EventEnvelope { seq: 7, event };
@@ -86,11 +85,10 @@ mod tests {
                 status:               "success".to_string(),
                 reason:               SuccessReason::Completed,
                 failure:              None,
-                total_usd_micros:     None,
                 final_git_commit_sha: None,
                 final_patch:          None,
                 diff_summary:         None,
-                billing:              None,
+                usage:                None,
             }),
         };
         let envelope = EventEnvelope { seq: 99, event };

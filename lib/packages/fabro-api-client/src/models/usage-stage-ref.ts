@@ -14,6 +14,16 @@
 
 
 
-export interface RunBillingSummary {
-    'total_usd_micros': number | null;
+/**
+ * Reference to a workflow node in a usage stage row.
+ */
+export interface UsageStageRef {
+    /**
+     * Stage identifier (slug).
+     */
+    'id': string;
+    /**
+     * Human-readable stage name.
+     */
+    'name': string;
 }

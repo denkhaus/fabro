@@ -15,7 +15,7 @@
 
 
 /**
- * Where a cost came from: `catalog` (estimated from catalog prices), `provider` (the provider\'s own billing data), or `application`.
+ * Where a cost came from: `catalog` (estimated from catalog prices), `provider` (the provider\'s own reported cost), or `application` (a sum the caller assembled from differently sourced parts).
  */
 
 export const CostSource = {

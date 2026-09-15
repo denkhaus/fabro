@@ -236,22 +236,20 @@ fn event_body_from_event(event: &Event) -> EventBody {
             status,
             reason,
             failure,
-            total_usd_micros,
             final_git_commit_sha,
             final_patch,
             diff_summary,
-            billing,
+            usage,
         } => EventBody::RunCompleted(fabro_types::RunCompletedProps {
             timing:               *timing,
             artifact_count:       *artifact_count,
             status:               status.clone(),
             reason:               *reason,
             failure:              failure.clone(),
-            total_usd_micros:     *total_usd_micros,
             final_git_commit_sha: final_git_commit_sha.clone(),
             final_patch:          final_patch.clone(),
             diff_summary:         *diff_summary,
-            billing:              billing.clone(),
+            usage:                *usage,
         }),
         Event::WorkflowRunFailed {
             failure,
@@ -259,14 +257,14 @@ fn event_body_from_event(event: &Event) -> EventBody {
             final_git_commit_sha,
             final_patch,
             diff_summary,
-            billing,
+            usage,
         } => EventBody::RunFailed(fabro_types::RunFailedProps {
             failure:              failure.clone(),
             timing:               *timing,
             final_git_commit_sha: final_git_commit_sha.clone(),
             final_patch:          final_patch.clone(),
             diff_summary:         *diff_summary,
-            billing:              billing.clone(),
+            usage:                *usage,
         }),
         Event::RunNotice {
             level,
@@ -345,8 +343,8 @@ fn event_body_from_event(event: &Event) -> EventBody {
             status,
             preferred_label,
             suggested_next_ids,
-            billing,
-            billing_by_model,
+            usage,
+            usage_by_model,
             failure,
             notes,
             files_touched,
@@ -366,8 +364,8 @@ fn event_body_from_event(event: &Event) -> EventBody {
             status: stage_status_from_string(status),
             preferred_label: preferred_label.clone(),
             suggested_next_ids: suggested_next_ids.clone(),
-            billing: billing.clone(),
-            billing_by_model: billing_by_model.clone(),
+            usage: usage.clone(),
+            usage_by_model: usage_by_model.clone(),
             failure: failure.clone(),
             notes: notes.clone(),
             files_touched: files_touched.clone(),
@@ -386,16 +384,16 @@ fn event_body_from_event(event: &Event) -> EventBody {
             failure,
             will_retry,
             timing,
-            billing,
-            billing_by_model,
+            usage,
+            usage_by_model,
             ..
         } => EventBody::StageFailed(fabro_types::StageFailedProps {
             index:      *index,
             failure:    Some(failure.clone()),
             will_retry: *will_retry,
             timing:     *timing,
-            billing:    billing.clone(),
-            billing_by_model: billing_by_model.clone(),
+            usage:      usage.clone(),
+            usage_by_model: usage_by_model.clone(),
         }),
         Event::StageRetrying {
             index,
@@ -626,13 +624,13 @@ fn event_body_from_event(event: &Event) -> EventBody {
             response,
             model,
             provider,
-            billing,
+            usage,
             ..
         } => EventBody::PromptCompleted(fabro_types::PromptCompletedProps {
             response: response.clone(),
             model:    model.clone(),
             provider: provider.clone(),
-            billing:  billing.clone(),
+            usage:    usage.clone(),
         }),
         Event::Agent {
             stage,
@@ -1037,7 +1035,9 @@ mod tests {
     };
     use chrono::Utc;
     use lithos_llm::types::ReasoningOutput;
-    use pebble_coding_agent::events::{CodingAgentEvent, CodingEvent, TokenUsage};
+    use pebble_coding_agent::events::{
+        CodingAgentEvent, CodingEvent, Cost, CostSource, TokenCounts, Usage,
+    };
 
     use super::*;
     use crate::error::Error;
@@ -1079,8 +1079,8 @@ mod tests {
                 status: "succeeded".to_string(),
                 preferred_label: None,
                 suggested_next_ids: Vec::new(),
-                billing_by_model: Vec::new(),
-                billing: None,
+                usage_by_model: Vec::new(),
+                usage: None,
                 failure: None,
                 notes: None,
                 files_touched: Vec::new(),
@@ -1125,8 +1125,8 @@ mod tests {
             status: "succeeded".to_string(),
             preferred_label: None,
             suggested_next_ids: Vec::new(),
-            billing_by_model: Vec::new(),
-            billing: None,
+            usage_by_model: Vec::new(),
+            usage: None,
             failure: None,
             notes: None,
             files_touched: Vec::new(),
@@ -1151,18 +1151,18 @@ mod tests {
     fn run_event_stage_failure_keeps_failure_detail() {
         let usage = test_usage("gpt-5.2", 321, 54);
         let stored = to_run_event(&fixtures::RUN_3, &Event::StageFailed {
-            node_id:          "code".to_string(),
-            name:             "Code".to_string(),
-            index:            1,
-            failure:          FailureDetail::new(
+            node_id:        "code".to_string(),
+            name:           "Code".to_string(),
+            index:          1,
+            failure:        FailureDetail::new(
                 "lint failed",
                 crate::outcome::FailureCategory::Deterministic,
             ),
-            will_retry:       true,
-            timing:           ::fabro_types::StageTiming::wall_only(5000),
-            billing_by_model: Vec::new(),
-            billing:          Some(usage.clone()),
-            actor:            None,
+            will_retry:     true,
+            timing:         ::fabro_types::StageTiming::wall_only(5000),
+            usage_by_model: Vec::new(),
+            usage:          Some(usage.clone()),
+            actor:          None,
         });
 
         assert_eq!(stored.event_name(), "stage.failed");
@@ -1170,7 +1170,7 @@ mod tests {
         assert_eq!(properties["failure"]["message"], "lint failed");
         assert_eq!(properties["failure"]["category"], "deterministic");
         assert_eq!(properties["will_retry"], true);
-        assert_eq!(properties["billing"], serde_json::to_value(&usage).unwrap());
+        assert_eq!(properties["usage"], serde_json::to_value(&usage).unwrap());
     }
 
     #[test]
@@ -2268,9 +2268,7 @@ mod tests {
             event: agent_event("ses_agent", CodingEvent::AssistantMessage {
                 text:            "ok".to_string(),
                 model:           "claude-sonnet".to_string(),
-                usage:           TokenUsage::default(),
-                cost_usd_micros: None,
-                cost_source:     None,
+                usage:           Usage::default(),
                 tool_call_count: 0,
                 context_window:  None,
                 reasoning:       None,
@@ -2294,9 +2292,13 @@ mod tests {
             event: agent_event("ses_agent", CodingEvent::AssistantMessage {
                 text:            String::new(),
                 model:           "gpt-5.4".to_string(),
-                usage:           TokenUsage::default(),
-                cost_usd_micros: Some(125_000),
-                cost_source:     Some(pebble_coding_agent::events::CostSource::Provider),
+                usage:           Usage {
+                    tokens: TokenCounts::default(),
+                    cost:   Some(Cost {
+                        usd_micros: 125_000,
+                        source:     CostSource::Provider,
+                    }),
+                },
                 tool_call_count: 1,
                 context_window:  None,
                 reasoning:       Some(ReasoningOutput::new(
@@ -2309,7 +2311,8 @@ mod tests {
         let value = stored.to_value().unwrap();
         assert_eq!(value["event"], "agent.message");
         let message = &value["properties"]["event"]["AssistantMessage"];
-        assert_eq!(message["cost_usd_micros"], 125_000);
+        assert_eq!(message["usage"]["cost"]["usd_micros"], 125_000);
+        assert_eq!(message["usage"]["cost"]["source"], "provider");
         assert_eq!(
             message["reasoning"]["summary"],
             "inspect the conversion first"

@@ -63,7 +63,7 @@ fn remote_run_state_response(run_id: &str) -> serde_json::Value {
             "status": "succeeded",
             "timing": {"wall_time_ms": 12, "inference_time_ms": 0, "tool_time_ms": 0, "active_time_ms": 0},
             "stages": [],
-            "billing": null,
+            "usage": null,
             "total_retries": 0,
             "diff": {}
     });

@@ -606,22 +606,20 @@ mod tests {
     use fabro_graphviz::graph::AttrValue;
     use fabro_types::ModelRef;
     use lithos_llm::catalog::{ModelId, builtin};
-    use lithos_llm::types::TokenCounts;
+    use lithos_llm::types::{TokenCounts, Usage};
 
     use super::*;
-    use crate::outcome::{BilledModelUsage, billed_model_usage_from_llm};
+    use crate::outcome::ModelUsage;
 
-    fn stage_usage(model: &str, input: u64, output: u64) -> BilledModelUsage {
-        billed_model_usage_from_llm(
-            &fabro_llm::test_support::test_catalog(),
-            &ModelRef::new(builtin::anthropic(), ModelId::new(model)),
-            TokenCounts {
+    fn stage_usage(model: &str, input: u64, output: u64) -> ModelUsage {
+        ModelUsage::new(
+            ModelRef::new(builtin::anthropic(), ModelId::new(model)),
+            Usage::from(TokenCounts {
                 input,
                 output,
                 ..TokenCounts::default()
-            },
+            }),
         )
-        .unwrap()
     }
 
     fn large_prompt_value(bytes: u64, path: &str, preview: &str) -> serde_json::Value {

@@ -27,7 +27,7 @@ import * as RunChildren from "./routes/run-children";
 import * as RunFiles from "./routes/run-files";
 import * as RunSandbox from "./routes/run-sandbox";
 import * as RunTerminal from "./routes/run-terminal";
-import * as RunBilling from "./routes/run-billing";
+import * as RunUsage from "./routes/run-usage";
 import * as Insights from "./routes/insights";
 import * as InsightsEditor from "./routes/insights-editor";
 import * as InsightsNew from "./routes/insights-new";
@@ -136,7 +136,7 @@ export const routes: RouteObject[] = [
               route("files", RunFiles),
               route("children", RunChildren),
               route("sandbox", RunSandbox),
-              route("billing", RunBilling),
+              route("usage", RunUsage),
             ],
           }),
           route("insights", Insights, {

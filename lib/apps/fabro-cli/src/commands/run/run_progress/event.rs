@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use fabro_types::{BilledModelUsage, EventBody, RunEvent};
+use fabro_types::{EventBody, ModelUsage, RunEvent};
 use fabro_util::{error, text};
 use fabro_workflow::event::RunNoticeLevel;
 use pebble_coding_agent::events::{CodingEvent, ErrorKind as AgentErrorKind, LlmOutputKind};
@@ -13,12 +13,15 @@ pub(super) struct ProgressUsage {
 }
 
 impl ProgressUsage {
-    pub(super) fn from_stage_usage(usage: &BilledModelUsage) -> Self {
-        let tokens = usage.tokens();
+    pub(super) fn from_stage_usage(usage: &ModelUsage) -> Self {
+        let tokens = usage.usage.tokens;
         Self {
             input_tokens:  tokens.input,
             output_tokens: tokens.billable_output(),
-            cost:          usage.total_usd_micros.map(|cost| cost as f64 / 1_000_000.0),
+            cost:          usage
+                .usage
+                .cost
+                .map(|cost| cost.usd_micros as f64 / 1_000_000.0),
         }
     }
 
@@ -294,7 +297,7 @@ pub(super) fn from_run_event(stored: &RunEvent) -> Option<ProgressEvent> {
             name: node_label,
             timing: props.timing,
             status: props.status.to_string(),
-            usage: props.billing.as_ref().map(ProgressUsage::from_stage_usage),
+            usage: props.usage.as_ref().map(ProgressUsage::from_stage_usage),
         }),
         EventBody::StageFailed(props) => Some(ProgressEvent::StageFailed {
             node_id,
@@ -651,8 +654,8 @@ mod tests {
             status: "succeeded".into(),
             preferred_label: None,
             suggested_next_ids: Vec::new(),
-            billing_by_model: Vec::new(),
-            billing: None,
+            usage_by_model: Vec::new(),
+            usage: None,
             failure: None,
             notes: None,
             files_touched: Vec::new(),

@@ -15,19 +15,21 @@
 
 // May contain unused imports in some cases
 // @ts-ignore
-import type { BillingModelRef } from './billing-model-ref';
+import type { RunTiming } from './run-timing';
 // May contain unused imports in some cases
 // @ts-ignore
-import type { CompletionUsage } from './completion-usage';
+import type { Usage } from './usage';
 
 /**
- * Usage and cost billed to one model: one response, or one model\'s share of a stage.
+ * Aggregate usage totals across all stages of a run.
  */
-export interface BilledModelUsage {
-    'model': BillingModelRef;
-    'tokens': CompletionUsage;
+export interface RunUsageTotals {
     /**
-     * Cost for `tokens`, when the provider reported one or the catalog could price them. Absent means no cost data, not zero.
+     * Run-level timing rollup. `wall_time_ms` is summed across stage visits; active timing sums work across visits.
      */
-    'total_usd_micros'?: number;
+    'timing': RunTiming;
+    /**
+     * Tokens and cost summed across every stage visit. The cost is known only when every visit that used tokens was priced.
+     */
+    'usage': Usage;
 }

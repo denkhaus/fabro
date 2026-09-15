@@ -93,7 +93,7 @@ export function RunDetailHeader({
     </span>
   );
   const sizeChip = (
-    <SizeChip size={summary.size} totalUsdMicros={summary.billing?.total_usd_micros} />
+    <SizeChip size={summary.size} totalUsdMicros={summary.usage.cost?.usd_micros} />
   );
 
   return (

@@ -10,18 +10,19 @@ use fabro_slack::config::{
 };
 use fabro_static::EnvVars;
 use fabro_types::settings::server::GithubIntegrationSettings;
+use fabro_types::sum_usage;
 use fabro_vault::Vault;
 use tokio::time::timeout;
 
 use super::super::{
-    AggregateBilling, AggregateBillingTotals, ApiError, AppState, BilledTokenCounts,
-    BillingByModel, DfParams, FABRO_VERSION, GithubIntegrationStrategy, IntegrationConnectionState,
-    IntegrationProvider, IntegrationStatus, IntoResponse, Json, Path, PruneRunsRequest,
-    PruneRunsResponse, Query, RequiredUser, Response, Router, RunStatus, State, StatusCode,
-    SystemInfoResponse, SystemIntegrationStatus, SystemIntegrationsResponse, SystemRepairRunIssue,
-    SystemRepairRunsResponse, SystemRunCounts, build_disk_usage_response, build_prune_plan,
-    counts_toward_scheduler_capacity, delete_run_internal, diagnostics, get, post,
-    resource_sampler, spawn_blocking, system_sandbox_provider, to_i64,
+    AggregateUsage, AggregateUsageTotals, ApiError, AppState, DfParams, FABRO_VERSION,
+    GithubIntegrationStrategy, IntegrationConnectionState, IntegrationProvider, IntegrationStatus,
+    IntoResponse, Json, Path, PruneRunsRequest, PruneRunsResponse, Query, RequiredUser, Response,
+    Router, RunStatus, State, StatusCode, SystemInfoResponse, SystemIntegrationStatus,
+    SystemIntegrationsResponse, SystemRepairRunIssue, SystemRepairRunsResponse, SystemRunCounts,
+    UsageByModel, build_disk_usage_response, build_prune_plan, counts_toward_scheduler_capacity,
+    delete_run_internal, diagnostics, get, post, resource_sampler, spawn_blocking,
+    system_sandbox_provider, to_i64,
 };
 
 const SERVER_DIAGNOSTICS_TIMEOUT: Duration = Duration::from_secs(25);
@@ -38,7 +39,7 @@ pub(super) fn routes() -> Router<Arc<AppState>> {
         .route("/system/df", get(get_system_df))
         .route("/system/repair/runs", get(get_system_repair_runs))
         .route("/system/prune/runs", post(prune_runs))
-        .route("/billing", get(get_aggregate_billing))
+        .route("/usage", get(get_aggregate_usage))
 }
 
 pub(in crate::server) async fn health() -> Response {
@@ -715,41 +716,26 @@ pub(in crate::server) async fn openapi_spec() -> Response {
     Json(value).into_response()
 }
 
-async fn get_aggregate_billing(
-    _auth: RequiredUser,
-    State(state): State<Arc<AppState>>,
-) -> Response {
+async fn get_aggregate_usage(_auth: RequiredUser, State(state): State<Arc<AppState>>) -> Response {
     let agg = state
-        .aggregate_billing
+        .aggregate_usage
         .lock()
-        .expect("aggregate_billing lock poisoned");
-    let by_model: Vec<BillingByModel> = agg
+        .expect("aggregate_usage lock poisoned");
+    let by_model: Vec<UsageByModel> = agg
         .by_model
         .iter()
-        .map(|(model, totals)| BillingByModel {
-            billing: totals.billing.clone(),
-            model:   model.clone(),
-            stages:  totals.stages,
+        .map(|(model, totals)| UsageByModel {
+            model:  model.clone(),
+            stages: totals.stages,
+            usage:  totals.usage,
         })
         .collect();
-    let total_billing =
-        agg.by_model
-            .values()
-            .fold(BilledTokenCounts::default(), |mut acc, totals| {
-                acc.add_counts(&totals.billing);
-                acc
-            });
-    let response = AggregateBilling {
-        totals: AggregateBillingTotals {
-            cache_read_tokens:  total_billing.cache_read_tokens,
-            cache_write_tokens: total_billing.cache_write_tokens,
-            input_tokens:       total_billing.input_tokens,
-            output_tokens:      total_billing.output_tokens,
-            reasoning_tokens:   total_billing.reasoning_tokens,
-            runs:               agg.total_runs,
-            timing:             agg.total_timing,
-            total_tokens:       total_billing.total_tokens,
-            total_usd_micros:   total_billing.total_usd_micros,
+    let usage = sum_usage(agg.by_model.values().map(|totals| totals.usage));
+    let response = AggregateUsage {
+        totals: AggregateUsageTotals {
+            runs: agg.total_runs,
+            timing: agg.total_timing,
+            usage,
         },
         by_model,
     };

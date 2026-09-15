@@ -461,12 +461,12 @@ mod tests {
     use fabro_workflow::event::{
         Event, RunNoticeLevel, SandboxLifecycle, to_run_event, to_run_event_at,
     };
-    use fabro_workflow::outcome::billed_model_usage_from_llm;
+    use fabro_workflow::outcome::ModelUsage;
     use lithos_llm::catalog::{ModelId, builtin};
-    use lithos_llm::types::TokenCounts;
+    use lithos_llm::types::{Cost, CostSource, TokenCounts, Usage};
     use pebble_coding_agent::events::{
         CodingAgentEvent, CodingEvent, CompactionReason, ErrorData as AgentErrorData,
-        ErrorKind as AgentErrorKind, TokenUsage,
+        ErrorKind as AgentErrorKind,
     };
 
     use super::*;
@@ -618,9 +618,7 @@ mod tests {
         CodingEvent::AssistantMessage {
             text:            text.into(),
             model:           model.into(),
-            usage:           TokenUsage::default(),
-            cost_usd_micros: None,
-            cost_source:     None,
+            usage:           Usage::default(),
             tool_call_count: 0,
             context_window:  None,
             reasoning:       None,
@@ -650,19 +648,23 @@ mod tests {
             status: "succeeded".into(),
             preferred_label: None,
             suggested_next_ids: Vec::new(),
-            billing_by_model: Vec::new(),
-            billing: Some(
-                billed_model_usage_from_llm(
-                    &fabro_llm::test_support::test_catalog(),
-                    &ModelRef::new(builtin::openai(), ModelId::new("gpt-5.4")),
-                    TokenCounts {
+            usage_by_model: Vec::new(),
+            // Priced as lithos-llm prices gpt-5.4: 1200 input at $2.50/M and
+            // 300 output at $15/M.
+            usage: Some(ModelUsage::new(
+                ModelRef::new(builtin::openai(), ModelId::new("gpt-5.4")),
+                Usage {
+                    tokens: TokenCounts {
                         input: 1200,
                         output: 300,
                         ..TokenCounts::default()
                     },
-                )
-                .unwrap(),
-            ),
+                    cost:   Some(Cost {
+                        usd_micros: 7_500,
+                        source:     CostSource::Catalog,
+                    }),
+                },
+            )),
             failure: None,
             notes: None,
             files_touched: Vec::new(),
@@ -781,8 +783,7 @@ mod tests {
                 summary_token_estimate: 500,
                 tracked_file_count:     3,
                 reason:                 CompactionReason::Threshold,
-                usage:                  TokenUsage::default(),
-                cost_usd_micros:        None,
+                usage:                  Usage::default(),
             }),
         );
         assert!(ui.stage.active_stages["s1"].compaction_bar.is_none());

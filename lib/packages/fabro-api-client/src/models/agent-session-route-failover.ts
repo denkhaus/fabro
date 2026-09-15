@@ -21,7 +21,7 @@ import type { AgentErrorData } from './agent-error-data';
 import type { FailoverContinuation } from './failover-continuation';
 // May contain unused imports in some cases
 // @ts-ignore
-import type { TokenUsage } from './token-usage';
+import type { Usage } from './usage';
 
 /**
  * One move the root session made to a fallback route, as the stream reported it from the route it moved to.
@@ -46,8 +46,7 @@ export interface AgentSessionRouteFailover {
     /**
      * What the prompt spent on the failed route. Already in the session\'s and the prompt\'s totals through that route\'s committed answers: a breakdown, not an addition.
      */
-    'usage': TokenUsage;
-    'cost_usd_micros'?: number;
+    'usage': Usage;
     /**
      * Milliseconds the prompt spent waiting on the failed route\'s model.
      */

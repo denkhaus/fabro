@@ -11,9 +11,10 @@ use fabro_types::status::{RunStatus, SuccessReason};
 use fabro_types::{
     AskFabro, AskFabroUnavailableReason, AutomationRef, DiffSummary, PullRequestLink,
     RepositoryProvider, RepositoryRef, ResolvedAutomationGitWorkflowSource, Run, RunApproval,
-    RunApprovalState, RunBillingSummary, RunId, RunLifecycle, RunLinks, RunOrigin,
-    RunRunnableSource, RunSize, RunTimestamps, RunTiming, WorkflowRef, fixtures, test_support,
+    RunApprovalState, RunId, RunLifecycle, RunLinks, RunOrigin, RunRunnableSource, RunSize,
+    RunTimestamps, RunTiming, WorkflowRef, fixtures, test_support,
 };
+use lithos_llm::types::{Cost, CostSource, TokenCounts, Usage};
 use serde_json::json;
 
 #[test]
@@ -120,9 +121,17 @@ fn run_summary_json_matches_openapi_shape() {
             completed_at: None,
         },
         timing:           Some(RunTiming::new(42_000, 12_000, 30_000)),
-        billing:          Some(RunBillingSummary {
-            total_usd_micros: Some(123),
-        }),
+        usage:            Usage {
+            tokens: TokenCounts {
+                input: 10,
+                output: 5,
+                ..TokenCounts::default()
+            },
+            cost:   Some(Cost {
+                usd_micros: 123,
+                source:     CostSource::Catalog,
+            }),
+        },
         size:             RunSize::Xs,
         ask_fabro:        AskFabro {
             available:          false,
@@ -219,8 +228,15 @@ fn run_summary_json_matches_openapi_shape() {
                 "tool_time_ms": 30000,
                 "active_time_ms": 42000
             },
-            "billing": {
-                "total_usd_micros": 123
+            "usage": {
+                "tokens": {
+                    "input": 10,
+                    "output": 5,
+                    "reasoning": 0,
+                    "cache_read": 0,
+                    "cache_write": 0
+                },
+                "cost": { "usd_micros": 123, "source": "catalog" }
             },
             "size": "XS",
             "ask_fabro": {
@@ -318,7 +334,7 @@ fn run_summary_deserializes_when_optional_fields_are_absent() {
     assert_eq!(summary.lifecycle.approval, None);
     assert_eq!(summary.lifecycle.pending_control, None);
     assert_eq!(summary.timing.map(|t| t.wall_time_ms), None);
-    assert_eq!(summary.billing, None);
+    assert_eq!(summary.usage, Usage::default());
     assert_eq!(summary.ask_fabro, AskFabro::default());
     assert_eq!(summary.superseded_by, None);
     assert_eq!(summary.retried_from, None);
