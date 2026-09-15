@@ -45,6 +45,17 @@ decision, not an accident - it needs the user plus an ADR.
   seed fabro-tofu-cd74) - run timelines come from `fabro ps`/events, not
   logs. Every real log finding becomes a seed the same turn; nothing
   stays observation-only.
+- Rootprint correlation per run (user directive 2026-09-15): for every
+  run under evaluation, join the run's rootprint log window
+  (`service_name:fabro`, `severity_number:17`/`:13`, deduped by
+  `body.message` pattern, run-id scoped where possible) with the run's
+  journal painpoints. Engine logs and agent journals are two views of
+  the same run: engine symptoms (hook exit 127, provider structured-
+  output warns, pipeline errors) explain or extend what the agents
+  reported, and agent findings often name the engine defect the logs
+  show. Correlated findings land in ONE seed carrying both halves;
+  never report logs without checking whether a journal already names
+  the cause, or vice versa.
 - Is a workflow cycle in flight? (`fabro ps`, or a `just run`/`just
   cycle` process). Serialization principle (ADR-0015): while the
   develop/revisor workflow works the tracker, this agent session does
@@ -371,7 +382,12 @@ decision, not an accident - it needs the user plus an ADR.
    new reviews/journals (gaps + misconceptions, premise-check
    against the tree), dispatch unassigned seeds per ADR-0018, push
    with run-PR deferral + JSONL dedupe discipline, report compactly
-   in German. RLM heartbeats are SESSION-scoped: if `rlm_heartbeat
+   in German. EVERY evaluated run also gets the Phase 0 rootprint
+   correlation pass: sweep the run's log window and join engine-side
+   patterns with the run's journal painpoints (user directive
+   2026-09-15 - connect engine painpoints with agent painpoints;
+   both halves into one seed). RLM heartbeats are SESSION-scoped: if
+   `rlm_heartbeat
    .list()` shows no active `line-watch` at session start, recreate
    it from this spec before doing anything else.
 
