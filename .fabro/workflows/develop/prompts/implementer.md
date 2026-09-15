@@ -41,6 +41,11 @@ validation + TestCountFlagRejects`. The reviewer judges from context
 first — this report is what lets it approve without hunting. A FAIL you
 cannot resolve is a deviation: say so explicitly instead of hiding it.
 
+Routing-consistency self-check: before finishing, re-read every routing
+instruction you wrote — each branch must yield exactly ONE route. Two
+routing sentences in one branch (e.g. both a route label and a fallback
+route) is a FAIL: fix it before reporting.
+
 ## Scope: your per-node capability envelope — use the journal
 
 Your writable scope is defined mechanically by THIS node's fs/tool envelope
