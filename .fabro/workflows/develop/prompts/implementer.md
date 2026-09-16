@@ -25,7 +25,7 @@ Hard rules (both from run 01M0WWKAQCWZC0Q0JK019H0ZC7, whose implementer pass bur
 (a) ANY shell call that compiles or tests MUST pass `timeout_ms` of at least 60000 — a chained append+gofmt+vet+test call died at the 10s default with zero output (seq 163-164), forcing a blind re-run. This is the general compile/test rule; the cost-tiered cold-build bullet below keeps its own 600000 guidance.
 (b) NEVER append placeholder code to fix later — a placeholder heredoc plus a later line-cut left a dangling comment and cost ~48s and ~6 wasted calls.
 
-1. Re-read the seed requirements from `sd show <current_seed_id>`. The seed description is the specification; follow it literally.
+1. Work from the seed brief in the context (`current_seed_brief`) — it is the specification; follow it literally. Only when the brief is thin or ambiguous, re-read the full seed requirements via `sd show <current_seed_id>`.
    BEFORE any edit, run the DETERMINISTIC duplicate-run preflight: `nu .fabro/scripts/dup-run-check.nu <current_seed_id>` — it checks the merge-target branch named by the PROJECT_FACTS 'Merge-target branch' bullet by default and prints one JSON verdict object. Parse it mechanically, no judgment calls: verdict `duplicate` (tracker shows the seed closed, or a landed-PR commit — true merge or squash `(#n)` subject — implements it; a revisor pass that merely FILED the seed never counts) -> route Blocked with failure_reason `duplicate run: <seed> already merged as <the first implementation match's subject>` and make NO changes to the worktree; verdict `clean` or `degraded` -> proceed normally (degraded: journal the failure mode — a fetch or tracker error must never dead-end the implementer). This check is a cheap ~1 s preflight, not a gate substitute — it must NOT weaken the `just verify implementer` rule in step 4. Family note: this is the implementer-side stopgap for the claim-race class (tracker lag after a PR merge can leave the seed looking claimable); it does NOT close the family — the durable engine fixes fabro-6b58 and fabro-9372 remain open.
 2. Implement it in the current worktree: create and edit files, keep the project's conventions (commands run through its `just` recipes).
 3. Write or update tests exactly as the seed demands.
@@ -132,7 +132,7 @@ itself happens).
 
 ## Verification-only briefs
 
-If the brief is marked verification-only: check each acceptance criterion against the worktree, run a quick smoke check where cheap, and make NO code changes if everything holds. Answer with the verification result per criterion. If a criterion is NOT satisfied, implement only what is missing and say so.
+If the brief is marked verification-only: check each acceptance criterion against the worktree, run a smoke check only within the step-4 cost-tiered whitelist (parse-level verification for config-only seeds; never a cold `cargo run`; never the quality gate), and make NO code changes if everything holds. Answer with the verification result per criterion. If a criterion is NOT satisfied, implement only what is missing and say so.
 
 ## Artifact hygiene — hard rules
 
