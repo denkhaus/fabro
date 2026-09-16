@@ -1,0 +1,73 @@
+_version = 1
+
+[workflow]
+graph = "workflow.fabro"
+
+# Architect pass (fabro-562a): a REUSABLE architecture-pass workflow,
+# self-gated on the deterministic friction score. Same seam shape as the
+# revisor, with ONE deliberate difference: NO run-wide
+# [run.agent] fabro_tools — the only engine-mediated tool this flow
+# needs is `fabro_ask`, granted node-level on the analyze stage (it
+# requires the graph's `inspects` attribute, declared in workflow.fabro).
+# Survey and file are shell-only bookkeeping stages.
+
+# Stage journal (same contract as develop/revisor, seed fabro-176b): one
+# durable JSON line per stage execution, engine provenance, checkpointed
+# with the run. Non-blocking; failures must never affect the run.
+[[run.hooks]]
+name = "stage-journal"
+event = "stage_complete"
+script = "nu .fabro/scripts/stage-journal.nu"
+blocking = false
+timeout = "10s"
+sandbox = true
+
+# ── Reusability inputs (fabro-562a design point 5) ────────────────────
+# Scope hint: what the analyze question frames as in-scope. Override per
+# invocation with -I scope_hint="..." without touching this file.
+# Threshold: friction-score verdict cutoff (0.0-1.0); the survey prelude
+# passes it to .fabro/scripts/friction-score.nu verbatim.
+[run.inputs]
+scope_hint = "the whole repository and its development loop"
+threshold = 0.6
+
+# Default model (same as develop/revisor).
+[run.model]
+provider = "zai"
+name = "glm-5.3"
+
+# NO prepare steps: the toolchain environment bakes everything
+# (.fabro/Dockerfile.toolchain). Runs start instantly.
+
+# Dev-cycle: push checkpoint/metadata branches to the fork so the PR
+# cycle can engage.
+[run.run_branch]
+push = true
+
+[run.meta_branch]
+push = true
+
+# Autonomous merge-back (run -> PR -> base branch): every successful run
+# with a non-empty diff opens a PR against the base branch; auto-merge
+# lands it once required checks pass. The daily automation stays dumb —
+# the workflow's own survey gates on score + cooldown.
+[run.pull_request]
+enabled = true
+draft = false
+auto_merge = true
+merge_strategy = "squash"
+# glm-4.7: non-reasoning — cheap, clean JSON for PR titling.
+model = "zai:glm-4.7"
+
+# NO [run.integrations.github.permissions] (ADR-0019): the ENGINE performs
+# all forge operations with its own credentials; agent shells get no
+# GITHUB_TOKEN.
+
+# Terminal-failure visibility (same posture as revisor).
+[run.notifications.terminal]
+enabled = true
+provider = "slack"
+events = ["run.completed", "run.failed"]
+
+[run.notifications.terminal.slack]
+channel = "#dev-fabro"
