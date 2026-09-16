@@ -119,6 +119,22 @@ def check-loop-assets [] {
         print ($res.stderr | str trim -r -c "\n")
         return false
     }
+    # Fixture-battery tier (fabro-ac84): EXECUTE every checked-in
+    # `*-fixtures.nu` battery under .fabro/scripts/, mirroring the
+    # evidence-smoke pattern above. Adding a new battery is a one-line
+    # drop: name it `<anything>-fixtures.nu` in .fabro/scripts/ and this
+    # glob picks it up — nothing here is battery-specific.
+    let batteries = (ls .fabro/scripts/*-fixtures.nu | get name)
+    for battery in $batteries {
+        let res = (do { ^nu $battery } | complete)
+        if $res.exit_code != 0 {
+            print $"fixture battery FAILED: ($battery)"
+            print ($res.stdout | str trim -r -c "\n" | lines | last 20)
+            print ($res.stderr | str trim -r -c "\n")
+            return false
+        }
+        print $"fixture battery green: ($battery)"
+    }
     print "loop-asset scripts green"
     true
 }
