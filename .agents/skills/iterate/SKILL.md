@@ -280,7 +280,11 @@ decision, not an accident - it needs the user plus an ADR.
   interactive improve-codebase-architecture skill's HTML report
   (user directive 2026-09-16). The HTML report + localhost server is
   exclusively the interactive skill's user-facing artifact; skip it in
-  any headless/agent context.
+  any headless/agent context. The architect workflow LOADS the
+  improve-codebase-architecture skill itself (vendored under
+  .fabro/skills/, user decision 2026-09-16 - it achieves the best
+  results); iterate is a purely LOCAL instrument and anchors nothing
+  inside workflows (fabro-ac78).
 - Verify a reviewer's FACTUAL premise in code before fixing (e804
   lesson, 2026-09-02): the spec axis claimed raw blob:// refs reach the
   tool; the dispatch path had already resolved them to file:// pointers.
