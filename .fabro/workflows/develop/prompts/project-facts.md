@@ -21,6 +21,11 @@ in the journal, never silently work around it.
 - Repo wiring — visible, but never modify without the seed saying so
   explicitly: `AGENTS.md`, `CLAUDE.md`, `docs/`, `Cargo.toml`, and the
   workspace manifests.
+- Merge-target branch — the branch this seed loop's run PRs integrate
+  into: `origin/denkhaus`. `origin/main` is only the upstream fabro-sh
+  mirror and never carries the loop's seed merges; branch-sensitive
+  checks (e.g. the implementer's duplicate-run preflight) must fetch and
+  grep the merge-target branch named here, never the mirror.
 - Issue tracker: the `sd` CLI (Seeds, git-native in `.seeds/`). The develop
   line works EXCLUSIVELY on seeds assigned to assignee `fabro` — the
   assignee is the ownership switch (see `docs/agents/issue-tracker.md`).
