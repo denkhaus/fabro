@@ -468,7 +468,8 @@ fn build_summary_preamble(
             let completed_count = completed_nodes
                 .iter()
                 .filter(|id| !is_meta_handler(graph, id))
-                .count();
+                .collect::<HashSet<_>>()
+                .len();
             parts.push(format!(
                 "Pipeline progress: {completed_count} of {total_nodes} stages completed"
             ));
@@ -1816,6 +1817,36 @@ mod tests {
         assert!(
             preamble.contains("2 of 4 stages completed"),
             "should show pipeline progress with total node count, got:\n{preamble}"
+        );
+    }
+
+    #[test]
+    fn summary_high_pipeline_progress_counts_unique_nodes() {
+        let mut graph = Graph::new("test");
+        // Create 4 nodes total (including start/exit)
+        for id in ["start", "work", "test", "exit"] {
+            graph.nodes.insert(id.to_string(), Node::new(id));
+        }
+
+        let context = Context::new();
+        // "work" appears twice in completed_nodes (a re-visited node, e.g. a
+        // planner run twice) and must count once.
+        let completed_nodes = vec!["start".to_string(), "work".to_string(), "work".to_string()];
+        let mut node_outcomes: HashMap<String, Outcome> = HashMap::new();
+        node_outcomes.insert("start".to_string(), Outcome::success());
+        node_outcomes.insert("work".to_string(), Outcome::success());
+
+        let preamble = build_preamble(
+            keys::Fidelity::SummaryHigh,
+            &context,
+            &graph,
+            &completed_nodes,
+            &node_outcomes,
+        );
+
+        assert!(
+            preamble.contains("2 of 4 stages completed"),
+            "duplicated node ids must not inflate the progress numerator, got:\n{preamble}"
         );
     }
 
