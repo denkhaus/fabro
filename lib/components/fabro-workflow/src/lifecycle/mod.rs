@@ -399,6 +399,15 @@ impl RunLifecycle<WorkflowGraph> for WorkflowLifecycle {
             &result.outcome,
             retry_count,
         );
+        // Declared key consumption (fabro-699f): `state.record` just
+        // applied this stage's updates; now remove the keys the node
+        // declares consumed so later cycles' preambles stop re-rendering
+        // stale values. Keys the stage itself re-emitted are spared.
+        context::consume_declared_keys(
+            &state.context,
+            node.inner(),
+            &result.outcome.context_updates,
+        );
         // Deterministic seed-cycle counter (fabro-45d0): when the graph
         // declares `cycle_counter_reset_key`, maintain `seed_cycles`
         // ({node -> completed visits since the reset key's value last

@@ -499,6 +499,36 @@ impl Node {
             .unwrap_or_default()
     }
 
+    /// Node-level `preamble_stages_latest_only`: render only the LATEST
+    /// visit of each stage's history section in this node's prompt
+    /// preamble (fabro-699f). Cyclic graphs revisit stages (gate-bounce
+    /// loops re-run tester/evidence); without this flag every past visit
+    /// renders as its own duplicate section and preambles grow linearly
+    /// with cycles. Render-only like `preamble_stages_ignore`: the
+    /// completed-node history, the context store, and routing stay
+    /// untouched — repeated ids collapse to their last occurrence before
+    /// the preamble builder sees the list.
+    #[must_use]
+    pub fn preamble_stages_latest_only(&self) -> bool {
+        self.bool_attr("preamble_stages_latest_only")
+            .unwrap_or(false)
+    }
+
+    /// Node-level `context_consume_keys`: context keys the engine removes
+    /// from the durable store once THIS stage has recorded (fabro-699f).
+    /// The consuming stage declares its inputs consumed so later cycles'
+    /// preambles no longer re-render stale values (e.g. a review verdict
+    /// the planner already folded into the seed brief). Keys the
+    /// recording stage itself re-emits are spared — fresh outputs are not
+    /// stale inputs. Removal runs after `state.record` applied the
+    /// stage's updates and before edge selection.
+    #[must_use]
+    pub fn context_consume_keys(&self) -> Vec<&str> {
+        self.str_attr("context_consume_keys")
+            .map(split_key_list)
+            .unwrap_or_default()
+    }
+
     /// Node-level `preamble_inline_max_kb`: raises this node's per-value
     /// inline ceiling above the graph default
     /// ([`Graph::preamble_inline_max_kb`]). A prompt node without tools
@@ -634,8 +664,8 @@ pub const ATTR_LIST_WILDCARD: &str = "*";
 /// Split a comma-separated node-attribute list into trimmed, non-empty
 /// entries. Shared by the stage-envelope key attributes
 /// (`preamble_stages_ignore`, `context_allow_keys`, `context_append_keys`,
-/// `preamble_allow_keys`) so all four parse identically: trimmed entries,
-/// empty entries dropped.
+/// `preamble_allow_keys`, `context_consume_keys`) so all of them parse
+/// identically: trimmed entries, empty entries dropped.
 fn split_key_list(list: &str) -> Vec<&str> {
     list.split(',')
         .map(str::trim)
@@ -1094,6 +1124,29 @@ mod tests {
             AttrValue::String(String::new()),
         );
         assert_eq!(node.context_allow_keys(), Some(Vec::new()));
+    }
+
+    #[test]
+    fn fabro_699f_attributes_parse() {
+        // preamble_stages_latest_only: bool, default off.
+        // context_consume_keys: comma list, same trimming rules.
+        let mut node = Node::new("reviewer");
+        assert!(!node.preamble_stages_latest_only());
+        assert!(node.context_consume_keys().is_empty());
+
+        node.attrs.insert(
+            "preamble_stages_latest_only".to_string(),
+            AttrValue::Boolean(true),
+        );
+        node.attrs.insert(
+            "context_consume_keys".to_string(),
+            AttrValue::String(" review_verdict ,,implementation_summary,".to_string()),
+        );
+        assert!(node.preamble_stages_latest_only());
+        assert_eq!(node.context_consume_keys(), vec![
+            "review_verdict",
+            "implementation_summary"
+        ]);
     }
 
     #[test]

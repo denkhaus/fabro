@@ -160,6 +160,28 @@ pub(crate) fn enforce_stage_envelope(
     dropped
 }
 
+/// Apply the node's `context_consume_keys` declaration (fabro-699f):
+/// remove the listed keys from the durable context after the consuming
+/// stage recorded, so later cycles' preambles no longer re-render stale
+/// values (e.g. a review verdict the planner already folded into the
+/// seed brief).
+///
+/// Keys the recording stage just re-emitted are spared — a fresh output
+/// is not a stale input. Called from `after_record`, after `state.record`
+/// applied the stage's updates and before edge selection. Returns the
+/// keys actually removed.
+pub(crate) fn consume_declared_keys(
+    context: &Context,
+    node: &Node,
+    recorded_updates: &HashMap<String, serde_json::Value>,
+) -> Vec<String> {
+    node.context_consume_keys()
+        .into_iter()
+        .filter(|key| !recorded_updates.contains_key(*key))
+        .filter_map(|key| context.remove(key).map(|_| key.to_string()))
+        .collect()
+}
+
 /// Completion visibility lint (fabro-8bf4, ADR-0009 envelope family):
 /// the declared `context_allow_keys` a completing stage emitted none of.
 ///
@@ -497,6 +519,72 @@ mod tests {
 
         assert_eq!(ctx.get("existing"), Some(serde_json::json!("new")));
         assert_eq!(ctx.get("added"), Some(serde_json::json!(true)));
+    }
+
+    #[test]
+    fn consume_declared_keys_removes_stale_inputs() {
+        // fabro-699f: after the planner records, the review keys it
+        // consumed disappear from the durable store; undeclared keys and
+        // keys absent from the declaration stay.
+        let ctx = Context::new();
+        ctx.set("review_verdict", serde_json::json!("approved"));
+        ctx.set("review_feedback", serde_json::json!("tighten preambles"));
+        ctx.set("implementation_summary", serde_json::json!("stale pass"));
+        ctx.set("current_seed_id", serde_json::json!("fabro-699f"));
+
+        let node = envelope_node(&[(
+            "context_consume_keys",
+            "review_verdict, review_feedback , implementation_summary",
+        )]);
+        let removed = consume_declared_keys(&ctx, &node, &HashMap::new());
+
+        assert_eq!(removed, vec![
+            "review_verdict".to_string(),
+            "review_feedback".to_string(),
+            "implementation_summary".to_string()
+        ]);
+        assert_eq!(ctx.get("review_verdict"), None);
+        assert_eq!(ctx.get("review_feedback"), None);
+        assert_eq!(ctx.get("implementation_summary"), None);
+        assert_eq!(
+            ctx.get("current_seed_id"),
+            Some(serde_json::json!("fabro-699f"))
+        );
+    }
+
+    #[test]
+    fn consume_declared_keys_spares_reemitted_keys() {
+        // A key the recording stage just re-emitted is a fresh output, not
+        // a stale input: consumption must not remove it.
+        let ctx = Context::new();
+        ctx.set("review_verdict", serde_json::json!("changes_requested"));
+
+        let node = envelope_node(&[("context_consume_keys", "review_verdict")]);
+        let recorded = HashMap::from([(
+            "review_verdict".to_string(),
+            serde_json::json!("changes_requested"),
+        )]);
+        let removed = consume_declared_keys(&ctx, &node, &recorded);
+
+        assert!(removed.is_empty());
+        assert_eq!(
+            ctx.get("review_verdict"),
+            Some(serde_json::json!("changes_requested"))
+        );
+    }
+
+    #[test]
+    fn consume_declared_keys_unset_removes_nothing() {
+        let ctx = Context::new();
+        ctx.set("review_verdict", serde_json::json!("approved"));
+
+        let removed = consume_declared_keys(&ctx, &envelope_node(&[]), &HashMap::new());
+
+        assert!(removed.is_empty());
+        assert_eq!(
+            ctx.get("review_verdict"),
+            Some(serde_json::json!("approved"))
+        );
     }
 
     fn envelope_node(attrs: &[(&str, &str)]) -> Node {

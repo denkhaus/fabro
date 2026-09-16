@@ -71,6 +71,12 @@ digraph Develop {
         // current_seed_brief (brief-folding, not ambiguity resolution).
         reasoning_effort="low",
         preamble_stages_ignore="planner,implementer,evidence",
+        // fabro-699f (consumed inputs): the planner is the consumer of
+        // review_verdict/review_feedback (folded into the brief) and of a
+        // stale implementation_summary — the engine removes them from the
+        // durable context after the planner records, so later cycles'
+        // preambles never re-render stale values.
+        context_consume_keys="review_verdict,review_feedback,implementation_summary",
         // fabro-1dae (stage envelope fs scope): planning never touches
         // loop assets — the tracker is reached via the sd CLI (shell
         // is the documented escape hatch), never by file tools, and the
@@ -109,6 +115,10 @@ digraph Develop {
         reasoning_effort="low",
         retry_policy="standard",
         preamble_stages_ignore="planner,reviewer,implementer",
+        // fabro-699f: repeated tester/evidence visits across gate-bounce
+        // cycles collapse to their LATEST visit — one section per stage
+        // instead of one per cycle (render-only; history stays intact).
+        preamble_stages_latest_only=true,
         // fabro-e47c pattern, closed on the implementer 2026-09-03: the ##
         // Context section is a strict input contract — the seed trio the
         // prompt names (review feedback rides INSIDE the brief the planner
@@ -245,6 +255,10 @@ digraph Develop {
         fidelity="summary:high",
         reasoning_effort="low",
         preamble_stages_ignore="planner,implementer,reviewer",
+        // fabro-699f: repeated tester/evidence visits across review
+        // cycles collapse to their LATEST visit — one section per stage
+        // instead of one per cycle (render-only; history stays intact).
+        preamble_stages_latest_only=true,
         // fabro-e47c (read side): the ## Context section is a strict input
         // contract — exactly the keys the prompt names as inputs. Seed trio
         // + implementation_summary + the evidence capture (command.output;
