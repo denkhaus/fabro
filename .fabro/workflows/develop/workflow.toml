@@ -9,7 +9,7 @@ graph = "workflow.fabro"
 [[run.hooks]]
 name = "stage-journal"
 event = "stage_complete"
-script = "nu .fabro/workflows/develop/scripts/stage-journal.nu"
+script = "nu .fabro/scripts/stage-journal.nu"
 blocking = false
 timeout = "10s"
 sandbox = true
@@ -79,7 +79,7 @@ model = "zai:glm-4.7"
 
 # Terminal-failure visibility (run 01M0T9B7T review, rec 5): one Slack
 # route for terminal lifecycle events is enough to notice credential rot.
-# Channel: #dev-fabro exists (fabro-1ddb phase 1, 2026-08-27).
+# Channel: #dev-fabro exists (provisioned 2026-08-27, phase 1).
 [run.notifications.terminal]
 enabled = true
 provider = "slack"

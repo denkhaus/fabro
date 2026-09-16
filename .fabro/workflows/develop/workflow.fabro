@@ -130,7 +130,7 @@ digraph Develop {
         // re-runs keep working through the shell escape hatch.
         fs_hide=".fabro/**,.seeds/**,.mulch/**,.agents/**,scripts/**,justfile",
         // fabro-900e: stable context_updates contract (see planner).
-        // lesson_capture added by seed fabro-f831 (run 01M1EGK6J8): the
+        // lesson_capture (run 01M1EGK6J8): the
         // implementer prompt REQUIRES the mx-id-or-skip answer as data —
         // the envelope dropped it once (visible notice) until declared here.
         context_allow_keys="implementation_summary,lesson_capture,journal"

@@ -20,6 +20,7 @@ def script-paths [] {
     (glob scripts/*.nu)
     | append (glob .fabro/workflows/*/scripts/*.nu)
     | append (glob scripts/**/*.nu)
+    | append (glob .fabro/scripts/*.nu)
     | uniq
     | sort
 }

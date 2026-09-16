@@ -53,6 +53,15 @@ def main [target: string = ""] {
         print -e $lint.stderr
         exit $lint.exit_code
     }
+    # Loop-asset literals rot silently (unresolvable seed ids, drifted
+    # justfile anchors): the prompt tier lints them with the same rule
+    # (run 2026-09-16 architecture pass; fabro-41de generalized).
+    let plint = (do { ^nu .fabro/scripts/prompt-lint.nu } | complete)
+    print $plint.stdout
+    if ($plint.exit_code != 0) {
+        print -e $plint.stderr
+        exit $plint.exit_code
+    }
 }
 
 # Resolve the target (or all workflows) to a list of graph file paths.
