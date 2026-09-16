@@ -323,6 +323,19 @@ digraph Develop {
     // the label contract requires an exact match (GRAPH-03).
     planner -> exit [kind="deadlock", label="Blocked", condition="preferred_label=\"Blocked\""]
     planner -> exit        [label="Planner failed", condition="outcome=failed"]
+    // Verification-only fast path (fabro-9d26; basis run
+    // 01M2N1G834RTCSZNX7EK40G3SE re-verified already-satisfied criteria
+    // through implementer + tester three times, ~60s / ~30% per run): a
+    // verification-only claim (two-branch-rule branch (b) — criteria
+    // satisfied, no referencing commit) skips the implementer and tester
+    // entirely and goes straight to evidence -> reviewer. The conditional
+    // edge outranks the unconditional "Seed claimed" edge below
+    // (conditions beat unconditional edges in this engine). Reviewer
+    // tolerance: on this route the implementer never runs, so
+    // implementation_summary is legitimately absent (allow-keys is a
+    // whitelist, not a presence requirement) and the planner brief in the
+    // evidence capture is the criteria source.
+    planner -> evidence [label="Verification-only", condition="preferred_label=\"Verification-only\""]
     planner -> implementer [label="Seed claimed"]
 
     implementer -> planner  [label="Blocked", condition="outcome=failed"]

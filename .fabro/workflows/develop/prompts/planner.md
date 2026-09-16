@@ -44,7 +44,7 @@ The full command table lives in PROJECT_FACTS (tracker) — rendered above by th
 
 If the top candidate looks already implemented (its acceptance criteria appear satisfied in the worktree — often a stale tracker from an earlier run), apply the two-branch rule (fabro-d183):
 (a) ALREADY LANDED — `git log --grep <seed-id>` shows a fix commit referencing the seed already in base history AND the seed's acceptance criteria hold in the worktree → close it yourself with `sd close <id> --reason "superseded: fix landed in <sha>"` (the one superseded-close exception, sd command table; reason string mandatory) and route the exit label "Already landed". No cycle runs: the fix is proven landed, a verification lap re-proves nothing (run 01M256QJB48JK8BXJE1TVM2HYS burned a whole cycle — journal-and-tracker-only diff, PR #115 — for fix commit 7ae575c already in base). This close carries no implementing diff of its own (the fix predates the run), so the closure must be self-explaining in the tracker: BEFORE `sd close`, append the reason + evidence (fix sha, run id) to the seed description via `sd update <id> --description "<full existing body> + closure note: superseded: fix landed in <sha> (run <run-id>)"` — `--description` replaces the body wholesale, so re-emit the FULL existing body with the closure note appended — THEN close. A closed seed whose reason lives only in a run journal or commit message reads as lost work until someone greps journals (motivation: fabro-a0e3 absorption opacity, run 01M2368YQ; fabro-02c4).
-(b) Criteria satisfied but NO referencing commit → do NOT close it yourself and do NOT skip it. Claim it normally and mark the brief as verification-only (see below). The normal cycle then proves it: implementer verifies, gate runs, reviewer approves. Only an approved review closes a seed.
+(b) Criteria satisfied but NO referencing commit → do NOT close it yourself and do NOT skip it. Claim it normally, mark the brief as verification-only, and route the label "Verification-only" (fabro-9d26): the graph skips the implementer and tester and goes straight to evidence -> reviewer, where an approving review closes it. The verification-only brief must still derive per-criterion checks (fabro-b8ed): enumerate each acceptance criterion as a checkable bullet with its cheapest-first verification, never a flat "criteria satisfied" assertion — the reviewer judges against those bullets, and a flat assertion gives it nothing to check.
 
 If `sd ready --assignee fabro --limit 200` returns nothing and no fabro-assigned seed is in progress for this effort, the FILTERED view is empty — that is a legitimate park, not a broken tracker. Route Tracker empty. NEVER fall back to unassigned seeds and never invent work: while the backlog is unassigned the line does nothing rather than something (FAIL-CLOSED). Assigning backlog seeds is the user's decision (see `docs/agents/issue-tracker.md`), never yours.
 
@@ -72,7 +72,8 @@ nobody re-reads your prose, only the JSON survives.
 
 Both routes are successes — planning succeeded either way. The label decides what happens next.
 
-- `succeeded` + "Seed claimed": a seed is claimed (fresh, re-planned, or verification-only) and its brief is in the context. A verification-only brief says: "The acceptance criteria appear already satisfied. Verify each one against the worktree; make NO changes if all hold." 
+- `succeeded` + "Seed claimed": a seed is claimed (fresh or re-planned) and its brief is in the context.
+- `succeeded` + "Verification-only": a verification-only claim (two-branch-rule branch (b)) — the brief says the acceptance criteria appear already satisfied and lists the per-criterion checks (fabro-b8ed: never a flat "criteria satisfied" assertion); the graph routes straight to evidence -> reviewer, skipping the implementer and tester.
 - `succeeded` + "Tracker empty": the effort is complete — every seed is closed and the goal holds.
 - `succeeded` + "Already landed": the top candidate's fix commit is already in base history and its acceptance criteria hold — the seed was closed via the superseded-close and the run exits without a cycle.
 
@@ -88,6 +89,18 @@ Claimed a seed:
     "current_seed_id": "<the seed id, e.g. proj-a1b2>",
     "current_seed_title": "<its title>",
     "current_seed_brief": "<one short paragraph: what must be built, acceptance criteria, review feedback if re-plan>",
+    "journal": {"painpoints": [], "observations": ["none"]}
+  }
+}
+
+Verification-only (criteria satisfied, no referencing commit; skips implementer/tester — fabro-9d26):
+{
+  "outcome": "succeeded",
+  "preferred_next_label": "Verification-only",
+  "context_updates": {
+    "current_seed_id": "<the seed id, e.g. proj-a1b2>",
+    "current_seed_title": "<its title>",
+    "current_seed_brief": "The acceptance criteria appear already satisfied. Verify each one against the worktree; make NO changes if all hold. Per-criterion checks: <one checkable bullet per acceptance criterion, cheapest-first verification>",
     "journal": {"painpoints": [], "observations": ["none"]}
   }
 }
