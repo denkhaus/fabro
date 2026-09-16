@@ -64,6 +64,31 @@ impl AutomationSchedulePlanner {
                     reconciled.insert(key, cursor.clone());
                     continue;
                 }
+                // fabro-b959: a revision-only change (environment flip, name,
+                // overlap policy, ... — expression untouched) must not
+                // disturb the cursor's timing. Recomputing from `now` here
+                // dropped a pending due boundary whenever the update landed
+                // between the last tick and that boundary, silently stopping
+                // schedule evaluation until the following occurrence. The
+                // stored `next_due_at` is never stale by more than one loop
+                // sleep (<= 30s) while the trigger stays enabled, because a
+                // disabled trigger's cursor is dropped by this same pass —
+                // so preserving it is safe. A fresh cursor (new key, or an
+                // expression change) still re-arms from `now`; a server
+                // restart starts from an empty planner, which intentionally
+                // re-arms everything the same way (no backfill).
+                if let Some(cursor) = self
+                    .cursors
+                    .get(&key)
+                    .filter(|cursor| cursor.expression == trigger.expression)
+                {
+                    reconciled.insert(key, ScheduleCursor {
+                        automation_revision: automation.revision.clone(),
+                        expression:          cursor.expression.clone(),
+                        next_due_at:         cursor.next_due_at,
+                    });
+                    continue;
+                }
 
                 let next_due_at = match next_occurrence(&trigger.expression, now) {
                     Ok(next_due_at) => next_due_at,
@@ -514,7 +539,8 @@ fn run_due_schedules_once<'a>(
 #[cfg(test)]
 mod tests {
     use fabro_automation::{
-        AutomationDraft, AutomationGitWorkflowSource, AutomationTrigger, ScheduleTrigger,
+        AutomationDraft, AutomationGitWorkflowSource, AutomationReplace, AutomationTrigger,
+        ScheduleTrigger,
     };
     use fabro_static::EnvVars;
     use fabro_types::{GitRunTarget, ResolvedAutomationGitWorkflowSource, RunStatus, RunTarget};
@@ -710,7 +736,7 @@ mod tests {
     }
 
     #[test]
-    fn replacing_automation_revision_or_expression_resets_cursor() {
+    fn expression_change_resets_cursor_revision_only_change_preserves_timing() {
         let mut automation = automation("nightly", "Nightly", vec![schedule_trigger(
             "schedule",
             "* * * * *",
@@ -722,10 +748,14 @@ mod tests {
         let original_due = planner.cursors.values().next().unwrap().next_due_at;
         automation.revision = AutomationRevision::from_bytes(b"new revision");
         planner.reconcile(std::slice::from_ref(&automation), first_due_time());
-        let reset_due = planner.cursors.values().next().unwrap().next_due_at;
+        let preserved_due = planner.cursors.values().next().unwrap().next_due_at;
 
+        // fabro-b959: a revision-only change (e.g. an environment flip)
+        // preserves the cursor's timing — including a boundary that is
+        // already due — instead of re-arming from `now`, so metadata
+        // updates never delay or drop the next scheduled fire.
         assert_eq!(original_due, first_due_time());
-        assert_eq!(reset_due, second_due_time());
+        assert_eq!(preserved_due, first_due_time());
 
         automation.triggers = vec![schedule_trigger("schedule", "*/5 * * * *", true)];
         planner.reconcile(std::slice::from_ref(&automation), second_due_time());
@@ -842,6 +872,72 @@ mod tests {
                 .map(|run| run.status),
             Some(RunStatus::Runnable)
         ));
+    }
+
+    #[tokio::test]
+    async fn environment_only_update_preserves_schedule_evaluation() {
+        let materializer = succeeding_materializer();
+        let state = test_state_with_materializer(materializer.clone());
+        let automation = create_automation_full(
+            state.as_ref(),
+            "env-flip",
+            "Env flip",
+            None,
+            Some(fabro_automation::AutomationOverlapPolicy::Fire),
+            vec![schedule_trigger("schedule", "* * * * *", true)],
+        )
+        .await;
+        let mut planner = AutomationSchedulePlanner::default();
+
+        run_due_schedules_once(Arc::clone(&state), &mut planner, prime_time()).await;
+        run_due_schedules_once(Arc::clone(&state), &mut planner, first_due_time()).await;
+        assert_eq!(stored_runs(state.as_ref()).await.len(), 1);
+
+        // Seed the incident's target environment so the FK on
+        // `automations.environment_id` is satisfiable (the production replace
+        // path validates the environment exists before writing).
+        state
+            .environment_store()
+            .create(fabro_environment::EnvironmentDraft {
+                id:       fabro_environment::EnvironmentId::new("toolchain")
+                    .expect("valid environment id"),
+                settings: fabro_types::settings::run::EnvironmentSettings {
+                    provider: fabro_types::SandboxProviderKind::DOCKER,
+                    ..fabro_types::settings::run::EnvironmentSettings::default()
+                },
+            })
+            .await
+            .expect("toolchain environment should persist");
+
+        // Environment-only update through the store's replace path — exactly
+        // the incident shape (environment_id flip, trigger untouched, still
+        // enabled; revision bumps because the environment is part of the
+        // canonical bytes).
+        let replaced = state
+            .automation_store()
+            .replace(&automation.id, &automation.revision, AutomationReplace {
+                name:            automation.name.clone(),
+                description:     automation.description.clone(),
+                environment_id:  Some("toolchain".to_string()),
+                target:          automation.target.clone(),
+                workflow:        automation.workflow.clone(),
+                workflow_source: automation.workflow_source.clone(),
+                on_overlap:      automation.on_overlap,
+                triggers:        automation.triggers.clone(),
+            })
+            .await
+            .expect("environment-only replace should succeed");
+        assert_eq!(replaced.environment_id.as_deref(), Some("toolchain"));
+        assert_ne!(replaced.revision, automation.revision);
+
+        // After the update, the next cron boundary must still fire.
+        run_due_schedules_once(Arc::clone(&state), &mut planner, second_due_time()).await;
+        assert_eq!(
+            stored_runs(state.as_ref()).await.len(),
+            2,
+            "schedule evaluation must survive an environment-only update"
+        );
+        assert_eq!(materializer.captured_inputs().len(), 2);
     }
 
     #[tokio::test]
