@@ -43,7 +43,36 @@ if ($clean | is-not-empty) {
 # Empty input degrades to empty — no warning, byte-identical close.
 if (dockerfile-hits []) != [] { fail "empty input not empty" }
 
-print "closeout-smoke: ok — dockerfile-hits glob/filter logic verified"
+# --- Closure-discipline pre-close check (fabro-02c4) -----------------
+# Token extraction: distinctive >=4-char tokens survive; function-word
+# stopwords, short tokens, and duplicates drop.
+let toks = (demand-tokens "Closeout closure discipline: sd close only when the seed demand is visible in the run diff, else a documented reason is mandatory")
+for expected in ["closeout" "demand" "visible" "diff"] {
+    if not ($toks | any {|t| $t == $expected }) { fail $"demand-tokens dropped '($expected)'" }
+}
+for banned in [seed when else only this with from] {
+    if ($toks | any {|t| $t == $banned }) { fail $"demand-tokens kept stopword '($banned)'" }
+}
+if ($toks | any {|t| ($t | str length) < 4 }) { fail "demand-tokens kept a <4-char token" }
+
+# Visible demand: matching token in a non-empty patch -> close proceeds.
+if not (demand-visible ["closeout" "retry"] "diff --git a/.fabro/x b/.fabro/x
++closeout gate added") {
+    fail "visible-demand patch was not visible (would park a good close)"
+}
+# Non-visible demand: non-empty patch with NO token overlap -> park.
+if (demand-visible ["retry" "backoff"] "diff --git a/lib/x b/lib/x
++unrelated change") {
+    fail "non-visible-demand patch reported visible (fabro-9967 class)"
+}
+# The fabro-9967 shape itself: empty patch -> always park, with or
+# without tokens.
+if (demand-visible [] "") { fail "empty patch (no tokens) reported visible" }
+if (demand-visible ["closeout"] "") { fail "empty patch (with tokens) reported visible" }
+# Degrade: no distinctive tokens + non-empty patch -> visible.
+if not (demand-visible [] "+some change") { fail "token-less non-empty patch not visible (degrade broken)" }
+
+print "closeout-smoke: ok — dockerfile-hits + closure-discipline logic verified"
 
 # Sourcing closeout.nu imports its `def main`; nu auto-invokes it after
 # the top level runs — exit explicitly so the smoke never reaches it.

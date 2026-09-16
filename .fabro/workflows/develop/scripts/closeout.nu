@@ -114,6 +114,65 @@ def warn-dockerfile-diff [seed_id: string]: nothing -> nothing {
     print $msg
 }
 
+# ---------------------------------------------------------------------------
+# Closure-discipline pre-close check (fabro-02c4)
+#
+# WHY: seed fabro-9967 was closed 2026-09-09 15:42 (in a seeds:sync)
+# although its demand (sd ready cap + created_since in planner.md) was
+# never implemented — NO implementing diff existed — and the revisor
+# caught it only by accident while deduping (run 01M23J61HH8Z,
+# regression finding). Before its `sd close`, this gate verifies the
+# run actually delivered a diff the seed's demand is visible in
+# (claim-base anchored — the same seed-claim-base/run-base helpers the
+# Dockerfile warning uses). If not visible, the run does NOT close: the
+# seed stays OPEN and a PARK note goes to stdout AND stderr (both land
+# in the stage journal / run output) for the next cycle to act on.
+#
+# Tracker/journal bookkeeping (`.seeds`, `.fabro/journal`) is excluded
+# from the patch: those files mechanically echo seed metadata (the
+# claim itself, journal records quoting the brief) and would satisfy
+# the match with zero implementation.
+#
+# Degrade-to-close: any git/sd failure inside the verdict returns
+# visible=true — this gate must never block a legitimate close on
+# tooling error (same philosophy as the Dockerfile warning above). An
+# empty token set (title unparsable) degrades to a non-empty-patch
+# check.
+# ---------------------------------------------------------------------------
+
+# Pure: distinctive demand tokens from a seed title — lowercase
+# alphanumeric runs of length >= 4, minus function-word stopwords.
+def demand-tokens [title: string]: nothing -> list<string> {
+    let stopwords = [seed task fabro with from that this when then they them will must into else only than have been does were what which where while about]
+    $title | str lowercase | split row --regex '[^a-z0-9]+' | where {|t|
+        ($t | str length) >= 4 and not ($t in $stopwords)
+    } | uniq
+}
+
+# Pure: is the seed's demand literally visible in the run patch? Empty
+# patch -> never visible (the fabro-9967 shape: closed with no
+# implementing diff). Empty tokens -> any non-empty patch passes
+# (degrade). Otherwise ANY distinctive title token found in the patch
+# counts: the patch is this run's own claim-anchored work, so a hit
+# means the run touched what the seed names.
+def demand-visible [tokens: list<string>, patch: string]: nothing -> bool {
+    if ($patch | str trim | is-empty) { return false }
+    if ($tokens | is-empty) { return true }
+    $tokens | any {|t| $patch | str contains $t }
+}
+
+# Best-effort visibility verdict for THIS seed against the run diff
+# (claim-base anchored, fallback run base). Never blocks on git/sd
+# failure — degrades to visible.
+def seed-demand-visible [seed_id: string]: nothing -> bool {
+    let base = (seed-claim-base $seed_id (run-base))
+    let diff_res = (do { git diff $base.base -- . ':(exclude).seeds' ':(exclude).fabro/journal' } | complete)
+    if $diff_res.exit_code != 0 { return true }
+    let title = (do -i { sd show $seed_id --format json | from json | get issue.title } | default '')
+    let tokens = (do -i { demand-tokens $title } | default [])
+    demand-visible $tokens $diff_res.stdout
+}
+
 def main []: nothing -> nothing {
     # Non-tty stdin: nu 0.115's `input` only works on a tty and raises an
     # I/O error on pipes (run 01M1PVMS7B6N39MG0041C5F7P6) — the engine pipes
@@ -131,6 +190,17 @@ def main []: nothing -> nothing {
     # reach the close below. No Dockerfile touched: byte-identical close
     # semantics (stdin validation, sd close, exit codes).
     do -i { warn-dockerfile-diff $seed_id } | ignore
+
+    # Closure-discipline gate (fabro-02c4): PARK instead of closing when
+    # the run diff shows no implementing change for the seed's demand.
+    # Seed stays open; exit 0 — a park is a deliberate hold for the next
+    # cycle, not a stage failure.
+    if not (do -i { seed-demand-visible $seed_id } | default true) {
+        let park = $"closeout: PARK — \($seed_id\) NOT closed: the run diff \(claim-base anchored, tracker/journal bookkeeping excluded\) shows no implementing change for the seed's demand. fabro-9967 class: closed 2026-09-09 with no implementing diff, caught in run 01M23J61HH8Z. Seed left OPEN — re-enter the review cycle or route Blocked."
+        print -e $park
+        print $park
+        exit 0
+    }
 
     let res = (do { sd close $seed_id } | complete)
     if $res.exit_code != 0 {
