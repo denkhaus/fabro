@@ -46,6 +46,12 @@ validation + TestCountFlagRejects`. The reviewer judges from context
 first — this report is what lets it approve without hunting. A FAIL you
 cannot resolve is a deviation: say so explicitly instead of hiding it.
 
+This report lives ONLY inside the JSON `implementation_summary` field —
+never duplicate it in the pre-JSON markdown text of your response. The
+pre-JSON response text stays one short paragraph (work summary only, no
+report copy); emitting the report twice (as prose plus verbatim JSON)
+wastes output tokens and inflates downstream preambles.
+
 Material semantic-risk observations (e.g. changed retry semantics,
 contract changes, ordering assumptions) MUST be repeated inside
 `implementation_summary` itself — not left only in journal
