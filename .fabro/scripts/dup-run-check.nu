@@ -109,8 +109,45 @@ def closing-seeds-commit [base, id] {
     null
 }
 
+# Inherit a Fabro-Run trailer for a trailer-less seeds-close commit from the
+# adjacent landed-PR commit: the seeds-close commit's first parent when it
+# carries a trailer, else the nearest preceding landed-PR commit (true merge
+# or squash subject `(#<n>)`) that carries one. sd stamps no trailer on its
+# closing sync commit, but that sync sits directly on the closing run's
+# landed PR (fabro-cf2a). Null when nothing adjacent carries a trailer.
+def inherited-trailer [base, sha] {
+    mut cands = []
+    let fp = (do { ^git rev-parse $"($sha)^" } | complete)
+    if $fp.exit_code == 0 and (not ($fp.stdout | str trim | is-empty)) {
+        $cands = [($fp.stdout | str trim)]
+    }
+    let r = (do { ^git log --format="%H %s" -n 30 $sha } | complete)
+    if $r.exit_code == 0 {
+        let merge_shas = (do {
+            let m = (do { ^git log --merges --format="%H %s" -n 30 $sha } | complete)
+            if $m.exit_code == 0 {
+                parse-log $m.stdout
+            } else {
+                []
+            }
+        })
+        let landed = (parse-log $r.stdout | skip 1 | where {|x|
+            ($x.subject =~ '\(#\d+\)$') or ($merge_shas | any {|mrow| $mrow.sha == $x.sha})})
+        $cands = ($cands | append ($landed | get sha))
+    }
+    for cand in ($cands | uniq) {
+        let t = (trailer-run $cand)
+        if $t != null {
+            return {trailer_run: $t, inherited_from: $cand}
+        }
+    }
+    null
+}
+
 # Tracker-closed arm with empty implementation matches: resolve the closing
 # commit and classify ITS trailer, so the JSON never lacks closure identity.
+# A seeds-close commit without its own trailer inherits from the adjacent
+# landed-PR commit (fabro-cf2a); the body-grep arm never inherits.
 def resolve-closing [base, id, self_id] {
     let seeds_close = (closing-seeds-commit $base $id)
     let c = (if ($seeds_close != null) { $seeds_close } else {
@@ -123,11 +160,19 @@ def resolve-closing [base, id, self_id] {
         return null
     }
     let tr = (trailer-run $c.sha)
+    let inh = (if $tr == null and $seeds_close != null {
+        inherited-trailer $base $c.sha
+    } else {
+        null
+    })
+    let trailer_run = (if $inh != null { $inh.trailer_run } else { $tr })
+    let inherited_from = (if $inh != null { $inh.inherited_from } else { null })
     {source: (if ($seeds_close != null) { "seeds-close" } else { "body-grep" }),
      sha: $c.sha,
      subject: $c.subject,
-     trailer_run: $tr,
-     closure: (classify-closure $tr $self_id)}
+     trailer_run: $trailer_run,
+     trailer_inherited_from: $inherited_from,
+     closure: (classify-closure $trailer_run $self_id)}
 }
 
 def main [...ids: string, --base: string = "origin/denkhaus", --self: string] {
@@ -194,7 +239,14 @@ def main [...ids: string, --base: string = "origin/denkhaus", --self: string] {
         })
 
         let closure_note = (if $verdict == "clean" and $self_id != null and (($impl | length) > 0 or $tracker_status == "closed") {
-            $"self-closure: Fabro-Run trailer names ($self_id)"
+            let inh = (if $closing_evidence == null { null } else {
+                $closing_evidence.trailer_inherited_from? | default null
+            })
+            if $inh != null {
+                $"self-closure: Fabro-Run trailer inherited from ($inh)"
+            } else {
+                $"self-closure: Fabro-Run trailer names ($self_id)"
+            }
         } else {
             null
         })
