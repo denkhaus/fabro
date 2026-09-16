@@ -4,3 +4,4 @@
 {"$schema":"fabro-journal-v1","run_id":"01M2MWB09SZGD68YSBHYJFH4XP","node":"tester","visit":1,"status":"succeeded","ts":"2026-09-16T10:33:20Z","data":{}}
 {"$schema":"fabro-journal-v1","run_id":"01M2MWB09SZGD68YSBHYJFH4XP","node":"evidence","visit":1,"status":"succeeded","ts":"2026-09-16T10:33:23Z","data":{}}
 {"$schema":"fabro-journal-v1","run_id":"01M2MWB09SZGD68YSBHYJFH4XP","node":"reviewer","visit":1,"status":"succeeded","ts":"2026-09-16T10:33:46Z","data":{"painpoints":[],"observations":["Churn-only seed: verified from the loop-work diff alone — clause content, doubt-exception scoping, insertion point, and single-file scope all pinned by the capture; no tool use needed. Note the added clause now governs this very review pass, and the capture-only path it prescribes was sufficient here."]}}
+{"$schema":"fabro-journal-v1","run_id":"01M2MWB09SZGD68YSBHYJFH4XP","node":"closeout","visit":1,"status":"succeeded","ts":"2026-09-16T10:33:48Z","data":{}}
