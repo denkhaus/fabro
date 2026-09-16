@@ -99,6 +99,7 @@ fn help() {
           --environment <ENVIRONMENT>     Named environment for agent tools
           --label <KEY=VALUE>             Attach a label to this run (repeatable, format: KEY=VALUE)
           --parent <RUN>                  Link this run to an existing orchestration parent run
+          --agent-session <SESSION_ID>    Declare that this run is created from an agent session; the server records the run's created_by as kind=agent with this session id (attribution-only marker, no extra privilege)
           --preserve-sandbox              Keep the sandbox alive after the run finishes (for debugging)
       -d, --detach                        Run the workflow in the background and print the run ID
       -h, --help                          Print help
