@@ -78,11 +78,14 @@ decision, not an accident - it needs the user plus an ADR.
   diff is the interrupted operation) + `sd list --status in_progress` tell
   you what was mid-flight; continue that work instead of picking a new seed.
 - `sd ready` and the open-seed list for candidates, ALWAYS with
-  `--limit 200` on any `sd list`: the default caps at 50 and silently
-  truncates (2026-09-15: the line-watch dispatch view itself ran on a
-  capped 50-entry listing while the tracker held 447 seeds; the same cap
-  bit the revisor, fabro-c16d/fabro-5ff7). `ml prime <domain>` only
-  when the cycle touches that domain.
+  `--limit 500` on any `sd list`: the default caps at 50 silently, and
+  200 no longer suffices either (2026-09-16: the open count passed 283
+  and a 200-capped view hid today's fresh revisor seeds from dedup;
+  earlier: capped 50 while the tracker held 447, fabro-c16d/fabro-5ff7).
+  `sd search` is AND-strict over title/description: ONE keyword per
+  query (broaden by dropping words), `sd show <id>` for id lookups -
+  never `sd search <id>` (2026-09-16 revisor sessions). `ml prime
+  <domain>` only when the cycle touches that domain.
 - Seeds are git-native: `git fetch` + `git pull --ff-only` BEFORE reading
   `sd` state when another machine may have run the line - the tracker
   view is branch-local and goes stale (2026-09-08: fabro-16ff read as
@@ -130,6 +133,19 @@ decision, not an accident - it needs the user plus an ADR.
 
 ## Phase 2 - Build
 
+- Deterministic-script-first for loop assets (2026-09-16 lesson set):
+  when a prompt clause requires JUDGMENT over mechanical data (grep
+  history, resolve paths, compute metrics), do not sharpen the prose -
+  replace the clause with a script that prints a JSON verdict
+  (`.fabro/scripts/`: dup-run-check.nu, friction-score.nu, prompt-lint.nu
+  are the proven shape; claim-check.nu is the filed successor). The
+  prompt keeps only the call + verdict routing. Rationale: prompt-side
+  mandates get skipped at reasoning_effort=low (fabro-4c81 evidence);
+  scripts do not. Authoring rules: `nu -c` snippets in prompts must be
+  single-quoted or file-based ($-vars die in double quotes, fabro-2904);
+  never write and execute an edited script in one shell call (write/run
+  race, fabro-dd4e); new shared loop scripts live in `.fabro/scripts/`
+  and must pass `just lint-nu`.
 - Seeds BEFORE implementation (user directive 2026-08-27): file the seed
   or update the existing one with the agreed design BEFORE writing code.
   If implementation goes wrong, the plan must already be durable in the
@@ -298,6 +314,12 @@ decision, not an accident - it needs the user plus an ADR.
 
 ## Phase 4 - Deepen (conditional)
 
+- The autonomous architect workflow (`.fabro/workflows/architect/`,
+  2026-09-16) is the standing path: it self-gates on the friction score
+  (48h cooldown) and files its own seeds. Fire it (or wait for its cron)
+  BEFORE running a manual improve-codebase-architecture pass; the manual
+  skill pass is the fallback when the flow cannot run (server down,
+  workflow broken) or the user wants interactive grilling.
 - Deepen when EITHER holds: (a) review surfaced structural smells or the
   touched area needs design sharpening, OR (b) the Phase 0 friction
   score verdict is `architecture-due` (>=0.60) - systemic grind is the
@@ -314,6 +336,13 @@ decision, not an accident - it needs the user plus an ADR.
 
 ## Phase 5 - Integrate
 
+- Commit code BEFORE `sd sync`: sync sweeps STAGED changes + `.seeds`
+  only - unstaged worktree edits do not ride along, and a staged rename
+  can go out without its matching edits (2026-09-16 incident: hook-path
+  breakage in an intermediate push). Never call `sd sync` inside a
+  workflow stage (it splits revisions into two commits, fabro-9ea5).
+  Line-watch closes through `sd close --reason` with the reason appended
+  to the body first (fabro-02c4).
 - Commit and push. Deploy/smoke where the domain requires it.
 - PRODUCTION DEPLOY (user directive 2026-09-13): after SUBSTANTIAL
   ENGINE CHANGES (the binary-need check below fires: any lib/ path in
@@ -385,7 +414,12 @@ decision, not an accident - it needs the user plus an ADR.
    mode, tool name, script path, error string) before every `sd
    create` - most autonomous-line failures already have a seed
    (rate-limit windows, watchdog, journal hook, mise trust all did).
-   When covered, extend THAT seed with the fresh run evidence
+   When covered, extend THAT seed with the fresh run evidence.
+   Parallel-filing guard (2026-09-16): a RUNNING revisor's tracker
+   snapshot lags the line - before filing a same-theme seed, check
+   whether the active revisor pass covers the same run/theme (it will
+   file its own version); prefer extending an existing seed or waiting
+   one beat, and dedupe after merge by keeping the richer seed
    instead of filing a duplicate. OWNERSHIP ON FILING (ADR-0018):
    seeds land unassigned by default; assign `@fabro` immediately ONLY
    for clearly-line work (it is a proposal, vetoable by reassignment);
