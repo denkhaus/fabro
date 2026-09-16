@@ -56,6 +56,15 @@ decision, not an accident - it needs the user plus an ADR.
   show. Correlated findings land in ONE seed carrying both halves;
   never report logs without checking whether a journal already names
   the cause, or vice versa.
+- Line friction score (deterministic, 2026-09-16): run
+  `nu .fabro/scripts/friction-score.nu` once during orientation. It
+  computes a 0.0-1.0 systemic-friction score from tracker + journal
+  metrics (drain deficit, backlog stagnation, starvation, stuck claims)
+  and a verdict: `normal` (<0.30), `grind` (0.30-0.60),
+  `architecture-due` (>=0.60). The verdict gates Phase 4 deepening and
+  is the trigger condition of the architect workflow (fabro-562a);
+  journal the components when a cycle ends in `grind` or worse so the
+  trend stays visible.
 - Is a workflow cycle in flight? (`fabro ps`, or a `just run`/`just
   cycle` process). Serialization principle (ADR-0015): while the
   develop/revisor workflow works the tracker, this agent session does
@@ -289,9 +298,15 @@ decision, not an accident - it needs the user plus an ADR.
 
 ## Phase 4 - Deepen (conditional)
 
-- When review surfaced structural smells or the touched area needs
-  design sharpening: run improve-codebase-architecture. Skip when the
-  cycle was mechanical - not every cycle needs this.
+- Deepen when EITHER holds: (a) review surfaced structural smells or the
+  touched area needs design sharpening, OR (b) the Phase 0 friction
+  score verdict is `architecture-due` (>=0.60) - systemic grind is the
+  deterministic warrant for an architecture pass even without
+  cycle-local smells (2026-09-16: the manual pass after grind lifted
+  drain/inflow 0.43 -> 0.79 and preceded 4 zero-seed revisor passes).
+  `grind` (0.30-0.60) deepens only when smells exist; `normal` never
+  deepens on score alone. Skip when the cycle was mechanical and the
+  verdict is `normal` - not every cycle needs this.
 - Judge deepening proposals against the guide as well: enums-vs-traits,
   newtype vs primitives, error taxonomy and layer boundaries, public
   API evolution, module visibility. codebase-design supplies the
