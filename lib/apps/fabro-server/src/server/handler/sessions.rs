@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::convert::Infallible;
 use std::fmt::Write as _;
 use std::sync::Arc;
@@ -1154,7 +1154,9 @@ fn build_ask_fabro_run_snapshot(projection: &fabro_types::RunProjection, run_id:
                 .is_none_or(|node| !is_ask_fabro_meta_node(node))
                 && stage.effective_state().is_terminal()
         })
-        .count();
+        .map(|(stage_id, _)| stage_id.node_id())
+        .collect::<HashSet<_>>()
+        .len();
     lines.push(format!(
         "Progress: {completed_non_meta} of {total_non_meta} non-meta stages completed"
     ));
@@ -2091,6 +2093,62 @@ enabled = true
         assert!(snapshot.contains("- test: failed, command, reason: tests failed"));
         assert!(snapshot.contains("- deploy: running, agent"));
         assert!(snapshot.contains("Use this snapshot as orientation only."));
+    }
+
+    #[test]
+    fn ask_fabro_run_snapshot_counts_unique_completed_nodes() {
+        let run_id = RunId::new();
+        let now = Utc::now();
+        let mut graph = fabro_types::Graph::new("test");
+        graph.attrs.insert(
+            "goal".to_string(),
+            fabro_types::AttrValue::String("Ship the feature".to_string()),
+        );
+        for node_id in ["start", "plan", "exit"] {
+            let mut node = fabro_types::Node::new(node_id);
+            let shape = match node_id {
+                "start" => "Mdiamond",
+                "exit" => "Msquare",
+                _ => "box",
+            };
+            node.attrs.insert(
+                "shape".to_string(),
+                fabro_types::AttrValue::String(shape.to_string()),
+            );
+            graph.nodes.insert(node_id.to_string(), node);
+        }
+        let spec = fabro_types::RunSpec {
+            run_id,
+            settings: fabro_types::WorkflowSettings::default(),
+            graph,
+            graph_source: None,
+            workflow_slug: None,
+            workflow_version_id: None,
+            target: None,
+            automation: None,
+            source_directory: None,
+            labels: HashMap::default(),
+            provenance: test_support::test_run_provenance(),
+            definition_blob: None,
+            spec_blob: None,
+            git: None,
+            fork_source_ref: None,
+        };
+        let mut projection = fabro_types::RunProjection::new(String::new(), spec, now);
+        // Two terminal stage entries for the SAME "plan" node id (a re-visited
+        // node, e.g. a planner run twice) must count once.
+        for (visit, seq) in [(1, 1u32), (2, 2)] {
+            let stage =
+                projection.stage_entry("plan", visit, std::num::NonZeroU32::new(seq).unwrap());
+            stage.state = fabro_types::StageState::Succeeded;
+        }
+
+        let snapshot = build_ask_fabro_run_snapshot(&projection, run_id);
+
+        assert!(
+            snapshot.contains("Progress: 1 of 1 non-meta stages completed"),
+            "two terminal visits of one node id must count once, got:\n{snapshot}"
+        );
     }
 
     #[test]
