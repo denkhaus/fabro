@@ -1191,6 +1191,8 @@ paths:
         `run_compile_invalid`), `503` (`integration_unavailable`), or `500`
         (`workflow_version_store_error`, `credential_store_error`,
         `variable_store_error`, `run_persistence_failed`).
+      parameters:
+        - $ref: "#/components/parameters/AgentSessionHeader"
       requestBody:
         required: true
         content:
@@ -6088,6 +6090,24 @@ components:
       schema:
         type: string
       example: '"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"'
+
+    AgentSessionHeader:
+      name: X-Fabro-Agent-Session
+      in: header
+      required: false
+      description: >-
+        Attribution-only marker declaring that the run is created from an
+        agent session. The caller must still authenticate with a user token;
+        the marker grants no privilege. When present on an authenticated
+        run-create request, the created run's provenance subject
+        (`created_by`) is recorded as kind `agent` with the given session id
+        instead of the calling user. Values longer than 256 characters are
+        ignored.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 256
+      example: 01JZZZZZZZZZZZZZZZZZZZZZZZZ
 
     RunSelector:
       name: selector

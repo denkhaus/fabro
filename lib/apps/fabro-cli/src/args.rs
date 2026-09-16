@@ -306,6 +306,12 @@ pub(crate) struct RunArgs {
     #[arg(long, value_name = "RUN")]
     pub(crate) parent: Option<String>,
 
+    /// Declare that this run is created from an agent session; the server
+    /// records the run's created_by as kind=agent with this session id
+    /// (attribution-only marker, no extra privilege)
+    #[arg(long, value_name = "SESSION_ID")]
+    pub(crate) agent_session: Option<String>,
+
     /// Keep the sandbox alive after the run finishes (for debugging)
     #[arg(long)]
     pub(crate) preserve_sandbox: bool,
@@ -2041,5 +2047,15 @@ mod run_selection_grammar_tests {
         ] {
             assert!(parse_run_args(flags).is_err());
         }
+    }
+
+    #[test]
+    fn agent_session_flag_parses_opt_in_attribution_marker() {
+        let args = parse_run_args(["review", "--agent-session", "01TESTAGENTSESSION01"])
+            .expect("--agent-session with a session id should parse");
+        assert_eq!(args.agent_session.as_deref(), Some("01TESTAGENTSESSION01"));
+
+        let args = parse_run_args(["review"]).expect("bare run should parse");
+        assert_eq!(args.agent_session, None);
     }
 }
