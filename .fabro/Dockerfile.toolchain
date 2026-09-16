@@ -110,3 +110,12 @@ RUN mise exec -- bun install -g \
 COPY bin/fabro-validate /usr/local/bin/fabro-validate
 RUN chmod +x /usr/local/bin/fabro-validate
 ENV FABRO_VALIDATE_PREBUILT=1
+
+# Full fabro CLI (fabro-fe15, user decision 2026-09-16): staged by
+# scripts/run-images.nu in RELEASE profile (debug is ~342 MB; the
+# demand is PATH availability at container start). Unlike
+# fabro-validate this binary carries an HTTP client — run sandboxes
+# hold no server token/auth.json, and the user explicitly accepted
+# this scope. ADR-0019: the bake is a recorded user decision.
+COPY bin/fabro /usr/local/bin/fabro
+RUN chmod +x /usr/local/bin/fabro

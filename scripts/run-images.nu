@@ -21,28 +21,36 @@
 # `just image-release`) additionally pushes the toolchain image to
 # ghcr.io/denkhaus/fabro-toolchain:<git-sha12> — the tag form the
 # server-managed environments pin.
+#
+# Full CLI bake (user decision 2026-09-16, fabro-fe15): the complete
+# `fabro` CLI is staged alongside (release profile — the debug binary
+# is ~342 MB vs ~147 MB release and the demand is PATH availability,
+# not target/debug reuse; runs needing target/debug artifacts still pay
+# the cold build, a documented residual). Same gate: the CLI hash joins
+# the rebuild decision. Run sandboxes hold no server token (ADR-0019
+# note in Dockerfile.toolchain).
 
 # One managed image: skip when the built-in label matches the current
 # file hash, build otherwise.
-def stage-validator [] {
-    # Build the validate-only binary from the current checkout and stage
-    # it into the toolchain build context. Small dep subset; warm builds
-    # are seconds, the cold build is a one-off.
+def stage-binary [pkg: string, bin: string] {
+    # Build a binary from the current checkout and stage it into the
+    # toolchain build context (.fabro/bin/). Small dep subsets; warm
+    # builds are seconds, cold builds are one-offs.
     let out_dir = ".fabro/bin"
     if not ($out_dir | path exists) {
         mkdir $out_dir
     }
-    let build = (do { cargo build --locked --release --quiet -p fabro-validate --bin fabro-validate } | complete)
+    let build = (do { cargo build --locked --release --quiet -p $pkg --bin $bin } | complete)
     if $build.exit_code != 0 {
         print -e $build.stderr
-        error make {msg: "run-images: fabro-validate build failed"}
+        error make {msg: $"run-images: ($bin) build failed"}
     }
-    let src = ("target/release/fabro-validate")
+    let src = $"target/release/($bin)"
     if not ($src | path exists) {
-        error make {msg: "run-images: fabro-validate binary not found after build"}
+        error make {msg: $"run-images: ($bin) binary not found after build"}
     }
-    cp --force $src $"($out_dir)/fabro-validate"
-    $"($out_dir)/fabro-validate"
+    cp --force $src $"($out_dir)/($bin)"
+    $"($out_dir)/($bin)"
 }
 
 def build-one [dockerfile: string, tag: string, push: bool] {
@@ -56,9 +64,11 @@ def build-one [dockerfile: string, tag: string, push: bool] {
     # validator binary hash — a validator change must force a rebuild
     # even when the Dockerfile is byte-identical.
     let hash = (if $tag == "fabro-toolchain:noble" {
-        let bin = (stage-validator)
-        let bin_hash = (open --raw $bin | hash sha256)
-        ($content | hash sha256) + ($bin_hash | str substring 0..15)
+        let validator = (stage-binary fabro-validate fabro-validate)
+        let cli = (stage-binary fabro-cli fabro)
+        let validator_hash = (open --raw $validator | hash sha256)
+        let cli_hash = (open --raw $cli | hash sha256)
+        ($content | hash sha256) + ($validator_hash | str substring 0..15) + ($cli_hash | str substring 0..15)
     } else {
         ($content | hash sha256)
     })
