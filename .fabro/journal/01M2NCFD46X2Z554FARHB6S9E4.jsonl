@@ -1,0 +1,2 @@
+{"$schema":"fabro-journal-v1","run_id":"01M2NCFD46X2Z554FARHB6S9E4","node":"start","visit":1,"status":"succeeded","ts":"2026-09-16T15:13:36Z","data":{}}
+{"$schema":"fabro-journal-v1","run_id":"01M2NCFD46X2Z554FARHB6S9E4","node":"select","visit":1,"status":"succeeded","ts":"2026-09-16T15:14:02Z","data":{"painpoints":[],"observations":["24 older develop runs unrevised-blocked: 19 stale-evidence (version drift vs develop baseline e1bda2f4…), 10 without live sandbox (overlap); 0 merge-upstream runs exist, so that half of the candidate pool is empty"]}}
