@@ -5,11 +5,12 @@
 # implementer preflight and the revisor duplicate-run check (Step 3.5).
 #
 # Usage:
-#   nu .fabro/scripts/dup-run-check.nu <seed-id> [<seed-id>...] [--base <ref>]
+#   nu .fabro/scripts/dup-run-check.nu <seed-id> [<seed-id>...] [--base <ref>] [--self <run-id>]
 #   (default base: origin/denkhaus — the FACTS merge-target branch)
 #
 # Mechanical classification, no LLM judgment:
-#   - tracker-authoritative: `sd show <id>` status closed -> duplicate.
+#   - tracker-authoritative: `sd show <id>` status closed -> duplicate,
+#     UNLESS the closing evidence classifies as a self-closure (--self).
 #   - history: commits on the base ref referencing the seed id, restricted
 #     to LANDED-PR commits — true merge commits (2-parent) OR squash-merge
 #     subjects ending in `(#<n>)`.
@@ -17,6 +18,19 @@
 #     seed -> filed-only, NOT a duplicate.
 #   - non-PR commits referencing the id (seed-sync/tracker churn) are
 #     reported as `other` — informational, never a duplicate.
+#
+# Closure identity (fabro-e6a0): every implementation match carries a
+# `closure` field derived from the commit's `Fabro-Run:` trailer —
+#   self    the trailer names the invoking run (--self <run-id>)
+#   foreign anything else (no trailer, or a different run); the raw
+#           trailer run-id ships as `trailer_run` for consumers
+# Self matches never drive a `duplicate` verdict: with --self supplied they
+# auto-downgrade the verdict to `clean` with a `closure_note`. Status-
+# independent: an in_progress seed whose own landed PR matches is a
+# self-closure, not a duplicate. When the tracker says closed but no
+# implementation match exists, the closing commit is resolved (last commit
+# touching .seeds referencing the id, else any body-matching commit) and
+# reported as `closing_evidence` with the same closure classification.
 #
 # Output: one JSON object per seed id (JSONL stream on stdout). Verdicts:
 #   duplicate | clean | degraded
@@ -47,11 +61,81 @@ def classify-filed [rows] {
     }
 }
 
-def main [...ids: string, --base: string = "origin/denkhaus"] {
+# Fabro-Run trailer of one commit; null when the commit has none.
+def trailer-run [sha: string] {
+    let r = (do { ^git log -1 --format=%B $sha } | complete)
+    if $r.exit_code != 0 {
+        return null
+    }
+    let m = ($r.stdout | parse --regex '(?m)^[ \t]*Fabro-Run:[ \t]*(?<run>\S+)')
+    if ($m | is-empty) { null } else { $m | last | get run }
+}
+
+# closure identity vs the invoking run: self only when the trailer names it.
+def classify-closure [tr, self_id] {
+    if ($tr != null and $self_id != null and $tr == $self_id) { "self" } else { "foreign" }
+}
+
+# Add trailer identity + closure to each implementation match.
+def with-closure [rows, self_id] {
+    $rows | each {|r|
+        let tr = (trailer-run $r.sha)
+        {sha: $r.sha,
+         subject: $r.subject,
+         filed_only: $r.filed_only,
+         trailer_run: $tr,
+         closure: (classify-closure $tr $self_id)}
+    }
+}
+
+# Last commit whose .seeds patch ADDS the closed status for this id — the
+# mechanical form of "tracker closedAt evidence" (sd writes one compact JSON
+# line per issue; the closing edit adds '<id> ... "status":"closed"').
+def closing-seeds-commit [base, id] {
+    let r = (do { ^git log --format="%H %s" -n 50 $base -- .seeds } | complete)
+    if $r.exit_code != 0 {
+        return null
+    }
+    for row in (parse-log $r.stdout) {
+        let p = (do { ^git show $row.sha -- .seeds } | complete)
+        if $p.exit_code == 0 {
+            let added = ($p.stdout | lines | where {|l|
+                ($l | str starts-with "+") and ($l | str contains $id) and ($l | str contains '"status":"closed"')})
+            if (not ($added | is-empty)) {
+                return $row
+            }
+        }
+    }
+    null
+}
+
+# Tracker-closed arm with empty implementation matches: resolve the closing
+# commit and classify ITS trailer, so the JSON never lacks closure identity.
+def resolve-closing [base, id, self_id] {
+    let seeds_close = (closing-seeds-commit $base $id)
+    let c = (if ($seeds_close != null) { $seeds_close } else {
+        # subject-truncation fallback: the seed id may sit in a commit body
+        # beyond the squash subject — any body-matching commit qualifies.
+        let pool = (git-log-matching $base $id []).rows
+        if ($pool | is-empty) { null } else { $pool | first }
+    })
+    if $c == null {
+        return null
+    }
+    let tr = (trailer-run $c.sha)
+    {source: (if ($seeds_close != null) { "seeds-close" } else { "body-grep" }),
+     sha: $c.sha,
+     subject: $c.subject,
+     trailer_run: $tr,
+     closure: (classify-closure $tr $self_id)}
+}
+
+def main [...ids: string, --base: string = "origin/denkhaus", --self: string] {
     if ($ids | is-empty) {
-        print -e "dup-run-check: no seed id given — usage: nu .fabro/scripts/dup-run-check.nu <seed-id>... [--base <ref>]"
+        print -e "dup-run-check: no seed id given — usage: nu .fabro/scripts/dup-run-check.nu <seed-id>... [--base <ref>] [--self <run-id>]"
         exit 2
     }
+    let self_id = ($self | default null)
     let remote = ($base | split row "/" | first)
     let branch = ($base | split row "/" | skip 1 | str join "/")
     let fetch = (do { ^git fetch $remote $branch } | complete)
@@ -84,17 +168,45 @@ def main [...ids: string, --base: string = "origin/denkhaus"] {
         let filed_only = ($landed | where {|r| $r.filed_only})
         let other = ($all_no_merge | where {|r| not ($r.subject =~ '\(#\d+\)$')})
 
-        let verdict = (if $tracker_status == "closed" or ($implementations | length) > 0 {
+        let impl = (with-closure $implementations $self_id)
+        let foreign_impl = ($impl | where {|r| $r.closure == "foreign"})
+
+        let closing_evidence = (if $tracker_status == "closed" and ($impl | length) == 0 {
+            (resolve-closing $base $id $self_id)
+        } else {
+            null
+        })
+
+        let tracker_closure = (if $tracker_status != "closed" {
+            null
+        } else if ($impl | length) > 0 {
+            $impl | first | get closure
+        } else if $closing_evidence != null {
+            $closing_evidence.closure
+        } else {
+            "unknown"
+        })
+
+        let verdict = (if ($foreign_impl | length) > 0 or $tracker_closure == "foreign" or $tracker_closure == "unknown" {
             "duplicate"
         } else {
             "clean"
         })
+
+        let closure_note = (if $verdict == "clean" and $self_id != null and (($impl | length) > 0 or $tracker_status == "closed") {
+            $"self-closure: Fabro-Run trailer names ($self_id)"
+        } else {
+            null
+        })
+
         {seed: $id,
          verdict: $verdict,
          tracker_status: $tracker_status,
          tracker_note: (if ($tracker_note | is-empty) { null } else { $tracker_note }),
-         implementation_matches: $implementations,
+         implementation_matches: $impl,
          filed_only_matches: ($filed_only | length),
-         other_refs: ($other | length)} | to json --raw | print
+         other_refs: ($other | length),
+         closing_evidence: $closing_evidence,
+         closure_note: $closure_note} | to json --raw | print
     }
 }
