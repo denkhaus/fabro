@@ -78,8 +78,13 @@ build-image: web-deps
 # Build the release image and push it to the fork's GHCR namespace
 # (ghcr.io/denkhaus/fabro): <version>-<shortsha> plus `latest`.
 # Needs a ghcr.io docker login with write:packages (see script header).
+# Release pipeline (user decision 2026-09-16): the server image AND the
+# toolchain image refresh together — the toolchain bakes a fabro-validate
+# binary (af97, validate-only scope) that must stay in sync with each
+# release; `just up` is no longer the intensive path.
 image-release: web-deps
     nu scripts/image-release.nu "{{ arch }}"
+    nu scripts/run-images.nu --push
 
 # Build the run images the lab environments reference (toolchain/mise),
 # on demand: rebuilt only when the Dockerfile content hash changed

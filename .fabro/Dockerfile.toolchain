@@ -99,3 +99,14 @@ RUN mise exec -- bun install -g \
         @os-eco/mulch-cli@0.10.7 \
     && sd --version \
     && ml --version
+
+# fabro-validate (fabro-af97, pinned validate-only scope): no HTTP/API
+# client exists in its dependency graph and no token or auth.json rides
+# the image — the binary cannot reach the server. Staged into the build
+# context (.fabro/bin/) by scripts/run-images.nu from the same checkout
+# the image is built from, so run sandboxes validate workflow assets
+# without a cold cargo build (fabro-c643 class; user decision 2026-09-16:
+# the refresh is coupled to `just image-release`).
+COPY bin/fabro-validate /usr/local/bin/fabro-validate
+RUN chmod +x /usr/local/bin/fabro-validate
+ENV FABRO_VALIDATE_PREBUILT=1

@@ -28,13 +28,25 @@ def main [target: string = ""] {
         exit 2
     }
 
-    let build = (do { cargo build --locked --quiet -p fabro-validate --bin fabro-validate } | complete)
-    if ($build.exit_code != 0) {
-        print -e $build.stderr
-        exit $build.exit_code
-    }
-    let bin = ((cargo metadata --no-deps --format-version 1 | from json).target_directory
-        | path join debug fabro-validate)
+    # Prebuilt fast path (fabro-af97): the toolchain image ships
+    # fabro-validate and marks itself with FABRO_VALIDATE_PREBUILT=1 —
+    # skip the cargo build entirely inside run sandboxes (the cold build
+    # is exactly the cost the image bake removes). Local dev checkouts
+    # keep building from source, so a stale local binary can never
+    # silently validate wrong rules.
+    let prebuilt_ok = ((do { $env.FABRO_VALIDATE_PREBUILT? | default "" } | str trim) == "1")
+    let which_ok = ((which fabro-validate | length) > 0)
+    let bin = (if $prebuilt_ok and $which_ok {
+        (which fabro-validate | first | get path)
+    } else {
+        let build = (do { cargo build --locked --quiet -p fabro-validate --bin fabro-validate } | complete)
+        if ($build.exit_code != 0) {
+            print -e $build.stderr
+            exit $build.exit_code
+        }
+        ((cargo metadata --no-deps --format-version 1 | from json).target_directory
+            | path join debug fabro-validate)
+    })
 
     print $"validate-workflows: ($graphs | length) graph"
     let result = (do { ^$bin ...$graphs } | complete)

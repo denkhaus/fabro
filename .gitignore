@@ -20,3 +20,6 @@ __pycache__
 .claude/scheduled_tasks.lock
 .mcp.json
 docs/internal/agent
+
+# staged validator binary for the toolchain image build (run-images.nu)
+.fabro/bin/
