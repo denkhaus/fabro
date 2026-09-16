@@ -4,3 +4,4 @@
 {"$schema":"fabro-journal-v1","run_id":"01M2MTN5MJ17SA67M8N82HZMSE","node":"tester","visit":1,"status":"succeeded","ts":"2026-09-16T10:04:21Z","data":{}}
 {"$schema":"fabro-journal-v1","run_id":"01M2MTN5MJ17SA67M8N82HZMSE","node":"evidence","visit":1,"status":"succeeded","ts":"2026-09-16T10:04:24Z","data":{}}
 {"$schema":"fabro-journal-v1","run_id":"01M2MTN5MJ17SA67M8N82HZMSE","node":"reviewer","visit":1,"status":"succeeded","ts":"2026-09-16T10:04:44Z","data":{"painpoints":[],"observations":["Churn-only seed: verified both prompt hunks in the worktree with sed/grep rather than trusting the capture; step-1 conditional reword and whitelist-aligned verification-only wording both present, preflight sentence preserved verbatim, part (a) (fabro-6e7f step-4 policy) untouched. No capability-delta surface touched."]}}
+{"$schema":"fabro-journal-v1","run_id":"01M2MTN5MJ17SA67M8N82HZMSE","node":"closeout","visit":1,"status":"succeeded","ts":"2026-09-16T10:04:47Z","data":{}}
