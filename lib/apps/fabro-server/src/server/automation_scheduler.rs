@@ -196,9 +196,185 @@ impl AutomationSchedulePlanner {
     }
 }
 
+/// fabro-79d8: automation-lag watchdog. The scheduler's own ticks are INFO
+/// (nothing ingests them), so a silent schedule stall — no automation-created
+/// run for several slot intervals — is only visible by diffing
+/// automation_runs against the trigger's cron. This watchdog runs inside the
+/// scheduler loop and turns that lag into one WARN event per stall episode.
+#[derive(Debug, Default)]
+struct AutomationLagWatchdog {
+    /// Automations already alerted in the current stall episode. One alert
+    /// per episode; the latch re-arms when the automation catches up (a new
+    /// run refreshes the newest-run timestamp and the missed count drops
+    /// back to <= 2 slots).
+    alerted: std::collections::HashSet<AutomationId>,
+}
+
+/// A detected schedule stall, returned so tests can assert the warn path
+/// without scraping log output.
+#[derive(Debug, Clone, PartialEq)]
+struct AutomationLagAlert {
+    automation_id: AutomationId,
+    trigger_id:    AutomationTriggerId,
+    expression:    String,
+    newest_run_at: DateTime<Utc>,
+    expected_at:   DateTime<Utc>,
+    lag:           chrono::Duration,
+    missed_slots:  u32,
+}
+
+impl AutomationLagWatchdog {
+    /// Count the cron boundaries that should have produced a run since the
+    /// newest automation-created run; > 2 missed slots is a stall.
+    fn missed_slot_count(
+        trigger_expression: &str,
+        newest_run_at: DateTime<Utc>,
+        now: DateTime<Utc>,
+    ) -> Option<u32> {
+        let mut expected = newest_run_at;
+        let mut missed = 0u32;
+        // Bound the walk at the threshold plus one: the decision only needs
+        // to know whether more than two slots were missed.
+        while missed <= 3 {
+            match next_occurrence(trigger_expression, expected) {
+                Ok(next) if next <= now => {
+                    expected = next;
+                    missed += 1;
+                }
+                Ok(_) => break,
+                // Invalid expressions are already warned about by reconcile.
+                Err(_) => return None,
+            }
+        }
+        Some(missed)
+    }
+
+    /// Pure decision pass over the current automation set. `newest_run_at`
+    /// maps automation id -> newest automation-created run's created_at.
+    fn check(
+        &mut self,
+        automations: &[Automation],
+        newest_run_at: &HashMap<String, DateTime<Utc>>,
+        now: DateTime<Utc>,
+    ) -> Vec<AutomationLagAlert> {
+        let mut alerts = Vec::new();
+        for automation in automations {
+            // The env-update arm (fabro-79d8): there is no durable
+            // "environment update in flight" marker server-side, so the
+            // watchdog proxies it with `automation.last_error` — a recorded
+            // scheduler error (environment not runnable, materialization
+            // failure, ...) means the line is already loud through the
+            // existing error path, which is exactly the arm the watchdog
+            // must not double-report. A silent stall has last_error clear.
+            if automation.last_error.is_some() {
+                self.alerted.remove(&automation.id);
+                continue;
+            }
+            let Some(&newest_run_at) = newest_run_at.get(automation.id.as_str()) else {
+                // No automation-created run yet: nothing to diff against
+                // (fresh automations and post-restart re-arm intentionally
+                // have no backfill).
+                continue;
+            };
+            for trigger in automation.enabled_schedule_triggers() {
+                // A tripped breaker disables the trigger, so
+                // enabled_schedule_triggers() is empty on that arm and the
+                // watchdog stays silent for it by construction.
+                let Some(missed) = Self::missed_slot_count(&trigger.expression, newest_run_at, now)
+                else {
+                    continue;
+                };
+                if missed > 2 {
+                    if self.alerted.insert(automation.id.clone()) {
+                        // The most recent boundary the schedule missed: walk
+                        // forward from the first slot after the newest run.
+                        let mut expected_at = now;
+                        let mut slot = newest_run_at;
+                        for _ in 0..missed {
+                            match next_occurrence(&trigger.expression, slot) {
+                                Ok(next) if next <= now => {
+                                    slot = next;
+                                    expected_at = next;
+                                }
+                                _ => break,
+                            }
+                        }
+                        alerts.push(AutomationLagAlert {
+                            automation_id: automation.id.clone(),
+                            trigger_id: trigger.id.clone(),
+                            expression: trigger.expression.clone(),
+                            newest_run_at,
+                            expected_at,
+                            lag: now - newest_run_at,
+                            missed_slots: missed,
+                        });
+                    }
+                    continue;
+                }
+                // Caught up (or never stalled): re-arm the latch so a future
+                // stall alerts again.
+                self.alerted.remove(&automation.id);
+            }
+        }
+        // Drop latches for automations that no longer exist.
+        let live: std::collections::HashSet<&AutomationId> = automations
+            .iter()
+            .map(|automation| &automation.id)
+            .collect();
+        self.alerted.retain(|id| live.contains(id));
+        alerts
+    }
+}
+
+/// Drive one watchdog pass against the live stores: newest automation-run
+/// timestamps plus the pure decision pass, emitting one WARN per new stall
+/// episode so log-ingesting monitors (rootprint-class) see it — unlike the
+/// INFO scheduler ticks.
+async fn check_automation_lag(
+    state: &AppState,
+    watchdog: &mut AutomationLagWatchdog,
+    automations: &[Automation],
+    now: DateTime<Utc>,
+) -> Vec<AutomationLagAlert> {
+    let runs = match state.stores.run_summaries.list_all(now).await {
+        Ok(runs) => runs,
+        Err(err) => {
+            warn!(error = ?err, "Automation lag watchdog could not list runs");
+            return Vec::new();
+        }
+    };
+    let mut newest_run_at: HashMap<String, DateTime<Utc>> = HashMap::new();
+    for run in &runs {
+        let Some(automation_ref) = &run.automation else {
+            continue;
+        };
+        let entry = newest_run_at
+            .entry(automation_ref.id.clone())
+            .or_insert(run.timestamps.created_at);
+        if run.timestamps.created_at > *entry {
+            *entry = run.timestamps.created_at;
+        }
+    }
+    let alerts = watchdog.check(automations, &newest_run_at, now);
+    for alert in &alerts {
+        warn!(
+            automation_id = %alert.automation_id,
+            trigger_id = %alert.trigger_id,
+            expression = %alert.expression,
+            newest_run_at = %alert.newest_run_at,
+            expected_at = %alert.expected_at,
+            lag_seconds = alert.lag.num_seconds(),
+            missed_slots = alert.missed_slots,
+            "Automation schedule stall: lag exceeds two slot intervals (fabro-79d8 watchdog)"
+        );
+    }
+    alerts
+}
+
 pub(crate) fn spawn_automation_scheduler(state: Arc<AppState>) {
     tokio::spawn(async move {
         let mut planner = AutomationSchedulePlanner::default();
+        let mut lag_watchdog = AutomationLagWatchdog::default();
         // Fork state (fabro-986b): provider window gate per automation.
         let mut gate = super::fork_line_recovery::GateState::new();
         let shutdown = state.shutdown_token();
@@ -287,6 +463,9 @@ pub(crate) fn spawn_automation_scheduler(state: Arc<AppState>) {
                     .instrument(span),
                 );
             }
+            // fabro-79d8 watchdog: after firing, turn a silent schedule
+            // stall into one WARN per episode (ingestible by log monitors).
+            check_automation_lag(state.as_ref(), &mut lag_watchdog, &automations, now).await;
 
             let sleep_duration = planner.sleep_duration(now);
             tokio::select! {
@@ -1636,5 +1815,226 @@ mod tests {
 
         assert!(stored_runs(state.as_ref()).await.is_empty());
         assert_eq!(materializer.captured_inputs().len(), 1);
+    }
+
+    // --- fabro-79d8: automation-lag watchdog integration tests ---
+
+    /// One enabled "* * * * *" automation with an explicit Fire overlap
+    /// policy (so a follow-up fire is not suppressed by the non-terminal
+    /// first run) and one fired run pinning the newest-run timestamp.
+    async fn lag_watchdog_primed_state() -> (Arc<AppState>, AutomationSchedulePlanner) {
+        let materializer = succeeding_materializer();
+        let state = test_state_with_materializer(materializer);
+        create_automation_full(
+            state.as_ref(),
+            "lagging",
+            "Lagging",
+            None,
+            Some(fabro_automation::AutomationOverlapPolicy::Fire),
+            vec![schedule_trigger("schedule", "* * * * *", true)],
+        )
+        .await;
+        let mut planner = AutomationSchedulePlanner::default();
+        run_due_schedules_once(Arc::clone(&state), &mut planner, prime_time()).await;
+        run_due_schedules_once(Arc::clone(&state), &mut planner, first_due_time()).await;
+        assert_eq!(stored_runs(state.as_ref()).await.len(), 1);
+        (state, planner)
+    }
+
+    async fn newest_run_at(state: &AppState) -> DateTime<Utc> {
+        stored_runs_chronological(state)
+            .await
+            .last()
+            .expect("at least one stored run")
+            .timestamps
+            .created_at
+    }
+
+    async fn lag_watchdog_automations(state: &AppState) -> Vec<Automation> {
+        state
+            .automation_store()
+            .list()
+            .await
+            .expect("test automations should load")
+    }
+
+    #[tokio::test]
+    async fn automation_lag_watchdog_alerts_after_more_than_two_missed_slots() {
+        let (state, _planner) = lag_watchdog_primed_state().await;
+        let newest_run_at = newest_run_at(state.as_ref()).await;
+        let mut watchdog = AutomationLagWatchdog::default();
+
+        // At exactly two missed minute boundaries the threshold ("exceeds
+        // 2 slot intervals") is not crossed yet.
+        let two_slots = newest_run_at + chrono::Duration::minutes(2);
+        let automations = lag_watchdog_automations(state.as_ref()).await;
+        assert!(
+            check_automation_lag(state.as_ref(), &mut watchdog, &automations, two_slots)
+                .await
+                .is_empty()
+        );
+
+        // Four missed boundaries: the warn path fires with the full lag
+        // picture (automation id, expression, expected vs newest run time).
+        let stalled = newest_run_at + chrono::Duration::minutes(4);
+        let alerts =
+            check_automation_lag(state.as_ref(), &mut watchdog, &automations, stalled).await;
+        assert_eq!(alerts.len(), 1);
+        let alert = &alerts[0];
+        assert_eq!(alert.automation_id.as_str(), "lagging");
+        assert_eq!(alert.trigger_id.as_str(), "schedule");
+        assert_eq!(alert.expression, "* * * * *");
+        assert_eq!(alert.newest_run_at, newest_run_at);
+        assert!(alert.expected_at <= stalled);
+        assert!(alert.expected_at > newest_run_at);
+        assert!(alert.lag >= chrono::Duration::minutes(3));
+        assert!(alert.missed_slots > 2);
+    }
+
+    #[tokio::test]
+    async fn automation_lag_watchdog_alerts_once_per_episode_and_rearms_after_a_fire() {
+        let (state, mut planner) = lag_watchdog_primed_state().await;
+        let first_run_at = newest_run_at(state.as_ref()).await;
+        let mut watchdog = AutomationLagWatchdog::default();
+
+        // Episode opens: one alert.
+        let automations = lag_watchdog_automations(state.as_ref()).await;
+        assert_eq!(
+            check_automation_lag(
+                state.as_ref(),
+                &mut watchdog,
+                &automations,
+                first_run_at + chrono::Duration::minutes(4)
+            )
+            .await
+            .len(),
+            1
+        );
+        // Still stalled on the next tick: the latch suppresses repeats.
+        assert!(
+            check_automation_lag(
+                state.as_ref(),
+                &mut watchdog,
+                &automations,
+                first_run_at + chrono::Duration::minutes(5)
+            )
+            .await
+            .is_empty()
+        );
+
+        // The automation catches up: a fresh fire moves the newest-run
+        // timestamp, silently re-arming the latch.
+        run_due_schedules_once(Arc::clone(&state), &mut planner, second_due_time()).await;
+        assert_eq!(stored_runs(state.as_ref()).await.len(), 2);
+        let second_run_at = newest_run_at(state.as_ref()).await;
+        assert!(
+            check_automation_lag(
+                state.as_ref(),
+                &mut watchdog,
+                &automations,
+                second_run_at + chrono::Duration::seconds(30)
+            )
+            .await
+            .is_empty()
+        );
+
+        // A NEW stall after the catch-up alerts again (re-armed).
+        assert_eq!(
+            check_automation_lag(
+                state.as_ref(),
+                &mut watchdog,
+                &automations,
+                second_run_at + chrono::Duration::minutes(4)
+            )
+            .await
+            .len(),
+            1
+        );
+    }
+
+    #[tokio::test]
+    async fn automation_lag_watchdog_stays_silent_for_breaker_and_recorded_error_arms() {
+        // Arm 1: a tripped breaker disables the trigger, so the stalled
+        // line is the breaker's business, not the watchdog's.
+        let materializer = succeeding_materializer();
+        let (state, _notices) = breaker_test_state(materializer);
+        create_breakable_automation(state.as_ref(), "tripped", Some(1)).await;
+        let mut planner = AutomationSchedulePlanner::default();
+        let signature = "api_transient|zai|server_error";
+        run_due_schedules_once(Arc::clone(&state), &mut planner, prime_time()).await;
+        run_due_schedules_once(Arc::clone(&state), &mut planner, due_minute(1)).await;
+        let runs = stored_runs_chronological(state.as_ref()).await;
+        assert_eq!(runs.len(), 1);
+        park_run_with_signature(state.as_ref(), &runs[0].id, signature).await;
+        run_due_schedules_once(Arc::clone(&state), &mut planner, due_minute(2)).await;
+        let runs = stored_runs_chronological(state.as_ref()).await;
+        assert_eq!(runs.len(), 2);
+        park_run_with_signature(state.as_ref(), &runs[1].id, signature).await;
+        run_due_schedules_once(Arc::clone(&state), &mut planner, due_minute(3)).await;
+        assert_eq!(
+            stored_runs(state.as_ref()).await.len(),
+            2,
+            "breaker paused the line"
+        );
+        let automation = state
+            .automation_store()
+            .get(&AutomationId::new("tripped").unwrap())
+            .await
+            .unwrap()
+            .expect("automation should exist");
+        assert!(
+            !stored_breaker_trigger(&automation).enabled,
+            "breaker tripped"
+        );
+
+        let breaker_arm_run_at = newest_run_at(state.as_ref()).await;
+        let mut watchdog = AutomationLagWatchdog::default();
+        let automations = lag_watchdog_automations(state.as_ref()).await;
+        assert!(
+            check_automation_lag(
+                state.as_ref(),
+                &mut watchdog,
+                &automations,
+                breaker_arm_run_at + chrono::Duration::minutes(4)
+            )
+            .await
+            .is_empty()
+        );
+
+        // Arm 2: a recorded scheduler error is the env-update proxy — the
+        // line is already loud through last_error, so the watchdog stays
+        // silent even though the run history lags.
+        create_automation_full(
+            state.as_ref(),
+            "env-updating",
+            "Env updating",
+            None,
+            Some(fabro_automation::AutomationOverlapPolicy::Fire),
+            vec![schedule_trigger("schedule", "* * * * *", true)],
+        )
+        .await;
+        let mut env_planner = AutomationSchedulePlanner::default();
+        run_due_schedules_once(Arc::clone(&state), &mut env_planner, prime_time()).await;
+        run_due_schedules_once(Arc::clone(&state), &mut env_planner, due_minute(1)).await;
+        state
+            .automation_store()
+            .set_last_error(
+                &AutomationId::new("env-updating").unwrap(),
+                Some("environment update in flight"),
+            )
+            .await
+            .unwrap();
+        let env_arm_run_at = newest_run_at(state.as_ref()).await;
+        let automations = lag_watchdog_automations(state.as_ref()).await;
+        assert!(
+            check_automation_lag(
+                state.as_ref(),
+                &mut watchdog,
+                &automations,
+                env_arm_run_at + chrono::Duration::minutes(4)
+            )
+            .await
+            .is_empty()
+        );
     }
 }
