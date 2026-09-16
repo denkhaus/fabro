@@ -795,8 +795,28 @@ impl Client {
     }
 
     pub async fn create_run_from_intent(&self, intent: types::RunIntent) -> Result<RunId> {
+        self.create_run_from_intent_with_agent_session(intent, None)
+            .await
+    }
+
+    /// Create a run, optionally declaring agent-session attribution
+    /// (fabro-3916): when `agent_session` is set, the request carries the
+    /// `X-Fabro-Agent-Session` header and the server stamps the run's
+    /// `created_by` as kind `agent` with that session id. The marker is
+    /// attribution-only — authentication is unchanged.
+    pub async fn create_run_from_intent_with_agent_session(
+        &self,
+        intent: types::RunIntent,
+        agent_session: Option<&str>,
+    ) -> Result<RunId> {
         let response = self
-            .send_api(|client| async move { client.create_run().body(intent.clone()).send().await })
+            .send_api(|client| async move {
+                let mut request = client.create_run().body(intent.clone());
+                if let Some(agent_session) = agent_session {
+                    request = request.x_fabro_agent_session(agent_session.to_string());
+                }
+                request.send().await
+            })
             .await?;
         let status = response.into_inner();
         Ok(status.id)

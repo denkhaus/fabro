@@ -15457,6 +15457,134 @@ async fn base_worker_token_is_rejected_by_run_tool_only_routes() {
 }
 
 #[tokio::test]
+async fn agent_session_header_stamps_created_by_as_agent() {
+    let (_state, app) = jwt_auth_app();
+    let user_jwt = issue_test_user_jwt();
+    let intent =
+        test_intent_with_bearer(&app, "workflow.fabro", MINIMAL_DOT, None, Some(&user_jwt)).await;
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri(api("/runs"))
+                .header(header::AUTHORIZATION, format!("Bearer {user_jwt}"))
+                .header(header::CONTENT_TYPE, "application/json")
+                .header("x-fabro-agent-session", "01TESTAGENTSESSION01")
+                .body(Body::from(intent.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let body = response_json!(response, StatusCode::CREATED).await;
+    assert_eq!(body["created_by"]["kind"], "agent");
+    assert_eq!(body["created_by"]["session_id"], "01TESTAGENTSESSION01");
+    let run_id: RunId = body["id"].as_str().unwrap().parse().unwrap();
+
+    // The attribution survives the durable summary (GET run).
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method(Method::GET)
+                .uri(api(&format!("/runs/{run_id}")))
+                .header(header::AUTHORIZATION, format!("Bearer {user_jwt}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let body = response_json!(response, StatusCode::OK).await;
+    assert_eq!(body["created_by"]["kind"], "agent");
+    assert_eq!(body["created_by"]["session_id"], "01TESTAGENTSESSION01");
+}
+
+#[tokio::test]
+async fn run_create_without_agent_session_header_keeps_user_created_by() {
+    let (_state, app) = jwt_auth_app();
+    let user_jwt = issue_test_user_jwt();
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri(api("/runs"))
+                .header(header::AUTHORIZATION, format!("Bearer {user_jwt}"))
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(
+                    test_intent_with_bearer(
+                        &app,
+                        "workflow.fabro",
+                        MINIMAL_DOT,
+                        None,
+                        Some(&user_jwt),
+                    )
+                    .await
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let body = response_json!(response, StatusCode::CREATED).await;
+    assert_eq!(body["created_by"]["kind"], "user");
+    assert_eq!(body["created_by"]["login"], "octocat");
+}
+
+#[tokio::test]
+async fn agent_session_header_grants_no_privilege_without_authentication() {
+    let (_state, app) = jwt_auth_app();
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri(api("/runs"))
+                .header(header::CONTENT_TYPE, "application/json")
+                .header("x-fabro-agent-session", "01TESTAGENTSESSION01")
+                .body(Body::from("{}"))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_status!(response, StatusCode::UNAUTHORIZED).await;
+}
+
+#[tokio::test]
+async fn worker_token_create_with_agent_session_header_keeps_worker_subject() {
+    let (_state, app) = jwt_auth_app();
+    let user_jwt = issue_test_user_jwt();
+    let origin_run_id = create_run_with_bearer(&app, &user_jwt).await;
+    let worker_token = issue_test_run_tools_worker_token(&origin_run_id);
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri(api("/runs"))
+                .header(header::AUTHORIZATION, format!("Bearer {worker_token}"))
+                .header(header::CONTENT_TYPE, "application/json")
+                .header("x-fabro-agent-session", "01TESTAGENTSESSION01")
+                .body(Body::from(
+                    test_intent_with_bearer(
+                        &app,
+                        "workflow.fabro",
+                        MINIMAL_DOT,
+                        None,
+                        Some(&user_jwt),
+                    )
+                    .await
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    // The marker only re-labels authenticated USER principals; a run-tools
+    // worker creating a child keeps its worker attribution.
+    let body = response_json!(response, StatusCode::CREATED).await;
+    assert_eq!(body["created_by"]["kind"], "worker");
+}
+
+#[tokio::test]
 async fn worker_token_controls_stage_artifact_route() {
     let (_state, app) = jwt_auth_app();
     let user_jwt = issue_test_user_jwt();

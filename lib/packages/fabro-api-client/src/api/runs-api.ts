@@ -377,10 +377,11 @@ export const RunsApiAxiosParamCreator = function (configuration?: Configuration)
          * Creates a new workflow run in `submitted` status from an immutable workflow-version intent. Creation does not start or schedule the run.  Failures return the standard error body. The endpoint responds `404` (`workflow_version_not_found`, `environment_not_found`), `422` (`run_intent_invalid`, `target_invalid`, `target_environment_unsupported`, `pull_request_environment_unsupported`, `workflow_version_unusable`, `run_compile_invalid`), `503` (`integration_unavailable`), or `500` (`workflow_version_store_error`, `credential_store_error`, `variable_store_error`, `run_persistence_failed`).
          * @summary Create Run
          * @param {RunIntent} runIntent
+         * @param {string} [xFabroAgentSession] Attribution-only marker declaring that the run is created from an agent session. The caller must still authenticate with a user token; the marker grants no privilege. When present on an authenticated run-create request, the created run&#39;s provenance subject (&#x60;created_by&#x60;) is recorded as kind &#x60;agent&#x60; with the given session id instead of the calling user. Values longer than 256 characters are ignored.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        createRun: async (runIntent: RunIntent, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+        createRun: async (runIntent: RunIntent, xFabroAgentSession?: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
             // verify required parameter 'runIntent' is not null or undefined
             assertParamExists('createRun', 'runIntent', runIntent)
             const localVarPath = `/api/v1/runs`;
@@ -403,6 +404,10 @@ export const RunsApiAxiosParamCreator = function (configuration?: Configuration)
 
             localVarHeaderParameter['Content-Type'] = 'application/json';
             localVarHeaderParameter['Accept'] = 'application/json';
+
+            if (xFabroAgentSession != null) {
+                localVarHeaderParameter['X-Fabro-Agent-Session'] = String(xFabroAgentSession);
+            }
 
             setSearchParams(localVarUrlObj, localVarQueryParameter);
             let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
@@ -1788,11 +1793,12 @@ export const RunsApiFp = function(configuration?: Configuration) {
          * Creates a new workflow run in `submitted` status from an immutable workflow-version intent. Creation does not start or schedule the run.  Failures return the standard error body. The endpoint responds `404` (`workflow_version_not_found`, `environment_not_found`), `422` (`run_intent_invalid`, `target_invalid`, `target_environment_unsupported`, `pull_request_environment_unsupported`, `workflow_version_unusable`, `run_compile_invalid`), `503` (`integration_unavailable`), or `500` (`workflow_version_store_error`, `credential_store_error`, `variable_store_error`, `run_persistence_failed`).
          * @summary Create Run
          * @param {RunIntent} runIntent
+         * @param {string} [xFabroAgentSession] Attribution-only marker declaring that the run is created from an agent session. The caller must still authenticate with a user token; the marker grants no privilege. When present on an authenticated run-create request, the created run&#39;s provenance subject (&#x60;created_by&#x60;) is recorded as kind &#x60;agent&#x60; with the given session id instead of the calling user. Values longer than 256 characters are ignored.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        async createRun(runIntent: RunIntent, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<Run>> {
-            const localVarAxiosArgs = await localVarAxiosParamCreator.createRun(runIntent, options);
+        async createRun(runIntent: RunIntent, xFabroAgentSession?: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<Run>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.createRun(runIntent, xFabroAgentSession, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
             const localVarOperationServerBasePath = operationServerMap['RunsApi.createRun']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
@@ -2278,11 +2284,12 @@ export const RunsApiFactory = function (configuration?: Configuration, basePath?
          * Creates a new workflow run in `submitted` status from an immutable workflow-version intent. Creation does not start or schedule the run.  Failures return the standard error body. The endpoint responds `404` (`workflow_version_not_found`, `environment_not_found`), `422` (`run_intent_invalid`, `target_invalid`, `target_environment_unsupported`, `pull_request_environment_unsupported`, `workflow_version_unusable`, `run_compile_invalid`), `503` (`integration_unavailable`), or `500` (`workflow_version_store_error`, `credential_store_error`, `variable_store_error`, `run_persistence_failed`).
          * @summary Create Run
          * @param {RunIntent} runIntent
+         * @param {string} [xFabroAgentSession] Attribution-only marker declaring that the run is created from an agent session. The caller must still authenticate with a user token; the marker grants no privilege. When present on an authenticated run-create request, the created run&#39;s provenance subject (&#x60;created_by&#x60;) is recorded as kind &#x60;agent&#x60; with the given session id instead of the calling user. Values longer than 256 characters are ignored.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        createRun(runIntent: RunIntent, options?: RawAxiosRequestConfig): AxiosPromise<Run> {
-            return localVarFp.createRun(runIntent, options).then((request) => request(axios, basePath));
+        createRun(runIntent: RunIntent, xFabroAgentSession?: string, options?: RawAxiosRequestConfig): AxiosPromise<Run> {
+            return localVarFp.createRun(runIntent, xFabroAgentSession, options).then((request) => request(axios, basePath));
         },
         /**
          * Durably requests creation of a pull request for a completed run. The server generates the pull request content and creates the GitHub pull request after this request returns. Poll the URL in the Location response header until the creation succeeds or fails.  If a creation is already pending for the run, the response returns that creation unchanged; any different `model` or `force` values in the new request are ignored.
@@ -2683,11 +2690,12 @@ export class RunsApi extends BaseAPI {
      * Creates a new workflow run in `submitted` status from an immutable workflow-version intent. Creation does not start or schedule the run.  Failures return the standard error body. The endpoint responds `404` (`workflow_version_not_found`, `environment_not_found`), `422` (`run_intent_invalid`, `target_invalid`, `target_environment_unsupported`, `pull_request_environment_unsupported`, `workflow_version_unusable`, `run_compile_invalid`), `503` (`integration_unavailable`), or `500` (`workflow_version_store_error`, `credential_store_error`, `variable_store_error`, `run_persistence_failed`).
      * @summary Create Run
      * @param {RunIntent} runIntent
+     * @param {string} [xFabroAgentSession] Attribution-only marker declaring that the run is created from an agent session. The caller must still authenticate with a user token; the marker grants no privilege. When present on an authenticated run-create request, the created run&#39;s provenance subject (&#x60;created_by&#x60;) is recorded as kind &#x60;agent&#x60; with the given session id instead of the calling user. Values longer than 256 characters are ignored.
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      */
-    public createRun(runIntent: RunIntent, options?: RawAxiosRequestConfig) {
-        return RunsApiFp(this.configuration).createRun(runIntent, options).then((request) => request(this.axios, this.basePath));
+    public createRun(runIntent: RunIntent, xFabroAgentSession?: string, options?: RawAxiosRequestConfig) {
+        return RunsApiFp(this.configuration).createRun(runIntent, xFabroAgentSession, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**

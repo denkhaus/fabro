@@ -184,6 +184,7 @@ mod tests {
             environment:          None,
             label:                Vec::new(),
             parent:               None,
+            agent_session:        None,
             preserve_sandbox:     false,
             detach:               false,
         }

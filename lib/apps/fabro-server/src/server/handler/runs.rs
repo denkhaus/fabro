@@ -1306,14 +1306,49 @@ fn spawn_generated_title_task(task: GeneratedTitleTask) {
     });
 }
 
+/// Opt-in header by which an authenticated CLI caller declares that the run
+/// is created from an agent session (fabro-3916). Attribution-only: the
+/// marker grants no privilege — the caller must still pass the route's user
+/// authentication (token) before this header is ever read.
+pub(crate) const AGENT_SESSION_HEADER: &str = "x-fabro-agent-session";
+
+/// Longest accepted agent-session marker value; longer values are ignored so
+/// a runaway header cannot bloat run provenance.
+const AGENT_SESSION_MAX_LEN: usize = 256;
+
 pub(super) fn run_provenance(headers: &HeaderMap, subject: &Principal) -> RunProvenance {
     RunProvenance {
         server:  Some(RunServerProvenance {
             version: FABRO_VERSION.to_string(),
         }),
         client:  run_client_provenance(headers),
-        subject: subject.clone(),
+        subject: agent_attributed_subject(headers, subject),
     }
+}
+
+/// Resolve the provenance subject for a run-create request. When the caller
+/// is an authenticated user AND carries the agent-session marker, the subject
+/// is stamped as `Principal::Agent` with that session id, making
+/// agent-initiated CLI runs distinguishable from manual user runs. Non-user
+/// principals (workers, system actors) and requests without a valid marker
+/// keep their original subject.
+fn agent_attributed_subject(headers: &HeaderMap, subject: &Principal) -> Principal {
+    if !matches!(subject, Principal::User(_)) {
+        return subject.clone();
+    }
+    match agent_session_from_headers(headers) {
+        Some(session_id) => Principal::Agent {
+            session_id:        Some(session_id),
+            parent_session_id: None,
+            model:             None,
+        },
+        None => subject.clone(),
+    }
+}
+
+fn agent_session_from_headers(headers: &HeaderMap) -> Option<String> {
+    let value = headers.get(AGENT_SESSION_HEADER)?.to_str().ok()?.trim();
+    (!value.is_empty() && value.len() <= AGENT_SESSION_MAX_LEN).then(|| value.to_string())
 }
 
 fn run_client_provenance(headers: &HeaderMap) -> Option<RunClientProvenance> {

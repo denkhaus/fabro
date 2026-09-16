@@ -134,15 +134,18 @@ pub(crate) async fn create_run(
         .await
         .context("could not register workflow versions")?;
     let created_run_id = client
-        .create_run_from_intent(RunIntent {
-            workflow_version_id,
-            target,
-            args: prepared.intent_args,
-            environment_id: Some(environment.id.to_string()),
-            parent_id,
-            title: None,
-            goal: prepared.goal,
-        })
+        .create_run_from_intent_with_agent_session(
+            RunIntent {
+                workflow_version_id,
+                target,
+                args: prepared.intent_args,
+                environment_id: Some(environment.id.to_string()),
+                parent_id,
+                title: None,
+                goal: prepared.goal,
+            },
+            args.agent_session.as_deref(),
+        )
         .await
         .context("could not create run")?;
 
