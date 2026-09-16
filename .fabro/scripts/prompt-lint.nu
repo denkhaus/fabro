@@ -12,6 +12,10 @@
 #      anchor rot class). Errors.
 #   3. date pins `20xx-xx-xx` older than 45 days — warnings only (human
 #      review; load-bearing pins are allowed to stay).
+#   4. `nu -c "..."` snippets in fenced shell/bash blocks of ANY workflow's
+#      prompts (`.fabro/workflows/**/prompts/*.md`) whose payload contains
+#      `$` — bash double-quote interpolation strips nu variables
+#      (mx-e606d5; run 01M2N36HV2). Errors; single quotes pass.
 #
 # Exit 1 on any error, 0 otherwise (warnings pass).
 
@@ -33,6 +37,25 @@ def seed-ids-in [text] {
     $matches.id | uniq | where {|id|
         not ($text | parse --regex ('fabro-' + $id + '(?![0-9a-zA-Z-])') | is-empty)
     }
+}
+
+def prompt-md-files [] {
+    (glob .fabro/workflows/**/prompts/*.md)
+    | where {|p| ($p | path type) == 'file'}
+}
+
+# check 4: double-quoted nu -c payloads containing $ inside fenced blocks
+def nu-c-dollar-errors [f] {
+    let text = (open --raw $f)
+    mut errors = []
+    for m in ($text | parse --regex '(?s)```[\w-]*\r?\n(?<block>.*?)```') {
+        for s in ($m.block | parse --regex 'nu -c "(?<payload>[^"]*)"') {
+            if ($s.payload | str contains '$') {
+                $errors = ($errors | append $"($f): double-quoted nu -c snippet contains \$ — use single quotes")
+            }
+        }
+    }
+    $errors
 }
 
 def main [] {
@@ -73,6 +96,11 @@ def main [] {
                 $warnings = ($warnings | append $"($f): date pin '($m.d)' older than 45 days — still load-bearing?")
             }
         }
+    }
+
+    # 4. double-quoted nu -c with $ in any workflow's prompt markdown
+    for f in (prompt-md-files) {
+        $errors = ($errors | append (nu-c-dollar-errors $f))
     }
 
     for w in ($warnings | uniq) {
