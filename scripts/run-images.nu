@@ -100,5 +100,5 @@ def build-one [dockerfile: string, tag: string, push: bool] {
 
 def main [--push] {
     build-one ".fabro/Dockerfile.toolchain" "fabro-toolchain:noble" $push
-    build-one ".fabro/Dockerfile.mise" "fabro-runner:mise" $push
+    # build-one ".fabro/Dockerfile.mise" "fabro-runner:mise" $push
 }
