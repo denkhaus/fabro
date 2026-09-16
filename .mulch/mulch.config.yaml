@@ -21,6 +21,7 @@ domains:
   develop-workflow: {}
   loop: {}
   develop: {}
+  ops: {}
 governance:
   max_entries: 100
   warn_entries: 150
