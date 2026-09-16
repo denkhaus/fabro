@@ -5,6 +5,16 @@ description: Fabro dev lifecycle in one flow. Use when the user invokes /iterate
 
 # /iterate (fabro only)
 
+## Scope — local-only agent skill (user directive 2026-09-16)
+
+This skill is a LOCAL session instrument for the human-side agent. It is
+NEVER referenced from, loaded by, or wired into fabro workflows. Skills
+that a fabro workflow's agent stages should use MUST be vendored into
+`.fabro/skills/<name>/` in the repo (like `rust-style-guide` and
+`improve-codebase-architecture`) — only there can a run's LLM agent
+recognize and load them.
+
+
 One development cycle, end to end. The user starts a cycle by invoking
 /iterate; the agent drives everything else. Chat replies in German,
 all written artifacts in English.

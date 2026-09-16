@@ -317,6 +317,16 @@ Skip if no insight surfaced. Unrecorded learnings are lost; ritual filler record
 
 ## Agent skills
 
+### Skill boundary (user directive 2026-09-16)
+
+The skills `iterate`, `integrate`, and `merge-upstream` (`.agents/skills/`)
+are EXCLUSIVELY local session instruments for the human-side agent — they
+are never referenced from or wired into fabro workflows. Skills a fabro
+workflow's agent stages should use must be vendored into
+`.fabro/skills/<name>/` (like `rust-style-guide` and
+`improve-codebase-architecture`); only there can a run's LLM agent
+recognize and load them.
+
 ### Issue tracker
 
 Work is tracked in Seeds (`sd` CLI, git-native in `.seeds/`), not GitHub Issues. See `docs/agents/issue-tracker.md`.

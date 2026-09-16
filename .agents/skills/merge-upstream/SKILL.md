@@ -12,6 +12,16 @@ disable-model-invocation: true
 
 # /merge-upstream (fabro only)
 
+## Scope — local-only agent skill (user directive 2026-09-16)
+
+This skill is a LOCAL session instrument for the human-side agent. It is
+NEVER referenced from, loaded by, or wired into fabro workflows. Skills
+that a fabro workflow's agent stages should use MUST be vendored into
+`.fabro/skills/<name>/` in the repo (like `rust-style-guide` and
+`improve-codebase-architecture`) — only there can a run's LLM agent
+recognize and load them.
+
+
 Project skill for the fabro repo at `~/dev/fabro` — never apply to other
 projects.
 
