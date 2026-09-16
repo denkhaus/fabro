@@ -15,7 +15,10 @@ report it in the journal, never silently work around it.
 - Merge-target branch — `origin/denkhaus`: the branch the line's run PRs
   integrate into. The duplicate-run preflight
   (`nu .fabro/scripts/dup-run-check.nu <seed-id> --self <run-id>`) greps exactly this
-  branch; it defaults to it.
+  branch; it defaults to it. The `--self` argument is the id of the run
+  whose OWN PR counts as first-party — pass the SUBJECT run's id (for the
+  revisor: `revisor_target_run_id`; for the implementer: its own run id),
+  never the consuming session's id.
 - Stage journal — `.fabro/journal/<run_id>.jsonl`: the fallback source for
   the seed id a reviewed run claimed (shell grep for the `fabro-` prefix
   when the run's goal names none).
