@@ -278,6 +278,21 @@ impl RunLifecycle<WorkflowGraph> for FidelityLifecycle {
                 (&scoped.0, &scoped.1)
             };
 
+        // Node-level latest-visit dedup (fabro-699f): collapse repeated
+        // visits of the same stage id to the LAST occurrence, so cyclic
+        // graphs (gate-bounce loops revisiting tester/evidence) render one
+        // section per stage instead of one per visit. `node_outcomes` is
+        // keyed by node id and already holds the latest outcome, so only
+        // the completed list needs dedup. Render-only like the deny-list
+        // above; parallel branch preambles inherit through the shared list.
+        let scoped_latest: Vec<String>;
+        let completed_nodes: &[String] = if gv_node.preamble_stages_latest_only() {
+            scoped_latest = latest_visit_only(completed_nodes);
+            &scoped_latest
+        } else {
+            completed_nodes
+        };
+
         let preamble = build_preamble(
             fidelity,
             &resolved_context,
@@ -411,6 +426,22 @@ fn explicit_fidelity(
                 .and_then(|s| s.parse().ok())
                 .map(|f| (f, "node"))
         })
+}
+
+/// Collapse repeated visits in a completed-node list to each stage's LAST
+/// occurrence, preserving the chronological position of that latest visit
+/// (fabro-699f): iterate in reverse keeping first-seen ids, then restore
+/// order.
+fn latest_visit_only(completed: &[String]) -> Vec<String> {
+    let mut seen = std::collections::HashSet::with_capacity(completed.len());
+    let mut deduped: Vec<String> = completed
+        .iter()
+        .rev()
+        .filter(|id| seen.insert(id.as_str()))
+        .cloned()
+        .collect();
+    deduped.reverse();
+    deduped
 }
 
 /// Resolve the context fidelity for a node, following the precedence:
@@ -742,6 +773,145 @@ mod tests {
             preamble.contains("seed_brief"),
             "non-response updates stay visible via Context section: {preamble}"
         );
+    }
+
+    #[tokio::test]
+    async fn preamble_stages_latest_only_renders_each_stage_once() {
+        // fabro-699f: across gate-bounce cycles the tester stage completed
+        // three times; with preamble_stages_latest_only the reviewer's
+        // preamble renders ONE tester section (the latest visit). The
+        // render-only contract holds — the completed-node history keeps
+        // every visit.
+        let mut graph = Graph::new("latest-only");
+        let mut start = Node::new("start");
+        start
+            .attrs
+            .insert("shape".to_string(), str_attr("Mdiamond"));
+        let mut tester = Node::new("tester");
+        tester
+            .attrs
+            .insert("shape".to_string(), str_attr("parallelogram"));
+        tester
+            .attrs
+            .insert("script".to_string(), str_attr("just qualitygate"));
+        let mut reviewer = Node::new("reviewer");
+        reviewer
+            .attrs
+            .insert("prompt".to_string(), str_attr("review it"));
+        reviewer
+            .attrs
+            .insert("fidelity".to_string(), str_attr("summary:high"));
+        reviewer.attrs.insert(
+            "preamble_stages_latest_only".to_string(),
+            AttrValue::Boolean(true),
+        );
+
+        graph.nodes.insert(start.id.clone(), start);
+        graph.nodes.insert(tester.id.clone(), tester);
+        graph.nodes.insert(reviewer.id.clone(), reviewer);
+        graph.edges.push(Edge::new("start", "tester"));
+        graph.edges.push(Edge::new("tester", "reviewer"));
+        let workflow_graph = WorkflowGraph(Arc::new(graph));
+
+        let run_dir = tempfile::tempdir().unwrap();
+        let lifecycle = test_lifecycle(&workflow_graph, run_dir.path()).await;
+        let mut state: WfRunState = ExecutionState::new(&workflow_graph).unwrap();
+
+        let mut tester_outcome = Outcome::default();
+        tester_outcome.context_updates.insert(
+            keys::COMMAND_OUTPUT.to_string(),
+            serde_json::json!("gate output visit N"),
+        );
+        state
+            .node_outcomes
+            .insert("tester".to_string(), tester_outcome);
+        for _ in 0..3 {
+            state.completed_nodes.push("tester".to_string());
+        }
+
+        let reviewer_node = workflow_graph.get_node("reviewer").unwrap();
+        lifecycle.before_node(&reviewer_node, &state).await.unwrap();
+
+        let preamble = state.context.get_string(keys::CURRENT_PREAMBLE, "");
+        assert_eq!(
+            preamble.matches("## Stage: tester").count(),
+            1,
+            "latest-only must render one section per stage: {preamble}"
+        );
+        // Render-only: the completed history itself keeps every visit.
+        assert_eq!(
+            state
+                .completed_nodes
+                .iter()
+                .filter(|id| *id == "tester")
+                .count(),
+            3,
+            "completed-node history must keep all visits"
+        );
+    }
+
+    #[tokio::test]
+    async fn preamble_latest_visit_defaults_off_keeps_every_visit() {
+        // Without the attribute the existing behavior is untouched: one
+        // section per visit.
+        let mut graph = Graph::new("every-visit");
+        let mut start = Node::new("start");
+        start
+            .attrs
+            .insert("shape".to_string(), str_attr("Mdiamond"));
+        let mut tester = Node::new("tester");
+        tester
+            .attrs
+            .insert("shape".to_string(), str_attr("parallelogram"));
+        let mut reviewer = Node::new("reviewer");
+        reviewer
+            .attrs
+            .insert("prompt".to_string(), str_attr("review it"));
+        reviewer
+            .attrs
+            .insert("fidelity".to_string(), str_attr("summary:high"));
+
+        graph.nodes.insert(start.id.clone(), start);
+        graph.nodes.insert(tester.id.clone(), tester);
+        graph.nodes.insert(reviewer.id.clone(), reviewer);
+        graph.edges.push(Edge::new("start", "tester"));
+        graph.edges.push(Edge::new("tester", "reviewer"));
+        let workflow_graph = WorkflowGraph(Arc::new(graph));
+
+        let run_dir = tempfile::tempdir().unwrap();
+        let lifecycle = test_lifecycle(&workflow_graph, run_dir.path()).await;
+        let mut state: WfRunState = ExecutionState::new(&workflow_graph).unwrap();
+
+        state
+            .node_outcomes
+            .insert("tester".to_string(), Outcome::default());
+        for _ in 0..3 {
+            state.completed_nodes.push("tester".to_string());
+        }
+
+        let reviewer_node = workflow_graph.get_node("reviewer").unwrap();
+        lifecycle.before_node(&reviewer_node, &state).await.unwrap();
+
+        let preamble = state.context.get_string(keys::CURRENT_PREAMBLE, "");
+        assert_eq!(
+            preamble.matches("## Stage: tester").count(),
+            3,
+            "default posture renders one section per visit: {preamble}"
+        );
+    }
+
+    #[test]
+    fn latest_visit_only_keeps_last_occurrence_position() {
+        // The deduped list preserves the position of each stage's LAST
+        // visit: [a, b, a, c, b] collapses to [a, c, b], not [a, b, c].
+        let deduped = latest_visit_only(&[
+            "a".to_string(),
+            "b".to_string(),
+            "a".to_string(),
+            "c".to_string(),
+            "b".to_string(),
+        ]);
+        assert_eq!(deduped, vec!["a", "c", "b"]);
     }
 
     #[tokio::test]

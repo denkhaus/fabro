@@ -49,6 +49,15 @@ impl Context {
         }
     }
 
+    /// Remove a key, returning its last value (fabro-699f consumed-key
+    /// clearing). Returns `None` when the key is absent.
+    pub fn remove(&self, key: &str) -> Option<Value> {
+        self.values
+            .write()
+            .expect("context RwLock should not be poisoned: no code panics while holding this lock")
+            .remove(key)
+    }
+
     pub fn snapshot(&self) -> HashMap<String, Value> {
         self.values
             .read()
@@ -118,6 +127,15 @@ mod tests {
         ctx.apply_updates(&updates);
         assert_eq!(ctx.get("a"), Some(json!(1)));
         assert_eq!(ctx.get("b"), Some(json!(2)));
+    }
+
+    #[test]
+    fn context_remove_deletes_and_returns_last_value() {
+        let ctx = Context::new();
+        ctx.set("review_verdict", json!("approved"));
+        assert_eq!(ctx.remove("review_verdict"), Some(json!("approved")));
+        assert_eq!(ctx.get("review_verdict"), None);
+        assert_eq!(ctx.remove("review_verdict"), None);
     }
 
     #[test]
