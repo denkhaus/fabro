@@ -20,7 +20,11 @@ digraph Develop {
         // reviewer 12.8-13.7k chars) — the old linear growth (25.6k by
         // cycle 3) is gone. Residual duplication (per-visit stage
         // sections) is engine-side dedup work, not a budget problem.
-        preamble_budget_kb=24,
+        // 48 KB (was 24) per fabro-1e9f: per-seed claim-base captures
+        // (~18 KB) must render inline, zero blob detours — compounding
+        // was fixed by claim-base diffing, the raise keeps the whole
+        // per-seed capture readable without a blob round-trip.
+        preamble_budget_kb=48,
         // Deterministic cycle guards (fabro-45d0): engine injects
         // seed_cycles = { node -> completed visits since current_seed_id
         // last changed value }. The planner reads counts instead of
