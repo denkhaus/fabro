@@ -119,6 +119,21 @@ def check-loop-assets [] {
         print ($res.stderr | str trim -r -c "\n")
         return false
     }
+    # Checked-in fixture batteries (seed fabro-ac84, run 01M2NDGXSKF8YFANJXRFZGC087):
+    # the gate must EXECUTE the fixture scripts under .fabro/scripts/, not just
+    # parse them. Discovery is explicit and minimal — name each battery; do NOT
+    # blanket-run every .fabro/scripts/*.nu (stage-journal.nu and friction-score.nu
+    # are tools, not batteries).
+    let batteries = ['.fabro/scripts/dup-run-check-fixtures.nu']
+    for battery in $batteries {
+        let res = (do { ^nu $battery } | complete)
+        if $res.exit_code != 0 {
+            print $"loop-asset fixture battery FAILED: ($battery)"
+            print ($res.stdout | str trim -r -c "\n" | lines | last 20)
+            print ($res.stderr | str trim -r -c "\n")
+            return false
+        }
+    }
     print "loop-asset scripts green"
     true
 }
