@@ -23,6 +23,7 @@ domains:
   develop: {}
   ops: {}
   develop-loop: {}
+  loop-assets: {}
 governance:
   max_entries: 100
   warn_entries: 150
