@@ -263,7 +263,24 @@ decision, not an accident - it needs the user plus an ADR.
   2026-09-15, seed fabro-41de): workflow prompts land WITHOUT seed-id
   literals - status assertions about tracker state rot, provenance
   lives in seeds/journals/ADRs; flag id literals in reviewed prompt
-  diffs.
+  diffs. PROMPT ABSTRACTION (user directive 2026-09-16, extends
+  fabro-41de to the full evidence class): workflow assets stay
+  ABSTRACT and PROJECT-AGNOSTIC without endangering function - no run
+  ids, PR numbers, commit shas, dated cost narratives, or
+  machine-specific paths in .fabro/workflows/** (prompts, graphs,
+  tomls, script message strings; facts carriers may state project
+  facts, not evidence archaeology). Every agent editing a prompt must
+  know this is forbidden; the rule's evidence belongs in the seed's
+  Basis line, never the prompt. Flag every such literal in reviewed
+  prompt diffs; the mechanical net is the prompt-lint evidence ban
+  (fabro-41de extension).
+- Architecture passes have TWO disjoint output modes: the AUTONOMOUS
+  architect workflow writes markdown reviews under
+  .fabro/architecture/reviews/ plus seeds - it NEVER builds the
+  interactive improve-codebase-architecture skill's HTML report
+  (user directive 2026-09-16). The HTML report + localhost server is
+  exclusively the interactive skill's user-facing artifact; skip it in
+  any headless/agent context.
 - Verify a reviewer's FACTUAL premise in code before fixing (e804
   lesson, 2026-09-02): the spec axis claimed raw blob:// refs reach the
   tool; the dispatch path had already resolved them to file:// pointers.

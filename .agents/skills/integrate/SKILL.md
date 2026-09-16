@@ -120,6 +120,11 @@ commit, line).
   author machine).
 - Outdated framing check: grep for retired vocabulary (two-worlds,
   retired branch names) - zero leftovers is the bar.
+- Prompt-abstraction check (user directive 2026-09-16, fabro-41de
+  class): incoming prompt/graph/toml diffs must not add run ids, PR
+  numbers, commit shas, or machine-specific paths - workflows stay
+  abstract and project-agnostic; evidence lives in seed Basis lines.
+  Violations are findings, and the purge rides fabro-41de.
 
 ### Axis 4 - Policy, security, capability boundaries
 
