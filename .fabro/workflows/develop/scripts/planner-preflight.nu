@@ -38,6 +38,13 @@
 # fabro-9372) remain the real closures; the implementer-side dup-run
 # check stays the backstop.
 #
+# Anchor verification (fabro-7daf): each candidate's description is
+# scanned for `path:line` / `path:line-line` anchors, verified against
+# the current worktree, and surfaced as anchors_ok/anchor_flags fields on
+# the verdict rows. Anchor checks fail open: any parse/read failure
+# degrades to "no anchors" (anchors_ok true) exactly like a seed that
+# cites no anchors at all.
+#
 # Usage (node invocation; also drivable standalone for dry-runs):
 #   echo <run-id> | nu planner-preflight.nu [--base origin/denkhaus]
 #   nu planner-preflight.nu --candidates fabro-x,fabro-y --report-only
@@ -47,15 +54,27 @@
 #                   verdict without closing anything (dry-run / fixtures)
 #     --top N       how many top candidates to check (default 5)
 
-# Bounded per-candidate row for the planner-facing report.
-def row [v: record] {
+# Anchor verification helpers (fabro-7daf): cited file:line anchors in
+# seed descriptions are checked against the current worktree so rotted
+# (dead) seeds surface mechanically in the verdict table below.
+source anchor_check.nu
+
+# Bounded per-candidate row for the planner-facing report. Anchor fields
+# (fabro-7daf): anchors_ok is false when ANY cited file:line anchor in
+# the description is missing/rotted/mismatched; anchor_flags carries the
+# per-anchor detail. The verdict itself is unchanged — anchor rot routes
+# through planner adjudication, never through this script's close path.
+def row [v: record, desc: string, root: string] {
     let m = ($v.implementation_matches? | default [] | first | default {})
     let ce = ($v.closing_evidence? | default {})
+    let flags = (extract-anchors $desc | each {|a| check-anchor $a $root} | where {|f| $f.status != "ok"})
     {seed: $v.seed,
      verdict: $v.verdict,
      sha: ($m.sha? | default ($ce.sha? | default null)),
      subject: (if (($m.subject? | default ($ce.subject? | default "")) | is-empty) { null } else { ($m.subject? | default ($ce.subject? | default "")) | str substring 0..120 }),
-     filed_only_matches: ($v.filed_only_matches? | default 0)}
+     filed_only_matches: ($v.filed_only_matches? | default 0),
+     anchors_ok: (($flags | length) == 0),
+     anchor_flags: $flags}
 }
 
 # Resolve dup-run-check relative to THIS script (.fabro/scripts/ is
@@ -63,6 +82,7 @@ def row [v: record] {
 # the fixture battery drives this script from a scratch clone. `path
 # self` is parse-time only, so the anchor must be a const.
 const SCRIPT_DIR = (path self | path dirname)
+
 
 def main [--base: string = "origin/denkhaus", --candidates: string, --report-only, --top: int = 5]: nothing -> nothing {
     # Non-tty stdin (same nu 0.115 constraint as closeout.nu): the engine
@@ -73,8 +93,14 @@ def main [--base: string = "origin/denkhaus", --candidates: string, --report-onl
     mut degraded_reason = ""
 
     # Candidate list: --candidates override, else the top of sd ready.
+    # Candidates carry their description so cited file:line anchors can
+    # be verified (fabro-7daf); a description that cannot be fetched
+    # degrades per-candidate to "no anchors", never to a script failure.
     let cand = (if $candidates != null {
-        $candidates | split row ',' | each {|c| $c | str trim} | where {|c| not ($c | is-empty)}
+        $candidates | split row ',' | each {|c| $c | str trim} | where {|c| not ($c | is-empty)} | each {|id|
+            let r = (do { sd show $id --format json } | complete)
+            {id: $id, description: (if $r.exit_code != 0 { "" } else { (try { $r.stdout | from json | get -o issue.description | default "" } catch { "" }) })}
+        }
     } else {
         let r = (do { sd ready --assignee fabro --limit 200 --format json } | complete)
         if $r.exit_code != 0 {
@@ -90,7 +116,7 @@ def main [--base: string = "origin/denkhaus", --candidates: string, --report-onl
             } else {
                 # sd ready --format json: {success, command, issues: [...]}
                 # (issues is absent/empty when nothing is ready)
-                $parsed | get -o issues | default [] | get -o id | default []
+                $parsed | get -o issues | default [] | each {|i| {id: ($i | get -o id | default ""), description: ($i | get -o description | default "")}} | where {|c| not ($c.id | is-empty)}
             }
         }
     })
@@ -108,7 +134,9 @@ def main [--base: string = "origin/denkhaus", --candidates: string, --report-onl
         return
     }
 
-    let ids = ($cand | first ([$top 1] | math max))
+    let top_c = ($cand | first ([$top 1] | math max))
+    let ids = ($top_c | get id)
+    let cdesc = ($top_c | get description)
 
     let dup = ($SCRIPT_DIR | path join '../../..' 'scripts' 'dup-run-check.nu')
     let res = (do { nu $dup ...$ids --base $base --self $run_id } | complete)
@@ -162,7 +190,7 @@ def main [--base: string = "origin/denkhaus", --candidates: string, --report-onl
 
     let report = {mode: (if (not ($close_note | is-empty)) and $mode == "checked" { "degraded" } else { $mode }),
                   run_id: ($run_id | default null),
-                  candidates: ($verdicts | each {|v| row $v}),
+                  candidates: ($verdicts | enumerate | each {|e| row $e.item ($cdesc | get -o $e.index | default "") ($SCRIPT_DIR | path join '../../../..')}),
                   degraded_reason: (if ($degraded_reason | is-empty) { null } else { $degraded_reason }),
                   closed: $closed}
     {"outcome": "succeeded",
