@@ -518,6 +518,20 @@ impl Handler for AgentHandler {
             .await
             {
                 Ok(validated) => {
+                    if validated.salvaged {
+                        services.run.emitter.emit_scoped(
+                            &Event::RunNotice {
+                                level:            RunNoticeLevel::Info,
+                                code:             structured_output::BRACE_SALVAGE_NOTICE_CODE
+                                    .to_string(),
+                                message:          structured_output::brace_salvage_notice_message(
+                                    &node.id,
+                                ),
+                                exec_output_tail: None,
+                            },
+                            &stage_scope,
+                        );
+                    }
                     structured_output::apply_validated_output(
                         node,
                         schema,

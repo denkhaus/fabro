@@ -368,7 +368,10 @@ fn bounded_json(value: &Value) -> String {
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct ValidatedStructuredOutput {
-    pub(crate) value: Value,
+    pub(crate) value:    Value,
+    /// The response text was missing only trailing closing braces and was
+    /// completed deterministically before validation (brace salvage).
+    pub(crate) salvaged: bool,
 }
 
 #[must_use]
@@ -411,6 +414,21 @@ pub(crate) fn exhausted_failure_reason(repair_attempts: i64) -> String {
 /// structured output is persisted best-effort after output-cap truncation
 /// (fabro-274d).
 pub(crate) const TRUNCATION_NOTICE_CODE: &str = "event_body_overflow";
+
+/// Notice code for the informational signal emitted when a structured
+/// response was completed deterministically by appending missing closing
+/// braces before validation (2026-09-17 line-down: glm-5.3 final messages
+/// repeatedly one `}` short).
+pub(crate) const BRACE_SALVAGE_NOTICE_CODE: &str = "structured_output_brace_salvage";
+
+/// Message for the brace-salvage run.notice.
+#[must_use]
+pub(crate) fn brace_salvage_notice_message(node_id: &str) -> String {
+    format!(
+        "structured output for node \"{node_id}\" was missing only trailing closing braces \
+         and was completed deterministically before validation"
+    )
+}
 
 /// Best-effort persisted value for a structured output that never fit the
 /// provider output cap: the raw truncated payload plus an explicit truncation
@@ -514,6 +532,92 @@ pub(crate) fn prompt_response_format(schema: &OutputSchemaKind) -> ResponseForma
 }
 
 pub(crate) fn validate_response_text(
+    schema: &OutputSchemaKind,
+    text: &str,
+) -> Result<ValidatedStructuredOutput, StructuredOutputError> {
+    match validate_response_text_strict(schema, text) {
+        Err(error) if error.is_truncated() => salvage_truncated_response(schema, text, error),
+        other => other,
+    }
+}
+
+/// Deterministic brace completion for a structured response that is missing
+/// only its trailing closing braces (observed 2026-09-17, run
+/// 01M2QKXJ5JN9B2F9R8YNBTC9PA: glm-5.3 final messages repeatedly ended one
+/// `}` short with a clean stop; the truncation heuristic parked whole
+/// develop runs and its "shorten your output" repair advice made the model
+/// re-offend). A completion only counts when it parses, ends on a clean
+/// value boundary, and the completed object still validates — a genuine
+/// mid-string or mid-value cut keeps the truncation path and its
+/// length-aware repair.
+fn salvage_truncated_response(
+    schema: &OutputSchemaKind,
+    text: &str,
+    error: StructuredOutputError,
+) -> Result<ValidatedStructuredOutput, StructuredOutputError> {
+    let Some(completed) = complete_missing_braces(text) else {
+        return Err(error);
+    };
+    match validate_response_text_strict(schema, &completed) {
+        Ok(mut validated) => {
+            validated.salvaged = true;
+            Ok(validated)
+        }
+        // The completion resolved the truncation; whatever verdict the
+        // completed object earns is the real one (a stale Truncated error
+        // here would drive the wrong "shorten your output" repair advice).
+        Err(completed_error) => Err(completed_error),
+    }
+}
+
+/// Append the closing braces an unterminated JSON object is missing.
+///
+/// Returns `None` when the text does not end on a clean value boundary (a
+/// dangling string or a cut mid-number/word — completing those would invent
+/// content), when the dangling nesting depth exceeds the salvage limit, or
+/// when the completed text does not parse.
+fn complete_missing_braces(text: &str) -> Option<String> {
+    const MAX_SALVAGE_DEPTH: usize = 8;
+    let bytes = text.as_bytes();
+    let mut depth: i64 = 0;
+    let mut in_string = false;
+    let mut escape = false;
+    for &c in bytes {
+        if escape {
+            escape = false;
+        } else if c == b'\\' && in_string {
+            escape = true;
+        } else if c == b'"' {
+            in_string = !in_string;
+        } else if !in_string {
+            if c == b'{' {
+                depth += 1;
+            } else if c == b'}' {
+                depth -= 1;
+            }
+        }
+    }
+    let Ok(depth) = usize::try_from(depth) else {
+        return None;
+    };
+    if in_string || depth == 0 || depth > MAX_SALVAGE_DEPTH {
+        return None;
+    }
+    let ends_cleanly = text
+        .trim_end()
+        .as_bytes()
+        .last()
+        .is_some_and(|c| matches!(c, b'}' | b']' | b'"'));
+    if !ends_cleanly {
+        return None;
+    }
+    let completed = format!("{text}{}", "}".repeat(depth));
+    serde_json::from_str::<Value>(&completed)
+        .ok()
+        .map(|_| completed)
+}
+
+fn validate_response_text_strict(
     schema: &OutputSchemaKind,
     text: &str,
 ) -> Result<ValidatedStructuredOutput, StructuredOutputError> {
@@ -703,7 +807,10 @@ fn validate_routing_response_text(
         }
         validate_value_against_validator(routing_validator(), &parsed, None)?;
         validate_preferred_label(allowed_labels, &parsed)?;
-        return Ok(ValidatedStructuredOutput { value: parsed });
+        return Ok(ValidatedStructuredOutput {
+            value:    parsed,
+            salvaged: false,
+        });
     }
 
     Err(StructuredOutputError::new(
@@ -736,7 +843,10 @@ fn validate_custom_response_text(
         match serde_json::from_str::<Value>(candidate) {
             Ok(parsed) => {
                 validate_value_against_validator(validator, &parsed, Some(schema))?;
-                return Ok(ValidatedStructuredOutput { value: parsed });
+                return Ok(ValidatedStructuredOutput {
+                    value:    parsed,
+                    salvaged: false,
+                });
             }
             Err(err) if invalid_json.is_none() => invalid_json = Some(err.to_string()),
             Err(_) => {}
@@ -1374,6 +1484,74 @@ mod tests {
     }
 
     #[test]
+    fn one_brace_short_outer_object_is_salvaged() {
+        // The exact production shape from run 01M2QKXJ5JN9B2F9R8YNBTC9PA
+        // (2026-09-17): glm-5.3's final message closed every nested object
+        // but the outermost one — one `}` short with a clean stop.
+        let text = concat!(
+            r#"{"outcome":"succeeded","preferred_next_label":"Verification-only","context_updates":"#,
+            r#"{"current_seed_id":"fabro-ca1f","journal":{"painpoints":[],"observations":["x"]}}"#
+        );
+        let schema = OutputSchemaKind::Routing {
+            allowed_labels: vec!["Verification-only".to_string()],
+        };
+        let validated = validate_response_text(&schema, text)
+            .expect("the one-brace-short response must salvage instead of parking");
+        assert!(validated.salvaged);
+        assert_eq!(
+            validated
+                .value
+                .pointer("/context_updates/current_seed_id")
+                .and_then(Value::as_str),
+            Some("fabro-ca1f"),
+            "the salvaged object must be the completed OUTER object, not the inner one"
+        );
+    }
+
+    #[test]
+    fn deep_nesting_two_braces_short_is_salvaged() {
+        let text = r#"{"a":{"b":{"c":{"d":1}}"#; // depth 3 dangling, ends cleanly
+        let schema = OutputSchemaKind::Routing {
+            allowed_labels: vec!["Go".to_string()],
+        };
+        // No routing field inside: salvage completes the parse but validation
+        // still fails with NoRelevantJsonObject, NOT Truncated.
+        let error =
+            validate_response_text(&schema, text).expect_err("no routing field must still fail");
+        assert!(!error.is_truncated(), "error kind: {error:?}");
+    }
+
+    #[test]
+    fn mid_string_cut_is_never_salvaged() {
+        let text = r#"{"outcome":"succeeded","context_updates":{"brief":"never ends"#;
+        let schema = OutputSchemaKind::Routing {
+            allowed_labels: vec!["Go".to_string()],
+        };
+        let error =
+            validate_response_text(&schema, text).expect_err("a dangling string is a genuine cut");
+        assert!(error.is_truncated());
+    }
+
+    #[test]
+    fn cut_mid_number_is_never_salvaged() {
+        // Ends on a digit: the number may have been longer — completing it
+        // would invent content.
+        let text = r#"{"count":12"#;
+        assert!(complete_missing_braces(text).is_none());
+    }
+
+    #[test]
+    fn balanced_text_is_not_touched_by_salvage() {
+        let text = r#"{"outcome":"succeeded"}"#;
+        assert!(complete_missing_braces(text).is_none());
+        let schema = OutputSchemaKind::Routing {
+            allowed_labels: vec!["Go".to_string()],
+        };
+        let validated = validate_response_text(&schema, text).unwrap();
+        assert!(!validated.salvaged);
+    }
+
+    #[test]
     fn find_json_objects_returns_outermost_objects_only() {
         let cases = [
             (r#"{"a":{"b":1}}"#, vec![r#"{"a":{"b":1}}"#]),
@@ -1745,7 +1923,8 @@ mod tests {
         let node = Node::new("audit");
         let schema = schema(serde_json::json!({"type": "object"}));
         let validated = ValidatedStructuredOutput {
-            value: serde_json::json!({"passed": true}),
+            value:    serde_json::json!({"passed": true}),
+            salvaged: false,
         };
         let mut outcome = Outcome::success();
 
