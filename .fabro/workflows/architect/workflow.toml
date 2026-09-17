@@ -4,12 +4,12 @@ _version = 1
 graph = "workflow.fabro"
 
 # Architect pass (fabro-562a): a REUSABLE architecture-pass workflow,
-# self-gated on the deterministic friction score. Same seam shape as the
-# revisor, with ONE deliberate difference: NO run-wide
-# [run.agent] fabro_tools — the only engine-mediated tool this flow
-# needs is `fabro_ask`, granted node-level on the analyze stage (it
-# requires the graph's `inspects` attribute, declared in workflow.fabro).
-# Survey and file are shell-only bookkeeping stages.
+# self-gated on the deterministic friction score. User directive
+# 2026-09-17: NO fabro_ask — the analyze stage reads the vendored
+# improve-codebase-architecture skill directly (explicit path in its
+# prompt) and applies its method headless. No run-wide
+# [run.agent] fabro_tools and no node grants: survey, analyze, and
+# file are shell + file-tool stages.
 
 # Stage journal (same contract as develop/revisor, seed fabro-176b): one
 # durable JSON line per stage execution, engine provenance, checkpointed

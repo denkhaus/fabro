@@ -19,6 +19,10 @@ Tracker mechanics (sd is installed and authoritative):
 - If the brief carries review feedback, fixing those deviations IS this pass's job.
 - Gate-red bounce: when the `## Context` section carries `output.gate_known_bug_hits` (open known-bug seeds deterministically matched against the gate failure tail), read those hits BEFORE re-deriving root cause from the gate logs — the tail already matched them.
 
+## Rust work — read the vendored style guide FIRST (hard gate)
+
+When the seed touches Rust (any `*.rs`, `Cargo.toml`, or a crate under `lib/`): your FIRST action after reading the brief is to read `.fabro/skills/rust-style-guide/SKILL.md` with `read_file`, then the guideline PAGES covering this diff (the guide's table of contents names them — load only the relevant pages). The guide is the binding coding policy: the design and every edit conform to it from the start, never retrofitted after review. A Rust implementation written without the prior guide read is a failed pass, not a style choice. Do not paraphrase the guide from memory — the vendored file is the source. Non-Rust briefs skip this gate.
+
 ## Your job this pass
 
 Hard rules (both from run 01M0WWKAQCWZC0Q0JK019H0ZC7, whose implementer pass burned ~50s recovering):

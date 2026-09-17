@@ -1,11 +1,6 @@
 digraph Architect {
     graph [
-        goal="Run a self-gated architecture pass: survey gates deterministically on the friction score (verdict architecture-due, no cooldown marker within 48h), builds an exploration base (churn hot spots, seed digest, ADR/facts list), analyze asks ONE architecture-scoped fabro_ask question grounded in that base, file distills findings into seeds and writes the cooldown marker",
-        // ADR-0011: fabro_ask requires the target run's workflow to be
-        // declared here. The architect consults develop-run analysts —
-        // develop runs are the loop's execution evidence. Minimal grant:
-        // develop only.
-        inspects="develop",
+        goal="Run a self-gated architecture pass: survey gates deterministically on the friction score (verdict architecture-due, no cooldown marker within 48h), builds an exploration base (churn hot spots, seed digest, ADR/facts list), analyze reads the vendored improve-codebase-architecture skill and applies its method directly (headless) grounded in that base, file distills findings into seeds and writes the cooldown marker",
         rankdir=LR,
         max_node_visits=5,
         // Same posture as revisor/develop: bounded preambles. Linear
@@ -42,12 +37,14 @@ digraph Architect {
         context_allow_keys="arch_target_run_id,arch_score_json,arch_churn_hotspots,arch_seed_digest,arch_facts_files,arch_review_date,journal"
     ]
 
-    // Analyze: the intellectual core. Exactly ONE fabro_ask call with
-    // the architecture-scoped verbatim question (interplay / hot-spot /
-    // gap-misconception-optimization axes) grounded in the survey base —
-    // NOT a single-run review. The answer is persisted under the
-    // reviews tree; findings distill into a context key for the
-    // bookkeeper. Only this node holds a fabro tool grant.
+    // Analyze: the intellectual core. The stage agent READS the vendored
+    // improve-codebase-architecture skill (explicit path, user directive
+    // 2026-09-17: no fabro_ask indirection — direct classical application)
+    // and applies its method headless: deepening scan, deletion test,
+    // codebase-design vocabulary, exploration of the real code (the node
+    // therefore reads lib/apps/docs; .seeds stays file-hidden, sd runs via
+    // shell). The review is persisted under the reviews tree; findings
+    // distill into a context key for the bookkeeper. No fabro tool grants.
     analyze [
         label="Analyze",
         prompt="@prompts/analyze.md",
@@ -57,9 +54,9 @@ digraph Architect {
         reasoning_effort="high",
         project_memory=false,
         preamble_stages_ignore="survey,analyze,file",
-        fs_hide="lib/**,apps/**,docs/**,.seeds/**",
+        fs_hide=".seeds/**",
         fs_write=".fabro/architecture/reviews/**",
-        fabro_tools="fabro_ask",
+        fabro_tools="",
         // Read window: the CURRENT survey base + journal. Stale
         // findings from a previous pass stay out — analyze re-emits.
         preamble_allow_keys="arch_target_run_id,arch_score_json,arch_churn_hotspots,arch_seed_digest,arch_facts_files,arch_review_date,journal",
@@ -101,9 +98,9 @@ digraph Architect {
     survey -> analyze [label="Architecture due"]
 
     analyze -> file [label="Answer ready", condition="outcome=succeeded"]
-    // Ask-Fabro hiccup (session creation, analyst failure): soft exit —
-    // no marker written, the next invocation retries.
-    analyze -> exit [kind=soft, label="Ask failed (next pass retries)"]
+    // Analysis hiccup (skill read failure, review write impossible):
+    // soft exit — no marker written, the next invocation retries.
+    analyze -> exit [kind=soft, label="Analyze failed (next pass retries)"]
 
     file -> exit [kind=soft, label="Bookkeeping failed (nothing merged)", condition="outcome=failed"]
     file -> exit [label="Pass complete", condition="outcome=succeeded"]

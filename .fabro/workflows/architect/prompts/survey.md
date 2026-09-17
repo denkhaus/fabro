@@ -31,7 +31,7 @@ Routing (exactly one): score gate CLOSED or cooldown gate CLOSED -> route "Nothi
 
 Set `arch_review_date` to today as YYYY-MM-DD. Then derive:
 
-1. Target run id (the freshest develop run — the fabro_ask consultee). Run exactly:
+1. Target run id (the freshest develop run — the review's run-evidence anchor; analyze reads its journal). Run exactly:
 
        nu -c 'ls .fabro/journal/*.jsonl | sort-by modified --reverse | each {|r| {file: ($r.name | path basename), planner: ((open --raw $r.name | lines | compact | where {|l| $l | str contains "\"node\":\"planner\"" } | length) > 0)} } | where planner | first | get file'
 

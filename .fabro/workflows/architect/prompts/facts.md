@@ -17,7 +17,7 @@ report it in the journal, never silently work around it.
   (normal | grind | architecture-due), `threshold`, `components`,
   `inputs`. Exit 0 ALWAYS — a score is a measurement, not a pass/fail.
 - Architecture artifacts — `.fabro/architecture/`:
-  `reviews/<YYYY-MM-DD>.md` (fabro_ask answer, verbatim) and
+  `reviews/<YYYY-MM-DD>.md` (the analyze stage's skill-grounded review) and
   `<YYYY-MM-DD>-pass.md` (cooldown marker written by the file stage; its
   presence within 48h parks the survey).
 - Stage journal — `.fabro/journal/<run_id>.jsonl`: one JSON record per
