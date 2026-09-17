@@ -358,6 +358,14 @@ decision, not an accident - it needs the user plus an ADR.
   BEFORE running a manual improve-codebase-architecture pass; the manual
   skill pass is the fallback when the flow cannot run (server down,
   workflow broken) or the user wants interactive grilling.
+- ARCHITECT SCOPE (user directive 2026-09-17, binding): architect
+  findings may restructure ONLY the fork's own surface - `.fabro/workflows/**`,
+  `.fabro/scripts/**`, fork-only files (presence-pin pattern), our tooling.
+  Upstream-owned `lib/**`/`apps/**` code is observable, never restructurable
+  (the fork depends on upstream merges; big refactors of upstream code tear
+  apart at the next merge). Reframe upstream-restructuring findings to the
+  fork surface or drop them; apply the same filter when REVIEWING architect
+  findings (fabro-90ae class).
 - Deepen when EITHER holds: (a) review surfaced structural smells or the
   touched area needs design sharpening, OR (b) the Phase 0 friction
   score verdict is `architecture-due` (>=0.60) - systemic grind is the

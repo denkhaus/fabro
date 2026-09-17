@@ -31,6 +31,19 @@ report it in the journal, never silently work around it.
   tools in this flow).
 - Merge-target branch — `origin/denkhaus`: the branch this line's run
   PRs integrate into.
+- CHANGE SURFACE (user directive 2026-09-17, binding): this fork lives on
+  upstream (`upstream` -> fabro-sh/fabro) and CANNOT restructure the
+  upstream-owned codebase — a large refactor of `lib/**`/`apps/**` upstream
+  files would tear apart at the next upstream merge. Architectural changes
+  target ONLY: (a) `.fabro/workflows/**` and `.fabro/scripts/**` (our loop
+  assets, fully ours), (b) fork-only files (the established pattern:
+  `fork_seam_tests.rs`, `fork_line_recovery.rs` — listed in
+  `.agents/skills/merge-upstream/references/touchpoints.md`) wired through
+  minimal one-line seams, (c) our own tooling/docs. A finding that proposes
+  restructuring upstream-owned code is OUT OF SCOPE: reframe it to the
+  fork surface (e.g. move fork-added tests OUT of upstream monolith files
+  into fork-only modules) or drop it with the constraint named in the
+  journal.
 - Engine-provided credentials (ADR-0019 review axis): the engine injects
   `GITHUB_TOKEN` into every agent shell call (`resolve_workflow_env` in
   `lib/components/fabro-workflow/src/services.rs`) and runs a git

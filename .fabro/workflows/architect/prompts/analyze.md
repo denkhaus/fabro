@@ -59,7 +59,9 @@ The backlog runs share root causes; without a tracker check every pass re-distil
 2. For each recurring theme in the review, run `sd search "<theme keyword>"` — ONE keyword per query (AND-strict); title matches are not enough; content duplicates hide behind different titles.
 3. A finding that names the SAME concrete change as an existing seed is a duplicate: OPEN seed -> drop it and record `duplicate_of: <id>` for the journal; CLOSED seed -> the change is already implemented, drop it likewise. Only a genuinely NEW change (different file/mechanism/effect) survives.
 
-## Step 5 — distill
+## Step 5 — distill (scope-filtered)
+
+SCOPE FILTER FIRST (the FACTS CHANGE SURFACE entry, binding): a candidate that restructures upstream-owned code (`lib/**`, `apps/**` files upstream has) is out of scope — reframe it to the fork surface (workflows, scripts, fork-only files, minimal seams) or drop it, naming the constraint in the journal. Upstream churn and upstream monoliths are OBSERVABLE (they inform findings about OUR integration seams) but not directly changeable.
 
 Convert the SURVIVING findings into `architecture_findings`: an array of seed candidates. A candidate is actionable only when it names ONE concrete change (file/module/node, what to change, expected effect) grounded in the survey base or the review. Drop generic advice, drop praise, merge duplicates among themselves. A recommendation missing BOTH a known seed id and a new-seed justification is dropped as non-actionable. Each entry: {"title": "<short imperative, English>", "description": "<what/where/effect>", "priority": <2 normal, 1 high impact>, "kind": "<normal | needs-user>"}. `kind` is `needs-user` when the change would add, change, or remove a tool, credential, or permission in an agent-reachable surface (ADR-0019), or fork a product-design decision the user owns. An empty array is a valid outcome. Name the dropped duplicates with their seed ids in the journal observation.
 
