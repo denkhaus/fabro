@@ -480,8 +480,14 @@ decision, not an accident - it needs the user plus an ADR.
    an interpolated bash string - backticks in Markdown bodies execute
    as command substitution and silently strip content from the WHOLE
    rewritten body; write sd create/update --description via Python
-   subprocess LIST-args (no shell), and verify the roundtrip (read
-   back, compare) after every body write; if corrupted, restore from
+   subprocess LIST-args (no shell), and verify the READ shape on the
+   first seed of a batch BEFORE building update payloads - `sd show
+   --format json` wraps the record under a top-level `issue` key, and a
+   description read off the envelope silently comes back empty, turning
+   the update into a whole-body overwrite (2026-09-17: four evidence
+   extensions wiped 5c45/9a42/b765/8275 before the roundtrip check
+   caught it; assert the current body is non-empty, then roundtrip
+   after every write); if corrupted, restore from
    git show HEAD:.seeds/issues.jsonl and re-append. OWNERSHIP ON FILING (ADR-0018):
    seeds land unassigned by default; assign `@fabro` immediately ONLY
    for clearly-line work (it is a proposal, vetoable by reassignment);
