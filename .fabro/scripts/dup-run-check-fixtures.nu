@@ -13,8 +13,19 @@
 #   (b) the same trailer WITHOUT --self -> duplicate (trailer is foreign)
 #   (c) a landed implementation carrying a FOREIGN run's trailer, checked
 #       WITH --self                     -> duplicate
+#   (d)/(e) fabro-a32f filed-only: revisor-line landed PRs that merely
+#       FILE a seed ("Revise run ...; file fabro-x" / "Revisor pass:
+#       file N seeds") NEVER count as landed implementations -> clean
+#   (f)-(h) fabro-a32f pre-planner preflight (planner-preflight.nu):
+#       landed top candidate -> "Already landed"; filed-only top
+#       candidate -> "Preflight done"; empty candidate list -> degraded
+#       fail-open, still "Preflight done"
 #
 # Usage: nu .fabro/scripts/dup-run-check-fixtures.nu   (exit 0 = all pass)
+
+# Parse-time anchor to this battery's directory (`path self` is
+# parse-time only): resolves the sibling preflight script portably.
+const FIXTURES_DIR = (path self | path dirname)
 
 # Assert helper: record one case result, abort the battery on mismatch.
 def expect [case: string, got, want] {
@@ -39,6 +50,18 @@ def check [script: path, id: string, self: string] {
         exit 1
     }
     $out.stdout | lines | first | from json
+}
+
+
+# Run planner-preflight.nu (fabro-a32f) with a piped run id against the
+# synthetic base and return the parsed routing JSON object.
+def preflight [script: path, candidates: string, self: string] {
+    let out = (do { $self | nu $script --base origin/main --candidates $candidates --report-only } | complete)
+    if $out.exit_code != 0 {
+        print -e $"planner-preflight exited ($out.exit_code): ($out.stderr)"
+        exit 1
+    }
+    $out.stdout | lines | last | from json
 }
 
 def main [] {
@@ -82,6 +105,43 @@ def main [] {
         let c = (check $script 'fabro-fix002' 'RUN-SELF')
         expect 'c: foreign trailer with --self verdict' $c.verdict 'duplicate'
         expect 'c: foreign trailer with --self closure' ($c.implementation_matches | first | get closure) 'foreign'
+
+        # (d)/(e) fabro-a32f filed-only: revisor-line landed PRs that
+        # merely FILE seeds never count as landed implementations.
+        # ("Revise run ...; file fabro-xxx" — e.g. real a7ee183 filing
+        # fabro-ea41/fabro-7aac via PR #206 — and "Revisor pass: file N
+        # seeds".) Without the extended classifier these read as landed
+        # implementations and would mechanically close live seeds in the
+        # pre-planner preflight.
+        ^git commit -q --allow-empty -m 'Revise run RUNX; file fabro-fix003 (#103)'
+        ^git commit -q --allow-empty -m 'Revisor pass: file 2 seeds incl fabro-fix004 (#104)'
+        ^git push -q origin main
+
+        let d = (check $script 'fabro-fix003' 'RUN-SELF')
+        expect 'd: revise-run file verdict' $d.verdict 'clean'
+        expect 'd: revise-run file filed_only' $d.filed_only_matches 1
+
+        let e = (check $script 'fabro-fix004' 'RUN-SELF')
+        expect 'e: revisor file-N-seeds verdict' $e.verdict 'clean'
+        expect 'e: revisor file-N-seeds filed_only' $e.filed_only_matches 1
+
+        # (f)-(h) fabro-a32f pre-planner preflight routing (report-only:
+        # no tracker writes; the close path is guarded by sd failures into
+        # fail-open and is exercised by the dry-run in the seed work).
+        let pre = ($FIXTURES_DIR | path join '..' 'workflows' 'develop' 'scripts' 'planner-preflight.nu')
+
+        let f = (preflight $pre 'fabro-fix002' 'RUN-PREFLIGHT')
+        expect 'f: landed top candidate route' $f.preferred_next_label 'Already landed'
+        expect 'f: landed top candidate verdict' ($f.context_updates | get 'output.preflight' | get candidates | first | get verdict) 'duplicate'
+        expect 'f: landed top candidate sha' ((($f.context_updates | get 'output.preflight' | get candidates | first | get sha | str length) >= 7)) true
+
+        let g = (preflight $pre 'fabro-fix003' 'RUN-PREFLIGHT')
+        expect 'g: filed-only top candidate route' $g.preferred_next_label 'Preflight done'
+        expect 'g: filed-only top candidate verdict' ($g.context_updates | get 'output.preflight' | get candidates | first | get verdict) 'clean'
+
+        let h = (preflight $pre '' 'RUN-PREFLIGHT')
+        expect 'h: empty candidates route' $h.preferred_next_label 'Preflight done'
+        expect 'h: empty candidates mode' ($h.context_updates | get 'output.preflight' | get mode) 'degraded'
     } finally {
         cd $home_dir
         rm -rf $scratch

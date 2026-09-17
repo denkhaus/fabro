@@ -55,9 +55,18 @@ def git-log-matching [base, id, extra] {
     {rows: (parse-log $r.stdout), error: null}
 }
 
+# fabro-a32f: the filed-only marker covers every revisor-line commit
+# convention observed on the merge target, not just `Revisor pass:` —
+# `Revise run <id>; file fabro-xxxx (#n)` (e.g. a7ee183 filing
+# fabro-ea41/fabro-7aac via PR #206) and `file N ... seeds` subjects
+# MERELY FILE the named seeds and must never count as landed
+# implementations. Conservative by design: when a revisor commit both
+# implements and files, it is classified filed-only (a false negative
+# routes the planner normally; a false positive would mechanically
+# close live work in the pre-planner preflight).
 def classify-filed [rows] {
     $rows | each {|r|
-        {sha: $r.sha, subject: $r.subject, filed_only: ($r.subject =~ '(?i)revisor (pass|:)')}
+        {sha: $r.sha, subject: $r.subject, filed_only: ($r.subject =~ '(?i)(revisor (pass|:))|(\brevise run\b)|(\bfile\s+\d+\s+[^;()]*seeds?\b)|(;\s*file\s+fabro-[0-9a-z]+)')}
     }
 }
 
