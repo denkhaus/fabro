@@ -48,12 +48,14 @@ pub(super) fn all_bookkeeping_paths(paths: &[String]) -> bool {
 // Closed-wins JSONL union
 // ---------------------------------------------------------------------------
 
-/// One parsed JSONL record: the raw line (canonical form preserved) and
-/// whether the record is closed on its side.
+/// One parsed JSONL record: the raw line (canonical form preserved), whether
+/// the record is closed on its side, and the record's `updatedAt` timestamp
+/// (when present) for newest-wins merging (fabro-4ebd).
 struct ParsedRecord {
-    id:     String,
-    line:   String,
-    closed: bool,
+    id:         String,
+    line:       String,
+    closed:     bool,
+    updated_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 /// Parsed tracker file: records in file order, addressable by id. A duplicate
@@ -61,6 +63,16 @@ struct ParsedRecord {
 struct ParsedTrackerFile {
     records: Vec<ParsedRecord>,
     index:   HashMap<String, usize>,
+}
+
+fn parse_updated_at(
+    object: &serde_json::Map<String, serde_json::Value>,
+) -> Option<chrono::DateTime<chrono::Utc>> {
+    object
+        .get("updatedAt")
+        .and_then(serde_json::Value::as_str)
+        .and_then(|raw| chrono::DateTime::parse_from_rfc3339(raw).ok())
+        .map(|parsed| parsed.with_timezone(&chrono::Utc))
 }
 
 fn parse_tracker_file(side: &str, text: &str) -> anyhow::Result<ParsedTrackerFile> {
@@ -93,10 +105,12 @@ fn parse_tracker_file(side: &str, text: &str) -> anyhow::Result<ParsedTrackerFil
                 )
             })?;
         let closed = object.get("status").and_then(serde_json::Value::as_str) == Some("closed");
+        let updated_at = parse_updated_at(object);
         let record = ParsedRecord {
             id: id.to_string(),
             line: line.to_string(),
             closed,
+            updated_at,
         };
         if let Some(&slot) = index.get(id) {
             records[slot] = record;
@@ -108,14 +122,22 @@ fn parse_tracker_file(side: &str, text: &str) -> anyhow::Result<ParsedTrackerFil
     Ok(ParsedTrackerFile { records, index })
 }
 
-/// Closed-wins union of the base-side and head-side versions of one tracker
-/// JSONL file (fabro-895d).
+/// Closed-wins, newest-wins union of the base-side and head-side versions of
+/// one tracker JSONL file (fabro-895d, hardened fabro-4ebd).
 ///
 /// Records present on one side only are kept verbatim. For an id present on
-/// both sides, a closed base record wins (a run branch forked before the
-/// record was closed must not resurrect it); otherwise the head record wins
-/// (the branch may carry updates). Base order is preserved, head-only records
-/// are appended in head order. Any unparseable line fails the merge.
+/// both sides:
+///
+/// - a closed base record always wins — a run branch forked before the record
+///   was closed must not resurrect it, whatever the timestamps say;
+/// - otherwise the record with the newer `updatedAt` wins, on either side — the
+///   branch's stale snapshot must not clobber newer base body updates or
+///   assignments (the incident's lost tracker records);
+/// - with `updatedAt` missing, unparseable, or tied on both sides, the head
+///   record wins (the branch may carry updates).
+///
+/// Base order is preserved, head-only records are appended in head order.
+/// Any unparseable line fails the merge.
 pub(super) fn union_jsonl_closed_wins(base: &str, head: &str) -> anyhow::Result<String> {
     let base_file = parse_tracker_file("base", base)?;
     let head_file = parse_tracker_file("head", head)?;
@@ -123,7 +145,24 @@ pub(super) fn union_jsonl_closed_wins(base: &str, head: &str) -> anyhow::Result<
     let mut merged: Vec<String> = Vec::new();
     for base_record in &base_file.records {
         let winner = match head_file.index.get(&base_record.id) {
-            Some(&head_slot) if !base_record.closed => head_file.records[head_slot].line.clone(),
+            Some(&head_slot) if !base_record.closed => {
+                let head_record = &head_file.records[head_slot];
+                // The base record wins only when it is strictly newer: a
+                // missing/unparseable timestamp counts as oldest, and ties
+                // (including both missing) keep the head (branch) record —
+                // the historical head-wins behavior.
+                let base_is_strictly_newer = match (head_record.updated_at, base_record.updated_at)
+                {
+                    (None, Some(_)) => true,
+                    (Some(head_at), Some(base_at)) => base_at > head_at,
+                    _ => false,
+                };
+                if base_is_strictly_newer {
+                    base_record.line.clone()
+                } else {
+                    head_record.line.clone()
+                }
+            }
             _ => base_record.line.clone(),
         };
         merged.push(winner);
@@ -145,6 +184,59 @@ pub(super) fn union_jsonl_closed_wins(base: &str, head: &str) -> anyhow::Result<
 // ---------------------------------------------------------------------------
 // GitHub git data API client
 // ---------------------------------------------------------------------------
+
+/// One changed path of a compare-API side, with GitHub's change status
+/// (`added`, `removed`, `modified`, `renamed`, ...) and, for renames, the
+/// path the file was moved away from (fabro-4ebd).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct CompareEntry {
+    pub filename:          String,
+    pub status:            String,
+    pub previous_filename: Option<String>,
+}
+
+/// One entry of the run-scoped merge tree (fabro-4ebd): set `path` to new
+/// content, or remove `path` from the base tree.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) enum TreeChange {
+    Set(String),
+    Remove(String),
+}
+
+/// A tree entry staged against the base tree: a blob to write, or a path to
+/// delete (`sha: null` with a base tree set).
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum StagedTreeEntry {
+    SetBlob { path: String, sha: String },
+    Remove { path: String },
+}
+
+/// Compute the tree changes that carry EXACTLY the run's own committed
+/// changes onto the current base (fabro-4ebd (b), diff-based publish).
+///
+/// Input is the head side of `compare {base}...{head}` — the run branch's
+/// own changes since the merge base. Paths the base gained after the run
+/// forked never appear here, so they keep their base-tree content: what the
+/// run never touched, its merge commit cannot delete. This is what makes
+/// the stale-workspace squash revert (incident PR #216) structurally
+/// impossible: the merge commit's tree is the base tree overlaid with these
+/// entries, never a copy of the run's stale workspace tree.
+pub(super) fn run_scoped_tree_changes(head_entries: &[CompareEntry]) -> Vec<TreeChange> {
+    let mut changes = Vec::new();
+    for entry in head_entries {
+        match entry.status.as_str() {
+            "removed" => changes.push(TreeChange::Remove(entry.filename.clone())),
+            "renamed" => {
+                if let Some(previous) = entry.previous_filename.as_deref() {
+                    changes.push(TreeChange::Remove(previous.to_string()));
+                }
+                changes.push(TreeChange::Set(entry.filename.clone()));
+            }
+            _ => changes.push(TreeChange::Set(entry.filename.clone())),
+        }
+    }
+    changes
+}
 
 /// Minimal REST client for the endpoints conflict resolution needs. All calls
 /// carry the same bearer token and share the staleness leg's call timeout.
@@ -202,6 +294,20 @@ impl ConflictResolutionClient {
 
     /// Filenames changed on the `head` side of `compare/{base}...{head}`.
     pub(super) async fn compare_filenames(&self, basehead: &str) -> anyhow::Result<Vec<String>> {
+        Ok(self
+            .compare_entries(basehead)
+            .await?
+            .into_iter()
+            .map(|entry| entry.filename)
+            .collect())
+    }
+
+    /// Changed entries (path plus change status) of one
+    /// `compare/{base}...{head}` side (fabro-4ebd).
+    pub(super) async fn compare_entries(
+        &self,
+        basehead: &str,
+    ) -> anyhow::Result<Vec<CompareEntry>> {
         let url = format!(
             "{}/repos/{}/{}/compare/{}",
             self.base_url, self.owner, self.repo, basehead
@@ -222,9 +328,24 @@ impl ConflictResolutionClient {
         Ok(files
             .iter()
             .filter_map(|file| {
-                file.get("filename")
+                let filename = file
+                    .get("filename")
+                    .and_then(serde_json::Value::as_str)?
+                    .to_string();
+                let status = file
+                    .get("status")
                     .and_then(serde_json::Value::as_str)
-                    .map(str::to_string)
+                    .unwrap_or("modified")
+                    .to_string();
+                let previous_filename = file
+                    .get("previous_filename")
+                    .and_then(serde_json::Value::as_str)
+                    .map(str::to_string);
+                Some(CompareEntry {
+                    filename,
+                    status,
+                    previous_filename,
+                })
             })
             .collect())
     }
@@ -331,7 +452,7 @@ impl ConflictResolutionClient {
     async fn create_tree(
         &self,
         base_tree: &str,
-        entries: &[(String, String)],
+        entries: &[StagedTreeEntry],
     ) -> anyhow::Result<String> {
         let url = format!(
             "{}/repos/{}/{}/git/trees",
@@ -339,13 +460,21 @@ impl ConflictResolutionClient {
         );
         let tree: Vec<serde_json::Value> = entries
             .iter()
-            .map(|(path, sha)| {
-                serde_json::json!({
+            .map(|entry| match entry {
+                StagedTreeEntry::SetBlob { path, sha } => serde_json::json!({
                     "path": path,
                     "mode": "100644",
                     "type": "blob",
                     "sha": sha,
-                })
+                }),
+                // With a base tree set, a `sha: null` entry deletes the path
+                // (the run itself removed or renamed the file).
+                StagedTreeEntry::Remove { path } => serde_json::json!({
+                    "path": path,
+                    "mode": "100644",
+                    "type": "blob",
+                    "sha": serde_json::Value::Null,
+                }),
             })
             .collect();
         let body = serde_json::json!({ "base_tree": base_tree, "tree": tree });
@@ -421,6 +550,14 @@ impl ConflictResolutionClient {
     /// Union-merge the tracker JSONL files in `paths` between `base_ref` and
     /// `head_ref` and push the resulting merge commit onto `head_ref`.
     ///
+    /// Diff-based publish (fabro-4ebd (b)): the merge commit's tree is the
+    /// CURRENT base tree overlaid with exactly the run branch's own changes
+    /// (`head_entries`, the head side of `compare {base}...{head}`) plus the
+    /// unioned tracker files — never a copy of the run's (possibly stale)
+    /// head tree. Paths the base gained after the run forked survive
+    /// untouched, so the pull request's diff carries only the run's own
+    /// committed changes and cannot revert concurrent landed work.
+    ///
     /// `Err` carries the human-readable reason for parking: unparseable
     /// JSONL, an unreadable side, a failed git data API call, or a rejected
     /// push.
@@ -429,8 +566,9 @@ impl ConflictResolutionClient {
         base_ref: &str,
         head_ref: &str,
         paths: &[String],
+        head_entries: &[CompareEntry],
     ) -> Result<(), String> {
-        self.resolve_tracker_conflict_inner(base_ref, head_ref, paths)
+        self.resolve_tracker_conflict_inner(base_ref, head_ref, paths, head_entries)
             .await
             .map_err(|error| format!("paths [{}]: {error:#}", paths.join(", ")))
     }
@@ -440,7 +578,13 @@ impl ConflictResolutionClient {
         base_ref: &str,
         head_ref: &str,
         paths: &[String],
+        head_entries: &[CompareEntry],
     ) -> anyhow::Result<()> {
+        let tracker_path_set: std::collections::HashSet<&str> =
+            paths.iter().map(String::as_str).collect();
+
+        // The unioned tracker files: for conflicting tracker paths the union
+        // replaces whatever the run branch's own change would carry.
         let mut merged_files = Vec::new();
         for path in paths {
             let base_content = self
@@ -456,24 +600,54 @@ impl ConflictResolutionClient {
             merged_files.push((path.clone(), merged));
         }
 
-        let (head_sha, head_tree) = self
+        let (head_sha, _) = self
             .commit_info(head_ref)
             .await
             .context("reading head commit")?;
-        let (base_sha, _) = self
+        // The merge tree grows from the CURRENT base tree, not the run's
+        // head tree: base-only paths survive verbatim (fabro-4ebd (b)).
+        let (base_sha, base_tree) = self
             .commit_info(base_ref)
             .await
             .context("reading base commit")?;
 
-        let mut entries = Vec::new();
+        let mut staged: Vec<StagedTreeEntry> = Vec::new();
+        for change in run_scoped_tree_changes(head_entries) {
+            match change {
+                TreeChange::Set(path) => {
+                    if tracker_path_set.contains(path.as_str()) {
+                        // Replaced by the unioned tracker content below.
+                        continue;
+                    }
+                    let content = self
+                        .file_content(&path, head_ref)
+                        .await
+                        .with_context(|| format!("reading run-authored {path} at {head_ref}"))?;
+                    let blob = self
+                        .create_blob(&content)
+                        .await
+                        .with_context(|| format!("staging run-authored {path}"))?;
+                    staged.push(StagedTreeEntry::SetBlob { path, sha: blob });
+                }
+                // A tracker file the run itself removed keeps the removal
+                // (the union would resurrect a deliberately deleted file);
+                // any other removal is the run's own committed change.
+                TreeChange::Remove(path) => {
+                    staged.push(StagedTreeEntry::Remove { path });
+                }
+            }
+        }
         for (path, content) in &merged_files {
             let blob = self
                 .create_blob(content)
                 .await
                 .with_context(|| format!("storing merged {path}"))?;
-            entries.push((path.clone(), blob));
+            staged.push(StagedTreeEntry::SetBlob {
+                path: path.clone(),
+                sha:  blob,
+            });
         }
-        let tree = self.create_tree(&head_tree, &entries).await?;
+        let tree = self.create_tree(&base_tree, &staged).await?;
         let commit = self
             .create_merge_commit(
                 "Merge base into run branch: tracker JSONL closed-wins union (fabro supervisor)",
@@ -557,6 +731,108 @@ mod tests {
             error.to_string().contains("unparseable"),
             "error should name the unparseable side: {error:#}"
         );
+    }
+
+    /// Newest `updatedAt` wins on BOTH sides (fabro-4ebd): the branch's
+    /// stale snapshot must not clobber newer base body updates or
+    /// assignments — the exact loss seen in the incident.
+    #[test]
+    fn union_prefers_newer_updated_at_on_both_sides() {
+        let base = concat!(
+            "{\"id\":\"fabro-1\",\"status\":\"open\",\"updatedAt\":\"2026-09-17T16:00:00Z\"}\n",
+            "{\"id\":\"fabro-2\",\"status\":\"open\",\"updatedAt\":\"2026-09-17T16:00:00Z\"}\n",
+        );
+        let head = concat!(
+            "{\"id\":\"fabro-1\",\"status\":\"open\",\"updatedAt\":\"2026-09-17T11:00:00Z\"}\n",
+            "{\"id\":\"fabro-2\",\"status\":\"in_progress\",\"updatedAt\":\"2026-09-17T17:00:00Z\"}\n",
+        );
+
+        let merged = union_jsonl_closed_wins(base, head).expect("union should succeed");
+        let lines: Vec<&str> = merged.lines().collect();
+        assert_eq!(lines, vec![
+            // Newer base record survives the branch's stale snapshot.
+            "{\"id\":\"fabro-1\",\"status\":\"open\",\"updatedAt\":\"2026-09-17T16:00:00Z\"}",
+            // Newer head (branch) record survives an older base copy.
+            "{\"id\":\"fabro-2\",\"status\":\"in_progress\",\"updatedAt\":\"2026-09-17T17:00:00Z\"}",
+        ]);
+    }
+
+    /// A side with a timestamp beats a side without one; a closed base record
+    /// still always wins — a run branch must not resurrect a closed record,
+    /// whatever the timestamps say.
+    #[test]
+    fn union_closed_base_wins_even_against_newer_head_and_timestamps_beat_none() {
+        let base = concat!(
+            "{\"id\":\"fabro-1\",\"status\":\"closed\",\"updatedAt\":\"2026-09-17T10:00:00Z\"}\n",
+            "{\"id\":\"fabro-2\",\"status\":\"open\"}\n",
+        );
+        let head = concat!(
+            "{\"id\":\"fabro-1\",\"status\":\"open\",\"updatedAt\":\"2026-09-17T18:00:00Z\"}\n",
+            "{\"id\":\"fabro-2\",\"status\":\"open\",\"updatedAt\":\"2026-09-17T12:00:00Z\"}\n",
+        );
+
+        let merged = union_jsonl_closed_wins(base, head).expect("union should succeed");
+        let lines: Vec<&str> = merged.lines().collect();
+        assert_eq!(lines, vec![
+            "{\"id\":\"fabro-1\",\"status\":\"closed\",\"updatedAt\":\"2026-09-17T10:00:00Z\"}",
+            "{\"id\":\"fabro-2\",\"status\":\"open\",\"updatedAt\":\"2026-09-17T12:00:00Z\"}",
+        ]);
+    }
+
+    /// Diff-based publish (fabro-4ebd (b)): the merge tree changes cover
+    /// EXACTLY the run's own changed paths. A file the base gained after the
+    /// run forked is not in the head-side entries, so it gets no change and
+    /// keeps its base-tree content — the run cannot delete what it never
+    /// touched.
+    #[test]
+    fn run_scoped_tree_changes_cover_only_the_runs_own_paths() {
+        let head_entries = vec![
+            CompareEntry {
+                filename:          ".seeds/issues.jsonl".to_string(),
+                status:            "modified".to_string(),
+                previous_filename: None,
+            },
+            CompareEntry {
+                filename:          "lib/foo.rs".to_string(),
+                status:            "added".to_string(),
+                previous_filename: None,
+            },
+        ];
+
+        let changes = run_scoped_tree_changes(&head_entries);
+        assert_eq!(changes, vec![
+            TreeChange::Set(".seeds/issues.jsonl".to_string()),
+            TreeChange::Set("lib/foo.rs".to_string()),
+        ]);
+        // The base's newer `lib/bar.rs` (absent from the run's own changes)
+        // has no entry here — it survives via the base tree in create_tree.
+        assert!(!changes.iter().any(|change| match change {
+            TreeChange::Set(path) | TreeChange::Remove(path) => path == "lib/bar.rs",
+        }));
+    }
+
+    /// Removals and renames the run itself committed carry through as tree
+    /// deletions; a rename also removes its previous path.
+    #[test]
+    fn run_scoped_tree_changes_map_removals_and_renames() {
+        let head_entries = vec![
+            CompareEntry {
+                filename:          "docs/old.md".to_string(),
+                status:            "removed".to_string(),
+                previous_filename: None,
+            },
+            CompareEntry {
+                filename:          "docs/new.md".to_string(),
+                status:            "renamed".to_string(),
+                previous_filename: Some("docs/previous.md".to_string()),
+            },
+        ];
+
+        assert_eq!(run_scoped_tree_changes(&head_entries), vec![
+            TreeChange::Remove("docs/old.md".to_string()),
+            TreeChange::Remove("docs/previous.md".to_string()),
+            TreeChange::Set("docs/new.md".to_string()),
+        ]);
     }
 
     #[test]

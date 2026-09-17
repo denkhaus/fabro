@@ -12648,6 +12648,10 @@ async fn staleness_supervisor_resolves_jsonl_only_conflict_without_strike() {
     let _base_contents = raw_contents_mock(&github, ".seeds/issues.jsonl", "main", base_tracker);
     let _head_contents =
         raw_contents_mock(&github, ".seeds/issues.jsonl", "fabro/run/42", head_tracker);
+    // Diff-based publish (fabro-4ebd): the run's own non-tracker change is
+    // carried onto the merge tree from the head side, by content.
+    let _head_code_contents =
+        raw_contents_mock(&github, "lib/new.rs", "fabro/run/42", "fn new() {}\n");
     let _head_commit = commit_info_mock(&github, "fabro/run/42", "h1", "th");
     let _base_commit = commit_info_mock(&github, "main", "b1", "tb");
     // The stored blob must carry the closed-wins union. The request body is
@@ -12663,7 +12667,23 @@ async fn staleness_supervisor_resolves_jsonl_only_conflict_without_strike() {
             .body_includes("fabro-9");
         then.status(201).json_body(json!({ "sha": "blob1" }));
     });
-    let _tree_mock = git_object_create_mock(&github, "git/trees", "t2");
+    let _code_blob_mock = github.mock(|when, then| {
+        when.method("POST")
+            .path("/repos/acme/widgets/git/blobs")
+            .header("authorization", "Bearer ghu_test")
+            .body_includes("fn new() {}");
+        then.status(201).json_body(json!({ "sha": "blob-code" }));
+    });
+    // The merge tree must grow from the CURRENT base tree ("tb"), not the
+    // run's (possibly stale) head tree — the base's concurrent work survives
+    // verbatim (fabro-4ebd (b)).
+    let _tree_mock = github.mock(|when, then| {
+        when.method("POST")
+            .path("/repos/acme/widgets/git/trees")
+            .header("authorization", "Bearer ghu_test")
+            .body_includes("\"base_tree\":\"tb\"");
+        then.status(201).json_body(json!({ "sha": "t2" }));
+    });
     let _merge_commit_mock = git_object_create_mock(&github, "git/commits", "m1");
     let push_mock = push_ref_mock(&github, "fabro/run/42", 200);
     let (state, _app, run_id) = pr_test_app(Some("ghu_test"), Some(github.base_url()));

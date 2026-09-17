@@ -568,8 +568,11 @@ async fn handle_update_conflict(
 
     let base_ref = detail.base.ref_name.as_str();
     let head_ref = detail.head.ref_name.as_str();
+    // Head side with change statuses: the run branch's own changes, reused
+    // both for the conflict intersection and as the run-scoped overlay of
+    // the diff-based merge tree (fabro-4ebd).
     let head_side = client
-        .compare_filenames(&format!("{base_ref}...{head_ref}"))
+        .compare_entries(&format!("{base_ref}...{head_ref}"))
         .await;
     let base_side = client
         .compare_filenames(&format!("{head_ref}...{base_ref}"))
@@ -587,7 +590,10 @@ async fn handle_update_conflict(
         }
     };
 
-    let head_set: HashSet<&str> = head_side.iter().map(String::as_str).collect();
+    let head_set: HashSet<&str> = head_side
+        .iter()
+        .map(|entry| entry.filename.as_str())
+        .collect();
     let conflicting: Vec<String> = base_side
         .into_iter()
         .filter(|path| head_set.contains(path.as_str()))
@@ -606,7 +612,7 @@ async fn handle_update_conflict(
     }
 
     match client
-        .resolve_tracker_conflict(base_ref, head_ref, &conflicting)
+        .resolve_tracker_conflict(base_ref, head_ref, &conflicting, &head_side)
         .await
     {
         Ok(()) => ConflictOutcome::Resolved,
