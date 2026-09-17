@@ -1357,15 +1357,9 @@ pub(crate) enum RunsCommands {
     Rm(RunsRemoveArgs),
     /// Show detailed information about a workflow run
     Inspect(InspectArgs),
-    /// Approve pending workflow runs.
-    ///
-    /// Controls permission to start a run. For human interview gates during
-    /// execution, use the questions API.
+    /// Approve a pending run for execution.
     Approve(RunsApproveArgs),
-    /// Deny pending workflow runs.
-    ///
-    /// Controls permission to start a run. For human interview gates during
-    /// execution, use the questions API.
+    /// Deny execution of a pending run.
     Deny(RunsDenyArgs),
     /// Mark terminal runs as archived (reviewed, no further action needed).
     /// Archived runs are hidden from default listings.

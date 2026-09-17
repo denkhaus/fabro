@@ -14,49 +14,21 @@ fn help() {
     success: true
     exit_code: 0
     ----- stdout -----
-    Approve pending workflow runs.
-
-    Controls permission to start a run. For human interview gates during execution, use the questions API.
+    Approve a pending run for execution
 
     Usage: fabro approve [OPTIONS] <RUNS>...
 
     Arguments:
-      <RUNS>...
-              Run IDs or workflow names to approve
+      <RUNS>...  Run IDs or workflow names to approve
 
     Options:
-          --json
-              Output as JSON
-              
-              [env: FABRO_JSON=]
-
-          --server <SERVER>
-              Fabro server target: http(s) URL or absolute Unix socket path
-              
-              [env: FABRO_SERVER=]
-
-          --debug
-              Enable DEBUG-level logging (default is INFO)
-              
-              [env: FABRO_DEBUG=]
-
-          --no-upgrade-check
-              Disable automatic upgrade check
-              
-              [env: FABRO_NO_UPGRADE_CHECK=true]
-
-          --quiet
-              Suppress non-essential output
-              
-              [env: FABRO_QUIET=]
-
-          --verbose
-              Enable verbose output
-              
-              [env: FABRO_VERBOSE=]
-
-      -h, --help
-              Print help (see a summary with '-h')
+          --json              Output as JSON [env: FABRO_JSON=]
+          --server <SERVER>   Fabro server target: http(s) URL or absolute Unix socket path [env: FABRO_SERVER=]
+          --debug             Enable DEBUG-level logging (default is INFO) [env: FABRO_DEBUG=]
+          --no-upgrade-check  Disable automatic upgrade check [env: FABRO_NO_UPGRADE_CHECK=true]
+          --quiet             Suppress non-essential output [env: FABRO_QUIET=]
+          --verbose           Enable verbose output [env: FABRO_VERBOSE=]
+      -h, --help              Print help
     ----- stderr -----
     ");
 }

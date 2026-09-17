@@ -14,52 +14,22 @@ fn help() {
     success: true
     exit_code: 0
     ----- stdout -----
-    Deny pending workflow runs.
-
-    Controls permission to start a run. For human interview gates during execution, use the questions API.
+    Deny execution of a pending run
 
     Usage: fabro deny [OPTIONS] <RUNS>...
 
     Arguments:
-      <RUNS>...
-              Run IDs or workflow names to deny
+      <RUNS>...  Run IDs or workflow names to deny
 
     Options:
-          --json
-              Output as JSON
-              
-              [env: FABRO_JSON=]
-
-          --server <SERVER>
-              Fabro server target: http(s) URL or absolute Unix socket path
-              
-              [env: FABRO_SERVER=]
-
-          --debug
-              Enable DEBUG-level logging (default is INFO)
-              
-              [env: FABRO_DEBUG=]
-
-          --reason <REASON>
-              Reason for denying execution
-
-          --no-upgrade-check
-              Disable automatic upgrade check
-              
-              [env: FABRO_NO_UPGRADE_CHECK=true]
-
-          --quiet
-              Suppress non-essential output
-              
-              [env: FABRO_QUIET=]
-
-          --verbose
-              Enable verbose output
-              
-              [env: FABRO_VERBOSE=]
-
-      -h, --help
-              Print help (see a summary with '-h')
+          --json              Output as JSON [env: FABRO_JSON=]
+          --server <SERVER>   Fabro server target: http(s) URL or absolute Unix socket path [env: FABRO_SERVER=]
+          --debug             Enable DEBUG-level logging (default is INFO) [env: FABRO_DEBUG=]
+          --reason <REASON>   Reason for denying execution
+          --no-upgrade-check  Disable automatic upgrade check [env: FABRO_NO_UPGRADE_CHECK=true]
+          --quiet             Suppress non-essential output [env: FABRO_QUIET=]
+          --verbose           Enable verbose output [env: FABRO_VERBOSE=]
+      -h, --help              Print help
     ----- stderr -----
     ");
 }
