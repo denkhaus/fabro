@@ -633,6 +633,7 @@ async fn reconcile_existing_pull_request(
         &existing.node_id,
         existing.number,
         req.auto_merge.as_ref(),
+        req.diff,
     )
     .await;
     Ok(Some(CreatedPullRequest {
@@ -653,6 +654,12 @@ async fn reconcile_existing_pull_request(
 /// failure is no longer only a WARN — the outcome is recorded on the run's
 /// pull request so the merged wait can classify an unprotected-base dead
 /// end as a stuck gate instead of treating the PR as young forever.
+///
+/// Merge-gate safety net (fabro-4ebd): before enabling auto-merge, the PR's
+/// diff is checked against the run's own change scope. A run pull request
+/// that deletes paths the run never touched (the stale-workspace squash
+/// revert class, incident PR #216) is rejected — auto-merge stays off and
+/// the rejection reason is recorded so the PR waits for manual review.
 async fn enable_auto_merge_if_requested(
     github: &github_app::GitHubContext<'_>,
     owner: &str,
@@ -660,8 +667,12 @@ async fn enable_auto_merge_if_requested(
     node_id: &str,
     number: u64,
     options: Option<&AutoMergeOptions>,
+    run_diff: &str,
 ) -> Option<PullRequestAutoMergeState> {
     let options = options?;
+    if let Some(rejection) = merge_gate_rejection(github, owner, repo, number, run_diff).await {
+        return Some(rejection);
+    }
     match github_app::enable_auto_merge(github, owner, repo, node_id, options.merge_strategy).await
     {
         Ok(()) => {
@@ -690,6 +701,103 @@ async fn enable_auto_merge_if_requested(
             })
         }
     }
+}
+
+/// Run the merge gate (fabro-4ebd): fetch the PR's changed files and reject
+/// when the diff deletes paths outside the run's own change scope.
+///
+/// A gate check that cannot run (transport failure, unparseable answer) does
+/// NOT reject: the gate is a safety net against a structurally impossible
+/// publish (b), not the primary defense — failing open keeps ordinary
+/// transport blips from parking every run PR.
+async fn merge_gate_rejection(
+    github: &github_app::GitHubContext<'_>,
+    owner: &str,
+    repo: &str,
+    number: u64,
+    run_diff: &str,
+) -> Option<PullRequestAutoMergeState> {
+    let files = match github_app::list_pull_request_file_statuses(github, owner, repo, number).await
+    {
+        Ok(files) => files,
+        Err(error) => {
+            warn!(
+                pr_number = number,
+                error = %error,
+                "Merge gate could not list pull request files; allowing auto-merge (gate fails open)"
+            );
+            return None;
+        }
+    };
+    let out_of_scope = out_of_scope_deletions(&files, run_diff);
+    if out_of_scope.is_empty() {
+        return None;
+    }
+    let message = format!(
+        "merge gate rejected: pull request deletes paths outside the run's own change scope \
+         (run never touched them): {}",
+        out_of_scope.join(", ")
+    );
+    warn!(pr_number = number, deletion_paths = %out_of_scope.join(", "), "{message}");
+    Some(PullRequestAutoMergeState {
+        status: PullRequestAutoMergeStatus::Failed,
+        error:  Some(message),
+    })
+}
+
+/// Paths the run's own diff touches: both sides of every `diff --git`
+/// header, `/dev/null` excluded. A path the run deleted itself appears on
+/// the `a/` side, so it counts as touched.
+fn diff_touched_paths(diff: &str) -> HashSet<&str> {
+    let mut paths = HashSet::new();
+    for line in diff.lines().filter(|line| line.starts_with("diff --git ")) {
+        let rest = line.strip_prefix("diff --git ").unwrap_or(line);
+        if let Some((a_side, b_side)) = rest.split_once(" b/") {
+            if let Some(a_path) = a_side.strip_prefix("a/") {
+                if a_path != "/dev/null" {
+                    paths.insert(a_path);
+                }
+            }
+            if b_side != "/dev/null" && !b_side.is_empty() {
+                paths.insert(b_side);
+            }
+        }
+    }
+    paths
+}
+
+/// Deletions in the PR diff that lie outside the run's own change scope:
+/// paths GitHub reports as `removed`, plus the old side of renames, that
+/// the run's own diff never touched (fabro-4ebd). What the run never
+/// touched, its pull request must not delete.
+fn out_of_scope_deletions<'a>(
+    files: &'a [github_app::PullRequestFileStatus],
+    run_diff: &str,
+) -> Vec<&'a str> {
+    let touched = diff_touched_paths(run_diff);
+    let mut out_of_scope = Vec::new();
+    for file in files {
+        let deleted_paths: [&str; 2] = [
+            if file.status == "removed" {
+                file.filename.as_str()
+            } else {
+                ""
+            },
+            if file.status == "renamed" {
+                file.previous_filename.as_deref().unwrap_or("")
+            } else {
+                ""
+            },
+        ];
+        for path in deleted_paths {
+            if !path.is_empty() && !touched.contains(path) {
+                out_of_scope.push(path);
+            }
+        }
+    }
+    out_of_scope.sort_unstable();
+    out_of_scope.dedup();
+    out_of_scope
 }
 
 /// How many pull-request creation attempts a publish gets: 5xx answers and
@@ -900,6 +1008,7 @@ pub async fn open_pull_request(
         &created.node_id,
         created.number,
         req.auto_merge.as_ref(),
+        req.diff,
     )
     .await;
 
@@ -1977,6 +2086,71 @@ capabilities = { text = true, tools = true, response_format = { json_object = tr
                 plan: 20_000,
             }
         );
+    }
+
+    // ── merge gate (fabro-4ebd) tests ─────────────────────────────────────
+
+    fn pr_file(filename: &str, status: &str) -> github_app::PullRequestFileStatus {
+        github_app::PullRequestFileStatus {
+            filename:          filename.to_string(),
+            status:            status.to_string(),
+            previous_filename: None,
+        }
+    }
+
+    /// The gate flags deletions the run's own diff never touched: a revisor
+    /// that only wrote `.fabro/` files must not delete `lib/` paths through
+    /// a stale-workspace squash diff (incident PR #216).
+    #[test]
+    fn merge_gate_flags_out_of_scope_deletions() {
+        let run_diff = "diff --git a/.fabro/journal/run.jsonl b/.fabro/journal/run.jsonl\n\
+                        @@ -1 +1,2 @@\n\
+                        +{}\n";
+        let files = vec![
+            pr_file(".fabro/journal/run.jsonl", "modified"),
+            pr_file("lib/foundation/fabro-core/src/graph.rs", "removed"),
+        ];
+
+        assert_eq!(out_of_scope_deletions(&files, run_diff), vec![
+            "lib/foundation/fabro-core/src/graph.rs"
+        ]);
+    }
+
+    /// Deletions the run itself committed are in scope and pass; renames
+    /// check the old path, and modified/added files never count as
+    /// deletions.
+    #[test]
+    fn merge_gate_allows_run_authored_deletions_and_renames() {
+        let run_diff = "diff --git a/docs/old.md b/docs/old.md\n\
+                        deleted file mode 100644\n\
+                        diff --git a/docs/previous.md b/docs/new.md\n";
+        let files = vec![
+            pr_file("docs/old.md", "removed"),
+            pr_file("docs/new.md", "renamed"),
+            pr_file("src/lib.rs", "modified"),
+        ];
+
+        assert!(out_of_scope_deletions(&files, run_diff).is_empty());
+
+        // A rename whose previous path the run never touched is flagged.
+        let mut foreign_rename = pr_file("docs/x.md", "renamed");
+        foreign_rename.previous_filename = Some("lib/untouched.rs".to_string());
+        assert_eq!(out_of_scope_deletions(&[foreign_rename], run_diff), vec![
+            "lib/untouched.rs"
+        ]);
+    }
+
+    /// Both sides of a `diff --git` header count as touched; `/dev/null` is
+    /// not a path.
+    #[test]
+    fn diff_touched_paths_covers_both_sides_and_skips_dev_null() {
+        let diff = "diff --git a/lib/removed.rs b//dev/null\n\
+                    diff --git a/lib/kept.rs b/lib/kept.rs\n";
+        let touched = diff_touched_paths(diff);
+        assert!(touched.contains("lib/removed.rs"));
+        assert!(touched.contains("lib/kept.rs"));
+        assert!(!touched.contains("/dev/null"));
+        assert!(diff_touched_paths("").is_empty());
     }
 
     #[tokio::test]

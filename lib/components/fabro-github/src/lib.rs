@@ -1597,6 +1597,90 @@ pub async fn get_pull_request_with_client(
         .context("Failed to parse pull request response")?)
 }
 
+/// One file of a pull request's diff: the changed path plus GitHub's change
+/// status (`added`, `removed`, `modified`, `renamed`, ...). For renames,
+/// `previous_filename` names the path the file was moved away from.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct PullRequestFileStatus {
+    pub filename:          String,
+    pub status:            String,
+    pub previous_filename: Option<String>,
+}
+
+/// List the pull request's changed files with their change statuses.
+///
+/// Used by the run-PR merge gate (fabro-4ebd): a run pull request must not
+/// delete paths outside the run's own change scope.
+pub async fn list_pull_request_file_statuses(
+    ctx: &GitHubContext<'_>,
+    owner: &str,
+    repo: &str,
+    number: u64,
+) -> Result<Vec<PullRequestFileStatus>, PullRequestApiError> {
+    let client = ctx.http_client()?;
+    list_pull_request_file_statuses_with_client(&client, ctx, owner, repo, number).await
+}
+
+pub async fn list_pull_request_file_statuses_with_client(
+    client: &impl HttpClient,
+    ctx: &GitHubContext<'_>,
+    owner: &str,
+    repo: &str,
+    number: u64,
+) -> Result<Vec<PullRequestFileStatus>, PullRequestApiError> {
+    tracing::debug!(owner, repo, number, "Listing pull request files");
+
+    let token = ctx
+        .creds
+        .resolve_bearer_token(
+            client,
+            owner,
+            repo,
+            ctx.base_url,
+            serde_json::json!({ "pull_requests": "read" }),
+        )
+        .await?;
+
+    let url = format!(
+        "{}/repos/{owner}/{repo}/pulls/{number}/files?per_page=100",
+        ctx.base_url
+    );
+    let auth = format!("Bearer {token}");
+    let resp = client
+        .request(HttpMethod::Get, &url, &github_headers(&auth), None)
+        .await
+        .context("Failed to list pull request files")?;
+
+    match resp.status {
+        200 => {}
+        404 => {
+            return Err(PullRequestApiError::NotFound {
+                owner: owner.to_string(),
+                repo: repo.to_string(),
+                number,
+            });
+        }
+        401 | 403 => {
+            return Err(anyhow!(
+                "Authentication failed listing pull request files ({})",
+                resp.status
+            )
+            .into());
+        }
+        status => {
+            return Err(anyhow!(
+                "Unexpected status {status} listing pull request files: {}",
+                resp.text()
+            )
+            .into());
+        }
+    }
+
+    Ok(resp
+        .json::<Vec<PullRequestFileStatus>>()
+        .context("Failed to parse pull request files response")?)
+}
+
 /// One check-run observation for a PR head ref (name, status, conclusion).
 /// `status` is the run state (`queued`, `in_progress`, `completed`), and
 /// `conclusion` is set once the run completes (`success`, `failure`, ...).
