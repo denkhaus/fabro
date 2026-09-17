@@ -408,14 +408,31 @@ decision, not an accident - it needs the user plus an ADR.
   against lib/ - .fabro/docs/tracker-only changes skip the rebuild, but
   any lib/ path (even a small crate like fabro-validate) changes the
   server/CLI image and needs the next just up.
-- PUSH/PR COORDINATION: pushing to denkhaus while a run PR is open can
-  turn it DIRTY and stall auto-merge. The gate must be MECHANICAL, not
-  cell sequencing: one helper function (safe_push) that queries open PRs
-  and only runs git push when the list is empty, returning the refusal
-  otherwise (2026-09-09: check and push in one cell, PR #81
-  CONFLICTING; 2026-09-15: the check SAW one open PR and the push still
-  ran because they shared a cell - PR #156 went dirty, branch repair
-  needed). If one goes dirty (with checks running OR a green gate),
+- PUSH POLICY (user directive 2026-09-17): the local iterate/integrate
+  cycle does NOT push to denkhaus during its work at all - no rolling
+  branch updates while a fabro run is executing. PULLS and integration
+  of landed fabro work (fetch, ff-pull, review/journal/tracker reads)
+  stay allowed and expected DURING runs - they are read-only and the
+  line-watch depends on them; only the push direction is gated. Commits accumulate
+  locally; ONE push decision at the END of the cycle/heartbeat in a
+  single mechanical gate: (a) `fabro ps --server https://mirtuell.net`
+  shows NO running conductor/develop/revisor run AND (b) the open-PR
+  list is empty. Both checks and the push share one cell (the 2026-09-15
+  PR #156 lesson); a refusal means the push waits for the next
+  heartbeat's after-merge window. Rationale: the squash-revert incident
+  (fabro-4ebd, 2026-09-17) - a push at 11:22 while a revisor ran
+  silently DELETED the pushed work at the run's 12:18 publish; the
+  danger window starts at RUN START, not at PR-open, and a mid-run push
+  buys nothing (the running workspace never sees it). Exception: an
+  active incident RESTORE may push as soon as only (a) holds (no
+  running pass), because leaving the line branch corrupted is worse
+  than dirtying a run PR.
+- PUSH/PR COORDINATION (legacy, still applies inside the safe gate):
+  pushing to denkhaus while a run PR is open can
+  turn it DIRTY and stall auto-merge (2026-09-09: check and push in one
+  cell, PR #81 CONFLICTING; 2026-09-15: the check SAW one open PR and
+  the push still ran because they shared a cell - PR #156 went dirty,
+  branch repair needed). If one goes dirty (with checks running OR a green gate),
   update its branch (merge denkhaus into the run branch). A clean LOCAL
   `git merge-tree` does NOT prove GitHub reports mergeable - verify the
   PR's mergeable state after any push that raced a run PR. JSONL repair

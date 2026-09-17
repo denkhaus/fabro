@@ -236,6 +236,17 @@ Every landed feature answers: does the source of truth know about it?
 Pushes to the base branch are the only step that can damage in-flight
 line work. Rules:
 
+0. **No mid-work pushes (user directive 2026-09-17)**: the integrate
+   session NEVER pushes while it is still reviewing - all commits
+   (reviews, seed writes, tracker updates) accumulate locally and ONE
+   push happens at the very end inside the safe window. Pulling and
+   integrating landed line work DURING runs stays allowed (read-only);
+   only pushes are gated. Rolling branch
+   updates during a running fabro run destroy productivity: the run
+   workspace never sees them (frozen clone), and until the fabro-4ebd
+   diff-based publish lands they can be silently DELETED by the run's
+   squash (incident 2026-09-17: a mid-run push was reverted wholesale
+   at publish time).
 1. **Safe window = zero open run PRs AND zero in-flight runs** (a run
    branch whose head is younger than the newest merged PR, or any
    non-terminal develop/conductor run). The claim-to-PR window is the
