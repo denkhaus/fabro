@@ -417,9 +417,17 @@ decision, not an accident - it needs the user plus an ADR.
   locally; ONE push decision at the END of the cycle/heartbeat in a
   single mechanical gate: (a) `fabro ps --server https://mirtuell.net`
   shows NO running conductor/develop/revisor run AND (b) the open-PR
-  list is empty. Both checks and the push share one cell (the 2026-09-15
+  list is empty.  Both checks and the push share one cell (the 2026-09-15
   PR #156 lesson); a refusal means the push waits for the next
-  heartbeat's after-merge window. Rationale: the squash-revert incident
+  heartbeat's after-merge window. THE GATE IS A SCRIPT, not hand-rolled
+  cell logic: `nu .fabro/scripts/push-gate.nu` (exit 0 = open). Two
+  hard lessons: `fabro ps --json` carries status as {"kind": "..."} - a
+  `== 'running'` string compare silently passes while runs are active
+  (2026-09-17: two pushes escaped during a live conductor pass through
+  exactly that bug), and gh JSON output can carry ANSI codes (use
+  `--jq`). A new or repaired gate MUST be validated against a
+  KNOWN-ACTIVE line state (create/observe a running pass, assert the
+  gate refuses) before its first OPEN verdict is trusted. Rationale: the squash-revert incident
   (fabro-4ebd, 2026-09-17) - a push at 11:22 while a revisor ran
   silently DELETED the pushed work at the run's 12:18 publish; the
   danger window starts at RUN START, not at PR-open, and a mid-run push
