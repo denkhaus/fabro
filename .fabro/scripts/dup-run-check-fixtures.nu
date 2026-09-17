@@ -16,6 +16,11 @@
 #   (d)/(e) fabro-a32f filed-only: revisor-line landed PRs that merely
 #       FILE a seed ("Revise run ...; file fabro-x" / "Revisor pass:
 #       file N seeds") NEVER count as landed implementations -> clean
+#   (i) fabro-0d48 filed-only: the comma/and-separated "file seeds
+#       fabro-x and fabro-y" subject shape (e.g. real 706d639
+#       'Improve: revise develop run 01M2Q7VVH, file seeds fabro-6ae9
+#       and fabro-... (#212)') must classify filed-only, NOT as a
+#       foreign implementation forcing a duplicate verdict -> clean
 #   (f)-(h) fabro-a32f pre-planner preflight (planner-preflight.nu):
 #       landed top candidate -> "Already landed"; filed-only top
 #       candidate -> "Preflight done"; empty candidate list -> degraded
@@ -124,6 +129,27 @@ def main [] {
         let e = (check $script 'fabro-fix004' 'RUN-SELF')
         expect 'e: revisor file-N-seeds verdict' $e.verdict 'clean'
         expect 'e: revisor file-N-seeds filed_only' $e.filed_only_matches 1
+
+        # (i) fabro-0d48: the 706d639 shape — 'Improve: revise develop
+        # run <id>, file seeds fabro-x and fabro-y (#n)' — previously
+        # matched NO classifier branch (revisors wrote 'revise develop
+        # run', and 'file seeds fabro-' was uncovered), so it landed
+        # among implementations with closure=foreign and line ~244's
+        # foreign_impl > 0 forced verdict=duplicate even when the run's
+        # own self-closure PR existed. Both mentioned seeds must read
+        # filed-only -> clean.
+        ^git commit -q --allow-empty -m 'Improve: revise develop run RUN-REV, file seeds fabro-fix005 and fabro-fix006 (#105)'
+        ^git push -q origin main
+
+        let i1 = (check $script 'fabro-fix005' 'RUN-SELF')
+        expect 'i: file-seeds-and verdict (first seed)' $i1.verdict 'clean'
+        expect 'i: file-seeds-and filed_only (first seed)' $i1.filed_only_matches 1
+        expect 'i: file-seeds-and impl matches (first seed)' ($i1.implementation_matches | length) 0
+
+        let i2 = (check $script 'fabro-fix006' 'RUN-SELF')
+        expect 'i: file-seeds-and verdict (second seed)' $i2.verdict 'clean'
+        expect 'i: file-seeds-and filed_only (second seed)' $i2.filed_only_matches 1
+        expect 'i: file-seeds-and impl matches (second seed)' ($i2.implementation_matches | length) 0
 
         # (f)-(h) fabro-a32f pre-planner preflight routing (report-only:
         # no tracker writes; the close path is guarded by sd failures into
