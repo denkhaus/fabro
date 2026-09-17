@@ -321,7 +321,12 @@ impl<G: Graph + 'static> Executor<G> {
                 }
                 NextStep::End => {
                     let mut outcome = last_outcome.clone();
-                    if outcome.status.is_failure() {
+                    // Fork seam (fabro-986b): a park-class failure keeps its
+                    // original detail. The reset-window prose below is the
+                    // data terminal classification keys on; the routing
+                    // diagnostic rewrite would turn a resumable soft stop
+                    // into a deterministic workflow error.
+                    if outcome.status.is_failure() && !graph.failure_parks_run(&outcome) {
                         let resolved = graph.resolve_on_failure(&node);
                         let message = match resolved.policy() {
                             // A failed outcome under `succeed` only reaches

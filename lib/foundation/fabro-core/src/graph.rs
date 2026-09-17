@@ -77,4 +77,21 @@ pub trait Graph: Send + Sync {
     /// Effective failure routing policy for a node: node-level `on_failure`
     /// overrides the graph level, and an absent node attribute inherits it.
     fn resolve_on_failure(&self, node: &Self::Node) -> ResolvedOnFailure;
+    /// Whether a failed outcome parks the run at the end instead of being
+    /// rewritten into a routing diagnostic (fork seam, fabro-986b).
+    ///
+    /// The executor's end path replaces a failed outcome's message with a
+    /// "no outgoing fail edge" style diagnostic so ordinary failures name
+    /// the routing gap that stopped them. Implementors that classify
+    /// certain failures as run-parking — a provider usage-window rate
+    /// limit whose reset-window prose downstream terminal classification
+    /// keys on — return `true` for those outcomes so the original failure
+    /// detail survives to the terminal event. The executor consults this
+    /// only for failed outcomes; implementations that reuse the predicate
+    /// elsewhere (for example in `select_edge`) must gate on
+    /// `outcome.status.is_failure()` themselves. Must return `false` for
+    /// outcomes that are not failures. The default parks nothing.
+    fn failure_parks_run(&self, _outcome: &Outcome<Self::Meta>) -> bool {
+        false
+    }
 }
