@@ -97,7 +97,14 @@ digraph Develop {
         // qualitygate` or its byte-equivalent body (`nu
         // scripts/qualitygate.nu`) fails validation and burns one of
         // output_retries — never passes silently.
-        output_schema="@schemas/planner-output.schema.json",
+        // HOTFIX 2026-09-17 (line-watch incident): file-based output_schema
+        // routes the validated payload under output_key=output.planner and
+        // context_updates NEVER merges into run context as individual keys -
+        // the implementer ran BLIND (run 01M2RJSBP8XS: context_update_dropped
+        // output.planner; current_seed_* never emitted). Reverted to routing
+        // until the engine merges context_updates from file-schema outputs
+        // (open seed); the gate-command ban lives in planner.md hard rules.
+        output_schema="routing",
         output_retries=2,
         max_visits=20,
         goal_gate=true,

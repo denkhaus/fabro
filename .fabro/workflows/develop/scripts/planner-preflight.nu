@@ -258,7 +258,8 @@ def main [--base: string = "origin/denkhaus", --candidates: string, --report-onl
         if $show.exit_code != 0 {
             $close_note = $"close aborted: sd show failed — planner adjudicates with evidence inline"
         } else {
-            let body = ($show.stdout | from json | get -o issue.description | default "")
+            let body_raw = ($show.stdout | from json | get -o issue.description?)
+            let body = (if ($body_raw | is-empty) { "" } else { $body_raw })
             let note = ($body + " + closure note: superseded: fix landed in " + ($evidence_sha | default "?") + " (run " + ($run_id | default "?") + ")")
             let upd = (do { sd update $topv.seed --description $note } | complete)
             if $upd.exit_code != 0 {
