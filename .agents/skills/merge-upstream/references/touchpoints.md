@@ -122,7 +122,10 @@ Upstream directions that may supersede our work — re-evaluate per merge:
   Fork run-store work MUST build on RunSummaryStore/SQLite, not SlateDB paths.
 - Upstream bug fixed on our side (fabro-b7c4, 31809f2ad): activation
   rejected real legacy catalog keys (5-segment by-start layout). Parser now
-  accepts both; PR offer upstream still pending.
+  accepts both; upstream offer branch pushed 2026-09-17:
+  `upstream-offer/legacy-catalog-and-variantless-events` on denkhaus/fabro
+  (ports BOTH fabro-b7c4 cases onto upstream/main 170291b9f; see
+  UPSTREAM_OFFER.md there).
 - RunIntent registration spine + local producer support landed: workflow
   versions register dependency-first; `fabro run` resolves local workflow
   packages and observes git targets via remote SHA query
@@ -151,7 +154,11 @@ Upstream directions that may supersede our work — re-evaluate per merge:
   reuse) — reuse it for any fork feature needing a credentialed checkout
   (revisor line) instead of new clone plumbing.
 - fabro-b7c4: upstream STILL lacks the 5-segment by-start catalog fix;
-  local fix 31809f2ad survived the merge untouched; PR offer still valid.
+  local fix 31809f2ad survived the merge untouched; upstream offer branch
+  `upstream-offer/legacy-catalog-and-variantless-events` pushed to
+  denkhaus/fabro 2026-09-17 covering BOTH cases (5-segment catalog keys +
+  variantless sandbox.git/cleanup event names) — user opens the PR to
+  fabro-sh/fabro from it.
 - Push race (environmental): a background watcher pushes origin/denkhaus
   within ~30s of any local commit — `git merge upstream/main` auto-commits
   and can get pushed BEFORE the proper merge message/adaptations land.
