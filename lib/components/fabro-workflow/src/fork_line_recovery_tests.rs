@@ -161,6 +161,123 @@ fn parked_failure_selects_no_edge_even_with_matching_condition() {
     );
 }
 
+// --- fabro-986b: the executor end-path park preservation seam ---
+
+#[test]
+fn failure_parks_run_hook_is_wired_to_the_park_classification() {
+    let mut graph = fabro_graphviz::graph::types::Graph::new("test");
+    graph.nodes.insert(
+        "work".to_string(),
+        fabro_graphviz::graph::types::Node::new("work"),
+    );
+    let workflow_graph = WorkflowGraph(Arc::new(graph));
+
+    let mut detail = FailureDetail::new(
+        format!("LLM error: {ZAI_HARD_CUT}"),
+        FailureCategory::TransientInfra,
+    );
+    detail.signature = Some(FailureSignature("api_transient|zai|rate_limit".to_string()));
+    let mut parked = Outcome::fail("llm");
+    parked.failure = Some(detail);
+
+    assert!(
+        workflow_graph.failure_parks_run(&parked),
+        "the executor seam must see the same park classification as select_edge"
+    );
+
+    let mut ordinary = Outcome::fail("sandbox hiccup");
+    ordinary.failure = Some(FailureDetail::new(
+        "sandbox hiccup",
+        FailureCategory::TransientInfra,
+    ));
+    assert!(
+        !workflow_graph.failure_parks_run(&ordinary),
+        "ordinary failures must not park"
+    );
+}
+
+/// A stage handler failing with a fixed park-class detail, mirroring how
+/// LLM-stage failures surface: a failed outcome, not an engine error.
+struct ParkFailHandler(FailureDetail);
+
+#[async_trait::async_trait]
+impl fabro_core::NodeHandler<WorkflowGraph> for ParkFailHandler {
+    async fn execute(
+        &self,
+        _node: &crate::graph::WorkflowNode,
+        _context: &crate::context::Context,
+        _graph: &WorkflowGraph,
+        _attempt: &fabro_core::handler::AttemptInfo,
+    ) -> fabro_core::Result<Outcome> {
+        let mut outcome = Outcome::fail("stage failed");
+        outcome.failure = Some(self.0.clone());
+        Ok(outcome)
+    }
+}
+
+/// Drives the full chain that run 01M2J1BA2JC4S6SA10YEJHHMVP broke: a
+/// park-class stage failure on a route-policy node without a fail edge
+/// must end the run SoftStop with the quota signature — the executor's
+/// end path may not rewrite the failure detail into a routing diagnostic.
+#[tokio::test]
+async fn parked_stage_failure_ends_soft_stop_with_quota_signature() {
+    use fabro_core::{ExecutionState, ExecutorBuilder};
+
+    // Node "start" resolves as the start node by id; no outgoing edges.
+    let mut graph = fabro_graphviz::graph::types::Graph::new("test");
+    graph.nodes.insert(
+        "start".to_string(),
+        fabro_graphviz::graph::types::Node::new("start"),
+    );
+    let workflow_graph = WorkflowGraph(Arc::new(graph));
+
+    let mut detail = FailureDetail::new(
+        format!("LLM error: {ZAI_HARD_CUT}"),
+        FailureCategory::TransientInfra,
+    );
+    detail.signature = Some(FailureSignature("api_transient|zai|rate_limit".to_string()));
+
+    let state = ExecutionState::new(&workflow_graph).expect("start node resolves");
+    let executor = ExecutorBuilder::new(Arc::new(ParkFailHandler(detail))).build();
+    let (outcome, _state) = executor
+        .run(&workflow_graph, state)
+        .await
+        .expect("the parked run ends with a failed outcome, not an engine error");
+
+    assert!(matches!(outcome.status, StageOutcome::Failed { .. }));
+    let failure = outcome
+        .failure
+        .as_ref()
+        .expect("the end path must not drop the failure detail");
+    assert!(
+        failure.message.contains("will reset at"),
+        "reset-window prose must survive the executor end path: {}",
+        failure.message
+    );
+    assert!(
+        !failure.message.contains("no outgoing fail edge"),
+        "the routing diagnostic rewrite must not mask the park class"
+    );
+
+    // Terminal classification: the preserved prose parks the run as a
+    // resumable SoftStop carrying the quota signature.
+    let (stage, run_failure, status) = crate::pipeline::classify_engine_result(&Ok(outcome));
+    assert!(matches!(stage, StageOutcome::Failed { .. }));
+    assert_eq!(status, RunStatus::Failed {
+        reason: FailureReason::SoftStop,
+    });
+    let run_failure = run_failure.expect("parked run keeps its failure");
+    assert_eq!(run_failure.reason, FailureReason::SoftStop);
+    assert_eq!(
+        run_failure
+            .detail
+            .signature
+            .as_ref()
+            .map(fabro_types::FailureSignature::as_str),
+        Some("api_transient|zai|rate_limit")
+    );
+}
+
 // --- fabro-0e11: line graphs pin stall_timeout above the legal wait ---
 
 #[test]
