@@ -1,0 +1,2 @@
+{"$schema":"fabro-journal-v1","run_id":"01M2RD68TCQHTQJX17NWT3RN94","node":"start","visit":1,"status":"succeeded","ts":"2026-09-17T19:24:03Z","data":{}}
+{"$schema":"fabro-journal-v1","run_id":"01M2RD68TCQHTQJX17NWT3RN94","node":"survey","visit":1,"status":"succeeded","ts":"2026-09-17T19:24:32Z","data":{"painpoints":[],"observations":["Gate OPEN: friction verdict architecture-due (score 0.347, backlog_stagnation 0.709 dominant), cooldown count 0; both gates open on first attempt, all deterministic commands succeeded"]}}
