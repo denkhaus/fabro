@@ -8,10 +8,14 @@
 //!
 //! What lives here, as the integration plan lands it:
 //!
-//! - the run store over Fabro's SQLite database, so Petri's records are the
-//!   run's source of truth in Fabro's tables;
+//! - [`SqliteRunStore`]: Petri's run store over Fabro's SQLite database, so a
+//!   run's records are its source of truth in Fabro's tables;
 //! - the platform adapters: hooks, interviews, secrets, output storage, the run
 //!   tools, the event projection.
 //!
 //! The Petri packages are pinned by revision in the workspace `Cargo.toml`
 //! under `petri_*` keys.
+
+pub mod run_store;
+
+pub use run_store::SqliteRunStore;

@@ -41,6 +41,12 @@ pub const RUN_EVENT_SESSION_OWNER_MIGRATION_SQL: &str =
 pub const RUN_SESSION_RECORDS_MIGRATION_SQL: &str =
     include_str!("../migrations/2026091101_run_session_records.sql");
 
+/// The Petri run record migration (`petri_runs`, `petri_records`), exposed
+/// so fixtures in other crates can install the production schema without a
+/// filesystem path into this crate.
+pub const PETRI_RECORDS_MIGRATION_SQL: &str =
+    include_str!("../migrations/2026091701_petri_records.sql");
+
 /// The temporary run-history activation migration, exposed so fixtures in
 /// other crates can install the production compatibility schema.
 pub const RUN_HISTORY_ACTIVATION_MIGRATION_SQL: &str =

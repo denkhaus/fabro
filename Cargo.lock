@@ -2886,6 +2886,10 @@ dependencies = [
 name = "fabro-petri"
 version = "0.357.0-nightly.0"
 dependencies = [
+ "async-trait",
+ "fabro-db",
+ "fabro-store",
+ "fabro-types",
  "petri-attractor-steps",
  "petri-execution",
  "petri-frontend-attractor",
@@ -2893,8 +2897,11 @@ dependencies = [
  "petri-runtime",
  "petri-store",
  "petri-testkit",
+ "serde_json",
+ "sqlx",
  "tempfile",
  "tokio",
+ "tracing",
 ]
 
 [[package]]

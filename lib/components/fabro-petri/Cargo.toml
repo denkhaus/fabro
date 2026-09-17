@@ -13,14 +13,23 @@ doctest = false
 workspace = true
 
 [dependencies]
+fabro-db = { path = "../../foundation/fabro-db" }
+fabro-store = { path = "../fabro-store" }
+fabro-types = { path = "../../foundation/fabro-types" }
 petri_runtime.workspace = true
 petri_execution.workspace = true
 petri_store.workspace = true
 petri_attractor_steps.workspace = true
 petri_frontend_attractor.workspace = true
 petri_frontend_fabro.workspace = true
+async-trait.workspace = true
+serde_json.workspace = true
+sqlx.workspace = true
+tokio.workspace = true
+tracing.workspace = true
 
 [dev-dependencies]
+fabro-store = { path = "../fabro-store", features = ["test-support"] }
 petri_testkit.workspace = true
 tempfile = "3"
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
