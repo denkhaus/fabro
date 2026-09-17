@@ -567,6 +567,25 @@ impl EventBody {
     }
 }
 
+/// Event names that no longer carry an `EventBody` variant but may still
+/// appear in stored run history from before the sandbox-driver adoption
+/// (the variants were removed, the names stayed in
+/// [`is_known_event_name`]). Reads must tolerate them as
+/// [`EventBody::Unknown`] instead of aborting startup: run-history
+/// activation replays every stored event, and one legacy name would
+/// otherwise crash-loop the server on real production data.
+fn is_legacy_variantless_event_name(event: &str) -> bool {
+    matches!(
+        event,
+        "sandbox.git.started"
+            | "sandbox.git.completed"
+            | "sandbox.git.failed"
+            | "sandbox.cleanup.started"
+            | "sandbox.cleanup.completed"
+            | "sandbox.cleanup.failed"
+    )
+}
+
 fn is_known_event_name(event: &str) -> bool {
     is_coding_event_name(event)
         || matches!(
@@ -794,7 +813,12 @@ impl RunEvent {
                 Some(body) => body,
                 None => match serde_json::from_value(body_payload) {
                     Ok(body) => body,
-                    Err(err) if is_known_event_name(parts.event) => return Err(err),
+                    Err(err)
+                        if is_known_event_name(parts.event)
+                            && !is_legacy_variantless_event_name(parts.event) =>
+                    {
+                        return Err(err);
+                    }
                     Err(_) => EventBody::Unknown {
                         name:       parts.event.to_string(),
                         properties: parts.properties.clone(),
@@ -2027,6 +2051,33 @@ mod tests {
 
         let parsed = RunEvent::from_value(value).unwrap();
         assert_eq!(parsed, event);
+    }
+
+    #[test]
+    fn legacy_variantless_event_names_read_back_as_unknown() {
+        // Pre-sandbox-driver stores wrote sandbox.git.* / sandbox.cleanup.*
+        // progress events. The variants are gone; the names stayed "known",
+        // so the strict read path would abort startup on real production
+        // history. They must read back as Unknown instead.
+        for name in [
+            "sandbox.git.started",
+            "sandbox.git.completed",
+            "sandbox.git.failed",
+            "sandbox.cleanup.started",
+            "sandbox.cleanup.completed",
+            "sandbox.cleanup.failed",
+        ] {
+            let line = format!(
+                "{{\"id\":\"00000000-0000-0000-0000-000000000002\",\"ts\":\"2026-01-01T14:25:00Z\",                 \"run_id\":\"01M20DMYEK5B3GDQAYFR83DNGN\",\"event\":\"{name}\",\"properties\":{{}}}}"
+            );
+            let event = RunEvent::from_json_str(&line)
+                .unwrap_or_else(|err| panic!("{name} should read back as Unknown: {err}"));
+            assert!(
+                matches!(event.body, EventBody::Unknown { .. }),
+                "{name} should be Unknown, got {:?}",
+                event.body
+            );
+        }
     }
 
     #[test]
