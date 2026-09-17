@@ -10,8 +10,6 @@ pub mod stall;
 pub mod state;
 
 #[cfg(test)]
-mod fork_line_recovery_tests;
-#[cfg(test)]
 pub mod test_fixtures;
 
 pub use context::Context;

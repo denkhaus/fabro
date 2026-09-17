@@ -121,9 +121,13 @@ impl Graph for WorkflowGraph {
         // the provider reopens the window, and the loop ends as a
         // deterministic goal-gate failure that hides the quota cause.
         // Returning no edge ends the run with the failed outcome, which
-        // `pipeline::finalize` maps to a resumable `SoftStop` — provided
-        // the executor keeps the failure detail (failure_parks_run below).
-        if self.failure_parks_run(outcome) {
+        // `pipeline::finalize` maps to a resumable `SoftStop`.
+        if outcome.status.is_failure()
+            && outcome
+                .failure
+                .as_ref()
+                .is_some_and(fork_line_recovery::failure_detail_parks)
+        {
             return None;
         }
         let selection = routing::select_edge(
@@ -166,20 +170,5 @@ impl Graph for WorkflowGraph {
 
     fn resolve_on_failure(&self, node: &Self::Node) -> ResolvedOnFailure {
         self.inner().resolve_on_failure(node.inner())
-    }
-
-    fn failure_parks_run(&self, outcome: &Outcome) -> bool {
-        // Fork seam (fabro-986b): usage-window park classification for the
-        // executor's end path. select_edge above routes park-class failures
-        // to no edge; this hook tells the executor NOT to rewrite the
-        // outcome into a routing diagnostic when the run ends, so the
-        // reset-window prose reaches `pipeline::finalize` and the run parks
-        // as a resumable SoftStop instead of a deterministic workflow
-        // error. One predicate serves both seams.
-        outcome.status.is_failure()
-            && outcome
-                .failure
-                .as_ref()
-                .is_some_and(fork_line_recovery::failure_detail_parks)
     }
 }

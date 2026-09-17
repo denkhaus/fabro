@@ -335,13 +335,6 @@ decision, not an accident - it needs the user plus an ADR.
   A full `fabro ask <run-id>` improve-review is NOT needed every cycle
   but is worth running occasionally (e.g. every 5th cycle or when the
   journals show recurring unresolved painpoints).
-- LOCAL VERIFICATION SEQUENCING (2026-09-17): never run a full nextest
-  suite and the pinned-nightly clippy concurrently - the double compile
-  load made the whole pebble_agent battery time out against the tight
-  fabro-workflow default watchdog (2s x 3) and looked like a regression;
-  heavy verification commands run SEQUENTIALLY. When the tree already has
-  known-red tests (clean-tree-control proven), verification is by
-  failure-set DIFF against the stash control, not plain green.
 - E2E-test verification (2026-08-31 lesson, fabro-47b5): a green
   `--profile e2e` run can be a NO-OP for twin-only tests
   (NEXTEST_PROFILE=e2e => TestMode::Strict => e2e_test(twin) prints
@@ -458,14 +451,7 @@ decision, not an accident - it needs the user plus an ADR.
    whether the active revisor pass covers the same run/theme (it will
    file its own version); prefer extending an existing seed or waiting
    one beat, and dedupe after merge by keeping the richer seed
-   instead of filing a duplicate. SHELL-SAFE SEED BODIES (2026-09-17,
-   fabro-7028 corruption): never pass seed bodies or additions through
-   an interpolated bash string - backticks in Markdown bodies execute
-   as command substitution and silently strip content from the WHOLE
-   rewritten body; write sd create/update --description via Python
-   subprocess LIST-args (no shell), and verify the roundtrip (read
-   back, compare) after every body write; if corrupted, restore from
-   git show HEAD:.seeds/issues.jsonl and re-append. OWNERSHIP ON FILING (ADR-0018):
+   instead of filing a duplicate. OWNERSHIP ON FILING (ADR-0018):
    seeds land unassigned by default; assign `@fabro` immediately ONLY
    for clearly-line work (it is a proposal, vetoable by reassignment);
    design forks, grill topics, and user-decisions get `needs-user`.
@@ -509,11 +495,8 @@ decision, not an accident - it needs the user plus an ADR.
    Tracker reads in the ceremony carry `--limit 200` (Phase 0 cap
    rule). RLM heartbeats are SESSION-scoped: if `rlm_heartbeat
    .list()` shows no active `line-watch` at session start, recreate
-   it from this spec (try the PYTHON module first - the shell CLI may
-   not exist while the module works, 2026-09-17; delivery_mode is a
-   string literal, not an enum attribute); if the session host rejects
-   rlm_heartbeat requests entirely (no heartbeat controller attached),
-   fall back to
+   it from this spec; if the session host rejects rlm_heartbeat
+   requests entirely (no heartbeat controller attached), fall back to
    asking the user to set the visible /heartbeat with this ceremony
    as the prompt text (2026-09-15: exactly that fallback ran the
    whole evening) - do not silently run without a watch.
