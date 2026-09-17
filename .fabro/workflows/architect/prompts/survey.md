@@ -31,14 +31,19 @@ Routing (exactly one): score gate CLOSED or cooldown gate CLOSED -> route "Nothi
 
 Set `arch_review_date` to today as YYYY-MM-DD. Then derive:
 
-1. Target run id (the freshest develop run — the fabro_ask consultee). Run exactly:
+1. Loop-wide painpoint digest — PRIMARY evidence (the architect's subject is the LOOP AS A SYSTEM: the interplay of all workflows, never a single run). Run exactly:
 
-       nu -c 'ls .fabro/journal/*.jsonl | sort-by modified --reverse | each {|r| {file: ($r.name | path basename), planner: ((open --raw $r.name | lines | compact | where {|l| $l | str contains "\"node\":\"planner\"" } | length) > 0)} } | where planner | first | get file'
+       nu .fabro/scripts/loop-digest.nu --days 7
 
-   The printed filename stem is the run id. If it errors (no planner-signature journal), fall back to the newest journal in `.fabro/journal/` and say so in the observation.
-2. Churn hot spots: `git log --format= --name-only -n 1000 | grep -v '^$' | sort | uniq -c | sort -rn | head -15` — the top-15 most-touched files with counts, one per line, truncated to the top 5 for the context key.
-3. Open-seed digest: `sd list --format compact --limit 200`, then summarize in <= 10 lines: counts by status, the biggest open clusters (same-area titles), the stalest in_progress claim.
-4. ADR/facts file list: `ls docs/lab/adr/` and `ls docs/internal/` — filenames only, one list each (these ground the analyze axes in the recorded decisions).
+   The script prints one JSON array (run, workflow, status, painpoints for every journaled run in the window). Summarize it into <= 12 lines as `arch_loop_digest`: runs + painpoint counts per workflow, the RECURRING PAINPOINT CLUSTERS (same friction across runs or workflows — name workflow, theme, frequency), and the freshest instance run per cluster. Single runs are instances, never the subject.
+2. Workflow interplay map — the system's stage-level shape. Run exactly:
+
+       rg -o '^\s+[a-z_-]+ \[' .fabro/workflows/conductor/workflow.fabro .fabro/workflows/develop/workflow.fabro .fabro/workflows/revisor/workflow.fabro .fabro/workflows/architect/workflow.fabro .fabro/workflows/merge-upstream/workflow.fabro
+
+   One line per loop workflow with its node names goes into `arch_facts_files` alongside the ADR/strategy lists (analyze walks this map for the INTERPLAY view).
+3. Churn hot spots: `git log --format= --name-only -n 1000 | grep -v '^$' | sort | uniq -c | sort -rn | head -15` — the top-15 most-touched files with counts, one per line, truncated to the top 5 for the context key.
+4. Open-seed digest: `sd list --format compact --limit 200`, then summarize in <= 10 lines: counts by status, the biggest open clusters (same-area titles), the stalest in_progress claim.
+5. ADR/facts file list: `ls docs/lab/adr/` and `ls docs/internal/` — filenames only, one list each (these ground the analyze axes in the recorded decisions).
 
 Keep each context value compact (the whole base must fit a bounded preamble): churn top-5 with counts, digest <= 10 lines, file lists as-is.
 
@@ -67,7 +72,7 @@ Architecture due:
   "outcome": "succeeded",
   "preferred_next_label": "Architecture due",
   "context_updates": {
-    "arch_target_run_id": "<freshest develop run id>",
+    "arch_loop_digest": "<<= 12-line loop painpoint summary>",
     "arch_score_json": "<the friction-score JSON object, verbatim>",
     "arch_churn_hotspots": "<top-5 churn files with counts, one per line>",
     "arch_seed_digest": "<<= 10-line open-seed summary>",
