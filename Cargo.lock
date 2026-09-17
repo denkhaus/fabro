@@ -249,6 +249,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "arraydeque"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7d902e3d592a523def97af8f317b08ce16b7ab854c1985a0c671e6f15cebc236"
+
+[[package]]
 name = "arrayvec"
 version = "0.7.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1101,6 +1107,16 @@ name = "borrow-or-share"
 version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dc0b364ead1874514c8c2855ab558056ebfeb775653e7ae45ff72f28f8f3166c"
+
+[[package]]
+name = "borsh"
+version = "1.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "553c5d846a6ba5150c65e3b1b8ec073bcf1abc20f9b7220de384a4443ea4e20a"
+dependencies = [
+ "bytes",
+ "cfg_aliases",
+]
 
 [[package]]
 name = "brotli"
@@ -2088,6 +2104,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "doc-comment"
+version = "0.3.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "780955b8b195a21ab8e4ac6b60dd1dbdcec1dc6c51c0617964b08c81785e12c9"
+
+[[package]]
 name = "document-features"
 version = "0.2.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2858,6 +2880,21 @@ version = "0.357.0-nightly.0"
 dependencies = [
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "fabro-petri"
+version = "0.357.0-nightly.0"
+dependencies = [
+ "petri-attractor-steps",
+ "petri-execution",
+ "petri-frontend-attractor",
+ "petri-frontend-fabro",
+ "petri-runtime",
+ "petri-store",
+ "petri-testkit",
+ "tempfile",
+ "tokio",
 ]
 
 [[package]]
@@ -4022,6 +4059,15 @@ dependencies = [
 
 [[package]]
 name = "hashlink"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7382cf6263419f2d8df38c55d7da83da5c18aef87fc7a7fc1fb1e344edfe14c1"
+dependencies = [
+ "hashbrown 0.15.5",
+]
+
+[[package]]
+name = "hashlink"
 version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "824e001ac4f3012dd16a264bec811403a67ca9deb6c102fc5049b32c4574b35f"
@@ -5023,6 +5069,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "marked-yaml"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3a76cf4e66a8ffccfce983161b0faafe61a5ef03fe875ef2e3deb897e4e915fa"
+dependencies = [
+ "doc-comment",
+ "hashlink 0.10.0",
+ "yaml-rust2",
+]
+
+[[package]]
 name = "matchers"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5951,6 +6008,272 @@ name = "percent-encoding"
 version = "2.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
+
+[[package]]
+name = "petri-attractor-steps"
+version = "0.1.0"
+source = "git+https://github.com/lithoscomputer/petri.git?rev=a0d2ceb3887287a460e69ae101e3c718aac75c9e#a0d2ceb3887287a460e69ae101e3c718aac75c9e"
+dependencies = [
+ "async-trait",
+ "globset",
+ "jsonschema",
+ "lithos-llm",
+ "pebble-agent",
+ "pebble-coding-agent",
+ "petri-execution",
+ "petri-executor",
+ "petri-frontend",
+ "petri-frontend-attractor",
+ "petri-ir",
+ "petri-runtime",
+ "petri-steps",
+ "regex",
+ "reqwest 0.13.4",
+ "serde",
+ "serde_json",
+ "shlex",
+ "smol_str",
+ "tar",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-util",
+ "tracing",
+]
+
+[[package]]
+name = "petri-driver"
+version = "0.1.0"
+source = "git+https://github.com/lithoscomputer/petri.git?rev=a0d2ceb3887287a460e69ae101e3c718aac75c9e#a0d2ceb3887287a460e69ae101e3c718aac75c9e"
+dependencies = [
+ "async-trait",
+ "getrandom 0.3.4",
+ "petri-engine",
+ "petri-executor",
+ "petri-ir",
+ "petri-steps",
+ "petri-store",
+ "serde",
+ "serde_json",
+ "smol_str",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "petri-engine"
+version = "0.1.0"
+source = "git+https://github.com/lithoscomputer/petri.git?rev=a0d2ceb3887287a460e69ae101e3c718aac75c9e#a0d2ceb3887287a460e69ae101e3c718aac75c9e"
+dependencies = [
+ "petri-ir",
+ "serde",
+ "serde_json",
+ "smol_str",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "petri-execution"
+version = "0.1.0"
+source = "git+https://github.com/lithoscomputer/petri.git?rev=a0d2ceb3887287a460e69ae101e3c718aac75c9e#a0d2ceb3887287a460e69ae101e3c718aac75c9e"
+dependencies = [
+ "async-trait",
+ "petri-driver",
+ "petri-engine",
+ "petri-executor",
+ "petri-executor-sandbox",
+ "petri-ir",
+ "petri-runtime",
+ "petri-steps",
+ "petri-store",
+ "regex",
+ "serde",
+ "serde_json",
+ "smol_str",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-util",
+ "tracing",
+]
+
+[[package]]
+name = "petri-executor"
+version = "0.1.0"
+source = "git+https://github.com/lithoscomputer/petri.git?rev=a0d2ceb3887287a460e69ae101e3c718aac75c9e#a0d2ceb3887287a460e69ae101e3c718aac75c9e"
+dependencies = [
+ "async-trait",
+ "libc",
+ "petri-ir",
+ "serde",
+ "serde_json",
+ "smol_str",
+ "thiserror 2.0.18",
+ "tokio",
+]
+
+[[package]]
+name = "petri-executor-sandbox"
+version = "0.1.0"
+source = "git+https://github.com/lithoscomputer/petri.git?rev=a0d2ceb3887287a460e69ae101e3c718aac75c9e#a0d2ceb3887287a460e69ae101e3c718aac75c9e"
+dependencies = [
+ "async-trait",
+ "petri-executor",
+ "petri-ir",
+ "sandbox-driver",
+ "sandbox-driver-daytona-config",
+ "sandbox-driver-docker-config",
+ "sandbox-driver-protocol",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "smol_str",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-util",
+ "tracing",
+]
+
+[[package]]
+name = "petri-frontend"
+version = "0.1.0"
+source = "git+https://github.com/lithoscomputer/petri.git?rev=a0d2ceb3887287a460e69ae101e3c718aac75c9e#a0d2ceb3887287a460e69ae101e3c718aac75c9e"
+dependencies = [
+ "marked-yaml",
+ "petri-ir",
+ "serde",
+ "serde_json",
+ "smol_str",
+ "thiserror 2.0.18",
+ "yaml-rust2",
+]
+
+[[package]]
+name = "petri-frontend-attractor"
+version = "0.1.0"
+source = "git+https://github.com/lithoscomputer/petri.git?rev=a0d2ceb3887287a460e69ae101e3c718aac75c9e#a0d2ceb3887287a460e69ae101e3c718aac75c9e"
+dependencies = [
+ "minijinja",
+ "petri-frontend",
+ "petri-ir",
+ "regex",
+ "serde",
+ "serde_json",
+ "shlex",
+ "smol_str",
+ "thiserror 2.0.18",
+ "toml 0.9.12+spec-1.1.0",
+]
+
+[[package]]
+name = "petri-frontend-fabro"
+version = "0.1.0"
+source = "git+https://github.com/lithoscomputer/petri.git?rev=a0d2ceb3887287a460e69ae101e3c718aac75c9e#a0d2ceb3887287a460e69ae101e3c718aac75c9e"
+dependencies = [
+ "petri-frontend",
+ "petri-frontend-attractor",
+ "petri-ir",
+ "regex",
+ "serde",
+ "serde_json",
+ "shlex",
+ "smol_str",
+ "toml 0.9.12+spec-1.1.0",
+]
+
+[[package]]
+name = "petri-frontend-native"
+version = "0.1.0"
+source = "git+https://github.com/lithoscomputer/petri.git?rev=a0d2ceb3887287a460e69ae101e3c718aac75c9e#a0d2ceb3887287a460e69ae101e3c718aac75c9e"
+dependencies = [
+ "petri-frontend",
+ "petri-ir",
+ "serde_json",
+ "smol_str",
+]
+
+[[package]]
+name = "petri-ir"
+version = "0.1.0"
+source = "git+https://github.com/lithoscomputer/petri.git?rev=a0d2ceb3887287a460e69ae101e3c718aac75c9e#a0d2ceb3887287a460e69ae101e3c718aac75c9e"
+dependencies = [
+ "regex",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "smol_str",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "petri-runtime"
+version = "0.1.0"
+source = "git+https://github.com/lithoscomputer/petri.git?rev=a0d2ceb3887287a460e69ae101e3c718aac75c9e#a0d2ceb3887287a460e69ae101e3c718aac75c9e"
+dependencies = [
+ "async-trait",
+ "petri-driver",
+ "petri-engine",
+ "petri-executor",
+ "petri-executor-sandbox",
+ "petri-frontend",
+ "petri-frontend-native",
+ "petri-ir",
+ "petri-steps",
+ "petri-store",
+ "serde_json",
+ "smol_str",
+ "thiserror 2.0.18",
+ "tracing",
+]
+
+[[package]]
+name = "petri-steps"
+version = "0.1.0"
+source = "git+https://github.com/lithoscomputer/petri.git?rev=a0d2ceb3887287a460e69ae101e3c718aac75c9e#a0d2ceb3887287a460e69ae101e3c718aac75c9e"
+dependencies = [
+ "async-trait",
+ "petri-executor",
+ "petri-ir",
+ "serde",
+ "serde_json",
+ "smol_str",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "petri-store"
+version = "0.1.0"
+source = "git+https://github.com/lithoscomputer/petri.git?rev=a0d2ceb3887287a460e69ae101e3c718aac75c9e#a0d2ceb3887287a460e69ae101e3c718aac75c9e"
+dependencies = [
+ "async-trait",
+ "getrandom 0.3.4",
+ "petri-ir",
+ "serde",
+ "serde_json",
+ "smol_str",
+ "thiserror 2.0.18",
+ "tokio",
+]
+
+[[package]]
+name = "petri-testkit"
+version = "0.1.0"
+source = "git+https://github.com/lithoscomputer/petri.git?rev=a0d2ceb3887287a460e69ae101e3c718aac75c9e#a0d2ceb3887287a460e69ae101e3c718aac75c9e"
+dependencies = [
+ "async-trait",
+ "petri-driver",
+ "petri-engine",
+ "petri-executor",
+ "petri-executor-sandbox",
+ "petri-ir",
+ "petri-steps",
+ "petri-store",
+ "serde",
+ "serde_json",
+ "smol_str",
+ "tokio",
+]
 
 [[package]]
 name = "pin-project"
@@ -7600,6 +7923,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "smol_str"
+version = "0.3.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4aaa7368fcf4852a4c2dd92df0cace6a71f2091ca0a23391ce7f3a31833f1523"
+dependencies = [
+ "borsh",
+ "serde_core",
+]
+
+[[package]]
 name = "socket2"
 version = "0.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7649,7 +7982,7 @@ dependencies = [
  "futures-io",
  "futures-util",
  "hashbrown 0.16.1",
- "hashlink",
+ "hashlink 0.11.1",
  "indexmap 2.13.0",
  "log",
  "memchr",
@@ -9728,6 +10061,17 @@ name = "xmlparser"
 version = "0.13.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "66fee0b777b0f5ac1c69bb06d361268faafa61cd4682ae064a171c16c433e9e4"
+
+[[package]]
+name = "yaml-rust2"
+version = "0.10.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2462ea039c445496d8793d052e13787f2b90e750b833afee748e601c17621ed9"
+dependencies = [
+ "arraydeque",
+ "encoding_rs",
+ "hashlink 0.10.0",
+]
 
 [[package]]
 name = "yansi"

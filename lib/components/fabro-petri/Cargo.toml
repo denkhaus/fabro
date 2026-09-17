@@ -1,0 +1,26 @@
+[package]
+name = "fabro-petri"
+edition.workspace = true
+version.workspace = true
+publish = false
+license.workspace = true
+description = "Fabro's adapters over Petri, the workflow engine: the one place Fabro touches it"
+
+[lib]
+doctest = false
+
+[lints]
+workspace = true
+
+[dependencies]
+petri_runtime.workspace = true
+petri_execution.workspace = true
+petri_store.workspace = true
+petri_attractor_steps.workspace = true
+petri_frontend_attractor.workspace = true
+petri_frontend_fabro.workspace = true
+
+[dev-dependencies]
+petri_testkit.workspace = true
+tempfile = "3"
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

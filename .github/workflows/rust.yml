@@ -169,6 +169,9 @@ jobs:
       # integration tests.
       - run: cargo nextest run --locked --profile ci --status-level slow -p fabro-sandbox --test plugin_provider
       - run: cargo nextest run --locked --profile ci --status-level slow --run-ignored only -p fabro-sandbox --test docker_streaming
+      # The Petri runs (not ignored: they skip without the host plugin, which
+      # the environment above forbids).
+      - run: cargo nextest run --locked --profile ci --status-level slow -p fabro-petri
       - run: cargo nextest run --locked --profile ci --status-level slow --run-ignored only -p fabro-workflow --test it -E 'test(asset_collection_docker_sandbox)'
 
   test-macos:
