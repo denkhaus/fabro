@@ -40,6 +40,42 @@ digraph Develop {
     // and hard errors stay on the untyped exit.
     exit  [shape=Msquare, label="Exit"]
 
+    // Planner preflight: deterministic already-landed check (fabro-a32f).
+    // Runs BEFORE the planner LLM lap over the top `sd ready --assignee
+    // fabro` candidates, grepping the merge-target base history via
+    // .fabro/scripts/dup-run-check.nu (filed-only revisor commits never
+    // count; Fabro-Run trailer identity; landed true-merge or squash
+    // `(#n)` commits count). Motivation (run 01M2Q2Q2NY211PVV0E44YDAAQN,
+    // PR #207): the planner re-derived a sub-second greppable fact
+    // (manual fix commit vs stale tracker row) across three probe rounds
+    // — 93.6s / $0.143. When the TOP candidate's fix commit already sits
+    // in base history the script deterministically writes the
+    // self-explaining closure note + superseded-close and routes the
+    // existing "Already landed" exit — no LLM lap at all. Everything else
+    // hands the per-candidate verdict table to the planner inline
+    // (`output.preflight`), so the ALREADY LANDED prompt arm adjudicates
+    // only the ambiguous residue (goal-named seeds, borderline
+    // classification). Fail-open on every internal error (fetch/tracker/
+    // empty list): the unconditional edge routes the planner normally
+    // with the degraded mode recorded. gatebounce command-node idiom:
+    // output_schema="routing" lets the script emit preferred_next_label
+    // mechanically. Narrows, does not close, open fabro-a01f (claim race).
+    preflight [
+        label="Planner preflight: already-landed check",
+        shape=parallelogram,
+        script="nu .fabro/workflows/develop/scripts/planner-preflight.nu",
+        // The engine pipes the invoking run id (closure notes + --self
+        // closure identity in dup-run-check) through stdin.
+        stdin_source="internal.run_id",
+        output_schema="routing",
+        // fabro-900e producer declaration: declares `output.preflight`
+        // (the per-candidate verdict table rendered into the planner's
+        // ## Context).
+        context_allow_keys="output.preflight",
+        timeout="2m",
+        max_retries=1
+    ]
+
     // Planner: reads the seeds tracker, handles the last review verdict,
     // decides what is implemented next and hands a brief to the implementer.
     //
@@ -312,7 +348,15 @@ digraph Develop {
         max_retries=1
     ]
 
-    start -> planner
+    start -> preflight
+    // fabro-a32f: mechanical Already-landed exit — the preflight script
+    // already performed the closure (note + superseded-close) before
+    // routing here; plain edge, natural completion, same family as the
+    // planner's own "Already landed" edge below.
+    preflight -> exit [label="Already landed", condition="preferred_label=\"Already landed\""]
+    // Unconditional fail-open: clean, degraded, close-aborted, or script
+    // failure all route the planner normally with the report inline.
+    preflight -> planner [label="Preflight done"]
 
     // Tracker empty = the goal is achieved (NOT an error): the planner
     // emits preferred_next_label "Tracker empty" when no open seed
