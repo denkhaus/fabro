@@ -64,9 +64,15 @@ def git-log-matching [base, id, extra] {
 # implements and files, it is classified filed-only (a false negative
 # routes the planner normally; a false positive would mechanically
 # close live work in the pre-planner preflight).
+# fabro-0d48: also cover the comma/and-separated `file seeds fabro-X
+# and fabro-Y` shape (e.g. 706d639 'Improve: revise develop run
+# 01M2Q7VVH, file seeds fabro-6ae9 and fabro-... (#212)') and the
+# `revise develop run` variant of the revise-run phrase — previously
+# neither matched, so revisor filing commits landed among
+# implementations with closure=foreign and forced verdict=duplicate.
 def classify-filed [rows] {
     $rows | each {|r|
-        {sha: $r.sha, subject: $r.subject, filed_only: ($r.subject =~ '(?i)(revisor (pass|:))|(\brevise run\b)|(\bfile\s+\d+\s+[^;()]*seeds?\b)|(;\s*file\s+fabro-[0-9a-z]+)')}
+        {sha: $r.sha, subject: $r.subject, filed_only: ($r.subject =~ '(?i)(revisor (pass|:))|(\brevise\s+(develop\s+)?run\b)|(\bfile\s+\d+\s+[^;()]*seeds?\b)|(;\s*file\s+fabro-[0-9a-z]+)|(\bfile\s+seeds?\s+fabro-[0-9a-z]+)')}
     }
 }
 
