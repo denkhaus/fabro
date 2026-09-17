@@ -37,7 +37,7 @@ The full command table lives in PROJECT_FACTS (tracker) — rendered above by th
    - `-n flag: default 100, rejects values < 1 with non-zero exit`
    - `tests: table-driven, cover flag combinations`
 
-   Order verification commands cheapest-first: parse-level checks (e.g. `python3` TOML parse) before build-level checks (`cargo build`/`cargo run`), so briefs stop listing the expensive option first.
+   Order verification commands cheapest-first: parse-level checks (e.g. `python3` TOML parse) before build-level checks (`cargo build`/`cargo run`), so briefs stop listing the expensive option first. Cost-tier discipline for the expensive tier (run 01M2Q7VVH, 180 s cold-timeout failure): grep/parse-level verification must precede ANY build-level probe in every brief; when a brief prescribes a compile or test probe, it must also state the probe's timeout floor (timeout_ms >= 600000 for compile/test calls); and never run `cargo run` cold — a built binary invoked after a `cargo build` is the only sanctioned form, because a cold `cargo run` inherits full compile latency and dies at the default timeout.
 
    Labeled-hypothesis rule: when basis verification (step 3) reveals a likely mechanism or root cause, add it to the brief as a bullet labeled `unverified hypothesis (planner observation)` — never as a requirement or acceptance criterion. The bullet is a starting point for the implementer's exploration, not binding (fabro-1314: briefs prescribe outcomes, not mechanics). Motivation, kept brief (run 01M2NP2W92HHF3QAH17F42GZ5K): an implementer re-derived the planner's discarded root cause at 87.6% of run cost — handing it over as a labeled hypothesis avoids that re-derivation without prescribing mechanics.
 
