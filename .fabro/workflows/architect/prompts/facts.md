@@ -21,9 +21,10 @@ report it in the journal, never silently work around it.
   `<YYYY-MM-DD>-pass.md` (cooldown marker written by the file stage; its
   presence within 48h parks the survey).
 - Stage journal — `.fabro/journal/<run_id>.jsonl`: one JSON record per
-  stage completion. A journal whose lines contain `"node":"planner"`
-  belongs to a develop run (the develop-workflow signature); the freshest
-  such journal names the freshest develop run id (filename stem).
+  stage completion. `nu .fabro/scripts/loop-digest.nu --days 7`
+  aggregates EVERY journal into the loop-wide digest (workflow derived
+  from the node signature: planner=develop, select=revisor,
+  analyze=architect) — the architect's primary system evidence.
 - Decision records — ADRs live in `docs/lab/adr/`; strategy docs
   (logging, events, testing, secrets, migrations, error handling) live in
   `docs/internal/`. Read them via shell (they are fs_hide-bound for FILE

@@ -1,6 +1,6 @@
 digraph Architect {
     graph [
-        goal="Run a self-gated architecture pass: survey gates deterministically on the friction score (verdict architecture-due, no cooldown marker within 48h), builds an exploration base (churn hot spots, seed digest, ADR/facts list), analyze reads the vendored improve-codebase-architecture skill and applies its method directly (headless) grounded in that base, file distills findings into seeds and writes the cooldown marker",
+        goal="Run a self-gated architecture pass: survey gates deterministically on the friction score (verdict architecture-due, no cooldown marker within 48h), builds a system exploration base (loop-wide painpoint digest, workflow interplay map, churn hot spots, seed digest, ADR/facts list), analyze reads the vendored improve-codebase-architecture skill and applies its method directly (headless) to the loop's system-wide interplay, file distills findings into seeds and writes the cooldown marker",
         rankdir=LR,
         max_node_visits=5,
         // Same posture as revisor/develop: bounded preambles. Linear
@@ -14,7 +14,9 @@ digraph Architect {
     exit  [shape=Msquare, label="Exit"]
 
     // Survey: DETERMINISTIC gate first (friction score + cooldown
-    // marker), then an LLM-lite exploration-base build. No fabro tools —
+    // marker), then an LLM-lite system exploration-base build (the loop
+    // digest aggregates ALL workflows' journals — the architect's subject
+    // is the loop as a system, not any single run). No fabro tools —
     // everything runs through the shell. Writes are context keys only.
     survey [
         label="Survey",
@@ -34,7 +36,7 @@ digraph Architect {
         preamble_allow_keys="journal",
         // context_allow_keys also gates this node's OWN context writes:
         // without these keys here the exploration base would be dropped.
-        context_allow_keys="arch_target_run_id,arch_score_json,arch_churn_hotspots,arch_seed_digest,arch_facts_files,arch_review_date,journal"
+        context_allow_keys="arch_loop_digest,arch_score_json,arch_churn_hotspots,arch_seed_digest,arch_facts_files,arch_review_date,journal"
     ]
 
     // Analyze: the intellectual core. The stage agent READS the vendored
@@ -59,7 +61,7 @@ digraph Architect {
         fabro_tools="",
         // Read window: the CURRENT survey base + journal. Stale
         // findings from a previous pass stay out — analyze re-emits.
-        preamble_allow_keys="arch_target_run_id,arch_score_json,arch_churn_hotspots,arch_seed_digest,arch_facts_files,arch_review_date,journal",
+        preamble_allow_keys="arch_loop_digest,arch_score_json,arch_churn_hotspots,arch_seed_digest,arch_facts_files,arch_review_date,journal",
         context_allow_keys="architecture_findings,journal"
     ]
 
