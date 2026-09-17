@@ -88,7 +88,16 @@ digraph Develop {
     planner [
         label="Planner",
         prompt="@prompts/planner.md",
-        output_schema="routing",
+        // fabro-9ec3 arm 3 (fabro-017f teeth pattern): a JSON schema
+        // replaces the bare "routing" kind — it keeps the routing contract
+        // (required routing fields; preferred_next_label enum = this
+        // node's outgoing edge labels, matching the engine's
+        // routable_edge_labels) and additionally bans gate commands in
+        // context_updates.current_seed_brief: a brief naming `just
+        // qualitygate` or its byte-equivalent body (`nu
+        // scripts/qualitygate.nu`) fails validation and burns one of
+        // output_retries — never passes silently.
+        output_schema="@schemas/planner-output.schema.json",
         output_retries=2,
         max_visits=20,
         goal_gate=true,

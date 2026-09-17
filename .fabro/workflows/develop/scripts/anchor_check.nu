@@ -81,3 +81,50 @@ export def check-anchor [a: record, root: string] {
         }
     }
 }
+
+# Bare repo-path extraction (fabro-9ec3 arm 1 — closes fabro-4c81's gap
+# that fabro-7daf left open): seed bodies also cite paths WITHOUT a line
+# anchor ("the publish step of .fabro/workflows/develop/workflow.fabro"),
+# and path-only citations were never existence-checked — exactly the
+# wrong-path class that drove run 01M2NA1Z3HS7QPQR8AEWZR3GDB's planner
+# burn. extract-bare-paths strips URLs, emails, and the needles of
+# already-verified path:line anchors first, then collects slash-bearing
+# file paths; check-bare-paths flags nonexistent ones as missing_file
+# with line null, folded into the SAME anchor_flags channel — an
+# extension of the existing check, not a parallel table. Same fail-open
+# contract: any parse surprise degrades to no flags.
+export def extract-bare-paths [desc: string] {
+    if ($desc | is-empty) { [] } else {
+        # extract-anchors returns {path,start,end,claim} (no raw needle);
+        # reconstruct the needles so they can be blanked before bare-path
+        # scanning — a path:line citation must not double-report.
+        let anchored = (extract-anchors $desc | each {|a|
+            $a.path + ":" + ($a.start | into string) + (if $a.end > $a.start { "-" + ($a.end | into string) } else { "" })})
+        mut cleaned = ($desc
+            | str replace --all --regex '\S+://\S+' ' '
+            | str replace --all --regex '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}' ' ')
+        for n in $anchored {
+            $cleaned = ($cleaned | str replace --all $n ' ')
+        }
+        $cleaned
+        | parse --regex '(?<![A-Za-z0-9_./@-])(?P<path>[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.@-]+)+\.[A-Za-z]{1,8})'
+        | get -o path
+        | default []
+        | uniq
+        | first 40
+    }
+}
+
+# Existence-only verification for bare paths: nonexistent citation ->
+# {path, line: null, status: "missing_file"}; existing paths stay silent
+# (no line content to compare against).
+export def check-bare-paths [desc: string, root: string] {
+    # Seed bodies cite paths both repo-rooted (lib/.../main.rs) and
+    # workflow-relative ("prompts/planner.md", "scripts/planner-preflight.nu"
+    # — relative to .fabro/workflows/develop/). Resolve against both roots
+    # before flagging, so a legitimate relative citation is not rot.
+    let roots = [$root ($root | path join '.fabro' 'workflows' 'develop')]
+    extract-bare-paths $desc | each {|p|
+        if ($roots | any {|r| $r | path join $p | path exists}) { null } else { {path: $p, line: null, status: "missing_file"} }
+    } | compact
+}
