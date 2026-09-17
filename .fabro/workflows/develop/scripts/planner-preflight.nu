@@ -54,27 +54,113 @@
 #                   verdict without closing anything (dry-run / fixtures)
 #     --top N       how many top candidates to check (default 5)
 
+#
+# STANDING POLICY (fabro-9ec3, 2026-09-17): any planner rule naming a
+# mechanically-checkable invariant lands as a CHECK in this script (or
+# the engine's output validator), never as a new prose paragraph in
+# prompts/planner.md — the 139-line prompt was the structural cause of
+# the largest seed cluster. Migrated arms recorded here:
+#   arm 1 (fabro-4c81 intent, fabro-7daf mechanism): pre-claim
+#     path-resolution of seed-cited anchors. The existing anchor
+#     verification covers path:line/path:line-line anchors against the
+#     worktree; fabro-9ec3 extended it to bare path-only citations
+#     (anchor_check.nu extract-bare-paths/check-bare-paths) — no gap
+#     remains, both flag classes ship in anchor_flags.
+#   arm 2 (complements engine-side fabro-9372): in-flight run/PR
+#     exclusion — in-flight-claims below maps recent unmerged develop
+#     run branches to claimed seed ids via the stage-journal fallback
+#     and reports them per-candidate as in_flight/in_flight_run.
+#   arm 3: the brief gate-command ban lives in the PLANNER OUTPUT
+#     SCHEMA (.fabro/workflows/develop/schemas/planner-output.schema.json,
+#     wired via the planner node's output_schema) — the fabro-017f teeth
+#     pattern: a brief containing `just qualitygate` or its
+#     byte-equivalent body fails validation and burns an output retry,
+#     never passes silently.
+
 # Anchor verification helpers (fabro-7daf): cited file:line anchors in
 # seed descriptions are checked against the current worktree so rotted
 # (dead) seeds surface mechanically in the verdict table below.
 source anchor_check.nu
+
+# In-flight run/PR exclusion (fabro-9ec3 arm 2; complements engine-side
+# fabro-9372 and the planner prompt's fabro_runs_list guard): a seed id
+# claimed by a RECENT, UNMERGED develop run branch is in flight — the
+# ~15-min claim-to-PR window plus the open-PR lifetime. Credential-less:
+# derives the remote from --base (same as dup-run-check), fetches
+# refs/heads/fabro/run/* once into a scratch namespace, keeps branches
+# committed within the last 14 days (newest first, max 12), drops
+# branches already merged into base (their seed is the landed arm's
+# business), skips the invoking run, and maps run -> seed id by grepping
+# the run branch's stage journal (.fabro/journal/<run_id>.jsonl — the
+# documented PROJECT_FACTS fallback; planner-node lines preferred for
+# precision). Fail-open hard rule: any error degrades to zero claims
+# with a note, never blocks — a false claim mark is planner-adjudicated,
+# this table never closes or skips anything itself.
+def journal-claims [sha: string, run: string] {
+    let j = (do { ^git show $"($sha):.fabro/journal/($run).jsonl" } | complete)
+    if $j.exit_code != 0 { return [] }
+    let lines = ($j.stdout | lines | where {|l| $l | str contains '"node":"planner"'})
+    if ($lines | is-empty) { return [] }
+    $lines
+    | parse --regex 'fabro-(?<seed>(?:[a-z][a-z0-9]*-)?[0-9a-z]{4,})(?![0-9a-z-])'
+    | get -o seed
+    | default []
+    | uniq
+    | each {|seed| $"fabro-($seed)"}
+}
+
+def in-flight-claims [remote: string, base: string, self_id: string] {
+    let fetch = (do { ^git fetch -q $remote '+refs/heads/fabro/run/*:refs/preflight-run/fabro/run/*' } | complete)
+    if $fetch.exit_code != 0 {
+        return {claims: [], note: $"in-flight fetch degraded: ($fetch.stderr | str trim | str substring 0..160)"}
+    }
+    let refs = (do { ^git for-each-ref '--sort=-committerdate' '--format=%(refname) %(objectname) %(committerdate:unix)' 'refs/preflight-run/' } | complete)
+    if $refs.exit_code != 0 {
+        return {claims: [], note: "in-flight for-each-ref degraded"}
+    }
+    let now = (date now | format date "%s" | into int)
+    let rows = ($refs.stdout | parse --regex '(?m)^refs/preflight-run/fabro/run/(?P<run>[0-9A-Za-z-]+) (?P<sha>[0-9a-f]{7,40}) (?P<ts>\d+)')
+    let recent = ($rows | each {|r| $r | update ts ($r.ts | into int)}
+        | where {|r| ($now - $r.ts) < 1209600}
+        | first 12)
+    mut claims = []
+    for r in $recent {
+        if $self_id != null and $r.run == $self_id { continue }
+        let merged = (do { ^git merge-base --is-ancestor $r.sha $base } | complete)
+        if $merged.exit_code == 0 { continue }
+        for seed in (journal-claims $r.sha $r.run) {
+            $claims = ($claims | append {seed: $seed, run: $r.run})
+        }
+    }
+    let dedup = (if ($claims | is-empty) {
+        []
+    } else {
+        $claims | group-by seed | items {|seed, cs| {seed: $seed, run: ($cs | get run | first)}}
+    })
+    {claims: $dedup, note: null}
+}
 
 # Bounded per-candidate row for the planner-facing report. Anchor fields
 # (fabro-7daf): anchors_ok is false when ANY cited file:line anchor in
 # the description is missing/rotted/mismatched; anchor_flags carries the
 # per-anchor detail. The verdict itself is unchanged — anchor rot routes
 # through planner adjudication, never through this script's close path.
-def row [v: record, desc: string, root: string] {
+def row [v: record, desc: string, root: string, claims: list] {
     let m = ($v.implementation_matches? | default [] | first | default {})
     let ce = ($v.closing_evidence? | default {})
-    let flags = (extract-anchors $desc | each {|a| check-anchor $a $root} | where {|f| $f.status != "ok"})
+    let flags = ((extract-anchors $desc | each {|a| check-anchor $a $root} | append (check-bare-paths $desc $root)) | where {|f| $f.status != "ok"})
+    # in-flight is advisory: never marked for candidates whose
+    # implementation already landed (the duplicate close path owns them).
+    let hit = (if $v.verdict == "duplicate" { null } else { $claims | where {|c| $c.seed == $v.seed} | first | default null })
     {seed: $v.seed,
      verdict: $v.verdict,
      sha: ($m.sha? | default ($ce.sha? | default null)),
      subject: (if (($m.subject? | default ($ce.subject? | default "")) | is-empty) { null } else { ($m.subject? | default ($ce.subject? | default "")) | str substring 0..120 }),
      filed_only_matches: ($v.filed_only_matches? | default 0),
      anchors_ok: (($flags | length) == 0),
-     anchor_flags: $flags}
+     anchor_flags: $flags,
+     in_flight: ($hit != null),
+     in_flight_run: (if $hit == null { null } else { $hit.run })}
 }
 
 # Resolve dup-run-check relative to THIS script (.fabro/scripts/ is
@@ -148,6 +234,11 @@ def main [--base: string = "origin/denkhaus", --candidates: string, --report-onl
     }
     let verdicts = ($res.stdout | lines | compact | each {|l| $l | from json })
 
+    # In-flight claims (fabro-9ec3 arm 2): fail-open wrapper — a crash in
+    # the arm degrades to zero claims with a note, never blocks the run.
+    let remote = ($base | split row '/' | first)
+    let inflight = (try { in-flight-claims $remote $base ($run_id | default null) } catch { {claims: [], note: "in-flight arm degraded (fail-open)"} })
+
     # Mechanical route: the TOP candidate's verdict is duplicate (for an
     # open sd-ready seed that means a foreign landed implementation).
     let topv = ($verdicts | first | default null)
@@ -190,8 +281,9 @@ def main [--base: string = "origin/denkhaus", --candidates: string, --report-onl
 
     let report = {mode: (if (not ($close_note | is-empty)) and $mode == "checked" { "degraded" } else { $mode }),
                   run_id: ($run_id | default null),
-                  candidates: ($verdicts | enumerate | each {|e| row $e.item ($cdesc | get -o $e.index | default "") ($SCRIPT_DIR | path join '../../../..')}),
+                  candidates: ($verdicts | enumerate | each {|e| row $e.item ($cdesc | get -o $e.index | default "") ($SCRIPT_DIR | path join '../../../..') ($inflight.claims | default [])}),
                   degraded_reason: (if ($degraded_reason | is-empty) { null } else { $degraded_reason }),
+                  in_flight_note: ($inflight.note? | default null),
                   closed: $closed}
     {"outcome": "succeeded",
      "preferred_next_label": $route,

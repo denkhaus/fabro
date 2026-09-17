@@ -25,6 +25,14 @@
 #       landed top candidate -> "Already landed"; filed-only top
 #       candidate -> "Preflight done"; empty candidate list -> degraded
 #       fail-open, still "Preflight done"
+#   (j) fabro-9ec3 arm 2: a seed claimed on the journal of a recent,
+#       UNMERGED develop run branch -> in_flight true with the run id;
+#       the invoking run's own branch never marks; a branch already
+#       merged into base never marks
+#   (k) fabro-9ec3 arm 3: the planner output schema's brief
+#       gate-command ban pattern rejects `just qualitygate` and its
+#       byte-equivalent body, accepts delegated phrasing, and the
+#       planner node in workflow.fabro references the schema file
 #
 # Usage: nu .fabro/scripts/dup-run-check-fixtures.nu   (exit 0 = all pass)
 
@@ -168,6 +176,57 @@ def main [] {
         let h = (preflight $pre '' 'RUN-PREFLIGHT')
         expect 'h: empty candidates route' $h.preferred_next_label 'Preflight done'
         expect 'h: empty candidates mode' ($h.context_updates | get 'output.preflight' | get mode) 'degraded'
+
+        # (j) fabro-9ec3 arm 2: run-branch -> journal -> seed-id mapping.
+        # RUN-LIVE claims fabro-fix007 on its journal and is NOT merged
+        # into main -> in flight. The invoking run's own branch also
+        # claims fabro-fix007 (self must never mark). RUN-DONE claims
+        # fabro-fix008 but sits at main's tip (merged ancestor) -> not
+        # in flight; that seed is the landed arm's business.
+        ^git checkout -q -b run-live
+        mkdir .fabro/journal
+        ('{"$schema":"fabro-journal-v1","run_id":"RUN-LIVE","node":"planner","visit":1,"status":"succeeded","ts":"2026-09-17T00:00:00Z","data":{"painpoints":[],"observations":["fabro-fix007 claimed; preflight clean"]}}' | save -f .fabro/journal/RUN-LIVE.jsonl)
+        ^git add .fabro
+        ^git commit -q -m 'journal RUN-LIVE'
+        ^git push -q origin HEAD:refs/heads/fabro/run/RUN-LIVE
+        ^git checkout -q -b run-self
+        ('{"$schema":"fabro-journal-v1","run_id":"RUN-PREFLIGHT","node":"planner","visit":1,"status":"succeeded","ts":"2026-09-17T00:00:00Z","data":{"painpoints":[],"observations":["fabro-fix007 claimed by self"]}}' | save -f .fabro/journal/RUN-PREFLIGHT.jsonl)
+        ^git add .fabro
+        ^git commit -q -m 'journal RUN-PREFLIGHT'
+        ^git push -q origin HEAD:refs/heads/fabro/run/RUN-PREFLIGHT
+        # run-done branches from MAIN (not run-self): its journal commit
+        # must not drag RUN-LIVE's tip into main's history via the ff
+        # below — RUN-LIVE has to stay unmerged for the in-flight mark.
+        ^git checkout -q main
+        ^git checkout -q -b run-done
+        mkdir .fabro/journal
+        ('{"$schema":"fabro-journal-v1","run_id":"RUN-DONE","node":"planner","visit":1,"status":"succeeded","ts":"2026-09-17T00:00:00Z","data":{"painpoints":[],"observations":["fabro-fix008 claimed but merged"]}}' | save -f .fabro/journal/RUN-DONE.jsonl)
+        ^git add .fabro
+        ^git commit -q -m 'journal RUN-DONE'
+        ^git push -q origin HEAD:refs/heads/fabro/run/RUN-DONE
+        # Fast-forward main over run-done's journal commit: run-done is
+        # now a true ancestor of base while its journal still claims
+        # fabro-fix008 — merged branches must never mark in flight.
+        ^git checkout -q main
+        ^git merge -q --ff-only run-done
+        ^git push -q origin main
+        ^git checkout -q main
+
+        let j1 = (preflight $pre 'fabro-fix007' 'RUN-PREFLIGHT')
+        let jrow = ($j1.context_updates | get 'output.preflight' | get candidates | first)
+        expect 'j: unmerged foreign run marks in_flight' $jrow.in_flight true
+        expect 'j: in_flight_run names the live run' $jrow.in_flight_run 'RUN-LIVE'
+
+        let j2 = (preflight $pre 'fabro-fix008' 'RUN-PREFLIGHT')
+        let j2row = ($j2.context_updates | get 'output.preflight' | get candidates | first)
+        expect 'j: merged run branch never marks' $j2row.in_flight false
+
+        # (k) fabro-9ec3 arm 3: schema ban semantics + graph wiring.
+        let wf = ($FIXTURES_DIR | path join '..' 'workflows' 'develop')
+        let schema_ok = (do { ^python3 -c ("import json,re;s=json.load(open('" + ($wf | path join 'schemas' 'planner-output.schema.json') + "'));p=re.compile(s['properties']['context_updates']['properties']['current_seed_brief']['pattern']);assert p.search('gate green via the deterministic tester step');assert not p.search('run just qualitygate');assert not p.search('invoke nu scripts/qualitygate.nu');print('ok')") } | complete)
+        expect 'k: schema ban pattern semantics' ($schema_ok.stdout | str trim) 'ok'
+        let graph = (open --raw ($wf | path join 'workflow.fabro'))
+        expect 'k: planner node wired to schema' ($graph | str contains 'output_schema="@schemas/planner-output.schema.json"') true
     } finally {
         cd $home_dir
         rm -rf $scratch
