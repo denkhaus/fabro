@@ -15,8 +15,9 @@ use fabro_api::types::{
 };
 use fabro_llm::lithos_catalog::Catalog;
 use fabro_llm::{FabroClient, ModelSelectionError, selection};
-use fabro_sandbox::SecretRedactor;
+use fabro_sandbox::driver::ProviderAccess;
 use fabro_sandbox::reconnect::reconnect_for_run;
+use fabro_sandbox::{CloneRequest, SandboxSpec, SecretRedactor, sandbox_spec_for_environment};
 use fabro_store::{
     EventPayload, ProjectedRunSession, RunDatabase, project_run_session, project_run_sessions,
 };
@@ -29,7 +30,8 @@ use fabro_types::run_event::{
 };
 use fabro_types::settings::ModelRef as SettingsModelRef;
 use fabro_types::{
-    EventBody, EventEnvelope, Principal, RunEvent, RunId, SessionDetail, SessionId, TurnId,
+    BundledProvider, EventBody, EventEnvelope, Principal, RunEvent, RunId, RunSandboxInstance,
+    RunSpec, SessionDetail, SessionId, TurnId,
 };
 use fabro_workflow::handler::llm::register_named_fabro_run_tools;
 use fabro_workflow::services::FabroRunToolServices;
@@ -49,7 +51,7 @@ use tokio::sync::mpsc;
 use tokio_stream::StreamExt;
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::sync::CancellationToken;
-use tracing::{error, warn};
+use tracing::{error, info, warn};
 
 use super::super::session_runtime::{InterruptTurnError, SessionTurnLease, StartTurnError};
 use super::super::{
@@ -743,16 +745,42 @@ async fn build_agent(
         .provider_access()
         .await
         .map_err(|err| AskFabroBuildError::Agent(anyhow::Error::new(err)))?;
-    let sandbox = reconnect_for_run(sandbox_instance, &access, Some(run_id), None)
-        .await
-        .map_err(AskFabroBuildError::SandboxUnavailable)?;
+    let sandbox = match reconnect_for_run(sandbox_instance, &access, Some(run_id), None).await {
+        Ok(sandbox) => Arc::new(sandbox),
+        Err(reconnect_error) => {
+            // A terminal run's sandbox can be gone from the provider (the
+            // host reaped the container, a prune ran). The analyst still
+            // needs a workspace, so a finished run provisions a fresh
+            // sandbox from its stored spec instead of failing the turn
+            // (fabro-8d30 part b). Active runs keep the strict error: their
+            // worker owns the sandbox lifecycle and a missing sandbox there
+            // is a real fault, never something to paper over.
+            if !projection.status.is_terminal() {
+                return Err(AskFabroBuildError::SandboxUnavailable(reconnect_error));
+            }
+            info!(
+                run_id = %run_id,
+                provider = %sandbox_instance.provider,
+                error = %reconnect_error,
+                "Run sandbox is gone; provisioning a fresh sandbox for the Ask-Fabro turn"
+            );
+            provision_replacement_sandbox(
+                state,
+                run_id,
+                &projection.spec,
+                sandbox_instance,
+                &access,
+                reconnect_error,
+            )
+            .await?
+        }
+    };
     // The driver's attach does not start a stopped sandbox, so an ask-fabro
     // turn on a terminal run activates it explicitly.
     sandbox
         .activate()
         .await
         .map_err(|err| AskFabroBuildError::SandboxUnavailable(anyhow::Error::new(err)))?;
-    let sandbox = Arc::new(sandbox);
     // Terminal-run sessions own the sandbox liveness for the turn: the
     // run lifecycle already stopped this sandbox, so the activation above
     // is undone when the turn ends. Active runs keep the cached agent;
@@ -851,6 +879,105 @@ async fn build_agent(
             AskFabroBuildError::Agent(anyhow::Error::new(err))
         })?;
     Ok((agent, turn_scoped_sandbox))
+}
+
+/// Provision a fresh sandbox for a terminal run whose recorded sandbox no
+/// longer exists on its provider (fabro-8d30 part b). The sandbox is built
+/// from the run's stored spec through the spec-based substrate
+/// (`sandbox_spec_for_environment` + `provider_sandbox`), never by
+/// resurrecting retired provider constructors. Any failure surfaces as
+/// [`AskFabroBuildError::SandboxUnavailable`] with the provisioning attempt
+/// named alongside the reconnect error that triggered it.
+async fn provision_replacement_sandbox(
+    state: &AppState,
+    run_id: RunId,
+    spec: &RunSpec,
+    recorded: &RunSandboxInstance,
+    access: &ProviderAccess,
+    reconnect_error: anyhow::Error,
+) -> Result<Arc<fabro_sandbox::RunSandbox>, AskFabroBuildError> {
+    let provision = async {
+        // Mirror the manifest preflight's credential policy: vault failures
+        // are real errors, an unconfigured integration is tolerated (the
+        // clone then runs unauthenticated, as preflight would).
+        let github_settings = state.server_settings();
+        let github_app = match state
+            .github_credentials(&github_settings.server.integrations.github)
+            .await
+        {
+            Ok(credentials) => credentials,
+            Err(err)
+                if err
+                    .downcast_ref::<fabro_vault::SecretStoreError>()
+                    .is_some() =>
+            {
+                return Err(err);
+            }
+            Err(_) => None,
+        };
+        let sandbox_spec =
+            replacement_sandbox_spec(run_id, spec, recorded, access.clone(), github_app)
+                .map_err(anyhow::Error::new)?;
+        let sandbox = sandbox_spec.build(None).await?;
+        sandbox.initialize().await?;
+        Ok(sandbox)
+    };
+    provision.await.map_err(|err| {
+        let reconnect_text = reconnect_error.to_string();
+        AskFabroBuildError::SandboxUnavailable(reconnect_error.context(format!(
+            "provisioning a fresh {} sandbox for the Ask-Fabro turn failed (reconnect also \
+             failed: {reconnect_text}): {err:#}",
+            recorded.provider
+        )))
+    })
+}
+
+/// The sandbox spec a fresh provisioning builds for `recorded`: the
+/// provider kind and clone source come from the recorded instance, the
+/// driver spec from the run's environment settings (the same
+/// `sandbox_spec_for_environment` path the worker and manifest preflight
+/// use). A local sandbox re-designates its recorded working directory;
+/// anything else carries the run id so the created sandbox is labeled and
+/// shows up in the managed inventory (`/runs/sandbox-availability`).
+fn replacement_sandbox_spec(
+    run_id: RunId,
+    spec: &RunSpec,
+    recorded: &RunSandboxInstance,
+    access: ProviderAccess,
+    github_app: Option<fabro_github::GitHubCredentials>,
+) -> Result<SandboxSpec, fabro_sandbox::Error> {
+    let kind = recorded.provider.clone();
+    if kind.bundled() == Some(BundledProvider::Local) {
+        return Ok(SandboxSpec::local(
+            recorded.runtime.working_directory.clone(),
+            access,
+        ));
+    }
+    let environment = &spec.settings.run.environment;
+    let driver_spec = sandbox_spec_for_environment(environment, environment.unresolved_env())?;
+    // Clone what the run cloned: the recorded runtime carries the cleaned
+    // origin and branch of the original checkout (the run-manifest
+    // CloneRequest path). A record without a clone provisiones an empty
+    // workspace, per the clone-source contract; a non-GitHub origin is
+    // rejected by the clone planner with a clear error.
+    let cloned = recorded.runtime.repo_cloned == Some(true);
+    let clone = if cloned {
+        CloneRequest {
+            origin_url: recorded.runtime.clone_origin_url.clone(),
+            branch: recorded.runtime.clone_branch.clone(),
+            ..CloneRequest::default()
+        }
+    } else {
+        CloneRequest::none()
+    };
+    Ok(SandboxSpec {
+        kind,
+        access,
+        spec: driver_spec,
+        clone,
+        github_app,
+        run_id: Some(run_id),
+    })
 }
 
 /// A sandbox this Ask-Fabro turn started for a terminal run. The turn
@@ -2161,6 +2288,176 @@ enabled = true
         assert!(input.contains("Treat it as possibly stale"));
         assert!(input.ends_with("User question:\nWhy did it fail?"));
     }
+
+    fn replacement_run_spec() -> fabro_types::RunSpec {
+        let run_id = RunId::new();
+        let mut graph = fabro_types::Graph::new("test");
+        for node_id in ["start", "exit"] {
+            graph
+                .nodes
+                .insert(node_id.to_string(), fabro_types::Node::new(node_id));
+        }
+        fabro_types::RunSpec {
+            run_id,
+            settings: fabro_types::WorkflowSettings::default(),
+            graph,
+            graph_source: None,
+            workflow_slug: None,
+            workflow_version_id: None,
+            target: None,
+            automation: None,
+            source_directory: None,
+            labels: HashMap::default(),
+            provenance: test_support::test_run_provenance(),
+            definition_blob: None,
+            spec_blob: None,
+            git: None,
+            fork_source_ref: None,
+        }
+    }
+
+    fn recorded_runtime(
+        working_directory: &str,
+        repo_cloned: Option<bool>,
+        origin: Option<&str>,
+        branch: Option<&str>,
+    ) -> fabro_types::RunSandboxRuntime {
+        fabro_types::RunSandboxRuntime {
+            id: "recorded-id".to_string(),
+            working_directory: working_directory.to_string(),
+            repo_cloned,
+            clone_origin_url: origin.map(str::to_string),
+            clone_branch: branch.map(str::to_string),
+            workspace_root: None,
+            repos_root: None,
+            primary_repo_path: None,
+            primary_repo_link: None,
+        }
+    }
+
+    fn recorded_instance(
+        provider: fabro_types::SandboxProviderKind,
+        runtime: fabro_types::RunSandboxRuntime,
+    ) -> fabro_types::RunSandboxInstance {
+        fabro_types::RunSandboxInstance {
+            provider,
+            image: None,
+            snapshot: None,
+            runtime,
+        }
+    }
+
+    /// A local replacement re-designates the recorded working directory and
+    /// clones nothing: the Host provider carries no labels, and the run's
+    /// directory identity is the sandbox's.
+    #[test]
+    fn replacement_spec_for_local_reuses_the_recorded_working_directory() {
+        let recorded = recorded_instance(
+            fabro_types::SandboxProviderKind::LOCAL,
+            recorded_runtime("/repos/acme/run", Some(false), None, None),
+        );
+        let spec = replacement_sandbox_spec(
+            RunId::new(),
+            &replacement_run_spec(),
+            &recorded,
+            fabro_sandbox::driver::ProviderAccess::default(),
+            None,
+        )
+        .expect("the local replacement spec builds");
+
+        assert_eq!(spec.provider(), fabro_types::SandboxProviderKind::LOCAL);
+        assert_eq!(spec.working_directory(), Some("/repos/acme/run"));
+        assert!(spec.clone.skip);
+        assert_eq!(spec.run_id, None);
+    }
+
+    /// A clone-based replacement carries the run id (the label source the
+    /// managed inventory reads) and clones the origin and branch the run's
+    /// sandbox record says the original checkout used.
+    #[test]
+    fn replacement_spec_for_a_cloned_run_carries_run_id_and_recorded_clone() {
+        let recorded = recorded_instance(
+            fabro_types::SandboxProviderKind::DOCKER,
+            recorded_runtime(
+                "/workspace/rack-test",
+                Some(true),
+                Some("https://github.com/brynary/rack-test"),
+                Some("main"),
+            ),
+        );
+        let run_id = RunId::new();
+        let spec = replacement_sandbox_spec(
+            run_id,
+            &replacement_run_spec(),
+            &recorded,
+            fabro_sandbox::driver::ProviderAccess::default(),
+            None,
+        )
+        .expect("the docker replacement spec builds");
+
+        assert_eq!(spec.provider(), fabro_types::SandboxProviderKind::DOCKER);
+        assert_eq!(spec.run_id, Some(run_id));
+        assert!(!spec.clone.skip);
+        assert_eq!(
+            spec.clone.origin_url.as_deref(),
+            Some("https://github.com/brynary/rack-test")
+        );
+        assert_eq!(spec.clone.branch.as_deref(), Some("main"));
+    }
+
+    /// A record whose run never cloned provisions an empty workspace — the
+    /// clone-source contract, not an error.
+    #[test]
+    fn replacement_spec_without_a_recorded_clone_provisions_an_empty_workspace() {
+        let recorded = recorded_instance(
+            fabro_types::SandboxProviderKind::DOCKER,
+            recorded_runtime("/workspace", None, None, None),
+        );
+        let spec = replacement_sandbox_spec(
+            RunId::new(),
+            &replacement_run_spec(),
+            &recorded,
+            fabro_sandbox::driver::ProviderAccess::default(),
+            None,
+        )
+        .expect("the empty-workspace replacement spec builds");
+
+        assert!(spec.clone.skip);
+        assert_eq!(spec.clone.origin_url, None);
+    }
+
+    /// A non-GitHub origin is refused by the clone planner before any
+    /// provider is contacted — the failure surfaces without a Docker
+    /// daemon ever being needed.
+    #[tokio::test]
+    async fn replacement_build_refuses_a_non_github_origin_with_a_clear_error() {
+        let recorded = recorded_instance(
+            fabro_types::SandboxProviderKind::DOCKER,
+            recorded_runtime(
+                "/workspace/widget",
+                Some(true),
+                Some("https://gitlab.com/acme/widget"),
+                Some("main"),
+            ),
+        );
+        let spec = replacement_sandbox_spec(
+            RunId::new(),
+            &replacement_run_spec(),
+            &recorded,
+            fabro_sandbox::driver::ProviderAccess::default(),
+            None,
+        )
+        .expect("the spec itself builds");
+
+        let Err(error) = spec.build(None).await else {
+            panic!("a GitLab origin cannot be cloned")
+        };
+        let chain = format!("{error:#}");
+        assert!(
+            chain.contains("GitHub repository origins only"),
+            "the error names the clone-source contract: {chain}"
+        );
+    }
 }
 
 /// Ask Fabro across turns and processes: a second turn resumes the stored
@@ -2558,5 +2855,148 @@ mod resume_tests {
             .find("User question: Second question")
             .expect("the resumed turn ends with the second question");
         assert!(first_at < second_at, "got {}", turns[1]);
+    }
+
+    /// A terminal run whose recorded sandbox is gone from the provider gets
+    /// a freshly provisioned one for the turn (fabro-8d30 part b). The
+    /// local host sandbox is identified by its working directory, so
+    /// removing the directory is exactly what "the sandbox no longer
+    /// exists" looks like: reconnect fails, provisioning re-designates the
+    /// recorded directory, and the turn answers instead of failing with
+    /// sandbox_unavailable.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_missing_terminal_run_sandbox_is_provisioned_fresh_for_the_turn() {
+        let twin = twin_openai().await;
+        let namespace = format!("{}::{}", module_path!(), line!());
+        TwinScenarios::new(namespace.clone())
+            .scenario(
+                TwinScenario::responses(MODEL)
+                    .input_contains("Question for a reaped run")
+                    .text("Answer from a fresh sandbox"),
+            )
+            .load(twin)
+            .await;
+        let state = twin_backed_state(twin.base_url.clone(), &namespace);
+        spawn_scheduler(Arc::clone(&state));
+        let app = build_test_router(Arc::clone(&state));
+        let workspace = tempfile::tempdir().unwrap();
+        let run_id = completed_run(&app, workspace.path()).await;
+
+        let run_store = state.store_ref().open_run_reader(&run_id).await.unwrap();
+        let projection = run_store.state().await.unwrap();
+        let recorded = projection
+            .sandbox
+            .as_ref()
+            .and_then(fabro_types::RunSandbox::instance)
+            .expect("the completed run recorded its sandbox")
+            .clone();
+        assert_eq!(
+            recorded.provider,
+            fabro_types::SandboxProviderKind::LOCAL,
+            "the dry run executes on the local provider"
+        );
+        let working_directory = std::path::PathBuf::from(&recorded.runtime.working_directory);
+        std::fs::remove_dir_all(&working_directory).expect("the recorded workspace is removable");
+
+        let created = json_response(
+            &app,
+            post_json(
+                &format!("/runs/{run_id}/sessions"),
+                &serde_json::json!({ "title": "Ask Fabro", "model": MODEL }),
+            ),
+            StatusCode::CREATED,
+        )
+        .await;
+        let session_id: SessionId = created["id"].as_str().unwrap().parse().unwrap();
+
+        turn(&app, session_id, "Question for a reaped run").await;
+
+        assert!(
+            working_directory.is_dir(),
+            "fresh provisioning re-designated the recorded working directory"
+        );
+    }
+
+    /// When provisioning itself fails, the build error is the retryable
+    /// sandbox_unavailable one and names both the provisioning attempt and
+    /// the reconnect failure that triggered it — never a panic and never a
+    /// silent fallback.
+    #[tokio::test]
+    async fn a_provisioning_failure_surfaces_as_retryable_sandbox_unavailable() {
+        let state = TestAppStateBuilder::new().build();
+        let mut graph = fabro_types::Graph::new("test");
+        for node_id in ["start", "exit"] {
+            graph
+                .nodes
+                .insert(node_id.to_string(), fabro_types::Node::new(node_id));
+        }
+        let spec = fabro_types::RunSpec {
+            run_id: RunId::new(),
+            settings: fabro_types::WorkflowSettings::default(),
+            graph,
+            graph_source: None,
+            workflow_slug: None,
+            workflow_version_id: None,
+            target: None,
+            automation: None,
+            source_directory: None,
+            labels: std::collections::HashMap::default(),
+            provenance: fabro_types::test_support::test_run_provenance(),
+            definition_blob: None,
+            spec_blob: None,
+            git: None,
+            fork_source_ref: None,
+        };
+        // A provider kind the server never configured: connect refuses it
+        // before anything external is contacted.
+        let recorded = fabro_types::RunSandboxInstance {
+            provider: fabro_types::SandboxProviderKind::try_new("ghost")
+                .expect("ghost is a valid kind"),
+            image:    None,
+            snapshot: None,
+            runtime:  fabro_types::RunSandboxRuntime {
+                id:                "gone".to_string(),
+                working_directory: "/workspace".to_string(),
+                repo_cloned:       None,
+                clone_origin_url:  None,
+                clone_branch:      None,
+                workspace_root:    None,
+                repos_root:        None,
+                primary_repo_path: None,
+                primary_repo_link: None,
+            },
+        };
+
+        let Err(error) = super::provision_replacement_sandbox(
+            &state,
+            spec.run_id,
+            &spec,
+            &recorded,
+            &fabro_sandbox::driver::ProviderAccess::default(),
+            anyhow::anyhow!("the recorded sandbox is gone"),
+        )
+        .await
+        else {
+            panic!("an unconfigured provider cannot provision")
+        };
+
+        assert!(
+            matches!(error, super::AskFabroBuildError::SandboxUnavailable(_)),
+            "got {error:?}"
+        );
+        assert!(error.retryable());
+        let text = error.to_string();
+        assert!(
+            text.contains("provisioning a fresh ghost sandbox"),
+            "the error names the provisioning attempt: {text}"
+        );
+        assert!(
+            text.contains("the recorded sandbox is gone"),
+            "the error carries the reconnect failure: {text}"
+        );
+        assert!(
+            text.contains("not configured"),
+            "the error carries the provisioning cause: {text}"
+        );
     }
 }
