@@ -151,7 +151,7 @@ impl Concluded {
             return Ok(());
         };
         let diff = self.conclusion.diff.patch.as_deref().unwrap_or_default();
-        if diff.trim().is_empty() {
+        if diff.trim().is_empty() || diff_is_journal_only(diff) {
             return Ok(());
         }
 
@@ -312,12 +312,78 @@ impl Concluded {
     }
 }
 
+/// True when every changed path in the patch is under `.fabro/journal/`.
+///
+/// A journal-only run carries no reviewable work, so it skips pull request
+/// creation (fabro-9f97): its branch is still pushed — meta and checkpoint
+/// machinery depend on that — but the PR previously flipped a successful
+/// no-op run to failed(publish_failed) via a deterministic auto-merge 403
+/// (run 01M0SFEYVC9TD6MP816RHEBFQY). Malformed headers fail closed: any
+/// `diff --git` line whose `b/` path cannot be parsed counts as non-journal,
+/// and a patch with no parseable path at all never skips.
+fn diff_is_journal_only(diff: &str) -> bool {
+    let mut saw_path = false;
+    for line in diff.lines().filter(|line| line.starts_with("diff --git ")) {
+        let Some(b_path) = diff_header_b_path(line) else {
+            return false;
+        };
+        saw_path = true;
+        if !b_path.starts_with(".fabro/journal/") {
+            return false;
+        }
+    }
+    saw_path
+}
+
+/// The changed (`b/`-side) path of one `diff --git a/… b/…` header line.
+fn diff_header_b_path(line: &str) -> Option<&str> {
+    let rest = line.strip_prefix("diff --git ")?;
+    let (_, b_side) = rest.rsplit_once(" b/")?;
+    Some(b_side)
+}
+
 #[cfg(test)]
 mod tests {
     use chrono::Utc;
 
     use super::*;
     use crate::error::FailureCategory;
+
+    /// A journal-only diff skips PR creation entirely (fabro-9f97): publish
+    /// returns before ever reaching the pull request call.
+    #[test]
+    fn journal_only_diff_skips_pull_request_creation() {
+        let diff = "diff --git a/.fabro/journal/run.jsonl b/.fabro/journal/run.jsonl\n\
+                    index 1111111..2222222 100644\n\
+                    --- a/.fabro/journal/run.jsonl\n\
+                    +++ b/.fabro/journal/run.jsonl\n\
+                    @@ -1 +1,2 @@\n\
+                    +{}\n";
+        assert!(diff_is_journal_only(diff));
+    }
+
+    /// A mixed diff (journal plus real code) still publishes: the gate must
+    /// not skip, so PR creation proceeds exactly as before.
+    #[test]
+    fn mixed_diff_still_publishes() {
+        let diff = "diff --git a/.fabro/journal/run.jsonl b/.fabro/journal/run.jsonl\n\
+                    @@ -1 +1,2 @@\n\
+                    +{}\n\
+                    diff --git a/src/lib.rs b/src/lib.rs\n\
+                    @@ -1 +1,2 @@\n\
+                    +fn new_feature() {}\n";
+        assert!(!diff_is_journal_only(diff));
+    }
+
+    /// An empty diff never reaches the journal check — the existing
+    /// `diff.trim().is_empty()` early return pins that behavior, and a patch
+    /// with no parseable `diff --git` path also fails closed (no skip).
+    #[test]
+    fn empty_or_unparseable_diff_does_not_skip_via_journal_gate() {
+        assert!(!diff_is_journal_only(""));
+        assert!(!diff_is_journal_only("   \n\t"));
+        assert!(!diff_is_journal_only("not a git diff at all"));
+    }
 
     /// The PR content model must be `pr_resolved_model`, never the run-model
     /// fallback `pr_model` (regression a1e27c9bf: the dedicated model was
