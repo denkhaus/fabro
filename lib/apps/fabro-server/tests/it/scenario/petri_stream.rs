@@ -111,7 +111,7 @@ pub(super) async fn list_stream(
             .expect("has_more is a bool");
         assert_eq!(
             page["event_contract_version"].as_u64(),
-            Some(3),
+            Some(u64::from(fabro_petri::petri::EVENT_CONTRACT_VERSION)),
             "the server reports Petri's contract version: {page}"
         );
         let Some(last) = data.last() else {

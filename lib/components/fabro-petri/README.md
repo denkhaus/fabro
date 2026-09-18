@@ -104,8 +104,11 @@ yet, keep their default value in the projection: `StageProjection.diff` and
 `Checkpoint`'s engine-derived maps (`completed_nodes`, `node_retries`,
 `context_values`, `node_outcomes`, `next_node_id`), `agent_tools`,
 `permission_level`, `script_invocation` and `script_timing`, a stage's
-`notes`, `StageCompletion` details for a `parsed.note`, the sandbox instance
-(the matrix's two gaps), `Run.ask_fabro`, an interview option's
+`notes`, `StageCompletion` details for a `parsed.note`, the sandbox
+instance's clone fields and workspace roots (Petri's checkout is a copy of
+the bound repository, not a clone; the roots are the provider's, read live)
+and the retention outcome (kept as `FoldState.sandbox_retained`; the view
+has no field for it), `Run.ask_fabro`, an interview option's
 `description` and `preview`, the pull request `creation` state, and the
 run's notices, notifications and pairings (recorded, not shown).
 

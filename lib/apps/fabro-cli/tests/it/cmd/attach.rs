@@ -902,7 +902,7 @@ fn attach_json_errors_without_prompting_for_human_input() {
             "recorded_at": "[EPOCH_MS]",
             "body": {
               "event": "run.started",
-              "format_version": 5,
+              "format_version": 6,
               "key": "[ULID]",
               "root": 0,
               "middleware_chain": [
@@ -1323,46 +1323,20 @@ fn attach_json_errors_without_prompting_for_human_input() {
             "invocation": 0,
             "execution": 0
           },
-          "subject": {
-            "node": {
-              "id": 0,
-              "name": "start",
-              "kind": "attractor/stage",
-              "meta": {
-                "label": "Start",
-                "shape": "Mdiamond",
-                "kind": "start",
-                "classes": [],
-                "span": {
-                  "line": 3,
-                  "column": 3
-                },
-                "admission_hooks": "step",
-                "edges": {
-                  "0": {
-                    "to": "approve",
-                    "label": null
-                  }
-                }
-              }
-            },
-            "firing": 1,
-            "visit": 1,
-            "attempt": 1,
-            "generation": 0,
-            "branch": {
-              "role": "none"
-            }
-          },
           "recorded_at": "[EPOCH_MS]",
           "record": {
             "seq": 4,
             "origin": "external",
             "recorded_at": "[EPOCH_MS]",
             "body": {
-              "event": "step.started",
-              "firing": 1,
-              "attempt": 1
+              "event": "scope.acquired",
+              "scope": 0,
+              "lease": 0,
+              "workspace": "invocation-0-scope-0",
+              "provider": "host",
+              "instance": "host-g[ID]",
+              "working_directory": "[RUN_DIR]/petri/scopes/invocation-0-scope-0/work",
+              "duration_ms": "[DURATION_MS]"
             }
           }
         }
@@ -1370,62 +1344,6 @@ fn attach_json_errors_without_prompting_for_human_input() {
       {
         "run_id": "[ULID]",
         "stream_seq": 18,
-        "kind": "petri",
-        "id": "execution 0/4/1",
-        "recorded_at": "[EPOCH_MS]",
-        "item": {
-          "id": {
-            "log": "execution",
-            "execution": 0,
-            "seq": 4,
-            "index": 1
-          },
-          "origin": "derived",
-          "context": {
-            "invocation": 0,
-            "execution": 0
-          },
-          "subject": {
-            "node": {
-              "id": 0,
-              "name": "start",
-              "kind": "attractor/stage",
-              "meta": {
-                "label": "Start",
-                "shape": "Mdiamond",
-                "kind": "start",
-                "classes": [],
-                "span": {
-                  "line": 3,
-                  "column": 3
-                },
-                "admission_hooks": "step",
-                "edges": {
-                  "0": {
-                    "to": "approve",
-                    "label": null
-                  }
-                }
-              }
-            },
-            "firing": 1,
-            "visit": 1,
-            "attempt": 1,
-            "generation": 0,
-            "branch": {
-              "role": "none"
-            }
-          },
-          "recorded_at": "[EPOCH_MS]",
-          "derived": {
-            "event": "wait.state.changed",
-            "state": "running"
-          }
-        }
-      },
-      {
-        "run_id": "[ULID]",
-        "stream_seq": 19,
         "kind": "petri",
         "id": "execution 0/5/0",
         "recorded_at": "[EPOCH_MS]",
@@ -1478,15 +1396,66 @@ fn attach_json_errors_without_prompting_for_human_input() {
             "origin": "external",
             "recorded_at": "[EPOCH_MS]",
             "body": {
-              "event": "step.progress.recorded",
+              "event": "step.started",
               "firing": 1,
-              "ev": {
-                "log": {
-                  "stream": "stderr",
-                  "line": "checkout: [TEMP_DIR] is not a Git repository; the workspace starts empty"
+              "attempt": 1
+            }
+          }
+        }
+      },
+      {
+        "run_id": "[ULID]",
+        "stream_seq": 19,
+        "kind": "petri",
+        "id": "execution 0/5/1",
+        "recorded_at": "[EPOCH_MS]",
+        "item": {
+          "id": {
+            "log": "execution",
+            "execution": 0,
+            "seq": 5,
+            "index": 1
+          },
+          "origin": "derived",
+          "context": {
+            "invocation": 0,
+            "execution": 0
+          },
+          "subject": {
+            "node": {
+              "id": 0,
+              "name": "start",
+              "kind": "attractor/stage",
+              "meta": {
+                "label": "Start",
+                "shape": "Mdiamond",
+                "kind": "start",
+                "classes": [],
+                "span": {
+                  "line": 3,
+                  "column": 3
+                },
+                "admission_hooks": "step",
+                "edges": {
+                  "0": {
+                    "to": "approve",
+                    "label": null
+                  }
                 }
               }
+            },
+            "firing": 1,
+            "visit": 1,
+            "attempt": 1,
+            "generation": 0,
+            "branch": {
+              "role": "none"
             }
+          },
+          "recorded_at": "[EPOCH_MS]",
+          "derived": {
+            "event": "wait.state.changed",
+            "state": "running"
           }
         }
       },
@@ -1548,34 +1517,9 @@ fn attach_json_errors_without_prompting_for_human_input() {
               "event": "step.progress.recorded",
               "firing": 1,
               "ev": {
-                "custom": {
-                  "$note": {
-                    "kind": "fabro.checkpoint",
-                    "payload": {
-                      "execution": 0,
-                      "firing": 1,
-                      "attempt": 1,
-                      "workspace": "invocation-0-scope-0",
-                      "git_commit_sha": "[DIGEST]",
-                      "reused": false
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "derived": {
-            "parsed": {
-              "kind": "note",
-              "note": {
-                "kind": "fabro.checkpoint",
-                "payload": {
-                  "execution": 0,
-                  "firing": 1,
-                  "attempt": 1,
-                  "workspace": "invocation-0-scope-0",
-                  "git_commit_sha": "[DIGEST]",
-                  "reused": false
+                "log": {
+                  "stream": "stderr",
+                  "line": "checkout: [TEMP_DIR] is not a Git repository; the workspace starts empty"
                 }
               }
             }
@@ -1637,6 +1581,98 @@ fn attach_json_errors_without_prompting_for_human_input() {
             "origin": "external",
             "recorded_at": "[EPOCH_MS]",
             "body": {
+              "event": "step.progress.recorded",
+              "firing": 1,
+              "ev": {
+                "custom": {
+                  "$note": {
+                    "kind": "fabro.checkpoint",
+                    "payload": {
+                      "execution": 0,
+                      "firing": 1,
+                      "attempt": 1,
+                      "workspace": "invocation-0-scope-0",
+                      "git_commit_sha": "[DIGEST]",
+                      "reused": false
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "derived": {
+            "parsed": {
+              "kind": "note",
+              "note": {
+                "kind": "fabro.checkpoint",
+                "payload": {
+                  "execution": 0,
+                  "firing": 1,
+                  "attempt": 1,
+                  "workspace": "invocation-0-scope-0",
+                  "git_commit_sha": "[DIGEST]",
+                  "reused": false
+                }
+              }
+            }
+          }
+        }
+      },
+      {
+        "run_id": "[ULID]",
+        "stream_seq": 22,
+        "kind": "petri",
+        "id": "execution 0/8/0",
+        "recorded_at": "[EPOCH_MS]",
+        "item": {
+          "id": {
+            "log": "execution",
+            "execution": 0,
+            "seq": 8,
+            "index": 0
+          },
+          "origin": "external",
+          "context": {
+            "invocation": 0,
+            "execution": 0
+          },
+          "subject": {
+            "node": {
+              "id": 0,
+              "name": "start",
+              "kind": "attractor/stage",
+              "meta": {
+                "label": "Start",
+                "shape": "Mdiamond",
+                "kind": "start",
+                "classes": [],
+                "span": {
+                  "line": 3,
+                  "column": 3
+                },
+                "admission_hooks": "step",
+                "edges": {
+                  "0": {
+                    "to": "approve",
+                    "label": null
+                  }
+                }
+              }
+            },
+            "firing": 1,
+            "visit": 1,
+            "attempt": 1,
+            "generation": 0,
+            "branch": {
+              "role": "none"
+            }
+          },
+          "recorded_at": "[EPOCH_MS]",
+          "record": {
+            "seq": 8,
+            "origin": "external",
+            "recorded_at": "[EPOCH_MS]",
+            "body": {
               "event": "step.finished",
               "firing": 1,
               "attempt": 1,
@@ -1664,15 +1700,15 @@ fn attach_json_errors_without_prompting_for_human_input() {
       },
       {
         "run_id": "[ULID]",
-        "stream_seq": 22,
+        "stream_seq": 23,
         "kind": "petri",
-        "id": "execution 0/7/1",
+        "id": "execution 0/8/1",
         "recorded_at": "[EPOCH_MS]",
         "item": {
           "id": {
             "log": "execution",
             "execution": 0,
-            "seq": 7,
+            "seq": 8,
             "index": 1
           },
           "origin": "derived",
@@ -1735,7 +1771,7 @@ fn attach_json_errors_without_prompting_for_human_input() {
       },
       {
         "run_id": "[ULID]",
-        "stream_seq": 23,
+        "stream_seq": 24,
         "kind": "platform",
         "id": "[EVENT_ID]",
         "recorded_at": "[EPOCH_MS]",
@@ -1768,15 +1804,15 @@ fn attach_json_errors_without_prompting_for_human_input() {
       },
       {
         "run_id": "[ULID]",
-        "stream_seq": 24,
+        "stream_seq": 25,
         "kind": "petri",
-        "id": "execution 0/8/0",
+        "id": "execution 0/9/0",
         "recorded_at": "[EPOCH_MS]",
         "item": {
           "id": {
             "log": "execution",
             "execution": 0,
-            "seq": 8,
+            "seq": 9,
             "index": 0
           },
           "origin": "external",
@@ -1817,7 +1853,7 @@ fn attach_json_errors_without_prompting_for_human_input() {
           },
           "recorded_at": "[EPOCH_MS]",
           "record": {
-            "seq": 8,
+            "seq": 9,
             "origin": "external",
             "recorded_at": "[EPOCH_MS]",
             "body": {
@@ -1876,15 +1912,15 @@ fn attach_json_errors_without_prompting_for_human_input() {
       },
       {
         "run_id": "[ULID]",
-        "stream_seq": 25,
+        "stream_seq": 26,
         "kind": "petri",
-        "id": "execution 0/8/1",
+        "id": "execution 0/9/1",
         "recorded_at": "[EPOCH_MS]",
         "item": {
           "id": {
             "log": "execution",
             "execution": 0,
-            "seq": 8,
+            "seq": 9,
             "index": 1
           },
           "origin": "derived",
@@ -1945,15 +1981,15 @@ fn attach_json_errors_without_prompting_for_human_input() {
       },
       {
         "run_id": "[ULID]",
-        "stream_seq": 26,
+        "stream_seq": 27,
         "kind": "petri",
-        "id": "execution 0/8/2",
+        "id": "execution 0/9/2",
         "recorded_at": "[EPOCH_MS]",
         "item": {
           "id": {
             "log": "execution",
             "execution": 0,
-            "seq": 8,
+            "seq": 9,
             "index": 2
           },
           "origin": "derived",
@@ -1999,99 +2035,6 @@ fn attach_json_errors_without_prompting_for_human_input() {
           "derived": {
             "event": "wait.state.changed",
             "state": "awaiting_admission"
-          }
-        }
-      },
-      {
-        "run_id": "[ULID]",
-        "stream_seq": 27,
-        "kind": "petri",
-        "id": "execution 0/9/0",
-        "recorded_at": "[EPOCH_MS]",
-        "item": {
-          "id": {
-            "log": "execution",
-            "execution": 0,
-            "seq": 9,
-            "index": 0
-          },
-          "origin": "core",
-          "context": {
-            "invocation": 0,
-            "execution": 0
-          },
-          "subject": {
-            "node": {
-              "id": 0,
-              "name": "start",
-              "kind": "attractor/stage",
-              "meta": {
-                "label": "Start",
-                "shape": "Mdiamond",
-                "kind": "start",
-                "classes": [],
-                "span": {
-                  "line": 3,
-                  "column": 3
-                },
-                "admission_hooks": "step",
-                "edges": {
-                  "0": {
-                    "to": "approve",
-                    "label": null
-                  }
-                }
-              }
-            },
-            "firing": 1,
-            "visit": 1,
-            "attempt": 1,
-            "generation": 0,
-            "branch": {
-              "role": "none"
-            }
-          },
-          "recorded_at": "[EPOCH_MS]",
-          "record": {
-            "seq": 9,
-            "origin": "core",
-            "recorded_at": "[EPOCH_MS]",
-            "body": {
-              "event": "route.applied",
-              "kind": "edge",
-              "firing": 1,
-              "group": 0,
-              "edge": 0
-            }
-          },
-          "derived": {
-            "target": {
-              "id": 2,
-              "name": "approve",
-              "kind": "attractor/human",
-              "meta": {
-                "label": "Approve?",
-                "shape": "hexagon",
-                "kind": "human",
-                "classes": [],
-                "span": {
-                  "line": 5,
-                  "column": 3
-                },
-                "edges": {
-                  "1": {
-                    "to": "ship",
-                    "label": "[A] Approve"
-                  },
-                  "2": {
-                    "to": "revise",
-                    "label": "[R] Revise"
-                  }
-                }
-              }
-            },
-            "transition": "Continue",
-            "back": false
           }
         }
       },
@@ -2150,38 +2093,15 @@ fn attach_json_errors_without_prompting_for_human_input() {
             "origin": "core",
             "recorded_at": "[EPOCH_MS]",
             "body": {
-              "event": "token.emitted",
-              "edge": 0,
-              "generation": 0,
-              "payload": {
-                "outcome": "succeeded",
-                "failure_class": ""
-              },
-              "from": 1
+              "event": "route.applied",
+              "kind": "edge",
+              "firing": 1,
+              "group": 0,
+              "edge": 0
             }
-          }
-        }
-      },
-      {
-        "run_id": "[ULID]",
-        "stream_seq": 29,
-        "kind": "petri",
-        "id": "execution 0/11/0",
-        "recorded_at": "[EPOCH_MS]",
-        "item": {
-          "id": {
-            "log": "execution",
-            "execution": 0,
-            "seq": 11,
-            "index": 0
           },
-          "origin": "external",
-          "context": {
-            "invocation": 0,
-            "execution": 0
-          },
-          "subject": {
-            "node": {
+          "derived": {
+            "target": {
               "id": 2,
               "name": "approve",
               "kind": "attractor/human",
@@ -2206,7 +2126,53 @@ fn attach_json_errors_without_prompting_for_human_input() {
                 }
               }
             },
-            "firing": 2,
+            "transition": "Continue",
+            "back": false
+          }
+        }
+      },
+      {
+        "run_id": "[ULID]",
+        "stream_seq": 29,
+        "kind": "petri",
+        "id": "execution 0/11/0",
+        "recorded_at": "[EPOCH_MS]",
+        "item": {
+          "id": {
+            "log": "execution",
+            "execution": 0,
+            "seq": 11,
+            "index": 0
+          },
+          "origin": "core",
+          "context": {
+            "invocation": 0,
+            "execution": 0
+          },
+          "subject": {
+            "node": {
+              "id": 0,
+              "name": "start",
+              "kind": "attractor/stage",
+              "meta": {
+                "label": "Start",
+                "shape": "Mdiamond",
+                "kind": "start",
+                "classes": [],
+                "span": {
+                  "line": 3,
+                  "column": 3
+                },
+                "admission_hooks": "step",
+                "edges": {
+                  "0": {
+                    "to": "approve",
+                    "label": null
+                  }
+                }
+              }
+            },
+            "firing": 1,
             "visit": 1,
             "attempt": 1,
             "generation": 0,
@@ -2217,18 +2183,17 @@ fn attach_json_errors_without_prompting_for_human_input() {
           "recorded_at": "[EPOCH_MS]",
           "record": {
             "seq": 11,
-            "origin": "external",
+            "origin": "core",
             "recorded_at": "[EPOCH_MS]",
             "body": {
-              "event": "admission.decided",
-              "decision_id": {
-                "attempt_start": {
-                  "firing": 2,
-                  "attempt": 1
-                }
+              "event": "token.emitted",
+              "edge": 0,
+              "generation": 0,
+              "payload": {
+                "outcome": "succeeded",
+                "failure_class": ""
               },
-              "decision": "admit",
-              "trace": []
+              "from": 1
             }
           }
         }
@@ -2291,9 +2256,15 @@ fn attach_json_errors_without_prompting_for_human_input() {
             "origin": "external",
             "recorded_at": "[EPOCH_MS]",
             "body": {
-              "event": "step.started",
-              "firing": 2,
-              "attempt": 1
+              "event": "admission.decided",
+              "decision_id": {
+                "attempt_start": {
+                  "firing": 2,
+                  "attempt": 1
+                }
+              },
+              "decision": "admit",
+              "trace": []
             }
           }
         }
@@ -2301,65 +2272,6 @@ fn attach_json_errors_without_prompting_for_human_input() {
       {
         "run_id": "[ULID]",
         "stream_seq": 31,
-        "kind": "petri",
-        "id": "execution 0/12/1",
-        "recorded_at": "[EPOCH_MS]",
-        "item": {
-          "id": {
-            "log": "execution",
-            "execution": 0,
-            "seq": 12,
-            "index": 1
-          },
-          "origin": "derived",
-          "context": {
-            "invocation": 0,
-            "execution": 0
-          },
-          "subject": {
-            "node": {
-              "id": 2,
-              "name": "approve",
-              "kind": "attractor/human",
-              "meta": {
-                "label": "Approve?",
-                "shape": "hexagon",
-                "kind": "human",
-                "classes": [],
-                "span": {
-                  "line": 5,
-                  "column": 3
-                },
-                "edges": {
-                  "1": {
-                    "to": "ship",
-                    "label": "[A] Approve"
-                  },
-                  "2": {
-                    "to": "revise",
-                    "label": "[R] Revise"
-                  }
-                }
-              }
-            },
-            "firing": 2,
-            "visit": 1,
-            "attempt": 1,
-            "generation": 0,
-            "branch": {
-              "role": "none"
-            }
-          },
-          "recorded_at": "[EPOCH_MS]",
-          "derived": {
-            "event": "wait.state.changed",
-            "state": "running"
-          }
-        }
-      },
-      {
-        "run_id": "[ULID]",
-        "stream_seq": 32,
         "kind": "petri",
         "id": "execution 0/13/0",
         "recorded_at": "[EPOCH_MS]",
@@ -2415,58 +2327,16 @@ fn attach_json_errors_without_prompting_for_human_input() {
             "origin": "external",
             "recorded_at": "[EPOCH_MS]",
             "body": {
-              "event": "step.progress.recorded",
+              "event": "step.started",
               "firing": 2,
-              "ev": {
-                "custom": {
-                  "$question": {
-                    "id": "approve#2",
-                    "text": "Approve?",
-                    "options": [
-                      {
-                        "key": "A",
-                        "label": "[A] Approve"
-                      },
-                      {
-                        "key": "R",
-                        "label": "[R] Revise"
-                      }
-                    ],
-                    "default": "A",
-                    "freeform": false,
-                    "sensitive": false
-                  }
-                }
-              }
-            }
-          },
-          "derived": {
-            "parsed": {
-              "kind": "question",
-              "question": {
-                "id": "approve#2",
-                "text": "Approve?",
-                "options": [
-                  {
-                    "key": "A",
-                    "label": "[A] Approve"
-                  },
-                  {
-                    "key": "R",
-                    "label": "[R] Revise"
-                  }
-                ],
-                "default": "A",
-                "freeform": false,
-                "sensitive": false
-              }
+              "attempt": 1
             }
           }
         }
       },
       {
         "run_id": "[ULID]",
-        "stream_seq": 33,
+        "stream_seq": 32,
         "kind": "petri",
         "id": "execution 0/13/1",
         "recorded_at": "[EPOCH_MS]",
@@ -2519,13 +2389,13 @@ fn attach_json_errors_without_prompting_for_human_input() {
           "recorded_at": "[EPOCH_MS]",
           "derived": {
             "event": "wait.state.changed",
-            "state": "awaiting_answer"
+            "state": "running"
           }
         }
       },
       {
         "run_id": "[ULID]",
-        "stream_seq": 34,
+        "stream_seq": 33,
         "kind": "petri",
         "id": "execution 0/14/0",
         "recorded_at": "[EPOCH_MS]",
@@ -2578,6 +2448,172 @@ fn attach_json_errors_without_prompting_for_human_input() {
           "recorded_at": "[EPOCH_MS]",
           "record": {
             "seq": 14,
+            "origin": "external",
+            "recorded_at": "[EPOCH_MS]",
+            "body": {
+              "event": "step.progress.recorded",
+              "firing": 2,
+              "ev": {
+                "custom": {
+                  "$question": {
+                    "id": "approve#2",
+                    "text": "Approve?",
+                    "options": [
+                      {
+                        "key": "A",
+                        "label": "[A] Approve"
+                      },
+                      {
+                        "key": "R",
+                        "label": "[R] Revise"
+                      }
+                    ],
+                    "default": "A",
+                    "freeform": false,
+                    "sensitive": false
+                  }
+                }
+              }
+            }
+          },
+          "derived": {
+            "parsed": {
+              "kind": "question",
+              "question": {
+                "id": "approve#2",
+                "text": "Approve?",
+                "options": [
+                  {
+                    "key": "A",
+                    "label": "[A] Approve"
+                  },
+                  {
+                    "key": "R",
+                    "label": "[R] Revise"
+                  }
+                ],
+                "default": "A",
+                "freeform": false,
+                "sensitive": false
+              }
+            }
+          }
+        }
+      },
+      {
+        "run_id": "[ULID]",
+        "stream_seq": 34,
+        "kind": "petri",
+        "id": "execution 0/14/1",
+        "recorded_at": "[EPOCH_MS]",
+        "item": {
+          "id": {
+            "log": "execution",
+            "execution": 0,
+            "seq": 14,
+            "index": 1
+          },
+          "origin": "derived",
+          "context": {
+            "invocation": 0,
+            "execution": 0
+          },
+          "subject": {
+            "node": {
+              "id": 2,
+              "name": "approve",
+              "kind": "attractor/human",
+              "meta": {
+                "label": "Approve?",
+                "shape": "hexagon",
+                "kind": "human",
+                "classes": [],
+                "span": {
+                  "line": 5,
+                  "column": 3
+                },
+                "edges": {
+                  "1": {
+                    "to": "ship",
+                    "label": "[A] Approve"
+                  },
+                  "2": {
+                    "to": "revise",
+                    "label": "[R] Revise"
+                  }
+                }
+              }
+            },
+            "firing": 2,
+            "visit": 1,
+            "attempt": 1,
+            "generation": 0,
+            "branch": {
+              "role": "none"
+            }
+          },
+          "recorded_at": "[EPOCH_MS]",
+          "derived": {
+            "event": "wait.state.changed",
+            "state": "awaiting_answer"
+          }
+        }
+      },
+      {
+        "run_id": "[ULID]",
+        "stream_seq": 35,
+        "kind": "petri",
+        "id": "execution 0/15/0",
+        "recorded_at": "[EPOCH_MS]",
+        "item": {
+          "id": {
+            "log": "execution",
+            "execution": 0,
+            "seq": 15,
+            "index": 0
+          },
+          "origin": "external",
+          "context": {
+            "invocation": 0,
+            "execution": 0
+          },
+          "subject": {
+            "node": {
+              "id": 2,
+              "name": "approve",
+              "kind": "attractor/human",
+              "meta": {
+                "label": "Approve?",
+                "shape": "hexagon",
+                "kind": "human",
+                "classes": [],
+                "span": {
+                  "line": 5,
+                  "column": 3
+                },
+                "edges": {
+                  "1": {
+                    "to": "ship",
+                    "label": "[A] Approve"
+                  },
+                  "2": {
+                    "to": "revise",
+                    "label": "[R] Revise"
+                  }
+                }
+              }
+            },
+            "firing": 2,
+            "visit": 1,
+            "attempt": 1,
+            "generation": 0,
+            "branch": {
+              "role": "none"
+            }
+          },
+          "recorded_at": "[EPOCH_MS]",
+          "record": {
+            "seq": 15,
             "origin": "external",
             "recorded_at": "[EPOCH_MS]",
             "body": {

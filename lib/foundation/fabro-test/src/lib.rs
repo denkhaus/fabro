@@ -86,6 +86,9 @@ static INSTA_FILTERS: &[(&str, &str)] = &[
     ),
     (r#""nanos"(\s*:\s*)\d+"#, r#""nanos"$1"[NANOS]""#),
     (r"host-dir-[0-9a-f]+", "host-dir-[HEX]"),
+    // A local sandbox's registry-minted id (a creation time, a process id
+    // and a counter), for a directory too long for a path-derived id.
+    (r"host-g[0-9a-f]+-\d+-\d+", "host-g[ID]"),
     (r"\\([\w\d])", "/$1"),
 ];
 
