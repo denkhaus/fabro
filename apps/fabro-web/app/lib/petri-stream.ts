@@ -23,6 +23,7 @@ import type {
   StageContextData,
 } from "../components/stage-renderers/helpers";
 import { principalLabel } from "../components/stage-renderers/helpers";
+import { principalDisplay } from "./principal-display";
 import type { Stage } from "./stage-sidebar";
 import type { RunPhase, RunPhaseKind } from "./run-phases";
 import { formatDurationMs } from "./format";
@@ -180,6 +181,20 @@ function parseOptions(value: unknown): InterviewOption[] {
   return out;
 }
 
+/**
+ * Who answered, from the `interview.answered` record's `Principal`: the
+ * user's login, or the legacy label for an actor shaped as the old events
+ * carried it.
+ */
+function answeringPrincipalLabel(principal: unknown): string | null {
+  if (!isRecord(principal)) return null;
+  const kind = getString(principal, "kind");
+  if (kind === "user" && getString(principal, "login")) {
+    return principalDisplay(principal as unknown as Parameters<typeof principalDisplay>[0]).label;
+  }
+  return principalLabel(principal);
+}
+
 function answerText(answer: UnknownRecord): string {
   const choice = getString(answer, "choice");
   if (choice) return choice;
@@ -214,7 +229,7 @@ export function parsePetriInterviewPairs(stream: PetriStream): HumanInterviewPai
       const rec = record(item);
       if (getString(rec, "kind") === "interview.answered") {
         const question = getString(rec, "question");
-        if (question) actors.set(question, principalLabel(rec?.principal));
+        if (question) actors.set(question, answeringPrincipalLabel(rec?.principal));
       }
       continue;
     }
@@ -541,7 +556,14 @@ export function reducerTranscriptFromProjection(
   };
 }
 
-const ENGINE_CONTEXT_KEYS = new Set(["last_stage", "last_response", "command.output"]);
+// The command step's own bookkeeping (`command.output`, `failure_class`)
+// joins the engine keys the legacy Context tab hides.
+const ENGINE_CONTEXT_KEYS = new Set([
+  "last_stage",
+  "last_response",
+  "command.output",
+  "failure_class",
+]);
 const ENGINE_CONTEXT_PREFIXES = ["response.", "internal.", "current.", "human.gate.", "parallel."];
 
 function isEngineContextKey(key: string): boolean {
@@ -588,15 +610,18 @@ export interface PetriAgentEnvelope {
 /**
  * The backend envelopes among a stage's items: a `step.progress.recorded`
  * whose custom payload carries a string `kind` (the backend) and an `event`
- * object (Pebble's externally tagged `CodingAgentEvent`).
+ * object, Pebble's `CodingAgentEvent` as recorded: `{seq, stream_id,
+ * session_id, parent_session_id?, timestamp, event: {Variant: {...}}}`.
  */
 export function agentEnvelopesOf(items: PetriStream): PetriAgentEnvelope[] {
   const out: PetriAgentEnvelope[] = [];
   for (const item of items) {
     if (petriEventName(item) !== "step.progress.recorded") continue;
     const custom = getObject(getObject(petriBody(item), "ev"), "custom");
-    const event = getObject(custom, "event");
-    if (!custom || !event || !getString(custom, "kind")) continue;
+    const envelope = getObject(custom, "event");
+    if (!custom || !envelope || !getString(custom, "kind")) continue;
+    const event = getObject(envelope, "event");
+    if (!event) continue;
     let variant: string | null = null;
     let payload: UnknownRecord = {};
     for (const [key, value] of Object.entries(event)) {
@@ -606,12 +631,12 @@ export function agentEnvelopesOf(items: PetriStream): PetriAgentEnvelope[] {
     }
     if (!variant) continue;
     out.push({
-      ts: streamItemTs(item),
+      ts: getString(envelope, "timestamp") ?? streamItemTs(item),
       streamSeq: item.stream_seq,
       variant,
       payload,
-      sessionId: getString(custom, "session_id") ?? null,
-      parentSessionId: getString(custom, "parent_session_id") ?? null,
+      sessionId: getString(envelope, "session_id") ?? null,
+      parentSessionId: getString(envelope, "parent_session_id") ?? null,
     });
   }
   return out;
@@ -629,7 +654,10 @@ export function commandScriptOf(items: PetriStream): string | null {
   return null;
 }
 
-/** The exit code and duration of the stage's final `step.finished`. */
+/**
+ * The exit code and duration of the stage's final `step.finished`: the
+ * command step's output carries `exit_status`, its metrics the duration.
+ */
 export function commandOutcomeOf(items: PetriStream): {
   exitCode: number | null;
   durationMs: number;
@@ -638,8 +666,11 @@ export function commandOutcomeOf(items: PetriStream): {
   let durationMs = 0;
   for (const item of items) {
     if (petriEventName(item) !== "step.finished") continue;
-    const metrics = getObject(getObject(petriBody(item), "outcome"), "metrics");
-    exitCode = getNumber(metrics, "exit_code") ?? exitCode;
+    const outcome = getObject(petriBody(item), "outcome");
+    const output = getObject(outcome, "output");
+    const metrics = getObject(outcome, "metrics");
+    exitCode =
+      getNumber(output, "exit_status") ?? getNumber(metrics, "exit_code") ?? exitCode;
     durationMs = getNumber(metrics, "duration_ms") ?? durationMs;
   }
   return { exitCode, durationMs };

@@ -580,13 +580,21 @@ export function buildPetriStageActivity(
     return { turns, pendingTools: [] };
   }
 
-  if (stage?.prompt) {
+  const envelopes = agentEnvelopesOf(items);
+  // The prompt is the session's `UserInput`; the projection's `prompt` stands
+  // in for a stage whose session recorded none (a prompt node).
+  if (stage?.prompt && !envelopes.some((envelope) => envelope.variant === "UserInput")) {
     turns.push({ kind: "system", ts: startTs, content: stage.prompt });
   }
   let sawAssistantMessage = false;
-  for (const envelope of agentEnvelopesOf(items)) {
+  for (const envelope of envelopes) {
     const { payload } = envelope;
     switch (envelope.variant) {
+      case "UserInput": {
+        const text = getString(payload, "text") ?? "";
+        if (text) turns.push({ kind: "system", ts: envelope.ts, content: text });
+        break;
+      }
       case "AssistantMessage": {
         sawAssistantMessage = true;
         const tokens = getObject(getObject(payload, "usage"), "tokens") ?? getObject(payload, "usage") ?? {};
