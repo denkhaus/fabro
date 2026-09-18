@@ -26,8 +26,8 @@ use std::sync::Arc;
 
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
-use fabro_petri::SqliteRunStore;
 use fabro_petri::engine::{self, RunStatus};
+use fabro_petri::{SqliteRunStore, projector};
 use fabro_server::server::AppState;
 use fabro_server::test_support::{
     TestAppStateBuilder, llm_overlay_with_provider_base_url, test_app_db_pool,
@@ -35,7 +35,7 @@ use fabro_server::test_support::{
 };
 use fabro_static::EnvVars;
 use fabro_test::{TwinScenario, TwinScenarios, twin_openai};
-use fabro_types::{WorkflowPath, WorkflowVersion};
+use fabro_types::{RunId, WorkflowPath, WorkflowVersion};
 use tower::ServiceExt;
 
 use crate::helpers::{
@@ -85,6 +85,23 @@ const UNKNOWN_MODEL_DOT: &str = r#"digraph Bad {
     exit [shape=Msquare]
     work [shape=box, prompt="Do the work", model="no-such-model-9000"]
     start -> work -> exit
+}"#;
+
+/// Two command branches joined by a fan-in.
+const PARALLEL_DOT: &str = r#"digraph Parallel {
+    graph [goal="Run two branches"]
+    start [shape=Mdiamond]
+    exit [shape=Msquare]
+    fork [shape=component]
+    a [shape=parallelogram, script="echo a"]
+    b [shape=parallelogram, script="echo b"]
+    merge [shape=tripleoctagon]
+    start -> fork
+    fork -> a
+    fork -> b
+    a -> merge
+    b -> merge
+    merge -> exit
 }"#;
 
 const PLAIN_SETTINGS: &str = "_version = 1\n\n[workflow]\ngraph = \"workflow.fabro\"\n";
@@ -166,6 +183,37 @@ async fn petri_outcome(state: &AppState, run_id: &str) -> engine::RunOutcome {
     engine::outcome_of(&store, run_id)
         .await
         .expect("the run's Petri record inspects")
+}
+
+/// The run's projected state once its projector settled.
+async fn settled_state(state: &AppState, app: &axum::Router, run_id: &str) -> serde_json::Value {
+    let id: RunId = run_id.parse().expect("the run id parses");
+    state.test_petri_projector().settle(id).await;
+    let req = Request::builder()
+        .method("GET")
+        .uri(api(&format!("/runs/{run_id}/state")))
+        .body(Body::empty())
+        .expect("state request should build");
+    let response = app
+        .clone()
+        .oneshot(req)
+        .await
+        .expect("state request routes");
+    response_json(
+        response,
+        StatusCode::OK,
+        format!("GET /api/v1/runs/{run_id}/state"),
+    )
+    .await
+}
+
+/// How many items the run's projected stream holds.
+async fn petri_stream_len(state: &AppState, run_id: &str) -> usize {
+    let id: RunId = run_id.parse().expect("the run id parses");
+    projector::stored_stream(&test_app_db_pool(state), id)
+        .await
+        .expect("the stream reads")
+        .len()
 }
 
 async fn run_engine(app: &axum::Router, run_id: &str) -> serde_json::Value {
@@ -260,6 +308,31 @@ async fn the_hello_bundle_runs_on_petri_when_the_version_names_the_engine() {
     let outcome = petri_outcome(&state, &run_id).await;
     assert_eq!(outcome.status, RunStatus::Success, "{outcome:?}");
     assert!(outcome.complete, "{:?}", outcome.incomplete);
+    let projection = settled_state(&state, &app, &run_id).await;
+    assert_eq!(projection["status"]["kind"], "succeeded", "{projection}");
+    assert_eq!(
+        projection["conclusion"]["status"], "succeeded",
+        "{projection}"
+    );
+    let stages = projection["stages"]
+        .as_object()
+        .expect("the state carries its stages");
+    let prompt = stages
+        .values()
+        .find(|stage| stage["handler"] == "prompt")
+        .unwrap_or_else(|| panic!("the hello prompt stage is projected: {projection}"));
+    assert_eq!(prompt["state"], "succeeded", "{prompt}");
+    assert!(
+        prompt["response"]
+            .as_str()
+            .is_some_and(|response| response.contains("A haiku, added.")),
+        "the prompt's response is projected: {prompt}"
+    );
+    assert_eq!(
+        run["usage"]["tokens"]["input"].as_u64().is_some(),
+        true,
+        "{run}"
+    );
     let logs = twin.request_logs(&namespace).await;
     let requests = logs["requests"]
         .as_array()
@@ -302,6 +375,63 @@ async fn a_command_bundle_runs_on_petri_under_the_server_setting() {
     let outcome = petri_outcome(&state, &run_id).await;
     assert_eq!(outcome.status, RunStatus::Success, "{outcome:?}");
     assert!(outcome.complete, "{:?}", outcome.incomplete);
+    let projection = settled_state(&state, &app, &run_id).await;
+    let say = &projection["stages"]["say@1"];
+    assert_eq!(say["state"], "succeeded", "{projection}");
+    assert_eq!(say["handler"], "command", "{say}");
+    assert!(
+        say["output"]
+            .as_str()
+            .is_some_and(|output| output.contains("hello from petri")),
+        "{say}"
+    );
+    let stream = petri_stream_len(&state, &run_id).await;
+    assert!(stream > 0, "the run's stream holds its events");
+}
+
+/// A parallel bundle with two command branches runs on Petri through the
+/// server: each branch is a child execution, projected as a stage grouped
+/// under the fork, and the fork carries the branch results.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_parallel_bundle_projects_its_branches_through_the_server() {
+    if host_plugin().is_none() {
+        return;
+    }
+    let workspace = tempfile::tempdir().expect("workspace tempdir");
+    let settings = settings_from_toml(
+        "_version = 1\n\n[run.environment]\nid = \"local\"\n\n[server.execution]\nengine = \
+         \"petri\"\n",
+    );
+    let state = test_app_state_with_options(settings, 5);
+    let app = test_app_with_scheduler(Arc::clone(&state));
+
+    let version_id = register_version(&app, &[
+        ("workflow.fabro", PARALLEL_DOT),
+        ("workflow.toml", PLAIN_SETTINGS),
+    ])
+    .await;
+    let run_id =
+        create_and_start_run_from_intent(&app, intent(&version_id, workspace.path())).await;
+
+    let status = wait_for_run_status(&app, &run_id, &["succeeded", "failed"]).await;
+    let run = run_json(&app, &run_id).await;
+    assert_eq!(status, "succeeded", "run: {run}");
+    let projection = settled_state(&state, &app, &run_id).await;
+    for branch in ["a@1", "b@1"] {
+        let stage = &projection["stages"][branch];
+        assert_eq!(stage["state"], "succeeded", "{branch}: {projection}");
+        assert_eq!(stage["parallel_branch_id"]["group"], "fork@1", "{stage}");
+    }
+    let fork = &projection["stages"]["fork@1"];
+    assert_eq!(
+        fork["parallel_results"].as_array().map(Vec::len),
+        Some(2),
+        "{fork}"
+    );
+    assert_eq!(
+        projection["conclusion"]["status"], "succeeded",
+        "{projection}"
+    );
 }
 
 /// A version that names no engine on a server whose setting is the default

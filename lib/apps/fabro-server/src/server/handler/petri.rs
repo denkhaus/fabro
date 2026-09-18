@@ -145,7 +145,11 @@ async fn append_records(
         Err(err) => return store_error_response(id, &err),
     };
     match writer.append(&log, &records).await {
-        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Ok(()) => {
+            // The records are durable; the projection trails them from here.
+            state.petri_projector.signal(id);
+            StatusCode::NO_CONTENT.into_response()
+        }
         Err(err) => store_error_response(id, &err),
     }
 }
