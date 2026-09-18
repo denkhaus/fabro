@@ -23,10 +23,9 @@
 //! hook service: the checkpoint commit before every durable finish and its
 //! platform record after every route, with a failed commit ending the run
 //! as a `checkpoint_failed` failure. What the standalone runner's defaults
-//! give the run: Petri's local hook service for `[[run.hooks]]` and no host
-//! tools. The workspaces' retention comes from the run's environment
-//! settings through [`retention`]. Cancellation rides the caller's token:
-//! when it fires, the root
+//! give the run: Petri's local hook service for `[[run.hooks]]`, no host
+//! tools, and `Retention::Always` for every workspace (see [`RETENTION`]).
+//! Cancellation rides the caller's token: when it fires, the root
 //! invocation is cancelled politely and Petri records why. The run's other
 //! controls (pause, unpause, steer) are the caller's [`RunControls`]: its
 //! pause gate is installed over the run's hooks, it observes the run, and
@@ -48,7 +47,6 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use fabro_types::settings::run::RunEnvironmentSettings;
 use fabro_types::{FailureReason, RunId, SandboxProviderKind};
 use petri_execution::host::{self, HostError, HostRun};
 use petri_execution::inspect::{self, InspectError, RunInspection};
@@ -96,8 +94,6 @@ pub struct RunRequest {
     pub runtime:     RuntimeSpec,
     /// The sandbox provider Fabro resolved for the run's environment.
     pub provider:    SandboxProviderKind,
-    /// When the run's workspaces are kept after their scope is released.
-    pub retention:   Retention,
     /// Fires to cancel the run.
     pub cancel:      CancellationToken,
     /// The run's pause, unpause and steer controls, which the caller keeps
@@ -178,7 +174,7 @@ pub async fn run(request: RunRequest) -> Result<RunOutcome, RunError> {
     let key = RunKey::new(request.run_id.as_str());
     let mut options = RunOptions::new(&request.run_dir);
     options.run_key = Some(key.clone());
-    options.retention = request.retention;
+    options.retention = RETENTION;
     options.sandbox.backend = backend;
     // Fabro's hooks restore a sandbox workspace from its snapshots at the
     // scope's acquisition, so a lease whose sandbox is gone gets a fresh
@@ -285,30 +281,20 @@ pub async fn run(request: RunRequest) -> Result<RunOutcome, RunError> {
     Ok(outcome)
 }
 
-/// When Petri keeps a run's workspaces after their scope is released, from
-/// the run's environment settings:
+/// When Petri keeps a run's workspaces after their scope is released.
 ///
-/// - `[environments.<id>.lifecycle] preserve = true` asks for the sandbox to
-///   stay after the run, so every workspace is kept (`Retention::Always`).
-/// - The local provider keeps every workspace too: a host workspace lives under
-///   the run's own scratch directory, which `fabro system prune` removes with
-///   the run, and the legacy executor never removed it on its own.
-/// - `stop_on_terminal = false` asks for the sandbox to outlive the run, so its
-///   workspaces are kept (`Retention::Always`).
-/// - Otherwise the sandbox is released with the run and Petri's default
-///   applies: a failed scope's workspace is kept for debugging, a successful
-///   one is not (`Retention::OnFailure`).
-#[must_use]
-pub fn retention(environment: &RunEnvironmentSettings) -> Retention {
-    let keep = environment.lifecycle.preserve
-        || !environment.lifecycle.stop_on_terminal
-        || environment.provider == SandboxProviderKind::LOCAL;
-    if keep {
-        Retention::Always
-    } else {
-        Retention::OnFailure
-    }
-}
+/// Petri's retention makes one choice at release: keep the workspace (a
+/// host directory, a container, a remote sandbox) or remove it. Fabro's
+/// environment lifecycle settings make different choices: `stop_on_terminal`
+/// says whether a sandbox keeps running after the run, and `preserve` says
+/// whether deleting the run may remove it. Neither asks for a sandbox to be
+/// removed when the run ends: the legacy executor stopped a container at
+/// the end and left it for the sandbox tab, `fabro cp`, the run's delete
+/// and `fabro system prune`, and a host workspace lives under the run's
+/// scratch directory, which goes with the run. So every setting maps to
+/// `Retention::Always`, and `Retention::OnFailure` and `Retention::Never`
+/// have no Fabro setting that names them.
+pub const RETENTION: Retention = Retention::Always;
 
 /// The Fabro run id the run key names. A key that is not one (a test's
 /// bare key) still gets hooks, under a fresh id for its platform records.
@@ -491,40 +477,7 @@ async fn write_receipt(run_dir: &std::path::Path, receipt: &petri_execution::Int
 
 #[cfg(test)]
 mod tests {
-    use fabro_types::settings::run::EnvironmentLifecycleSettings;
-
     use super::*;
-
-    fn environment(provider: SandboxProviderKind) -> RunEnvironmentSettings {
-        let mut environment = RunEnvironmentSettings::from_environment(
-            "test".to_string(),
-            fabro_types::settings::run::EnvironmentSettings::default(),
-        );
-        environment.provider = provider;
-        environment
-    }
-
-    #[test]
-    fn retention_follows_the_environment_lifecycle() {
-        let mut docker = environment(SandboxProviderKind::DOCKER);
-        assert_eq!(retention(&docker), Retention::OnFailure);
-        docker.lifecycle = EnvironmentLifecycleSettings {
-            preserve:         true,
-            stop_on_terminal: true,
-            auto_stop:        None,
-        };
-        assert_eq!(retention(&docker), Retention::Always);
-        docker.lifecycle = EnvironmentLifecycleSettings {
-            preserve:         false,
-            stop_on_terminal: false,
-            auto_stop:        None,
-        };
-        assert_eq!(retention(&docker), Retention::Always);
-        assert_eq!(
-            retention(&environment(SandboxProviderKind::LOCAL)),
-            Retention::Always
-        );
-    }
 
     fn outcome_with(status: RunStatus, failure: Option<&str>, complete: bool) -> RunOutcome {
         RunOutcome {

@@ -36,8 +36,8 @@
 //!   with the sandbox in place. Fabro's own end-of-run work (the terminal
 //!   lifecycle event, notifications on it) is the run lifecycle path's, on the
 //!   worker's and server's side of the engine, and the workspace's retention is
-//!   Petri's, mapped from the run's environment settings by
-//!   [`engine::retention`](crate::engine::retention).
+//!   Petri's, `Retention::Always` for every Fabro setting
+//!   ([`engine::RETENTION`](crate::engine::RETENTION)).
 //!
 //! # Operation identities
 //!
@@ -965,14 +965,12 @@ impl FabroHooks {
             .get_or_try_init(|| self.load_recorded())
             .await?;
         let branch = match self.branch.get() {
-            Some(branch) => branch.clone(),
-            None => match self.stored_branch().await? {
-                Some(branch) => branch,
-                None => {
-                    debug!(run_id = %self.run_id, "no run branch is recorded; no run diff");
-                    return Ok(());
-                }
-            },
+            Some(branch) => Some(branch.clone()),
+            None => self.stored_branch().await?,
+        };
+        let Some(branch) = branch else {
+            debug!(run_id = %self.run_id, "no run branch is recorded; no run diff");
+            return Ok(());
         };
         let Some(base_sha) = branch.base_sha.clone() else {
             return Ok(());

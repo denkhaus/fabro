@@ -318,7 +318,6 @@ pub(crate) async fn execute(state: Arc<AppState>, run_id: RunId) {
             .observe_store(Arc::new(SqliteRunStore::new(state.db_pool.clone()))),
         runtime: runtime_spec(&state, &eligible, dry_run),
         provider: run_state.spec.settings.run.environment.provider.clone(),
-        retention: engine::retention(&run_state.spec.settings.run.environment),
         cancel,
         // The in-process test path drives no pause or steer: the server's
         // transports for those name the worker.

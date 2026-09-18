@@ -205,7 +205,6 @@ pub(super) async fn execute(worker: PetriWorker<'_>) -> Result<()> {
             .environment
             .provider
             .clone(),
-        retention: engine::retention(&worker.run_state.spec.settings.run.environment),
         cancel: cancel_token.clone(),
         controls: controls.clone(),
         interviewer: Arc::new(petri_interviewer),

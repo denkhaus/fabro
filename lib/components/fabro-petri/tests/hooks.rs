@@ -26,7 +26,7 @@ use fabro_petri::blobs::Blobs;
 use fabro_petri::check::{self, Bundle, CheckRequest, Launch};
 use fabro_petri::checkpoint::{CHECKPOINT_FAILED_CLASS, CheckpointKey, RunWorkspaces};
 use fabro_petri::controls::RunControls;
-use fabro_petri::engine::{self, Execution, Retention, RunRequest, RunStatus};
+use fabro_petri::engine::{self, Execution, RunRequest, RunStatus};
 use fabro_petri::hooks::HooksSpec;
 use fabro_petri::platform_records::PlatformRecords;
 use fabro_petri::recovery::{self, Recovery, RecoveryRequest};
@@ -199,7 +199,6 @@ impl Harness {
             store: Arc::clone(&self.store) as Arc<dyn petri_store::RunStore>,
             runtime: RuntimeSpec::default(),
             provider,
-            retention: Retention::Always,
             cancel: CancellationToken::new(),
             controls: RunControls::new(),
             interviewer,
@@ -816,7 +815,6 @@ async fn a_run_hook_blocks_a_tool_effect_through_the_forwarded_service() {
             ..RuntimeSpec::default()
         },
         provider: SandboxProviderKind::LOCAL,
-        retention: Retention::Always,
         cancel: CancellationToken::new(),
         controls: RunControls::new(),
         interviewer,

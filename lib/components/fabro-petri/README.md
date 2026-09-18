@@ -133,12 +133,15 @@ notifications and pairings (recorded, not shown).
 
 ### Retention
 
-`engine::retention` maps the run's environment settings onto Petri's
-workspace retention: `preserve = true` or `stop_on_terminal = false` keeps
-every workspace (`Retention::Always`), as does the local provider, whose
-host workspaces live under the run's scratch directory and go with it;
-otherwise a failed scope's workspace is kept for debugging and a successful
-one is released (`Retention::OnFailure`, Petri's default).
+Petri's retention decides, at a scope's release, whether its workspace is
+kept or removed. Fabro's environment lifecycle settings decide something
+else: `stop_on_terminal` whether a sandbox keeps running after the run,
+`preserve` whether the run's delete may remove it. Neither asks for a
+sandbox to be removed when the run ends (the legacy executor stopped a
+container and left it for the sandbox tab, `fabro cp`, the delete and
+`fabro system prune`; a host workspace goes with the run's scratch
+directory), so `engine::RETENTION` maps every setting to
+`Retention::Always`, and no Fabro setting names `OnFailure` or `Never`.
 
 Every run executes on Petri. The server side is `fabro-server`'s
 `server::petri_runs`; the worker side is `fabro-cli`'s
