@@ -52,6 +52,7 @@ use petri_execution::events::{self, EventId, EventSource, RunEvent};
 use petri_execution::{Access, RunKey, RunStore as _, inspect};
 use petri_store::StoreError;
 use serde::{Deserialize, Serialize};
+use tokio::sync::Mutex as AsyncMutex;
 use tokio::time;
 use tracing::{debug, info, warn};
 
@@ -153,7 +154,7 @@ pub struct Projector {
     slots:    Mutex<HashMap<RunId, Slot>>,
     /// One pass at a time per run: a signalled pass and the startup pass
     /// over the same run never interleave their reads and writes.
-    passes:   Mutex<HashMap<RunId, Arc<tokio::sync::Mutex<()>>>>,
+    passes:   Mutex<HashMap<RunId, Arc<AsyncMutex<()>>>>,
     /// Test-only: stop the next pass after its reads, before its view
     /// transaction, as a crash there would.
     fault:    AtomicBool,
