@@ -1936,6 +1936,143 @@ impl Client {
         }
     }
 
+    // ── The Petri run store, as a worker reaches it ──────────────────────
+    //
+    // Each method is one request and answers with the server's reply as it
+    // is: an error carries the store's `code` and `meta` in its `ApiFailure`
+    // (see `api_failure_for`), and a transport failure carries none. Retry
+    // policy belongs to the store implementation over these calls, not here.
+
+    /// Open the run in the Petri run store for the worker.
+    pub async fn open_petri_run(
+        &self,
+        run_id: &RunId,
+        body: types::PetriOpenRequest,
+    ) -> Result<types::PetriOpenResponse> {
+        let response = self
+            .send_api(|client| async move {
+                client
+                    .open_petri_run()
+                    .id(run_id.to_string())
+                    .body(body.clone())
+                    .send()
+                    .await
+            })
+            .await?;
+        Ok(response.into_inner())
+    }
+
+    /// End the worker's writer lease on the run when `owner` still holds it.
+    pub async fn release_petri_run(&self, run_id: &RunId, owner: &str) -> Result<()> {
+        self.send_api(|client| async move {
+            client
+                .release_petri_run()
+                .id(run_id.to_string())
+                .body(types::PetriReleaseRequest {
+                    owner: owner.to_string(),
+                })
+                .send()
+                .await
+        })
+        .await?;
+        Ok(())
+    }
+
+    /// Append one batch of records to one log of the run. `log` is the log
+    /// id as text; the generated client percent-encodes it.
+    pub async fn append_petri_records(
+        &self,
+        run_id: &RunId,
+        log: &str,
+        body: types::PetriAppendRequest,
+    ) -> Result<()> {
+        self.send_api(|client| async move {
+            client
+                .append_petri_records()
+                .id(run_id.to_string())
+                .log(log)
+                .body(body.clone())
+                .send()
+                .await
+        })
+        .await?;
+        Ok(())
+    }
+
+    /// Every record of one log of the run, in `seq` order.
+    pub async fn list_petri_records(
+        &self,
+        run_id: &RunId,
+        log: &str,
+    ) -> Result<Vec<types::PetriRecord>> {
+        let response = self
+            .send_api(|client| async move {
+                client
+                    .list_petri_records()
+                    .id(run_id.to_string())
+                    .log(log)
+                    .send()
+                    .await
+            })
+            .await?;
+        Ok(response.into_inner().records)
+    }
+
+    /// Store a blob by content for the run's `owner` and get its digest.
+    pub async fn write_petri_blob(
+        &self,
+        run_id: &RunId,
+        owner: &str,
+        data: &[u8],
+    ) -> Result<BlobHash> {
+        let response = self
+            .send_api(|client| async move {
+                client
+                    .write_petri_blob()
+                    .id(run_id.to_string())
+                    .owner(owner)
+                    .body(data.to_vec())
+                    .send()
+                    .await
+            })
+            .await?;
+        Ok(response.into_inner().hash)
+    }
+
+    /// The blob with this digest, or `None` when the store holds no such
+    /// blob. A run the store does not hold is an error.
+    pub async fn read_petri_blob(
+        &self,
+        run_id: &RunId,
+        blob_hash: &BlobHash,
+    ) -> Result<Option<Bytes>> {
+        let response = self
+            .current_state()
+            .client
+            .read_petri_blob()
+            .id(run_id.to_string())
+            .blob_hash(*blob_hash)
+            .send()
+            .await;
+        match response {
+            Ok(response) => {
+                let mut stream = response.into_inner();
+                let mut bytes = Vec::new();
+                while let Some(chunk) = stream.next().await {
+                    let chunk = chunk.map_err(anyhow::Error::new)?;
+                    bytes.extend_from_slice(&chunk);
+                }
+                Ok(Some(Bytes::from(bytes)))
+            }
+            Err(err) => {
+                let err = classify_api_error(err).await.error;
+                let blob_missing = api_failure_for(&err)
+                    .is_some_and(|failure| failure.code.as_deref() == Some("petri_blob_not_found"));
+                if blob_missing { Ok(None) } else { Err(err) }
+            }
+        }
+    }
+
     #[expect(
         clippy::disallowed_types,
         reason = "Client builds raw server API request URLs for wire transit; logging redaction is handled at log boundaries."
@@ -3261,10 +3398,7 @@ mod tests {
     fn add_pr_upgrade_hint_appends_on_unstructured_404() {
         let err = tag_with_failure(
             anyhow!("request failed with status 404 Not Found"),
-            ApiFailure {
-                status: fabro_http::StatusCode::NOT_FOUND,
-                code:   None,
-            },
+            ApiFailure::new(fabro_http::StatusCode::NOT_FOUND, None),
         );
         let wrapped = super::add_pr_upgrade_hint(err);
         let message = wrapped.to_string();
@@ -3279,10 +3413,10 @@ mod tests {
     fn add_pr_upgrade_hint_does_not_touch_structured_404() {
         let err = tag_with_failure(
             anyhow!("No pull request found in store. Create one first with: fabro pr create abc"),
-            ApiFailure {
-                status: fabro_http::StatusCode::NOT_FOUND,
-                code:   Some("no_stored_record".to_string()),
-            },
+            ApiFailure::new(
+                fabro_http::StatusCode::NOT_FOUND,
+                Some("no_stored_record".to_string()),
+            ),
         );
         let wrapped = super::add_pr_upgrade_hint(err);
         let message = wrapped.to_string();

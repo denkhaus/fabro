@@ -3195,6 +3195,229 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  # ── Petri run store (worker) ──────────────────────────────────────────
+  #
+  # The Petri run store over HTTP: what a run's worker process uses to reach
+  # the run's Petri records in the server's database. Every endpoint is
+  # worker-scoped: the worker token's run must be the path's run. `id` is
+  # the Petri run key, which is the Fabro run id. Errors carry a
+  # machine-readable `code`; `petri_run_leased` carries the holding owner
+  # under `meta.owner`, and `petri_record_conflict` carries the refused
+  # position under `meta.log` and `meta.seq`.
+
+  /api/v1/runs/{id}/petri/open:
+    post:
+      operationId: openPetriRun
+      tags: [Run Internals]
+      summary: Open Petri Run
+      description: |
+        Opens the run in the Petri run store for the worker. `create` inserts
+        the run and takes its writer lease for `owner`; `write` takes the lease
+        of an existing run; `read` takes no lease. The lease is idempotent per
+        owner: a retry by the owner that holds it gets the same lease. Another
+        live owner is refused with `petri_run_leased`. The lease ends when the
+        worker releases it, when the server observes the worker exit, or by
+        operator release, never by timeout.
+      parameters:
+        - $ref: "#/components/parameters/RunId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PetriOpenRequest"
+      responses:
+        "200":
+          description: Run opened
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PetriOpenResponse"
+        "404":
+          description: Run not in the store (`petri_run_not_found`)
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: |
+            The run exists (`petri_run_exists`, on `create`) or another live
+            owner holds its lease (`petri_run_leased`, with the holder under
+            `meta.owner`).
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/runs/{id}/petri/release:
+    post:
+      operationId: releasePetriRun
+      tags: [Run Internals]
+      summary: Release Petri Run
+      description: |
+        Ends the worker's writer lease on the run when `owner` still holds
+        it: what a worker sends when it drops its store handle. A lease that
+        already moved to another owner is left alone.
+      parameters:
+        - $ref: "#/components/parameters/RunId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PetriReleaseRequest"
+      responses:
+        "204":
+          description: Lease released, or not held by this owner
+
+  /api/v1/runs/{id}/petri/logs/{log}/records:
+    get:
+      operationId: listPetriRecords
+      tags: [Run Internals]
+      summary: List Petri Records
+      description: Every record of one log of the run, in `seq` order, unchanged.
+      parameters:
+        - $ref: "#/components/parameters/RunId"
+        - $ref: "#/components/parameters/PetriLog"
+      responses:
+        "200":
+          description: The log's records
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PetriRecordList"
+        "404":
+          description: Run not in the store (`petri_run_not_found`)
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      operationId: appendPetriRecords
+      tags: [Run Internals]
+      summary: Append Petri Records
+      description: |
+        Appends one batch of records to one log at the sequences they carry,
+        durably, in one transaction. A record equal to the one already stored
+        at its `seq` is accepted without a second append, so a batch whose
+        reply was lost is safe to resend. A different record at a taken `seq`,
+        or a `seq` past the log's end, is refused with `petri_record_conflict`
+        and the batch stores nothing.
+      parameters:
+        - $ref: "#/components/parameters/RunId"
+        - $ref: "#/components/parameters/PetriLog"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PetriAppendRequest"
+      responses:
+        "204":
+          description: Records durable
+        "404":
+          description: Run not in the store (`petri_run_not_found`)
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: |
+            A record conflicts with the log (`petri_record_conflict`, with the
+            position under `meta.log` and `meta.seq`), or `owner` no longer
+            holds the run's lease (`petri_stale_owner`).
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/runs/{id}/petri/blobs:
+    post:
+      operationId: writePetriBlob
+      tags: [Run Internals]
+      summary: Write Petri Blob
+      description: |
+        Stores a blob by content for the run's owner and returns its SHA-256
+        digest, the same content address Fabro's blob store uses. Idempotent
+        by construction.
+      parameters:
+        - $ref: "#/components/parameters/RunId"
+        - $ref: "#/components/parameters/PetriOwner"
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      responses:
+        "200":
+          description: Blob stored
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WriteBlobResponse"
+        "404":
+          description: Run not in the store (`petri_run_not_found`)
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: "`owner` no longer holds the run's lease (`petri_stale_owner`)"
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/runs/{id}/petri/blobs/{blobHash}:
+    get:
+      operationId: readPetriBlob
+      tags: [Run Internals]
+      summary: Read Petri Blob
+      description: The blob with this digest, if the store holds one.
+      parameters:
+        - $ref: "#/components/parameters/RunId"
+        - $ref: "#/components/parameters/BlobHash"
+      responses:
+        "200":
+          description: Blob contents
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        "404":
+          description: Run not in the store (`petri_run_not_found`) or no such blob (`petri_blob_not_found`)
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /api/v1/runs/{id}/stages/{stageId}/logs/output:
     get:
       operationId: getRunStageCommandLog
@@ -5977,6 +6200,27 @@ components:
       schema:
         $ref: "#/components/schemas/BlobHash"
       example: 2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824
+
+    PetriLog:
+      name: log
+      in: path
+      required: true
+      description: >-
+        A Petri log of the run, as its id renders: `coordinator`, `resources`,
+        or `execution <n>` for execution `n`. The space is percent-encoded on
+        the wire.
+      schema:
+        type: string
+      example: execution 0
+
+    PetriOwner:
+      name: owner
+      in: query
+      required: true
+      description: The owner id the worker opened the run's writer lease with.
+      schema:
+        type: string
+      example: 18f3c2a9e1b4-42017-0-9f3a1c7e2b5d
 
     ArtifactFilename:
       name: filename
@@ -10184,6 +10428,12 @@ components:
           type: string
           format: uuid
           description: Server-generated request identifier; matches the x-request-id response header.
+        meta:
+          type: object
+          additionalProperties: true
+          description: >-
+            Optional structured details specific to the error `code`, for
+            clients that act on them. Each code documents the members it sets.
 
     ErrorResponse:
       description: Standard error response containing one or more error entries.
@@ -10646,6 +10896,109 @@ components:
       properties:
         hash:
           $ref: "#/components/schemas/BlobHash"
+
+    PetriAccess:
+      description: >-
+        How a worker opens a Petri run. `create` inserts the run and takes its
+        writer lease, `write` takes the lease of an existing run, `read` takes
+        no lease.
+      type: string
+      enum:
+        - create
+        - write
+        - read
+
+    PetriOpenRequest:
+      description: An open of a Petri run for a worker.
+      type: object
+      required:
+        - access
+      properties:
+        access:
+          $ref: "#/components/schemas/PetriAccess"
+        owner:
+          type: string
+          nullable: true
+          description: >-
+            The owner id the writer lease is taken for. Required for `create`
+            and `write`, absent for `read`.
+          example: 18f3c2a9e1b4-42017-0-9f3a1c7e2b5d
+
+    PetriOpenResponse:
+      description: A Petri run opened for a worker.
+      type: object
+      required:
+        - locator
+      properties:
+        locator:
+          type: string
+          description: Where the run lives, for messages.
+          example: "sqlite database /var/lib/fabro/db/fabro.sqlite3, run `01JNQVR7M0EJ5GKAT2SC4ERS1Z`"
+
+    PetriReleaseRequest:
+      description: A release of a Petri run's writer lease by its owner.
+      type: object
+      required:
+        - owner
+      properties:
+        owner:
+          type: string
+          description: The owner id that holds the lease.
+          example: 18f3c2a9e1b4-42017-0-9f3a1c7e2b5d
+
+    PetriRecord:
+      description: >-
+        One stored line of a Petri log: the record as JSON, with `seq` and
+        `recorded_at` lifted out of it so the store can key and index without
+        reading into the JSON. What the store hands back equals what it was
+        given as a JSON value.
+      type: object
+      required:
+        - seq
+        - recorded_at
+        - record
+      properties:
+        seq:
+          type: integer
+          format: uint64
+          description: The record's position in its log, from 0.
+          example: 7
+        recorded_at:
+          type: integer
+          format: uint64
+          description: Milliseconds since the Unix epoch when Petri appended the record.
+          example: 1758067200123
+        record:
+          type: object
+          additionalProperties: true
+          description: The record itself, stored and read back unchanged.
+
+    PetriAppendRequest:
+      description: One batch of records for one Petri log.
+      type: object
+      required:
+        - owner
+        - records
+      properties:
+        owner:
+          type: string
+          description: The owner id the worker holds the run's writer lease with.
+          example: 18f3c2a9e1b4-42017-0-9f3a1c7e2b5d
+        records:
+          type: array
+          items:
+            $ref: "#/components/schemas/PetriRecord"
+
+    PetriRecordList:
+      description: Every record of one Petri log, in `seq` order.
+      type: object
+      required:
+        - records
+      properties:
+        records:
+          type: array
+          items:
+            $ref: "#/components/schemas/PetriRecord"
 
     CommandTermination:
       description: Terminal state for a command execution.
