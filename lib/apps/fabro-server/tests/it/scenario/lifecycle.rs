@@ -271,10 +271,16 @@ async fn full_http_lifecycle_cancel() {
     // live run rather than racing the in-memory queue transition, so this
     // asserts "not queued" via the two live states. Durable convergence is
     // asserted below.
+    // The third legitimate observation (CI run 35370102289, 2026-09-18): the
+    // worker already processed the cancel before this handler re-read the
+    // projection — the run is then terminally `failed` with reason
+    // `cancelled`, which the durable-convergence assert below verifies.
     let status_kind = &body["lifecycle"]["status"]["kind"];
+    let cancel_processed = status_kind == "failed"
+        && body["lifecycle"]["status"]["reason"] == "cancelled";
     assert!(
-        status_kind == "blocked" || status_kind == "running",
-        "expected status.kind to be \"blocked\" or \"running\", got {status_kind}"
+        status_kind == "blocked" || status_kind == "running" || cancel_processed,
+        "expected status.kind to be \"blocked\", \"running\", or \"failed\"          (cancel already processed — reason \"cancelled\"), got {status_kind}"
     );
     // `pending_control` is computed from the store projection after the cancel
     // event is appended AND the worker is signaled. The worker is sitting at a
