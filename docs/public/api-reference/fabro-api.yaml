@@ -905,7 +905,9 @@ paths:
       operationId: listSessionEvents
       tags: [Sessions]
       summary: List session events
-      description: Returns run event envelopes filtered to this session's durable `run.session.*` events. `since_seq` uses the owning run event sequence.
+      description: >-
+        Returns this session's events in order. Events are numbered per
+        session from 1; `since_seq` is the first sequence number to include.
       parameters:
         - name: since_seq
           in: query
@@ -922,11 +924,11 @@ paths:
             maximum: 1000
       responses:
         "200":
-          description: Session-scoped run events
+          description: The session's events
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/PaginatedEventList"
+                $ref: "#/components/schemas/PaginatedSessionEventList"
         "404":
           description: Session not found
           headers:
@@ -948,7 +950,11 @@ paths:
       operationId: attachSessionEvents
       tags: [Sessions]
       summary: Attach to session events
-      description: Replays and streams this session's durable `run.session.*` events from the owning run event log. The stream remains open until the client disconnects or the server shuts down.
+      description: >-
+        Replays this session's events from `since_seq` (the next unseen event
+        when omitted) as `SessionEvent` frames, then streams new ones as they
+        are recorded. The stream remains open until the client disconnects or
+        the server shuts down.
       parameters:
         - name: since_seq
           in: query
@@ -957,7 +963,7 @@ paths:
             minimum: 1
       responses:
         "200":
-          description: Streamed session-scoped run events
+          description: Streamed session events
           content:
             text/event-stream:
               schema:
@@ -983,7 +989,11 @@ paths:
       operationId: submitSessionTurn
       tags: [Sessions]
       summary: Submit a session turn
-      description: Starts a streamed turn immediately. Background turns are not supported in this API version.
+      description: >-
+        Starts a streamed turn immediately. The stream carries the turn's
+        `SessionEvent` frames, from `run.session.turn.started` to the event
+        that ends the turn. Background turns are not supported in this API
+        version.
       requestBody:
         required: true
         content:
@@ -1056,7 +1066,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/EventEnvelope"
+                $ref: "#/components/schemas/SessionEvent"
         "404":
           description: Session not found
           headers:
@@ -8268,9 +8278,9 @@ components:
 
     SessionDetail:
       description: >-
-        Session metadata plus the highest run event sequence the session's
-        event stream has reached. The conversation itself is held by the
-        server's durable session record and is not returned over the API.
+        Session metadata plus the sequence number of the session's latest
+        event. The conversation itself is held by the server's durable
+        session record and is not returned over the API.
       type: object
       required:
         - id
@@ -8351,6 +8361,67 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/SessionSummary"
+        meta:
+          $ref: "#/components/schemas/PaginationMeta"
+
+    SessionEventName:
+      description: What a session event records.
+      type: string
+      enum:
+        - run.session.created
+        - run.session.turn.started
+        - run.session.user_message
+        - run.session.assistant_delta
+        - run.session.assistant_message
+        - run.session.tool_call.started
+        - run.session.tool_call.completed
+        - run.session.turn.succeeded
+        - run.session.turn.failed
+        - run.session.turn.interrupted
+
+    SessionEvent:
+      description: >-
+        One recorded event of an Ask Fabro session: its position in the
+        session (`seq`, from 1), the session and run it belongs to, when it
+        was recorded, the event's name and its properties. Every event but
+        `run.session.created` carries the `turn_id` it belongs to in its
+        properties.
+      type: object
+      required:
+        - seq
+        - session_id
+        - run_id
+        - ts
+        - event
+        - properties
+      properties:
+        seq:
+          type: integer
+          minimum: 1
+        session_id:
+          $ref: "#/components/schemas/SessionId"
+        run_id:
+          type: string
+        ts:
+          type: string
+          format: date-time
+        event:
+          $ref: "#/components/schemas/SessionEventName"
+        properties:
+          type: object
+          additionalProperties: true
+
+    PaginatedSessionEventList:
+      description: A page of a session's events, in sequence order.
+      type: object
+      required:
+        - data
+        - meta
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/SessionEvent"
         meta:
           $ref: "#/components/schemas/PaginationMeta"
 

@@ -58,6 +58,7 @@ impl AsRef<[u8]> for SlateKey {
 // matches numeric seq order through `MAX_EVENT_SEQ`. Seek-based event listing
 // (`run_events_range`) depends on this invariant, so event allocation rejects
 // larger sequences.
+#[cfg(any(test, feature = "test-support"))]
 pub(crate) fn run_event_key(run_id: &RunId, seq: u32, epoch_ms: i64) -> SlateKey {
     SlateKey::new("runs")
         .with(run_id)

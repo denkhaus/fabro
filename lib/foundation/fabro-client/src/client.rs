@@ -15,7 +15,7 @@ use fabro_types::{
     ArtifactUpload, BlobHash, EventEnvelope, Model, ModelTestMode, PairId, PairMessageRecord,
     PairMessageRequest, PairRecord, PairStartRequest, PairTranscriptResponse, Run, RunEvent,
     RunEventDetailResponse, RunId, RunPairStatusResponse, RunProjection, RunSessionMetadata,
-    RunStreamItem, SessionId, StageId, WorkflowVersion, WorkflowVersionId,
+    RunStreamItem, SessionEvent, SessionId, StageId, WorkflowVersion, WorkflowVersionId,
 };
 use fabro_util::exit::{ErrorExt, ExitClass};
 use futures::future::BoxFuture;
@@ -76,10 +76,12 @@ pub struct RunStreamPage {
 
 type HttpByteStream = Pin<Box<dyn Stream<Item = Result<Bytes>> + Send>>;
 
+/// The live stream of an Ask Fabro turn, as `POST /sessions/{id}/turns`
+/// serves it: one `SessionEvent` per `data:` frame, in `seq` order.
 pub struct SessionEventStream {
     stream:          HttpByteStream,
     pending_bytes:   Vec<u8>,
-    buffered_events: VecDeque<EventEnvelope>,
+    buffered_events: VecDeque<SessionEvent>,
 }
 
 #[derive(Default)]
@@ -245,7 +247,7 @@ impl SessionEventStream {
         }
     }
 
-    pub async fn next_event(&mut self) -> Result<Option<EventEnvelope>> {
+    pub async fn next_event(&mut self) -> Result<Option<SessionEvent>> {
         loop {
             if let Some(event) = self.buffered_events.pop_front() {
                 return Ok(Some(event));

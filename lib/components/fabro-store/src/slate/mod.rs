@@ -6,7 +6,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
-use fabro_types::{RunId, SessionId};
+use fabro_types::RunId;
 use object_store::ObjectStore;
 pub use run_store::RunDatabase;
 use run_store::RunDatabaseInner;
@@ -249,12 +249,6 @@ impl Database {
     /// committed beside its legacy event.
     pub fn set_platform_record_hook(&self, hook: crate::PlatformRecordHook) {
         self.run_summary_store.set_platform_record_hook(hook);
-    }
-
-    /// Resolves the run that owns `session_id` from the canonical typed
-    /// creation event stored in SQLite.
-    pub async fn find_session_owner(&self, session_id: &SessionId) -> Result<Option<RunId>> {
-        self.run_summary_store.find_session_owner(session_id).await
     }
 
     pub async fn delete_run(&self, run_id: &RunId) -> Result<()> {
@@ -516,21 +510,6 @@ mod tests {
         .unwrap()
     }
 
-    fn session_created_payload(label: &str, session_id: &SessionId) -> EventPayload {
-        EventPayload::new(
-            serde_json::json!({
-                "id": format!("evt-{label}-session-created"),
-                "ts": "2026-03-27T12:00:05Z",
-                "run_id": test_run_id(label).to_string(),
-                "event": "run.session.created",
-                "session_id": session_id,
-                "properties": { "title": "Owned session" },
-            }),
-            &test_run_id(label),
-        )
-        .unwrap()
-    }
-
     async fn append_created(run: &RunDatabase, label: &str, created_at: DateTime<Utc>) {
         let run_spec = sample_run_spec(label);
         run.append_event(&event_payload(
@@ -739,96 +718,6 @@ mod tests {
         assert!(
             list_paths(object_store, "runs/").await.is_empty(),
             "canonical run lifecycle must not open SlateDB solely for retired session indexes"
-        );
-    }
-
-    #[tokio::test]
-    async fn session_owner_claims_are_atomic_durable_and_ignore_legacy_reverse_rows() {
-        let directory = tempfile::tempdir().unwrap();
-        let object_store: Arc<dyn ObjectStore> = Arc::new(InMemory::new());
-        let store = store_test_support::test_database_at(
-            Arc::clone(&object_store),
-            "session-owner",
-            Duration::from_millis(1),
-            None,
-            directory.path(),
-        );
-        let first_id = test_run_id("run-1");
-        let second_id = test_run_id("run-2");
-        let first = store.create_run(&first_id).await.unwrap();
-        let second = store.create_run(&second_id).await.unwrap();
-        append_created(&first, "run-1", dt("2026-03-27T12:00:00Z")).await;
-        append_created(&second, "run-2", dt("2026-03-27T12:00:10Z")).await;
-
-        let session_id = SessionId::new();
-        assert_eq!(
-            first
-                .append_event(&session_created_payload("run-1", &session_id))
-                .await
-                .unwrap(),
-            2
-        );
-        assert_eq!(
-            store.find_session_owner(&session_id).await.unwrap(),
-            Some(first_id)
-        );
-
-        let legacy_key = keys::session_by_id_key(&session_id).as_ref().to_vec();
-        let legacy = store.open_db().await.unwrap();
-        assert!(legacy.get(&legacy_key).await.unwrap().is_none());
-        legacy
-            .put(
-                &legacy_key,
-                serde_json::to_vec(&serde_json::json!({ "run_id": second_id })).unwrap(),
-            )
-            .await
-            .unwrap();
-        legacy.flush().await.unwrap();
-        assert_eq!(
-            store.find_session_owner(&session_id).await.unwrap(),
-            Some(first_id),
-            "legacy reverse rows must not influence ownership"
-        );
-
-        assert!(
-            first
-                .append_event(&session_created_payload("run-1", &session_id))
-                .await
-                .is_err()
-        );
-        assert_eq!(first.last_event_seq().await.unwrap(), Some(2));
-        assert!(
-            second
-                .append_event(&session_created_payload("run-2", &session_id))
-                .await
-                .is_err()
-        );
-        assert_eq!(second.last_event_seq().await.unwrap(), Some(1));
-        assert_eq!(
-            store.find_session_owner(&session_id).await.unwrap(),
-            Some(first_id)
-        );
-
-        let reopened = store_test_support::test_database_at(
-            object_store,
-            "session-owner",
-            Duration::from_millis(1),
-            None,
-            directory.path(),
-        );
-        assert_eq!(
-            reopened.find_session_owner(&session_id).await.unwrap(),
-            Some(first_id)
-        );
-
-        reopened.delete_run(&first_id).await.unwrap();
-        assert_eq!(
-            reopened.find_session_owner(&session_id).await.unwrap(),
-            None
-        );
-        assert!(
-            legacy.get(&legacy_key).await.unwrap().is_some(),
-            "legacy reverse rows remain diagnostic-only during the support window"
         );
     }
 

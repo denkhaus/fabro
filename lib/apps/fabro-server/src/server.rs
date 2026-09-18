@@ -81,8 +81,8 @@ use fabro_store::platform_records::{
 };
 use fabro_store::{
     ArtifactKey, ArtifactStore, AuthCodeStore, AuthSessionStore, Database, KeyedMutex,
-    NodeArtifact, PendingInterviewRecord, RunSessionRecordStore, RunSummaryStore,
-    StageArtifactEntry, StageId,
+    NodeArtifact, PendingInterviewRecord, RunSessionEventStore, RunSessionRecordStore,
+    RunSummaryStore, StageArtifactEntry, StageId,
 };
 #[cfg(test)]
 use fabro_types::BlockedReason;
@@ -1056,6 +1056,8 @@ pub(crate) struct AppStores {
     pub(crate) run_summaries:   Arc<RunSummaryStore>,
     /// Ask Fabro conversations, keyed by session id.
     pub(crate) session_records: Arc<RunSessionRecordStore>,
+    /// The events of Ask Fabro sessions, numbered per session.
+    pub(crate) session_events:  Arc<RunSessionEventStore>,
     pub(crate) auth_codes:      Arc<AuthCodeStore>,
     pub(crate) auth_sessions:   Arc<AuthSessionStore>,
     pub(crate) automations:     Arc<AutomationStore>,
@@ -2426,6 +2428,7 @@ pub(crate) fn build_app_state(config: AppStateConfig) -> anyhow::Result<Arc<AppS
         store.set_platform_record_hook(Arc::new(move |run_id| projector.signal(run_id)));
     }
     let session_records = Arc::new(RunSessionRecordStore::new(db_pool.clone()));
+    let session_events = Arc::new(RunSessionEventStore::new(db_pool.clone()));
     let secret_store = Arc::new(SecretStore::new(db_pool));
     let vault = preloaded_vault;
     // Read vault secrets needed for synchronous setup before we wrap the vault in
@@ -2522,6 +2525,7 @@ pub(crate) fn build_app_state(config: AppStateConfig) -> anyhow::Result<Arc<AppS
             runs: store,
             run_summaries,
             session_records,
+            session_events,
             auth_codes,
             auth_sessions,
             automations: automation_store,
@@ -2674,6 +2678,12 @@ async fn delete_run_internal(
     state
         .artifact_store
         .delete_for_run(&id)
+        .await
+        .map_err(|err| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string()))?;
+    state
+        .stores
+        .session_events
+        .delete_for_run(id)
         .await
         .map_err(|err| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string()))?;
     match delete_outcome {

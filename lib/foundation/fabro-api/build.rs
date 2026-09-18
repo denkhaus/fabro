@@ -658,6 +658,7 @@ fn main() {
             &[],
         ),
         ("EventEnvelope", "fabro_types::EventEnvelope", &[]),
+        ("SessionEvent", "fabro_types::SessionEvent", &[]),
         ("RunStreamItem", "fabro_types::RunStreamItem", &[]),
         ("RunStreamItemKind", "fabro_types::RunStreamItemKind", &[]),
         ("PetriAdmission", "fabro_types::PetriAdmission", &[]),

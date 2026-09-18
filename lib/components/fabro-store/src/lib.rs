@@ -8,6 +8,7 @@ mod keys;
 pub mod platform_records;
 #[cfg(test)]
 mod record;
+mod run_session_event_store;
 mod run_session_record_store;
 mod run_sessions;
 mod run_state;
@@ -37,6 +38,7 @@ pub use platform_records::{
     PlatformRecord, PlatformRecordHook, PlatformRecordKind, PlatformRecordStore, StagePosition,
     StoredPlatformRecord,
 };
+pub use run_session_event_store::RunSessionEventStore;
 pub use run_session_record_store::{RunSessionRecordStore, StoredSessionRecord};
 pub use run_sessions::{ProjectedRunSession, project_run_session, project_run_sessions};
 pub use run_state::{RunProjectionReducer, build_summary, projected_usage};

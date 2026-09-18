@@ -272,6 +272,7 @@ models/paginated-run-list.ts
 models/paginated-run-stage-list.ts
 models/paginated-run-stream-list.ts
 models/paginated-saved-query-list.ts
+models/paginated-session-event-list.ts
 models/paginated-session-list.ts
 models/paginated-workflow-list-response.ts
 models/pagination-meta.ts
@@ -499,6 +500,8 @@ models/server-slate-db-settings.ts
 models/server-storage-settings.ts
 models/server-web-settings.ts
 models/session-detail.ts
+models/session-event-name.ts
+models/session-event.ts
 models/session-status.ts
 models/session-summary.ts
 models/session-turn.ts
