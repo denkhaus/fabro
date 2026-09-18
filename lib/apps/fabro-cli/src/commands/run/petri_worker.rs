@@ -28,7 +28,12 @@
 //! lowered and admitted at create time with the server's layer, and nothing
 //! lowers again at execution. The model client is built from the worker's
 //! catalog and vault snapshot for the providers whose credentials resolve,
-//! the same eligible set the legacy worker's LLM backend uses.
+//! the same eligible set the legacy worker's LLM backend uses. Fabro's run
+//! tools go to every agent session of the run when the run's settings
+//! enable them (`[run.agent] fabro_tools`) and the worker token carries the
+//! `agent:run_tools` scope the server issues for such a run, the same gate
+//! the legacy worker applies; they bind to the worker's client and the run
+//! id, as the legacy worker binds them.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -50,6 +55,7 @@ use fabro_workflow::Error as WorkflowError;
 use fabro_workflow::event::{self as workflow_event, Emitter, Event, RunEventSink};
 use fabro_workflow::run_control::RunControlState;
 use fabro_workflow::runtime_store::RunStoreHandle;
+use fabro_workflow::services::FabroRunToolServices;
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
@@ -117,7 +123,8 @@ pub(super) async fn execute(worker: PetriWorker<'_>) -> Result<()> {
         RunEventSink::backend(worker.run_store.clone()),
     );
 
-    let runtime = runtime_spec(worker.storage_dir, &worker.run_state).await?;
+    let run_tools = run_tool_services(&worker);
+    let runtime = runtime_spec(worker.storage_dir, &worker.run_state, run_tools).await?;
     let execution = match worker.mode {
         RunWorkerMode::Start => {
             let client = worker.client.clone_for_reuse();
@@ -227,10 +234,42 @@ pub(super) async fn execute(worker: PetriWorker<'_>) -> Result<()> {
     }
 }
 
+/// Fabro's run tools for the run's agent sessions, when the run's settings
+/// enable them and the worker token carries the scope; `None` otherwise.
+/// The server issues the scope from the same setting, so the two agree
+/// unless the token was issued for another run.
+fn run_tool_services(worker: &PetriWorker<'_>) -> Option<FabroRunToolServices> {
+    let enabled = worker.run_state.spec.settings.run.agent.fabro_tools;
+    let scoped = runner::fabro_run_tools_enabled_from_worker_token(worker.worker_token);
+    if !enabled || !scoped {
+        info!(
+            run_id = %worker.run_id,
+            enabled,
+            scoped,
+            "Fabro's run tools are not registered on this Petri run"
+        );
+        return None;
+    }
+    let services = runner::build_fabro_run_tool_services(
+        worker.worker_token,
+        worker.client.clone_for_reuse(),
+        worker.run_id,
+    );
+    if services.is_some() {
+        info!(run_id = %worker.run_id, "Fabro's run tools are registered on this Petri run");
+    }
+    services
+}
+
 /// The runtime the worker hands Petri: no settings layer (nothing lowers
 /// at execution), the model client over the worker's catalog and vault for
-/// the providers whose credentials resolve, and the run's mode.
-async fn runtime_spec(storage_dir: &Path, run_state: &RunProjection) -> Result<RuntimeSpec> {
+/// the providers whose credentials resolve, the run's mode, and the run
+/// tools when the run has them.
+async fn runtime_spec(
+    storage_dir: &Path,
+    run_state: &RunProjection,
+    run_tools: Option<FabroRunToolServices>,
+) -> Result<RuntimeSpec> {
     let catalog =
         command_context::load_cli_catalog().context("failed to build worker LLM catalog")?;
     let vault = runner::load_worker_vault(storage_dir).await?;
@@ -251,5 +290,6 @@ async fn runtime_spec(storage_dir: &Path, run_state: &RunProjection) -> Result<R
         model_client,
         dry_run: run_state.spec.settings.run.execution.mode == RunMode::DryRun,
         fabro_home: None,
+        run_tools,
     })
 }

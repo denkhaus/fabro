@@ -23,8 +23,10 @@
 //! - [`HttpRunStore`]: the same store as a run's worker process reaches it,
 //!   over the server's API with the worker's token and its launch id as the
 //!   lease owner;
+//! - [`host_tools`]: Fabro's run tools on every native agent session of a run,
+//!   through Petri's `HostTools` capability;
 //! - the platform adapters still to come: hooks, interviews over Fabro's API,
-//!   secrets, output storage, the run tools, the event projection.
+//!   secrets, output storage, the event projection.
 //!
 //! The Petri packages are pinned by revision in the workspace `Cargo.toml`
 //! under `petri_*` keys.
@@ -32,6 +34,7 @@
 pub mod admission;
 pub mod check;
 pub mod engine;
+pub mod host_tools;
 pub mod http_store;
 pub mod interviewer;
 pub mod petri;

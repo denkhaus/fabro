@@ -5,13 +5,16 @@
 //! carrying the server's settings layer, the Attractor step kinds (the real
 //! ones, or the simulated registry for a dry run), the model client as the
 //! `PebbleClient` capability so Petri's admission pass pins every LLM node's
-//! route, and the Fabro home for the skills step. Nothing here knows about a
-//! run: the store and the run options are added by the caller.
+//! route, the Fabro home for the skills step, and, at execution, Fabro's run
+//! tools as the `HostTools` capability when the run enables them. Nothing
+//! here knows about a run's record: the store and the run options are added
+//! by the caller.
 
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use fabro_http::HttpClient;
+use fabro_workflow::services::FabroRunToolServices;
 use lithos_llm::Client;
 use lithos_llm::catalog::{Catalog, ProviderId};
 use lithos_llm::client::ClientBuildError;
@@ -21,6 +24,8 @@ use petri_attractor_steps::skills::FabroHome;
 use petri_frontend_fabro::Fabro;
 use petri_runtime::Runtime;
 use tracing::debug;
+
+use crate::host_tools;
 
 /// What every Petri runtime Fabro builds is configured with.
 #[derive(Clone, Default)]
@@ -39,6 +44,11 @@ pub struct RuntimeSpec {
     /// The Fabro home the skills step reads; `None` leaves it to Petri's
     /// own lookup (`FABRO_HOME`, else `$HOME/.fabro`).
     pub fabro_home:    Option<PathBuf>,
+    /// Fabro's run tools for every native agent session of the run, when
+    /// the run enables them (`[run.agent] fabro_tools` and the worker
+    /// token's `agent:run_tools` scope); `None` gives the sessions Pebble's
+    /// tools alone. See [`crate::host_tools`].
+    pub run_tools:     Option<FabroRunToolServices>,
 }
 
 impl RuntimeSpec {
@@ -59,6 +69,9 @@ impl RuntimeSpec {
             .or_else(FabroHome::from_env);
         if let Some(home) = home {
             runtime = runtime.capability(home);
+        }
+        if let Some(services) = &self.run_tools {
+            runtime = runtime.capability(host_tools::capability(services.clone()));
         }
         if for_execution && self.dry_run {
             petri_attractor_steps::register_stubs(runtime)
