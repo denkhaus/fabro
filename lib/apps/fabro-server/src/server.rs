@@ -61,6 +61,7 @@ use fabro_llm::credentials::CredentialProvider;
 use fabro_llm::lithos_catalog::Catalog;
 use fabro_llm::{ClientOptions, FabroClient};
 use fabro_mcp_store::McpServerStore;
+use fabro_petri::projector::Projector;
 use fabro_redact::redact_jsonl_line;
 use fabro_sandbox::details::sandbox_details;
 use fabro_sandbox::driver::{DaytonaCredentials, ProviderAccess, ProviderConnectOptions};
@@ -1116,6 +1117,8 @@ pub struct AppState {
     pub(crate) worker_runtime: Arc<dyn WorkerRuntime>,
     /// The Petri runs held open for workers over the API.
     pub(crate) petri_runs: PetriRuns,
+    /// The projector of Petri runs: signalled after each committed record.
+    pub(crate) petri_projector: Arc<Projector>,
     scheduler_notify: Notify,
     automation_scheduler_notify: Notify,
     pull_request_scheduler_notify: Notify,
@@ -1185,6 +1188,19 @@ impl AppState {
     #[must_use]
     pub fn test_petri_run_store(&self) -> &fabro_petri::SqliteRunStore {
         self.petri_runs.store()
+    }
+
+    /// The projector of Petri runs, so a test can wait for a run's view to
+    /// settle before it reads it.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn test_petri_projector(&self) -> &Arc<Projector> {
+        &self.petri_projector
+    }
+
+    /// The pool the Petri view tables live in, so a test can read them.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn test_petri_view_pool(&self) -> DbPool {
+        self.stores.runs.run_summary_store().pool()
     }
 
     /// A worker token for `run_id` with the plain `run:worker` scope, as the
@@ -2490,6 +2506,14 @@ pub(crate) fn build_app_state(config: AppStateConfig) -> anyhow::Result<Arc<AppS
     );
     let variables = Arc::new(VariableStore::new(db_pool.clone()));
     let petri_runs = PetriRuns::new(db_pool.clone());
+    // Petri's records live on the shared pool; the view tables live where the
+    // run summary store keeps the `runs` row (the same database in the
+    // server, a fixture of its own in a test).
+    let petri_projector = Projector::new(db_pool.clone(), store.run_summary_store().pool());
+    {
+        let projector = Arc::clone(&petri_projector);
+        store.set_platform_record_hook(Arc::new(move |run_id| projector.signal(run_id)));
+    }
     let session_records = Arc::new(RunSessionRecordStore::new(db_pool.clone()));
     let secret_store = Arc::new(SecretStore::new(db_pool));
     let vault = preloaded_vault;
@@ -2607,6 +2631,7 @@ pub(crate) fn build_app_state(config: AppStateConfig) -> anyhow::Result<Arc<AppS
         worker_control_bus,
         worker_runtime,
         petri_runs,
+        petri_projector,
         scheduler_notify: Notify::new(),
         automation_scheduler_notify: Notify::new(),
         pull_request_scheduler_notify: Notify::new(),
@@ -4539,6 +4564,7 @@ async fn execute_run_subprocess(state: Arc<AppState>, run_id: RunId) {
     // The worker is gone: whatever Petri run handles it held open over the
     // API drop here, so its lease never outlives it.
     state.petri_runs.worker_exited(run_id);
+    state.petri_projector.signal(run_id);
     append_worker_exit_failure(&run_store, run_id, &worker_exit).await;
 
     let final_state = match run_store.state().await {

@@ -382,7 +382,9 @@ pub(crate) async fn execute(state: Arc<AppState>, run_id: RunId) {
         run_id: run_id.to_string(),
         run_dir: run_dir.join("petri"),
         execution,
-        store: Arc::new(SqliteRunStore::new(state.db_pool.clone())),
+        store: state
+            .petri_projector
+            .observe_store(Arc::new(SqliteRunStore::new(state.db_pool.clone()))),
         runtime: runtime_spec(&state, &eligible, dry_run),
         provider: run_state.spec.settings.run.environment.provider.clone(),
         cancel,

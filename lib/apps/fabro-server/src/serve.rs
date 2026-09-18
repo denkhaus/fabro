@@ -838,6 +838,11 @@ where
             "Reconciled stale in-flight runs on startup"
         );
     }
+    state
+        .petri_projector
+        .startup_pass()
+        .await
+        .context("catching Petri projections up at startup")?;
     spawn_scheduler(Arc::clone(&state));
     spawn_automation_scheduler(Arc::clone(&state));
     let pull_request_creation_supervisor =

@@ -1145,7 +1145,10 @@ fn stage_at_completed_visit<'a>(
     Some(state.stage_entry(node_id, visit, first_event_seq(seq)))
 }
 
-pub(crate) fn build_summary(state: &RunProjection, run_id: &RunId) -> Run {
+/// The run summary (`Run`) a projection stands for: what the run list, the
+/// board and the scheduler read.
+#[must_use]
+pub fn build_summary(state: &RunProjection, run_id: &RunId) -> Run {
     let goal = state.spec.graph.goal().to_string();
     let diff_summary = state
         .conclusion
@@ -1241,7 +1244,8 @@ pub(crate) fn build_summary(state: &RunProjection, run_id: &RunId) -> Run {
 
 /// The run's usage: the conclusion's total once the run ended, else the sum
 /// of every non-boundary stage's usage so far.
-pub(crate) fn projected_usage(state: &RunProjection) -> Usage {
+#[must_use]
+pub fn projected_usage(state: &RunProjection) -> Usage {
     if let Some(usage) = state
         .conclusion
         .as_ref()

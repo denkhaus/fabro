@@ -6,6 +6,11 @@ comes from once Petri's records are the store. It is written before any view
 changes. F2.2 (the projection), F2.3 (platform records) and F2.4 (API, CLI,
 web) build from it.
 
+F2.2 and F2.3 implement this matrix: `src/projection.rs` is the fold,
+`src/projector.rs` the view pass and its wake-up, and `fabro-store`'s
+`platform_records` module the platform record kinds and their table. The
+crate README names the rows the fold still leaves default.
+
 Sources are named three ways:
 
 - A Petri event, by its `<subject>.<verb>` name from

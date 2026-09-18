@@ -30,8 +30,10 @@
 //! - [`HttpRunStore`]: the same store as a run's worker process reaches it,
 //!   over the server's API with the worker's token and its launch id as the
 //!   lease owner;
-//! - the platform adapters still to come: hooks, the run tools, the event
-//!   projection.
+//! - [`projection`] and [`projector`]: the view of a Petri run, folded from its
+//!   records and Fabro's platform records, and the pass that writes it after
+//!   each committed record;
+//! - the platform adapters still to come: hooks and the run tools.
 //!
 //! The Petri packages are pinned by revision in the workspace `Cargo.toml`
 //! under `petri_*` keys.
@@ -43,6 +45,8 @@ pub mod engine;
 pub mod http_store;
 pub mod interview;
 pub mod petri;
+pub mod projection;
+pub mod projector;
 pub mod run_store;
 pub mod runtime;
 pub mod secrets;

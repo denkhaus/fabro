@@ -220,8 +220,14 @@ impl RunDatabase {
         let (envelope, projected) = self.commit_event_locked(payload, event).await?;
         // Keep post-commit propagation await-free: cancellation after SQLite
         // commits must not leave in-memory state stale or omit the broadcast.
+        let platform_record = run_summary_store::platform_record_written(&projected, &envelope);
         self.install_in_memory_state(projected);
         self.publish(&envelope);
+        if platform_record.is_some() {
+            self.inner
+                .run_summary_store
+                .notify_platform_record(self.inner.run_id);
+        }
         Ok(envelope)
     }
 
@@ -502,6 +508,86 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec![1, 2]
         );
+    }
+
+    /// A Petri run's legacy lifecycle events leave platform records beside
+    /// them, in the same commit, and the hook fires after each; a legacy
+    /// run's events leave none.
+    #[tokio::test]
+    async fn a_petri_runs_lifecycle_events_become_platform_records_and_wake_the_hook() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        use crate::platform_records::{PlatformRecord, PlatformRecordKind, RunLifecycleKind};
+
+        let store = store();
+        let woken = Arc::new(AtomicUsize::new(0));
+        let counter = Arc::clone(&woken);
+        store.set_platform_record_hook(Arc::new(move |_| {
+            counter.fetch_add(1, Ordering::SeqCst);
+        }));
+        let run_id: RunId = "01JT56VE4Z5NZ814GZN2JZD65E".parse().unwrap();
+        let mut created = run_created_payload(&run_id);
+        let mut petri = serde_json::to_value(&created).unwrap();
+        petri["properties"]["engine"] = json!({
+            "kind": "petri",
+            "graph": { "blob": fabro_types::BlobHash::new(b"graph").to_string(), "digest": "d" },
+        });
+        created = EventPayload::new(petri, &run_id).unwrap();
+        let run = store
+            .create_run_with_first_event(&run_id, &created)
+            .await
+            .unwrap();
+        run.append_event(
+            &EventPayload::new(
+                json!({
+                    "id": "evt-starting",
+                    "ts": "2026-04-09T12:00:00Z",
+                    "run_id": run_id.to_string(),
+                    "event": "run.start_requested",
+                    "properties": { "resume": false },
+                }),
+                &run_id,
+            )
+            .unwrap(),
+        )
+        .await
+        .unwrap();
+        run.append_event(&stage_payload(&run_id, 3)).await.unwrap();
+
+        let records = store
+            .run_summary_store()
+            .platform_records()
+            .read(&run_id)
+            .await
+            .unwrap();
+        let kinds: Vec<PlatformRecordKind> = records.iter().map(|r| r.record.kind()).collect();
+        assert_eq!(kinds, vec![
+            PlatformRecordKind::RunCreated,
+            PlatformRecordKind::RunLifecycle
+        ]);
+        let PlatformRecord::RunLifecycle(lifecycle) = &records[1].record else {
+            panic!("the second record is the lifecycle");
+        };
+        assert_eq!(lifecycle.transition, RunLifecycleKind::StartRequested);
+        assert_eq!(lifecycle.source.as_deref(), Some("start"));
+        assert_eq!(woken.load(Ordering::SeqCst), 2, "one wake-up per record");
+
+        let legacy_id: RunId = "01JT56VE4Z5NZ814GZN2JZD65F".parse().unwrap();
+        store
+            .create_run_with_first_event(&legacy_id, &run_created_payload(&legacy_id))
+            .await
+            .unwrap();
+        assert!(
+            store
+                .run_summary_store()
+                .platform_records()
+                .read(&legacy_id)
+                .await
+                .unwrap()
+                .is_empty(),
+            "a legacy run leaves no platform records"
+        );
+        assert_eq!(woken.load(Ordering::SeqCst), 2);
     }
 
     #[tokio::test]
