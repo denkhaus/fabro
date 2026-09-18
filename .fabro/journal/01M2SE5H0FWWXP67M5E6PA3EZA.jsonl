@@ -1,0 +1,2 @@
+{"$schema":"fabro-journal-v1","run_id":"01M2SE5H0FWWXP67M5E6PA3EZA","node":"start","visit":1,"status":"succeeded","ts":"2026-09-18T05:00:12Z","data":{}}
+{"$schema":"fabro-journal-v1","run_id":"01M2SE5H0FWWXP67M5E6PA3EZA","node":"survey","visit":1,"status":"succeeded","ts":"2026-09-18T05:00:24Z","data":{"painpoints":[],"observations":["gate closed: score verdict grind (0.342 < 0.6) / cooldown count 1 (a pass marker within 48h)"]}}
