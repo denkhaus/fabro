@@ -416,6 +416,29 @@ fn count_of(names: &[String], expected: &str) -> usize {
     names.iter().filter(|name| *name == expected).count()
 }
 
+/// The run's whole stream once it is settled: Fabro's terminal lifecycle
+/// record lands a moment after the engine's finish (the worker exits, the
+/// server records the status, the projector folds it), so a reader that
+/// wants the end of the stream waits for that record.
+async fn settled_stream(server: &RunningServer, run_id: &str) -> Vec<serde_json::Value> {
+    let deadline = Instant::now() + RUN_TIMEOUT;
+    loop {
+        let items = run_stream(server, run_id).await;
+        let names = stream_names(&items);
+        if names
+            .iter()
+            .any(|name| matches!(name.as_str(), "lifecycle:succeeded" | "lifecycle:failed"))
+        {
+            return items;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "run {run_id} never recorded its terminal lifecycle transition: {names:?}"
+        );
+        tokio::time::sleep(POLL).await;
+    }
+}
+
 /// The pid of the worker subprocess the server launched for the run: the
 /// worker retitles itself `fabro <first 12 of the run id> <phase>`, so that
 /// is what the process table shows.
@@ -484,7 +507,7 @@ async fn a_petri_run_executes_in_the_server_launched_worker() {
     let state = run_json(&server, &format!("runs/{run_id}/state")).await;
     assert_eq!(state["spec"]["engine"]["kind"], "petri", "state: {state}");
 
-    let names = stream_names(&run_stream(&server, &run_id).await);
+    let names = stream_names(&settled_stream(&server, &run_id).await);
     assert_eq!(count_of(&names, "lifecycle:succeeded"), 1, "{names:?}");
     assert_eq!(count_of(&names, "run.finished"), 1, "{names:?}");
     assert!(
@@ -565,7 +588,7 @@ async fn a_petri_run_resumes_in_a_new_worker_after_the_server_restarts() {
     std::fs::write(&gate, "go").expect("the gate opens");
 
     let status = wait_for_status(&server, &run_id, &["succeeded", "failed"]).await;
-    let items = run_stream(&server, &run_id).await;
+    let items = settled_stream(&server, &run_id).await;
     let names = stream_names(&items);
     assert_eq!(
         status,
@@ -932,6 +955,7 @@ async fn a_finished_petri_run_reads_back_through_the_cli() {
         "server stderr:\n{}",
         server.stderr_text()
     );
+    settled_stream(&server, &run_id).await;
     let target = server.target();
 
     // Raw: the envelope, one item per line, dense and in order.

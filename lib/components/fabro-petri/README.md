@@ -87,7 +87,14 @@ Every adapter the integration plan describes lands here.
   every Petri run, at startup. A run that executes in the server process
   goes through `Projector::observe_store`, which signals after each append.
   A torn tail (a record Petri cannot read) holds the view where it stands
-  and reports the run incomplete with the reason.
+  and reports the run incomplete with the reason. The projector also serves
+  the stream back (`Projector::stream_after`, one `RunStreamItem` per row:
+  `run_id`, `stream_seq`, `kind`, the item's own `id`, `recorded_at`, the
+  item) and signals its readers after each committed pass
+  (`Projector::subscribe`), which is how `GET /runs/{id}/events` pages a
+  Petri run by `after` and `GET /runs/{id}/attach` follows it live. The
+  version of Petri's event contract the stream carries is
+  `petri::EVENT_CONTRACT_VERSION`.
 - The platform adapters the plan adds after it: hooks and the run tools.
 
 ### What the projection leaves default
@@ -181,13 +188,25 @@ serving the projection over Petri's records; a human gate is answered
 through the questions API; and Petri's diagnostics refuse a run at create.
 The server's `petri_runs` unit tests cover the lease ending at worker exit
 and the restart reconcile that relaunches a worker in resume mode.
+`lib/apps/fabro-server/tests/it/scenario/petri_stream.rs` covers the stream:
+a client attached to a two-branch parallel run disconnects once both
+branches started, a platform notice is recorded while both branch scripts
+run, the client reconnects from its last `stream_seq`, and the union of
+what it saw is the whole stream, every item once, in order, with the notice
+between the branch events and the same as the paged listing. With
+`FABRO_CAPTURE_PETRI_FIXTURES` set, the scenarios write their settled
+projection and stream under `apps/fabro-web/app/test-fixtures/petri/`,
+which the web app's rendering tests read.
 
 The worker path is covered with the real binary in
 `lib/apps/fabro-cli/tests/it/scenario/petri.rs`: a command-only Petri run
 executes in the worker a foreground server launched, its records reach
 `petri_records` over the HTTP store and its lease ends with the worker; and
 a run whose server and worker are both killed mid-stage resumes in a new
-worker after the server restarts, with one `run.completed`; a human gate in
-the worker is answered through the questions API over the control channel;
-two parallel gates each bind their own answer; and an unanswered gate
-expires with its default.
+worker after the server restarts, with one terminal lifecycle record; a
+human gate in the worker is answered through the questions API over the
+control channel; two parallel gates each bind their own answer; and an
+unanswered gate expires with its default. The same file reads a finished
+run back through the CLI (`events` raw, tail and `--pretty`, `attach`,
+`wait`, `inspect`), answers a gate from an attached terminal, and follows
+a run live with `events --follow` to its end.
