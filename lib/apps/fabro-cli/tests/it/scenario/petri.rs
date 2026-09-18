@@ -146,7 +146,7 @@ impl RunningServer {
 
     /// Start the server process over this storage; the same call brings
     /// it back after a kill.
-    async fn launch(&mut self) {
+    pub(super) async fn launch(&mut self) {
         assert!(self.child.is_none(), "the server is already running");
         let mut cmd = Command::new(env!("CARGO_BIN_EXE_fabro"));
         apply_test_isolation(&mut cmd, self.home_root.path());
@@ -198,7 +198,7 @@ impl RunningServer {
 
     /// Kill the server outright, as a crash would; its workers live on in
     /// their own process groups.
-    fn kill(&mut self) {
+    pub(super) fn kill(&mut self) {
         let mut child = self.child.take().expect("the server is running");
         child.kill().expect("the server dies");
         let _ = child.wait();
@@ -403,7 +403,7 @@ fn write_petri_workspace(context: &fabro_test::TestContext, script: &str) -> Pat
 
 /// A workspace holding the given workflow with a `workflow.toml` that names
 /// Petri.
-fn write_petri_workflow(context: &fabro_test::TestContext, dot: &str) -> PathBuf {
+pub(super) fn write_petri_workflow(context: &fabro_test::TestContext, dot: &str) -> PathBuf {
     let workspace = context.temp_dir.join("petri-workspace");
     std::fs::create_dir_all(&workspace).expect("the workspace creates");
     std::fs::write(workspace.join("workflow.fabro"), dot).expect("the workflow writes");
@@ -418,7 +418,7 @@ fn write_petri_workflow(context: &fabro_test::TestContext, dot: &str) -> PathBuf
 
 /// `fabro run --detach --auto-approve` against the server: the run is
 /// created and started, and its id comes back.
-fn run_detached(
+pub(super) fn run_detached(
     context: &fabro_test::TestContext,
     server: &RunningServer,
     workspace: &Path,
@@ -472,7 +472,7 @@ pub(super) async fn run_json(server: &RunningServer, path: &str) -> serde_json::
     .await
 }
 
-async fn run_status(server: &RunningServer, run_id: &str) -> String {
+pub(super) async fn run_status(server: &RunningServer, run_id: &str) -> String {
     run_json(server, &format!("runs/{run_id}")).await["lifecycle"]["status"]["kind"]
         .as_str()
         .expect("the run has a status kind")
@@ -500,7 +500,7 @@ pub(super) async fn wait_for_status(
 
 /// The run's stream, as `GET /runs/{id}/events` serves a Petri run: every
 /// item in `stream_seq` order, in the stream envelope.
-async fn run_stream(server: &RunningServer, run_id: &str) -> Vec<serde_json::Value> {
+pub(super) async fn run_stream(server: &RunningServer, run_id: &str) -> Vec<serde_json::Value> {
     let mut items = Vec::new();
     let mut after = 0;
     loop {
@@ -530,7 +530,7 @@ async fn run_stream(server: &RunningServer, run_id: &str) -> Vec<serde_json::Val
 /// `<subject>.<verb>` name (`question` and `question_expired` for the parsed
 /// progress payloads), a platform lifecycle record as
 /// `lifecycle:<transition>`, another platform record by its kind.
-fn stream_names(items: &[serde_json::Value]) -> Vec<String> {
+pub(super) fn stream_names(items: &[serde_json::Value]) -> Vec<String> {
     items
         .iter()
         .map(|line| {
@@ -558,7 +558,7 @@ fn stream_names(items: &[serde_json::Value]) -> Vec<String> {
         .collect()
 }
 
-fn count_of(names: &[String], expected: &str) -> usize {
+pub(super) fn count_of(names: &[String], expected: &str) -> usize {
     names.iter().filter(|name| *name == expected).count()
 }
 
@@ -566,7 +566,7 @@ fn count_of(names: &[String], expected: &str) -> usize {
 /// record lands a moment after the engine's finish (the worker exits, the
 /// server records the status, the projector folds it), so a reader that
 /// wants the end of the stream waits for that record.
-async fn settled_stream(server: &RunningServer, run_id: &str) -> Vec<serde_json::Value> {
+pub(super) async fn settled_stream(server: &RunningServer, run_id: &str) -> Vec<serde_json::Value> {
     let deadline = Instant::now() + RUN_TIMEOUT;
     loop {
         let items = run_stream(server, run_id).await;
@@ -599,7 +599,7 @@ fn worker_pid(run_id: &str) -> Option<u32> {
         .find_map(|line| line.trim().parse().ok())
 }
 
-fn wait_for_worker(run_id: &str) -> u32 {
+pub(super) fn wait_for_worker(run_id: &str) -> u32 {
     let deadline = Instant::now() + RUN_TIMEOUT;
     loop {
         if let Some(pid) = worker_pid(run_id) {
@@ -614,7 +614,7 @@ fn wait_for_worker(run_id: &str) -> u32 {
 }
 
 /// Whether a process is waiting on the gate file: the stage is mid-flight.
-fn gate_is_polled(gate: &Path) -> bool {
+pub(super) fn gate_is_polled(gate: &Path) -> bool {
     let output = Command::new("pgrep")
         .args(["-f", &gate.display().to_string()])
         .output()
@@ -622,7 +622,7 @@ fn gate_is_polled(gate: &Path) -> bool {
     output.status.success()
 }
 
-fn wait_until_gate_is_polled(gate: &Path) {
+pub(super) fn wait_until_gate_is_polled(gate: &Path) {
     let deadline = Instant::now() + RUN_TIMEOUT;
     while !gate_is_polled(gate) {
         assert!(
