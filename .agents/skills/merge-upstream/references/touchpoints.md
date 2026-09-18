@@ -262,3 +262,23 @@ Upstream directions that may supersede our work — re-evaluate per merge:
   pins: `fork_seam_tests.rs` (entry-checkpoint semantics + OpenAPI path),
   `tests/it/api/fork_resume.rs` (wire conflict conformance),
   `apps/fabro-web/app/lib/run-actions.resume.fork.test.ts` (gating).
+
+## 2026-09-18 (v0.360.0-nightly.0, merge 15c046bd1 — quota-era incident)
+
+- Clean merge (7 upstream commits: web board fix, CLI help, docs, version
+  bump) — ZERO conflicts, all fork pins green (40/40).
+- NEW ERA BOUNDARY (PR #240, fabro-e566): run_failed_target reclassifies
+  quota-class failures to Blocked{quota_rate_limit}. First deploy of a
+  #240-carrying binary on a DB with pre-#240 quota-class `failed` rows
+  CRASH-LOOPED: run-history activation replays terminal rows with current
+  projection and fail-closes (3rd era incident; seed fabro-eec6 owns the
+  durable fix). Any future deploy crossing a projection-semantics change
+  must first validate startup against a prod DB snapshot in an isolated
+  container (pattern in mulch engine/failure record 2026-09-18).
+- WAL trap when copying prod SQLite: checkpoint (PRAGMA wal_checkpoint
+  (TRUNCATE)) BEFORE cp — a plain main-file copy silently reverts
+  un-checkpointed writes.
+- Deploy-window check `fabro ps --server https://mirtuell.net` can 404
+  (Traefik unmatched-route) while the app container is crash-looping —
+  a 404 there means "no container registered", not "no runs"; check the
+  host via SSH before concluding the window is open.

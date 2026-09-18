@@ -113,7 +113,15 @@ Order matters; a red earlier step means fix before continuing.
    changes by definition), build the release image with `just
    image-release` (ghcr.io push), pin the new digest in
    ~/dev/fabro-tofu/variables.tf (fabro_image_ref), and deploy with
-   fabro-tofu: `TF_VAR_state_passphrase` from gopass +
+   fabro-tofu:
+   PRE-DEPLOY ERA CHECK (2026-09-18 lesson): if the new binary changes
+   projection semantics vs the deployed one (status taxonomy, summary
+   shape), validate startup against a prod DB snapshot first — copy the
+   SQLite (WAL-checkpoint before cp!), run the new image isolated
+   (--network none, dummy SESSION_SECRET, prod settings.toml), and
+   require "Activated SQLite run history" before deploying. Terminal
+   rows written by older binaries otherwise crash-loop production
+   (fabro-eec6). `TF_VAR_state_passphrase` from gopass +
    `TF_DATA_DIR=.terraform-prod tofu plan -var-file=envs/prod.tfvars`
    (verify the plan touches only image/container/ghcr-auth), then apply.
    Smoke on https://mirtuell.net: /health, HTTP 200, auth probe, fresh
