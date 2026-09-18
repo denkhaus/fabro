@@ -10,11 +10,10 @@
 //!
 //! [`PlatformRecord`] is the one enum of record kinds, each with its typed
 //! payload, tagged by `kind` on the wire; [`PlatformRecordKind`] names the
-//! kinds. The writer of a record is whoever performs the effect. The
-//! lifecycle kinds are written by the run's create and lifecycle paths, which
-//! today still append Fabro's legacy run events: for a Petri run the run
-//! summary store derives the platform record from the legacy event through
-//! [`platform_record_for`] and stores both in the event's transaction. The
+//! kinds. The writer of a record is whoever performs the effect: the
+//! `run.created` and `run.lifecycle` kinds by the run's create and lifecycle
+//! paths (the server at create, the worker around the engine), through
+//! [`PlatformRecordStore::append`] or the worker's client. The
 //! `run.branch`, `git.identity`, `checkpoint`, `artifact.collected`,
 //! `run.diff`, `pull_request.created`, `notification.sent` and `run.paired`
 //! kinds are defined here and written by the adapters that perform those

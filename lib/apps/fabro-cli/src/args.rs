@@ -234,6 +234,10 @@ pub(crate) struct RunArgs {
     pub(crate) inputs: InputOverrideArgs,
 
     /// Workflow name, path, or OWNER/REPO[@REF]:WORKFLOW
+    #[allow(
+        rustdoc::broken_intra_doc_links,
+        reason = "the help text's `[@REF]` is an optional segment, not a link"
+    )]
     #[arg(required = true)]
     pub(crate) workflow: Option<PathBuf>,
 

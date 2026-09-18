@@ -765,7 +765,8 @@ impl RunProjection {
         entries.into_iter()
     }
 
-    /// Mutable counterpart of [`iter_stages`]. Same chronological ordering.
+    /// Mutable counterpart of [`Self::iter_stages`]. Same chronological
+    /// ordering.
     pub fn iter_stages_mut(&mut self) -> impl Iterator<Item = (&StageId, &mut StageProjection)> {
         let mut entries: Vec<(&StageId, &mut StageProjection)> = self.stages.iter_mut().collect();
         entries.sort_by(|(left_id, left_stage), (right_id, right_stage)| {
