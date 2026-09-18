@@ -1867,6 +1867,100 @@ async fn a_skill_discovery_opt_in_loads_the_skill_section() {
     assert_eq!(answered.calls_async().await, 1);
 }
 
+/// fabro-f84f: the CONVENTION branch of the opt-in. With the backend's
+/// `skill_dirs` left at its default `None`, a node opting in with
+/// `skills = "discover"` still discovers vendored skills: the session
+/// builds fabro's convention discovery itself and finds the git root's
+/// `.fabro/skills`, so run agents see the repository's vendored skills
+/// instead of reporting `source_dirs = []`.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_skill_discovery_opt_in_discovers_vendored_skills_from_the_git_root() {
+    let stage = Stage::new().await;
+    let answered = stage
+        .server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path(CHAT_PATH)
+                .body_includes("Available Skills")
+                .body_includes("demo");
+            sse_headers(then, sse_text("route: fine"));
+        })
+        .await;
+    // A git-rooted fixture: the working directory is a git repository whose
+    // only skill is vendored under `.fabro/skills`.
+    let skill_dir = stage.dir.path().join(".fabro").join("skills").join("demo");
+    std::fs::create_dir_all(&skill_dir).unwrap();
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "synchronous fixture write before the async stage runs"
+    )]
+    std::fs::write(
+        skill_dir.join("SKILL.md"),
+        "---\nname: demo\n---\nDo the demo thing.\n",
+    )
+    .unwrap();
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "synchronous fixture setup (git init) before the async stage runs"
+    )]
+    let init = std::process::Command::new("git")
+        .arg("init")
+        .current_dir(stage.dir.path())
+        .output()
+        .expect("git init should run");
+    assert!(
+        init.status.success(),
+        "git init failed: {}",
+        String::from_utf8_lossy(&init.stderr)
+    );
+    // The backend's skill_dirs stays at its default None — the convention
+    // branch must build discovery itself (existing tests bypass it via
+    // `with_skill_dirs`).
+    let backend = stage.backend("openai");
+    let mut graph = agent_graph("SkillsGitRoot", "Route the pass accordingly.");
+    graph.nodes.get_mut("work").unwrap().attrs.insert(
+        "skills".to_string(),
+        AttrValue::String("discover".to_string()),
+    );
+    let state = stage.run_ok(backend, &graph).await;
+    assert_eq!(state.status.kind(), fabro_types::RunStatusKind::Succeeded);
+    assert_eq!(answered.calls_async().await, 1);
+
+    // The session discovered the vendored skill and reported the git root's
+    // `.fabro/skills` among its source dirs.
+    let git_root_skills = stage.dir.path().join(".fabro").join("skills");
+    let mut found_skill = false;
+    let mut found_source_dir = false;
+    for (_, event) in coding_events(&stage.events) {
+        if let CodingEvent::SkillsDiscovered {
+            source_dirs,
+            skills,
+            ..
+        } = event
+        {
+            if !skills.is_empty() {
+                found_skill = true;
+            }
+            if source_dirs
+                .iter()
+                .any(|dir| Path::new(dir) == git_root_skills)
+            {
+                found_source_dir = true;
+            }
+        }
+    }
+    assert!(
+        found_skill,
+        "the opt-in session should discover the vendored skill: {:?}",
+        names(&stage.events)
+    );
+    assert!(
+        found_source_dir,
+        "source_dirs should include the git-root .fabro/skills: {:?}",
+        names(&stage.events)
+    );
+}
+
 // --- One-shot prompt stages --------------------------------------------------
 
 /// A one-shot prompt stage calls lithos-llm's client directly, and the

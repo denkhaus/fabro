@@ -20,6 +20,10 @@ digraph Conductor {
     survey [
         label="Survey",
         prompt="@prompts/survey.md",
+        // fabro-f84f: opt into vendored-skill discovery — the
+        // session loads `.fabro/skills` (rust-style-guide and
+        // friends) through the UseSkill tool.
+        skills="discover",
         output_schema="routing",
         output_retries=2,
         retry_policy="standard",
@@ -59,6 +63,10 @@ digraph Conductor {
     develop [
         label="Develop leg",
         prompt="@prompts/develop-leg.md",
+        // fabro-f84f: opt into vendored-skill discovery — the
+        // session loads `.fabro/skills` (rust-style-guide and
+        // friends) through the UseSkill tool.
+        skills="discover",
         output_schema="routing",
         output_retries=2,
         retry_policy="standard",
@@ -73,6 +81,10 @@ digraph Conductor {
     revise [
         label="Revise leg",
         prompt="@prompts/revise-leg.md",
+        // fabro-f84f: opt into vendored-skill discovery — the
+        // session loads `.fabro/skills` (rust-style-guide and
+        // friends) through the UseSkill tool.
+        skills="discover",
         output_schema="routing",
         output_retries=2,
         retry_policy="standard",
