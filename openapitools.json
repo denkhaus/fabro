@@ -1,0 +1,6 @@
+{
+  "$schema": "https://raw.githubusercontent.com/OpenAPITools/openapi-generator-cli/master/config.schema.json",
+  "generator-cli": {
+    "version": "7.20.0"
+  }
+}

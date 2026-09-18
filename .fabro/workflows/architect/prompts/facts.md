@@ -44,6 +44,22 @@ report it in the journal, never silently work around it.
   fork surface (e.g. move fork-added tests OUT of upstream monolith files
   into fork-only modules) or drop it with the constraint named in the
   journal.
+- UPSTREAM-FORK INTERPLAY LENS (user directive 2026-09-18, binding —
+  extends CHANGE SURFACE): the fork/upstream relationship is a STANDING
+  analysis axis in EVERY consideration and proposal, not a final filter
+  applied at distillation. Every review walk classifies the files it
+  touches as upstream-owned (`git ls-tree upstream/main -- <path>` —
+  empty output means fork-owned) vs fork-owned; every surviving finding
+  names its upstream interplay: the target surface (fork-owned file /
+  loop asset / minimal seam / content-only edit of an upstream-owned
+  file) and, whenever an upstream-owned file is touched at all, that
+  file's upstream churn rate. Negative example (fabro-90ae, rejected
+  2026-09-18): a "locality" proposal that split upstream's hottest file
+  (`server/tests.rs`, 112 upstream commits/12w) into 19 fork modules —
+  pure recurring merge tax; only a pre-merge close of PR #242 stopped
+  it. The constructive direction is fabro-ab8e: extract fork additions
+  into fork-owned files, upstream files stay structurally
+  upstream-identical.
 - Engine-provided credentials (ADR-0019 review axis): the engine injects
   `GITHUB_TOKEN` into every agent shell call (`resolve_workflow_env` in
   `lib/components/fabro-workflow/src/services.rs`) and runs a git

@@ -41,7 +41,7 @@ Set `arch_review_date` to today as YYYY-MM-DD. Then derive:
        rg -o '^\s+[a-z_-]+ \[' .fabro/workflows/conductor/workflow.fabro .fabro/workflows/develop/workflow.fabro .fabro/workflows/revisor/workflow.fabro .fabro/workflows/architect/workflow.fabro .fabro/workflows/merge-upstream/workflow.fabro
 
    One line per loop workflow with its node names goes into `arch_facts_files` alongside the ADR/strategy lists (analyze walks this map for the INTERPLAY view).
-3. Churn hot spots: `git log --format= --name-only -n 1000 | grep -v '^$' | sort | uniq -c | sort -rn | head -15` — the top-15 most-touched files with counts, one per line, truncated to the top 5 for the context key.
+3. Churn hot spots: `git log --format= --name-only -n 1000 | grep -v '^$' | sort | uniq -c | sort -rn | head -15` — the top-15 most-touched files with counts, one per line, truncated to the top 5 for the context key. Classify each top-5 entry `upstream-owned` or `fork-owned` (`git ls-tree upstream/main -- <path>` — empty output = fork-owned); for upstream-owned entries also give the file's upstream churn (last 12 weeks: `git log --since=12.weeks --format= upstream/main -- <path> | grep -c .`). The upstream-owned share of our churn is itself a finding signal (fork additions living inside upstream hot files — the fabro-ab8e class).
 4. Open-seed digest: `sd list --format compact --limit 200`, then summarize in <= 10 lines: counts by status, the biggest open clusters (same-area titles), the stalest in_progress claim.
 5. ADR/facts file list: `ls docs/lab/adr/` and `ls docs/internal/` — filenames only, one list each (these ground the analyze axes in the recorded decisions).
 

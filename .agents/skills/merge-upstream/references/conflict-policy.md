@@ -15,7 +15,15 @@ upstream's new signatures; never revert upstream, never drop our features.
    callers: `git show upstream/main:<file> | grep -n "<fn>("`).
 4. If upstream MOVED/RENAMED plumbing (e.g. origin-url derivation): take
    upstream's location, re-attach our additions at the new site.
-5. Mechanical marker removal is DANGEROUS on add/add TEST conflicts:
+5. FORBIDDEN SURFACE — upstream edits a file the fork RESTRUCTURED
+   (split/renamed/deleted an upstream-owned file; fabro-90ae/PR #242
+   class, rejected by user decision 2026-09-18): this state must not
+   exist. If you find it, the fork side is the regression — restore the
+   upstream file structure (`git show upstream/main:<path>`) and re-home
+   any fork additions into fork-owned files per the ab8e pattern. Never
+   "resolve" by porting upstream's edits into the fork-shaped modules:
+   that cements the divergence and repeats the tax on every future merge.
+6. Mechanical marker removal is DANGEROUS on add/add TEST conflicts:
    conflict blocks can swallow closing delimiters (`}`, `);`). After
    resolving, `cargo build` immediately — an "unclosed delimiter" error
    means a test body lost its tail; restore it from

@@ -141,6 +141,7 @@ If the brief is marked verification-only: check each acceptance criterion agains
 ## Artifact hygiene — hard rules
 
 - NEVER commit build outputs, compiled binaries, or other generated artifacts. The project's quality gate rejects tracked generated files deterministically.
+- GENERATED API CLIENT — hard boundary (user decision 2026-09-18, fabro-d016): `lib/packages/fabro-api-client/src/**` is machine-generated output. NEVER edit, hand-mirror, or extend it in-run — not even to "mirror a small spec change" (the sandbox has no java/openapi-generator, and hand-mirrors are unverifiable drift; run 01M2TJ9JZG's disclosed deviation is the negative example). When your change touches `docs/public/api-reference/fabro-api.yaml`: edit the spec, the Rust side (`fabro-api` regenerates via build.rs), and tests — then route the diff with the TS client UNTOUCHED and note "client regen pending (local step)" in the journal. The local integrate session regenerates the client with the pinned generator (`openapitools.json`).
 - Keep binaries out of the worktree: build into a temporary directory outside it, or remove the binary before finishing.
 - Add build outputs the project generates to its ignore file.
 - Only source, config, and documentation belong in commits.
