@@ -43,6 +43,7 @@ use std::time::Duration;
 use fabro_checkpoint::author::GitAuthor;
 use fabro_checkpoint::trailer::{self, Trailer};
 use fabro_store::platform_records::{DecisionRef, OperationKey};
+use fabro_types::DiffSummary;
 use fabro_types::settings::run::RunCheckpointSettings;
 use petri_runtime::executor::{EnvError, ExecEnv, OutputMode, ProcessSpec, Sig};
 use petri_runtime::ir::LogStream;
@@ -63,6 +64,9 @@ pub const ATTEMPT_TRAILER: &str = "Fabro-Attempt";
 
 const FOOTER: &str = "\u{2692}\u{fe0f} Generated with [Fabro](https://fabro.sh)";
 const REFS_PREFIX: &str = "refs/checkpoints/";
+
+/// Git's empty tree: what a root commit is diffed against.
+const EMPTY_TREE: &str = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
 
 /// Where a bundle waits inside a sandbox on its way in or out: outside the
 /// workspace, so no checkpoint ever commits it.
@@ -110,13 +114,20 @@ impl CheckpointKey {
     /// decision in its execution, effect kind `checkpoint`.
     #[must_use]
     pub fn operation(self) -> OperationKey {
+        self.operation_for(CHECKPOINT_EFFECT)
+    }
+
+    /// The operation identity of another effect performed for the same
+    /// attempt, under `effect`.
+    #[must_use]
+    pub fn operation_for(self, effect: &str) -> OperationKey {
         OperationKey {
             execution: self.execution,
             decision:  DecisionRef::AttemptStart {
                 firing:  self.firing,
                 attempt: self.attempt,
             },
-            effect:    CHECKPOINT_EFFECT.to_string(),
+            effect:    effect.to_string(),
         }
     }
 
@@ -233,12 +244,37 @@ struct GitOutput {
     stderr:  Vec<u8>,
 }
 
-/// A checkpoint commit: the commit, and whether an earlier attempt of the
-/// same operation had already made it.
+/// A checkpoint commit: the commit, whether an earlier attempt of the same
+/// operation had already made it, and, when this commit created the run
+/// branch in its workspace, where the branch started.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Snapshot {
-    pub sha:    String,
-    pub reused: bool,
+    pub sha:      String,
+    pub reused:   bool,
+    pub branched: Option<BranchPoint>,
+}
+
+/// Where a workspace's run branch was created: the commit the workspace
+/// stood on, or `None` in a repository that had no commit yet.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BranchPoint {
+    pub base_sha: Option<String>,
+}
+
+/// The difference between two snapshots: the summary `git diff --numstat`
+/// gives and the patch itself.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WorkspaceDiff {
+    pub summary: DiffSummary,
+    pub patch:   String,
+}
+
+impl WorkspaceDiff {
+    /// Whether the two snapshots hold the same tree.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.patch.trim().is_empty()
+    }
 }
 
 /// One published snapshot of a workspace.
@@ -358,14 +394,15 @@ impl RunWorkspaces {
         node: &str,
         status: &str,
     ) -> Result<Snapshot, CheckpointError> {
-        self.ensure_repository(site).await?;
+        let branched = self.ensure_repository(site).await?;
         if let Some(existing) = self.published_sha(workspace, key).await? {
             if self.head(site).await?.as_deref() == Some(existing.as_str())
                 && self.is_clean(site).await?
             {
                 return Ok(Snapshot {
-                    sha:    existing,
+                    sha: existing,
                     reused: true,
+                    branched,
                 });
             }
         }
@@ -406,7 +443,59 @@ impl RunWorkspaces {
             Site::Host(path) => self.publish(workspace, path, key, &sha).await?,
             Site::Sandbox(env) => self.publish_from_sandbox(env, workspace, key, &sha).await?,
         }
-        Ok(Snapshot { sha, reused: false })
+        Ok(Snapshot {
+            sha,
+            reused: false,
+            branched,
+        })
+    }
+
+    /// The parent of a published commit, or `None` for a root commit.
+    pub async fn commit_parent(
+        &self,
+        workspace: &str,
+        sha: &str,
+    ) -> Result<Option<String>, CheckpointError> {
+        let repository = Site::Host(self.ensure_snapshot_repository(workspace).await?);
+        self.git_status(&repository, "rev-parse", &[
+            "rev-parse",
+            "-q",
+            "--verify",
+            &format!("{sha}^"),
+        ])
+        .await
+    }
+
+    /// The diff from `base` (the empty tree when `None`) to `head`, both
+    /// published in the workspace's snapshot repository.
+    pub async fn diff(
+        &self,
+        workspace: &str,
+        base: Option<&str>,
+        head: &str,
+    ) -> Result<WorkspaceDiff, CheckpointError> {
+        let repository = Site::Host(self.ensure_snapshot_repository(workspace).await?);
+        let base = base.unwrap_or(EMPTY_TREE);
+        let numstat = self
+            .git(&repository, "diff --numstat", &[
+                "diff",
+                "--numstat",
+                "--no-color",
+                base,
+                head,
+            ])
+            .await?;
+        let patch = self
+            .git(&repository, "diff", &["diff", "--no-color", base, head])
+            .await?;
+        let mut patch = patch;
+        if !patch.is_empty() {
+            patch.push('\n');
+        }
+        Ok(WorkspaceDiff {
+            summary: numstat_summary(&numstat),
+            patch,
+        })
     }
 
     /// The commit of `key`, from the snapshot repository first, else from
@@ -721,8 +810,9 @@ impl RunWorkspaces {
     }
 
     /// A repository on the run branch, initialised when the workspace has
-    /// none.
-    async fn ensure_repository(&self, site: &Site) -> Result<(), CheckpointError> {
+    /// none. `Some` when the run branch was created here, with the commit
+    /// the workspace stood on.
+    async fn ensure_repository(&self, site: &Site) -> Result<Option<BranchPoint>, CheckpointError> {
         if self
             .git_status(site, "rev-parse", &["rev-parse", "--git-dir"])
             .await?
@@ -739,11 +829,13 @@ impl RunWorkspaces {
                 "HEAD",
             ])
             .await?;
-        if current.as_deref() != Some(branch.as_str()) {
-            self.git(site, "checkout", &["checkout", "-q", "-B", &branch])
-                .await?;
+        if current.as_deref() == Some(branch.as_str()) {
+            return Ok(None);
         }
-        Ok(())
+        let base_sha = self.head(site).await?;
+        self.git(site, "checkout", &["checkout", "-q", "-B", &branch])
+            .await?;
+        Ok(Some(BranchPoint { base_sha }))
     }
 
     /// The bare snapshot repository of the workspace, created on first use.
@@ -1151,6 +1243,24 @@ impl RunWorkspaces {
     }
 }
 
+/// The summary `git diff --numstat` lines add up to: one line per file,
+/// `<additions>\t<deletions>\t<path>`, with `-` for a binary file.
+fn numstat_summary(numstat: &str) -> DiffSummary {
+    let mut summary = DiffSummary::default();
+    for line in numstat.lines() {
+        let mut parts = line.splitn(3, '\t');
+        let (Some(additions), Some(deletions), Some(_path)) =
+            (parts.next(), parts.next(), parts.next())
+        else {
+            continue;
+        };
+        summary.files_changed += 1;
+        summary.additions += additions.parse::<i64>().unwrap_or(0);
+        summary.deletions += deletions.parse::<i64>().unwrap_or(0);
+    }
+    summary
+}
+
 /// The tail of git's stderr for an error message: what the run's record
 /// carries about the failure, bounded.
 fn detail(stderr: &[u8]) -> String {
@@ -1241,14 +1351,37 @@ mod tests {
             .await
             .expect("the commit");
         assert!(!first.reused);
+        assert_eq!(
+            first.branched,
+            Some(BranchPoint { base_sha: None }),
+            "the first commit created the run branch in a fresh repository"
+        );
         let again = workspaces
             .commit(workspace, key, "build", "success")
             .await
             .expect("the second commit");
         assert_eq!(again, Snapshot {
-            sha:    first.sha.clone(),
-            reused: true,
+            sha:      first.sha.clone(),
+            reused:   true,
+            branched: None,
         });
+        assert_eq!(
+            workspaces
+                .commit_parent(workspace, &first.sha)
+                .await
+                .expect("the parent lookup"),
+            None
+        );
+        let diff = workspaces
+            .diff(workspace, None, &first.sha)
+            .await
+            .expect("the diff from the empty tree");
+        assert_eq!(diff.summary, DiffSummary {
+            files_changed: 1,
+            additions:     1,
+            deletions:     0,
+        });
+        assert!(diff.patch.contains("+one"), "{}", diff.patch);
         assert_eq!(
             workspaces.find(workspace, key).await.expect("the lookup"),
             Some(first.sha.clone())
@@ -1341,6 +1474,119 @@ mod tests {
             .await
             .expect_err("the commit fails");
         assert!(matches!(error, CheckpointError::Command { .. }), "{error}");
+    }
+
+    #[tokio::test]
+    async fn a_second_commit_diffs_from_its_parent_and_a_branch_from_its_base() {
+        let dir = tempfile::tempdir().expect("a temp dir");
+        let workspaces = workspaces(dir.path());
+        let workspace = "invocation-0-scope-0";
+        let path = workspaces.workspace_path(workspace);
+        fs::create_dir_all(&path).await.expect("the workspace");
+        fs::write(path.join("story.txt"), "line 1\n")
+            .await
+            .expect("a file");
+        // A source repository with a commit: the run branch starts from it.
+        for args in [vec!["init", "-q"], vec!["add", "."], vec![
+            "-c",
+            "user.name=t",
+            "-c",
+            "user.email=t@example.com",
+            "commit",
+            "-q",
+            "-m",
+            "initial",
+        ]] {
+            let status = Command::new("git")
+                .args(&args)
+                .current_dir(&path)
+                .status()
+                .await
+                .expect("git runs");
+            assert!(status.success(), "git {args:?}");
+        }
+        let base = String::from_utf8(
+            Command::new("git")
+                .args(["rev-parse", "HEAD"])
+                .current_dir(&path)
+                .output()
+                .await
+                .expect("git runs")
+                .stdout,
+        )
+        .expect("utf-8")
+        .trim()
+        .to_string();
+
+        let first_key = CheckpointKey {
+            execution: 0,
+            firing:    1,
+            attempt:   1,
+        };
+        let first = workspaces
+            .commit(workspace, first_key, "start", "success")
+            .await
+            .expect("the first commit");
+        assert_eq!(
+            first.branched,
+            Some(BranchPoint {
+                base_sha: Some(base.clone()),
+            })
+        );
+        fs::write(path.join("story.txt"), "line 1\nline 2\n")
+            .await
+            .expect("a change");
+        let second_key = CheckpointKey {
+            execution: 0,
+            firing:    2,
+            attempt:   1,
+        };
+        let second = workspaces
+            .commit(workspace, second_key, "write", "success")
+            .await
+            .expect("the second commit");
+        assert_eq!(second.branched, None);
+        assert_eq!(
+            workspaces
+                .commit_parent(workspace, &second.sha)
+                .await
+                .expect("the parent lookup"),
+            Some(first.sha.clone())
+        );
+        let stage = workspaces
+            .diff(workspace, Some(&first.sha), &second.sha)
+            .await
+            .expect("the stage diff");
+        assert_eq!(stage.summary, DiffSummary {
+            files_changed: 1,
+            additions:     1,
+            deletions:     0,
+        });
+        assert!(stage.patch.contains("+line 2"), "{}", stage.patch);
+        let run = workspaces
+            .diff(workspace, Some(&base), &second.sha)
+            .await
+            .expect("the run diff");
+        assert_eq!(run.summary, stage.summary);
+        let unchanged = workspaces
+            .diff(workspace, Some(&base), &first.sha)
+            .await
+            .expect("the empty diff");
+        assert!(unchanged.is_empty());
+        assert_eq!(unchanged.summary, DiffSummary::default());
+    }
+
+    #[test]
+    fn numstat_lines_add_up_and_binary_files_count_as_changed() {
+        assert_eq!(
+            numstat_summary("3\t1\ta.txt\n-\t-\timage.png\n"),
+            DiffSummary {
+                files_changed: 2,
+                additions:     3,
+                deletions:     1,
+            }
+        );
+        assert_eq!(numstat_summary(""), DiffSummary::default());
     }
 
     #[test]

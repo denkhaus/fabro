@@ -96,18 +96,46 @@ Every adapter the integration plan describes lands here.
   `petri::EVENT_CONTRACT_VERSION`.
 - The platform adapters the plan adds after it: hooks and the run tools.
 
+### What the hooks add to the records
+
+`hooks` writes the platform records Petri cannot: `run.branch` and
+`git.identity` when the first checkpoint creates the run branch (the base
+commit is the workspace's `HEAD` before the branch, or that first commit in
+a workspace with no history), `checkpoint` after every route with the
+stage's diff from its parent commit (`diff_summary`, and the patch as a
+text blob under `patch_blob`), `artifact.collected` for every file under
+`[run.artifacts] include` a stage left in its workspace (the bytes go to
+the blob table; a file unchanged since an earlier capture is not recorded
+again), and `run.diff` at the run's end (the run branch's last checkpoint
+against the base, summary and patch blob). The projection folds them into
+`start`, `git_identity`, `checkpoints[].diff`, `StageProjection.diff`,
+`artifacts` and `Conclusion.diff`; a patch is carried as its
+`blob://sha256/<hex>` reference, which `fabro diff` and `dump` resolve.
+
+A stage's `output` and an agent's `response` are carried the same way when
+Petri offloaded them: the reference, never the bytes. A dry run's simulated
+prompt or agent stage carries the stub's text as its `response`.
+
 ### What the projection leaves default
 
 `VIEWS.md` rows with no source yet, or whose source this crate does not read
-yet, keep their default value in the projection: `StageProjection.diff` and
-`Conclusion.diff.patch` (the checkpoint's `patch_blob` is not resolved),
-`Checkpoint`'s engine-derived maps (`completed_nodes`, `node_retries`,
-`context_values`, `node_outcomes`, `next_node_id`), `agent_tools`,
-`permission_level`, `script_invocation` and `script_timing`, a stage's
-`notes`, `StageCompletion` details for a `parsed.note`, the sandbox instance
-(the matrix's two gaps), `Run.ask_fabro`, an interview option's
-`description` and `preview`, the pull request `creation` state, and the
-run's notices, notifications and pairings (recorded, not shown).
+yet, keep their default value in the projection: `Checkpoint`'s
+engine-derived maps (`completed_nodes`, `node_retries`, `context_values`,
+`node_outcomes`, `next_node_id`), `agent_tools`, `permission_level`,
+`script_invocation` and `script_timing`, a stage's `notes`,
+`StageCompletion` details for a `parsed.note`, the sandbox instance (the
+matrix's two gaps), `Run.ask_fabro`, an interview option's `description`
+and `preview`, the pull request `creation` state, and the run's notices,
+notifications and pairings (recorded, not shown).
+
+### Retention
+
+`engine::retention` maps the run's environment settings onto Petri's
+workspace retention: `preserve = true` or `stop_on_terminal = false` keeps
+every workspace (`Retention::Always`), as does the local provider, whose
+host workspaces live under the run's scratch directory and go with it;
+otherwise a failed scope's workspace is kept for debugging and a successful
+one is released (`Retention::OnFailure`, Petri's default).
 
 Every run executes on Petri. The server side is `fabro-server`'s
 `server::petri_runs`; the worker side is `fabro-cli`'s
@@ -137,6 +165,13 @@ Integration tests live under `tests/`:
   (`petri_testkit::run_store::conformance`) against `SqliteRunStore`, plus the
   operator release, lease exclusivity, a crash between appends, and blob
   interoperation with Fabro's `BlobStore`.
+- `hooks.rs` runs command-only bundles through the engine assembly with
+  Fabro's hooks over the memory store, in-memory platform records and an
+  in-memory blob table: every finish is committed and recorded, a failed
+  stage's route sees its files, a failed checkpoint ends the run, the run
+  branch, identity, artifacts, per-checkpoint diffs and the run diff are
+  recorded, and the Docker and Daytona variants commit inside their
+  sandboxes.
 - `interview.rs` runs human gates through the engine assembly with the
   interview adapter over a control interviewer: a gate answered under the
   posted id, two parallel gates each bound to their own answer, an expiry

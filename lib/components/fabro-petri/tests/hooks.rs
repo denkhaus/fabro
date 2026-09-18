@@ -22,18 +22,19 @@ use std::sync::Arc;
 
 use fabro_checkpoint::author::GitAuthor;
 use fabro_petri::admission::AdmittedGraphs;
+use fabro_petri::blobs::Blobs;
 use fabro_petri::check::{self, Bundle, CheckRequest, Launch};
 use fabro_petri::checkpoint::{CHECKPOINT_FAILED_CLASS, CheckpointKey, RunWorkspaces};
 use fabro_petri::controls::RunControls;
-use fabro_petri::engine::{self, Execution, RunRequest, RunStatus};
+use fabro_petri::engine::{self, Execution, Retention, RunRequest, RunStatus};
 use fabro_petri::hooks::HooksSpec;
 use fabro_petri::platform_records::PlatformRecords;
 use fabro_petri::recovery::{self, Recovery, RecoveryRequest};
 use fabro_petri::runtime::RuntimeSpec;
-use fabro_petri::test_support::MemoryPlatformRecords;
+use fabro_petri::test_support::{MemoryBlobs, MemoryPlatformRecords};
 use fabro_store::{PlatformRecord, PlatformRecordKind};
 use fabro_types::settings::run::RunCheckpointSettings;
-use fabro_types::{RunId, SandboxProviderKind};
+use fabro_types::{GitIdentitySource, RunId, SandboxProviderKind};
 use petri_execution::inspect::{self, RunInspection};
 use petri_store::{Access, MemoryRunStore, RunKey, RunStore as _};
 use tokio::fs;
@@ -139,22 +140,27 @@ fn docker_plugin() -> Option<PathBuf> {
 
 /// One run's pieces: the store, its platform records, where it ran.
 struct Harness {
-    run_id:  RunId,
-    run_dir: PathBuf,
-    store:   Arc<MemoryRunStore>,
-    records: Arc<MemoryPlatformRecords>,
-    _root:   tempfile::TempDir,
+    run_id:    RunId,
+    run_dir:   PathBuf,
+    store:     Arc<MemoryRunStore>,
+    records:   Arc<MemoryPlatformRecords>,
+    blobs:     Arc<MemoryBlobs>,
+    /// The `[run.artifacts] include` patterns the hooks collect under.
+    artifacts: Vec<String>,
+    _root:     tempfile::TempDir,
 }
 
 impl Harness {
     fn new() -> Self {
         let root = tempfile::tempdir().expect("a temp dir");
         Self {
-            run_id:  RunId::new(),
-            run_dir: root.path().join("run"),
-            store:   Arc::new(MemoryRunStore::new()),
-            records: Arc::new(MemoryPlatformRecords::new()),
-            _root:   root,
+            run_id:    RunId::new(),
+            run_dir:   root.path().join("run"),
+            store:     Arc::new(MemoryRunStore::new()),
+            records:   Arc::new(MemoryPlatformRecords::new()),
+            blobs:     Arc::new(MemoryBlobs::new()),
+            artifacts: Vec::new(),
+            _root:     root,
         }
     }
 
@@ -162,7 +168,9 @@ impl Harness {
         HooksSpec {
             records:         Arc::clone(&self.records) as Arc<dyn PlatformRecords>,
             author:          GitAuthor::default(),
+            identity_source: GitIdentitySource::Default,
             checkpoint:      RunCheckpointSettings::default(),
+            artifacts:       self.artifacts.clone(),
             host_workspaces: *provider == SandboxProviderKind::LOCAL,
             test_gates:      None,
         }
@@ -191,12 +199,13 @@ impl Harness {
             store: Arc::clone(&self.store) as Arc<dyn petri_store::RunStore>,
             runtime: RuntimeSpec::default(),
             provider,
+            retention: Retention::Always,
             cancel: CancellationToken::new(),
             controls: RunControls::new(),
             interviewer,
             observers,
             secrets: None,
-            blobs: None,
+            blobs: Some(Arc::clone(&self.blobs) as Arc<dyn Blobs>),
             hooks: Some(hooks),
         };
         engine::run(request).await.expect("the run executes")
@@ -421,6 +430,180 @@ async fn every_finish_is_committed_and_recorded() {
     assert_eq!(run_end, "run_complete\nsandbox_cleanup\n");
 }
 
+/// The files under `[run.artifacts] include` are collected once per
+/// content into the blob table, the run branch and the author identity are
+/// recorded when the branch is created, every checkpoint after the first
+/// carries its diff from its parent, and the run's diff is recorded at the
+/// end.
+#[tokio::test]
+async fn artifacts_the_branch_and_the_diffs_are_recorded() {
+    if host_plugin().is_none() {
+        return;
+    }
+    let mut harness = Harness::new();
+    harness.artifacts = vec!["assets/**".to_string()];
+    let workflow = workflow(
+        "  write [shape=parallelogram, script=\"mkdir -p assets && printf one > \
+         assets/report.txt && echo line > story.txt\"]\n  keep [shape=parallelogram, \
+         script=\"test -f assets/report.txt\"]\n  change [shape=parallelogram, script=\"printf \
+         two > assets/report.txt\"]",
+        "  start -> write -> keep -> change -> exit",
+    );
+    let outcome = harness.run(&workflow, SETTINGS).await;
+    assert_eq!(outcome.status, RunStatus::Success, "{outcome:?}");
+
+    let records = harness.records.records(&harness.run_id);
+    let artifacts: Vec<_> = records
+        .iter()
+        .filter_map(|stored| match &stored.record {
+            PlatformRecord::ArtifactCollected(record) => Some(record.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(artifacts.len(), 2, "one capture per content: {artifacts:?}");
+    assert!(
+        artifacts
+            .iter()
+            .all(|artifact| artifact.path == "assets/report.txt"),
+        "{artifacts:?}"
+    );
+    assert_eq!(artifacts[0].bytes, 3);
+    assert_eq!(artifacts[0].digest, artifacts[0].blob.to_string());
+    assert_ne!(artifacts[0].digest, artifacts[1].digest);
+    let bytes = harness
+        .blobs
+        .read(&artifacts[1].blob)
+        .await
+        .expect("the blob reads")
+        .expect("the blob exists");
+    assert_eq!(bytes.as_ref(), b"two");
+    // The first capture belongs to `write`, the second to `change`; `keep`
+    // saw the file unchanged and recorded nothing.
+    let checkpoint_firings: Vec<(String, u64)> = checkpoint_nodes(&harness).await;
+    let firing = |node: &str| {
+        checkpoint_firings
+            .iter()
+            .find(|(name, _)| name == node)
+            .map(|(_, firing)| *firing)
+            .expect("the node checkpointed")
+    };
+    assert_eq!(artifacts[0].firing, firing("write"));
+    assert_eq!(artifacts[1].firing, firing("change"));
+
+    let branches: Vec<_> = records
+        .iter()
+        .filter_map(|stored| match &stored.record {
+            PlatformRecord::RunBranch(record) => Some(record.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(branches.len(), 1, "{branches:?}");
+    let workspace = harness.workspace().await;
+    assert_eq!(
+        branches[0].run_branch.as_deref(),
+        Some(format!("fabro/run/{}", harness.run_id).as_str())
+    );
+    assert_eq!(branches[0].workspace.as_deref(), Some(workspace.as_str()));
+    let checkpoints = harness.checkpoints();
+    assert_eq!(
+        branches[0].base_sha.as_deref(),
+        Some(checkpoints[0].1.as_str()),
+        "a branch in a fresh repository starts from its first checkpoint"
+    );
+    let identities: Vec<_> = records
+        .iter()
+        .filter_map(|stored| match &stored.record {
+            PlatformRecord::GitIdentity(record) => Some(record.identity.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(identities.len(), 1, "{identities:?}");
+    assert_eq!(identities[0].source, GitIdentitySource::Default);
+    assert_eq!(identities[0].name, GitAuthor::default().name);
+
+    // The checkpoints carry their diffs: `start` is the root commit and has
+    // none; `write` adds two files; `keep` changes nothing; `change` edits
+    // one file.
+    let diffs: Vec<_> = records
+        .iter()
+        .filter_map(|stored| match &stored.record {
+            PlatformRecord::Checkpoint(record) => {
+                Some((record.diff_summary, record.patch_blob.is_some()))
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(diffs.len(), 5, "{diffs:?}");
+    assert_eq!(diffs[0], (None, false));
+    let write = diffs[1].0.expect("the write diff");
+    assert_eq!(
+        (write.files_changed, write.additions, write.deletions),
+        (2, 2, 0)
+    );
+    assert!(diffs[1].1, "the write patch is a blob");
+    let keep = diffs[2].0.expect("the keep diff");
+    assert_eq!(keep.files_changed, 0);
+    assert!(!diffs[2].1, "an empty diff has no patch blob");
+    let change = diffs[3].0.expect("the change diff");
+    assert_eq!(
+        (change.files_changed, change.additions, change.deletions),
+        (1, 1, 1)
+    );
+
+    let run_diffs: Vec<_> = records
+        .iter()
+        .filter_map(|stored| match &stored.record {
+            PlatformRecord::RunDiff(record) => Some(record.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(run_diffs.len(), 1, "{run_diffs:?}");
+    let run_diff = &run_diffs[0];
+    assert_eq!(run_diff.base_sha, branches[0].base_sha);
+    assert_eq!(
+        run_diff.head_sha.as_deref(),
+        Some(checkpoints.last().expect("checkpoints").1.as_str())
+    );
+    let summary = run_diff.diff_summary.expect("the run diff summary");
+    assert_eq!((summary.files_changed, summary.additions), (2, 2));
+    let patch = harness
+        .blobs
+        .read(&run_diff.patch_blob.expect("the run patch is a blob"))
+        .await
+        .expect("the blob reads")
+        .expect("the blob exists");
+    let patch = String::from_utf8_lossy(&patch);
+    assert!(patch.contains("+two"), "{patch}");
+    assert!(patch.contains("+line"), "{patch}");
+}
+
+/// The node of every checkpoint record, in record order, with its firing.
+async fn checkpoint_nodes(harness: &Harness) -> Vec<(String, u64)> {
+    let inspection = harness.inspection().await;
+    let history: Vec<(u64, String)> = inspection
+        .executions
+        .iter()
+        .filter_map(|execution| execution.engine.as_ref())
+        .flat_map(|engine| engine.history.iter())
+        .map(|record| (record.firing, record.node.to_string()))
+        .collect();
+    harness
+        .records
+        .records(&harness.run_id)
+        .into_iter()
+        .filter_map(|stored| match stored.record {
+            PlatformRecord::Checkpoint(record) => {
+                let node = history
+                    .iter()
+                    .find(|(firing, _)| *firing == record.firing)
+                    .map(|(_, node)| node.clone())?;
+                Some((node, record.firing))
+            }
+            _ => None,
+        })
+        .collect()
+}
+
 /// A stage that fails on its own terms is committed like a successful one,
 /// and its failure route runs on the committed files.
 #[tokio::test]
@@ -633,6 +816,7 @@ async fn a_run_hook_blocks_a_tool_effect_through_the_forwarded_service() {
             ..RuntimeSpec::default()
         },
         provider: SandboxProviderKind::LOCAL,
+        retention: Retention::Always,
         cancel: CancellationToken::new(),
         controls: RunControls::new(),
         interviewer,

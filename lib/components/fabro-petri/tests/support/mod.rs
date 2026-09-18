@@ -16,7 +16,7 @@ use std::time::{Duration, Instant};
 use fabro_petri::admission::AdmittedGraphs;
 use fabro_petri::check::{self, Bundle, CheckRequest, Launch};
 use fabro_petri::controls::RunControls;
-use fabro_petri::engine::{Execution, RunRequest};
+use fabro_petri::engine::{Execution, Retention, RunRequest};
 use fabro_petri::interview::{Approval, FabroInterviewer, QuestionNotice, QuestionSink};
 use fabro_petri::runtime::RuntimeSpec;
 use fabro_types::SandboxProviderKind;
@@ -115,6 +115,7 @@ pub(crate) fn run_request(
         store,
         runtime,
         provider: SandboxProviderKind::LOCAL,
+        retention: Retention::Always,
         cancel: CancellationToken::new(),
         controls: RunControls::new(),
         observers: vec![interviewer.observer()],
