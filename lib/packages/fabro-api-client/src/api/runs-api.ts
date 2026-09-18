@@ -36,6 +36,8 @@ import type { CloseRunPullRequestResponse } from '../models';
 // @ts-ignore
 import type { CreateRunPullRequestRequest } from '../models';
 // @ts-ignore
+import type { CreateRunRequest } from '../models';
+// @ts-ignore
 import type { DeleteRunResponse } from '../models';
 // @ts-ignore
 import type { DenyRunRequest } from '../models';
@@ -69,8 +71,6 @@ import type { RewindRequest } from '../models';
 import type { RewindResponse } from '../models';
 // @ts-ignore
 import type { Run } from '../models';
-// @ts-ignore
-import type { RunIntent } from '../models';
 // @ts-ignore
 import type { RunManifest } from '../models';
 // @ts-ignore
@@ -376,14 +376,14 @@ export const RunsApiAxiosParamCreator = function (configuration?: Configuration)
         /**
          * Creates a new workflow run in `submitted` status from an immutable workflow-version intent. Creation does not start or schedule the run.  Failures return the standard error body. The endpoint responds `404` (`workflow_version_not_found`, `environment_not_found`), `422` (`run_intent_invalid`, `target_invalid`, `target_environment_unsupported`, `pull_request_environment_unsupported`, `workflow_version_unusable`, `run_compile_invalid`), `503` (`integration_unavailable`), or `500` (`workflow_version_store_error`, `credential_store_error`, `variable_store_error`, `run_persistence_failed`).
          * @summary Create Run
-         * @param {RunIntent} runIntent
-         * @param {string} [xFabroAgentSession] Attribution-only marker declaring that the run is created from an agent session. The caller must still authenticate with a user token; the marker grants no privilege. When present on an authenticated run-create request, the created run&#39;s provenance subject (&#x60;created_by&#x60;) is recorded as kind &#x60;agent&#x60; with the given session id instead of the calling user. Values longer than 256 characters are ignored.
+         * @param {CreateRunRequest} createRunRequest
+         * @param {string} [xFabroAgentSession] Attribution-only marker declaring that the run is created from an agent session. The caller must still authenticate with a user token; the marker grants no privilege. When present on an authenticated run-create request, the created run\&#39;s provenance subject (&#x60;created_by&#x60;) is recorded as kind &#x60;agent&#x60; with the given session id instead of the calling user. Values longer than 256 characters are ignored.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        createRun: async (runIntent: RunIntent, xFabroAgentSession?: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
-            // verify required parameter 'runIntent' is not null or undefined
-            assertParamExists('createRun', 'runIntent', runIntent)
+        createRun: async (createRunRequest: CreateRunRequest, xFabroAgentSession?: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'createRunRequest' is not null or undefined
+            assertParamExists('createRun', 'createRunRequest', createRunRequest)
             const localVarPath = `/api/v1/runs`;
             // use dummy base URL string because the URL constructor only accepts absolute URLs.
             const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
@@ -408,11 +408,10 @@ export const RunsApiAxiosParamCreator = function (configuration?: Configuration)
             if (xFabroAgentSession != null) {
                 localVarHeaderParameter['X-Fabro-Agent-Session'] = String(xFabroAgentSession);
             }
-
             setSearchParams(localVarUrlObj, localVarQueryParameter);
             let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
             localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
-            localVarRequestOptions.data = serializeDataIfNeeded(runIntent, localVarRequestOptions, configuration)
+            localVarRequestOptions.data = serializeDataIfNeeded(createRunRequest, localVarRequestOptions, configuration)
 
             return {
                 url: toPathString(localVarUrlObj),
@@ -1058,6 +1057,46 @@ export const RunsApiAxiosParamCreator = function (configuration?: Configuration)
             };
         },
         /**
+         * One-click resume of a terminal failed run. The engine — not the caller — selects the rewind target: the entry checkpoint of the last failed stage, dropping that stage\'s committed outcome/routing decision while keeping every earlier checkpoint. Creates a replacement run through the rewind (fork) path, archives the source run, records `run.superseded_by` on it, and schedules the new run for execution. Unlike plain `start {resume:true}` replay, a soft-exit-parked failure re-runs the failed node instead of re-parking on the already-committed routing decision. Returns 207 when the new run was created and scheduled but the source archive step failed.
+         * @summary Resume Run from failure
+         * @param {string} id Unique run identifier (ULID).
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        resumeRun: async (id: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'id' is not null or undefined
+            assertParamExists('resumeRun', 'id', id)
+            const localVarPath = `/api/v1/runs/{id}/resume`
+                .replace(`{${"id"}}`, encodeURIComponent(String(id)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            // authentication SessionCookie required
+
+            // authentication BearerAuth required
+            // http bearer authentication required
+            await setBearerAuthToObject(localVarHeaderParameter, configuration)
+
+            localVarHeaderParameter['Accept'] = 'application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
          * Returns the durable run summary for a run.
          * @summary Retrieve Run
          * @param {string} id Unique run identifier (ULID).
@@ -1189,46 +1228,6 @@ export const RunsApiAxiosParamCreator = function (configuration?: Configuration)
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        /**
-         * One-click resume of a terminal failed run. The engine — not the caller — selects the rewind target: the entry checkpoint of the last failed stage, dropping that stage\'s committed outcome/routing decision while keeping every earlier checkpoint. Creates a replacement run through the rewind (fork) path, archives the source run, records `run.superseded_by` on it, and schedules the new run for execution. Unlike plain `start {resume:true}` replay, a soft-exit-parked failure re-runs the failed node instead of re-parking on the already-committed routing decision. Returns 207 when the new run was created and scheduled but the source archive step failed.
-         * @summary Resume Run from failure
-         * @param {string} id Unique run identifier (ULID).
-         * @param {*} [options] Override http request option.
-         * @throws {RequiredError}
-         */
-        resumeRun: async (id: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
-            // verify required parameter 'id' is not null or undefined
-            assertParamExists('resumeRun', 'id', id)
-            const localVarPath = `/api/v1/runs/{id}/resume`
-                .replace(`{${"id"}}`, encodeURIComponent(String(id)));
-            // use dummy base URL string because the URL constructor only accepts absolute URLs.
-            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
-            let baseOptions;
-            if (configuration) {
-                baseOptions = configuration.baseOptions;
-            }
-
-            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
-            const localVarHeaderParameter = {} as any;
-            const localVarQueryParameter = {} as any;
-
-            // authentication SessionCookie required
-
-            // authentication BearerAuth required
-            // http bearer authentication required
-            await setBearerAuthToObject(localVarHeaderParameter, configuration)
-
-            localVarHeaderParameter['Accept'] = 'application/json';
-
-            setSearchParams(localVarUrlObj, localVarQueryParameter);
-            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
-            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
-
-            return {
-                url: toPathString(localVarUrlObj),
-                options: localVarRequestOptions,
-            };
-        },
         retryRun: async (id: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
             // verify required parameter 'id' is not null or undefined
             assertParamExists('retryRun', 'id', id)
@@ -1792,13 +1791,13 @@ export const RunsApiFp = function(configuration?: Configuration) {
         /**
          * Creates a new workflow run in `submitted` status from an immutable workflow-version intent. Creation does not start or schedule the run.  Failures return the standard error body. The endpoint responds `404` (`workflow_version_not_found`, `environment_not_found`), `422` (`run_intent_invalid`, `target_invalid`, `target_environment_unsupported`, `pull_request_environment_unsupported`, `workflow_version_unusable`, `run_compile_invalid`), `503` (`integration_unavailable`), or `500` (`workflow_version_store_error`, `credential_store_error`, `variable_store_error`, `run_persistence_failed`).
          * @summary Create Run
-         * @param {RunIntent} runIntent
-         * @param {string} [xFabroAgentSession] Attribution-only marker declaring that the run is created from an agent session. The caller must still authenticate with a user token; the marker grants no privilege. When present on an authenticated run-create request, the created run&#39;s provenance subject (&#x60;created_by&#x60;) is recorded as kind &#x60;agent&#x60; with the given session id instead of the calling user. Values longer than 256 characters are ignored.
+         * @param {CreateRunRequest} createRunRequest
+         * @param {string} [xFabroAgentSession] Attribution-only marker declaring that the run is created from an agent session. The caller must still authenticate with a user token; the marker grants no privilege. When present on an authenticated run-create request, the created run\&#39;s provenance subject (&#x60;created_by&#x60;) is recorded as kind &#x60;agent&#x60; with the given session id instead of the calling user. Values longer than 256 characters are ignored.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        async createRun(runIntent: RunIntent, xFabroAgentSession?: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<Run>> {
-            const localVarAxiosArgs = await localVarAxiosParamCreator.createRun(runIntent, xFabroAgentSession, options);
+        async createRun(createRunRequest: CreateRunRequest, xFabroAgentSession?: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<Run>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.createRun(createRunRequest, xFabroAgentSession, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
             const localVarOperationServerBasePath = operationServerMap['RunsApi.createRun']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
@@ -2001,6 +2000,19 @@ export const RunsApiFp = function(configuration?: Configuration) {
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
+         * One-click resume of a terminal failed run. The engine — not the caller — selects the rewind target: the entry checkpoint of the last failed stage, dropping that stage\'s committed outcome/routing decision while keeping every earlier checkpoint. Creates a replacement run through the rewind (fork) path, archives the source run, records `run.superseded_by` on it, and schedules the new run for execution. Unlike plain `start {resume:true}` replay, a soft-exit-parked failure re-runs the failed node instead of re-parking on the already-committed routing decision. Returns 207 when the new run was created and scheduled but the source archive step failed.
+         * @summary Resume Run from failure
+         * @param {string} id Unique run identifier (ULID).
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async resumeRun(id: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<Run>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.resumeRun(id, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['RunsApi.resumeRun']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
          * Returns the durable run summary for a run.
          * @summary Retrieve Run
          * @param {string} id Unique run identifier (ULID).
@@ -2047,19 +2059,6 @@ export const RunsApiFp = function(configuration?: Configuration) {
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        /**
-         * One-click resume of a terminal failed run. The engine — not the caller — selects the rewind target: the entry checkpoint of the last failed stage, dropping that stage\'s committed outcome/routing decision while keeping every earlier checkpoint. Creates a replacement run through the rewind (fork) path, archives the source run, records `run.superseded_by` on it, and schedules the new run for execution. Unlike plain `start {resume:true}` replay, a soft-exit-parked failure re-runs the failed node instead of re-parking on the already-committed routing decision. Returns 207 when the new run was created and scheduled but the source archive step failed.
-         * @summary Resume Run from failure
-         * @param {string} id Unique run identifier (ULID).
-         * @param {*} [options] Override http request option.
-         * @throws {RequiredError}
-         */
-        async resumeRun(id: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<Run>> {
-            const localVarAxiosArgs = await localVarAxiosParamCreator.resumeRun(id, options);
-            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
-            const localVarOperationServerBasePath = operationServerMap['RunsApi.resumeRun']?.[localVarOperationServerIndex]?.url;
-            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
-        },
         async retryRun(id: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<Run>> {
             const localVarAxiosArgs = await localVarAxiosParamCreator.retryRun(id, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
@@ -2283,13 +2282,13 @@ export const RunsApiFactory = function (configuration?: Configuration, basePath?
         /**
          * Creates a new workflow run in `submitted` status from an immutable workflow-version intent. Creation does not start or schedule the run.  Failures return the standard error body. The endpoint responds `404` (`workflow_version_not_found`, `environment_not_found`), `422` (`run_intent_invalid`, `target_invalid`, `target_environment_unsupported`, `pull_request_environment_unsupported`, `workflow_version_unusable`, `run_compile_invalid`), `503` (`integration_unavailable`), or `500` (`workflow_version_store_error`, `credential_store_error`, `variable_store_error`, `run_persistence_failed`).
          * @summary Create Run
-         * @param {RunIntent} runIntent
-         * @param {string} [xFabroAgentSession] Attribution-only marker declaring that the run is created from an agent session. The caller must still authenticate with a user token; the marker grants no privilege. When present on an authenticated run-create request, the created run&#39;s provenance subject (&#x60;created_by&#x60;) is recorded as kind &#x60;agent&#x60; with the given session id instead of the calling user. Values longer than 256 characters are ignored.
+         * @param {CreateRunRequest} createRunRequest
+         * @param {string} [xFabroAgentSession] Attribution-only marker declaring that the run is created from an agent session. The caller must still authenticate with a user token; the marker grants no privilege. When present on an authenticated run-create request, the created run\&#39;s provenance subject (&#x60;created_by&#x60;) is recorded as kind &#x60;agent&#x60; with the given session id instead of the calling user. Values longer than 256 characters are ignored.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        createRun(runIntent: RunIntent, xFabroAgentSession?: string, options?: RawAxiosRequestConfig): AxiosPromise<Run> {
-            return localVarFp.createRun(runIntent, xFabroAgentSession, options).then((request) => request(axios, basePath));
+        createRun(createRunRequest: CreateRunRequest, xFabroAgentSession?: string, options?: RawAxiosRequestConfig): AxiosPromise<Run> {
+            return localVarFp.createRun(createRunRequest, xFabroAgentSession, options).then((request) => request(axios, basePath));
         },
         /**
          * Durably requests creation of a pull request for a completed run. The server generates the pull request content and creates the GitHub pull request after this request returns. Poll the URL in the Location response header until the creation succeeds or fails.  If a creation is already pending for the run, the response returns that creation unchanged; any different `model` or `force` values in the new request are ignored.
@@ -2447,6 +2446,16 @@ export const RunsApiFactory = function (configuration?: Configuration, basePath?
             return localVarFp.resolveRun(selector, options).then((request) => request(axios, basePath));
         },
         /**
+         * One-click resume of a terminal failed run. The engine — not the caller — selects the rewind target: the entry checkpoint of the last failed stage, dropping that stage\'s committed outcome/routing decision while keeping every earlier checkpoint. Creates a replacement run through the rewind (fork) path, archives the source run, records `run.superseded_by` on it, and schedules the new run for execution. Unlike plain `start {resume:true}` replay, a soft-exit-parked failure re-runs the failed node instead of re-parking on the already-committed routing decision. Returns 207 when the new run was created and scheduled but the source archive step failed.
+         * @summary Resume Run from failure
+         * @param {string} id Unique run identifier (ULID).
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        resumeRun(id: string, options?: RawAxiosRequestConfig): AxiosPromise<Run> {
+            return localVarFp.resumeRun(id, options).then((request) => request(axios, basePath));
+        },
+        /**
          * Returns the durable run summary for a run.
          * @summary Retrieve Run
          * @param {string} id Unique run identifier (ULID).
@@ -2484,16 +2493,6 @@ export const RunsApiFactory = function (configuration?: Configuration, basePath?
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        /**
-         * One-click resume of a terminal failed run. The engine — not the caller — selects the rewind target: the entry checkpoint of the last failed stage, dropping that stage\'s committed outcome/routing decision while keeping every earlier checkpoint. Creates a replacement run through the rewind (fork) path, archives the source run, records `run.superseded_by` on it, and schedules the new run for execution. Unlike plain `start {resume:true}` replay, a soft-exit-parked failure re-runs the failed node instead of re-parking on the already-committed routing decision. Returns 207 when the new run was created and scheduled but the source archive step failed.
-         * @summary Resume Run from failure
-         * @param {string} id Unique run identifier (ULID).
-         * @param {*} [options] Override http request option.
-         * @throws {RequiredError}
-         */
-        resumeRun(id: string, options?: RawAxiosRequestConfig): AxiosPromise<Run> {
-            return localVarFp.resumeRun(id, options).then((request) => request(axios, basePath));
-        },
         retryRun(id: string, options?: RawAxiosRequestConfig): AxiosPromise<Run> {
             return localVarFp.retryRun(id, options).then((request) => request(axios, basePath));
         },
@@ -2689,13 +2688,13 @@ export class RunsApi extends BaseAPI {
     /**
      * Creates a new workflow run in `submitted` status from an immutable workflow-version intent. Creation does not start or schedule the run.  Failures return the standard error body. The endpoint responds `404` (`workflow_version_not_found`, `environment_not_found`), `422` (`run_intent_invalid`, `target_invalid`, `target_environment_unsupported`, `pull_request_environment_unsupported`, `workflow_version_unusable`, `run_compile_invalid`), `503` (`integration_unavailable`), or `500` (`workflow_version_store_error`, `credential_store_error`, `variable_store_error`, `run_persistence_failed`).
      * @summary Create Run
-     * @param {RunIntent} runIntent
-     * @param {string} [xFabroAgentSession] Attribution-only marker declaring that the run is created from an agent session. The caller must still authenticate with a user token; the marker grants no privilege. When present on an authenticated run-create request, the created run&#39;s provenance subject (&#x60;created_by&#x60;) is recorded as kind &#x60;agent&#x60; with the given session id instead of the calling user. Values longer than 256 characters are ignored.
+     * @param {CreateRunRequest} createRunRequest
+     * @param {string} [xFabroAgentSession] Attribution-only marker declaring that the run is created from an agent session. The caller must still authenticate with a user token; the marker grants no privilege. When present on an authenticated run-create request, the created run\&#39;s provenance subject (&#x60;created_by&#x60;) is recorded as kind &#x60;agent&#x60; with the given session id instead of the calling user. Values longer than 256 characters are ignored.
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      */
-    public createRun(runIntent: RunIntent, xFabroAgentSession?: string, options?: RawAxiosRequestConfig) {
-        return RunsApiFp(this.configuration).createRun(runIntent, xFabroAgentSession, options).then((request) => request(this.axios, this.basePath));
+    public createRun(createRunRequest: CreateRunRequest, xFabroAgentSession?: string, options?: RawAxiosRequestConfig) {
+        return RunsApiFp(this.configuration).createRun(createRunRequest, xFabroAgentSession, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**
@@ -2868,6 +2867,17 @@ export class RunsApi extends BaseAPI {
     }
 
     /**
+     * One-click resume of a terminal failed run. The engine — not the caller — selects the rewind target: the entry checkpoint of the last failed stage, dropping that stage\'s committed outcome/routing decision while keeping every earlier checkpoint. Creates a replacement run through the rewind (fork) path, archives the source run, records `run.superseded_by` on it, and schedules the new run for execution. Unlike plain `start {resume:true}` replay, a soft-exit-parked failure re-runs the failed node instead of re-parking on the already-committed routing decision. Returns 207 when the new run was created and scheduled but the source archive step failed.
+     * @summary Resume Run from failure
+     * @param {string} id Unique run identifier (ULID).
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public resumeRun(id: string, options?: RawAxiosRequestConfig) {
+        return RunsApiFp(this.configuration).resumeRun(id, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
      * Returns the durable run summary for a run.
      * @summary Retrieve Run
      * @param {string} id Unique run identifier (ULID).
@@ -2908,17 +2918,6 @@ export class RunsApi extends BaseAPI {
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      */
-    /**
-     * One-click resume of a terminal failed run. The engine — not the caller — selects the rewind target: the entry checkpoint of the last failed stage, dropping that stage\'s committed outcome/routing decision while keeping every earlier checkpoint. Creates a replacement run through the rewind (fork) path, archives the source run, records `run.superseded_by` on it, and schedules the new run for execution. Unlike plain `start {resume:true}` replay, a soft-exit-parked failure re-runs the failed node instead of re-parking on the already-committed routing decision. Returns 207 when the new run was created and scheduled but the source archive step failed.
-     * @summary Resume Run from failure
-     * @param {string} id Unique run identifier (ULID).
-     * @param {*} [options] Override http request option.
-     * @throws {RequiredError}
-     */
-    public resumeRun(id: string, options?: RawAxiosRequestConfig) {
-        return RunsApiFp(this.configuration).resumeRun(id, options).then((request) => request(this.axios, this.basePath));
-    }
-
     public retryRun(id: string, options?: RawAxiosRequestConfig) {
         return RunsApiFp(this.configuration).retryRun(id, options).then((request) => request(this.axios, this.basePath));
     }
