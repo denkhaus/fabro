@@ -26,6 +26,7 @@ domains:
   loop-assets: {}
   workflow-engine: {}
   process: {}
+  fork-strategy: {}
 governance:
   max_entries: 100
   warn_entries: 150
