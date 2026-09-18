@@ -4,9 +4,9 @@ use ::fabro_types::{
     AutomationRef, BlobHash, BlockedReason, CommandTermination, DiffSummary, FailureReason,
     ForkSourceRef, GitContext, PairId, PairMessageId, PairSystemMessageKind, PairTarget,
     ParallelBranchId, ParallelBranchResult, PendingReason, PermissionLevel, Principal,
-    PullRequestCreationId, PullRequestLink, ReviewTarget, RunFailure, RunId, RunNoticeLevel,
-    RunPairEndedReason, RunPairFailedReason, RunProvenance, RunRunnableSource, RunTarget,
-    RunTiming, SandboxProviderKind, StageId, StageOutcome, StageTiming, SuccessReason,
+    PullRequestCreationId, PullRequestLink, ReviewTarget, RunEngine, RunFailure, RunId,
+    RunNoticeLevel, RunPairEndedReason, RunPairFailedReason, RunProvenance, RunRunnableSource,
+    RunTarget, RunTiming, SandboxProviderKind, StageId, StageOutcome, StageTiming, SuccessReason,
     WorkflowVersionId, run_event as fabro_types,
 };
 use lithos_llm::types::{ReasoningEffort, Speed, Usage};
@@ -54,6 +54,9 @@ pub enum Event {
         parent_id:           Option<RunId>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         web_url:             Option<String>,
+        /// The engine the run was created for, with what it admitted.
+        #[serde(default, skip_serializing_if = "RunEngine::is_legacy")]
+        engine:              RunEngine,
     },
     WorkflowRunStarted {
         name:         String,

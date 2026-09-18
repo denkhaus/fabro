@@ -175,6 +175,7 @@ fn persisted_workflow(graph: Graph, source: String, run_dir: &Path, run_id: RunI
             definition_blob: None,
             spec_blob: None,
             fork_source_ref: None,
+            engine: fabro_types::RunEngine::Legacy,
         },
     )
 }
@@ -226,6 +227,7 @@ async fn seed_created_and_starting(
         retried_from:        None,
         parent_id:           None,
         web_url:             None,
+        engine:              fabro_types::RunEngine::Legacy,
     })
     .await
     .unwrap();

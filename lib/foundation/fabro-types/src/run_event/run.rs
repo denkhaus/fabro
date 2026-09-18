@@ -7,8 +7,8 @@ use super::{ExecOutputTail, RunNoticeLevel};
 use crate::status::{BlockedReason, PendingReason, SuccessReason};
 use crate::{
     AutomationRef, BlobHash, DiffSummary, ForkSourceRef, GitContext, Graph, PairId, PairTarget,
-    RunControlAction, RunFailure, RunId, RunProvenance, RunTarget, RunTiming, WorkflowSettings,
-    WorkflowVersionId,
+    RunControlAction, RunEngine, RunFailure, RunId, RunProvenance, RunTarget, RunTiming,
+    WorkflowSettings, WorkflowVersionId,
 };
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -47,6 +47,10 @@ pub struct RunCreatedProps {
     pub parent_id:           Option<RunId>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub web_url:             Option<String>,
+    /// The engine the run was created for, with what it admitted; absent
+    /// means the legacy executor.
+    #[serde(default, skip_serializing_if = "RunEngine::is_legacy")]
+    pub engine:              RunEngine,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

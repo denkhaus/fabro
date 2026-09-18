@@ -2,8 +2,8 @@
 //!
 //! `[server]` is a namespace container; actual settings live in named
 //! subdomains (listen, api, web, auth, storage, artifacts, slatedb,
-//! scheduler, logging, integrations). Same-host and split-host deployments
-//! use the same schema.
+//! scheduler, execution, logging, integrations). Same-host and split-host
+//! deployments use the same schema.
 
 use std::collections::BTreeMap;
 use std::net::SocketAddr;
@@ -13,7 +13,7 @@ use serde::de::Error as _;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use super::duration::Duration;
-use crate::SandboxProviderKind;
+use crate::{Engine, SandboxProviderKind};
 
 /// A structurally resolved `[server]` view for consumers.
 ///
@@ -33,6 +33,10 @@ pub struct ServerNamespace {
     pub artifacts:    ServerArtifactsSettings,
     pub slatedb:      ServerSlateDbSettings,
     pub scheduler:    ServerSchedulerSettings,
+    /// `[server.execution]`: the engine a run gets when its workflow version
+    /// names none. Absent in settings serialized before the section existed.
+    #[serde(default)]
+    pub execution:    ServerExecutionSettings,
     pub logging:      ServerLoggingSettings,
     pub integrations: ServerIntegrationsSettings,
 }
@@ -54,6 +58,7 @@ impl ServerNamespace {
             artifacts:    ServerArtifactsSettings::default(),
             slatedb:      ServerSlateDbSettings::default(),
             scheduler:    ServerSchedulerSettings::default(),
+            execution:    ServerExecutionSettings::default(),
             logging:      ServerLoggingSettings::default(),
             integrations: ServerIntegrationsSettings::default(),
         }
@@ -268,6 +273,14 @@ impl Default for ObjectStoreSettings {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ServerSchedulerSettings {
     pub max_concurrent_runs: usize,
+}
+
+/// `[server.execution]`: how this server executes the runs it admits.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ServerExecutionSettings {
+    /// The engine for every run whose workflow version names none.
+    #[serde(default)]
+    pub engine: Engine,
 }
 
 #[derive(

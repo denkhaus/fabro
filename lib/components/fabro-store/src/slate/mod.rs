@@ -475,6 +475,7 @@ mod tests {
                 dirty:      fabro_types::DirtyStatus::Clean,
             }),
             fork_source_ref: None,
+            engine: fabro_types::RunEngine::Legacy,
         }
     }
 

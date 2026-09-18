@@ -64,6 +64,7 @@ fn run_created_props_round_trip_templated_settings() {
         web_url:             Some(
             "http://localhost:3000/runs/01JNQVR7M0EJ5GKAT2SC4ERS1Z".to_string(),
         ),
+        engine:              fabro_types::RunEngine::Legacy,
     };
 
     let json = serde_json::to_value(&props).expect("props should serialize");
@@ -129,6 +130,7 @@ fn run_created_props_omits_web_url_when_absent() {
         retried_from:        None,
         parent_id:           None,
         web_url:             None,
+        engine:              fabro_types::RunEngine::Legacy,
     };
 
     let json = serde_json::to_value(&props).expect("props should serialize");

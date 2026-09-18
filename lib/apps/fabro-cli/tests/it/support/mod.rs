@@ -57,6 +57,7 @@ pub(crate) fn run_projection_json(run_id: &str, status: &serde_json::Value) -> s
         spec_blob: None,
         git: None,
         fork_source_ref: None,
+        engine: fabro_types::RunEngine::Legacy,
     };
 
     serde_json::json!({

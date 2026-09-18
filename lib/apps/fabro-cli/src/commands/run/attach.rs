@@ -853,6 +853,7 @@ mod tests {
             spec_blob: None,
             git: None,
             fork_source_ref: None,
+            engine: fabro_types::RunEngine::Legacy,
         };
         serde_json::json!({
             "spec": serde_json::to_value(spec).unwrap(),

@@ -16,8 +16,8 @@ use fabro_llm::lithos_catalog::Catalog;
 use fabro_store::{BlobStore, Database};
 use fabro_template::TemplateContext;
 use fabro_types::{
-    AutomationRef, BlobHash, ForkSourceRef, GitContext, ManifestPath, RunId, RunProvenance,
-    RunTarget, WorkflowSettings, WorkflowVersionId,
+    AutomationRef, BlobHash, ForkSourceRef, GitContext, ManifestPath, RunEngine, RunId,
+    RunProvenance, RunTarget, WorkflowSettings, WorkflowVersionId,
 };
 use fabro_util::json::normalize_json_value;
 use lithos_llm::catalog::ProviderId;
@@ -110,6 +110,7 @@ impl CreateRunInput {
                 parent_id,
                 provenance,
                 web_url,
+                engine: fabro_types::RunEngine::Legacy,
             },
         )
     }
@@ -144,6 +145,8 @@ pub struct CreateRunPersistenceMetadata {
     pub parent_id:           Option<RunId>,
     pub provenance:          RunProvenance,
     pub web_url:             Option<String>,
+    /// The engine the run was created for, with what it admitted.
+    pub engine:              RunEngine,
 }
 
 #[derive(Debug)]
@@ -214,6 +217,7 @@ pub struct CreateRunPersistenceInput {
     parent_id:           Option<RunId>,
     provenance:          RunProvenance,
     web_url:             Option<String>,
+    engine:              RunEngine,
 }
 
 impl CreateRunPersistenceInput {
@@ -410,6 +414,7 @@ pub fn assemble_create_run_persistence_input(
         parent_id,
         provenance,
         web_url,
+        engine,
     } = metadata;
     let run_dir = Storage::new(storage_root)
         .run_scratch(&run_id)
@@ -431,6 +436,7 @@ pub fn assemble_create_run_persistence_input(
         parent_id,
         provenance,
         web_url,
+        engine,
     }
 }
 
@@ -453,6 +459,7 @@ pub async fn persist_create_run(
         parent_id,
         provenance,
         web_url,
+        engine,
     } = input;
     let MaterializedRun {
         validated,
@@ -487,6 +494,7 @@ pub async fn persist_create_run(
             spec_blob: None,
             git,
             fork_source_ref,
+            engine,
         };
         pipeline::persist(validated, PersistOptions {
             run_dir: persisted_run_dir,
@@ -565,6 +573,7 @@ async fn persist_created_run(
         retried_from: None,
         parent_id,
         web_url,
+        engine: record.engine.clone(),
     };
     let run_store = event::create_run(
         store,
@@ -1727,6 +1736,7 @@ mod tests {
                 parent_id:           None,
                 provenance:          test_support::test_run_provenance(),
                 web_url:             None,
+                engine:              fabro_types::RunEngine::Legacy,
             });
         let definition = input
             .definition()

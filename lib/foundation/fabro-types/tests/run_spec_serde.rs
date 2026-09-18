@@ -58,10 +58,15 @@ fn run_spec_round_trips_templated_settings() {
             source_run_id:  fixtures::RUN_2,
             checkpoint_sha: "def456".to_string(),
         }),
+        engine:              fabro_types::RunEngine::Legacy,
     };
 
     let json = serde_json::to_value(&record).expect("record should serialize");
     assert!(json.get("working_directory").is_none());
+    assert!(
+        json.get("engine").is_none(),
+        "a legacy run's spec omits the engine so older readers see the same shape"
+    );
     assert!(json.get("host_repo_path").is_none());
     assert_eq!(json["source_directory"], "/Users/client/project");
     assert_eq!(

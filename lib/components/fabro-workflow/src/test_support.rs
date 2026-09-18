@@ -232,6 +232,7 @@ async fn initialized(
         retried_from:        None,
         parent_id:           None,
         web_url:             None,
+        engine:              fabro_types::RunEngine::Legacy,
     })
     .await
     .expect("failed to seed run.created event in run store");

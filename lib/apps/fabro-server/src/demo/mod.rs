@@ -1746,6 +1746,7 @@ mod runs {
             spec_blob:           None,
             git:                 None,
             fork_source_ref:     None,
+            engine:              fabro_types::RunEngine::Legacy,
         };
         let mut projection = RunProjection::new(
             "Detect and fix environment drift".to_string(),

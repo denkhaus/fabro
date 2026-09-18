@@ -390,6 +390,7 @@ mod tests {
                     spec_blob:           None,
                     git:                 None,
                     fork_source_ref:     None,
+                    engine:              fabro_types::RunEngine::Legacy,
                 },
                 chrono::Utc::now(),
             ))
@@ -495,6 +496,7 @@ mod tests {
                 retried_from:        None,
                 parent_id:           None,
                 web_url:             None,
+                engine:              fabro_types::RunEngine::Legacy,
             },
         )
         .await

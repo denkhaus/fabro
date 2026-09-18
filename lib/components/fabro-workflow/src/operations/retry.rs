@@ -59,6 +59,7 @@ pub async fn retry_run(
         spec_blob,
         git,
         fork_source_ref,
+        engine,
     } = source.spec;
 
     let settings = serde_json::to_value(&settings).map_err(|err| Error::engine(err.to_string()))?;
@@ -85,6 +86,9 @@ pub async fn retry_run(
         retried_from: Some(source_run_id),
         parent_id,
         web_url: input.web_url.clone(),
+        // The admitted graph is content-addressed, so a retry runs on the
+        // same engine from the same admission.
+        engine,
     };
     let retry_store = event::create_run(store, &new_run_id, &first_event, Utc::now())
         .await
@@ -203,6 +207,7 @@ mod tests {
             retried_from: None,
             parent_id: None,
             web_url: None,
+            engine: fabro_types::RunEngine::Legacy,
         })
         .await
         .unwrap();
@@ -456,6 +461,7 @@ mod tests {
             retried_from:        None,
             parent_id:           None,
             web_url:             None,
+            engine:              fabro_types::RunEngine::Legacy,
         })
         .await
         .unwrap();
@@ -520,6 +526,7 @@ mod tests {
             retried_from:        None,
             parent_id:           None,
             web_url:             None,
+            engine:              fabro_types::RunEngine::Legacy,
         })
         .await
         .unwrap();

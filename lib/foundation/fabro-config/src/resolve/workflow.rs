@@ -15,5 +15,6 @@ pub fn resolve_workflow(
             .clone()
             .expect("defaults.toml should provide workflow.graph"),
         metadata:    layer.metadata.clone().into_inner(),
+        engine:      layer.engine,
     }
 }

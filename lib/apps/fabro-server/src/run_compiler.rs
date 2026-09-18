@@ -472,6 +472,7 @@ pub(crate) fn assemble_run(pinned: PinnedRun) -> CreateRunPersistenceInput {
         parent_id,
         provenance,
         web_url,
+        engine: fabro_types::RunEngine::Legacy,
     })
 }
 

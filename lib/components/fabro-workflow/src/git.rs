@@ -552,6 +552,7 @@ mod tests {
             retried_from:        None,
             parent_id:           None,
             web_url:             None,
+            engine:              fabro_types::RunEngine::Legacy,
         })
         .await
         .unwrap();

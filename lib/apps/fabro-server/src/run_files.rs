@@ -2298,6 +2298,7 @@ index 1111111..2222222 160000
                 spec_blob:           None,
                 git:                 None,
                 fork_source_ref:     None,
+                engine:              fabro_types::RunEngine::Legacy,
             },
             chrono::Utc::now(),
         );

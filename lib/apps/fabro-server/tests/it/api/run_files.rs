@@ -76,6 +76,7 @@ async fn append_completed_run_with_final_patch(
         retried_from:        None,
         parent_id:           None,
         web_url:             None,
+        engine:              fabro_types::RunEngine::Legacy,
     })
     .await
     .expect("append RunCreated");

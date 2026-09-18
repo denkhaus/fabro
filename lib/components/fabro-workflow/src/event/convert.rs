@@ -76,6 +76,7 @@ fn event_body_from_event(event: &Event) -> EventBody {
             retried_from,
             parent_id,
             web_url,
+            engine,
             ..
         } => EventBody::RunCreated(fabro_types::RunCreatedProps {
             title:            title.clone(),
@@ -96,6 +97,7 @@ fn event_body_from_event(event: &Event) -> EventBody {
             retried_from:     *retried_from,
             parent_id:        *parent_id,
             web_url:          web_url.clone(),
+            engine:           engine.clone(),
         }),
         Event::WorkflowRunStarted {
             name,
@@ -2090,6 +2092,7 @@ mod tests {
             retried_from: None,
             parent_id: None,
             web_url: None,
+            engine: ::fabro_types::RunEngine::Legacy,
         });
         let actor = stored.actor.as_ref().expect("actor set");
         assert_eq!(actor, &user_principal("alice"));

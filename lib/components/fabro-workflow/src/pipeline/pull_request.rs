@@ -831,6 +831,7 @@ capabilities = { text = true, tools = true, response_format = { json_object = tr
                 spec_blob:           None,
                 git:                 None,
                 fork_source_ref:     None,
+                engine:              fabro_types::RunEngine::Legacy,
             },
             Utc::now(),
         )
@@ -1122,6 +1123,7 @@ capabilities = { text = true, tools = true, response_format = { json_object = tr
             definition_blob:     None,
             spec_blob:           None,
             fork_source_ref:     None,
+            engine:              fabro_types::RunEngine::Legacy,
         };
         append_event(&run_store, &fixtures::RUN_1, &Event::RunCreated {
             run_id:              fixtures::RUN_1,
@@ -1142,6 +1144,7 @@ capabilities = { text = true, tools = true, response_format = { json_object = tr
             retried_from:        None,
             parent_id:           None,
             web_url:             None,
+            engine:              fabro_types::RunEngine::Legacy,
         })
         .await
         .unwrap();
@@ -1193,6 +1196,7 @@ capabilities = { text = true, tools = true, response_format = { json_object = tr
             definition_blob:     None,
             spec_blob:           None,
             fork_source_ref:     None,
+            engine:              fabro_types::RunEngine::Legacy,
         };
         append_event(&run_store, &fixtures::RUN_1, &Event::RunCreated {
             run_id:              fixtures::RUN_1,
@@ -1213,6 +1217,7 @@ capabilities = { text = true, tools = true, response_format = { json_object = tr
             retried_from:        None,
             parent_id:           None,
             web_url:             None,
+            engine:              fabro_types::RunEngine::Legacy,
         })
         .await
         .unwrap();
@@ -1615,6 +1620,7 @@ capabilities = { text = true, tools = true, response_format = { json_object = tr
             definition_blob:     None,
             spec_blob:           None,
             fork_source_ref:     None,
+            engine:              fabro_types::RunEngine::Legacy,
         };
         append_event(&run_store, &fixtures::RUN_1, &Event::RunCreated {
             run_id:              fixtures::RUN_1,
@@ -1635,6 +1641,7 @@ capabilities = { text = true, tools = true, response_format = { json_object = tr
             retried_from:        None,
             parent_id:           None,
             web_url:             None,
+            engine:              fabro_types::RunEngine::Legacy,
         })
         .await
         .unwrap();
@@ -1837,6 +1844,7 @@ capabilities = { text = true, tools = true, response_format = { json_object = tr
             definition_blob:     None,
             spec_blob:           None,
             fork_source_ref:     None,
+            engine:              fabro_types::RunEngine::Legacy,
         };
         append_event(&run_store, &fixtures::RUN_1, &Event::RunCreated {
             run_id:              fixtures::RUN_1,
@@ -1857,6 +1865,7 @@ capabilities = { text = true, tools = true, response_format = { json_object = tr
             retried_from:        None,
             parent_id:           None,
             web_url:             None,
+            engine:              fabro_types::RunEngine::Legacy,
         })
         .await
         .unwrap();

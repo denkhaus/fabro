@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::WorkflowSettings;
 use crate::blob_hash::BlobHash;
+use crate::engine::RunEngine;
 use crate::graph::Graph;
 use crate::principal::Principal;
 use crate::run_id::RunId;
@@ -89,6 +90,11 @@ pub struct RunSpec {
     pub git:                 Option<GitContext>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fork_source_ref:     Option<ForkSourceRef>,
+    /// The engine the run was created for, with what it admitted. Absent in
+    /// a spec written before the field existed, which means the legacy
+    /// executor.
+    #[serde(default, skip_serializing_if = "RunEngine::is_legacy")]
+    pub engine:              RunEngine,
 }
 
 impl RunSpec {

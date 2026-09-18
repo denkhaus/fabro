@@ -178,6 +178,7 @@ async fn persist_forked_run(
         retried_from:        None,
         parent_id:           None,
         web_url:             None,
+        engine:              spec.engine.clone(),
     };
     let run_store = event::create_run(store, &spec.run_id, &first_event, Utc::now())
         .await
@@ -413,6 +414,7 @@ mod tests {
             retried_from:        None,
             parent_id:           None,
             web_url:             None,
+            engine:              fabro_types::RunEngine::Legacy,
         })
         .await
         .unwrap();

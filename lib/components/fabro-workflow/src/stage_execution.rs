@@ -213,6 +213,7 @@ mod tests {
             spec_blob:           None,
             git:                 None,
             fork_source_ref:     None,
+            engine:              fabro_types::RunEngine::Legacy,
         };
         let mut projection = RunProjection::new(String::new(), spec, Utc::now());
         for (node_id, visit, seq) in stages {

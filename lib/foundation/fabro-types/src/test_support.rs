@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
 use crate::{
-    AuthMethod, BlobHash, Graph, IdpIdentity, Principal, RunProvenance, RunSpec, WorkflowSettings,
-    WorkflowVersionId, fixtures,
+    AuthMethod, BlobHash, Graph, IdpIdentity, Principal, RunEngine, RunProvenance, RunSpec,
+    WorkflowSettings, WorkflowVersionId, fixtures,
 };
 
 #[must_use]
@@ -54,6 +54,7 @@ pub fn test_run_spec() -> RunSpec {
         spec_blob:           None,
         git:                 None,
         fork_source_ref:     None,
+        engine:              RunEngine::Legacy,
     }
 }
 
