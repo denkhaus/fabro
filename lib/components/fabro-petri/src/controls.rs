@@ -21,9 +21,11 @@
 //! - steer delivers a text to a live agent stage as guidance for its session:
 //!   the stage's firing records `control.requested` with the `{"$steer": …}`
 //!   value, and the agent runs the text as a follow-up turn once its current
-//!   answer is reached. Fabro's steer names no stage, so the steer goes to the
-//!   one live agent stage; with none, or several, it is refused with the
-//!   reason, and nothing is recorded.
+//!   answer is reached. A steer names its stage by the label the projection
+//!   shows (`node@visit`, or `node/e<execution>@visit` when two executions
+//!   share one) or by the node's name; unnamed, it goes to the one live agent
+//!   stage. With no live agent, several unnamed, or a name that is not running,
+//!   it is refused with the reason, and nothing is recorded.
 //! - cancel is the caller's cancellation token ([`RunRequest::cancel`]); the
 //!   service's own cancel is here for a host that holds only this.
 //!
@@ -56,20 +58,70 @@ pub enum SteerError {
     /// control that needs a live agent session.
     #[error("Run has no active steerable agent session.")]
     NoLiveAgent,
-    /// More than one agent stage is running and the steer names none.
-    #[error("Run has several active agent stages ({}); the steer names none.", .0.join(", "))]
+    /// More than one agent stage is running and the steer names none, or
+    /// names a label several live firings answer to.
+    #[error("Run has several active agent stages ({}); the steer names none of them.", .0.join(", "))]
     SeveralLiveAgents(Vec<String>),
     /// The named stage is not running, or the run has ended.
     #[error(transparent)]
     Control(#[from] ControlError),
 }
 
-/// The live agent firings, by node name: what a steer that names no stage
-/// is routed by.
+/// One live agent firing: the node's name and which firing of the node it
+/// is within its execution, which is the visit its stage label carries.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct LiveAgent {
+    node:  String,
+    visit: u32,
+}
+
+/// The live agent firings: what a steer is routed by.
 #[derive(Default)]
 struct LiveAgents {
-    stages:  BTreeMap<String, (ExecutionId, FiringId)>,
-    firings: BTreeMap<(ExecutionId, FiringId), String>,
+    firings: BTreeMap<(ExecutionId, FiringId), LiveAgent>,
+}
+
+impl LiveAgents {
+    /// Every live agent firing with its label: `node@visit`, or
+    /// `node/e<execution>@visit` when another execution's firing has the
+    /// same node and visit, as the projection labels them.
+    fn labelled(&self) -> Vec<((ExecutionId, FiringId), String)> {
+        let mut counts: BTreeMap<(&str, u32), usize> = BTreeMap::new();
+        for agent in self.firings.values() {
+            *counts
+                .entry((agent.node.as_str(), agent.visit))
+                .or_default() += 1;
+        }
+        self.firings
+            .iter()
+            .map(|(key, agent)| {
+                let label = if counts[&(agent.node.as_str(), agent.visit)] > 1 {
+                    format!("{}/e{}@{}", agent.node, key.0.raw(), agent.visit)
+                } else {
+                    format!("{}@{}", agent.node, agent.visit)
+                };
+                (*key, label)
+            })
+            .collect()
+    }
+}
+
+/// A stage label taken apart: the node name, the execution when the label
+/// names one, and the visit. `None` when `stage` is not a label.
+fn parse_label(stage: &str) -> Option<(&str, Option<u64>, u32)> {
+    let (node, visit) = stage.rsplit_once('@')?;
+    let visit = visit.parse().ok()?;
+    let (node, execution) = match node.rsplit_once("/e") {
+        Some((name, execution)) => match execution.parse::<u64>() {
+            Ok(execution) => (name, Some(execution)),
+            Err(_) => (node, None),
+        },
+        None => (node, None),
+    };
+    if node.is_empty() {
+        return None;
+    }
+    Some((node, execution, visit))
 }
 
 /// One run's controls. Clone freely: every clone drives the same service.
@@ -115,27 +167,66 @@ impl RunControls {
         self.service.paused_changes()
     }
 
-    /// The names of the agent stages running now.
+    /// The labels of the agent stages running now.
     #[must_use]
     pub fn live_agents(&self) -> Vec<String> {
-        self.agents().stages.keys().cloned().collect()
+        self.agents()
+            .labelled()
+            .into_iter()
+            .map(|(_, label)| label)
+            .collect()
     }
 
-    /// Deliver `text` to the named agent stage, or to the one live agent
-    /// stage when `node` is `None`. The name of the stage steered.
-    pub async fn steer(&self, node: Option<&str>, text: &str) -> Result<String, SteerError> {
-        let node = if let Some(node) = node {
-            node.to_owned()
-        } else {
-            let mut live = self.live_agents();
-            match live.len() {
+    /// Deliver `text` to the stage `stage` names (a label, `node@visit`, or
+    /// a node name), or to the one live agent stage when `stage` is `None`.
+    /// The label of the stage steered.
+    pub async fn steer(&self, stage: Option<&str>, text: &str) -> Result<String, SteerError> {
+        let live = self.agents().labelled();
+        let ((execution, firing), label) = match stage {
+            None => match live.len() {
                 0 => return Err(SteerError::NoLiveAgent),
-                1 => live.remove(0),
-                _ => return Err(SteerError::SeveralLiveAgents(live)),
-            }
+                1 => live.into_iter().next().expect("one live agent"),
+                _ => {
+                    return Err(SteerError::SeveralLiveAgents(
+                        live.into_iter().map(|(_, label)| label).collect(),
+                    ));
+                }
+            },
+            Some(stage) => match parse_label(stage) {
+                Some((node, execution, visit)) => {
+                    let agents = self.agents();
+                    let mut matches: Vec<_> = live
+                        .into_iter()
+                        .filter(|(key, _)| {
+                            let agent = &agents.firings[key];
+                            agent.node == node
+                                && agent.visit == visit
+                                && execution.is_none_or(|execution| key.0.raw() == execution)
+                        })
+                        .collect();
+                    match matches.len() {
+                        0 => {
+                            return Err(SteerError::Control(ControlError::NoSuchStage(
+                                stage.to_owned(),
+                            )));
+                        }
+                        1 => matches.remove(0),
+                        _ => {
+                            return Err(SteerError::SeveralLiveAgents(
+                                matches.into_iter().map(|(_, label)| label).collect(),
+                            ));
+                        }
+                    }
+                }
+                None => {
+                    // A node name: the service's own live-stage index.
+                    self.service.steer(stage, text).await?;
+                    return Ok(stage.to_owned());
+                }
+            },
         };
-        self.service.steer(&node, text).await?;
-        Ok(node)
+        self.service.steer_firing(execution, firing, text).await?;
+        Ok(label)
     }
 
     /// Cancel the whole run politely; a second call reaches the kill tier.
@@ -186,18 +277,18 @@ impl ExecutionObserver for RunControls {
                 if node.step.kind != AGENT_KIND {
                     return;
                 }
-                let name = node.name.to_string();
-                let mut agents = self.agents();
-                agents.stages.insert(name.clone(), (execution, *firing));
-                agents.firings.insert((execution, *firing), name);
+                // The visit is the firing's ordinal among the node's firings
+                // in this execution: what the projection labels the stage by.
+                let visit = state.firing_count(node.id).max(1);
+                self.agents()
+                    .firings
+                    .insert((execution, *firing), LiveAgent {
+                        node: node.name.to_string(),
+                        visit,
+                    });
             }
             Event::StepFinished { firing, .. } => {
-                let mut agents = self.agents();
-                if let Some(name) = agents.firings.remove(&(execution, *firing)) {
-                    if agents.stages.get(&name) == Some(&(execution, *firing)) {
-                        agents.stages.remove(&name);
-                    }
-                }
+                self.agents().firings.remove(&(execution, *firing));
             }
             _ => {}
         }
@@ -238,6 +329,23 @@ mod tests {
                 "work".to_string()
             )))
         );
+        assert_eq!(
+            controls.steer(Some("work@1"), "hurry up").await,
+            Err(SteerError::Control(ControlError::NoSuchStage(
+                "work@1".to_string()
+            )))
+        );
+    }
+
+    #[test]
+    fn a_stage_label_names_its_node_visit_and_execution() {
+        assert_eq!(parse_label("work@1"), Some(("work", None, 1)));
+        assert_eq!(parse_label("work/e2@3"), Some(("work", Some(2), 3)));
+        assert_eq!(parse_label("a/b@1"), Some(("a/b", None, 1)));
+        assert_eq!(parse_label("a/ex@1"), Some(("a/ex", None, 1)));
+        assert_eq!(parse_label("work"), None);
+        assert_eq!(parse_label("work@one"), None);
+        assert_eq!(parse_label("@1"), None);
     }
 
     #[test]

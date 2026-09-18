@@ -1360,6 +1360,7 @@ fabro steer [OPTIONS] <RUN> [TEXT]
 | --- | --- |
 | `--interrupt` | Cancel the in-flight LLM stream / tool calls and deliver the message as the next user turn (default: append to the steering queue) |
 | `--server <server>` | Fabro server target: http(s) URL or absolute Unix socket path |
+| `--stage <stage>` | Agent stage to steer, as its stage id (node@visit) or node name (default: the run's one live agent stage) |
 | `--text-stdin` | Read steer text from stdin instead of a positional arg |
 
 ### `fabro system`

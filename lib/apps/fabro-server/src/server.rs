@@ -393,12 +393,18 @@ impl RunAnswerTransport {
         }
     }
 
-    /// Forward a steer to the worker. The in-process test path drives no
-    /// steer: its run has no live agent session to steer.
-    async fn steer(&self, text: String, actor: Principal) -> Result<(), AnswerTransportError> {
+    /// Forward a steer to the worker, for the stage it names or the run's
+    /// one live agent stage. The in-process test path drives no steer: its
+    /// run has no live agent session to steer.
+    async fn steer(
+        &self,
+        text: String,
+        stage: Option<String>,
+        actor: Principal,
+    ) -> Result<(), AnswerTransportError> {
         match self {
             Self::Worker { run_id, bus } => {
-                let message = WorkerControlEnvelope::steer(text, actor);
+                let message = WorkerControlEnvelope::steer(text, stage, actor);
                 Self::publish_worker_control(*run_id, bus, message)
                     .await
                     .map_err(|err| Self::answer_error_from_bus(&err))

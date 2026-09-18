@@ -20,7 +20,10 @@ pub(super) fn routes() -> axum::Router<Arc<AppState>> {
 }
 
 enum RunControlRequest {
-    Steer { text: String },
+    Steer {
+        text:  String,
+        stage: Option<String>,
+    },
 }
 
 async fn steer_run(
@@ -30,15 +33,26 @@ async fn steer_run(
 ) -> Response {
     // OpenAPI enforces minLength=1/maxLength=8192 already; only whitespace-only
     // payloads can slip through.
-    let SteerRunRequest { text, interrupt } = req;
+    let SteerRunRequest {
+        text,
+        interrupt,
+        stage,
+    } = req;
     let text: String = text.into();
     if text.trim().is_empty() {
         return ApiError::bad_request("Steer text must not be empty.").into_response();
     }
+    let stage = stage.map(String::from);
+    if stage
+        .as_deref()
+        .is_some_and(|stage| stage.trim().is_empty())
+    {
+        return ApiError::bad_request("Steer stage must not be empty.").into_response();
+    }
     if interrupt {
         return interrupt_unsupported();
     }
-    control_run(actor, state, id, RunControlRequest::Steer { text }).await
+    control_run(actor, state, id, RunControlRequest::Steer { text, stage }).await
 }
 
 /// Interrupting a live agent turn has no adapter over Petri's control
@@ -139,8 +153,8 @@ async fn control_run(
         .into_response();
     };
 
-    let RunControlRequest::Steer { text } = control;
-    let result = answer_transport.steer(text, actor).await;
+    let RunControlRequest::Steer { text, stage } = control;
+    let result = answer_transport.steer(text, stage, actor).await;
 
     match result {
         Ok(()) => StatusCode::ACCEPTED.into_response(),

@@ -26,7 +26,15 @@ pub(crate) async fn run(args: SteerArgs, base_ctx: &CommandContext) -> Result<()
         bail!("steer text must not be empty");
     }
 
-    info!(run_id = %run_id, interrupt = args.interrupt, "Sending steer");
-    client.steer_run(&run_id, text, args.interrupt).await?;
+    let stage = args
+        .stage
+        .as_deref()
+        .map(str::trim)
+        .filter(|stage| !stage.is_empty())
+        .map(str::to_owned);
+    info!(run_id = %run_id, interrupt = args.interrupt, stage = ?stage, "Sending steer");
+    client
+        .steer_run(&run_id, text, args.interrupt, stage)
+        .await?;
     Ok(())
 }

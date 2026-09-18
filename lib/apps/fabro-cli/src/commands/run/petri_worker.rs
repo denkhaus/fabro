@@ -23,8 +23,9 @@
 //! questions wait on (`fabro_petri::interview`), so a human gate answered
 //! through the API continues; pause and unpause (and `SIGUSR1`/`SIGUSR2`)
 //! hold and release admission through the run's [`RunControls`]; a steer
-//! goes to the run's one live
-//! agent stage, or is refused with a `run.notice` record saying why. The
+//! goes to the agent stage it names (`node@visit`, or the node name) or,
+//! unnamed, to the run's one live agent stage, and is refused with a
+//! `run.notice` record saying why when neither resolves. The
 //! paused state is mirrored to Fabro's lifecycle: a `paused` lifecycle
 //! record when admission is held and `unpaused` when it is released, so
 //! the server's live status and the projection agree with Petri's own
@@ -331,10 +332,10 @@ impl PetriControls {
                 self.controls.unpause().await;
                 info!(run_id = %self.run_id, "unpause recorded: admission is released");
             }
-            WorkerControlMessage::Steer { text, actor } => {
-                match self.controls.steer(None, &text).await {
-                    Ok(node) => {
-                        info!(run_id = %self.run_id, node, actor = ?actor, "steer delivered");
+            WorkerControlMessage::Steer { text, stage, actor } => {
+                match self.controls.steer(stage.as_deref(), &text).await {
+                    Ok(stage) => {
+                        info!(run_id = %self.run_id, stage, actor = ?actor, "steer delivered");
                     }
                     Err(error) => {
                         warn!(run_id = %self.run_id, error = %error, "steer refused");

@@ -1136,10 +1136,25 @@ impl Client {
         Ok(())
     }
 
-    pub async fn steer_run(&self, run_id: &RunId, text: String, interrupt: bool) -> Result<()> {
+    /// Steer a run: the named stage (`node@visit`, or the node name), or
+    /// the run's one live agent stage when `stage` is `None`.
+    pub async fn steer_run(
+        &self,
+        run_id: &RunId,
+        text: String,
+        interrupt: bool,
+        stage: Option<String>,
+    ) -> Result<()> {
+        let stage = stage
+            .map(|stage| {
+                types::SteerRunRequestStage::try_from(stage)
+                    .map_err(|e| anyhow!("invalid steer stage: {e}"))
+            })
+            .transpose()?;
         let body: types::SteerRunRequest = types::SteerRunRequest::builder()
             .text(text)
             .interrupt(interrupt)
+            .stage(stage)
             .try_into()
             .map_err(|e| anyhow!("failed to build SteerRunRequest: {e}"))?;
         self.send_api(|client| {

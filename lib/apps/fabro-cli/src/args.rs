@@ -798,6 +798,11 @@ pub(crate) struct SteerArgs {
     /// as the next user turn (default: append to the steering queue).
     #[arg(long)]
     pub(crate) interrupt: bool,
+
+    /// Agent stage to steer, as its stage id (node@visit) or node name
+    /// (default: the run's one live agent stage)
+    #[arg(long, value_name = "STAGE")]
+    pub(crate) stage: Option<String>,
 }
 
 #[derive(Args)]

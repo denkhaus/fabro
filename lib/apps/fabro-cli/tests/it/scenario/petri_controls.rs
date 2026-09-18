@@ -3,8 +3,9 @@
 //! `paused` in between; `SIGUSR1` and `SIGUSR2` on the worker do the same
 //! without the API; a steer reaches the agent stage on the twin, which
 //! sees it in its next request, and the stream carries the control record;
-//! a run paused when its server and worker die resumes paused and goes on
-//! once unpaused.
+//! two live agent stages are steered apart by their stage labels, and an
+//! unnamed steer between them is refused; a run paused when its server and
+//! worker die resumes paused and goes on once unpaused.
 //!
 //! The harness is `petri.rs`'s: a foreground server on disk storage, the
 //! run started with `fabro run --detach`, and the host scope through the
@@ -43,6 +44,12 @@ const HOLD: Duration = Duration::from_secs(1);
 const MODEL: &str = "gpt-5.4";
 const PROMPT: &str = "Wait for the gate, then report.";
 const STEER: &str = "Steer: mention the word lighthouse in your report.";
+/// Two agent stages side by side: each waits on its own gate, each is
+/// steered apart.
+const PROMPT_A: &str = "Alpha: wait for the gate, then report.";
+const PROMPT_B: &str = "Bravo: wait for the gate, then report.";
+const STEER_A: &str = "Steer alpha: mention the word lighthouse.";
+const STEER_B: &str = "Steer bravo: mention the word windmill.";
 
 /// Two command stages: `a` waits on `gate`, `b` leaves `marker`.
 fn two_stage_workspace(context: &fabro_test::TestContext, gate: &Path, marker: &Path) -> PathBuf {
@@ -93,14 +100,55 @@ async fn unpause(server: &RunningServer, run_id: &str) {
 }
 
 async fn steer(server: &RunningServer, run_id: &str, text: &str) {
-    let (status, body) = control(
-        server,
-        run_id,
-        "steer",
-        Some(json!({ "text": text, "interrupt": false })),
-    )
-    .await;
+    steer_stage(server, run_id, text, None).await;
+}
+
+/// `POST /runs/{id}/steer` naming `stage`, or no stage.
+async fn steer_stage(server: &RunningServer, run_id: &str, text: &str, stage: Option<&str>) {
+    let mut body = json!({ "text": text, "interrupt": false });
+    if let Some(stage) = stage {
+        body["stage"] = json!(stage);
+    }
+    let (status, body) = control(server, run_id, "steer", Some(body)).await;
     assert_eq!(status, 202, "steer: {body}");
+}
+
+/// `fabro steer <run> --stage <stage> <text>` against the server.
+fn steer_by_cli(
+    context: &fabro_test::TestContext,
+    server: &RunningServer,
+    run_id: &str,
+    stage: &str,
+    text: &str,
+) {
+    let output = context
+        .command()
+        .args(["steer", "--server", &server.target(), run_id])
+        .args(["--stage", stage, text])
+        .output()
+        .expect("the steer command executes");
+    assert!(
+        output.status.success(),
+        "fabro steer failed\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+/// The twin's request inputs that carry `prompt`, in order.
+fn inputs_with(logs: &Value, prompt: &str) -> Vec<String> {
+    logs["requests"]
+        .as_array()
+        .expect("the twin request log is an array")
+        .iter()
+        .map(|request| {
+            request["input_text"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string()
+        })
+        .filter(|input| input.contains(prompt))
+        .collect()
 }
 
 /// The run's pending control, as the API shows it.
@@ -419,6 +467,158 @@ async fn a_steer_reaches_the_agent_stage_on_the_twin() {
         "the follow-up request carries the steer: {}",
         inputs[2]
     );
+    server.shutdown();
+}
+
+/// Two agent stages live at once, as the branches of a parallel node: a
+/// steer that names no stage is refused with a notice naming both, and a
+/// steer to each label (`a@1` over the API, `b@1` through the CLI flag)
+/// reaches that stage's session and no other.
+#[tokio::test(flavor = "multi_thread")]
+async fn two_live_agent_stages_are_steered_apart_by_their_labels() {
+    if host_plugin().is_none() {
+        return;
+    }
+    let context = test_context!();
+    let twin = twin_openai().await;
+    let namespace = format!("{}::{}", module_path!(), line!());
+    let server = RunningServer::start_with(
+        &format!(
+            "\n[llm.providers.openai]\nbase_url = \"{}\"\n",
+            twin.base_url
+        ),
+        &[(EnvVars::OPENAI_API_KEY, &namespace)],
+    )
+    .await;
+    let gate_a = context.temp_dir.join("a.gate");
+    let gate_b = context.temp_dir.join("b.gate");
+    let wait_on = |gate: &Path| {
+        TwinToolCall::new(
+            "shell",
+            json!({ "command": format!("while [ ! -f {} ]; do sleep 0.05; done", gate.display()) }),
+        )
+    };
+    TwinScenarios::new(namespace.clone())
+        .scenario(
+            TwinScenario::responses(MODEL)
+                .input_contains(PROMPT_A)
+                .tool_call(wait_on(&gate_a)),
+        )
+        .scenario(
+            TwinScenario::responses(MODEL)
+                .input_contains(PROMPT_A)
+                .text("Alpha's gate opened."),
+        )
+        .scenario(
+            TwinScenario::responses(MODEL)
+                .input_contains(STEER_A)
+                .text("Lighthouse noted."),
+        )
+        .scenario(
+            TwinScenario::responses(MODEL)
+                .input_contains(PROMPT_B)
+                .tool_call(wait_on(&gate_b)),
+        )
+        .scenario(
+            TwinScenario::responses(MODEL)
+                .input_contains(PROMPT_B)
+                .text("Bravo's gate opened."),
+        )
+        .scenario(
+            TwinScenario::responses(MODEL)
+                .input_contains(STEER_B)
+                .text("Windmill noted."),
+        )
+        .load(twin)
+        .await;
+    let workspace = write_petri_workflow(
+        &context,
+        &format!(
+            "digraph Pair {{\n  graph [goal=\"Two agents wait then report\", \
+             default_max_retries=0]\n  start [shape=Mdiamond]\n  exit [shape=Msquare]\n  fan \
+             [shape=component]\n  a [shape=box, prompt=\"{PROMPT_A}\", max_retries=0]\n  b \
+             [shape=box, prompt=\"{PROMPT_B}\", max_retries=0]\n  join \
+             [shape=tripleoctagon]\n  start -> fan\n  fan -> a\n  fan -> b\n  a -> join\n  b -> \
+             join\n  join -> exit\n}}\n"
+        ),
+    );
+    let run_id = run_detached_with(&context, &server, &workspace, &[
+        "--auto-approve",
+        "--provider",
+        "openai",
+        "--model",
+        MODEL,
+    ]);
+
+    wait_for_status(&server, &run_id, &["running"]).await;
+    wait_until_gate_is_polled(&gate_a);
+    wait_until_gate_is_polled(&gate_b);
+    eprintln!("run {run_id}: both agents' tools are waiting on their gates");
+
+    // Unnamed, the steer has two candidates and is refused with both named.
+    steer(&server, &run_id, "Steer nobody.").await;
+    let names = wait_for_stream_count(&server, &run_id, "run.notice", 1).await;
+    assert_eq!(count_of(&names, "control.requested"), 0, "{names:?}");
+    let notice = run_stream(&server, &run_id)
+        .await
+        .into_iter()
+        .find(|item| item["item"]["record"]["kind"] == "run.notice")
+        .expect("the refusal is recorded");
+    let message = notice["item"]["record"]["message"]
+        .as_str()
+        .unwrap_or_default()
+        .to_string();
+    assert_eq!(
+        notice["item"]["record"]["code"], "steer_refused",
+        "{notice}"
+    );
+    assert!(
+        message.contains("a@1") && message.contains("b@1"),
+        "the notice names both live stages: {message}"
+    );
+
+    steer_stage(&server, &run_id, STEER_A, Some("a@1")).await;
+    steer_by_cli(&context, &server, &run_id, "b@1", STEER_B);
+    wait_for_stream_count(&server, &run_id, "control.requested", 2).await;
+    eprintln!("run {run_id}: both steers are recorded");
+    std::fs::write(&gate_a, "go").expect("gate a opens");
+    std::fs::write(&gate_b, "go").expect("gate b opens");
+
+    let status = wait_for_status(&server, &run_id, &["succeeded", "failed"]).await;
+    let items = settled_stream(&server, &run_id).await;
+    let names = stream_names(&items);
+    assert_eq!(
+        status,
+        "succeeded",
+        "stream: {names:?}\nserver stderr:\n{}",
+        server.stderr_text()
+    );
+    assert_petri_succeeded(&server, &run_id).await;
+
+    let logs = twin.request_logs(&namespace).await;
+    for (prompt, steer, other) in [(PROMPT_A, STEER_A, STEER_B), (PROMPT_B, STEER_B, STEER_A)] {
+        let inputs = inputs_with(&logs, prompt);
+        assert_eq!(
+            inputs.len(),
+            3,
+            "{prompt}: the tool call, its answer, the steer: {inputs:?}"
+        );
+        assert!(
+            !inputs[1].contains(steer),
+            "{prompt}: the answer's request came before the steer's turn: {}",
+            inputs[1]
+        );
+        assert!(
+            inputs[2].contains(steer),
+            "{prompt}: the follow-up request carries its own steer: {}",
+            inputs[2]
+        );
+        assert!(
+            !inputs[2].contains(other),
+            "{prompt}: the other stage's steer stayed away: {}",
+            inputs[2]
+        );
+    }
     server.shutdown();
 }
 

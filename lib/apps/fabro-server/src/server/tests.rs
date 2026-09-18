@@ -2788,13 +2788,13 @@ async fn worker_answer_transport_steer_publishes_plain_steer_message() {
     };
 
     transport
-        .steer("try again".to_string(), actor.clone())
+        .steer("try again".to_string(), None, actor.clone())
         .await
         .unwrap();
 
     assert_eq!(
         recv_worker_control_envelope(&mut control_rx).await,
-        WorkerControlEnvelope::steer("try again", actor)
+        WorkerControlEnvelope::steer("try again", None, actor)
     );
 }
 
@@ -8316,6 +8316,50 @@ async fn steer_without_active_steerable_session_forwards_plain_steer_for_bufferi
         envelope.message,
         WorkerControlMessage::Steer { ref text, .. } if text == "try again"
     ));
+}
+
+#[tokio::test]
+async fn steer_with_a_stage_forwards_the_stage_to_the_worker() {
+    let state = test_app_state();
+    let app = crate::test_support::build_test_router(Arc::clone(&state));
+    let run_id = fixtures::RUN_1;
+    let (transport, mut control_rx) = worker_transport_with_receiver(run_id).await;
+    let _temp_dir = insert_running_control_run(&state, run_id, Some(transport));
+
+    let req = Request::builder()
+        .method("POST")
+        .uri(api(&format!("/runs/{run_id}/steer")))
+        .header("content-type", "application/json")
+        .body(Body::from(r#"{"text":"try again","stage":"code@2"}"#))
+        .unwrap();
+
+    let response = app.oneshot(req).await.unwrap();
+    assert_status!(response, StatusCode::ACCEPTED).await;
+    let envelope = recv_worker_control_envelope(&mut control_rx).await;
+    assert!(matches!(
+        envelope.message,
+        WorkerControlMessage::Steer { ref text, ref stage, .. }
+            if text == "try again" && stage.as_deref() == Some("code@2")
+    ));
+}
+
+#[tokio::test]
+async fn steer_with_a_blank_stage_returns_bad_request() {
+    let state = test_app_state();
+    let app = crate::test_support::build_test_router(Arc::clone(&state));
+    let run_id = fixtures::RUN_1;
+    let (transport, _control_rx) = worker_transport_with_receiver(run_id).await;
+    let _temp_dir = insert_running_control_run(&state, run_id, Some(transport));
+
+    let req = Request::builder()
+        .method("POST")
+        .uri(api(&format!("/runs/{run_id}/steer")))
+        .header("content-type", "application/json")
+        .body(Body::from(r#"{"text":"try again","stage":"  "}"#))
+        .unwrap();
+
+    let response = app.oneshot(req).await.unwrap();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 }
 
 #[tokio::test]

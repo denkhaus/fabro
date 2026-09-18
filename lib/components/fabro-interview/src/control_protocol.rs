@@ -71,11 +71,12 @@ impl WorkerControlEnvelope {
     }
 
     #[must_use]
-    pub fn steer(text: impl Into<String>, actor: Principal) -> Self {
+    pub fn steer(text: impl Into<String>, stage: Option<String>, actor: Principal) -> Self {
         Self {
             v:       WORKER_CONTROL_PROTOCOL_VERSION,
             message: WorkerControlMessage::Steer {
                 text: text.into(),
+                stage,
                 actor,
             },
         }
@@ -163,7 +164,14 @@ pub enum WorkerControlMessage {
     #[serde(rename = "run.unpause")]
     RunUnpause,
     #[serde(rename = "run.steer")]
-    Steer { text: String, actor: Principal },
+    Steer {
+        text:  String,
+        /// The stage to steer (`node@visit`, or the node name); `None`
+        /// steers the run's one live agent stage.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        stage: Option<String>,
+        actor: Principal,
+    },
     #[serde(rename = "run.interrupt")]
     Interrupt { actor: Principal },
     #[serde(rename = "run.interrupt_then_steer")]
@@ -298,7 +306,7 @@ mod tests {
 
     #[test]
     fn steer_append_round_trips_through_json() {
-        let envelope = WorkerControlEnvelope::steer("try again", Principal::System {
+        let envelope = WorkerControlEnvelope::steer("try again", None, Principal::System {
             system_kind: SystemActorKind::Engine,
         });
         let json = serde_json::to_string(&envelope).unwrap();
