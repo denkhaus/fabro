@@ -1,0 +1,1375 @@
+//! The projection of a Petri run: Petri's public events and Fabro's platform
+//! records folded into the view Fabro's read side serves.
+//!
+//! The fold is pure. [`RunView`] holds the [`RunProjection`] the API serves
+//! (`GET /runs/{id}/state`, the run list through its summary) and the
+//! bookkeeping the fold needs between items ([`FoldState`]): which Petri
+//! firing each stage is, which invocation each execution belongs to and
+//! whether it is a parallel branch, which stage asked each open question.
+//! Both halves are stored by the projector and reloaded for the next pass,
+//! so a pass folds only the items past the committed positions.
+//!
+//! The mapping follows `VIEWS.md`, row by row. The stage key is `(execution,
+//! firing)`; Fabro's `StageId` (`node@visit`) is the display label the
+//! `RunProjection` keys stages by, and a label two firings would share (two
+//! child invocations with the same node name and visit) is made unique by
+//! naming the execution. What the matrix leaves default is left default
+//! here and named in the crate's README.
+//!
+//! Every item the fold sees carries the delivery sequence the projector
+//! assigned it (`stream_seq`), which a checkpoint keeps as its `seq`. A
+//! stage's `first_event_seq`, the key the stage list sorts by, is not the
+//! delivery sequence: two logs' records can be committed in an order that
+//! differs from their recording times by a few positions, and the view
+//! built live must equal the view rebuilt from the records alone. It is the
+//! milliseconds from the run's creation to the stage's `visit.started`,
+//! plus one, which is the same however the records were delivered.
+
+use std::collections::{BTreeMap, BTreeSet, HashMap};
+
+use chrono::{DateTime, TimeZone as _, Utc};
+use fabro_store::platform_records::{
+    PlatformRecord, RunLifecycleKind, RunLifecycleRecord, StoredPlatformRecord,
+};
+use fabro_types::settings::run::RunEnvironmentSettings;
+use fabro_types::{
+    BlockedReason, CheckpointRecord as ViewCheckpoint, CodingAgentEvent, CodingEvent, Conclusion,
+    FailureCategory, FailureDetail, FailureReason, InterviewOption, InterviewQuestionRecord,
+    ModelRef, ModelUsage, ParallelBranchId, ParallelBranchResult, PendingInterviewRecord,
+    PullRequestLink, QuestionType, RunApproval, RunApprovalState, RunControlAction, RunDiff,
+    RunFailure, RunId, RunProjection, RunSandbox, RunSandboxPlan, RunStatus, RunTiming,
+    SandboxProviderKind, StageCompletion, StageHandler, StageId, StageInferenceProjection,
+    StageModelUsage, StageOutcome, StageProjection, StageState, StageTiming, StartRecord,
+    SuccessReason, first_event_seq, timing, usage_rollup,
+};
+use lithos_llm::catalog::{ModelId, ProviderId};
+use lithos_llm::types::Usage;
+use petri_execution::events::{Derived, Parsed, RunEvent, Subject, ViewEvent, WaitState};
+use petri_execution::{CoordinatorEvent, ExecutionId};
+use petri_runtime::engine::{Admission, Event};
+use petri_runtime::ir::{Metrics, Status, StepEvent};
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use tracing::debug;
+
+/// One item the projector hands the fold, with its delivery sequence.
+pub enum Item<'a> {
+    Petri(&'a RunEvent),
+    Platform(&'a StoredPlatformRecord),
+}
+
+/// A stage as the fold knows it: its label in the projection, and what it
+/// learned about it.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct StageRef {
+    pub stage_id:  StageId,
+    /// Whether the stage is a logical one the projection shows, or a
+    /// lowering node it keeps off the list.
+    pub shown:     bool,
+    /// The node's instance name and visit, for the collision rule.
+    pub node_name: String,
+    pub visit:     u32,
+}
+
+/// What the fold knows about one invocation.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct InvocationRef {
+    /// The calling execution and firing, for a nested invocation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent:  Option<(u64, u64)>,
+    /// The parallel group and branch index, for a branch child.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub branch:  Option<(StageId, u32)>,
+    /// The result the invocation recorded, for the root.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub failure: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output:  Option<Value>,
+}
+
+/// Whether the run's durable record is whole, as the projector last read it.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RecordHealth {
+    pub complete:   bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub incomplete: Vec<String>,
+}
+
+/// The fold's bookkeeping between items.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct FoldState {
+    /// Stages by `"<execution>:<firing>"`.
+    #[serde(default)]
+    pub stages:      BTreeMap<String, StageRef>,
+    /// Labels taken, so a second firing with the same name and visit gets
+    /// its own.
+    #[serde(default)]
+    pub labels:      BTreeSet<String>,
+    #[serde(default)]
+    pub invocations: BTreeMap<u64, InvocationRef>,
+    /// Which invocation each execution belongs to.
+    #[serde(default)]
+    pub executions:  BTreeMap<u64, u64>,
+    /// Open questions by id: the stage that asked.
+    #[serde(default)]
+    pub questions:   BTreeMap<String, String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub root:        Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub started_at:  Option<u64>,
+    /// The run's recorded finish, when Petri recorded one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub finished:    Option<String>,
+    /// The run branch and base sha, when they arrive before `run.started`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_branch:  Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base_sha:    Option<String>,
+    #[serde(default)]
+    pub checkpoints: u32,
+    #[serde(default)]
+    pub health:      RecordHealth,
+}
+
+/// The view of one run: what the API serves and what the fold keeps.
+#[derive(Clone, Debug)]
+pub struct RunView {
+    pub projection: Option<RunProjection>,
+    pub state:      FoldState,
+}
+
+impl RunView {
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            projection: None,
+            state:      FoldState::default(),
+        }
+    }
+
+    /// Fold one item at its delivery sequence.
+    pub fn fold(&mut self, item: &Item<'_>, stream_seq: u64) {
+        match item {
+            Item::Platform(record) => self.fold_platform(record, stream_seq),
+            Item::Petri(event) => self.fold_petri(event),
+        }
+    }
+
+    /// The run's projection, once its `run.created` record was folded.
+    #[must_use]
+    pub fn projection(&self) -> Option<&RunProjection> {
+        self.projection.as_ref()
+    }
+
+    // ── Platform records ────────────────────────────────────────────────
+
+    fn fold_platform(&mut self, stored: &StoredPlatformRecord, stream_seq: u64) {
+        let at = millis(stored.recorded_at);
+        if let PlatformRecord::RunCreated(created) = &stored.record {
+            let title = created
+                .title
+                .clone()
+                .unwrap_or_else(|| fabro_types::infer_run_title(created.spec.graph.goal()));
+            let mut projection = RunProjection::new(title, created.spec.clone(), at);
+            projection.parent_id = created.parent_id;
+            projection.retried_from = created.retried_from;
+            projection.web_url.clone_from(&created.web_url);
+            projection.sandbox = Some(RunSandbox::planned(sandbox_plan(
+                &projection.spec.settings.run.environment,
+            )));
+            self.projection = Some(projection);
+            return;
+        }
+        let Some(projection) = self.projection.as_mut() else {
+            debug!(
+                seq = stored.seq,
+                kind = %stored.record.kind(),
+                "platform record before run.created; not folded"
+            );
+            return;
+        };
+        touch(projection, at);
+        match &stored.record {
+            PlatformRecord::RunLifecycle(record) => fold_lifecycle(projection, record, at),
+            PlatformRecord::RunTitle(record) => projection.title.clone_from(&record.title),
+            PlatformRecord::RunParent(record) => projection.parent_id = record.parent_id,
+            PlatformRecord::RunArchived => projection.archived_at = Some(at),
+            PlatformRecord::RunUnarchived => projection.archived_at = None,
+            PlatformRecord::RunSuperseded(record) => {
+                projection.superseded_by = Some(record.new_run_id);
+            }
+            PlatformRecord::RunCreated(_)
+            | PlatformRecord::RunNotice(_)
+            | PlatformRecord::InterviewAnswered(_)
+            | PlatformRecord::NotificationSent(_)
+            | PlatformRecord::RunPaired(_) => {}
+            PlatformRecord::RunBranch(record) => {
+                self.state.run_branch.clone_from(&record.run_branch);
+                self.state.base_sha.clone_from(&record.base_sha);
+                if let Some(start) = projection.start.as_mut() {
+                    start.run_branch.clone_from(&record.run_branch);
+                    start.base_sha.clone_from(&record.base_sha);
+                }
+            }
+            PlatformRecord::GitIdentity(record) => {
+                projection.git_identity = Some(record.identity.clone());
+            }
+            PlatformRecord::Checkpoint(record) => {
+                self.state.checkpoints = self.state.checkpoints.saturating_add(1);
+                let stage = self
+                    .state
+                    .stages
+                    .get(&stage_key(record.execution, record.firing));
+                let current_node = stage.map_or_else(String::new, |stage| stage.node_name.clone());
+                let checkpoint = fabro_types::Checkpoint {
+                    timestamp:                  at,
+                    current_node:               current_node.clone(),
+                    completed_nodes:            Vec::new(),
+                    node_retries:               HashMap::default(),
+                    context_values:             HashMap::default(),
+                    node_outcomes:              HashMap::default(),
+                    next_node_id:               None,
+                    git_commit_sha:             record.git_commit_sha.clone(),
+                    loop_failure_signatures:    HashMap::default(),
+                    restart_failure_signatures: HashMap::default(),
+                    node_visits:                HashMap::default(),
+                };
+                projection.checkpoints.push(ViewCheckpoint {
+                    seq: u32::try_from(stream_seq).unwrap_or(u32::MAX),
+                    checkpoint,
+                    diff: RunDiff {
+                        patch:   None,
+                        summary: record.diff_summary,
+                    },
+                });
+            }
+            PlatformRecord::PullRequestCreated(record) => {
+                projection.pull_request = Some(PullRequestLink {
+                    owner:  record.owner.clone(),
+                    repo:   record.repo.clone(),
+                    number: record.number,
+                });
+            }
+        }
+    }
+
+    // ── Petri events ────────────────────────────────────────────────────
+
+    fn fold_petri(&mut self, event: &RunEvent) {
+        let at = millis(event.recorded_at);
+        if let Some(record) = event.coordinator() {
+            self.fold_coordinator(record, event, at);
+        } else if let Some(engine) = event.engine() {
+            self.fold_engine(engine, event, at);
+        } else if let Some(view) = event.view() {
+            self.fold_view(view, event, at);
+        }
+        if let Some(projection) = self.projection.as_mut() {
+            touch(projection, at);
+        }
+    }
+
+    fn fold_coordinator(&mut self, record: &CoordinatorEvent, event: &RunEvent, at: DateTime<Utc>) {
+        match record {
+            CoordinatorEvent::RunStarted { root, .. } => {
+                self.state.root = Some(root.raw());
+                self.state.started_at = Some(event.recorded_at);
+                if let Some(projection) = self.projection.as_mut() {
+                    apply_status(projection, RunStatus::Running, at);
+                    projection.start = Some(StartRecord {
+                        start_time: at,
+                        run_branch: self.state.run_branch.clone(),
+                        base_sha:   self.state.base_sha.clone(),
+                    });
+                }
+            }
+            CoordinatorEvent::InvocationDeclared { invocation, .. } => {
+                let mut info = InvocationRef::default();
+                if let Some(parent) = &event.context.parent {
+                    info.parent = Some((parent.execution.raw(), parent.firing.raw()));
+                    if let Some((fork_firing, index)) = branch_slot(&parent.slot) {
+                        let group = self
+                            .state
+                            .stages
+                            .get(&stage_key(parent.execution.raw(), fork_firing))
+                            .map(|stage| stage.stage_id.clone());
+                        if let Some(group) = group {
+                            info.branch = Some((group, index));
+                        }
+                    }
+                }
+                self.state.invocations.insert(invocation.raw(), info);
+            }
+            CoordinatorEvent::ExecutionDeclared {
+                execution,
+                invocation,
+                ..
+            } => {
+                self.state
+                    .executions
+                    .insert(execution.raw(), invocation.raw());
+            }
+            CoordinatorEvent::InvocationFinished { invocation, result } => {
+                let info = self.state.invocations.entry(invocation.raw()).or_default();
+                info.failure = result
+                    .failure
+                    .as_ref()
+                    .map(|failure| failure.message.clone());
+                info.output = Some(result.output.clone());
+            }
+            CoordinatorEvent::RunPaused => {
+                if let Some(projection) = self.projection.as_mut() {
+                    let prior_block = match projection.status {
+                        RunStatus::Blocked { blocked_reason } => Some(blocked_reason),
+                        _ => None,
+                    };
+                    apply_status(projection, RunStatus::Paused { prior_block }, at);
+                    if projection.pending_control == Some(RunControlAction::Pause) {
+                        projection.pending_control = None;
+                    }
+                }
+            }
+            CoordinatorEvent::RunUnpaused => {
+                if let Some(projection) = self.projection.as_mut() {
+                    let next = match projection.status {
+                        RunStatus::Paused {
+                            prior_block: Some(blocked_reason),
+                        } => RunStatus::Blocked { blocked_reason },
+                        _ => RunStatus::Running,
+                    };
+                    apply_status(projection, next, at);
+                    if projection.pending_control == Some(RunControlAction::Unpause) {
+                        projection.pending_control = None;
+                    }
+                }
+            }
+            CoordinatorEvent::RunFinished { status } => {
+                self.state.finished = Some(status.to_string());
+                self.conclude(status.to_string().as_str(), at);
+            }
+            CoordinatorEvent::GraphRegistered { .. }
+            | CoordinatorEvent::ExecutionFinished { .. }
+            | CoordinatorEvent::InvocationCancelRequested { .. }
+            | CoordinatorEvent::RunNoteRecorded { .. } => {}
+        }
+    }
+
+    /// The run's conclusion, from its recorded finish and what the stages
+    /// summed to.
+    fn conclude(&mut self, status: &str, at: DateTime<Utc>) {
+        let Some(projection) = self.projection.as_mut() else {
+            return;
+        };
+        let root = self
+            .state
+            .root
+            .and_then(|root| self.state.invocations.get(&root));
+        let failure_message = root.and_then(|root| root.failure.clone());
+        let (run_status, outcome, failure) = match status {
+            "success" => (
+                RunStatus::Succeeded {
+                    reason: SuccessReason::Completed,
+                },
+                StageOutcome::Succeeded,
+                None,
+            ),
+            "cancelled" => (
+                RunStatus::Failed {
+                    reason: FailureReason::Cancelled,
+                },
+                StageOutcome::Failed {
+                    retry_requested: false,
+                },
+                Some(RunFailure {
+                    reason: FailureReason::Cancelled,
+                    detail: FailureDetail::new(
+                        failure_message
+                            .clone()
+                            .unwrap_or_else(|| "the run was cancelled".to_string()),
+                        FailureCategory::Canceled,
+                    ),
+                }),
+            ),
+            _ => (
+                RunStatus::Failed {
+                    reason: FailureReason::WorkflowError,
+                },
+                StageOutcome::Failed {
+                    retry_requested: false,
+                },
+                Some(RunFailure {
+                    reason: FailureReason::WorkflowError,
+                    detail: FailureDetail::new(
+                        failure_message
+                            .clone()
+                            .unwrap_or_else(|| "the run failed".to_string()),
+                        FailureCategory::Deterministic,
+                    ),
+                }),
+            ),
+        };
+        apply_status(projection, run_status, at);
+        projection.pending_control = None;
+        projection.pending_interviews.clear();
+        let rollup = usage_rollup::usage_rollup_from_projection(projection);
+        let (stages, total_retries) = rollup.conclusion_stages(projection);
+        let wall_time_ms = self.state.started_at.map_or(0, |started| {
+            u64::try_from(at.timestamp_millis())
+                .unwrap_or(0)
+                .saturating_sub(started)
+        });
+        let timing = RunTiming::new(
+            wall_time_ms,
+            rollup.timing.inference_time_ms,
+            rollup.timing.tool_time_ms,
+        );
+        let last_checkpoint = projection.checkpoints.last();
+        projection.conclusion = Some(Conclusion {
+            timestamp: at,
+            status: outcome,
+            timing,
+            failure,
+            final_git_commit_sha: last_checkpoint
+                .and_then(|checkpoint| checkpoint.checkpoint.git_commit_sha.clone()),
+            stages,
+            usage: rollup.usage_if_present(),
+            total_retries,
+            diff: last_checkpoint
+                .map(|checkpoint| checkpoint.diff.clone())
+                .unwrap_or_default(),
+        });
+    }
+
+    fn fold_engine(&mut self, engine: &Event, event: &RunEvent, at: DateTime<Utc>) {
+        let Some(execution) = event.context.execution else {
+            return;
+        };
+        match engine {
+            Event::AdmissionDecided { decision, .. } => {
+                if let Admission::Skip { outcome } = decision {
+                    if let Some(stage) = self.stage_of(execution, event.subject.as_ref()) {
+                        stage.state = StageState::Skipped;
+                        stage.completion = Some(StageCompletion {
+                            outcome:        StageOutcome::Skipped,
+                            notes:          None,
+                            failure_reason: failure_message(&outcome.status),
+                            timestamp:      at,
+                        });
+                    }
+                }
+            }
+            Event::StepStarted { attempt, .. } => {
+                if let Some(stage) = self.stage_of(execution, event.subject.as_ref()) {
+                    if attempt.raw() > 1 {
+                        stage.clear_live_timing();
+                        stage.output = None;
+                        stage.output_bytes = None;
+                    }
+                    stage.state = StageState::Running;
+                    stage.live_streaming = Some(true);
+                }
+            }
+            Event::StepProgressRecorded { ev, .. } => {
+                self.fold_progress(execution, event, ev, at);
+            }
+            Event::StepFinished {
+                attempt, outcome, ..
+            } => {
+                let is_final = matches!(
+                    event.derived,
+                    Some(Derived::StepFinished { is_final: true, .. })
+                );
+                if let Some(stage) = self.stage_of(execution, event.subject.as_ref()) {
+                    if let Some(output) = outcome.output.as_str() {
+                        stage.output = Some(output.to_string());
+                        stage.output_bytes = Some(output.len() as u64);
+                    }
+                    stage.live_streaming = Some(false);
+                    apply_metrics(stage, &outcome.metrics);
+                    if is_final {
+                        stage.completion = Some(StageCompletion {
+                            outcome:        stage_outcome(&outcome.status),
+                            notes:          None,
+                            failure_reason: failure_message(&outcome.status),
+                            timestamp:      at,
+                        });
+                        stage.termination = Some(match outcome.status {
+                            Status::TimedOut => fabro_types::CommandTermination::TimedOut,
+                            Status::Cancelled => fabro_types::CommandTermination::Cancelled,
+                            Status::Success
+                            | Status::PartialSuccess { .. }
+                            | Status::Failure(_)
+                            | Status::Skipped => fabro_types::CommandTermination::Exited,
+                        });
+                    } else {
+                        stage.state = StageState::Retrying;
+                        debug!(attempt = attempt.raw(), "attempt returned; a retry follows");
+                    }
+                }
+            }
+            Event::ControlRequested { .. } => {
+                if let Some(Derived::ControlRequested {
+                    deliverable: true,
+                    answer: Some(answer),
+                }) = &event.derived
+                {
+                    let firing_key = event.subject.as_ref().and_then(|subject| {
+                        subject
+                            .firing
+                            .map(|firing| stage_key(execution.raw(), firing.raw()))
+                    });
+                    self.close_questions(answer.question.as_deref(), firing_key.as_deref(), at);
+                }
+            }
+            Event::ExecutionStarted { .. }
+            | Event::TokenEmitted { .. }
+            | Event::RoutingResolved { .. }
+            | Event::RouteApplied { .. }
+            | Event::RetryElapsed { .. }
+            | Event::NodeExpanded { .. }
+            | Event::CancelRequested { .. }
+            | Event::KillRequested { .. } => {}
+        }
+    }
+
+    fn fold_progress(
+        &mut self,
+        execution: ExecutionId,
+        event: &RunEvent,
+        ev: &StepEvent,
+        at: DateTime<Utc>,
+    ) {
+        match ev {
+            StepEvent::Log { line, .. } => {
+                if let Some(stage) = self.stage_of(execution, event.subject.as_ref()) {
+                    let output = stage.output.get_or_insert_default();
+                    output.push_str(line);
+                    output.push('\n');
+                    stage.output_bytes = Some(output.len() as u64);
+                    stage.live_streaming = Some(true);
+                }
+            }
+            StepEvent::Artifact { .. } => {}
+            StepEvent::Custom(payload) => {
+                if let Some(parsed) = event.parsed() {
+                    self.fold_parsed(execution, event, parsed, at);
+                    return;
+                }
+                let kind = payload.get("kind").and_then(Value::as_str).unwrap_or("");
+                match kind {
+                    "pebble" => self.fold_pebble(execution, event, payload, at),
+                    "attractor.prompt" => {
+                        if let Some(stage) = self.stage_of(execution, event.subject.as_ref()) {
+                            stage.prompt = payload
+                                .get("prompt")
+                                .and_then(Value::as_str)
+                                .map(str::to_string);
+                            let model = payload.get("model").and_then(Value::as_str);
+                            if let Some(model) = model {
+                                let (provider, model_id) = split_model(model);
+                                stage.provider_used = Some(StageModelUsage {
+                                    mode:             StageModelUsage::MODE_PROMPT.to_string(),
+                                    provider:         provider.map(str::to_string),
+                                    model:            Some(model_id.to_string()),
+                                    reasoning_effort: None,
+                                    speed:            None,
+                                });
+                                stage.model = model_ref(provider, model_id);
+                            }
+                        }
+                    }
+                    "attractor.prompt.completed" => {
+                        if let Some(stage) = self.stage_of(execution, event.subject.as_ref()) {
+                            stage.response = payload
+                                .get("response")
+                                .and_then(Value::as_str)
+                                .map(str::to_string);
+                            if let Some(usage) = usage_of(payload.get("usage")) {
+                                stage.usage = usage;
+                            }
+                        }
+                    }
+                    "attractor.fallback.plan" => {
+                        if let Some(stage) = self.stage_of(execution, event.subject.as_ref()) {
+                            let route = payload
+                                .get("routes")
+                                .and_then(Value::as_array)
+                                .and_then(|routes| routes.first());
+                            if let Some(route) = route {
+                                let provider = route.get("provider").and_then(Value::as_str);
+                                let model = route.get("model").and_then(Value::as_str);
+                                stage.provider_used = Some(StageModelUsage {
+                                    mode:             StageModelUsage::MODE_AGENT.to_string(),
+                                    provider:         provider.map(str::to_string),
+                                    model:            model.map(str::to_string),
+                                    reasoning_effort: None,
+                                    speed:            None,
+                                });
+                                if let Some(model) = model {
+                                    stage.model = model_ref(provider, model);
+                                }
+                            }
+                        }
+                    }
+                    "attractor.parallel.branch.started" => {
+                        let invocation = payload.get("invocation").and_then(Value::as_u64);
+                        let index = payload
+                            .get("index")
+                            .and_then(Value::as_u64)
+                            .and_then(|index| u32::try_from(index).ok());
+                        let fork_firing = payload
+                            .get("occurrence")
+                            .and_then(|occurrence| occurrence.get("firing"))
+                            .and_then(Value::as_u64);
+                        if let (Some(invocation), Some(index), Some(fork_firing)) =
+                            (invocation, index, fork_firing)
+                        {
+                            let group = self
+                                .state
+                                .stages
+                                .get(&stage_key(execution.raw(), fork_firing))
+                                .map(|stage| stage.stage_id.clone());
+                            if let Some(group) = group {
+                                self.state.invocations.entry(invocation).or_default().branch =
+                                    Some((group, index));
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    fn fold_parsed(
+        &mut self,
+        execution: ExecutionId,
+        event: &RunEvent,
+        parsed: &Parsed,
+        at: DateTime<Utc>,
+    ) {
+        match parsed {
+            Parsed::Question { question } => {
+                let Some(subject) = event.subject.as_ref() else {
+                    return;
+                };
+                let Some(firing) = subject.firing else {
+                    return;
+                };
+                let key = stage_key(execution.raw(), firing.raw());
+                let label = self.state.stages.get(&key).map_or_else(
+                    || subject.node.name.to_string(),
+                    |stage| stage.stage_id.to_string(),
+                );
+                self.state.questions.insert(question.id.clone(), key);
+                let Some(projection) = self.projection.as_mut() else {
+                    return;
+                };
+                projection
+                    .pending_interviews
+                    .insert(question.id.clone(), PendingInterviewRecord {
+                        question:   InterviewQuestionRecord {
+                            id:              question.id.clone(),
+                            text:            question.text.clone(),
+                            stage:           label,
+                            question_type:   question
+                                .kind
+                                .as_deref()
+                                .and_then(|kind| kind.parse::<QuestionType>().ok())
+                                .unwrap_or_default(),
+                            options:         question
+                                .options
+                                .iter()
+                                .map(|option| InterviewOption {
+                                    key:         option.key.clone(),
+                                    label:       option.label.clone(),
+                                    description: None,
+                                    preview:     None,
+                                })
+                                .collect(),
+                            allow_freeform:  question.freeform,
+                            timeout_seconds: question
+                                .timeout_ms
+                                .map(|timeout| timeout as f64 / 1000.0),
+                            context_display: None,
+                            review_target:   None,
+                        },
+                        started_at: at,
+                    });
+                apply_status(
+                    projection,
+                    RunStatus::Blocked {
+                        blocked_reason: BlockedReason::HumanInputRequired,
+                    },
+                    at,
+                );
+            }
+            Parsed::QuestionExpired { expired } => {
+                self.close_questions(Some(expired.question.as_str()), None, at);
+            }
+            Parsed::Note { .. } => {}
+        }
+    }
+
+    /// Close one question by id, or every question of a firing, and unblock
+    /// the run when none is left.
+    fn close_questions(
+        &mut self,
+        question: Option<&str>,
+        firing_key: Option<&str>,
+        at: DateTime<Utc>,
+    ) {
+        let closed: Vec<String> = match (question, firing_key) {
+            (Some(question), _) => vec![question.to_string()],
+            (None, Some(key)) => self
+                .state
+                .questions
+                .iter()
+                .filter(|(_, asked_by)| asked_by.as_str() == key)
+                .map(|(id, _)| id.clone())
+                .collect(),
+            (None, None) => Vec::new(),
+        };
+        for id in &closed {
+            self.state.questions.remove(id);
+        }
+        let Some(projection) = self.projection.as_mut() else {
+            return;
+        };
+        for id in &closed {
+            projection.pending_interviews.remove(id);
+        }
+        if projection.pending_interviews.is_empty()
+            && matches!(projection.status, RunStatus::Blocked { .. })
+        {
+            apply_status(projection, RunStatus::Running, at);
+        }
+    }
+
+    fn fold_pebble(
+        &mut self,
+        execution: ExecutionId,
+        event: &RunEvent,
+        payload: &Value,
+        at: DateTime<Utc>,
+    ) {
+        let Some(envelope) = payload.get("event") else {
+            return;
+        };
+        let envelope: CodingAgentEvent = match serde_json::from_value(envelope.clone()) {
+            Ok(envelope) => envelope,
+            Err(error) => {
+                debug!(error = %error, "a pebble envelope did not decode; skipped");
+                return;
+            }
+        };
+        let Some(stage) = self.stage_of(execution, event.subject.as_ref()) else {
+            return;
+        };
+        let agent = stage.agent.get_or_insert_default();
+        agent.apply(&envelope);
+        if stage.completion.is_none() {
+            stage.usage = agent.usage.saturating_add(agent.descendant_usage());
+        }
+        let is_root = envelope.parent_session_id.is_none();
+        #[expect(
+            clippy::wildcard_enum_match_arm,
+            reason = "pebble's event vocabulary is non-exhaustive and only some events project"
+        )]
+        match &envelope.event {
+            CodingEvent::SessionStarted {
+                provider, model, ..
+            } if is_root => {
+                stage.provider_used = Some(StageModelUsage {
+                    mode:             StageModelUsage::MODE_AGENT.to_string(),
+                    provider:         provider.clone(),
+                    model:            model.clone(),
+                    reasoning_effort: None,
+                    speed:            None,
+                });
+                if let Some(model) = model.as_deref() {
+                    stage.model = model_ref(provider.as_deref(), model);
+                }
+            }
+            CodingEvent::LlmRequestStarted { requested_model } if is_root => {
+                stage.inference = Some(StageInferenceProjection {
+                    session_id:        envelope.session_id.clone(),
+                    started_at:        at,
+                    requested_model:   requested_model.clone(),
+                    first_output_at:   None,
+                    first_output_kind: None,
+                    retries:           0,
+                });
+            }
+            CodingEvent::LlmFirstOutput { kind } => {
+                if let Some(inference) = stage.inference.as_mut() {
+                    if inference.session_id == envelope.session_id {
+                        inference.first_output_at = Some(at);
+                        inference.first_output_kind = Some(*kind);
+                    }
+                }
+            }
+            CodingEvent::LlmRetry { .. } => {
+                if let Some(inference) = stage.inference.as_mut() {
+                    if inference.session_id == envelope.session_id {
+                        inference.retries = inference.retries.saturating_add(1);
+                        inference.first_output_at = None;
+                        inference.first_output_kind = None;
+                    }
+                }
+            }
+            CodingEvent::AssistantMessage { model, .. } => {
+                if is_root {
+                    if let Some(provider) = stage
+                        .provider_used
+                        .as_ref()
+                        .and_then(|used| used.provider.as_deref())
+                    {
+                        stage.model = model_ref(Some(provider), model);
+                    }
+                }
+                close_inference(stage, &envelope.session_id, at);
+            }
+            CodingEvent::Error { .. } | CodingEvent::RoundInterrupted { .. } => {
+                close_inference(stage, &envelope.session_id, at);
+            }
+            CodingEvent::SessionEnded => {
+                close_inference(stage, &envelope.session_id, at);
+                stage.close_tool_batch_for_session(&envelope.session_id, at);
+            }
+            CodingEvent::ToolCallStarted { tool_call_id, .. } if is_root => {
+                stage.open_tool_call(envelope.session_id.clone(), tool_call_id.clone(), at);
+            }
+            CodingEvent::ToolCallCompleted { tool_call_id, .. } if is_root => {
+                stage.close_tool_call(&envelope.session_id, tool_call_id, at);
+            }
+            _ => {}
+        }
+    }
+
+    fn fold_view(&mut self, view: &ViewEvent, event: &RunEvent, at: DateTime<Utc>) {
+        let Some(execution) = event.context.execution else {
+            return;
+        };
+        match view {
+            ViewEvent::VisitStarted { .. } => {
+                let Some(subject) = event.subject.as_ref() else {
+                    return;
+                };
+                self.start_visit(execution, subject, at);
+            }
+            ViewEvent::WaitStateChanged { state } => {
+                if let Some(stage) = self.stage_of(execution, event.subject.as_ref()) {
+                    match state {
+                        WaitState::AwaitingAdmission => {
+                            if stage.state == StageState::Running {
+                                stage.state = StageState::Pending;
+                            }
+                        }
+                        WaitState::Running | WaitState::AwaitingAnswer | WaitState::Cancelling => {
+                            stage.state = StageState::Running;
+                        }
+                        WaitState::AwaitingRetry => stage.state = StageState::Retrying,
+                    }
+                }
+            }
+            ViewEvent::RetryScheduled { .. } => {
+                if let Some(stage) = self.stage_of(execution, event.subject.as_ref()) {
+                    stage.state = StageState::Retrying;
+                }
+            }
+            ViewEvent::VisitCompleted {
+                outcome,
+                executed,
+                attempts,
+            } => {
+                let Some(stage) = self.stage_of(execution, event.subject.as_ref()) else {
+                    return;
+                };
+                stage.state = match outcome.status {
+                    Status::Success => StageState::Succeeded,
+                    Status::PartialSuccess { .. } => StageState::PartiallySucceeded,
+                    Status::Failure(_) | Status::TimedOut => StageState::Failed,
+                    Status::Skipped => StageState::Skipped,
+                    Status::Cancelled => StageState::Cancelled,
+                };
+                if stage.completion.is_none() || !*executed {
+                    stage.completion = Some(StageCompletion {
+                        outcome:        stage_outcome(&outcome.status),
+                        notes:          None,
+                        failure_reason: failure_message(&outcome.status),
+                        timestamp:      at,
+                    });
+                }
+                if stage.timing.is_none() {
+                    let wall = stage
+                        .started_at
+                        .map_or(0, |started| timing::elapsed_ms(started, at));
+                    stage.set_authoritative_timing(StageTiming::new(wall, 0, 0));
+                }
+                debug!(attempts, "visit completed");
+            }
+            ViewEvent::ForkCompleted {
+                occurrence,
+                results,
+                ..
+            } => {
+                let key = stage_key(occurrence.execution.raw(), occurrence.firing.raw());
+                let Some(stage_id) = self
+                    .state
+                    .stages
+                    .get(&key)
+                    .map(|stage| stage.stage_id.clone())
+                else {
+                    return;
+                };
+                let Some(projection) = self.projection.as_mut() else {
+                    return;
+                };
+                if let Some(stage) = projection.stage_mut(&stage_id) {
+                    stage.parallel_results = Some(
+                        results
+                            .iter()
+                            .map(|result| ParallelBranchResult {
+                                id:              result.node.name.to_string(),
+                                index:           Some(result.branch.index as usize),
+                                item_label:      None,
+                                status:          stage_outcome(&result.status),
+                                context_updates: BTreeMap::new(),
+                            })
+                            .collect(),
+                    );
+                }
+            }
+            ViewEvent::ForkStarted { .. }
+            | ViewEvent::BranchCompleted { .. }
+            | ViewEvent::RunStalled { .. } => {}
+        }
+    }
+
+    /// A firing exists: register its stage and, when it is a logical stage,
+    /// show it.
+    fn start_visit(&mut self, execution: ExecutionId, subject: &Subject, at: DateTime<Utc>) {
+        let Some(firing) = subject.firing else {
+            return;
+        };
+        let key = stage_key(execution.raw(), firing.raw());
+        if self.state.stages.contains_key(&key) {
+            return;
+        }
+        let node_name = subject.node.name.to_string();
+        let visit = subject.visit.unwrap_or(1).max(1);
+        let meta_kind = subject
+            .node
+            .meta
+            .get("kind")
+            .and_then(Value::as_str)
+            .unwrap_or("");
+        let synthetic = subject
+            .node
+            .meta
+            .get("synthetic")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        let shown = !synthetic && meta_kind != "parallel.branch";
+        // Only a shown stage takes a label: a lowering node (a branch's
+        // parent-side delegate shares its target's name) never competes with
+        // the stage it stands for.
+        let mut stage_id = StageId::new(node_name.clone(), visit);
+        if shown {
+            if self.state.labels.contains(&stage_id.to_string()) {
+                stage_id = StageId::new(format!("{node_name}/e{}", execution.raw()), visit);
+            }
+            self.state.labels.insert(stage_id.to_string());
+        }
+        self.state.stages.insert(key, StageRef {
+            stage_id: stage_id.clone(),
+            shown,
+            node_name,
+            visit,
+        });
+        if !shown {
+            return;
+        }
+        let branch = self
+            .state
+            .executions
+            .get(&execution.raw())
+            .and_then(|invocation| self.state.invocations.get(invocation))
+            .and_then(|invocation| invocation.branch.clone());
+        let Some(projection) = self.projection.as_mut() else {
+            return;
+        };
+        let since_created = at
+            .signed_duration_since(projection.spec.run_id.created_at())
+            .num_milliseconds()
+            .max(0);
+        let ordinal = u32::try_from(since_created)
+            .unwrap_or(u32::MAX - 1)
+            .saturating_add(1);
+        let stage = projection.stage_entry(stage_id.node_id(), visit, first_event_seq(ordinal));
+        stage.handler = Some(StageHandler::from_handler_type(Some(meta_kind)));
+        stage.started_at = Some(at);
+        stage.graph_visit = Some(visit);
+        stage.state = StageState::Pending;
+        stage.parallel_branch_id = branch.map(|(group, index)| ParallelBranchId::new(group, index));
+    }
+
+    /// The shown stage an event's subject firing belongs to.
+    fn stage_of(
+        &mut self,
+        execution: ExecutionId,
+        subject: Option<&Subject>,
+    ) -> Option<&mut StageProjection> {
+        let firing = subject?.firing?;
+        let stage = self
+            .state
+            .stages
+            .get(&stage_key(execution.raw(), firing.raw()))?;
+        if !stage.shown {
+            return None;
+        }
+        let stage_id = stage.stage_id.clone();
+        self.projection.as_mut()?.stage_mut(&stage_id)
+    }
+}
+
+impl Default for RunView {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// ── Lifecycle ───────────────────────────────────────────────────────────
+
+fn fold_lifecycle(projection: &mut RunProjection, record: &RunLifecycleRecord, at: DateTime<Utc>) {
+    use RunLifecycleKind as Kind;
+    match record.transition {
+        Kind::Submitted => apply_status(projection, RunStatus::Submitted, at),
+        Kind::StartRequested | Kind::Unpaused => {}
+        Kind::Pending => {
+            if let Some(status) = record.status {
+                apply_status(projection, status, at);
+            }
+            projection.approval = Some(RunApproval {
+                state:         RunApprovalState::Pending,
+                requested_at:  at,
+                decided_at:    None,
+                denial_reason: None,
+            });
+        }
+        Kind::Approved => {
+            if let Some(approval) = projection.approval.as_mut() {
+                approval.state = RunApprovalState::Approved;
+                approval.decided_at = Some(at);
+            }
+        }
+        Kind::Denied => {
+            if let Some(approval) = projection.approval.as_mut() {
+                approval.state = RunApprovalState::Denied;
+                approval.decided_at = Some(at);
+                approval.denial_reason.clone_from(&record.reason);
+            }
+            apply_status(
+                projection,
+                RunStatus::Failed {
+                    reason: FailureReason::ApprovalDenied,
+                },
+                at,
+            );
+        }
+        Kind::Runnable
+        | Kind::Starting
+        | Kind::Running
+        | Kind::Blocked
+        | Kind::Unblocked
+        | Kind::Removing
+        | Kind::Dead => {
+            if let Some(status) = record.status {
+                apply_status(projection, status, at);
+            }
+        }
+        Kind::Paused => {
+            let prior_block = match projection.status {
+                RunStatus::Blocked { blocked_reason } => Some(blocked_reason),
+                _ => None,
+            };
+            apply_status(projection, RunStatus::Paused { prior_block }, at);
+        }
+        Kind::Succeeded | Kind::Failed => {
+            if let Some(status) = record.status {
+                apply_status(projection, status, at);
+            }
+            projection.pending_control = None;
+            if projection.conclusion.is_none() {
+                let (outcome, failure) = match record.status {
+                    Some(RunStatus::Failed { reason }) => (
+                        StageOutcome::Failed {
+                            retry_requested: false,
+                        },
+                        Some(RunFailure {
+                            reason,
+                            detail: FailureDetail::new(
+                                record
+                                    .reason
+                                    .clone()
+                                    .unwrap_or_else(|| "the run failed".to_string()),
+                                FailureCategory::Deterministic,
+                            ),
+                        }),
+                    ),
+                    _ => (StageOutcome::Succeeded, None),
+                };
+                projection.conclusion = Some(Conclusion {
+                    timestamp: at,
+                    status: outcome,
+                    timing: RunTiming::default(),
+                    failure,
+                    final_git_commit_sha: None,
+                    stages: Vec::new(),
+                    usage: None,
+                    total_retries: 0,
+                    diff: RunDiff::default(),
+                });
+            }
+        }
+        Kind::CancelRequested => projection.pending_control = Some(RunControlAction::Cancel),
+        Kind::PauseRequested => projection.pending_control = Some(RunControlAction::Pause),
+        Kind::UnpauseRequested => projection.pending_control = Some(RunControlAction::Unpause),
+    }
+}
+
+/// Apply a status transition; one the lifecycle refuses is logged and
+/// skipped, since the view never fails the run.
+fn apply_status(projection: &mut RunProjection, status: RunStatus, at: DateTime<Utc>) {
+    if let Err(error) = projection.try_apply_status(status, at) {
+        debug!(error = %error, "status transition not applied to the Petri projection");
+    }
+}
+
+fn touch(projection: &mut RunProjection, at: DateTime<Utc>) {
+    if at > projection.last_event_at {
+        projection.last_event_at = at;
+    }
+}
+
+// ── Helpers ─────────────────────────────────────────────────────────────
+
+/// The key of a stage: its execution and firing.
+#[must_use]
+pub fn stage_key(execution: u64, firing: u64) -> String {
+    format!("{execution}:{firing}")
+}
+
+/// The fork firing and branch index a branch child's call slot names:
+/// `branch:<fork>@<firing>:<index>:<target>`.
+fn branch_slot(slot: &str) -> Option<(u64, u32)> {
+    let rest = slot.strip_prefix("branch:")?;
+    let mut parts = rest.splitn(3, ':');
+    let fork = parts.next()?;
+    let index = parts.next()?.parse::<u32>().ok()?;
+    let firing = fork.rsplit_once('@')?.1.parse::<u64>().ok()?;
+    Some((firing, index))
+}
+
+fn millis(recorded_at: u64) -> DateTime<Utc> {
+    Utc.timestamp_millis_opt(i64::try_from(recorded_at).unwrap_or(i64::MAX))
+        .single()
+        .unwrap_or_default()
+}
+
+fn sandbox_plan(settings: &RunEnvironmentSettings) -> RunSandboxPlan {
+    RunSandboxPlan {
+        provider: settings.provider.clone(),
+        image:    (settings.provider == SandboxProviderKind::DOCKER)
+            .then(|| settings.image.docker.clone())
+            .flatten()
+            .filter(|image| !image.is_empty()),
+        snapshot: None,
+    }
+}
+
+fn stage_outcome(status: &Status) -> StageOutcome {
+    match status {
+        Status::Success => StageOutcome::Succeeded,
+        Status::PartialSuccess { .. } => StageOutcome::PartiallySucceeded,
+        Status::Failure(info) => StageOutcome::Failed {
+            retry_requested: info.class.as_str() == "retry_requested",
+        },
+        Status::Skipped => StageOutcome::Skipped,
+        Status::Cancelled | Status::TimedOut => StageOutcome::Failed {
+            retry_requested: false,
+        },
+    }
+}
+
+fn failure_message(status: &Status) -> Option<String> {
+    match status {
+        Status::Failure(info)
+        | Status::PartialSuccess {
+            underlying: Some(info),
+        } => Some(info.message.clone()),
+        Status::TimedOut => Some("the step timed out".to_string()),
+        Status::Cancelled => Some("the step was cancelled".to_string()),
+        Status::Success | Status::PartialSuccess { underlying: None } | Status::Skipped => None,
+    }
+}
+
+/// The finished attempt's metrics onto its stage: the timing and the usage
+/// the backend reported.
+fn apply_metrics(stage: &mut StageProjection, metrics: &Metrics) {
+    let custom = &metrics.custom;
+    let inference = custom
+        .get("pebble.inference_ms")
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+    let tool = custom
+        .get("pebble.tool_ms")
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+    let wall = metrics.duration_ms.unwrap_or(0);
+    let (inference, tool) = match stage.handler {
+        Some(StageHandler::Prompt) => (wall, 0),
+        Some(StageHandler::Command) => (0, wall),
+        _ => (inference, tool),
+    };
+    stage.set_authoritative_timing(StageTiming::new(wall, inference, tool).clamped_to_wall());
+    if let Some(usage) =
+        usage_of(custom.get("pebble.usage")).or_else(|| usage_of(custom.get("prompt.usage")))
+    {
+        stage.usage = usage;
+    }
+    if let Some(sessions) = custom
+        .get("pebble.subagents")
+        .and_then(|subagents| subagents.get("sessions"))
+        .and_then(Value::as_array)
+    {
+        let mut by_model: Vec<ModelUsage> = Vec::new();
+        for session in sessions {
+            let provider = session.get("provider").and_then(Value::as_str);
+            let model = session.get("model").and_then(Value::as_str);
+            let Some(usage) = usage_of(session.get("usage")) else {
+                continue;
+            };
+            let Some(model) = model.and_then(|model| model_ref(provider, model)) else {
+                continue;
+            };
+            if let Some(entry) = by_model.iter_mut().find(|entry| entry.model == model) {
+                entry.usage = entry.usage.saturating_add(usage);
+            } else {
+                by_model.push(ModelUsage::new(model, usage));
+            }
+        }
+        if !by_model.is_empty() {
+            stage.usage_by_model = by_model;
+        }
+    }
+}
+
+fn usage_of(value: Option<&Value>) -> Option<Usage> {
+    serde_json::from_value(value?.clone()).ok()
+}
+
+/// `provider/model` into its parts, or the model alone.
+fn split_model(model: &str) -> (Option<&str>, &str) {
+    match model.split_once('/') {
+        Some((provider, model)) if !provider.is_empty() && !model.is_empty() => {
+            (Some(provider), model)
+        }
+        _ => (None, model),
+    }
+}
+
+fn model_ref(provider: Option<&str>, model: &str) -> Option<ModelRef> {
+    let provider = provider.filter(|provider| !provider.is_empty())?;
+    Some(ModelRef::new(
+        ProviderId::new(provider),
+        ModelId::new(model),
+    ))
+}
+
+fn close_inference(stage: &mut StageProjection, session_id: &str, at: DateTime<Utc>) {
+    let open = stage
+        .inference
+        .as_ref()
+        .is_some_and(|inference| inference.session_id == session_id);
+    if !open {
+        return;
+    }
+    if let Some(inference) = stage.inference.take() {
+        stage.accumulate_inference_ms(timing::elapsed_ms(inference.started_at, at));
+    }
+}
+
+/// The run id a Petri run key names.
+#[must_use]
+pub fn run_id_of(key: &str) -> Option<RunId> {
+    key.parse().ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use fabro_store::platform_records::RunCreatedRecord;
+    use fabro_types::test_support as types_support;
+    use petri_execution::events::NodeRef;
+    use petri_runtime::driver::BranchRole;
+    use petri_runtime::ir::{FiringId, NodeId};
+
+    use super::*;
+
+    #[test]
+    fn a_branch_slot_names_the_fork_firing_and_the_index() {
+        assert_eq!(branch_slot("branch:fan@7:2:review"), Some((7, 2)));
+        assert_eq!(branch_slot("branch:fan@7:x:review"), None);
+        assert_eq!(branch_slot("child:0"), None);
+    }
+
+    #[test]
+    fn a_model_selector_splits_into_provider_and_model() {
+        assert_eq!(split_model("openai/gpt-5.4"), (Some("openai"), "gpt-5.4"));
+        assert_eq!(split_model("gpt-5.4"), (None, "gpt-5.4"));
+        assert!(model_ref(None, "gpt-5.4").is_none());
+        assert!(model_ref(Some("openai"), "gpt-5.4").is_some());
+    }
+
+    #[test]
+    fn a_taken_label_is_made_unique_by_the_execution() {
+        let mut view = RunView::new();
+        let created = StoredPlatformRecord {
+            seq:         1,
+            recorded_at: 1_000,
+            record:      PlatformRecord::RunCreated(RunCreatedRecord {
+                spec:         types_support::test_run_spec(),
+                title:        Some("A run".to_string()),
+                parent_id:    None,
+                retried_from: None,
+                web_url:      None,
+            }),
+            position:    None,
+        };
+        view.fold(&Item::Platform(&created), 1);
+        let subject = |name: &str| Subject {
+            node:       NodeRef {
+                id:   NodeId::new(1),
+                name: name.into(),
+                kind: "attractor/command".into(),
+                meta: serde_json::json!({ "kind": "command" }),
+            },
+            firing:     Some(FiringId::new(4)),
+            visit:      Some(1),
+            attempt:    None,
+            generation: None,
+            branch:     BranchRole::None,
+        };
+        view.start_visit(ExecutionId::new(1), &subject("build"), millis(2_000));
+        view.start_visit(ExecutionId::new(2), &subject("build"), millis(3_000));
+        let labels: Vec<String> = view
+            .projection()
+            .expect("the run was created")
+            .iter_stages()
+            .map(|(id, _)| id.to_string())
+            .collect();
+        assert_eq!(labels, vec!["build@1", "build/e2@1"]);
+        assert_eq!(view.state.stages.len(), 2);
+    }
+}

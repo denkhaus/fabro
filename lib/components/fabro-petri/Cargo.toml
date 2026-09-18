@@ -25,6 +25,7 @@ fabro-db = { path = "../../foundation/fabro-db" }
 fabro-http.workspace = true
 fabro-store = { path = "../fabro-store" }
 fabro-types = { path = "../../foundation/fabro-types" }
+fabro-util = { path = "../../foundation/fabro-util" }
 petri_runtime.workspace = true
 petri_execution.workspace = true
 petri_store.workspace = true
@@ -36,6 +37,7 @@ petri_testkit = { workspace = true, optional = true }
 anyhow.workspace = true
 bytes.workspace = true
 async-trait.workspace = true
+chrono = { workspace = true, features = ["serde"] }
 serde.workspace = true
 serde_json.workspace = true
 sqlx.workspace = true
@@ -49,5 +51,6 @@ tracing.workspace = true
 fabro-auth = { path = "../../foundation/fabro-auth", features = ["test-support"] }
 fabro-llm = { path = "../fabro-llm", features = ["test-support"] }
 fabro-store = { path = "../fabro-store", features = ["test-support"] }
+fabro-types = { path = "../../foundation/fabro-types", features = ["test-support"] }
 petri_testkit.workspace = true
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

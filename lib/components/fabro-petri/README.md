@@ -46,8 +46,39 @@ Every adapter the integration plan describes lands here.
 - `petri`: the Petri store vocabulary re-exported for the server, which
   answers the worker endpoints from a `SqliteRunStore` without naming a Petri
   package in its own manifest.
+- `projection`: the fold of a Petri run's public events (`replay_since` over
+  its records) and Fabro's platform records (`fabro-store`'s
+  `platform_records`) into the `RunProjection` the API serves, row by row as
+  `VIEWS.md` maps them. The stage key is `(execution, firing)`; the
+  `StageId` label is `node@visit`, made unique with the execution when two
+  child invocations would share one.
+- `projector`: the view pass and its wake-up. Records first: Petri's append
+  and a platform record's insert return before any view work; a pass reads
+  what is committed, folds the items past the committed positions, and
+  writes the projection document (`petri_projection`), the ordered stream
+  (`petri_stream`, one `stream_seq` per Petri event or platform record) and
+  the narrowed `runs` row in one later transaction. The server signals the
+  projector after each committed worker append, after each committed
+  platform record (the run summary store's hook), at worker exit and, over
+  every Petri run, at startup. A run that executes in the server process
+  goes through `Projector::observe_store`, which signals after each append.
+  A torn tail (a record Petri cannot read) holds the view where it stands
+  and reports the run incomplete with the reason.
 - The platform adapters the plan adds after it: hooks, interviews over
-  Fabro's API, secrets, output storage, run tools, the event projection.
+  Fabro's API, secrets, output storage, run tools.
+
+### What the projection leaves default
+
+`VIEWS.md` rows with no source yet, or whose source this crate does not read
+yet, keep their default value in the projection: `StageProjection.diff` and
+`Conclusion.diff.patch` (the checkpoint's `patch_blob` is not resolved),
+`Checkpoint`'s engine-derived maps (`completed_nodes`, `node_retries`,
+`context_values`, `node_outcomes`, `next_node_id`), `agent_tools`,
+`permission_level`, `script_invocation` and `script_timing`, a stage's
+`notes`, `StageCompletion` details for a `parsed.note`, the sandbox instance
+(the matrix's two gaps), `Run.ask_fabro`, an interview option's
+`description` and `preview`, the pull request `creation` state, and the
+run's notices, notifications and pairings (recorded, not shown).
 
 A run goes to Petri when its workflow version's `workflow.toml` names
 `engine = "petri"` in `[workflow]`, or when the server's
@@ -79,6 +110,16 @@ Integration tests live under `tests/`:
   operator release, lease exclusivity, a crash between appends, and blob
   interoperation with Fabro's `BlobStore`.
 
+- `projection.rs` builds the view live (every append signals the
+  projector) for the `hello` bundle on the stub registry, a command-only
+  workflow and a two-branch parallel workflow, and checks it equals the view
+  rebuilt from the records alone (`projector::rebuild`); catches a view up
+  after every wake-up was dropped, by a signal and by the startup pass;
+  recovers a crash between the record commit and the view transaction by
+  applying only the missing suffix, with the positions and `stream_seq`
+  continuing; runs two projectors over one store with child executions; and
+  holds the view at a torn tail. All skip without the host plugin.
+
 The conformance suite over `HttpRunStore` needs a server to talk to, so it
 lives with the server's integration tests
 (`lib/apps/fabro-server/tests/it/api/petri_store.rs`), which reach the suite
@@ -91,10 +132,12 @@ ulimit -n 4096 && cargo nextest run -p fabro-petri
 ```
 
 The server's end-to-end coverage is `lib/apps/fabro-server/tests/it/scenario/petri.rs`:
-the `hello` bundle on the OpenAI twin and a command-only bundle run to
-completion through the create handler and the scheduler, in the server
-process under its test override, under the version flag and under the
-server setting, and Petri's diagnostics refuse a run at create. The
+the `hello` bundle on the OpenAI twin, a command-only bundle and a
+two-branch parallel bundle run to completion through the create handler and
+the scheduler, in the server process under its test override, under the
+version flag and under the server setting, with `GET /runs/{id}/state`
+serving the projection over Petri's records, and Petri's diagnostics refuse
+a run at create. The
 server's `petri_runs` unit tests cover the lease ending at worker exit and
 the restart reconcile that relaunches a worker in resume mode.
 
