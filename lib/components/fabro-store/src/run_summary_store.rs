@@ -17,17 +17,15 @@ use crate::run_summary::{build_summary, projected_usage};
 use crate::{Error, Result, RunProjection};
 
 /// The `runs` row of a Petri run, written by its projector: every column the
-/// list views and the scheduler read, and never `source_last_seq`, which the
-/// legacy event path owns while it still writes the row.
+/// list views and the scheduler read.
 const UPSERT_PETRI_RUN_SQL: &str = r"
 INSERT INTO runs (
-    id, source_last_seq, created_at_ms, started_at_ms, last_event_at_ms, completed_at_ms,
+    id, created_at_ms, started_at_ms, last_event_at_ms, completed_at_ms,
     status, archived_at_ms, parent_id, title, workflow_slug, workflow_name,
-    repository_name, automation_id, diff_files_changed, diff_additions, diff_deletions,
-    input_tokens, output_tokens, reasoning_tokens, cache_read_tokens, cache_write_tokens,
+    repository_name, automation_id, diff_additions, diff_deletions,
     total_usd_micros, summary_json
 ) VALUES (
-    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 )
 ON CONFLICT(id) DO UPDATE SET
     created_at_ms = excluded.created_at_ms,
@@ -403,15 +401,10 @@ pub struct RunSummaryIdentity {
 
 #[derive(Debug)]
 struct PreparedRunSummary {
-    run:                Run,
-    workflow_name:      Option<String>,
-    repository_name:    Option<String>,
-    input_tokens:       i64,
-    output_tokens:      i64,
-    reasoning_tokens:   i64,
-    cache_read_tokens:  i64,
-    cache_write_tokens: i64,
-    total_usd_micros:   Option<i64>,
+    run:              Run,
+    workflow_name:    Option<String>,
+    repository_name:  Option<String>,
+    total_usd_micros: Option<i64>,
 }
 
 impl PreparedRunSummary {
@@ -435,11 +428,6 @@ impl PreparedRunSummary {
             run,
             workflow_name,
             repository_name,
-            input_tokens: column_count(usage.tokens.input),
-            output_tokens: column_count(usage.tokens.output),
-            reasoning_tokens: column_count(usage.tokens.reasoning),
-            cache_read_tokens: column_count(usage.tokens.cache_read),
-            cache_write_tokens: column_count(usage.tokens.cache_write),
             total_usd_micros: usage.cost.map(|cost| column_count(cost.usd_micros)),
         }
     }
@@ -451,9 +439,8 @@ fn column_count(count: u64) -> i64 {
     i64::try_from(count).unwrap_or(i64::MAX)
 }
 
-/// Binds the `runs` columns shared by the insert, upsert, and update
-/// statements, in the positional order those statements declare them
-/// (`source_last_seq` through `summary_json`).
+/// Binds the `runs` columns after `id`, in the positional order the upsert
+/// declares them (`created_at_ms` through `summary_json`).
 fn bind_run_columns<'q>(
     query: Query<'q, Sqlite, SqliteArguments>,
     record: &'q PreparedRunSummary,
@@ -462,9 +449,6 @@ fn bind_run_columns<'q>(
     let diff = run.diff.unwrap_or_default();
     let summary_json = serde_json::to_string(run)?;
     Ok(query
-        // `source_last_seq`: a column the legacy event log owned; `1` until
-        // the migration that drops it.
-        .bind(1_i64)
         .bind(run.timestamps.created_at.timestamp_millis())
         .bind(
             run.timestamps
@@ -494,14 +478,8 @@ fn bind_run_columns<'q>(
         .bind(&record.workflow_name)
         .bind(&record.repository_name)
         .bind(run.automation.as_ref().map(|automation| &automation.id))
-        .bind(diff.files_changed)
         .bind(diff.additions)
         .bind(diff.deletions)
-        .bind(record.input_tokens)
-        .bind(record.output_tokens)
-        .bind(record.reasoning_tokens)
-        .bind(record.cache_read_tokens)
-        .bind(record.cache_write_tokens)
         .bind(record.total_usd_micros)
         .bind(summary_json))
 }
@@ -1121,8 +1099,8 @@ mod tests {
 
         let row = sqlx::query(
             "SELECT created_at_ms, last_event_at_ms, status, title, workflow_slug, \
-             automation_id, input_tokens, reasoning_tokens, cache_read_tokens, total_usd_micros, \
-             diff_files_changed, diff_additions, diff_deletions FROM runs WHERE id = ?",
+             automation_id, total_usd_micros, diff_additions, diff_deletions \
+             FROM runs WHERE id = ?",
         )
         .bind(run_id.to_string())
         .fetch_one(&store.pool)
@@ -1146,14 +1124,10 @@ mod tests {
             sqlx::Row::get::<String, _>(&row, "automation_id"),
             "nightly"
         );
-        assert_eq!(sqlx::Row::get::<i64, _>(&row, "input_tokens"), 100);
-        assert_eq!(sqlx::Row::get::<i64, _>(&row, "reasoning_tokens"), 5);
-        assert_eq!(sqlx::Row::get::<i64, _>(&row, "cache_read_tokens"), 10);
         assert_eq!(
             sqlx::Row::get::<i64, _>(&row, "total_usd_micros"),
             21_000_000
         );
-        assert_eq!(sqlx::Row::get::<i64, _>(&row, "diff_files_changed"), 2);
         assert_eq!(sqlx::Row::get::<i64, _>(&row, "diff_additions"), 10);
         assert_eq!(sqlx::Row::get::<i64, _>(&row, "diff_deletions"), 3);
 

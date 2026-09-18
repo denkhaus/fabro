@@ -25,6 +25,7 @@ pub fn test_blob_store() -> Arc<BlobStore> {
 /// platform records and the projection tables.
 const RUN_SUMMARY_MIGRATIONS: &[&str] = &[
     fabro_db::RUNS_MIGRATION_SQL,
+    fabro_db::DROP_RUN_EVENTS_MIGRATION_SQL,
     fabro_db::PETRI_PROJECTION_MIGRATION_SQL,
 ];
 

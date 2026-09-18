@@ -124,6 +124,7 @@ fn pool() -> DbPool {
     test_support::in_memory_pool_with(&[
         fabro_db::BLOBS_MIGRATION_SQL,
         fabro_db::RUNS_MIGRATION_SQL,
+        fabro_db::DROP_RUN_EVENTS_MIGRATION_SQL,
         fabro_db::PETRI_RECORDS_MIGRATION_SQL,
         fabro_db::PETRI_PROJECTION_MIGRATION_SQL,
     ])
