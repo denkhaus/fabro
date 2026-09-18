@@ -364,6 +364,18 @@ digraph Develop {
         max_retries=1
     ]
 
+    // Claim-contract gate (fabro-c42f stopgap): fails within seconds when
+    // the planner's structured output dropped current_seed_id (see the
+    // edges below for the routing rationale).
+    claim_check [
+        label="Claim check: seed id contract",
+        shape=parallelogram,
+        script="nu .fabro/workflows/develop/scripts/claim-check.nu",
+        stdin_source="current_seed_id",
+        timeout="30s",
+        max_retries=0
+    ]
+
     start -> preflight
     // fabro-a32f: mechanical Already-landed exit — the preflight script
     // already performed the closure (note + superseded-close) before
@@ -410,7 +422,22 @@ digraph Develop {
     // whitelist, not a presence requirement) and the planner brief in the
     // evidence capture is the criteria source.
     planner -> evidence [label="Verification-only", condition="preferred_label=\"Verification-only\""]
-    planner -> implementer [label="Seed claimed"]
+    // Claim-contract gate (fabro-c42f stopgap): a cheap script node that
+    // fails deterministically within seconds when current_seed_id is
+    // missing from the context (the engine resolves stdin_source before
+    // running the script). Without it, a planner response that validates
+    // routing but drops its context_updates parks the run at the evidence
+    // node AFTER a full implementer cycle (3x on 2026-09-18, breaker
+    // latched). The soft exit parks cheaply; the next fire retries.
+    planner -> claim_check [label="Seed claimed"]
+    claim_check -> implementer [label="Seed id present"]
+    // Contract retry: the planner's context_updates drop is intermittent
+    // per attempt (~50% observed 2026-09-18) — re-entering the planner
+    // gives the claim a second (third, ...) chance instead of parking the
+    // pass cheap-but-counted toward the schedule breaker. Bounds: the
+    // graph max_node_visits=20 and the 63m stall watchdog cap the retry
+    // loop; a planner hard failure exits via its own goal-gate edge.
+    claim_check -> planner [label="Claim contract failed, re-plan", condition="outcome=failed"]
 
     implementer -> planner  [label="Blocked", condition="outcome=failed"]
     implementer -> tester   [label="Implemented"]

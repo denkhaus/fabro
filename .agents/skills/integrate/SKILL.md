@@ -32,6 +32,19 @@ skill reviews, reconciles, and integrates. Never implement seeds here
 3. Window snapshot for later pushes: open run PRs, `git ls-remote
    --heads origin 'refs/heads/fabro/run/*'` newest branch, line state.
    A run branch head younger than the newest merged PR = run in flight.
+   Scheduler-off does NOT mean nothing fires (2026-09-18 lesson): a
+   line-watch heartbeat in a left-running agent session fires the
+   automation through its ALWAYS-ENABLED api trigger (trigger_id
+   "manual", actor = the user's CLI token) whenever the line stalls -
+   a breaker-paused schedule only stops cron fires. When the line is
+   deliberately parked, check `agent_observe.list_agents()` for running
+   siblings + their heartbeats; forensics for unattributed fires:
+   traefik JSON access log on the docker host (grep POST
+   /api/v1/automations; /auth/cli/refresh = CLI caller, not browser)
+   and `~/.fabro/logs/cli.<date>.log` (repeated `fabro events` = a
+   watcher). Also verify runtime premises inside agent-written tracker
+   closures (a dying watcher claimed live validation + a published PR
+   where neither was true).
 4. Server-side health of the incoming window: `rootprint hist -q
    'service_name:fabro' --since <window covering the incoming commits>`
    (skill `rootprint`) - pass-time server errors are invisible in the

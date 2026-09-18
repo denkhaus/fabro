@@ -1249,7 +1249,40 @@ impl CodergenBackend for PebbleBackend {
                     )
                     .await
                     {
-                        Ok(_) => break,
+                        Ok(validated) => {
+                            // fabro-c42f: routing that emits none of the
+                            // node's declared context keys is a contract
+                            // break, not a valid answer — repair it instead
+                            // of accepting a silently degraded claim.
+                            match structured_output::routing_contract_error(node, &validated) {
+                                None => break,
+                                Some(error) => {
+                                    if repair_attempts >= node.output_retries() {
+                                        return Err(Error::OutputSchemaValidation(
+                                            structured_output::exhausted_failure_reason(
+                                                node.output_retries(),
+                                            ),
+                                        ));
+                                    }
+                                    let repair_message = error
+                                        .repair_message(schema, previous_validation_error.as_ref());
+                                    previous_validation_error = Some(error);
+                                    response = self
+                                        .prompt_live(
+                                            &mut live,
+                                            node,
+                                            CodingInput::text(repair_message),
+                                            &mut fallback_plan,
+                                            &stage_id,
+                                            request.thread_id,
+                                            &bindings,
+                                            cancel_token,
+                                        )
+                                        .await?;
+                                    repair_attempts += 1;
+                                }
+                            }
+                        }
                         Err(error) => {
                             if repair_attempts >= node.output_retries() {
                                 if !error.is_truncated() {
