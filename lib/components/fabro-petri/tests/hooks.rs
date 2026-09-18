@@ -24,6 +24,7 @@ use fabro_checkpoint::author::GitAuthor;
 use fabro_petri::admission::AdmittedGraphs;
 use fabro_petri::check::{self, Bundle, CheckRequest, Launch};
 use fabro_petri::checkpoint::{CHECKPOINT_FAILED_CLASS, CheckpointKey, RunWorkspaces};
+use fabro_petri::controls::RunControls;
 use fabro_petri::engine::{self, Execution, RunRequest, RunStatus};
 use fabro_petri::hooks::HooksSpec;
 use fabro_petri::platform_records::PlatformRecords;
@@ -142,6 +143,7 @@ impl Harness {
             runtime: RuntimeSpec::default(),
             provider: SandboxProviderKind::LOCAL,
             cancel: CancellationToken::new(),
+            controls: RunControls::new(),
             interviewer,
             observers,
             secrets: None,
@@ -558,6 +560,7 @@ async fn a_run_hook_blocks_a_tool_effect_through_the_forwarded_service() {
         },
         provider: SandboxProviderKind::LOCAL,
         cancel: CancellationToken::new(),
+        controls: RunControls::new(),
         interviewer,
         observers,
         secrets: None,

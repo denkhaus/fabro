@@ -17,15 +17,24 @@
 //! (`run.starting`, `run.running`, then `run.completed` or `run.failed`)
 //! through the client, as the legacy worker does.
 //!
-//! Of the server's controls, cancel and answers are wired: the control
-//! channel's cancel and `SIGTERM`/`SIGINT` fire one token, which cancels
-//! Petri's root invocation politely, and an `interview.answer` message
-//! reaches the control interviewer the run's questions wait on
-//! (`fabro_petri::interview`), so a human gate answered through the API
-//! continues. Pause, unpause and steer are received and ignored with a
-//! warning until their Petri adapters land. A control channel that is lost
-//! for good cancels the run the same way, and the worker exits with that
-//! loss as its error once the run has settled.
+//! The server's controls arrive over the control channel and go to Petri
+//! through [`PetriControls`]: cancel (and `SIGTERM`/`SIGINT`) fires one
+//! token, which cancels Petri's root invocation politely; an
+//! `interview.answer` message reaches the control interviewer the run's
+//! questions wait on (`fabro_petri::interview`), so a human gate answered
+//! through the API continues; pause and unpause hold and release admission
+//! through the run's [`RunControls`]; a steer goes to the run's one live
+//! agent stage, or is refused with a `run.notice` record saying why. The
+//! paused state is mirrored to Fabro's lifecycle as the legacy worker
+//! reported it: a `run.paused` lifecycle event when admission is held and
+//! `run.unpaused` when it is released, so the server's live status and the
+//! projection agree with Petri's own `run.paused` and `run.unpaused`
+//! records. A resumed run that was paused when its worker died comes back
+//! paused, and the mirror reports that too. The interrupt and pair
+//! controls have no Petri adapter yet and are ignored with a warning; the
+//! `SIGUSR1`/`SIGUSR2` pause signals reach only the legacy executor. A
+//! control channel that is lost for good cancels the run the same way, and
+//! the worker exits with that loss as its error once the run has settled.
 //!
 //! Fabro's hooks ride the run with their platform records over the same
 //! client: the checkpoint commit in the run's host workspace before every
@@ -52,9 +61,10 @@ use std::time::Instant;
 use anyhow::{Context, Result, anyhow, bail};
 use fabro_auth::VaultCredentialSource;
 use fabro_client::{Client, ServerTarget};
-use fabro_interview::ControlInterviewer;
+use fabro_interview::{ControlInterviewer, WorkerControlMessage};
 use fabro_llm::credentials::{CredentialProvider, readiness};
 use fabro_petri::blobs::ClientBlobs;
+use fabro_petri::controls::RunControls;
 use fabro_petri::engine::{self, Conclusion, Execution, RunRequest};
 use fabro_petri::hooks::HooksSpec;
 use fabro_petri::interview::{Approval, EventSinkQuestions, FabroInterviewer};
@@ -66,18 +76,19 @@ use fabro_petri::{HttpRunStore, admission};
 use fabro_static::EnvVars;
 use fabro_store::RunProjection;
 use fabro_types::settings::run::{ApprovalMode, RunMode};
-use fabro_types::{FailureReason, RunId, RunTiming, StageOutcome, SuccessReason};
+use fabro_types::{FailureReason, RunId, RunNoticeLevel, RunTiming, StageOutcome, SuccessReason};
 use fabro_vault::Vault;
 use fabro_workflow::Error as WorkflowError;
-use fabro_workflow::event::{self as workflow_event, Emitter, Event, RunEventSink};
+use fabro_workflow::event::{self as workflow_event, Event, RunEventSink};
 use fabro_workflow::run_control::RunControlState;
 use fabro_workflow::runtime_store::RunStoreHandle;
 use fabro_workflow::services::FabroRunToolServices;
 use tokio::sync::RwLock as AsyncRwLock;
+use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
-use super::runner::{self, WorkerTitlePhase};
+use super::runner::{self, WorkerControls, WorkerTitlePhase};
 use crate::args::RunWorkerMode;
 use crate::command_context;
 
@@ -123,27 +134,25 @@ pub(super) async fn execute(worker: PetriWorker<'_>) -> Result<()> {
     let run_control = RunControlState::new();
     runner::install_signal_handlers(Arc::clone(&run_control), cancel_token.clone())?;
     let interviewer = Arc::new(ControlInterviewer::new());
-    let emitter = Arc::new(Emitter::new(run_id));
-    let steering_hub = Arc::new(fabro_workflow::SteeringHub::new(Arc::clone(&emitter)));
+    let sink = RunEventSink::map(
+        runner::stamp_system_worker,
+        RunEventSink::backend(worker.run_store.clone()),
+    );
+    let controls = RunControls::new();
+    let petri_controls = Arc::new(PetriControls {
+        run_id,
+        controls: controls.clone(),
+        sink: sink.clone(),
+    });
     let mut control_manager = runner::spawn_worker_control_manager(
         worker.target.clone(),
         run_id,
         worker.worker_token.to_owned(),
         Arc::clone(&interviewer),
         cancel_token.clone(),
-        steering_hub,
-        run_control,
+        WorkerControls::Petri(petri_controls),
     );
     control_manager.wait_for_first_connection().await?;
-    warn!(
-        run_id = %run_id,
-        "a Petri run answers cancel and questions only: pause, unpause and steer are not wired \
-         yet and are ignored"
-    );
-    let sink = RunEventSink::map(
-        runner::stamp_system_worker,
-        RunEventSink::backend(worker.run_store.clone()),
-    );
     let approval = if worker.run_state.spec.settings.run.execution.approval == ApprovalMode::Auto {
         Approval::Auto
     } else {
@@ -206,6 +215,7 @@ pub(super) async fn execute(worker: PetriWorker<'_>) -> Result<()> {
             .provider
             .clone(),
         cancel: cancel_token.clone(),
+        controls: controls.clone(),
         interviewer: Arc::new(petri_interviewer),
         observers,
         secrets: Some(Arc::new(secrets)),
@@ -215,6 +225,7 @@ pub(super) async fn execute(worker: PetriWorker<'_>) -> Result<()> {
         ))),
         hooks: Some(hooks),
     };
+    let paused_mirror = mirror_paused_state(run_id, &controls, sink.clone());
     let run = Box::pin(engine::run(request));
     tokio::pin!(run);
     let mut control_lost = None;
@@ -231,6 +242,7 @@ pub(super) async fn execute(worker: PetriWorker<'_>) -> Result<()> {
         }
     };
     control_manager.finish();
+    paused_mirror.abort();
 
     let timing = RunTiming {
         wall_time_ms: u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
@@ -283,6 +295,117 @@ pub(super) async fn execute(worker: PetriWorker<'_>) -> Result<()> {
         None => Ok(()),
         Some(message) => Err(anyhow!("Petri run failed: {message}")),
     }
+}
+
+/// The Petri run's controls as the worker's control channel drives them.
+/// Cancel and answers are applied by the channel itself, before a message
+/// reaches here.
+pub(super) struct PetriControls {
+    run_id:   RunId,
+    controls: RunControls,
+    /// Where a refused steer's notice goes.
+    sink:     RunEventSink,
+}
+
+impl PetriControls {
+    pub(super) async fn apply(&self, message: WorkerControlMessage) {
+        match message {
+            WorkerControlMessage::RunPause => {
+                info!(run_id = %self.run_id, "pause requested: admission is held");
+                self.controls.pause();
+            }
+            WorkerControlMessage::RunUnpause => {
+                self.controls.unpause().await;
+                info!(run_id = %self.run_id, "unpause recorded: admission is released");
+            }
+            WorkerControlMessage::Steer { text, actor } => {
+                match self.controls.steer(None, &text).await {
+                    Ok(node) => {
+                        info!(run_id = %self.run_id, node, actor = ?actor, "steer delivered");
+                    }
+                    Err(error) => {
+                        warn!(run_id = %self.run_id, error = %error, "steer refused");
+                        self.notice("steer_refused", error.to_string()).await;
+                    }
+                }
+            }
+            WorkerControlMessage::Interrupt { .. }
+            | WorkerControlMessage::InterruptThenSteer { .. }
+            | WorkerControlMessage::PairStart { .. }
+            | WorkerControlMessage::PairMessage { .. }
+            | WorkerControlMessage::PairEnd { .. } => {
+                warn!(
+                    run_id = %self.run_id,
+                    control = control_name(&message),
+                    "control has no Petri adapter yet and is ignored"
+                );
+            }
+            WorkerControlMessage::InterviewAnswer { .. } | WorkerControlMessage::RunCancel => {}
+        }
+    }
+
+    /// A `run.notice` record on the run, so a refused control is visible in
+    /// the run's stream and not only in the worker's log.
+    async fn notice(&self, code: &str, message: String) {
+        let event = Event::RunNotice {
+            level: RunNoticeLevel::Warn,
+            code: code.to_string(),
+            message,
+            exec_output_tail: None,
+        };
+        if let Err(error) =
+            workflow_event::append_event_to_sink(&self.sink, &self.run_id, &event).await
+        {
+            warn!(run_id = %self.run_id, error = %error, "the control notice was not recorded");
+        }
+    }
+}
+
+/// The wire name of a control, for a log line.
+fn control_name(message: &WorkerControlMessage) -> &'static str {
+    match message {
+        WorkerControlMessage::InterviewAnswer { .. } => "interview.answer",
+        WorkerControlMessage::RunCancel => "run.cancel",
+        WorkerControlMessage::RunPause => "run.pause",
+        WorkerControlMessage::RunUnpause => "run.unpause",
+        WorkerControlMessage::Steer { .. } => "run.steer",
+        WorkerControlMessage::Interrupt { .. } => "run.interrupt",
+        WorkerControlMessage::InterruptThenSteer { .. } => "run.interrupt_then_steer",
+        WorkerControlMessage::PairStart { .. } => "pair.start",
+        WorkerControlMessage::PairMessage { .. } => "pair.message",
+        WorkerControlMessage::PairEnd { .. } => "pair.end",
+    }
+}
+
+/// Mirror the run's paused state to Fabro's lifecycle: `run.paused` when
+/// admission is held (a pause, or a resume that came back paused) and
+/// `run.unpaused` when it is released, each once per change, with the
+/// worker's title alongside. Aborted with the run.
+fn mirror_paused_state(
+    run_id: RunId,
+    controls: &RunControls,
+    sink: RunEventSink,
+) -> JoinHandle<()> {
+    let mut changes = controls.paused_changes();
+    tokio::spawn(async move {
+        let mut last = *changes.borrow_and_update();
+        while changes.changed().await.is_ok() {
+            let paused = *changes.borrow_and_update();
+            if paused == last {
+                continue;
+            }
+            last = paused;
+            let (event, phase) = if paused {
+                (Event::RunPaused, WorkerTitlePhase::Paused)
+            } else {
+                (Event::RunUnpaused, WorkerTitlePhase::Running)
+            };
+            if let Err(error) = workflow_event::append_event_to_sink(&sink, &run_id, &event).await {
+                warn!(run_id = %run_id, error = %error, "the paused state was not reported");
+            }
+            runner::set_worker_title(&run_id, phase);
+        }
+    })
 }
 
 /// A test's checkpoint gate directory, when the server forwarded one.

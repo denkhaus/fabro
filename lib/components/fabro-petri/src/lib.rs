@@ -44,7 +44,9 @@
 //! - [`platform_records`]: Fabro's platform records as the adapters reach them,
 //!   in the server's database or over its API from a worker;
 //! - [`host_tools`]: Fabro's run tools on every native agent session of a run,
-//!   through Petri's `HostTools` capability.
+//!   through Petri's `HostTools` capability;
+//! - [`controls`]: the controls Fabro drives on a live run (pause, unpause,
+//!   steer, cancel), over Petri's control service.
 //!
 //! The Petri packages are pinned by revision in the workspace `Cargo.toml`
 //! under `petri_*` keys.
@@ -53,6 +55,7 @@ pub mod admission;
 pub mod blobs;
 pub mod check;
 pub mod checkpoint;
+pub mod controls;
 pub mod engine;
 pub mod hooks;
 pub mod host_tools;

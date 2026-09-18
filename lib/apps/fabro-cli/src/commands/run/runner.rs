@@ -44,7 +44,7 @@ use tokio_tungstenite::tungstenite::protocol::{self, Message as WebSocketMessage
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, connect_async, tungstenite};
 use tokio_util::sync::CancellationToken;
 
-use super::petri_worker::{self, PetriWorker};
+use super::petri_worker::{self, PetriControls, PetriWorker};
 use crate::args::RunWorkerMode;
 use crate::shared::github::build_github_credentials;
 use crate::{command_context, server_client};
@@ -131,8 +131,10 @@ pub(crate) async fn execute(
             worker_token.to_owned(),
             Arc::clone(&interviewer),
             cancel_token.clone(),
-            Arc::clone(&steering_hub),
-            Arc::clone(&run_control),
+            WorkerControls::Legacy {
+                steering_hub: Arc::clone(&steering_hub),
+                run_control:  Arc::clone(&run_control),
+            },
         ))
     };
     if let Some(control_manager) = &mut control_manager {
@@ -303,6 +305,17 @@ impl AppliedWorkerControlDeliveryIds {
     }
 }
 
+/// Where the run's pause, unpause, steer and pair controls go: the legacy
+/// executor's hub and pause flag, or the Petri run's controls. Cancel and
+/// answers are applied by the channel itself, the same way for both.
+pub(super) enum WorkerControls {
+    Legacy {
+        steering_hub: Arc<fabro_workflow::SteeringHub>,
+        run_control:  Arc<RunControlState>,
+    },
+    Petri(Arc<PetriControls>),
+}
+
 pub(super) struct WorkerControlManagerHandle {
     first_connection: Option<oneshot::Receiver<Result<()>>>,
     fatal:            Option<oneshot::Receiver<anyhow::Error>>,
@@ -403,8 +416,7 @@ pub(super) fn spawn_worker_control_manager(
     worker_token: String,
     interviewer: Arc<ControlInterviewer>,
     cancel_token: CancellationToken,
-    steering_hub: Arc<fabro_workflow::SteeringHub>,
-    run_control: Arc<RunControlState>,
+    controls: WorkerControls,
 ) -> WorkerControlManagerHandle {
     let (first_tx, first_rx) = oneshot::channel();
     let (fatal_tx, fatal_rx) = oneshot::channel();
@@ -417,8 +429,7 @@ pub(super) fn spawn_worker_control_manager(
             worker_token,
             interviewer,
             cancel_token,
-            steering_hub,
-            run_control,
+            controls,
             task_done,
             first_tx,
             fatal_tx,
@@ -443,8 +454,7 @@ async fn run_worker_control_manager(
     worker_token: String,
     interviewer: Arc<ControlInterviewer>,
     cancel_token: CancellationToken,
-    steering_hub: Arc<fabro_workflow::SteeringHub>,
-    run_control: Arc<RunControlState>,
+    controls: WorkerControls,
     done: CancellationToken,
     first_tx: oneshot::Sender<Result<()>>,
     fatal_tx: oneshot::Sender<anyhow::Error>,
@@ -485,8 +495,7 @@ async fn run_worker_control_manager(
                     &mut socket,
                     &interviewer,
                     &cancel_token,
-                    &steering_hub,
-                    &run_control,
+                    &controls,
                     &mut applied_ids,
                     &done,
                 )
@@ -656,8 +665,7 @@ async fn handle_worker_control_socket(
     socket: &mut WorkerControlSocket,
     interviewer: &ControlInterviewer,
     cancel_token: &CancellationToken,
-    steering_hub: &fabro_workflow::SteeringHub,
-    run_control: &RunControlState,
+    controls: &WorkerControls,
     applied_ids: &mut AppliedWorkerControlDeliveryIds,
     done: &CancellationToken,
 ) -> Result<(), WorkerControlConnectError> {
@@ -703,8 +711,7 @@ async fn handle_worker_control_socket(
                         apply_worker_control_delivery_frame(
                             interviewer,
                             cancel_token,
-                            steering_hub,
-                            run_control,
+                            controls,
                             applied_ids,
                             frame,
                         )
@@ -741,8 +748,7 @@ async fn handle_worker_control_socket(
 async fn apply_worker_control_delivery_frame(
     interviewer: &ControlInterviewer,
     cancel_token: &CancellationToken,
-    steering_hub: &fabro_workflow::SteeringHub,
-    run_control: &RunControlState,
+    controls: &WorkerControls,
     applied_ids: &mut AppliedWorkerControlDeliveryIds,
     frame: WorkerControlDeliveryFrame,
 ) -> bool {
@@ -753,14 +759,7 @@ async fn apply_worker_control_delivery_frame(
         return false;
     }
     let frame_id = frame.id;
-    apply_worker_control_message(
-        interviewer,
-        cancel_token,
-        steering_hub,
-        run_control,
-        frame.envelope,
-    )
-    .await;
+    apply_worker_control_message(interviewer, cancel_token, controls, frame.envelope).await;
     applied_ids.record(frame_id);
     true
 }
@@ -768,8 +767,7 @@ async fn apply_worker_control_delivery_frame(
 async fn apply_worker_control_message(
     interviewer: &ControlInterviewer,
     cancel_token: &CancellationToken,
-    steering_hub: &fabro_workflow::SteeringHub,
-    run_control: &RunControlState,
+    controls: &WorkerControls,
     message: WorkerControlEnvelope,
 ) {
     match message.message {
@@ -782,6 +780,24 @@ async fn apply_worker_control_message(
             cancel_token.cancel();
             interviewer.interrupt_all().await;
         }
+        other => match controls {
+            WorkerControls::Legacy {
+                steering_hub,
+                run_control,
+            } => apply_legacy_control(steering_hub, run_control, other),
+            WorkerControls::Petri(petri) => petri.apply(other).await,
+        },
+    }
+}
+
+/// The legacy executor's pause flag and steering hub.
+fn apply_legacy_control(
+    steering_hub: &fabro_workflow::SteeringHub,
+    run_control: &RunControlState,
+    message: WorkerControlMessage,
+) {
+    match message {
+        WorkerControlMessage::InterviewAnswer { .. } | WorkerControlMessage::RunCancel => {}
         WorkerControlMessage::RunPause => {
             run_control.request_pause();
         }
@@ -1212,17 +1228,24 @@ mod tests {
 
     use super::{
         AppliedWorkerControlDeliveryIds, WorkerControlConnectError, WorkerControlSocket,
-        WorkerTitlePhase, apply_worker_control_delivery_frame, apply_worker_control_message,
-        build_worker_control_stream_request, connect_worker_control_stream,
-        handle_worker_control_socket, initial_worker_title_phase, load_worker_vault,
-        next_worker_control_reconnect_backoff, stamp_system_worker, worker_title,
-        worker_title_phase_for_event,
+        WorkerControls, WorkerTitlePhase, apply_worker_control_delivery_frame,
+        apply_worker_control_message, build_worker_control_stream_request,
+        connect_worker_control_stream, handle_worker_control_socket, initial_worker_title_phase,
+        load_worker_vault, next_worker_control_reconnect_backoff, stamp_system_worker,
+        worker_title, worker_title_phase_for_event,
     };
     use crate::args::RunWorkerMode;
 
     fn test_steering_hub() -> Arc<fabro_workflow::SteeringHub> {
         let emitter = Arc::new(fabro_workflow::event::Emitter::new(fixtures::RUN_1));
         Arc::new(fabro_workflow::SteeringHub::new(emitter))
+    }
+
+    fn test_controls(run_control: &Arc<RunControlState>) -> WorkerControls {
+        WorkerControls::Legacy {
+            steering_hub: test_steering_hub(),
+            run_control:  Arc::clone(run_control),
+        }
     }
 
     #[test]
@@ -1466,12 +1489,11 @@ mod tests {
         let ask_interviewer = Arc::clone(&interviewer);
         let answer_task = tokio::spawn(async move { ask_interviewer.ask(question).await });
 
-        let hub = test_steering_hub();
+        let controls = test_controls(&run_control);
         apply_worker_control_message(
             &interviewer,
             &cancel_token,
-            &hub,
-            &run_control,
+            &controls,
             WorkerControlEnvelope::interview_answer(
                 "q-1",
                 fabro_interview::AnswerSubmission::system(
@@ -1498,12 +1520,11 @@ mod tests {
         let answer_task = tokio::spawn(async move { ask_interviewer.ask(question).await });
         tokio::task::yield_now().await;
 
-        let hub = test_steering_hub();
+        let controls = test_controls(&run_control);
         apply_worker_control_message(
             &interviewer,
             &cancel_token,
-            &hub,
-            &run_control,
+            &controls,
             WorkerControlEnvelope::cancel_run(),
         )
         .await;
@@ -1518,13 +1539,12 @@ mod tests {
         let interviewer = Arc::new(ControlInterviewer::new());
         let cancel_token = CancellationToken::new();
         let run_control = RunControlState::new();
-        let hub = test_steering_hub();
+        let controls = test_controls(&run_control);
 
         apply_worker_control_message(
             &interviewer,
             &cancel_token,
-            &hub,
-            &run_control,
+            &controls,
             WorkerControlEnvelope::pause_run(),
         )
         .await;
@@ -1533,8 +1553,7 @@ mod tests {
         apply_worker_control_message(
             &interviewer,
             &cancel_token,
-            &hub,
-            &run_control,
+            &controls,
             WorkerControlEnvelope::unpause_run(),
         )
         .await;
@@ -1546,7 +1565,7 @@ mod tests {
         let interviewer = Arc::new(ControlInterviewer::new());
         let cancel_token = CancellationToken::new();
         let run_control = RunControlState::new();
-        let hub = test_steering_hub();
+        let controls = test_controls(&run_control);
         let mut applied_ids = AppliedWorkerControlDeliveryIds::default();
         let frame = fabro_interview::WorkerControlDeliveryFrame {
             id:       "local:1".to_string(),
@@ -1557,8 +1576,7 @@ mod tests {
             apply_worker_control_delivery_frame(
                 &interviewer,
                 &cancel_token,
-                &hub,
-                &run_control,
+                &controls,
                 &mut applied_ids,
                 frame.clone(),
             )
@@ -1568,8 +1586,7 @@ mod tests {
             !apply_worker_control_delivery_frame(
                 &interviewer,
                 &cancel_token,
-                &hub,
-                &run_control,
+                &controls,
                 &mut applied_ids,
                 frame,
             )
@@ -1655,8 +1672,8 @@ mod tests {
         let mut socket = WorkerControlSocket::Test(Box::new(worker_ws));
         let interviewer = Arc::new(ControlInterviewer::new());
         let cancel_token = CancellationToken::new();
-        let hub = test_steering_hub();
         let run_control = RunControlState::new();
+        let controls = test_controls(&run_control);
         let mut applied_ids = AppliedWorkerControlDeliveryIds::default();
         let done = CancellationToken::new();
 
@@ -1665,8 +1682,7 @@ mod tests {
                 &mut socket,
                 &interviewer,
                 &cancel_token,
-                &hub,
-                &run_control,
+                &controls,
                 &mut applied_ids,
                 &done,
             )

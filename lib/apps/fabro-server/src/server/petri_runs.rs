@@ -36,6 +36,7 @@ use fabro_config::{Home, SettingsLayer, Storage};
 use fabro_interview::ControlInterviewer;
 use fabro_llm::selection;
 use fabro_petri::check::{self, Bundle, CheckError, CheckRequest, Diagnostic, Launch};
+use fabro_petri::controls::RunControls;
 use fabro_petri::engine::{self, Conclusion, Execution, RunRequest};
 use fabro_petri::hooks::HooksSpec;
 use fabro_petri::interview::{Approval, DatabaseQuestions, FabroInterviewer};
@@ -403,6 +404,9 @@ pub(crate) async fn execute(state: Arc<AppState>, run_id: RunId) {
         runtime: runtime_spec(&state, &eligible, dry_run),
         provider: run_state.spec.settings.run.environment.provider.clone(),
         cancel,
+        // The in-process test path drives no pause or steer: the server's
+        // transports for those name the worker.
+        controls: RunControls::new(),
         interviewer: Arc::new(petri_interviewer),
         observers,
         secrets: Some(Arc::new(VaultSecrets::from_vault(&vault))),

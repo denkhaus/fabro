@@ -26,7 +26,11 @@
 //! give the run: Petri's local hook service for `[[run.hooks]]`, no host
 //! tools, and `Retention::Always` for every workspace, Fabro's default.
 //! Cancellation rides the caller's token: when it fires, the root
-//! invocation is cancelled politely and Petri records why.
+//! invocation is cancelled politely and Petri records why. The run's other
+//! controls (pause, unpause, steer) are the caller's [`RunControls`]: its
+//! pause gate is installed over the run's hooks, it observes the run, and
+//! it is wired to the coordinator with the interviewer, on a start and on
+//! a resume alike, so a run that was paused resumes paused.
 //!
 //! A resume here is Petri's own: the run continues from its records, and
 //! sandbox leases are reconciled by label. What the workspaces look like
@@ -57,6 +61,7 @@ use tracing::{debug, info, warn};
 
 use crate::admission::AdmittedGraphs;
 use crate::blobs::{Blobs, RunBlobs};
+use crate::controls::RunControls;
 use crate::hooks::{FabroHooks, HooksSpec};
 use crate::runtime::RuntimeSpec;
 use crate::secrets::SharedSecrets;
@@ -88,6 +93,9 @@ pub struct RunRequest {
     pub provider:    SandboxProviderKind,
     /// Fires to cancel the run.
     pub cancel:      CancellationToken,
+    /// The run's pause, unpause and steer controls, which the caller keeps
+    /// a clone of to drive them while the run is live.
+    pub controls:    RunControls,
     /// Where the run's questions go.
     pub interviewer: Arc<dyn Interviewer>,
     /// The caller's observers of every record, registered ahead of the
@@ -193,6 +201,11 @@ pub async fn run(request: RunRequest) -> Result<RunOutcome, RunError> {
     if let Some(hooks) = &fabro_hooks {
         runtime = runtime.hooks(Arc::clone(hooks) as Arc<dyn ExecutionHooks>);
     }
+    // The pause gate goes outermost, over Fabro's hooks and Petri's own,
+    // so a held attempt runs none of them until the unpause.
+    let controls = request.controls;
+    let installed = runtime.installed_hooks();
+    runtime = runtime.hooks(controls.hooks(installed));
 
     let dispatcher = InterviewDispatcher::new(request.interviewer);
     let cancel = request.cancel.clone();
@@ -202,6 +215,7 @@ pub async fn run(request: RunRequest) -> Result<RunOutcome, RunError> {
         if let Some(hooks) = &fabro_hooks {
             hooks.attach(handle.clone());
         }
+        controls.wire(handle.clone());
         cancel_task = Some(tokio::spawn(async move {
             cancel.cancelled().await;
             info!("cancelling the Petri run");
@@ -209,6 +223,7 @@ pub async fn run(request: RunRequest) -> Result<RunOutcome, RunError> {
         }));
     };
     let mut observers = request.observers;
+    observers.push(controls.observer());
     observers.push(Arc::new(dispatcher.clone()));
     let result = match request.execution {
         Execution::Start(graphs) => {
