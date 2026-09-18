@@ -13,7 +13,6 @@ use fabro_util::error::{SharedError, collect_causes, collect_chain, render_with_
 use regex::Regex;
 use thiserror::Error as ThisError;
 
-use crate::event::RunEventPersistenceError;
 use crate::outcome::{FailureDetail, Outcome, StageOutcome};
 
 /// Classify an LLM error into a `FailureCategory` based on its structure.
@@ -709,12 +708,6 @@ impl From<fabro_template::TemplateError> for Error {
     fn from(err: fabro_template::TemplateError) -> Self {
         let rendered = collect_chain(&err).join(": ");
         Self::template(format!("template expansion failed: {rendered}"), err)
-    }
-}
-
-impl From<RunEventPersistenceError> for Error {
-    fn from(err: RunEventPersistenceError) -> Self {
-        Self::engine_with_source("run event persistence failed", err)
     }
 }
 

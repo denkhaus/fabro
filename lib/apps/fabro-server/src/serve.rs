@@ -582,32 +582,6 @@ pub fn build_artifact_object_store(
     build_artifact_object_store_with_server_secrets(settings, &server_secrets)
 }
 
-fn build_slatedb_store_with_server_secrets(
-    settings: &ServerNamespace,
-    server_secrets: &ServerSecrets,
-) -> anyhow::Result<(Arc<dyn ObjectStore>, String, Duration, bool)> {
-    let prefix = settings.slatedb.prefix.clone();
-    let object_store = build_object_store_from_settings_with_lookup(
-        &settings.slatedb.store,
-        &|name| server_secrets.get(name),
-        None,
-    )?;
-    Ok((
-        object_store,
-        prefix,
-        settings.slatedb.flush_interval,
-        settings.slatedb.disk_cache,
-    ))
-}
-
-#[cfg(test)]
-fn build_slatedb_store(
-    settings: &ServerNamespace,
-) -> anyhow::Result<(Arc<dyn ObjectStore>, String, Duration, bool)> {
-    let server_secrets = load_server_secrets_for_settings(settings)?;
-    build_slatedb_store_with_server_secrets(settings, &server_secrets)
-}
-
 /// Start the HTTP API server.
 ///
 /// # Errors
@@ -741,32 +715,10 @@ where
     } else {
         false
     };
-    let (object_store, slatedb_prefix, flush_interval, disk_cache) =
-        build_slatedb_store_with_server_secrets(&resolved_server_settings, &server_secrets)?;
-    let cache_path = if disk_cache {
-        Some(storage.slatedb_cache_dir())
-    } else {
-        None
-    };
     let store = Arc::new(fabro_store::Database::new(
-        object_store,
-        slatedb_prefix,
-        flush_interval,
-        cache_path,
         Arc::new(fabro_store::BlobStore::new(database.clone_pool())),
         Arc::new(fabro_store::RunSummaryStore::new(database.clone_pool())),
     ));
-    // Refresh tokens now live in SQLite. Nothing reads the old records and no
-    // reaper collects them any more, so clear them out once rather than
-    // leaving them in the object store forever. Pending authorization codes
-    // also moved to SQLite, but their old records are left in place: at most a
-    // handful exist at cutover, every binary rejects them within 60 seconds of
-    // issue, and nothing reads their keyspace again.
-    match store.retire_refresh_token_keyspace().await {
-        Ok(0) => {}
-        Ok(removed) => info!(removed, "Removed retired SlateDB refresh token records"),
-        Err(err) => warn!(error = %err, "Failed to remove retired SlateDB refresh token records"),
-    }
     let (artifact_object_store, artifact_prefix) = build_artifact_object_store_with_server_secrets(
         &resolved_server_settings,
         &server_secrets,
@@ -1216,9 +1168,9 @@ mod tests {
     use super::{
         SHUTDOWN_GRACE_PERIOD, ServeArgs, ServerTitlePhase, apply_effective_log_destination,
         bind_tcp_host_with_fallback, build_local_object_store_with_preference,
-        build_object_store_from_settings_with_lookup, build_slatedb_store,
-        force_exit_after_shutdown, resolve_bind_request_from_server_settings, serve_overrides,
-        serve_until_shutdown, server_bind_title, server_title, spawn_shutdown_orchestrator_inner,
+        build_object_store_from_settings_with_lookup, force_exit_after_shutdown,
+        resolve_bind_request_from_server_settings, serve_overrides, serve_until_shutdown,
+        server_bind_title, server_title, spawn_shutdown_orchestrator_inner,
     };
     use crate::server::ResolvedAppStateSettings;
 
@@ -1611,46 +1563,6 @@ strategy = "token"
             "memory-backed store should not create on-disk store dir"
         );
         drop(mem_store);
-    }
-
-    #[test]
-    fn build_slatedb_store_uses_configured_local_root() {
-        let temp = tempfile::tempdir().unwrap();
-        let root = temp.path().join("custom-slatedb");
-        let resolved = server_settings(&format!(
-            r#"
-_version = 1
-
-[server.slatedb.local]
-root = "{}"
-"#,
-            root.display()
-        ))
-        .server;
-        let (_object_store, prefix, flush_interval, disk_cache) =
-            build_slatedb_store(&resolved).expect("slatedb store should build");
-
-        assert!(root.exists(), "configured SlateDB root should be created");
-        assert_eq!(prefix, "");
-        assert_eq!(flush_interval, Duration::from_millis(1));
-        assert!(!disk_cache);
-    }
-
-    #[test]
-    fn build_slatedb_store_returns_disk_cache_when_enabled() {
-        let resolved = server_settings(
-            r"
-_version = 1
-
-[server.slatedb]
-disk_cache = true
-",
-        )
-        .server;
-        let (_object_store, _prefix, _flush_interval, disk_cache) =
-            build_slatedb_store(&resolved).expect("slatedb store should build");
-
-        assert!(disk_cache);
     }
 
     #[test]

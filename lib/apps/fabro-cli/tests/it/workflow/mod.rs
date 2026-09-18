@@ -43,12 +43,16 @@ pub(super) fn read_run_spec(run_dir: &Path) -> Value {
     serde_json::to_value(run_state(run_dir).spec).expect("run spec should serialize")
 }
 
+/// The nodes whose stages succeeded, in the order they first ran.
 pub(super) fn completed_nodes(run_dir: &Path) -> Vec<String> {
     let state = run_state(run_dir);
-    let cp = state
-        .current_checkpoint()
-        .expect("run store checkpoint should exist");
-    cp.completed_nodes.clone()
+    let mut nodes = state
+        .iter_stages()
+        .filter(|(_, stage)| stage.state == fabro_types::StageState::Succeeded)
+        .map(|(stage_id, _)| stage_id.node_id().to_string())
+        .collect::<Vec<_>>();
+    nodes.dedup();
+    nodes
 }
 
 pub(super) fn has_event(run_dir: &Path, event_name: &str) -> bool {

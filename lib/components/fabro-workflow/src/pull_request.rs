@@ -666,7 +666,6 @@ pub async fn open_pull_request(
 mod tests {
     use std::collections::HashMap;
     use std::sync::Arc;
-    use std::time::Duration;
 
     use chrono::Utc;
     use fabro_auth::VaultCredentialSource;
@@ -675,20 +674,17 @@ mod tests {
     use fabro_llm::credentials::CredentialProvider;
     use fabro_llm::lithos_catalog::AdapterId;
     use fabro_llm::{Response, ResponseStream};
-    use fabro_store::Database;
     use fabro_types::{
-        PetriAdmission, RunProjection, RunSpec, SuccessReason, WorkflowSettings, first_event_seq,
-        fixtures, test_support,
+        PetriAdmission, RunProjection, RunSpec, WorkflowSettings, first_event_seq, fixtures,
+        test_support,
     };
     use fabro_vault::{SecretType, Vault};
     use httpmock::Method::{GET, POST};
     use httpmock::MockServer;
     use lithos_llm::types::{ContentPart, CostSource, TokenCounts, Usage};
-    use object_store::memory::InMemory;
     use tokio::sync::RwLock as AsyncRwLock;
 
     use super::*;
-    use crate::event::{Event, append_event};
     use crate::records::StageSummary;
 
     /// Answers every completion with one fixed text, attributed to the route
@@ -739,15 +735,6 @@ mod tests {
                 self.response(call),
             ))
         }
-    }
-
-    fn test_store() -> Arc<Database> {
-        Arc::new(fabro_store::test_support::test_database(
-            Arc::new(InMemory::new()),
-            "",
-            Duration::from_millis(1),
-            None,
-        ))
     }
 
     fn test_catalog_with_provider_base_url(provider: &str, base_url: &str) -> Arc<Catalog> {
@@ -1054,8 +1041,6 @@ capabilities = { text = true, tools = true, response_format = { json_object = tr
 
     #[tokio::test]
     async fn build_pr_content_uses_in_memory_conclusion() {
-        let store = test_store();
-        let _run_store = store.create_run(&fixtures::RUN_1).await.unwrap();
         let PrContent { title, body } = build_pr_content_with_client(
             "diff --git a/src/lib.rs b/src/lib.rs\n+fn new_feature() {}\n",
             "Implement feature",
@@ -1079,178 +1064,7 @@ capabilities = { text = true, tools = true, response_format = { json_object = tr
     }
 
     #[tokio::test]
-    async fn build_pr_content_uses_store_records_without_legacy_files() {
-        let store = test_store();
-        let run_store = store.create_run(&fixtures::RUN_1).await.unwrap();
-
-        let run_spec = RunSpec {
-            run_id:              fixtures::RUN_1,
-            settings:            fabro_types::WorkflowSettings::default(),
-            graph:               Graph::new("test"),
-            graph_source:        None,
-            workflow_slug:       Some("test".to_string()),
-            workflow_version_id: None,
-            target:              None,
-            automation:          None,
-            source_directory:    Some("/tmp/project".to_string()),
-            git:                 Some(fabro_types::GitContext {
-                origin_url: String::new(),
-                branch:     "main".to_string(),
-                sha:        None,
-                dirty:      fabro_types::DirtyStatus::Clean,
-            }),
-            labels:              HashMap::new(),
-            provenance:          test_support::test_run_provenance(),
-            definition_blob:     None,
-            spec_blob:           None,
-            fork_source_ref:     None,
-            admission:           PetriAdmission::default(),
-        };
-        append_event(&run_store, &fixtures::RUN_1, &Event::RunCreated {
-            run_id:              fixtures::RUN_1,
-            title:               None,
-            settings:            serde_json::to_value(&run_spec.settings).unwrap(),
-            graph:               serde_json::to_value(&run_spec.graph).unwrap(),
-            workflow_source:     Some("digraph test { plan -> code }".to_string()),
-            labels:              run_spec.labels.clone().into_iter().collect(),
-            source_directory:    run_spec.source_directory.clone(),
-            workflow_slug:       run_spec.workflow_slug.clone(),
-            workflow_version_id: run_spec.workflow_version_id,
-            target:              run_spec.target.clone(),
-            automation:          None,
-            provenance:          run_spec.provenance.clone(),
-            spec_blob:           None,
-            git:                 run_spec.git.clone(),
-            fork_source_ref:     None,
-            retried_from:        None,
-            parent_id:           None,
-            web_url:             None,
-            admission:           PetriAdmission::default(),
-        })
-        .await
-        .unwrap();
-        let body = build_pr_content_with_client(
-            "diff --git a/src/lib.rs b/src/lib.rs\n+fn new_feature() {}\n",
-            "Implement feature",
-            "mock-model",
-            &mock_catalog(),
-            Some(&make_test_conclusion()),
-            None,
-            explicit_client(
-                "mock",
-                &pr_content_json("Mock title", "Narrative from mock."),
-            ),
-        )
-        .await
-        .unwrap()
-        .body;
-
-        assert!(body.contains("Narrative from mock."));
-        assert!(body.contains("### Fabro Details"));
-        assert!(body.contains("test.fabro"));
-    }
-
-    #[tokio::test]
-    async fn build_pr_content_uses_plan_text_from_store_without_response_md() {
-        let store = test_store();
-        let run_store = store.create_run(&fixtures::RUN_1).await.unwrap();
-
-        let run_spec = RunSpec {
-            run_id:              fixtures::RUN_1,
-            settings:            fabro_types::WorkflowSettings::default(),
-            graph:               Graph::new("test"),
-            graph_source:        None,
-            workflow_slug:       Some("test".to_string()),
-            workflow_version_id: None,
-            target:              None,
-            automation:          None,
-            source_directory:    Some("/tmp/project".to_string()),
-            git:                 Some(fabro_types::GitContext {
-                origin_url: String::new(),
-                branch:     "main".to_string(),
-                sha:        None,
-                dirty:      fabro_types::DirtyStatus::Clean,
-            }),
-            labels:              HashMap::new(),
-            provenance:          test_support::test_run_provenance(),
-            definition_blob:     None,
-            spec_blob:           None,
-            fork_source_ref:     None,
-            admission:           PetriAdmission::default(),
-        };
-        append_event(&run_store, &fixtures::RUN_1, &Event::RunCreated {
-            run_id:              fixtures::RUN_1,
-            title:               None,
-            settings:            serde_json::to_value(&run_spec.settings).unwrap(),
-            graph:               serde_json::to_value(&run_spec.graph).unwrap(),
-            workflow_source:     Some("digraph test { plan -> code }".to_string()),
-            labels:              run_spec.labels.clone().into_iter().collect(),
-            source_directory:    run_spec.source_directory.clone(),
-            workflow_slug:       run_spec.workflow_slug.clone(),
-            workflow_version_id: run_spec.workflow_version_id,
-            target:              run_spec.target.clone(),
-            automation:          None,
-            provenance:          run_spec.provenance.clone(),
-            spec_blob:           None,
-            git:                 run_spec.git.clone(),
-            fork_source_ref:     None,
-            retried_from:        None,
-            parent_id:           None,
-            web_url:             None,
-            admission:           PetriAdmission::default(),
-        })
-        .await
-        .unwrap();
-        append_event(&run_store, &fixtures::RUN_1, &Event::StageCompleted {
-            node_id: "plan".to_string(),
-            name: "plan".to_string(),
-            index: 0,
-            timing: fabro_types::StageTiming::wall_only(1),
-            status: "succeeded".to_string(),
-            preferred_label: None,
-            suggested_next_ids: vec![],
-            usage_by_model: Vec::new(),
-            usage: None,
-            failure: None,
-            notes: None,
-            files_touched: vec![],
-            context_updates: None,
-            jump_to_node: None,
-            context_values: None,
-            node_visits: None,
-            loop_failure_signatures: None,
-            restart_failure_signatures: None,
-            response: Some("Plan from store".to_string()),
-            attempt: 1,
-            max_attempts: 1,
-        })
-        .await
-        .unwrap();
-
-        let body = build_pr_content_with_client(
-            "diff --git a/src/lib.rs b/src/lib.rs\n+fn new_feature() {}\n",
-            "Implement feature",
-            "mock-model",
-            &mock_catalog(),
-            Some(&make_test_conclusion()),
-            None,
-            explicit_client(
-                "mock",
-                &pr_content_json("Mock title", "Narrative from mock."),
-            ),
-        )
-        .await
-        .unwrap()
-        .body;
-
-        assert!(body.contains("<summary>Full plan</summary>"));
-        assert!(body.contains("Plan from store"));
-    }
-
-    #[tokio::test]
     async fn build_pr_content_uses_explicit_llm_client() {
-        let store = test_store();
-        let _run_store = store.create_run(&fixtures::RUN_1).await.unwrap();
         let body = build_pr_content_with_client(
             "diff --git a/src/lib.rs b/src/lib.rs\n+fn new_feature() {}\n",
             "Implement feature",
@@ -1303,9 +1117,6 @@ capabilities = { text = true, tools = true, response_format = { json_object = tr
         ));
         // Use catalog settings to override base_url instead of env var
         let catalog = test_catalog_with_provider_base_url("openai", &server.url("/v1"));
-
-        let store = test_store();
-        let _run_store = store.create_run(&fixtures::RUN_1).await.unwrap();
 
         let PrContent { title, body } = build_pr_content(
             "diff --git a/src/lib.rs b/src/lib.rs\n+fn new_feature() {}\n",
@@ -1528,8 +1339,6 @@ capabilities = { text = true, tools = true, response_format = { json_object = tr
     /// [`build_pr_content_with_client`].
     #[tokio::test]
     async fn build_pr_content_truncates_long_title() {
-        let store = test_store();
-        let _run_store = store.create_run(&fixtures::RUN_1).await.unwrap();
         let long_title = "x".repeat(200);
         let payload = pr_content_json(&long_title, "Body content.");
         let title = build_pr_content_with_client(
@@ -1551,8 +1360,6 @@ capabilities = { text = true, tools = true, response_format = { json_object = tr
 
     #[tokio::test]
     async fn build_pr_content_uses_default_title_when_generated_and_goal_titles_empty() {
-        let store = test_store();
-        let _run_store = store.create_run(&fixtures::RUN_1).await.unwrap();
         let payload = pr_content_json("", "Body content.");
         let title = build_pr_content_with_client(
             "diff --git a/src/lib.rs b/src/lib.rs\n+fn x() {}\n",
@@ -1574,75 +1381,10 @@ capabilities = { text = true, tools = true, response_format = { json_object = tr
     /// aborting PR creation.
     #[tokio::test]
     async fn build_pr_content_uses_skeleton_when_body_empty() {
-        let store = test_store();
-        let run_store = store.create_run(&fixtures::RUN_1).await.unwrap();
-
-        let run_spec = RunSpec {
-            run_id:              fixtures::RUN_1,
-            settings:            fabro_types::WorkflowSettings::default(),
-            graph:               Graph::new("test"),
-            graph_source:        None,
-            workflow_slug:       Some("test".to_string()),
-            workflow_version_id: None,
-            target:              None,
-            automation:          None,
-            source_directory:    Some("/tmp/project".to_string()),
-            git:                 None,
-            labels:              HashMap::new(),
-            provenance:          test_support::test_run_provenance(),
-            definition_blob:     None,
-            spec_blob:           None,
-            fork_source_ref:     None,
-            admission:           PetriAdmission::default(),
-        };
-        append_event(&run_store, &fixtures::RUN_1, &Event::RunCreated {
-            run_id:              fixtures::RUN_1,
-            title:               None,
-            settings:            serde_json::to_value(&run_spec.settings).unwrap(),
-            graph:               serde_json::to_value(&run_spec.graph).unwrap(),
-            workflow_source:     Some("digraph test { plan -> code }".to_string()),
-            labels:              run_spec.labels.clone().into_iter().collect(),
-            source_directory:    run_spec.source_directory.clone(),
-            workflow_slug:       run_spec.workflow_slug.clone(),
-            workflow_version_id: run_spec.workflow_version_id,
-            target:              run_spec.target.clone(),
-            automation:          None,
-            provenance:          test_support::test_run_provenance(),
-            spec_blob:           None,
-            git:                 None,
-            fork_source_ref:     None,
-            retried_from:        None,
-            parent_id:           None,
-            web_url:             None,
-            admission:           PetriAdmission::default(),
-        })
-        .await
-        .unwrap();
-        append_event(&run_store, &fixtures::RUN_1, &Event::StageCompleted {
-            node_id: "plan".to_string(),
-            name: "plan".to_string(),
-            index: 0,
-            timing: fabro_types::StageTiming::wall_only(1),
-            status: "succeeded".to_string(),
-            preferred_label: None,
-            suggested_next_ids: vec![],
-            usage_by_model: Vec::new(),
-            usage: None,
-            failure: None,
-            notes: None,
-            files_touched: vec![],
-            context_updates: None,
-            jump_to_node: None,
-            context_values: None,
-            node_visits: None,
-            loop_failure_signatures: None,
-            restart_failure_signatures: None,
-            response: Some("Plan from store".to_string()),
-            attempt: 1,
-            max_attempts: 1,
-        })
-        .await
-        .unwrap();
+        // The plan node's response is what the body quotes as the plan.
+        let mut state = test_projection();
+        state.stage_entry("plan", 1, first_event_seq(1)).response =
+            Some("Plan from store".to_string());
         let payload = pr_content_json("Mock", "   \n");
         let body = build_pr_content_with_client(
             "diff --git a/src/lib.rs b/src/lib.rs\n+fn x() {}\n",
@@ -1650,7 +1392,7 @@ capabilities = { text = true, tools = true, response_format = { json_object = tr
             "mock-model",
             &mock_catalog(),
             Some(&make_test_conclusion()),
-            None,
+            Some(&state),
             explicit_client("mock", &payload),
         )
         .await
@@ -1795,77 +1537,6 @@ capabilities = { text = true, tools = true, response_format = { json_object = tr
         let catalog = test_catalog_with_provider_base_url("openai", &openai_server.url("/v1"));
 
         let creds = fabro_github::GitHubCredentials::Pat("test-token".to_string());
-
-        let store = test_store();
-        let run_store = store.create_run(&fixtures::RUN_1).await.unwrap();
-        // Seed a completed run so the PR body can include run details.
-        let run_spec = RunSpec {
-            run_id:              fixtures::RUN_1,
-            settings:            fabro_types::WorkflowSettings::default(),
-            graph:               Graph::new("test"),
-            graph_source:        None,
-            workflow_slug:       None,
-            workflow_version_id: None,
-            target:              None,
-            automation:          None,
-            source_directory:    None,
-            git:                 None,
-            labels:              HashMap::new(),
-            provenance:          test_support::test_run_provenance(),
-            definition_blob:     None,
-            spec_blob:           None,
-            fork_source_ref:     None,
-            admission:           PetriAdmission::default(),
-        };
-        append_event(&run_store, &fixtures::RUN_1, &Event::RunCreated {
-            run_id:              fixtures::RUN_1,
-            title:               None,
-            settings:            serde_json::to_value(&run_spec.settings).unwrap(),
-            graph:               serde_json::to_value(&run_spec.graph).unwrap(),
-            workflow_source:     None,
-            labels:              run_spec.labels.clone().into_iter().collect(),
-            source_directory:    None,
-            workflow_slug:       None,
-            workflow_version_id: None,
-            target:              None,
-            automation:          None,
-            provenance:          test_support::test_run_provenance(),
-            spec_blob:           None,
-            git:                 None,
-            fork_source_ref:     None,
-            retried_from:        None,
-            parent_id:           None,
-            web_url:             None,
-            admission:           PetriAdmission::default(),
-        })
-        .await
-        .unwrap();
-        append_event(&run_store, &fixtures::RUN_1, &Event::RunRunnable {
-            source: fabro_types::RunRunnableSource::StartRequested,
-            actor:  None,
-        })
-        .await
-        .unwrap();
-        append_event(&run_store, &fixtures::RUN_1, &Event::RunStarting)
-            .await
-            .unwrap();
-        append_event(&run_store, &fixtures::RUN_1, &Event::RunRunning)
-            .await
-            .unwrap();
-        append_event(&run_store, &fixtures::RUN_1, &Event::WorkflowRunCompleted {
-            timing:               fabro_types::RunTiming::wall_only(1),
-            artifact_count:       0,
-            status:               "succeeded".to_string(),
-            reason:               SuccessReason::Completed,
-            final_git_commit_sha: None,
-            final_patch:          Some(
-                "diff --git a/src/lib.rs b/src/lib.rs\n+fn from_store() {}\n".to_string(),
-            ),
-            diff_summary:         None,
-            usage:                None,
-        })
-        .await
-        .unwrap();
 
         let openai_mock_id = openai_mock.id;
         let branch_mock_id = branch_mock.id;

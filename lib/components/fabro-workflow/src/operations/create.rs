@@ -491,7 +491,6 @@ pub fn make_run_dir(scratch_base: &Path, run_id: &RunId) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
-    use std::time::Duration;
 
     use chrono::{Local, TimeZone, Utc};
     use fabro_config::{
@@ -500,13 +499,12 @@ mod tests {
     };
     use fabro_graphviz::graph::AttrValue;
     use fabro_store::Database;
+    use fabro_store::platform_records::StoredPlatformRecord;
     use fabro_types::diagnostic::Severity;
     use fabro_types::settings::InterpString;
     use fabro_types::settings::run::RunMode;
-    use fabro_types::{EventBody, PetriAdmission, WorkflowSettings, fixtures, test_support};
+    use fabro_types::{PetriAdmission, WorkflowSettings, fixtures, test_support};
     use fabro_util::error::collect_chain;
-    use object_store::local::LocalFileSystem;
-    use object_store::memory::InMemory;
 
     use super::*;
     use crate::file_resolver::FileResolver;
@@ -514,13 +512,41 @@ mod tests {
     use crate::pipeline::types::{GOAL_SELF_REFERENCE_RULE, TEMPLATE_UNDEFINED_VARIABLE_RULE};
     use crate::transforms::Transform;
     use crate::workflow_bundle::BundledWorkflow;
+    /// The platform records the create operation appended for the run.
+    async fn platform_records(store: &Database, run_id: RunId) -> Vec<StoredPlatformRecord> {
+        store
+            .run_summary_store()
+            .platform_records()
+            .read(&run_id)
+            .await
+            .unwrap()
+    }
+
+    /// The `run.created` record of the run.
+    fn run_created(records: &[StoredPlatformRecord]) -> &RunCreatedRecord {
+        records
+            .iter()
+            .find_map(|stored| match &stored.record {
+                PlatformRecord::RunCreated(created) => Some(created),
+                _ => None,
+            })
+            .expect("run.created record should be persisted")
+    }
+
+    /// The status the run's last lifecycle transition leads to.
+    fn last_lifecycle_status(records: &[StoredPlatformRecord]) -> Option<RunStatus> {
+        records
+            .iter()
+            .rev()
+            .find_map(|stored| match &stored.record {
+                PlatformRecord::RunLifecycle(lifecycle) => Some(lifecycle.status),
+                _ => None,
+            })
+            .flatten()
+    }
+
     fn memory_store() -> Arc<Database> {
-        Arc::new(fabro_store::test_support::test_database(
-            Arc::new(InMemory::new()),
-            "",
-            Duration::from_millis(1),
-            None,
-        ))
+        Arc::new(fabro_store::test_support::test_database())
     }
 
     fn settings_from_run_layer(run: RunLayer) -> WorkflowSettings {
@@ -1622,28 +1648,30 @@ mod tests {
         assert_eq!(created.persisted.graph().goal(), "Compiled goal");
         assert_eq!(created.persisted.source(), compiled_source);
 
-        let run_store = store.open_run_reader(&fixtures::RUN_2).await.unwrap();
-        let state = run_store.state().await.unwrap();
-        assert_eq!(state.spec.graph.goal(), "Compiled goal");
-        assert_eq!(state.spec.automation, Some(automation));
-        assert_eq!(state.spec.workflow_version_id, Some(workflow_version_id));
-        let events = run_store.list_events().await.unwrap();
+        let records = platform_records(&store, fixtures::RUN_2).await;
         assert_eq!(
-            events
+            records
                 .iter()
-                .map(|event| event.event.event_name())
+                .map(|stored| stored.record.kind().to_string())
                 .collect::<Vec<_>>(),
-            vec!["run.created", "run.submitted"]
+            vec!["run.created", "run.lifecycle"]
         );
-        let EventBody::RunCreated(created) = &events[0].event.body else {
-            panic!("first durable event should be run.created");
+        let PlatformRecord::RunCreated(created) = &records[0].record else {
+            panic!("first durable record should be run.created");
         };
+        assert_eq!(created.spec.graph.goal(), "Compiled goal");
+        assert_eq!(created.spec.automation, Some(automation));
+        assert_eq!(created.spec.workflow_version_id, Some(workflow_version_id));
         assert_eq!(
-            created.workflow_source.as_deref(),
+            created.spec.graph_source.as_deref(),
             Some(compiled_source.as_str())
         );
-        assert_eq!(created.workflow_version_id, Some(workflow_version_id));
-        assert!(created.spec_blob.is_some());
+        assert!(created.spec.spec_blob.is_some());
+        let PlatformRecord::RunLifecycle(submitted) = &records[1].record else {
+            panic!("second durable record should be the submitted transition");
+        };
+        assert_eq!(submitted.transition, RunLifecycleKind::Submitted);
+        assert_eq!(submitted.status, Some(RunStatus::Submitted));
     }
 
     #[expect(
@@ -1756,10 +1784,9 @@ mod tests {
             created.persisted.run_spec().workflow_slug.as_deref(),
             Some("slug")
         );
-        let run_store = store.open_run(&fixtures::RUN_1).await.unwrap();
         assert_eq!(
-            run_store.state().await.unwrap().status,
-            crate::run_status::RunStatus::Submitted
+            last_lifecycle_status(&platform_records(&store, fixtures::RUN_1).await),
+            Some(crate::run_status::RunStatus::Submitted)
         );
         assert_eq!(
             created.run_dir,
@@ -1825,16 +1852,9 @@ mod tests {
         .await
         .unwrap();
 
-        let run_store = store.open_run(&created.run_id).await.unwrap();
-        let events = run_store.list_events().await.unwrap();
-        let run_created = events
-            .iter()
-            .find_map(|event| match &event.event.body {
-                EventBody::RunCreated(props) => Some(props),
-                _ => None,
-            })
-            .expect("run.created event should be persisted");
-        let step = run_created
+        let records = platform_records(&store, created.run_id).await;
+        let step = run_created(&records)
+            .spec
             .settings
             .run
             .prepare
@@ -2081,14 +2101,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let storage_dir = dir.path().join("storage");
         std::fs::create_dir_all(storage_dir.join("store")).unwrap();
-        let object_store =
-            Arc::new(LocalFileSystem::new_with_prefix(storage_dir.join("store")).unwrap());
-        let store = Arc::new(fabro_store::test_support::test_database(
-            object_store,
-            "",
-            Duration::from_millis(1),
-            None,
-        ));
+        let store = Arc::new(fabro_store::test_support::test_database());
         let automation = fabro_types::AutomationRef {
             id:              "nightly".to_string(),
             name:            Some("Nightly".to_string()),
@@ -2123,16 +2136,17 @@ mod tests {
         )
         .await
         .unwrap();
-        let run_store = store.open_run_reader(&created.run_id).await.unwrap();
-        let events = run_store.list_events().await.unwrap();
-        let state = run_store.state().await.unwrap();
+        let records = platform_records(&store, created.run_id).await;
 
-        assert_eq!(events.first().unwrap().event.event_name(), "run.created");
+        assert_eq!(
+            records.first().unwrap().record.kind().to_string(),
+            "run.created"
+        );
         assert_eq!(
             created.persisted.run_spec().automation,
             Some(automation.clone())
         );
-        assert_eq!(state.spec.automation, Some(automation));
+        assert_eq!(run_created(&records).spec.automation, Some(automation));
     }
 
     #[tokio::test]
@@ -2140,14 +2154,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let storage_dir = dir.path().join("storage");
         std::fs::create_dir_all(storage_dir.join("store")).unwrap();
-        let object_store =
-            Arc::new(LocalFileSystem::new_with_prefix(storage_dir.join("store")).unwrap());
-        let store = Arc::new(fabro_store::test_support::test_database(
-            object_store,
-            "",
-            Duration::from_millis(1),
-            None,
-        ));
+        let store = Arc::new(fabro_store::test_support::test_database());
         let created = create(
             store.as_ref(),
             CreateRunInput {
@@ -2191,10 +2198,8 @@ mod tests {
         .await
         .unwrap();
 
-        let run_store = store.open_run_reader(&created.run_id).await.unwrap();
-        let state = run_store.state().await.unwrap();
-        let run = state.spec;
-        let provenance = run.provenance;
+        let records = platform_records(&store, created.run_id).await;
+        let provenance = run_created(&records).spec.provenance.clone();
 
         assert_eq!(provenance.server.unwrap().version, "0.9.0");
         assert_eq!(

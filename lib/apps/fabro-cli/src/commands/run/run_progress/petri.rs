@@ -7,8 +7,7 @@
 //! fork's `parallel.branch` delegates are the branches of the parallel
 //! group, never stages of their own.
 
-use fabro_types::run_event::RunNoticeLevel;
-use fabro_types::{CodingAgentEvent, RunStreamItem, StageOutcome, StageTiming};
+use fabro_types::{CodingAgentEvent, RunNoticeLevel, RunStreamItem, StageOutcome, StageTiming};
 use serde_json::Value;
 
 use super::event::{ProgressEvent, ProgressUsage, coding_progress_event};

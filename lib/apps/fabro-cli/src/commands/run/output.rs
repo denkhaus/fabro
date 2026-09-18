@@ -156,7 +156,6 @@ pub(crate) async fn print_run_summary_with_client(
     printer: Printer,
 ) -> Result<()> {
     let run_state = client.get_run_state(run_id).await?;
-    let checkpoint = run_state.current_checkpoint().cloned();
     let conclusion = run_state.conclusion.clone();
     let pr_url = run_state
         .pull_request
@@ -174,8 +173,7 @@ pub(crate) async fn print_run_summary_with_client(
         styles,
         printer,
     );
-    let final_output =
-        resolve_final_output_with_client(client, run_id, checkpoint.as_ref()).await?;
+    let final_output = resolve_final_output_with_client(client, run_id, &run_state).await?;
     print_final_output(final_output.as_deref(), styles, printer);
     print_assets_with_client(client, run_id, styles, printer).await?;
     Ok(())
@@ -297,20 +295,19 @@ pub(crate) fn print_final_output(output: Option<&str>, styles: &Styles, printer:
     }
 }
 
+/// The run's final output: the response of the last stage that produced
+/// one, resolved from the blob table when the projection holds a blob
+/// reference in its place.
 async fn resolve_final_output_with_client(
     client: &server_client::Client,
     run_id: &RunId,
-    checkpoint: Option<&fabro_types::Checkpoint>,
+    run_state: &server_client::RunProjection,
 ) -> Result<Option<String>> {
-    let Some(checkpoint) = checkpoint else {
-        return Ok(None);
-    };
-
-    for node_id in checkpoint.completed_nodes.iter().rev() {
-        let key = format!("response.{node_id}");
-        let Some(serde_json::Value::String(response)) = checkpoint.context_values.get(&key) else {
-            continue;
-        };
+    let responses = run_state
+        .iter_stages()
+        .filter_map(|(_, stage)| stage.response.clone())
+        .collect::<Vec<_>>();
+    for response in responses.iter().rev() {
         let Some(output) = resolve_response_string(client, run_id, response).await? else {
             continue;
         };

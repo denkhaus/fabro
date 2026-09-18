@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use fabro_workflow::event::RunNoticeLevel;
+use fabro_types::RunNoticeLevel;
 use pebble_coding_agent::events::{CodingEvent, ErrorKind as AgentErrorKind, LlmOutputKind};
 use serde_json::Value;
 

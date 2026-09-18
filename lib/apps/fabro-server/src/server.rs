@@ -1024,6 +1024,8 @@ pub struct AppState {
     /// proceed in parallel. See `crate::run_files` for semantics.
     pub(crate) files_in_flight: FilesInFlight,
     pull_request_create_locks: KeyedMutex<RunId>,
+    /// One lock per run around a control request's check-and-append.
+    control_request_locks: KeyedMutex<RunId>,
     parent_link_lock: AsyncMutex<()>,
 
     pub(super) server_secrets: ServerSecrets,
@@ -2556,6 +2558,7 @@ pub(crate) fn build_app_state(config: AppStateConfig) -> anyhow::Result<Arc<AppS
         global_event_tx,
         files_in_flight: new_files_in_flight(),
         pull_request_create_locks: KeyedMutex::new(),
+        control_request_locks: KeyedMutex::new(),
         parent_link_lock: AsyncMutex::new(()),
         server_secrets,
         llm_source,
@@ -4139,6 +4142,9 @@ async fn append_control_request(
         RunControlAction::Pause => RunLifecycleKind::PauseRequested,
         RunControlAction::Unpause => RunLifecycleKind::UnpauseRequested,
     };
+    // The check and the append are one step under the run's control lock,
+    // so two concurrent requests for the same control record it once.
+    let _guard = state.control_request_locks.lock(run_id).await;
     if action == RunControlAction::Cancel {
         // A cancel already pending is not asked for twice.
         let pending = run_records::projection(state, run_id)

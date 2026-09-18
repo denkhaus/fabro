@@ -3,7 +3,6 @@ use std::path::{Path, PathBuf};
 #[cfg(test)]
 use std::sync::Mutex;
 use std::sync::{Arc, OnceLock};
-use std::time::Duration;
 
 use anyhow::Context as _;
 use axum::body::{self, Body};
@@ -566,12 +565,7 @@ pub fn test_app_state_with_store(
 
 pub fn test_store_bundle() -> (Arc<Database>, ArtifactStore) {
     let object_store: Arc<dyn object_store::ObjectStore> = Arc::new(MemoryObjectStore::new());
-    let store = Arc::new(store_test_support::test_database(
-        Arc::clone(&object_store),
-        "",
-        Duration::from_millis(1),
-        None,
-    ));
+    let store = Arc::new(store_test_support::test_database());
     let artifact_store = ArtifactStore::new(object_store, "artifacts");
     (store, artifact_store)
 }

@@ -1,17 +1,12 @@
-//! Agent event bodies.
-//!
-//! Pebble owns the coding-agent event vocabulary. Every event a coding agent
-//! publishes reaches the run event log as one [`AgentEventProps`]: pebble's
-//! full [`CodingAgentEvent`] envelope plus the stage and visit fabro adds at
-//! the workflow boundary. The remaining structs here are fabro's own lifecycle
-//! events around a session: activation, steering delivery, pairing, and MCP
-//! server startup, none of which pebble emits.
+//! The agent-side shapes the projection and the API keep: a coding agent
+//! event placed on a stage, the names Fabro gives pebble's events, a
+//! session's activation and tools, and a stage's prompt.
 
 use lithos_llm::types::{ReasoningEffort, Speed};
 use pebble_coding_agent::events::{CodingAgentEvent, CodingEvent, ToolSummary};
 use serde::{Deserialize, Serialize};
 
-use crate::{PairId, PairMessageId, PairSystemMessageKind, PermissionLevel};
+use crate::PermissionLevel;
 
 /// One coding-agent event placed on a workflow stage.
 ///
@@ -181,11 +176,6 @@ pub struct AgentSessionActivatedProps {
     pub visit:            u32,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct AgentSessionDeactivatedProps {
-    pub visit: u32,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AgentToolsAvailableProps {
     #[serde(default)]
@@ -194,136 +184,17 @@ pub struct AgentToolsAvailableProps {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct AgentPairUserMessageProps {
-    pub pair_id:           PairId,
-    pub message_id:        PairMessageId,
+pub struct StagePromptProps {
+    pub visit:            u32,
+    pub text:             String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub client_message_id: Option<String>,
-    pub text:              String,
-    pub visit:             u32,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct AgentPairSystemMessageProps {
-    pub pair_id: PairId,
-    pub kind:    PairSystemMessageKind,
-    pub text:    String,
-    pub visit:   u32,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct AgentInterruptInjectedProps {
-    pub visit: u32,
-}
-
-#[allow(
-    clippy::empty_structs_with_brackets,
-    reason = "This type must serialize as {} rather than null."
-)]
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct AgentSteerBufferedProps {}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum AgentSteerDroppedReason {
-    QueueFull,
-    RunEnded,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct AgentSteerDroppedProps {
-    pub reason: AgentSteerDroppedReason,
-    pub count:  u32,
-}
-
-#[cfg(test)]
-mod tests {
-    use std::time::{Duration, UNIX_EPOCH};
-
-    use pebble_coding_agent::events::{ErrorData, ErrorKind, FailoverStop, Usage};
-    use serde_json::json;
-
-    use super::*;
-
-    fn envelope(event: CodingEvent) -> CodingAgentEvent {
-        CodingAgentEvent::new("ses_root", event, UNIX_EPOCH + Duration::from_millis(1_500))
-            .with_seq(7)
-            .with_stream_id("ses_root")
-    }
-
-    #[test]
-    fn agent_event_props_flatten_pebbles_envelope() {
-        let props = AgentEventProps::new(
-            "code",
-            2,
-            envelope(CodingEvent::ToolCallStarted {
-                tool_name:    "shell".to_string(),
-                tool_call_id: "call_1".to_string(),
-                arguments:    json!({"command": "ls"}),
-            })
-            .with_tool_call_id("call_1"),
-        );
-
-        let value = serde_json::to_value(&props).unwrap();
-        assert_eq!(
-            value,
-            json!({
-                "stage": "code",
-                "visit": 2,
-                "seq": 7,
-                "stream_id": "ses_root",
-                "session_id": "ses_root",
-                "tool_call_id": "call_1",
-                "timestamp": "1970-01-01T00:00:01.500Z",
-                "event": {
-                    "ToolCallStarted": {
-                        "tool_name": "shell",
-                        "tool_call_id": "call_1",
-                        "arguments": {"command": "ls"}
-                    }
-                }
-            })
-        );
-        assert_eq!(props.event_name(), "agent.tool.started");
-        let parsed: AgentEventProps = serde_json::from_value(value).unwrap();
-        assert_eq!(parsed, props);
-    }
-
-    #[test]
-    fn every_derived_name_is_listed() {
-        let events = vec![
-            CodingEvent::SessionEnded,
-            CodingEvent::ProcessingEnd,
-            CodingEvent::LoopDetected,
-            CodingEvent::McpServerDisconnected {
-                server: "github".to_string(),
-                error:  "transport closed".to_string(),
-            },
-            CodingEvent::AssistantMessage {
-                text:            String::new(),
-                model:           "gpt-5.4".to_string(),
-                usage:           Usage::default(),
-                tool_call_count: 0,
-                context_window:  None,
-                reasoning:       None,
-            },
-        ];
-        for event in events {
-            assert!(is_coding_event_name(coding_event_name(&event)));
-        }
-        assert!(is_coding_event_name("todo.updated"));
-        assert!(!is_coding_event_name("agent.session.activated"));
-    }
-
-    #[test]
-    fn a_stopped_failover_has_its_own_name() {
-        let stopped = CodingEvent::RouteFailoverStopped {
-            route:   "anthropic/claude-fable-5".to_string(),
-            attempt: 2,
-            reason:  FailoverStop::Exhausted,
-            error:   ErrorData::new(ErrorKind::Llm, "overloaded"),
-        };
-        assert_eq!(coding_event_name(&stopped), "agent.route.failover.stopped");
-        assert!(is_coding_event_name("agent.route.failover.stopped"));
-    }
+    pub mode:             Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider:         Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model:            Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning_effort: Option<ReasoningEffort>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub speed:            Option<Speed>,
 }

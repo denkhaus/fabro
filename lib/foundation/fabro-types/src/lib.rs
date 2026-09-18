@@ -1,5 +1,6 @@
 extern crate self as fabro_types;
 
+pub mod agent_props;
 pub mod artifact;
 pub mod auth;
 pub mod blob_hash;
@@ -12,7 +13,6 @@ pub mod dense;
 pub mod diagnostic;
 pub mod diff;
 pub mod engine;
-pub mod event_envelope;
 pub mod failure_signature;
 pub mod git_identity;
 pub mod graph;
@@ -23,6 +23,7 @@ pub mod llm_backend;
 pub mod manifest_path;
 pub mod mcp_store;
 pub mod model_test;
+pub mod notice;
 pub mod outcome;
 pub mod pair;
 pub mod parallel;
@@ -30,7 +31,6 @@ pub mod principal;
 pub mod pull_request;
 pub mod repository;
 pub mod run;
-pub mod run_event;
 pub mod run_failure;
 pub mod run_id;
 pub mod run_intent;
@@ -65,6 +65,10 @@ pub mod workflow_path;
 pub mod workflow_version;
 pub mod workflow_version_id;
 
+pub use agent_props::{
+    AgentEventProps, AgentSessionActivatedProps, AgentToolsAvailableProps, CODING_EVENT_NAMES,
+    SessionCapability, StagePromptProps, coding_event_name, is_coding_event_name,
+};
 pub use artifact::ArtifactUpload;
 pub use auth::{IdpIdentity, IdpIdentityError};
 pub use blob_hash::BlobHash;
@@ -76,7 +80,6 @@ pub use conclusion::{Conclusion, StageSummary};
 pub use dense::{ServerSettings, UserSettings, WorkflowSettings};
 pub use diff::{DiffStats, DiffSummary, RunDiff};
 pub use engine::{PetriAdmission, PetriGraphRef};
-pub use event_envelope::EventEnvelope;
 pub use failure_signature::FailureSignature;
 pub use git_identity::{GitIdentity, GitIdentitySource};
 pub use graph::{
@@ -88,7 +91,8 @@ pub use input_scalar::{
     toml_scalar_to_json_value,
 };
 pub use interview::{
-    InterviewQuestionRecord, QuestionType, ReviewTarget, ReviewTargetError, ReviewTargetKind,
+    InterviewOption, InterviewQuestionRecord, QuestionType, ReviewTarget, ReviewTargetError,
+    ReviewTargetKind,
 };
 pub use llm_backend::AgentBackend;
 pub use manifest_path::{ManifestPath, ManifestPathParseError};
@@ -98,6 +102,7 @@ pub use mcp_store::{
     validate_mcp_server_fields,
 };
 pub use model_test::ModelTestMode;
+pub use notice::{RunNoticeCode, RunNoticeLevel};
 pub use outcome::{
     FailureCategory, FailureDetail, NodeResult, Outcome, OutcomeMeta, StageOutcome, StageState,
 };
@@ -132,12 +137,6 @@ pub use repository::{
 pub use run::{
     DirtyStatus, ForkSourceRef, GitContext, RunClientProvenance, RunProvenance,
     RunServerProvenance, RunSpec,
-};
-pub use run_event::{
-    AgentEventProps, AgentToolsAvailableProps, CODING_EVENT_NAMES, EventBody, FailoverProps,
-    InterviewOption, MetadataSnapshotFailureKind, MetadataSnapshotPhase, RunEvent, RunNoticeCode,
-    RunNoticeLevel, RunPairEndedReason, RunPairFailedReason, RunRunnableSource, SessionCapability,
-    coding_event_name, is_coding_event_name, sandbox_driver_event_name,
 };
 pub use run_failure::RunFailure;
 pub use run_id::{RunId, fixtures};
@@ -182,8 +181,8 @@ pub use stage_handler::StageHandler;
 pub use stage_id::{InvalidStageVisit, ParallelBranchId, StageId};
 pub use start::StartRecord;
 pub use status::{
-    BlockedReason, FailureReason, InvalidTransition, PendingReason, RunControlAction, RunStatus,
-    RunStatusKind, SuccessReason, TerminalStatus,
+    BlockedReason, FailureReason, InvalidTransition, PendingReason, RunControlAction,
+    RunRunnableSource, RunStatus, RunStatusKind, SuccessReason, TerminalStatus,
 };
 pub use steering::SteeringMessage;
 pub use system_integrations::{

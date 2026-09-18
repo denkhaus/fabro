@@ -102,23 +102,3 @@ fn run_spec_round_trips_templated_settings() {
         Some(RunGoal::Inline(InterpString::parse("Ship {{ env.TASK }}")))
     );
 }
-
-#[test]
-fn run_spec_defaults_automation_for_legacy_specs() {
-    let json = serde_json::json!({
-        "run_id": fixtures::RUN_1,
-        "settings": WorkflowSettings::default(),
-        "graph": Graph::new("ship"),
-        "labels": {},
-        "provenance": test_run_provenance()
-    });
-
-    let record: RunSpec = serde_json::from_value(json).expect("legacy spec should deserialize");
-
-    assert_eq!(record.automation, None);
-    assert_eq!(record.workflow_version_id, None);
-    assert_eq!(record.target, None);
-
-    let round_trip = serde_json::to_value(&record).expect("record should serialize");
-    assert!(round_trip.get("workflow_version_id").is_none());
-}

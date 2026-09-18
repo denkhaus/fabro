@@ -399,7 +399,7 @@ fn main() {
         ("PermissionLevel", "fabro_types::PermissionLevel", &[]),
         (
             "AgentSessionActivatedProps",
-            "fabro_types::run_event::AgentSessionActivatedProps",
+            "fabro_types::AgentSessionActivatedProps",
             &[],
         ),
         ("TodoListProjection", "fabro_types::TodoListProjection", &[]),

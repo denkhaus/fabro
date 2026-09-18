@@ -8,8 +8,7 @@
 //! helpers a run's platform effects use (`git`, `git_identity`,
 //! `sandbox_git`), pull request creation (`pull_request`), the run tools an
 //! agent session calls (`run_tools`, `services`), the built-in web search
-//! backend (`web_search`), and, until the legacy event store is deleted,
-//! the legacy run event vocabulary (`event`, `runtime_store`).
+//! backend (`web_search`).
 
 #![cfg_attr(
     test,
@@ -29,7 +28,6 @@
 )]
 
 pub mod error;
-pub mod event;
 pub mod file_resolver;
 pub mod git;
 pub mod git_identity;
@@ -50,18 +48,11 @@ pub use usage_rollup::{
 pub mod run_materialization;
 pub mod run_status;
 pub mod run_tools;
-pub mod runtime_store;
 pub mod sandbox_git;
 pub mod services;
-mod stage_scope;
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_support;
 #[doc(hidden)]
 pub mod transforms;
 pub mod web_search;
 pub mod workflow_bundle;
-
-/// Convert a Duration's milliseconds to u64, saturating on overflow.
-pub(crate) fn millis_u64(d: std::time::Duration) -> u64 {
-    u64::try_from(d.as_millis()).unwrap_or(u64::MAX)
-}

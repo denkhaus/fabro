@@ -11,7 +11,7 @@ use pebble_coding_agent::events::{
 use pebble_coding_agent::projection::SessionProjection;
 use strum::{Display, EnumString, IntoStaticStr};
 
-use crate::run_event::{AgentSessionActivatedProps, StagePromptProps};
+use crate::agent_props::{AgentSessionActivatedProps, StagePromptProps};
 use crate::{
     AgentBackend, Checkpoint, Conclusion, GitIdentity, InterviewQuestionRecord, InvalidTransition,
     ModelRef, ModelUsage, ParallelBranchId, PullRequestCreation, PullRequestLink, RunApproval,

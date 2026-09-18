@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use fabro_workflow::event::RunNoticeLevel;
+use fabro_types::RunNoticeLevel;
 
 use super::renderer::ProgressRenderer;
 use super::styles;

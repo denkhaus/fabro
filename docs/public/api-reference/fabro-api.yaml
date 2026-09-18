@@ -13766,54 +13766,24 @@ components:
           example: Propose Changes
 
     RunCheckpoint:
-      description: Serializable snapshot of execution state for crash recovery and resume.
+      description: >-
+        A checkpoint Fabro recorded for the run: when, at which node, and
+        the commit the workspace was checkpointed at, when it was committed.
       type: object
       required:
         - timestamp
         - current_node
-        - completed_nodes
-        - node_retries
-        - context_values
       properties:
         timestamp:
           type: string
           format: date-time
-          description: ISO 8601 timestamp when the checkpoint was created.
+          description: When the checkpoint was recorded.
         current_node:
           type: string
-          description: Identifier of the node being executed at checkpoint time.
-        completed_nodes:
-          type: array
-          items:
-            type: string
-          description: Identifiers of nodes that have completed execution.
-        node_retries:
-          type: object
-          additionalProperties:
-            type: integer
-          description: Map of node identifier to retry count.
-        context_values:
-          type: object
-          additionalProperties: true
-          description: Key-value context map accumulated during execution.
-        node_outcomes:
-          type: object
-          additionalProperties: true
-          description: Map of node identifier to outcome data for goal gate checks after resume.
-        next_node_id:
-          type: string
-          description: The node to resume execution at after this checkpoint.
+          description: The node the checkpoint was recorded for.
         git_commit_sha:
           type: string
           description: SHA of the git commit created at this checkpoint.
-        loop_failure_signatures:
-          type: object
-          additionalProperties: true
-          description: Failure signature counts within the main loop.
-        restart_failure_signatures:
-          type: object
-          additionalProperties: true
-          description: Failure signature counts across loop_restart edges.
 
     # ── Stage / Turn Schemas ─────────────────────────────────────────────
 

@@ -25,7 +25,7 @@
 //! milliseconds from the run's creation to the stage's `visit.started`,
 //! plus one, which is the same however the records were delivered.
 
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet};
 
 use chrono::{DateTime, TimeZone as _, Utc};
 use fabro_store::platform_records::{
@@ -237,17 +237,9 @@ impl RunView {
                     .get(&stage_key(record.execution, record.firing));
                 let current_node = stage.map_or_else(String::new, |stage| stage.node_name.clone());
                 let checkpoint = fabro_types::Checkpoint {
-                    timestamp:                  at,
-                    current_node:               current_node.clone(),
-                    completed_nodes:            Vec::new(),
-                    node_retries:               HashMap::default(),
-                    context_values:             HashMap::default(),
-                    node_outcomes:              HashMap::default(),
-                    next_node_id:               None,
-                    git_commit_sha:             record.git_commit_sha.clone(),
-                    loop_failure_signatures:    HashMap::default(),
-                    restart_failure_signatures: HashMap::default(),
-                    node_visits:                HashMap::default(),
+                    timestamp:      at,
+                    current_node:   current_node.clone(),
+                    git_commit_sha: record.git_commit_sha.clone(),
                 };
                 projection.checkpoints.push(ViewCheckpoint {
                     seq: u32::try_from(stream_seq).unwrap_or(u32::MAX),
@@ -1119,7 +1111,19 @@ fn fold_lifecycle(projection: &mut RunProjection, record: &RunLifecycleRecord, a
     use RunLifecycleKind as Kind;
     match record.transition {
         Kind::Submitted => apply_status(projection, RunStatus::Submitted, at),
-        Kind::StartRequested | Kind::Unpaused => {}
+        Kind::StartRequested => {}
+        Kind::Unpaused => {
+            let status = match projection.status {
+                RunStatus::Paused {
+                    prior_block: Some(blocked_reason),
+                } => RunStatus::Blocked { blocked_reason },
+                _ => RunStatus::Running,
+            };
+            apply_status(projection, status, at);
+            if projection.pending_control == Some(RunControlAction::Unpause) {
+                projection.pending_control = None;
+            }
+        }
         Kind::Pending => {
             if let Some(status) = record.status {
                 apply_status(projection, status, at);
@@ -1168,12 +1172,31 @@ fn fold_lifecycle(projection: &mut RunProjection, record: &RunLifecycleRecord, a
                 apply_status(projection, status, at);
             }
         }
-        Kind::Starting
-        | Kind::Running
-        | Kind::Blocked
-        | Kind::Unblocked
-        | Kind::Removing
-        | Kind::Dead => {
+        Kind::Blocked => {
+            // A block that lands while the run is paused waits behind the
+            // pause: the unpause restores it.
+            match (projection.status, record.status) {
+                (RunStatus::Paused { .. }, Some(RunStatus::Blocked { blocked_reason })) => {
+                    apply_status(
+                        projection,
+                        RunStatus::Paused {
+                            prior_block: Some(blocked_reason),
+                        },
+                        at,
+                    );
+                }
+                (_, Some(status)) => apply_status(projection, status, at),
+                (_, None) => {}
+            }
+        }
+        Kind::Unblocked => {
+            let status = match projection.status {
+                RunStatus::Paused { .. } => RunStatus::Paused { prior_block: None },
+                _ => record.status.unwrap_or(RunStatus::Running),
+            };
+            apply_status(projection, status, at);
+        }
+        Kind::Starting | Kind::Running | Kind::Removing | Kind::Dead => {
             if let Some(status) = record.status {
                 apply_status(projection, status, at);
             }
@@ -1181,9 +1204,13 @@ fn fold_lifecycle(projection: &mut RunProjection, record: &RunLifecycleRecord, a
         Kind::Paused => {
             let prior_block = match projection.status {
                 RunStatus::Blocked { blocked_reason } => Some(blocked_reason),
+                RunStatus::Paused { prior_block } => prior_block,
                 _ => None,
             };
             apply_status(projection, RunStatus::Paused { prior_block }, at);
+            if projection.pending_control == Some(RunControlAction::Pause) {
+                projection.pending_control = None;
+            }
         }
         Kind::Succeeded | Kind::Failed => {
             if let Some(status) = record.status {
