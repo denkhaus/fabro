@@ -1,7 +1,8 @@
 //! Petri's human gates through Fabro's interview adapter: a question is
-//! posted as Fabro's `interview.started`, the answer submitted to the
-//! control interviewer under the posted id reaches the gate, two parallel
-//! gates each get their own answer, an expired question is completed as a
+//! posted as Fabro's `interview.started` under Petri's own id and the
+//! projection's stage label, the answer submitted to the control
+//! interviewer under that id reaches the gate, two parallel gates each get
+//! their own answer, an expired question is completed as a
 //! timeout with the gate's default, an auto-approved run answers itself,
 //! and a cancelled run interrupts its question.
 //!
@@ -197,7 +198,7 @@ async fn a_gate_answered_under_the_posted_id_routes_on_the_answer() {
         let board = gate.board.clone();
         let control = gate.control.clone();
         tokio::spawn(async move {
-            let asked = board.wait_asked("gate").await;
+            let asked = board.wait_asked("gate@1").await;
             control
                 .submit(&asked.question_id, engine_submission(LegacyAnswer::no()))
                 .await
@@ -214,7 +215,10 @@ async fn a_gate_answered_under_the_posted_id_routes_on_the_answer() {
         gate.marker("no") && !gate.marker("yes"),
         "the no branch ran"
     );
-    assert_eq!(asked.stage, "gate");
+    assert_eq!(
+        asked.stage, "gate@1",
+        "the projection's label for the firing"
+    );
     assert_eq!(asked.text, "Go?");
     assert_eq!(asked.question_type, QuestionType::YesNo);
     assert_eq!(
@@ -226,11 +230,14 @@ async fn a_gate_answered_under_the_posted_id_routes_on_the_answer() {
         vec![("Y", "[Y] Yes"), ("N", "[N] No")]
     );
     assert!(
-        asked.question_id.starts_with("gate.x0.f"),
-        "{}",
+        asked.question_id.starts_with("gate#"),
+        "Petri's id, as the projection serves it: {}",
         asked.question_id
     );
     assert_eq!(asked.identity.node, "gate");
+    assert_eq!(asked.identity.execution, 0);
+    assert_eq!(asked.identity.occurrence, 1);
+    assert_eq!(asked.identity.ask, 1);
     assert_eq!(asked.identity.invocation_path, "/");
     let notices = gate.board.notices();
     assert!(
@@ -280,8 +287,8 @@ async fn two_parallel_gates_each_bind_their_own_answer() {
         let control = gate.control.clone();
         tokio::spawn(async move {
             // Both are pending before either is answered, and `b` first.
-            let a = board.wait_asked("a").await;
-            let b = board.wait_asked("b").await;
+            let a = board.wait_asked("a@1").await;
+            let b = board.wait_asked("b@1").await;
             assert_ne!(a.question_id, b.question_id);
             control
                 .submit(&b.question_id, engine_submission(LegacyAnswer::yes()))
@@ -354,14 +361,14 @@ async fn an_unanswered_question_expires_with_the_gates_default() {
 
     assert_eq!(outcome.status, RunStatus::Success, "{outcome:?}");
     assert!(gate.marker("no") && !gate.marker("yes"), "the default ran");
-    let asked = gate.board.asked("gate").expect("asked");
+    let asked = gate.board.asked("gate@1").expect("asked");
     let notices = gate.board.wait_ended(&asked.question_id).await;
     assert_eq!(asked.timeout_seconds, Some(0.3));
     assert!(
         matches!(
             &notices[1],
             QuestionNotice::Expired { question_id, stage, .. }
-                if *question_id == asked.question_id && stage == "gate"
+                if *question_id == asked.question_id && stage == "gate@1"
         ),
         "{notices:?}"
     );
@@ -443,7 +450,7 @@ async fn a_cancelled_run_interrupts_its_pending_question() {
     let canceller = {
         let board = gate.board.clone();
         tokio::spawn(async move {
-            board.wait_asked("gate").await;
+            board.wait_asked("gate@1").await;
             cancel.cancel();
         })
     };
@@ -453,7 +460,7 @@ async fn a_cancelled_run_interrupts_its_pending_question() {
 
     assert_eq!(outcome.status, RunStatus::Cancelled, "{outcome:?}");
     assert!(!gate.marker("yes") && !gate.marker("no"), "no branch ran");
-    let asked = gate.board.asked("gate").expect("asked");
+    let asked = gate.board.asked("gate@1").expect("asked");
     let notices = gate.board.wait_ended(&asked.question_id).await;
     assert!(
         matches!(

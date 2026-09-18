@@ -44,7 +44,7 @@ use fabro_types::{
 };
 use lithos_llm::catalog::{ModelId, ProviderId};
 use lithos_llm::types::Usage;
-use petri_execution::events::{Derived, Parsed, RunEvent, Subject, ViewEvent, WaitState};
+use petri_execution::events::{Derived, NodeRef, Parsed, RunEvent, Subject, ViewEvent, WaitState};
 use petri_execution::{CoordinatorEvent, ExecutionId};
 use petri_runtime::engine::{Admission, Event};
 use petri_runtime::ir::{Metrics, Status, StepEvent};
@@ -978,28 +978,15 @@ impl RunView {
             return;
         }
         let node_name = subject.node.name.to_string();
-        let visit = subject.visit.unwrap_or(1).max(1);
-        let meta_kind = subject
-            .node
-            .meta
-            .get("kind")
-            .and_then(Value::as_str)
-            .unwrap_or("");
-        let synthetic = subject
-            .node
-            .meta
-            .get("synthetic")
-            .and_then(Value::as_bool)
-            .unwrap_or(false);
-        let shown = !synthetic && meta_kind != "parallel.branch";
+        let visit = visit_of(subject);
+        let meta_kind = node_meta_kind(&subject.node);
+        let shown = is_shown(&subject.node);
         // Only a shown stage takes a label: a lowering node (a branch's
         // parent-side delegate shares its target's name) never competes with
         // the stage it stands for.
         let mut stage_id = StageId::new(node_name.clone(), visit);
         if shown {
-            if self.state.labels.contains(&stage_id.to_string()) {
-                stage_id = StageId::new(format!("{node_name}/e{}", execution.raw()), visit);
-            }
+            stage_id = stage_label(&node_name, visit, execution, &self.state.labels);
             self.state.labels.insert(stage_id.to_string());
         }
         self.state.stages.insert(key, StageRef {
@@ -1181,6 +1168,50 @@ pub fn stage_key(execution: u64, firing: u64) -> String {
     format!("{execution}:{firing}")
 }
 
+/// Which firing of its node a subject is, 1-based.
+#[must_use]
+pub fn visit_of(subject: &Subject) -> u32 {
+    subject.visit.unwrap_or(1).max(1)
+}
+
+/// The role a frontend gave a node under `meta.kind`, or the empty string.
+fn node_meta_kind(node: &NodeRef) -> &str {
+    node.meta.get("kind").and_then(Value::as_str).unwrap_or("")
+}
+
+/// Whether a node is a logical stage the projection shows, or a lowering
+/// node it keeps off the list: one a frontend marked synthetic, or a
+/// parallel branch's delegate.
+#[must_use]
+pub fn is_shown(node: &NodeRef) -> bool {
+    let synthetic = node
+        .meta
+        .get("synthetic")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    !synthetic && node_meta_kind(node) != "parallel.branch"
+}
+
+/// The label a shown firing takes, which is the stage id the projection
+/// keys it by: `node@visit`, or `node/e<execution>@visit` when another
+/// execution's firing already took that label. `taken` is every label given
+/// so far; the caller adds the one returned. The interview adapter labels a
+/// question's stage through this same rule, so the stage a question names
+/// is the stage the projection shows.
+#[must_use]
+pub fn stage_label(
+    node_name: &str,
+    visit: u32,
+    execution: ExecutionId,
+    taken: &BTreeSet<String>,
+) -> StageId {
+    let stage_id = StageId::new(node_name.to_string(), visit);
+    if taken.contains(&stage_id.to_string()) {
+        return StageId::new(format!("{node_name}/e{}", execution.raw()), visit);
+    }
+    stage_id
+}
+
 /// The fork firing and branch index a branch child's call slot names:
 /// `branch:<fork>@<firing>:<index>:<target>`.
 fn branch_slot(slot: &str) -> Option<(u64, u32)> {
@@ -1331,7 +1362,6 @@ pub fn run_id_of(key: &str) -> Option<RunId> {
 mod tests {
     use fabro_store::platform_records::RunCreatedRecord;
     use fabro_types::test_support as types_support;
-    use petri_execution::events::NodeRef;
     use petri_runtime::driver::BranchRole;
     use petri_runtime::ir::{FiringId, NodeId};
 

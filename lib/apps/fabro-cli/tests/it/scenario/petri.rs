@@ -604,13 +604,21 @@ async fn wait_for_questions(
     }
 }
 
-/// Answer a question through the API, as the web app and the CLI do.
+/// Answer a question through the API, as the web app and the CLI do. The
+/// question id is Petri's (`gate#2`), so it travels as one percent-encoded
+/// path segment, as the generated clients send it.
 async fn answer(server: &RunningServer, run_id: &str, question_id: &str, body: serde_json::Value) {
+    let mut url = fabro_http::Url::parse(&format!(
+        "{}/api/v1/runs/{run_id}/questions",
+        server.api_base_url
+    ))
+    .expect("the API base URL parses");
+    url.path_segments_mut()
+        .expect("the API URL has a path")
+        .push(question_id)
+        .push("answer");
     let response = fabro_test::test_http_client()
-        .post(format!(
-            "{}/api/v1/runs/{run_id}/questions/{question_id}/answer",
-            server.api_base_url
-        ))
+        .post(url)
         .bearer_auth(TEST_DEV_TOKEN)
         .json(&body)
         .send()
@@ -672,9 +680,13 @@ async fn a_human_gate_in_the_worker_is_answered_through_the_api() {
 
     let pending = wait_for_questions(&server, &run_id, 1).await;
     let question = &pending[0];
-    assert_eq!(question["stage"], "gate", "{question}");
+    assert_eq!(question["stage"], "gate@1", "{question}");
     assert_eq!(question["question_type"], "yes_no", "{question}");
     let question_id = question["id"].as_str().expect("an id").to_string();
+    assert!(
+        question_id.starts_with("gate#"),
+        "Petri's id: {question_id}"
+    );
     answer(
         &server,
         &run_id,
@@ -732,7 +744,7 @@ async fn two_parallel_gates_in_the_worker_each_bind_their_own_answer() {
             .unwrap_or_else(|| panic!("`{stage}` is pending: {pending:?}"))
             .to_string()
     };
-    let (a, b) = (id_of("a"), id_of("b"));
+    let (a, b) = (id_of("a@1"), id_of("b@1"));
     assert_ne!(a, b);
     for question in &pending {
         assert_eq!(question["question_type"], "yes_no", "{question}");

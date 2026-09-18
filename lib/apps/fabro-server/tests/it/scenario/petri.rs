@@ -34,6 +34,7 @@ use fabro_server::test_support::{
     test_register_workflow_version,
 };
 use fabro_static::EnvVars;
+use fabro_store::platform_records::{PlatformRecord, PlatformRecordKind, PlatformRecordStore};
 use fabro_test::{TwinScenario, TwinScenarios, twin_openai};
 use fabro_types::{RunId, WorkflowPath, WorkflowVersion};
 use tower::ServiceExt;
@@ -591,7 +592,7 @@ async fn a_human_gate_is_answered_through_the_questions_api() {
         create_and_start_run_from_intent(&app, intent(&version_id, workspace.path())).await;
 
     let question = wait_for_question(&app, &run_id).await;
-    assert_eq!(question["stage"], "gate", "{question}");
+    assert_eq!(question["stage"], "gate@1", "{question}");
     assert_eq!(question["text"], "Go?", "{question}");
     assert_eq!(question["question_type"], "yes_no", "{question}");
     let keys: Vec<&str> = question["options"]
@@ -602,12 +603,20 @@ async fn a_human_gate_is_answered_through_the_questions_api() {
         .collect();
     assert_eq!(keys, vec!["Y", "N"], "{question}");
     let question_id = question["id"].as_str().expect("an id").to_string();
-    assert!(question_id.starts_with("gate."), "{question_id}");
+    assert!(
+        question_id.starts_with("gate#"),
+        "Petri's id: {question_id}"
+    );
 
+    // Petri's id travels as one percent-encoded path segment, as the
+    // generated clients send it.
+    let encoded_id =
+        percent_encoding::utf8_percent_encode(&question_id, percent_encoding::NON_ALPHANUMERIC)
+            .to_string();
     let req = Request::builder()
         .method("POST")
         .uri(api(&format!(
-            "/runs/{run_id}/questions/{question_id}/answer"
+            "/runs/{run_id}/questions/{encoded_id}/answer"
         )))
         .header("content-type", "application/json")
         .body(Body::from(r#"{"kind":"no"}"#))
@@ -655,5 +664,25 @@ async fn a_human_gate_is_answered_through_the_questions_api() {
             .is_some_and(serde_json::Map::is_empty),
         "the answered question is no longer pending: {}",
         state_body["pending_interviews"]
+    );
+    // Who answered is a platform record keyed on Petri's id, derived from
+    // the adapter's `interview.completed` with the API caller as its actor.
+    let answered = PlatformRecordStore::new(state.test_petri_view_pool())
+        .read_kind(
+            &run_id.parse().expect("the run id parses"),
+            PlatformRecordKind::InterviewAnswered,
+        )
+        .await
+        .expect("the platform records read");
+    let [answered] = answered.as_slice() else {
+        panic!("one question was answered: {answered:?}");
+    };
+    let PlatformRecord::InterviewAnswered(record) = &answered.record else {
+        panic!("an answered record: {answered:?}");
+    };
+    assert_eq!(record.question, question_id);
+    assert!(
+        record.principal.is_some(),
+        "the answering principal: {record:?}"
     );
 }

@@ -8,20 +8,45 @@
 //! question to Fabro the way a legacy `human` stage does, waits for the
 //! answer the way the legacy worker does, and hands Petri the reply.
 //!
+//! # One identity
+//!
+//! A question has one id in Fabro: Petri's [`Question::id`] (`gate#2`),
+//! as the `question` record names it. The projection over Petri's records
+//! keys `pending_interviews` by it, `GET /runs/{id}/questions` lists it,
+//! `POST /runs/{id}/questions/{qid}/answer` validates the answer against
+//! the projection's pending question under it, and this adapter waits on
+//! the worker's [`ControlInterviewer`] under it. The rest of Petri's
+//! identity rides on [`AskedQuestion::identity`] for the record of who
+//! answered. The stage a question names is the label the projection gives
+//! the asking firing (`gate@1`, or `gate/e3@1` when another execution took
+//! that label): [`Observed`] labels every firing through the projection's
+//! own rule ([`projection::stage_label`]) as the run's records go by.
+//!
 //! # How a question reaches a person
 //!
-//! The legacy stage emits `interview.started` on the run's event stream;
-//! the read side keeps it in the projection's `pending_interviews`, keyed
-//! by question id, and that is what `GET /runs/{id}/questions`, the web
-//! app's interview dock and the Slack integration read pending questions
-//! from. This adapter posts the same event through a [`QuestionSink`]: the
-//! worker's [`EventSinkQuestions`] appends it over the run event sink the
-//! worker already carries lifecycle events on, and the server's in-process
-//! path appends it through [`DatabaseQuestions`]. The question id is
-//! Fabro's key for the question and is derived from Petri's identity
-//! ([`question_id`]); the node name is the event's `stage`, and the Fabro
-//! question type, options, freeform flag, deadline and review target are
-//! mapped from Petri's [`Question`].
+//! The projection derives the pending question, its answer and its expiry
+//! from Petri's records alone; the run's own record is the source of truth
+//! and nothing the adapter posts is folded into it. The adapter still
+//! posts the legacy `interview.*` events through a [`QuestionSink`], with
+//! Petri's id and the projection's stage label, for the readers that
+//! follow the run's event stream rather than its projection:
+//!
+//! - the server's Slack service posts a question to the channel on
+//!   `interview.started` and finishes it on `interview.completed`,
+//!   `interview.timeout` or `interview.interrupted`;
+//! - `fabro run attach` polls the questions API when `interview.started`
+//!   arrives and stops waiting on the question's closing event;
+//! - the web app's human Q&A renderer pairs `interview.started` with its
+//!   closing event by question id in the stage's event list;
+//! - the server clears its record of an accepted answer on the closing event,
+//!   so the transport can be claimed again.
+//!
+//! The worker's [`EventSinkQuestions`] appends them over the run event sink
+//! the worker already carries lifecycle events on, and the server's
+//! in-process path appends them through [`DatabaseQuestions`]. For a Petri
+//! run the store derives the `interview.answered` platform record from
+//! `interview.completed`: the question's Petri id and the principal that
+//! answered, which is the actor the adapter stamps on the event.
 //!
 //! # How the answer comes back
 //!
@@ -45,16 +70,17 @@
 //! adapter's cancel token, as it does when the firing ends without an
 //! answer or the run is cancelled. The adapter returns promptly with
 //! [`InterviewReply::Cancelled`] and posts `interview.timeout` when the
-//! gate reported the expiry, else `interview.interrupted`, so the pending
-//! question clears from Fabro's view. The expiry report is seen by the
-//! adapter's own observer ([`FabroInterviewer::observer`]), which the run
-//! registers ahead of the dispatcher so the report is noted before the
-//! token fires. The dispatcher races the reply against the same token and
-//! may drop the reply future the moment the token fires, so the notice is
-//! posted from a guard that runs whether the future completes or is
-//! dropped, on a task of its own. The dispatcher's own record of the
-//! outcome (`TimedOut` with the default taken, `Cancelled`, `Late`) is the
-//! authoritative one and reaches the receipt.
+//! gate reported the expiry, else `interview.interrupted`, so the readers
+//! above see the question end. The expiry report is seen by the adapter's
+//! own observer ([`FabroInterviewer::observer`]), which the run registers
+//! ahead of the dispatcher so the report is noted before the token fires.
+//! The dispatcher races the reply against the same token and may drop the
+//! reply future the moment the token fires, so the notice is posted from a
+//! guard that runs whether the future completes or is dropped, on a task
+//! of its own. The dispatcher's own record of the outcome (`TimedOut` with
+//! the default taken, `Cancelled`, `Late`) is the authoritative one and
+//! reaches the receipt, and the projection closes the question on Petri's
+//! `question_expired` record or the cancelled attempt.
 //!
 //! # Auto-approval
 //!
@@ -62,21 +88,9 @@
 //! at once as the legacy runner's auto-approve interviewer does (`yes`,
 //! the first option, or `auto-approved` text), attributed to the engine.
 //! The question is still posted and completed, so the run's stream shows
-//! what was decided.
-//!
-//! # Hook points for the read side
-//!
-//! The events posted here are the interim bridge to Fabro's read side.
-//! Once the projection over Petri's records derives pending questions from
-//! the `question` and `question_expired` records and the delivered answer,
-//! the sink can become a no-op: the [`QuestionSink`] is the one seam to
-//! replace. Two Fabro facts a Petri record does not carry are marked in
-//! [`FabroInterviewer::reply`]: who answered (`AnswerSubmission::actor`,
-//! carried on `interview.completed` for now) and the Fabro question id
-//! that Petri's identity was mapped to. Both belong in a platform record
-//! keyed on the same identity when that record kind exists.
+//! what was decided, and the projection closes it on the delivered answer.
 
-use std::collections::HashSet;
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
@@ -86,19 +100,23 @@ use fabro_interview::{
 };
 use fabro_store::RunDatabase;
 use fabro_types::{
-    InterviewOption, Principal, QuestionType, ReviewTarget, ReviewTargetKind, RunId,
+    InterviewOption, Principal, QuestionType, ReviewTarget, ReviewTargetKind, RunId, StageId,
     SystemActorKind,
 };
 use fabro_workflow::event::{self as workflow_event, Event, RunEventSink};
+use petri_execution::events::{Parsed, Projection, ViewEvent};
 use petri_execution::{
     CoordinatorRecord, ExecutionId, ExecutionObserver, InterviewError, InterviewReply,
     InterviewRequest, Interviewer,
 };
-use petri_runtime::engine::{EngineState, Event as EngineEvent, EventRecord};
-use petri_runtime::steps::{Answer, Question, QuestionExpired, QuestionOption};
+use petri_runtime::engine::{EngineState, EventRecord};
+use petri_runtime::ir::FiringId;
+use petri_runtime::steps::{Answer, Question, QuestionOption};
 use tokio::runtime::Handle;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, warn};
+
+use crate::projection;
 
 /// Whether a run answers its own questions.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -109,7 +127,8 @@ pub enum Approval {
     Auto,
 }
 
-/// Petri's identity for one question, as the read side keys it.
+/// Petri's full identity for one question, beyond its id: where in the run
+/// it was asked, for the record of who answered it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct QuestionIdentity {
     pub invocation_path: String,
@@ -138,9 +157,11 @@ impl QuestionIdentity {
 /// A question as Fabro shows it: the fields of `interview.started`.
 #[derive(Clone, Debug, PartialEq)]
 pub struct AskedQuestion {
+    /// Petri's id for the question, the one id Fabro knows it by.
     pub question_id:     String,
     pub identity:        QuestionIdentity,
     pub text:            String,
+    /// The label the projection gives the asking firing.
     pub stage:           String,
     pub question_type:   QuestionType,
     pub options:         Vec<InterviewOption>,
@@ -294,42 +315,95 @@ impl QuestionSink for DatabaseQuestions {
     }
 }
 
-/// The questions whose expiry the gate reported, by execution and Petri
-/// question id: an observer the run registers ahead of the dispatcher.
+/// What the adapter learns from the run's records ahead of the dispatcher:
+/// the label the projection gives each firing, and the questions whose
+/// expiry the gate reported. An observer the run registers ahead of the
+/// dispatcher, fed the same records the projection folds, derived through
+/// Petri's own [`Projection`] so a firing's visit and label come out as the
+/// read side computes them.
 #[derive(Default)]
-pub struct Expiries {
-    expired: Mutex<HashSet<(ExecutionId, String)>>,
+pub struct Observed {
+    state: Mutex<ObservedState>,
 }
 
-impl Expiries {
-    fn contains(&self, execution: ExecutionId, question: &str) -> bool {
-        self.expired
+#[derive(Default)]
+struct ObservedState {
+    projection: Projection,
+    /// Every label given so far, for the projection's collision rule.
+    labels:     BTreeSet<String>,
+    /// The label of each shown firing.
+    stages:     HashMap<(ExecutionId, FiringId), StageId>,
+    expired:    HashSet<(ExecutionId, String)>,
+}
+
+impl Observed {
+    /// The label the projection gives `firing`, once its `visit.started`
+    /// was seen.
+    fn label(&self, execution: ExecutionId, firing: FiringId) -> Option<StageId> {
+        self.state
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
+            .stages
+            .get(&(execution, firing))
+            .cloned()
+    }
+
+    fn expired(&self, execution: ExecutionId, question: &str) -> bool {
+        self.state
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .expired
             .contains(&(execution, question.to_string()))
     }
 }
 
-impl ExecutionObserver for Expiries {
+impl ExecutionObserver for Observed {
     fn on_engine_record(
         &self,
         execution: ExecutionId,
         record: &EventRecord,
-        _recorded_at: u64,
-        _state: &EngineState,
+        recorded_at: u64,
+        state: &EngineState,
     ) {
-        let EngineEvent::StepProgressRecorded { ev, .. } = &record.event else {
-            return;
-        };
-        if let Some(expired) = QuestionExpired::from_event(ev) {
-            self.expired
-                .lock()
-                .unwrap_or_else(PoisonError::into_inner)
-                .insert((execution, expired.question));
+        let mut observed = self.state.lock().unwrap_or_else(PoisonError::into_inner);
+        let events = observed
+            .projection
+            .engine(execution, record, recorded_at, state);
+        for event in &events {
+            if let Some(ViewEvent::VisitStarted { .. }) = event.view() {
+                let Some(subject) = event.subject.as_ref() else {
+                    continue;
+                };
+                let Some(firing) = subject.firing else {
+                    continue;
+                };
+                if !projection::is_shown(&subject.node) {
+                    continue;
+                }
+                let label = projection::stage_label(
+                    &subject.node.name,
+                    projection::visit_of(subject),
+                    execution,
+                    &observed.labels,
+                );
+                observed.labels.insert(label.to_string());
+                observed.stages.insert((execution, firing), label);
+            }
+            if let Some(Parsed::QuestionExpired { expired }) = event.parsed() {
+                observed
+                    .expired
+                    .insert((execution, expired.question.clone()));
+            }
         }
     }
 
-    fn on_lifecycle(&self, _record: &CoordinatorRecord) {}
+    fn on_lifecycle(&self, record: &CoordinatorRecord) {
+        self.state
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .projection
+            .lifecycle(record);
+    }
 }
 
 /// The interviewer a Fabro run installs.
@@ -337,7 +411,7 @@ pub struct FabroInterviewer {
     answers:  Arc<ControlInterviewer>,
     sink:     Arc<dyn QuestionSink>,
     approval: Approval,
-    expiries: Arc<Expiries>,
+    observed: Arc<Observed>,
 }
 
 impl FabroInterviewer {
@@ -353,17 +427,18 @@ impl FabroInterviewer {
             answers,
             sink,
             approval,
-            expiries: Arc::new(Expiries::default()),
+            observed: Arc::new(Observed::default()),
         }
     }
 
-    /// The observer that sees a gate report a question's expiry. A run
-    /// registers it ahead of the interview dispatcher, so the adapter
-    /// tells an expiry from an interruption when the dispatcher ends its
-    /// wait.
+    /// The observer that labels each firing as the projection does and
+    /// sees a gate report a question's expiry. A run registers it ahead of
+    /// the interview dispatcher, so a question's stage is known when it is
+    /// asked and the adapter tells an expiry from an interruption when the
+    /// dispatcher ends its wait.
     #[must_use]
     pub fn observer(&self) -> Arc<dyn ExecutionObserver> {
-        self.expiries.clone()
+        self.observed.clone()
     }
 
     /// Post a notice; a failure after the question was asked is logged,
@@ -383,15 +458,26 @@ impl FabroInterviewer {
 #[async_trait::async_trait]
 impl Interviewer for FabroInterviewer {
     async fn reply(&self, request: InterviewRequest, cancel: CancellationToken) -> InterviewReply {
-        let asked = asked_question(&request);
+        let stage = self
+            .observed
+            .label(request.execution, request.firing)
+            .map_or_else(
+                || {
+                    debug!(
+                        node = %request.node,
+                        execution = request.execution.raw(),
+                        firing = request.firing.raw(),
+                        "the asking firing has no label yet; the question names the node"
+                    );
+                    request.node.to_string()
+                },
+                |label| label.to_string(),
+            );
+        let asked = asked_question(&request, stage);
         let question_id = asked.question_id.clone();
         let text = asked.text.clone();
         let stage = asked.stage.clone();
         let legacy = legacy_question(&asked);
-        // HOOK POINT (read side): the mapping from Petri's identity
-        // (`asked.identity`) to Fabro's question id is a platform fact
-        // worth a record keyed on that identity; today it lives only in
-        // the `interview.started` event posted here.
         if let Err(error) = self.sink.post(QuestionNotice::Asked(asked)).await {
             return InterviewReply::Failed(InterviewError::with_source(
                 format!("question `{question_id}` could not be published to Fabro"),
@@ -400,9 +486,8 @@ impl Interviewer for FabroInterviewer {
         }
         let mut outstanding = Outstanding {
             sink:        Arc::clone(&self.sink),
-            expiries:    Arc::clone(&self.expiries),
+            observed:    Arc::clone(&self.observed),
             execution:   request.execution,
-            question:    request.question.id.clone(),
             question_id: question_id.clone(),
             text:        text.clone(),
             stage:       stage.clone(),
@@ -423,9 +508,9 @@ impl Interviewer for FabroInterviewer {
             outstanding.close_unanswered("cancelled");
             return InterviewReply::Cancelled;
         };
-        // HOOK POINT (read side): `submission.actor` is who answered, a
-        // Fabro fact Petri's answer record does not carry; it rides on
-        // `interview.completed` until a platform record holds it.
+        // `submission.actor` is who answered, a Fabro fact Petri's answer
+        // record does not carry: it goes out on `interview.completed`, from
+        // which the store derives the `interview.answered` platform record.
         let Some(answer) = petri_answer(&submission.answer, &request.question) else {
             outstanding.close_unanswered(&reason_of(&submission.answer.value));
             return InterviewReply::Cancelled;
@@ -451,10 +536,9 @@ impl Interviewer for FabroInterviewer {
 /// expiry, else `interview.interrupted`.
 struct Outstanding {
     sink:        Arc<dyn QuestionSink>,
-    expiries:    Arc<Expiries>,
+    observed:    Arc<Observed>,
     execution:   ExecutionId,
-    /// Petri's question id, as the expiry report names it.
-    question:    String,
+    /// Petri's question id, as the expiry report names it too.
     question_id: String,
     text:        String,
     stage:       String,
@@ -471,7 +555,7 @@ impl Outstanding {
         }
         self.open = false;
         let duration_ms = millis(self.started.elapsed());
-        let expired = self.expiries.contains(self.execution, &self.question);
+        let expired = self.observed.expired(self.execution, &self.question_id);
         let notice = if expired {
             QuestionNotice::Expired {
                 question_id: self.question_id.clone(),
@@ -528,38 +612,15 @@ impl std::fmt::Display for AnyhowError {
 
 impl std::error::Error for AnyhowError {}
 
-/// Fabro's id for a question, from Petri's identity: the node, then the
-/// execution and firing (unique in the run), the occurrence and the ask
-/// (a re-asked question is a new one). Only URL-safe characters, so the
-/// id travels in the answer endpoint's path as it is.
-#[must_use]
-pub fn question_id(identity: &QuestionIdentity) -> String {
-    let node: String = identity
-        .node
-        .chars()
-        .map(|c| {
-            if c.is_ascii_alphanumeric() || c == '_' || c == '-' {
-                c
-            } else {
-                '_'
-            }
-        })
-        .collect();
-    format!(
-        "{node}.x{}.f{}.q{}.a{}",
-        identity.execution, identity.firing, identity.occurrence, identity.ask
-    )
-}
-
-/// The question as Fabro shows it.
-fn asked_question(request: &InterviewRequest) -> AskedQuestion {
-    let identity = QuestionIdentity::of(request);
+/// The question as Fabro shows it, under Petri's id and the stage label
+/// the projection gives the asking firing.
+fn asked_question(request: &InterviewRequest, stage: String) -> AskedQuestion {
     let question = &request.question;
     AskedQuestion {
-        question_id: question_id(&identity),
-        identity,
+        question_id: question.id.clone(),
+        identity: QuestionIdentity::of(request),
         text: question.text.clone(),
-        stage: request.node.to_string(),
+        stage,
         question_type: question_type(question),
         options: question
             .options
@@ -754,20 +815,6 @@ mod tests {
         ];
         question.kind = Some("yes_no".into());
         question
-    }
-
-    #[test]
-    fn a_question_id_is_url_safe_and_names_the_identity() {
-        let identity = QuestionIdentity {
-            invocation_path: "/branch:fan@2:0:a".into(),
-            execution:       2,
-            firing:          3,
-            attempt:         1,
-            node:            "approve plan".into(),
-            occurrence:      1,
-            ask:             2,
-        };
-        assert_eq!(question_id(&identity), "approve_plan.x2.f3.q1.a2");
     }
 
     #[test]

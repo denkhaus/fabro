@@ -15,15 +15,22 @@
 )]
 #![expect(clippy::print_stderr, reason = "a skipped test says why on its stderr")]
 
+mod support;
+
 use std::collections::BTreeSet;
 use std::env;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use fabro_db::DbPool;
+use fabro_interview::ControlInterviewer;
 use fabro_petri::SqliteRunStore;
+use fabro_petri::check::Launch;
+use fabro_petri::engine::{self, RunStatus as EngineRunStatus};
+use fabro_petri::interview::{Approval, FabroInterviewer};
 use fabro_petri::projector::{self, Projector};
+use fabro_petri::runtime::RuntimeSpec;
 use fabro_store::platform_records::{
     PlatformRecord, PlatformRecordStore, RunCreatedRecord, RunLifecycleKind, RunLifecycleRecord,
 };
@@ -40,6 +47,7 @@ use petri_runtime::ir::RunStatus as PetriRunStatus;
 use petri_runtime::{RunOptions, Runtime};
 use petri_store::{RunKey, RunStore};
 use tokio::fs;
+use tokio::time::sleep;
 
 const HOST_PLUGIN: &str = "sandbox-driver-host";
 const HOST_PLUGIN_OVERRIDE: &str = "PETRI_SANDBOX_HOST_PLUGIN";
@@ -72,6 +80,26 @@ const PARALLEL_WORKFLOW: &str = r#"digraph Parallel {
 }"#;
 
 const SETTINGS: &str = "_version = 1\n\n[workflow]\ngraph = \"workflow.fabro\"\n";
+
+/// One yes/no gate whose branches leave a marker file each.
+fn gate_workflow(markers: &Path, gate_attrs: &str) -> String {
+    format!(
+        r#"digraph Gate {{
+    graph [goal="Ask once"]
+    start [shape=Mdiamond]
+    exit [shape=Msquare]
+    gate [shape=hexagon, label="Go?", question_type="yes_no"{gate_attrs}]
+    yes [shape=parallelogram, script="touch {dir}/yes"]
+    no [shape=parallelogram, script="touch {dir}/no"]
+    start -> gate
+    gate -> yes [label="[Y] Yes"]
+    gate -> no [label="[N] No"]
+    yes -> exit
+    no -> exit
+}}"#,
+        dir = markers.display()
+    )
+}
 
 fn host_plugin() -> Option<PathBuf> {
     let found = env::var_os(HOST_PLUGIN_OVERRIDE)
@@ -883,4 +911,202 @@ async fn a_torn_tail_holds_the_view_and_reports_the_run_incomplete() {
         json(&after),
         "the projection stands where it was"
     );
+}
+
+/// A gate scenario runs through the engine assembly with the interview
+/// adapter, as a Fabro run does, over a store that signals the projector.
+struct GateRun {
+    scenario:  Scenario,
+    markers:   PathBuf,
+    projector: Arc<Projector>,
+    workflow:  String,
+    _root:     tempfile::TempDir,
+}
+
+async fn gate_run(gate_attrs: &str) -> GateRun {
+    let root = tempfile::tempdir().expect("a marker dir");
+    let markers = root.path().join("markers");
+    fs::create_dir_all(&markers)
+        .await
+        .expect("the marker dir creates");
+    let workflow = gate_workflow(&markers, gate_attrs);
+    let scenario = scenario(
+        "gate",
+        &[("workflow.fabro", &workflow), ("workflow.toml", SETTINGS)],
+        false,
+    )
+    .await;
+    let projector = Projector::new(scenario.pool.clone(), scenario.pool.clone());
+    projector.signal(scenario.run_id);
+    GateRun {
+        scenario,
+        markers,
+        projector,
+        workflow,
+        _root: root,
+    }
+}
+
+impl GateRun {
+    /// Run the gate to completion through the adapter, under `approval`,
+    /// with nobody answering.
+    async fn run(&self, approval: Approval) {
+        let runtime = RuntimeSpec::default();
+        let graphs = support::admit(
+            &[
+                ("workflow.fabro", &self.workflow),
+                ("workflow.toml", SETTINGS),
+            ],
+            Launch::default(),
+            &runtime,
+        );
+        let interviewer = FabroInterviewer::new(
+            Arc::new(ControlInterviewer::new()),
+            Arc::new(support::Silent),
+            approval,
+        );
+        let store = self
+            .projector
+            .observe_store(Arc::new(SqliteRunStore::new(self.scenario.pool.clone())));
+        let request = support::run_request(
+            &self.scenario.run_id.to_string(),
+            &self.scenario.run_dir,
+            graphs,
+            store,
+            runtime,
+            interviewer,
+        );
+        let outcome = engine::run(request).await.expect("the run ends");
+        assert_eq!(outcome.status, EngineRunStatus::Success, "{outcome:?}");
+        self.projector.settle(self.scenario.run_id).await;
+    }
+
+    async fn stored(&self) -> fabro_types::RunProjection {
+        projector::stored_projection(&self.scenario.pool, self.scenario.run_id)
+            .await
+            .expect("the stored projection reads")
+            .expect("the run has a stored projection")
+    }
+}
+
+/// A question Petri expires: while the gate waits, the projection shows
+/// the question pending under Petri's id and the firing's label with the
+/// run blocked; once `question_expired` lands and the gate takes its
+/// default, the question is gone, the run runs on to success, and the view
+/// rebuilds the same.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_expired_question_is_pending_while_the_gate_waits_and_closes_on_the_expiry() {
+    if host_plugin().is_none() {
+        return;
+    }
+    let gate = Arc::new(gate_run(r#", timeout="1500ms", human.default_choice="no""#).await);
+    let running = {
+        let gate = Arc::clone(&gate);
+        tokio::spawn(async move { gate.run(Approval::Prompt).await })
+    };
+    let pending = {
+        let pool = gate.scenario.pool.clone();
+        let run_id = gate.scenario.run_id;
+        let deadline = Instant::now() + Duration::from_secs(30);
+        loop {
+            let stored = projector::stored_projection(&pool, run_id)
+                .await
+                .expect("the stored projection reads");
+            if let Some(stored) = stored.filter(|stored| !stored.pending_interviews.is_empty()) {
+                break stored;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "the question never showed as pending"
+            );
+            sleep(Duration::from_millis(10)).await;
+        }
+    };
+    let (id, record) = pending
+        .pending_interviews
+        .iter()
+        .next()
+        .expect("one pending question");
+    assert!(id.starts_with("gate#"), "Petri's id: {id}");
+    assert_eq!(&record.question.id, id);
+    assert_eq!(record.question.stage, "gate@1");
+    assert_eq!(record.question.text, "Go?");
+    assert_eq!(
+        record
+            .question
+            .options
+            .iter()
+            .map(|option| option.key.as_str())
+            .collect::<Vec<_>>(),
+        vec!["Y", "N"]
+    );
+    assert_eq!(record.question.timeout_seconds, Some(1.5));
+    assert!(
+        matches!(pending.status, RunStatus::Blocked { .. }),
+        "{:?}",
+        pending.status
+    );
+
+    running.await.expect("the run task ends");
+
+    assert!(
+        gate.markers.join("no").exists() && !gate.markers.join("yes").exists(),
+        "the default ran"
+    );
+    let stored = gate.stored().await;
+    assert!(
+        stored.pending_interviews.is_empty(),
+        "the expired question is no longer pending: {:?}",
+        stored.pending_interviews
+    );
+    assert!(
+        matches!(stored.status, RunStatus::Succeeded { .. }),
+        "{:?}",
+        stored.status
+    );
+    let gate_stage = stored
+        .stage(&StageId::new("gate", 1))
+        .expect("the gate is a stage");
+    assert_eq!(gate_stage.state, StageState::Succeeded);
+    assert_view_equals_rebuild(&gate.scenario.pool, gate.scenario.run_id).await;
+}
+
+/// An auto-approved run answers its gate at once: the delivered answer
+/// closes the question in the projection, the affirmative branch runs, and
+/// the view rebuilds the same.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_auto_approved_answer_closes_the_question_in_the_projection() {
+    if host_plugin().is_none() {
+        return;
+    }
+    let gate = gate_run("").await;
+    gate.run(Approval::Auto).await;
+
+    assert!(
+        gate.markers.join("yes").exists() && !gate.markers.join("no").exists(),
+        "the yes branch ran"
+    );
+    let stored = gate.stored().await;
+    assert!(
+        stored.pending_interviews.is_empty(),
+        "the answered question is no longer pending: {:?}",
+        stored.pending_interviews
+    );
+    assert!(
+        matches!(stored.status, RunStatus::Succeeded { .. }),
+        "{:?}",
+        stored.status
+    );
+    let gate_stage = stored
+        .stage(&StageId::new("gate", 1))
+        .expect("the gate is a stage");
+    assert_eq!(gate_stage.state, StageState::Succeeded);
+    let states = stage_states(&gate.scenario.pool, gate.scenario.run_id).await;
+    assert!(
+        states
+            .iter()
+            .any(|(label, state)| label == "yes@1" && *state == StageState::Succeeded),
+        "{states:?}"
+    );
+    assert_view_equals_rebuild(&gate.scenario.pool, gate.scenario.run_id).await;
 }

@@ -39,17 +39,20 @@ Every adapter the integration plan describes lands here.
   `SqliteRunStore`. The caller supplies the interviewer, and the secret
   provider and blob table when it has them.
 - `interview`: Petri's `Interviewer` over Fabro's questions API and the
-  worker's control channel. A human gate's question is posted as the
-  `interview.started` event a legacy `human` stage emits (through the
-  worker's run event sink, or the run's database in the server process), so
-  `GET /runs/{id}/questions`, the web app and Slack list it; the answer
-  posted to `/questions/{qid}/answer` reaches the worker's control
-  interviewer over the control bus (or the in-process one directly) under
-  the same id, and is mapped onto Petri's answer. The question id is
-  derived from Petri's identity (node, execution, firing, occurrence, ask).
+  worker's control channel. A question has one id in Fabro, Petri's own
+  (`gate#2`): the projection lists it pending from the `question` record,
+  `GET /runs/{id}/questions` serves it, and the answer posted to
+  `/questions/{qid}/answer` is validated against that pending record and
+  reaches the worker's control interviewer over the control bus (or the
+  in-process one directly) under the same id, mapped onto Petri's answer.
+  The adapter still posts the legacy `interview.*` events (through the
+  worker's run event sink, or the run's database in the server process)
+  with that id and the projection's stage label, for the readers that
+  follow the event stream rather than the projection: Slack, `run attach`
+  and the web app's Q&A renderer. The store derives the `interview.answered`
+  platform record, with the answering principal, from `interview.completed`.
   An expired or cancelled question is completed as `interview.timeout` or
-  `interview.interrupted`; an auto-approved run answers itself. The module
-  docs mark the hook points the read side takes over.
+  `interview.interrupted`; an auto-approved run answers itself.
 - `secrets`: Petri's `SecretProvider` over the vault's token entries, so a
   `{{ secrets.NAME }}` reference resolves at spawn into a command's
   environment and is masked in every record; a sensitive answer registers

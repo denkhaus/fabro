@@ -784,7 +784,9 @@ fn interview_answered_record(
 
 #[cfg(test)]
 mod tests {
-    use fabro_types::{FailureReason, RunStatus, fixtures, test_support as types_support};
+    use fabro_types::{
+        FailureReason, RunStatus, SystemActorKind, fixtures, test_support as types_support,
+    };
     use serde_json::json;
 
     use super::*;
@@ -976,6 +978,42 @@ mod tests {
                 .expect("an empty head reads"),
             None
         );
+    }
+
+    /// The interview adapter completes a Petri question under Petri's own
+    /// id with the answering principal as the event's actor; the record
+    /// keeps both, so who answered is a platform fact keyed on that id.
+    #[test]
+    fn a_completed_interview_becomes_an_answered_record_under_petris_id_with_its_actor() {
+        let actor = Principal::System {
+            system_kind: SystemActorKind::Engine,
+        };
+        let event = fabro_types::RunEvent {
+            id:                 "evt".to_string(),
+            ts:                 chrono::Utc::now(),
+            run_id:             fixtures::RUN_1,
+            node_id:            None,
+            node_label:         None,
+            stage_id:           None,
+            parallel_group_id:  None,
+            parallel_branch_id: None,
+            session_id:         None,
+            parent_session_id:  None,
+            tool_call_id:       None,
+            actor:              Some(actor.clone()),
+            body:               EventBody::InterviewCompleted(InterviewCompletedProps {
+                question_id: "gate#2".to_string(),
+                question:    "Go?".to_string(),
+                answer:      "N".to_string(),
+                duration_ms: 1_200,
+            }),
+        };
+        let Some(PlatformRecord::InterviewAnswered(record)) = platform_record_for(&event) else {
+            panic!("a completed interview maps to an answered record");
+        };
+        assert_eq!(record.question, "gate#2");
+        assert_eq!(record.principal, Some(actor));
+        assert_eq!(record.channel, None);
     }
 
     #[test]
