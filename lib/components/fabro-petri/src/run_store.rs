@@ -513,11 +513,17 @@ impl RunLogs for SqliteRunLogs {
     }
 
     async fn read(&self, log: &LogId) -> Result<Vec<Record>, StoreError> {
+        self.read_from(log, 0).await
+    }
+
+    async fn read_from(&self, log: &LogId, seq: u64) -> Result<Vec<Record>, StoreError> {
         let rows: Vec<String> = sqlx::query_scalar(
-            "SELECT record_json FROM petri_records WHERE run_id = ? AND log = ? ORDER BY seq",
+            "SELECT record_json FROM petri_records WHERE run_id = ? AND log = ? AND seq >= ? ORDER \
+             BY seq",
         )
         .bind(self.key.as_str())
         .bind(log_id_text(log))
+        .bind(i64::try_from(seq).unwrap_or(i64::MAX))
         .fetch_all(&self.shared.pool)
         .await
         .map_err(|cause| self.backend("read a log", cause))?;

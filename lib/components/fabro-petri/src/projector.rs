@@ -12,13 +12,28 @@
 //! Petri log, the last platform record consumed, and the delivery sequence
 //! (`stream_seq`) it assigned to each item. The view therefore trails a
 //! committed record and never leads one. No projection state of Petri's is
-//! checkpointed: each pass replays the run through `replay_since`, which
-//! rebuilds the engine and invocation state the derivation needs and
-//! delivers only the events past the held positions.
+//! checkpointed: a pass derives the events past the held positions from
+//! the records alone, and every stored view equals a full replay
+//! (`replay_run`) of the records it holds.
 //!
 //! A pass that finds new platform records committed between its read and
 //! its write leaves the view alone and runs again, so the `runs` row never
 //! moves backwards behind a concurrent lifecycle write.
+//!
+//! # The live run's cache
+//!
+//! A pass keeps in memory, per live run, Petri's replay of the run (a
+//! `RunReplay`: the coordinator state, each execution's engine state, the
+//! projection) and the view as the pass last committed it, so the next
+//! pass reads and folds only the records past the ones the view holds and
+//! costs the new records, not the run's length. The cache is never a
+//! source of facts and never checkpointed: it is dropped when the run
+//! records its finish, after ten idle minutes, when the stored view moves
+//! under it, when the run is deleted, and with the process, and the first
+//! pass after that rebuilds it by a full replay. A pass that commits
+//! nothing (a platform record landed under it, or it failed before its
+//! view transaction) keeps the events it derived for the next pass, so
+//! nothing is derived twice or lost.
 //!
 //! # Where it runs
 //!
@@ -38,6 +53,8 @@
 //! as incomplete with the replay's error; `inspect_run` decides
 //! completeness once the run has recorded its finish.
 
+mod cache;
+
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
@@ -53,10 +70,11 @@ use petri_execution::{Access, CoordinatorEvent, RunKey, RunStore as _, inspect};
 use petri_runtime::engine::Event;
 use petri_store::StoreError;
 use serde::{Deserialize, Serialize};
-use tokio::sync::{Mutex as AsyncMutex, broadcast};
+use tokio::sync::broadcast;
 use tokio::time;
 use tracing::{debug, info, warn};
 
+use self::cache::{Caches, IDLE, RunCache};
 use crate::SqliteRunStore;
 use crate::projection::{self, FoldState, Item, RecordHealth, RunView};
 
@@ -98,6 +116,11 @@ pub struct PassReport {
     pub contended:        bool,
     pub petri_events:     usize,
     pub platform_records: usize,
+    /// How many of the run's records the pass fed through Petri's
+    /// derivation, before the held positions trimmed their events: the
+    /// pass's cost. The records past the cache for a live run, the whole
+    /// run for a pass that rebuilt it.
+    pub replayed_records: usize,
     /// The last delivery sequence the view holds.
     pub stream_seq:       u64,
     pub positions:        Positions,
@@ -129,6 +152,7 @@ pub enum ProjectError {
 }
 
 /// The stored view of a run, as the projection tables hold it.
+#[derive(Clone)]
 struct StoredView {
     view:       RunView,
     positions:  Positions,
@@ -148,21 +172,22 @@ struct Slot {
 /// the server both are the one database; a test may hand it the run
 /// summary store's own pool for the views.
 pub struct Projector {
-    records:   DbPool,
-    pool:      DbPool,
-    store:     SqliteRunStore,
-    platform:  PlatformRecordStore,
-    slots:     Mutex<HashMap<RunId, Slot>>,
-    /// One pass at a time per run: a signalled pass and the startup pass
-    /// over the same run never interleave their reads and writes.
-    passes:    Mutex<HashMap<RunId, Arc<AsyncMutex<()>>>>,
+    records:           DbPool,
+    pool:              DbPool,
+    store:             SqliteRunStore,
+    platform:          PlatformRecordStore,
+    slots:             Mutex<HashMap<RunId, Slot>>,
+    /// One pass at a time per run (a signalled pass and the startup pass
+    /// over the same run never interleave their reads and writes), and the
+    /// cache each live run's passes continue from.
+    pub(crate) caches: Caches,
     /// Test-only: stop the next pass after its reads, before its view
     /// transaction, as a crash there would.
-    fault:     AtomicBool,
+    fault:             AtomicBool,
     /// Sent after each committed pass that wrote stream rows: the run whose
     /// stream grew. A wake-up for the stream's readers, never a source of
     /// facts; a reader that lags re-reads from its cursor.
-    committed: broadcast::Sender<RunId>,
+    committed:         broadcast::Sender<RunId>,
 }
 
 impl std::fmt::Debug for Projector {
@@ -183,7 +208,7 @@ impl Projector {
             records,
             pool: views,
             slots: Mutex::default(),
-            passes: Mutex::default(),
+            caches: Caches::default(),
             fault: AtomicBool::new(false),
             committed: broadcast::channel(COMMIT_SIGNAL_CAPACITY).0,
         })
@@ -214,6 +239,11 @@ impl Projector {
     /// and its stream. The caller has ended the run's worker, so no writer
     /// holds the lease.
     pub async fn delete_run(&self, run_id: RunId) -> Result<(), ProjectError> {
+        // Under the run's pass lock: no pass reads the rows being deleted,
+        // and no cache outlives them.
+        let pass = self.caches.pass_of(run_id);
+        let mut cache = pass.lock().await;
+        *cache = None;
         let id = run_id.to_string();
         let mut views = self.pool.begin().await.map_err(ProjectError::Database)?;
         for delete in [
@@ -370,9 +400,34 @@ impl Projector {
 
     /// One view pass for the run. Passes over one run run one at a time.
     pub async fn project_run(&self, run_id: RunId) -> Result<PassReport, ProjectError> {
-        let pass = Arc::clone(lock(&self.passes).entry(run_id).or_default());
-        let _one_at_a_time = pass.lock().await;
-        let stored = self.load_view(&run_id).await?;
+        self.caches.sweep(IDLE);
+        let pass = self.caches.pass_of(run_id);
+        let mut slot = pass.lock().await;
+        // The view tables are the source of truth: a cache that no longer
+        // describes them (another projector committed a pass) is dropped.
+        let (positions, stream_seq) = stored_positions(&self.pool, run_id)
+            .await?
+            .unwrap_or_default();
+        let mut run = match slot.take() {
+            Some(cache) if cache.matches(&positions, stream_seq) => cache,
+            Some(_) => {
+                debug!(run_id = %run_id, "the stored view moved under the run's cache; rebuilding it");
+                RunCache::over(self.load_view(&run_id).await?)
+            }
+            None => RunCache::over(self.load_view(&run_id).await?),
+        };
+        let report = self.pass(run_id, &mut run).await;
+        // A finished run's records are complete: its cache is dropped, and
+        // the passes its late platform records take rebuild the view whole.
+        if !run.view.view.state.finished_run() {
+            *slot = Some(run);
+        }
+        report
+    }
+
+    /// The pass over the run's cache: read what is committed past the
+    /// positions the cache's view holds, fold it, and write the view.
+    async fn pass(&self, run_id: RunId, run: &mut RunCache) -> Result<PassReport, ProjectError> {
         let key = RunKey::new(run_id.to_string());
         let platform_head = self
             .platform
@@ -381,6 +436,7 @@ impl Projector {
             .map_err(ProjectError::Store)?
             .unwrap_or(0);
         let petri_heads = self.petri_heads(&run_id).await?;
+        let stored = &run.view;
         let at_head = platform_head == stored.positions.platform_seq
             && petri_heads.iter().all(|(log, head)| {
                 stored
@@ -396,25 +452,35 @@ impl Projector {
                 contended: false,
                 petri_events: 0,
                 platform_records: 0,
+                replayed_records: 0,
                 stream_seq: stored.stream_seq,
-                positions: stored.positions,
-                health: stored.view.state.health,
+                positions: stored.positions.clone(),
+                health: stored.view.state.health.clone(),
             });
         }
 
-        let StoredView {
-            mut view,
-            mut positions,
-            mut stream_seq,
-        } = stored;
         let platform_records = self
             .platform
-            .read_after(&run_id, positions.platform_seq)
+            .read_after(&run_id, stored.positions.platform_seq)
             .await
             .map_err(ProjectError::Store)?;
+        let mut replayed_records = 0;
         let (events, replay_failure) = match self.store.open(&key, Access::Read).await {
-            Ok(logs) => match events::replay_since(&*logs, &positions.held()).await {
-                Ok(events) => (events, None),
+            Ok(logs) => match run.replay.advance(&*logs).await {
+                Ok(new) => {
+                    replayed_records = new.iter().filter(|event| event.id.index == 0).count();
+                    // A rebuilt replay derives the run whole: only the events
+                    // past the view's positions are new to it.
+                    let held = run.view.positions.held();
+                    let mut events = std::mem::take(&mut run.pending);
+                    events.extend(new.into_iter().filter(|event| {
+                        held.get(&event.id.source)
+                            .is_none_or(|last| event.id > *last)
+                    }));
+                    (events, None)
+                }
+                // The replay stood still and is retried by the next pass;
+                // what it derived before stays pending.
                 Err(error) => {
                     let chain = collect_chain(&error).join(": ");
                     warn!(run_id = %run_id, error = %chain, "Petri run does not replay; the view holds");
@@ -425,6 +491,9 @@ impl Projector {
             Err(error) => return Err(ProjectError::Open(error)),
         };
 
+        let mut view = run.view.view.clone();
+        let mut positions = run.view.positions.clone();
+        let mut stream_seq = run.view.stream_seq;
         let run_finished = view.state.finished_run()
             || events.iter().any(|event| {
                 matches!(
@@ -475,12 +544,85 @@ impl Projector {
             };
             rows.push(row);
         }
+        drop(items);
         view.state.health = self.health(&key, &view.state, replay_failure).await?;
 
         if self.fault.swap(false, Ordering::SeqCst) {
+            run.pending = events;
             return Err(ProjectError::Injected);
         }
+        let written = self
+            .write_view(
+                run_id,
+                &view,
+                &positions,
+                stream_seq,
+                &rows,
+                platform_head_seen,
+            )
+            .await;
+        match written {
+            Ok(true) => {}
+            Ok(false) => {
+                debug!(run_id = %run_id, "platform records landed during the pass; running it again");
+                run.pending = events;
+                return Ok(PassReport {
+                    run_id,
+                    skipped: false,
+                    contended: true,
+                    petri_events: 0,
+                    platform_records: 0,
+                    replayed_records,
+                    stream_seq: 0,
+                    positions: Positions::default(),
+                    health: RecordHealth::default(),
+                });
+            }
+            Err(error) => {
+                run.pending = events;
+                return Err(error);
+            }
+        }
+        debug!(
+            run_id = %run_id,
+            petri_events = events.len(),
+            platform_records = platform_records.len(),
+            replayed_records,
+            stream_seq,
+            "Petri projection pass committed"
+        );
+        let petri_events = events.len();
+        let health = view.state.health.clone();
+        run.committed(view, positions.clone(), stream_seq);
+        if !rows.is_empty() {
+            // No receiver is not an error: nobody follows the stream.
+            let _ = self.committed.send(run_id);
+        }
+        Ok(PassReport {
+            run_id,
+            skipped: false,
+            contended: false,
+            petri_events,
+            platform_records: platform_records.len(),
+            replayed_records,
+            stream_seq,
+            positions,
+            health,
+        })
+    }
 
+    /// The view transaction: the projection row, the stream rows and the
+    /// `runs` row, committed together, unless a platform record landed
+    /// since the pass read them (`false`: the view is left alone).
+    async fn write_view(
+        &self,
+        run_id: RunId,
+        view: &RunView,
+        positions: &Positions,
+        stream_seq: u64,
+        rows: &[StreamRow],
+        platform_head_seen: u64,
+    ) -> Result<bool, ProjectError> {
         let mut tx = self
             .pool
             .begin_with("BEGIN IMMEDIATE")
@@ -494,23 +636,13 @@ impl Projector {
         .await
         .map_err(ProjectError::Database)?;
         if u64::try_from(head_now).unwrap_or(0) != platform_head_seen {
-            debug!(run_id = %run_id, "platform records landed during the pass; running it again");
             drop(tx);
-            return Ok(PassReport {
-                run_id,
-                skipped: false,
-                contended: true,
-                petri_events: 0,
-                platform_records: 0,
-                stream_seq: 0,
-                positions: Positions::default(),
-                health: RecordHealth::default(),
-            });
+            return Ok(false);
         }
         let projection_json =
             serde_json::to_string(&view.projection).map_err(ProjectError::Encode)?;
         let fold_json = serde_json::to_string(&view.state).map_err(ProjectError::Encode)?;
-        let positions_json = serde_json::to_string(&positions).map_err(ProjectError::Encode)?;
+        let positions_json = serde_json::to_string(positions).map_err(ProjectError::Encode)?;
         sqlx::query(
             "INSERT INTO petri_projection (run_id, projection_json, fold_json, positions_json, \
              stream_seq, updated_at_ms) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(run_id) DO UPDATE \
@@ -527,7 +659,7 @@ impl Projector {
         .execute(&mut *tx)
         .await
         .map_err(ProjectError::Database)?;
-        for row in &rows {
+        for row in rows {
             sqlx::query(
                 "INSERT INTO petri_stream (run_id, stream_seq, item_kind, item_id, event_json) \
                  VALUES (?, ?, ?, ?, ?)",
@@ -547,27 +679,7 @@ impl Projector {
                 .map_err(ProjectError::Store)?;
         }
         tx.commit().await.map_err(ProjectError::Database)?;
-        debug!(
-            run_id = %run_id,
-            petri_events = events.len(),
-            platform_records = platform_records.len(),
-            stream_seq,
-            "Petri projection pass committed"
-        );
-        if !rows.is_empty() {
-            // No receiver is not an error: nobody follows the stream.
-            let _ = self.committed.send(run_id);
-        }
-        Ok(PassReport {
-            run_id,
-            skipped: false,
-            contended: false,
-            petri_events: events.len(),
-            platform_records: platform_records.len(),
-            stream_seq,
-            positions,
-            health: view.state.health.clone(),
-        })
+        Ok(true)
     }
 
     /// The stored view of the run, or an empty one.
@@ -727,6 +839,14 @@ impl petri_execution::RunLogs for SignallingLogs {
         log: &petri_execution::LogId,
     ) -> Result<Vec<petri_execution::Record>, StoreError> {
         self.inner.read(log).await
+    }
+
+    async fn read_from(
+        &self,
+        log: &petri_execution::LogId,
+        seq: u64,
+    ) -> Result<Vec<petri_execution::Record>, StoreError> {
+        self.inner.read_from(log, seq).await
     }
 
     async fn put_blob(&self, bytes: &[u8]) -> Result<petri_store::Digest, StoreError> {
