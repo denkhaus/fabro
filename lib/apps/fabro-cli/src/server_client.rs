@@ -550,7 +550,7 @@ mod tests {
                     "os": "darwin",
                     "arch": "arm64",
                     "storage_dir": "/tmp/fabro-worker-auth",
-                    "storage_engine": "slatedb",
+                    "storage_engine": "sqlite",
                     "runs": { "total": 0, "active": 0 },
                     "uptime_secs": 42
                 }));

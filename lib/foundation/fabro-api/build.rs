@@ -298,11 +298,6 @@ fn main() {
             &[],
         ),
         (
-            "ServerSlateDbSettings",
-            "fabro_types::settings::server::ServerSlateDbSettings",
-            &[],
-        ),
-        (
             "ObjectStoreSettings",
             "fabro_types::settings::server::ObjectStoreSettings",
             &[],

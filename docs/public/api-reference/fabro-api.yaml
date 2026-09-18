@@ -14890,7 +14890,6 @@ components:
         - sandbox
         - storage
         - artifacts
-        - slatedb
         - scheduler
         - logging
         - integrations
@@ -14909,8 +14908,6 @@ components:
           $ref: "#/components/schemas/ServerStorageSettings"
         artifacts:
           $ref: "#/components/schemas/ServerArtifactsSettings"
-        slatedb:
-          $ref: "#/components/schemas/ServerSlateDbSettings"
         scheduler:
           $ref: "#/components/schemas/ServerSchedulerSettings"
         logging:
@@ -15047,19 +15044,6 @@ components:
           type: string
         store:
           $ref: "#/components/schemas/ObjectStoreSettings"
-
-    ServerSlateDbSettings:
-      type: object
-      required: [prefix, store, flush_interval, disk_cache]
-      properties:
-        prefix:
-          type: string
-        store:
-          $ref: "#/components/schemas/ObjectStoreSettings"
-        flush_interval:
-          type: string
-        disk_cache:
-          type: boolean
 
     ObjectStoreSettings:
       oneOf:

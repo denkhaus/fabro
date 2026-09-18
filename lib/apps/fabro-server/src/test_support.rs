@@ -874,10 +874,6 @@ mod tests {
             local_store_root(&settings.server.artifacts.store),
             storage_root.join("objects/artifacts")
         );
-        assert_eq!(
-            local_store_root(&settings.server.slatedb.store),
-            storage_root.join("objects/slatedb")
-        );
     }
 
     #[test]

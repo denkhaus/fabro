@@ -849,7 +849,7 @@ pub(crate) async fn get_system_info(
             "profile": option_env!("FABRO_BUILD_PROFILE"),
             "os": std::env::consts::OS,
             "arch": std::env::consts::ARCH,
-            "storage_engine": "slatedb",
+            "storage_engine": "sqlite",
             "storage_dir": "/demo/fabro/storage",
             "uptime_secs": 42,
             "runs": { "total": 3, "active": 1 },

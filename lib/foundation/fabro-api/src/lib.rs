@@ -29,8 +29,7 @@ pub mod types {
         ServerAuthGithubSettings, ServerAuthMethod, ServerAuthSettings, ServerIntegrationsSettings,
         ServerListenSettings, ServerLoggingSettings, ServerSandboxProviderSettings,
         ServerSandboxProvidersSettings, ServerSandboxSettings, ServerSchedulerSettings,
-        ServerSlateDbSettings, ServerStorageSettings, ServerWebSettings, SlackIntegrationSettings,
-        WebhookStrategy,
+        ServerStorageSettings, ServerWebSettings, SlackIntegrationSettings, WebhookStrategy,
     };
     pub use fabro_types::settings::{McpTransport, ServerNamespace};
     pub use fabro_types::status::{

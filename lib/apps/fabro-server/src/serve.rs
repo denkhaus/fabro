@@ -1345,12 +1345,6 @@ mod tests {
             panic!("artifacts store should stay local");
         };
         assert_eq!(root, "/srv/fabro-storage/objects/artifacts");
-        let fabro_types::settings::ObjectStoreSettings::Local { root } =
-            &resolved.server_settings.server.slatedb.store
-        else {
-            panic!("slatedb store should stay local");
-        };
-        assert_eq!(root, "/srv/fabro-storage/objects/slatedb");
     }
 
     #[test]
