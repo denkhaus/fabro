@@ -35,6 +35,7 @@ pub mod run_id;
 pub mod run_intent;
 pub mod run_projection;
 pub mod run_sandbox;
+pub mod run_stream;
 pub mod run_summary;
 pub mod run_title;
 pub mod sandbox_details;
@@ -152,6 +153,7 @@ pub use run_sandbox::{
     RunSandbox, RunSandboxFailure, RunSandboxInstance, RunSandboxKind, RunSandboxPlan,
     RunSandboxRuntime,
 };
+pub use run_stream::{RunStreamItem, RunStreamItemKind, petri_event_name};
 pub use run_summary::{
     AskFabro, AskFabroUnavailableReason, AutomationRef, ResolvedAutomationGitWorkflowSource, Run,
     RunApproval, RunApprovalState, RunError, RunLifecycle, RunLinks, RunModel, RunOrigin,

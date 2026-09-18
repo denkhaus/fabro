@@ -1,12 +1,17 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 use axum::extract::DefaultBodyLimit;
+use fabro_api::types::PaginatedRunStreamList;
+use fabro_petri::petri::EVENT_CONTRACT_VERSION;
 use fabro_types::run_event::MAX_RUN_EVENT_BODY_BYTES;
 use fabro_types::{
     RunEventDetailContent, RunEventDetailContentKind, RunEventDetailEnvelope,
-    RunEventDetailResponse,
+    RunEventDetailResponse, RunStreamItem,
 };
 use fabro_workflow::event::build_redacted_event_payload;
+use tokio::sync::broadcast::error::RecvError;
+use tokio::time::{self, Instant};
 
 use super::super::{
     ApiError, AppState, AppendEventResponse, BroadcastStream, Event, EventBody, EventEnvelope,
@@ -70,9 +75,12 @@ struct RunEventListParams {
     #[serde(default)]
     before_seq: Option<u32>,
     #[serde(default)]
-    order:      EventSequenceOrder,
+    order:      Option<EventSequenceOrder>,
     #[serde(default)]
     limit:      Option<usize>,
+    /// The run stream cursor of a Petri run: the last `stream_seq` seen.
+    #[serde(default)]
+    after:      Option<u64>,
 }
 
 impl RunEventListParams {
@@ -80,12 +88,21 @@ impl RunEventListParams {
         self.since_seq.unwrap_or(1).max(1)
     }
 
+    fn order(&self) -> EventSequenceOrder {
+        self.order.unwrap_or_default()
+    }
+
     fn limit(&self) -> usize {
         self.limit.unwrap_or(100).clamp(1, 1000)
     }
 
     fn cursor_error(&self) -> Option<&'static str> {
-        match self.order {
+        if self.after.is_some() && (self.since_seq.is_some() || self.before_seq.is_some()) {
+            return Some(
+                "after is the run stream cursor and cannot be combined with since_seq or before_seq.",
+            );
+        }
+        match self.order() {
             EventSequenceOrder::Asc if self.before_seq.is_some() => {
                 Some("before_seq requires order=desc.")
             }
@@ -95,12 +112,27 @@ impl RunEventListParams {
             _ => None,
         }
     }
+
+    /// Why the parameters do not address a Petri run's stream, if they do
+    /// not: the legacy cursors have no meaning there.
+    fn stream_cursor_error(&self) -> Option<&'static str> {
+        if self.since_seq.is_some() || self.before_seq.is_some() || self.order.is_some() {
+            return Some(
+                "this run executes on Petri; its events are a run stream addressed by `after` \
+                 (the last stream_seq seen), not by since_seq, before_seq or order.",
+            );
+        }
+        None
+    }
 }
 
 #[derive(serde::Deserialize)]
 struct AttachParams {
     #[serde(default)]
     since_seq: Option<u32>,
+    /// The run stream cursor of a Petri run: the last `stream_seq` seen.
+    #[serde(default)]
+    after:     Option<u64>,
 }
 
 #[derive(serde::Deserialize)]
@@ -256,9 +288,25 @@ async fn list_run_events(
     }
 
     let limit = params.limit();
+    match run_is_petri(&state, &id).await {
+        Ok(true) => {
+            if let Some(detail) = params.stream_cursor_error() {
+                return ApiError::bad_request(detail).into_response();
+            }
+            return list_run_stream(&state, id, params.after.unwrap_or(0), limit).await;
+        }
+        Ok(false) => {}
+        Err(response) => return response,
+    }
+    if params.after.is_some() {
+        return ApiError::bad_request(
+            "after is the run stream cursor of a Petri run; this run's events use since_seq.",
+        )
+        .into_response();
+    }
     match state.stores.runs.open_run_reader(&id).await {
         Ok(run_store) => {
-            let events = match params.order {
+            let events = match params.order() {
                 EventSequenceOrder::Asc => {
                     run_store
                         .list_events_from_with_limit(params.since_seq(), limit)
@@ -289,6 +337,171 @@ async fn list_run_events(
         }
         Err(_) => ApiError::not_found("Run not found.").into_response(),
     }
+}
+
+/// Whether the run executes on Petri, from its stored spec; the canonical
+/// 404 when there is no such run.
+async fn run_is_petri(state: &AppState, id: &RunId) -> Result<bool, Response> {
+    let projection = state
+        .load_run_projection(id)
+        .await
+        .map_err(IntoResponse::into_response)?;
+    Ok(projection.spec.engine.is_petri())
+}
+
+/// One page of a Petri run's stream past `after`.
+async fn list_run_stream(state: &AppState, id: RunId, after: u64, limit: usize) -> Response {
+    match state
+        .petri_projector
+        .stream_after(id, after, limit.saturating_add(1))
+        .await
+    {
+        Ok(mut items) => {
+            let has_more = items.len() > limit;
+            items.truncate(limit);
+            Json(PaginatedRunStreamList {
+                data:                   items,
+                meta:                   PaginationMeta {
+                    has_more,
+                    total: None,
+                },
+                event_contract_version: EVENT_CONTRACT_VERSION,
+            })
+            .into_response()
+        }
+        Err(err) => {
+            ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string()).into_response()
+        }
+    }
+}
+
+fn sse_event_from_stream_item(item: &RunStreamItem) -> Option<Event> {
+    let data = serde_json::to_string(item).ok()?;
+    let data = redact_jsonl_line(&data);
+    Some(Event::default().data(data))
+}
+
+/// How many stream items one read takes while attached.
+const STREAM_ATTACH_BATCH_LIMIT: usize = 256;
+
+/// How long an attached reader waits for a commit signal before it re-reads
+/// its cursor anyway: a signal is a wake-up, never the source of facts.
+const STREAM_ATTACH_POLL: Duration = Duration::from_secs(1);
+
+/// How long an attached reader keeps following a run whose projection is
+/// already terminal, waiting for the platform record of the terminal
+/// lifecycle transition that ends the stream; after that it ends anyway.
+const STREAM_ATTACH_TERMINAL_GRACE: Duration = Duration::from_secs(15);
+
+/// Whether the item ends an attached stream: the platform record of the
+/// run's terminal lifecycle transition, which Fabro writes after the engine
+/// recorded the run's finish. The analog of the legacy stream's
+/// `run.completed` and `run.failed`.
+fn stream_item_is_terminal(item: &RunStreamItem) -> bool {
+    if item.kind != fabro_types::RunStreamItemKind::Platform {
+        return false;
+    }
+    let record = &item.item["record"];
+    record["kind"].as_str() == Some("run.lifecycle")
+        && matches!(
+            record["transition"].as_str(),
+            Some("succeeded" | "failed" | "dead")
+        )
+}
+
+/// The live stream of a Petri run from `after` (the last `stream_seq` the
+/// client saw; `None` starts at the next unseen item), as server-sent
+/// events. Every committed item past the cursor is sent once, in order,
+/// and the stream ends once the run is no longer active and every
+/// committed item is out.
+async fn attach_run_stream(state: Arc<AppState>, id: RunId, after: Option<u64>) -> Response {
+    let cursor = match after {
+        Some(after) => after,
+        None => match state.petri_projector.stream_head(id).await {
+            Ok(head) => head.unwrap_or(0),
+            Err(err) => {
+                return ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string())
+                    .into_response();
+            }
+        },
+    };
+    let (sender, receiver) = mpsc::unbounded_channel();
+    let shutdown = state.shutdown_token();
+    tokio::spawn(async move {
+        // Subscribed before the first read, so a pass that commits between
+        // the read and the wait is not missed.
+        let mut committed = state.petri_projector.subscribe();
+        let mut cursor = cursor;
+        // Set once the projection is terminal: the stream then ends at the
+        // terminal lifecycle record, or when the grace runs out.
+        let mut terminal_deadline: Option<Instant> = None;
+        loop {
+            // Drain everything committed past the cursor.
+            let mut drained = false;
+            while !drained {
+                let Ok(items) = state
+                    .petri_projector
+                    .stream_after(id, cursor, STREAM_ATTACH_BATCH_LIMIT)
+                    .await
+                else {
+                    return;
+                };
+                drained = items.len() < STREAM_ATTACH_BATCH_LIMIT;
+                for item in items {
+                    cursor = item.stream_seq;
+                    let terminal = stream_item_is_terminal(&item);
+                    if let Some(sse_event) = sse_event_from_stream_item(&item) {
+                        if sender
+                            .send(Ok::<Event, std::convert::Infallible>(sse_event))
+                            .is_err()
+                        {
+                            return;
+                        }
+                    }
+                    if terminal {
+                        return;
+                    }
+                }
+            }
+
+            // The run's status is read after the drain, so an item
+            // committed with the finish is already out. Once terminal, the
+            // stream keeps following for the terminal lifecycle record,
+            // which Fabro writes after the engine's finish, for a bounded
+            // time.
+            if terminal_deadline.is_none() {
+                let active = match state.stores.runs.load_run_projection(&id).await {
+                    Ok(Some(projection)) => run_projection_is_active(&projection),
+                    Ok(None) | Err(_) => false,
+                };
+                if !active {
+                    terminal_deadline = Some(Instant::now() + STREAM_ATTACH_TERMINAL_GRACE);
+                }
+            }
+            if terminal_deadline.is_some_and(|deadline| Instant::now() >= deadline) {
+                return;
+            }
+
+            // Wait for the projector to commit more of this run, or poll.
+            loop {
+                tokio::select! {
+                    biased;
+                    () = shutdown.cancelled() => return,
+                    signal = committed.recv() => match signal {
+                        Ok(run_id) if run_id == id => break,
+                        Ok(_) => {}
+                        Err(RecvError::Lagged(_)) => break,
+                        Err(RecvError::Closed) => return,
+                    },
+                    () = time::sleep(STREAM_ATTACH_POLL) => break,
+                }
+            }
+        }
+    });
+
+    Sse::new(UnboundedReceiverStream::new(receiver))
+        .keep_alive(KeepAlive::default())
+        .into_response()
 }
 
 async fn list_run_stage_events(
@@ -446,6 +659,11 @@ async fn attach_run_events(
         Ok(id) => id,
         Err(response) => return response,
     };
+    match run_is_petri(&state, &id).await {
+        Ok(true) => return attach_run_stream(state, id, params.after).await,
+        Ok(false) => {}
+        Err(response) => return response,
+    }
     let Ok(run_store) = state.stores.runs.open_run_reader(&id).await else {
         return ApiError::not_found("Run not found.").into_response();
     };

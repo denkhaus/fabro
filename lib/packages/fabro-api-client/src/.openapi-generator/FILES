@@ -216,6 +216,7 @@ models/interview-option.ts
 models/interview-provider-settings.ts
 models/interview-question-record.ts
 models/link-run-pull-request-request.ts
+models/list-run-events200-response.ts
 models/llm-output-kind.ts
 models/llm-retry-classification-after.ts
 models/llm-retry-classification-never.ts
@@ -271,6 +272,7 @@ models/paginated-run-commit-list.ts
 models/paginated-run-file-list.ts
 models/paginated-run-list.ts
 models/paginated-run-stage-list.ts
+models/paginated-run-stream-list.ts
 models/paginated-saved-query-list.ts
 models/paginated-session-list.ts
 models/paginated-workflow-list-response.ts
@@ -296,7 +298,9 @@ models/pending-interview-record.ts
 models/pending-reason.ts
 models/permission-level.ts
 models/petri-access.ts
+models/petri-admission.ts
 models/petri-append-request.ts
+models/petri-graph-ref.ts
 models/petri-open-request.ts
 models/petri-open-response.ts
 models/petri-record-list.ts
@@ -383,6 +387,9 @@ models/run-commit.ts
 models/run-commits-meta.ts
 models/run-control-action.ts
 models/run-diff.ts
+models/run-engine-one-of.ts
+models/run-engine-one-of1.ts
+models/run-engine.ts
 models/run-environment-settings.ts
 models/run-error.ts
 models/run-event-detail-response-content.ts
@@ -442,6 +449,8 @@ models/run-status-starting.ts
 models/run-status-submitted.ts
 models/run-status-succeeded.ts
 models/run-status.ts
+models/run-stream-item-kind.ts
+models/run-stream-item.ts
 models/run-superseded-by-props.ts
 models/run-target.ts
 models/run-timestamps.ts

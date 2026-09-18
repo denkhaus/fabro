@@ -15,7 +15,7 @@ use fabro_types::{
     ArtifactUpload, BlobHash, EventEnvelope, Model, ModelTestMode, PairId, PairMessageRecord,
     PairMessageRequest, PairRecord, PairStartRequest, PairTranscriptResponse, Run, RunEvent,
     RunEventDetailResponse, RunId, RunPairStatusResponse, RunProjection, RunSessionMetadata,
-    SessionId, StageId, WorkflowVersion, WorkflowVersionId,
+    RunStreamItem, SessionId, StageId, WorkflowVersion, WorkflowVersionId,
 };
 use fabro_util::exit::{ErrorExt, ExitClass};
 use futures::future::BoxFuture;
@@ -54,6 +54,24 @@ pub struct RunEventStream {
     stream:          progenitor_client::ByteStream,
     pending_bytes:   Vec<u8>,
     buffered_events: VecDeque<EventEnvelope>,
+}
+
+/// The live stream of a Petri run, as `GET /runs/{id}/attach` serves it:
+/// one `RunStreamItem` per `data:` frame, in `stream_seq` order.
+pub struct RunStreamItemStream {
+    stream:         progenitor_client::ByteStream,
+    pending_bytes:  Vec<u8>,
+    buffered_items: VecDeque<RunStreamItem>,
+}
+
+/// One page of a Petri run's stream.
+#[derive(Debug, Clone)]
+pub struct RunStreamPage {
+    pub items:                  Vec<RunStreamItem>,
+    pub has_more:               bool,
+    /// Petri's `EVENT_CONTRACT_VERSION` the server serves; `None` when the
+    /// page was empty and the server reported no version beside it.
+    pub event_contract_version: Option<u32>,
 }
 
 type HttpByteStream = Pin<Box<dyn Stream<Item = Result<Bytes>> + Send>>;
@@ -180,6 +198,42 @@ impl RunEventStream {
     fn buffer_sse_events(&mut self, finalize: bool) -> Result<()> {
         for payload in sse::drain_sse_payloads(&mut self.pending_bytes, finalize) {
             self.buffered_events
+                .push_back(serde_json::from_str(&payload)?);
+        }
+        Ok(())
+    }
+}
+
+impl RunStreamItemStream {
+    #[must_use]
+    pub fn new(stream: progenitor_client::ByteStream) -> Self {
+        Self {
+            stream,
+            pending_bytes: Vec::new(),
+            buffered_items: VecDeque::new(),
+        }
+    }
+
+    pub async fn next_item(&mut self) -> Result<Option<RunStreamItem>> {
+        loop {
+            if let Some(item) = self.buffered_items.pop_front() {
+                return Ok(Some(item));
+            }
+
+            if let Some(chunk) = self.stream.next().await {
+                let chunk = chunk.map_err(anyhow::Error::new)?;
+                self.pending_bytes.extend_from_slice(&chunk);
+                self.buffer_sse_items(false)?;
+            } else {
+                self.buffer_sse_items(true)?;
+                return Ok(self.buffered_items.pop_front());
+            }
+        }
+    }
+
+    fn buffer_sse_items(&mut self, finalize: bool) -> Result<()> {
+        for payload in sse::drain_sse_payloads(&mut self.pending_bytes, finalize) {
+            self.buffered_items
                 .push_back(serde_json::from_str(&payload)?);
         }
         Ok(())
@@ -1813,13 +1867,99 @@ impl Client {
                 request.send().await
             })
             .await?;
-        let parsed = response.into_inner();
+        let parsed = match response.into_inner() {
+            types::ListRunEventsResponse::EventList(page) => page,
+            types::ListRunEventsResponse::RunStreamList(_) => {
+                bail!(
+                    "run {run_id} executes on Petri; its events are served as a run stream \
+                     (list_run_stream)"
+                );
+            }
+        };
         let events = parsed
             .data
             .into_iter()
             .map(convert_type::<_, EventEnvelope>)
             .collect::<Result<Vec<EventEnvelope>>>()?;
         Ok((events, parsed.meta.has_more))
+    }
+
+    /// One page of a Petri run's stream: up to `limit` items with
+    /// `stream_seq > after`, in order.
+    pub async fn list_run_stream_page(
+        &self,
+        run_id: &RunId,
+        after: u64,
+        limit: Option<usize>,
+    ) -> Result<RunStreamPage> {
+        let response = self
+            .send_api(|client| async move {
+                let mut request = client.list_run_events().id(run_id.to_string()).after(after);
+                let page_limit = limit.map(|limit| limit.min(1000));
+                if let Some(limit) = page_limit.and_then(non_zero_u64_from_usize) {
+                    request = request.limit(limit);
+                }
+                request.send().await
+            })
+            .await?;
+        match response.into_inner() {
+            types::ListRunEventsResponse::RunStreamList(page) => Ok(RunStreamPage {
+                items:                  page.data,
+                has_more:               page.meta.has_more,
+                event_contract_version: Some(page.event_contract_version),
+            }),
+            // An empty page decodes as either list; a legacy page with
+            // items is a run that does not execute on Petri.
+            types::ListRunEventsResponse::EventList(page) if page.data.is_empty() => {
+                Ok(RunStreamPage {
+                    items:                  Vec::new(),
+                    has_more:               page.meta.has_more,
+                    event_contract_version: None,
+                })
+            }
+            types::ListRunEventsResponse::EventList(_) => {
+                bail!("run {run_id} executes on the legacy engine; its events are not a run stream")
+            }
+        }
+    }
+
+    /// Every item of a Petri run's stream past `after`, page by page.
+    pub async fn list_run_stream(&self, run_id: &RunId, after: u64) -> Result<Vec<RunStreamItem>> {
+        let mut cursor = after;
+        let mut all = Vec::new();
+        loop {
+            let page = self.list_run_stream_page(run_id, cursor, None).await?;
+            let Some(last) = page.items.last() else {
+                break;
+            };
+            cursor = last.stream_seq;
+            let has_more = page.has_more;
+            all.extend(page.items);
+            if !has_more {
+                break;
+            }
+        }
+        Ok(all)
+    }
+
+    /// The live stream of a Petri run from `after` (the last `stream_seq`
+    /// seen; `Some(0)` replays the whole run; `None` starts at the next
+    /// unseen item).
+    pub async fn attach_run_stream(
+        &self,
+        run_id: &RunId,
+        after: Option<u64>,
+    ) -> Result<RunStreamItemStream> {
+        let response = self
+            .send_api(|client| async move {
+                let mut request = client.attach_run_events().id(run_id.to_string());
+                if let Some(after) = after {
+                    request = request.after(after);
+                }
+                request.send().await
+            })
+            .await?;
+        Ok(RunStreamItemStream::new(response.into_inner()))
     }
 
     pub async fn attach_run_events(
