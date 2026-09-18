@@ -50,6 +50,18 @@ const WORKER_ENV_ALLOWLIST: &[&str] = &[
     EnvVars::AWS_CONTAINER_CREDENTIALS_RELATIVE_URI,
     EnvVars::AWS_CONTAINER_CREDENTIALS_FULL_URI,
     EnvVars::AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE,
+    // Petri's sandbox-driver plugins are resolved in the worker, where a
+    // Petri run executes: the plugin path, checksum and dev-mode overrides
+    // cross with `PATH`, so the worker finds the plugins the server would.
+    EnvVars::PETRI_SANDBOX_HOST_PLUGIN,
+    EnvVars::PETRI_SANDBOX_HOST_SHA256,
+    EnvVars::PETRI_SANDBOX_DOCKER_PLUGIN,
+    EnvVars::PETRI_SANDBOX_DOCKER_SHA256,
+    EnvVars::PETRI_SANDBOX_DAYTONA_PLUGIN,
+    EnvVars::PETRI_SANDBOX_DAYTONA_SHA256,
+    EnvVars::PETRI_SANDBOX_PLUGIN_DEV,
+    EnvVars::PETRI_SANDBOX_DOCKER_HOST_ADDRESS,
+    EnvVars::PETRI_SANDBOX_ACTION_HOST_IMAGE,
 ];
 
 const RENDER_GRAPH_ENV_ALLOWLIST: &[&str] = &[EnvVars::PATH, EnvVars::HOME, EnvVars::TMPDIR];
@@ -144,6 +156,11 @@ mod tests {
             ("FABRO_DEV_TOKEN".to_string(), "garbage".to_string()),
             ("FABRO_WORKER_TOKEN".to_string(), "leak".to_string()),
             ("MY_API_KEY".to_string(), "blocked".to_string()),
+            (
+                "PETRI_SANDBOX_HOST_PLUGIN".to_string(),
+                "/opt/petri/sandbox-driver-host".to_string(),
+            ),
+            ("PETRI_SANDBOX_PLUGIN_DEV".to_string(), "1".to_string()),
         ]);
         let mut cmd = env_command();
         apply_allowlist(&mut cmd, WORKER_ENV_ALLOWLIST, &|name| {
@@ -178,6 +195,16 @@ mod tests {
             Some("xterm-256color")
         );
         assert_eq!(actual.get("NO_COLOR").map(String::as_str), Some("1"));
+        // Petri's plugin overrides cross so the worker resolves the same
+        // sandbox-driver plugins the server would.
+        assert_eq!(
+            actual.get("PETRI_SANDBOX_HOST_PLUGIN").map(String::as_str),
+            Some("/opt/petri/sandbox-driver-host")
+        );
+        assert_eq!(
+            actual.get("PETRI_SANDBOX_PLUGIN_DEV").map(String::as_str),
+            Some("1")
+        );
         assert_eq!(actual.get("CLICOLOR").map(String::as_str), Some("0"));
         assert_eq!(actual.get("CLICOLOR_FORCE").map(String::as_str), Some("1"));
         // Bedrock SigV4 chain inputs cross into the worker so it can re-resolve
