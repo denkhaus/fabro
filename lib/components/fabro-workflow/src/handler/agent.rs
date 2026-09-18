@@ -518,6 +518,22 @@ impl Handler for AgentHandler {
             .await
             {
                 Ok(validated) => {
+                    // fabro-c42f: the handler-level accept must enforce the
+                    // same contract as the session repair loop — a routing
+                    // object without any declared context key parks the run
+                    // at the first stdin_source consumer otherwise.
+                    if let Some(contract) =
+                        structured_output::routing_contract_error(node, &validated)
+                    {
+                        let mut failed =
+                            structured_output::exhausted_failure_outcome(node.output_retries());
+                        failed.timing = Some(timing);
+                        failed.usage = stage_usage;
+                        failed.usage_by_model = stage_usage_by_model;
+                        failed.files_touched = backend_files_touched;
+                        let _ = contract;
+                        return Ok(failed);
+                    }
                     if validated.salvaged {
                         services.run.emitter.emit_scoped(
                             &Event::RunNotice {

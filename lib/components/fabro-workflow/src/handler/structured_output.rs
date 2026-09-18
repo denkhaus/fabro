@@ -99,6 +99,10 @@ pub(crate) enum StructuredOutputErrorKind {
     NoRelevantJsonObject,
     InvalidJson,
     SchemaValidation,
+    /// The routing object validated but emitted none of the node's declared
+    /// `context_allow_keys` (fabro-c42f: the downstream stdin_source
+    /// contract breaks while routing looks healthy).
+    MissingContextContract,
     /// The response opens a JSON object that is never closed — the signature
     /// of a final structured message cut off at the provider output length
     /// cap (fabro-274d). Size overflow is not a correctness defect in the
@@ -529,6 +533,45 @@ pub(crate) fn prompt_response_format(schema: &OutputSchemaKind) -> ResponseForma
             schema: schema.clone(),
         },
     }
+}
+
+/// fabro-c42f: a routing output that emits NONE of the node's declared
+/// `context_allow_keys` breaks every downstream consumer of those keys (the
+/// planner's `current_seed_id` feeds the evidence/closeout stdin sources).
+/// The final structured message can otherwise validate as routing (an
+/// `outcome`/`preferred_next_label`-only object) while silently dropping the
+/// seed contract; the run then dies at the first stdin_source consumer after
+/// burning a full implementer cycle. Returns the contract error to drive a
+/// repair turn (or an early deterministic failure once repairs are
+/// exhausted) instead.
+pub(crate) fn routing_contract_error(
+    node: &Node,
+    validated: &ValidatedStructuredOutput,
+) -> Option<StructuredOutputError> {
+    let declared = node.context_allow_keys()?;
+    if declared.is_empty() {
+        return None;
+    }
+    // A missing context_updates object entirely is the same contract break
+    // as an empty one (the c42f production shape emits neither).
+    let empty = serde_json::Map::new();
+    let updates = validated
+        .value
+        .get("context_updates")
+        .and_then(Value::as_object)
+        .unwrap_or(&empty);
+    let emitted_any = declared.iter().any(|key| updates.contains_key(*key));
+    if emitted_any {
+        return None;
+    }
+    Some(StructuredOutputError::new(
+        StructuredOutputErrorKind::MissingContextContract,
+        format!(
+            "the routing object emitted none of the node's required context keys \
+             ({}); set them under context_updates",
+            declared.join(", ")
+        ),
+    ))
 }
 
 pub(crate) fn validate_response_text(
@@ -1500,6 +1543,44 @@ mod tests {
         .unwrap();
 
         assert_eq!(validated.value, serde_json::json!({"passed": true}));
+    }
+
+    #[test]
+    fn routing_contract_error_flags_outputs_without_declared_keys() {
+        let mut node = Node::new("planner");
+        node.attrs.insert(
+            "context_allow_keys".to_string(),
+            AttrValue::String("current_seed_id,current_seed_brief".to_string()),
+        );
+        // Emits one declared key: no error.
+        let ok = ValidatedStructuredOutput {
+            value:    serde_json::json!({
+                "outcome": "succeeded",
+                "context_updates": {"current_seed_id": "fabro-a1b2"}
+            }),
+            salvaged: false,
+        };
+        assert!(routing_contract_error(&node, &ok).is_none());
+        // Emits NONE of the declared keys (the c42f production shape):
+        // contract error naming the keys.
+        let bare = ValidatedStructuredOutput {
+            value:    serde_json::json!({
+                "outcome": "succeeded",
+                "preferred_next_label": "Seed claimed"
+            }),
+            salvaged: false,
+        };
+        let error = routing_contract_error(&node, &bare)
+            .expect("routing without declared context keys must fail the contract");
+        assert!(!error.is_truncated());
+        let message = error.messages().join(" ");
+        assert!(
+            message.contains("current_seed_id"),
+            "repair message must name the missing keys: {message}"
+        );
+        // Node without allow keys: never enforced.
+        let plain = Node::new("work");
+        assert!(routing_contract_error(&plain, &bare).is_none());
     }
 
     #[test]
