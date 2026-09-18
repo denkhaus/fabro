@@ -135,8 +135,8 @@ fn events_completed_run_reads_store_without_progress_jsonl() {
     success: true
     exit_code: 0
     ----- stdout -----
-    {"run_id":"[ULID]","stream_seq":62,"kind":"petri","id":"coordinator/6/0","recorded_at":[EPOCH_MS],"item":{"id":{"log":"coordinator","seq":6,"index":0},"origin":"external","context":{},"recorded_at":[EPOCH_MS],"record":{"seq":6,"origin":"external","recorded_at":[EPOCH_MS],"body":{"event":"run.finished","status":"success"}}}}
-    {"run_id":"[ULID]","stream_seq":63,"kind":"platform","id":"[EVENT_ID]","recorded_at":[EPOCH_MS],"item":{"seq":11,"recorded_at":[EPOCH_MS],"record":{"kind":"run.lifecycle","transition":"succeeded","status":{"kind":"succeeded","reason":"completed"}}}}
+    {"run_id":"[ULID]","stream_seq":67,"kind":"petri","id":"coordinator/7/0","recorded_at":[EPOCH_MS],"item":{"id":{"log":"coordinator","seq":7,"index":0},"origin":"external","context":{},"recorded_at":[EPOCH_MS],"record":{"seq":7,"origin":"external","recorded_at":[EPOCH_MS],"body":{"event":"run.finished","status":"success"}}}}
+    {"run_id":"[ULID]","stream_seq":68,"kind":"platform","id":"[EVENT_ID]","recorded_at":[EPOCH_MS],"item":{"seq":14,"recorded_at":[EPOCH_MS],"record":{"kind":"run.lifecycle","transition":"succeeded","status":{"kind":"succeeded","reason":"completed"}}}}
     ----- stderr -----
     "#);
 }
@@ -165,8 +165,8 @@ fn events_tail_limits_output() {
     success: true
     exit_code: 0
     ----- stdout -----
-    {"run_id":"[ULID]","stream_seq":62,"kind":"petri","id":"coordinator/6/0","recorded_at":[EPOCH_MS],"item":{"id":{"log":"coordinator","seq":6,"index":0},"origin":"external","context":{},"recorded_at":[EPOCH_MS],"record":{"seq":6,"origin":"external","recorded_at":[EPOCH_MS],"body":{"event":"run.finished","status":"success"}}}}
-    {"run_id":"[ULID]","stream_seq":63,"kind":"platform","id":"[EVENT_ID]","recorded_at":[EPOCH_MS],"item":{"seq":11,"recorded_at":[EPOCH_MS],"record":{"kind":"run.lifecycle","transition":"succeeded","status":{"kind":"succeeded","reason":"completed"}}}}
+    {"run_id":"[ULID]","stream_seq":67,"kind":"petri","id":"coordinator/7/0","recorded_at":[EPOCH_MS],"item":{"id":{"log":"coordinator","seq":7,"index":0},"origin":"external","context":{},"recorded_at":[EPOCH_MS],"record":{"seq":7,"origin":"external","recorded_at":[EPOCH_MS],"body":{"event":"run.finished","status":"success"}}}}
+    {"run_id":"[ULID]","stream_seq":68,"kind":"platform","id":"[EVENT_ID]","recorded_at":[EPOCH_MS],"item":{"seq":14,"recorded_at":[EPOCH_MS],"record":{"kind":"run.lifecycle","transition":"succeeded","status":{"kind":"succeeded","reason":"completed"}}}}
     ----- stderr -----
     "#);
 }
@@ -215,6 +215,8 @@ fn events_pretty_formats_small_run() {
     [CLOCK]   · running
     [CLOCK]   Engine: petri run started
     [CLOCK] ▶ Start
+    [CLOCK]   Branch: fabro/run/[ULID] from [SHA]
+    [CLOCK]   Git identity: Fabro <noreply@fabro.sh>  default
     [CLOCK] ✓ Start  [DURATION]
     [CLOCK]    ⎘ Checkpoint [SHA]
     [CLOCK] ▶ Run Tests
@@ -229,6 +231,7 @@ fn events_pretty_formats_small_run() {
     [CLOCK]    report → exit continue
     [CLOCK] ✓ Exit  [DURATION]
     [CLOCK]    ⎘ Checkpoint [SHA]
+    [CLOCK]   Diff: +0 -0 in 0 file(s)
     [CLOCK] ✓ SUCCEEDED [DURATION]
     [CLOCK]   · succeeded
     ----- stderr -----

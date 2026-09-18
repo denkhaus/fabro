@@ -836,6 +836,7 @@ fn dry_run_simple() {
     ----- stderr -----
         Run: [ULID]
         Web UI: http://localhost:3000/runs/[ULID]
+        Base: [BASE]
         ✓ Start  [TIME]
         ✓ Run Tests  [TIME]
         ✓ Report  [TIME]
@@ -845,6 +846,9 @@ fn dry_run_simple() {
     Run:       [ULID]
     Status:    SUCCEEDED
     Duration:  [DURATION]
+
+    === Output ===
+    [Simulated] report
     ");
 }
 

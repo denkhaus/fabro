@@ -16,6 +16,7 @@ fn dry_run_branching() {
     ----- stderr -----
         Run: [ULID]
         Web UI: http://localhost:3000/runs/[ULID]
+        Base: [BASE]
         ✓ Start  [TIME]
         ✓ Plan  [TIME]
         ✓ Implement  [TIME]
@@ -27,6 +28,9 @@ fn dry_run_branching() {
     Run:       [ULID]
     Status:    SUCCEEDED
     Duration:  [DURATION]
+
+    === Output ===
+    [Simulated] validate
     ");
 }
 
@@ -44,6 +48,7 @@ fn dry_run_conditions() {
     ----- stderr -----
         Run: [ULID]
         Web UI: http://localhost:3000/runs/[ULID]
+        Base: [BASE]
         ✓ start  [TIME]
         ✓ Decide  [TIME]
         ✓ Path B  [TIME]
@@ -53,6 +58,9 @@ fn dry_run_conditions() {
     Run:       [ULID]
     Status:    SUCCEEDED
     Duration:  [DURATION]
+
+    === Output ===
+    [Simulated] path_b
     ");
 }
 
@@ -73,6 +81,7 @@ fn dry_run_parallel() {
     ----- stderr -----
         Run: [ULID]
         Web UI: http://localhost:3000/runs/[ULID]
+        Base: [BASE]
         ✓ start  [TIME]
         ✓ Fork Work  [TIME]
         ✓ Branch [N]  [TIME]
@@ -85,6 +94,9 @@ fn dry_run_parallel() {
     Run:       [ULID]
     Status:    SUCCEEDED
     Duration:  [DURATION]
+
+    === Output ===
+    [Simulated] review
     ");
 }
 
@@ -102,6 +114,7 @@ fn dry_run_styled() {
     ----- stderr -----
         Run: [ULID]
         Web UI: http://localhost:3000/runs/[ULID]
+        Base: [BASE]
         ✓ start  [TIME]
         ✓ Plan  [TIME]
         ✓ Implement  [TIME]
@@ -112,6 +125,9 @@ fn dry_run_styled() {
     Run:       [ULID]
     Status:    SUCCEEDED
     Duration:  [DURATION]
+
+    === Output ===
+    [Simulated] critical_review
     ");
 }
 
@@ -129,6 +145,7 @@ fn dry_run_inferred_command() {
     ----- stderr -----
         Run: [ULID]
         Web UI: http://localhost:3000/runs/[ULID]
+        Base: [BASE]
         ✓ Start  [TIME]
         ✓ Echo  [TIME]
         ✓ Exit  [TIME]

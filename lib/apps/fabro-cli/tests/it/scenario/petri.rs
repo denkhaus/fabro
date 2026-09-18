@@ -1172,7 +1172,7 @@ async fn a_finished_petri_run_reads_back_through_the_cli() {
     // Pretty: stages and platform records.
     let mut cmd = context.command();
     cmd.args(["events", "--pretty", "--server", &target, &run_id]);
-    fabro_snapshot!(pretty_filters(&context), cmd, @r"
+    fabro_snapshot!(pretty_filters(&context), cmd, @"
     success: true
     exit_code: 0
     ----- stdout -----
@@ -1185,6 +1185,8 @@ async fn a_finished_petri_run_reads_back_through_the_cli() {
     [CLOCK]   Engine: petri run started
     [CLOCK] ▶ start
     [CLOCK]    │ checkout: [TEMP_DIR]/petri-workspace is not a Git repository; the workspace starts empty
+    [CLOCK]   Branch: fabro/run/[ULID] from [SHA]
+    [CLOCK]   Git identity: Fabro <noreply@fabro.sh>  default
     [CLOCK] ✓ start  [DURATION]
     [CLOCK]    ⎘ Checkpoint [SHA]
     [CLOCK] ▶ say
@@ -1196,6 +1198,7 @@ async fn a_finished_petri_run_reads_back_through_the_cli() {
     [CLOCK]    say → exit continue
     [CLOCK] ✓ exit  [DURATION]
     [CLOCK]    ⎘ Checkpoint [SHA]
+    [CLOCK]   Diff: +0 -0 in 0 file(s)
     [CLOCK] ✓ SUCCEEDED [DURATION]
     [CLOCK]   · succeeded
     ----- stderr -----

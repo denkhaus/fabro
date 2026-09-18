@@ -555,7 +555,7 @@ fn git_backed_run(
     );
     init_remote_fixture(&workspace_dir, "main");
     let run = run_local_workflow(context, &workspace_dir, "workflow.toml");
-    WorkspaceRunSetup { run, workspace_dir }
+    WorkspaceRunSetup { run }
 }
 
 /// The run output filters plus one for commit shas, which a patch names in

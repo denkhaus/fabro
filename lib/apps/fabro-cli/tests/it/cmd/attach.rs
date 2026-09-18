@@ -392,6 +392,7 @@ fn attach_replays_completed_detached_run() {
     ----- stdout -----
     ----- stderr -----
         Web UI: http://localhost:3000/runs/[ULID]
+        Base: [BASE]
         ✓ Start  [TIME]
         ✓ Run Tests  [TIME]
         ✓ Report  [TIME]
@@ -636,6 +637,7 @@ fn attach_before_completion_streams_to_finished_state() {
     ----- stdout -----
     ----- stderr -----
         Web UI: http://localhost:3000/runs/[ULID]
+        Base: [BASE]
         ✓ start  [DURATION]
         ✓ wait  [DURATION]
         ✓ exit  [DURATION]
@@ -1529,6 +1531,40 @@ fn attach_json_errors_without_prompting_for_human_input() {
       {
         "run_id": "[ULID]",
         "stream_seq": 21,
+        "kind": "platform",
+        "id": "[EVENT_ID]",
+        "recorded_at": "[EPOCH_MS]",
+        "item": {
+          "seq": 7,
+          "recorded_at": "[EPOCH_MS]",
+          "record": {
+            "kind": "run.branch",
+            "run_branch": "fabro/run/[ULID]",
+            "base_sha": "[DIGEST]",
+            "workspace": "invocation-0-scope-0"
+          }
+        }
+      },
+      {
+        "run_id": "[ULID]",
+        "stream_seq": 22,
+        "kind": "platform",
+        "id": "[EVENT_ID]",
+        "recorded_at": "[EPOCH_MS]",
+        "item": {
+          "seq": 8,
+          "recorded_at": "[EPOCH_MS]",
+          "record": {
+            "kind": "git.identity",
+            "name": "Fabro",
+            "email": "noreply@fabro.sh",
+            "source": "default"
+          }
+        }
+      },
+      {
+        "run_id": "[ULID]",
+        "stream_seq": 23,
         "kind": "petri",
         "id": "execution 0/7/0",
         "recorded_at": "[EPOCH_MS]",
@@ -1620,7 +1656,7 @@ fn attach_json_errors_without_prompting_for_human_input() {
       },
       {
         "run_id": "[ULID]",
-        "stream_seq": 22,
+        "stream_seq": 24,
         "kind": "petri",
         "id": "execution 0/8/0",
         "recorded_at": "[EPOCH_MS]",
@@ -1700,7 +1736,7 @@ fn attach_json_errors_without_prompting_for_human_input() {
       },
       {
         "run_id": "[ULID]",
-        "stream_seq": 23,
+        "stream_seq": 25,
         "kind": "petri",
         "id": "execution 0/8/1",
         "recorded_at": "[EPOCH_MS]",
@@ -1771,12 +1807,12 @@ fn attach_json_errors_without_prompting_for_human_input() {
       },
       {
         "run_id": "[ULID]",
-        "stream_seq": 24,
+        "stream_seq": 26,
         "kind": "platform",
         "id": "[EVENT_ID]",
         "recorded_at": "[EPOCH_MS]",
         "item": {
-          "seq": 7,
+          "seq": 9,
           "recorded_at": "[EPOCH_MS]",
           "record": {
             "kind": "checkpoint",
@@ -1804,7 +1840,7 @@ fn attach_json_errors_without_prompting_for_human_input() {
       },
       {
         "run_id": "[ULID]",
-        "stream_seq": 25,
+        "stream_seq": 27,
         "kind": "petri",
         "id": "execution 0/9/0",
         "recorded_at": "[EPOCH_MS]",
@@ -1912,7 +1948,7 @@ fn attach_json_errors_without_prompting_for_human_input() {
       },
       {
         "run_id": "[ULID]",
-        "stream_seq": 26,
+        "stream_seq": 28,
         "kind": "petri",
         "id": "execution 0/9/1",
         "recorded_at": "[EPOCH_MS]",
@@ -1981,7 +2017,7 @@ fn attach_json_errors_without_prompting_for_human_input() {
       },
       {
         "run_id": "[ULID]",
-        "stream_seq": 27,
+        "stream_seq": 29,
         "kind": "petri",
         "id": "execution 0/9/2",
         "recorded_at": "[EPOCH_MS]",
@@ -2040,7 +2076,7 @@ fn attach_json_errors_without_prompting_for_human_input() {
       },
       {
         "run_id": "[ULID]",
-        "stream_seq": 28,
+        "stream_seq": 30,
         "kind": "petri",
         "id": "execution 0/10/0",
         "recorded_at": "[EPOCH_MS]",
@@ -2133,7 +2169,7 @@ fn attach_json_errors_without_prompting_for_human_input() {
       },
       {
         "run_id": "[ULID]",
-        "stream_seq": 29,
+        "stream_seq": 31,
         "kind": "petri",
         "id": "execution 0/11/0",
         "recorded_at": "[EPOCH_MS]",
@@ -2200,7 +2236,7 @@ fn attach_json_errors_without_prompting_for_human_input() {
       },
       {
         "run_id": "[ULID]",
-        "stream_seq": 30,
+        "stream_seq": 32,
         "kind": "petri",
         "id": "execution 0/12/0",
         "recorded_at": "[EPOCH_MS]",
@@ -2271,7 +2307,7 @@ fn attach_json_errors_without_prompting_for_human_input() {
       },
       {
         "run_id": "[ULID]",
-        "stream_seq": 31,
+        "stream_seq": 33,
         "kind": "petri",
         "id": "execution 0/13/0",
         "recorded_at": "[EPOCH_MS]",
@@ -2336,7 +2372,7 @@ fn attach_json_errors_without_prompting_for_human_input() {
       },
       {
         "run_id": "[ULID]",
-        "stream_seq": 32,
+        "stream_seq": 34,
         "kind": "petri",
         "id": "execution 0/13/1",
         "recorded_at": "[EPOCH_MS]",
@@ -2395,7 +2431,7 @@ fn attach_json_errors_without_prompting_for_human_input() {
       },
       {
         "run_id": "[ULID]",
-        "stream_seq": 33,
+        "stream_seq": 35,
         "kind": "petri",
         "id": "execution 0/14/0",
         "recorded_at": "[EPOCH_MS]",
@@ -2502,7 +2538,7 @@ fn attach_json_errors_without_prompting_for_human_input() {
       },
       {
         "run_id": "[ULID]",
-        "stream_seq": 34,
+        "stream_seq": 36,
         "kind": "petri",
         "id": "execution 0/14/1",
         "recorded_at": "[EPOCH_MS]",
@@ -2561,7 +2597,7 @@ fn attach_json_errors_without_prompting_for_human_input() {
       },
       {
         "run_id": "[ULID]",
-        "stream_seq": 35,
+        "stream_seq": 37,
         "kind": "petri",
         "id": "execution 0/15/0",
         "recorded_at": "[EPOCH_MS]",

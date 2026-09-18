@@ -782,7 +782,8 @@ fn format_platform_record(ts: &str, record: &Value, styles: &Styles) -> Option<S
             ))
         }
         "git.identity" => {
-            let identity = record.get("identity")?;
+            // The identity's fields are flattened into the record.
+            let identity = record;
             let name = identity.get("name").and_then(Value::as_str).unwrap_or("?");
             let email = identity.get("email").and_then(Value::as_str).unwrap_or("?");
             let source = identity
@@ -792,6 +793,26 @@ fn format_platform_record(ts: &str, record: &Value, styles: &Styles) -> Option<S
             Some(format!(
                 "{ts}   Git identity: {name} <{email}>  {}",
                 styles.dim.apply_to(source)
+            ))
+        }
+        "run.diff" => {
+            let summary = record.get("diff_summary")?;
+            let count = |key: &str| summary.get(key).and_then(Value::as_i64).unwrap_or(0);
+            Some(format!(
+                "{ts}   Diff: {} in {} file(s)",
+                styles
+                    .dim
+                    .apply_to(format!("+{} -{}", count("additions"), count("deletions"))),
+                count("files_changed")
+            ))
+        }
+        "artifact.collected" => {
+            let path = record.get("path").and_then(Value::as_str).unwrap_or("?");
+            let bytes = record.get("bytes").and_then(Value::as_u64).unwrap_or(0);
+            Some(format!(
+                "{ts}    {} {path} {}",
+                styles.dim.apply_to("\u{2398}"),
+                styles.dim.apply_to(format!("({bytes} B)"))
             ))
         }
         other => Some(format!(
