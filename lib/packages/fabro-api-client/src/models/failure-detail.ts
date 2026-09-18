@@ -36,4 +36,8 @@ export interface FailureDetail {
      */
     'signature'?: string | null;
     'exec_output_tail'?: ExecOutputTail | null;
+    /**
+     * Provider usage-window reset deadline parsed from the error text (e.g. `Your limit will reset at ...`), in UTC, when the failure is a quota/rate-limit park (fabro-e566).
+     */
+    'quota_reset_at'?: string | null;
 }

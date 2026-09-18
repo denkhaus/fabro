@@ -65,6 +65,17 @@ fn run_status_json_matches_openapi_shape() {
             "blocked_reason": "human_input_required"
         }),
     );
+    // Quota park (fabro-e566): terminal blocked shape for 429/usage-window
+    // deaths; the OpenAPI BlockedReason enum carries the same token.
+    assert_json(
+        RunStatus::Blocked {
+            blocked_reason: BlockedReason::QuotaRateLimit,
+        },
+        json!({
+            "kind": "blocked",
+            "blocked_reason": "quota_rate_limit"
+        }),
+    );
     assert_json(
         RunStatus::Paused { prior_block: None },
         json!({
@@ -143,6 +154,7 @@ fn pending_reason_json_tokens_match_openapi() {
 #[test]
 fn blocked_reason_json_tokens_match_openapi() {
     assert_string_json(BlockedReason::HumanInputRequired, "human_input_required");
+    assert_string_json(BlockedReason::QuotaRateLimit, "quota_rate_limit");
 }
 
 #[test]

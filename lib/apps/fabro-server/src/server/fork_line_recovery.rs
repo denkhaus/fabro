@@ -35,7 +35,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
-use fabro_types::outcome::FailureCategory;
 use fabro_types::{Run, RunFailure, RunStatus};
 
 use super::AppState;
@@ -46,28 +45,25 @@ pub(crate) const RECHECK_INTERVAL_SECS: i64 = 600;
 
 /// Whether a terminal run is a quota-class park the recheck owns.
 ///
-/// Structural detection only: a SoftStop failure with a TransientInfra
-/// category and a `rate_limit` signature detail (spelled `rate_limit` or
-/// `rate_limited` depending on provider). The message prose is never
-/// parsed here.
+/// Structural detection only (fabro-e566): the shared
+/// [`fabro_types::is_quota_rate_limit_failure`] classifier — a SoftStop
+/// failure with a TransientInfra category and a `rate_limit` signature
+/// detail (spelled `rate_limit` or `rate_limited` depending on provider).
+/// The message prose is never parsed here. The run-side status shape is
+/// either the legacy `Failed { soft_stop }` or the new terminal park
+/// `Blocked { quota_rate_limit }` the lifecycle table remaps quota deaths
+/// to.
 #[must_use]
 pub(crate) fn is_quota_park(status: RunStatus, failure: Option<&RunFailure>) -> bool {
-    if !matches!(status, RunStatus::Failed {
-        reason: fabro_types::FailureReason::SoftStop,
-    }) {
-        return false;
-    }
-    let Some(failure) = failure else {
-        return false;
-    };
-    if failure.detail.category != FailureCategory::TransientInfra {
-        return false;
-    }
-    failure
-        .detail
-        .signature
-        .as_ref()
-        .is_some_and(|signature| signature.as_str().contains("rate_limit"))
+    let parked_status = matches!(
+        status,
+        RunStatus::Failed {
+            reason: fabro_types::FailureReason::SoftStop,
+        } | RunStatus::Blocked {
+            blocked_reason: fabro_types::BlockedReason::QuotaRateLimit,
+        }
+    );
+    parked_status && failure.is_some_and(fabro_types::is_quota_rate_limit_failure)
 }
 
 /// In-memory gate bookkeeping (derived, not persisted).
@@ -304,6 +300,7 @@ async fn newest_terminal(state: &AppState, automation_id: &str, now: DateTime<Ut
 #[cfg(test)]
 mod tests {
     use chrono::TimeZone as _;
+    use fabro_types::outcome::FailureCategory;
 
     use super::*;
 
@@ -327,9 +324,22 @@ mod tests {
         }
     }
 
+    fn quota_blocked() -> RunStatus {
+        RunStatus::Blocked {
+            blocked_reason: fabro_types::BlockedReason::QuotaRateLimit,
+        }
+    }
+
     #[test]
     fn soft_stop_with_quota_signature_is_a_quota_park() {
         assert!(is_quota_park(soft_stop(), Some(&quota_failure())));
+    }
+
+    #[test]
+    fn quota_blocked_park_shape_is_a_quota_park() {
+        // fabro-e566: quota deaths end Blocked { quota_rate_limit }; the
+        // classifier must recognize the remapped shape as the same park.
+        assert!(is_quota_park(quota_blocked(), Some(&quota_failure())));
     }
 
     #[test]

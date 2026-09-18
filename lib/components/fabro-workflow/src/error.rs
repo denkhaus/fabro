@@ -616,6 +616,11 @@ impl Error {
             } => (message.clone(), exec_output_tail.clone()),
             _ => (self.to_string(), None),
         };
+        // Structured reset deadline for quota parks (fabro-e566): the
+        // lifecycle table classifies the park structurally; the parsed
+        // deadline makes the provider's announced window queryable without
+        // re-parsing message prose downstream.
+        let quota_reset_at = FailureDetail::parse_quota_reset_at(&message);
         FailureDetail {
             message,
             causes: self.causes(),
@@ -624,6 +629,7 @@ impl Error {
             signature: self.failure_signature_hint(),
             exec_output_tail: explicit_exec_output_tail
                 .or_else(|| fabro_sandbox::default_redacted_output_tail(self)),
+            quota_reset_at,
         }
     }
 

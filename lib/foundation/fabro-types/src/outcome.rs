@@ -242,6 +242,10 @@ pub struct FailureDetail {
     pub signature:        Option<FailureSignature>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub exec_output_tail: Option<ExecOutputTail>,
+    /// Provider usage-window reset deadline parsed from the error text,
+    /// in UTC, when the failure is a quota/rate-limit park (fabro-e566).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub quota_reset_at:   Option<chrono::DateTime<chrono::Utc>>,
 }
 
 impl FailureDetail {
@@ -253,7 +257,29 @@ impl FailureDetail {
             system_actor: None,
             signature: None,
             exec_output_tail: None,
+            quota_reset_at: None,
         }
+    }
+
+    /// Parse a provider usage-window reset deadline out of an error
+    /// message (fabro-e566). Providers announce it as prose, e.g.
+    /// `Your limit will reset at 2026-09-18 16:56:19`; the timestamp is
+    /// offset-less wallclock and is interpreted as UTC. Returns `None`
+    /// when no announcement (or no parseable timestamp) is present.
+    #[must_use]
+    pub fn parse_quota_reset_at(message: &str) -> Option<chrono::DateTime<chrono::Utc>> {
+        let anchor = message.find("will reset at ")?;
+        let tail = &message[anchor + "will reset at ".len()..];
+        // The provider timestamp is `YYYY-MM-DD HH:MM:SS`; take the next
+        // whitespace-delimited tokens rather than a fixed slice so
+        // surrounding prose cannot corrupt the parse.
+        let mut tokens = tail.split_whitespace();
+        let date = tokens.next()?;
+        let time = tokens.next()?;
+        let naive =
+            chrono::NaiveDateTime::parse_from_str(&format!("{date} {time}"), "%Y-%m-%d %H:%M:%S")
+                .ok()?;
+        Some(naive.and_utc())
     }
 }
 
@@ -326,6 +352,7 @@ impl<M: OutcomeMeta> Outcome<M> {
                 system_actor:     None,
                 signature:        None,
                 exec_output_tail: None,
+                quota_reset_at:   None,
             }),
             ..Self::default()
         }
@@ -536,5 +563,30 @@ impl<M: OutcomeMeta> NodeResult<M> {
             attempts: 0,
             max_attempts: 0,
         }
+    }
+}
+
+#[cfg(test)]
+mod quota_reset_at_tests {
+    use super::FailureDetail;
+
+    #[test]
+    fn parses_provider_reset_deadline_as_utc() {
+        // Exact incident prose (01M2SRK0PCDXG5F8B8TX2TRGFB, fabro-e566).
+        let parsed = FailureDetail::parse_quota_reset_at(
+            "LLM error: provider zai Usage limit reached for 5 hour. Your limit will reset at \
+             2026-09-18 16:56:19",
+        )
+        .expect("reset deadline should parse");
+        assert_eq!(parsed.to_rfc3339(), "2026-09-18T16:56:19+00:00");
+    }
+
+    #[test]
+    fn messages_without_reset_announcement_parse_to_none() {
+        assert_eq!(FailureDetail::parse_quota_reset_at("workflow failed"), None);
+        assert_eq!(
+            FailureDetail::parse_quota_reset_at("will reset at not a timestamp"),
+            None
+        );
     }
 }

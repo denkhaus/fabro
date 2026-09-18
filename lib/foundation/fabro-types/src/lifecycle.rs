@@ -39,10 +39,8 @@ pub fn historic_skipped_statuses(status: RunStatus, body: &EventBody) -> Vec<Run
         skipped.push(RunStatus::Runnable);
     }
     if let EventBody::RunFailed(props) = body {
-        let failed = RunStatus::Failed {
-            reason: props.failure.reason,
-        };
-        if !status.can_transition_to(failed) {
+        let target = run_failed_target(&props.failure);
+        if !status.can_transition_to(target) {
             let mut current = status;
             if matches!(current, RunStatus::Submitted | RunStatus::Pending { .. }) {
                 skipped.push(RunStatus::Runnable);
@@ -54,6 +52,24 @@ pub fn historic_skipped_statuses(status: RunStatus, body: &EventBody) -> Vec<Run
         }
     }
     skipped
+}
+
+/// Terminal target of a `run.failed` event (fabro-e566): a quota-class
+/// failure (SoftStop + TransientInfra + `rate_limit` signature —
+/// [`crate::is_quota_rate_limit_failure`]) parks the run
+/// `Blocked { quota_rate_limit }` instead of `Failed { soft_stop }`, so the
+/// runs list and Kanban board separate quota parks from genuine failures
+/// while the run stays resumable.
+fn run_failed_target(failure: &crate::RunFailure) -> RunStatus {
+    if crate::is_quota_rate_limit_failure(failure) {
+        RunStatus::Blocked {
+            blocked_reason: crate::BlockedReason::QuotaRateLimit,
+        }
+    } else {
+        RunStatus::Failed {
+            reason: failure.reason,
+        }
+    }
 }
 
 /// Pure transition table for the run-lifecycle event protocol.
@@ -104,9 +120,7 @@ pub fn apply_lifecycle_event(status: RunStatus, body: &EventBody) -> LifecycleTr
         EventBody::RunCompleted(props) => Some(RunStatus::Succeeded {
             reason: props.reason,
         }),
-        EventBody::RunFailed(props) => Some(RunStatus::Failed {
-            reason: props.failure.reason,
-        }),
+        EventBody::RunFailed(props) => Some(run_failed_target(&props.failure)),
         _ => None,
     };
 
@@ -150,6 +164,31 @@ mod tests {
             failure:              RunFailure {
                 reason,
                 detail: FailureDetail::new("table test", FailureCategory::Deterministic),
+            },
+            timing:               RunTiming::default(),
+            final_git_commit_sha: None,
+            final_patch:          None,
+            diff_summary:         None,
+            usage:                None,
+        }
+    }
+
+    /// The exact terminal failure shape of incident run
+    /// 01M2SRK0PCDXG5F8B8TX2TRGFB (2026-09-18, fabro-e566): zai 5-hour
+    /// usage window, category transient_infra, signature
+    /// `api_transient|zai|rate_limit`.
+    fn quota_failed() -> RunFailedProps {
+        let message = "LLM error: provider zai Usage limit reached for 5 hour. Your limit will \
+                       reset at 2026-09-18 16:56:19";
+        let mut detail = FailureDetail::new(message, FailureCategory::TransientInfra);
+        detail.signature = Some(crate::FailureSignature(
+            "api_transient|zai|rate_limit".to_string(),
+        ));
+        detail.quota_reset_at = FailureDetail::parse_quota_reset_at(message);
+        RunFailedProps {
+            failure:              RunFailure {
+                reason: FailureReason::SoftStop,
+                detail,
             },
             timing:               RunTiming::default(),
             final_git_commit_sha: None,
@@ -534,6 +573,63 @@ mod tests {
         assert_eq!(
             apply_lifecycle_event(RunStatus::Removing, &removing),
             LifecycleTransition::Next(RunStatus::Removing)
+        );
+    }
+
+    // --- quota parks end blocked (fabro-e566) ---
+
+    #[test]
+    fn quota_rate_limit_failure_from_running_ends_blocked() {
+        // Pin of the exact 01M2SRK0PCDXG5F8B8TX2TRGFB failure shape.
+        let quota = EventBody::RunFailed(quota_failed());
+        let blocked = RunStatus::Blocked {
+            blocked_reason: BlockedReason::QuotaRateLimit,
+        };
+        assert_eq!(next(RunStatus::Running, &quota), blocked);
+        // A quota death can also land between starting and running.
+        assert_eq!(next(RunStatus::Starting, &quota), blocked);
+        // Historic replay of a quota failure converges on the same park.
+        assert_eq!(
+            historic_skipped_statuses(RunStatus::Runnable, &quota),
+            vec![RunStatus::Starting]
+        );
+    }
+
+    #[test]
+    fn non_quota_failures_stay_failed() {
+        // A soft stop without the rate_limit signature is a genuine
+        // (non-quota) soft stop — contrast case for fabro-e566.
+        let mut props = quota_failed();
+        props.failure.detail.signature = None;
+        assert_eq!(
+            next(RunStatus::Running, &EventBody::RunFailed(props)),
+            RunStatus::Failed {
+                reason: FailureReason::SoftStop,
+            }
+        );
+        // Deterministic and workflow errors keep failing.
+        assert_eq!(
+            next(
+                RunStatus::Running,
+                &EventBody::RunFailed(failed(FailureReason::WorkflowError))
+            ),
+            RunStatus::Failed {
+                reason: FailureReason::WorkflowError,
+            }
+        );
+    }
+
+    #[test]
+    fn quota_blocked_run_is_resumable_through_start_request() {
+        let resume = EventBody::RunStartRequested(RunStartRequestedProps { resume: true });
+        assert_eq!(
+            next(
+                RunStatus::Blocked {
+                    blocked_reason: BlockedReason::QuotaRateLimit,
+                },
+                &resume
+            ),
+            RunStatus::Submitted
         );
     }
 }
