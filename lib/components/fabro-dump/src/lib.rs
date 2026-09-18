@@ -574,10 +574,10 @@ mod tests {
                 snapshot: None,
             },
             RunSandboxInstance {
-                provider: SandboxProviderKind::LOCAL,
-                image:    None,
-                snapshot: None,
-                runtime:  fabro_types::RunSandboxRuntime {
+                provider:          SandboxProviderKind::LOCAL,
+                image:             None,
+                snapshot:          None,
+                runtime:           fabro_types::RunSandboxRuntime {
                     id:                "sandbox-1".to_string(),
                     working_directory: "/tmp/project".to_string(),
                     repo_cloned:       None,
@@ -588,6 +588,8 @@ mod tests {
                     primary_repo_path: None,
                     primary_repo_link: None,
                 },
+                ready_duration_ms: None,
+                retained:          None,
             },
         ));
         let stage =

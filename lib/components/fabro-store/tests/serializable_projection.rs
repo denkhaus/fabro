@@ -83,10 +83,10 @@ fn serializable_projection_round_trips_and_trims_bulky_node_fields() {
         snapshot: None,
     };
     projection.sandbox = Some(RunSandbox::ready(sandbox_plan, RunSandboxInstance {
-        provider: SandboxProviderKind::LOCAL,
-        image:    None,
-        snapshot: None,
-        runtime:  RunSandboxRuntime {
+        provider:          SandboxProviderKind::LOCAL,
+        image:             None,
+        snapshot:          None,
+        runtime:           RunSandboxRuntime {
             id:                "sandbox-1".to_string(),
             working_directory: "/tmp/project".to_string(),
             repo_cloned:       None,
@@ -97,6 +97,8 @@ fn serializable_projection_round_trips_and_trims_bulky_node_fields() {
             primary_repo_path: None,
             primary_repo_link: None,
         },
+        ready_duration_ms: None,
+        retained:          None,
     }));
     projection.pending_interviews = BTreeMap::new();
     let stage = projection.stage_entry(stage_id.node_id(), stage_id.visit(), first_event_seq(2));

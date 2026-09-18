@@ -742,6 +742,14 @@ async fn a_runs_projection_carries_its_host_sandbox_instance() {
         Path::new(working_directory).is_dir(),
         "the workspace is retained after the run: {working_directory}"
     );
+    assert!(
+        instance["ready_duration_ms"].is_u64(),
+        "the acquisition's duration is on the instance: {instance}"
+    );
+    assert_eq!(
+        instance["retained"], true,
+        "the release said the sandbox still exists: {instance}"
+    );
     assert!(sandbox.get("failure").is_none(), "{sandbox}");
 
     let run = run_json(&app, &run_id).await;

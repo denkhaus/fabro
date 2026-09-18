@@ -143,7 +143,8 @@ pub struct FoldState {
     pub finished_firings: BTreeSet<String>,
     /// Whether the run's sandbox still exists after its release
     /// (`scope.released` `retained`): kept stopped, or deleted. Absent until
-    /// the root invocation's lease was released.
+    /// the root invocation's lease was released. The view carries the same
+    /// fact as `RunSandboxInstance.retained`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sandbox_retained: Option<bool>,
 }
@@ -462,9 +463,8 @@ impl RunView {
                 self.conclude(status.to_string().as_str(), at);
             }
             // ── Sandbox: the retention outcome (VIEWS.md "Sandbox") ─────────
-            // The view has no retention field; the fact is kept in the fold
-            // state for the read side. The instance stays on `Run.sandbox`:
-            // it names what ran, whether or not it still exists.
+            // The instance stays on `Run.sandbox`: it names what ran, and
+            // `retained` says whether it still exists.
             CoordinatorEvent::ScopeReleased {
                 invocation,
                 retained,
@@ -472,6 +472,13 @@ impl RunView {
             } => {
                 if Some(invocation.raw()) == self.state.root {
                     self.state.sandbox_retained = Some(*retained);
+                    if let Some(sandbox) = self
+                        .projection
+                        .as_mut()
+                        .and_then(|projection| projection.sandbox.as_mut())
+                    {
+                        sandbox.set_retained(*retained);
+                    }
                 }
             }
             CoordinatorEvent::GraphRegistered { .. }
@@ -707,12 +714,16 @@ impl RunView {
             // invocation's scope (a parallel branch) shares or owns another
             // one and is not the run's; a re-acquisition (a resume, a
             // replaced sandbox) names the current instance.
-            Event::ScopeAcquired { sandbox, .. } => {
+            Event::ScopeAcquired {
+                sandbox,
+                duration_ms,
+                ..
+            } => {
                 if let Some(projection) = self.root_scope_projection(event) {
                     let plan = sandbox_plan_of(projection);
                     projection.sandbox = Some(RunSandbox::ready(
                         plan.clone(),
-                        sandbox_instance(&plan, sandbox),
+                        sandbox_instance(&plan, sandbox, *duration_ms),
                     ));
                 }
             }
@@ -1515,20 +1526,26 @@ fn provider_kind(provider: &str) -> Option<SandboxProviderKind> {
 /// The run's sandbox instance from Petri's record of the scope's
 /// acquisition: the provider, the provider's id for the sandbox (what a
 /// reconnect attaches by), its image and snapshot when the provider knows
-/// them, and the working directory. The clone fields stay unset: Petri's
-/// checkout copies the bound repository into the workspace and is not a
-/// clone Fabro made, and the workspace roots are the provider's own layout,
-/// read live.
-fn sandbox_instance(plan: &RunSandboxPlan, sandbox: &SandboxInstance) -> RunSandboxInstance {
+/// them, the working directory, and how long the acquisition took. The
+/// clone fields stay unset: Petri's checkout copies the bound repository
+/// into the workspace and is not a clone Fabro made, and the workspace
+/// roots are the provider's own layout, read live. `retained` waits for
+/// the scope's release.
+fn sandbox_instance(
+    plan: &RunSandboxPlan,
+    sandbox: &SandboxInstance,
+    ready_duration_ms: u64,
+) -> RunSandboxInstance {
     RunSandboxInstance {
-        provider: provider_kind(&sandbox.provider).unwrap_or_else(|| plan.provider.clone()),
-        image:    sandbox
+        provider:          provider_kind(&sandbox.provider)
+            .unwrap_or_else(|| plan.provider.clone()),
+        image:             sandbox
             .image
             .as_ref()
             .map(ToString::to_string)
             .or_else(|| plan.image.clone()),
-        snapshot: sandbox.snapshot.as_ref().map(ToString::to_string),
-        runtime:  RunSandboxRuntime {
+        snapshot:          sandbox.snapshot.as_ref().map(ToString::to_string),
+        runtime:           RunSandboxRuntime {
             id:                sandbox.instance.to_string(),
             working_directory: sandbox.working_directory.to_string(),
             repo_cloned:       None,
@@ -1539,6 +1556,8 @@ fn sandbox_instance(plan: &RunSandboxPlan, sandbox: &SandboxInstance) -> RunSand
             primary_repo_path: None,
             primary_repo_link: None,
         },
+        ready_duration_ms: Some(ready_duration_ms),
+        retained:          None,
     }
 }
 

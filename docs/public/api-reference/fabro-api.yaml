@@ -13664,6 +13664,17 @@ components:
           type: ["string", "null"]
         runtime:
           $ref: "#/components/schemas/RunSandboxRuntime"
+        ready_duration_ms:
+          type: ["integer", "null"]
+          format: uint64
+          minimum: 0
+          description: How long the sandbox took to become ready, when recorded.
+        retained:
+          type: ["boolean", "null"]
+          description: |
+            Whether the sandbox still exists after the run released it
+            (kept, stopped or running) or was removed. Absent until the
+            release.
 
     RunSandboxFailure:
       description: Sandbox initialization failure details.
