@@ -146,10 +146,11 @@ use crate::github_webhooks::{
     WEBHOOK_ROUTE, WEBHOOK_SECRET_ENV, parse_event_metadata, verify_signature,
 };
 use crate::jwt_auth::{self, AuthMode};
+use crate::petri_runs::PetriRuns;
 use crate::principal_middleware::{
     AuthContextSlot, RequestAuth, RequestAuthContext, RequireRunBlob, RequireRunManagementTarget,
     RequireRunScoped, RequireRunStageScoped, RequireStageArtifact, RequireWorkerRunScoped,
-    RequiredUser, principal_middleware,
+    RequireWorkerRunSegment, RequiredUser, principal_middleware,
 };
 use crate::request_id::{self, RequestId};
 use crate::run_files::{FilesInFlight, new_files_in_flight};
@@ -1112,6 +1113,8 @@ pub struct AppState {
     max_concurrent_runs: usize,
     pub(crate) worker_control_bus: Arc<dyn WorkerControlBus>,
     pub(crate) worker_runtime: Arc<dyn WorkerRuntime>,
+    /// The Petri runs held open for workers over the API.
+    pub(crate) petri_runs: PetriRuns,
     scheduler_notify: Notify,
     automation_scheduler_notify: Notify,
     pull_request_scheduler_notify: Notify,
@@ -1171,6 +1174,20 @@ impl AppState {
     #[must_use]
     pub fn test_auth_code_store(&self) -> &Arc<AuthCodeStore> {
         &self.stores.auth_codes
+    }
+
+    /// The Petri run store the worker endpoints answer from, so a test can
+    /// release a lease as an operator would and read who holds one.
+    #[must_use]
+    pub fn test_petri_run_store(&self) -> &fabro_petri::SqliteRunStore {
+        self.petri_runs.store()
+    }
+
+    /// A worker token for `run_id` with the plain `run:worker` scope, as the
+    /// server mints for the worker it launches.
+    pub fn test_issue_worker_token(&self, run_id: &RunId) -> String {
+        issue_worker_token_with_scopes(&self.worker_tokens, run_id, WorkerScopeSet::run_worker())
+            .expect("a test worker token signs")
     }
 }
 
@@ -2467,6 +2484,7 @@ pub(crate) fn build_app_state(config: AppStateConfig) -> anyhow::Result<Arc<AppS
         .context("load mcp servers")?,
     );
     let variables = Arc::new(VariableStore::new(db_pool.clone()));
+    let petri_runs = PetriRuns::new(db_pool.clone());
     let session_records = Arc::new(RunSessionRecordStore::new(db_pool.clone()));
     let secret_store = Arc::new(SecretStore::new(db_pool));
     let vault = preloaded_vault;
@@ -2583,6 +2601,7 @@ pub(crate) fn build_app_state(config: AppStateConfig) -> anyhow::Result<Arc<AppS
         max_concurrent_runs,
         worker_control_bus,
         worker_runtime,
+        petri_runs,
         scheduler_notify: Notify::new(),
         automation_scheduler_notify: Notify::new(),
         pull_request_scheduler_notify: Notify::new(),
@@ -4455,6 +4474,9 @@ async fn execute_run_subprocess(state: Arc<AppState>, run_id: RunId) {
         return;
     }
 
+    // The worker is gone: whatever Petri run handles it held open over the
+    // API drop here, so its lease never outlives it.
+    state.petri_runs.worker_exited(run_id);
     append_worker_exit_failure(&run_store, run_id, &worker_exit).await;
 
     let final_state = match run_store.state().await {

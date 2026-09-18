@@ -18,6 +18,7 @@ mod llm_sse;
 mod mcp_servers;
 mod models;
 mod pair;
+mod petri;
 pub(in crate::server) mod pull_requests;
 pub(in crate::server) mod runs;
 mod sandbox;
@@ -219,6 +220,7 @@ pub(super) fn real_routes() -> Router<Arc<AppState>> {
         .merge(lifecycle::routes())
         .merge(steer::routes())
         .merge(pair::routes())
+        .merge(petri::routes())
         .merge(graph::manifest_routes())
         .merge(graph::run_routes())
         .merge(models::routes())

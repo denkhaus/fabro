@@ -42,6 +42,7 @@ pebble-coding-agent.workspace = true
 fabro-llm = { path = "../../components/fabro-llm" }
 fabro-manifest = { path = "../../components/fabro-manifest" }
 fabro-mcp-store = { path = "../../components/fabro-mcp-store" }
+fabro-petri = { path = "../../components/fabro-petri" }
 fabro-proc = { path = "../../foundation/fabro-proc" }
 fabro-template = { path = "../../foundation/fabro-template" }
 fabro-tool = { path = "../../components/fabro-tool" }
@@ -115,6 +116,7 @@ chrono = { workspace = true }
 
 [dev-dependencies]
 fabro-auth = { path = "../../foundation/fabro-auth", features = ["test-support"] }
+fabro-petri = { path = "../../components/fabro-petri", features = ["test-support"] }
 fabro-llm = { path = "../../components/fabro-llm", features = ["test-support"] }
 git2.workspace = true
 tokio = { workspace = true, features = ["test-util", "macros"] }
