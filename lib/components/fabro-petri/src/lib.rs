@@ -19,6 +19,8 @@
 //! - [`engine`]: a run executed by Petri in the server process, with the
 //!   outcome read from its record;
 //! - [`interviewer`]: the interviewer of a run nobody is watching;
+//! - [`HttpRunStore`]: the same store as a run's worker process reaches it,
+//!   over the server's API with the worker's token;
 //! - the platform adapters still to come: hooks, interviews over Fabro's API,
 //!   secrets, output storage, the run tools, the event projection.
 //!
@@ -28,8 +30,13 @@
 pub mod admission;
 pub mod check;
 pub mod engine;
+pub mod http_store;
 pub mod interviewer;
+pub mod petri;
 pub mod run_store;
 pub mod runtime;
+#[cfg(feature = "test-support")]
+pub mod test_support;
 
+pub use http_store::HttpRunStore;
 pub use run_store::SqliteRunStore;

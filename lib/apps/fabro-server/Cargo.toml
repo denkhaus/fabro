@@ -116,6 +116,7 @@ chrono = { workspace = true }
 
 [dev-dependencies]
 fabro-auth = { path = "../../foundation/fabro-auth", features = ["test-support"] }
+fabro-petri = { path = "../../components/fabro-petri", features = ["test-support"] }
 fabro-llm = { path = "../../components/fabro-llm", features = ["test-support"] }
 git2.workspace = true
 tokio = { workspace = true, features = ["test-util", "macros"] }

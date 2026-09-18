@@ -12,7 +12,15 @@ doctest = false
 [lints]
 workspace = true
 
+[features]
+# Petri's test kit, re-exported for Fabro crates that check a store
+# implementation against Petri's contract from their own tests. Never on in
+# a normal build.
+test-support = ["dep:petri_testkit"]
+
 [dependencies]
+fabro-api = { path = "../../foundation/fabro-api" }
+fabro-client = { path = "../../foundation/fabro-client" }
 fabro-db = { path = "../../foundation/fabro-db" }
 fabro-http.workspace = true
 fabro-store = { path = "../fabro-store" }
@@ -24,6 +32,8 @@ petri_attractor_steps.workspace = true
 petri_frontend_attractor.workspace = true
 petri_frontend_fabro.workspace = true
 lithos-llm = { workspace = true, features = ["runtime"] }
+petri_testkit = { workspace = true, optional = true }
+anyhow.workspace = true
 async-trait.workspace = true
 serde.workspace = true
 serde_json.workspace = true

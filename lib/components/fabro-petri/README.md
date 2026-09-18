@@ -33,6 +33,15 @@ Every adapter the integration plan describes lands here.
   `SqliteRunStore`, with the outcome read from the run's record through
   `inspect_run`; `interviewer::Unattended` fails any question until the
   interview adapter lands.
+- `HttpRunStore`: the same store as a run's worker process reaches it, over
+  the server's `/api/v1/runs/{id}/petri/*` endpoints with the worker's token.
+  The server answers from its `SqliteRunStore`, so the lease and the
+  `(log, seq)` rule are the store's; this layer carries requests, resends a
+  request whose reply was lost, and maps the server's error codes back to
+  `StoreError`. The module docs state the rules.
+- `petri`: the Petri store vocabulary re-exported for the server, which
+  answers the worker endpoints from a `SqliteRunStore` without naming a Petri
+  package in its own manifest.
 - The platform adapters the plan adds after it: hooks, interviews over
   Fabro's API, secrets, output storage, run tools, the event projection.
 
@@ -60,6 +69,11 @@ Integration tests live under `tests/`:
   (`petri_testkit::run_store::conformance`) against `SqliteRunStore`, plus the
   operator release, lease exclusivity, a crash between appends, and blob
   interoperation with Fabro's `BlobStore`.
+
+The conformance suite over `HttpRunStore` needs a server to talk to, so it
+lives with the server's integration tests
+(`lib/apps/fabro-server/tests/it/api/petri_store.rs`), which reach the suite
+through this crate's `test-support` feature (`fabro_petri::test_support`).
 
 Run them with:
 

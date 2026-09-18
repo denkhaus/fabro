@@ -295,6 +295,13 @@ models/parallel-branch-result.ts
 models/pending-interview-record.ts
 models/pending-reason.ts
 models/permission-level.ts
+models/petri-access.ts
+models/petri-append-request.ts
+models/petri-open-request.ts
+models/petri-open-response.ts
+models/petri-record-list.ts
+models/petri-record.ts
+models/petri-release-request.ts
 models/preflight-check-detail.ts
 models/preflight-check-report.ts
 models/preflight-check-result.ts

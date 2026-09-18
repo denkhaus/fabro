@@ -2886,8 +2886,11 @@ dependencies = [
 name = "fabro-petri"
 version = "0.357.0-nightly.0"
 dependencies = [
+ "anyhow",
  "async-trait",
+ "fabro-api",
  "fabro-auth",
+ "fabro-client",
  "fabro-db",
  "fabro-http",
  "fabro-llm",
