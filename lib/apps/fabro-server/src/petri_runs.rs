@@ -189,8 +189,7 @@ mod tests {
     start -> exit
 }"#;
 
-    const PETRI_SETTINGS: &str =
-        "_version = 1\n\n[workflow]\ngraph = \"workflow.fabro\"\n";
+    const PETRI_SETTINGS: &str = "_version = 1\n\n[workflow]\ngraph = \"workflow.fabro\"\n";
 
     /// A worker runtime whose one worker runs until the test ends it, so
     /// the test can act while the server waits on the worker. It keeps the

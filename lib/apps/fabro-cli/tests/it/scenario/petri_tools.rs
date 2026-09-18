@@ -58,8 +58,7 @@ const CHILD_DOT: &str = r#"digraph Child {
     say [shape=parallelogram, script="echo hello from the child", max_retries=0]
     start -> say -> exit
 }"#;
-const CHILD_SETTINGS: &str =
-    "_version = 1\n\n[workflow]\ngraph = \"workflow.fabro\"\n";
+const CHILD_SETTINGS: &str = "_version = 1\n\n[workflow]\ngraph = \"workflow.fabro\"\n";
 
 /// A `[[run.hooks]]` entry that blocks every `fabro_run_search` call.
 const BLOCKING_HOOK: &str = r#"
