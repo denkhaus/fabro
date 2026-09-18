@@ -4,3 +4,4 @@
 {"$schema":"fabro-journal-v1","run_id":"01M2TWKB0M27E37BXX6ZDP0X8E","node":"claim_check","visit":1,"status":"succeeded","ts":"2026-09-18T18:33:09Z","data":{}}
 {"$schema":"fabro-journal-v1","run_id":"01M2TWKB0M27E37BXX6ZDP0X8E","node":"implementer","visit":1,"status":"succeeded","ts":"2026-09-18T18:34:56Z","data":{"painpoints":[],"observations":["the seed's probe ref `origin/main` does not exist as a remote-tracking branch in this worktree (origin = denkhaus/fabro, only origin/denkhaus); the prompt therefore documents the probe with an `upstream/main` fallback so it works in sandboxes where either mirror ref is fetched"]}}
 {"$schema":"fabro-journal-v1","run_id":"01M2TWKB0M27E37BXX6ZDP0X8E","node":"tester","visit":1,"status":"succeeded","ts":"2026-09-18T18:35:05Z","data":{}}
+{"$schema":"fabro-journal-v1","run_id":"01M2TWKB0M27E37BXX6ZDP0X8E","node":"evidence","visit":1,"status":"succeeded","ts":"2026-09-18T18:35:07Z","data":{}}
