@@ -10,12 +10,26 @@
 //!
 //! - [`SqliteRunStore`]: Petri's run store over Fabro's SQLite database, so a
 //!   run's records are its source of truth in Fabro's tables;
-//! - the platform adapters: hooks, interviews, secrets, output storage, the run
-//!   tools, the event projection.
+//! - [`runtime`]: the Petri runtime Fabro assembles, at create time and at
+//!   execution;
+//! - [`check`]: Petri compiles a workflow version's bundle at create time, and
+//!   its diagnostics come back in a shape Fabro maps onto its own;
+//! - [`admission`]: the admitted graphs in Fabro's blob store, named on the run
+//!   spec;
+//! - [`engine`]: a run executed by Petri in the server process, with the
+//!   outcome read from its record;
+//! - [`interviewer`]: the interviewer of a run nobody is watching;
+//! - the platform adapters still to come: hooks, interviews over Fabro's API,
+//!   secrets, output storage, the run tools, the event projection.
 //!
 //! The Petri packages are pinned by revision in the workspace `Cargo.toml`
 //! under `petri_*` keys.
 
+pub mod admission;
+pub mod check;
+pub mod engine;
+pub mod interviewer;
 pub mod run_store;
+pub mod runtime;
 
 pub use run_store::SqliteRunStore;

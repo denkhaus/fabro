@@ -2887,9 +2887,13 @@ name = "fabro-petri"
 version = "0.357.0-nightly.0"
 dependencies = [
  "async-trait",
+ "fabro-auth",
  "fabro-db",
+ "fabro-http",
+ "fabro-llm",
  "fabro-store",
  "fabro-types",
+ "lithos-llm",
  "petri-attractor-steps",
  "petri-execution",
  "petri-frontend-attractor",
@@ -2897,10 +2901,13 @@ dependencies = [
  "petri-runtime",
  "petri-store",
  "petri-testkit",
+ "serde",
  "serde_json",
  "sqlx",
  "tempfile",
+ "thiserror 2.0.18",
  "tokio",
+ "tokio-util",
  "tracing",
 ]
 
@@ -3005,6 +3012,7 @@ dependencies = [
  "fabro-macros",
  "fabro-manifest",
  "fabro-mcp-store",
+ "fabro-petri",
  "fabro-proc",
  "fabro-redact",
  "fabro-sandbox",
