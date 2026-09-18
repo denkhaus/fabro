@@ -46,13 +46,13 @@ use std::time::Duration;
 use fabro_db::DbPool;
 use fabro_store::platform_records::{PlatformRecordStore, StoredPlatformRecord, now_ms};
 use fabro_store::{RunProjection, RunSummaryStore};
-use fabro_types::RunId;
+use fabro_types::{RunId, RunStreamItem, RunStreamItemKind};
 use fabro_util::error::collect_chain;
 use petri_execution::events::{self, EventId, EventSource, RunEvent};
 use petri_execution::{Access, RunKey, RunStore as _, inspect};
 use petri_store::StoreError;
 use serde::{Deserialize, Serialize};
-use tokio::sync::Mutex as AsyncMutex;
+use tokio::sync::{Mutex as AsyncMutex, broadcast};
 use tokio::time;
 use tracing::{debug, info, warn};
 
@@ -147,17 +147,21 @@ struct Slot {
 /// the server both are the one database; a test may hand it the run
 /// summary store's own pool for the views.
 pub struct Projector {
-    records:  DbPool,
-    pool:     DbPool,
-    store:    SqliteRunStore,
-    platform: PlatformRecordStore,
-    slots:    Mutex<HashMap<RunId, Slot>>,
+    records:   DbPool,
+    pool:      DbPool,
+    store:     SqliteRunStore,
+    platform:  PlatformRecordStore,
+    slots:     Mutex<HashMap<RunId, Slot>>,
     /// One pass at a time per run: a signalled pass and the startup pass
     /// over the same run never interleave their reads and writes.
-    passes:   Mutex<HashMap<RunId, Arc<AsyncMutex<()>>>>,
+    passes:    Mutex<HashMap<RunId, Arc<AsyncMutex<()>>>>,
     /// Test-only: stop the next pass after its reads, before its view
     /// transaction, as a crash there would.
-    fault:    AtomicBool,
+    fault:     AtomicBool,
+    /// Sent after each committed pass that wrote stream rows: the run whose
+    /// stream grew. A wake-up for the stream's readers, never a source of
+    /// facts; a reader that lags re-reads from its cursor.
+    committed: broadcast::Sender<RunId>,
 }
 
 impl std::fmt::Debug for Projector {
@@ -180,7 +184,40 @@ impl Projector {
             slots: Mutex::default(),
             passes: Mutex::default(),
             fault: AtomicBool::new(false),
+            committed: broadcast::channel(COMMIT_SIGNAL_CAPACITY).0,
         })
+    }
+
+    /// A receiver that learns which run's stream grew after each committed
+    /// pass. A receiver that falls behind gets `Lagged` and treats it as a
+    /// wake-up for every run it follows.
+    #[must_use]
+    pub fn subscribe(&self) -> broadcast::Receiver<RunId> {
+        self.committed.subscribe()
+    }
+
+    /// The run's stream past the cursor: up to `limit` items with
+    /// `stream_seq > after`, in `stream_seq` order, each in Fabro's
+    /// envelope. `after = 0` reads from the first item.
+    pub async fn stream_after(
+        &self,
+        run_id: RunId,
+        after: u64,
+        limit: usize,
+    ) -> Result<Vec<RunStreamItem>, ProjectError> {
+        stream_after(&self.pool, run_id, after, limit).await
+    }
+
+    /// The last delivery sequence the run's view holds, or `None` when no
+    /// pass has committed a view for it.
+    pub async fn stream_head(&self, run_id: RunId) -> Result<Option<u64>, ProjectError> {
+        let head: Option<i64> =
+            sqlx::query_scalar("SELECT stream_seq FROM petri_projection WHERE run_id = ?")
+                .bind(run_id.to_string())
+                .fetch_optional(&self.pool)
+                .await
+                .map_err(ProjectError::Database)?;
+        Ok(head.map(|head| u64::try_from(head).unwrap_or(0)))
     }
 
     /// Schedule a pass for the run. A pass already running for it runs once
@@ -471,6 +508,10 @@ impl Projector {
             stream_seq,
             "Petri projection pass committed"
         );
+        if !rows.is_empty() {
+            // No receiver is not an error: nobody follows the stream.
+            let _ = self.committed.send(run_id);
+        }
         Ok(PassReport {
             run_id,
             skipped: false,
@@ -656,6 +697,52 @@ struct StreamRow {
     item_kind:  &'static str,
     item_id:    String,
     event_json: String,
+}
+
+/// How many commit signals a slow reader may fall behind before it is told
+/// it lagged and re-reads from its cursor.
+const COMMIT_SIGNAL_CAPACITY: usize = 1024;
+
+/// The run's stream past the cursor, read from the view tables: up to
+/// `limit` rows with `stream_seq > after`, in order, in Fabro's envelope.
+pub async fn stream_after(
+    views: &DbPool,
+    run_id: RunId,
+    after: u64,
+    limit: usize,
+) -> Result<Vec<RunStreamItem>, ProjectError> {
+    let rows: Vec<(i64, String, String, String)> = sqlx::query_as(
+        "SELECT stream_seq, item_kind, item_id, event_json FROM petri_stream WHERE run_id = ? AND \
+         stream_seq > ? ORDER BY stream_seq LIMIT ?",
+    )
+    .bind(run_id.to_string())
+    .bind(column(after))
+    .bind(i64::try_from(limit).unwrap_or(i64::MAX))
+    .fetch_all(views)
+    .await
+    .map_err(ProjectError::Database)?;
+    rows.into_iter()
+        .map(|(stream_seq, item_kind, item_id, event_json)| {
+            let item: serde_json::Value =
+                serde_json::from_str(&event_json).map_err(ProjectError::Encode)?;
+            let kind = match item_kind.as_str() {
+                "platform" => RunStreamItemKind::Platform,
+                _ => RunStreamItemKind::Petri,
+            };
+            let recorded_at = item
+                .get("recorded_at")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or(0);
+            Ok(RunStreamItem {
+                run_id,
+                stream_seq: u64::try_from(stream_seq).unwrap_or(0),
+                kind,
+                id: item_id,
+                recorded_at,
+                item,
+            })
+        })
+        .collect()
 }
 
 /// A Petri event id as the stream names it: `<log>/<seq>/<index>`.

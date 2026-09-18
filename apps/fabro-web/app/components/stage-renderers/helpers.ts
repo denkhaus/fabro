@@ -45,7 +45,7 @@ export interface HumanInterviewPair {
   resolution: HumanResolution | null;
 }
 
-function principalLabel(actor: unknown): string | null {
+export function principalLabel(actor: unknown): string | null {
   if (!actor || typeof actor !== "object") return null;
   const record = actor as UnknownRecord;
   const kind = getString(record, "kind") ?? "";

@@ -388,7 +388,23 @@ fn agent_progress_event(
     stored: &RunEvent,
     event: &CodingEvent,
 ) -> Option<ProgressEvent> {
-    let root_session = stored.parent_session_id.is_none();
+    coding_progress_event(
+        node_id,
+        stored.parent_session_id.is_none(),
+        Some(stored.ts),
+        event,
+    )
+}
+
+/// The progress line for one coding agent event, given whether it came
+/// from the root session and when it was recorded: the mapping the legacy
+/// envelope and a Petri stream envelope share.
+pub(super) fn coding_progress_event(
+    node_id: String,
+    root_session: bool,
+    timestamp: Option<DateTime<Utc>>,
+    event: &CodingEvent,
+) -> Option<ProgressEvent> {
     match event {
         CodingEvent::AssistantMessage { model, .. } => Some(ProgressEvent::AssistantMessage {
             stage_node_id: node_id,
@@ -401,10 +417,10 @@ fn agent_progress_event(
             arguments,
         } => Some(ProgressEvent::ToolCallStarted {
             stage_node_id: node_id,
-            tool_name:     tool_name.clone(),
-            tool_call_id:  tool_call_id.clone(),
-            arguments:     arguments.clone(),
-            timestamp:     Some(stored.ts),
+            tool_name: tool_name.clone(),
+            tool_call_id: tool_call_id.clone(),
+            arguments: arguments.clone(),
+            timestamp,
         }),
         CodingEvent::ToolCallCompleted {
             tool_call_id,
@@ -412,10 +428,10 @@ fn agent_progress_event(
             ..
         } => Some(ProgressEvent::ToolCallCompleted {
             stage_node_id: node_id,
-            tool_call_id:  tool_call_id.clone(),
-            is_error:      *is_error,
-            duration_ms:   None,
-            timestamp:     Some(stored.ts),
+            tool_call_id: tool_call_id.clone(),
+            is_error: *is_error,
+            duration_ms: None,
+            timestamp,
         }),
         CodingEvent::Warning { kind, details, .. } if kind == "context_window" => {
             let usage_percent = details

@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import type { Key } from "swr";
 
+import { loadPetriFixture } from "./petri-fixtures";
 import {
   queryKeysForRunEvent,
+  queryKeysForStreamItem,
   subscribeToRunEvents,
 } from "./run-events";
 import {
@@ -224,6 +226,103 @@ describe("queryKeysForRunEvent", () => {
     expect(
       queryKeysForRunEvent("run-1", "watchdog.timeout", "code@1"),
     ).toEqual([queryKeys.runs.stageEvents("run-1", "code@1")]);
+  });
+});
+
+describe("queryKeysForStreamItem", () => {
+  const parallel = loadPetriFixture("parallel");
+  const gate = loadPetriFixture("gate");
+  const runId = "run-petri";
+  const named = (name: string, stage?: string) =>
+    parallel.stream.find((item) => {
+      const body = (item.item as { record?: { body?: { event?: string } } }).record?.body;
+      const derived = (item.item as { derived?: { event?: string } }).derived;
+      const subject = (item.item as { subject?: { node?: { name?: string } } }).subject;
+      return (
+        (body?.event ?? derived?.event) === name &&
+        (stage === undefined || subject?.node?.name === stage)
+      );
+    })!;
+
+  test("a stage's visit invalidates the stage list, the state, the stream and its stage keys", () => {
+    const { keys, immediate } = queryKeysForStreamItem(runId, named("visit.started", "merge"));
+    expect(immediate).toBe(false);
+    expect(keys).toEqual([
+      queryKeys.runs.stages(runId),
+      queryKeys.runs.state(runId),
+      queryKeys.runs.detail(runId),
+      queryKeys.runs.stream(runId),
+      queryKeys.runs.graph(runId, "LR"),
+      queryKeys.runs.graph(runId, "TB"),
+      queryKeys.runs.stageEvents(runId, "merge@1"),
+      queryKeys.runs.stageContextWindow(runId, "merge@1"),
+    ]);
+  });
+
+  test("a platform notice refreshes the run summary; the terminal lifecycle record is immediate", () => {
+    const notice = parallel.stream.find(
+      (item) => item.kind === "platform" && (item.item as { record: { kind: string } }).record.kind === "run.notice",
+    )!;
+    expect(queryKeysForStreamItem(runId, notice)).toEqual({
+      keys: [queryKeys.runs.detail(runId), queryKeys.runs.state(runId), queryKeys.runs.stream(runId)],
+      immediate: false,
+    });
+    const terminal = parallel.stream[parallel.stream.length - 1];
+    const result = queryKeysForStreamItem(runId, terminal);
+    expect(result.immediate).toBe(true);
+    expect(result.keys).toContainEqual(queryKeys.runs.usage(runId));
+    expect(result.keys).toContainEqual(queryKeys.runs.stream(runId));
+  });
+
+  test("a question and its answer refresh the questions list", () => {
+    const question = gate.stream.find(
+      (item) => (item.item as { derived?: { parsed?: { kind?: string } } }).derived?.parsed?.kind === "question",
+    )!;
+    expect(queryKeysForStreamItem(runId, question).keys[0]).toEqual(
+      queryKeys.runs.questions(runId, 25, 0),
+    );
+    const answer = gate.stream.find(
+      (item) => (item.item as { record?: { body?: { event?: string } } }).record?.body?.event === "control.requested",
+    )!;
+    expect(queryKeysForStreamItem(runId, answer).keys).toContainEqual(
+      queryKeys.runs.stageEvents(runId, "gate@1"),
+    );
+  });
+
+  test("a run stream item on the attach stream is invalidated by its own rules", async () => {
+    const source = new FakeEventSource();
+    const keys: Key[] = [];
+    // The coordinated stream carries every run, so the item's `run_id` is
+    // what keeps another run's item from invalidating this one.
+    const coordinator = createCoordinator(() => source);
+    const cleanup = subscribeToRunEvents(
+      runId,
+      (key) => {
+        keys.push(key);
+        return Promise.resolve();
+      },
+      () => {
+        throw new Error("source should be created by coordinator");
+      },
+      { debounceMs: 0, coordinator },
+    );
+    await waitFor(() => source.onmessage !== null);
+    keys.length = 0;
+    source.emit({ ...named("step.finished", "a"), run_id: runId });
+    expect(keys).toEqual([
+      queryKeys.runs.state(runId),
+      queryKeys.runs.usage(runId),
+      queryKeys.runs.stages(runId),
+      queryKeys.runs.detail(runId),
+      queryKeys.runs.stream(runId),
+      queryKeys.runs.stageEvents(runId, "a@1"),
+      queryKeys.runs.stageContextWindow(runId, "a@1"),
+    ]);
+    keys.length = 0;
+    source.emit({ ...named("step.finished", "a"), run_id: "another-run" });
+    expect(keys).toEqual([]);
+    cleanup();
+    coordinator.close();
   });
 });
 

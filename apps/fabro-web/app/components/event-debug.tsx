@@ -12,7 +12,6 @@ import {
   FunnelIcon,
   MagnifyingGlassIcon,
 } from "@heroicons/react/16/solid";
-import type { EventEnvelope } from "@qltysh/fabro-api-client";
 
 import { Tooltip } from "./ui";
 import { formatAbsoluteTs } from "../lib/format";
@@ -28,19 +27,36 @@ import {
 import { FloatingTooltip } from "./floating-tooltip";
 import { useWindowEvent } from "../hooks/effects";
 
+/**
+ * What a debug row needs of an event: a legacy `EventEnvelope`, or a Petri
+ * run stream item as `debugRowsFromStream` shapes it (with its own
+ * category, since Petri's `<subject>.<verb>` names map to none of the
+ * legacy prefixes).
+ */
+export interface DebugRowLike {
+  seq: number;
+  event?: string | null;
+  ts: string;
+  category?: DebugCategory;
+}
+
+export function debugRowCategory(row: DebugRowLike): DebugCategory {
+  return row.category ?? debugCategory(row.event);
+}
+
 export function DebugEventRow({
   event,
   runStart,
   selected,
   onSelect,
 }: {
-  event: EventEnvelope;
+  event: DebugRowLike;
   runStart: string | undefined;
   selected: boolean;
   onSelect: () => void;
 }) {
   const eventName = event.event ?? "";
-  const category = debugCategory(eventName);
+  const category = debugRowCategory(event);
   return (
     <button
       type="button"
@@ -291,7 +307,7 @@ export function DebugDnaStrip({
   onSelect,
   runStart,
 }: {
-  events: EventEnvelope[];
+  events: DebugRowLike[];
   selectedSeq: number | null;
   onSelect: (seq: number) => void;
   runStart: string | undefined;
@@ -351,7 +367,7 @@ export function DebugDnaStrip({
           const ms = Date.parse(event.ts);
           if (Number.isNaN(ms)) return null;
           const pct = ((ms - range.start) / range.duration) * 100;
-          const category = debugCategory(event.event);
+          const category = debugRowCategory(event);
           const color = debugCategoryColor(category);
           const isSelected = event.seq === selectedSeq;
           const isHovered = hover?.seq === event.seq;
@@ -411,14 +427,14 @@ function DnaPopover({
   anchorRect,
   runStart,
 }: {
-  event: EventEnvelope;
+  event: DebugRowLike;
   anchorRect: DOMRect;
   runStart: string | undefined;
 }) {
-  const category = debugCategory(event.event);
+  const category = debugRowCategory(event);
   return (
     <FloatingTooltip rect={anchorRect} placement="top">
-      {`${debugCategoryLabel(category)} · ${friendlyEventName(event.event)} · ${formatElapsed(event.ts, runStart)}`}
+      {`${debugCategoryLabel(category)} · ${friendlyEventName(event.event ?? "")} · ${formatElapsed(event.ts, runStart)}`}
     </FloatingTooltip>
   );
 }

@@ -22,8 +22,9 @@
 #![expect(clippy::print_stderr, reason = "a skipped test says why on its stderr")]
 
 use std::env;
+use std::io::{Read as _, Write as _};
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, Command, Output, Stdio};
 use std::time::{Duration, Instant};
 
 use fabro_client::ServerTarget;
@@ -33,14 +34,14 @@ use fabro_petri::checkpoint::CheckpointKey;
 use fabro_petri::engine::{self, RunStatus};
 use fabro_petri::petri::RunKey;
 use fabro_static::EnvVars;
-use fabro_store::{EventEnvelope, PlatformRecord, PlatformRecordKind, PlatformRecordStore};
-use fabro_test::{apply_test_isolation, expect_reqwest_json, isolated_storage_dir, test_context};
-use fabro_types::{EventBody, RunId};
+use fabro_store::{PlatformRecord, PlatformRecordKind, PlatformRecordStore};
+use fabro_test::{
+    apply_test_isolation, expect_reqwest_json, fabro_snapshot, isolated_storage_dir, test_context,
+};
+use fabro_types::RunId;
 
 use crate::cmd::support::created_run_id;
-use crate::support::{
-    TEST_DEV_TOKEN, TEST_SESSION_SECRET, parse_event_envelopes, seed_dev_token_auth,
-};
+use crate::support::{TEST_DEV_TOKEN, TEST_SESSION_SECRET, seed_dev_token_auth};
 
 const HOST_PLUGIN: &str = "sandbox-driver-host";
 const REQUIRE_ENV: &str = "FABRO_REQUIRE_SANDBOX_PLUGINS";
@@ -471,37 +472,91 @@ async fn wait_for_status(server: &RunningServer, run_id: &str, expected: &[&str]
     }
 }
 
-async fn run_events(server: &RunningServer, run_id: &str) -> Vec<EventEnvelope> {
-    parse_event_envelopes(&run_json(server, &format!("runs/{run_id}/events")).await)
+/// The run's stream, as `GET /runs/{id}/events` serves a Petri run: every
+/// item in `stream_seq` order, in the stream envelope.
+async fn run_stream(server: &RunningServer, run_id: &str) -> Vec<serde_json::Value> {
+    let mut items = Vec::new();
+    let mut after = 0;
+    loop {
+        let page = run_json(
+            server,
+            &format!("runs/{run_id}/events?after={after}&limit=1000"),
+        )
+        .await;
+        let data = page["data"]
+            .as_array()
+            .cloned()
+            .expect("the stream page has a data array");
+        let Some(last) = data.last() else {
+            break;
+        };
+        after = last["stream_seq"].as_u64().expect("a stream_seq");
+        let has_more = page["meta"]["has_more"].as_bool().unwrap_or(false);
+        items.extend(data);
+        if !has_more {
+            break;
+        }
+    }
+    items
 }
 
-/// The run's events once `terminal` is among them: the events list is a
-/// projection that settles after the run's status does.
-async fn settled_events(
-    server: &RunningServer,
-    run_id: &str,
-    terminal: &str,
-) -> Vec<EventEnvelope> {
+/// What each stream item is, for an assertion: a Petri event by its
+/// `<subject>.<verb>` name (`question` and `question_expired` for the parsed
+/// progress payloads), a platform lifecycle record as
+/// `lifecycle:<transition>`, another platform record by its kind.
+fn stream_names(items: &[serde_json::Value]) -> Vec<String> {
+    items
+        .iter()
+        .map(|line| {
+            let item = &line["item"];
+            if line["kind"] == "platform" {
+                let record = &item["record"];
+                return match record["kind"].as_str().unwrap_or("?") {
+                    "run.lifecycle" => {
+                        format!("lifecycle:{}", record["transition"].as_str().unwrap_or("?"))
+                    }
+                    kind => kind.to_string(),
+                };
+            }
+            if let Some(kind) = item["derived"]["parsed"]["kind"].as_str() {
+                if matches!(kind, "question" | "question_expired") {
+                    return kind.to_string();
+                }
+            }
+            item["record"]["body"]["event"]
+                .as_str()
+                .or_else(|| item["derived"]["event"].as_str())
+                .unwrap_or("?")
+                .to_string()
+        })
+        .collect()
+}
+
+fn count_of(names: &[String], expected: &str) -> usize {
+    names.iter().filter(|name| *name == expected).count()
+}
+
+/// The run's whole stream once it is settled: Fabro's terminal lifecycle
+/// record lands a moment after the engine's finish (the worker exits, the
+/// server records the status, the projector folds it), so a reader that
+/// wants the end of the stream waits for that record.
+async fn settled_stream(server: &RunningServer, run_id: &str) -> Vec<serde_json::Value> {
     let deadline = Instant::now() + RUN_TIMEOUT;
     loop {
-        let events = run_events(server, run_id).await;
-        if event_names(&events).contains(&terminal) {
-            return events;
+        let items = run_stream(server, run_id).await;
+        let names = stream_names(&items);
+        if names
+            .iter()
+            .any(|name| matches!(name.as_str(), "lifecycle:succeeded" | "lifecycle:failed"))
+        {
+            return items;
         }
         assert!(
             Instant::now() < deadline,
-            "`{terminal}` was never projected for run {run_id}: {:?}",
-            event_names(&events)
+            "run {run_id} never recorded its terminal lifecycle transition: {names:?}"
         );
         tokio::time::sleep(POLL).await;
     }
-}
-
-fn event_names(events: &[EventEnvelope]) -> Vec<&str> {
-    events
-        .iter()
-        .map(|envelope| envelope.event.event_name())
-        .collect()
 }
 
 /// The pid of the worker subprocess the server launched for the run: the
@@ -572,18 +627,12 @@ async fn a_petri_run_executes_in_the_server_launched_worker() {
     let state = run_json(&server, &format!("runs/{run_id}/state")).await;
     assert_eq!(state["spec"]["engine"]["kind"], "petri", "state: {state}");
 
-    let events = settled_events(&server, &run_id, "run.completed").await;
-    let names = event_names(&events);
-    assert_eq!(
-        names
-            .iter()
-            .filter(|name| **name == "run.completed")
-            .count(),
-        1,
-        "{names:?}"
-    );
+    let names = stream_names(&settled_stream(&server, &run_id).await);
+    assert_eq!(count_of(&names, "lifecycle:succeeded"), 1, "{names:?}");
+    assert_eq!(count_of(&names, "run.finished"), 1, "{names:?}");
     assert!(
-        names.contains(&"run.starting") && names.contains(&"run.running"),
+        names.iter().any(|name| name == "lifecycle:starting")
+            && names.iter().any(|name| name == "lifecycle:running"),
         "{names:?}"
     );
 
@@ -612,7 +661,7 @@ async fn a_petri_run_executes_in_the_server_launched_worker() {
 /// A Petri run whose worker and server both die mid-stage continues after
 /// the server restarts: the new server releases the dead worker's lease,
 /// asks the run to start again as a resume, and launches a worker in
-/// resume mode, which finishes the run with one `run.completed`.
+/// resume mode, which finishes the run with one terminal lifecycle record.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_petri_run_resumes_in_a_new_worker_after_the_server_restarts() {
     if host_plugin().is_none() {
@@ -659,40 +708,35 @@ async fn a_petri_run_resumes_in_a_new_worker_after_the_server_restarts() {
     std::fs::write(&gate, "go").expect("the gate opens");
 
     let status = wait_for_status(&server, &run_id, &["succeeded", "failed"]).await;
+    let items = settled_stream(&server, &run_id).await;
+    let names = stream_names(&items);
     assert_eq!(
         status,
         "succeeded",
-        "server stderr:\n{}",
+        "stream: {names:?}\nserver stderr:\n{}",
         server.stderr_text()
     );
-    let events = settled_events(&server, &run_id, "run.completed").await;
-    let names = event_names(&events);
-    assert_eq!(
-        names
-            .iter()
-            .filter(|name| **name == "run.completed")
-            .count(),
-        1,
-        "{names:?}"
-    );
+    assert_eq!(count_of(&names, "lifecycle:succeeded"), 1, "{names:?}");
+    assert_eq!(count_of(&names, "run.finished"), 1, "{names:?}");
     // `fabro run` asked for the first start; the restart asked for a
     // resume, after the run had been running.
     let first_running = names
         .iter()
-        .position(|name| *name == "run.running")
+        .position(|name| name == "lifecycle:running")
         .expect("the run ran before the crash");
-    let resume_request = events
+    let resume_request = items
         .iter()
-        .position(|envelope| {
-            matches!(
-                &envelope.event.body,
-                EventBody::RunStartRequested(props) if props.resume
-            )
+        .position(|line| {
+            let record = &line["item"]["record"];
+            line["kind"] == "platform"
+                && record["kind"] == "run.lifecycle"
+                && record["transition"] == "start_requested"
+                && record["source"] == "resume"
         })
         .expect("the restart asked for a resume");
     assert!(resume_request > first_running, "{names:?}");
     assert_eq!(
-        names.iter().filter(|name| **name == "run.running").count(),
+        count_of(&names, "lifecycle:running"),
         2,
         "the run ran once before and once after the restart: {names:?}"
     );
@@ -846,11 +890,11 @@ async fn a_human_gate_in_the_worker_is_answered_through_the_api() {
         markers.join("no").exists() && !markers.join("yes").exists(),
         "the no branch ran"
     );
-    let names = run_events(&server, &run_id).await;
-    let names = event_names(&names);
+    let names = stream_names(&run_stream(&server, &run_id).await);
     assert!(
-        names.contains(&"interview.started") && names.contains(&"interview.completed"),
-        "{names:?}"
+        names.iter().any(|name| name == "question")
+            && names.iter().any(|name| name == "interview.answered"),
+        "the question and who answered it are on the stream: {names:?}"
     );
     assert!(questions(&server, &run_id).await.is_empty());
     let store = server.petri_store().await;
@@ -945,10 +989,312 @@ async fn an_unanswered_gate_in_the_worker_expires_with_its_default() {
         markers.join("no").exists() && !markers.join("yes").exists(),
         "the default ran"
     );
-    let events = run_events(&server, &run_id).await;
-    let names = event_names(&events);
-    assert!(names.contains(&"interview.timeout"), "{names:?}");
+    let names = stream_names(&run_stream(&server, &run_id).await);
+    assert!(
+        names.iter().any(|name| name == "question_expired"),
+        "{names:?}"
+    );
     assert!(questions(&server, &run_id).await.is_empty());
+    server.shutdown();
+}
+
+/// A CLI command against the server, as `run_detached` seeds its auth.
+fn cli(context: &fabro_test::TestContext, server: &RunningServer, args: &[&str]) -> Output {
+    let target = server.target();
+    let output = context
+        .command()
+        .args(args)
+        .args(["--server", &target])
+        .output()
+        .expect("the CLI command executes");
+    assert!(
+        output.status.success(),
+        "`fabro {}` failed\nstdout:\n{}\nstderr:\n{}",
+        args.join(" "),
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    output
+}
+
+fn ndjson(output: &Output) -> Vec<serde_json::Value> {
+    String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .map(|line| serde_json::from_str(line).expect("a JSON line"))
+        .collect()
+}
+
+/// The `<subject>.<verb>` name of a Petri item, or the kind of a platform
+/// record, from a raw stream line.
+fn stream_line_name(line: &serde_json::Value) -> String {
+    let item = &line["item"];
+    if line["kind"] == "platform" {
+        return format!(
+            "platform:{}",
+            item["record"]["kind"].as_str().unwrap_or("?")
+        );
+    }
+    item["record"]["body"]["event"]
+        .as_str()
+        .or_else(|| item["derived"]["event"].as_str())
+        .unwrap_or("?")
+        .to_string()
+}
+
+/// The snapshot filters for `events --pretty` over a Petri run: clocks,
+/// durations and the run id vary per run.
+fn pretty_filters(context: &fabro_test::TestContext) -> Vec<(String, String)> {
+    let mut filters = context.filters();
+    filters.push((r"\b\d{2}:\d{2}:\d{2}\b".to_string(), "[CLOCK]".to_string()));
+    filters.push((
+        r"\b\d+(\.\d+)?(ms|s)\b".to_string(),
+        "[DURATION]".to_string(),
+    ));
+    filters.push((
+        r"Checkpoint [0-9a-f]{7}".to_string(),
+        "Checkpoint [SHA]".to_string(),
+    ));
+    filters
+}
+
+/// A finished Petri run reads back through the CLI: `events` prints the
+/// stream envelope raw, dense in `stream_seq`; `events --pretty` renders
+/// the stages by `<subject>.<verb>` with their labels and the platform
+/// records by kind; `attach` replays it and exits with the run's status;
+/// `wait` and `runs inspect` read the projection.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_finished_petri_run_reads_back_through_the_cli() {
+    if host_plugin().is_none() {
+        return;
+    }
+    let context = test_context!();
+    let server = RunningServer::start().await;
+    let workspace = write_petri_workspace(&context, "echo hello from petri");
+    let run_id = run_detached(&context, &server, &workspace);
+    let status = wait_for_status(&server, &run_id, &["succeeded", "failed"]).await;
+    assert_eq!(
+        status,
+        "succeeded",
+        "server stderr:\n{}",
+        server.stderr_text()
+    );
+    settled_stream(&server, &run_id).await;
+    let target = server.target();
+
+    // Raw: the envelope, one item per line, dense and in order.
+    let raw = cli(&context, &server, &["events", &run_id]);
+    let lines = ndjson(&raw);
+    let seqs: Vec<u64> = lines
+        .iter()
+        .map(|line| line["stream_seq"].as_u64().expect("a stream_seq"))
+        .collect();
+    let expected: Vec<u64> = (1..=seqs.len() as u64).collect();
+    assert_eq!(seqs, expected, "stream_seq is dense");
+    for line in &lines {
+        assert_eq!(line["run_id"], run_id, "{line}");
+        assert!(
+            line["id"].is_string() && line["recorded_at"].is_u64(),
+            "{line}"
+        );
+    }
+    let names: Vec<String> = lines.iter().map(stream_line_name).collect();
+    for expected in [
+        "platform:run.created",
+        "platform:run.lifecycle",
+        "run.started",
+        "visit.started",
+        "visit.completed",
+        "run.finished",
+    ] {
+        assert!(
+            names.iter().any(|name| name == expected),
+            "{expected} is on the stream: {names:?}"
+        );
+    }
+    assert_eq!(
+        names.last().map(String::as_str),
+        Some("platform:run.lifecycle"),
+        "the terminal lifecycle record ends the stream: {names:?}"
+    );
+
+    // Tail: the last two items only.
+    let tail = cli(&context, &server, &["events", "--tail", "2", &run_id]);
+    assert_eq!(ndjson(&tail).len(), 2);
+
+    // Pretty: stages and platform records.
+    let mut cmd = context.command();
+    cmd.args(["events", "--pretty", "--server", &target, &run_id]);
+    fabro_snapshot!(pretty_filters(&context), cmd, @r"
+    success: true
+    exit_code: 0
+    ----- stdout -----
+    [CLOCK] ▶ Run one command  [ULID]
+    [CLOCK]   · submitted
+    [CLOCK]   · start_requested
+    [CLOCK]   · runnable
+    [CLOCK]   · starting
+    [CLOCK]   · running
+    [CLOCK]   Engine: petri run started
+    [CLOCK] ▶ start
+    [CLOCK]    │ checkout: [TEMP_DIR]/petri-workspace is not a Git repository; the workspace starts empty
+    [CLOCK] ✓ start  [DURATION]
+    [CLOCK]    ⎘ Checkpoint [SHA]
+    [CLOCK] ▶ say
+    [CLOCK]    start → say continue
+    [CLOCK]    │ hello from petri
+    [CLOCK] ✓ say  [DURATION]
+    [CLOCK]    ⎘ Checkpoint [SHA]
+    [CLOCK] ▶ exit
+    [CLOCK]    say → exit continue
+    [CLOCK] ✓ exit  [DURATION]
+    [CLOCK]    ⎘ Checkpoint [SHA]
+    [CLOCK] ✓ SUCCEEDED [DURATION]
+    [CLOCK]   · succeeded
+    ----- stderr -----
+    ");
+
+    // Attach replays the finished run and exits with its status.
+    let attach = cli(&context, &server, &["attach", &run_id]);
+    let stderr = String::from_utf8_lossy(&attach.stderr);
+    assert!(stderr.contains("say"), "the stage is drawn: {stderr}");
+
+    // Wait reads the projection's status and conclusion.
+    let wait = cli(&context, &server, &["wait", &run_id]);
+    let stderr = String::from_utf8_lossy(&wait.stderr);
+    assert!(stderr.contains("Succeeded"), "{stderr}");
+
+    // Inspect reads the projection, whose spec names the engine.
+    let inspect = cli(&context, &server, &["inspect", &run_id]);
+    let inspected: serde_json::Value =
+        serde_json::from_slice(&inspect.stdout).expect("inspect prints JSON");
+    let entry = &inspected[0];
+    assert_eq!(entry["run_id"], run_id, "{entry}");
+    assert_eq!(entry["run_spec"]["engine"]["kind"], "petri", "{entry}");
+    assert_eq!(entry["conclusion"]["status"], "succeeded", "{entry}");
+    server.shutdown();
+}
+
+/// `attach` on a Petri run with a human gate asks the question at the
+/// terminal and answers it through the questions API; the answer routes
+/// the gate and the attach exits with the run's status.
+#[tokio::test(flavor = "multi_thread")]
+async fn attach_asks_a_petri_gate_at_the_terminal_and_answers_it() {
+    if host_plugin().is_none() {
+        return;
+    }
+    let context = test_context!();
+    let server = RunningServer::start().await;
+    let markers = context.temp_dir.join("markers");
+    std::fs::create_dir_all(&markers).expect("the marker dir creates");
+    let workspace = write_petri_workflow(&context, &gate_dot(&markers, ""));
+    let run_id = run_detached_with(&context, &server, &workspace, &[]);
+    wait_for_questions(&server, &run_id, 1).await;
+
+    let target = server.target();
+    let mut attach_cmd = Command::new(env!("CARGO_BIN_EXE_fabro"));
+    apply_test_isolation(&mut attach_cmd, &context.home_dir);
+    attach_cmd
+        .current_dir(&context.temp_dir)
+        .args(["attach", "--server", &target, &run_id])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    let mut child = attach_cmd.spawn().expect("attach spawns");
+    {
+        let mut stdin = child.stdin.take().expect("attach stdin is piped");
+        stdin.write_all(b"N\n").expect("the answer writes");
+    }
+    let output = child
+        .wait_with_output()
+        .expect("attach exits once the run ends");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success(),
+        "attach failed\nstderr:\n{stderr}\nserver stderr:\n{}",
+        server.stderr_text()
+    );
+    assert!(stderr.contains("Go?"), "the question was asked: {stderr}");
+    assert!(
+        markers.join("no").exists() && !markers.join("yes").exists(),
+        "the no branch ran"
+    );
+    let status = wait_for_status(&server, &run_id, &["succeeded", "failed"]).await;
+    assert_eq!(status, "succeeded");
+    server.shutdown();
+}
+
+/// `events --follow` on a Petri run follows the stream live from its
+/// cursor: the items already stored print first, the ones committed while
+/// the run goes on follow, and the terminal lifecycle record ends it.
+#[tokio::test(flavor = "multi_thread")]
+async fn events_follow_streams_a_petri_run_live_to_its_end() {
+    if host_plugin().is_none() {
+        return;
+    }
+    let context = test_context!();
+    let server = RunningServer::start().await;
+    let gate = context.temp_dir.join("go");
+    let workspace = write_petri_workspace(
+        &context,
+        &format!(
+            "while [ ! -f {} ]; do sleep 0.05; done; echo released",
+            gate.display()
+        ),
+    );
+    let run_id = run_detached(&context, &server, &workspace);
+    wait_for_status(&server, &run_id, &["running"]).await;
+
+    let target = server.target();
+    let mut follow_cmd = Command::new(env!("CARGO_BIN_EXE_fabro"));
+    apply_test_isolation(&mut follow_cmd, &context.home_dir);
+    follow_cmd
+        .current_dir(&context.temp_dir)
+        .args([
+            "events", "--follow", "--pretty", "--server", &target, &run_id,
+        ])
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    let mut child = follow_cmd.spawn().expect("events --follow spawns");
+    // Let the follower attach before the run is released.
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    std::fs::write(&gate, b"").expect("the release marker writes");
+
+    let deadline = Instant::now() + RUN_TIMEOUT;
+    let status = loop {
+        if let Some(status) = child.try_wait().expect("the follower polls") {
+            break status;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "events --follow did not end with the run; server stderr:\n{}",
+            server.stderr_text()
+        );
+        tokio::time::sleep(POLL).await;
+    };
+    let mut stdout = String::new();
+    child
+        .stdout
+        .take()
+        .expect("stdout is piped")
+        .read_to_string(&mut stdout)
+        .expect("stdout reads");
+    let mut stderr = String::new();
+    child
+        .stderr
+        .take()
+        .expect("stderr is piped")
+        .read_to_string(&mut stderr)
+        .expect("stderr reads");
+    assert!(status.success(), "events --follow failed: {stderr}");
+    assert!(stdout.contains("▶ say"), "the stage started: {stdout}");
+    assert!(stdout.contains("│ released"), "the live log line: {stdout}");
+    assert!(stdout.contains("✓ SUCCEEDED"), "the finish: {stdout}");
+    assert!(
+        stdout.trim_end().ends_with("· succeeded"),
+        "the terminal lifecycle record ends the follow: {stdout}"
+    );
     server.shutdown();
 }
 
@@ -1277,12 +1623,18 @@ async fn a_failed_checkpoint_fails_the_run_and_a_restart_leaves_it_failed() {
     let status = wait_for_status(&server, &run_id, &["succeeded", "failed"]).await;
     let run = run_json(&server, &format!("runs/{run_id}")).await;
     assert_eq!(status, "failed", "run: {run}");
-    let failures: Vec<String> = settled_events(&server, &run_id, "run.failed")
+    // The run's failure travels on the stream as the platform record of
+    // its terminal lifecycle transition, with the failure's message as the
+    // reason.
+    let failures: Vec<String> = settled_stream(&server, &run_id)
         .await
         .iter()
-        .filter_map(|envelope| match &envelope.event.body {
-            EventBody::RunFailed(props) => Some(props.failure.detail.message.clone()),
-            _ => None,
+        .filter_map(|line| {
+            let record = &line["item"]["record"];
+            (line["kind"] == "platform"
+                && record["kind"] == "run.lifecycle"
+                && record["transition"] == "failed")
+                .then(|| record["reason"].as_str().unwrap_or_default().to_string())
         })
         .collect();
     assert_eq!(failures.len(), 1, "{failures:?}");

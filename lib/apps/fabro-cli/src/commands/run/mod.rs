@@ -20,6 +20,7 @@ pub(crate) mod fork;
 pub(crate) mod logs;
 pub(crate) mod output;
 pub(crate) mod overrides;
+pub(crate) mod petri_stream;
 mod petri_worker;
 pub(crate) mod preview;
 mod remote_workflow;
@@ -126,7 +127,7 @@ pub(crate) async fn dispatch(
         RunCommands::Diff(args) => diff::run(args, base_ctx).await,
         RunCommands::Events(args) => {
             let styles = Styles::detect_stdout();
-            events::run(&args, &styles, base_ctx).await
+            Box::pin(events::run(&args, &styles, base_ctx)).await
         }
         RunCommands::Logs(args) => logs::run(&args, base_ctx).await,
         RunCommands::Resume(args) => {

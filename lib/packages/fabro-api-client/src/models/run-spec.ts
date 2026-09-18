@@ -24,6 +24,9 @@ import type { ForkSourceRef } from './fork-source-ref';
 import type { GitContext } from './git-context';
 // May contain unused imports in some cases
 // @ts-ignore
+import type { RunEngine } from './run-engine';
+// May contain unused imports in some cases
+// @ts-ignore
 import type { RunProvenance } from './run-provenance';
 // May contain unused imports in some cases
 // @ts-ignore
@@ -54,4 +57,8 @@ export interface RunSpec {
     'spec_blob'?: string | null;
     'git'?: GitContext | null;
     'fork_source_ref'?: ForkSourceRef | null;
+    /**
+     * The engine the run was created for, with what it admitted. Absent in a spec written before the field existed, which means the legacy executor.
+     */
+    'engine'?: RunEngine;
 }

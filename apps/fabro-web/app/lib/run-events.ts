@@ -1,11 +1,21 @@
 import { useEffect } from "react";
+import type { RunStreamItem } from "@qltysh/fabro-api-client";
 import { useSWRConfig, type Key } from "swr";
 
 import {
   subscribeToCrossTabSse,
   type CrossTabSseCoordinator,
 } from "./cross-tab-sse";
+import {
+  isStreamItemPayload,
+  isTerminalLifecycleItem,
+  petriEventName,
+  petriParsed,
+  petriStageLabel,
+  platformRecordKind,
+} from "./petri-stream";
 import { queryKeys } from "./query-keys";
+import { getString } from "./unknown";
 import {
   createBrowserEventSource,
   subscribeToSharedEventSource,
@@ -23,6 +33,10 @@ export interface RunEventPayload extends EventPayload {
   node_id?: string;
   stage_id?: string;
   properties?: Record<string, unknown>;
+  /** Set on a Petri run stream item, which is invalidated by its own rules. */
+  stream_seq?: number;
+  kind?: string;
+  item?: unknown;
 }
 
 interface RunEventOptions {
@@ -322,6 +336,151 @@ export function queryKeysForRunEvent(
   return [];
 }
 
+/**
+ * The SWR keys a Petri run stream item invalidates. Petri's events are
+ * named `<subject>.<verb>`; a platform record by its `kind`. The stage
+ * keys use the subject's `node@visit` label, which is the stage id the
+ * projection keys stages by.
+ */
+export function queryKeysForStreamItem(
+  runId: string,
+  item: RunStreamItem,
+): { keys: Key[]; immediate: boolean } {
+  const stageId = petriStageLabel(item);
+  const stageKeys: Key[] = stageId
+    ? [queryKeys.runs.stageEvents(runId, stageId), queryKeys.runs.stageContextWindow(runId, stageId)]
+    : [];
+  const stream = queryKeys.runs.stream(runId);
+
+  if (item.kind === "platform") {
+    const kind = platformRecordKind(item);
+    if (isTerminalLifecycleItem(item)) {
+      return { keys: terminalKeys(runId, stream), immediate: true };
+    }
+    switch (kind) {
+      case "checkpoint":
+        return {
+          keys: [
+            ...queryKeys.runs.filesAllScopes(runId),
+            queryKeys.runs.commits(runId),
+            queryKeys.runs.state(runId),
+            stream,
+          ],
+          immediate: false,
+        };
+      case "interview.answered":
+        return {
+          keys: [queryKeys.runs.questions(runId, 25, 0), queryKeys.runs.detail(runId), stream],
+          immediate: false,
+        };
+      default:
+        return { keys: [queryKeys.runs.detail(runId), queryKeys.runs.state(runId), stream], immediate: false };
+    }
+  }
+
+  const name = petriEventName(item);
+  switch (name) {
+    case "run.finished":
+      return { keys: terminalKeys(runId, stream), immediate: false };
+    case "run.started":
+    case "run.paused":
+    case "run.unpaused":
+    case "invocation.finished":
+    case "invocation.cancel.requested":
+    case "run.stalled":
+      return { keys: [queryKeys.runs.detail(runId), queryKeys.runs.state(runId), stream], immediate: false };
+    case "visit.started":
+    case "visit.completed":
+    case "retry.scheduled":
+    case "wait.state.changed":
+    case "admission.decided":
+      return {
+        keys: [
+          queryKeys.runs.stages(runId),
+          queryKeys.runs.state(runId),
+          queryKeys.runs.detail(runId),
+          stream,
+          queryKeys.runs.graph(runId, "LR"),
+          queryKeys.runs.graph(runId, "TB"),
+          ...stageKeys,
+        ],
+        immediate: false,
+      };
+    case "step.progress.recorded": {
+      const parsed = getString(petriParsed(item), "kind");
+      if (parsed === "question" || parsed === "question_expired") {
+        return {
+          keys: [
+            queryKeys.runs.questions(runId, 25, 0),
+            queryKeys.runs.detail(runId),
+            queryKeys.runs.state(runId),
+            stream,
+            ...stageKeys,
+          ],
+          immediate: false,
+        };
+      }
+      return { keys: [queryKeys.runs.state(runId), stream, ...stageKeys], immediate: false };
+    }
+    case "control.requested":
+      return {
+        keys: [
+          queryKeys.runs.questions(runId, 25, 0),
+          queryKeys.runs.detail(runId),
+          queryKeys.runs.state(runId),
+          stream,
+          ...stageKeys,
+        ],
+        immediate: false,
+      };
+    case "step.finished":
+      return {
+        keys: [
+          queryKeys.runs.state(runId),
+          queryKeys.runs.usage(runId),
+          queryKeys.runs.stages(runId),
+          queryKeys.runs.detail(runId),
+          stream,
+          ...stageKeys,
+        ],
+        immediate: false,
+      };
+    case "fork.started":
+    case "branch.completed":
+    case "fork.completed":
+    case "node.expanded":
+      return {
+        keys: [
+          queryKeys.runs.stages(runId),
+          queryKeys.runs.state(runId),
+          stream,
+          queryKeys.runs.graph(runId, "LR"),
+          queryKeys.runs.graph(runId, "TB"),
+        ],
+        immediate: false,
+      };
+    case "routing.resolved":
+    case "route.applied":
+      return { keys: [stream, ...stageKeys], immediate: false };
+    default:
+      return { keys: [stream], immediate: false };
+  }
+}
+
+function terminalKeys(runId: string, stream: Key): Key[] {
+  return [
+    queryKeys.runs.detail(runId),
+    queryKeys.runs.state(runId),
+    ...queryKeys.runs.filesAllScopes(runId),
+    queryKeys.runs.commits(runId),
+    queryKeys.runs.usage(runId),
+    queryKeys.runs.stages(runId),
+    stream,
+    queryKeys.runs.graph(runId, "LR"),
+    queryKeys.runs.graph(runId, "TB"),
+  ];
+}
+
 export function subscribeToRunEvents(
   runId: string,
   mutate: MutateFn,
@@ -357,6 +516,9 @@ export function subscribeToRunEvents(
 }
 
 function runInvalidation(runId: string, payload: RunEventPayload) {
+  if (isStreamItemPayload(payload)) {
+    return queryKeysForStreamItem(runId, payload);
+  }
   const event = payload.event;
   if (!event) return { keys: [], immediate: false };
 
@@ -375,6 +537,7 @@ function resyncKeysForRun(runId: string) {
     queryKeys.runs.usage(runId),
     queryKeys.runs.stages(runId),
     queryKeys.runs.events(runId, 1000),
+    queryKeys.runs.stream(runId),
     queryKeys.runs.graph(runId, "LR"),
     queryKeys.runs.graph(runId, "TB"),
     queryKeys.runs.questions(runId, 25, 0),

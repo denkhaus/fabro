@@ -105,14 +105,14 @@ const PARALLEL_DOT: &str = r#"digraph Parallel {
     merge -> exit
 }"#;
 
-const PLAIN_SETTINGS: &str = "_version = 1\n\n[workflow]\ngraph = \"workflow.fabro\"\n";
+pub(super) const PLAIN_SETTINGS: &str = "_version = 1\n\n[workflow]\ngraph = \"workflow.fabro\"\n";
 const PETRI_SETTINGS: &str =
     "_version = 1\n\n[workflow]\ngraph = \"workflow.fabro\"\nengine = \"petri\"\n";
 
 /// The host plugin as Petri's lookup finds it: the override variable, else
 /// the executable on `PATH`. `None`, after saying so, when the test should
 /// skip; a panic when the environment forbids a skip.
-fn host_plugin() -> Option<PathBuf> {
+pub(super) fn host_plugin() -> Option<PathBuf> {
     let found = env::var_os(HOST_PLUGIN_OVERRIDE)
         .map(PathBuf::from)
         .or_else(|| {
@@ -132,7 +132,7 @@ fn host_plugin() -> Option<PathBuf> {
 
 /// Register a version whose entrypoint is `workflow.fabro`, with the given
 /// files beside it.
-async fn register_version(app: &axum::Router, files: &[(&str, &str)]) -> String {
+pub(super) async fn register_version(app: &axum::Router, files: &[(&str, &str)]) -> String {
     let entrypoint = WorkflowPath::new("workflow.fabro").expect("entrypoint path is valid");
     let files = files
         .iter()
@@ -150,7 +150,7 @@ async fn register_version(app: &axum::Router, files: &[(&str, &str)]) -> String 
         .to_string()
 }
 
-fn intent(version_id: &str, workspace: &std::path::Path) -> serde_json::Value {
+pub(super) fn intent(version_id: &str, workspace: &std::path::Path) -> serde_json::Value {
     serde_json::json!({
         "workflow_version_id": version_id,
         "target": {"kind": "folder", "path": workspace},
@@ -187,7 +187,11 @@ async fn petri_outcome(state: &AppState, run_id: &str) -> engine::RunOutcome {
 }
 
 /// The run's projected state once its projector settled.
-async fn settled_state(state: &AppState, app: &axum::Router, run_id: &str) -> serde_json::Value {
+pub(super) async fn settled_state(
+    state: &AppState,
+    app: &axum::Router,
+    run_id: &str,
+) -> serde_json::Value {
     let id: RunId = run_id.parse().expect("the run id parses");
     state.test_petri_projector().settle(id).await;
     let req = Request::builder()
@@ -335,6 +339,7 @@ async fn the_hello_bundle_runs_on_petri_when_the_version_names_the_engine() {
             .any(|request| request["model"] == OPENAI_MODEL),
         "the prompt stage should have called the twin, got {logs}"
     );
+    super::petri_stream::capture_settled(&state, &app, &run_id, "hello").await;
 }
 
 /// A command-only bundle runs on Petri when the server's setting names the
@@ -379,6 +384,7 @@ async fn a_command_bundle_runs_on_petri_under_the_server_setting() {
     );
     let stream = petri_stream_len(&state, &run_id).await;
     assert!(stream > 0, "the run's stream holds its events");
+    super::petri_stream::capture_settled(&state, &app, &run_id, "command").await;
 }
 
 /// A parallel bundle with two command branches runs on Petri through the
@@ -685,4 +691,5 @@ async fn a_human_gate_is_answered_through_the_questions_api() {
         record.principal.is_some(),
         "the answering principal: {record:?}"
     );
+    super::petri_stream::capture_settled(&state, &app, &run_id, "gate").await;
 }

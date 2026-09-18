@@ -2970,23 +2970,40 @@ paths:
       tags: [Run Internals]
       summary: List Run Events
       description: |
-        Returns a paginated JSON list of stored run events. Ascending order
-        uses `since_seq` as an inclusive cursor. Descending order uses
+        Returns a paginated JSON list of the run's events. The shape depends
+        on the engine the run was created for (`RunSpec.engine`).
+
+        For a legacy run (`engine.kind = legacy`): stored run events in the
+        legacy envelope (`PaginatedEventList`). Ascending order uses
+        `since_seq` as an inclusive cursor. Descending order uses
         `before_seq` as an exclusive cursor and starts at the newest event
         when `before_seq` is omitted.
+
+        For a Petri run (`engine.kind = petri`): the run stream
+        (`PaginatedRunStreamList`), one ordered delivery of Petri's own
+        `RunEvent`s and Fabro's platform records in the `RunStreamItem`
+        envelope, in `stream_seq` order. The cursor is `after`: the last
+        `stream_seq` the client saw, exclusive; the first page is `after=0`.
+        `since_seq`, `before_seq` and `order` are not accepted for a Petri
+        run. A client that reconnects resumes from its last `stream_seq` and
+        deduplicates by each item's `id`; every item is delivered once, in
+        order, with no gap.
       parameters:
         - $ref: "#/components/parameters/RunId"
         - $ref: "#/components/parameters/SinceSeq"
         - $ref: "#/components/parameters/EventLimit"
         - $ref: "#/components/parameters/BeforeSeq"
         - $ref: "#/components/parameters/EventOrder"
+        - $ref: "#/components/parameters/StreamAfter"
       responses:
         "200":
-          description: Paginated list of run events
+          description: Paginated list of run events, in the run engine's envelope
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/PaginatedEventList"
+                oneOf:
+                  - $ref: "#/components/schemas/PaginatedEventList"
+                  - $ref: "#/components/schemas/PaginatedRunStreamList"
         "400":
           description: Invalid cursor and order combination
           headers:
@@ -3097,10 +3114,25 @@ paths:
       operationId: attachRunEvents
       tags: [Run Internals]
       summary: Attach Run Events
-      description: Opens an ordered server-sent event stream starting at `since_seq`, replaying persisted events and continuing with live updates while the run remains active.
+      description: |
+        Opens an ordered server-sent event stream, replaying persisted items
+        and continuing with live updates while the run remains active. Each
+        `data:` frame is one JSON object in the run engine's envelope.
+
+        For a legacy run the frames are `EventEnvelope`s and the stream
+        starts at `since_seq` (inclusive; the next unseen event when omitted).
+        It ends after `run.completed` or `run.failed`.
+
+        For a Petri run the frames are `RunStreamItem`s and the stream
+        starts after `after` (the last `stream_seq` the client saw; `0`
+        replays the whole run; the next unseen item when omitted). It ends
+        once the run is no longer active and every committed item has been
+        sent. A reconnecting client passes its last `stream_seq` as `after`
+        and deduplicates by `id`.
       parameters:
         - $ref: "#/components/parameters/RunId"
         - $ref: "#/components/parameters/SinceSeq"
+        - $ref: "#/components/parameters/StreamAfter"
       responses:
         "200":
           description: Server-sent event stream
@@ -6353,6 +6385,20 @@ components:
         maximum: 1000
         default: 100
       example: 100
+
+    StreamAfter:
+      name: after
+      in: query
+      required: false
+      description: |
+        Run stream cursor for a Petri run: the last `stream_seq` the client
+        saw, exclusive. `0` starts at the first item.
+      schema:
+        type: integer
+        format: uint64
+        minimum: 0
+        default: 0
+      example: 42
 
     QuestionId:
       name: qid
@@ -10933,6 +10979,99 @@ components:
         meta:
           $ref: "#/components/schemas/PaginationMeta"
 
+    RunStreamItemKind:
+      description: Which item shape a run stream item carries.
+      type: string
+      enum: [petri, platform]
+
+    RunStreamItem:
+      description: |
+        One item of a Petri run's stream: a Petri `RunEvent` or a Fabro
+        platform record in Fabro's envelope.
+
+        `stream_seq` is the durable per-run delivery sequence the projector
+        assigned when the item's record was committed: dense, strictly
+        increasing within the run, and the cursor for `after`. `id` is the
+        item's own identity, kept beside the cursor so a client deduplicates
+        by it: for a Petri event the `EventId` as `<log>/<seq>/<index>`
+        (`coordinator/3/0`, `execution 1/23/0`); for a platform record its
+        `seq`. Petri's `EventId` is per log and has no platform variant, so
+        it is never the cursor.
+
+        A `petri` item is a Petri `RunEvent` passed through unchanged:
+        `{id: {log, execution?, seq, index}, origin, recorded_at,
+        observed_at?, context: {invocation, execution, parent?}, subject?,
+        record?, derived?}`. Its vocabulary is Petri's public event contract
+        (`crates/core/execution/EVENTS.md` in the Petri repository), not
+        Fabro's: the recorded event's name is `record.body.event`
+        (`<subject>.<verb>`, e.g. `visit.started`, `step.finished`,
+        `run.finished`), a derived view event's is `derived.event`, and the
+        stage a subject names is `(context.execution, subject.firing)` with
+        `subject.node.name` and `subject.visit` as its display label. The
+        server reports the contract version it serves in
+        `PaginatedRunStreamList.event_contract_version`.
+
+        A `platform` item is a stored platform record: `{seq, recorded_at,
+        record: {kind, ...}, position?: {execution, firing}}`. `record.kind`
+        is one of `run.created`, `run.lifecycle`, `run.title`, `run.parent`,
+        `run.archived`, `run.unarchived`, `run.superseded`, `run.notice`,
+        `interview.answered`, `run.branch`, `git.identity`, `checkpoint`,
+        `pull_request.created`, `notification.sent`, `run.paired`.
+      type: object
+      required:
+        - run_id
+        - stream_seq
+        - kind
+        - id
+        - recorded_at
+        - item
+      properties:
+        run_id:
+          type: string
+        stream_seq:
+          type: integer
+          format: uint64
+          minimum: 0
+          description: The delivery sequence; the cursor.
+        kind:
+          $ref: "#/components/schemas/RunStreamItemKind"
+        id:
+          type: string
+          description: The item's own identity, for deduplication.
+        recorded_at:
+          type: integer
+          format: uint64
+          minimum: 0
+          description: Milliseconds since the Unix epoch when the item's record was appended.
+        item:
+          type: object
+          additionalProperties: true
+          description: The Petri `RunEvent` or the stored platform record, unchanged.
+
+    PaginatedRunStreamList:
+      description: |
+        One page of a Petri run's stream, in `stream_seq` order.
+        `event_contract_version` is Petri's `EVENT_CONTRACT_VERSION` the
+        server was built against: the version of the event contract every
+        `petri` item follows.
+      type: object
+      required:
+        - data
+        - meta
+        - event_contract_version
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/RunStreamItem"
+        meta:
+          $ref: "#/components/schemas/PaginationMeta"
+        event_contract_version:
+          type: integer
+          format: uint32
+          minimum: 0
+          example: 3
+
     AppendEventResponse:
       description: Assigned sequence number for an appended event.
       type: object
@@ -12841,6 +12980,58 @@ components:
           oneOf:
             - $ref: "#/components/schemas/ForkSourceRef"
             - type: "null"
+        engine:
+          $ref: "#/components/schemas/RunEngine"
+          description: |
+            The engine the run was created for, with what it admitted.
+            Absent in a spec written before the field existed, which means
+            the legacy executor.
+
+    RunEngine:
+      description: |
+        The engine a run was created for. `legacy` is the in-process
+        executor; `petri` names the Petri workflow engine and carries what
+        Petri admitted at create time.
+      oneOf:
+        - type: object
+          required: [kind]
+          properties:
+            kind:
+              type: string
+              enum: [legacy]
+        - allOf:
+            - type: object
+              required: [kind]
+              properties:
+                kind:
+                  type: string
+                  enum: [petri]
+            - $ref: "#/components/schemas/PetriAdmission"
+
+    PetriAdmission:
+      description: |
+        What Petri admitted for a run at create time: the lowered root graph
+        and the pre-lowered child graphs, every one persisted in the blob
+        store before the run exists.
+      type: object
+      required: [graph]
+      properties:
+        graph:
+          $ref: "#/components/schemas/PetriGraphRef"
+        children:
+          type: array
+          items:
+            $ref: "#/components/schemas/PetriGraphRef"
+
+    PetriGraphRef:
+      description: An admitted graph in the blob store, verified by digest on load.
+      type: object
+      required: [blob, digest]
+      properties:
+        blob:
+          $ref: "#/components/schemas/BlobHash"
+        digest:
+          type: string
 
     UpdateRunParentRequest:
       type: object
