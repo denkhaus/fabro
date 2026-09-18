@@ -8,6 +8,7 @@ use std::time::Duration;
 
 use fabro_api::types::PaginatedRunStreamList;
 use fabro_petri::petri::EVENT_CONTRACT_VERSION;
+use fabro_redact::redact_json_value;
 use fabro_types::RunStreamItem;
 use tokio::sync::broadcast::error::RecvError;
 use tokio::time::{self, Instant};
@@ -154,6 +155,12 @@ async fn list_run_stream(state: &AppState, id: RunId, after: u64, limit: usize) 
         Ok(mut items) => {
             let has_more = items.len() > limit;
             items.truncate(limit);
+            // The same items the attached stream serves, redacted the same
+            // way, so a client that pages the listing after a stream sees
+            // what the stream showed.
+            for item in &mut items {
+                item.item = redact_json_value(std::mem::take(&mut item.item));
+            }
             Json(PaginatedRunStreamList {
                 data:                   items,
                 meta:                   PaginationMeta {

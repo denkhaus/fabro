@@ -38,17 +38,18 @@ use fabro_types::{
     ModelRef, ModelUsage, ParallelBranchId, ParallelBranchResult, PendingInterviewRecord,
     PullRequestCreation, PullRequestCreationStatus, PullRequestLink, RunApproval, RunApprovalState,
     RunArtifact, RunControlAction, RunDiff, RunFailure, RunId, RunProjection, RunSandbox,
-    RunSandboxPlan, RunStatus, RunTiming, SandboxProviderKind, StageCompletion, StageHandler,
-    StageId, StageInferenceProjection, StageModelUsage, StageOutcome, StageProjection, StageState,
+    RunSandboxFailure, RunSandboxInstance, RunSandboxPlan, RunSandboxRuntime, RunStatus,
+    RunTiming, SandboxProviderKind, StageCompletion, StageHandler, StageId,
+    StageInferenceProjection, StageModelUsage, StageOutcome, StageProjection, StageState,
     StageTiming, StartRecord, SuccessReason, first_event_seq, format_blob_ref, parse_blob_ref,
     timing, usage_rollup,
 };
 use lithos_llm::catalog::{ModelId, ProviderId};
 use lithos_llm::types::Usage;
 use petri_execution::events::{Derived, NodeRef, Parsed, RunEvent, Subject, ViewEvent, WaitState};
-use petri_execution::{CoordinatorEvent, ExecutionId};
+use petri_execution::{CoordinatorEvent, ExecutionId, InvocationId};
 use petri_runtime::engine::{Admission, Event};
-use petri_runtime::ir::{Metrics, Status, StepEvent};
+use petri_runtime::ir::{Metrics, SandboxInstance, Status, StepEvent};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tracing::debug;
@@ -141,6 +142,11 @@ pub struct FoldState {
     /// behind.
     #[serde(default)]
     pub finished_firings: BTreeSet<String>,
+    /// Whether the run's sandbox still exists after its release
+    /// (`scope.released` `retained`): kept stopped, or deleted. Absent until
+    /// the root invocation's lease was released.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sandbox_retained: Option<bool>,
 }
 
 impl FoldState {
@@ -385,6 +391,11 @@ impl RunView {
                         run_branch: self.state.run_branch.clone(),
                         base_sha:   self.state.base_sha.clone(),
                     });
+                    // The scope's sandbox is acquired next; `scope.acquired`
+                    // or `scope.failed` settles it.
+                    if let Some(sandbox) = projection.sandbox.take() {
+                        projection.sandbox = Some(RunSandbox::initializing(sandbox.plan().clone()));
+                    }
                 }
             }
             CoordinatorEvent::InvocationDeclared { invocation, .. } => {
@@ -450,6 +461,19 @@ impl RunView {
             CoordinatorEvent::RunFinished { status } => {
                 self.state.finished = Some(status.to_string());
                 self.conclude(status.to_string().as_str(), at);
+            }
+            // ── Sandbox: the retention outcome (VIEWS.md "Sandbox") ─────────
+            // The view has no retention field; the fact is kept in the fold
+            // state for the read side. The instance stays on `Run.sandbox`:
+            // it names what ran, whether or not it still exists.
+            CoordinatorEvent::ScopeReleased {
+                invocation,
+                retained,
+                ..
+            } => {
+                if Some(invocation.raw()) == self.state.root {
+                    self.state.sandbox_retained = Some(*retained);
+                }
             }
             CoordinatorEvent::GraphRegistered { .. }
             | CoordinatorEvent::ExecutionFinished { .. }
@@ -679,6 +703,41 @@ impl RunView {
                     self.close_questions(answer.question.as_deref(), firing_key.as_deref(), at);
                 }
             }
+            // ── Sandbox: the instance (VIEWS.md "Sandbox") ──────────────────
+            // The run's sandbox is the root invocation's scope. A child
+            // invocation's scope (a parallel branch) shares or owns another
+            // one and is not the run's; a re-acquisition (a resume, a
+            // replaced sandbox) names the current instance.
+            Event::ScopeAcquired { sandbox, .. } => {
+                if let Some(projection) = self.root_scope_projection(event) {
+                    let plan = sandbox_plan_of(projection);
+                    projection.sandbox = Some(RunSandbox::ready(
+                        plan.clone(),
+                        sandbox_instance(&plan, sandbox),
+                    ));
+                }
+            }
+            Event::ScopeFailed {
+                provider,
+                error,
+                causes,
+                duration_ms,
+                ..
+            } => {
+                if let Some(projection) = self.root_scope_projection(event) {
+                    let plan = sandbox_plan_of(projection);
+                    let provider = provider
+                        .as_deref()
+                        .and_then(provider_kind)
+                        .unwrap_or_else(|| plan.provider.clone());
+                    projection.sandbox = Some(RunSandbox::failed(plan, RunSandboxFailure {
+                        provider:    provider.to_string(),
+                        error:       error.clone(),
+                        causes:      causes.clone(),
+                        duration_ms: *duration_ms,
+                    }));
+                }
+            }
             Event::ExecutionStarted { .. }
             | Event::TokenEmitted { .. }
             | Event::RoutingResolved { .. }
@@ -688,6 +747,16 @@ impl RunView {
             | Event::CancelRequested { .. }
             | Event::KillRequested { .. } => {}
         }
+    }
+
+    /// The projection, when `event` is a scope record of the root
+    /// invocation: the run's own sandbox, not a child invocation's.
+    fn root_scope_projection(&mut self, event: &RunEvent) -> Option<&mut RunProjection> {
+        let root = self.state.root?;
+        if event.context.invocation.map(InvocationId::raw) != Some(root) {
+            return None;
+        }
+        self.projection.as_mut()
     }
 
     fn fold_progress(
@@ -1422,6 +1491,55 @@ fn sandbox_plan(settings: &RunEnvironmentSettings) -> RunSandboxPlan {
             .flatten()
             .filter(|image| !image.is_empty()),
         snapshot: None,
+    }
+}
+
+/// The plan the projection's sandbox carries, or the one its environment
+/// settings give when no sandbox was projected yet.
+fn sandbox_plan_of(projection: &RunProjection) -> RunSandboxPlan {
+    projection.sandbox.as_ref().map_or_else(
+        || sandbox_plan(&projection.spec.settings.run.environment),
+        |sandbox| sandbox.plan().clone(),
+    )
+}
+
+/// Fabro's name for the provider Petri's `scope.acquired` names: Petri's
+/// `host` is Fabro's `local`; every other kind is spelled the same. `None`
+/// for a name that is no provider kind.
+fn provider_kind(provider: &str) -> Option<SandboxProviderKind> {
+    if provider == "host" {
+        return Some(SandboxProviderKind::LOCAL);
+    }
+    SandboxProviderKind::try_new(provider).ok()
+}
+
+/// The run's sandbox instance from Petri's record of the scope's
+/// acquisition: the provider, the provider's id for the sandbox (what a
+/// reconnect attaches by), its image and snapshot when the provider knows
+/// them, and the working directory. The clone fields stay unset: Petri's
+/// checkout copies the bound repository into the workspace and is not a
+/// clone Fabro made, and the workspace roots are the provider's own layout,
+/// read live.
+fn sandbox_instance(plan: &RunSandboxPlan, sandbox: &SandboxInstance) -> RunSandboxInstance {
+    RunSandboxInstance {
+        provider: provider_kind(&sandbox.provider).unwrap_or_else(|| plan.provider.clone()),
+        image:    sandbox
+            .image
+            .as_ref()
+            .map(ToString::to_string)
+            .or_else(|| plan.image.clone()),
+        snapshot: sandbox.snapshot.as_ref().map(ToString::to_string),
+        runtime:  RunSandboxRuntime {
+            id:                sandbox.instance.to_string(),
+            working_directory: sandbox.working_directory.to_string(),
+            repo_cloned:       None,
+            clone_origin_url:  None,
+            clone_branch:      None,
+            workspace_root:    None,
+            repos_root:        None,
+            primary_repo_path: None,
+            primary_repo_link: None,
+        },
     }
 }
 

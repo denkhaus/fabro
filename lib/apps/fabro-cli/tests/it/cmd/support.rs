@@ -58,9 +58,11 @@ pub(crate) struct ProjectFixture {
     pub(crate) fabro_root:  PathBuf,
 }
 
+/// A run whose workflow populated its sandbox. The run executes in its own
+/// workspace, not in the target folder, so the sandbox's files are read
+/// back through the run.
 pub(crate) struct WorkspaceRunSetup {
-    pub(crate) run:           RunSetup,
-    pub(crate) workspace_dir: PathBuf,
+    pub(crate) run: RunSetup,
 }
 
 pub(crate) struct WorkflowGate {
@@ -602,7 +604,7 @@ provider = "local"
     let run = run_local_workflow(context, &workspace_dir, "workflow.toml");
     assert!(run_state(&run.run_dir).sandbox.is_some());
 
-    WorkspaceRunSetup { run, workspace_dir }
+    WorkspaceRunSetup { run }
 }
 
 fn run_local_workflow(context: &TestContext, workspace_dir: &Path, workflow: &str) -> RunSetup {

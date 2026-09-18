@@ -198,18 +198,25 @@ the CLI setup lines.
 
 Under the plan Petri acquires every scope through the sandbox-driver plugin,
 labels it with the run key, and decides retention (`Always` is the Fabro
-default). Petri records the binding and nothing else durable about the
-instance: the acquisition progress lines are terminal-only, and the
-`ScopeReady` hook payload (`scope`, `workspace`) reaches a durable note only
-when a `sandbox_ready` hook ran.
+default). Petri records the binding, the instance and the retention outcome:
+`scope.acquired` (an engine record, once per acquisition, before any attempt
+in the scope) carries the provider, the provider's id for the sandbox, its
+image and snapshot when the provider knows them, the working directory, the
+workspace and lease, and the acquisition time; `scope.failed` the error, its
+causes and the reserved provider; `scope.released` (a coordinator record,
+once per lease the invocation owned, before `run.finished`) the outcome
+retention read, whether the sandbox still exists, and any release problem.
+The run's sandbox is the root invocation's scope; a child invocation's scope
+(a parallel branch) is not the run's. Petri names the host provider `host`,
+which is Fabro's `local`; every other kind is spelled the same.
 
 | Fabro fact | Fields | Source | Keyed on |
 | --- | --- | --- | --- |
 | plan | `RunSandbox.plan {provider, image, snapshot}` | `graph.registered`'s `fabro.environment` and `fabro.launch {sandbox_backend}` params; platform record `run.created` | run |
 | binding: isolated or inherited | none today | `invocation.declared {sandbox}` | invocation |
-| which: planned, initializing, ready, failed | `RunSandbox.kind`, `sandbox.initializing`, `sandbox.ready {duration_ms, name, url}`, `sandbox.failed {error, causes, duration_ms}` | gap: proposed Petri record `scope.acquired`, `scope.failed` | scope |
-| where: instance id, working directory, clone, workspace roots | `RunSandboxInstance.runtime {id, working_directory, repo_cloned, clone_origin_url, clone_branch, workspace_root, repos_root, primary_repo_path, primary_repo_link}`, `sandbox.initialized` | gap: the same `scope.acquired`; the clone from `custom attractor.checkout` | scope |
-| retention | none today; the run-end `sandbox_cleanup` hook | gap: proposed `scope.released {scope, outcome, retained}`; `run.note.recorded {kind: hook, point: scope_released}` when a hook ran | scope |
+| which: planned, initializing, ready, failed | `RunSandbox.kind`, `sandbox.initializing`, `sandbox.ready {duration_ms, name, url}`, `sandbox.failed {error, causes, duration_ms}` | `planned` from the platform record `run.created`; `initializing` from `run.started`; `ready` from the root invocation's `scope.acquired` (`provider`, `image`, `snapshot`); `failed` from its `scope.failed` (`provider`, `error`, `causes`, `duration_ms`). The ready duration (`scope.acquired` `duration_ms`) has no field on `RunSandbox` and is not projected | scope |
+| where: instance id, working directory, clone, workspace roots | `RunSandboxInstance.runtime {id, working_directory, repo_cloned, clone_origin_url, clone_branch, workspace_root, repos_root, primary_repo_path, primary_repo_link}`, `sandbox.initialized` | `scope.acquired` (`instance` is the id a reconnect attaches by, `working_directory`). The clone fields stay unset: `custom attractor.checkout` records Petri's copy of the bound repository into the workspace (`repository`, `commit`, `depth`, `files`), which is not a clone Fabro made, and the workspace roots are the provider's layout, read live | scope |
+| retention | none today; the run-end `sandbox_cleanup` hook | `scope.released {outcome, retained, problems}` of the root invocation's lease, kept as `FoldState.sandbox_retained`; the view has no field for it and `Run.sandbox` keeps naming the instance that ran. `run.note.recorded {kind: hook, point: scope_released}` when a hook ran | scope |
 | live status, resources, files, services, VNC, preview, SSH | `SandboxStatus`, `SandboxFileEntry`, `SandboxService`, `VncPreviewResponse`, `PreviewUrlResponse`, `SshAccessResponse`, `ssh.ready` | live: the sandbox-driver provider queried by the run label | run |
 | setup commands | `setup.started`, `setup.command.completed`, `setup.completed`, `setup.failed`, `cli.ensure.*` | the `run_prepare_N` stages (Stages section); `cli.ensure.*` has no Petri equivalent and is dropped (the image carries the CLI) | stage |
 
@@ -418,8 +425,6 @@ record where Fabro does.
 
 | Fact | Views | Smallest source |
 | --- | --- | --- |
-| sandbox instance: provider, instance id, image, snapshot, working directory, workspace roots, duration, failure | `Run.sandbox`, the Sandbox tab, `sandbox.*` CLI lines, `runs inspect`, `ask_fabro` | a Petri engine record `scope.acquired {scope, provider, instance, image, snapshot, workspace, duration_ms}` and `scope.failed {scope, provider, error, causes, duration_ms}`, appended by the driver where it fires `ScopeReady`; today the facts are terminal-only progress lines. Fallback: a platform record `sandbox.ready` written from Fabro's forwarded `ScopeReady` hook, which carries only `scope` and `workspace` |
-| retention outcome | `sandbox_cleanup`, the sandbox tab after the run | a Petri record `scope.released {scope, outcome, retained}` where the driver fires `ScopeReleased`; today only a `run.note.recorded` exists, and only when a hook ran |
 | tools available to an agent | `agent_tools`, the insights sidebar's tool list | a `custom attractor.tools {node, firing, attempt, session, tools[] {name, description, source, category}}` from the native backend once per session, where it calls the `HostTools` builders; Pebble's `SessionStarted` carries only the provider and model |
 | question option `description` and `preview`, `context_display` | the interview dock, the human Q&A renderer | optional fields on Petri's `QuestionOption` (`description`, `preview`) and `Question` (`context`), set by the human gate from the edge attributes Fabro's lowering already reads |
 | who answered | `interview.completed` `actor`, Slack attribution | platform record `interview.answered {question, principal, channel}` written by Fabro's interviewer beside its `InterviewReply` |

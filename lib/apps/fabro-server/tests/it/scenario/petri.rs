@@ -20,7 +20,8 @@
 
 use std::collections::BTreeMap;
 use std::env;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
 use std::sync::Arc;
 
 use axum::body::Body;
@@ -46,6 +47,8 @@ use crate::helpers::{
 
 const HOST_PLUGIN: &str = "sandbox-driver-host";
 const HOST_PLUGIN_OVERRIDE: &str = "PETRI_SANDBOX_HOST_PLUGIN";
+const DOCKER_PLUGIN: &str = "sandbox-driver-docker";
+const DOCKER_PLUGIN_OVERRIDE: &str = "PETRI_SANDBOX_DOCKER_PLUGIN";
 const REQUIRE_ENV: &str = "FABRO_REQUIRE_SANDBOX_PLUGINS";
 
 const OPENAI_MODEL: &str = "gpt-5.4";
@@ -125,6 +128,38 @@ pub(super) fn host_plugin() -> Option<PathBuf> {
         eprintln!("skipping: {HOST_PLUGIN} is not on PATH and {HOST_PLUGIN_OVERRIDE} is unset");
     }
     found
+}
+
+/// The Docker plugin as Petri's lookup finds it, with a daemon that
+/// answers. `None`, after saying so, when the test should skip; a panic
+/// when the environment forbids a skip and the plugin is missing.
+fn docker_plugin() -> Option<PathBuf> {
+    let found = env::var_os(DOCKER_PLUGIN_OVERRIDE)
+        .map(PathBuf::from)
+        .or_else(|| {
+            env::split_paths(&env::var_os("PATH")?)
+                .map(|dir| dir.join(DOCKER_PLUGIN))
+                .find(|candidate| candidate.is_file())
+        });
+    let Some(found) = found else {
+        assert!(
+            env::var_os(REQUIRE_ENV).is_none(),
+            "{REQUIRE_ENV} is set, but {DOCKER_PLUGIN} is not on PATH and {DOCKER_PLUGIN_OVERRIDE} is unset"
+        );
+        eprintln!("skipping: {DOCKER_PLUGIN} is not on PATH and {DOCKER_PLUGIN_OVERRIDE} is unset");
+        return None;
+    };
+    let daemon = Command::new("docker")
+        .args(["version", "--format", "{{.Server.Version}}"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .is_ok_and(|status| status.success());
+    if !daemon {
+        eprintln!("skipping: no Docker daemon answers");
+        return None;
+    }
+    Some(found)
 }
 
 /// Register a version whose entrypoint is `workflow.fabro`, with the given
@@ -651,4 +686,178 @@ async fn a_human_gate_is_answered_through_the_questions_api() {
         "the answering principal: {record:?}"
     );
     super::petri_stream::capture_settled(&state, &app, &run_id, "gate").await;
+}
+
+/// The sandbox a run executed in, as its projection carries it from Petri's
+/// `scope.acquired`: the run's own scope on the host provider, ready, with
+/// the directory id a reconnect attaches by and the working directory the
+/// steps ran in. The summary carries the same instance, so Ask Fabro and
+/// `sandbox cp` reach the sandbox after the run.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_runs_projection_carries_its_host_sandbox_instance() {
+    if host_plugin().is_none() {
+        return;
+    }
+    let workspace = tempfile::tempdir().expect("workspace tempdir");
+    let settings = settings_from_toml("_version = 1\n\n[run.environment]\nid = \"local\"\n");
+    let state = test_app_state_with_options(settings, 5);
+    let app = test_app_with_scheduler(Arc::clone(&state));
+
+    let version_id = register_version(&app, &[
+        ("workflow.fabro", COMMAND_DOT),
+        ("workflow.toml", PLAIN_SETTINGS),
+    ])
+    .await;
+    let run_id =
+        create_and_start_run_from_intent(&app, intent(&version_id, workspace.path())).await;
+    let status = wait_for_run_status(&app, &run_id, &["succeeded", "failed"]).await;
+    assert_eq!(
+        status,
+        "succeeded",
+        "run: {}",
+        run_json(&app, &run_id).await
+    );
+
+    let projection = settled_state(&state, &app, &run_id).await;
+    let sandbox = &projection["sandbox"];
+    assert_eq!(sandbox["kind"], "ready", "{sandbox}");
+    assert_eq!(sandbox["plan"]["provider"], "local", "{sandbox}");
+    let instance = &sandbox["instance"];
+    assert_eq!(instance["provider"], "local", "{instance}");
+    assert!(
+        instance.get("image").is_none(),
+        "a host directory runs no image: {instance}"
+    );
+    let id = instance["runtime"]["id"]
+        .as_str()
+        .expect("the provider's id for the sandbox");
+    assert!(
+        id.starts_with("host-"),
+        "the host provider's id for the workspace directory: {id}"
+    );
+    let working_directory = instance["runtime"]["working_directory"]
+        .as_str()
+        .expect("the working directory");
+    assert!(
+        Path::new(working_directory).is_dir(),
+        "the workspace is retained after the run: {working_directory}"
+    );
+    assert!(sandbox.get("failure").is_none(), "{sandbox}");
+
+    let run = run_json(&app, &run_id).await;
+    assert_eq!(run["sandbox"]["kind"], "ready", "{run}");
+    assert_eq!(run["sandbox"]["instance"]["runtime"]["id"], id, "{run}");
+}
+
+/// The same on the Docker provider: the instance is the run's container,
+/// with the image it runs and the container's workspace, so a reconnect
+/// attaches to it on the daemon.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_runs_projection_carries_its_docker_sandbox_instance() {
+    if docker_plugin().is_none() {
+        return;
+    }
+    let settings = settings_from_toml("_version = 1\n\n[run.environment]\nid = \"docker\"\n");
+    let state = test_app_state_with_options(settings, 5);
+    let app = test_app_with_scheduler(Arc::clone(&state));
+    // A Docker environment on the daemon's default runner image.
+    let environment = serde_json::json!({
+        "id": "docker",
+        "provider": "docker",
+        "image": { "docker": null, "dockerfile": null },
+        "resources": { "cpu": null, "memory": null, "disk": null },
+        "network": { "mode": "allow_all", "allow": [] },
+        "lifecycle": { "preserve": false, "stop_on_terminal": true, "auto_stop": null },
+        "labels": {},
+        "env": {}
+    });
+    let request = Request::builder()
+        .method("POST")
+        .uri(api("/environments"))
+        .header("content-type", "application/json")
+        .body(Body::from(environment.to_string()))
+        .expect("environment request should build");
+    let response = app
+        .clone()
+        .oneshot(request)
+        .await
+        .expect("environment request routes");
+    response_json(
+        response,
+        StatusCode::CREATED,
+        "POST /api/v1/environments".to_string(),
+    )
+    .await;
+
+    let version_id = register_version(&app, &[
+        ("workflow.fabro", COMMAND_DOT),
+        ("workflow.toml", PLAIN_SETTINGS),
+    ])
+    .await;
+    // A Docker environment takes no folder target: the workspace is the
+    // container's own.
+    let intent = serde_json::json!({
+        "workflow_version_id": version_id,
+        "target": {"kind": "none"},
+        "environment_id": "docker",
+        "args": {},
+    });
+    let run_id = create_and_start_run_from_intent(&app, intent).await;
+    let status = wait_for_run_status(&app, &run_id, &["succeeded", "failed"]).await;
+    assert_eq!(
+        status,
+        "succeeded",
+        "run: {}",
+        run_json(&app, &run_id).await
+    );
+
+    let projection = settled_state(&state, &app, &run_id).await;
+    let sandbox = &projection["sandbox"];
+    assert_eq!(sandbox["kind"], "ready", "{sandbox}");
+    let instance = &sandbox["instance"];
+    assert_eq!(instance["provider"], "docker", "{instance}");
+    assert!(
+        instance["image"]
+            .as_str()
+            .is_some_and(|image| !image.is_empty()),
+        "the image the container runs: {instance}"
+    );
+    let id = instance["runtime"]["id"]
+        .as_str()
+        .expect("the container id");
+    assert!(!id.is_empty(), "{instance}");
+    assert_eq!(
+        instance["runtime"]["working_directory"], "/workspace",
+        "{instance}"
+    );
+
+    // The container is on the daemon, under Petri's run label.
+    let output = Command::new("docker")
+        .args([
+            "ps",
+            "-aq",
+            "--filter",
+            &format!("label=petri.run={run_id}"),
+        ])
+        .output()
+        .expect("docker ps runs");
+    let containers: Vec<String> = String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(str::to_owned)
+        .collect();
+    assert!(
+        containers
+            .iter()
+            .any(|container| id.starts_with(container.as_str())),
+        "the recorded instance is the run's container: {id} in {containers:?}"
+    );
+    for container in &containers {
+        let _ = Command::new("docker")
+            .args(["rm", "-f", container])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+    }
 }
