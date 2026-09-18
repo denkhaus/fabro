@@ -160,6 +160,10 @@ digraph Develop {
     implementer [
         label="Implementer",
         prompt="@prompts/implementer.md",
+        // fabro-f84f: opt into vendored-skill discovery — the
+        // session loads `.fabro/skills` (rust-style-guide and
+        // friends) through the UseSkill tool.
+        skills="discover",
         output_schema="routing",
         output_retries=2,
         max_visits=10,
@@ -304,6 +308,10 @@ digraph Develop {
     reviewer [
         label="Reviewer",
         prompt="@prompts/reviewer.md",
+        // fabro-f84f: opt into vendored-skill discovery — the
+        // session loads `.fabro/skills` (rust-style-guide and
+        // friends) through the UseSkill tool.
+        skills="discover",
         fidelity="summary:high",
         reasoning_effort="low",
         preamble_stages_ignore="planner,implementer,reviewer",
