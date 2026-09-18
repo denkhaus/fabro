@@ -1392,6 +1392,149 @@ All checks passed.
     }
 
     #[tokio::test]
+    async fn codergen_handler_file_schema_response_table_pins_planner_incident_shape() {
+        // fabro-c42f: run 01M2SN3TE4FZ's planner stage "completed" with its
+        // declared context keys dropped and the implementer ran a full
+        // blind cycle. Investigation (demand b): the final response was NOT
+        // pure prose — it was prose followed by a schema-valid JSON object
+        // carrying routing fields, so validation legitimately passed (which
+        // is also why the schema-repair loop shows no repair inputs). The
+        // damage came from the then-deployed pre-fabro-0a4c engine, whose
+        // `apply_validated_output` stored file-schema payloads only under
+        // `output.<node>` without applying routing fields —
+        // `current_seed_id`/`preferred_next_label` never reached the graph.
+        // The engine at HEAD applies them (PR #235); this table pins both
+        // arms at the handler boundary where the bug was observable:
+        // prose without any JSON must FAIL the stage early (demand a), and
+        // prose followed by a routing-field JSON must apply the routing
+        // fields, never silently completing without them.
+        struct FixedTextBackend(&'static str);
+
+        #[async_trait]
+        impl CodergenBackend for FixedTextBackend {
+            async fn run(&self, _request: CodergenRunRequest<'_>) -> Result<CodergenResult, Error> {
+                Ok(CodergenResult::Text {
+                    text:              self.0.to_string(),
+                    usage:             None,
+                    usage_by_model:    Vec::new(),
+                    files_touched:     Vec::new(),
+                    last_file_touched: None,
+                    timing:            StageTiming::default(),
+                })
+            }
+        }
+
+        // Mirrors the develop planner's @schemas/planner-output.schema.json
+        // routing contract: required routing fields plus an open
+        // context_updates object.
+        let schema = serde_json::json!({
+            "type": "object",
+            "required": ["outcome", "preferred_next_label"],
+            "properties": {
+                "outcome": { "type": "string" },
+                "preferred_next_label": {
+                    "type": "string",
+                    "enum": ["Seed claimed", "Blocked"]
+                },
+                "context_updates": {
+                    "type": "object",
+                    "additionalProperties": true
+                }
+            },
+            "additionalProperties": true
+        })
+        .to_string();
+        let cases: &[(&str, &str, bool)] = &[
+            (
+                "prose without JSON fails the stage instead of completing silently",
+                "Claimed fabro-ec00 (top of `sd ready`, priority 1). The preflight's \
+                 duplicate flag on fabro-90ae was adjudicated as a false positive; \
+                 basis resolves; claimed normally.",
+                false,
+            ),
+            (
+                "prose followed by a routing-field JSON applies routing fields",
+                concat!(
+                    "Claimed fabro-ec00. Basis resolves.\n\n",
+                    r#"{"outcome":"succeeded","preferred_next_label":"Seed claimed","#,
+                    r#""context_updates":{"current_seed_id":"fabro-ec00"}}"#
+                ),
+                true,
+            ),
+        ];
+
+        for (name, text, expect_routing_applied) in cases {
+            let handler = AgentHandler::new(Some(Box::new(FixedTextBackend(text))));
+            let mut node = Node::new("planner");
+            node.attrs.insert(
+                "output_schema".to_string(),
+                AttrValue::String(schema.clone()),
+            );
+            node.attrs
+                .insert("output_retries".to_string(), AttrValue::Integer(0));
+            let context = test_context();
+            let graph = Graph::new("test");
+            let tmp = TempDir::new().unwrap();
+
+            let outcome = handler
+                .execute(
+                    &node,
+                    &context,
+                    &graph,
+                    tmp.path(),
+                    &make_services(),
+                    &AttemptInfo::first(),
+                )
+                .await
+                .unwrap();
+
+            if *expect_routing_applied {
+                assert_eq!(
+                    outcome.status,
+                    crate::outcome::StageOutcome::Succeeded,
+                    "case: {name}"
+                );
+                assert_eq!(
+                    outcome.preferred_label.as_deref(),
+                    Some("Seed claimed"),
+                    "case: {name}"
+                );
+                assert_eq!(
+                    outcome.context_updates.get("current_seed_id"),
+                    Some(&serde_json::json!("fabro-ec00")),
+                    "case: {name} — context_updates must merge into run context"
+                );
+                assert_eq!(
+                    outcome
+                        .context_updates
+                        .get("output.planner")
+                        .and_then(|value| value.pointer("/preferred_next_label")),
+                    Some(&serde_json::json!("Seed claimed")),
+                    "case: {name} — full payload must stay under output.<node>"
+                );
+            } else {
+                assert_eq!(
+                    outcome.status,
+                    crate::outcome::StageOutcome::Failed {
+                        retry_requested: false,
+                    },
+                    "case: {name}"
+                );
+                assert_eq!(
+                    outcome.failure_reason(),
+                    Some("output schema validation failed after 0 repair attempt(s)"),
+                    "case: {name}"
+                );
+                assert!(outcome.preferred_label.is_none(), "case: {name}");
+                assert!(
+                    !outcome.context_updates.contains_key("current_seed_id"),
+                    "case: {name}"
+                );
+            }
+        }
+    }
+
+    #[tokio::test]
     async fn codergen_handler_custom_output_schema_updates_output_context_key() {
         struct CustomOutputBackend;
 
