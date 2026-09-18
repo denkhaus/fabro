@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo, useRef } from "react";
-import { Link, Navigate } from "react-router";
+import { Link, Navigate, useNavigate } from "react-router";
 import { CheckIcon, ChevronDownIcon, CommandLineIcon } from "@heroicons/react/24/outline";
 import { EllipsisVerticalIcon } from "@heroicons/react/20/solid";
 import { Menu, MenuButton, MenuItem, MenuItems } from "@headlessui/react";
@@ -360,6 +360,7 @@ function PrCard({
 // piece as a sibling `<div>` below the card body recreates a recurring bug
 // where stats stack onto separate lines instead of sitting next to size/actions.
 function PrCardFooter({ pr, actions }: { pr: RunItem; actions?: string[] }) {
+  const navigate = useNavigate();
   const hasActions = actions != null && actions.length > 0;
   const hasStats =
     pr.resources != null ||
@@ -399,6 +400,7 @@ function PrCardFooter({ pr, actions }: { pr: RunItem; actions?: string[] }) {
               key={label}
               type="button"
               disabled={pr.actionDisabled}
+              onClick={label === "Answer Question" ? () => navigate(`/runs/${pr.id}`) : undefined}
               className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] font-medium transition-colors disabled:cursor-not-allowed disabled:text-fg-muted disabled:border-line ${
                 label === "Merge"
                   ? "border-mint/20 text-mint hover:border-mint/50 hover:text-fg"
