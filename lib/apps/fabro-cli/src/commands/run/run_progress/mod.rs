@@ -3,10 +3,11 @@
     reason = "sync CLI run-progress renderer: writes to std::io::stderr directly"
 )]
 
-use fabro_types::{RunEvent, RunNoticeCode};
+use fabro_types::{RunEvent, RunNoticeCode, RunStreamItem};
 
 mod event;
 mod info_display;
+mod petri;
 mod renderer;
 mod setup_display;
 mod stage_display;
@@ -14,6 +15,7 @@ mod styles;
 
 use event::{ProgressEvent, from_json_line, from_run_event};
 use info_display::InfoDisplay;
+use petri::PetriProgressState;
 use renderer::ProgressRenderer;
 use setup_display::SetupDisplay;
 use stage_display::StageDisplay;
@@ -24,6 +26,7 @@ pub(crate) struct ProgressUI {
     setup: SetupDisplay,
     info: InfoDisplay,
     saw_metadata_snapshot_failure: bool,
+    petri: PetriProgressState,
 }
 
 impl ProgressUI {
@@ -46,6 +49,7 @@ impl ProgressUI {
             setup: SetupDisplay::new(verbose),
             info: InfoDisplay::new(verbose),
             saw_metadata_snapshot_failure: false,
+            petri: PetriProgressState::default(),
         }
     }
 
@@ -91,6 +95,14 @@ impl ProgressUI {
 
     pub(crate) fn handle_json_line(&mut self, line: &str) {
         if let Some(progress_event) = from_json_line(line) {
+            self.dispatch(progress_event);
+        }
+    }
+
+    /// One item of a Petri run's stream: the progress lines it means, if
+    /// any, rendered as a legacy event's would be.
+    pub(crate) fn handle_stream_item(&mut self, item: &RunStreamItem) {
+        for progress_event in petri::progress_events(item, &mut self.petri) {
             self.dispatch(progress_event);
         }
     }

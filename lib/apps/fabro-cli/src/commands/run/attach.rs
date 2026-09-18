@@ -31,7 +31,7 @@ use fabro_workflow::run_status::RunStatus;
 use tokio::signal::ctrl_c;
 use tokio::time::{Duration as TokioDuration, sleep};
 
-use super::run_progress;
+use super::{petri_stream, run_progress};
 use crate::server_client;
 
 const INTERVIEW_UNANSWERED_MESSAGE: &str =
@@ -39,6 +39,9 @@ const INTERVIEW_UNANSWERED_MESSAGE: &str =
 const JSON_INTERVIEW_MESSAGE: &str = "This run is waiting for human input, but --json is non-interactive. Reattach without --json to answer it.";
 const ATTACH_PREMATURE_EOF_MESSAGE: &str = "Attach stream ended before terminal run event.";
 const PROMPT_READ_POLL_INTERVAL: TokioDuration = TokioDuration::from_millis(50);
+/// How long a Petri attach waits before it reconnects to the stream the
+/// server ended while the run was still active.
+const STREAM_RECONNECT_DELAY: TokioDuration = TokioDuration::from_millis(200);
 
 enum PromptRead {
     Line(String),
@@ -182,6 +185,22 @@ pub(crate) async fn attach_run_with_client(
 ) -> Result<ExitCode> {
     let state = client.get_run_state(run_id).await?;
     let auto_approve = state.spec.settings.run.execution.approval == ApprovalMode::Auto;
+    if state.spec.engine.is_petri() {
+        return Box::pin(attach_petri_run_with_client(
+            client,
+            run_id,
+            &state,
+            styles,
+            AttachOptions {
+                auto_approve,
+                verbose: live_verbose,
+                kill_on_detach,
+                json_output,
+            },
+            printer,
+        ))
+        .await;
+    }
     let events = client.list_run_events(run_id, None, None).await?;
     let replay_events = events.clone();
     let next_seq = events.last().map_or(1, |event| event.seq.saturating_add(1));
@@ -319,6 +338,197 @@ async fn attach_live_run_with_client(
             }
         }
     }
+}
+
+/// Attach to a Petri run: replay its stream through the progress renderer,
+/// then follow it live from the last `stream_seq` seen. A question on the
+/// stream is asked at the terminal and answered through the questions API.
+/// When the server ends the stream before the run's terminal record, the
+/// attach reconnects from its cursor, so no item is missed or repeated.
+async fn attach_petri_run_with_client(
+    client: &server_client::Client,
+    run_id: &RunId,
+    state: &server_client::RunProjection,
+    styles: &'static Styles,
+    opts: AttachOptions,
+    printer: Printer,
+) -> Result<ExitCode> {
+    let is_tty = std::io::stderr().is_terminal();
+    let mut progress_ui = run_progress::ProgressUI::new(is_tty, opts.verbose);
+    let ctrl_c_signal = ctrl_c();
+    tokio::pin!(ctrl_c_signal);
+
+    let items = client.list_run_stream(run_id, 0).await?;
+    let mut cursor = items.last().map_or(0, |item| item.stream_seq);
+    let mut replayed_exit_code = None;
+    for item in &items {
+        emit_stream_item(&mut progress_ui, item, opts.json_output)?;
+        if let Some(code) = petri_stream::exit_code_of(item) {
+            replayed_exit_code = Some(ExitCode::from(code));
+        }
+    }
+    if let Some(exit_code) = replayed_exit_code.or_else(|| {
+        state_is_terminal(state).then(|| state_exit_code(state).unwrap_or(ExitCode::from(1)))
+    }) {
+        finish_progress(&mut progress_ui, opts.json_output);
+        return Ok(exit_code);
+    }
+
+    loop {
+        let mut stream = client.attach_run_stream(run_id, Some(cursor)).await?;
+        if let Some(exit_code) = Box::pin(handle_pending_petri_interview(
+            client,
+            run_id,
+            &mut stream,
+            &mut cursor,
+            &opts,
+            &mut progress_ui,
+            styles,
+            printer,
+        ))
+        .await?
+        {
+            return Ok(exit_code);
+        }
+
+        loop {
+            let next_item = tokio::select! {
+                _ = &mut ctrl_c_signal => {
+                    handle_detach_signal(client, run_id, opts.kill_on_detach, printer).await;
+                    finish_progress(&mut progress_ui, opts.json_output);
+                    return Ok(ExitCode::from(1));
+                }
+                result = stream.next_item() => result?,
+            };
+            let Some(item) = next_item else {
+                break;
+            };
+            cursor = item.stream_seq;
+            emit_stream_item(&mut progress_ui, &item, opts.json_output)?;
+            if let Some(code) = petri_stream::exit_code_of(&item) {
+                finish_progress(&mut progress_ui, opts.json_output);
+                return Ok(ExitCode::from(code));
+            }
+            if petri_stream::question_of(&item).is_some() {
+                if let Some(exit_code) = Box::pin(handle_pending_petri_interview(
+                    client,
+                    run_id,
+                    &mut stream,
+                    &mut cursor,
+                    &opts,
+                    &mut progress_ui,
+                    styles,
+                    printer,
+                ))
+                .await?
+                {
+                    return Ok(exit_code);
+                }
+            }
+        }
+
+        // The server ended the stream. A run that concluded has nothing
+        // more to send past what the grace let through; otherwise this is
+        // a lost connection, and the attach resumes from its cursor.
+        let state = client.get_run_state(run_id).await?;
+        if state_is_terminal(&state) {
+            for item in client.list_run_stream(run_id, cursor).await? {
+                emit_stream_item(&mut progress_ui, &item, opts.json_output)?;
+            }
+            finish_progress(&mut progress_ui, opts.json_output);
+            return Ok(state_exit_code(&state).unwrap_or(ExitCode::from(1)));
+        }
+        sleep(STREAM_RECONNECT_DELAY).await;
+    }
+}
+
+/// Ask the run's pending question, if one is listed, while the stream keeps
+/// flowing: an answer given elsewhere, or the run ending, ends the prompt.
+async fn handle_pending_petri_interview(
+    client: &server_client::Client,
+    run_id: &RunId,
+    stream: &mut server_client::RunStreamItemStream,
+    cursor: &mut u64,
+    opts: &AttachOptions,
+    progress_ui: &mut run_progress::ProgressUI,
+    styles: &'static Styles,
+    printer: Printer,
+) -> Result<Option<ExitCode>> {
+    let Some(question) = client.list_run_questions(run_id).await?.into_iter().next() else {
+        return Ok(None);
+    };
+
+    if json_pending_interview_requires_manual_input(opts.json_output, opts.auto_approve) {
+        fabro_util::printerr!(printer, "{JSON_INTERVIEW_MESSAGE}");
+        return Ok(Some(ExitCode::from(1)));
+    }
+    if opts.json_output {
+        return Ok(None);
+    }
+
+    hide_progress(progress_ui, opts.json_output);
+    let ask = ask_attach_question(api_question_to_question(&question), styles);
+    tokio::pin!(ask);
+    let ctrl_c_signal = ctrl_c();
+    tokio::pin!(ctrl_c_signal);
+
+    let answer = loop {
+        let next_item = tokio::select! {
+            answer = &mut ask => {
+                break answer;
+            }
+            _ = &mut ctrl_c_signal => {
+                handle_detach_signal(client, run_id, opts.kill_on_detach, printer).await;
+                show_progress(progress_ui, opts.json_output);
+                return Ok(Some(ExitCode::from(1)));
+            }
+            result = stream.next_item() => result?,
+        };
+
+        // The stream ended under the prompt: the caller reconnects and asks
+        // again if the question is still pending.
+        let Some(item) = next_item else {
+            show_progress(progress_ui, opts.json_output);
+            return Ok(None);
+        };
+
+        *cursor = item.stream_seq;
+        emit_stream_item(progress_ui, &item, opts.json_output)?;
+
+        if let Some(code) = petri_stream::exit_code_of(&item) {
+            show_progress(progress_ui, opts.json_output);
+            return Ok(Some(ExitCode::from(code)));
+        }
+
+        if petri_stream::resolves_question(&item, &question.id) {
+            show_progress(progress_ui, opts.json_output);
+            return Ok(None);
+        }
+    };
+    show_progress(progress_ui, opts.json_output);
+
+    if answer_requires_reattach(&answer) {
+        fabro_util::printerr!(printer, "{INTERVIEW_UNANSWERED_MESSAGE}");
+        return Ok(Some(ExitCode::from(1)));
+    }
+
+    submit_server_interview_answer(client, run_id, &question.id, &answer).await?;
+    Ok(None)
+}
+
+fn emit_stream_item(
+    progress_ui: &mut run_progress::ProgressUI,
+    item: &fabro_types::RunStreamItem,
+    json_output: bool,
+) -> Result<()> {
+    if json_output {
+        let stdout = std::io::stdout();
+        let mut handle = stdout.lock();
+        writeln!(handle, "{}", petri_stream::raw_line(item)?)?;
+    } else {
+        progress_ui.handle_stream_item(item);
+    }
+    Ok(())
 }
 
 async fn handle_pending_server_interview(

@@ -20,6 +20,7 @@ use fabro_util::terminal::Styles;
 use tokio::time;
 use tracing::{debug, info};
 
+use super::petri_stream;
 use crate::args::EventsArgs;
 use crate::command_context::CommandContext;
 use crate::server_client;
@@ -41,6 +42,24 @@ pub(crate) async fn run(
         Some(value) => Some(parse_since(value)?),
         None => None,
     };
+
+    // A Petri run's events are its stream, in the stream envelope.
+    let state = client
+        .get_run_state(&run_id)
+        .await
+        .context("Failed to read run state from server")?;
+    if state.spec.engine.is_petri() {
+        let pretty = args.pretty && !ctx.json_output();
+        return Box::pin(petri_stream::print_events(
+            client.as_ref(),
+            &run_id,
+            args,
+            since_cutoff,
+            pretty,
+            styles,
+        ))
+        .await;
+    }
 
     let events = match (args.tail, since_cutoff.is_none()) {
         (Some(tail), true) => {

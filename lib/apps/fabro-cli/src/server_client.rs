@@ -7,7 +7,7 @@ use fabro_client::{
     AuthEntry, AuthStore, Credential, OAuthSession, ServerTarget, TransportConnector,
     apply_bearer_token_auth,
 };
-pub(crate) use fabro_client::{Client, RunEventStream};
+pub(crate) use fabro_client::{Client, RunEventStream, RunStreamItemStream};
 use fabro_config::Storage;
 use fabro_config::bind::Bind;
 pub(crate) use fabro_types::RunProjection;
