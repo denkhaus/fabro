@@ -125,6 +125,8 @@ pub enum Recovery {
 pub enum RecoveryError {
     #[error("the run's record could not be opened")]
     Open(#[source] StoreError),
+    #[error("the run's coordinator log could not be read")]
+    Log(#[source] petri_execution::StoreError),
     #[error("the run's coordinator state could not be read")]
     State(#[source] HostError),
     #[error("the run's record could not be inspected")]
@@ -159,6 +161,14 @@ pub async fn recover(request: RecoveryRequest) -> Result<Recovery, RecoveryError
     // A record with no root invocation (the worker died between creating
     // the run and declaring it) has nothing to reconcile; the worker's
     // resume reports it as such.
+    let records = petri_execution::read_coordinator_log(&*logs)
+        .await
+        .map_err(RecoveryError::Log)?;
+    if records.is_empty() {
+        return Ok(Recovery::Resume {
+            workspaces: Vec::new(),
+        });
+    }
     let state = host::stored_state(&*logs)
         .await
         .map_err(RecoveryError::State)?;
@@ -194,12 +204,14 @@ pub async fn recover(request: RecoveryRequest) -> Result<Recovery, RecoveryError
     let lookup = WorkspaceLookup::new(Arc::clone(&request.store), key);
     let recorded = recorded_checkpoints(&*request.records, &request.run_id).await?;
 
-    // The snapshot each live execution's workspace must sit on.
+    // The snapshot each live execution's workspace must sit on. A live
+    // execution is one whose log records no exit: `inspect_run` reports it
+    // as incomplete.
     let mut candidates: BTreeMap<String, Vec<(Target, String)>> = BTreeMap::new();
     for execution in inspection
         .executions
         .iter()
-        .filter(|execution| execution.status == "running")
+        .filter(|execution| execution.status == "incomplete")
     {
         let Some(target) = last_finish(execution) else {
             continue;

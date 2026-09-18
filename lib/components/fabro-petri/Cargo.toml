@@ -53,4 +53,6 @@ fabro-auth = { path = "../../foundation/fabro-auth", features = ["test-support"]
 fabro-llm = { path = "../fabro-llm", features = ["test-support"] }
 fabro-store = { path = "../fabro-store", features = ["test-support"] }
 petri_testkit.workspace = true
+fabro-test = { workspace = true }
+lithos-llm = { workspace = true, features = ["runtime"] }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

@@ -466,3 +466,148 @@ async fn recovery_starts_an_unknown_run_and_resumes_a_finished_one() {
         3
     );
 }
+
+/// A `[[run.hooks]]` hook that blocks a tool effect keeps working through
+/// the forwarded local service: the agent's `rm` is refused by the
+/// `pre_tool_use` hook, the model is told why, and the file it aimed at is
+/// still in the stage's snapshot.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_run_hook_blocks_a_tool_effect_through_the_forwarded_service() {
+    use fabro_auth::test_support::env_credential_source;
+    use fabro_llm::test_support::test_catalog_with_provider_base_url;
+    use fabro_petri::runtime;
+    use fabro_test::{TwinScenario, TwinScenarios, TwinToolCall};
+    use lithos_llm::catalog::ProviderId;
+    use serde_json::json;
+
+    const MODEL: &str = "gpt-5.6-sol";
+    if host_plugin().is_none() {
+        return;
+    }
+    let twin = fabro_test::twin_openai().await;
+    let namespace = format!("{}::{}", module_path!(), line!());
+    TwinScenarios::new(namespace.clone())
+        .scenario(
+            TwinScenario::responses(MODEL)
+                .input_contains("Remove the scratch file")
+                .tool_call(TwinToolCall::new(
+                    "shell_command",
+                    json!({ "command": "rm -f scratch.txt && echo removed" }),
+                )),
+        )
+        .scenario(
+            TwinScenario::responses(MODEL)
+                .input_contains("destructive commands are not allowed")
+                .text("Understood, the file stays."),
+        )
+        .load(twin)
+        .await;
+    let api_key = namespace.clone();
+    let credentials =
+        env_credential_source(move |name| (name == "OPENAI_API_KEY").then(|| api_key.clone()));
+    let client = runtime::model_client(
+        test_catalog_with_provider_base_url("openai", &twin.base_url),
+        credentials,
+        None,
+        &[ProviderId::new("openai")],
+    )
+    .expect("the model client builds")
+    .expect("openai is eligible");
+
+    let harness = Harness::new();
+    let workflow = format!(
+        "digraph Hooks {{\n  graph [backend=\"api\", goal=\"Check the tool hooks\", \
+         default_max_retries=0]\n  start [shape=Mdiamond]\n  exit [shape=Msquare]\n  seed \
+         [shape=parallelogram, script=\"echo keep > scratch.txt\"]\n  agent [prompt=\"Remove the \
+         scratch file with the shell tool.\", model=\"{MODEL}\", provider=\"openai\", \
+         fidelity=\"full\"]\n  check [shape=parallelogram, script=\"test \\\"$(cat scratch.txt)\\\" \
+         = keep\"]\n  start -> seed -> agent -> check -> exit\n}}\n"
+    );
+    let settings = format!(
+        "{SETTINGS}\n[[run.hooks]]\nname = \"no-destruction\"\nevent = \"pre_tool_use\"\nmatcher \
+         = \"shell\"\nscript = \"if grep -q 'rm ' \\\"$FABRO_HOOK_CONTEXT\\\"; then echo \
+         '{{\\\"decision\\\":\\\"block\\\",\\\"reason\\\":\\\"destructive commands are not \
+         allowed\\\"}}'; exit 2; fi\"\n"
+    );
+    let request = RunRequest {
+        run_id:    harness.run_id.to_string(),
+        run_dir:   harness.run_dir.clone(),
+        execution: Execution::Start(admit(&workflow, &settings)),
+        store:     Arc::clone(&harness.store) as Arc<dyn petri_store::RunStore>,
+        runtime:   RuntimeSpec {
+            model_client: Some(client),
+            ..RuntimeSpec::default()
+        },
+        provider:  SandboxProviderKind::LOCAL,
+        cancel:    CancellationToken::new(),
+        hooks:     Some(harness.hooks()),
+    };
+    let outcome = engine::run(request).await.expect("the run executes");
+    assert_eq!(outcome.status, RunStatus::Success, "{outcome:?}");
+    let inspection = harness.inspection().await;
+    assert_eq!(stages(&inspection), vec![
+        ("start".to_string(), "success".to_string()),
+        ("seed".to_string(), "success".to_string()),
+        ("agent".to_string(), "success".to_string()),
+        ("check".to_string(), "success".to_string()),
+        ("exit".to_string(), "success".to_string()),
+    ]);
+    let requests = twin.request_logs(&namespace).await;
+    let inputs: Vec<&str> = requests["requests"]
+        .as_array()
+        .map(|requests| {
+            requests
+                .iter()
+                .filter_map(|request| request["input_text"].as_str())
+                .collect()
+        })
+        .unwrap_or_default();
+    assert_eq!(inputs.len(), 2, "{inputs:?}");
+    assert!(
+        inputs[1].contains("destructive commands are not allowed"),
+        "the model was told why the tool was blocked: {inputs:?}"
+    );
+    let workspace = harness.workspace().await;
+    let path = harness.workspace_path(&workspace);
+    assert_eq!(
+        git(&path, &["show", "HEAD:scratch.txt"]).await,
+        "keep",
+        "the blocked removal never happened"
+    );
+    assert_eq!(harness.checkpoints().len(), 5);
+}
+
+/// The run's records name the workspace its root invocation ran in: what
+/// recovery reads to find the workspace of a live execution.
+#[tokio::test]
+async fn the_records_name_the_root_invocations_workspace() {
+    use fabro_petri::workspace::WorkspaceLookup;
+    use petri_execution::InvocationId;
+
+    if host_plugin().is_none() {
+        return;
+    }
+    let harness = Harness::new();
+    let workflow = workflow(
+        "  write [shape=parallelogram, script=\"echo one > out.txt\"]",
+        "  start -> write -> exit",
+    );
+    let outcome = harness.run(&workflow, SETTINGS).await;
+    assert_eq!(outcome.status, RunStatus::Success, "{outcome:?}");
+    let lookup = WorkspaceLookup::new(
+        Arc::clone(&harness.store) as Arc<dyn petri_store::RunStore>,
+        RunKey::new(harness.run_id.to_string()),
+    );
+    let named = lookup
+        .of_invocation(InvocationId::ROOT)
+        .await
+        .expect("the lookup reads the records");
+    assert_eq!(named, vec![harness.workspace().await]);
+    let inspection = harness.inspection().await;
+    let statuses: Vec<&str> = inspection
+        .executions
+        .iter()
+        .map(|execution| execution.status)
+        .collect();
+    assert_eq!(statuses, vec!["finished"]);
+}

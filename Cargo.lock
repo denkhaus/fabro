@@ -2900,6 +2900,7 @@ dependencies = [
  "fabro-llm",
  "fabro-petri",
  "fabro-store",
+ "fabro-test",
  "fabro-types",
  "fabro-util",
  "lithos-llm",
