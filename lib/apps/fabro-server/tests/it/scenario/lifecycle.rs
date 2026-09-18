@@ -276,8 +276,8 @@ async fn full_http_lifecycle_cancel() {
     // projection — the run is then terminally `failed` with reason
     // `cancelled`, which the durable-convergence assert below verifies.
     let status_kind = &body["lifecycle"]["status"]["kind"];
-    let cancel_processed = status_kind == "failed"
-        && body["lifecycle"]["status"]["reason"] == "cancelled";
+    let cancel_processed =
+        status_kind == "failed" && body["lifecycle"]["status"]["reason"] == "cancelled";
     assert!(
         status_kind == "blocked" || status_kind == "running" || cancel_processed,
         "expected status.kind to be \"blocked\", \"running\", or \"failed\"          (cancel already processed — reason \"cancelled\"), got {status_kind}"
