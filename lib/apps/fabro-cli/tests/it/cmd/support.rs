@@ -504,6 +504,66 @@ impl WorkflowGate {
     }
 }
 
+/// A git-backed workspace whose run appends two lines to `story.txt`, one
+/// per stage: `step_one` adds `line 2`, `step_two` adds `line 3`.
+pub(crate) fn setup_git_backed_changed_run(context: &TestContext) -> WorkspaceRunSetup {
+    git_backed_run(
+        context,
+        "changed",
+        "step_one [shape=parallelogram, script=\"printf 'line 2\\n' >> story.txt\"]\n  \
+         step_two [shape=parallelogram, script=\"printf 'line 3\\n' >> story.txt\"]",
+        "start -> step_one -> step_two -> exit",
+    )
+}
+
+/// A git-backed workspace whose run changes nothing.
+pub(crate) fn setup_git_backed_noop_run(context: &TestContext) -> WorkspaceRunSetup {
+    git_backed_run(
+        context,
+        "noop",
+        "step_one [shape=parallelogram, script=\"cat story.txt\"]",
+        "start -> step_one -> exit",
+    )
+}
+
+/// A run on the local provider from a workspace with one commit, so the
+/// run branch starts from a base the run's diff is measured against.
+fn git_backed_run(
+    context: &TestContext,
+    name: &str,
+    stages: &str,
+    edges: &str,
+) -> WorkspaceRunSetup {
+    let workspace_dir = context.temp_dir.join(format!("git-{name}"));
+    std::fs::create_dir_all(&workspace_dir)
+        .unwrap_or_else(|err| panic!("failed to create {}: {err}", workspace_dir.display()));
+    write_text_file(&workspace_dir.join("story.txt"), "line 1\n");
+    write_text_file(
+        &workspace_dir.join("story.fabro"),
+        &format!(
+            "digraph Story {{\n  graph [goal=\"Change the story\", default_max_retries=0]\n  \
+             start [shape=Mdiamond]\n  exit [shape=Msquare]\n  {stages}\n  {edges}\n}}\n"
+        ),
+    );
+    write_text_file(
+        &workspace_dir.join("workflow.toml"),
+        "_version = 1\n\n[workflow]\ngraph = \"story.fabro\"\n\n[run]\ngoal = \"Change the \
+         story\"\n\n[run.environment]\nid = \"local\"\n\n[environments.local]\nprovider = \
+         \"local\"\n",
+    );
+    init_remote_fixture(&workspace_dir, "main");
+    let run = run_local_workflow(context, &workspace_dir, "workflow.toml");
+    WorkspaceRunSetup { run, workspace_dir }
+}
+
+/// The run output filters plus one for commit shas, which a patch names in
+/// its index lines.
+pub(crate) fn git_filters(context: &TestContext) -> Vec<(String, String)> {
+    let mut filters = context.filters();
+    filters.push((r"\b[0-9a-f]{7,40}\b".to_string(), "[SHA]".to_string()));
+    filters
+}
+
 pub(crate) fn setup_local_sandbox_run(context: &TestContext) -> WorkspaceRunSetup {
     let workspace_dir = context.temp_dir.join("local-sandbox");
     std::fs::create_dir_all(&workspace_dir)

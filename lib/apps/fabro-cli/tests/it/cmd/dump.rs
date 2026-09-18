@@ -91,7 +91,7 @@ fn dump_exports_large_command_output_backed_by_blob_refs() {
 
     start [shape=Mdiamond, label="Start"]
     exit  [shape=Msquare, label="Exit"]
-    big   [shape=parallelogram, label="Big", script="printf '%*s' 120000 '' | tr ' ' x"]
+    big   [shape=parallelogram, label="Big", script="yes xxxxxxxxxxxxxxxx | head -n 8000"]
 
     start -> big -> exit
 }
@@ -160,7 +160,7 @@ fn dump_exports_blob_refs_and_artifacts_together() {
 
     start [shape=Mdiamond, label="Start"]
     exit  [shape=Msquare, label="Exit"]
-    big   [shape=parallelogram, label="Big", script="mkdir -p assets/shared && printf exported > assets/shared/report.txt && printf '%*s' 120000 '' | tr ' ' x"]
+    big   [shape=parallelogram, label="Big", script="mkdir -p assets/shared && printf exported > assets/shared/report.txt && yes xxxxxxxxxxxxxxxx | head -n 8000"]
 
     start -> big -> exit
 }

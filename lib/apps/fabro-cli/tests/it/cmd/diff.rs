@@ -1,5 +1,7 @@
 use fabro_test::{fabro_snapshot, test_context};
 
+use super::support::{git_filters, setup_git_backed_changed_run, setup_git_backed_noop_run};
+
 #[test]
 fn help() {
     let context = test_context!();
@@ -27,4 +29,103 @@ fn help() {
       -h, --help              Print help
     ----- stderr -----
     ");
+}
+
+#[test]
+fn diff_completed_run_without_changes_reports_no_patch() {
+    let context = test_context!();
+    let setup = setup_git_backed_noop_run(&context);
+    let mut cmd = context.command();
+    cmd.args(["diff", &setup.run.run_id]);
+
+    fabro_snapshot!(git_filters(&context), cmd, @"
+    success: false
+    exit_code: 1
+    ----- stdout -----
+    ----- stderr -----
+      × Run completed but no stored diff exists — the run may not have produced any changes
+    ");
+}
+
+#[test]
+fn diff_missing_node_diff_reports_helpful_error() {
+    let context = test_context!();
+    let setup = setup_git_backed_changed_run(&context);
+    let mut cmd = context.command();
+    cmd.args(["diff", &setup.run.run_id, "--node", "missing"]);
+
+    fabro_snapshot!(git_filters(&context), cmd, @"
+    success: false
+    exit_code: 1
+    ----- stdout -----
+    ----- stderr -----
+      × No diff found for node 'missing' — check the node ID and try again
+    ");
+}
+
+#[test]
+fn diff_completed_run_with_changes_prints_patch() {
+    let context = test_context!();
+    let setup = setup_git_backed_changed_run(&context);
+    let mut cmd = context.command();
+    cmd.args(["diff", &setup.run.run_id]);
+
+    fabro_snapshot!(git_filters(&context), cmd, @"
+    success: true
+    exit_code: 0
+    ----- stdout -----
+    diff --git a/story.txt b/story.txt
+    index [SHA]..[SHA] 100644
+    --- a/story.txt
+    +++ b/story.txt
+    @@ -1 +1,3 @@
+     line 1
+    +line 2
+    +line 3
+    ----- stderr -----
+    ");
+}
+
+#[test]
+fn diff_node_outputs_specific_patch() {
+    let context = test_context!();
+    let setup = setup_git_backed_changed_run(&context);
+    let mut cmd = context.command();
+    cmd.args(["diff", &setup.run.run_id, "--node", "step_one"]);
+
+    fabro_snapshot!(git_filters(&context), cmd, @"
+    success: true
+    exit_code: 0
+    ----- stdout -----
+    diff --git a/story.txt b/story.txt
+    index [SHA]..[SHA] 100644
+    --- a/story.txt
+    +++ b/story.txt
+    @@ -1 +1,2 @@
+     line 1
+    +line 2
+    ----- stderr -----
+    ");
+}
+
+#[test]
+fn diff_json_carries_the_resolved_patch() {
+    let context = test_context!();
+    let setup = setup_git_backed_changed_run(&context);
+    let output = context
+        .command()
+        .args(["diff", "--json", &setup.run.run_id])
+        .output()
+        .expect("diff should execute");
+    assert!(
+        output.status.success(),
+        "diff failed\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let value: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("diff JSON should parse");
+    let patch = value["diff"].as_str().expect("the patch is text");
+    assert!(patch.contains("+line 2\n+line 3"), "{patch}");
+    assert!(!patch.contains("blob://"), "{patch}");
 }
