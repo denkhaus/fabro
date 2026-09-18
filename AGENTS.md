@@ -136,6 +136,10 @@ Fabro is an AI-powered workflow orchestration platform. Workflows are defined as
 - **fabro-telemetry** — CLI analytics (Segment) and crash reporting (Sentry), with anonymous IDs, command sanitization, and detached subprocess delivery
 - **fabro-util** — Shared utilities (redaction, terminal formatting)
 
+### Engine freeze
+
+The engine half of `fabro-workflow` takes bug fixes only: `handler/`, `lifecycle/`, `pipeline/execute` (the file and the directory), `graph/routing.rs`, `node_handler.rs`, `retry.rs`, `condition.rs`, `context.rs` and `model_fallback.rs` under `lib/components/fabro-workflow/src/`. New engine behaviour goes to Petri through `fabro-petri`. The `Engine freeze` CI check (`.github/workflows/engine-freeze.yml`) fails a pull request that adds lines under those paths unless it carries the `bugfix` label. The path list lives in `scripts/check-engine-freeze.sh`, which runs locally as `scripts/check-engine-freeze.sh origin/main` and reports the added lines; `scripts/check-engine-freeze-test.sh` is its self-test.
+
 ### TypeScript (`apps/` and `lib/packages/`)
 - **apps/fabro-web** — React 19 + React Router + Tailwind CSS frontend, bundled by a custom Bun script (`apps/fabro-web/scripts/build.ts`), not Vite
 - **lib/packages/fabro-api-client** — Auto-generated TypeScript Axios client from OpenAPI spec
