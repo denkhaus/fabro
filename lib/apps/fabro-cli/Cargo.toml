@@ -31,7 +31,6 @@ sandbox-driver.workspace = true
 fabro-dump = { path = "../../components/fabro-dump" }
 fabro-install = { path = "../../components/fabro-install" }
 fabro-interview = { path = "../../components/fabro-interview" }
-fabro-mcp = { path = "../../components/fabro-mcp" }
 fabro-mcp-server = { path = "../fabro-mcp-server" }
 fabro-petri = { path = "../../components/fabro-petri" }
 fabro-manifest = { path = "../../components/fabro-manifest" }
@@ -120,7 +119,7 @@ assert_cmd = "2"
 fabro-db = { path = "../../foundation/fabro-db" }
 walkdir.workspace = true
 fabro-acp = { path = "../../components/fabro-acp", features = ["test-support"] }
-fabro-mcp = { path = "../../components/fabro-mcp", features = ["test-support"] }
+rmcp = { workspace = true, features = ["client", "transport-child-process"] }
 fabro-build-support = { path = "../../foundation/build-support" }
 fabro-sandbox = { path = "../../components/fabro-sandbox", features = ["test-support"] }
 fabro-server = { path = "../fabro-server", features = ["test-support"] }

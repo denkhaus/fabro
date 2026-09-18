@@ -18,16 +18,16 @@ use std::time::{Duration, Instant};
 
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
 use fabro_client::{AuthEntry, AuthStore, DevTokenEntry, OAuthEntry, StoredSubject};
-use fabro_mcp::config::{McpServerSettings, McpTransport};
-use fabro_mcp::test_support::McpStdioTestClient as McpClient;
 use fabro_test::{fabro_json_snapshot, fabro_snapshot, test_context};
+use fabro_types::settings::run::{McpServerSettings, McpTransport};
 use fabro_types::{Graph, RunId, WorkflowSettings, test_support};
 use httpmock::Method::{GET, POST};
 use httpmock::MockServer;
 
 use super::support::{mock_resolved_run, remote_run_summary_json};
 use crate::support::{
-    RealAuthHarness, TEST_DEV_TOKEN, run_projection_json, seed_dev_token_auth, unique_run_id,
+    McpStdioTestClient as McpClient, RealAuthHarness, TEST_DEV_TOKEN, run_projection_json,
+    seed_dev_token_auth, unique_run_id,
 };
 
 const MCP_RUN_TOOL_NAMES: &[&str] = &[

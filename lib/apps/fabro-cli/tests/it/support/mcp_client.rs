@@ -1,15 +1,16 @@
-//! A stdio MCP client for tests of fabro's own MCP server.
+//! A stdio MCP client for the tests of fabro's own MCP server.
 //!
 //! Production agents reach MCP servers through pebble, which owns the client.
 //! Fabro's `fabro mcp` command *is* an MCP server, and its tests need a
 //! client to speak to it over its standard streams; this is that client and
-//! nothing more. It links only into tests.
+//! nothing more.
 
 use std::process::Stdio;
 use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{Context as _, Result, anyhow};
+use fabro_types::settings::run::{McpServerSettings, McpTransport};
 use rmcp::model::{
     CallToolRequestParams, CallToolResult, ClientCapabilities, ClientInfo, Implementation,
     ProtocolVersion,
@@ -20,8 +21,6 @@ use tokio::process::Command;
 use tokio::sync::Mutex;
 use tokio::time;
 
-use crate::config::{McpServerSettings, McpTransport};
-
 enum State {
     Connecting(Option<TokioChildProcess>),
     Ready(Arc<RunningService<RoleClient, ClientInfo>>),
@@ -29,7 +28,7 @@ enum State {
 }
 
 /// A test client over a stdio MCP server.
-pub struct McpStdioTestClient {
+pub(crate) struct McpStdioTestClient {
     server_name: String,
     state:       Mutex<State>,
 }
@@ -37,7 +36,7 @@ pub struct McpStdioTestClient {
 impl McpStdioTestClient {
     /// Spawns the server `config` names. Only a `stdio` transport is
     /// supported; call [`initialize`](Self::initialize) next.
-    pub fn new(config: &McpServerSettings) -> Result<Self> {
+    pub(crate) fn new(config: &McpServerSettings) -> Result<Self> {
         let McpTransport::Stdio { command, env } = &config.transport else {
             return Err(anyhow!(
                 "MCP test client '{}': only a stdio transport is supported",
@@ -73,7 +72,7 @@ impl McpStdioTestClient {
     }
 
     /// Performs the MCP handshake within `timeout`.
-    pub async fn initialize(&self, timeout: Duration) -> Result<()> {
+    pub(crate) async fn initialize(&self, timeout: Duration) -> Result<()> {
         let transport = {
             let mut guard = self.state.lock().await;
             match &mut *guard {
@@ -116,7 +115,7 @@ impl McpStdioTestClient {
     }
 
     /// Every tool the server exposes, as `(name, description, input_schema)`.
-    pub async fn list_tools(&self) -> Result<Vec<(String, String, serde_json::Value)>> {
+    pub(crate) async fn list_tools(&self) -> Result<Vec<(String, String, serde_json::Value)>> {
         let service = self.service().await?;
         let tools = service.list_all_tools().await.map_err(|error| {
             anyhow!(
@@ -137,7 +136,7 @@ impl McpStdioTestClient {
     }
 
     /// Calls `name` with `arguments`, waiting at most `timeout`.
-    pub async fn call_tool(
+    pub(crate) async fn call_tool(
         &self,
         name: &str,
         arguments: serde_json::Value,
@@ -171,7 +170,7 @@ impl McpStdioTestClient {
     }
 
     /// Ends the session and stops the server.
-    pub async fn shutdown(self) -> Result<()> {
+    pub(crate) async fn shutdown(self) -> Result<()> {
         let service = match std::mem::replace(&mut *self.state.lock().await, State::Closed) {
             State::Connecting(_) | State::Closed => None,
             State::Ready(service) => Some(service),

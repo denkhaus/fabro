@@ -1,6 +1,7 @@
 use fabro_types::{PetriAdmission, test_support};
 mod auth_harness;
 mod auth_tokens;
+mod mcp_client;
 
 use assert_cmd::Command;
 pub(crate) use auth_harness::{
@@ -11,6 +12,7 @@ pub(crate) use auth_tokens::{TEST_SESSION_SECRET, issue_test_github_jwt, issue_t
 use fabro_store::EventEnvelope;
 use fabro_test::{EnvVars, TestContext, preserve_coverage_env};
 use fabro_types::{Graph, RunId, RunSpec, WorkflowSettings};
+pub(crate) use mcp_client::McpStdioTestClient;
 
 pub(crate) fn run_output_filters(context: &TestContext) -> Vec<(String, String)> {
     let mut filters = context.filters();

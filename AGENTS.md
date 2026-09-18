@@ -130,7 +130,7 @@ Fabro is an AI-powered workflow orchestration platform. Workflows are defined as
 - **fabro-llm** — Unified LLM client with providers: Anthropic, OpenAI, Gemini, OpenAI-compatible, plus retry/middleware/streaming
 - **fabro-api** — Auto-generated Rust types and reqwest HTTP client from OpenAPI spec (build.rs + progenitor)
 - **fabro-github** — GitHub App auth (JWT signing, installation tokens, PR creation)
-- **fabro-mcp** — Model Context Protocol client/server
+- **fabro-mcp-server** — Fabro's own MCP server (`fabro mcp`): the run tools for external agents
 - **fabro-slack** — Slack integration (socket mode, blocks API)
 - **fabro-checkpoint** — Git checkpoint author identity and commit trailers
 - **fabro-telemetry** — CLI analytics (Segment) and crash reporting (Sentry), with anonymous IDs, command sanitization, and detached subprocess delivery
@@ -249,7 +249,7 @@ Fabro is an AI-powered workflow orchestration platform. Workflows are defined as
 - **fabro-llm** — Unified LLM client with providers: Anthropic, OpenAI, Gemini, OpenAI-compatible, plus retry/middleware/streaming
 - **fabro-api** — Auto-generated Rust types and reqwest HTTP client from OpenAPI spec (build.rs + progenitor)
 - **fabro-github** — GitHub App auth (JWT signing, installation tokens, PR creation)
-- **fabro-mcp** — Model Context Protocol client/server
+- **fabro-mcp-server** — Fabro's own MCP server (`fabro mcp`): the run tools for external agents
 - **fabro-slack** — Slack integration (socket mode, blocks API)
 - **fabro-checkpoint** — Git checkpoint author identity and commit trailers
 - **fabro-telemetry** — CLI analytics (Segment) and crash reporting (Sentry), with anonymous IDs, command sanitization, and detached subprocess delivery

@@ -2407,7 +2407,6 @@ dependencies = [
  "fabro-llm",
  "fabro-macros",
  "fabro-manifest",
- "fabro-mcp",
  "fabro-mcp-server",
  "fabro-oauth",
  "fabro-petri",
@@ -2450,6 +2449,7 @@ dependencies = [
  "regex",
  "reqwest 0.13.4",
  "ring",
+ "rmcp",
  "rustls",
  "sandbox-driver",
  "scopeguard",
@@ -2752,19 +2752,6 @@ dependencies = [
  "toml 0.8.23",
  "tracing",
  "tracing-subscriber",
-]
-
-[[package]]
-name = "fabro-mcp"
-version = "0.357.0-nightly.0"
-dependencies = [
- "anyhow",
- "fabro-types",
- "pebble-coding-agent",
- "rmcp",
- "serde_json",
- "tokio",
- "tracing",
 ]
 
 [[package]]

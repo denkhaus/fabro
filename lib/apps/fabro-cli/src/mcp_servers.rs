@@ -1,4 +1,4 @@
-//! Fabro's MCP server settings as the servers pebble starts.
+//! Fabro's MCP server settings as the servers pebble starts, for `fabro exec`.
 //!
 //! Fabro's three transports are pebble's three placements: a `stdio` server
 //! is a child of fabro's process, an `http` server is reached directly, and a
@@ -8,16 +8,15 @@
 
 use std::collections::{BTreeMap, HashMap};
 
+use fabro_types::settings::run::{McpHttpProtocol, McpServerSettings, McpTransport};
 use pebble_coding_agent::mcp::{McpHttpProtocol as PebbleProtocol, McpPlacement, McpServer};
-
-use crate::config::{McpHttpProtocol, McpServerSettings, McpTransport};
 
 /// Where a sandbox-hosted SSE server serves its event stream.
 const SSE_PATH: &str = "/sse";
 
 /// The pebble server `settings` describes.
 #[must_use]
-pub fn pebble_server(settings: &McpServerSettings) -> McpServer {
+pub(crate) fn pebble_server(settings: &McpServerSettings) -> McpServer {
     let placement = match &settings.transport {
         McpTransport::Stdio { command, env } => McpPlacement::Stdio {
             command:     command.clone(),
@@ -53,7 +52,7 @@ pub fn pebble_server(settings: &McpServerSettings) -> McpServer {
 }
 
 /// The pebble servers for every configured server, in configuration order.
-pub fn pebble_servers<'a>(
+pub(crate) fn pebble_servers<'a>(
     settings: impl IntoIterator<Item = &'a McpServerSettings>,
 ) -> Vec<McpServer> {
     settings.into_iter().map(pebble_server).collect()
