@@ -15,12 +15,15 @@
 //! `inspect_run` over a read handle of the same store, so what the caller
 //! reports is what the durable record says.
 //!
-//! What the standalone runner's defaults give the run: Petri's local hook
-//! service for `[[run.hooks]]`, no `ExecutionHooks` of Fabro's own, the
-//! [`Unattended`] interviewer that fails any question, no host tools, and
-//! `Retention::Always` for every workspace, Fabro's default. Cancellation
-//! rides the caller's token: when it fires, the root invocation is cancelled
-//! politely and Petri records why.
+//! What the caller supplies beyond the runtime: the interviewer its
+//! questions go to ([`interview`](crate::interview) in the worker and the
+//! server), the secret provider over the vault ([`secrets`](crate::secrets))
+//! and the blob table ([`blobs`](crate::blobs)) when it has them. What the
+//! standalone runner's defaults give the run: Petri's local hook service
+//! for `[[run.hooks]]`, no `ExecutionHooks` of Fabro's own, no host tools,
+//! and `Retention::Always` for every workspace, Fabro's default.
+//! Cancellation rides the caller's token: when it fires, the root
+//! invocation is cancelled politely and Petri records why.
 //!
 //! A resume here is Petri's own: the run continues from its records, and
 //! sandbox leases are reconciled by label. Full recovery, where the
@@ -39,17 +42,19 @@ use fabro_types::{FailureReason, SandboxProviderKind};
 use petri_execution::host::{self, HostError, HostRun};
 use petri_execution::inspect::{self, InspectError, RunInspection};
 use petri_execution::{
-    Access, CancelReason, InterviewDispatcher, InvocationId, RECEIPT_FILE, RunKey, RunStore,
+    Access, CancelReason, ExecutionObserver, InterviewDispatcher, Interviewer, InvocationId,
+    RECEIPT_FILE, RunKey, RunStore,
 };
-use petri_runtime::executor::Retention;
+use petri_runtime::executor::{Retention, SecretProvider};
 use petri_runtime::{RunOptions, SandboxBackend};
 use tokio::fs;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, info, warn};
 
 use crate::admission::AdmittedGraphs;
-use crate::interviewer::Unattended;
+use crate::blobs::{Blobs, RunBlobs};
 use crate::runtime::RuntimeSpec;
+use crate::secrets::SharedSecrets;
 
 /// How the run is entered: fresh, from the admitted graphs, or continued
 /// from its records.
@@ -66,18 +71,30 @@ pub enum Execution {
 pub struct RunRequest {
     /// The Fabro run id, which becomes Petri's run key: the run's identity
     /// in the store and the label on every sandbox of the run.
-    pub run_id:    String,
+    pub run_id:      String,
     /// Where the run's workspaces, step output and blobs live.
-    pub run_dir:   PathBuf,
-    pub execution: Execution,
+    pub run_dir:     PathBuf,
+    pub execution:   Execution,
     /// The run's durable record: the worker's HTTP store, or the server's
     /// SQLite store under the test override.
-    pub store:     Arc<dyn RunStore>,
-    pub runtime:   RuntimeSpec,
+    pub store:       Arc<dyn RunStore>,
+    pub runtime:     RuntimeSpec,
     /// The sandbox provider Fabro resolved for the run's environment.
-    pub provider:  SandboxProviderKind,
+    pub provider:    SandboxProviderKind,
     /// Fires to cancel the run.
-    pub cancel:    CancellationToken,
+    pub cancel:      CancellationToken,
+    /// Where the run's questions go.
+    pub interviewer: Arc<dyn Interviewer>,
+    /// The caller's observers of every record, registered ahead of the
+    /// interview dispatcher: the interviewer's own expiry observer among
+    /// them.
+    pub observers:   Vec<Arc<dyn ExecutionObserver>>,
+    /// Where `{{ secrets.NAME }}` references resolve from; `None` leaves
+    /// every secret unknown.
+    pub secrets:     Option<Arc<dyn SecretProvider>>,
+    /// Where offloaded stage values go; `None` keeps Petri's local store
+    /// under the run directory.
+    pub blobs:       Option<Arc<dyn Blobs>>,
 }
 
 /// The recorded status of a finished run.
@@ -140,13 +157,19 @@ pub async fn run(request: RunRequest) -> Result<RunOutcome, RunError> {
     options.run_key = Some(key.clone());
     options.retention = Retention::Always;
     options.sandbox.backend = backend;
-    let runtime = request
+    let mut runtime = request
         .runtime
         .runtime(true)
         .store(Arc::clone(&request.store))
         .options(options);
+    if let Some(secrets) = request.secrets {
+        runtime = runtime.secrets(SharedSecrets(secrets));
+    }
+    if let Some(blobs) = request.blobs {
+        runtime = runtime.capability(RunBlobs::output_store(blobs));
+    }
 
-    let dispatcher = InterviewDispatcher::new(Arc::new(Unattended));
+    let dispatcher = InterviewDispatcher::new(request.interviewer);
     let cancel = request.cancel.clone();
     let mut cancel_task = None;
     let with_handle = |handle: petri_execution::CoordinatorHandle, secrets| {
@@ -157,12 +180,15 @@ pub async fn run(request: RunRequest) -> Result<RunOutcome, RunError> {
             handle.cancel_root_for(CancelReason::Control);
         }));
     };
+    let mut observers = request.observers;
+    observers.push(Arc::new(dispatcher.clone()));
     let result = match request.execution {
         Execution::Start(graphs) => {
             info!(run_id = %request.run_id, backend = %backend, "Starting Petri run");
-            let host_run = HostRun::new(graphs.graph)
-                .with_children(graphs.children)
-                .observe(Arc::new(dispatcher.clone()));
+            let mut host_run = HostRun::new(graphs.graph).with_children(graphs.children);
+            for observer in observers {
+                host_run = host_run.observe(observer);
+            }
             Box::pin(host::run_configured(&runtime, host_run, with_handle)).await
         }
         Execution::Resume => {
@@ -171,7 +197,7 @@ pub async fn run(request: RunRequest) -> Result<RunOutcome, RunError> {
             Box::pin(host::resume_configured(
                 &runtime,
                 Vec::new(),
-                vec![Arc::new(dispatcher.clone())],
+                observers,
                 with_handle,
             ))
             .await

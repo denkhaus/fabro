@@ -74,6 +74,7 @@ pub(crate) async fn execute(
     storage_dir: PathBuf,
     run_dir: PathBuf,
     mode: RunWorkerMode,
+    fabro_home: Option<PathBuf>,
     worker_token: &str,
 ) -> Result<()> {
     let _ = fabro_proc::title_init();
@@ -96,6 +97,7 @@ pub(crate) async fn execute(
             storage_dir: &storage_dir,
             run_dir,
             mode,
+            fabro_home,
             worker_token,
         }))
         .await;

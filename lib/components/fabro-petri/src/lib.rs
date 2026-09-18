@@ -19,24 +19,33 @@
 //! - [`engine`]: a run executed by Petri, started or resumed, in the run's
 //!   worker process over the HTTP store (or in the server process under its
 //!   test override), with the outcome read from its record;
-//! - [`interviewer`]: the interviewer of a run nobody is watching;
+//! - [`interview`]: Petri's interviewer over Fabro's questions API and the
+//!   worker's control channel, so a human gate's question reaches the same
+//!   places a legacy stage's does and its answer comes back the same way;
+//! - [`secrets`]: Petri's secret provider over Fabro's vault, so a `{{
+//!   secrets.NAME }}` reference resolves from the vault at spawn and is masked
+//!   in every record;
+//! - [`blobs`]: Petri's output store over Fabro's blob table, so a large stage
+//!   value lives in `blobs` under `blob://sha256/<hex>`;
 //! - [`HttpRunStore`]: the same store as a run's worker process reaches it,
 //!   over the server's API with the worker's token and its launch id as the
 //!   lease owner;
-//! - the platform adapters still to come: hooks, interviews over Fabro's API,
-//!   secrets, output storage, the run tools, the event projection.
+//! - the platform adapters still to come: hooks, the run tools, the event
+//!   projection.
 //!
 //! The Petri packages are pinned by revision in the workspace `Cargo.toml`
 //! under `petri_*` keys.
 
 pub mod admission;
+pub mod blobs;
 pub mod check;
 pub mod engine;
 pub mod http_store;
-pub mod interviewer;
+pub mod interview;
 pub mod petri;
 pub mod run_store;
 pub mod runtime;
+pub mod secrets;
 #[cfg(feature = "test-support")]
 pub mod test_support;
 

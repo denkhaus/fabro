@@ -16,8 +16,11 @@
 //! (`crate::petri_runs`). Under the test override that replaces the handler
 //! registry, [`execute`] runs the same engine in the server process over the
 //! run store in the server's database, so the scenario tests need no
-//! worker binary. No stage or agent event is projected either way, which is
-//! the read-side item that follows.
+//! worker binary; its questions go to an in-process control interviewer
+//! the answer endpoint reaches directly, its secrets come from a snapshot
+//! of the server's vault, and its blobs go to the server's blob store. No
+//! stage or agent event is projected either way, which is the read-side
+//! item that follows.
 //!
 //! After a server restart, [`reconcile_on_startup`] hands a Petri run the
 //! previous server left in flight back to a worker in resume mode.
@@ -26,14 +29,17 @@ use std::collections::{BTreeMap, HashSet};
 use std::sync::Arc;
 use std::time::Instant;
 
-use fabro_config::{SettingsLayer, Storage};
+use fabro_config::{Home, SettingsLayer, Storage};
+use fabro_interview::ControlInterviewer;
 use fabro_llm::selection;
 use fabro_petri::check::{self, Bundle, CheckError, CheckRequest, Diagnostic, Launch};
 use fabro_petri::engine::{self, Conclusion, Execution, RunRequest};
+use fabro_petri::interview::{Approval, DatabaseQuestions, FabroInterviewer};
 use fabro_petri::petri::StoreError;
 use fabro_petri::runtime::{self, RuntimeSpec};
+use fabro_petri::secrets::VaultSecrets;
 use fabro_petri::{SqliteRunStore, admission};
-use fabro_types::settings::run::RunMode;
+use fabro_types::settings::run::{ApprovalMode, RunMode};
 use fabro_types::{
     Engine, PetriAdmission, RunId, RunRunnableSource, RunTarget, RunTiming, ServerSettings,
     StageOutcome,
@@ -41,13 +47,14 @@ use fabro_types::{
 use fabro_util::error as error_util;
 use fabro_validate::{Diagnostic as FabroDiagnostic, Severity};
 use fabro_workflow::Error as WorkflowError;
+use fabro_workflow::event::Emitter;
 use fabro_workflow::run_status::{FailureReason, RunStatus, SuccessReason};
 use lithos_llm::catalog::ProviderId;
 use tokio::task;
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
 
-use super::{AppState, RunExecutionMode, clear_live_run_state, workflow_event};
+use super::{AppState, RunAnswerTransport, RunExecutionMode, clear_live_run_state, workflow_event};
 use crate::petri_runs::PetriRuns;
 use crate::run_compiler::{PreparedRun, RunCompilerError};
 
@@ -89,7 +96,7 @@ pub(crate) fn runtime_spec(
         settings_toml,
         model_client,
         dry_run,
-        fabro_home: None,
+        fabro_home: Some(Home::from_env().root().to_path_buf()),
     }
 }
 
@@ -309,6 +316,22 @@ pub(crate) async fn execute(state: Arc<AppState>, run_id: RunId) {
         }
         RunExecutionMode::Resume => Execution::Resume,
     };
+    // The run's secrets: a snapshot of the server's vault, as a worker
+    // takes one at launch.
+    let vault = match state.stores.vault.snapshot().await {
+        Ok(snapshot) => snapshot.into_vault(),
+        Err(err) => {
+            let message = error_util::collect_chain(&err).join(": ");
+            fail_before_execution(
+                &state,
+                &run_store,
+                run_id,
+                &format!("the vault could not be read for the run: {message}"),
+            )
+            .await;
+            return;
+        }
+    };
     let started = Instant::now();
     for event in [
         workflow_event::Event::RunStarting,
@@ -327,14 +350,32 @@ pub(crate) async fn execute(state: Arc<AppState>, run_id: RunId) {
             return;
         }
     }
+    // The answer endpoint reaches this interviewer directly, as it does
+    // for a legacy run in this process.
+    let interviewer = Arc::new(ControlInterviewer::new());
+    let steering_hub = Arc::new(fabro_workflow::SteeringHub::new(Arc::new(Emitter::new(
+        run_id,
+    ))));
     {
         let mut runs = state.runs.lock().expect("runs lock poisoned");
         if let Some(managed_run) = runs.get_mut(&run_id) {
             if managed_run.status == RunStatus::Starting {
                 managed_run.status = RunStatus::Running;
+                managed_run.answer_transport = Some(RunAnswerTransport::InProcess {
+                    interviewer: Arc::clone(&interviewer),
+                    steering_hub,
+                });
             }
         }
     }
+    let approval = if run_state.spec.settings.run.execution.approval == ApprovalMode::Auto {
+        Approval::Auto
+    } else {
+        Approval::Prompt
+    };
+    let questions = Arc::new(DatabaseQuestions::new(run_store.clone(), run_id));
+    let petri_interviewer = FabroInterviewer::new(interviewer, questions, approval);
+    let observers = vec![petri_interviewer.observer()];
     let (_, eligible) = state.resolve_llm_client_with_ready_ids().await;
     let dry_run = run_state.spec.settings.run.execution.mode == RunMode::DryRun;
     let request = RunRequest {
@@ -345,6 +386,10 @@ pub(crate) async fn execute(state: Arc<AppState>, run_id: RunId) {
         runtime: runtime_spec(&state, &eligible, dry_run),
         provider: run_state.spec.settings.run.environment.provider.clone(),
         cancel,
+        interviewer: Arc::new(petri_interviewer),
+        observers,
+        secrets: Some(Arc::new(VaultSecrets::from_vault(&vault))),
+        blobs: Some(state.store_ref().blobs()),
     };
     let result = Box::pin(engine::run(request)).await;
     let timing = RunTiming {

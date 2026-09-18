@@ -251,17 +251,22 @@ async fn wait_for_http_ready(base_url: &str, child: &mut Child) {
 /// A workspace holding a command-only bundle whose `workflow.toml` names
 /// Petri, with the given stage script.
 fn write_petri_workspace(context: &fabro_test::TestContext, script: &str) -> PathBuf {
-    let workspace = context.temp_dir.join("petri-workspace");
-    std::fs::create_dir_all(&workspace).expect("the workspace creates");
-    std::fs::write(
-        workspace.join("workflow.fabro"),
-        format!(
+    write_petri_workflow(
+        context,
+        &format!(
             "digraph Command {{\n  graph [goal=\"Run one command\", default_max_retries=0]\n  start \
              [shape=Mdiamond]\n  exit [shape=Msquare]\n  say [shape=parallelogram, \
              script=\"{script}\", max_retries=0]\n  start -> say -> exit\n}}\n"
         ),
     )
-    .expect("the workflow writes");
+}
+
+/// A workspace holding the given workflow with a `workflow.toml` that names
+/// Petri.
+fn write_petri_workflow(context: &fabro_test::TestContext, dot: &str) -> PathBuf {
+    let workspace = context.temp_dir.join("petri-workspace");
+    std::fs::create_dir_all(&workspace).expect("the workspace creates");
+    std::fs::write(workspace.join("workflow.fabro"), dot).expect("the workflow writes");
     std::fs::write(
         workspace.join("workflow.toml"),
         "_version = 1\n\n[workflow]\ngraph = \"workflow.fabro\"\nengine = \"petri\"\n\n[run]\ngoal \
@@ -271,12 +276,22 @@ fn write_petri_workspace(context: &fabro_test::TestContext, script: &str) -> Pat
     workspace
 }
 
-/// `fabro run --detach` against the server: the run is created and started,
-/// and its id comes back.
+/// `fabro run --detach --auto-approve` against the server: the run is
+/// created and started, and its id comes back.
 fn run_detached(
     context: &fabro_test::TestContext,
     server: &RunningServer,
     workspace: &Path,
+) -> String {
+    run_detached_with(context, server, workspace, &["--auto-approve"])
+}
+
+/// `fabro run --detach` against the server with extra arguments.
+fn run_detached_with(
+    context: &fabro_test::TestContext,
+    server: &RunningServer,
+    workspace: &Path,
+    extra: &[&str],
 ) -> String {
     let target = server.target();
     seed_dev_token_auth(
@@ -287,15 +302,9 @@ fn run_detached(
     let output = context
         .run_cmd()
         .current_dir(workspace)
-        .args([
-            "--server",
-            &target,
-            "--detach",
-            "--auto-approve",
-            "--environment",
-            "local",
-            "workflow.toml",
-        ])
+        .args(["--server", &target, "--detach"])
+        .args(extra)
+        .args(["--environment", "local", "workflow.toml"])
         .output()
         .expect("the detached run executes");
     assert!(
@@ -565,4 +574,228 @@ async fn run_status_offline(server: &RunningServer) -> Option<String> {
         .await
         .ok()
         .map(|response| response.status().to_string())
+}
+
+/// The run's pending questions, as the API lists them.
+async fn questions(server: &RunningServer, run_id: &str) -> Vec<serde_json::Value> {
+    run_json(server, &format!("runs/{run_id}/questions")).await["data"]
+        .as_array()
+        .cloned()
+        .expect("the questions list is an array")
+}
+
+/// Wait until `count` questions are pending at once.
+async fn wait_for_questions(
+    server: &RunningServer,
+    run_id: &str,
+    count: usize,
+) -> Vec<serde_json::Value> {
+    let deadline = Instant::now() + RUN_TIMEOUT;
+    loop {
+        let pending = questions(server, run_id).await;
+        if pending.len() >= count {
+            return pending;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "run {run_id} did not ask {count} question(s); pending: {pending:?}"
+        );
+        tokio::time::sleep(POLL).await;
+    }
+}
+
+/// Answer a question through the API, as the web app and the CLI do.
+async fn answer(server: &RunningServer, run_id: &str, question_id: &str, body: serde_json::Value) {
+    let response = fabro_test::test_http_client()
+        .post(format!(
+            "{}/api/v1/runs/{run_id}/questions/{question_id}/answer",
+            server.api_base_url
+        ))
+        .bearer_auth(TEST_DEV_TOKEN)
+        .json(&body)
+        .send()
+        .await
+        .expect("the answer sends");
+    let status = response.status();
+    let body = response.text().await.unwrap_or_default();
+    assert_eq!(
+        status,
+        fabro_http::StatusCode::NO_CONTENT,
+        "POST /api/v1/runs/{run_id}/questions/{question_id}/answer: {body}"
+    );
+}
+
+/// A yes/no gate whose branches each leave a marker file.
+fn gate_dot(markers: &Path, gate_attrs: &str) -> String {
+    format!(
+        "digraph Gate {{\n  graph [goal=\"Ask before running\"]\n  start [shape=Mdiamond]\n  \
+         exit [shape=Msquare]\n  gate [shape=hexagon, label=\"Go?\", \
+         question_type=\"yes_no\"{gate_attrs}]\n  yes [shape=parallelogram, script=\"touch \
+         {dir}/yes\"]\n  no [shape=parallelogram, script=\"touch {dir}/no\"]\n  start -> gate\n  \
+         gate -> yes [label=\"[Y] Yes\"]\n  gate -> no [label=\"[N] No\"]\n  yes -> exit\n  no \
+         -> exit\n}}\n",
+        dir = markers.display()
+    )
+}
+
+/// Two gates as the branches of one parallel node; the join's results are
+/// written out, so each gate's answer is read from its branch result.
+fn two_gates_dot(markers: &Path) -> String {
+    format!(
+        "digraph Gates {{\n  graph [goal=\"Ask twice at once\"]\n  start [shape=Mdiamond]\n  \
+         exit [shape=Msquare]\n  fan [shape=component]\n  a [shape=hexagon, label=\"A?\", \
+         question_type=\"yes_no\"]\n  b [shape=hexagon, label=\"B?\", \
+         question_type=\"yes_no\"]\n  join [shape=tripleoctagon]\n  report \
+         [shape=parallelogram, script=\"cat > {dir}/results.json\", \
+         stdin_source=\"context.parallel.results\"]\n  start -> fan\n  fan -> a\n  fan -> b\n  \
+         a -> join [label=\"[Y] Yes\"]\n  a -> join [label=\"[N] No\"]\n  b -> join [label=\"[Y] \
+         Yes\"]\n  b -> join [label=\"[N] No\"]\n  join -> report -> exit\n}}\n",
+        dir = markers.display()
+    )
+}
+
+/// A human gate in the worker asks through the server: the question is
+/// listed by the questions API with the gate's stage and options, the
+/// answer reaches the worker over its control channel and routes the gate,
+/// and the run's stream records the interview.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_human_gate_in_the_worker_is_answered_through_the_api() {
+    if host_plugin().is_none() {
+        return;
+    }
+    let context = test_context!();
+    let server = RunningServer::start().await;
+    let markers = context.temp_dir.join("markers");
+    std::fs::create_dir_all(&markers).expect("the marker dir creates");
+    let workspace = write_petri_workflow(&context, &gate_dot(&markers, ""));
+    let run_id = run_detached_with(&context, &server, &workspace, &[]);
+
+    let pending = wait_for_questions(&server, &run_id, 1).await;
+    let question = &pending[0];
+    assert_eq!(question["stage"], "gate", "{question}");
+    assert_eq!(question["question_type"], "yes_no", "{question}");
+    let question_id = question["id"].as_str().expect("an id").to_string();
+    answer(
+        &server,
+        &run_id,
+        &question_id,
+        serde_json::json!({ "kind": "no" }),
+    )
+    .await;
+
+    let status = wait_for_status(&server, &run_id, &["succeeded", "failed"]).await;
+    assert_eq!(
+        status,
+        "succeeded",
+        "server stderr:\n{}",
+        server.stderr_text()
+    );
+    assert!(
+        markers.join("no").exists() && !markers.join("yes").exists(),
+        "the no branch ran"
+    );
+    let names = run_events(&server, &run_id).await;
+    let names = event_names(&names);
+    assert!(
+        names.contains(&"interview.started") && names.contains(&"interview.completed"),
+        "{names:?}"
+    );
+    assert!(questions(&server, &run_id).await.is_empty());
+    let store = server.petri_store().await;
+    let outcome = engine::outcome_of(&store, &run_id)
+        .await
+        .expect("the run's Petri record inspects");
+    assert_eq!(outcome.status, RunStatus::Success, "{outcome:?}");
+    server.shutdown();
+}
+
+/// Two branches of a parallel node ask at once; each answer, given through
+/// the API in the other order, binds to its own branch.
+#[tokio::test(flavor = "multi_thread")]
+async fn two_parallel_gates_in_the_worker_each_bind_their_own_answer() {
+    if host_plugin().is_none() {
+        return;
+    }
+    let context = test_context!();
+    let server = RunningServer::start().await;
+    let markers = context.temp_dir.join("markers");
+    std::fs::create_dir_all(&markers).expect("the marker dir creates");
+    let workspace = write_petri_workflow(&context, &two_gates_dot(&markers));
+    let run_id = run_detached_with(&context, &server, &workspace, &[]);
+
+    let pending = wait_for_questions(&server, &run_id, 2).await;
+    let id_of = |stage: &str| {
+        pending
+            .iter()
+            .find(|question| question["stage"] == stage)
+            .and_then(|question| question["id"].as_str())
+            .unwrap_or_else(|| panic!("`{stage}` is pending: {pending:?}"))
+            .to_string()
+    };
+    let (a, b) = (id_of("a"), id_of("b"));
+    assert_ne!(a, b);
+    for question in &pending {
+        assert_eq!(question["question_type"], "yes_no", "{question}");
+    }
+    // A yes/no question takes `yes` or `no`, as the API validates it.
+    answer(&server, &run_id, &b, serde_json::json!({ "kind": "yes" })).await;
+    answer(&server, &run_id, &a, serde_json::json!({ "kind": "no" })).await;
+
+    let status = wait_for_status(&server, &run_id, &["succeeded", "failed"]).await;
+    assert_eq!(
+        status,
+        "succeeded",
+        "server stderr:\n{}",
+        server.stderr_text()
+    );
+    let results: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(markers.join("results.json")).expect("the join wrote its results"),
+    )
+    .expect("the results parse");
+    let results = results.as_array().expect("a list of branch results");
+    assert_eq!(results.len(), 2, "{results:?}");
+    assert_eq!(results[0]["id"], "a");
+    assert_eq!(results[0]["context_updates"]["human.gate.selected"], "N");
+    assert_eq!(results[1]["id"], "b");
+    assert_eq!(results[1]["context_updates"]["human.gate.selected"], "Y");
+    server.shutdown();
+}
+
+/// A gate nobody answers expires on its own deadline: the run takes the
+/// gate's default, the stream records the timeout, and nothing stays
+/// pending.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_unanswered_gate_in_the_worker_expires_with_its_default() {
+    if host_plugin().is_none() {
+        return;
+    }
+    let context = test_context!();
+    let server = RunningServer::start().await;
+    let markers = context.temp_dir.join("markers");
+    std::fs::create_dir_all(&markers).expect("the marker dir creates");
+    let workspace = write_petri_workflow(
+        &context,
+        &gate_dot(&markers, ", timeout=\"2s\", human.default_choice=\"no\""),
+    );
+    let run_id = run_detached_with(&context, &server, &workspace, &[]);
+
+    let pending = wait_for_questions(&server, &run_id, 1).await;
+    assert_eq!(pending[0]["timeout_seconds"], 2.0, "{}", pending[0]);
+
+    let status = wait_for_status(&server, &run_id, &["succeeded", "failed"]).await;
+    assert_eq!(
+        status,
+        "succeeded",
+        "server stderr:\n{}",
+        server.stderr_text()
+    );
+    assert!(
+        markers.join("no").exists() && !markers.join("yes").exists(),
+        "the default ran"
+    );
+    let events = run_events(&server, &run_id).await;
+    let names = event_names(&events);
+    assert!(names.contains(&"interview.timeout"), "{names:?}");
+    assert!(questions(&server, &run_id).await.is_empty());
+    server.shutdown();
 }

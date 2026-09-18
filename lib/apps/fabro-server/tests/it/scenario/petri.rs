@@ -390,3 +390,145 @@ async fn an_unknown_model_is_refused_at_create_with_attractor_model_unknown() {
         "expected the admission diagnostic in the detail, got {body}"
     );
 }
+
+/// A yes/no gate whose branches each leave a marker file.
+fn gate_dot(markers: &std::path::Path) -> String {
+    format!(
+        r#"digraph Gate {{
+    graph [goal="Ask before running"]
+    start [shape=Mdiamond]
+    exit [shape=Msquare]
+    gate [shape=hexagon, label="Go?", question_type="yes_no"]
+    yes [shape=parallelogram, script="touch {dir}/yes"]
+    no [shape=parallelogram, script="touch {dir}/no"]
+    start -> gate
+    gate -> yes [label="[Y] Yes"]
+    gate -> no [label="[N] No"]
+    yes -> exit
+    no -> exit
+}}"#,
+        dir = markers.display()
+    )
+}
+
+/// The run's first pending question, once one is listed.
+async fn wait_for_question(app: &axum::Router, run_id: &str) -> serde_json::Value {
+    for _ in 0..600 {
+        let req = Request::builder()
+            .method("GET")
+            .uri(api(&format!("/runs/{run_id}/questions")))
+            .body(Body::empty())
+            .expect("questions request should build");
+        let response = app
+            .clone()
+            .oneshot(req)
+            .await
+            .expect("questions request routes");
+        let body = response_json(
+            response,
+            StatusCode::OK,
+            format!("GET /api/v1/runs/{run_id}/questions"),
+        )
+        .await;
+        if let Some(question) = body["data"].as_array().and_then(|items| items.first()) {
+            return question.clone();
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    panic!("run {run_id} never asked a question");
+}
+
+/// A human gate in a Petri run asks through the questions API and is
+/// answered through it: the question is listed with the gate's stage and
+/// options, the answer routes the gate, and the run's stream records the
+/// interview as a legacy stage's would.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_human_gate_is_answered_through_the_questions_api() {
+    if host_plugin().is_none() {
+        return;
+    }
+    let workspace = tempfile::tempdir().expect("workspace tempdir");
+    let markers = tempfile::tempdir().expect("marker tempdir");
+    let settings = settings_from_toml(
+        "_version = 1\n\n[run.environment]\nid = \"local\"\n\n[server.execution]\nengine = \
+         \"petri\"\n",
+    );
+    let state = test_app_state_with_options(settings, 5);
+    let app = test_app_with_scheduler(Arc::clone(&state));
+
+    let dot = gate_dot(markers.path());
+    let version_id = register_version(&app, &[
+        ("workflow.fabro", &dot),
+        ("workflow.toml", PLAIN_SETTINGS),
+    ])
+    .await;
+    let run_id =
+        create_and_start_run_from_intent(&app, intent(&version_id, workspace.path())).await;
+
+    let question = wait_for_question(&app, &run_id).await;
+    assert_eq!(question["stage"], "gate", "{question}");
+    assert_eq!(question["text"], "Go?", "{question}");
+    assert_eq!(question["question_type"], "yes_no", "{question}");
+    let keys: Vec<&str> = question["options"]
+        .as_array()
+        .expect("options")
+        .iter()
+        .filter_map(|option| option["key"].as_str())
+        .collect();
+    assert_eq!(keys, vec!["Y", "N"], "{question}");
+    let question_id = question["id"].as_str().expect("an id").to_string();
+    assert!(question_id.starts_with("gate."), "{question_id}");
+
+    let req = Request::builder()
+        .method("POST")
+        .uri(api(&format!(
+            "/runs/{run_id}/questions/{question_id}/answer"
+        )))
+        .header("content-type", "application/json")
+        .body(Body::from(r#"{"kind":"no"}"#))
+        .expect("answer request should build");
+    let response = app
+        .clone()
+        .oneshot(req)
+        .await
+        .expect("answer request routes");
+    crate::helpers::response_status(
+        response,
+        StatusCode::NO_CONTENT,
+        format!("POST /api/v1/runs/{run_id}/questions/{question_id}/answer"),
+    )
+    .await;
+
+    let status = wait_for_run_status(&app, &run_id, &["succeeded", "failed"]).await;
+    let run = run_json(&app, &run_id).await;
+    assert_eq!(status, "succeeded", "run: {run}");
+    assert!(
+        markers.path().join("no").exists() && !markers.path().join("yes").exists(),
+        "the no branch ran"
+    );
+    let outcome = petri_outcome(&state, &run_id).await;
+    assert_eq!(outcome.status, RunStatus::Success, "{outcome:?}");
+    let state_body = {
+        let req = Request::builder()
+            .method("GET")
+            .uri(api(&format!("/runs/{run_id}/state")))
+            .body(Body::empty())
+            .expect("state request should build");
+        response_json(
+            app.clone()
+                .oneshot(req)
+                .await
+                .expect("state request routes"),
+            StatusCode::OK,
+            format!("GET /api/v1/runs/{run_id}/state"),
+        )
+        .await
+    };
+    assert!(
+        state_body["pending_interviews"]
+            .as_object()
+            .is_some_and(serde_json::Map::is_empty),
+        "the answered question is no longer pending: {}",
+        state_body["pending_interviews"]
+    );
+}

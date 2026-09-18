@@ -2334,6 +2334,8 @@ fn worker_command_sets_worker_args() {
         run_id.to_string(),
         "--mode".to_string(),
         "resume".to_string(),
+        "--fabro-home".to_string(),
+        fabro_config::Home::from_env().root().display().to_string(),
     ]);
 }
 

@@ -23,8 +23,11 @@ fabro-api = { path = "../../foundation/fabro-api" }
 fabro-client = { path = "../../foundation/fabro-client" }
 fabro-db = { path = "../../foundation/fabro-db" }
 fabro-http.workspace = true
+fabro-interview = { path = "../fabro-interview" }
 fabro-store = { path = "../fabro-store" }
 fabro-types = { path = "../../foundation/fabro-types" }
+fabro-vault = { path = "../../foundation/fabro-vault" }
+fabro-workflow = { path = "../fabro-workflow" }
 petri_runtime.workspace = true
 petri_execution.workspace = true
 petri_store.workspace = true
@@ -48,6 +51,7 @@ tracing.workspace = true
 fabro-auth = { path = "../../foundation/fabro-auth", features = ["test-support"] }
 fabro-llm = { path = "../fabro-llm", features = ["test-support"] }
 fabro-store = { path = "../fabro-store", features = ["test-support"] }
+fabro-test.workspace = true
 petri_testkit.workspace = true
 tempfile = "3"
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
