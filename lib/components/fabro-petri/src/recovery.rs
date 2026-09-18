@@ -24,9 +24,14 @@
 //! the caller's workspace, and the workspace is brought to the newest of
 //! the live executions' snapshots on it.
 //!
-//! A run whose workspaces are not on this host (Docker, Daytona) is resumed
-//! on its retained sandbox as it was left: the snapshot side of the
-//! protocol reaches only host workspaces.
+//! The decision is [`plan`], over the records and the snapshot repository
+//! alone, both on this host whatever the provider. Applying it differs: a
+//! host workspace is brought to its snapshot here, before the worker is
+//! relaunched; a Docker or Daytona workspace lives inside a sandbox only
+//! the worker's run reaches, so its target is deferred, and the worker's
+//! hooks read the same plan and apply it through the scope's environment
+//! at `scope_acquired`, before the first attempt runs there
+//! ([`bring_sandbox_to`]).
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -40,8 +45,9 @@ use fabro_types::{RunId, SandboxProviderKind};
 use petri_execution::host::{self, HostError};
 use petri_execution::inspect::{self, ExecutionInspection, InspectError};
 use petri_execution::{Access, InvocationId, RunKey, RunStore};
+use petri_runtime::executor::ExecEnv;
 use petri_store::StoreError;
-use tracing::{info, warn};
+use tracing::info;
 
 use crate::checkpoint::{CHECKPOINT_FAILED_CLASS, CheckpointError, CheckpointKey, RunWorkspaces};
 use crate::platform_records::{PlatformRecordError, PlatformRecords};
@@ -98,6 +104,29 @@ pub enum WorkspaceAction {
     Reset,
     /// It was gone and was recreated from the snapshot repository.
     Restored,
+    /// It lives in a sandbox this process does not reach: the worker's
+    /// hooks bring it to the snapshot when its scope is acquired.
+    Deferred,
+}
+
+/// The snapshot a workspace must sit on before work resumes in it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RestoreTarget {
+    pub key: CheckpointKey,
+    pub sha: String,
+}
+
+/// What recovery decided, before any workspace was touched.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Plan {
+    /// The store never held the run: it starts from its admitted graphs.
+    Start,
+    /// The run continues; each live workspace, by id, and its snapshot.
+    Resume {
+        targets: BTreeMap<String, RestoreTarget>,
+    },
+    /// The run cannot continue and is reported failed.
+    Failed { reason: String },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -149,32 +178,38 @@ struct Target {
     key:       CheckpointKey,
 }
 
-/// Decide how the run continues, and bring its workspaces to their
-/// snapshots.
-pub async fn recover(request: RecoveryRequest) -> Result<Recovery, RecoveryError> {
-    let key = RunKey::new(request.run_id.to_string());
-    let logs = match request.store.open(&key, Access::Read).await {
+/// Decide how the run continues: the snapshot every live workspace must sit
+/// on, from the records and the snapshot repository, with a lost record
+/// reconciled from the repository. Nothing is touched.
+pub async fn plan(
+    store: Arc<dyn RunStore>,
+    records: &dyn PlatformRecords,
+    run_id: &RunId,
+    workspaces: &RunWorkspaces,
+) -> Result<Plan, RecoveryError> {
+    let key = RunKey::new(run_id.to_string());
+    let logs = match store.open(&key, Access::Read).await {
         Ok(logs) => logs,
-        Err(StoreError::NotFound { .. }) => return Ok(Recovery::Start),
+        Err(StoreError::NotFound { .. }) => return Ok(Plan::Start),
         Err(error) => return Err(RecoveryError::Open(error)),
     };
     // A record with no root invocation (the worker died between creating
     // the run and declaring it) has nothing to reconcile; the worker's
     // resume reports it as such.
-    let records = petri_execution::read_coordinator_log(&*logs)
+    let coordinator = petri_execution::read_coordinator_log(&*logs)
         .await
         .map_err(RecoveryError::Log)?;
-    if records.is_empty() {
-        return Ok(Recovery::Resume {
-            workspaces: Vec::new(),
+    if coordinator.is_empty() {
+        return Ok(Plan::Resume {
+            targets: BTreeMap::new(),
         });
     }
     let state = host::stored_state(&*logs)
         .await
         .map_err(RecoveryError::State)?;
     if !state.invocations.contains_key(&InvocationId::ROOT) {
-        return Ok(Recovery::Resume {
-            workspaces: Vec::new(),
+        return Ok(Plan::Resume {
+            targets: BTreeMap::new(),
         });
     }
     let inspection = inspect::inspect_run(&*logs)
@@ -183,26 +218,11 @@ pub async fn recover(request: RecoveryRequest) -> Result<Recovery, RecoveryError
     drop(logs);
 
     if let Some(failed) = checkpoint_failure(&inspection.executions) {
-        return Ok(Recovery::Failed { reason: failed });
-    }
-    if !request.host_workspaces {
-        warn!(
-            run_id = %request.run_id,
-            "the run's workspaces are not on this host; resuming on the retained sandbox as it was left"
-        );
-        return Ok(Recovery::Resume {
-            workspaces: Vec::new(),
-        });
+        return Ok(Plan::Failed { reason: failed });
     }
 
-    let workspaces = RunWorkspaces::new(
-        request.run_dir.clone(),
-        request.run_id.to_string(),
-        request.author.clone(),
-        &request.checkpoint,
-    );
-    let lookup = WorkspaceLookup::new(Arc::clone(&request.store), key);
-    let recorded = recorded_checkpoints(&*request.records, &request.run_id).await?;
+    let lookup = WorkspaceLookup::new(Arc::clone(&store), key);
+    let recorded = recorded_checkpoints(records, run_id).await?;
 
     // The snapshot each live execution's workspace must sit on. A live
     // execution is one whose log records no exit: `inspect_run` reports it
@@ -240,14 +260,7 @@ pub async fn recover(request: RecoveryRequest) -> Result<Recovery, RecoveryError
                             source,
                         })?;
                     if let Some(sha) = &sha {
-                        reconcile_record(
-                            &*request.records,
-                            &request.run_id,
-                            target.key,
-                            &workspace,
-                            sha,
-                        )
-                        .await?;
+                        reconcile_record(records, run_id, target.key, &workspace, sha).await?;
                     }
                     sha
                 }
@@ -261,7 +274,7 @@ pub async fn recover(request: RecoveryRequest) -> Result<Recovery, RecoveryError
             }
         }
         if !found {
-            return Ok(Recovery::Failed {
+            return Ok(Plan::Failed {
                 reason: format!(
                     "no checkpoint snapshot exists for the last durable finish of execution {} \
                      (firing {} attempt {}); the run cannot resume on stale files",
@@ -271,20 +284,57 @@ pub async fn recover(request: RecoveryRequest) -> Result<Recovery, RecoveryError
         }
     }
 
+    let mut targets = BTreeMap::new();
+    for (workspace, candidates) in candidates {
+        let sha = newest(workspaces, &workspace, &candidates).await?;
+        let key = candidates
+            .iter()
+            .find(|(_, candidate)| *candidate == sha)
+            .map_or(candidates[0].0.key, |(target, _)| target.key);
+        targets.insert(workspace, RestoreTarget { key, sha });
+    }
+    Ok(Plan::Resume { targets })
+}
+
+/// Decide how the run continues, and bring its host workspaces to their
+/// snapshots; a sandbox workspace's target is deferred to the worker.
+pub async fn recover(request: RecoveryRequest) -> Result<Recovery, RecoveryError> {
+    let workspaces = RunWorkspaces::new(
+        request.run_dir.clone(),
+        request.run_id.to_string(),
+        request.author.clone(),
+        &request.checkpoint,
+    );
+    let targets = match plan(
+        Arc::clone(&request.store),
+        &*request.records,
+        &request.run_id,
+        &workspaces,
+    )
+    .await?
+    {
+        Plan::Start => return Ok(Recovery::Start),
+        Plan::Failed { reason } => return Ok(Recovery::Failed { reason }),
+        Plan::Resume { targets } => targets,
+    };
+
     let mut recovered = Vec::new();
-    for (workspace, targets) in candidates {
-        let sha = newest(&workspaces, &workspace, &targets).await?;
-        let action = bring_to(&workspaces, &workspace, &sha, &targets).await?;
+    for (workspace, target) in targets {
+        let action = if request.host_workspaces {
+            bring_to(&workspaces, &workspace, &target).await?
+        } else {
+            WorkspaceAction::Deferred
+        };
         info!(
             run_id = %request.run_id,
             workspace,
-            sha,
+            sha = target.sha,
             action = ?action,
-            "workspace brought to its durable snapshot"
+            "workspace's durable snapshot decided"
         );
         recovered.push(RecoveredWorkspace {
             workspace,
-            sha,
+            sha: target.sha,
             action,
         });
     }
@@ -420,30 +470,71 @@ async fn newest(
     Ok(chosen.clone())
 }
 
-/// Verify, reset or restore the workspace onto `sha`.
+/// Verify, reset or restore the host workspace onto its target.
 async fn bring_to(
     workspaces: &RunWorkspaces,
     workspace: &str,
-    sha: &str,
-    targets: &[(Target, String)],
+    target: &RestoreTarget,
 ) -> Result<WorkspaceAction, RecoveryError> {
     let failed = |source| RecoveryError::Workspace {
         workspace: workspace.to_string(),
         source,
     };
     if workspaces.workspace_exists(workspace).await {
-        if workspaces.matches(workspace, sha).await.map_err(failed)? {
+        if workspaces
+            .matches(workspace, &target.sha)
+            .await
+            .map_err(failed)?
+        {
             return Ok(WorkspaceAction::Verified);
         }
-        workspaces.reset(workspace, sha).await.map_err(failed)?;
+        workspaces
+            .reset(workspace, &target.sha)
+            .await
+            .map_err(failed)?;
         return Ok(WorkspaceAction::Reset);
     }
-    let key = targets
-        .iter()
-        .find(|(_, candidate)| candidate == sha)
-        .map_or(targets[0].0.key, |(target, _)| target.key);
     workspaces
-        .restore(workspace, key, sha)
+        .restore(workspace, target.key, &target.sha)
+        .await
+        .map_err(failed)?;
+    Ok(WorkspaceAction::Restored)
+}
+
+/// Verify, reset or restore a sandbox workspace onto its target, through
+/// the scope's environment: a retained sandbox that still holds the commit
+/// is verified or reset in place; a fresh one, or one whose repository
+/// lost the commit, is restored from a bundle of the snapshot.
+pub async fn bring_sandbox_to(
+    workspaces: &RunWorkspaces,
+    env: &Arc<dyn ExecEnv>,
+    workspace: &str,
+    target: &RestoreTarget,
+) -> Result<WorkspaceAction, RecoveryError> {
+    let failed = |source| RecoveryError::Workspace {
+        workspace: workspace.to_string(),
+        source,
+    };
+    if workspaces
+        .has_commit_in(env, &target.sha)
+        .await
+        .map_err(failed)?
+    {
+        if workspaces
+            .matches_in(env, &target.sha)
+            .await
+            .map_err(failed)?
+        {
+            return Ok(WorkspaceAction::Verified);
+        }
+        workspaces
+            .reset_in(env, &target.sha)
+            .await
+            .map_err(failed)?;
+        return Ok(WorkspaceAction::Reset);
+    }
+    workspaces
+        .restore_in(env, workspace, target.key, &target.sha)
         .await
         .map_err(failed)?;
     Ok(WorkspaceAction::Restored)

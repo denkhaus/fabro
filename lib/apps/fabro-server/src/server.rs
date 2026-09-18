@@ -3775,6 +3775,7 @@ fn worker_launch_spec(
     run_dir: &std::path::Path,
     agent_fabro_tools_enabled: bool,
     github_app_private_key: Option<String>,
+    daytona_api_key: Option<String>,
 ) -> anyhow::Result<WorkerLaunchSpec> {
     let current_exe = std::env::current_exe().context("reading current executable path")?;
     let executable =
@@ -3813,6 +3814,7 @@ fn worker_launch_spec(
         fabro_log,
         active_config_path: state.active_config_path().to_path_buf(),
         github_app_private_key,
+        daytona_api_key,
         fabro_home: fabro_config::Home::from_env().root().to_path_buf(),
     })
 }
@@ -4458,7 +4460,21 @@ async fn execute_run_subprocess(state: Arc<AppState>, run_id: RunId) {
         return;
     }
 
-    let github_app_private_key = match state.vault_secret(EnvVars::GITHUB_APP_PRIVATE_KEY).await {
+    // A Daytona run's worker hands the vault's key to Petri's Daytona
+    // plugin through its own environment; any other run's worker never
+    // sees it.
+    let wants_daytona =
+        run_state.spec.settings.run.environment.provider == SandboxProviderKind::DAYTONA;
+    let secrets = async {
+        let github_app_private_key = state.vault_secret(EnvVars::GITHUB_APP_PRIVATE_KEY).await?;
+        let daytona_api_key = if wants_daytona {
+            state.vault_secret(EnvVars::DAYTONA_API_KEY).await?
+        } else {
+            None
+        };
+        Ok::<_, SecretStoreError>((github_app_private_key, daytona_api_key))
+    };
+    let (github_app_private_key, daytona_api_key) = match secrets.await {
         Ok(value) => value,
         Err(err) => {
             fail_run_before_execution(
@@ -4482,6 +4498,7 @@ async fn execute_run_subprocess(state: Arc<AppState>, run_id: RunId) {
             &run_dir_for_build,
             agent_fabro_tools_enabled,
             github_app_private_key,
+            daytona_api_key,
         )
     })
     .await

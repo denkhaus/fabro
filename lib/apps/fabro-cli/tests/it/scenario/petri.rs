@@ -48,9 +48,9 @@ use crate::cmd::support::created_run_id;
 use crate::support::{TEST_DEV_TOKEN, TEST_SESSION_SECRET, seed_dev_token_auth};
 
 const HOST_PLUGIN: &str = "sandbox-driver-host";
-const REQUIRE_ENV: &str = "FABRO_REQUIRE_SANDBOX_PLUGINS";
-const RUN_TIMEOUT: Duration = Duration::from_mins(1);
-const POLL: Duration = Duration::from_millis(50);
+pub(super) const REQUIRE_ENV: &str = "FABRO_REQUIRE_SANDBOX_PLUGINS";
+pub(super) const RUN_TIMEOUT: Duration = Duration::from_mins(1);
+pub(super) const POLL: Duration = Duration::from_millis(50);
 
 /// The host plugin as Petri's lookup finds it: the override variable, else
 /// the executable on `PATH`. `None`, after saying so, when the test should
@@ -249,7 +249,7 @@ impl RunningServer {
 
     /// Where the run's worker ran Petri: the run's scratch under the
     /// server's storage.
-    fn petri_run_dir(&self, run_id: &str) -> PathBuf {
+    pub(super) fn petri_run_dir(&self, run_id: &str) -> PathBuf {
         let run_id: RunId = run_id.parse().expect("the run id parses");
         Storage::new(&self.storage_dir)
             .run_scratch(&run_id)
@@ -258,7 +258,7 @@ impl RunningServer {
     }
 
     /// The worker's own log for the run.
-    fn worker_log(&self, run_id: &str) -> PathBuf {
+    pub(super) fn worker_log(&self, run_id: &str) -> PathBuf {
         let run_id: RunId = run_id.parse().expect("the run id parses");
         Storage::new(&self.storage_dir)
             .run_scratch(&run_id)
@@ -269,18 +269,18 @@ impl RunningServer {
 
     /// Hold the worker's checkpoint at `point` (`commit` or `record`) for
     /// `node` until [`release`](Self::release).
-    fn hold(&self, point: &str, node: &str) {
+    pub(super) fn hold(&self, point: &str, node: &str) {
         std::fs::write(self.gates_dir.join(format!("{point}.{node}.hold")), "")
             .expect("the hold file writes");
     }
 
-    fn release(&self, point: &str, node: &str) {
+    pub(super) fn release(&self, point: &str, node: &str) {
         std::fs::write(self.gates_dir.join(format!("{point}.{node}.release")), "")
             .expect("the release file writes");
     }
 
     /// Wait until the worker's log says its checkpoint is held at a gate.
-    fn wait_until_held(&self, run_id: &str, point: &str, node: &str) {
+    pub(super) fn wait_until_held(&self, run_id: &str, point: &str, node: &str) {
         let log = self.worker_log(run_id);
         let needle = format!("checkpoint held at a test gate point=\"{point}\" node=\"{node}\"");
         let deadline = Instant::now() + RUN_TIMEOUT;
@@ -332,7 +332,7 @@ impl RunningServer {
     }
 
     /// The run's checkpoint records, in seq order, as `(node position, sha)`.
-    async fn checkpoints(&self, run_id: &str) -> Vec<(CheckpointKey, String)> {
+    pub(super) async fn checkpoints(&self, run_id: &str) -> Vec<(CheckpointKey, String)> {
         let run_id: RunId = run_id.parse().expect("the run id parses");
         self.platform_records()
             .await
@@ -434,6 +434,17 @@ pub(super) fn run_detached_with(
     workspace: &Path,
     extra: &[&str],
 ) -> String {
+    run_detached_in(context, server, workspace, "local", extra)
+}
+
+/// `fabro run --detach` on the server's environment `environment`.
+pub(super) fn run_detached_in(
+    context: &fabro_test::TestContext,
+    server: &RunningServer,
+    workspace: &Path,
+    environment: &str,
+    extra: &[&str],
+) -> String {
     let target = server.target();
     seed_dev_token_auth(
         &context.home_dir,
@@ -445,7 +456,7 @@ pub(super) fn run_detached_with(
         .current_dir(workspace)
         .args(["--server", &target, "--detach"])
         .args(extra)
-        .args(["--environment", "local", "workflow.toml"])
+        .args(["--environment", environment, "workflow.toml"])
         .output()
         .expect("the detached run executes");
     assert!(
@@ -1352,7 +1363,7 @@ fn three_stage_bundle(context: &fabro_test::TestContext, gate: &Path) -> PathBuf
 /// under the host plugin, and a machine crash takes it with everything
 /// else, where a killed worker alone would leave it writing into the
 /// workspace.
-fn crash(server: &mut RunningServer, worker: u32, gate: Option<&Path>) {
+pub(super) fn crash(server: &mut RunningServer, worker: u32, gate: Option<&Path>) {
     server.kill();
     fabro_proc::sigkill_process_group(worker);
     let deadline = Instant::now() + Duration::from_secs(10);
@@ -1382,7 +1393,7 @@ fn crash(server: &mut RunningServer, worker: u32, gate: Option<&Path>) {
 
 /// Wait for the run to succeed after a restart, with the server's stderr
 /// on failure.
-async fn wait_for_success(server: &RunningServer, run_id: &str) {
+pub(super) async fn wait_for_success(server: &RunningServer, run_id: &str) {
     let status = wait_for_status(server, run_id, &["succeeded", "failed"]).await;
     assert_eq!(
         status,

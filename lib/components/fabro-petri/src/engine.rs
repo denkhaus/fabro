@@ -33,9 +33,11 @@
 //! a resume alike, so a run that was paused resumes paused.
 //!
 //! A resume here is Petri's own: the run continues from its records, and
-//! sandbox leases are reconciled by label. What the workspaces look like
+//! sandbox leases are reconciled by label. What a host workspace looks like
 //! when it does is the server's business before it relaunches the worker
-//! ([`recovery`](crate::recovery)).
+//! ([`recovery`](crate::recovery)); a Docker or Daytona workspace is brought
+//! to its snapshot by Fabro's hooks when its scope is acquired, and a lease
+//! whose sandbox is gone gets a fresh one to restore into.
 //!
 //! No stage or agent event is projected into Fabro's tables here; the
 //! caller appends only the run lifecycle events Fabro's read side needs to
@@ -54,7 +56,7 @@ use petri_execution::{
 };
 use petri_runtime::driver::lifecycle::ExecutionHooks;
 use petri_runtime::executor::{Retention, SecretProvider};
-use petri_runtime::{RunOptions, SandboxBackend};
+use petri_runtime::{LostSandbox, RunOptions, SandboxBackend};
 use tokio::fs;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, info, warn};
@@ -173,6 +175,13 @@ pub async fn run(request: RunRequest) -> Result<RunOutcome, RunError> {
     options.run_key = Some(key.clone());
     options.retention = Retention::Always;
     options.sandbox.backend = backend;
+    // Fabro's hooks restore a sandbox workspace from its snapshots at the
+    // scope's acquisition, so a lease whose sandbox is gone gets a fresh
+    // one instead of failing the run.
+    if request.hooks.is_some() && backend != SandboxBackend::Host {
+        options.sandbox.lost_sandbox = LostSandbox::Replace;
+    }
+    let resumed = matches!(request.execution, Execution::Resume);
     let mut runtime = request
         .runtime
         .runtime(true)
@@ -196,6 +205,7 @@ pub async fn run(request: RunRequest) -> Result<RunOutcome, RunError> {
             key.clone(),
             request.run_dir.clone(),
             Arc::clone(&request.store),
+            resumed,
         ))
     });
     if let Some(hooks) = &fabro_hooks {

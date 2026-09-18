@@ -2402,6 +2402,7 @@ fn worker_command_forwards_github_app_private_key_from_vault() {
         storage_dir.path(),
         false,
         Some("test-private-key".to_string()),
+        None,
     )
     .unwrap();
     let cmd = LocalWorkerRuntime::command_for_spec(&spec);
@@ -2409,6 +2410,35 @@ fn worker_command_forwards_github_app_private_key_from_vault() {
     assert_eq!(
         command_env_value(&cmd, EnvVars::GITHUB_APP_PRIVATE_KEY),
         EnvOverride::Set("test-private-key".to_string())
+    );
+    assert_eq!(
+        command_env_value(&cmd, EnvVars::DAYTONA_API_KEY),
+        EnvOverride::Unchanged
+    );
+}
+
+/// A Daytona run's worker carries the vault's key for Petri's Daytona
+/// plugin.
+#[cfg(unix)]
+#[test]
+fn worker_command_forwards_daytona_api_key_from_vault() {
+    let storage_dir = tempfile::tempdir().unwrap();
+    let state = worker_command_test_state(storage_dir.path(), &["dev-token"], Some(TEST_DEV_TOKEN));
+    let spec = worker_launch_spec(
+        state.as_ref(),
+        RunId::new(),
+        RunExecutionMode::Start,
+        storage_dir.path(),
+        false,
+        None,
+        Some("dtn_test-key".to_string()),
+    )
+    .unwrap();
+    let cmd = LocalWorkerRuntime::command_for_spec(&spec);
+
+    assert_eq!(
+        command_env_value(&cmd, EnvVars::DAYTONA_API_KEY),
+        EnvOverride::Set("dtn_test-key".to_string())
     );
 }
 
@@ -2660,6 +2690,7 @@ fn worker_command(
         mode,
         run_dir,
         agent_fabro_tools_enabled,
+        None,
         None,
     )?;
     Ok(LocalWorkerRuntime::command_for_spec(&spec))

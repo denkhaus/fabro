@@ -10,6 +10,7 @@ mod exec;
 mod lifecycle;
 mod petri;
 mod petri_controls;
+mod petri_docker;
 mod petri_tools;
 mod server_lifecycle;
 mod smoke;

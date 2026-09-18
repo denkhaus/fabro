@@ -38,14 +38,21 @@
 //!
 //! # Where the workspace is
 //!
-//! The commit runs on the host, in the workspace Petri's host backend keeps
-//! under the run directory (`crate::checkpoint`). A run on Docker or
-//! Daytona has no workspace this process can reach; its hooks record that
-//! no snapshot was taken and leave the run to continue as before.
+//! On the local provider the commit runs on the host, in the workspace
+//! Petri's host backend keeps under the run directory (`crate::checkpoint`).
+//! On Docker or Daytona the workspace lives inside the scope's sandbox: the
+//! hooks keep the environment Petri hands them at `scope_acquired`, run
+//! `git` inside the scope through it, and move the commit out as a bundle
+//! into the same snapshot repository the host path pushes to. The same
+//! point is where a resumed run brings a sandbox workspace to the snapshot
+//! its durable state names, before the first attempt runs in it: verified,
+//! reset, or, in a fresh sandbox (Petri replaces a lost one on Fabro's
+//! request), restored from a bundle of the checkpoint. The plan is
+//! [`recovery::plan`](crate::recovery::plan), the one the server applied
+//! to host workspaces before it relaunched the worker.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock, PoisonError};
 use std::time::Duration;
 
@@ -58,10 +65,11 @@ use fabro_util::error::collect_chain;
 use petri_execution::{CancelReason, CoordinatorHandle, InvocationId, RunKey, RunStore};
 use petri_runtime::driver::lifecycle::{
     AdmitAttempt, AttemptDecision, ExecutionHooks, HookContext, Note, PrepareError, PrepareResult,
-    Prepared, Recorded, ResultOrigin, RunFinished, ScopeReleased, Transition, TransitionError,
-    TransitionReport,
+    Prepared, Recorded, ResultOrigin, RunFinished, ScopeAcquired, ScopeAcquiredError,
+    ScopeReleased, Transition, TransitionError, TransitionReport,
 };
-use petri_runtime::ir::{FailureInfo, ScopeId, Status};
+use petri_runtime::executor::ExecEnv;
+use petri_runtime::ir::{ExecutionId, FailureInfo, ScopeId, Status};
 use serde_json::json;
 use tokio::sync::{Mutex as AsyncMutex, OnceCell};
 use tokio::{fs, time};
@@ -69,6 +77,7 @@ use tracing::{debug, info, warn};
 
 use crate::checkpoint::{CHECKPOINT_FAILED_CLASS, CheckpointKey, RunWorkspaces};
 use crate::platform_records::PlatformRecords;
+use crate::recovery::{self, Plan, RestoreTarget};
 use crate::workspace::{self, WorkspaceLookup};
 
 /// The note kind the hooks record on a firing about its checkpoint.
@@ -84,7 +93,7 @@ pub struct HooksSpec {
     pub author:          GitAuthor,
     pub checkpoint:      RunCheckpointSettings,
     /// Whether the run's workspaces are on this host (the local sandbox
-    /// provider). A run elsewhere takes no snapshot.
+    /// provider). A run elsewhere snapshots inside its sandboxes.
     pub host_workspaces: bool,
     /// A test's gate directory: a checkpoint point named by a `.hold` file
     /// there waits for its `.release` file. `None` outside tests.
@@ -118,37 +127,54 @@ impl HooksSpec {
     }
 }
 
+/// A scope's sandbox environment as the hooks keep it: the workspace id
+/// the executor named, and the environment `git` runs in.
+type AcquiredEnv = (String, Arc<dyn ExecEnv>);
+
 /// Fabro's `ExecutionHooks`, around the hooks the runtime installed.
 pub struct FabroHooks {
-    inner:             Arc<dyn ExecutionHooks>,
-    run_id:            RunId,
-    records:           Arc<dyn PlatformRecords>,
-    workspaces:        RunWorkspaces,
-    lookup:            WorkspaceLookup,
-    host_workspaces:   bool,
-    test_gates:        Option<PathBuf>,
-    handle:            OnceLock<CoordinatorHandle>,
+    inner:           Arc<dyn ExecutionHooks>,
+    run_id:          RunId,
+    records:         Arc<dyn PlatformRecords>,
+    workspaces:      RunWorkspaces,
+    lookup:          WorkspaceLookup,
+    host_workspaces: bool,
+    test_gates:      Option<PathBuf>,
+    handle:          OnceLock<CoordinatorHandle>,
     /// The workspace and commit of every checkpoint this process made.
-    committed:         Mutex<HashMap<CheckpointKey, (String, String)>>,
+    committed:       Mutex<HashMap<CheckpointKey, (String, String)>>,
     /// Which checkpoints have their platform record, loaded from the store
     /// once and kept up to date with every append.
-    recorded:          Mutex<HashSet<CheckpointKey>>,
-    recorded_loaded:   OnceCell<()>,
+    recorded:        Mutex<HashSet<CheckpointKey>>,
+    recorded_loaded: OnceCell<()>,
     /// Inherited workspaces resolved through the run's records.
-    inherited:         Mutex<HashMap<InvocationId, Option<String>>>,
+    inherited:       Mutex<HashMap<InvocationId, Option<String>>>,
     /// One lock per workspace: the branches of a parallel node and a nested
     /// invocation share their caller's workspace, and Git allows one index
     /// operation at a time in it.
-    workspace_locks:   Mutex<HashMap<String, Arc<AsyncMutex<()>>>>,
+    workspace_locks: Mutex<HashMap<String, Arc<AsyncMutex<()>>>>,
     /// The checkpoint failure that ended the run, when one did.
-    failure:           Mutex<Option<String>>,
-    unreachable_noted: AtomicBool,
+    failure:         Mutex<Option<String>>,
+    /// The sandbox environment of every acquired scope, by execution and
+    /// scope, with the workspace id the executor named: where `git` runs
+    /// when the workspaces are not on this host. Dropped at release.
+    envs:            Mutex<HashMap<(ExecutionId, ScopeId), AcquiredEnv>>,
+    /// Whether the run continues from its records: a sandbox workspace is
+    /// then brought to its snapshot when its scope is first acquired.
+    resumed:         bool,
+    /// The snapshot every live sandbox workspace must sit on before work
+    /// resumes in it, read once from the records; an entry leaves when it
+    /// is applied.
+    restore:         OnceCell<Mutex<BTreeMap<String, RestoreTarget>>>,
+    store:           Arc<dyn RunStore>,
 }
 
 impl FabroHooks {
     /// Wrap `inner` (the hooks `Runtime::installed_hooks` returned) for the
     /// run whose records are in `store` under `run_key`, with its
-    /// workspaces under `run_dir`.
+    /// workspaces under `run_dir`. `resumed` says the run continues from
+    /// its records, so a sandbox workspace is brought to its snapshot at
+    /// its scope's first acquisition.
     #[must_use]
     pub fn new(
         spec: HooksSpec,
@@ -157,6 +183,7 @@ impl FabroHooks {
         run_key: RunKey,
         run_dir: PathBuf,
         store: Arc<dyn RunStore>,
+        resumed: bool,
     ) -> Self {
         let workspaces =
             RunWorkspaces::new(run_dir, run_id.to_string(), spec.author, &spec.checkpoint);
@@ -165,7 +192,7 @@ impl FabroHooks {
             run_id,
             records: spec.records,
             workspaces,
-            lookup: WorkspaceLookup::new(store, run_key),
+            lookup: WorkspaceLookup::new(Arc::clone(&store), run_key),
             host_workspaces: spec.host_workspaces,
             test_gates: spec.test_gates,
             handle: OnceLock::new(),
@@ -175,7 +202,10 @@ impl FabroHooks {
             inherited: Mutex::default(),
             workspace_locks: Mutex::default(),
             failure: Mutex::default(),
-            unreachable_noted: AtomicBool::new(false),
+            envs: Mutex::default(),
+            resumed,
+            restore: OnceCell::new(),
+            store,
         }
     }
 
@@ -268,21 +298,9 @@ impl FabroHooks {
         origin: ResultOrigin,
     ) -> Result<Option<Note>, String> {
         if !self.host_workspaces {
-            if !self.unreachable_noted.swap(true, Ordering::SeqCst) {
-                warn!(
-                    run_id = %self.run_id,
-                    "the run's workspaces are not on this host; no checkpoint snapshot is taken"
-                );
-            }
-            return Ok(Some(Note::new(
-                CHECKPOINT_NOTE,
-                json!({
-                    "execution": key.execution,
-                    "firing": key.firing,
-                    "attempt": key.attempt,
-                    "skipped": "the workspace is not on this host",
-                }),
-            )));
+            return self
+                .snapshot_in_sandbox(context, scope, key, node, status, origin)
+                .await;
         }
         let workspace = self.workspace_of(context, scope).await?;
         if !self.workspaces.workspace_exists(&workspace).await {
@@ -343,6 +361,136 @@ impl FabroHooks {
         }
     }
 
+    /// [`snapshot`](Self::snapshot) for a workspace inside the scope's
+    /// sandbox, through the environment kept at `scope_acquired`.
+    async fn snapshot_in_sandbox(
+        &self,
+        context: &HookContext,
+        scope: ScopeId,
+        key: CheckpointKey,
+        node: &str,
+        status: &Status,
+        origin: ResultOrigin,
+    ) -> Result<Option<Note>, String> {
+        let held = lock(&self.envs).get(&(context.execution, scope)).cloned();
+        let Some((workspace, env)) = held else {
+            // A skipped node or a driver-made outcome may precede the scope's
+            // environment; nothing of the stage's exists to snapshot.
+            if origin == ResultOrigin::Driver || matches!(status, Status::Skipped) {
+                return Ok(Some(Note::new(
+                    CHECKPOINT_NOTE,
+                    json!({
+                        "execution": key.execution,
+                        "firing": key.firing,
+                        "attempt": key.attempt,
+                        "skipped": "the scope has no environment yet",
+                    }),
+                )));
+            }
+            return Err(format!(
+                "scope {scope} of execution {} has no sandbox environment to snapshot in",
+                context.execution
+            ));
+        };
+        self.gate("commit", node).await;
+        let serialized = self.workspace_lock(&workspace);
+        let _held = serialized.lock().await;
+        match self
+            .workspaces
+            .commit_in(&env, &workspace, key, node, status.tag())
+            .await
+        {
+            Ok(snapshot) => {
+                debug!(
+                    run_id = %self.run_id,
+                    node,
+                    execution = key.execution,
+                    firing = key.firing,
+                    attempt = key.attempt,
+                    reused = snapshot.reused,
+                    "checkpoint committed in the sandbox"
+                );
+                lock(&self.committed).insert(key, (workspace.clone(), snapshot.sha.clone()));
+                Ok(Some(Note::new(
+                    CHECKPOINT_NOTE,
+                    json!({
+                        "execution": key.execution,
+                        "firing": key.firing,
+                        "attempt": key.attempt,
+                        "workspace": workspace,
+                        "git_commit_sha": snapshot.sha,
+                        "reused": snapshot.reused,
+                    }),
+                )))
+            }
+            Err(error) => Err(format!(
+                "the checkpoint commit of `{node}` in the sandbox failed: {}",
+                collect_chain(&error).join(": ")
+            )),
+        }
+    }
+
+    /// The restore plan of a resumed run, read once: what every live
+    /// sandbox workspace must be brought to at its first acquisition.
+    async fn restore_targets(
+        &self,
+    ) -> Result<&Mutex<BTreeMap<String, RestoreTarget>>, ScopeAcquiredError> {
+        self.restore
+            .get_or_try_init(|| async {
+                let plan = recovery::plan(
+                    Arc::clone(&self.store),
+                    self.records.as_ref(),
+                    &self.run_id,
+                    &self.workspaces,
+                )
+                .await
+                .map_err(|error| {
+                    ScopeAcquiredError::new(format!(
+                        "the run's restore plan could not be read: {}",
+                        collect_chain(&error).join(": ")
+                    ))
+                })?;
+                match plan {
+                    Plan::Resume { targets } => Ok(Mutex::new(targets)),
+                    Plan::Start => Ok(Mutex::default()),
+                    Plan::Failed { reason } => Err(ScopeAcquiredError::new(reason)),
+                }
+            })
+            .await
+    }
+
+    /// Bring a sandbox workspace to the snapshot the resumed run's durable
+    /// state names, once, at its first acquisition.
+    async fn restore_sandbox(
+        &self,
+        workspace: &str,
+        env: &Arc<dyn ExecEnv>,
+    ) -> Result<(), ScopeAcquiredError> {
+        let targets = self.restore_targets().await?;
+        let target = lock(targets).remove(workspace);
+        let Some(target) = target else {
+            return Ok(());
+        };
+        let serialized = self.workspace_lock(workspace);
+        let _held = serialized.lock().await;
+        let action = recovery::bring_sandbox_to(&self.workspaces, env, workspace, &target)
+            .await
+            .map_err(|error| {
+                ScopeAcquiredError::new(format!(
+                    "the sandbox workspace `{workspace}` could not be brought to its snapshot: {}",
+                    collect_chain(&error).join(": ")
+                ))
+            })?;
+        info!(
+            run_id = %self.run_id,
+            workspace,
+            sha = target.sha,
+            action = ?action,
+            "sandbox workspace brought to its durable snapshot"
+        );
+        Ok(())
+    }
+
     /// The checkpoint's platform record, once per operation identity.
     async fn record(
         &self,
@@ -360,7 +508,13 @@ impl FabroHooks {
         let (workspace, sha) = if let Some(committed) = committed {
             committed
         } else {
-            let workspace = self.workspace_of(context, scope).await?;
+            let acquired = lock(&self.envs)
+                .get(&(context.execution, scope))
+                .map(|(workspace, _)| workspace.clone());
+            let workspace = match acquired {
+                Some(workspace) => workspace,
+                None => self.workspace_of(context, scope).await?,
+            };
             let serialized = self.workspace_lock(&workspace);
             let held = serialized.lock().await;
             let found = self.workspaces.find(&workspace, key).await;
@@ -542,19 +696,17 @@ impl ExecutionHooks for FabroHooks {
             attempt:   transition.view.attempt.raw(),
         };
         let mut problems = Vec::new();
-        if self.host_workspaces {
-            self.gate("record", &node).await;
-            if let Err(problem) = self.record(context, scope, key).await {
-                warn!(
-                    run_id = %self.run_id,
-                    node,
-                    execution = key.execution,
-                    firing = key.firing,
-                    error = %problem,
-                    "the checkpoint record was not written"
-                );
-                problems.push(problem);
-            }
+        self.gate("record", &node).await;
+        if let Err(problem) = self.record(context, scope, key).await {
+            warn!(
+                run_id = %self.run_id,
+                node,
+                execution = key.execution,
+                firing = key.firing,
+                error = %problem,
+                "the checkpoint record was not written"
+            );
+            problems.push(problem);
         }
         let mut report = self.inner.transition(context, transition).await?;
         report.problems.extend(problems);
@@ -578,6 +730,29 @@ impl ExecutionHooks for FabroHooks {
             outcome = ?released.outcome,
             "scope released; running the sandbox cleanup hooks"
         );
-        self.inner.scope_released(context, released).await
+        let scope = released.scope;
+        let notes = self.inner.scope_released(context, released).await;
+        lock(&self.envs).remove(&(context.execution, scope));
+        notes
+    }
+
+    async fn scope_acquired(
+        &self,
+        context: &HookContext,
+        acquired: ScopeAcquired,
+    ) -> Result<(), ScopeAcquiredError> {
+        self.inner.scope_acquired(context, acquired.clone()).await?;
+        if self.host_workspaces {
+            return Ok(());
+        }
+        let workspace = acquired.workspace.as_str().to_owned();
+        lock(&self.envs).insert(
+            (context.execution, acquired.scope),
+            (workspace.clone(), Arc::clone(&acquired.env)),
+        );
+        if !self.resumed {
+            return Ok(());
+        }
+        self.restore_sandbox(&workspace, &acquired.env).await
     }
 }

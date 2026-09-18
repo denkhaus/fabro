@@ -37,8 +37,9 @@
 //! the worker exits with that loss as its error once the run has settled.
 //!
 //! Fabro's hooks ride the run with their platform records over the same
-//! client: the checkpoint commit in the run's host workspace before every
-//! durable finish, and its record after every route.
+//! client: the checkpoint commit in the run's workspace, on the host or
+//! inside its sandbox, before every durable finish, and its record after
+//! every route.
 //!
 //! The runtime's settings layer is left empty here: the run's graphs were
 //! lowered and admitted at create time with the server's layer, and nothing
