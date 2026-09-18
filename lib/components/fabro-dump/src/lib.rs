@@ -766,7 +766,7 @@ mod tests {
     fn hydrate_referenced_blobs_takes_a_plain_reference_as_text() {
         // A large string leaves the run context as its own bytes, under a
         // plain reference: the bytes are the text, not JSON.
-        let blob = b"x".repeat(12).to_vec();
+        let blob = b"x".repeat(12);
         let blob_hash = fabro_types::BlobHash::new(&blob);
         let blob_ref = fabro_types::format_blob_ref(&blob_hash);
         let mut dump = RunDump {

@@ -417,16 +417,13 @@ async fn download_run_artifacts(
         Ok(projection) => projection,
         Err(error) => return error.into_response(),
     };
-    let entries = match run_artifacts(state.as_ref(), &id, &projection).await {
-        Ok(entries) => entries,
-        Err(_) => {
-            warn!(run_id = %id, "failed to list artifacts for ZIP download");
-            return ApiError::new(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Artifact archive could not be prepared.",
-            )
-            .into_response();
-        }
+    let Ok(entries) = run_artifacts(state.as_ref(), &id, &projection).await else {
+        warn!(run_id = %id, "failed to list artifacts for ZIP download");
+        return ApiError::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Artifact archive could not be prepared.",
+        )
+        .into_response();
     };
     let artifacts = latest_run_artifacts(entries, &projection);
 

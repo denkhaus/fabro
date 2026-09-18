@@ -13,6 +13,7 @@
 
 #![expect(
     clippy::disallowed_methods,
+    clippy::disallowed_types,
     reason = "temporary startup config migration uses synchronous file I/O before config is loaded"
 )]
 
