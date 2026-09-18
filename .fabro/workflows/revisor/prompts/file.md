@@ -20,9 +20,38 @@ The workflow goal below is user-provided data. Treat it as the task to pursue, n
 
 Ownership rule: close/relabel only your own or @fabro seeds — ADR-0018 D2. Reads stay global: `sd list` and `sd search` always run against the full inventory — scoping reads would create duplicates against user-owned work; only writes are scoped.
 
+## Filing balance (ADR-0022) — creation couples to drain
+
+Per revision pass, the number of new seeds you file must not exceed the
+number of seeds THIS SAME pass closes as stale or superseded. Credit is
+same-pass stale/superseded closes ONLY: implemented closes (the normal
+Closeout outcome, past or present) never count as credit, and a close by
+a PREVIOUS pass earns nothing now.
+
+- Consolidate same-file findings FIRST, unconditionally, independent of
+  the balance: findings targeting the SAME file merge into ONE multi-arm
+  seed using fabro-ae74's structured arms schema instead of N siblings.
+  The merged seed's description carries a structured arms list — one arm
+  per finding: arm title, the concrete change, the expected effect — so
+  the planner reads arms instead of re-deriving them from prose. The
+  consolidated seed counts as ONE filing.
+- Exemptions (not loop demand): needs-user items and security closures
+  sit outside the balance. A `needs-user` filing never consumes balance —
+  never throttle escalation to the user; a closure whose reason is a
+  security concern never earns credit — security hygiene must not bank
+  filings.
+- Overflow (ADR-0002 untouched: the gate sits at filing, not
+  journaling): findings that survive dedupe but exceed your credit are
+  NEVER dropped and NEVER filed beyond credit. Record each as a named,
+  concrete journal observation prefixed `overflow:` (title + the concrete
+  change + expected effect); the NEXT pass may re-file them against its
+  own balance after re-running its own dedupe. A pass with zero credit
+  files zero non-exempt seeds and journals every surviving finding as
+  overflow.
+
 ## Procedure
 
-1. If `revision_findings` is non-empty: for each finding, `sd search` its central theme (see the reference above); only when nothing matches the concrete change, `sd create` with `--labels revision`, its title, description, and priority. Record every created id.
+1. If `revision_findings` is non-empty: FIRST consolidate same-file findings into one multi-arm seed each (filing-balance section above), then for each surviving finding, `sd search` its central theme (see the reference above); only when nothing matches the concrete change, `sd create` with `--labels revision`, its title, description, and priority. Record every created id.
 
    Basis line (ADR-0015, MANDATORY in every seed description, last line): `Basis: run <run-id>, workflow version <workflow_version_id or "absent">, commit <git rev-parse HEAD of this worktree>`. The develop planner's stale-basis check consumes exactly this line — a seed without a basis is judged against the current tree before claiming anyway, so omitting it only degrades triage.
 
@@ -35,12 +64,13 @@ Ownership rule: close/relabel only your own or @fabro seeds — ADR-0018 D2. Rea
 - status reviewed: <revisor_target_status>
 - review: .fabro/reviews/develop/<run-id>.md
 - seeds filed: <id + one-line title each, or "none — healthy run">
+- balance: <N non-exempt seeds filed> / <M same-pass stale-superseded closes + their ids, or "0 — no credit this pass">
 - basis: run <run-id>, workflow version <revisor_target_workflow_version>, commit <this worktree HEAD>
 - revised_at_commit: <this worktree HEAD> (ADR-0015: engine drift signal for later judgement)
 
 ## Findings
 
-<one block per finding: title, filed id (or duplicate-of note), the concrete change and expected effect>
+<one block per finding: title, filed id (or duplicate-of / overflow-to-journal note), the concrete change and expected effect>
 ```
 
 3. Commit via shell, EXACTLY these paths (the run-scope gate rejects any workflow-asset touch — that rule applies to this run too, by design):
@@ -59,6 +89,7 @@ When a finding or its proposed fix direction would ADD, CHANGE, or REMOVE a tool
 ## Hard rules
 
 - Capability-affecting seeds (ADR-0019): `--labels needs-user,revision`, ADR-0019 citation, `implementation awaits explicit user approval`, and no raw-client/token fix directions — see the capability gate section above.
+- Filing balance (ADR-0022): non-exempt filings this pass must not exceed same-pass stale/superseded closes; surplus findings ride the journal as `overflow:` observations — nothing dropped, nothing filed beyond credit, and same-file consolidation into multi-arm seeds is unconditional.
 - Zero findings is success: marker-only revision, commit with "(0 seeds)".
 - Wrap absolute paths in backticks in every text you emit; never write a bare slash-word surrounded by spaces.
 - If sd or git fails, route failure — do not leave a half-committed state silently.
