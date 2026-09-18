@@ -71,6 +71,7 @@ fn request(bundle: Bundle, runtime: RuntimeSpec) -> CheckRequest {
         vars: BTreeMap::new(),
         launch: Launch::default(),
         runtime,
+        unbound_is_warning: false,
     }
 }
 
@@ -131,18 +132,19 @@ async fn the_hello_bundle_is_admitted_and_round_trips_through_the_blob_store() {
 async fn a_launch_binds_the_repository_and_the_model_default() {
     let repository = tempfile::tempdir().expect("a temp dir");
     let request = CheckRequest {
-        bundle:  bundle(&[
+        bundle:             bundle(&[
             ("workflow.fabro", COMMAND_WORKFLOW),
             ("workflow.toml", SETTINGS),
         ]),
-        inputs:  BTreeMap::new(),
-        vars:    BTreeMap::new(),
-        launch:  Launch {
+        inputs:             BTreeMap::new(),
+        vars:               BTreeMap::new(),
+        launch:             Launch {
             model:      Some("gpt-5.4".to_string()),
             provider:   None,
             repository: Some(repository.path().to_path_buf()),
         },
-        runtime: RuntimeSpec::default(),
+        runtime:            RuntimeSpec::default(),
+        unbound_is_warning: false,
     };
 
     let admitted = check::check(&request).expect("the command bundle is admitted");

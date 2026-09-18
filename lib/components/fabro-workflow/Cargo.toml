@@ -24,7 +24,6 @@ anyhow.workspace = true
 fabro-auth = { path = "../../foundation/fabro-auth" }
 fabro-config = { path = "../../foundation/fabro-config" }
 fabro-graphviz = { path = "../fabro-graphviz" }
-fabro-validate = { path = "../fabro-validate" }
 fabro-sandbox = { path = "../fabro-sandbox" }
 sandbox-driver.workspace = true
 pebble-agent.workspace = true

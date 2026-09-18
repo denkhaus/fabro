@@ -3,12 +3,12 @@ use std::sync::Arc;
 
 use fabro_graphviz::graph::Graph;
 use fabro_template::TemplateContext;
-use fabro_validate::{Diagnostic, Severity};
+use fabro_types::diagnostic::{Diagnostic, Severity};
 
 use crate::error::Error;
 use crate::file_resolver::FileResolver;
 use crate::records::RunSpec;
-use crate::transforms::{ModelResolutionTransform, RenderMode, Transform};
+use crate::transforms::{RenderMode, Transform};
 
 /// Output of the PARSE phase.
 #[non_exhaustive]
@@ -79,6 +79,12 @@ impl Validated {
 
     pub fn promote_template_undefined_variables_to_errors(&mut self) {
         self.promote_rule_to_error(TEMPLATE_UNDEFINED_VARIABLE_RULE);
+    }
+
+    /// Add diagnostics from another judge of the workflow (Petri's check),
+    /// after the transforms' own.
+    pub fn extend_diagnostics(&mut self, diagnostics: impl IntoIterator<Item = Diagnostic>) {
+        self.diagnostics.extend(diagnostics);
     }
 
     /// True if any diagnostic has Error severity.
@@ -212,7 +218,4 @@ pub struct TransformOptions {
     pub source_name:       Option<String>,
     pub render_mode:       RenderMode,
     pub custom_transforms: Vec<Box<dyn Transform>>,
-    /// Catalog-backed model resolution to perform. `None` preserves authored
-    /// model and provider selectors for catalog-free structural validation.
-    pub model_resolution:  Option<ModelResolutionTransform>,
 }

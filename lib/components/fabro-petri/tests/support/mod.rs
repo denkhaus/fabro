@@ -88,6 +88,7 @@ pub(crate) fn admit(
         vars: BTreeMap::new(),
         launch,
         runtime: runtime.clone(),
+        unbound_is_warning: false,
     };
     let admitted = check::check(&request)
         .unwrap_or_else(|error| panic!("the workflow is admitted: {error:?}"));

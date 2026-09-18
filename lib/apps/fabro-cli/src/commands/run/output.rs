@@ -5,6 +5,7 @@ use anyhow::{Context as _, Result};
 use cli_table::format::{Border, Justify, Separator};
 use cli_table::{Cell, CellStruct, Style, Table};
 use fabro_api::types;
+use fabro_types::diagnostic::{Diagnostic, RelatedDiagnostic, Severity};
 use fabro_types::{PullRequestLink, RunId, StageId, parse_blob_ref};
 use fabro_util::check_report::{CheckDetail, CheckReport, CheckResult, CheckSection, CheckStatus};
 use fabro_util::error::render_with_causes;
@@ -68,13 +69,13 @@ pub(crate) fn print_workflow_summary(
     print_diagnostics(&diagnostics, styles, printer);
 }
 
-fn api_diagnostic_to_local(diagnostic: &types::WorkflowDiagnostic) -> fabro_validate::Diagnostic {
-    fabro_validate::Diagnostic {
+fn api_diagnostic_to_local(diagnostic: &types::WorkflowDiagnostic) -> Diagnostic {
+    Diagnostic {
         rule:        diagnostic.rule.clone(),
         severity:    match diagnostic.severity {
-            types::WorkflowDiagnosticSeverity::Error => fabro_validate::Severity::Error,
-            types::WorkflowDiagnosticSeverity::Warning => fabro_validate::Severity::Warning,
-            types::WorkflowDiagnosticSeverity::Info => fabro_validate::Severity::Info,
+            types::WorkflowDiagnosticSeverity::Error => Severity::Error,
+            types::WorkflowDiagnosticSeverity::Warning => Severity::Warning,
+            types::WorkflowDiagnosticSeverity::Info => Severity::Info,
         },
         message:     diagnostic.message.clone(),
         node_id:     diagnostic.node_id.clone(),
@@ -97,7 +98,7 @@ fn api_diagnostic_to_local(diagnostic: &types::WorkflowDiagnostic) -> fabro_vali
         related:     diagnostic
             .related
             .iter()
-            .map(|related| fabro_validate::RelatedDiagnostic {
+            .map(|related| RelatedDiagnostic {
                 message:     related.message.clone(),
                 source_path: related.source_path.clone(),
                 line:        related.line.and_then(|value| u32::try_from(value).ok()),
@@ -109,7 +110,7 @@ fn api_diagnostic_to_local(diagnostic: &types::WorkflowDiagnostic) -> fabro_vali
 
 pub(crate) fn api_diagnostics_to_local(
     diagnostics: &[types::WorkflowDiagnostic],
-) -> Vec<fabro_validate::Diagnostic> {
+) -> Vec<Diagnostic> {
     diagnostics.iter().map(api_diagnostic_to_local).collect()
 }
 

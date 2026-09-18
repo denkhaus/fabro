@@ -9,6 +9,7 @@ pub mod checkpoint;
 pub mod command_output;
 pub mod conclusion;
 pub mod dense;
+pub mod diagnostic;
 pub mod diff;
 pub mod engine;
 pub mod event_envelope;

@@ -75,13 +75,17 @@ pub struct Launch {
 /// the runtime.
 #[derive(Clone, Default)]
 pub struct CheckRequest {
-    pub bundle:  Bundle,
+    pub bundle:             Bundle,
     /// The intent's inputs, under which `[run.inputs]` defaults fill in.
-    pub inputs:  BTreeMap<String, Value>,
+    pub inputs:             BTreeMap<String, Value>,
     /// The server's run variables, read by `{{ vars.NAME }}`.
-    pub vars:    BTreeMap<String, String>,
-    pub launch:  Launch,
-    pub runtime: RuntimeSpec,
+    pub vars:               BTreeMap<String, String>,
+    pub launch:             Launch,
+    pub runtime:            RuntimeSpec,
+    /// Whether a template that reads an input nothing binds is a warning
+    /// that leaves the text unrendered, instead of an error: a validation
+    /// before the run's inputs exist sets it; a run never does.
+    pub unbound_is_warning: bool,
 }
 
 /// Petri's diagnostic, in the shape Fabro's create handler maps onto its
@@ -158,7 +162,8 @@ pub fn check(request: &CheckRequest) -> Result<Admitted, CheckError> {
                 entrypoint: bundle.entrypoint.clone(),
             })?;
     let runtime = request.runtime.runtime(false);
-    let inputs = compile_inputs(&request.inputs, &request.vars, &request.launch);
+    let mut inputs = compile_inputs(&request.inputs, &request.vars, &request.launch);
+    inputs.unbound_is_warning = request.unbound_is_warning;
     let lowered = runtime
         .check_source(&bundle.entrypoint, text, &bundle.files(), None, &inputs)
         .map_err(CheckError::Load)?;

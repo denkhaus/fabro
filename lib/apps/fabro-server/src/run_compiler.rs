@@ -407,7 +407,6 @@ pub(crate) async fn compile_admitted(
             cwd,
             workflow_path: Some(entrypoint),
             workflow_bundle: Some(workflow_bundle),
-            configured_providers: Vec::new(),
         })?;
         Ok(PinnedRun {
             materialized: operations::materialize_admitted_run(compiled),

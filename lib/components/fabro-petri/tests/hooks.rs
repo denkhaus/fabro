@@ -83,7 +83,7 @@ const SETTINGS: &str = "_version = 1\n\n[workflow]\ngraph = \"workflow.fabro\"\n
 /// The bundle admitted the way the create handler admits it.
 fn admit(workflow: &str, settings: &str) -> AdmittedGraphs {
     let request = CheckRequest {
-        bundle:  Bundle {
+        bundle:             Bundle {
             files:        BTreeMap::from([
                 ("workflow.fabro".to_string(), workflow.to_string()),
                 ("workflow.toml".to_string(), settings.to_string()),
@@ -91,10 +91,11 @@ fn admit(workflow: &str, settings: &str) -> AdmittedGraphs {
             entrypoint:   "workflow.fabro".to_string(),
             project_toml: None,
         },
-        inputs:  BTreeMap::new(),
-        vars:    BTreeMap::new(),
-        launch:  Launch::default(),
-        runtime: RuntimeSpec::default(),
+        inputs:             BTreeMap::new(),
+        vars:               BTreeMap::new(),
+        launch:             Launch::default(),
+        runtime:            RuntimeSpec::default(),
+        unbound_is_warning: false,
     };
     let admitted = check::check(&request).expect("the bundle is admitted");
     AdmittedGraphs {

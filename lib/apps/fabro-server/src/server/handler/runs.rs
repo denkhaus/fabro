@@ -26,6 +26,8 @@ use fabro_static::EnvVars;
 use fabro_store::{
     RunSummaryListQuery, RunSummarySort, RunSummarySortDirection, RunSummaryVisibility,
 };
+use fabro_types::diagnostic::Severity;
+use fabro_types::settings::run::RunMode;
 use fabro_types::{
     AutomationRef, ContextWindowStaleness, ManifestPath, Principal, Run, RunClientProvenance,
     RunId, RunProvenance, RunServerProvenance, RunStatusKind, RunTarget, SandboxProviderKind,
@@ -35,12 +37,13 @@ use fabro_types::{
 };
 use fabro_util::error as error_util;
 use fabro_util::version::FABRO_VERSION;
+use fabro_workflow::pipeline::Validated;
 use fabro_workflow::run_status::RunStatus;
 use fabro_workflow::{Error as WorkflowError, operations};
 use lithos_llm::catalog::ProviderId;
 use serde::de::IgnoredAny;
 use strum::VariantArray as _;
-use tokio::fs;
+use tokio::{fs, task};
 use tracing::info;
 
 use super::super::{
@@ -61,11 +64,11 @@ use crate::run_intent::{
     EnvironmentSelectionError, PreparedIntentTarget, RunIntentAdmissionError,
     lower_workflow_closure, pin_workflow_environment_authority, prepare_intent_target,
 };
-use crate::run_manifest;
 use crate::run_selector::{ResolveRunError, resolve_run_by_selector};
 use crate::run_title_generation::{self, GenerateTitleInput, TitlePromptInput, WorkflowSummary};
 #[cfg(any(test, feature = "test-support"))]
 use crate::test_support as server_test_support;
+use crate::{petri_check, run_manifest};
 
 pub(super) fn manifest_routes() -> Router<Arc<AppState>> {
     Router::new()
@@ -989,7 +992,7 @@ fn compiler_error_detail(error: &run_compiler::RunCompilerError) -> String {
     };
     let listed = diagnostics
         .iter()
-        .filter(|diagnostic| diagnostic.severity == fabro_validate::Severity::Error)
+        .filter(|diagnostic| diagnostic.severity == Severity::Error)
         .map(|diagnostic| format!("{}: {}", diagnostic.rule, diagnostic.message))
         .collect::<Vec<_>>();
     if listed.is_empty() {
@@ -1228,18 +1231,14 @@ async fn run_preflight(
             .into_response();
     }
     let (llm_result, ready_providers) = state.resolve_llm_client_with_ready_ids().await;
-    let mut validated = match run_manifest::validate_prepared_manifest_for_preflight(
-        &prepared,
-        state.catalog(),
-        vars,
-        &ready_providers,
-    ) {
-        Ok(validated) => validated,
-        Err(WorkflowError::Parse(_)) => {
-            return ApiError::bad_request("Validation failed").into_response();
-        }
-        Err(err) => return ApiError::bad_request(err.to_string()).into_response(),
-    };
+    let mut validated =
+        match validate_manifest_on_petri(&state, &prepared, vars, &ready_providers).await {
+            Ok(validated) => validated,
+            Err(WorkflowError::Parse(_)) => {
+                return ApiError::bad_request("Validation failed").into_response();
+            }
+            Err(err) => return ApiError::bad_request(err.to_string()).into_response(),
+        };
     validated.promote_template_undefined_variables_to_errors();
     let response =
         match run_manifest::run_preflight(&state, &prepared, &validated, llm_result).await {
@@ -1280,22 +1279,48 @@ async fn validate_run_manifest(
         return ApiError::bad_request(format!("Run config variable interpolation failed: {err}"))
             .into_response();
     }
-    let validated = match run_manifest::validate_prepared_manifest_with_vars(
-        &prepared,
-        state.catalog(),
-        vars,
-    ) {
-        Ok(validated) => validated,
-        Err(WorkflowError::Parse(_)) => {
-            return ApiError::bad_request("Validation failed").into_response();
-        }
-        Err(err) => return ApiError::bad_request(err.to_string()).into_response(),
-    };
+    let (_, ready_providers) = state.resolve_llm_client_with_ready_ids().await;
+    let validated =
+        match validate_manifest_on_petri(&state, &prepared, vars, &ready_providers).await {
+            Ok(validated) => validated,
+            Err(WorkflowError::Parse(_)) => {
+                return ApiError::bad_request("Validation failed").into_response();
+            }
+            Err(err) => return ApiError::bad_request(err.to_string()).into_response(),
+        };
     (
         StatusCode::OK,
         Json(run_manifest::validate_response(&prepared, &validated)),
     )
         .into_response()
+}
+
+/// Validate a prepared manifest as a run would be admitted: Fabro's
+/// structural pass, then Petri's check with the model client over the ready
+/// providers, on the blocking pool.
+async fn validate_manifest_on_petri(
+    state: &Arc<AppState>,
+    prepared: &run_manifest::PreparedManifest,
+    vars: HashMap<String, String>,
+    ready_providers: &[ProviderId],
+) -> Result<Validated, WorkflowError> {
+    let launch = petri_check::launch(&state.catalog(), &prepared.settings, ready_providers, None);
+    let dry_run = prepared.settings.run.execution.mode == RunMode::DryRun;
+    let runtime = petri_runs::runtime_spec(state, ready_providers, dry_run);
+    let has_ready_provider = !ready_providers.is_empty();
+    let prepared = prepared.clone();
+    task::spawn_blocking(move || {
+        run_manifest::validate_prepared_manifest(
+            &prepared,
+            &vars,
+            launch,
+            runtime,
+            has_ready_provider,
+            false,
+        )
+    })
+    .await
+    .map_err(|source| WorkflowError::engine_with_source("manifest check task failed", source))?
 }
 
 async fn snapshot_run_variables(

@@ -4,12 +4,12 @@ use std::sync::{Arc, LazyLock};
 use fabro_graphviz::Error as GraphvizError;
 use fabro_llm::{ErrorData, ErrorKind, ModelSelectionError, failure_signature_hint};
 use fabro_template::TemplateError;
+use fabro_types::diagnostic::Diagnostic;
 pub use fabro_types::failure_signature::FailureSignature;
 pub use fabro_types::outcome::FailureCategory;
 use fabro_types::settings::{AmbiguousModelRef, ResolveError};
 use fabro_types::{ExecOutputTail, FailureReason, RunFailure};
 use fabro_util::error::{SharedError, collect_causes, collect_chain, render_with_causes};
-use fabro_validate::Diagnostic;
 use regex::Regex;
 use thiserror::Error as ThisError;
 
@@ -712,12 +712,6 @@ impl From<fabro_template::TemplateError> for Error {
     }
 }
 
-impl From<fabro_validate::ValidationError> for Error {
-    fn from(e: fabro_validate::ValidationError) -> Self {
-        Self::Validation(e.0)
-    }
-}
-
 impl From<RunEventPersistenceError> for Error {
     fn from(err: RunEventPersistenceError) -> Self {
         Self::engine_with_source("run event persistence failed", err)
@@ -795,7 +789,7 @@ mod tests {
         let err = Error::ValidationFailed {
             diagnostics: vec![Diagnostic {
                 rule: "test".to_string(),
-                severity: fabro_validate::Severity::Error,
+                severity: fabro_types::diagnostic::Severity::Error,
                 message: "missing start node".to_string(),
                 node_id: None,
                 edge: None,
@@ -1982,7 +1976,7 @@ mod tests {
             Error::ValidationFailed {
                 diagnostics: vec![Diagnostic {
                     rule: "test".into(),
-                    severity: fabro_validate::Severity::Error,
+                    severity: fabro_types::diagnostic::Severity::Error,
                     message: "bad".into(),
                     node_id: None,
                     edge: None,

@@ -28,14 +28,11 @@
 //! workspace to the snapshot its durable state names, or reports the run
 //! failed when it cannot.
 
-use std::collections::{BTreeMap, HashSet};
 use std::sync::Arc;
 use std::time::Instant;
 
 use fabro_config::{Home, SettingsLayer, Storage};
 use fabro_interview::ControlInterviewer;
-use fabro_llm::selection;
-use fabro_petri::check::{self, Bundle, CheckError, CheckRequest, Diagnostic, Launch};
 use fabro_petri::controls::RunControls;
 use fabro_petri::engine::{self, Conclusion, Execution, RunRequest};
 use fabro_petri::hooks::HooksSpec;
@@ -49,7 +46,6 @@ use fabro_petri::{SqliteRunStore, admission};
 use fabro_types::settings::run::{ApprovalMode, RunMode};
 use fabro_types::{PetriAdmission, RunId, RunRunnableSource, RunTarget, RunTiming, StageOutcome};
 use fabro_util::error as error_util;
-use fabro_validate::{Diagnostic as FabroDiagnostic, Severity};
 use fabro_workflow::Error as WorkflowError;
 use fabro_workflow::run_status::{FailureReason, RunStatus, SuccessReason};
 use lithos_llm::catalog::ProviderId;
@@ -58,6 +54,7 @@ use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
 
 use super::{AppState, RunAnswerTransport, RunExecutionMode, clear_live_run_state, workflow_event};
+use crate::petri_check;
 use crate::petri_runs::PetriRuns;
 use crate::run_compiler::{PreparedRun, RunCompilerError};
 
@@ -114,74 +111,31 @@ fn settings_layer_toml(state: &AppState) -> Option<String> {
 
 /// Petri compiles the run: check the bundle, map the diagnostics, and
 /// persist the admitted graphs. A refusal is the same validation error the
-/// legacy compiler raises, carrying Petri's diagnostics.
+/// legacy compiler raised, carrying Petri's diagnostics.
 pub(crate) async fn admit(
     state: &AppState,
     prepared: &PreparedRun,
     eligible: &[ProviderId],
 ) -> Result<PetriAdmission, RunCompilerError> {
     let settings = prepared.settings();
-    let mut files = BTreeMap::new();
-    for workflow in prepared.workflow_bundle().workflows().values() {
-        for (path, text) in &workflow.files {
-            files.insert(path.to_string(), text.clone());
-        }
-        files.insert(workflow.path.to_string(), workflow.source.clone());
-        if let Some(config) = &workflow.config {
-            files.insert(config.path.to_string(), config.source.clone());
-        }
-    }
-    let mut inputs = BTreeMap::new();
-    for (name, value) in &settings.run.inputs {
-        let value = serde_json::to_value(value).map_err(|err| {
-            RunCompilerError::Workflow(WorkflowError::engine_with_source(
-                format!("run input `{name}` does not encode as JSON"),
-                err,
-            ))
-        })?;
-        inputs.insert(name.clone(), value);
-    }
-    // The launch: Fabro's resolved model and provider. When the settings
-    // name neither, the default offering of the eligible providers, as the
-    // legacy compiler picked it, is bound as the launch model alone: a node
-    // that names no model runs on it, and a node that names a model the
-    // catalog lacks stays unqualified, so Petri's admission refuses it.
-    let catalog = state.catalog();
-    let model = settings.run.model.name.clone().or_else(|| {
-        if settings.run.model.provider.is_some() {
-            return None;
-        }
-        let eligible = eligible.iter().cloned().collect::<HashSet<_>>();
-        selection::select_default(&catalog, &eligible)
-            .ok()
-            .map(|offering| offering.model.id().to_string())
-    });
-    let provider = settings.run.model.provider.clone();
     let repository = match prepared.target() {
         Some(RunTarget::Folder { path }) => Some(path.into()),
         Some(RunTarget::Git(_) | RunTarget::None {}) | None => None,
     };
+    let launch = petri_check::launch(&state.catalog(), settings, eligible, repository);
     let dry_run = settings.run.execution.mode == RunMode::DryRun;
-    let request = CheckRequest {
-        bundle: Bundle {
-            files,
-            entrypoint: prepared.entrypoint().to_string(),
-            project_toml: None,
-        },
-        inputs,
-        vars: prepared
-            .vars()
-            .iter()
-            .map(|(name, value)| (name.clone(), value.clone()))
-            .collect(),
-        launch: Launch {
-            model,
-            provider,
-            repository,
-        },
-        runtime: runtime_spec(state, eligible, dry_run),
-    };
-    let admitted = task::spawn_blocking(move || check::check(&request))
+    let request = petri_check::check_request(
+        prepared.workflow_bundle(),
+        prepared.entrypoint(),
+        settings,
+        prepared.vars(),
+        launch,
+        runtime_spec(state, eligible, dry_run),
+        false,
+    )
+    .map_err(RunCompilerError::Workflow)?;
+    let has_ready_provider = !eligible.is_empty();
+    let checked = task::spawn_blocking(move || petri_check::check(&request, has_ready_provider))
         .await
         .map_err(|source| {
             RunCompilerError::Workflow(WorkflowError::engine_with_source(
@@ -189,42 +143,22 @@ pub(crate) async fn admit(
                 source,
             ))
         })?
-        .map_err(|err| match err {
-            CheckError::Rejected(diagnostics) => {
-                RunCompilerError::Workflow(WorkflowError::ValidationFailed {
-                    diagnostics: diagnostics.iter().map(fabro_diagnostic).collect(),
-                })
-            }
-            other => RunCompilerError::Workflow(WorkflowError::engine_with_source(
-                "Petri could not check the workflow",
-                other,
-            )),
-        })?;
-    for warning in &admitted.warnings {
-        info!(code = %warning.code, message = %warning.message, "Petri warned at admission");
-    }
-    // Without a ready provider there is no model client, so Petri admitted
-    // the model nodes unchecked: refuse a run they would fail at once, as
-    // the legacy compiler refused every run without a default model.
-    if eligible.is_empty() && admitted.needs_model() {
+        .map_err(RunCompilerError::Workflow)?;
+    if checked.has_errors() {
         return Err(RunCompilerError::Workflow(
             WorkflowError::ValidationFailed {
-                diagnostics: vec![FabroDiagnostic {
-                    rule: "fabro.model.no_ready_provider".to_string(),
-                    severity: Severity::Error,
-                    message: "no default model is available: no LLM provider is ready, and the \
-                          workflow has a node that runs a model"
-                        .to_string(),
-                    fix: Some(
-                        "configure a provider credential (for example `OPENAI_API_KEY`) or a \
-                     `[run.model]`"
-                            .to_string(),
-                    ),
-                    ..FabroDiagnostic::default()
-                }],
+                diagnostics: checked.diagnostics,
             },
         ));
     }
+    for warning in &checked.diagnostics {
+        info!(code = %warning.rule, message = %warning.message, "Petri warned at admission");
+    }
+    let admitted = checked.admitted.ok_or_else(|| {
+        RunCompilerError::Workflow(WorkflowError::engine(
+            "Petri's check admitted no graph and raised no error",
+        ))
+    })?;
     admission::persist(&state.store_ref().blobs(), &admitted)
         .await
         .map_err(|err| {
@@ -233,25 +167,6 @@ pub(crate) async fn admit(
                 err,
             ))
         })
-}
-
-/// Petri's diagnostic in Fabro's shape: the code is the rule, the hint is
-/// the fix, the bundle-relative file and position are the source location.
-fn fabro_diagnostic(diagnostic: &Diagnostic) -> FabroDiagnostic {
-    FabroDiagnostic {
-        rule: diagnostic.code.clone(),
-        severity: if diagnostic.is_error() {
-            Severity::Error
-        } else {
-            Severity::Warning
-        },
-        message: diagnostic.message.clone(),
-        fix: diagnostic.hint.clone(),
-        source_path: Some(diagnostic.file.clone()),
-        line: diagnostic.line,
-        column: diagnostic.column,
-        ..FabroDiagnostic::default()
-    }
 }
 
 /// Execute a Petri run in the server process, under the test override:

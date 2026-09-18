@@ -59,72 +59,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "agent-client-protocol"
-version = "0.11.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2af62fb84df2af0f933d8f5fd78b843fa5eb0ec5a48fa1b528c41951d0bbe36c"
-dependencies = [
- "agent-client-protocol-derive",
- "agent-client-protocol-schema",
- "anyhow",
- "futures",
- "futures-concurrency",
- "jsonrpcmsg",
- "rmcp",
- "rustc-hash",
- "schemars 1.2.1",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "tokio",
- "tokio-util",
- "tracing",
- "uuid",
-]
-
-[[package]]
-name = "agent-client-protocol-derive"
-version = "0.11.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ce42c2d3c048c12897eef2e577dfff1e3355c632c9f1625cc953b9df48b44631"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.117",
-]
-
-[[package]]
-name = "agent-client-protocol-schema"
-version = "0.12.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "49bae57dad1c28a362fbdcf7bab0583316a02b45a70792109fced55780a3b63c"
-dependencies = [
- "anyhow",
- "derive_more",
- "schemars 1.2.1",
- "serde",
- "serde_json",
- "serde_with",
- "strum 0.28.0",
- "tracing",
-]
-
-[[package]]
-name = "agent-client-protocol-tokio"
-version = "0.11.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0e1572b219f22c4b3be0f20f934c8b6f1d1457126ce72923c4f6608f96153b65"
-dependencies = [
- "agent-client-protocol",
- "futures",
- "serde",
- "serde_json",
- "shell-words",
- "tokio",
- "tokio-util",
-]
-
-[[package]]
 name = "ahash"
 version = "0.8.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2006,7 +1940,6 @@ dependencies = [
  "quote",
  "rustc_version",
  "syn 2.0.117",
- "unicode-xid",
 ]
 
 [[package]]
@@ -2267,26 +2200,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "fabro-acp"
-version = "0.357.0-nightly.0"
-dependencies = [
- "agent-client-protocol",
- "agent-client-protocol-tokio",
- "fabro-sandbox",
- "fabro-types",
- "fabro-util",
- "futures",
- "pebble-coding-agent",
- "serde_json",
- "shlex",
- "tempfile",
- "thiserror 2.0.18",
- "tokio",
- "tokio-util",
- "tracing",
-]
-
-[[package]]
 name = "fabro-api"
 version = "0.357.0-nightly.0"
 dependencies = [
@@ -2389,7 +2302,6 @@ dependencies = [
  "dialoguer",
  "dirs",
  "dotenvy",
- "fabro-acp",
  "fabro-api",
  "fabro-auth",
  "fabro-build-support",
@@ -2422,7 +2334,6 @@ dependencies = [
  "fabro-tool",
  "fabro-types",
  "fabro-util",
- "fabro-validate",
  "fabro-vault",
  "fabro-workflow",
  "fs2",
@@ -2637,7 +2548,6 @@ dependencies = [
  "regex",
  "serde",
  "serde_json",
- "strum 0.28.0",
  "thiserror 2.0.18",
 ]
 
@@ -2986,7 +2896,6 @@ dependencies = [
  "fabro-tool",
  "fabro-types",
  "fabro-util",
- "fabro-validate",
  "fabro-variable",
  "fabro-vault",
  "fabro-workflow",
@@ -3257,19 +3166,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "fabro-validate"
-version = "0.357.0-nightly.0"
-dependencies = [
- "fabro-acp",
- "fabro-graphviz",
- "fabro-llm",
- "fabro-types",
- "serde",
- "thiserror 2.0.18",
- "toml 0.8.23",
-]
-
-[[package]]
 name = "fabro-variable"
 version = "0.357.0-nightly.0"
 dependencies = [
@@ -3335,7 +3231,6 @@ dependencies = [
  "fabro-tool",
  "fabro-types",
  "fabro-util",
- "fabro-validate",
  "fabro-vault",
  "fabro-workflow",
  "fabro-workflow-version",
@@ -3446,12 +3341,6 @@ name = "find-msvc-tools"
 version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5baebc0774151f905a1a2cc41989300b1e6fbb29aff0ceffa1064fdd3088d582"
-
-[[package]]
-name = "fixedbitset"
-version = "0.5.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1d674e81391d1e1ab681a28d99df07927c6d4aa5b027d7da16ba32d1d21ecd99"
 
 [[package]]
 name = "flatbuffers"
@@ -3732,19 +3621,6 @@ checksum = "07bbe89c50d7a535e539b8c17bc0b49bdb77747034daa8087407d655f3f7cc1d"
 dependencies = [
  "futures-core",
  "futures-sink",
-]
-
-[[package]]
-name = "futures-concurrency"
-version = "7.7.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "175cd8cca9e1d45b87f18ffa75088f2099e3c4fe5e2f83e42de112560bea8ea6"
-dependencies = [
- "fixedbitset",
- "futures-core",
- "futures-lite",
- "pin-project",
- "smallvec",
 ]
 
 [[package]]
@@ -4717,16 +4593,6 @@ checksum = "b49715b7073f385ba4bc528e5747d02e66cb39c6146efb66b781f131f0fb399c"
 dependencies = [
  "once_cell",
  "wasm-bindgen",
-]
-
-[[package]]
-name = "jsonrpcmsg"
-version = "0.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6d833a15225c779251e13929203518c2ff26e2fe0f322d584b213f4f4dad37bd"
-dependencies = [
- "serde",
- "serde_json",
 ]
 
 [[package]]
@@ -6931,7 +6797,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0810a9f717d9828f475fe1f629f4c305c8464b7f496c3a854b58d29e65f4058e"
 dependencies = [
  "async-trait",
- "base64",
  "chrono",
  "futures",
  "http 1.4.0",

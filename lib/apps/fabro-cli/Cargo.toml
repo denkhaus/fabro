@@ -38,7 +38,6 @@ fabro-proc = { path = "../../foundation/fabro-proc" }
 fabro-sandbox = { path = "../../components/fabro-sandbox" }
 fabro-checkpoint = { path = "../../components/fabro-checkpoint" }
 fabro-graphviz = { path = "../../components/fabro-graphviz" }
-fabro-validate = { path = "../../components/fabro-validate" }
 fabro-workflow = { path = "../../components/fabro-workflow" }
 fabro-server = { path = "../fabro-server" }
 fabro-client = { path = "../../foundation/fabro-client" }
@@ -118,7 +117,6 @@ chrono = { workspace = true }
 assert_cmd = "2"
 fabro-db = { path = "../../foundation/fabro-db" }
 walkdir.workspace = true
-fabro-acp = { path = "../../components/fabro-acp", features = ["test-support"] }
 rmcp = { workspace = true, features = ["client", "transport-child-process"] }
 fabro-build-support = { path = "../../foundation/build-support" }
 fabro-sandbox = { path = "../../components/fabro-sandbox", features = ["test-support"] }

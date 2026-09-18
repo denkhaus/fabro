@@ -32,6 +32,7 @@ mod interp;
 pub mod jwt_auth;
 pub mod manifest_validation;
 mod migrations;
+mod petri_check;
 mod petri_runs;
 mod principal_middleware;
 mod request_id;

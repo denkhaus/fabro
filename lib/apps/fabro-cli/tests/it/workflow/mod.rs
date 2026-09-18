@@ -3,7 +3,6 @@
     reason = "This test module prefers explicit type paths over extra imports."
 )]
 
-mod acp;
 mod agent_linear;
 mod artifacts;
 mod command_agent_mixed;
@@ -12,7 +11,6 @@ mod command_routing;
 mod conditional_branching;
 mod dry_run_examples;
 mod full_stack;
-mod git_identity;
 mod hooks;
 mod human_gate;
 pub(super) mod plugin;

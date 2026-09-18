@@ -160,7 +160,7 @@ use crate::{
 
 mod automation_scheduler;
 mod handler;
-mod petri_runs;
+pub(crate) mod petri_runs;
 mod pull_request_supervisor;
 pub(crate) mod resource_sampler;
 mod session_runtime;
