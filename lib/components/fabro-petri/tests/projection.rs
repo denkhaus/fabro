@@ -26,6 +26,7 @@ use std::time::{Duration, Instant};
 use fabro_db::DbPool;
 use fabro_interview::ControlInterviewer;
 use fabro_petri::SqliteRunStore;
+use fabro_petri::blobs::{Blobs, RunBlobs};
 use fabro_petri::check::Launch;
 use fabro_petri::engine::{self, RunStatus as EngineRunStatus};
 use fabro_petri::interview::{Approval, FabroInterviewer};
@@ -34,7 +35,7 @@ use fabro_petri::runtime::RuntimeSpec;
 use fabro_store::platform_records::{
     PlatformRecord, PlatformRecordStore, RunCreatedRecord, RunLifecycleKind, RunLifecycleRecord,
 };
-use fabro_store::test_support;
+use fabro_store::{BlobStore, test_support};
 use fabro_types::{
     BlobHash, PetriAdmission, PetriGraphRef, RunId, RunStatus, StageHandler, StageId, StageState,
     test_support as types_support,
@@ -204,6 +205,7 @@ async fn create_run(pool: &DbPool, run_id: RunId, goal: &str) {
 /// Run `workflow` to completion on the real registry over `store`.
 async fn run_workflow(
     store: Arc<dyn RunStore>,
+    blobs: Arc<dyn Blobs>,
     run_dir: &Path,
     run_id: RunId,
     workflow: &Path,
@@ -215,6 +217,9 @@ async fn run_workflow(
     } else {
         petri_attractor_steps::register(runtime)
     };
+    // A large stage value goes to Fabro's blob table, as it does under the
+    // worker and the server.
+    let runtime = runtime.capability(RunBlobs::output_store(blobs));
     let rt = runtime.store(store).options(run_options(run_dir, run_id));
     let lowered = rt
         .check(workflow, None, None, &CompileInputs::new())
@@ -288,6 +293,27 @@ async fn command_scenario() -> Scenario {
     .await
 }
 
+/// A command whose output is above Petri's offload threshold.
+const LARGE_OUTPUT_WORKFLOW: &str = r#"digraph Large {
+    graph [goal="Print a lot"]
+    start [shape=Mdiamond]
+    exit [shape=Msquare]
+    big [shape=parallelogram, script="yes xxxxxxxxxxxxxxxx | head -n 8000"]
+    start -> big -> exit
+}"#;
+
+async fn large_output_scenario() -> Scenario {
+    scenario(
+        "large",
+        &[
+            ("workflow.fabro", LARGE_OUTPUT_WORKFLOW),
+            ("workflow.toml", SETTINGS),
+        ],
+        false,
+    )
+    .await
+}
+
 async fn parallel_scenario() -> Scenario {
     scenario(
         "parallel",
@@ -308,6 +334,7 @@ async fn run_live(scenario: &Scenario) -> Arc<Projector> {
     let store = projector.observe_store(Arc::new(SqliteRunStore::new(scenario.pool.clone())));
     run_workflow(
         store,
+        Arc::new(BlobStore::new(scenario.pool.clone())),
         &scenario.run_dir,
         scenario.run_id,
         &scenario.workflow,
@@ -323,6 +350,7 @@ async fn run_live(scenario: &Scenario) -> Arc<Projector> {
 async fn run_unobserved(scenario: &Scenario) {
     run_workflow(
         Arc::new(SqliteRunStore::new(scenario.pool.clone())),
+        Arc::new(BlobStore::new(scenario.pool.clone())),
         &scenario.run_dir,
         scenario.run_id,
         &scenario.workflow,
@@ -435,6 +463,32 @@ async fn the_hello_bundle_projects_live_as_it_rebuilds() {
             .iter()
             .any(|(label, state)| label.starts_with("start@") && *state == StageState::Succeeded),
         "{states:?}"
+    );
+}
+
+/// A command's offloaded output reaches the view as its `blob://`
+/// reference, never as the bytes the live log accumulated.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_large_output_projects_as_its_blob_reference() {
+    if host_plugin().is_none() {
+        return;
+    }
+    let scenario = large_output_scenario().await;
+    run_live(&scenario).await;
+    assert_view_equals_rebuild(&scenario.pool, scenario.run_id).await;
+    let stored = projector::stored_projection(&scenario.pool, scenario.run_id)
+        .await
+        .expect("reads")
+        .expect("stored");
+    let big = stored
+        .stage(&StageId::new("big", 1))
+        .expect("the command stage is shown");
+    let output = big.output.as_deref().expect("the stage has an output");
+    assert!(
+        fabro_types::parse_blob_ref(output).is_some(),
+        "the output is a blob reference: {} bytes, {}",
+        output.len(),
+        &output[..output.len().min(80)]
     );
 }
 

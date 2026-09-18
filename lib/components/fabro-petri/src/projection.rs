@@ -37,10 +37,11 @@ use fabro_types::{
     FailureCategory, FailureDetail, FailureReason, InterviewOption, InterviewQuestionRecord,
     ModelRef, ModelUsage, ParallelBranchId, ParallelBranchResult, PendingInterviewRecord,
     PullRequestCreation, PullRequestCreationStatus, PullRequestLink, RunApproval, RunApprovalState,
-    RunControlAction, RunDiff, RunFailure, RunId, RunProjection, RunSandbox, RunSandboxPlan,
-    RunStatus, RunTiming, SandboxProviderKind, StageCompletion, StageHandler, StageId,
-    StageInferenceProjection, StageModelUsage, StageOutcome, StageProjection, StageState,
-    StageTiming, StartRecord, SuccessReason, first_event_seq, timing, usage_rollup,
+    RunArtifact, RunControlAction, RunDiff, RunFailure, RunId, RunProjection, RunSandbox,
+    RunSandboxPlan, RunStatus, RunTiming, SandboxProviderKind, StageCompletion, StageHandler,
+    StageId, StageInferenceProjection, StageModelUsage, StageOutcome, StageProjection, StageState,
+    StageTiming, StartRecord, SuccessReason, first_event_seq, format_blob_ref, parse_blob_ref,
+    timing, usage_rollup,
 };
 use lithos_llm::catalog::{ModelId, ProviderId};
 use lithos_llm::types::Usage;
@@ -129,6 +130,10 @@ pub struct FoldState {
     pub base_sha:         Option<String>,
     #[serde(default)]
     pub checkpoints:      u32,
+    /// The run's diff as its `run.diff` record gave it, whichever side of
+    /// the run's finish it arrived on.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_diff:         Option<RunDiff>,
     #[serde(default)]
     pub health:           RecordHealth,
     /// Firings (`"<execution>:<firing>"`) whose attempt has recorded a
@@ -236,19 +241,61 @@ impl RunView {
                     .stages
                     .get(&stage_key(record.execution, record.firing));
                 let current_node = stage.map_or_else(String::new, |stage| stage.node_name.clone());
+                let stage_id = stage
+                    .filter(|stage| stage.shown)
+                    .map(|stage| stage.stage_id.clone());
                 let checkpoint = fabro_types::Checkpoint {
                     timestamp:      at,
                     current_node:   current_node.clone(),
                     git_commit_sha: record.git_commit_sha.clone(),
                 };
+                // The patch stays in the blob table; the view carries its
+                // reference for a reader to resolve.
+                let patch = record.patch_blob.as_ref().map(format_blob_ref);
+                if let Some(stage) = stage_id.and_then(|stage_id| projection.stage_mut(&stage_id)) {
+                    if patch.is_some() {
+                        stage.diff.clone_from(&patch);
+                    }
+                }
                 projection.checkpoints.push(ViewCheckpoint {
                     seq: u32::try_from(stream_seq).unwrap_or(u32::MAX),
                     checkpoint,
                     diff: RunDiff {
-                        patch:   None,
+                        patch,
                         summary: record.diff_summary,
                     },
                 });
+            }
+            PlatformRecord::ArtifactCollected(record) => {
+                let stage = self
+                    .state
+                    .stages
+                    .get(&stage_key(record.execution, record.firing));
+                let Some(stage_id) = stage.map(|stage| stage.stage_id.clone()) else {
+                    debug!(
+                        seq = stored.seq,
+                        path = record.path,
+                        "artifact record for an unknown firing; not folded"
+                    );
+                    return;
+                };
+                projection.artifacts.push(RunArtifact {
+                    stage_id,
+                    retry: record.attempt,
+                    relative_path: record.path.clone(),
+                    size: record.bytes,
+                    blob: record.blob,
+                });
+            }
+            PlatformRecord::RunDiff(record) => {
+                let diff = RunDiff {
+                    patch:   record.patch_blob.as_ref().map(format_blob_ref),
+                    summary: record.diff_summary,
+                };
+                if let Some(conclusion) = projection.conclusion.as_mut() {
+                    conclusion.diff = diff.clone();
+                }
+                self.state.run_diff = Some(diff);
             }
             PlatformRecord::PullRequestRequested(record) => {
                 projection.pull_request_creation = Some(PullRequestCreation {
@@ -491,8 +538,11 @@ impl RunView {
             stages,
             usage: rollup.usage_if_present(),
             total_retries,
-            diff: last_checkpoint
-                .map(|checkpoint| checkpoint.diff.clone())
+            diff: self
+                .state
+                .run_diff
+                .clone()
+                .or_else(|| last_checkpoint.map(|checkpoint| checkpoint.diff.clone()))
                 .unwrap_or_default(),
         });
     }
@@ -546,9 +596,35 @@ impl RunView {
                     .as_ref()
                     .map(|subject| subject.node.name.to_string());
                 if let Some(stage) = self.stage_of(execution, event.subject.as_ref()) {
-                    if let Some(output) = outcome.output.as_str() {
+                    // The step's output: a string, or a command's `stdout`,
+                    // either of which is a `blob://` reference when the
+                    // step offloaded it. The reference stays as it is; the
+                    // bytes it names are the live log's.
+                    let output = outcome
+                        .output
+                        .as_str()
+                        .or_else(|| outcome.output.get("stdout").and_then(Value::as_str));
+                    if let Some(output) = output {
+                        if parse_blob_ref(output).is_none() {
+                            stage.output_bytes = Some(output.len() as u64);
+                        }
                         stage.output = Some(output.to_string());
-                        stage.output_bytes = Some(output.len() as u64);
+                    }
+                    // A simulated step (a dry run) answers with its text.
+                    let simulated = outcome
+                        .output
+                        .get("simulated")
+                        .and_then(Value::as_bool)
+                        .unwrap_or(false);
+                    if simulated
+                        && matches!(
+                            stage.handler,
+                            Some(StageHandler::Prompt | StageHandler::Agent)
+                        )
+                    {
+                        if let Some(text) = outcome.output.get("text").and_then(Value::as_str) {
+                            stage.response = Some(text.to_string());
+                        }
                     }
                     // An agent's answer: the `response.<node>` the step wrote
                     // into the run context, as the prompt step writes it.
