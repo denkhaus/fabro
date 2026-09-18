@@ -39,7 +39,7 @@ struct DueScheduleTrigger {
 }
 
 #[derive(Debug, Default)]
-struct AutomationSchedulePlanner {
+pub(crate) struct AutomationSchedulePlanner {
     cursors: HashMap<ScheduleTriggerKey, ScheduleCursor>,
 }
 
@@ -672,7 +672,7 @@ async fn set_scheduler_error(state: &AppState, id: &AutomationId, message: Optio
 /// Drive one tick of the scheduler from a test. Boxed so the calling test
 /// future stays small (clippy `large_futures`).
 #[cfg(test)]
-fn run_due_schedules_once<'a>(
+pub(crate) fn run_due_schedules_once<'a>(
     state: Arc<AppState>,
     planner: &'a mut AutomationSchedulePlanner,
     now: DateTime<Utc>,
@@ -716,7 +716,7 @@ fn run_due_schedules_once<'a>(
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use fabro_automation::{
         AutomationDraft, AutomationGitWorkflowSource, AutomationReplace, AutomationTrigger,
         ScheduleTrigger,
@@ -818,7 +818,7 @@ mod tests {
             .expect("test automation should be created")
     }
 
-    fn succeeding_materializer() -> TestAutomationRunMaterializer {
+    pub(crate) fn succeeding_materializer() -> TestAutomationRunMaterializer {
         let mut exact_target = git_target();
         exact_target.sha = Some("0123456789abcdef0123456789abcdef01234567".to_string());
         TestAutomationRunMaterializer::succeed(exact_target)
@@ -842,13 +842,13 @@ mod tests {
     }
 
     /// Stored runs oldest-first, so index `minute - 1` is the newest fire.
-    async fn stored_runs_chronological(state: &AppState) -> Vec<fabro_types::Run> {
+    pub(crate) async fn stored_runs_chronological(state: &AppState) -> Vec<fabro_types::Run> {
         let mut runs = stored_runs(state).await;
         runs.sort_by_key(|run| run.timestamps.created_at);
         runs
     }
 
-    fn prime_time() -> DateTime<Utc> {
+    pub(crate) fn prime_time() -> DateTime<Utc> {
         dt("2026-05-29T00:00:30Z")
     }
 
@@ -1381,7 +1381,7 @@ mod tests {
 
     /// Capturing sink for breaker-pause notifications.
     #[derive(Clone, Default)]
-    struct CapturedBreakerNotices(
+    pub(crate) struct CapturedBreakerNotices(
         std::sync::Arc<std::sync::Mutex<Vec<automation_breaker::BreakerPauseNotice>>>,
     );
 
@@ -1395,7 +1395,7 @@ mod tests {
         }
     }
 
-    fn breaker_test_state(
+    pub(crate) fn breaker_test_state(
         materializer: TestAutomationRunMaterializer,
     ) -> (Arc<AppState>, CapturedBreakerNotices) {
         let notices = CapturedBreakerNotices::default();
@@ -1423,7 +1423,7 @@ mod tests {
         })
     }
 
-    async fn create_breakable_automation(
+    pub(crate) async fn create_breakable_automation(
         state: &AppState,
         id: &str,
         threshold: Option<u32>,
@@ -1451,7 +1451,7 @@ mod tests {
 
     /// Drive one terminal failure onto a fired run, with a failure-detail
     /// signature exactly like the run-level breaker records.
-    async fn park_run_with_signature(state: &AppState, run_id: &RunId, signature: &str) {
+    pub(crate) async fn park_run_with_signature(state: &AppState, run_id: &RunId, signature: &str) {
         append_run_lifecycle_prefix(state, run_id).await;
         let run_store = state.stores.runs.open_run(run_id).await.unwrap();
         let mut detail = fabro_types::FailureDetail::new(
@@ -1511,7 +1511,9 @@ mod tests {
             .unwrap();
     }
 
-    fn stored_breaker_trigger(automation: &Automation) -> fabro_automation::ScheduleTrigger {
+    pub(crate) fn stored_breaker_trigger(
+        automation: &Automation,
+    ) -> fabro_automation::ScheduleTrigger {
         automation
             .triggers
             .iter()
@@ -1522,74 +1524,8 @@ mod tests {
             .expect("automation should keep its schedule trigger")
     }
 
-    fn due_minute(minute: u32) -> DateTime<Utc> {
+    pub(crate) fn due_minute(minute: u32) -> DateTime<Utc> {
         dt(&format!("2026-05-29T00:{minute:02}:00Z"))
-    }
-
-    /// FORK PRESENCE PIN (fabro-986b, user decision 2026-09-14): quota-class
-    /// parks (SoftStop + TransientInfra + rate_limit signature) are EXEMPT
-    /// from the schedule breaker — the fixed 10-minute recheck in
-    /// `server::fork_line_recovery` owns their recovery, so the breaker must
-    /// stay armed (trigger enabled, counter clean) while a line rides out a
-    /// provider usage window. If this test fails after a merge, the fork
-    /// seam in `automation_breaker.rs` was dropped — restore it, never relax
-    /// the test.
-    #[tokio::test]
-    async fn quota_parks_are_breaker_exempt_and_keep_the_schedule_armed() {
-        let materializer = succeeding_materializer();
-        let (state, _notices) = breaker_test_state(materializer);
-        create_breakable_automation(state.as_ref(), "quota-recheck", Some(2)).await;
-        let mut planner = AutomationSchedulePlanner::default();
-        let quota_signature = "api_transient|zai|rate_limit";
-
-        // Baseline observation, then four quota parks — far beyond the
-        // threshold of 2. The breaker must not count any of them.
-        run_due_schedules_once(Arc::clone(&state), &mut planner, prime_time()).await;
-        for minute in 1..=4u32 {
-            run_due_schedules_once(Arc::clone(&state), &mut planner, due_minute(minute)).await;
-            let runs = stored_runs_chronological(state.as_ref()).await;
-            let run_id = runs[runs.len() - 1].id;
-            park_run_with_signature(state.as_ref(), &run_id, quota_signature).await;
-        }
-        run_due_schedules_once(Arc::clone(&state), &mut planner, due_minute(5)).await;
-
-        let automation = state
-            .automation_store()
-            .get(&AutomationId::new("quota-recheck").unwrap())
-            .await
-            .unwrap()
-            .expect("automation should exist");
-        let trigger = stored_breaker_trigger(&automation);
-        assert!(trigger.enabled, "quota parks never pause the schedule");
-        let facts = trigger.breaker.expect("high-water mark persists");
-        assert_eq!(
-            facts.consecutive_count, 0,
-            "quota parks count toward neither the latch nor a reset"
-        );
-
-        // Control: a NON-quota transient park still counts — the breaker
-        // stays armed for real defects.
-        let runs = stored_runs_chronological(state.as_ref()).await;
-        park_run_with_signature(
-            state.as_ref(),
-            &runs[runs.len() - 1].id,
-            "api_transient|zai|server_error",
-        )
-        .await;
-        run_due_schedules_once(Arc::clone(&state), &mut planner, due_minute(6)).await;
-        let automation = state
-            .automation_store()
-            .get(&AutomationId::new("quota-recheck").unwrap())
-            .await
-            .unwrap()
-            .expect("automation should exist");
-        let facts = stored_breaker_trigger(&automation)
-            .breaker
-            .expect("facts persist");
-        assert_eq!(
-            facts.consecutive_count, 1,
-            "non-quota parks keep counting toward the latch"
-        );
     }
 
     #[tokio::test]

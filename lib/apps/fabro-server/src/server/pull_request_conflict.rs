@@ -8,6 +8,13 @@
 //! with closed-wins semantics and pushes a merge commit through the git data
 //! API. Resolution failures park the pull request instead of retiring it —
 //! silent loss of filed tracker state must be impossible.
+//!
+//! FORK SURFACE (fabro-4ebd/PR #221, fabro-ec00): this module carries the
+//! diff-based publish squash-revert protection — a stale-workspace publish
+//! builds its merge tree from the run's own compare entries so concurrently
+//! landed base commits survive. Presence pin:
+//! `server/fork_publish_conflict_tests.rs` plus the touchpoints registry
+//! row ("Diff-based publish squash-revert protection").
 
 use std::collections::HashMap;
 use std::time::Duration;

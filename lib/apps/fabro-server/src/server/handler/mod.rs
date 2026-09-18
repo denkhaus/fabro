@@ -13,6 +13,8 @@ mod completions;
 mod environments;
 pub(in crate::server) mod events;
 mod fork_resume;
+#[cfg(test)]
+mod fork_session_provisioning_tests;
 pub(in crate::server) mod graph;
 pub(in crate::server) mod lifecycle;
 mod llm_sse;
