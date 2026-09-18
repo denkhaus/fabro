@@ -100,35 +100,48 @@ pub struct RecordHealth {
 pub struct FoldState {
     /// Stages by `"<execution>:<firing>"`.
     #[serde(default)]
-    pub stages:      BTreeMap<String, StageRef>,
+    pub stages:           BTreeMap<String, StageRef>,
     /// Labels taken, so a second firing with the same name and visit gets
     /// its own.
     #[serde(default)]
-    pub labels:      BTreeSet<String>,
+    pub labels:           BTreeSet<String>,
     #[serde(default)]
-    pub invocations: BTreeMap<u64, InvocationRef>,
+    pub invocations:      BTreeMap<u64, InvocationRef>,
     /// Which invocation each execution belongs to.
     #[serde(default)]
-    pub executions:  BTreeMap<u64, u64>,
+    pub executions:       BTreeMap<u64, u64>,
     /// Open questions by id: the stage that asked.
     #[serde(default)]
-    pub questions:   BTreeMap<String, String>,
+    pub questions:        BTreeMap<String, String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub root:        Option<u64>,
+    pub root:             Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub started_at:  Option<u64>,
+    pub started_at:       Option<u64>,
     /// The run's recorded finish, when Petri recorded one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub finished:    Option<String>,
+    pub finished:         Option<String>,
     /// The run branch and base sha, when they arrive before `run.started`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub run_branch:  Option<String>,
+    pub run_branch:       Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub base_sha:    Option<String>,
+    pub base_sha:         Option<String>,
     #[serde(default)]
-    pub checkpoints: u32,
+    pub checkpoints:      u32,
     #[serde(default)]
-    pub health:      RecordHealth,
+    pub health:           RecordHealth,
+    /// Firings (`"<execution>:<firing>"`) whose attempt has recorded a
+    /// finish: what a position-keyed platform record may be streamed
+    /// behind.
+    #[serde(default)]
+    pub finished_firings: BTreeSet<String>,
+}
+
+impl FoldState {
+    /// Whether Petri recorded the run's finish.
+    #[must_use]
+    pub fn finished_run(&self) -> bool {
+        self.finished.is_some()
+    }
 }
 
 /// The view of one run: what the API serves and what the fold keeps.
@@ -473,8 +486,13 @@ impl RunView {
                 self.fold_progress(execution, event, ev, at);
             }
             Event::StepFinished {
-                attempt, outcome, ..
+                firing,
+                attempt,
+                outcome,
             } => {
+                self.state
+                    .finished_firings
+                    .insert(stage_key(execution.raw(), firing.raw()));
                 let is_final = matches!(
                     event.derived,
                     Some(Derived::StepFinished { is_final: true, .. })
