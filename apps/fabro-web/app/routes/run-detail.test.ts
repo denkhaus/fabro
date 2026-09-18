@@ -19,6 +19,7 @@ import { TEST_PRINCIPAL, makeUsage } from "../lib/test-fixtures";
 let currentRunSummary: any = null;
 let currentRunState: any = null;
 let currentQuestions: any[] = [];
+let currentBoardRuns: any[] = [];
 let deleteRunApiResult: Promise<unknown> | null = null;
 const mountedRenderers: TestRenderer.ReactTestRenderer[] = [];
 
@@ -27,6 +28,12 @@ const deleteRunApiMock = mock((_id: string) =>
 );
 const mutateRunListCachesMock = mock((_mutate: unknown) => undefined);
 const swrMutateMock = mock((_key: unknown) => Promise.resolve(undefined));
+const questionQueryMock = mock((_runId: string, _enabled: boolean) => ({ data: currentQuestions }));
+const submitAnswerMock = mock((_answer: unknown) => Promise.resolve(undefined));
+const submitAnswerHookMock = mock((_runId: string) => ({
+  isMutating: false,
+  trigger: submitAnswerMock,
+}));
 
 mock.module("@headlessui/react", () => ({
   Dialog: ({ open, children }: any) =>
@@ -48,6 +55,10 @@ mock.module("@headlessui/react", () => ({
 }));
 
 mock.module("../lib/queries", () => ({
+  useAllRuns: () => ({ data: { data: currentBoardRuns }, isLoading: false }),
+  useRunsPage: () => ({ data: null, isLoading: false }),
+  useAuthConfig: () => ({ data: { methods: [] } }),
+  useSystemInfo: () => ({ data: null }),
   useRun: () => ({
     data:      currentRunSummary,
     isLoading: false,
@@ -56,9 +67,7 @@ mock.module("../lib/queries", () => ({
     data:      null,
     isLoading: false,
   }),
-  useRunQuestions: () => ({
-    data: currentQuestions,
-  }),
+  useRunQuestions: questionQueryMock,
   useRunPullRequest: () => ({
     data:      null,
     isLoading: false,
@@ -77,6 +86,11 @@ mock.module("../lib/queries", () => ({
 
 mock.module("../lib/run-events", () => ({
   useRunEvents: () => undefined,
+}));
+
+mock.module("../lib/board-events", () => ({
+  shouldRefreshBoardForEvent: () => false,
+  useBoardEvents: () => undefined,
 }));
 
 mock.module("../hooks/use-run-toasts", () => ({
@@ -170,7 +184,7 @@ mock.module("../lib/mutations", () => ({
   useResumeRun:            mutationState,
   useRetryRun:             mutationState,
   useSteerRun:             mutationState,
-  useSubmitInterviewAnswer: mutationState,
+  useSubmitInterviewAnswer: submitAnswerHookMock,
   useUpdateRunTitle:       mutationState,
   useUnarchiveRun:         mutationState,
 }));
@@ -188,6 +202,7 @@ const {
   default: RunDetail,
   resolveDockClearance,
 } = await import("./run-detail");
+const { default: Runs } = await import("./runs");
 mock.restore();
 type LifecycleToastState = import("./run-detail/lifecycle-toasts").LifecycleToastState;
 type RunDetailActionResult = import("./run-detail/lifecycle-toasts").RunDetailActionResult;
@@ -335,7 +350,7 @@ async function renderRunDetailHarness({
     [
       {
         path:    "/runs",
-        element: h("div", { "data-route": "runs-index" }, "Runs"),
+        element: h(Runs),
       },
       {
         path:    "/runs/:id",
@@ -638,12 +653,65 @@ describe("RunDetail full-height child routes", () => {
     currentRunSummary = null;
     currentRunState = null;
     currentQuestions = [];
+    currentBoardRuns = [];
+    questionQueryMock.mockClear();
+    submitAnswerMock.mockClear();
+    submitAnswerHookMock.mockClear();
     deleteRunApiResult = null;
     deleteRunApiMock.mockClear();
     mutateRunListCachesMock.mockClear();
     swrMutateMock.mockClear();
     delete (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT;
   });
+
+  test("Answer Question on a blocked board card opens that run's pending interview", async () => {
+    currentBoardRuns = [
+      { ...makeRunSummary(), id: "other-run" },
+      makeRunSummary({ status: "blocked" }),
+    ];
+    const { renderer, router } = await renderRunDetailHarness({
+      initialEntry: "/runs?view=columns",
+      status: "blocked",
+      questions: [makeQuestion()],
+    });
+
+    await act(async () => {
+      findButtonByText(renderer, "Answer Question")!.props.onClick();
+    });
+
+    expect(router.state.location.pathname).toBe("/runs/run_1");
+    expect(questionQueryMock).toHaveBeenCalledWith("run_1", true);
+    const interview = renderer.root.findByProps({ "aria-label": "Interview question" });
+    expect(textFromTestNode(interview)).toContain("Approve?");
+    const answer = interview.findByProps({ "aria-label": "Answer yes" });
+    expect(answer.props.disabled).toBe(false);
+    await act(async () => {
+      answer.props.onClick();
+    });
+    expect(submitAnswerHookMock).toHaveBeenCalledWith("run_1");
+    expect(submitAnswerMock).toHaveBeenCalledWith({ questionId: "q_1", answer: { kind: "yes" } });
+  });
+
+  for (const status of ["blocked", "running"]) {
+    test(`a stale blocked card opens the ${status} run without an already answered question`, async () => {
+      currentBoardRuns = [makeRunSummary({ status: "blocked" })];
+      const { renderer, router } = await renderRunDetailHarness({
+        initialEntry: "/runs?view=columns",
+        status,
+        questions: [],
+      });
+
+      await act(async () => {
+        findButtonByText(renderer, "Answer Question")!.props.onClick();
+      });
+
+      expect(router.state.location.pathname).toBe("/runs/run_1");
+      expect(questionQueryMock).toHaveBeenCalledWith("run_1", status === "blocked");
+      expect(textFromNode(renderer.toJSON())).toContain("Overview");
+      expect(renderer.root.findAllByProps({ "aria-label": "Interview question" })).toHaveLength(0);
+      expect(submitAnswerMock).not.toHaveBeenCalled();
+    });
+  }
 
   test("uses a full-height flex wrapper for fullHeight child routes", async () => {
     const renderer = await renderRunDetail({
