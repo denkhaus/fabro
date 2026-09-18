@@ -479,10 +479,30 @@ impl RunView {
                     event.derived,
                     Some(Derived::StepFinished { is_final: true, .. })
                 );
+                let node_name = event
+                    .subject
+                    .as_ref()
+                    .map(|subject| subject.node.name.to_string());
                 if let Some(stage) = self.stage_of(execution, event.subject.as_ref()) {
                     if let Some(output) = outcome.output.as_str() {
                         stage.output = Some(output.to_string());
                         stage.output_bytes = Some(output.len() as u64);
+                    }
+                    // An agent's answer: the `response.<node>` the step wrote
+                    // into the run context, as the prompt step writes it.
+                    if stage.handler == Some(StageHandler::Agent) {
+                        let response = node_name
+                            .as_deref()
+                            .and_then(|name| {
+                                outcome
+                                    .context_updates
+                                    .get(format!("response.{name}").as_str())
+                            })
+                            .and_then(Value::as_str)
+                            .or_else(|| outcome.output.as_str());
+                        if let Some(response) = response {
+                            stage.response = Some(response.to_string());
+                        }
                     }
                     stage.live_streaming = Some(false);
                     apply_metrics(stage, &outcome.metrics);

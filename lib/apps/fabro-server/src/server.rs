@@ -1197,6 +1197,12 @@ impl AppState {
         &self.petri_projector
     }
 
+    /// The pool the Petri view tables live in, so a test can read them.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn test_petri_view_pool(&self) -> DbPool {
+        self.stores.runs.run_summary_store().pool()
+    }
+
     /// A worker token for `run_id` with the plain `run:worker` scope, as the
     /// server mints for the worker it launches.
     pub fn test_issue_worker_token(&self, run_id: &RunId) -> String {
@@ -2500,7 +2506,10 @@ pub(crate) fn build_app_state(config: AppStateConfig) -> anyhow::Result<Arc<AppS
     );
     let variables = Arc::new(VariableStore::new(db_pool.clone()));
     let petri_runs = PetriRuns::new(db_pool.clone());
-    let petri_projector = Projector::new(db_pool.clone());
+    // Petri's records live on the shared pool; the view tables live where the
+    // run summary store keeps the `runs` row (the same database in the
+    // server, a fixture of its own in a test).
+    let petri_projector = Projector::new(db_pool.clone(), store.run_summary_store().pool());
     {
         let projector = Arc::clone(&petri_projector);
         store.set_platform_record_hook(Arc::new(move |run_id| projector.signal(run_id)));

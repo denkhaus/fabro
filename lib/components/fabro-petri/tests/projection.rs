@@ -274,7 +274,7 @@ async fn parallel_scenario() -> Scenario {
 /// Run the scenario live: every append signals the projector, and the view
 /// settles before the run is compared with its rebuild.
 async fn run_live(scenario: &Scenario) -> Arc<Projector> {
-    let projector = Projector::new(scenario.pool.clone());
+    let projector = Projector::new(scenario.pool.clone(), scenario.pool.clone());
     projector.signal(scenario.run_id);
     let store = projector.observe_store(Arc::new(SqliteRunStore::new(scenario.pool.clone())));
     run_workflow(
@@ -344,7 +344,7 @@ async fn assert_view_equals_rebuild(pool: &DbPool, run_id: RunId) {
         .await
         .expect("the positions read")
         .expect("the run has positions");
-    let (rebuilt, positions, stream_seq) = projector::rebuild(pool, run_id)
+    let (rebuilt, positions, stream_seq) = projector::rebuild(pool, pool, run_id)
         .await
         .expect("the run rebuilds");
     let rebuilt = rebuilt.expect("the rebuild has a projection");
@@ -491,7 +491,7 @@ async fn dropped_wake_ups_are_caught_up_by_the_next_signal() {
             .is_none(),
         "nothing woke the view"
     );
-    let projector = Projector::new(scenario.pool.clone());
+    let projector = Projector::new(scenario.pool.clone(), scenario.pool.clone());
     projector.signal(scenario.run_id);
     projector.settle(scenario.run_id).await;
     assert_view_equals_rebuild(&scenario.pool, scenario.run_id).await;
@@ -511,7 +511,7 @@ async fn the_startup_pass_catches_up_a_view_nobody_signalled() {
     }
     let scenario = command_scenario().await;
     run_unobserved(&scenario).await;
-    let projector = Projector::new(scenario.pool.clone());
+    let projector = Projector::new(scenario.pool.clone(), scenario.pool.clone());
     let report = projector
         .startup_pass()
         .await
@@ -632,7 +632,7 @@ async fn a_crash_between_the_record_commit_and_the_view_applies_only_the_suffix(
     for row in &first {
         insert_petri_row(&replayed, scenario.run_id, row).await;
     }
-    let before = Projector::new(replayed.clone());
+    let before = Projector::new(replayed.clone(), replayed.clone());
     let pass = before
         .project_run(scenario.run_id)
         .await
@@ -669,7 +669,7 @@ async fn a_crash_between_the_record_commit_and_the_view_applies_only_the_suffix(
     );
 
     // A new projector, as a restarted server builds one.
-    let after = Projector::new(replayed.clone());
+    let after = Projector::new(replayed.clone(), replayed.clone());
     let report = after.startup_pass().await.expect("the restart catches up");
     assert_eq!((report.runs, report.projected), (1, 1));
     let (positions_after, stream_after) = projector::stored_positions(&replayed, scenario.run_id)
@@ -702,7 +702,7 @@ async fn a_crash_between_the_record_commit_and_the_view_applies_only_the_suffix(
     assert_eq!(positions_after.platform_seq, positions_before.platform_seq);
     assert_view_equals_rebuild(&replayed, scenario.run_id).await;
     // And the copy agrees with the run projected in one go over the source.
-    let source = Projector::new(scenario.pool.clone());
+    let source = Projector::new(scenario.pool.clone(), scenario.pool.clone());
     source.startup_pass().await.expect("the source projects");
     let whole = projector::stored_projection(&scenario.pool, scenario.run_id)
         .await
@@ -737,7 +737,7 @@ async fn a_restarted_projector_agrees_over_nested_child_executions() {
         rows.iter().map(|row| &row.0).collect::<BTreeSet<_>>()
     );
     let staged = copy_run_without_records(&scenario.pool, scenario.run_id).await;
-    let first = Projector::new(staged.clone());
+    let first = Projector::new(staged.clone(), staged.clone());
     // The parent execution and the coordinator log up to the first child's
     // declaration go in first; a restart then sees the children.
     let (early, late): (Vec<_>, Vec<_>) = rows
@@ -754,14 +754,14 @@ async fn a_restarted_projector_agrees_over_nested_child_executions() {
         insert_petri_row(&staged, scenario.run_id, row).await;
     }
     drop(first);
-    let second = Projector::new(staged.clone());
+    let second = Projector::new(staged.clone(), staged.clone());
     second
         .startup_pass()
         .await
         .expect("the second projector passes");
     assert_view_equals_rebuild(&staged, scenario.run_id).await;
 
-    let whole = Projector::new(scenario.pool.clone());
+    let whole = Projector::new(scenario.pool.clone(), scenario.pool.clone());
     whole.startup_pass().await.expect("the source projects");
     let one_go = projector::stored_projection(&scenario.pool, scenario.run_id)
         .await
@@ -790,7 +790,7 @@ async fn a_torn_tail_holds_the_view_and_reports_the_run_incomplete() {
     }
     let scenario = command_scenario().await;
     run_unobserved(&scenario).await;
-    let projector = Projector::new(scenario.pool.clone());
+    let projector = Projector::new(scenario.pool.clone(), scenario.pool.clone());
     let clean = projector
         .project_run(scenario.run_id)
         .await

@@ -210,7 +210,7 @@ async fn settled_state(state: &AppState, app: &axum::Router, run_id: &str) -> se
 /// How many items the run's projected stream holds.
 async fn petri_stream_len(state: &AppState, run_id: &str) -> usize {
     let id: RunId = run_id.parse().expect("the run id parses");
-    projector::stored_stream(&test_app_db_pool(state), id)
+    projector::stored_stream(&state.test_petri_view_pool(), id)
         .await
         .expect("the stream reads")
         .len()
@@ -314,25 +314,16 @@ async fn the_hello_bundle_runs_on_petri_when_the_version_names_the_engine() {
         projection["conclusion"]["status"], "succeeded",
         "{projection}"
     );
-    let stages = projection["stages"]
-        .as_object()
-        .expect("the state carries its stages");
-    let prompt = stages
-        .values()
-        .find(|stage| stage["handler"] == "prompt")
-        .unwrap_or_else(|| panic!("the hello prompt stage is projected: {projection}"));
-    assert_eq!(prompt["state"], "succeeded", "{prompt}");
+    let greet = &projection["stages"]["greet@1"];
+    assert_eq!(greet["state"], "succeeded", "{projection}");
+    assert_eq!(greet["handler"], "agent", "{greet}");
     assert!(
-        prompt["response"]
+        greet["response"]
             .as_str()
             .is_some_and(|response| response.contains("A haiku, added.")),
-        "the prompt's response is projected: {prompt}"
+        "the agent's answer is projected as the stage's response: {greet}"
     );
-    assert_eq!(
-        run["usage"]["tokens"]["input"].as_u64().is_some(),
-        true,
-        "{run}"
-    );
+    assert!(run["usage"]["tokens"]["input"].as_u64().is_some(), "{run}");
     let logs = twin.request_logs(&namespace).await;
     let requests = logs["requests"]
         .as_array()
@@ -417,10 +408,14 @@ async fn a_parallel_bundle_projects_its_branches_through_the_server() {
     let run = run_json(&app, &run_id).await;
     assert_eq!(status, "succeeded", "run: {run}");
     let projection = settled_state(&state, &app, &run_id).await;
-    for branch in ["a@1", "b@1"] {
+    for (branch, index) in [("a@1", 0), ("b@1", 1)] {
         let stage = &projection["stages"][branch];
         assert_eq!(stage["state"], "succeeded", "{branch}: {projection}");
-        assert_eq!(stage["parallel_branch_id"]["group"], "fork@1", "{stage}");
+        assert_eq!(
+            stage["parallel_branch_id"],
+            format!("fork@1:{index}"),
+            "{stage}"
+        );
     }
     let fork = &projection["stages"]["fork@1"];
     assert_eq!(

@@ -238,6 +238,14 @@ impl RunSummaryStore {
         }
     }
 
+    /// The pool this store's tables live in: the `runs` row, the run events,
+    /// the platform records and the Petri projection tables. The server's
+    /// one database; a test fixture's own.
+    #[must_use]
+    pub fn pool(&self) -> SqlitePool {
+        self.pool.clone()
+    }
+
     /// The platform records over the same pool.
     #[must_use]
     pub fn platform_records(&self) -> PlatformRecordStore {
@@ -902,6 +910,13 @@ WHERE id = ?
         let diff = run.diff.unwrap_or_default();
         verify_run_field(&row, run, "id", &run.id.to_string())?;
         verify_run_field(&row, run, "source_last_seq", &i64::from(record.last_seq))?;
+        if entry.projection.spec.engine.is_petri() {
+            // A Petri run's row is written by its projector from Petri's
+            // records and the platform records; the legacy fold knows the
+            // lifecycle alone, so only the identity and the legacy guard
+            // are checked here.
+            return Ok(());
+        }
         verify_run_field(
             &row,
             run,

@@ -138,8 +138,13 @@ struct Slot {
     pending: bool,
 }
 
-/// The projector over one database.
+/// The projector over one database: the pool Petri's records are read
+/// from, and the pool the view tables (`platform_records`,
+/// `petri_projection`, `petri_stream`, `runs`) are read and written on. In
+/// the server both are the one database; a test may hand it the run
+/// summary store's own pool for the views.
 pub struct Projector {
+    records:  DbPool,
     pool:     DbPool,
     store:    SqliteRunStore,
     platform: PlatformRecordStore,
@@ -156,13 +161,16 @@ impl std::fmt::Debug for Projector {
 }
 
 impl Projector {
-    /// A projector over a pool whose migrations have run.
+    /// A projector over `records`, the pool Petri's records live in, and
+    /// `views`, the pool the view tables live in; both migrated. The server
+    /// passes its one pool twice.
     #[must_use]
-    pub fn new(pool: DbPool) -> Arc<Self> {
+    pub fn new(records: DbPool, views: DbPool) -> Arc<Self> {
         Arc::new(Self {
-            store: SqliteRunStore::new(pool.clone()),
-            platform: PlatformRecordStore::new(pool.clone()),
-            pool,
+            store: SqliteRunStore::new(records.clone()),
+            platform: PlatformRecordStore::new(views.clone()),
+            records,
+            pool: views,
             slots: Mutex::default(),
             fault: AtomicBool::new(false),
         })
@@ -233,12 +241,18 @@ impl Projector {
     /// Petri record, and the runs with platform records. Runs whose view
     /// already covers every committed record are skipped cheaply.
     pub async fn startup_pass(&self) -> Result<StartupReport, ProjectError> {
-        let ids: Vec<String> = sqlx::query_scalar(
-            "SELECT run_id FROM petri_runs UNION SELECT run_id FROM platform_records ORDER BY 1",
-        )
-        .fetch_all(&self.pool)
-        .await
-        .map_err(ProjectError::Database)?;
+        let mut ids: Vec<String> = sqlx::query_scalar("SELECT run_id FROM petri_runs")
+            .fetch_all(&self.records)
+            .await
+            .map_err(ProjectError::Database)?;
+        let with_platform: Vec<String> =
+            sqlx::query_scalar("SELECT DISTINCT run_id FROM platform_records")
+                .fetch_all(&self.pool)
+                .await
+                .map_err(ProjectError::Database)?;
+        ids.extend(with_platform);
+        ids.sort();
+        ids.dedup();
         let mut report = StartupReport::default();
         for id in ids {
             let Some(run_id) = projection::run_id_of(&id) else {
@@ -485,7 +499,7 @@ impl Projector {
              OR log LIKE 'execution %') GROUP BY log",
         )
         .bind(run_id.to_string())
-        .fetch_all(&self.pool)
+        .fetch_all(&self.records)
         .await
         .map_err(ProjectError::Database)?;
         Ok(rows
@@ -645,13 +659,15 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
 
 /// The run's projection rebuilt from its records alone, with nothing
 /// stored: what a fresh projector would commit over the same records. A test
-/// compares it with the live view.
+/// compares it with the live view. `records` and `views` are the two pools
+/// [`Projector::new`] takes.
 pub async fn rebuild(
-    pool: &DbPool,
+    records: &DbPool,
+    views: &DbPool,
     run_id: RunId,
 ) -> Result<(Option<RunProjection>, Positions, u64), ProjectError> {
-    let store = SqliteRunStore::new(pool.clone());
-    let platform = PlatformRecordStore::new(pool.clone());
+    let store = SqliteRunStore::new(records.clone());
+    let platform = PlatformRecordStore::new(views.clone());
     let key = RunKey::new(run_id.to_string());
     let platform_records = platform.read(&run_id).await.map_err(ProjectError::Store)?;
     let events = match store.open(&key, Access::Read).await {
@@ -690,15 +706,16 @@ pub async fn rebuild(
     Ok((view.projection, positions, stream_seq))
 }
 
-/// The stored view's positions and stream sequence, for a test.
+/// The stored view's positions and stream sequence, for a test; `views` is
+/// the pool the view tables live in.
 pub async fn stored_positions(
-    pool: &DbPool,
+    views: &DbPool,
     run_id: RunId,
 ) -> Result<Option<(Positions, u64)>, ProjectError> {
     let row: Option<(String, i64)> =
         sqlx::query_as("SELECT positions_json, stream_seq FROM petri_projection WHERE run_id = ?")
             .bind(run_id.to_string())
-            .fetch_optional(pool)
+            .fetch_optional(views)
             .await
             .map_err(ProjectError::Database)?;
     row.map(|(positions, stream_seq)| {
@@ -712,13 +729,13 @@ pub async fn stored_positions(
 
 /// The stored view's projection, for a test or a reader outside the store.
 pub async fn stored_projection(
-    pool: &DbPool,
+    views: &DbPool,
     run_id: RunId,
 ) -> Result<Option<RunProjection>, ProjectError> {
     let json: Option<String> =
         sqlx::query_scalar("SELECT projection_json FROM petri_projection WHERE run_id = ?")
             .bind(run_id.to_string())
-            .fetch_optional(pool)
+            .fetch_optional(views)
             .await
             .map_err(ProjectError::Database)?;
     json.map(|json| serde_json::from_str(&json).map_err(ProjectError::Encode))
@@ -727,14 +744,14 @@ pub async fn stored_projection(
 
 /// The stream rows of a run: `(stream_seq, item_kind, item_id)`, in order.
 pub async fn stored_stream(
-    pool: &DbPool,
+    views: &DbPool,
     run_id: RunId,
 ) -> Result<Vec<(u64, String, String)>, ProjectError> {
     let rows: Vec<(i64, String, String)> = sqlx::query_as(
         "SELECT stream_seq, item_kind, item_id FROM petri_stream WHERE run_id = ? ORDER BY stream_seq",
     )
     .bind(run_id.to_string())
-    .fetch_all(pool)
+    .fetch_all(views)
     .await
     .map_err(ProjectError::Database)?;
     Ok(rows
@@ -745,10 +762,10 @@ pub async fn stored_stream(
 
 /// Every stored platform record of a run, for a reader outside the store.
 pub async fn stored_platform_records(
-    pool: &DbPool,
+    views: &DbPool,
     run_id: RunId,
 ) -> Result<Vec<StoredPlatformRecord>, ProjectError> {
-    PlatformRecordStore::new(pool.clone())
+    PlatformRecordStore::new(views.clone())
         .read(&run_id)
         .await
         .map_err(ProjectError::Store)
