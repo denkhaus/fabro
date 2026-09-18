@@ -339,13 +339,16 @@ pub fn compile_admitted_run(input: CreateRunCompileInput) -> Result<CompiledRun,
     })
 }
 
-/// Stage three for a run another engine admitted: no model pinning, since
-/// the engine pinned every route at its own admission.
+/// Stage three for a run Petri admitted: no model pinning, since Petri
+/// pinned every route at its admission. The run's goal and pull request
+/// settings are materialized as they were for every run: the graph's goal
+/// becomes the inline `run.goal`, and a disabled pull request block is
+/// dropped.
 #[must_use]
 pub fn materialize_admitted_run(compiled: CompiledRun) -> MaterializedRun {
     let CompiledRun {
         validated,
-        settings,
+        mut settings,
         raw_source,
         workflow_slug,
         dot_path,
@@ -354,6 +357,7 @@ pub fn materialize_admitted_run(compiled: CompiledRun) -> MaterializedRun {
         labels,
         configured_providers: _,
     } = compiled;
+    run_materialization::materialize_goal_and_pull_request(&mut settings, validated.graph());
     MaterializedRun {
         validated,
         settings,
@@ -776,7 +780,6 @@ mod tests {
     use fabro_types::{EventBody, PetriAdmission, WorkflowSettings, fixtures, test_support};
     use fabro_util::error::collect_chain;
     use fabro_validate::Severity;
-    use lithos_llm::catalog::builtin;
     use object_store::local::LocalFileSystem;
     use object_store::memory::InMemory;
 
@@ -818,24 +821,6 @@ mod tests {
 
     fn test_catalog() -> Arc<Catalog> {
         Arc::new(fabro_llm::test_support::test_catalog())
-    }
-
-    /// OpenAI and OpenRouter both offering GPT-5.6 Sol as their default, so a
-    /// portable selector resolves to whichever provider is ready.
-    fn portable_model_catalog() -> Arc<Catalog> {
-        Arc::new(fabro_llm::test_support::test_catalog_with_overlay(
-            r#"
-            [providers.openai]
-            priority = 90
-            default_model = "gpt-5.6-sol"
-            
-            [providers.openrouter]
-            priority = 25
-            default_model = "gpt-5.6-sol"
-            enabled = true
-            
-            "#,
-        ))
     }
 
     fn test_provider_ids() -> Vec<ProviderId> {
@@ -2085,127 +2070,6 @@ mod tests {
                 .to_path_buf()
         );
         assert!(created.run_dir.is_dir());
-    }
-
-    #[tokio::test]
-    async fn create_materializes_portable_selectors_for_ready_provider_snapshot_and_pin() {
-        const MODEL_DOT: &str = r#"digraph Test {
-            graph [goal="Test"]
-            start [shape=Mdiamond]
-            work [prompt="Do work", model="MODEL_SELECTOR"]
-            exit [shape=Msquare]
-            start -> work -> exit
-        }"#;
-        let catalog = portable_model_catalog();
-        let cases = [
-            (vec![builtin::openai()], None, builtin::openai()),
-            (
-                vec![ProviderId::new("openrouter")],
-                None,
-                ProviderId::new("openrouter"),
-            ),
-            (
-                vec![builtin::openai(), ProviderId::new("openrouter")],
-                None,
-                builtin::openai(),
-            ),
-            (
-                vec![builtin::openai(), ProviderId::new("openrouter")],
-                Some("openrouter"),
-                ProviderId::new("openrouter"),
-            ),
-        ];
-
-        for selector in ["gpt-56-sol", "gpt-5.6"] {
-            for (ready, explicit_provider, expected_provider) in &cases {
-                let dir = tempfile::tempdir().unwrap();
-                let mut settings = test_default_settings();
-                settings.run.model.name = Some(selector.to_string());
-                settings.run.model.provider = explicit_provider.map(str::to_string);
-                let store = memory_store();
-                let created = create(
-                    store.as_ref(),
-                    CreateRunInput {
-                        admission: PetriAdmission::default(),
-                        workflow: WorkflowInput::DotSource {
-                            source:   MODEL_DOT.replace("MODEL_SELECTOR", selector),
-                            base_dir: None,
-                        },
-                        settings,
-                        vars: HashMap::new(),
-                        cwd: dir.path().to_path_buf(),
-                        workflow_slug: None,
-                        workflow_path: None,
-                        workflow_bundle: None,
-                        target: None,
-                        run_id: None,
-                        title: None,
-                        automation: None,
-                        git: None,
-                        fork_source_ref: None,
-                        parent_id: None,
-                        provenance: test_support::test_run_provenance(),
-                        configured_providers: ready.clone(),
-                        web_url: None,
-                    },
-                    dir.path().join("storage"),
-                    Arc::clone(&catalog),
-                )
-                .await
-                .unwrap();
-                let run_spec = created.persisted.run_spec();
-
-                assert_eq!(
-                    run_spec.settings.run.model.name.as_deref(),
-                    Some("gpt-5.6-sol"),
-                    "{selector}"
-                );
-                assert_eq!(
-                    run_spec.settings.run.model.provider.as_deref(),
-                    Some(expected_provider.as_str()),
-                    "{selector}"
-                );
-                assert_eq!(
-                    run_spec.graph.nodes["work"]
-                        .attrs
-                        .get("model")
-                        .and_then(AttrValue::as_str),
-                    Some("gpt-5.6-sol"),
-                    "{selector}"
-                );
-                assert_eq!(
-                    run_spec.graph.nodes["work"]
-                        .attrs
-                        .get("provider")
-                        .and_then(AttrValue::as_str),
-                    Some(expected_provider.as_str()),
-                    "{selector}"
-                );
-
-                let run_store = store.open_run(&created.run_id).await.unwrap();
-                let run_store = run_store.into();
-                let reloaded = Persisted::load_from_store(&run_store, &created.run_dir)
-                    .await
-                    .unwrap();
-                assert_eq!(
-                    reloaded.run_spec().settings.run.model.provider.as_deref(),
-                    Some(expected_provider.as_str()),
-                    "{selector}"
-                );
-                assert_eq!(
-                    reloaded.run_spec().graph.nodes["work"]
-                        .attrs
-                        .get("provider")
-                        .and_then(AttrValue::as_str),
-                    Some(expected_provider.as_str()),
-                    "{selector}"
-                );
-                assert!(
-                    reloaded.source().contains(selector),
-                    "persisted source should preserve the user's selector '{selector}'"
-                );
-            }
-        }
     }
 
     #[tokio::test]

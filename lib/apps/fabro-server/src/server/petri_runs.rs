@@ -51,7 +51,6 @@ use fabro_types::{PetriAdmission, RunId, RunRunnableSource, RunTarget, RunTiming
 use fabro_util::error as error_util;
 use fabro_validate::{Diagnostic as FabroDiagnostic, Severity};
 use fabro_workflow::Error as WorkflowError;
-use fabro_workflow::event::Emitter;
 use fabro_workflow::run_status::{FailureReason, RunStatus, SuccessReason};
 use lithos_llm::catalog::ProviderId;
 use tokio::task;
@@ -204,6 +203,28 @@ pub(crate) async fn admit(
     for warning in &admitted.warnings {
         info!(code = %warning.code, message = %warning.message, "Petri warned at admission");
     }
+    // Without a ready provider there is no model client, so Petri admitted
+    // the model nodes unchecked: refuse a run they would fail at once, as
+    // the legacy compiler refused every run without a default model.
+    if eligible.is_empty() && admitted.needs_model() {
+        return Err(RunCompilerError::Workflow(
+            WorkflowError::ValidationFailed {
+                diagnostics: vec![FabroDiagnostic {
+                    rule: "fabro.model.no_ready_provider".to_string(),
+                    severity: Severity::Error,
+                    message: "no default model is available: no LLM provider is ready, and the \
+                          workflow has a node that runs a model"
+                        .to_string(),
+                    fix: Some(
+                        "configure a provider credential (for example `OPENAI_API_KEY`) or a \
+                     `[run.model]`"
+                            .to_string(),
+                    ),
+                    ..FabroDiagnostic::default()
+                }],
+            },
+        ));
+    }
     admission::persist(&state.store_ref().blobs(), &admitted)
         .await
         .map_err(|err| {
@@ -350,9 +371,6 @@ pub(crate) async fn execute(state: Arc<AppState>, run_id: RunId) {
     // The answer endpoint reaches this interviewer directly, as it does
     // for a legacy run in this process.
     let interviewer = Arc::new(ControlInterviewer::new());
-    let steering_hub = Arc::new(fabro_workflow::SteeringHub::new(Arc::new(Emitter::new(
-        run_id,
-    ))));
     {
         let mut runs = state.runs.lock().expect("runs lock poisoned");
         if let Some(managed_run) = runs.get_mut(&run_id) {
@@ -360,7 +378,6 @@ pub(crate) async fn execute(state: Arc<AppState>, run_id: RunId) {
                 managed_run.status = RunStatus::Running;
                 managed_run.answer_transport = Some(RunAnswerTransport::InProcess {
                     interviewer: Arc::clone(&interviewer),
-                    steering_hub,
                 });
             }
         }
@@ -432,6 +449,15 @@ pub(crate) async fn execute(state: Arc<AppState>, run_id: RunId) {
     };
     if let Err(err) = workflow_event::append_event(&run_store, &run_id, &event).await {
         error!(run_id = %run_id, error = %err, "Failed to persist run outcome");
+    }
+    // The view trails the terminal record; the aggregate reads the settled
+    // projection, as the worker path reads the final state at worker exit.
+    state.petri_projector.settle(run_id).await;
+    match state.load_run_projection(&run_id).await {
+        Ok(final_state) => super::accumulate_concluded_run_usage(&state, &final_state),
+        Err(err) => {
+            warn!(run_id = %run_id, error = ?err, "the run's final state could not be read for the usage aggregate");
+        }
     }
     finish(&state, run_id, status, error);
 }

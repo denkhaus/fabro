@@ -788,7 +788,7 @@ where
     let shutdown = CancellationToken::new();
     let state = build_app_state(AppStateConfig {
         resolved_settings: resolved_app_settings,
-        registry_factory_override: None,
+        execute_in_process: false,
         max_concurrent_runs,
         store,
         artifact_store,

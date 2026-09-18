@@ -2535,22 +2535,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "fabro-core"
-version = "0.357.0-nightly.0"
-dependencies = [
- "async-trait",
- "fabro-types",
- "fabro-util",
- "serde",
- "serde_json",
- "strum 0.28.0",
- "thiserror 2.0.18",
- "tokio",
- "tokio-util",
- "tracing",
-]
-
-[[package]]
 name = "fabro-db"
 version = "0.357.0-nightly.0"
 dependencies = [
@@ -3102,7 +3086,6 @@ dependencies = [
  "fabro-interview",
  "fabro-static",
  "fabro-types",
- "fabro-workflow",
  "futures-util",
  "rustls",
  "serde",
@@ -3367,29 +3350,22 @@ name = "fabro-workflow"
 version = "0.357.0-nightly.0"
 dependencies = [
  "anyhow",
- "assert_cmd",
  "async-trait",
- "base64",
  "bytes",
  "chrono",
  "dirs",
- "fabro-acp",
- "fabro-api",
  "fabro-auth",
  "fabro-checkpoint",
  "fabro-client",
  "fabro-config",
- "fabro-core",
  "fabro-dump",
  "fabro-environment",
  "fabro-github",
  "fabro-graphviz",
- "fabro-hooks",
  "fabro-http",
  "fabro-interview",
  "fabro-llm",
  "fabro-macros",
- "fabro-mcp",
  "fabro-redact",
  "fabro-sandbox",
  "fabro-static",
@@ -3415,7 +3391,6 @@ dependencies = [
  "object_store",
  "pebble-agent",
  "pebble-coding-agent",
- "predicates",
  "rand 0.9.4",
  "regex",
  "sandbox-driver",
@@ -3423,7 +3398,6 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.10.9",
- "shlex",
  "strum 0.28.0",
  "tempfile",
  "thiserror 2.0.18",

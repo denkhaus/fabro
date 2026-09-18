@@ -9,16 +9,14 @@ use super::super::{
     BatchDeleteRunsResult, BatchDeleteRunsResultOutcome, BatchDeleteRunsSummary,
     BatchRunLifecycleRequest, BatchRunLifecycleResponse, BatchRunLifecycleResult,
     BatchRunLifecycleResultOutcome, BatchRunLifecycleSummary, DeleteRunOutcome, DeleteRunSandbox,
-    DenyRunRequest, FailureReason, ForkRequest, ForkResponse, HeaderMap, IntoResponse, Json, Path,
-    PendingReason, Principal, RequireRunManagementTarget, RequiredUser, Response, RewindRequest,
-    RewindResponse, Router, RunAnswerTransport, RunControlAction, RunExecutionMode, RunId,
-    RunRunnableSource, RunStatus, StartRunRequest, State, StatusCode, Storage,
-    TimelineEntryResponse, WORKER_CANCEL_GRACE, WorkflowError, append_control_request,
-    clear_live_run_state, delete_run_internal, durable_run_status, get, load_pending_control,
+    DenyRunRequest, FailureReason, IntoResponse, Json, Path, PendingReason, Principal,
+    RequireRunManagementTarget, RequiredUser, Response, Router, RunAnswerTransport,
+    RunControlAction, RunExecutionMode, RunId, RunRunnableSource, RunStatus, StartRunRequest,
+    State, StatusCode, Storage, WORKER_CANCEL_GRACE, WorkflowError, append_control_request,
+    clear_live_run_state, delete_run_internal, durable_run_status, load_pending_control,
     managed_run, operations, parse_run_id_path, persist_cancelled_run_status, post,
     reject_if_archived, update_live_run_from_event, workflow_event,
 };
-use super::runs::run_provenance;
 use crate::worker_runtime::WorkerRef;
 
 pub(super) fn routes() -> Router<Arc<AppState>> {
@@ -33,10 +31,6 @@ pub(super) fn routes() -> Router<Arc<AppState>> {
         .route("/runs/delete", post(batch_delete_runs))
         .route("/runs/unarchive", post(batch_unarchive_runs))
         .route("/runs/{id}/archive", post(archive_run))
-        .route("/runs/{id}/rewind", post(rewind_run))
-        .route("/runs/{id}/retry", post(retry_run))
-        .route("/runs/{id}/fork", post(fork_run))
-        .route("/runs/{id}/timeline", get(run_timeline))
         .route("/runs/{id}/unarchive", post(unarchive_run))
 }
 
@@ -862,192 +856,6 @@ async fn batch_delete_runs(
         }),
     )
         .into_response()
-}
-
-async fn rewind_run(
-    subject: RequiredUser,
-    State(state): State<Arc<AppState>>,
-    Path(id): Path<String>,
-    body: Option<Json<RewindRequest>>,
-) -> Response {
-    let id = match parse_run_id_path(&id) {
-        Ok(id) => id,
-        Err(response) => return response,
-    };
-    if let Some(response) = reject_if_archived(state.as_ref(), &id).await {
-        return response;
-    }
-    let request = body.map(|Json(body)| body).unwrap_or_default();
-    let target = match parse_fork_target(request.target) {
-        Ok(target) => target,
-        Err(err) => return err.into_response(),
-    };
-    let input = operations::RewindInput { run_id: id, target };
-    match Box::pin(operations::rewind(
-        &state.stores.runs,
-        &input,
-        Some(Principal::User(subject.0.clone())),
-    ))
-    .await
-    {
-        Ok(operations::RewindOutcome::Full {
-            source_run_id,
-            new_run_id,
-            target,
-        }) => (
-            StatusCode::OK,
-            Json(RewindResponse {
-                source_run_id: source_run_id.to_string(),
-                new_run_id:    new_run_id.to_string(),
-                target:        target.response_target(),
-                archived:      true,
-                archive_error: None,
-            }),
-        )
-            .into_response(),
-        Ok(operations::RewindOutcome::Partial {
-            source_run_id,
-            new_run_id,
-            target,
-            archive_error,
-        }) => (
-            StatusCode::MULTI_STATUS,
-            Json(RewindResponse {
-                source_run_id: source_run_id.to_string(),
-                new_run_id:    new_run_id.to_string(),
-                target:        target.response_target(),
-                archived:      false,
-                archive_error: Some(archive_error),
-            }),
-        )
-            .into_response(),
-        Err(err) => workflow_operation_error_response(err),
-    }
-}
-
-async fn fork_run(
-    _subject: RequiredUser,
-    State(state): State<Arc<AppState>>,
-    Path(id): Path<String>,
-    body: Option<Json<ForkRequest>>,
-) -> Response {
-    let id = match parse_run_id_path(&id) {
-        Ok(id) => id,
-        Err(response) => return response,
-    };
-    if let Some(response) = reject_if_archived(state.as_ref(), &id).await {
-        return response;
-    }
-    let request = body.map(|Json(body)| body).unwrap_or_default();
-    let target = match parse_fork_target(request.target) {
-        Ok(target) => target,
-        Err(err) => return err.into_response(),
-    };
-    let input = operations::ForkRunInput {
-        source_run_id: id,
-        target,
-    };
-    match Box::pin(operations::fork_run(&state.stores.runs, &input)).await {
-        Ok(outcome) => (
-            StatusCode::OK,
-            Json(ForkResponse {
-                source_run_id: outcome.source_run_id.to_string(),
-                new_run_id:    outcome.new_run_id.to_string(),
-                target:        outcome.target.response_target(),
-            }),
-        )
-            .into_response(),
-        Err(err) => workflow_operation_error_response(err),
-    }
-}
-
-async fn retry_run(
-    RequiredUser(user): RequiredUser,
-    State(state): State<Arc<AppState>>,
-    headers: HeaderMap,
-    Path(id): Path<String>,
-) -> Response {
-    let id = match parse_run_id_path(&id) {
-        Ok(id) => id,
-        Err(response) => return response,
-    };
-    let actor = Principal::User(user);
-    let new_run_id = RunId::new();
-    let input = operations::RetryRunInput {
-        source_run_id: id,
-        new_run_id,
-        provenance: run_provenance(&headers, &actor),
-        web_url: state.run_web_url(&new_run_id),
-    };
-    match Box::pin(operations::retry_run(&state.stores.runs, &input)).await {
-        Ok(outcome) => {
-            let new_run_id = outcome.new_run_id;
-            if let Err(err) = queue_run_start(state.as_ref(), new_run_id, false, actor).await {
-                return err.into_response();
-            }
-            run_response(state.as_ref(), new_run_id, StatusCode::CREATED).await
-        }
-        Err(err) => workflow_operation_error_response(err),
-    }
-}
-
-async fn run_timeline(
-    _auth: RequiredUser,
-    State(state): State<Arc<AppState>>,
-    Path(id): Path<String>,
-) -> Response {
-    let id = match parse_run_id_path(&id) {
-        Ok(id) => id,
-        Err(response) => return response,
-    };
-    match operations::timeline(&state.stores.runs, &id).await {
-        Ok(entries) => Json(
-            entries
-                .into_iter()
-                .map(|entry| TimelineEntryResponse {
-                    ordinal:        std::num::NonZeroU64::new(entry.ordinal as u64)
-                        .expect("timeline ordinals start at 1"),
-                    node_name:      entry.node_name,
-                    visit:          std::num::NonZeroU64::new(entry.visit as u64)
-                        .expect("timeline visits start at 1"),
-                    checkpoint_seq: std::num::NonZeroU64::new(u64::from(entry.checkpoint_seq))
-                        .expect("checkpoint event sequence starts at 1"),
-                    run_commit_sha: entry.run_commit_sha,
-                })
-                .collect::<Vec<_>>(),
-        )
-        .into_response(),
-        Err(err) => workflow_operation_error_response(err),
-    }
-}
-
-fn parse_fork_target(target: Option<String>) -> Result<Option<operations::ForkTarget>, ApiError> {
-    target
-        .map(|target| {
-            target
-                .parse::<operations::ForkTarget>()
-                .map_err(|err| ApiError::bad_request(err.to_string()))
-        })
-        .transpose()
-}
-
-fn workflow_operation_error_response(err: WorkflowError) -> Response {
-    match err {
-        WorkflowError::Parse(message) | WorkflowError::Validation(message) => {
-            ApiError::bad_request(message).into_response()
-        }
-        WorkflowError::ValidationFailed { .. } => {
-            ApiError::bad_request("Validation failed").into_response()
-        }
-        WorkflowError::Precondition(message) => {
-            ApiError::new(StatusCode::CONFLICT, message).into_response()
-        }
-        WorkflowError::RunNotFound(_) => ApiError::not_found("Run not found.").into_response(),
-        WorkflowError::Unsupported(message) => {
-            ApiError::new(StatusCode::NOT_IMPLEMENTED, message).into_response()
-        }
-        err => ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string()).into_response(),
-    }
 }
 
 #[derive(Clone, Copy)]

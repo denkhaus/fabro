@@ -55,7 +55,7 @@ use fabro_config::{LlmLayer, RunLayer, Storage, WorkflowSettingsBuilder};
 use fabro_db::DbPool;
 use fabro_environment::EnvironmentStore;
 use fabro_interview::{
-    Answer, AnswerSubmission, ControlInterviewer, Interviewer, Question, WorkerControlEnvelope,
+    Answer, AnswerSubmission, ControlInterviewer, Question, WorkerControlEnvelope,
 };
 use fabro_llm::credentials::CredentialProvider;
 use fabro_llm::lithos_catalog::Catalog;
@@ -89,10 +89,10 @@ use fabro_types::settings::server::{
     GithubIntegrationSettings, GithubIntegrationStrategy, LogDestination,
 };
 use fabro_types::{
-    AgentBackend, AskFabro, AskFabroUnavailableReason, BlobHash, EventBody,
-    InterviewQuestionRecord, ModelRef, ModelTestMode, PairId, PairMessageId, PairTarget,
-    PendingReason, Principal, PullRequestLink, QuestionType, RunControlAction, RunEvent, RunId,
-    RunRunnableSource, RunStatusKind, SandboxProviderKind, ServerSettings, SessionCapability,
+    AskFabro, AskFabroUnavailableReason, BlobHash, EventBody, InterviewQuestionRecord, ModelRef,
+    ModelTestMode, PendingReason, Principal, PullRequestLink, QuestionType, RunControlAction,
+    RunEvent, RunId, RunRunnableSource, RunStatusKind, SandboxProviderKind, ServerSettings,
+    SessionCapability,
 };
 use fabro_util::error::{
     SharedError, collect_causes, render_compact_with_causes, render_with_causes,
@@ -100,10 +100,7 @@ use fabro_util::error::{
 use fabro_util::version::FABRO_VERSION;
 use fabro_variable::{Error as VariableError, VariableStore};
 use fabro_vault::{SecretStore, SecretStoreError, SecretType, Vault};
-#[cfg(test)]
-use fabro_workflow::command_log::command_log_path;
 use fabro_workflow::event::{self as workflow_event};
-use fabro_workflow::handler::HandlerRegistry;
 use fabro_workflow::records::Checkpoint;
 use fabro_workflow::run_lookup::{
     RunInfo, StatusFilter, filter_runs, scan_runs_with_summaries, scratch_base,
@@ -265,7 +262,6 @@ struct ManagedRun {
     active_steerable_stages: HashMap<StageId, String>,
     /// API-mode session targets eligible for live pair control. ACP sessions
     /// can be steerable but are intentionally excluded from pairing.
-    active_api_targets: HashMap<StageId, PairTarget>,
     /// Stage IDs of currently running agent sessions that have no live
     /// steering capability, keyed to the session id that owns the marker.
     active_non_steerable_stages: HashMap<StageId, String>,
@@ -327,9 +323,6 @@ pub(crate) struct UsageAccumulator {
     pub(crate) by_model:     HashMap<ModelRef, ModelUsageTotals>,
 }
 
-pub(crate) type RegistryFactoryOverride =
-    dyn Fn(Arc<dyn Interviewer>) -> HandlerRegistry + Send + Sync;
-
 #[derive(Clone)]
 enum RunAnswerTransport {
     Worker {
@@ -337,8 +330,7 @@ enum RunAnswerTransport {
         bus:    Arc<dyn WorkerControlBus>,
     },
     InProcess {
-        interviewer:  Arc<ControlInterviewer>,
-        steering_hub: Arc<fabro_workflow::SteeringHub>,
+        interviewer: Arc<ControlInterviewer>,
     },
 }
 
@@ -346,13 +338,6 @@ enum RunAnswerTransport {
 enum AnswerTransportError {
     Closed,
     Timeout,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum PairTransportError {
-    Closed,
-    Timeout,
-    Control(fabro_workflow::PairControlError),
 }
 
 impl RunAnswerTransport {
@@ -373,15 +358,6 @@ impl RunAnswerTransport {
             WorkerControlBusError::Closed
             | WorkerControlBusError::Unavailable
             | WorkerControlBusError::InvalidCursor { .. } => AnswerTransportError::Closed,
-        }
-    }
-
-    fn pair_error_from_bus(error: &WorkerControlBusError) -> PairTransportError {
-        match error {
-            WorkerControlBusError::PublishTimeout => PairTransportError::Timeout,
-            WorkerControlBusError::Closed
-            | WorkerControlBusError::Unavailable
-            | WorkerControlBusError::InvalidCursor { .. } => PairTransportError::Closed,
         }
     }
 
@@ -419,8 +395,8 @@ impl RunAnswerTransport {
         }
     }
 
-    /// Forward a steer to the worker (subprocess) or directly into the
-    /// in-process steering hub.
+    /// Forward a steer to the worker. The in-process test path drives no
+    /// steer: its run has no live agent session to steer.
     async fn steer(&self, text: String, actor: Principal) -> Result<(), AnswerTransportError> {
         match self {
             Self::Worker { run_id, bus } => {
@@ -429,111 +405,7 @@ impl RunAnswerTransport {
                     .await
                     .map_err(|err| Self::answer_error_from_bus(&err))
             }
-            Self::InProcess { steering_hub, .. } => {
-                steering_hub.deliver_steer(text, Some(actor));
-                Ok(())
-            }
-        }
-    }
-
-    async fn interrupt(&self, actor: Principal) -> Result<(), AnswerTransportError> {
-        match self {
-            Self::Worker { run_id, bus } => {
-                let message = WorkerControlEnvelope::interrupt(actor);
-                Self::publish_worker_control(*run_id, bus, message)
-                    .await
-                    .map_err(|err| Self::answer_error_from_bus(&err))
-            }
-            Self::InProcess { steering_hub, .. } => {
-                steering_hub.interrupt(Some(&actor));
-                Ok(())
-            }
-        }
-    }
-
-    async fn interrupt_then_steer(
-        &self,
-        text: String,
-        actor: Principal,
-    ) -> Result<(), AnswerTransportError> {
-        match self {
-            Self::Worker { run_id, bus } => {
-                let message = WorkerControlEnvelope::interrupt_then_steer(text, actor);
-                Self::publish_worker_control(*run_id, bus, message)
-                    .await
-                    .map_err(|err| Self::answer_error_from_bus(&err))
-            }
-            Self::InProcess { steering_hub, .. } => {
-                steering_hub.interrupt_then_steer(&text, Some(&actor));
-                Ok(())
-            }
-        }
-    }
-
-    async fn start_pair(
-        &self,
-        run_id: RunId,
-        pair_id: PairId,
-        target: PairTarget,
-        actor: Principal,
-    ) -> Result<(), PairTransportError> {
-        match self {
-            Self::Worker {
-                run_id: worker_run_id,
-                bus,
-            } => {
-                let message = WorkerControlEnvelope::start_pair(run_id, pair_id, target, actor);
-                Self::publish_worker_control(*worker_run_id, bus, message)
-                    .await
-                    .map_err(|err| Self::pair_error_from_bus(&err))
-            }
-            Self::InProcess { steering_hub, .. } => steering_hub
-                .start_pair(run_id, pair_id, target, Some(actor))
-                .map(|_| ())
-                .map_err(PairTransportError::Control),
-        }
-    }
-
-    async fn send_pair_message(
-        &self,
-        pair_id: PairId,
-        message_id: PairMessageId,
-        text: String,
-        client_message_id: Option<String>,
-        actor: Principal,
-    ) -> Result<(), PairTransportError> {
-        match self {
-            Self::Worker { run_id, bus } => {
-                let message = WorkerControlEnvelope::pair_message(
-                    pair_id,
-                    message_id,
-                    text.clone(),
-                    client_message_id.clone(),
-                    actor,
-                );
-                Self::publish_worker_control(*run_id, bus, message)
-                    .await
-                    .map_err(|err| Self::pair_error_from_bus(&err))
-            }
-            Self::InProcess { steering_hub, .. } => steering_hub
-                .send_pair_message(pair_id, message_id, text, client_message_id, Some(actor))
-                .map(|_| ())
-                .map_err(PairTransportError::Control),
-        }
-    }
-
-    async fn end_pair(&self, pair_id: PairId, actor: Principal) -> Result<(), PairTransportError> {
-        match self {
-            Self::Worker { run_id, bus } => {
-                let message = WorkerControlEnvelope::end_pair(pair_id, actor);
-                Self::publish_worker_control(*run_id, bus, message)
-                    .await
-                    .map_err(|err| Self::pair_error_from_bus(&err))
-            }
-            Self::InProcess { steering_hub, .. } => steering_hub
-                .end_pair(pair_id, Some(actor))
-                .map(|_| ())
-                .map_err(PairTransportError::Control),
+            Self::InProcess { .. } => Err(AnswerTransportError::Closed),
         }
     }
 
@@ -1139,7 +1011,8 @@ pub struct AppState {
     sandbox_inventory: SandboxInventory,
     shutdown: CancellationToken,
     shutting_down: AtomicBool,
-    registry_factory_override: Option<Box<RegistryFactoryOverride>>,
+    /// Test switch: execute runs in this process instead of a worker.
+    execute_in_process: bool,
     slack_service: Option<Arc<SlackService>>,
     slack_started: AtomicBool,
     github_webhook_secret: Option<String>,
@@ -1297,7 +1170,8 @@ impl AskFabroReadiness {
 
 pub(crate) struct AppStateConfig {
     pub(crate) resolved_settings: ResolvedAppStateSettings,
-    pub(crate) registry_factory_override: Option<Box<RegistryFactoryOverride>>,
+    /// Execute runs in this process instead of a worker (tests only).
+    pub(crate) execute_in_process: bool,
     pub(crate) max_concurrent_runs: usize,
     pub(crate) store: Arc<Database>,
     pub(crate) artifact_store: ArtifactStore,
@@ -1323,6 +1197,25 @@ pub(crate) struct ResolvedAppStateSettings {
     pub(crate) server_settings:       ServerSettings,
     pub(crate) manifest_run_defaults: RunLayer,
     pub(crate) llm_overlay:           LlmLayer,
+}
+
+/// Add a concluded run's usage to the server's aggregate; a run that
+/// recorded no conclusion adds nothing.
+pub(crate) fn accumulate_concluded_run_usage(
+    state: &AppState,
+    final_state: &fabro_store::RunProjection,
+) {
+    if final_state.conclusion.is_none() {
+        return;
+    }
+    let mut agg = state
+        .aggregate_usage
+        .lock()
+        .expect("aggregate_usage lock poisoned");
+    accumulate_usage_rollup(
+        &mut agg,
+        &fabro_workflow::usage_rollup_from_projection(final_state),
+    );
 }
 
 fn accumulate_usage_rollup(
@@ -2437,7 +2330,7 @@ where
 pub(crate) fn build_app_state(config: AppStateConfig) -> anyhow::Result<Arc<AppState>> {
     let AppStateConfig {
         resolved_settings,
-        registry_factory_override,
+        execute_in_process,
         max_concurrent_runs,
         store,
         artifact_store,
@@ -2648,7 +2541,7 @@ pub(crate) fn build_app_state(config: AppStateConfig) -> anyhow::Result<Arc<AppS
         sandbox_inventory,
         shutdown,
         shutting_down: AtomicBool::new(false),
-        registry_factory_override,
+        execute_in_process,
         slack_service,
         slack_started: AtomicBool::new(false),
         // Startup snapshot for the sync router build; rotating the webhook
@@ -3051,7 +2944,6 @@ fn octet_stream_response(bytes: Bytes) -> Response {
 fn clear_live_run_state(run: &mut ManagedRun) {
     run.answer_transport = None;
     run.accepted_questions.clear();
-    run.active_api_targets.clear();
     run.active_steerable_stages.clear();
     run.active_non_steerable_stages.clear();
     run.event_tx = None;
@@ -3431,7 +3323,6 @@ fn managed_run(
         created_at,
         answer_transport: None,
         accepted_questions: HashSet::new(),
-        active_api_targets: HashMap::new(),
         active_steerable_stages: HashMap::new(),
         active_non_steerable_stages: HashMap::new(),
         event_tx: None,
@@ -3553,7 +3444,6 @@ fn update_live_run_from_event(state: &AppState, run_id: RunId, event: &RunEvent)
                 reason: props.reason,
             };
             managed_run.error = None;
-            managed_run.active_api_targets.clear();
             managed_run.active_steerable_stages.clear();
             managed_run.active_non_steerable_stages.clear();
             cleanup_worker_control_bus_for_run(state, run_id);
@@ -3566,7 +3456,6 @@ fn update_live_run_from_event(state: &AppState, run_id: RunId, event: &RunEvent)
                 &props.failure.detail.message,
                 &props.failure.detail.causes,
             ));
-            managed_run.active_api_targets.clear();
             managed_run.active_steerable_stages.clear();
             managed_run.active_non_steerable_stages.clear();
             cleanup_worker_control_bus_for_run(state, run_id);
@@ -3583,26 +3472,11 @@ fn update_live_run_from_event(state: &AppState, run_id: RunId, event: &RunEvent)
                         .active_steerable_stages
                         .insert(stage_id.clone(), session_id.clone());
                     managed_run.active_non_steerable_stages.remove(stage_id);
-                    let acp_provider: &'static str = AgentBackend::Acp.into();
-                    if props.provider.as_deref() == Some(acp_provider) {
-                        managed_run.active_api_targets.remove(stage_id);
-                    } else {
-                        managed_run
-                            .active_api_targets
-                            .insert(stage_id.clone(), PairTarget {
-                                stage_id:   stage_id.clone(),
-                                node_label: event
-                                    .node_label
-                                    .clone()
-                                    .unwrap_or_else(|| stage_id.node_id().to_string()),
-                            });
-                    }
                 } else {
                     managed_run
                         .active_non_steerable_stages
                         .insert(stage_id.clone(), session_id.clone());
                     managed_run.active_steerable_stages.remove(stage_id);
-                    managed_run.active_api_targets.remove(stage_id);
                 }
             }
         }
@@ -3616,7 +3490,6 @@ fn update_live_run_from_event(state: &AppState, run_id: RunId, event: &RunEvent)
                     .is_some_and(|current| current == session_id)
                 {
                     managed_run.active_steerable_stages.remove(stage_id);
-                    managed_run.active_api_targets.remove(stage_id);
                 }
                 if managed_run
                     .active_non_steerable_stages
@@ -3635,7 +3508,6 @@ fn update_live_run_from_event(state: &AppState, run_id: RunId, event: &RunEvent)
         | EventBody::StageCompleted(_)
         | EventBody::StageFailed(_) => {
             if let Some(stage_id) = &event.stage_id {
-                managed_run.active_api_targets.remove(stage_id);
                 managed_run.active_steerable_stages.remove(stage_id);
                 managed_run.active_non_steerable_stages.remove(stage_id);
             }
@@ -4016,7 +3888,7 @@ async fn execute_run(state: Arc<AppState>, run_id: RunId) {
     // A run executes in its worker process. Under the test override it
     // executes in this process instead, so the scenario tests need no worker
     // binary.
-    if state.registry_factory_override.is_some() {
+    if state.execute_in_process {
         Box::pin(petri_runs::execute(state, run_id)).await;
         return;
     }
@@ -4226,16 +4098,7 @@ async fn execute_run_subprocess(state: Arc<AppState>, run_id: RunId) {
         }
     };
 
-    if final_state.current_checkpoint().is_some() {
-        let mut agg = state
-            .aggregate_usage
-            .lock()
-            .expect("aggregate_usage lock poisoned");
-        accumulate_usage_rollup(
-            &mut agg,
-            &fabro_workflow::usage_rollup_from_projection(&final_state),
-        );
-    }
+    accumulate_concluded_run_usage(&state, &final_state);
 
     let mut runs = state.runs.lock().expect("runs lock poisoned");
     if let Some(managed_run) = runs.get_mut(&run_id) {

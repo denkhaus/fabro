@@ -59,7 +59,7 @@ const CHILD_DOT: &str = r#"digraph Child {
     start -> say -> exit
 }"#;
 const CHILD_SETTINGS: &str =
-    "_version = 1\n\n[workflow]\ngraph = \"workflow.fabro\"\nengine = \"petri\"\n";
+    "_version = 1\n\n[workflow]\ngraph = \"workflow.fabro\"\n";
 
 /// A `[[run.hooks]]` entry that blocks every `fabro_run_search` call.
 const BLOCKING_HOOK: &str = r#"
@@ -95,7 +95,7 @@ fn write_agent_workspace(context: &fabro_test::TestContext, extra_settings: &str
     std::fs::write(
         workspace.join("workflow.toml"),
         format!(
-            "_version = 1\n\n[workflow]\ngraph = \"workflow.fabro\"\nengine = \"petri\"\n\n[run]\n\
+            "_version = 1\n\n[workflow]\ngraph = \"workflow.fabro\"\n\n[run]\n\
              goal = \"Use the run tools\"\n\n[run.agent]\nfabro_tools = true\n{extra_settings}"
         ),
     )

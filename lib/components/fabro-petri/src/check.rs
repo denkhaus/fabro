@@ -20,6 +20,7 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
+use petri_frontend_attractor::kinds::{AGENT_KIND, PROMPT_KIND};
 use petri_runtime::LoadError;
 use petri_runtime::frontend::{
     self, CompileInputs, LAUNCH_MODEL_VAR, LAUNCH_PROVIDER_VAR, MapFiles, REPOSITORY_VAR, Severity,
@@ -114,6 +115,18 @@ pub struct Admitted {
     pub graph:    Graph,
     pub children: Vec<Graph>,
     pub warnings: Vec<Diagnostic>,
+}
+
+impl Admitted {
+    /// Whether any admitted graph has a node that runs a model: an agent
+    /// or a prompt node. A workflow of commands and gates needs none.
+    #[must_use]
+    pub fn needs_model(&self) -> bool {
+        std::iter::once(&self.graph)
+            .chain(&self.children)
+            .flat_map(|graph| &graph.body.nodes)
+            .any(|node| node.step.kind == AGENT_KIND || node.step.kind == PROMPT_KIND)
+    }
 }
 
 /// Why a check produced no graph.

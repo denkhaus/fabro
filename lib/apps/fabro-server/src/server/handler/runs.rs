@@ -35,7 +35,6 @@ use fabro_types::{
 };
 use fabro_util::error as error_util;
 use fabro_util::version::FABRO_VERSION;
-use fabro_workflow::command_log::{command_log_path, read_json_string_blob, read_log_slice};
 use fabro_workflow::run_status::RunStatus;
 use fabro_workflow::{Error as WorkflowError, operations};
 use lithos_llm::catalog::ProviderId;
@@ -1497,40 +1496,19 @@ async fn get_run_stage_command_log(
     let live_streaming = node
         .live_streaming
         .unwrap_or_else(|| cas_ref.is_none() && node.completion.is_none());
-    let run_dir = Storage::new(state.server_storage_dir())
-        .run_scratch(&id)
-        .root()
-        .to_path_buf();
-    let scratch_path = command_log_path(&run_dir, &stage_id);
 
-    match read_log_slice(&scratch_path, query.offset, limit).await {
-        Ok((bytes, total_bytes)) => {
-            return build_command_log_response(
-                query.offset,
-                limit,
-                LogSource::Sliced { bytes, total_bytes },
-                cas_ref.is_some(),
-                cas_ref,
-                live_streaming,
-            );
-        }
-        Err(err) if err.kind() == ErrorKind::NotFound => {}
-        Err(err) => {
-            return ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string())
-                .into_response();
-        }
-    }
-
+    // A stage's output is on its record: inline, or in the blob table when
+    // Petri offloaded it. The blob holds the output value as JSON (a string
+    // for a command's output), so a string decodes and anything else is
+    // served as written.
     if let Some(cas_ref) = cas_ref {
-        let run_store = match state.stores.runs.open_run_reader(&id).await {
-            Ok(run_store) => run_store,
-            Err(err) => {
-                return ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string())
-                    .into_response();
-            }
+        let Some(hash) = parse_blob_ref(&cas_ref) else {
+            return ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "invalid output blob ref")
+                .into_response();
         };
-        let text = match read_json_string_blob(&run_store.into(), &cas_ref).await {
-            Ok(Some(text)) => text,
+        let text = match state.store_ref().blobs().read(&hash).await {
+            Ok(Some(bytes)) => serde_json::from_slice::<String>(&bytes)
+                .unwrap_or_else(|_| String::from_utf8_lossy(&bytes).into_owned()),
             Ok(None) => String::new(),
             Err(err) => {
                 return ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string())
@@ -1540,7 +1518,7 @@ async fn get_run_stage_command_log(
         return build_command_log_response(
             query.offset,
             limit,
-            LogSource::Full(text.as_bytes()),
+            text.as_bytes(),
             true,
             Some(cas_ref),
             live_streaming,
@@ -1551,7 +1529,7 @@ async fn get_run_stage_command_log(
         return build_command_log_response(
             query.offset,
             limit,
-            LogSource::Full(inline_text.as_bytes()),
+            inline_text.as_bytes(),
             true,
             None,
             live_streaming,
@@ -1561,44 +1539,28 @@ async fn get_run_stage_command_log(
     build_command_log_response(
         query.offset,
         limit,
-        LogSource::Full(&[]),
+        &[],
         node.completion.is_some(),
         None,
         live_streaming,
     )
 }
 
-enum LogSource<'a> {
-    Sliced {
-        bytes:       Vec<u8>,
-        total_bytes: u64,
-    },
-    Full(&'a [u8]),
-}
-
 fn build_command_log_response(
     requested_offset: u64,
     limit: u64,
-    source: LogSource<'_>,
+    bytes: &[u8],
     eof: bool,
     cas_ref: Option<String>,
     live_streaming: bool,
 ) -> Response {
-    let (body_bytes, total_bytes, offset) = match source {
-        LogSource::Sliced { bytes, total_bytes } => {
-            let offset = requested_offset.min(total_bytes);
-            (bytes, total_bytes, offset)
-        }
-        LogSource::Full(bytes) => {
-            let total_bytes = u64::try_from(bytes.len()).unwrap_or(u64::MAX);
-            let offset = requested_offset.min(total_bytes);
-            let start = usize::try_from(offset).unwrap_or(bytes.len());
-            let end = start
-                .saturating_add(usize::try_from(limit).unwrap_or(usize::MAX))
-                .min(bytes.len());
-            (bytes[start..end].to_vec(), total_bytes, offset)
-        }
-    };
+    let total_bytes = u64::try_from(bytes.len()).unwrap_or(u64::MAX);
+    let offset = requested_offset.min(total_bytes);
+    let start = usize::try_from(offset).unwrap_or(bytes.len());
+    let end = start
+        .saturating_add(usize::try_from(limit).unwrap_or(usize::MAX))
+        .min(bytes.len());
+    let body_bytes = bytes[start..end].to_vec();
     Json(CommandLogResponseBody {
         offset,
         next_offset: offset + u64::try_from(body_bytes.len()).unwrap_or(u64::MAX),

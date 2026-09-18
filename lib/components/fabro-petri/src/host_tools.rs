@@ -36,7 +36,7 @@
 //! logged as an error and the session gets no run tools rather than the
 //! wrong ones.
 
-use fabro_workflow::handler::llm::register_fabro_run_tools;
+use fabro_workflow::run_tools::register_fabro_run_tools;
 use fabro_workflow::services::FabroRunToolServices;
 use pebble_coding_agent::tools::RegisteredTool;
 use petri_attractor_steps::host_tools::{HostToolContext, HostTools};

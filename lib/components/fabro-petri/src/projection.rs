@@ -36,11 +36,11 @@ use fabro_types::{
     BlockedReason, CheckpointRecord as ViewCheckpoint, CodingAgentEvent, CodingEvent, Conclusion,
     FailureCategory, FailureDetail, FailureReason, InterviewOption, InterviewQuestionRecord,
     ModelRef, ModelUsage, ParallelBranchId, ParallelBranchResult, PendingInterviewRecord,
-    PullRequestLink, QuestionType, RunApproval, RunApprovalState, RunControlAction, RunDiff,
-    RunFailure, RunId, RunProjection, RunSandbox, RunSandboxPlan, RunStatus, RunTiming,
-    SandboxProviderKind, StageCompletion, StageHandler, StageId, StageInferenceProjection,
-    StageModelUsage, StageOutcome, StageProjection, StageState, StageTiming, StartRecord,
-    SuccessReason, first_event_seq, timing, usage_rollup,
+    PullRequestLink, RunApproval, RunApprovalState, RunControlAction, RunDiff, RunFailure, RunId,
+    RunProjection, RunSandbox, RunSandboxPlan, RunStatus, RunTiming, SandboxProviderKind,
+    StageCompletion, StageHandler, StageId, StageInferenceProjection, StageModelUsage,
+    StageOutcome, StageProjection, StageState, StageTiming, StartRecord, SuccessReason,
+    first_event_seq, timing, usage_rollup,
 };
 use lithos_llm::catalog::{ModelId, ProviderId};
 use lithos_llm::types::Usage;
@@ -51,6 +51,8 @@ use petri_runtime::ir::{Metrics, Status, StepEvent};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tracing::debug;
+
+use crate::interview::question_type;
 
 /// One item the projector hands the fold, with its delivery sequence.
 pub enum Item<'a> {
@@ -710,11 +712,7 @@ impl RunView {
                             id:              question.id.clone(),
                             text:            question.text.clone(),
                             stage:           label,
-                            question_type:   question
-                                .kind
-                                .as_deref()
-                                .and_then(|kind| kind.parse::<QuestionType>().ok())
-                                .unwrap_or_default(),
+                            question_type:   question_type(question),
                             options:         question
                                 .options
                                 .iter()

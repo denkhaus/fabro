@@ -21,14 +21,6 @@ pub(super) fn routes() -> axum::Router<Arc<AppState>> {
 
 enum RunControlRequest {
     Steer { text: String },
-    Interrupt,
-    InterruptThenSteer { text: String },
-}
-
-impl RunControlRequest {
-    const fn requires_active_steerable_session(&self) -> bool {
-        matches!(self, Self::Interrupt | Self::InterruptThenSteer { .. })
-    }
 }
 
 async fn steer_run(
@@ -43,20 +35,31 @@ async fn steer_run(
     if text.trim().is_empty() {
         return ApiError::bad_request("Steer text must not be empty.").into_response();
     }
-    let control = if interrupt {
-        RunControlRequest::InterruptThenSteer { text }
-    } else {
-        RunControlRequest::Steer { text }
-    };
-
-    control_run(actor, state, id, control).await
+    if interrupt {
+        return interrupt_unsupported();
+    }
+    control_run(actor, state, id, RunControlRequest::Steer { text }).await
 }
 
+/// Interrupting a live agent turn has no adapter over Petri's control
+/// service yet, which delivers a steer to a live stage and cancels a whole
+/// run but does not interrupt one stage's turn; the request is refused
+/// with that reason rather than accepted and dropped.
 async fn interrupt_run(
-    RequireRunManagementTarget(id, actor): RequireRunManagementTarget,
-    State(state): State<Arc<AppState>>,
+    RequireRunManagementTarget(_id, _actor): RequireRunManagementTarget,
+    State(_state): State<Arc<AppState>>,
 ) -> Response {
-    control_run(actor, state, id, RunControlRequest::Interrupt).await
+    interrupt_unsupported()
+}
+
+fn interrupt_unsupported() -> Response {
+    ApiError::with_code(
+        StatusCode::NOT_IMPLEMENTED,
+        "Interrupting a run's agent turn is not supported: Petri's control service has no \
+         per-stage interrupt yet. Steer the run without `interrupt`, or cancel it.",
+        "interrupt_unsupported",
+    )
+    .into_response()
 }
 
 async fn control_run(
@@ -118,18 +121,6 @@ async fn control_run(
                     )
                     .into_response();
                 }
-                // Interrupts need a live session because there's nothing to
-                // cancel otherwise.
-                if managed_run.active_steerable_stages.is_empty()
-                    && control.requires_active_steerable_session()
-                {
-                    return ApiError::with_code(
-                        StatusCode::CONFLICT,
-                        "Run has no active steerable agent session.",
-                        "no_active_steerable_session",
-                    )
-                    .into_response();
-                }
                 Some(managed_run.answer_transport.clone())
             }
             None => None,
@@ -148,13 +139,8 @@ async fn control_run(
         .into_response();
     };
 
-    let result = match control {
-        RunControlRequest::Steer { text } => answer_transport.steer(text, actor).await,
-        RunControlRequest::Interrupt => answer_transport.interrupt(actor).await,
-        RunControlRequest::InterruptThenSteer { text } => {
-            answer_transport.interrupt_then_steer(text, actor).await
-        }
-    };
+    let RunControlRequest::Steer { text } = control;
+    let result = answer_transport.steer(text, actor).await;
 
     match result {
         Ok(()) => StatusCode::ACCEPTED.into_response(),
@@ -173,13 +159,13 @@ async fn control_run(
     }
 }
 
-fn terminal_control_response(control: &RunControlRequest) -> Response {
-    let code = if matches!(control, RunControlRequest::Interrupt) {
-        "run_not_interruptible"
-    } else {
-        "run_not_steerable"
-    };
-    ApiError::with_code(StatusCode::CONFLICT, "Run is no longer steerable.", code).into_response()
+fn terminal_control_response(_control: &RunControlRequest) -> Response {
+    ApiError::with_code(
+        StatusCode::CONFLICT,
+        "Run is no longer steerable.",
+        "run_not_steerable",
+    )
+    .into_response()
 }
 
 async fn unmanaged_control_response(

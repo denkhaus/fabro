@@ -270,9 +270,7 @@ async fn the_hello_bundle_runs_on_petri() {
     let state = TestAppStateBuilder::new()
         .runtime_settings(settings.server_settings, settings.manifest_run_defaults)
         .max_concurrent_runs(5)
-        .registry_factory(|interviewer| {
-            fabro_workflow::handler::default_registry(interviewer, || None)
-        })
+        .in_process_execution()
         .llm_overlay(llm_overlay_with_provider_base_url(
             "openai",
             twin.base_url.clone(),

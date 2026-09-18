@@ -64,7 +64,13 @@ fn materialize_run_with_eligible_providers(
 
     settings.run.model.name = Some(resolved_model);
     settings.run.model.provider = Some(resolved_provider.into_string());
+    materialize_goal_and_pull_request(&mut settings, graph);
+    Ok(settings)
+}
 
+/// The graph's goal becomes the run's inline goal (none when the graph has
+/// none), and a pull request block the settings disable is dropped.
+pub fn materialize_goal_and_pull_request(settings: &mut WorkflowSettings, graph: &Graph) {
     let goal = graph.goal().to_string();
     settings.run.goal = if goal.is_empty() {
         None
@@ -80,8 +86,6 @@ fn materialize_run_with_eligible_providers(
     {
         settings.run.pull_request = None;
     }
-
-    Ok(settings)
 }
 
 pub(crate) fn resolve_run_model(

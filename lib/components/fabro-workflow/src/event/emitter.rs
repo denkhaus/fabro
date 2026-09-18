@@ -1,6 +1,5 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::Duration;
 
 use ::fabro_types::{ExecOutputTail, RunEvent, RunId, RunNoticeCode, RunNoticeLevel};
 use chrono::Utc;
@@ -196,12 +195,6 @@ impl Emitter {
         for listener in &snapshot {
             listener(event);
         }
-    }
-
-    /// Returns the monotonic instant of the last `emit()` or `touch()` call,
-    /// or the emitter's creation instant if neither has been called.
-    pub(crate) fn last_activity(&self) -> Instant {
-        self.activity_origin + Duration::from_millis(self.last_activity_ms.load(Ordering::Relaxed))
     }
 
     /// Manually record activity (e.g. to seed the watchdog at workflow run

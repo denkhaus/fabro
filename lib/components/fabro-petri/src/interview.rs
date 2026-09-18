@@ -658,7 +658,7 @@ fn asked_question(request: &InterviewRequest, stage: String) -> AskedQuestion {
 
 /// Fabro's question type: the one the gate names, else what the shape
 /// implies.
-fn question_type(question: &Question) -> QuestionType {
+pub(crate) fn question_type(question: &Question) -> QuestionType {
     question
         .kind
         .as_deref()

@@ -29,7 +29,7 @@ use fabro_types::run_event::{
 };
 use fabro_types::settings::ModelRef as SettingsModelRef;
 use fabro_types::{EventBody, EventEnvelope, RunEvent, RunId, SessionDetail, SessionId, TurnId};
-use fabro_workflow::handler::llm::register_named_fabro_run_tools;
+use fabro_workflow::run_tools::register_named_fabro_run_tools;
 use fabro_workflow::services::FabroRunToolServices;
 use lithos_llm::catalog::ProviderId;
 use pebble_coding_agent::environment::Environment;
@@ -2040,9 +2040,7 @@ mod resume_tests {
             .max_concurrent_runs(2)
             // A registry factory runs the dry run in this process, so no
             // worker executable is needed.
-            .registry_factory(|interviewer| {
-                fabro_workflow::handler::default_registry(interviewer, || None)
-            })
+            .in_process_execution()
             .llm_overlay(llm_overlay_with_provider_base_url("openai", base_url))
             .vault_entries([(EnvVars::OPENAI_API_KEY, namespace.to_string())])
             .env_lookup(move |name| (name == EnvVars::OPENAI_API_KEY).then(|| api_key.clone()))

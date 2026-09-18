@@ -26,7 +26,7 @@ use fabro_petri::host_tools::recorded::{self, ExecutionId, InvocationId};
 use fabro_petri::runtime::RuntimeSpec;
 use fabro_tool::fabro_client::ClientBackend;
 use fabro_types::{BlobHash, RunId, WorkflowVersionId};
-use fabro_workflow::handler::llm::register_fabro_run_tools;
+use fabro_workflow::run_tools::register_fabro_run_tools;
 use fabro_workflow::services::FabroRunToolServices;
 use httpmock::{Method, MockServer};
 use lithos_llm::types::Request;
