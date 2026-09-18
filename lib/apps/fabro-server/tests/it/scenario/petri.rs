@@ -1,7 +1,6 @@
-//! Runs on Petri through the server: a run goes to Petri when its workflow
-//! version names `engine = "petri"` or when the server's
-//! `[server.execution] engine` says so, Petri's record of the run agrees
-//! with Fabro's status, and Petri's diagnostics refuse a run at create.
+//! Runs on Petri through the server: every run executes on Petri, Petri's
+//! record of the run agrees with Fabro's status, and Petri's diagnostics
+//! refuse a run at create.
 //!
 //! The runs here execute in the server process under the handler-registry
 //! test override; outside it the scheduler launches a worker for a Petri
@@ -106,8 +105,6 @@ const PARALLEL_DOT: &str = r#"digraph Parallel {
 }"#;
 
 pub(super) const PLAIN_SETTINGS: &str = "_version = 1\n\n[workflow]\ngraph = \"workflow.fabro\"\n";
-const PETRI_SETTINGS: &str =
-    "_version = 1\n\n[workflow]\ngraph = \"workflow.fabro\"\nengine = \"petri\"\n";
 
 /// The host plugin as Petri's lookup finds it: the override variable, else
 /// the executable on `PATH`. `None`, after saying so, when the test should
@@ -159,22 +156,11 @@ pub(super) fn intent(version_id: &str, workspace: &std::path::Path) -> serde_jso
     })
 }
 
-/// The `hello` bundle checked into this repository, with `engine = "petri"`
-/// added to its `[workflow]` table.
+/// The `hello` bundle checked into this repository.
 fn hello_files() -> [(&'static str, String); 2] {
     let workflow = read_repo_file(".fabro/workflows/hello/workflow.fabro");
     let settings = read_repo_file(".fabro/workflows/hello/workflow.toml");
-    assert!(
-        settings.trim_end().ends_with("graph = \"workflow.fabro\""),
-        "the hello settings end with the [workflow] table, so an engine key appends to it"
-    );
-    [
-        ("workflow.fabro", workflow),
-        (
-            "workflow.toml",
-            format!("{}\nengine = \"petri\"\n", settings.trim_end()),
-        ),
-    ]
+    [("workflow.fabro", workflow), ("workflow.toml", settings)]
 }
 
 /// The run's record in Petri's store, read through the same database the
@@ -221,7 +207,7 @@ async fn petri_stream_len(state: &AppState, run_id: &str) -> usize {
         .len()
 }
 
-async fn run_engine(app: &axum::Router, run_id: &str) -> serde_json::Value {
+async fn run_admission(app: &axum::Router, run_id: &str) -> serde_json::Value {
     let req = Request::builder()
         .method("GET")
         .uri(api(&format!("/runs/{run_id}/state")))
@@ -238,7 +224,7 @@ async fn run_engine(app: &axum::Router, run_id: &str) -> serde_json::Value {
         format!("GET /api/v1/runs/{run_id}/state"),
     )
     .await;
-    body["spec"]["engine"].clone()
+    body["spec"]["admission"].clone()
 }
 
 async fn create_run_response(app: &axum::Router, intent: serde_json::Value) -> serde_json::Value {
@@ -263,12 +249,11 @@ async fn create_run_response(app: &axum::Router, intent: serde_json::Value) -> s
     .await
 }
 
-/// The `hello` bundle, whose one stage is a prompt, runs on Petri when its
-/// version names the engine: the prompt reaches the twin through Petri's
-/// model client, Fabro reports the run succeeded, and Petri's record of the
-/// run says the same.
+/// The `hello` bundle, whose one stage is a prompt, runs on Petri: the
+/// prompt reaches the twin through Petri's model client, Fabro reports the
+/// run succeeded, and Petri's record of the run says the same.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn the_hello_bundle_runs_on_petri_when_the_version_names_the_engine() {
+async fn the_hello_bundle_runs_on_petri() {
     if host_plugin().is_none() {
         return;
     }
@@ -309,7 +294,10 @@ async fn the_hello_bundle_runs_on_petri_when_the_version_names_the_engine() {
     let status = wait_for_run_status(&app, &run_id, &["succeeded", "failed"]).await;
     let run = run_json(&app, &run_id).await;
     assert_eq!(status, "succeeded", "run: {run}");
-    assert_eq!(run_engine(&app, &run_id).await["kind"], "petri");
+    assert!(
+        run_admission(&app, &run_id).await["graph"]["digest"].is_string(),
+        "the run's spec names what Petri admitted"
+    );
     let outcome = petri_outcome(&state, &run_id).await;
     assert_eq!(outcome.status, RunStatus::Success, "{outcome:?}");
     assert!(outcome.complete, "{:?}", outcome.incomplete);
@@ -342,18 +330,14 @@ async fn the_hello_bundle_runs_on_petri_when_the_version_names_the_engine() {
     super::petri_stream::capture_settled(&state, &app, &run_id, "hello").await;
 }
 
-/// A command-only bundle runs on Petri when the server's setting names the
-/// engine and the version names none, and Petri's record agrees.
+/// A command-only bundle runs on Petri, and Petri's record agrees.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn a_command_bundle_runs_on_petri_under_the_server_setting() {
+async fn a_command_bundle_runs_on_petri() {
     if host_plugin().is_none() {
         return;
     }
     let workspace = tempfile::tempdir().expect("workspace tempdir");
-    let settings = settings_from_toml(
-        "_version = 1\n\n[run.environment]\nid = \"local\"\n\n[server.execution]\nengine = \
-         \"petri\"\n",
-    );
+    let settings = settings_from_toml("_version = 1\n\n[run.environment]\nid = \"local\"\n");
     let state = test_app_state_with_options(settings, 5);
     let app = test_app_with_scheduler(Arc::clone(&state));
 
@@ -368,7 +352,10 @@ async fn a_command_bundle_runs_on_petri_under_the_server_setting() {
     let status = wait_for_run_status(&app, &run_id, &["succeeded", "failed"]).await;
     let run = run_json(&app, &run_id).await;
     assert_eq!(status, "succeeded", "run: {run}");
-    assert_eq!(run_engine(&app, &run_id).await["kind"], "petri");
+    assert!(
+        run_admission(&app, &run_id).await["graph"]["digest"].is_string(),
+        "the run's spec names what Petri admitted"
+    );
     let outcome = petri_outcome(&state, &run_id).await;
     assert_eq!(outcome.status, RunStatus::Success, "{outcome:?}");
     assert!(outcome.complete, "{:?}", outcome.incomplete);
@@ -396,10 +383,7 @@ async fn a_parallel_bundle_projects_its_branches_through_the_server() {
         return;
     }
     let workspace = tempfile::tempdir().expect("workspace tempdir");
-    let settings = settings_from_toml(
-        "_version = 1\n\n[run.environment]\nid = \"local\"\n\n[server.execution]\nengine = \
-         \"petri\"\n",
-    );
+    let settings = settings_from_toml("_version = 1\n\n[run.environment]\nid = \"local\"\n");
     let state = test_app_state_with_options(settings, 5);
     let app = test_app_with_scheduler(Arc::clone(&state));
 
@@ -436,26 +420,6 @@ async fn a_parallel_bundle_projects_its_branches_through_the_server() {
     );
 }
 
-/// A version that names no engine on a server whose setting is the default
-/// keeps the legacy executor: the run's spec records no Petri admission.
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn a_version_that_names_no_engine_stays_on_the_legacy_executor() {
-    let workspace = tempfile::tempdir().expect("workspace tempdir");
-    let state = test_app_state_with_options(test_settings(), 5);
-    let app = test_app_with_scheduler(state);
-
-    let version_id = register_version(&app, &[
-        ("workflow.fabro", COMMAND_DOT),
-        ("workflow.toml", PLAIN_SETTINGS),
-    ])
-    .await;
-    let mut intent = intent(&version_id, workspace.path());
-    intent["args"]["dry_run"] = serde_json::json!(true);
-    let run_id = create_and_start_run_from_intent(&app, intent).await;
-
-    assert_eq!(run_engine(&app, &run_id).await, serde_json::Value::Null);
-}
-
 /// A workflow with an attribute the language does not have is refused at
 /// create with Petri's code in Fabro's diagnostic shape.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -466,7 +430,7 @@ async fn an_unknown_attribute_is_refused_at_create_with_petris_code() {
 
     let version_id = register_version(&app, &[
         ("workflow.fabro", UNKNOWN_ATTRIBUTE_DOT),
-        ("workflow.toml", PETRI_SETTINGS),
+        ("workflow.toml", PLAIN_SETTINGS),
     ])
     .await;
     let body = create_run_response(&app, intent(&version_id, workspace.path())).await;
@@ -488,7 +452,7 @@ async fn an_edge_to_an_undeclared_node_is_refused_at_create_with_petris_code() {
 
     let version_id = register_version(&app, &[
         ("workflow.fabro", UNDECLARED_NODE_DOT),
-        ("workflow.toml", PETRI_SETTINGS),
+        ("workflow.toml", PLAIN_SETTINGS),
     ])
     .await;
     let body = create_run_response(&app, intent(&version_id, workspace.path())).await;
@@ -511,7 +475,7 @@ async fn an_unknown_model_is_refused_at_create_with_attractor_model_unknown() {
 
     let version_id = register_version(&app, &[
         ("workflow.fabro", UNKNOWN_MODEL_DOT),
-        ("workflow.toml", PETRI_SETTINGS),
+        ("workflow.toml", PLAIN_SETTINGS),
     ])
     .await;
     let body = create_run_response(&app, intent(&version_id, workspace.path())).await;
@@ -581,10 +545,7 @@ async fn a_human_gate_is_answered_through_the_questions_api() {
     }
     let workspace = tempfile::tempdir().expect("workspace tempdir");
     let markers = tempfile::tempdir().expect("marker tempdir");
-    let settings = settings_from_toml(
-        "_version = 1\n\n[run.environment]\nid = \"local\"\n\n[server.execution]\nengine = \
-         \"petri\"\n",
-    );
+    let settings = settings_from_toml("_version = 1\n\n[run.environment]\nid = \"local\"\n");
     let state = test_app_state_with_options(settings, 5);
     let app = test_app_with_scheduler(Arc::clone(&state));
 

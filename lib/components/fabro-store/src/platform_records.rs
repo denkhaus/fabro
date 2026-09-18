@@ -725,7 +725,7 @@ fn run_created_record(run_id: RunId, props: &RunCreatedProps) -> RunCreatedRecor
             spec_blob: props.spec_blob,
             git: props.git.clone(),
             fork_source_ref: props.fork_source_ref.clone(),
-            engine: props.engine.clone(),
+            admission: props.admission.clone(),
         },
         title:        props.title.clone(),
         parent_id:    props.parent_id,

@@ -1,4 +1,4 @@
-use fabro_types::test_support;
+use fabro_types::{PetriAdmission, test_support};
 mod auth_harness;
 mod auth_tokens;
 
@@ -57,7 +57,7 @@ pub(crate) fn run_projection_json(run_id: &str, status: &serde_json::Value) -> s
         spec_blob: None,
         git: None,
         fork_source_ref: None,
-        engine: fabro_types::RunEngine::Legacy,
+        admission: PetriAdmission::default(),
     };
 
     serde_json::json!({

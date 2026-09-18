@@ -39,9 +39,6 @@ url = "http://localhost:3000"
 [server.scheduler]
 max_concurrent_runs = 5
 
-[server.execution]
-engine = "legacy"
-
 [server.artifacts]
 provider = "local"
 prefix = ""

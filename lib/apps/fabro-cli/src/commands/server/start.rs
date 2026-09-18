@@ -15,7 +15,6 @@ use fabro_server::jwt_auth::auth_method_name;
 use fabro_server::serve::{DEFAULT_TCP_PORT, ServeArgs, resolve_runtime_server_settings_for_start};
 use fabro_server::{process_env_snapshot, validate_startup, validate_startup_configuration};
 use fabro_static::EnvVars;
-use fabro_types::Engine;
 use fabro_types::settings::{LogDestination, ServerAuthMethod};
 use fabro_util::printer::Printer;
 use fabro_util::terminal::Styles;
@@ -151,7 +150,6 @@ async fn ensure_server_running_with_bind(
         provider: None,
         environment: None,
         max_concurrent_runs: server_max_concurrent_runs_override(),
-        engine: server_engine_override()?,
         config: Some(config_path.to_path_buf()),
         #[cfg(debug_assertions)]
         watch_web: false,
@@ -224,25 +222,6 @@ fn server_max_concurrent_runs_override() -> Option<usize> {
         .ok()
         .and_then(|value| value.parse::<usize>().ok())
         .filter(|value| *value > 0)
-}
-
-/// `FABRO_SERVER_ENGINE` names the engine for runs whose workflow version
-/// names none; a value that is not an engine is an error rather than a
-/// silent fallback to the legacy executor.
-fn server_engine_override() -> Result<Option<Engine>> {
-    let Some(value) = std::env::var_os(EnvVars::FABRO_SERVER_ENGINE) else {
-        return Ok(None);
-    };
-    let value = value.to_string_lossy();
-    if value.trim().is_empty() {
-        return Ok(None);
-    }
-    value.trim().parse::<Engine>().map(Some).map_err(|_| {
-        anyhow!(
-            "{} is `{value}`, which is not an engine (expected `legacy` or `petri`)",
-            EnvVars::FABRO_SERVER_ENGINE
-        )
-    })
 }
 
 fn configured_auth_methods(config_path: Option<&Path>) -> Vec<ServerAuthMethod> {
@@ -355,9 +334,6 @@ async fn execute_daemon(
     }
     if let Some(max) = serve_args.max_concurrent_runs {
         cmd.args(["--max-concurrent-runs", &max.to_string()]);
-    }
-    if let Some(engine) = serve_args.engine {
-        cmd.args(["--engine", &engine.to_string()]);
     }
     if let Some(ref config) = serve_args.config {
         cmd.arg("--config").arg(config);
@@ -622,7 +598,6 @@ destination = "{destination}"
             provider: None,
             environment: None,
             max_concurrent_runs: None,
-            engine: None,
             config: Some(config_path.to_path_buf()),
             #[cfg(debug_assertions)]
             watch_web: false,

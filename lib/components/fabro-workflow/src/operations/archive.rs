@@ -137,7 +137,7 @@ mod tests {
 
     use fabro_store::Database;
     use fabro_types::{
-        FailureReason, RunId, SuccessReason, TerminalStatus, fixtures, test_support,
+        FailureReason, PetriAdmission, RunId, SuccessReason, TerminalStatus, fixtures, test_support,
     };
     use object_store::memory::InMemory;
 
@@ -233,7 +233,7 @@ mod tests {
             retried_from:        None,
             parent_id:           None,
             web_url:             None,
-            engine:              fabro_types::RunEngine::Legacy,
+            admission:           PetriAdmission::default(),
         })
         .await
         .unwrap();

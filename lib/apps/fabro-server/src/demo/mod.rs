@@ -1101,8 +1101,9 @@ mod runs {
     };
     use fabro_types::settings::{InterpString, ProjectNamespace, WorkflowNamespace};
     use fabro_types::{
-        AuthMethod, IdpIdentity, PendingReason, Principal, RepositoryRef, RunId, RunLifecycle,
-        RunLinks, RunOrigin, RunSize, RunTimestamps, StageId, WorkflowRef, WorkflowSettings,
+        AuthMethod, IdpIdentity, PendingReason, PetriAdmission, Principal, RepositoryRef, RunId,
+        RunLifecycle, RunLinks, RunOrigin, RunSize, RunTimestamps, StageId, WorkflowRef,
+        WorkflowSettings,
     };
     use lithos_llm::catalog::ProviderId;
     use lithos_llm::types::{Cost, CostSource, TokenCounts, Usage};
@@ -1746,7 +1747,7 @@ mod runs {
             spec_blob:           None,
             git:                 None,
             fork_source_ref:     None,
-            engine:              fabro_types::RunEngine::Legacy,
+            admission:           PetriAdmission::default(),
         };
         let mut projection = RunProjection::new(
             "Detect and fix environment drift".to_string(),

@@ -14,7 +14,9 @@ use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use fabro_server::test_support::test_app_state_with_store;
 use fabro_store::{ArtifactStore, Database};
-use fabro_types::{Graph, RunId, SandboxProviderKind, WorkflowSettings, test_support};
+use fabro_types::{
+    Graph, PetriAdmission, RunId, SandboxProviderKind, WorkflowSettings, test_support,
+};
 use fabro_workflow::event as workflow_event;
 use fabro_workflow::run_status::SuccessReason;
 use object_store::memory::InMemory as MemoryObjectStore;
@@ -76,7 +78,7 @@ async fn append_completed_run_with_final_patch(
         retried_from:        None,
         parent_id:           None,
         web_url:             None,
-        engine:              fabro_types::RunEngine::Legacy,
+        admission:           PetriAdmission::default(),
     })
     .await
     .expect("append RunCreated");

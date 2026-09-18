@@ -409,8 +409,8 @@ pub(super) fn write_petri_workflow(context: &fabro_test::TestContext, dot: &str)
     std::fs::write(workspace.join("workflow.fabro"), dot).expect("the workflow writes");
     std::fs::write(
         workspace.join("workflow.toml"),
-        "_version = 1\n\n[workflow]\ngraph = \"workflow.fabro\"\nengine = \"petri\"\n\n[run]\ngoal \
-         = \"Run one command\"\n",
+        "_version = 1\n\n[workflow]\ngraph = \"workflow.fabro\"\n\n[run]\ngoal = \"Run one \
+         command\"\n",
     )
     .expect("the settings write");
     workspace
@@ -662,7 +662,10 @@ async fn a_petri_run_executes_in_the_server_launched_worker() {
     let run = run_json(&server, &format!("runs/{run_id}")).await;
     assert_eq!(status, "succeeded", "run: {run}");
     let state = run_json(&server, &format!("runs/{run_id}/state")).await;
-    assert_eq!(state["spec"]["engine"]["kind"], "petri", "state: {state}");
+    assert!(
+        state["spec"]["admission"]["graph"]["digest"].is_string(),
+        "state: {state}"
+    );
 
     let names = stream_names(&settled_stream(&server, &run_id).await);
     assert_eq!(count_of(&names, "lifecycle:succeeded"), 1, "{names:?}");
@@ -1201,13 +1204,16 @@ async fn a_finished_petri_run_reads_back_through_the_cli() {
     let stderr = String::from_utf8_lossy(&wait.stderr);
     assert!(stderr.contains("Succeeded"), "{stderr}");
 
-    // Inspect reads the projection, whose spec names the engine.
+    // Inspect reads the projection, whose spec names the admission.
     let inspect = cli(&context, &server, &["inspect", &run_id]);
     let inspected: serde_json::Value =
         serde_json::from_slice(&inspect.stdout).expect("inspect prints JSON");
     let entry = &inspected[0];
     assert_eq!(entry["run_id"], run_id, "{entry}");
-    assert_eq!(entry["run_spec"]["engine"]["kind"], "petri", "{entry}");
+    assert!(
+        entry["run_spec"]["admission"]["graph"]["digest"].is_string(),
+        "{entry}"
+    );
     assert_eq!(entry["conclusion"]["status"], "succeeded", "{entry}");
     server.shutdown();
 }

@@ -192,7 +192,9 @@ mod tests {
     use std::num::NonZeroU32;
 
     use chrono::Utc;
-    use fabro_types::{Graph, RunId, RunSpec, StageId, WorkflowSettings, test_support};
+    use fabro_types::{
+        Graph, PetriAdmission, RunId, RunSpec, StageId, WorkflowSettings, test_support,
+    };
 
     use super::*;
 
@@ -213,7 +215,7 @@ mod tests {
             spec_blob:           None,
             git:                 None,
             fork_source_ref:     None,
-            engine:              fabro_types::RunEngine::Legacy,
+            admission:           PetriAdmission::default(),
         };
         let mut projection = RunProjection::new(String::new(), spec, Utc::now());
         for (node_id, visit, seq) in stages {

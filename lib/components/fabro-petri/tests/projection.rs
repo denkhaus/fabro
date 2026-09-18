@@ -36,8 +36,8 @@ use fabro_store::platform_records::{
 };
 use fabro_store::test_support;
 use fabro_types::{
-    BlobHash, PetriAdmission, PetriGraphRef, RunEngine, RunId, RunStatus, StageHandler, StageId,
-    StageState, test_support as types_support,
+    BlobHash, PetriAdmission, PetriGraphRef, RunId, RunStatus, StageHandler, StageId, StageState,
+    test_support as types_support,
 };
 use petri_execution::host::{self, HostRun};
 use petri_frontend_fabro::Fabro;
@@ -161,13 +161,13 @@ async fn create_run(pool: &DbPool, run_id: RunId, goal: &str) {
     let store = PlatformRecordStore::new(pool.clone());
     let mut spec = types_support::test_run_spec();
     spec.run_id = run_id;
-    spec.engine = RunEngine::Petri(PetriAdmission {
+    spec.admission = PetriAdmission {
         graph:    PetriGraphRef {
             blob:   BlobHash::new(b"graph"),
             digest: "digest".to_string(),
         },
         children: Vec::new(),
-    });
+    };
     store
         .append(
             &run_id,

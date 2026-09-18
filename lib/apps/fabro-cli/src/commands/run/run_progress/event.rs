@@ -374,6 +374,7 @@ fn parallel_branch_display(node_id: &str, index: usize, item_label: Option<&str>
         )
 }
 
+#[cfg(test)]
 pub(super) fn from_json_line(line: &str) -> Option<ProgressEvent> {
     let stored = RunEvent::from_json_str(line).ok()?;
     from_run_event(&stored)

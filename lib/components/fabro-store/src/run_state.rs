@@ -868,7 +868,7 @@ fn projection_from_created(event: &EventEnvelope) -> Result<RunProjection> {
         spec_blob: props.spec_blob,
         git: props.git.clone(),
         fork_source_ref: props.fork_source_ref.clone(),
-        engine: props.engine.clone(),
+        admission: props.admission.clone(),
     };
 
     let mut projection = RunProjection::new(title, spec, stored.ts);

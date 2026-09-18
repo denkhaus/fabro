@@ -42,7 +42,7 @@ Every adapter the integration plan describes lands here.
   admitted graphs or Petri's diagnostics come back in a shape the server maps
   onto Fabro's. Nothing is written to disk.
 - `admission`: the admitted graphs in Fabro's blob store, named on the run
-  spec as `RunEngine::Petri(PetriAdmission)`, verified by digest on load.
+  spec as its `PetriAdmission`, verified by digest on load.
 - `engine`: a run executed by Petri, started from its admitted graphs or
   resumed from its records, with the outcome read from the run's record
   through `inspect_run` and mapped to the conclusion Fabro's read side
@@ -122,16 +122,12 @@ yet, keep their default value in the projection: `StageProjection.diff` and
 `description` and `preview`, the pull request `creation` state, and the
 run's notices, notifications and pairings (recorded, not shown).
 
-A run goes to Petri when its workflow version's `workflow.toml` names
-`engine = "petri"` in `[workflow]`, or when the server's
-`[server.execution] engine` (`FABRO_SERVER_ENGINE`, `fabro server start
---engine`) says so for versions that name none. The server side of both
-halves is `fabro-server`'s `server::petri_runs`; the worker side is
-`fabro-cli`'s `commands::run::petri_worker`, which `fabro run __run-worker`
-takes when the run's stored spec names Petri. After a server restart, a
-Petri run left in flight goes back to a worker in `--mode resume`: the run
-continues from its records, as Petri's own resume does, and full recovery
-of the workspace to a durable snapshot is the plan's F3.5.
+Every run executes on Petri. The server side is `fabro-server`'s
+`server::petri_runs`; the worker side is `fabro-cli`'s
+`commands::run::petri_worker`, which `fabro run __run-worker` takes. After
+a server restart, a run left in flight goes back to a worker in `--mode
+resume`: the run continues from its records, as Petri's own resume does,
+on workspaces the recovery protocol brought to their durable snapshots.
 
 ## How it is tested
 
@@ -194,8 +190,8 @@ ulimit -n 4096 && cargo nextest run -p fabro-petri
 The server's end-to-end coverage is `lib/apps/fabro-server/tests/it/scenario/petri.rs`:
 the `hello` bundle on the OpenAI twin, a command-only bundle and a
 two-branch parallel bundle run to completion through the create handler and
-the scheduler, in the server process under its test override, under the
-version flag and under the server setting, with `GET /runs/{id}/state`
+the scheduler, in the server process under its test override, with
+`GET /runs/{id}/state`
 serving the projection over Petri's records; a human gate is answered
 through the questions API; and Petri's diagnostics refuse a run at create.
 The server's `petri_runs` unit tests cover the lease ending at worker exit

@@ -869,8 +869,8 @@ mod tests {
     use axum::http::{Request, StatusCode};
     use chrono::{TimeZone, Utc};
     use fabro_types::{
-        AgentEventProps, EventEnvelope, Graph, PairMessageId, RunEvent, StageId, WorkflowSettings,
-        fixtures, test_support,
+        AgentEventProps, EventEnvelope, Graph, PairMessageId, PetriAdmission, RunEvent, StageId,
+        WorkflowSettings, fixtures, test_support,
     };
     use fabro_workflow::event as workflow_event;
     use pebble_coding_agent::events::{CodingAgentEvent, Usage};
@@ -1057,7 +1057,7 @@ mod tests {
             retried_from: None,
             parent_id: None,
             web_url: None,
-            engine: fabro_types::RunEngine::Legacy,
+            admission: PetriAdmission::default(),
         })
         .await
         .expect("run.created should append");

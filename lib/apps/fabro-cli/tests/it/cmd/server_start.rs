@@ -212,8 +212,6 @@ fn help() {
               Named environment for agent tools
           --max-concurrent-runs <MAX_CONCURRENT_RUNS>
               Maximum number of concurrent run executions
-          --engine <ENGINE>
-              The engine for every run whose workflow version names none (`legacy` or `petri`); overrides `[server.execution] engine`
           --config <CONFIG>
               Path to server config file (default: ~/.fabro/settings.toml)
       -h, --help

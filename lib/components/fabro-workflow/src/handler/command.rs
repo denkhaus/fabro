@@ -335,7 +335,9 @@ mod tests {
     use fabro_sandbox::Termination;
     use fabro_sandbox::test_support::{MockSandbox, exec_result};
     use fabro_store::{Database, RunDatabase, StageId};
-    use fabro_types::{Graph, RunProjection, RunSpec, WorkflowSettings, fixtures, test_support};
+    use fabro_types::{
+        Graph, PetriAdmission, RunProjection, RunSpec, WorkflowSettings, fixtures, test_support,
+    };
     use object_store::memory::InMemory;
     use tokio::sync::Mutex;
 
@@ -390,7 +392,7 @@ mod tests {
                     spec_blob:           None,
                     git:                 None,
                     fork_source_ref:     None,
-                    engine:              fabro_types::RunEngine::Legacy,
+                    admission:           PetriAdmission::default(),
                 },
                 chrono::Utc::now(),
             ))
@@ -496,7 +498,7 @@ mod tests {
                 retried_from:        None,
                 parent_id:           None,
                 web_url:             None,
-                engine:              fabro_types::RunEngine::Legacy,
+                admission:           PetriAdmission::default(),
             },
         )
         .await

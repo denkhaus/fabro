@@ -288,22 +288,25 @@ async fn list_run_events(
     }
 
     let limit = params.limit();
-    match run_is_petri(&state, &id).await {
-        Ok(true) => {
-            if let Some(detail) = params.stream_cursor_error() {
-                return ApiError::bad_request(detail).into_response();
-            }
-            return list_run_stream(&state, id, params.after.unwrap_or(0), limit).await;
-        }
-        Ok(false) => {}
-        Err(response) => return response,
+    if let Err(response) = ensure_run_exists(&state, &id).await {
+        return response;
     }
-    if params.after.is_some() {
-        return ApiError::bad_request(
-            "after is the run stream cursor of a Petri run; this run's events use since_seq.",
-        )
-        .into_response();
+    if let Some(detail) = params.stream_cursor_error() {
+        return ApiError::bad_request(detail).into_response();
     }
+    list_run_stream(&state, id, params.after.unwrap_or(0), limit).await
+}
+
+#[expect(
+    dead_code,
+    reason = "the legacy event list goes with the legacy events table"
+)]
+async fn list_run_events_legacy(
+    state: Arc<AppState>,
+    id: RunId,
+    params: RunEventListParams,
+    limit: usize,
+) -> Response {
     match state.stores.runs.open_run_reader(&id).await {
         Ok(run_store) => {
             let events = match params.order() {
@@ -339,14 +342,13 @@ async fn list_run_events(
     }
 }
 
-/// Whether the run executes on Petri, from its stored spec; the canonical
-/// 404 when there is no such run.
-async fn run_is_petri(state: &AppState, id: &RunId) -> Result<bool, Response> {
-    let projection = state
+/// The canonical 404 when there is no such run.
+async fn ensure_run_exists(state: &AppState, id: &RunId) -> Result<(), Response> {
+    state
         .load_run_projection(id)
         .await
-        .map_err(IntoResponse::into_response)?;
-    Ok(projection.spec.engine.is_petri())
+        .map(|_| ())
+        .map_err(IntoResponse::into_response)
 }
 
 /// One page of a Petri run's stream past `after`.
@@ -659,11 +661,14 @@ async fn attach_run_events(
         Ok(id) => id,
         Err(response) => return response,
     };
-    match run_is_petri(&state, &id).await {
-        Ok(true) => return attach_run_stream(state, id, params.after).await,
-        Ok(false) => {}
+    match ensure_run_exists(&state, &id).await {
+        Ok(()) => return attach_run_stream(state, id, params.after).await,
         Err(response) => return response,
     }
+    #[expect(
+        unreachable_code,
+        reason = "the legacy attach goes with the legacy events table"
+    )]
     let Ok(run_store) = state.stores.runs.open_run_reader(&id).await else {
         return ApiError::not_found("Run not found.").into_response();
     };
@@ -816,7 +821,7 @@ mod stage_events_tests {
     use axum::body::{Body, to_bytes};
     use axum::http::{Request, StatusCode, header};
     use fabro_store::EventPayload;
-    use fabro_types::{Graph, RunId, WorkflowSettings, test_support};
+    use fabro_types::{Graph, PetriAdmission, RunId, WorkflowSettings, test_support};
     use fabro_workflow::event as workflow_event;
     use http_body_util::BodyExt;
     use serde_json::json;
@@ -857,7 +862,7 @@ mod stage_events_tests {
             retried_from:        None,
             parent_id:           None,
             web_url:             None,
-            engine:              fabro_types::RunEngine::Legacy,
+            admission:           PetriAdmission::default(),
         })
         .await
         .expect("run.created should append");

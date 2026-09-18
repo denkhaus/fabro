@@ -367,8 +367,8 @@ mod tests {
     use fabro_sandbox::test_support::MockSandbox;
     use fabro_store::{Database, RunDatabase, RunProjection};
     use fabro_types::{
-        EventBody, RunEvent, RunId, RunSpec, StageCompletion, WorkflowSettings, first_event_seq,
-        fixtures, test_support,
+        EventBody, PetriAdmission, RunEvent, RunId, RunSpec, StageCompletion, WorkflowSettings,
+        first_event_seq, fixtures, test_support,
     };
     use object_store::memory::InMemory;
 
@@ -470,7 +470,7 @@ mod tests {
             retried_from:        None,
             parent_id:           None,
             web_url:             None,
-            engine:              fabro_types::RunEngine::Legacy,
+            admission:           PetriAdmission::default(),
         })
         .await
         .unwrap();
@@ -588,7 +588,7 @@ mod tests {
                 spec_blob:           None,
                 git:                 None,
                 fork_source_ref:     None,
-                engine:              fabro_types::RunEngine::Legacy,
+                admission:           PetriAdmission::default(),
             },
             chrono::Utc::now(),
         )

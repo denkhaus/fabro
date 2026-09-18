@@ -1493,7 +1493,7 @@ fn parse_turn_id(value: &str) -> Result<TurnId, ApiError> {
 mod tests {
     use std::collections::HashMap;
 
-    use fabro_types::test_support;
+    use fabro_types::{PetriAdmission, test_support};
     use pebble_coding_agent::events::{ToolCategory, ToolSource};
 
     use super::*;
@@ -1898,7 +1898,7 @@ enabled = true
             spec_blob: None,
             git: None,
             fork_source_ref: None,
-            engine: fabro_types::RunEngine::Legacy,
+            admission: PetriAdmission::default(),
         };
         let mut projection = fabro_types::RunProjection::new(String::new(), spec, now);
         for (index, node_id) in ["start", "plan", "code", "test", "review", "deploy"]

@@ -201,7 +201,7 @@ mod tests {
 
     use fabro_graphviz::graph::AttrValue;
     use fabro_store::{Database, RunDatabase, StageId};
-    use fabro_types::{fixtures, test_support};
+    use fabro_types::{PetriAdmission, fixtures, test_support};
     use lithos_llm::catalog::ProviderId;
     use lithos_llm::types::{ReasoningEffort, Speed};
     use object_store::memory::InMemory;
@@ -267,7 +267,7 @@ mod tests {
                 retried_from:        None,
                 parent_id:           None,
                 web_url:             None,
-                engine:              fabro_types::RunEngine::Legacy,
+                admission:           PetriAdmission::default(),
             },
         )
         .await

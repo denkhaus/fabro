@@ -20,7 +20,8 @@ use fabro_sandbox::{ProviderAccess, RunSandbox, SandboxSpec};
 use fabro_store::Database;
 use fabro_types::settings::run::RunModelControls;
 use fabro_types::{
-    Principal, RunId, SystemActorKind, WorkflowSettings, fixtures, format_blob_ref, test_support,
+    PetriAdmission, Principal, RunId, SystemActorKind, WorkflowSettings, fixtures, format_blob_ref,
+    test_support,
 };
 use object_store::memory::InMemory;
 
@@ -175,7 +176,7 @@ fn persisted_workflow(graph: Graph, source: String, run_dir: &Path, run_id: RunI
             definition_blob: None,
             spec_blob: None,
             fork_source_ref: None,
-            engine: fabro_types::RunEngine::Legacy,
+            admission: PetriAdmission::default(),
         },
     )
 }
@@ -227,7 +228,7 @@ async fn seed_created_and_starting(
         retried_from:        None,
         parent_id:           None,
         web_url:             None,
-        engine:              fabro_types::RunEngine::Legacy,
+        admission:           PetriAdmission::default(),
     })
     .await
     .unwrap();

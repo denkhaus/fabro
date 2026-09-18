@@ -2,12 +2,12 @@
 
 use std::collections::BTreeMap;
 
+use fabro_types::SandboxProviderKind;
 use fabro_types::settings::server::{
     GithubIntegrationStrategy, LogDestination, ObjectStoreProvider, ServerAuthMethod,
     WebhookStrategy,
 };
 use fabro_types::settings::{Duration, InterpString};
-use fabro_types::{Engine, SandboxProviderKind};
 use serde::{Deserialize, Serialize};
 
 use super::LogFilter;
@@ -34,8 +34,6 @@ pub struct ServerLayer {
     pub slatedb:      Option<ServerSlateDbLayer>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub scheduler:    Option<ServerSchedulerLayer>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub execution:    Option<ServerExecutionLayer>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub logging:      Option<ServerLoggingLayer>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -215,16 +213,6 @@ pub struct ObjectStoreS3Layer {
 pub struct ServerSchedulerLayer {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_concurrent_runs: Option<usize>,
-}
-
-/// `[server.execution]` — how this server executes the runs it admits.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, fabro_macros::Combine)]
-#[serde(deny_unknown_fields)]
-pub struct ServerExecutionLayer {
-    /// The engine for every run whose workflow version names none:
-    /// `"legacy"` (the default) or `"petri"`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub engine: Option<Engine>,
 }
 
 /// `[server.logging]` — process-owned logging configuration for the server.

@@ -16,7 +16,7 @@ use fabro_llm::lithos_catalog::Catalog;
 use fabro_store::{BlobStore, Database};
 use fabro_template::TemplateContext;
 use fabro_types::{
-    AutomationRef, BlobHash, ForkSourceRef, GitContext, ManifestPath, RunEngine, RunId,
+    AutomationRef, BlobHash, ForkSourceRef, GitContext, ManifestPath, PetriAdmission, RunId,
     RunProvenance, RunTarget, WorkflowSettings, WorkflowVersionId,
 };
 use fabro_util::json::normalize_json_value;
@@ -58,6 +58,8 @@ pub struct CreateRunInput {
     /// has the web UI enabled. Recorded on the `run.created` event so attach
     /// replays can surface the link.
     pub web_url:              Option<String>,
+    /// What Petri admitted for the run.
+    pub admission:            PetriAdmission,
 }
 
 impl CreateRunInput {
@@ -86,6 +88,7 @@ impl CreateRunInput {
             provenance,
             configured_providers,
             web_url,
+            admission,
         } = self;
         (
             CreateRunCompileInput {
@@ -110,7 +113,7 @@ impl CreateRunInput {
                 parent_id,
                 provenance,
                 web_url,
-                engine: fabro_types::RunEngine::Legacy,
+                admission,
             },
         )
     }
@@ -145,8 +148,8 @@ pub struct CreateRunPersistenceMetadata {
     pub parent_id:           Option<RunId>,
     pub provenance:          RunProvenance,
     pub web_url:             Option<String>,
-    /// The engine the run was created for, with what it admitted.
-    pub engine:              RunEngine,
+    /// What Petri admitted for the run.
+    pub admission:           PetriAdmission,
 }
 
 #[derive(Debug)]
@@ -217,7 +220,7 @@ pub struct CreateRunPersistenceInput {
     parent_id:           Option<RunId>,
     provenance:          RunProvenance,
     web_url:             Option<String>,
-    engine:              RunEngine,
+    admission:           PetriAdmission,
 }
 
 impl CreateRunPersistenceInput {
@@ -503,7 +506,7 @@ pub fn assemble_create_run_persistence_input(
         parent_id,
         provenance,
         web_url,
-        engine,
+        admission,
     } = metadata;
     let run_dir = Storage::new(storage_root)
         .run_scratch(&run_id)
@@ -525,7 +528,7 @@ pub fn assemble_create_run_persistence_input(
         parent_id,
         provenance,
         web_url,
-        engine,
+        admission,
     }
 }
 
@@ -548,7 +551,7 @@ pub async fn persist_create_run(
         parent_id,
         provenance,
         web_url,
-        engine,
+        admission,
     } = input;
     let MaterializedRun {
         validated,
@@ -583,7 +586,7 @@ pub async fn persist_create_run(
             spec_blob: None,
             git,
             fork_source_ref,
-            engine,
+            admission,
         };
         pipeline::persist(validated, PersistOptions {
             run_dir: persisted_run_dir,
@@ -662,7 +665,7 @@ async fn persist_created_run(
         retried_from: None,
         parent_id,
         web_url,
-        engine: record.engine.clone(),
+        admission: record.admission.clone(),
     };
     let run_store = event::create_run(
         store,
@@ -770,7 +773,7 @@ mod tests {
     use fabro_store::Database;
     use fabro_types::settings::InterpString;
     use fabro_types::settings::run::RunMode;
-    use fabro_types::{EventBody, WorkflowSettings, fixtures, test_support};
+    use fabro_types::{EventBody, PetriAdmission, WorkflowSettings, fixtures, test_support};
     use fabro_util::error::collect_chain;
     use fabro_validate::Severity;
     use lithos_llm::catalog::builtin;
@@ -1705,6 +1708,7 @@ mod tests {
             workflow_source: None,
         };
         let request = CreateRunInput {
+            admission:            PetriAdmission::default(),
             workflow:             WorkflowInput::DotSource {
                 source:   MINIMAL_DOT.to_string(),
                 base_dir: None,
@@ -1825,7 +1829,7 @@ mod tests {
                 parent_id:           None,
                 provenance:          test_support::test_run_provenance(),
                 web_url:             None,
-                engine:              fabro_types::RunEngine::Legacy,
+                admission:           PetriAdmission::default(),
             });
         let definition = input
             .definition()
@@ -1847,6 +1851,7 @@ mod tests {
             workflow_source: None,
         };
         let request = CreateRunInput {
+            admission:            PetriAdmission::default(),
             workflow:             WorkflowInput::Path(dot_path.clone()),
             settings:             test_default_settings(),
             vars:                 HashMap::new(),
@@ -1919,6 +1924,7 @@ mod tests {
         let err = create(
             &store,
             CreateRunInput {
+                admission:            PetriAdmission::default(),
                 workflow:             WorkflowInput::DotSource {
                     source:   dot.to_string(),
                     base_dir: None,
@@ -1966,6 +1972,7 @@ mod tests {
         let created = create(
             &store,
             CreateRunInput {
+                admission:            PetriAdmission::default(),
                 workflow:             WorkflowInput::DotSource {
                     source:   MINIMAL_DOT.to_string(),
                     base_dir: None,
@@ -2119,6 +2126,7 @@ mod tests {
                 let created = create(
                     store.as_ref(),
                     CreateRunInput {
+                        admission: PetriAdmission::default(),
                         workflow: WorkflowInput::DotSource {
                             source:   MODEL_DOT.replace("MODEL_SELECTOR", selector),
                             base_dir: None,
@@ -2208,6 +2216,7 @@ mod tests {
         let created = create(
             &store,
             CreateRunInput {
+                admission:            PetriAdmission::default(),
                 workflow:             WorkflowInput::DotSource {
                     source:   MINIMAL_DOT.to_string(),
                     base_dir: None,
@@ -2296,6 +2305,7 @@ mod tests {
         let created = create(
             &store,
             CreateRunInput {
+                admission:            PetriAdmission::default(),
                 workflow:             WorkflowInput::DotSource {
                     source:   MINIMAL_DOT.to_string(),
                     base_dir: None,
@@ -2346,6 +2356,7 @@ mod tests {
         let created = create(
             &store,
             CreateRunInput {
+                admission:            PetriAdmission::default(),
                 workflow:             WorkflowInput::DotSource {
                     source:   MINIMAL_DOT.to_string(),
                     base_dir: None,
@@ -2402,6 +2413,7 @@ mod tests {
         let created = create(
             &store,
             CreateRunInput {
+                admission:            PetriAdmission::default(),
                 workflow:             WorkflowInput::DotSource {
                     source:   MINIMAL_DOT.to_string(),
                     base_dir: None,
@@ -2452,6 +2464,7 @@ mod tests {
         let created = create(
             &store,
             CreateRunInput {
+                admission:            PetriAdmission::default(),
                 workflow:             WorkflowInput::DotSource {
                     source:   MINIMAL_DOT.to_string(),
                     base_dir: None,
@@ -2532,6 +2545,7 @@ mod tests {
         let created = create(
             store.as_ref(),
             CreateRunInput {
+                admission:            PetriAdmission::default(),
                 workflow:             WorkflowInput::DotSource {
                     source:   MINIMAL_DOT.to_string(),
                     base_dir: None,
@@ -2586,6 +2600,7 @@ mod tests {
         let created = create(
             store.as_ref(),
             CreateRunInput {
+                admission:            PetriAdmission::default(),
                 workflow:             WorkflowInput::DotSource {
                     source:   MINIMAL_DOT.to_string(),
                     base_dir: None,

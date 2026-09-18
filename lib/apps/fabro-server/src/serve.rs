@@ -8,23 +8,22 @@ use clap::Args;
 use fabro_config::bind::{self, Bind, BindRequest};
 use fabro_config::user::active_settings_path;
 use fabro_config::{
-    RunEnvironmentLayer, RunLayer, RunModelLayer, ServerExecutionLayer, ServerLayer,
-    ServerWebLayer, Storage, load_config_file, load_server_runtime_settings,
+    RunEnvironmentLayer, RunLayer, RunModelLayer, ServerLayer, ServerWebLayer, Storage,
+    load_config_file, load_server_runtime_settings,
 };
 use fabro_install::{OBJECT_STORE_ACCESS_KEY_ID_ENV, OBJECT_STORE_SECRET_ACCESS_KEY_ENV};
 use fabro_static::EnvVars;
+use fabro_types::ServerSettings;
 use fabro_types::settings::server::{GithubIntegrationStrategy, LogDestination, WebhookStrategy};
 use fabro_types::settings::{
     GithubIntegrationSettings, ObjectStoreSettings, ServerListenSettings, ServerNamespace,
 };
-use fabro_types::{Engine, ServerSettings};
 use fabro_util::terminal::Styles;
 use object_store::aws::{AmazonS3Builder, AmazonS3ConfigKey};
 use object_store::client::{HttpClient, HttpConnector};
 use object_store::local::LocalFileSystem;
 use object_store::memory::InMemory;
 use object_store::{ClientOptions, ObjectStore, RetryConfig};
-use strum::VariantArray as _;
 use tokio::net::{TcpListener, UnixListener};
 use tokio::task::JoinHandle;
 use tokio::time::{interval, sleep};
@@ -211,11 +210,6 @@ pub struct ServeArgs {
     #[arg(long)]
     pub max_concurrent_runs: Option<usize>,
 
-    /// The engine for every run whose workflow version names none
-    /// (`legacy` or `petri`); overrides `[server.execution] engine`
-    #[arg(long, value_parser = parse_engine)]
-    pub engine: Option<Engine>,
-
     /// Path to server config file (default: ~/.fabro/settings.toml)
     #[arg(long)]
     pub config: Option<PathBuf>,
@@ -227,29 +221,12 @@ pub struct ServeArgs {
     pub watch_web: bool,
 }
 
-fn parse_engine(value: &str) -> Result<Engine, String> {
-    value.parse::<Engine>().map_err(|_| {
-        let known = Engine::VARIANTS
-            .iter()
-            .map(ToString::to_string)
-            .collect::<Vec<_>>()
-            .join(", ");
-        format!("unknown engine `{value}`; expected one of: {known}")
-    })
-}
-
 fn serve_overrides(args: &ServeArgs) -> (Option<RunLayer>, Option<ServerLayer>) {
     let mut run = RunLayer::default();
     let mut server = ServerLayer::default();
     if args.web || args.no_web {
         let web = server.web.get_or_insert_with(ServerWebLayer::default);
         web.enabled = Some(args.web);
-    }
-    if let Some(engine) = args.engine {
-        let execution = server
-            .execution
-            .get_or_insert_with(ServerExecutionLayer::default);
-        execution.engine = Some(engine);
     }
     if let Some(ref model) = args.model {
         let model_layer = run.model.get_or_insert_with(RunModelLayer::default);
@@ -1486,7 +1463,6 @@ destination = "file"
             web: true,
             no_web: false,
             max_concurrent_runs: None,
-            engine: None,
             config: None,
             #[cfg(debug_assertions)]
             watch_web: false,
@@ -1513,7 +1489,6 @@ destination = "file"
             web: false,
             no_web: true,
             max_concurrent_runs: None,
-            engine: None,
             config: None,
             #[cfg(debug_assertions)]
             watch_web: false,

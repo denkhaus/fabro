@@ -42,8 +42,9 @@ tier = "gold"
 }
 
 #[test]
-fn resolves_workflow_engine_when_named() {
-    let workflow = super::workflow_settings_from_toml(
+fn a_workflow_engine_key_is_unknown() {
+    // Every run executes on Petri; the workflow table names no engine.
+    let error = super::workflow_settings_from_toml(
         r#"
 _version = 1
 
@@ -51,35 +52,6 @@ _version = 1
 engine = "petri"
 "#,
     )
-    .expect("workflow settings should resolve")
-    .workflow;
-
-    assert_eq!(workflow.engine, Some(fabro_types::Engine::Petri));
-}
-
-#[test]
-fn workflow_engine_is_unset_when_unnamed() {
-    let workflow = super::workflow_settings_from_layer(SettingsLayer::default())
-        .expect("empty settings should resolve")
-        .workflow;
-
-    assert_eq!(workflow.engine, None);
-}
-
-#[test]
-fn rejects_an_unknown_workflow_engine() {
-    let error = super::workflow_settings_from_toml(
-        r#"
-_version = 1
-
-[workflow]
-engine = "steam"
-"#,
-    )
-    .expect_err("an unknown engine should not parse");
-
-    assert!(
-        error.to_string().contains("engine") || format!("{error:#}").contains("steam"),
-        "unexpected error: {error:#}"
-    );
+    .expect_err("an engine key is not a workflow setting");
+    assert!(error.to_string().contains("engine"), "{error}");
 }

@@ -353,7 +353,7 @@ mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     use ::fabro_types::{Graph, RunNoticeLevel, WorkflowSettings, fixtures};
-    use fabro_types::test_support;
+    use fabro_types::{PetriAdmission, test_support};
     use lithos_llm::types::ReasoningOutput;
     use pebble_coding_agent::events::{CodingAgentEvent, CodingEvent, Usage};
     use tokio::sync::Mutex as AsyncMutex;
@@ -393,7 +393,7 @@ mod tests {
             retried_from:        None,
             parent_id:           None,
             web_url:             None,
-            engine:              fabro_types::RunEngine::Legacy,
+            admission:           PetriAdmission::default(),
         })
         .await
         .unwrap();

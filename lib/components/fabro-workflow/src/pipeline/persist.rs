@@ -94,7 +94,7 @@ mod tests {
 
     use fabro_graphviz::graph::{AttrValue, Edge, Graph, Node};
     use fabro_store::{Database, RunDatabase};
-    use fabro_types::{fixtures, test_support};
+    use fabro_types::{PetriAdmission, fixtures, test_support};
     use object_store::memory::InMemory;
 
     use super::*;
@@ -188,7 +188,7 @@ mod tests {
             definition_blob: None,
             spec_blob: None,
             fork_source_ref: None,
-            engine: fabro_types::RunEngine::Legacy,
+            admission: PetriAdmission::default(),
         }
     }
 
@@ -231,7 +231,7 @@ mod tests {
             retried_from: None,
             parent_id: None,
             web_url: None,
-            engine: fabro_types::RunEngine::Legacy,
+            admission: PetriAdmission::default(),
         })
         .await
         .unwrap();

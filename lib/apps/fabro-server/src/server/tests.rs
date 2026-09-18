@@ -22,14 +22,14 @@ use fabro_interview::{
 };
 use fabro_llm::lithos_catalog::Catalog;
 use fabro_types::settings::ServerAuthMethod;
-use fabro_types::settings::run::ApprovalMode;
+use fabro_types::settings::run::{ApprovalMode, RunMode};
 use fabro_types::{
     AgentBackend, AttrValue, AuthMethod, BlobHash, CommandTermination, ContextWindowBreakdownItem,
     ContextWindowCategory, ContextWindowCountMethod, ContextWindowSnapshot, ContextWindowStaleness,
     ContextWindowWarning, FailureCategory, FailureDetail, GitRunTarget, Graph,
-    InterviewQuestionRecord, ModelRef, Node, Outcome, ParallelBranchId, QuestionType, RunId,
-    RunSpec, RunTarget, SandboxProviderKind, StageModelUsage, StageTiming, SuccessReason,
-    SystemActorKind, WorkflowSettings, fixtures, test_support,
+    InterviewQuestionRecord, ModelRef, Node, Outcome, ParallelBranchId, PetriAdmission,
+    QuestionType, RunId, RunSpec, RunTarget, SandboxProviderKind, StageModelUsage, StageTiming,
+    SuccessReason, SystemActorKind, WorkflowSettings, fixtures, test_support,
 };
 use fabro_util::check_report::CheckStatus;
 use fabro_workflow::records::CheckpointExt;
@@ -5815,7 +5815,7 @@ async fn append_default_run_created(run_store: &fabro_store::RunDatabase, run_id
         retried_from: None,
         parent_id: None,
         web_url: None,
-        engine: fabro_types::RunEngine::Legacy,
+        admission: PetriAdmission::default(),
     })
     .await
     .unwrap();
@@ -5869,7 +5869,7 @@ async fn create_slack_notification_run(
         retried_from: None,
         parent_id: None,
         web_url: None,
-        engine: fabro_types::RunEngine::Legacy,
+        admission: PetriAdmission::default(),
     })
     .await
     .unwrap();
@@ -6946,7 +6946,7 @@ async fn list_run_stages_distinguishes_visits() {
             retried_from: None,
             parent_id: None,
             web_url: None,
-            engine: fabro_types::RunEngine::Legacy,
+            admission: PetriAdmission::default(),
         },
         workflow_event::Event::RunStarting,
         workflow_event::Event::RunRunning,
@@ -7086,7 +7086,7 @@ async fn list_run_stages_exposes_execution_identity_for_resumed_stage() {
             retried_from: None,
             parent_id: None,
             web_url: None,
-            engine: fabro_types::RunEngine::Legacy,
+            admission: PetriAdmission::default(),
         },
         workflow_event::Event::RunStarting,
         workflow_event::Event::RunRunning,
@@ -8276,7 +8276,7 @@ async fn create_completed_run_ready_for_pull_request(
         definition_blob: None,
         spec_blob: None,
         fork_source_ref: None,
-        engine: fabro_types::RunEngine::Legacy,
+        admission: PetriAdmission::default(),
     };
 
     create_durable_run_with_events(state, run_id, &[
@@ -8299,7 +8299,7 @@ async fn create_completed_run_ready_for_pull_request(
             retried_from: None,
             parent_id: None,
             web_url: None,
-            engine: fabro_types::RunEngine::Legacy,
+            admission: PetriAdmission::default(),
         },
         workflow_event::Event::WorkflowRunStarted {
             name: "test".to_string(),
@@ -15369,7 +15369,7 @@ async fn create_preserved_local_sandbox_run(state: &Arc<AppState>, run_id: RunId
             retried_from: None,
             parent_id: None,
             web_url: None,
-            engine: fabro_types::RunEngine::Legacy,
+            admission: PetriAdmission::default(),
         },
         workflow_event::Event::RunSubmitted {
             definition_blob: None,
@@ -16121,7 +16121,7 @@ async fn delete_run_retry_after_missing_provider_resource_removes_metadata() {
             retried_from: None,
             parent_id: None,
             web_url: None,
-            engine: fabro_types::RunEngine::Legacy,
+            admission: PetriAdmission::default(),
         },
         workflow_event::Event::RunSubmitted {
             definition_blob: None,

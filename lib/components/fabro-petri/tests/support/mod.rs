@@ -85,6 +85,7 @@ pub(crate) fn admit(
     let request = CheckRequest {
         bundle: bundle(files),
         inputs: BTreeMap::new(),
+        vars: BTreeMap::new(),
         launch,
         runtime: runtime.clone(),
     };

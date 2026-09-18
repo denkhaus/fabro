@@ -114,13 +114,13 @@ async fn run_bound_session_is_created_as_run_event_and_resolves_by_flat_id() {
 
     let events_request = Request::builder()
         .method("GET")
-        .uri(api(&format!("/runs/{run_id}/events")))
+        .uri(api(&format!("/sessions/{session_id}/events")))
         .body(Body::empty())
-        .expect("run-events request should build");
+        .expect("session-events request should build");
     let events = response_json(
         app.clone().oneshot(events_request).await.unwrap(),
         StatusCode::OK,
-        format!("GET /api/v1/runs/{run_id}/events"),
+        format!("GET /api/v1/sessions/{session_id}/events"),
     )
     .await;
     let session_events: Vec<_> = events["data"]
@@ -240,16 +240,17 @@ async fn supplied_session_model_alias_is_canonicalized() {
 
     let created = create_session_with_model(&app, &run_id, "Ask Fabro", "gpt54").await;
     assert_eq!(created["model"], "gpt-5.4");
+    let session_id = created["id"].as_str().expect("session id");
 
     let events_request = Request::builder()
         .method("GET")
-        .uri(api(&format!("/runs/{run_id}/events")))
+        .uri(api(&format!("/sessions/{session_id}/events")))
         .body(Body::empty())
-        .expect("run-events request should build");
+        .expect("session-events request should build");
     let events = response_json(
         app.clone().oneshot(events_request).await.unwrap(),
         StatusCode::OK,
-        format!("GET /api/v1/runs/{run_id}/events"),
+        format!("GET /api/v1/sessions/{session_id}/events"),
     )
     .await;
 

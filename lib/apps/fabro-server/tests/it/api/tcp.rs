@@ -80,7 +80,6 @@ async fn spawn_served_listener(
                 provider: None,
                 environment: None,
                 max_concurrent_runs: None,
-                engine: None,
                 config: Some(config_path),
                 #[cfg(debug_assertions)]
                 watch_web: false,

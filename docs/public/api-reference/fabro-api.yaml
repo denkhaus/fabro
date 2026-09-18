@@ -12934,6 +12934,7 @@ components:
         - settings
         - graph
         - provenance
+        - admission
       properties:
         run_id:
           type: string
@@ -12980,33 +12981,11 @@ components:
           oneOf:
             - $ref: "#/components/schemas/ForkSourceRef"
             - type: "null"
-        engine:
-          $ref: "#/components/schemas/RunEngine"
+        admission:
+          $ref: "#/components/schemas/PetriAdmission"
           description: |
-            The engine the run was created for, with what it admitted.
-            Absent in a spec written before the field existed, which means
-            the legacy executor.
-
-    RunEngine:
-      description: |
-        The engine a run was created for. `legacy` is the in-process
-        executor; `petri` names the Petri workflow engine and carries what
-        Petri admitted at create time.
-      oneOf:
-        - type: object
-          required: [kind]
-          properties:
-            kind:
-              type: string
-              enum: [legacy]
-        - allOf:
-            - type: object
-              required: [kind]
-              properties:
-                kind:
-                  type: string
-                  enum: [petri]
-            - $ref: "#/components/schemas/PetriAdmission"
+            What Petri admitted for the run at create time: the graphs it
+            executes and resumes from.
 
     PetriAdmission:
       description: |

@@ -660,7 +660,6 @@ fn main() {
         ("EventEnvelope", "fabro_types::EventEnvelope", &[]),
         ("RunStreamItem", "fabro_types::RunStreamItem", &[]),
         ("RunStreamItemKind", "fabro_types::RunStreamItemKind", &[]),
-        ("RunEngine", "fabro_types::RunEngine", &[]),
         ("PetriAdmission", "fabro_types::PetriAdmission", &[]),
         ("PetriGraphRef", "fabro_types::PetriGraphRef", &[]),
         ("PullRequest", "fabro_types::PullRequest", &[]),

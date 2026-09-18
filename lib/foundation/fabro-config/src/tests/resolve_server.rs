@@ -67,7 +67,6 @@ fn resolves_server_defaults_from_empty_settings() {
     assert!(settings.web.enabled);
     assert_eq!(settings.web.url, "http://localhost:3000");
     assert_eq!(settings.scheduler.max_concurrent_runs, 5);
-    assert_eq!(settings.execution.engine, fabro_types::Engine::Legacy);
     assert_eq!(settings.logging.destination, LogDestination::File);
 
     match settings.listen {
@@ -712,18 +711,4 @@ methods = ["dev-token", "github"]
     assert!(!dev_token_auth_enabled(&github_only));
     assert!(dev_token_auth_enabled(&both));
     assert!(!dev_token_auth_enabled(&SettingsLayer::default()));
-}
-
-#[test]
-fn server_execution_engine_names_petri() {
-    let settings = resolve_server(&parse(
-        r#"
-_version = 1
-
-[server.execution]
-engine = "petri"
-"#,
-    ));
-
-    assert_eq!(settings.execution.engine, fabro_types::Engine::Petri);
 }

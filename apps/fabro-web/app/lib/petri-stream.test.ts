@@ -39,7 +39,7 @@ describe("stream items", () => {
         expect(item.run_id).toBe(fixture.run_id);
       }
     }
-    expect(isPetriRun({ spec: { engine: { kind: "legacy" } } } as never)).toBe(false);
+    expect(isPetriRun({ spec: {} } as never)).toBe(false);
     expect(isStreamItemPayload({ event: "run.completed", seq: 3 })).toBe(false);
   });
 

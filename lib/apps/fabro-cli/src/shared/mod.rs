@@ -1,4 +1,3 @@
-pub(crate) mod github;
 pub(crate) mod provider_auth;
 pub(crate) mod repo;
 mod utilities;

@@ -27,11 +27,11 @@ use fabro_store::{
     RunSummaryListQuery, RunSummarySort, RunSummarySortDirection, RunSummaryVisibility,
 };
 use fabro_types::{
-    AutomationRef, ContextWindowStaleness, Engine, ManifestPath, Principal, Run,
-    RunClientProvenance, RunId, RunProvenance, RunServerProvenance, RunStatusKind, RunTarget,
-    SandboxProviderKind, StageContextWindow, StageContextWindowUnavailableReason, StageHandler,
-    StageModelUsage, StageProjection, SystemActorKind, ValidatedRunTarget,
-    json_scalar_to_toml_value, parse_blob_ref,
+    AutomationRef, ContextWindowStaleness, ManifestPath, Principal, Run, RunClientProvenance,
+    RunId, RunProvenance, RunServerProvenance, RunStatusKind, RunTarget, SandboxProviderKind,
+    StageContextWindow, StageContextWindowUnavailableReason, StageHandler, StageModelUsage,
+    StageProjection, SystemActorKind, ValidatedRunTarget, json_scalar_to_toml_value,
+    parse_blob_ref,
 };
 use fabro_util::error as error_util;
 use fabro_util::version::FABRO_VERSION;
@@ -748,7 +748,6 @@ async fn finalize_created_run(
     explicit_title_supplied: bool,
     title_generation_target: ManifestPath,
 ) -> Response {
-    let catalog = state.catalog();
     // Resolve once: we need both the provider IDs (for the run create input
     // and ask-fabro-readiness) and the LLM client itself (for the spawned
     // title-generation task). `ready_llm_provider_ids` would otherwise call
@@ -759,7 +758,7 @@ async fn finalize_created_run(
         #[cfg(any(test, feature = "test-support"))]
         {
             server_test_support::test_run_materialization_provider_ids(
-                catalog.as_ref(),
+                state.catalog().as_ref(),
                 &ready_provider_ids,
             )
         }
@@ -768,22 +767,13 @@ async fn finalize_created_run(
             ready_provider_ids.clone()
         }
     };
-    // Petri compiles a Petri run: the bundle goes to `Runtime::check`, its
+    // Petri compiles the run: the bundle goes to `Runtime::check`, its
     // diagnostics come back in Fabro's shape, and the admitted graph is what
-    // the run executes. The legacy compile, lint and model pinning are
-    // skipped for it; Fabro's own settings resolution ran above as for any
-    // run.
-    let engine = petri_runs::engine_for(prepared.settings(), &state.server_settings());
-    let pinned = match engine {
-        Engine::Legacy => {
-            run_compiler::compile_and_pin(prepared, run_materialization_provider_ids, catalog).await
-        }
-        Engine::Petri => {
-            match petri_runs::admit(&state, &prepared, &run_materialization_provider_ids).await {
-                Ok(admission) => run_compiler::compile_admitted(prepared, admission).await,
-                Err(error) => Err(error),
-            }
-        }
+    // the run executes. Fabro's own settings resolution ran above.
+    let pinned = match petri_runs::admit(&state, &prepared, &run_materialization_provider_ids).await
+    {
+        Ok(admission) => run_compiler::compile_admitted(prepared, admission).await,
+        Err(error) => Err(error),
     };
     let pinned = match pinned {
         Ok(pinned) => pinned,

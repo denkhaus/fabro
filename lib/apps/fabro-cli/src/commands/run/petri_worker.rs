@@ -1,12 +1,11 @@
 //! A Petri run in the worker process.
 //!
-//! When `fabro run __run-worker` finds that its run's stored spec names
-//! Petri as the engine, the run executes here instead of through the legacy
-//! executor, over the same worker services: the authenticated client, the
-//! control channel the server pushes cancels through, the signal handlers,
-//! the vault snapshot and the CLI catalog. The engine assembly itself is
-//! `fabro_petri::engine`, shared with the server's in-process test path, so
-//! the run gets the same runtime, options and interviewer either way.
+//! `fabro run __run-worker` executes its run here, over the worker services:
+//! the authenticated client, the control channel the server pushes cancels
+//! through, the signal handlers, the vault snapshot and the CLI catalog. The
+//! engine assembly itself is `fabro_petri::engine`, shared with the server's
+//! in-process test path, so the run gets the same runtime, options and
+//! interviewer either way.
 //!
 //! The run's record is [`HttpRunStore`] over the worker's client, leased
 //! for this launch: the worker mints one owner id at start, logs it, and
@@ -31,8 +30,7 @@
 //! projection agree with Petri's own `run.paused` and `run.unpaused`
 //! records. A resumed run that was paused when its worker died comes back
 //! paused, and the mirror reports that too. The interrupt and pair
-//! controls have no Petri adapter yet and are ignored with a warning; the
-//! `SIGUSR1`/`SIGUSR2` pause signals reach only the legacy executor. A
+//! controls have no Petri adapter yet and are ignored with a warning. A
 //! control channel that is lost for good cancels the run the same way, and
 //! the worker exits with that loss as its error once the run has settled.
 //!
@@ -59,7 +57,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Instant;
 
-use anyhow::{Context, Result, anyhow, bail};
+use anyhow::{Context, Result, anyhow};
 use fabro_auth::VaultCredentialSource;
 use fabro_client::{Client, ServerTarget};
 use fabro_interview::{ControlInterviewer, WorkerControlMessage};
@@ -81,7 +79,6 @@ use fabro_types::{FailureReason, RunId, RunNoticeLevel, RunTiming, StageOutcome,
 use fabro_vault::Vault;
 use fabro_workflow::Error as WorkflowError;
 use fabro_workflow::event::{self as workflow_event, Event, RunEventSink};
-use fabro_workflow::run_control::RunControlState;
 use fabro_workflow::runtime_store::RunStoreHandle;
 use fabro_workflow::services::FabroRunToolServices;
 use tokio::sync::RwLock as AsyncRwLock;
@@ -89,7 +86,7 @@ use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
-use super::runner::{self, WorkerControls, WorkerTitlePhase};
+use super::runner::{self, WorkerTitlePhase};
 use crate::args::RunWorkerMode;
 use crate::command_context;
 
@@ -116,9 +113,7 @@ pub(super) struct PetriWorker<'a> {
 /// worker exits as the legacy worker does for a failed run.
 pub(super) async fn execute(worker: PetriWorker<'_>) -> Result<()> {
     let run_id = worker.run_id;
-    let Some(admission) = worker.run_state.spec.engine.petri().cloned() else {
-        bail!("run {run_id} names Petri as its engine but carries no admission");
-    };
+    let admission = worker.run_state.spec.admission.clone();
     let owner = OwnerId::mint();
     info!(
         run_id = %run_id,
@@ -132,26 +127,21 @@ pub(super) async fn execute(worker: PetriWorker<'_>) -> Result<()> {
     ));
 
     let cancel_token = CancellationToken::new();
-    let run_control = RunControlState::new();
-    runner::install_signal_handlers(Arc::clone(&run_control), cancel_token.clone())?;
+    runner::install_signal_handlers(cancel_token.clone())?;
     let interviewer = Arc::new(ControlInterviewer::new());
     let sink = RunEventSink::map(
         runner::stamp_system_worker,
         RunEventSink::backend(worker.run_store.clone()),
     );
     let controls = RunControls::new();
-    let petri_controls = Arc::new(PetriControls {
-        run_id,
-        controls: controls.clone(),
-        sink: sink.clone(),
-    });
+    let petri_controls = Arc::new(PetriControls::new(run_id, controls.clone(), sink.clone()));
     let mut control_manager = runner::spawn_worker_control_manager(
         worker.target.clone(),
         run_id,
         worker.worker_token.to_owned(),
         Arc::clone(&interviewer),
         cancel_token.clone(),
-        WorkerControls::Petri(petri_controls),
+        petri_controls,
     );
     control_manager.wait_for_first_connection().await?;
     let approval = if worker.run_state.spec.settings.run.execution.approval == ApprovalMode::Auto {
@@ -309,6 +299,20 @@ pub(super) struct PetriControls {
 }
 
 impl PetriControls {
+    pub(super) fn new(run_id: RunId, controls: RunControls, sink: RunEventSink) -> Self {
+        Self {
+            run_id,
+            controls,
+            sink,
+        }
+    }
+
+    /// The run's controls, for a test that reads the paused state back.
+    #[cfg(test)]
+    pub(super) fn controls(&self) -> &RunControls {
+        &self.controls
+    }
+
     pub(super) async fn apply(&self, message: WorkerControlMessage) {
         match message {
             WorkerControlMessage::RunPause => {

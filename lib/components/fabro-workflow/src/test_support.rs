@@ -12,7 +12,7 @@ use fabro_llm::lithos_catalog::Catalog;
 use fabro_llm::test_support::test_catalog;
 use fabro_sandbox::RunSandbox;
 use fabro_store::{ArtifactStore, RunProjection, test_support as store_test_support};
-use fabro_types::ModelRef;
+use fabro_types::{ModelRef, PetriAdmission};
 #[cfg(feature = "test-support")]
 use lithos_llm::catalog::ProviderId;
 use lithos_llm::catalog::{ModelId, builtin};
@@ -232,7 +232,7 @@ async fn initialized(
         retried_from:        None,
         parent_id:           None,
         web_url:             None,
-        engine:              fabro_types::RunEngine::Legacy,
+        admission:           PetriAdmission::default(),
     })
     .await
     .expect("failed to seed run.created event in run store");

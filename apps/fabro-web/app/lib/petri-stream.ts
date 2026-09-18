@@ -47,12 +47,14 @@ export function isPlatformItem(item: RunStreamItem): boolean {
   return item.kind === "platform";
 }
 
-/** Whether the projection is of a run that executes on Petri. */
+/**
+ * Whether the projection is of a run that executes on Petri: every run
+ * does, so this is whether the projection carries a spec at all.
+ */
 export function isPetriRun(
   projection: RunProjection | null | undefined,
 ): boolean {
-  const engine = projection?.spec?.engine;
-  return isRecord(engine) && getString(engine, "kind") === "petri";
+  return isRecord(projection?.spec?.admission);
 }
 
 /** Whether an SSE payload is a run stream item rather than a legacy event. */

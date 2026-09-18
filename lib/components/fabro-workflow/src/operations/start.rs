@@ -1303,8 +1303,8 @@ mod tests {
         RunPrepareSettings,
     };
     use fabro_types::{
-        GitContext, ManifestPath, ModelUsage, RunTarget, StageTiming, WorkflowSettings, fixtures,
-        test_support,
+        GitContext, ManifestPath, ModelUsage, PetriAdmission, RunTarget, StageTiming,
+        WorkflowSettings, fixtures, test_support,
     };
     use fabro_vault::SecretType;
     use lithos_llm::catalog::builtin;
@@ -2407,6 +2407,7 @@ mod tests {
                 provenance: test_support::test_run_provenance(),
                 configured_providers: test_provider_ids(),
                 web_url: None,
+                admission: PetriAdmission::default(),
             },
             storage_root.to_path_buf(),
             test_catalog(),
@@ -2983,6 +2984,7 @@ mod tests {
                 provenance:           test_support::test_run_provenance(),
                 configured_providers: test_provider_ids(),
                 web_url:              None,
+                admission:            PetriAdmission::default(),
             },
             storage_root,
             test_catalog(),

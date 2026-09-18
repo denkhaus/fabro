@@ -449,7 +449,7 @@ mod tests {
     use std::time::Duration;
 
     use fabro_store::Database;
-    use fabro_types::{RunStatus, fixtures, test_support};
+    use fabro_types::{PetriAdmission, RunStatus, fixtures, test_support};
     use object_store::memory::InMemory;
 
     use super::scan_runs_combined;
@@ -508,7 +508,7 @@ mod tests {
             retried_from:        None,
             parent_id:           None,
             web_url:             None,
-            engine:              fabro_types::RunEngine::Legacy,
+            admission:           PetriAdmission::default(),
         })
         .await
         .unwrap();

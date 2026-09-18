@@ -73,7 +73,7 @@ pub use command_output::{CommandOutputStream, CommandTermination};
 pub use conclusion::{Conclusion, StageSummary};
 pub use dense::{ServerSettings, UserSettings, WorkflowSettings};
 pub use diff::{DiffStats, DiffSummary, RunDiff};
-pub use engine::{Engine, PetriAdmission, PetriGraphRef, RunEngine};
+pub use engine::{PetriAdmission, PetriGraphRef};
 pub use event_envelope::EventEnvelope;
 pub use failure_signature::FailureSignature;
 pub use git_identity::{GitIdentity, GitIdentitySource};

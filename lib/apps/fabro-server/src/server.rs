@@ -84,12 +84,12 @@ use fabro_store::{
 #[cfg(test)]
 use fabro_types::BlockedReason;
 use fabro_types::settings::RunNamespace;
-use fabro_types::settings::run::{NotificationRouteSettings, RunMode};
+use fabro_types::settings::run::NotificationRouteSettings;
 use fabro_types::settings::server::{
     GithubIntegrationSettings, GithubIntegrationStrategy, LogDestination,
 };
 use fabro_types::{
-    AgentBackend, AskFabro, AskFabroUnavailableReason, BlobHash, Engine, EventBody,
+    AgentBackend, AskFabro, AskFabroUnavailableReason, BlobHash, EventBody,
     InterviewQuestionRecord, ModelRef, ModelTestMode, PairId, PairMessageId, PairTarget,
     PendingReason, Principal, PullRequestLink, QuestionType, RunControlAction, RunEvent, RunId,
     RunRunnableSource, RunStatusKind, SandboxProviderKind, ServerSettings, SessionCapability,
@@ -100,12 +100,10 @@ use fabro_util::error::{
 use fabro_util::version::FABRO_VERSION;
 use fabro_variable::{Error as VariableError, VariableStore};
 use fabro_vault::{SecretStore, SecretStoreError, SecretType, Vault};
-use fabro_workflow::artifact_upload::ArtifactSink;
 #[cfg(test)]
 use fabro_workflow::command_log::command_log_path;
-use fabro_workflow::event::{self as workflow_event, Emitter};
+use fabro_workflow::event::{self as workflow_event};
 use fabro_workflow::handler::HandlerRegistry;
-use fabro_workflow::pipeline::Persisted;
 use fabro_workflow::records::Checkpoint;
 use fabro_workflow::run_lookup::{
     RunInfo, StatusFilter, filter_runs, scan_runs_with_summaries, scratch_base,
@@ -122,9 +120,7 @@ use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWriteExt, BufReader};
 use tokio::process::Command;
 use tokio::runtime::Builder as TokioRuntimeBuilder;
 use tokio::sync::broadcast::error::RecvError;
-use tokio::sync::{
-    Mutex as AsyncMutex, Notify, RwLock as AsyncRwLock, Semaphore, broadcast, mpsc, oneshot,
-};
+use tokio::sync::{Mutex as AsyncMutex, Notify, Semaphore, broadcast, mpsc, oneshot};
 use tokio::task::spawn_blocking;
 use tokio::time::{sleep, timeout};
 use tokio_stream::StreamExt;
@@ -311,11 +307,6 @@ impl ManagedRun {
 enum RunExecutionMode {
     Start,
     Resume,
-}
-
-enum ExecutionResult {
-    Completed(Box<Result<operations::Started, WorkflowError>>),
-    CancelledBySignal,
 }
 
 const WORKER_CANCEL_GRACE: Duration = Duration::from_secs(5);
@@ -2753,6 +2744,12 @@ async fn delete_run_internal(
         .delete_run(&id)
         .await
         .map_err(|err| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string()))?;
+    state.petri_runs.worker_exited(id);
+    state
+        .petri_projector
+        .delete_run(id)
+        .await
+        .map_err(|err| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string()))?;
     state
         .artifact_store
         .delete_for_run(&id)
@@ -3168,16 +3165,13 @@ pub(crate) async fn reconcile_incomplete_runs_on_startup(
 
     for summary in summaries {
         let run_store = state.stores.runs.open_run(&summary.id).await?;
-        // A Petri run continues from its records in a new worker, unless a
-        // cancel was pending or the run was being removed: those end as a
-        // legacy run's do.
+        // A run continues from its records in a new worker, unless a cancel
+        // was pending or the run was being removed: those end failed.
         if petri_run_resumes_on_restart(&summary) {
             let run_state = run_store.state().await?;
-            if run_state.spec.engine.is_petri() {
-                petri_runs::reconcile_on_startup(state, summary.id, &run_store, &run_state).await?;
-                reconciled += 1;
-                continue;
-            }
+            petri_runs::reconcile_on_startup(state, summary.id, &run_store, &run_state).await?;
+            reconciled += 1;
+            continue;
         }
         let (error, reason) = failure_for_incomplete_run(
             summary.lifecycle.pending_control,
@@ -3351,23 +3345,6 @@ async fn persist_cancelled_run_status(state: &AppState, run_id: RunId) -> anyhow
         None,
     );
     workflow_event::append_event(&run_store, &run_id, &failure_event).await
-}
-
-async fn finish_cancelled_run_before_execution(state: &Arc<AppState>, run_id: RunId) {
-    if let Err(err) = persist_cancelled_run_status(state.as_ref(), run_id).await {
-        error!(run_id = %run_id, error = %err, "Failed to persist cancelled run status");
-    }
-
-    let mut runs = state.runs.lock().expect("runs lock poisoned");
-    if let Some(managed_run) = runs.get_mut(&run_id) {
-        managed_run.status = RunStatus::Failed {
-            reason: FailureReason::Cancelled,
-        };
-        clear_live_run_state(managed_run);
-    }
-    drop(runs);
-    cleanup_worker_control_bus_for_run(state.as_ref(), run_id);
-    state.scheduler_notify.notify_one();
 }
 
 /// Reject the run before execution if its effective sandbox provider is
@@ -4036,365 +4013,15 @@ async fn execute_run(state: Arc<AppState>, run_id: RunId) {
         return;
     }
 
-    // A Petri run takes the worker path a legacy run takes. Under the test
-    // override it executes in this process instead, so the scenario tests
-    // need no worker binary.
-    match run_engine(&state, run_id).await {
-        Ok(Engine::Petri) if state.registry_factory_override.is_some() => {
-            Box::pin(petri_runs::execute(state, run_id)).await;
-            return;
-        }
-        Ok(Engine::Petri | Engine::Legacy) => {}
-        Err(err) => {
-            tracing::error!(run_id = %run_id, error = %err, "Failed to read the run's engine");
-            fail_managed_run(
-                &state,
-                run_id,
-                FailureReason::WorkflowError,
-                format!("Failed to read the run's engine: {err}"),
-            );
-            state.scheduler_notify.notify_one();
-            return;
-        }
-    }
-
+    // A run executes in its worker process. Under the test override it
+    // executes in this process instead, so the scenario tests need no worker
+    // binary.
     if state.registry_factory_override.is_some() {
-        Box::pin(execute_run_in_process(state, run_id)).await;
+        Box::pin(petri_runs::execute(state, run_id)).await;
         return;
     }
 
     Box::pin(execute_run_subprocess(state, run_id)).await;
-}
-
-/// The engine the run was created for, from its stored spec.
-async fn run_engine(state: &AppState, run_id: RunId) -> anyhow::Result<Engine> {
-    let run_store = state.stores.runs.open_run(&run_id).await?;
-    let run_state = run_store.state().await?;
-    Ok(run_state.spec.engine.engine())
-}
-
-async fn execute_run_in_process(state: Arc<AppState>, run_id: RunId) {
-    // Transition to Starting and set up cancel infrastructure
-    let (cancel_rx, run_dir, event_tx, cancel_token, execution_mode) = {
-        let mut runs = state.runs.lock().expect("runs lock poisoned");
-        let managed_run = match runs.get_mut(&run_id) {
-            Some(r) if r.status == RunStatus::Runnable => r,
-            _ => return,
-        };
-        let Some(run_dir) = managed_run.run_dir.clone() else {
-            return;
-        };
-
-        let (cancel_tx, cancel_rx) = oneshot::channel::<()>();
-        let cancel_token = CancellationToken::new();
-        let (event_tx, _) = broadcast::channel(256);
-
-        managed_run.status = RunStatus::Starting;
-        managed_run.cancel_tx = Some(cancel_tx);
-        managed_run.cancel_token = Some(cancel_token.clone());
-        managed_run.event_tx = Some(event_tx);
-
-        (
-            cancel_rx,
-            run_dir,
-            managed_run.event_tx.clone(),
-            cancel_token,
-            managed_run.execution_mode,
-        )
-    };
-
-    // Create interviewer and event plumbing (this is the "provisioning" phase)
-    let interviewer = Arc::new(ControlInterviewer::new());
-    let interview_runtime: Arc<dyn Interviewer> = interviewer.clone();
-    let emitter = Emitter::new(run_id);
-    if let Some(tx_clone) = event_tx {
-        emitter.on_event(move |event| {
-            let _ = tx_clone.send(event.clone());
-        });
-    }
-    let registry_override = state
-        .registry_factory_override
-        .as_ref()
-        .map(|factory| Arc::new(factory(Arc::clone(&interview_runtime))));
-    let emitter = Arc::new(emitter);
-    let steering_hub = Arc::new(fabro_workflow::SteeringHub::new(Arc::clone(&emitter)));
-
-    // Transition to Running, populate interviewer
-    let cancelled_during_setup = {
-        let mut runs = state.runs.lock().expect("runs lock poisoned");
-        if let Some(managed_run) = runs.get_mut(&run_id) {
-            if managed_run.status == RunStatus::Starting {
-                managed_run.status = RunStatus::Running;
-                managed_run.answer_transport = Some(RunAnswerTransport::InProcess {
-                    interviewer:  Arc::clone(&interviewer),
-                    steering_hub: Arc::clone(&steering_hub),
-                });
-                false
-            } else {
-                // Was cancelled during setup
-                clear_live_run_state(managed_run);
-                state.scheduler_notify.notify_one();
-                true
-            }
-        } else {
-            false
-        }
-    };
-    if cancelled_during_setup {
-        if let Err(err) = persist_cancelled_run_status(state.as_ref(), run_id).await {
-            error!(run_id = %run_id, error = %err, "Failed to persist cancelled run status");
-        }
-        return;
-    }
-
-    let run_store = match state.stores.runs.open_run(&run_id).await {
-        Ok(run_store) => run_store,
-        Err(e) => {
-            tracing::error!(run_id = %run_id, error = %e, "Failed to open run store");
-            let mut runs = state.runs.lock().expect("runs lock poisoned");
-            if let Some(managed_run) = runs.get_mut(&run_id) {
-                managed_run.status = RunStatus::Failed {
-                    reason: FailureReason::WorkflowError,
-                };
-                managed_run.error = Some(format!("Failed to open run store: {e}"));
-                clear_live_run_state(managed_run);
-            }
-            state.scheduler_notify.notify_one();
-            return;
-        }
-    };
-    tokio::spawn(forward_run_events_to_global(
-        Arc::clone(&state),
-        run_id,
-        run_store.subscribe(),
-    ));
-    let persisted = match Persisted::load_from_store(&run_store.clone().into(), &run_dir).await {
-        Ok(persisted) => persisted,
-        Err(e) => {
-            tracing::error!(run_id = %run_id, error = %e, "Failed to load persisted run");
-            fail_run_before_execution(
-                &state,
-                run_id,
-                FailureReason::WorkflowError,
-                format!("Failed to load persisted run: {e}"),
-            )
-            .await;
-            return;
-        }
-    };
-    let server_settings = state.server_settings();
-    let github_settings = &server_settings.server.integrations.github;
-    if cancel_token.is_cancelled() {
-        finish_cancelled_run_before_execution(&state, run_id).await;
-        return;
-    }
-    if reject_run_if_sandbox_provider_disabled(
-        &state,
-        &server_settings,
-        run_id,
-        &persisted.run_spec().settings.run,
-    )
-    .await
-    {
-        return;
-    }
-    let github_app_result = {
-        let run_spec = persisted.run_spec();
-        let settings = &run_spec.settings.run;
-        let clone_can_use_github_credentials = settings.execution.mode != RunMode::DryRun
-            && settings.environment.provider.clones_workspace()
-            && run_spec
-                .repo_origin_url()
-                .is_some_and(|origin| !origin.trim().is_empty());
-        let pull_request_can_use_github_credentials =
-            settings.execution.mode != RunMode::DryRun && settings.pull_request.is_some();
-        if settings.integrations.github.is_token_requested() {
-            state.github_credentials(github_settings).await
-        } else if clone_can_use_github_credentials || pull_request_can_use_github_credentials {
-            match state.github_credentials(github_settings).await {
-                Ok(github_app) => Ok(github_app),
-                Err(err) => {
-                    tracing::warn!(
-                        run_id = %run_id,
-                        error = %err,
-                        "GitHub credentials unavailable; pull request creation will be skipped"
-                    );
-                    Ok(None)
-                }
-            }
-        } else {
-            Ok(None)
-        }
-    };
-    let github_app = match github_app_result {
-        Ok(github_app) => github_app,
-        Err(e) => {
-            if cancel_token.is_cancelled() {
-                finish_cancelled_run_before_execution(&state, run_id).await;
-                return;
-            }
-            tracing::error!(run_id = %run_id, error = %e, "Invalid GitHub credentials");
-            fail_run_before_execution(
-                &state,
-                run_id,
-                FailureReason::WorkflowError,
-                format!("Invalid GitHub credentials: {e}"),
-            )
-            .await;
-            return;
-        }
-    };
-    let github_integration = match persisted
-        .run_spec()
-        .settings
-        .run
-        .integrations
-        .github
-        .resolve_integration()
-    {
-        Ok(integration) => integration,
-        Err(err) => {
-            tracing::error!(
-                run_id = %run_id,
-                error = %err,
-                "GitHub permission interpolation failed"
-            );
-            fail_run_before_execution(
-                &state,
-                run_id,
-                FailureReason::WorkflowError,
-                format!("Failed to resolve GitHub permissions: {err}"),
-            )
-            .await;
-            return;
-        }
-    };
-    let vault = match state.stores.vault.snapshot().await {
-        Ok(vault) => vault,
-        Err(err) => {
-            tracing::error!(run_id = %run_id, error = ?err, "Loading run secrets failed");
-            fail_run_before_execution(
-                &state,
-                run_id,
-                FailureReason::WorkflowError,
-                "Loading run secrets failed".to_string(),
-            )
-            .await;
-            return;
-        }
-    };
-    let services = operations::StartServices {
-        run_id,
-        cancel_token: cancel_token.clone(),
-        emitter: Arc::clone(&emitter),
-        interviewer: Arc::clone(&interview_runtime),
-        steering_hub: Arc::clone(&steering_hub),
-        run_store: run_store.clone().into(),
-        event_sink: workflow_event::RunEventSink::store(run_store.clone()),
-        artifact_sink: Some(ArtifactSink::Store(state.artifact_store.clone())),
-        run_control: None,
-        github_app,
-        github_integration,
-        vault: Arc::new(AsyncRwLock::new(vault.into_vault())),
-        sandbox_providers: state.server_settings().server.sandbox.providers.clone(),
-        catalog: state.catalog(),
-        on_node: None,
-        registry_override,
-        fabro_run_tools: None,
-    };
-
-    let execution = async {
-        match execution_mode {
-            RunExecutionMode::Start => operations::start(&run_dir, services).await,
-            RunExecutionMode::Resume => operations::resume(&run_dir, services).await,
-        }
-    };
-
-    let result = tokio::select! {
-        result = execution => ExecutionResult::Completed(Box::new(result)),
-        _ = cancel_rx => {
-            cancel_token.cancel();
-            ExecutionResult::CancelledBySignal
-        }
-    };
-
-    if matches!(&result, ExecutionResult::CancelledBySignal) {
-        if let Err(err) = persist_cancelled_run_status(state.as_ref(), run_id).await {
-            error!(run_id = %run_id, error = %err, "Failed to persist cancelled run status");
-        }
-    }
-
-    // Save final projection
-    let final_projection = match run_store.state().await {
-        Ok(state) => Some(state),
-        Err(err) => {
-            tracing::warn!(run_id = %run_id, error = %err, "Failed to load run state from store");
-            None
-        }
-    };
-
-    // Accumulate aggregate usage after execution completes.
-    if let Some(ref projection) = final_projection {
-        if projection.current_checkpoint().is_some() {
-            let mut agg = state
-                .aggregate_usage
-                .lock()
-                .expect("aggregate_usage lock poisoned");
-            accumulate_usage_rollup(
-                &mut agg,
-                &fabro_workflow::usage_rollup_from_projection(projection),
-            );
-        }
-    }
-
-    let mut runs = state.runs.lock().expect("runs lock poisoned");
-    if let Some(managed_run) = runs.get_mut(&run_id) {
-        match &result {
-            ExecutionResult::Completed(result) => {
-                // A run can fail either before it produces a `Started` or in
-                // its own outcome; both carry the same `WorkflowError`.
-                let outcome = match result.as_ref() {
-                    Ok(started) => started.finalized.outcome.as_ref().map(|_| ()),
-                    Err(e) => Err(e),
-                };
-                match outcome {
-                    Ok(()) => {
-                        info!(run_id = %run_id, "Run completed");
-                        managed_run.status = RunStatus::Succeeded {
-                            reason: SuccessReason::Completed,
-                        };
-                    }
-                    Err(WorkflowError::Cancelled) => {
-                        info!(run_id = %run_id, "Run cancelled");
-                        managed_run.status = RunStatus::Failed {
-                            reason: FailureReason::Cancelled,
-                        };
-                    }
-                    Err(e) => {
-                        let detail = e.display_with_causes();
-                        error!(run_id = %run_id, error = %detail, "Run failed");
-                        managed_run.status = RunStatus::Failed {
-                            reason: e.failure_reason(),
-                        };
-                        managed_run.error = Some(detail);
-                    }
-                }
-            }
-            ExecutionResult::CancelledBySignal => {
-                info!(run_id = %run_id, "Run cancelled");
-                managed_run.status = RunStatus::Failed {
-                    reason: FailureReason::Cancelled,
-                };
-            }
-        }
-        managed_run.checkpoint = final_projection
-            .as_ref()
-            .and_then(|projection| projection.current_checkpoint().cloned());
-        managed_run.run_dir = Some(run_dir);
-        clear_live_run_state(managed_run);
-    }
-    drop(runs);
-    state.scheduler_notify.notify_one();
 }
 
 async fn execute_run_subprocess(state: Arc<AppState>, run_id: RunId) {

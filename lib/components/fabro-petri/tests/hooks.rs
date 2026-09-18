@@ -92,6 +92,7 @@ fn admit(workflow: &str, settings: &str) -> AdmittedGraphs {
             project_toml: None,
         },
         inputs:  BTreeMap::new(),
+        vars:    BTreeMap::new(),
         launch:  Launch::default(),
         runtime: RuntimeSpec::default(),
     };

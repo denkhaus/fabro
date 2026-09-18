@@ -47,10 +47,7 @@ use fabro_petri::runtime::{self, RuntimeSpec};
 use fabro_petri::secrets::VaultSecrets;
 use fabro_petri::{SqliteRunStore, admission};
 use fabro_types::settings::run::{ApprovalMode, RunMode};
-use fabro_types::{
-    Engine, PetriAdmission, RunId, RunRunnableSource, RunTarget, RunTiming, ServerSettings,
-    StageOutcome,
-};
+use fabro_types::{PetriAdmission, RunId, RunRunnableSource, RunTarget, RunTiming, StageOutcome};
 use fabro_util::error as error_util;
 use fabro_validate::{Diagnostic as FabroDiagnostic, Severity};
 use fabro_workflow::Error as WorkflowError;
@@ -64,18 +61,6 @@ use tracing::{error, info, warn};
 use super::{AppState, RunAnswerTransport, RunExecutionMode, clear_live_run_state, workflow_event};
 use crate::petri_runs::PetriRuns;
 use crate::run_compiler::{PreparedRun, RunCompilerError};
-
-/// The engine a run gets: the one its workflow version names, else the
-/// server's default.
-pub(crate) fn engine_for(
-    settings: &fabro_types::WorkflowSettings,
-    server: &ServerSettings,
-) -> Engine {
-    settings
-        .workflow
-        .engine
-        .unwrap_or(server.server.execution.engine)
-}
 
 /// The runtime Petri gets, at create and at execution: the server's run
 /// defaults as the settings layer, the model client over the server's
@@ -185,6 +170,11 @@ pub(crate) async fn admit(
             project_toml: None,
         },
         inputs,
+        vars: prepared
+            .vars()
+            .iter()
+            .map(|(name, value)| (name.clone(), value.clone()))
+            .collect(),
         launch: Launch {
             model,
             provider,
@@ -298,10 +288,7 @@ pub(crate) async fn execute(state: Arc<AppState>, run_id: RunId) {
             return;
         }
     };
-    let Some(admission) = run_state.spec.engine.petri().cloned() else {
-        fail_before_execution(&state, &run_store, run_id, "the run has no Petri admission").await;
-        return;
-    };
+    let admission = run_state.spec.admission.clone();
     let server_settings = state.server_settings();
     if super::reject_run_if_sandbox_provider_disabled(
         &state,

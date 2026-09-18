@@ -203,8 +203,8 @@ mod tests {
 
     use chrono::Utc;
     use fabro_types::{
-        Checkpoint, CheckpointRecord, Graph, RunDiff, RunSpec, WorkflowSettings, fixtures,
-        test_support,
+        Checkpoint, CheckpointRecord, Graph, PetriAdmission, RunDiff, RunSpec, WorkflowSettings,
+        fixtures, test_support,
     };
 
     use super::*;
@@ -256,7 +256,7 @@ mod tests {
                 spec_blob:           None,
                 git:                 None,
                 fork_source_ref:     None,
-                engine:              fabro_types::RunEngine::Legacy,
+                admission:           PetriAdmission::default(),
             },
             Utc::now(),
         )

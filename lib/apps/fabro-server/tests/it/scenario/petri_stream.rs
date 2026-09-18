@@ -237,10 +237,7 @@ async fn a_reconnecting_client_receives_every_stream_item_once_in_order() {
     }
     let workspace = tempfile::tempdir().expect("workspace tempdir");
     let markers = tempfile::tempdir().expect("marker tempdir");
-    let settings = settings_from_toml(
-        "_version = 1\n\n[run.environment]\nid = \"local\"\n\n[server.execution]\nengine = \
-         \"petri\"\n",
-    );
+    let settings = settings_from_toml("_version = 1\n\n[run.environment]\nid = \"local\"\n");
     let state = test_app_state_with_options(settings, 5);
     let app = test_app_with_scheduler(Arc::clone(&state));
 

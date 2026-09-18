@@ -695,8 +695,8 @@ mod tests {
     use fabro_llm::{Response, ResponseStream};
     use fabro_store::Database;
     use fabro_types::{
-        RunProjection, RunSpec, SuccessReason, WorkflowSettings, first_event_seq, fixtures,
-        test_support,
+        PetriAdmission, RunProjection, RunSpec, SuccessReason, WorkflowSettings, first_event_seq,
+        fixtures, test_support,
     };
     use fabro_vault::{SecretType, Vault};
     use httpmock::Method::{GET, POST};
@@ -831,7 +831,7 @@ capabilities = { text = true, tools = true, response_format = { json_object = tr
                 spec_blob:           None,
                 git:                 None,
                 fork_source_ref:     None,
-                engine:              fabro_types::RunEngine::Legacy,
+                admission:           PetriAdmission::default(),
             },
             Utc::now(),
         )
@@ -1123,7 +1123,7 @@ capabilities = { text = true, tools = true, response_format = { json_object = tr
             definition_blob:     None,
             spec_blob:           None,
             fork_source_ref:     None,
-            engine:              fabro_types::RunEngine::Legacy,
+            admission:           PetriAdmission::default(),
         };
         append_event(&run_store, &fixtures::RUN_1, &Event::RunCreated {
             run_id:              fixtures::RUN_1,
@@ -1144,7 +1144,7 @@ capabilities = { text = true, tools = true, response_format = { json_object = tr
             retried_from:        None,
             parent_id:           None,
             web_url:             None,
-            engine:              fabro_types::RunEngine::Legacy,
+            admission:           PetriAdmission::default(),
         })
         .await
         .unwrap();
@@ -1196,7 +1196,7 @@ capabilities = { text = true, tools = true, response_format = { json_object = tr
             definition_blob:     None,
             spec_blob:           None,
             fork_source_ref:     None,
-            engine:              fabro_types::RunEngine::Legacy,
+            admission:           PetriAdmission::default(),
         };
         append_event(&run_store, &fixtures::RUN_1, &Event::RunCreated {
             run_id:              fixtures::RUN_1,
@@ -1217,7 +1217,7 @@ capabilities = { text = true, tools = true, response_format = { json_object = tr
             retried_from:        None,
             parent_id:           None,
             web_url:             None,
-            engine:              fabro_types::RunEngine::Legacy,
+            admission:           PetriAdmission::default(),
         })
         .await
         .unwrap();
@@ -1620,7 +1620,7 @@ capabilities = { text = true, tools = true, response_format = { json_object = tr
             definition_blob:     None,
             spec_blob:           None,
             fork_source_ref:     None,
-            engine:              fabro_types::RunEngine::Legacy,
+            admission:           PetriAdmission::default(),
         };
         append_event(&run_store, &fixtures::RUN_1, &Event::RunCreated {
             run_id:              fixtures::RUN_1,
@@ -1641,7 +1641,7 @@ capabilities = { text = true, tools = true, response_format = { json_object = tr
             retried_from:        None,
             parent_id:           None,
             web_url:             None,
-            engine:              fabro_types::RunEngine::Legacy,
+            admission:           PetriAdmission::default(),
         })
         .await
         .unwrap();
@@ -1844,7 +1844,7 @@ capabilities = { text = true, tools = true, response_format = { json_object = tr
             definition_blob:     None,
             spec_blob:           None,
             fork_source_ref:     None,
-            engine:              fabro_types::RunEngine::Legacy,
+            admission:           PetriAdmission::default(),
         };
         append_event(&run_store, &fixtures::RUN_1, &Event::RunCreated {
             run_id:              fixtures::RUN_1,
@@ -1865,7 +1865,7 @@ capabilities = { text = true, tools = true, response_format = { json_object = tr
             retried_from:        None,
             parent_id:           None,
             web_url:             None,
-            engine:              fabro_types::RunEngine::Legacy,
+            admission:           PetriAdmission::default(),
         })
         .await
         .unwrap();

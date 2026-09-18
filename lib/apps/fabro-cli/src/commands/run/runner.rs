@@ -6,7 +6,7 @@ use std::time::Duration;
 use anyhow::{Context, Result, anyhow};
 use async_trait::async_trait;
 use fabro_client::ServerTarget;
-use fabro_config::{ServerSettingsBuilder, Storage};
+use fabro_config::Storage;
 use fabro_interview::{
     AnswerSubmission, ControlInterviewer, WORKER_CONTROL_INVALID_CURSOR_REASON,
     WORKER_CONTROL_PONG_TIMEOUT_REASON, WORKER_CONTROL_WS_LIVENESS_TIMEOUT,
@@ -16,13 +16,8 @@ use fabro_interview::{
 use fabro_manifest::SuppliedWorkflowVersionPackager;
 use fabro_store::{EventEnvelope, RunProjection, RunProjectionReducer};
 use fabro_tool::fabro_client::ClientBackend;
-use fabro_types::settings::run::{RunMode, RunNamespace};
-use fabro_types::{ArtifactUpload, BlobHash, EventBody, FailureReason, Principal, RunEvent, RunId};
+use fabro_types::{BlobHash, Principal, RunEvent, RunId};
 use fabro_vault::{SecretStore, Vault};
-use fabro_workflow::artifact_upload::{ArtifactSink, StageArtifactUploader};
-use fabro_workflow::event::{Emitter, RunEventSink};
-use fabro_workflow::operations::{self, StartServices};
-use fabro_workflow::run_control::RunControlState;
 use fabro_workflow::runtime_store::{RunStoreBackend, RunStoreHandle};
 use fabro_workflow::services::FabroRunToolServices;
 use futures::{SinkExt, StreamExt};
@@ -46,8 +41,7 @@ use tokio_util::sync::CancellationToken;
 
 use super::petri_worker::{self, PetriControls, PetriWorker};
 use crate::args::RunWorkerMode;
-use crate::shared::github::build_github_credentials;
-use crate::{command_context, server_client};
+use crate::server_client;
 
 const RUN_STORE_RETRY_DELAYS: [Duration; 3] = [
     Duration::from_millis(50),
@@ -59,9 +53,7 @@ const RUN_STORE_RETRY_DELAYS: [Duration; 3] = [
 pub(super) enum WorkerTitlePhase {
     Start,
     Resume,
-    Init,
     Running,
-    Waiting,
     Paused,
     Succeeded,
     Failed,
@@ -87,125 +79,19 @@ pub(crate) async fn execute(
         .state()
         .await
         .with_context(|| format!("failed to load run state for {run_id}"))?;
-    if run_state.spec.engine.is_petri() {
-        return Box::pin(petri_worker::execute(PetriWorker {
-            run_id,
-            target,
-            client,
-            run_store,
-            run_state,
-            storage_dir: &storage_dir,
-            run_dir,
-            mode,
-            fabro_home,
-            worker_token,
-        }))
-        .await;
-    }
-    let run_spec = &run_state.spec;
-    let catalog = Arc::new(
-        command_context::load_cli_catalog().context("failed to build worker LLM catalog")?,
-    );
-    let artifact_sink = Some(ArtifactSink::Uploader(build_artifact_uploader(
+    Box::pin(petri_worker::execute(PetriWorker {
         run_id,
-        client.clone_for_reuse(),
-        worker_token.to_owned(),
-    )));
-    let fabro_run_tools = if fabro_run_tools_enabled_from_worker_token(worker_token) {
-        build_fabro_run_tool_services(worker_token, client.clone_for_reuse(), run_id)
-    } else {
-        None
-    };
-    let interviewer = Arc::new(ControlInterviewer::new());
-    let cancel_token = CancellationToken::new();
-    let emitter = Arc::new(Emitter::new(run_id));
-    let steering_hub = Arc::new(fabro_workflow::SteeringHub::new(Arc::clone(&emitter)));
-    let run_control = RunControlState::new();
-    install_signal_handlers(Arc::clone(&run_control), cancel_token.clone())?;
-    let mut control_manager = if run_state.status.is_terminal() {
-        None
-    } else {
-        Some(spawn_worker_control_manager(
-            target.clone(),
-            run_id,
-            worker_token.to_owned(),
-            Arc::clone(&interviewer),
-            cancel_token.clone(),
-            WorkerControls::Legacy {
-                steering_hub: Arc::clone(&steering_hub),
-                run_control:  Arc::clone(&run_control),
-            },
-        ))
-    };
-    if let Some(control_manager) = &mut control_manager {
-        control_manager.wait_for_first_connection().await?;
-    }
-    let vault = load_worker_vault(&storage_dir).await?;
-    let github_app = {
-        let vault_guard = vault.read().await;
-        maybe_build_github_credentials(run_spec, &vault_guard)?
-    };
-    let sandbox_providers = ServerSettingsBuilder::load_default()
-        .map(|settings| settings.server.sandbox.providers)
-        .unwrap_or_default();
-    let services = StartServices {
-        run_id,
-        cancel_token: cancel_token.clone(),
-        emitter,
-        interviewer,
-        steering_hub,
-        run_store: run_store.clone(),
-        event_sink: RunEventSink::map(
-            stamp_system_worker,
-            RunEventSink::fanout(vec![
-                RunEventSink::backend(run_store),
-                RunEventSink::callback(move |event| {
-                    update_worker_title_from_event(&event);
-                    async move { Ok(()) }
-                }),
-            ]),
-        ),
-        artifact_sink,
-        run_control: Some(run_control),
-        github_app,
-        github_integration: run_spec
-            .settings
-            .run
-            .integrations
-            .github
-            .resolve_integration()
-            .context("failed to resolve github integration")?,
-        vault,
-        sandbox_providers,
-        catalog,
-        on_node: None,
-        registry_override: None,
-        fabro_run_tools,
-    };
-
-    let execution = async {
-        match mode {
-            RunWorkerMode::Start => operations::start(&run_dir, services).await,
-            RunWorkerMode::Resume => operations::resume(&run_dir, services).await,
-        }
-    };
-
-    if let Some(mut control_manager) = control_manager {
-        tokio::select! {
-            result = execution => {
-                control_manager.finish();
-                result?;
-            }
-            fatal = control_manager.fatal_control_loss() => {
-                control_manager.finish();
-                return Err(fatal);
-            }
-        }
-    } else {
-        execution.await?;
-    }
-
-    Ok(())
+        target,
+        client,
+        run_store,
+        run_state,
+        storage_dir: &storage_dir,
+        run_dir,
+        mode,
+        fabro_home,
+        worker_token,
+    }))
+    .await
 }
 
 const WORKER_TOKEN_SCOPE: &str = "run:worker";
@@ -305,16 +191,9 @@ impl AppliedWorkerControlDeliveryIds {
     }
 }
 
-/// Where the run's pause, unpause, steer and pair controls go: the legacy
-/// executor's hub and pause flag, or the Petri run's controls. Cancel and
-/// answers are applied by the channel itself, the same way for both.
-pub(super) enum WorkerControls {
-    Legacy {
-        steering_hub: Arc<fabro_workflow::SteeringHub>,
-        run_control:  Arc<RunControlState>,
-    },
-    Petri(Arc<PetriControls>),
-}
+/// Where the run's pause, unpause and steer controls go: the Petri run's
+/// controls. Cancel and answers are applied by the channel itself.
+pub(super) type WorkerControls = Arc<PetriControls>;
 
 pub(super) struct WorkerControlManagerHandle {
     first_connection: Option<oneshot::Receiver<Result<()>>>,
@@ -780,124 +659,7 @@ async fn apply_worker_control_message(
             cancel_token.cancel();
             interviewer.interrupt_all().await;
         }
-        other => match controls {
-            WorkerControls::Legacy {
-                steering_hub,
-                run_control,
-            } => apply_legacy_control(steering_hub, run_control, other),
-            WorkerControls::Petri(petri) => petri.apply(other).await,
-        },
-    }
-}
-
-/// The legacy executor's pause flag and steering hub.
-fn apply_legacy_control(
-    steering_hub: &fabro_workflow::SteeringHub,
-    run_control: &RunControlState,
-    message: WorkerControlMessage,
-) {
-    match message {
-        WorkerControlMessage::InterviewAnswer { .. } | WorkerControlMessage::RunCancel => {}
-        WorkerControlMessage::RunPause => {
-            run_control.request_pause();
-        }
-        WorkerControlMessage::RunUnpause => {
-            run_control.request_unpause();
-        }
-        WorkerControlMessage::Steer { text, actor } => {
-            steering_hub.deliver_steer(text, Some(actor));
-        }
-        WorkerControlMessage::Interrupt { actor } => {
-            steering_hub.interrupt(Some(&actor));
-        }
-        WorkerControlMessage::InterruptThenSteer { text, actor } => {
-            steering_hub.interrupt_then_steer(&text, Some(&actor));
-        }
-        WorkerControlMessage::PairStart {
-            run_id,
-            pair_id,
-            target,
-            actor,
-        } => {
-            let _ = steering_hub.start_pair(run_id, pair_id, target, Some(actor));
-        }
-        WorkerControlMessage::PairMessage {
-            pair_id,
-            message_id,
-            text,
-            client_message_id,
-            actor,
-        } => {
-            let _ = steering_hub.send_pair_message(
-                pair_id,
-                message_id,
-                text,
-                client_message_id,
-                Some(actor),
-            );
-        }
-        WorkerControlMessage::PairEnd { pair_id, actor } => {
-            let _ = steering_hub.end_pair(pair_id, Some(actor));
-        }
-    }
-}
-
-fn build_artifact_uploader(
-    run_id: RunId,
-    client: server_client::Client,
-    worker_token: String,
-) -> Arc<dyn StageArtifactUploader> {
-    Arc::new(HttpArtifactUploader {
-        run_id,
-        client,
-        worker_token,
-    })
-}
-
-struct HttpArtifactUploader {
-    run_id:       RunId,
-    client:       server_client::Client,
-    worker_token: String,
-}
-
-#[async_trait]
-impl StageArtifactUploader for HttpArtifactUploader {
-    async fn upload_stage_artifacts(
-        &self,
-        stage_id: &fabro_types::StageId,
-        retry: u32,
-        artifact_capture_dir: &Path,
-        artifacts: &[ArtifactUpload],
-    ) -> Result<()> {
-        if artifacts.is_empty() {
-            return Ok(());
-        }
-
-        if artifacts.len() == 1 {
-            let artifact = &artifacts[0];
-            return self
-                .client
-                .upload_stage_artifact_file(
-                    &self.run_id,
-                    stage_id,
-                    retry,
-                    &artifact.path,
-                    &artifact_capture_dir.join(&artifact.path),
-                    &self.worker_token,
-                )
-                .await;
-        }
-
-        self.client
-            .upload_stage_artifact_batch(
-                &self.run_id,
-                stage_id,
-                retry,
-                artifact_capture_dir,
-                artifacts,
-                &self.worker_token,
-            )
-            .await
+        other => controls.apply(other).await,
     }
 }
 
@@ -1061,40 +823,13 @@ fn worker_title(run_id: &RunId, phase: WorkerTitlePhase) -> String {
     let phase = match phase {
         WorkerTitlePhase::Start => "start",
         WorkerTitlePhase::Resume => "resume",
-        WorkerTitlePhase::Init => "init",
         WorkerTitlePhase::Running => "running",
-        WorkerTitlePhase::Waiting => "waiting",
         WorkerTitlePhase::Paused => "paused",
         WorkerTitlePhase::Succeeded => "succeeded",
         WorkerTitlePhase::Failed => "failed",
         WorkerTitlePhase::Cancelled => "cancelled",
     };
     format!("fabro {short_id} {phase}")
-}
-
-fn worker_title_phase_for_event(body: &EventBody) -> Option<WorkerTitlePhase> {
-    match body {
-        EventBody::RunStarting(_) => Some(WorkerTitlePhase::Init),
-        EventBody::RunRunning(_) | EventBody::RunUnpaused(_) => Some(WorkerTitlePhase::Running),
-        EventBody::InterviewStarted(_) => Some(WorkerTitlePhase::Waiting),
-        EventBody::InterviewCompleted(_) | EventBody::InterviewTimeout(_) => {
-            Some(WorkerTitlePhase::Running)
-        }
-        EventBody::RunPaused(_) => Some(WorkerTitlePhase::Paused),
-        EventBody::RunCompleted(_) => Some(WorkerTitlePhase::Succeeded),
-        EventBody::RunFailed(props) => Some(if props.failure.reason == FailureReason::Cancelled {
-            WorkerTitlePhase::Cancelled
-        } else {
-            WorkerTitlePhase::Failed
-        }),
-        _ => None,
-    }
-}
-
-fn update_worker_title_from_event(event: &RunEvent) {
-    if let Some(phase) = worker_title_phase_for_event(&event.body) {
-        set_worker_title(&event.run_id, phase);
-    }
 }
 
 pub(super) fn stamp_system_worker(mut event: RunEvent) -> RunEvent {
@@ -1106,77 +841,10 @@ pub(super) fn stamp_system_worker(mut event: RunEvent) -> RunEvent {
     event
 }
 
-fn maybe_build_github_credentials(
-    run_spec: &fabro_types::RunSpec,
-    vault: &fabro_vault::Vault,
-) -> Result<Option<fabro_github::GitHubCredentials>> {
-    let resolved_run = &run_spec.settings.run;
-    let has_repo_origin = run_spec
-        .repo_origin_url()
-        .is_some_and(|origin| !origin.trim().is_empty());
-    let resolved_server = ServerSettingsBuilder::load_default().ok();
-    let server_ns = resolved_server.as_ref().map(|s| &s.server);
-    let strategy = server_ns
-        .map(|server| server.integrations.github.strategy)
-        .unwrap_or_default();
-    let app_id = server_ns.and_then(|server| server.integrations.github.app_id.clone());
-    let app_slug = server_ns.and_then(|server| server.integrations.github.slug.clone());
-
-    if requires_github_credentials(resolved_run, has_repo_origin) {
-        return build_github_credentials(strategy, app_id.as_deref(), app_slug.as_deref(), vault);
-    }
-
-    let pull_request_enabled =
-        resolved_run.execution.mode != RunMode::DryRun && resolved_run.pull_request.is_some();
-    if pull_request_enabled {
-        return Ok(build_github_credentials(
-            strategy,
-            app_id.as_deref(),
-            app_slug.as_deref(),
-            vault,
-        )
-        .ok()
-        .flatten());
-    }
-
-    Ok(None)
-}
-
-/// Hard-gate for the CLI worker path: a run-level token is requested, or
-/// a clone-based sandbox in non-dry-run mode will clone a repository and
-/// needs credentials to pull it. A run without a repository origin creates
-/// an empty workspace and needs none. Pull-request-driven credential
-/// acquisition is handled separately by the caller as a soft fallback.
-fn requires_github_credentials(run: &RunNamespace, has_repo_origin: bool) -> bool {
-    if run.integrations.github.is_token_requested() {
-        return true;
-    }
-    run.execution.mode != RunMode::DryRun
-        && run.environment.provider.clones_workspace()
-        && has_repo_origin
-}
-
-pub(super) fn install_signal_handlers(
-    run_control: Arc<RunControlState>,
-    cancel_token: CancellationToken,
-) -> Result<()> {
+/// `SIGTERM` and `SIGINT` cancel the run, the way the server's cancel does.
+pub(super) fn install_signal_handlers(cancel_token: CancellationToken) -> Result<()> {
     #[cfg(unix)]
     {
-        let mut pause = signal(SignalKind::user_defined1())?;
-        let pause_control = Arc::clone(&run_control);
-        tokio::spawn(async move {
-            while pause.recv().await.is_some() {
-                pause_control.request_pause();
-            }
-        });
-
-        let mut unpause = signal(SignalKind::user_defined2())?;
-        tokio::spawn(async move {
-            while unpause.recv().await.is_some() {
-                run_control.request_unpause();
-            }
-        });
-
         let mut terminate = signal(SignalKind::terminate())?;
         let terminate_cancel = cancel_token.clone();
         tokio::spawn(async move {
@@ -1211,41 +879,34 @@ mod tests {
     use fabro_interview::{
         AnswerValue, ControlInterviewer, Interviewer, Question, WorkerControlEnvelope,
     };
-    use fabro_types::run_event::{
-        InterviewCompletedProps, InterviewStartedProps, RunCompletedProps, RunControlEffectProps,
-        RunFailedProps, RunStatusTransitionProps,
-    };
-    use fabro_types::{
-        AuthMethod, EventBody, FailureCategory, FailureDetail, FailureReason, IdpIdentity,
-        Principal, QuestionType, RunFailure, SuccessReason, fixtures,
-    };
+    use fabro_types::run_event::RunStatusTransitionProps;
+    use fabro_types::{AuthMethod, EventBody, IdpIdentity, Principal, QuestionType, fixtures};
     use fabro_vault::{SecretType, Vault};
     use fabro_workflow::event::RunEventSink;
-    use fabro_workflow::run_control::RunControlState;
     use tokio::time;
     use tokio_tungstenite::tungstenite::protocol::{Message as TestWebSocketMessage, Role};
     use tokio_util::sync::CancellationToken;
 
+    use super::super::petri_worker::PetriControls;
     use super::{
         AppliedWorkerControlDeliveryIds, WorkerControlConnectError, WorkerControlSocket,
         WorkerControls, WorkerTitlePhase, apply_worker_control_delivery_frame,
         apply_worker_control_message, build_worker_control_stream_request,
         connect_worker_control_stream, handle_worker_control_socket, initial_worker_title_phase,
         load_worker_vault, next_worker_control_reconnect_backoff, stamp_system_worker,
-        worker_title, worker_title_phase_for_event,
+        worker_title,
     };
     use crate::args::RunWorkerMode;
 
-    fn test_steering_hub() -> Arc<fabro_workflow::SteeringHub> {
-        let emitter = Arc::new(fabro_workflow::event::Emitter::new(fixtures::RUN_1));
-        Arc::new(fabro_workflow::SteeringHub::new(emitter))
-    }
-
-    fn test_controls(run_control: &Arc<RunControlState>) -> WorkerControls {
-        WorkerControls::Legacy {
-            steering_hub: test_steering_hub(),
-            run_control:  Arc::clone(run_control),
-        }
+    /// A run's controls over a sink that keeps nothing: what the channel
+    /// tests drive.
+    fn test_controls() -> WorkerControls {
+        let sink = RunEventSink::callback(|_event| async move { Ok(()) });
+        Arc::new(PetriControls::new(
+            fixtures::RUN_1,
+            fabro_petri::controls::RunControls::new(),
+            sink,
+        ))
     }
 
     #[test]
@@ -1343,82 +1004,6 @@ mod tests {
     }
 
     #[test]
-    fn worker_title_phase_tracks_lifecycle_events() {
-        assert_eq!(
-            worker_title_phase_for_event(&EventBody::RunStarting(RunStatusTransitionProps {})),
-            Some(WorkerTitlePhase::Init)
-        );
-        assert_eq!(
-            worker_title_phase_for_event(&EventBody::RunPaused(RunControlEffectProps::default())),
-            Some(WorkerTitlePhase::Paused)
-        );
-        assert_eq!(
-            worker_title_phase_for_event(&EventBody::InterviewStarted(InterviewStartedProps {
-                question_id:     "q-1".to_string(),
-                question:        "Approve?".to_string(),
-                stage:           "gate".to_string(),
-                question_type:   "yes_no".to_string(),
-                options:         Vec::new(),
-                allow_freeform:  false,
-                timeout_seconds: None,
-                context_display: None,
-                review_target:   None,
-            })),
-            Some(WorkerTitlePhase::Waiting)
-        );
-        assert_eq!(
-            worker_title_phase_for_event(&EventBody::InterviewCompleted(InterviewCompletedProps {
-                question_id: "q-1".to_string(),
-                question:    "Approve?".to_string(),
-                answer:      "yes".to_string(),
-                duration_ms: 10,
-            })),
-            Some(WorkerTitlePhase::Running)
-        );
-        assert_eq!(
-            worker_title_phase_for_event(&EventBody::RunCompleted(RunCompletedProps {
-                timing:               fabro_types::RunTiming::wall_only(10),
-                artifact_count:       0,
-                status:               "succeeded".to_string(),
-                reason:               SuccessReason::Completed,
-                final_git_commit_sha: None,
-                final_patch:          None,
-                diff_summary:         None,
-                usage:                None,
-            })),
-            Some(WorkerTitlePhase::Succeeded)
-        );
-        assert_eq!(
-            worker_title_phase_for_event(&EventBody::RunFailed(RunFailedProps {
-                failure:              RunFailure {
-                    reason: FailureReason::Cancelled,
-                    detail: FailureDetail::new("cancelled", FailureCategory::Canceled),
-                },
-                timing:               fabro_types::RunTiming::wall_only(10),
-                final_git_commit_sha: None,
-                final_patch:          None,
-                diff_summary:         None,
-                usage:                None,
-            })),
-            Some(WorkerTitlePhase::Cancelled)
-        );
-        assert_eq!(
-            worker_title_phase_for_event(&EventBody::RunFailed(RunFailedProps {
-                failure:              RunFailure {
-                    reason: FailureReason::Terminated,
-                    detail: FailureDetail::new("boom", FailureCategory::Deterministic),
-                },
-                timing:               fabro_types::RunTiming::wall_only(10),
-                final_git_commit_sha: None,
-                final_patch:          None,
-                diff_summary:         None,
-                usage:                None,
-            })),
-            Some(WorkerTitlePhase::Failed)
-        );
-    }
-
-    #[test]
     fn stamp_system_worker_fills_missing_actor_only() {
         let stamped = stamp_system_worker(running_event(None));
 
@@ -1483,13 +1068,12 @@ mod tests {
     async fn worker_control_routes_answer_by_question_id() {
         let interviewer = Arc::new(ControlInterviewer::new());
         let cancel_token = CancellationToken::new();
-        let run_control = RunControlState::new();
         let mut question = Question::new("Approve?", QuestionType::YesNo);
         question.id = "q-1".to_string();
         let ask_interviewer = Arc::clone(&interviewer);
         let answer_task = tokio::spawn(async move { ask_interviewer.ask(question).await });
 
-        let controls = test_controls(&run_control);
+        let controls = test_controls();
         apply_worker_control_message(
             &interviewer,
             &cancel_token,
@@ -1513,14 +1097,13 @@ mod tests {
     async fn worker_control_cancel_sets_cancel_token_and_interrupts_pending_interviews() {
         let interviewer = Arc::new(ControlInterviewer::new());
         let cancel_token = CancellationToken::new();
-        let run_control = RunControlState::new();
         let mut question = Question::new("Approve?", QuestionType::YesNo);
         question.id = "q-1".to_string();
         let ask_interviewer = Arc::clone(&interviewer);
         let answer_task = tokio::spawn(async move { ask_interviewer.ask(question).await });
         tokio::task::yield_now().await;
 
-        let controls = test_controls(&run_control);
+        let controls = test_controls();
         apply_worker_control_message(
             &interviewer,
             &cancel_token,
@@ -1535,11 +1118,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn worker_control_pause_and_unpause_route_to_run_control() {
+    async fn worker_control_pause_and_unpause_route_to_the_run_controls() {
         let interviewer = Arc::new(ControlInterviewer::new());
         let cancel_token = CancellationToken::new();
-        let run_control = RunControlState::new();
-        let controls = test_controls(&run_control);
+        let controls = test_controls();
 
         apply_worker_control_message(
             &interviewer,
@@ -1548,7 +1130,7 @@ mod tests {
             WorkerControlEnvelope::pause_run(),
         )
         .await;
-        assert!(run_control.pause_requested());
+        assert!(controls.controls().is_paused());
 
         apply_worker_control_message(
             &interviewer,
@@ -1557,15 +1139,14 @@ mod tests {
             WorkerControlEnvelope::unpause_run(),
         )
         .await;
-        assert!(!run_control.pause_requested());
+        assert!(!controls.controls().is_paused());
     }
 
     #[tokio::test]
     async fn duplicate_delivery_ids_are_not_applied_twice() {
         let interviewer = Arc::new(ControlInterviewer::new());
         let cancel_token = CancellationToken::new();
-        let run_control = RunControlState::new();
-        let controls = test_controls(&run_control);
+        let controls = test_controls();
         let mut applied_ids = AppliedWorkerControlDeliveryIds::default();
         let frame = fabro_interview::WorkerControlDeliveryFrame {
             id:       "local:1".to_string(),
@@ -1672,8 +1253,7 @@ mod tests {
         let mut socket = WorkerControlSocket::Test(Box::new(worker_ws));
         let interviewer = Arc::new(ControlInterviewer::new());
         let cancel_token = CancellationToken::new();
-        let run_control = RunControlState::new();
-        let controls = test_controls(&run_control);
+        let controls = test_controls();
         let mut applied_ids = AppliedWorkerControlDeliveryIds::default();
         let done = CancellationToken::new();
 
@@ -1746,80 +1326,5 @@ mod tests {
         let credential = guard.get("ANTHROPIC_API_KEY").unwrap();
 
         assert!(credential.contains("vault-key"));
-    }
-
-    mod requires_github_credentials_truth_table {
-        //! Truth-table coverage for the worker-side credential gate.
-        //! `InterpString` → `String` resolution is tested in `fabro-types`
-        //! next to `RunIntegrationsGithubSettings::resolve_permissions`.
-
-        use std::collections::HashMap;
-
-        use fabro_types::SandboxProviderKind;
-        use fabro_types::settings::InterpString;
-        use fabro_types::settings::run::{
-            RunIntegrationsGithubSettings, RunIntegrationsSettings, RunMode, RunNamespace,
-        };
-
-        use super::super::requires_github_credentials;
-
-        fn run_with(
-            permissions: HashMap<String, InterpString>,
-            provider: &str,
-            mode: RunMode,
-        ) -> RunNamespace {
-            let mut run = RunNamespace::default();
-            run.execution.mode = mode;
-            run.environment.provider = provider
-                .parse::<SandboxProviderKind>()
-                .expect("test provider should parse");
-            run.integrations = RunIntegrationsSettings {
-                github: RunIntegrationsGithubSettings {
-                    permissions,
-                    ..RunIntegrationsGithubSettings::default()
-                },
-            };
-            run
-        }
-
-        #[test]
-        fn requires_github_credentials_when_permissions_non_empty() {
-            let permissions = HashMap::from([("issues".to_string(), InterpString::parse("read"))]);
-            // Even with local sandbox + dry-run, non-empty permissions
-            // force credential acquisition.
-            let run = run_with(permissions, "local", RunMode::DryRun);
-            assert!(requires_github_credentials(&run, false));
-        }
-
-        #[test]
-        fn requires_github_credentials_for_clone_based_provider_with_an_origin() {
-            let run = run_with(HashMap::new(), "docker", RunMode::Normal);
-            assert!(requires_github_credentials(&run, true));
-
-            let daytona = run_with(HashMap::new(), "daytona", RunMode::Normal);
-            assert!(requires_github_credentials(&daytona, true));
-
-            let plugin = run_with(HashMap::new(), "host", RunMode::Normal);
-            assert!(requires_github_credentials(&plugin, true));
-        }
-
-        #[test]
-        fn does_not_require_github_credentials_without_a_repository_origin() {
-            // A `none` target creates an empty workspace; nothing is cloned.
-            let run = run_with(HashMap::new(), "docker", RunMode::Normal);
-            assert!(!requires_github_credentials(&run, false));
-        }
-
-        #[test]
-        fn does_not_require_github_credentials_for_local_clean_run() {
-            let run = run_with(HashMap::new(), "local", RunMode::Normal);
-            assert!(!requires_github_credentials(&run, true));
-        }
-
-        #[test]
-        fn does_not_require_github_credentials_for_clone_provider_in_dry_run() {
-            let run = run_with(HashMap::new(), "docker", RunMode::DryRun);
-            assert!(!requires_github_credentials(&run, true));
-        }
     }
 }

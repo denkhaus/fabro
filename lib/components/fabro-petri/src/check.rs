@@ -14,7 +14,8 @@
 //! `petri.launch_model` and `petri.launch_provider` as the model default
 //! below every file layer, and `petri.repository` as the repository the root
 //! `start` stage checks out. A caller with no local repository binds `null`,
-//! and the run starts from an empty workspace.
+//! and the run starts from an empty workspace. The server's run variables
+//! (`{{ vars.NAME }}`) are bound as compile variables beside them.
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -69,12 +70,15 @@ pub struct Launch {
     pub repository: Option<PathBuf>,
 }
 
-/// One check: the bundle, the run's inputs, the launch and the runtime.
+/// One check: the bundle, the run's inputs and variables, the launch and
+/// the runtime.
 #[derive(Clone, Default)]
 pub struct CheckRequest {
     pub bundle:  Bundle,
     /// The intent's inputs, under which `[run.inputs]` defaults fill in.
     pub inputs:  BTreeMap<String, Value>,
+    /// The server's run variables, read by `{{ vars.NAME }}`.
+    pub vars:    BTreeMap<String, String>,
     pub launch:  Launch,
     pub runtime: RuntimeSpec,
 }
@@ -141,7 +145,7 @@ pub fn check(request: &CheckRequest) -> Result<Admitted, CheckError> {
                 entrypoint: bundle.entrypoint.clone(),
             })?;
     let runtime = request.runtime.runtime(false);
-    let inputs = compile_inputs(&request.inputs, &request.launch);
+    let inputs = compile_inputs(&request.inputs, &request.vars, &request.launch);
     let lowered = runtime
         .check_source(&bundle.entrypoint, text, &bundle.files(), None, &inputs)
         .map_err(CheckError::Load)?;
@@ -156,11 +160,21 @@ pub fn check(request: &CheckRequest) -> Result<Admitted, CheckError> {
     }
 }
 
-/// The compile inputs: the intent's inputs, and the launch variables.
-fn compile_inputs(inputs: &BTreeMap<String, Value>, launch: &Launch) -> CompileInputs {
+/// The compile inputs: the intent's inputs, the run variables, and the
+/// launch variables.
+fn compile_inputs(
+    inputs: &BTreeMap<String, Value>,
+    vars: &BTreeMap<String, String>,
+    launch: &Launch,
+) -> CompileInputs {
     let mut compile = CompileInputs::new();
     for (name, value) in inputs {
         compile.inputs.insert(name.as_str().into(), value.clone());
+    }
+    for (name, value) in vars {
+        compile
+            .vars
+            .insert(name.as_str().into(), Value::String(value.clone()));
     }
     let text = |value: &Option<String>| match value {
         Some(text) if !text.trim().is_empty() => Value::String(text.clone()),

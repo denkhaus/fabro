@@ -252,10 +252,8 @@ impl Database {
                 Err(error) => return Err(error),
             }
         };
-        if legacy.spec.engine.is_petri() {
-            if let Some(petri) = self.run_summary_store.load_petri_projection(run_id).await? {
-                return Ok(Some(petri));
-            }
+        if let Some(petri) = self.run_summary_store.load_petri_projection(run_id).await? {
+            return Ok(Some(petri));
         }
         Ok(Some(legacy))
     }
@@ -340,8 +338,8 @@ fn active_run_from(
 mod tests {
     use chrono::{DateTime, Utc};
     use fabro_types::{
-        AttrValue, FailureReason, Graph, RunControlAction, RunSpec, RunStatus, StageId,
-        SuccessReason, WorkflowSettings, test_support,
+        AttrValue, FailureReason, Graph, PetriAdmission, RunControlAction, RunSpec, RunStatus,
+        StageId, SuccessReason, WorkflowSettings, test_support,
     };
     use futures::TryStreamExt;
     use object_store::memory::InMemory;
@@ -498,7 +496,7 @@ mod tests {
                 dirty:      fabro_types::DirtyStatus::Clean,
             }),
             fork_source_ref: None,
-            engine: fabro_types::RunEngine::Legacy,
+            admission: PetriAdmission::default(),
         }
     }
 

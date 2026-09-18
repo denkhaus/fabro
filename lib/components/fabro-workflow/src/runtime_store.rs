@@ -117,7 +117,7 @@ mod tests {
 
     use chrono::Utc;
     use fabro_types::run_event::RunSubmittedProps;
-    use fabro_types::{EventBody, RunEvent, fixtures, test_support};
+    use fabro_types::{EventBody, PetriAdmission, RunEvent, fixtures, test_support};
     use object_store::memory::InMemory;
 
     use super::RunStoreHandle;
@@ -163,7 +163,7 @@ mod tests {
             retried_from:        None,
             parent_id:           None,
             web_url:             None,
-            engine:              fabro_types::RunEngine::Legacy,
+            admission:           PetriAdmission::default(),
         })
         .await
         .unwrap();

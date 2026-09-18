@@ -778,7 +778,8 @@ mod tests {
     use fabro_store::{Database, RunDatabase};
     use fabro_types::settings::run::RunModelControls;
     use fabro_types::{
-        EventBody, ForkSourceRef, RunEvent, RunId, WorkflowSettings, fixtures, test_support,
+        EventBody, ForkSourceRef, PetriAdmission, RunEvent, RunId, WorkflowSettings, fixtures,
+        test_support,
     };
     use fabro_vault::{SecretType, Vault};
     use object_store::memory::InMemory;
@@ -846,7 +847,7 @@ mod tests {
             retried_from: None,
             parent_id: None,
             web_url: None,
-            engine: fabro_types::RunEngine::Legacy,
+            admission: PetriAdmission::default(),
         })
         .await
         .unwrap();
@@ -1011,7 +1012,7 @@ mod tests {
                 definition_blob: None,
                 spec_blob: None,
                 fork_source_ref,
-                engine: fabro_types::RunEngine::Legacy,
+                admission: PetriAdmission::default(),
             },
         )
     }

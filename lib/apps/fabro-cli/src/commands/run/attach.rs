@@ -20,10 +20,8 @@ use std::time::Duration;
 use anyhow::Result;
 use fabro_api::types;
 use fabro_interview::{Answer, AnswerValue, Question};
-use fabro_store::EventEnvelope;
 use fabro_types::settings::run::ApprovalMode;
-use fabro_types::{EventBody, InterviewOption, QuestionType, RunId};
-use fabro_util::json::normalize_json_value;
+use fabro_types::{InterviewOption, QuestionType, RunId};
 use fabro_util::printer::Printer;
 use fabro_util::terminal::Styles;
 use fabro_workflow::outcome::StageOutcome;
@@ -37,7 +35,6 @@ use crate::server_client;
 const INTERVIEW_UNANSWERED_MESSAGE: &str =
     "Interview ended without an answer. The run is still waiting for input; reattach to answer it.";
 const JSON_INTERVIEW_MESSAGE: &str = "This run is waiting for human input, but --json is non-interactive. Reattach without --json to answer it.";
-const ATTACH_PREMATURE_EOF_MESSAGE: &str = "Attach stream ended before terminal run event.";
 const PROMPT_READ_POLL_INTERVAL: TokioDuration = TokioDuration::from_millis(50);
 /// How long a Petri attach waits before it reconnects to the stream the
 /// server ended while the run was still active.
@@ -185,45 +182,10 @@ pub(crate) async fn attach_run_with_client(
 ) -> Result<ExitCode> {
     let state = client.get_run_state(run_id).await?;
     let auto_approve = state.spec.settings.run.execution.approval == ApprovalMode::Auto;
-    if state.spec.engine.is_petri() {
-        return Box::pin(attach_petri_run_with_client(
-            client,
-            run_id,
-            &state,
-            styles,
-            AttachOptions {
-                auto_approve,
-                verbose: live_verbose,
-                kill_on_detach,
-                json_output,
-            },
-            printer,
-        ))
-        .await;
-    }
-    let events = client.list_run_events(run_id, None, None).await?;
-    let replay_events = events.clone();
-    let next_seq = events.last().map_or(1, |event| event.seq.saturating_add(1));
-    let initial_exit_code = events.iter().rev().find_map(event_exit_code);
-    let state_exit_code = state_exit_code(&state);
-
-    if state_is_terminal(&state) || initial_exit_code.is_some() {
-        return replay_run_with_client(
-            live_verbose,
-            events,
-            initial_exit_code
-                .or(state_exit_code)
-                .unwrap_or(ExitCode::from(1)),
-            json_output,
-        );
-    }
-
-    let stream = client.attach_run_events(run_id, Some(next_seq)).await?;
-    Box::pin(attach_live_run_with_client(
+    Box::pin(attach_petri_run_with_client(
         client,
         run_id,
-        replay_events,
-        stream,
+        &state,
         styles,
         AttachOptions {
             auto_approve,
@@ -241,103 +203,6 @@ struct AttachOptions {
     verbose:        bool,
     kill_on_detach: bool,
     json_output:    bool,
-}
-
-fn replay_run_with_client(
-    verbose: bool,
-    events: Vec<EventEnvelope>,
-    exit_code: ExitCode,
-    json_output: bool,
-) -> Result<ExitCode> {
-    let is_tty = std::io::stderr().is_terminal();
-    let mut progress_ui = run_progress::ProgressUI::new(is_tty, verbose);
-
-    for event in events {
-        let line = event_payload_line(&event)?;
-        emit_progress_line(&mut progress_ui, &line, json_output)?;
-    }
-
-    finish_progress(&mut progress_ui, json_output);
-
-    Ok(exit_code)
-}
-
-async fn attach_live_run_with_client(
-    client: &server_client::Client,
-    run_id: &RunId,
-    existing_events: Vec<EventEnvelope>,
-    mut stream: server_client::RunEventStream,
-    styles: &'static Styles,
-    opts: AttachOptions,
-    printer: Printer,
-) -> Result<ExitCode> {
-    let is_tty = std::io::stderr().is_terminal();
-    let mut progress_ui = run_progress::ProgressUI::new(is_tty, opts.verbose);
-    let ctrl_c_signal = ctrl_c();
-    tokio::pin!(ctrl_c_signal);
-
-    for event in existing_events {
-        let line = event_payload_line(&event)?;
-        emit_progress_line(&mut progress_ui, &line, opts.json_output)?;
-    }
-
-    if let Some(exit_code) = Box::pin(handle_pending_server_interview(
-        client,
-        run_id,
-        &mut stream,
-        opts.auto_approve,
-        &mut progress_ui,
-        styles,
-        opts.json_output,
-        opts.kill_on_detach,
-        printer,
-    ))
-    .await?
-    {
-        return Ok(exit_code);
-    }
-
-    loop {
-        let next_event = tokio::select! {
-            _ = &mut ctrl_c_signal => {
-                handle_detach_signal(client, run_id, opts.kill_on_detach, printer).await;
-                finish_progress(&mut progress_ui, opts.json_output);
-                return Ok(ExitCode::from(1));
-            }
-            result = stream.next_event() => result?,
-        };
-
-        let Some(event) = next_event else {
-            finish_progress(&mut progress_ui, opts.json_output);
-            return Err(anyhow::anyhow!(ATTACH_PREMATURE_EOF_MESSAGE));
-        };
-
-        let line = event_payload_line(&event)?;
-        emit_progress_line(&mut progress_ui, &line, opts.json_output)?;
-
-        if let Some(exit_code) = event_exit_code(&event) {
-            finish_progress(&mut progress_ui, opts.json_output);
-            return Ok(exit_code);
-        }
-
-        if event_starts_interview(&event) {
-            if let Some(exit_code) = Box::pin(handle_pending_server_interview(
-                client,
-                run_id,
-                &mut stream,
-                opts.auto_approve,
-                &mut progress_ui,
-                styles,
-                opts.json_output,
-                opts.kill_on_detach,
-                printer,
-            ))
-            .await?
-            {
-                return Ok(exit_code);
-            }
-        }
-    }
 }
 
 /// Attach to a Petri run: replay its stream through the progress renderer,
@@ -529,77 +394,6 @@ fn emit_stream_item(
         progress_ui.handle_stream_item(item);
     }
     Ok(())
-}
-
-async fn handle_pending_server_interview(
-    client: &server_client::Client,
-    run_id: &RunId,
-    stream: &mut server_client::RunEventStream,
-    auto_approve: bool,
-    progress_ui: &mut run_progress::ProgressUI,
-    styles: &'static Styles,
-    json_output: bool,
-    kill_on_detach: bool,
-    printer: Printer,
-) -> Result<Option<ExitCode>> {
-    let Some(question) = client.list_run_questions(run_id).await?.into_iter().next() else {
-        return Ok(None);
-    };
-
-    if json_pending_interview_requires_manual_input(json_output, auto_approve) {
-        fabro_util::printerr!(printer, "{JSON_INTERVIEW_MESSAGE}");
-        return Ok(Some(ExitCode::from(1)));
-    }
-    if json_output {
-        return Ok(None);
-    }
-
-    hide_progress(progress_ui, json_output);
-    let ask = ask_attach_question(api_question_to_question(&question), styles);
-    tokio::pin!(ask);
-    let ctrl_c_signal = ctrl_c();
-    tokio::pin!(ctrl_c_signal);
-
-    let answer = loop {
-        let next_event = tokio::select! {
-            answer = &mut ask => {
-                break answer;
-            }
-            _ = &mut ctrl_c_signal => {
-                handle_detach_signal(client, run_id, kill_on_detach, printer).await;
-                show_progress(progress_ui, json_output);
-                return Ok(Some(ExitCode::from(1)));
-            }
-            result = stream.next_event() => result?,
-        };
-
-        let Some(event) = next_event else {
-            show_progress(progress_ui, json_output);
-            return Err(anyhow::anyhow!(ATTACH_PREMATURE_EOF_MESSAGE));
-        };
-
-        let line = event_payload_line(&event)?;
-        emit_progress_line(progress_ui, &line, json_output)?;
-
-        if let Some(exit_code) = event_exit_code(&event) {
-            show_progress(progress_ui, json_output);
-            return Ok(Some(exit_code));
-        }
-
-        if event_resolves_interview(&event, &question.id) {
-            show_progress(progress_ui, json_output);
-            return Ok(None);
-        }
-    };
-    show_progress(progress_ui, json_output);
-
-    if answer_requires_reattach(&answer) {
-        fabro_util::printerr!(printer, "{INTERVIEW_UNANSWERED_MESSAGE}");
-        return Ok(Some(ExitCode::from(1)));
-    }
-
-    submit_server_interview_answer(client, run_id, &question.id, &answer).await?;
-    Ok(None)
 }
 
 async fn handle_detach_signal(
@@ -898,21 +692,6 @@ fn state_is_terminal(state: &server_client::RunProjection) -> bool {
     state.conclusion.is_some() || state.status.is_terminal()
 }
 
-fn emit_progress_line(
-    progress_ui: &mut run_progress::ProgressUI,
-    line: &str,
-    json_output: bool,
-) -> Result<()> {
-    if json_output {
-        let stdout = std::io::stdout();
-        let mut handle = stdout.lock();
-        writeln!(handle, "{line}")?;
-    } else {
-        progress_ui.handle_json_line(line);
-    }
-    Ok(())
-}
-
 fn finish_progress(progress_ui: &mut run_progress::ProgressUI, json_output: bool) {
     if !json_output {
         progress_ui.finish();
@@ -928,32 +707,6 @@ fn hide_progress(progress_ui: &mut run_progress::ProgressUI, json_output: bool) 
 fn show_progress(progress_ui: &mut run_progress::ProgressUI, json_output: bool) {
     if !json_output {
         progress_ui.show_bars();
-    }
-}
-
-fn event_payload_line(event: &EventEnvelope) -> Result<String> {
-    let mut value = normalize_json_value(event.event.to_value()?);
-    restore_empty_run_properties(&mut value);
-    serde_json::to_string(&value).map_err(Into::into)
-}
-
-fn restore_empty_run_properties(value: &mut serde_json::Value) {
-    let Some(object) = value.as_object_mut() else {
-        return;
-    };
-    let Some(event_name) = object.get("event").and_then(serde_json::Value::as_str) else {
-        return;
-    };
-    if matches!(event_name, "run.submitted" | "run.running") && !object.contains_key("properties") {
-        let run_id = object.remove("run_id");
-        let ts = object.remove("ts");
-        object.insert("properties".to_string(), serde_json::json!({}));
-        if let Some(run_id) = run_id {
-            object.insert("run_id".to_string(), run_id);
-        }
-        if let Some(ts) = ts {
-            object.insert("ts".to_string(), ts);
-        }
     }
 }
 
@@ -1001,42 +754,14 @@ fn state_exit_code(state: &server_client::RunProjection) -> Option<ExitCode> {
     }
 }
 
-fn event_exit_code(event: &EventEnvelope) -> Option<ExitCode> {
-    match &event.event.body {
-        EventBody::RunCompleted(props) => Some(
-            if props.status == "succeeded" || props.status == "partially_succeeded" {
-                ExitCode::from(0)
-            } else {
-                ExitCode::from(1)
-            },
-        ),
-        EventBody::RunFailed(_) => Some(ExitCode::from(1)),
-        _ => None,
-    }
-}
-
-fn event_starts_interview(event: &EventEnvelope) -> bool {
-    matches!(event.event.body, EventBody::InterviewStarted(_))
-}
-
-fn event_resolves_interview(event: &EventEnvelope, question_id: &str) -> bool {
-    match &event.event.body {
-        EventBody::InterviewCompleted(props) => props.question_id == question_id,
-        EventBody::InterviewInterrupted(props) => props.question_id == question_id,
-        EventBody::InterviewTimeout(props) => props.question_id == question_id,
-        _ => false,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     #![allow(
         clippy::absolute_paths,
         reason = "This test module prefers explicit type paths over extra imports."
     )]
-
     use fabro_interview::{Answer, AnswerValue};
-    use fabro_types::test_support;
+    use fabro_types::{PetriAdmission, test_support};
     use fabro_util::terminal::Styles;
     use httpmock::MockServer;
 
@@ -1063,7 +788,7 @@ mod tests {
             spec_blob: None,
             git: None,
             fork_source_ref: None,
-            engine: fabro_types::RunEngine::Legacy,
+            admission: PetriAdmission::default(),
         };
         serde_json::json!({
             "spec": serde_json::to_value(spec).unwrap(),

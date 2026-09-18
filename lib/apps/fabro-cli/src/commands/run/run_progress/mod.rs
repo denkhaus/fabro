@@ -13,7 +13,9 @@ mod setup_display;
 mod stage_display;
 mod styles;
 
-use event::{ProgressEvent, from_json_line, from_run_event};
+#[cfg(test)]
+use event::from_json_line;
+use event::{ProgressEvent, from_run_event};
 use info_display::InfoDisplay;
 use petri::PetriProgressState;
 use renderer::ProgressRenderer;
@@ -93,6 +95,7 @@ impl ProgressUI {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn handle_json_line(&mut self, line: &str) {
         if let Some(progress_event) = from_json_line(line) {
             self.dispatch(progress_event);

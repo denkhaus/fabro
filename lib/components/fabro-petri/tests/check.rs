@@ -68,6 +68,7 @@ fn request(bundle: Bundle, runtime: RuntimeSpec) -> CheckRequest {
     CheckRequest {
         bundle,
         inputs: BTreeMap::new(),
+        vars: BTreeMap::new(),
         launch: Launch::default(),
         runtime,
     }
@@ -135,6 +136,7 @@ async fn a_launch_binds_the_repository_and_the_model_default() {
             ("workflow.toml", SETTINGS),
         ]),
         inputs:  BTreeMap::new(),
+        vars:    BTreeMap::new(),
         launch:  Launch {
             model:      Some("gpt-5.4".to_string()),
             provider:   None,

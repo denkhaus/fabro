@@ -908,89 +908,11 @@ WHERE id = ?
         .ok_or_else(|| Error::RunNotFound(entry.run_id.to_string()))?;
 
         let run = &record.run;
-        let diff = run.diff.unwrap_or_default();
         verify_run_field(&row, run, "id", &run.id.to_string())?;
         verify_run_field(&row, run, "source_last_seq", &i64::from(record.last_seq))?;
-        if entry.projection.spec.engine.is_petri() {
-            // A Petri run's row is written by its projector from Petri's
-            // records and the platform records; the legacy fold knows the
-            // lifecycle alone, so only the identity and the legacy guard
-            // are checked here.
-            return Ok(());
-        }
-        verify_run_field(
-            &row,
-            run,
-            "created_at_ms",
-            &run.timestamps.created_at.timestamp_millis(),
-        )?;
-        verify_run_field(
-            &row,
-            run,
-            "started_at_ms",
-            &run.timestamps
-                .started_at
-                .map(|value| value.timestamp_millis()),
-        )?;
-        verify_run_field(
-            &row,
-            run,
-            "last_event_at_ms",
-            &run.timestamps
-                .last_event_at
-                .unwrap_or(run.timestamps.created_at)
-                .timestamp_millis(),
-        )?;
-        verify_run_field(
-            &row,
-            run,
-            "completed_at_ms",
-            &run.timestamps
-                .completed_at
-                .map(|value| value.timestamp_millis()),
-        )?;
-        verify_run_field(
-            &row,
-            run,
-            "status",
-            &run.lifecycle.status.kind().to_string(),
-        )?;
-        verify_run_field(
-            &row,
-            run,
-            "archived_at_ms",
-            &run.lifecycle
-                .archived_at
-                .map(|value| value.timestamp_millis()),
-        )?;
-        verify_run_field(
-            &row,
-            run,
-            "parent_id",
-            &run.parent_id.map(|value| value.to_string()),
-        )?;
-        verify_run_field(&row, run, "title", &run.title)?;
-        verify_run_field(&row, run, "workflow_slug", &run.workflow.slug)?;
-        verify_run_field(&row, run, "workflow_name", &record.workflow_name)?;
-        verify_run_field(&row, run, "repository_name", &record.repository_name)?;
-        verify_run_field(
-            &row,
-            run,
-            "automation_id",
-            &run.automation
-                .as_ref()
-                .map(|automation| automation.id.clone()),
-        )?;
-        verify_run_field(&row, run, "diff_files_changed", &diff.files_changed)?;
-        verify_run_field(&row, run, "diff_additions", &diff.additions)?;
-        verify_run_field(&row, run, "diff_deletions", &diff.deletions)?;
-        verify_run_field(&row, run, "input_tokens", &record.input_tokens)?;
-        verify_run_field(&row, run, "output_tokens", &record.output_tokens)?;
-        verify_run_field(&row, run, "reasoning_tokens", &record.reasoning_tokens)?;
-        verify_run_field(&row, run, "cache_read_tokens", &record.cache_read_tokens)?;
-        verify_run_field(&row, run, "cache_write_tokens", &record.cache_write_tokens)?;
-        verify_run_field(&row, run, "total_usd_micros", &record.total_usd_micros)?;
-        verify_run_json_field(&row, run)?;
+        // The run's row is written by its projector from Petri's records
+        // and the platform records; the legacy fold knows the lifecycle
+        // alone, so only the identity and the legacy guard are checked here.
         Ok(())
     }
 
@@ -1264,9 +1186,7 @@ pub(crate) fn platform_record_written(
     entry: &ProjectedRun,
     envelope: &EventEnvelope,
 ) -> Option<platform_records::PlatformRecord> {
-    if !entry.projection.spec.engine.is_petri() {
-        return None;
-    }
+    let _ = entry;
     platform_records::platform_record_for(&envelope.event)
 }
 
@@ -1317,19 +1237,6 @@ where
         return Err(Error::RunSummaryMismatch {
             run_id: run.id.to_string(),
             field,
-        });
-    }
-    Ok(())
-}
-
-fn verify_run_json_field(row: &SqliteRow, run: &Run) -> Result<()> {
-    let stored_json: String = row.try_get("summary_json")?;
-    let stored: serde_json::Value = serde_json::from_str(&stored_json)?;
-    let expected = serde_json::to_value(run)?;
-    if stored != expected {
-        return Err(Error::RunSummaryMismatch {
-            run_id: run.id.to_string(),
-            field:  "summary_json",
         });
     }
     Ok(())
@@ -1675,9 +1582,9 @@ mod tests {
     use chrono::{DateTime, Utc};
     use fabro_types::{
         AutomationRef, BlockedReason, Conclusion, DiffSummary, EventEnvelope, FailureReason, Graph,
-        PendingReason, PullRequestCreationId, RunDiff, RunId, RunProjection, RunSize, RunSpec,
-        RunStatus, RunStatusKind, RunTiming, SessionId, StageId, StageOutcome, SuccessReason,
-        WorkflowSettings, test_support,
+        PendingReason, PetriAdmission, PullRequestCreationId, RunDiff, RunId, RunProjection,
+        RunSize, RunSpec, RunStatus, RunStatusKind, RunTiming, SessionId, StageId, StageOutcome,
+        SuccessReason, WorkflowSettings, test_support,
     };
     use lithos_llm::types::{Cost, CostSource, TokenCounts, Usage};
     use strum::VariantArray as _;
@@ -1718,7 +1625,7 @@ mod tests {
                 spec_blob: None,
                 git: None,
                 fork_source_ref: None,
-                engine: fabro_types::RunEngine::Legacy,
+                admission: PetriAdmission::default(),
             },
             created_at,
         )

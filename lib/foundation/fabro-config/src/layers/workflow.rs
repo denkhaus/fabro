@@ -1,6 +1,5 @@
 //! Sparse `[workflow]` settings layer definitions.
 
-use fabro_types::Engine;
 use serde::{Deserialize, Serialize};
 
 use super::maps::ReplaceMap;
@@ -18,8 +17,4 @@ pub struct WorkflowLayer {
     pub graph:       Option<String>,
     #[serde(default, skip_serializing_if = "ReplaceMap::is_empty")]
     pub metadata:    ReplaceMap<String>,
-    /// The engine the workflow asks to run on: `"petri"` or `"legacy"`.
-    /// Unset leaves the choice to the server's `[server.execution] engine`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub engine:      Option<Engine>,
 }

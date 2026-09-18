@@ -209,6 +209,41 @@ impl Projector {
         stream_after(&self.pool, run_id, after, limit).await
     }
 
+    /// Delete everything the store and the view tables hold for the run:
+    /// its Petri records and lease, its platform records, its projection
+    /// and its stream. The caller has ended the run's worker, so no writer
+    /// holds the lease.
+    pub async fn delete_run(&self, run_id: RunId) -> Result<(), ProjectError> {
+        let id = run_id.to_string();
+        let mut views = self.pool.begin().await.map_err(ProjectError::Database)?;
+        for delete in [
+            "DELETE FROM petri_stream WHERE run_id = ?",
+            "DELETE FROM petri_projection WHERE run_id = ?",
+            "DELETE FROM platform_records WHERE run_id = ?",
+        ] {
+            sqlx::query(delete)
+                .bind(&id)
+                .execute(&mut *views)
+                .await
+                .map_err(ProjectError::Database)?;
+        }
+        views.commit().await.map_err(ProjectError::Database)?;
+        let mut records = self.records.begin().await.map_err(ProjectError::Database)?;
+        for delete in [
+            "DELETE FROM petri_records WHERE run_id = ?",
+            "DELETE FROM petri_runs WHERE run_id = ?",
+        ] {
+            sqlx::query(delete)
+                .bind(&id)
+                .execute(&mut *records)
+                .await
+                .map_err(ProjectError::Database)?;
+        }
+        records.commit().await.map_err(ProjectError::Database)?;
+        lock(&self.slots).remove(&run_id);
+        Ok(())
+    }
+
     /// The last delivery sequence the run's view holds, or `None` when no
     /// pass has committed a view for it.
     pub async fn stream_head(&self, run_id: RunId) -> Result<Option<u64>, ProjectError> {

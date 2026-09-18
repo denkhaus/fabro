@@ -964,7 +964,7 @@ mod tests {
 
     use fabro_graphviz::graph::{AttrValue, Edge};
     use fabro_store::{Database, StageId};
-    use fabro_types::{fixtures, format_blob_ref, test_support};
+    use fabro_types::{PetriAdmission, fixtures, format_blob_ref, test_support};
     use object_store::memory::InMemory;
 
     use super::*;
@@ -1007,7 +1007,7 @@ mod tests {
                 retried_from:        None,
                 parent_id:           None,
                 web_url:             None,
-                engine:              fabro_types::RunEngine::Legacy,
+                admission:           PetriAdmission::default(),
             },
         )
         .await

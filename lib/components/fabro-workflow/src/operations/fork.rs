@@ -178,7 +178,7 @@ async fn persist_forked_run(
         retried_from:        None,
         parent_id:           None,
         web_url:             None,
-        engine:              spec.engine.clone(),
+        admission:           spec.admission.clone(),
     };
     let run_store = event::create_run(store, &spec.run_id, &first_event, Utc::now())
         .await
@@ -296,7 +296,7 @@ mod tests {
 
     use fabro_graphviz::graph::Graph;
     use fabro_store::{Database, RunProjectionReducer};
-    use fabro_types::{StageId, WorkflowSettings, fixtures, test_support};
+    use fabro_types::{PetriAdmission, StageId, WorkflowSettings, fixtures, test_support};
     use object_store::memory::InMemory;
 
     use super::*;
@@ -414,7 +414,7 @@ mod tests {
             retried_from:        None,
             parent_id:           None,
             web_url:             None,
-            engine:              fabro_types::RunEngine::Legacy,
+            admission:           PetriAdmission::default(),
         })
         .await
         .unwrap();

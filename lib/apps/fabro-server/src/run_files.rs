@@ -1681,7 +1681,7 @@ mod tests {
 
     use fabro_sandbox::Termination;
     use fabro_sandbox::test_support::exec_result;
-    use fabro_types::{RunId, test_support};
+    use fabro_types::{PetriAdmission, RunId, test_support};
     use tokio::time::{Duration, sleep};
 
     use super::*;
@@ -2298,7 +2298,7 @@ index 1111111..2222222 160000
                 spec_blob:           None,
                 git:                 None,
                 fork_source_ref:     None,
-                engine:              fabro_types::RunEngine::Legacy,
+                admission:           PetriAdmission::default(),
             },
             chrono::Utc::now(),
         );
