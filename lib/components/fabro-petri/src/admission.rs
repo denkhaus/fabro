@@ -7,19 +7,38 @@
 //! which is the key the coordinator registers the graph under and the name a
 //! nested-workflow step invokes its child by. Loading verifies the digest,
 //! so a blob that does not decode to the graph it claims is refused.
+//!
+//! The server loads through its [`BlobStore`]; a run's worker loads through
+//! its client's blob read with [`load_with`], since the run's blobs are the
+//! blob store the server answers `GET /runs/{id}/blobs/{hash}` from.
+
+use std::future::Future;
 
 use fabro_store::BlobStore;
-use fabro_types::{PetriAdmission, PetriGraphRef};
+use fabro_types::{BlobHash, PetriAdmission, PetriGraphRef};
 use petri_runtime::frontend::graph_digest;
 use petri_runtime::ir::Graph;
 
 use crate::check::Admitted;
+
+/// The graphs a run starts from: the admitted root and its pre-lowered
+/// children, loaded and verified.
+pub struct AdmittedGraphs {
+    pub graph:    Graph,
+    pub children: Vec<Graph>,
+}
 
 /// Why an admission could not be stored or loaded.
 #[derive(Debug, thiserror::Error)]
 pub enum AdmissionError {
     #[error("the blob store failed")]
     Store(#[source] fabro_store::Error),
+    #[error("blob `{blob}` could not be read")]
+    Read {
+        blob:   String,
+        #[source]
+        source: anyhow::Error,
+    },
     #[error("graph `{digest}` is not in the blob store")]
     Missing { digest: String },
     #[error("graph `{digest}` does not encode as JSON")]
@@ -60,13 +79,30 @@ pub async fn persist(
 pub async fn load(
     blobs: &BlobStore,
     admission: &PetriAdmission,
-) -> Result<(Graph, Vec<Graph>), AdmissionError> {
-    let graph = load_graph(blobs, &admission.graph).await?;
+) -> Result<AdmittedGraphs, AdmissionError> {
+    load_with(
+        |blob| async move { blobs.read(&blob).await.map_err(anyhow::Error::from) },
+        admission,
+    )
+    .await
+}
+
+/// [`load`] over any blob read: `read` answers a hash with the blob's
+/// bytes, or `None` when the store lacks it.
+pub async fn load_with<F, Fut>(
+    read: F,
+    admission: &PetriAdmission,
+) -> Result<AdmittedGraphs, AdmissionError>
+where
+    F: Fn(BlobHash) -> Fut,
+    Fut: Future<Output = anyhow::Result<Option<bytes::Bytes>>>,
+{
+    let graph = load_graph(&read, &admission.graph).await?;
     let mut children = Vec::with_capacity(admission.children.len());
     for child in &admission.children {
-        children.push(load_graph(blobs, child).await?);
+        children.push(load_graph(&read, child).await?);
     }
-    Ok((graph, children))
+    Ok(AdmittedGraphs { graph, children })
 }
 
 async fn persist_graph(blobs: &BlobStore, graph: &Graph) -> Result<PetriGraphRef, AdmissionError> {
@@ -79,11 +115,17 @@ async fn persist_graph(blobs: &BlobStore, graph: &Graph) -> Result<PetriGraphRef
     Ok(PetriGraphRef { blob, digest })
 }
 
-async fn load_graph(blobs: &BlobStore, graph: &PetriGraphRef) -> Result<Graph, AdmissionError> {
-    let bytes = blobs
-        .read(&graph.blob)
+async fn load_graph<F, Fut>(read: &F, graph: &PetriGraphRef) -> Result<Graph, AdmissionError>
+where
+    F: Fn(BlobHash) -> Fut,
+    Fut: Future<Output = anyhow::Result<Option<bytes::Bytes>>>,
+{
+    let bytes = read(graph.blob)
         .await
-        .map_err(AdmissionError::Store)?
+        .map_err(|source| AdmissionError::Read {
+            blob: graph.blob.to_string(),
+            source,
+        })?
         .ok_or_else(|| AdmissionError::Missing {
             digest: graph.digest.clone(),
         })?;

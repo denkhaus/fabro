@@ -26,6 +26,16 @@
 //! runtime at drop, the server's worker-exit release is the backstop, and
 //! the drop says so in the log.
 //!
+//! # The owner
+//!
+//! A store built with [`HttpRunStore::for_worker`] names one owner for the
+//! whole process: every `Create` and `Write` takes the lease for the
+//! worker's launch id, whatever owner Petri minted for the run runtime that
+//! asked. One worker process executes one run, so the lease is the
+//! launch's, the worker logs it once at start, and the server's lease row
+//! names the launch that holds it. A store built with [`HttpRunStore::new`]
+//! passes Petri's owner through unchanged.
+//!
 //! # Lost replies
 //!
 //! Every call is one request. A reply that never arrives (a transport error,
@@ -92,6 +102,9 @@ impl fmt::Debug for HttpRunStore {
 /// What the store and every handle it opens share.
 struct Shared {
     client:   Client,
+    /// The owner every writer open takes the lease for, when the store is
+    /// a worker's; `None` passes Petri's owner through.
+    owner:    Option<OwnerId>,
     /// The writer handle alive in this process per run and owner, so a
     /// same-owner reopen shares it and the lease lasts while any handle
     /// does.
@@ -101,12 +114,25 @@ struct Shared {
 }
 
 impl HttpRunStore {
-    /// A store over a client that carries the worker's token.
+    /// A store over a client that carries the worker's token, taking each
+    /// lease for the owner Petri names.
     #[must_use]
     pub fn new(client: Client) -> Self {
+        Self::build(client, None)
+    }
+
+    /// A worker's store: every lease is taken for `owner`, the worker's
+    /// launch id, whatever owner Petri names.
+    #[must_use]
+    pub fn for_worker(client: Client, owner: OwnerId) -> Self {
+        Self::build(client, Some(owner))
+    }
+
+    fn build(client: Client, owner: Option<OwnerId>) -> Self {
         Self {
             shared: Arc::new(Shared {
                 client,
+                owner,
                 live: Mutex::default(),
                 releases: Mutex::default(),
             }),
@@ -290,6 +316,9 @@ impl RunStore for HttpRunStore {
             Access::Write { owner } => (PetriAccess::Write, Some(owner)),
             Access::Read => (PetriAccess::Read, None),
         };
+        // A worker's store leases for its launch, not for the owner Petri
+        // minted for this run runtime.
+        let owner = owner.map(|named| shared.owner.as_ref().unwrap_or(named));
         let request = PetriOpenRequest {
             access: api_access,
             owner:  owner.map(|owner| owner.as_str().to_string()),
@@ -326,7 +355,12 @@ impl RunStore for HttpRunStore {
         };
         let opened =
             opened.map_err(|error| shared.store_error(key, "open the run", None, error))?;
-        debug!(run_id = %key, access = ?request.access, "Petri run opened over the API");
+        debug!(
+            run_id = %key,
+            access = ?request.access,
+            owner = owner.map(OwnerId::as_str),
+            "Petri run opened over the API"
+        );
         match owner {
             Some(owner) => Ok(self.writer(key, run_id, owner.clone(), opened.locator)),
             None => Ok(Arc::new(HttpRunLogs {

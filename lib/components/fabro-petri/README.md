@@ -29,16 +29,20 @@ Every adapter the integration plan describes lands here.
   Petri's diagnostics come back in a shape the server maps onto Fabro's.
 - `admission`: the admitted graphs in Fabro's blob store, named on the run
   spec as `RunEngine::Petri(PetriAdmission)`, verified by digest on load.
-- `engine`: a run executed by Petri in the server process over
-  `SqliteRunStore`, with the outcome read from the run's record through
-  `inspect_run`; `interviewer::Unattended` fails any question until the
+- `engine`: a run executed by Petri, started from its admitted graphs or
+  resumed from its records, with the outcome read from the run's record
+  through `inspect_run` and mapped to the conclusion Fabro's read side
+  records. The run's worker process runs it over `HttpRunStore`; the server
+  runs it in its own process only under its test override, over
+  `SqliteRunStore`. `interviewer::Unattended` fails any question until the
   interview adapter lands.
 - `HttpRunStore`: the same store as a run's worker process reaches it, over
   the server's `/api/v1/runs/{id}/petri/*` endpoints with the worker's token.
   The server answers from its `SqliteRunStore`, so the lease and the
   `(log, seq)` rule are the store's; this layer carries requests, resends a
-  request whose reply was lost, and maps the server's error codes back to
-  `StoreError`. The module docs state the rules.
+  request whose reply was lost, maps the server's error codes back to
+  `StoreError`, and, for a worker, takes every lease for the worker's launch
+  id. The module docs state the rules.
 - `petri`: the Petri store vocabulary re-exported for the server, which
   answers the worker endpoints from a `SqliteRunStore` without naming a Petri
   package in its own manifest.
@@ -49,7 +53,12 @@ A run goes to Petri when its workflow version's `workflow.toml` names
 `engine = "petri"` in `[workflow]`, or when the server's
 `[server.execution] engine` (`FABRO_SERVER_ENGINE`, `fabro server start
 --engine`) says so for versions that name none. The server side of both
-halves is `fabro-server`'s `server::petri_runs`.
+halves is `fabro-server`'s `server::petri_runs`; the worker side is
+`fabro-cli`'s `commands::run::petri_worker`, which `fabro run __run-worker`
+takes when the run's stored spec names Petri. After a server restart, a
+Petri run left in flight goes back to a worker in `--mode resume`: the run
+continues from its records, as Petri's own resume does, and full recovery
+of the workspace to a durable snapshot is the plan's F3.5.
 
 ## How it is tested
 
@@ -83,6 +92,15 @@ ulimit -n 4096 && cargo nextest run -p fabro-petri
 
 The server's end-to-end coverage is `lib/apps/fabro-server/tests/it/scenario/petri.rs`:
 the `hello` bundle on the OpenAI twin and a command-only bundle run to
-completion through the create handler and the scheduler, under the version
-flag and under the server setting, and Petri's diagnostics refuse a run at
-create.
+completion through the create handler and the scheduler, in the server
+process under its test override, under the version flag and under the
+server setting, and Petri's diagnostics refuse a run at create. The
+server's `petri_runs` unit tests cover the lease ending at worker exit and
+the restart reconcile that relaunches a worker in resume mode.
+
+The worker path is covered with the real binary in
+`lib/apps/fabro-cli/tests/it/scenario/petri.rs`: a command-only Petri run
+executes in the worker a foreground server launched, its records reach
+`petri_records` over the HTTP store and its lease ends with the worker; and
+a run whose server and worker are both killed mid-stage resumes in a new
+worker after the server restarts, with one `run.completed`.

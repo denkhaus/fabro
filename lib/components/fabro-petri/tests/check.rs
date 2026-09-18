@@ -118,11 +118,11 @@ async fn the_hello_bundle_is_admitted_and_round_trips_through_the_blob_store() {
         .await
         .expect("the graphs persist");
     assert!(record.children.is_empty());
-    let (graph, children) = admission::load(&blobs, &record)
+    let graphs = admission::load(&blobs, &record)
         .await
         .expect("the graphs load");
-    assert_eq!(graph, admitted.graph);
-    assert!(children.is_empty());
+    assert_eq!(graphs.graph, admitted.graph);
+    assert!(graphs.children.is_empty());
 }
 
 #[tokio::test]

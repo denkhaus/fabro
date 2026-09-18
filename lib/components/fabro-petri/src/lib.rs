@@ -16,11 +16,13 @@
 //!   its diagnostics come back in a shape Fabro maps onto its own;
 //! - [`admission`]: the admitted graphs in Fabro's blob store, named on the run
 //!   spec;
-//! - [`engine`]: a run executed by Petri in the server process, with the
-//!   outcome read from its record;
+//! - [`engine`]: a run executed by Petri, started or resumed, in the run's
+//!   worker process over the HTTP store (or in the server process under its
+//!   test override), with the outcome read from its record;
 //! - [`interviewer`]: the interviewer of a run nobody is watching;
 //! - [`HttpRunStore`]: the same store as a run's worker process reaches it,
-//!   over the server's API with the worker's token;
+//!   over the server's API with the worker's token and its launch id as the
+//!   lease owner;
 //! - the platform adapters still to come: hooks, interviews over Fabro's API,
 //!   secrets, output storage, the run tools, the event projection.
 //!
