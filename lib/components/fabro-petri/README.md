@@ -45,14 +45,13 @@ Every adapter the integration plan describes lands here.
   `/questions/{qid}/answer` is validated against that pending record and
   reaches the worker's control interviewer over the control bus (or the
   in-process one directly) under the same id, mapped onto Petri's answer.
-  The adapter still posts the legacy `interview.*` events (through the
-  worker's run event sink, or the run's database in the server process)
-  with that id and the projection's stage label, for the readers that
-  follow the event stream rather than the projection: Slack, `run attach`
-  and the web app's Q&A renderer. The store derives the `interview.answered`
-  platform record, with the answering principal, from `interview.completed`.
-  An expired or cancelled question is completed as `interview.timeout` or
-  `interview.interrupted`; an auto-approved run answers itself.
+  The readers that follow the run's stream rather than the projection
+  (Slack, `run attach`, the web app's Q&A renderer) see the question in
+  Petri's own progress record (`derived.parsed.kind == "question"`) and
+  the answer record that closes it. The server records who answered as
+  the `interview.answered` platform record when it accepts the answer. An
+  expired or cancelled question ends without an answer and Petri's gate
+  fails closed; an auto-approved run answers itself.
 - `secrets`: Petri's `SecretProvider` over the vault's token entries, so a
   `{{ secrets.NAME }}` reference resolves at spawn into a command's
   environment and is masked in every record; a sensitive answer registers

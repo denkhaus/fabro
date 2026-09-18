@@ -5,8 +5,8 @@
 //! dispatcher hands this adapter one [`InterviewRequest`] per question, on
 //! its own task, with the question's identity (invocation path, execution,
 //! firing, attempt, node, occurrence, ask). The adapter surfaces the
-//! question to Fabro the way a legacy `human` stage does, waits for the
-//! answer the way the legacy worker does, and hands Petri the reply.
+//! question to Fabro as a `human` stage's question, waits for the answer
+//! through the questions API, and hands Petri the reply.
 //!
 //! # One identity
 //!
@@ -26,27 +26,17 @@
 //!
 //! The projection derives the pending question, its answer and its expiry
 //! from Petri's records alone; the run's own record is the source of truth
-//! and nothing the adapter posts is folded into it. The adapter still
-//! posts the legacy `interview.*` events through a [`QuestionSink`], with
-//! Petri's id and the projection's stage label, for the readers that
-//! follow the run's event stream rather than its projection:
+//! and nothing the adapter posts is folded into it. The readers that follow
+//! the run's stream rather than its projection (the server's Slack service,
+//! `fabro run attach`, the web app's Q&A renderer) see the question in
+//! Petri's own event: the progress record whose `derived.parsed.kind` is
+//! `question`, and the answer record that closes it.
 //!
-//! - the server's Slack service posts a question to the channel on
-//!   `interview.started` and finishes it on `interview.completed`,
-//!   `interview.timeout` or `interview.interrupted`;
-//! - `fabro run attach` polls the questions API when `interview.started`
-//!   arrives and stops waiting on the question's closing event;
-//! - the web app's human Q&A renderer pairs `interview.started` with its
-//!   closing event by question id in the stage's event list;
-//! - the server clears its record of an accepted answer on the closing event,
-//!   so the transport can be claimed again.
-//!
-//! The worker's [`EventSinkQuestions`] appends them over the run event sink
-//! the worker already carries lifecycle events on, and the server's
-//! in-process path appends them through [`DatabaseQuestions`]. For a Petri
-//! run the store derives the `interview.answered` platform record from
-//! `interview.completed`: the question's Petri id and the principal that
-//! answered, which is the actor the adapter stamps on the event.
+//! The adapter reports what happens to each question as a [`QuestionNotice`]
+//! to a [`QuestionSink`], when something observes it: a test's board. The
+//! server records who answered as the `interview.answered` platform record
+//! when it accepts the answer, since that is a Fabro fact Petri's answer
+//! record does not carry.
 //!
 //! # How the answer comes back
 //!
@@ -69,9 +59,9 @@
 //! none) and reports the expiry itself; the dispatcher then fires the
 //! adapter's cancel token, as it does when the firing ends without an
 //! answer or the run is cancelled. The adapter returns promptly with
-//! [`InterviewReply::Cancelled`] and posts `interview.timeout` when the
-//! gate reported the expiry, else `interview.interrupted`, so the readers
-//! above see the question end. The expiry report is seen by the adapter's
+//! [`InterviewReply::Cancelled`] and reports the question as expired when
+//! the gate reported the expiry, else as interrupted, so an observer sees
+//! the question end. The expiry report is seen by the adapter's
 //! own observer ([`FabroInterviewer::observer`]), which the run registers
 //! ahead of the dispatcher so the report is noted before the token fires.
 //! The dispatcher races the reply against the same token and may drop the
@@ -85,10 +75,10 @@
 //! # Auto-approval
 //!
 //! A run whose `[run.execution] approval` is `auto` answers every question
-//! at once as the legacy runner's auto-approve interviewer does (`yes`,
-//! the first option, or `auto-approved` text), attributed to the engine.
-//! The question is still posted and completed, so the run's stream shows
-//! what was decided, and the projection closes it on the delivered answer.
+//! at once as `--auto-approve` always has (`yes`, the first option, or
+//! `auto-approved` text), attributed to the engine. The question is still
+//! asked and answered through Petri, so the run's stream shows what was
+//! decided, and the projection closes it on the delivered answer.
 
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::sync::{Arc, Mutex, PoisonError};
@@ -152,7 +142,7 @@ impl QuestionIdentity {
     }
 }
 
-/// A question as Fabro shows it: the fields of `interview.started`.
+/// A question as Fabro shows it.
 #[derive(Clone, Debug, PartialEq)]
 pub struct AskedQuestion {
     /// Petri's id for the question, the one id Fabro knows it by.
@@ -421,8 +411,9 @@ impl Interviewer for FabroInterviewer {
             return InterviewReply::Cancelled;
         };
         // `submission.actor` is who answered, a Fabro fact Petri's answer
-        // record does not carry: it goes out on `interview.completed`, from
-        // which the store derives the `interview.answered` platform record.
+        // record does not carry: the server records it as the
+        // `interview.answered` platform record when it accepts the answer;
+        // here it only reaches an observer.
         let Some(answer) = petri_answer(&submission.answer, &request.question) else {
             outstanding.close_unanswered(&reason_of(&submission.answer.value));
             return InterviewReply::Cancelled;
@@ -444,8 +435,8 @@ impl Interviewer for FabroInterviewer {
 /// A question the adapter is waiting on. When the wait ends without an
 /// answer, whether the adapter saw the cancel or the dispatcher dropped
 /// the reply future first, the end of the question is posted from here
-/// on its own task: `interview.timeout` when the gate reported the
-/// expiry, else `interview.interrupted`.
+/// on its own task: as expired when the gate reported the expiry, else as
+/// interrupted.
 struct Outstanding {
     sink:        Arc<dyn QuestionSink>,
     observed:    Arc<Observed>,
@@ -663,8 +654,8 @@ fn strip_accelerator(label: &str) -> &str {
     }
 }
 
-/// The answer as `interview.completed` records it. A sensitive text
-/// answer is never written out: the dispatcher registers it as a secret.
+/// The answer as the notice records it. A sensitive text answer is never
+/// written out: the dispatcher registers it as a secret.
 fn describe(answer: &Answer, question: &Question) -> String {
     if !answer.choices.is_empty() {
         return answer.choices.join(", ");
