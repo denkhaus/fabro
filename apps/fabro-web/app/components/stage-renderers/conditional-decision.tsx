@@ -8,7 +8,7 @@ import type { EventEnvelope } from "@qltysh/fabro-api-client";
 
 import type { Stage } from "../stage-sidebar";
 import { StageMetaBar } from "./meta-bar";
-import { findEdgeForNode } from "./helpers";
+import { findEdgeForNode, type EdgeSelection } from "./helpers";
 
 const REASON_LABEL: Record<string, string> = {
   condition: "Matched condition",
@@ -24,17 +24,20 @@ function reasonLabel(reason: string): string {
 export function ConditionalDecision({
   stage,
   runEvents,
+  edge: givenEdge,
   allStages,
   runId,
 }: {
   stage: Stage;
   runEvents: EventEnvelope[];
+  /** The edge when the caller derived it (a Petri run's `route.applied`). */
+  edge?: EdgeSelection | null;
   allStages: Stage[];
   runId: string;
 }) {
   const edge = useMemo(
-    () => findEdgeForNode(runEvents, stage.nodeId),
-    [runEvents, stage.nodeId],
+    () => (givenEdge !== undefined ? givenEdge : findEdgeForNode(runEvents, stage.nodeId)),
+    [givenEdge, runEvents, stage.nodeId],
   );
   const targetStage = useMemo(() => {
     if (!edge) return null;

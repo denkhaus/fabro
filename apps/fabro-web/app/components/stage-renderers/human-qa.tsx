@@ -225,11 +225,17 @@ function QuestionBlock({
 export function HumanQA({
   stage,
   events,
+  pairs: givenPairs,
 }: {
   stage: Stage;
   events: EventEnvelope[];
+  /** The pairs when the caller derived them (a Petri run's stream). */
+  pairs?: HumanInterviewPair[];
 }) {
-  const pairs = useMemo(() => parseHumanInterviewPairs(events), [events]);
+  const pairs = useMemo(
+    () => givenPairs ?? parseHumanInterviewPairs(events),
+    [givenPairs, events],
+  );
   const stageActive = ACTIVE_STAGE_STATES.has(stage.status);
   const pendingCount = pairs.filter((p) => p.resolution == null).length;
 

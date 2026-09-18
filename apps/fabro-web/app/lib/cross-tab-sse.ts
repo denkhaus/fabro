@@ -1163,6 +1163,11 @@ function candidateKey(candidate: CandidateMessage): string {
 }
 
 export function eventDedupeKey(payload: EventPayload): string | undefined {
+  // A run stream item's `id` is the item's own identity within its run (a
+  // Petri `EventId` or a platform record seq), so two runs share ids.
+  if (typeof payload.stream_seq === "number" && typeof payload.run_id === "string") {
+    return `${payload.run_id}:stream:${payload.stream_seq}`;
+  }
   if (typeof payload.id === "string" && payload.id.length > 0) {
     return payload.id;
   }

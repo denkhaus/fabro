@@ -9,16 +9,22 @@ import type { Stage } from "../stage-sidebar";
 import { formatTokenCount } from "../../lib/format";
 import { Markdown } from "./primitives";
 import { StageMetaBar } from "./meta-bar";
-import { parseReducerTranscript } from "./helpers";
+import { parseReducerTranscript, type ReducerTranscript } from "./helpers";
 
 export function FanInResults({
   stage,
   events,
+  reducer: givenReducer,
 }: {
   stage: Stage;
   events: EventEnvelope[];
+  /** The transcript when the caller derived it (a Petri run's projection). */
+  reducer?: ReducerTranscript | null;
 }) {
-  const reducer = useMemo(() => parseReducerTranscript(events), [events]);
+  const reducer = useMemo(
+    () => (givenReducer !== undefined ? givenReducer : parseReducerTranscript(events)),
+    [givenReducer, events],
+  );
 
   return (
     <div className="space-y-6 pl-3 pr-4 sm:pr-6 lg:pr-8">
