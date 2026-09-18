@@ -173,6 +173,10 @@ mod automation_scheduler;
 pub(crate) mod capability_gate;
 /// Fork-only (fabro-986b): merge-protected line-recovery recheck logic.
 pub(crate) mod fork_line_recovery;
+/// Fork-only presence pin (fabro-4ebd/fabro-ec00): diff-based publish
+/// squash-revert protection tests.
+#[cfg(test)]
+mod fork_publish_conflict_tests;
 mod handler;
 mod pull_request_conflict;
 mod pull_request_supervisor;
