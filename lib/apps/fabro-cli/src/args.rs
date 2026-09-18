@@ -758,39 +758,6 @@ pub(crate) struct ResumeArgs {
     pub(crate) detach: bool,
 }
 
-#[derive(Debug, Args)]
-pub(crate) struct RewindArgs {
-    #[command(flatten)]
-    pub(crate) server: ServerTargetArgs,
-
-    /// Run ID (or unambiguous prefix)
-    pub(crate) run_id: String,
-
-    /// Target checkpoint: node name, node@visit, or @ordinal (omit with --list)
-    pub(crate) target: Option<String>,
-
-    /// Show the checkpoint timeline instead of rewinding
-    #[arg(long)]
-    pub(crate) list: bool,
-}
-
-#[derive(Debug, Args)]
-pub(crate) struct ForkArgs {
-    #[command(flatten)]
-    pub(crate) server: ServerTargetArgs,
-
-    /// Run ID (or unambiguous prefix)
-    pub(crate) run_id: String,
-
-    /// Target checkpoint: node name, node@visit, or @ordinal (omit to fork from
-    /// latest)
-    pub(crate) target: Option<String>,
-
-    /// Show the checkpoint timeline instead of forking
-    #[arg(long)]
-    pub(crate) list: bool,
-}
-
 #[derive(Args)]
 pub(crate) struct WaitArgs {
     #[command(flatten)]
@@ -1300,10 +1267,6 @@ pub(crate) enum RunCommands {
     Logs(LogsArgs),
     /// Resume an interrupted workflow run
     Resume(ResumeArgs),
-    /// Rewind a workflow run to an earlier checkpoint
-    Rewind(RewindArgs),
-    /// Fork a workflow run from an earlier checkpoint into a new run
-    Fork(ForkArgs),
     /// Block until a workflow run completes
     Wait(WaitArgs),
     /// Steer a running agent mid-execution
@@ -1324,10 +1287,8 @@ impl RunCommands {
             Self::Events(_) => "events",
             Self::Logs(_) => "logs",
             Self::Resume(_) => "resume",
-            Self::Rewind(_) => "rewind",
             Self::Steer(_) => "steer",
             Self::Ask(_) => "ask",
-            Self::Fork(_) => "fork",
             Self::Wait(_) => "wait",
         }
     }

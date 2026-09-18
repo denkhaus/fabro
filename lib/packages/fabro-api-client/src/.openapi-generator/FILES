@@ -167,8 +167,6 @@ models/failure-reason.ts
 models/file-checkpoint.ts
 models/file-diff.ts
 models/folder-run-target.ts
-models/fork-request.ts
-models/fork-response.ts
 models/fork-source-ref.ts
 models/git-author-settings.ts
 models/git-context.ts
@@ -370,8 +368,6 @@ models/repository-ref.ts
 models/resolved-automation-git-workflow-source.ts
 models/review-target-kind.ts
 models/review-target.ts
-models/rewind-request.ts
-models/rewind-response.ts
 models/root-response-urls.ts
 models/root-response.ts
 models/run-agent-settings.ts
@@ -549,7 +545,6 @@ models/system-repair-run-issue.ts
 models/system-repair-runs-response.ts
 models/system-resources-response.ts
 models/system-run-counts.ts
-models/timeline-entry-response.ts
 models/tls-mode.ts
 models/todo-list-kind.ts
 models/todo-list-projection.ts

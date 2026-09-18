@@ -57,8 +57,7 @@ pub(crate) struct RunSetup {
 }
 
 pub(crate) struct SeededGitRunSetup {
-    pub(crate) run:          RunSetup,
-    pub(crate) step_one_sha: String,
+    pub(crate) run: RunSetup,
 }
 
 pub(crate) struct ProjectFixture {
@@ -882,13 +881,6 @@ pub(crate) fn run_state(run_dir: &Path) -> RunProjection {
     ))
 }
 
-pub(crate) fn run_state_by_id(context: &TestContext, run_id: &str) -> RunProjection {
-    block_on(get_server_json_for_storage(
-        &context.storage_dir,
-        &format!("/api/v1/runs/{run_id}/state"),
-    ))
-}
-
 pub(crate) fn run_events(run_dir: &Path) -> Vec<EventEnvelope> {
     let run_id = infer_run_id(run_dir);
     let response: serde_json::Value = block_on(get_server_json(
@@ -993,10 +985,7 @@ async fn seed_git_backed_changed_run(context: &TestContext) -> SeededGitRunSetup
     )
     .await;
 
-    SeededGitRunSetup {
-        run,
-        step_one_sha: step_one_sha.to_string(),
-    }
+    SeededGitRunSetup { run }
 }
 
 async fn seed_git_backed_noop_run(context: &TestContext) -> RunSetup {

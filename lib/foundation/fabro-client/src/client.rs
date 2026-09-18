@@ -82,11 +82,6 @@ pub struct SessionEventStream {
     buffered_events: VecDeque<EventEnvelope>,
 }
 
-pub struct RewindRunResult {
-    pub status:   u16,
-    pub response: types::RewindResponse,
-}
-
 #[derive(Default)]
 struct ListStoreRunsOptions {
     parent_id: Option<RunId>,
@@ -1349,59 +1344,6 @@ impl Client {
             )
             .await?;
         convert_type(response.into_inner())
-    }
-
-    pub async fn rewind_run(
-        &self,
-        run_id: &RunId,
-        request: types::RewindRequest,
-    ) -> Result<RewindRunResult> {
-        let response = self
-            .send_api(|client| async move {
-                client
-                    .rewind_run()
-                    .id(run_id.to_string())
-                    .body(request)
-                    .send()
-                    .await
-            })
-            .await?;
-        let status = response.status().as_u16();
-        Ok(RewindRunResult {
-            status,
-            response: response.into_inner(),
-        })
-    }
-
-    pub async fn fork_run(
-        &self,
-        run_id: &RunId,
-        request: types::ForkRequest,
-    ) -> Result<types::ForkResponse> {
-        let response = self
-            .send_api(|client| async move {
-                client
-                    .fork_run()
-                    .id(run_id.to_string())
-                    .body(request)
-                    .send()
-                    .await
-            })
-            .await?;
-        Ok(response.into_inner())
-    }
-
-    pub async fn run_timeline(&self, run_id: &RunId) -> Result<Vec<types::TimelineEntryResponse>> {
-        let response = self
-            .send_api(|client| async move {
-                client
-                    .get_run_timeline()
-                    .id(run_id.to_string())
-                    .send()
-                    .await
-            })
-            .await?;
-        Ok(response.into_inner())
     }
 
     pub async fn list_store_runs(&self) -> Result<Vec<Run>> {

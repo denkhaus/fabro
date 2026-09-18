@@ -77,7 +77,6 @@ fabro [OPTIONS] [COMMAND]
 | `fabro doctor` | Check environment and integration health |
 | `fabro dump` | Export a run's durable state to a directory |
 | `fabro events` | View the event log of a workflow run |
-| `fabro fork` | Fork a workflow run from an earlier checkpoint into a new run |
 | `fabro graph` | Render a workflow graph as SVG |
 | `fabro inspect` | Show detailed information about a workflow run |
 | `fabro install` | Set up the Fabro environment (LLMs, certs, GitHub) |
@@ -90,7 +89,6 @@ fabro [OPTIONS] [COMMAND]
 | `fabro provider` | Provider operations |
 | `fabro repo` | Repository commands |
 | `fabro resume` | Resume an interrupted workflow run |
-| `fabro rewind` | Rewind a workflow run to an earlier checkpoint |
 | `fabro rm` | Remove one or more workflow runs |
 | `fabro run` | Register a workflow version, create a run, and start it |
 | `fabro sandbox` | Sandbox operations (cp, ssh, preview) |
@@ -465,28 +463,6 @@ fabro events [OPTIONS] <RUN>
 | `--server <server>` | Fabro server target: http(s) URL or absolute Unix socket path |
 | `--since <since>` | Events since timestamp or relative (e.g. "42m", "2h", "2026-01-02T13:00:00Z") |
 | `-n, --tail <tail>` | Lines from end (default: all) |
-
-### `fabro fork`
-
-Fork a workflow run from an earlier checkpoint into a new run
-
-```bash
-fabro fork [OPTIONS] <RUN_ID> [TARGET]
-```
-
-#### Arguments
-
-| Name | Description |
-| --- | --- |
-| `RUN_ID` | Run ID (or unambiguous prefix) |
-| `TARGET` | Target checkpoint: node name, node@visit, or @ordinal (omit to fork from latest) |
-
-#### Options
-
-| Option | Description |
-| --- | --- |
-| `--list` | Show the checkpoint timeline instead of forking |
-| `--server <server>` | Fabro server target: http(s) URL or absolute Unix socket path |
 
 ### `fabro graph`
 
@@ -1020,28 +996,6 @@ fabro resume [OPTIONS] <RUN>
 | Option | Description |
 | --- | --- |
 | `-d, --detach` | Run in the background and print the run ID |
-| `--server <server>` | Fabro server target: http(s) URL or absolute Unix socket path |
-
-### `fabro rewind`
-
-Rewind a workflow run to an earlier checkpoint
-
-```bash
-fabro rewind [OPTIONS] <RUN_ID> [TARGET]
-```
-
-#### Arguments
-
-| Name | Description |
-| --- | --- |
-| `RUN_ID` | Run ID (or unambiguous prefix) |
-| `TARGET` | Target checkpoint: node name, node@visit, or @ordinal (omit with --list) |
-
-#### Options
-
-| Option | Description |
-| --- | --- |
-| `--list` | Show the checkpoint timeline instead of rewinding |
 | `--server <server>` | Fabro server target: http(s) URL or absolute Unix socket path |
 
 ### `fabro rm`
