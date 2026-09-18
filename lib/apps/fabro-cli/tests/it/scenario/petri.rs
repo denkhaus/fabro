@@ -10,6 +10,9 @@
 //! executable is not found, unless `FABRO_REQUIRE_SANDBOX_PLUGINS` is set.
 //! The plugin's path override crosses into the server and its workers the
 //! way `PATH` does.
+//!
+//! The harness here (the server, the detached run, the status and event
+//! reads) is shared with the run-tools scenarios in `petri_tools.rs`.
 
 #![expect(
     clippy::disallowed_methods,
@@ -35,6 +38,7 @@ use fabro_static::EnvVars;
 use fabro_store::EventEnvelope;
 use fabro_test::{apply_test_isolation, expect_reqwest_json, isolated_storage_dir, test_context};
 use fabro_types::EventBody;
+use fabro_vault::{SecretType, Vault};
 
 use crate::cmd::support::created_run_id;
 use crate::support::{
@@ -49,7 +53,7 @@ const POLL: Duration = Duration::from_millis(50);
 /// The host plugin as Petri's lookup finds it: the override variable, else
 /// the executable on `PATH`. `None`, after saying so, when the test should
 /// skip; a panic when the environment forbids a skip.
-fn host_plugin() -> Option<PathBuf> {
+pub(super) fn host_plugin() -> Option<PathBuf> {
     let found = env::var_os(EnvVars::PETRI_SANDBOX_HOST_PLUGIN)
         .map(PathBuf::from)
         .or_else(|| {
@@ -73,18 +77,26 @@ fn host_plugin() -> Option<PathBuf> {
 
 /// A foreground server on its own disk storage, dev-token auth, started
 /// from the compiled `fabro` binary. Dropping it kills the process.
-struct RunningServer {
-    child:         Option<Child>,
-    home_root:     tempfile::TempDir,
-    _storage_root: tempfile::TempDir,
-    storage_dir:   PathBuf,
-    config_path:   PathBuf,
-    port:          u16,
-    api_base_url:  String,
+pub(super) struct RunningServer {
+    child:                   Option<Child>,
+    home_root:               tempfile::TempDir,
+    _storage_root:           tempfile::TempDir,
+    pub(super) storage_dir:  PathBuf,
+    config_path:             PathBuf,
+    port:                    u16,
+    pub(super) api_base_url: String,
 }
 
 impl RunningServer {
-    async fn start() -> Self {
+    pub(super) async fn start() -> Self {
+        Self::start_with("", &[]).await
+    }
+
+    /// Start with `settings` appended to the server's settings file (the
+    /// workers read the same file through `FABRO_CONFIG`) and `secrets`
+    /// in the vault before the first launch, so the server and its workers
+    /// see them from the start.
+    pub(super) async fn start_with(settings: &str, secrets: &[(&str, &str)]) -> Self {
         let home_root = tempfile::tempdir_in("/tmp").expect("home tempdir");
         let storage_root = isolated_storage_dir();
         let storage_dir = storage_root.path().join("storage");
@@ -92,9 +104,18 @@ impl RunningServer {
         let config_path = home_root.path().join("settings.toml");
         std::fs::write(
             &config_path,
-            "_version = 1\n\n[server.auth]\nmethods = [\"dev-token\"]\n",
+            format!("_version = 1\n\n[server.auth]\nmethods = [\"dev-token\"]\n{settings}"),
         )
         .expect("the server settings write");
+        if !secrets.is_empty() {
+            let mut vault = Vault::load(Storage::new(&storage_dir).secrets_path())
+                .expect("the server vault loads");
+            for (name, value) in secrets {
+                vault
+                    .set(name, value, SecretType::Token, None)
+                    .expect("the secret stores in the server vault");
+            }
+        }
         let runtime_directory = Storage::new(&storage_dir).runtime_directory();
         envfile::merge_env_file(&runtime_directory.env_path(), [
             ("SESSION_SECRET", TEST_SESSION_SECRET),
@@ -157,13 +178,13 @@ impl RunningServer {
         Stdio::from(file)
     }
 
-    fn stderr_text(&self) -> String {
+    pub(super) fn stderr_text(&self) -> String {
         std::fs::read_to_string(self.storage_dir.with_file_name("server.stderr.log"))
             .unwrap_or_default()
     }
 
     /// The `--server` target a CLI command reaches this server at.
-    fn target(&self) -> String {
+    pub(super) fn target(&self) -> String {
         format!("{}/api/v1", self.api_base_url)
     }
 
@@ -175,7 +196,7 @@ impl RunningServer {
         let _ = child.wait();
     }
 
-    fn shutdown(mut self) {
+    pub(super) fn shutdown(mut self) {
         let mut stop = Command::new(env!("CARGO_BIN_EXE_fabro"));
         apply_test_isolation(&mut stop, self.home_root.path());
         stop.args(["server", "stop"])
@@ -203,7 +224,7 @@ impl RunningServer {
 
     /// Petri's store over the server's database, read beside the server:
     /// what `petri inspect` would see.
-    async fn petri_store(&self) -> SqliteRunStore {
+    pub(super) async fn petri_store(&self) -> SqliteRunStore {
         let database = fabro_db::Database::connect(Storage::new(&self.storage_dir).sqlite_path())
             .await
             .expect("the server database opens");
@@ -278,6 +299,17 @@ fn run_detached(
     server: &RunningServer,
     workspace: &Path,
 ) -> String {
+    run_detached_with(context, server, workspace, &[])
+}
+
+/// [`run_detached`] with `extra` arguments on the command, such as the
+/// model to run the workflow's agents on.
+pub(super) fn run_detached_with(
+    context: &fabro_test::TestContext,
+    server: &RunningServer,
+    workspace: &Path,
+    extra: &[&str],
+) -> String {
     let target = server.target();
     seed_dev_token_auth(
         &context.home_dir,
@@ -294,8 +326,9 @@ fn run_detached(
             "--auto-approve",
             "--environment",
             "local",
-            "workflow.toml",
         ])
+        .args(extra)
+        .arg("workflow.toml")
         .output()
         .expect("the detached run executes");
     assert!(
@@ -307,7 +340,7 @@ fn run_detached(
     created_run_id(&output)
 }
 
-async fn run_json(server: &RunningServer, path: &str) -> serde_json::Value {
+pub(super) async fn run_json(server: &RunningServer, path: &str) -> serde_json::Value {
     let response = fabro_test::test_http_client()
         .get(format!("{}/api/v1/{path}", server.api_base_url))
         .bearer_auth(TEST_DEV_TOKEN)
@@ -329,7 +362,11 @@ async fn run_status(server: &RunningServer, run_id: &str) -> String {
         .to_string()
 }
 
-async fn wait_for_status(server: &RunningServer, run_id: &str, expected: &[&str]) -> String {
+pub(super) async fn wait_for_status(
+    server: &RunningServer,
+    run_id: &str,
+    expected: &[&str],
+) -> String {
     let deadline = Instant::now() + RUN_TIMEOUT;
     loop {
         let status = run_status(server, run_id).await;
