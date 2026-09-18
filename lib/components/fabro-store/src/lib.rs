@@ -7,6 +7,7 @@ mod keyed_mutex;
 mod keys;
 mod legacy_blob_import;
 mod legacy_run_history_import;
+pub mod platform_records;
 #[cfg(test)]
 mod record;
 mod run_session_record_store;
@@ -43,9 +44,13 @@ pub use legacy_run_history_import::{
     LegacyRunHistorySourceIdentity, LegacyRunHistorySourceIdentityError,
     LegacyRunHistoryVerificationError, LegacyRunHistoryVerificationReport,
 };
+pub use platform_records::{
+    PlatformRecord, PlatformRecordHook, PlatformRecordKind, PlatformRecordStore, StagePosition,
+    StoredPlatformRecord,
+};
 pub use run_session_record_store::{RunSessionRecordStore, StoredSessionRecord};
 pub use run_sessions::{ProjectedRunSession, project_run_session, project_run_sessions};
-pub use run_state::RunProjectionReducer;
+pub use run_state::{RunProjectionReducer, build_summary, projected_usage};
 pub use run_summary_store::{
     RunSummaryIdentity, RunSummaryListQuery, RunSummaryPage, RunSummarySort,
     RunSummarySortDirection, RunSummaryStore, RunSummaryVisibility,

@@ -232,15 +232,32 @@ impl Database {
         Ok(())
     }
 
+    /// The run's projection: for a legacy run the reducer's fold of its
+    /// events; for a Petri run the projection its projector last committed
+    /// over Petri's records and the platform records, falling back to the
+    /// legacy fold (the lifecycle alone) until the first view pass commits.
     pub async fn load_run_projection(&self, run_id: &RunId) -> Result<Option<Arc<RunProjection>>> {
-        if let Some(active) = self.get_active_run(run_id).await {
-            return active.projection_snapshot().await.map(Some);
+        let legacy = if let Some(active) = self.get_active_run(run_id).await {
+            active.projection_snapshot().await?
+        } else {
+            match self.run_summary_store.load_projection(run_id).await {
+                Ok(projected) => projected.projection,
+                Err(Error::RunNotFound(_)) => return Ok(None),
+                Err(error) => return Err(error),
+            }
+        };
+        if legacy.spec.engine.is_petri() {
+            if let Some(petri) = self.run_summary_store.load_petri_projection(run_id).await? {
+                return Ok(Some(petri));
+            }
         }
-        match self.run_summary_store.load_projection(run_id).await {
-            Ok(projected) => Ok(Some(projected.projection)),
-            Err(Error::RunNotFound(_)) => Ok(None),
-            Err(error) => Err(error),
-        }
+        Ok(Some(legacy))
+    }
+
+    /// Install the wake-up called after a platform record of a Petri run is
+    /// committed beside its legacy event.
+    pub fn set_platform_record_hook(&self, hook: crate::PlatformRecordHook) {
+        self.run_summary_store.set_platform_record_hook(hook);
     }
 
     /// Resolves the run that owns `session_id` from the canonical typed

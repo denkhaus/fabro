@@ -220,8 +220,14 @@ impl RunDatabase {
         let (envelope, projected) = self.commit_event_locked(payload, event).await?;
         // Keep post-commit propagation await-free: cancellation after SQLite
         // commits must not leave in-memory state stale or omit the broadcast.
+        let platform_record = run_summary_store::platform_record_written(&projected, &envelope);
         self.install_in_memory_state(projected);
         self.publish(&envelope);
+        if platform_record.is_some() {
+            self.inner
+                .run_summary_store
+                .notify_platform_record(self.inner.run_id);
+        }
         Ok(envelope)
     }
 

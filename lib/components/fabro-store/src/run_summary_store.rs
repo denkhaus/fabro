@@ -1,5 +1,5 @@
 use std::fmt::Write as _;
-use std::sync::LazyLock;
+use std::sync::{Arc, LazyLock, RwLock};
 
 use chrono::{DateTime, Utc};
 use fabro_types::{
@@ -12,8 +12,9 @@ use sqlx::sqlite::{SqliteArguments, SqliteConnection, SqliteRow};
 use sqlx::{Connection as _, QueryBuilder, Row as _, Sqlite, SqlitePool, Transaction};
 use strum::VariantArray as _;
 
+use crate::platform_records::{self, PlatformRecordHook, PlatformRecordStore};
 use crate::run_state::{ProjectedRun, build_summary, projected_usage};
-use crate::{Error, EventPayload, Result, keys};
+use crate::{Error, EventPayload, Result, RunProjection, keys};
 
 const INSERT_RUN_SQL: &str = r"
 INSERT INTO runs (
@@ -63,6 +64,38 @@ ON CONFLICT(id) DO UPDATE SET
     total_usd_micros = excluded.total_usd_micros,
     summary_json = excluded.summary_json
 WHERE excluded.source_last_seq > runs.source_last_seq
+";
+
+/// The `runs` row of a Petri run, written by its projector: every column the
+/// list views and the scheduler read, and never `source_last_seq`, which the
+/// legacy event path owns while it still writes the row.
+const UPSERT_PETRI_RUN_SQL: &str = r"
+INSERT INTO runs (
+    id, source_last_seq, created_at_ms, started_at_ms, last_event_at_ms, completed_at_ms,
+    status, archived_at_ms, parent_id, title, workflow_slug, workflow_name,
+    repository_name, automation_id, diff_files_changed, diff_additions, diff_deletions,
+    input_tokens, output_tokens, reasoning_tokens, cache_read_tokens, cache_write_tokens,
+    total_usd_micros, summary_json
+) VALUES (
+    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+)
+ON CONFLICT(id) DO UPDATE SET
+    created_at_ms = excluded.created_at_ms,
+    started_at_ms = excluded.started_at_ms,
+    last_event_at_ms = excluded.last_event_at_ms,
+    completed_at_ms = excluded.completed_at_ms,
+    status = excluded.status,
+    archived_at_ms = excluded.archived_at_ms,
+    parent_id = excluded.parent_id,
+    title = excluded.title,
+    workflow_slug = excluded.workflow_slug,
+    workflow_name = excluded.workflow_name,
+    repository_name = excluded.repository_name,
+    automation_id = excluded.automation_id,
+    diff_additions = excluded.diff_additions,
+    diff_deletions = excluded.diff_deletions,
+    total_usd_micros = excluded.total_usd_micros,
+    summary_json = excluded.summary_json
 ";
 
 const UPDATE_RUN_SQL: &str = r"
@@ -184,7 +217,10 @@ pub struct RunSummaryPage {
 
 #[derive(Clone)]
 pub struct RunSummaryStore {
-    pool: SqlitePool,
+    pool:          SqlitePool,
+    /// Called after a platform record for a Petri run is committed beside
+    /// its legacy event: the projector's wake-up.
+    platform_hook: Arc<RwLock<Option<PlatformRecordHook>>>,
 }
 
 impl std::fmt::Debug for RunSummaryStore {
@@ -196,7 +232,73 @@ impl std::fmt::Debug for RunSummaryStore {
 impl RunSummaryStore {
     #[must_use]
     pub fn new(pool: SqlitePool) -> Self {
-        Self { pool }
+        Self {
+            pool,
+            platform_hook: Arc::new(RwLock::new(None)),
+        }
+    }
+
+    /// The platform records over the same pool.
+    #[must_use]
+    pub fn platform_records(&self) -> PlatformRecordStore {
+        PlatformRecordStore::new(self.pool.clone())
+    }
+
+    /// Install the wake-up called after a platform record of a Petri run is
+    /// committed beside its legacy event.
+    pub fn set_platform_record_hook(&self, hook: PlatformRecordHook) {
+        *self
+            .platform_hook
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(hook);
+    }
+
+    pub(crate) fn notify_platform_record(&self, run_id: RunId) {
+        let hook = self
+            .platform_hook
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone();
+        if let Some(hook) = hook {
+            hook(run_id);
+        }
+    }
+
+    /// The stored projection of a Petri run, as the run's projector last
+    /// committed it, or `None` when no view pass has run for it yet.
+    pub async fn load_petri_projection(
+        &self,
+        run_id: &RunId,
+    ) -> Result<Option<Arc<RunProjection>>> {
+        let json: Option<String> =
+            sqlx::query_scalar("SELECT projection_json FROM petri_projection WHERE run_id = ?")
+                .bind(run_id.to_string())
+                .fetch_optional(&self.pool)
+                .await?;
+        json.map(|json| Ok(Arc::new(serde_json::from_str(&json)?)))
+            .transpose()
+    }
+
+    /// Write the `runs` row of a Petri run from its projection, on a
+    /// connection the caller holds a transaction on: the columns the list
+    /// views and the scheduler read, and the summary JSON. The legacy
+    /// concurrency guard `source_last_seq` is left as the legacy path set it
+    /// (or `1` when this write creates the row), so both writers keep
+    /// working until the legacy events go.
+    pub async fn write_petri_run_row_on_connection(
+        connection: &mut SqliteConnection,
+        run_id: &RunId,
+        projection: &RunProjection,
+    ) -> Result<()> {
+        let entry = ProjectedRun::new(*run_id, Arc::new(projection.clone()), 1);
+        let record = PreparedRunSummary::from_entry(&entry);
+        bind_run_columns(
+            sqlx::query(UPSERT_PETRI_RUN_SQL).bind(run_id.to_string()),
+            &record,
+        )?
+        .execute(connection)
+        .await?;
+        Ok(())
     }
 
     #[cfg(test)]
@@ -657,6 +759,7 @@ impl RunSummaryStore {
 
         insert_run_on_connection(connection, &record).await?;
         insert_event_on_connection(connection, &record, payload, &envelope).await?;
+        insert_platform_record_on_connection(connection, entry, &envelope).await?;
         Ok(envelope)
     }
 
@@ -674,6 +777,7 @@ impl RunSummaryStore {
 
         update_run_on_connection(connection, &record, expected_last_seq).await?;
         insert_event_on_connection(connection, &record, payload, &envelope).await?;
+        insert_platform_record_on_connection(connection, entry, &envelope).await?;
         Ok(envelope)
     }
 
@@ -1111,6 +1215,43 @@ async fn insert_event_json_on_connection(
         .execute(connection)
         .await?;
     Ok(())
+}
+
+/// For a Petri run, the platform record the legacy event stands for, stored
+/// in the event's transaction so the projection over Petri's records reads
+/// the lifecycle from platform records alone. Whether one was written is
+/// what [`platform_record_written`] answers after the commit.
+async fn insert_platform_record_on_connection(
+    connection: &mut SqliteConnection,
+    entry: &ProjectedRun,
+    envelope: &EventEnvelope,
+) -> Result<()> {
+    let Some(record) = platform_record_written(entry, envelope) else {
+        return Ok(());
+    };
+    let recorded_at = u64::try_from(envelope.event.ts.timestamp_millis()).unwrap_or(0);
+    PlatformRecordStore::append_on_connection(
+        connection,
+        &entry.run_id,
+        recorded_at,
+        &record,
+        None,
+    )
+    .await?;
+    Ok(())
+}
+
+/// The platform record a committed legacy event of a Petri run produced,
+/// if any: the same derivation the insert makes, for the caller that
+/// notifies after the commit.
+pub(crate) fn platform_record_written(
+    entry: &ProjectedRun,
+    envelope: &EventEnvelope,
+) -> Option<platform_records::PlatformRecord> {
+    if !entry.projection.spec.engine.is_petri() {
+        return None;
+    }
+    platform_records::platform_record_for(&envelope.event)
 }
 
 fn sql_limit(limit: usize) -> i64 {
