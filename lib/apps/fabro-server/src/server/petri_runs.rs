@@ -7,26 +7,36 @@
 //! the blob store so the run executes and resumes from what was admitted.
 //! Petri compiled, linted and pinned models; the legacy compile is skipped.
 //!
-//! At execution, [`execute`] runs the admitted graph through
-//! `fabro_petri::engine` in the server process, over the run store in the
-//! server's database, until the worker's HTTP run store lands. Only the run
-//! lifecycle events Fabro's read side needs are appended (`run.starting`,
-//! `run.running`, then `run.completed` or `run.failed`); no stage or agent
-//! event is projected, which is the read-side item that follows.
+//! At execution, a Petri run takes the same path a legacy run does: the
+//! scheduler launches `fabro run __run-worker` with the worker's token, and
+//! the worker executes the run through `fabro_petri::engine` over the HTTP
+//! run store, appending the run lifecycle events Fabro's read side needs
+//! (`run.starting`, `run.running`, then `run.completed` or `run.failed`).
+//! The server keeps the worker's lease for as long as the worker lives
+//! (`crate::petri_runs`). Under the test override that replaces the handler
+//! registry, [`execute`] runs the same engine in the server process over the
+//! run store in the server's database, so the scenario tests need no
+//! worker binary. No stage or agent event is projected either way, which is
+//! the read-side item that follows.
+//!
+//! After a server restart, [`reconcile_on_startup`] hands a Petri run the
+//! previous server left in flight back to a worker in resume mode.
 
 use std::collections::{BTreeMap, HashSet};
 use std::sync::Arc;
 use std::time::Instant;
 
-use fabro_config::SettingsLayer;
+use fabro_config::{SettingsLayer, Storage};
 use fabro_llm::selection;
 use fabro_petri::check::{self, Bundle, CheckError, CheckRequest, Diagnostic, Launch};
-use fabro_petri::engine::{self, RunOutcome, RunRequest};
+use fabro_petri::engine::{self, Conclusion, Execution, RunRequest};
+use fabro_petri::petri::StoreError;
 use fabro_petri::runtime::{self, RuntimeSpec};
 use fabro_petri::{SqliteRunStore, admission};
 use fabro_types::settings::run::RunMode;
 use fabro_types::{
-    Engine, PetriAdmission, RunId, RunTarget, RunTiming, ServerSettings, StageOutcome,
+    Engine, PetriAdmission, RunId, RunRunnableSource, RunTarget, RunTiming, ServerSettings,
+    StageOutcome,
 };
 use fabro_util::error as error_util;
 use fabro_validate::{Diagnostic as FabroDiagnostic, Severity};
@@ -37,7 +47,8 @@ use tokio::task;
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
 
-use super::{AppState, clear_live_run_state, workflow_event};
+use super::{AppState, RunExecutionMode, clear_live_run_state, workflow_event};
+use crate::petri_runs::PetriRuns;
 use crate::run_compiler::{PreparedRun, RunCompilerError};
 
 /// The engine a run gets: the one its workflow version names, else the
@@ -215,10 +226,12 @@ fn fabro_diagnostic(diagnostic: &Diagnostic) -> FabroDiagnostic {
     }
 }
 
-/// Execute a Petri run in the server process: runnable → starting → running
-/// → succeeded or failed, with the lifecycle events Fabro's read side needs.
+/// Execute a Petri run in the server process, under the test override:
+/// runnable → starting → running → succeeded or failed, with the lifecycle
+/// events Fabro's read side needs. Outside tests a Petri run executes in
+/// its worker process, launched as a legacy run's worker is.
 pub(crate) async fn execute(state: Arc<AppState>, run_id: RunId) {
-    let (run_dir, cancel) = {
+    let (run_dir, cancel, mode) = {
         let mut runs = state.runs.lock().expect("runs lock poisoned");
         let managed_run = match runs.get_mut(&run_id) {
             Some(run) if run.status == RunStatus::Runnable => run,
@@ -230,7 +243,7 @@ pub(crate) async fn execute(state: Arc<AppState>, run_id: RunId) {
         let cancel = CancellationToken::new();
         managed_run.status = RunStatus::Starting;
         managed_run.cancel_token = Some(cancel.clone());
-        (run_dir, cancel)
+        (run_dir, cancel, managed_run.execution_mode)
     };
 
     let run_store = match state.stores.runs.open_run(&run_id).await {
@@ -283,6 +296,19 @@ pub(crate) async fn execute(state: Arc<AppState>, run_id: RunId) {
     {
         return;
     }
+    let execution = match mode {
+        RunExecutionMode::Start => {
+            match admission::load(&state.store_ref().blobs(), &admission).await {
+                Ok(graphs) => Execution::Start(graphs),
+                Err(err) => {
+                    let message = error_util::collect_chain(&err).join(": ");
+                    fail_before_execution(&state, &run_store, run_id, &message).await;
+                    return;
+                }
+            }
+        }
+        RunExecutionMode::Resume => Execution::Resume,
+    };
     let started = Instant::now();
     for event in [
         workflow_event::Event::RunStarting,
@@ -314,24 +340,19 @@ pub(crate) async fn execute(state: Arc<AppState>, run_id: RunId) {
     let request = RunRequest {
         run_id: run_id.to_string(),
         run_dir: run_dir.join("petri"),
-        admission,
-        blobs: state.store_ref().blobs(),
+        execution,
         store: Arc::new(SqliteRunStore::new(state.db_pool.clone())),
         runtime: runtime_spec(&state, &eligible, dry_run),
         provider: run_state.spec.settings.run.environment.provider.clone(),
         cancel,
     };
-    let outcome = Box::pin(engine::run(request)).await;
+    let result = Box::pin(engine::run(request)).await;
     let timing = RunTiming {
         wall_time_ms: u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
         ..RunTiming::default()
     };
-    let (status, error, event) = match outcome {
-        Ok(RunOutcome {
-            status: engine::RunStatus::Success,
-            complete: true,
-            ..
-        }) => {
+    let (status, error, event) = match engine::conclusion(&result) {
+        Conclusion::Succeeded => {
             info!(run_id = %run_id, "Petri run completed");
             (
                 RunStatus::Succeeded {
@@ -350,21 +371,9 @@ pub(crate) async fn execute(state: Arc<AppState>, run_id: RunId) {
                 },
             )
         }
-        Ok(outcome) => {
-            let reason = match outcome.status {
-                engine::RunStatus::Cancelled => FailureReason::Cancelled,
-                engine::RunStatus::Success | engine::RunStatus::Failed => {
-                    FailureReason::WorkflowError
-                }
-            };
-            let message = failure_message(&outcome);
+        Conclusion::Failed { reason, message } => {
             info!(run_id = %run_id, error = %message, "Petri run did not succeed");
             failed(reason, message, timing)
-        }
-        Err(err) => {
-            let message = error_util::collect_chain(&err).join(": ");
-            error!(run_id = %run_id, error = %message, "Petri run failed");
-            failed(FailureReason::WorkflowError, message, timing)
         }
     };
     if let Err(err) = workflow_event::append_event(&run_store, &run_id, &event).await {
@@ -373,20 +382,75 @@ pub(crate) async fn execute(state: Arc<AppState>, run_id: RunId) {
     finish(&state, run_id, status, error);
 }
 
-/// The failure of a run whose record says it did not succeed.
-fn failure_message(outcome: &RunOutcome) -> String {
-    let mut message = match (&outcome.status, &outcome.failure) {
-        (engine::RunStatus::Cancelled, _) => "the run was cancelled".to_string(),
-        (_, Some(failure)) => failure.clone(),
-        (engine::RunStatus::Failed, None) => "the run failed".to_string(),
-        (engine::RunStatus::Success, None) => "the run's record is incomplete".to_string(),
+/// Bring a Petri run the server left in flight back to its worker after a
+/// restart: the run continues from its records, as Petri's own resume does.
+///
+/// The lease the previous worker held is released from outside, which
+/// fences that worker should it still be alive; then the run is asked to
+/// start again as a resume (`run.start_requested` with `resume`, then
+/// `run.runnable`, the same pair the API's resume appends), and a managed
+/// run is registered for the scheduler in resume mode when Petri's store
+/// holds the run, else in start mode: a worker that died before it created
+/// the run's record left nothing to continue from, so the run starts from
+/// its admitted graphs.
+///
+/// Full recovery, where the workspace a resumed stage sees is restored to
+/// the snapshot its durable state names, is the integration plan's F3.5.
+/// Until it lands, a retained workspace is used as the previous worker left
+/// it.
+pub(crate) async fn reconcile_on_startup(
+    state: &Arc<AppState>,
+    run_id: RunId,
+    run_store: &fabro_store::RunDatabase,
+    run_state: &fabro_store::RunProjection,
+) -> anyhow::Result<()> {
+    let key = PetriRuns::key(&run_id);
+    let held = match state.petri_runs.release_for_restart(run_id).await {
+        Ok(()) => true,
+        Err(StoreError::NotFound { .. }) => false,
+        Err(err) => {
+            return Err(anyhow::Error::new(err).context("releasing the Petri run's lease"));
+        }
     };
-    if !outcome.complete {
-        message.push_str(" (record incomplete: ");
-        message.push_str(&outcome.incomplete.join("; "));
-        message.push(')');
+    let mode = if held {
+        RunExecutionMode::Resume
+    } else {
+        RunExecutionMode::Start
+    };
+    info!(
+        run_id = %run_id,
+        petri_key = %key,
+        mode = super::worker_mode_arg(mode),
+        "Petri run left in flight by the previous server; relaunching its worker"
+    );
+    for event in [
+        workflow_event::Event::RunStartRequested {
+            resume: true,
+            actor:  None,
+        },
+        workflow_event::Event::RunRunnable {
+            source: RunRunnableSource::StartRequested,
+            actor:  None,
+        },
+    ] {
+        workflow_event::append_event(run_store, &run_id, &event).await?;
     }
-    message
+    let run_dir = Storage::new(state.server_storage_dir())
+        .run_scratch(&run_id)
+        .root()
+        .to_path_buf();
+    let mut runs = state.runs.lock().expect("runs lock poisoned");
+    runs.insert(
+        run_id,
+        super::managed_run(
+            run_state.spec.graph_source.clone().unwrap_or_default(),
+            RunStatus::Runnable,
+            run_id.created_at(),
+            run_dir,
+            mode,
+        ),
+    );
+    Ok(())
 }
 
 /// The failed status, its message, and the `run.failed` event for it.

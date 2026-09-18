@@ -305,3 +305,44 @@ async fn two_workers_cannot_both_hold_a_run_lease() {
     drop(taken);
     wait_until_released(server_store, &key).await;
 }
+
+/// A worker's store leases for the worker's launch id, whatever owner Petri
+/// minted for the run runtime that opened the run: the server's lease row
+/// names the launch, a reopen for the same launch shares the lease, and the
+/// launch's release ends it.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_worker_store_leases_for_its_launch_not_for_petris_owner() {
+    let state = test_app_state();
+    let base_url = serve(Arc::clone(&state), |router| router).await;
+    let run_id = RunId::new();
+    let key = petri_key(run_id);
+    let token = state.test_issue_worker_token(&run_id);
+    let launch = OwnerId::new("launch-1");
+    let store = HttpRunStore::for_worker(
+        worker_client(&base_url, &token, Duration::from_secs(5)).await,
+        launch.clone(),
+    );
+
+    let created = store
+        .open(&key, Access::Create {
+            owner: OwnerId::mint(),
+        })
+        .await
+        .expect("the worker creates the run");
+    let server_store = state.test_petri_run_store();
+    assert_eq!(
+        server_store.owner(&key).await.expect("reads the lease"),
+        Some(launch.clone()),
+        "the lease names the launch"
+    );
+    let reopened = store
+        .open(&key, Access::Write {
+            owner: OwnerId::mint(),
+        })
+        .await
+        .expect("the same launch reopens the run");
+    assert_eq!(reopened.locator(), created.locator());
+    drop(reopened);
+    drop(created);
+    wait_until_released(server_store, &key).await;
+}

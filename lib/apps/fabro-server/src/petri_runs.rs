@@ -108,6 +108,16 @@ impl PetriRuns {
         drop(handle);
     }
 
+    /// End whatever lease the run's previous worker held, from outside:
+    /// what the server does for a run it finds in flight at startup, before
+    /// it launches a new worker for it. The previous worker, should it still
+    /// be alive, finds its handles stale on its next write. `NotFound` when
+    /// the store never held the run.
+    pub(crate) async fn release_for_restart(&self, run_id: RunId) -> Result<(), StoreError> {
+        self.worker_exited(run_id);
+        self.store.release_lease(&Self::key(&run_id)).await
+    }
+
     /// Drop every handle held on the run: what the server does when it
     /// observes the run's worker exit, so a worker that died without
     /// releasing does not keep the lease.
@@ -141,6 +151,7 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
     use std::pin::Pin;
     use std::sync::Arc;
     use std::sync::atomic::{AtomicBool, Ordering};
@@ -153,7 +164,8 @@ mod tests {
     use fabro_config::daemon::ServerDaemon;
     use fabro_petri::petri::RunStore as _;
     use fabro_static::EnvVars;
-    use fabro_types::{RunId, WorkflowPath, WorkflowVersion};
+    use fabro_types::{RunId, RunStatus, WorkflowPath, WorkflowVersion};
+    use fabro_workflow::event::{Event, append_event};
     use serde_json::json;
     use tokio::io::AsyncRead;
     use tokio::sync::Notify;
@@ -161,9 +173,10 @@ mod tests {
     use tower::ServiceExt as _;
 
     use super::*;
-    use crate::server::{AppState, spawn_scheduler};
+    use crate::server::{AppState, reconcile_incomplete_runs_on_startup, spawn_scheduler};
     use crate::test_support::{
         TestAppStateBuilder, build_test_router, test_register_workflow_version,
+        test_secret_store_path, test_store_bundle,
     };
     use crate::worker_runtime::{
         StartedWorker, WorkerExit, WorkerLaunchSpec, WorkerRef, WorkerRuntime,
@@ -176,13 +189,18 @@ mod tests {
     start -> exit
 }"#;
 
+    const PETRI_SETTINGS: &str =
+        "_version = 1\n\n[workflow]\ngraph = \"workflow.fabro\"\nengine = \"petri\"\n";
+
     /// A worker runtime whose one worker runs until the test ends it, so
-    /// the test can act while the server waits on the worker.
+    /// the test can act while the server waits on the worker. It keeps the
+    /// mode the server launched the worker with.
     #[derive(Default)]
     struct HeldWorkerRuntime {
         started: Notify,
         running: AtomicBool,
         exit:    Arc<Notify>,
+        mode:    Mutex<Option<&'static str>>,
     }
 
     impl HeldWorkerRuntime {
@@ -196,11 +214,16 @@ mod tests {
             self.running.store(false, Ordering::SeqCst);
             self.exit.notify_one();
         }
+
+        fn launched_mode(&self) -> Option<&'static str> {
+            *lock(&self.mode)
+        }
     }
 
     #[async_trait::async_trait]
     impl WorkerRuntime for HeldWorkerRuntime {
-        async fn start(&self, _spec: WorkerLaunchSpec) -> anyhow::Result<StartedWorker> {
+        async fn start(&self, spec: WorkerLaunchSpec) -> anyhow::Result<StartedWorker> {
+            *lock(&self.mode) = Some(spec.mode);
             self.running.store(true, Ordering::SeqCst);
             let exit = Arc::clone(&self.exit);
             let stderr: Pin<Box<dyn AsyncRead + Send + 'static>> = Box::pin(tokio::io::empty());
@@ -248,15 +271,27 @@ mod tests {
         .expect("the test server record writes");
     }
 
-    /// A run created and started through the API, as a client would.
+    /// A legacy run created and started through the API, as a client would.
     async fn create_and_start_run(app: &axum::Router) -> RunId {
+        create_and_start_run_with(app, &[]).await
+    }
+
+    /// A Petri run: its version's `workflow.toml` names the engine.
+    async fn create_and_start_petri_run(app: &axum::Router) -> RunId {
+        create_and_start_run_with(app, &[("workflow.toml", PETRI_SETTINGS)]).await
+    }
+
+    async fn create_and_start_run_with(app: &axum::Router, extra: &[(&str, &str)]) -> RunId {
         let path = WorkflowPath::new("workflow.fabro").expect("a workflow path");
-        let version = WorkflowVersion::new(
-            path.clone(),
-            std::collections::BTreeMap::from([(path, MINIMAL_DOT.to_string())]),
-            std::collections::BTreeMap::new(),
-        )
-        .expect("a workflow version");
+        let mut files = BTreeMap::from([(path.clone(), MINIMAL_DOT.to_string())]);
+        for (name, text) in extra {
+            files.insert(
+                WorkflowPath::new(*name).expect("a workflow path"),
+                (*text).to_string(),
+            );
+        }
+        let version =
+            WorkflowVersion::new(path, files, BTreeMap::new()).expect("a workflow version");
         let version_id = test_register_workflow_version(app, &version, None).await;
         let intent = json!({
             "workflow_version_id": version_id,
@@ -359,5 +394,111 @@ mod tests {
             .await
             .expect("the next owner takes the run");
         drop(resumed);
+    }
+
+    /// After a restart, a Petri run the previous server left running goes
+    /// back to a worker in resume mode: the lease its worker held is
+    /// released from outside, the run is asked to start again as a resume,
+    /// and the scheduler launches the worker with `--mode resume`.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_petri_run_left_running_by_a_restart_goes_back_to_a_worker_in_resume_mode() {
+        let (store, artifact_store) = test_store_bundle();
+        let vault_path = test_secret_store_path();
+        let before = TestAppStateBuilder::new()
+            .store_bundle(Arc::clone(&store), artifact_store.clone())
+            .vault_path(vault_path.clone())
+            .vault_entries([(EnvVars::OPENAI_API_KEY, "test-openai-api-key")])
+            .build();
+        let app = build_test_router(Arc::clone(&before));
+        let run_id = create_and_start_petri_run(&app).await;
+        let key = PetriRuns::key(&run_id);
+
+        // The worker took the run as far as running and holds its lease;
+        // then the server died, so nothing released it.
+        let run_store = before
+            .stores
+            .runs
+            .open_run(&run_id)
+            .await
+            .expect("the run opens");
+        for event in [Event::RunStarting, Event::RunRunning] {
+            append_event(&run_store, &run_id, &event)
+                .await
+                .expect("the lifecycle event appends");
+        }
+        let held = before
+            .petri_runs
+            .open(run_id, Access::Create {
+                owner: OwnerId::new("worker-1"),
+            })
+            .await
+            .expect("the worker takes the run");
+        drop(held);
+        assert_eq!(
+            before
+                .petri_runs
+                .store()
+                .owner(&key)
+                .await
+                .expect("reads the lease"),
+            Some(OwnerId::new("worker-1"))
+        );
+
+        let runtime = Arc::new(HeldWorkerRuntime::default());
+        let after = TestAppStateBuilder::new()
+            .store_bundle(store, artifact_store)
+            .vault_path(vault_path)
+            .vault_entries([(EnvVars::OPENAI_API_KEY, "test-openai-api-key")])
+            .worker_runtime(Arc::clone(&runtime) as Arc<dyn WorkerRuntime>)
+            .build();
+        let reconciled = reconcile_incomplete_runs_on_startup(&after)
+            .await
+            .expect("the restart reconciles");
+        assert_eq!(reconciled, 1);
+
+        assert_eq!(
+            after
+                .petri_runs
+                .store()
+                .owner(&key)
+                .await
+                .expect("reads the lease"),
+            None,
+            "the previous worker's lease is released"
+        );
+        let reader = after
+            .stores
+            .runs
+            .open_run_reader(&run_id)
+            .await
+            .expect("the run opens for reading");
+        let run_state = reader.state().await.expect("the run state loads");
+        assert_eq!(run_state.status, RunStatus::Runnable);
+        let names = reader
+            .list_events()
+            .await
+            .expect("the history lists")
+            .into_iter()
+            .map(|envelope| envelope.event.event_name().to_string())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            &names[names.len() - 4..],
+            [
+                "run.starting",
+                "run.running",
+                "run.start_requested",
+                "run.runnable"
+            ],
+            "{names:?}"
+        );
+
+        write_test_server_record(&after);
+        spawn_scheduler(Arc::clone(&after));
+        runtime.wait_for_start().await;
+        assert_eq!(runtime.launched_mode(), Some("resume"));
+        runtime.end_worker();
+        // The first server's handles must outlive the check above: a real
+        // crash releases nothing, and dropping them here would.
+        drop(before);
     }
 }

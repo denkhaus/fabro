@@ -3143,6 +3143,17 @@ pub(crate) async fn reconcile_incomplete_runs_on_startup(
 
     for summary in summaries {
         let run_store = state.stores.runs.open_run(&summary.id).await?;
+        // A Petri run continues from its records in a new worker, unless a
+        // cancel was pending or the run was being removed: those end as a
+        // legacy run's do.
+        if petri_run_resumes_on_restart(&summary) {
+            let run_state = run_store.state().await?;
+            if run_state.spec.engine.is_petri() {
+                petri_runs::reconcile_on_startup(state, summary.id, &run_store, &run_state).await?;
+                reconciled += 1;
+                continue;
+            }
+        }
         let (error, reason) = failure_for_incomplete_run(
             summary.lifecycle.pending_control,
             "Fabro server restarted before the run reached a terminal state.".to_string(),
@@ -3161,6 +3172,21 @@ pub(crate) async fn reconcile_incomplete_runs_on_startup(
     }
 
     Ok(reconciled)
+}
+
+/// Whether a run the server finds in flight at startup is one a Petri
+/// worker can continue: it was runnable or running (blocked or paused
+/// count), no cancel was pending, and it was not being removed.
+fn petri_run_resumes_on_restart(summary: &fabro_types::Run) -> bool {
+    summary.lifecycle.pending_control != Some(RunControlAction::Cancel)
+        && matches!(
+            summary.lifecycle.status,
+            RunStatus::Runnable
+                | RunStatus::Starting
+                | RunStatus::Running
+                | RunStatus::Blocked { .. }
+                | RunStatus::Paused { .. }
+        )
 }
 
 fn live_worker_processes(state: &AppState) -> Vec<LiveWorkerProcess> {
@@ -3982,12 +4008,15 @@ async fn execute_run(state: Arc<AppState>, run_id: RunId) {
         return;
     }
 
+    // A Petri run takes the worker path a legacy run takes. Under the test
+    // override it executes in this process instead, so the scenario tests
+    // need no worker binary.
     match run_engine(&state, run_id).await {
-        Ok(Engine::Petri) => {
+        Ok(Engine::Petri) if state.registry_factory_override.is_some() => {
             Box::pin(petri_runs::execute(state, run_id)).await;
             return;
         }
-        Ok(Engine::Legacy) => {}
+        Ok(Engine::Petri | Engine::Legacy) => {}
         Err(err) => {
             tracing::error!(run_id = %run_id, error = %err, "Failed to read the run's engine");
             fail_managed_run(

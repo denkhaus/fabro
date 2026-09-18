@@ -3,6 +3,11 @@
 //! `[server.execution] engine` says so, Petri's record of the run agrees
 //! with Fabro's status, and Petri's diagnostics refuse a run at create.
 //!
+//! The runs here execute in the server process under the handler-registry
+//! test override; outside it the scheduler launches a worker for a Petri
+//! run, which the CLI's scenario tests cover with the real binary
+//! (`lib/apps/fabro-cli/tests/it/scenario/petri.rs`).
+//!
 //! The runs that execute take their host scope through the sandbox-driver
 //! host plugin, so those tests skip, and say why, when the executable is not
 //! found, unless `FABRO_REQUIRE_SANDBOX_PLUGINS` is set. The create-time
@@ -222,9 +227,14 @@ async fn the_hello_bundle_runs_on_petri_when_the_version_names_the_engine() {
         .load(twin)
         .await;
     let settings = test_settings();
+    // The handler-registry override is the test switch that keeps a Petri
+    // run in this process; without it the scheduler launches a worker.
     let state = TestAppStateBuilder::new()
         .runtime_settings(settings.server_settings, settings.manifest_run_defaults)
         .max_concurrent_runs(5)
+        .registry_factory(|interviewer| {
+            fabro_workflow::handler::default_registry(interviewer, || None)
+        })
         .llm_overlay(llm_overlay_with_provider_base_url(
             "openai",
             twin.base_url.clone(),
