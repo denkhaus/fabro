@@ -4,7 +4,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{Context, Result, anyhow};
-use async_trait::async_trait;
 use fabro_client::ServerTarget;
 use fabro_config::Storage;
 use fabro_interview::{
@@ -14,11 +13,9 @@ use fabro_interview::{
     WorkerControlMessage,
 };
 use fabro_manifest::SuppliedWorkflowVersionPackager;
-use fabro_store::{EventEnvelope, RunProjection, RunProjectionReducer};
 use fabro_tool::fabro_client::ClientBackend;
-use fabro_types::{BlobHash, Principal, RunEvent, RunId};
+use fabro_types::RunId;
 use fabro_vault::{SecretStore, Vault};
-use fabro_workflow::runtime_store::{RunStoreBackend, RunStoreHandle};
 use fabro_workflow::services::FabroRunToolServices;
 use futures::{SinkExt, StreamExt};
 use jsonwebtoken::dangerous::insecure_decode;
@@ -29,7 +26,7 @@ use tokio::net::TcpStream;
 use tokio::net::UnixStream;
 #[cfg(unix)]
 use tokio::signal::unix::{SignalKind, signal};
-use tokio::sync::{Mutex, RwLock as AsyncRwLock, oneshot};
+use tokio::sync::{RwLock as AsyncRwLock, oneshot};
 use tokio::task::JoinHandle;
 use tokio::time::{self, Instant, MissedTickBehavior};
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
@@ -42,12 +39,6 @@ use tokio_util::sync::CancellationToken;
 use super::petri_worker::{self, PetriControls, PetriWorker};
 use crate::args::RunWorkerMode;
 use crate::server_client;
-
-const RUN_STORE_RETRY_DELAYS: [Duration; 3] = [
-    Duration::from_millis(50),
-    Duration::from_millis(100),
-    Duration::from_millis(250),
-];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum WorkerTitlePhase {
@@ -74,16 +65,14 @@ pub(crate) async fn execute(
 
     let target = server.parse::<ServerTarget>()?;
     let client = server_client::connect_server_target_with_bearer(&target, worker_token).await?;
-    let run_store = HttpRunStore::connect(run_id, client.clone_for_reuse()).await?;
-    let run_state = run_store
-        .state()
+    let run_state = client
+        .get_run_state(&run_id)
         .await
         .with_context(|| format!("failed to load run state for {run_id}"))?;
     Box::pin(petri_worker::execute(PetriWorker {
         run_id,
         target,
         client,
-        run_store,
         run_state,
         storage_dir: &storage_dir,
         run_dir,
@@ -663,150 +652,6 @@ async fn apply_worker_control_message(
     }
 }
 
-#[derive(Clone)]
-struct HttpRunStore {
-    run_id: RunId,
-    client: server_client::Client,
-    state:  Arc<Mutex<RunProjection>>,
-    events: Arc<Mutex<Option<Vec<EventEnvelope>>>>,
-}
-
-impl HttpRunStore {
-    async fn connect(run_id: RunId, client: server_client::Client) -> Result<RunStoreHandle> {
-        let state = client
-            .get_run_state(&run_id)
-            .await
-            .with_context(|| format!("failed to fetch run state for {run_id}"))?;
-        Ok(RunStoreHandle::new(Arc::new(Self {
-            run_id,
-            client,
-            state: Arc::new(Mutex::new(state)),
-            events: Arc::new(Mutex::new(None)),
-        })))
-    }
-
-    async fn with_retries<T, F, Fut>(&self, operation: &'static str, mut op: F) -> Result<T>
-    where
-        F: FnMut() -> Fut,
-        Fut: std::future::Future<Output = Result<T>>,
-    {
-        let mut last_error = None;
-        for attempt in 0..=RUN_STORE_RETRY_DELAYS.len() {
-            match op().await {
-                Ok(value) => return Ok(value),
-                Err(err) => last_error = Some(err),
-            }
-            if let Some(delay) = RUN_STORE_RETRY_DELAYS.get(attempt) {
-                time::sleep(*delay).await;
-            }
-        }
-        Err(last_error
-            .unwrap_or_else(|| anyhow!("run store operation failed"))
-            .context(format!(
-                "worker lost canonical run store during {operation}"
-            )))
-    }
-
-    async fn refresh_state_from_server(&self) -> Result<RunProjection> {
-        self.with_retries("refresh state", || {
-            let client = self.client.clone_for_reuse();
-            let run_id = self.run_id;
-            async move { client.get_run_state(&run_id).await }
-        })
-        .await
-    }
-
-    async fn apply_acknowledged_event(&self, seq: u32, event: &RunEvent) -> Result<()> {
-        let envelope = EventEnvelope {
-            seq,
-            event: event.clone(),
-        };
-
-        {
-            let mut state = self.state.lock().await;
-            if let Err(err) = state.apply_event(&envelope) {
-                tracing::warn!(run_id = %self.run_id, error = %err, "failed to apply acknowledged event to local run-state mirror; refreshing from server");
-                drop(state);
-                let refreshed = self.refresh_state_from_server().await?;
-                *self.state.lock().await = refreshed;
-            }
-        }
-
-        let mut events = self.events.lock().await;
-        if let Some(cached) = events.as_mut() {
-            cached.push(envelope);
-        }
-
-        Ok(())
-    }
-}
-
-#[async_trait]
-impl RunStoreBackend for HttpRunStore {
-    async fn load_state(&self) -> Result<RunProjection> {
-        Ok(self.state.lock().await.clone())
-    }
-
-    async fn list_events(&self) -> Result<Vec<EventEnvelope>> {
-        let mut cached = self.events.lock().await;
-        if let Some(events) = cached.as_ref() {
-            return Ok(events.clone());
-        }
-
-        let events = self
-            .with_retries("list run events", || {
-                let client = self.client.clone_for_reuse();
-                let run_id = self.run_id;
-                async move { client.list_run_events(&run_id, None, None).await }
-            })
-            .await?;
-        *cached = Some(events.clone());
-        Ok(events)
-    }
-
-    async fn append_run_event(&self, event: &RunEvent) -> Result<()> {
-        let seq = Box::pin(self.with_retries("append run event", || {
-            let client = self.client.clone_for_reuse();
-            let run_id = self.run_id;
-            let event = event.clone();
-            async move { client.append_run_event(&run_id, &event).await }
-        }))
-        .await?;
-        // Both the sandbox lifecycle and the lithos event shapes grew this
-        // future past clippy's stack budget; box it once at the call.
-        Box::pin(self.apply_acknowledged_event(seq, event)).await
-    }
-
-    async fn write_blob(&self, data: &[u8]) -> Result<BlobHash> {
-        self.with_retries("write run blob", || {
-            let client = self.client.clone_for_reuse();
-            let run_id = self.run_id;
-            let data = data.to_vec();
-            async move { client.write_run_blob(&run_id, &data).await }
-        })
-        .await
-    }
-
-    async fn read_blob(&self, blob_hash: &BlobHash) -> Result<Option<bytes::Bytes>> {
-        self.with_retries("read run blob", || {
-            let client = self.client.clone_for_reuse();
-            let run_id = self.run_id;
-            let blob_hash = *blob_hash;
-            async move { client.read_run_blob(&run_id, &blob_hash).await }
-        })
-        .await
-    }
-
-    async fn read_run_log(&self) -> Result<Option<Vec<u8>>> {
-        self.with_retries("get run logs", || {
-            let client = self.client.clone_for_reuse();
-            let run_id = self.run_id;
-            async move { client.get_run_logs(&run_id).await }
-        })
-        .await
-    }
-}
-
 pub(super) fn set_worker_title(run_id: &RunId, phase: WorkerTitlePhase) {
     fabro_proc::title_set(&worker_title(run_id, phase));
 }
@@ -830,15 +675,6 @@ fn worker_title(run_id: &RunId, phase: WorkerTitlePhase) -> String {
         WorkerTitlePhase::Cancelled => "cancelled",
     };
     format!("fabro {short_id} {phase}")
-}
-
-pub(super) fn stamp_system_worker(mut event: RunEvent) -> RunEvent {
-    if event.actor.is_none() {
-        event.actor = Some(Principal::Worker {
-            run_id: event.run_id,
-        });
-    }
-    event
 }
 
 /// `SIGTERM` and `SIGINT` cancel the run, the way the server's cancel does.
@@ -873,16 +709,13 @@ mod tests {
     use std::sync::Arc;
     use std::time::Duration;
 
-    use chrono::Utc;
     use fabro_client::ServerTarget;
     use fabro_config::Storage;
     use fabro_interview::{
         AnswerValue, ControlInterviewer, Interviewer, Question, WorkerControlEnvelope,
     };
-    use fabro_types::run_event::RunStatusTransitionProps;
-    use fabro_types::{AuthMethod, EventBody, IdpIdentity, Principal, QuestionType, fixtures};
+    use fabro_types::{QuestionType, fixtures};
     use fabro_vault::{SecretType, Vault};
-    use fabro_workflow::event::RunEventSink;
     use tokio::time;
     use tokio_tungstenite::tungstenite::protocol::{Message as TestWebSocketMessage, Role};
     use tokio_util::sync::CancellationToken;
@@ -893,19 +726,17 @@ mod tests {
         WorkerControls, WorkerTitlePhase, apply_worker_control_delivery_frame,
         apply_worker_control_message, build_worker_control_stream_request,
         connect_worker_control_stream, handle_worker_control_socket, initial_worker_title_phase,
-        load_worker_vault, next_worker_control_reconnect_backoff, stamp_system_worker,
-        worker_title,
+        load_worker_vault, next_worker_control_reconnect_backoff, worker_title,
     };
     use crate::args::RunWorkerMode;
 
-    /// A run's controls over a sink that keeps nothing: what the channel
+    /// A run's controls over records kept in memory: what the channel
     /// tests drive.
     fn test_controls() -> WorkerControls {
-        let sink = RunEventSink::callback(|_event| async move { Ok(()) });
         Arc::new(PetriControls::new(
             fixtures::RUN_1,
             fabro_petri::controls::RunControls::new(),
-            sink,
+            Arc::new(fabro_petri::test_support::MemoryPlatformRecords::new()),
         ))
     }
 
@@ -952,32 +783,6 @@ mod tests {
         .expect("test worker token should encode")
     }
 
-    fn test_user_principal(login: &str) -> Principal {
-        Principal::user(
-            IdpIdentity::new("https://github.com", "12345").unwrap(),
-            login.to_string(),
-            AuthMethod::Github,
-        )
-    }
-
-    fn running_event(actor: Option<Principal>) -> fabro_types::RunEvent {
-        fabro_types::RunEvent {
-            id: "evt_1".to_string(),
-            ts: Utc::now(),
-            run_id: fixtures::RUN_1,
-            node_id: None,
-            node_label: None,
-            stage_id: None,
-            parallel_group_id: None,
-            parallel_branch_id: None,
-            session_id: None,
-            parent_session_id: None,
-            tool_call_id: None,
-            actor,
-            body: EventBody::RunRunning(RunStatusTransitionProps::default()),
-        }
-    }
-
     #[test]
     fn worker_title_uses_short_run_id_and_phase() {
         let short_id: String = fixtures::RUN_1.to_string().chars().take(12).collect();
@@ -1000,67 +805,6 @@ mod tests {
         assert_eq!(
             initial_worker_title_phase(RunWorkerMode::Resume),
             WorkerTitlePhase::Resume
-        );
-    }
-
-    #[test]
-    fn stamp_system_worker_fills_missing_actor_only() {
-        let stamped = stamp_system_worker(running_event(None));
-
-        assert_eq!(
-            stamped.actor,
-            Some(Principal::Worker {
-                run_id: fixtures::RUN_1,
-            })
-        );
-
-        let existing_actor = test_user_principal("octocat");
-        let stamped = stamp_system_worker(running_event(Some(existing_actor.clone())));
-        assert_eq!(stamped.actor, Some(existing_actor));
-    }
-
-    #[tokio::test]
-    async fn worker_event_stamp_applies_to_all_fanout_sinks() {
-        let first = Arc::new(tokio::sync::Mutex::new(Vec::new()));
-        let second = Arc::new(tokio::sync::Mutex::new(Vec::new()));
-        let first_events = Arc::clone(&first);
-        let second_events = Arc::clone(&second);
-        let sink = RunEventSink::map(
-            stamp_system_worker,
-            RunEventSink::fanout(vec![
-                RunEventSink::callback(move |event| {
-                    let first_events = Arc::clone(&first_events);
-                    async move {
-                        first_events.lock().await.push(event);
-                        Ok(())
-                    }
-                }),
-                RunEventSink::callback(move |event| {
-                    let second_events = Arc::clone(&second_events);
-                    async move {
-                        second_events.lock().await.push(event);
-                        Ok(())
-                    }
-                }),
-            ]),
-        );
-        let event = running_event(None);
-
-        sink.write_run_event(&event).await.unwrap();
-
-        let first = first.lock().await;
-        let second = second.lock().await;
-        assert_eq!(
-            first[0].actor,
-            Some(Principal::Worker {
-                run_id: fixtures::RUN_1,
-            })
-        );
-        assert_eq!(
-            second[0].actor,
-            Some(Principal::Worker {
-                run_id: fixtures::RUN_1,
-            })
         );
     }
 

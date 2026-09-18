@@ -23,6 +23,7 @@ use fabro_interview::AnswerSubmission;
 use fabro_llm::Client as LlmClient;
 use fabro_manifest::RunOverrideInput;
 use fabro_static::EnvVars;
+use fabro_store::platform_records::{PlatformRecord, RunParentRecord, RunTitleRecord};
 use fabro_store::{
     RunSummaryListQuery, RunSummarySort, RunSummarySortDirection, RunSummaryVisibility,
 };
@@ -32,8 +33,7 @@ use fabro_types::{
     AutomationRef, ContextWindowStaleness, ManifestPath, Principal, Run, RunClientProvenance,
     RunId, RunProvenance, RunServerProvenance, RunStatusKind, RunTarget, SandboxProviderKind,
     StageContextWindow, StageContextWindowUnavailableReason, StageHandler, StageModelUsage,
-    StageProjection, SystemActorKind, ValidatedRunTarget, json_scalar_to_toml_value,
-    parse_blob_ref,
+    StageProjection, ValidatedRunTarget, json_scalar_to_toml_value, parse_blob_ref,
 };
 use fabro_util::error as error_util;
 use fabro_util::version::FABRO_VERSION;
@@ -50,8 +50,8 @@ use super::super::{
     AppState, DeleteRunOutcome, ListResponse, RunExecutionMode, VariableError, answer_from_request,
     api_question_from_pending_interview, clamp_page_limit, clamp_page_offset, default_page_limit,
     delete_run_internal, load_pending_interview, managed_run, parse_run_id_path,
-    parse_stage_id_path, petri_runs, reject_if_archived, submit_pending_interview_answer,
-    workflow_event,
+    parse_stage_id_path, petri_runs, reject_if_archived, run_records,
+    submit_pending_interview_answer,
 };
 use crate::error::ApiError;
 use crate::principal_middleware::{
@@ -213,20 +213,12 @@ async fn link_run_parent(
             .into_response();
     }
 
-    let Ok(run_store) = state.stores.runs.open_run(&child_id).await else {
-        return ApiError::not_found("Run not found.").into_response();
-    };
-    if let Err(err) = workflow_event::append_event(
-        &run_store,
-        &child_id,
-        &workflow_event::Event::RunParentLinked {
-            previous_parent_id: child.parent_id,
-            parent_id,
-            actor: Some(actor),
-        },
-    )
-    .await
-    {
+    let _ = actor;
+    let record = PlatformRecord::RunParent(RunParentRecord {
+        parent_id:          Some(parent_id),
+        previous_parent_id: child.parent_id,
+    });
+    if let Err(err) = run_records::append(&state, child_id, record).await {
         return ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string()).into_response();
     }
     updated_run_response(&state, &child_id).await
@@ -253,19 +245,12 @@ async fn unlink_run_parent(
             .into_response();
     };
 
-    let Ok(run_store) = state.stores.runs.open_run(&child_id).await else {
-        return ApiError::not_found("Run not found.").into_response();
-    };
-    if let Err(err) = workflow_event::append_event(
-        &run_store,
-        &child_id,
-        &workflow_event::Event::RunParentUnlinked {
-            previous_parent_id,
-            actor: Some(actor),
-        },
-    )
-    .await
-    {
+    let _ = actor;
+    let record = PlatformRecord::RunParent(RunParentRecord {
+        parent_id:          None,
+        previous_parent_id: Some(previous_parent_id),
+    });
+    if let Err(err) = run_records::append(&state, child_id, record).await {
         return ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string()).into_response();
     }
     updated_run_response(&state, &child_id).await
@@ -491,19 +476,13 @@ async fn update_run(
             .into_response();
     }
 
-    let run_store = match state.stores.runs.open_run(&id).await {
-        Ok(run_store) => run_store,
-        Err(err) => {
-            return ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string())
-                .into_response();
-        }
-    };
-    if let Err(err) =
-        workflow_event::append_event(&run_store, &id, &workflow_event::Event::RunTitleUpdated {
-            title,
-            actor: Some(Principal::User(subject.0)),
-        })
-        .await
+    let _ = subject;
+    if let Err(err) = run_records::append(
+        &state,
+        id,
+        PlatformRecord::RunTitle(RunTitleRecord { title }),
+    )
+    .await
     {
         return ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string()).into_response();
     }
@@ -799,6 +778,9 @@ async fn finalize_created_run(
         }
     };
     let created_at = created.run_id.created_at();
+    // The run's summary row is the projector's: wait for the pass that
+    // folds the run's first records before reading the run back.
+    state.petri_projector.settle(created.run_id).await;
     let summary = match state
         .stores
         .run_summaries
@@ -1138,28 +1120,29 @@ fn spawn_generated_title_task(task: GeneratedTitleTask) {
             return;
         }
 
-        let run_store = match task.state.stores.runs.open_run(&task.run_id).await {
-            Ok(store) => store,
+        // The generated title replaces the deterministic one only while the
+        // run still carries it: a title someone set meanwhile stays.
+        let current = match run_records::projection(&task.state, task.run_id).await {
+            Ok(Some(projection)) => projection.title().to_string(),
+            Ok(None) => return,
             Err(err) => {
-                tracing::warn!(run_id = %task.run_id, error = %err, "Failed to open run store for title update");
+                tracing::warn!(run_id = %task.run_id, error = %err, "Failed to load the run for its title update");
                 return;
             }
         };
-        let expected_title = task.deterministic_title;
-        if let Err(err) = workflow_event::append_event_if(
-            &run_store,
-            &task.run_id,
-            &workflow_event::Event::RunTitleUpdated {
+        if current != task.deterministic_title {
+            return;
+        }
+        if let Err(err) = run_records::append(
+            &task.state,
+            task.run_id,
+            PlatformRecord::RunTitle(RunTitleRecord {
                 title: generated_title,
-                actor: Some(Principal::System {
-                    system_kind: SystemActorKind::Engine,
-                }),
-            },
-            move |projection| projection.title().as_ref() == expected_title,
+            }),
         )
         .await
         {
-            tracing::warn!(run_id = %task.run_id, error = %err, "Failed to append generated run title event");
+            tracing::warn!(run_id = %task.run_id, error = %err, "Failed to record the generated run title");
         }
     });
 }
@@ -1415,8 +1398,8 @@ async fn get_run_logs(
     RequireRunScoped(id): RequireRunScoped,
     State(state): State<Arc<AppState>>,
 ) -> Response {
-    if state.stores.runs.open_run_reader(&id).await.is_err() {
-        return ApiError::not_found("Run not found.").into_response();
+    if let Err(err) = state.load_run_projection(&id).await {
+        return err.into_response();
     }
 
     let path = Storage::new(state.server_storage_dir())

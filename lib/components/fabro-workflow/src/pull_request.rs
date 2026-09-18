@@ -18,7 +18,6 @@ use tracing::{debug, info, warn};
 
 use crate::outcome::format_cost as outcome_format_cost;
 use crate::records::{Conclusion, RunSpec};
-use crate::runtime_store::RunStoreHandle;
 
 /// Maximum length of a PR title (Unicode scalar values).
 const PR_TITLE_MAX_CHARS: usize = 72;
@@ -333,7 +332,6 @@ pub async fn build_pr_content(
     diff: &str,
     goal: &str,
     model: &str,
-    run_store: &RunStoreHandle,
     llm_source: Arc<dyn CredentialProvider>,
     catalog: Arc<Catalog>,
     conclusion: Option<&Conclusion>,
@@ -352,7 +350,6 @@ pub async fn build_pr_content(
         diff,
         goal,
         model,
-        run_store,
         catalog.as_ref(),
         conclusion,
         run_state,
@@ -365,7 +362,6 @@ async fn build_pr_content_with_client(
     diff: &str,
     goal: &str,
     model: &str,
-    run_store: &RunStoreHandle,
     catalog: &Catalog,
     conclusion: Option<&Conclusion>,
     run_state: Option<&RunProjection>,
@@ -373,18 +369,6 @@ async fn build_pr_content_with_client(
 ) -> Result<PrContent, String> {
     info!("Building PR content");
 
-    let loaded_run_state = if run_state.is_none() {
-        run_store
-            .state()
-            .await
-            .inspect_err(|err| {
-                tracing::warn!(error = %err, "Failed to load run state from store for PR body");
-            })
-            .ok()
-    } else {
-        None
-    };
-    let run_state = run_state.or(loaded_run_state.as_ref());
     let conclusion = conclusion.or_else(|| run_state.and_then(|state| state.conclusion.as_ref()));
     let plan_text = run_state.and_then(read_plan_text);
     let run_spec = run_state.map(|state| state.spec.clone());
@@ -462,7 +446,6 @@ pub struct OpenPullRequestRequest<'a> {
     pub model:             &'a str,
     pub draft:             bool,
     pub auto_merge:        Option<AutoMergeOptions>,
-    pub run_store:         &'a RunStoreHandle,
     pub llm_source:        Arc<dyn CredentialProvider>,
     pub catalog:           Arc<Catalog>,
     pub conclusion:        Option<&'a Conclusion>,
@@ -616,7 +599,6 @@ pub async fn open_pull_request(
         req.diff,
         req.goal,
         req.model,
-        req.run_store,
         Arc::clone(&req.llm_source),
         Arc::clone(&req.catalog),
         req.conclusion,
@@ -1073,12 +1055,11 @@ capabilities = { text = true, tools = true, response_format = { json_object = tr
     #[tokio::test]
     async fn build_pr_content_uses_in_memory_conclusion() {
         let store = test_store();
-        let run_store = store.create_run(&fixtures::RUN_1).await.unwrap();
+        let _run_store = store.create_run(&fixtures::RUN_1).await.unwrap();
         let PrContent { title, body } = build_pr_content_with_client(
             "diff --git a/src/lib.rs b/src/lib.rs\n+fn new_feature() {}\n",
             "Implement feature",
             "mock-model",
-            &run_store.clone().into(),
             &mock_catalog(),
             Some(&make_test_conclusion()),
             None,
@@ -1152,7 +1133,6 @@ capabilities = { text = true, tools = true, response_format = { json_object = tr
             "diff --git a/src/lib.rs b/src/lib.rs\n+fn new_feature() {}\n",
             "Implement feature",
             "mock-model",
-            &run_store.clone().into(),
             &mock_catalog(),
             Some(&make_test_conclusion()),
             None,
@@ -1251,7 +1231,6 @@ capabilities = { text = true, tools = true, response_format = { json_object = tr
             "diff --git a/src/lib.rs b/src/lib.rs\n+fn new_feature() {}\n",
             "Implement feature",
             "mock-model",
-            &run_store.clone().into(),
             &mock_catalog(),
             Some(&make_test_conclusion()),
             None,
@@ -1271,12 +1250,11 @@ capabilities = { text = true, tools = true, response_format = { json_object = tr
     #[tokio::test]
     async fn build_pr_content_uses_explicit_llm_client() {
         let store = test_store();
-        let run_store = store.create_run(&fixtures::RUN_1).await.unwrap();
+        let _run_store = store.create_run(&fixtures::RUN_1).await.unwrap();
         let body = build_pr_content_with_client(
             "diff --git a/src/lib.rs b/src/lib.rs\n+fn new_feature() {}\n",
             "Implement feature",
             "gpt-5.4",
-            &run_store.clone().into(),
             &mock_catalog(),
             Some(&make_test_conclusion()),
             None,
@@ -1327,14 +1305,12 @@ capabilities = { text = true, tools = true, response_format = { json_object = tr
         let catalog = test_catalog_with_provider_base_url("openai", &server.url("/v1"));
 
         let store = test_store();
-        let run_store = store.create_run(&fixtures::RUN_1).await.unwrap();
-        let run_store_handle: RunStoreHandle = run_store.into();
+        let _run_store = store.create_run(&fixtures::RUN_1).await.unwrap();
 
         let PrContent { title, body } = build_pr_content(
             "diff --git a/src/lib.rs b/src/lib.rs\n+fn new_feature() {}\n",
             "Implement feature",
             "gpt-5.4",
-            &run_store_handle,
             llm_source,
             catalog,
             Some(&make_test_conclusion()),
@@ -1522,7 +1498,6 @@ capabilities = { text = true, tools = true, response_format = { json_object = tr
             model:             "claude-sonnet-4-20250514",
             draft:             false,
             auto_merge:        None,
-            run_store:         &harness.run_store,
             llm_source:        Arc::clone(&harness.llm_source),
             catalog:           harness.catalog.clone(),
             conclusion:        None,
@@ -1554,14 +1529,13 @@ capabilities = { text = true, tools = true, response_format = { json_object = tr
     #[tokio::test]
     async fn build_pr_content_truncates_long_title() {
         let store = test_store();
-        let run_store = store.create_run(&fixtures::RUN_1).await.unwrap();
+        let _run_store = store.create_run(&fixtures::RUN_1).await.unwrap();
         let long_title = "x".repeat(200);
         let payload = pr_content_json(&long_title, "Body content.");
         let title = build_pr_content_with_client(
             "diff --git a/src/lib.rs b/src/lib.rs\n+fn x() {}\n",
             "Implement feature",
             "mock-model",
-            &run_store.clone().into(),
             &mock_catalog(),
             Some(&make_test_conclusion()),
             None,
@@ -1578,13 +1552,12 @@ capabilities = { text = true, tools = true, response_format = { json_object = tr
     #[tokio::test]
     async fn build_pr_content_uses_default_title_when_generated_and_goal_titles_empty() {
         let store = test_store();
-        let run_store = store.create_run(&fixtures::RUN_1).await.unwrap();
+        let _run_store = store.create_run(&fixtures::RUN_1).await.unwrap();
         let payload = pr_content_json("", "Body content.");
         let title = build_pr_content_with_client(
             "diff --git a/src/lib.rs b/src/lib.rs\n+fn x() {}\n",
             "## Plan:",
             "mock-model",
-            &run_store.clone().into(),
             &mock_catalog(),
             Some(&make_test_conclusion()),
             None,
@@ -1675,7 +1648,6 @@ capabilities = { text = true, tools = true, response_format = { json_object = tr
             "diff --git a/src/lib.rs b/src/lib.rs\n+fn x() {}\n",
             "Implement feature",
             "mock-model",
-            &run_store.clone().into(),
             &mock_catalog(),
             Some(&make_test_conclusion()),
             None,
@@ -1712,7 +1684,6 @@ capabilities = { text = true, tools = true, response_format = { json_object = tr
         llm_source:        Arc<dyn CredentialProvider>,
         catalog:           Arc<Catalog>,
         creds:             fabro_github::GitHubCredentials,
-        run_store:         RunStoreHandle,
     }
 
     impl FallbackHarness {
@@ -1912,7 +1883,6 @@ capabilities = { text = true, tools = true, response_format = { json_object = tr
             llm_source,
             catalog,
             creds,
-            run_store: run_store.into(),
         }
     }
 
@@ -1950,7 +1920,6 @@ capabilities = { text = true, tools = true, response_format = { json_object = tr
             model: "gpt-5.4",
             draft: false,
             auto_merge: None,
-            run_store: &harness.run_store,
             llm_source: Arc::clone(&harness.llm_source),
             catalog: harness.catalog.clone(),
             conclusion: None,
@@ -1998,7 +1967,6 @@ capabilities = { text = true, tools = true, response_format = { json_object = tr
             model: "gpt-5.4",
             draft: false,
             auto_merge: None,
-            run_store: &harness.run_store,
             llm_source: Arc::clone(&harness.llm_source),
             catalog: harness.catalog.clone(),
             conclusion: None,
@@ -2035,7 +2003,6 @@ capabilities = { text = true, tools = true, response_format = { json_object = tr
             model: "gpt-5.4",
             draft: false,
             auto_merge: None,
-            run_store: &harness.run_store,
             llm_source: Arc::clone(&harness.llm_source),
             catalog: harness.catalog.clone(),
             conclusion: None,

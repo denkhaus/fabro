@@ -4,7 +4,6 @@ mod cli_auth_token;
 mod compression;
 mod docs;
 mod environments;
-mod events;
 mod install;
 mod install_openai_compatible;
 mod mcp_servers;

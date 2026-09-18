@@ -98,12 +98,10 @@ use fabro_interview::{
     Answer as LegacyAnswer, AnswerSubmission, AnswerValue, AutoApproveInterviewer,
     ControlInterviewer, Interviewer as LegacyInterviewer, Question as LegacyQuestion,
 };
-use fabro_store::RunDatabase;
 use fabro_types::{
-    InterviewOption, Principal, QuestionType, ReviewTarget, ReviewTargetKind, RunId, StageId,
+    InterviewOption, Principal, QuestionType, ReviewTarget, ReviewTargetKind, StageId,
     SystemActorKind,
 };
-use fabro_workflow::event::{self as workflow_event, Event, RunEventSink};
 use petri_execution::events::{Parsed, Projection, ViewEvent};
 use petri_execution::{
     CoordinatorRecord, ExecutionId, ExecutionObserver, InterviewError, InterviewReply,
@@ -199,63 +197,6 @@ pub enum QuestionNotice {
 }
 
 impl QuestionNotice {
-    /// The run event the legacy `human` stage emits for the same fact.
-    #[must_use]
-    pub fn into_event(self) -> Event {
-        match self {
-            Self::Asked(asked) => Event::InterviewStarted {
-                question_id:     asked.question_id,
-                question:        asked.text,
-                stage:           asked.stage,
-                question_type:   asked.question_type.to_string(),
-                options:         asked.options,
-                allow_freeform:  asked.allow_freeform,
-                timeout_seconds: asked.timeout_seconds,
-                context_display: None,
-                review_target:   asked.review_target,
-            },
-            Self::Answered {
-                question_id,
-                text,
-                answer,
-                actor,
-                duration_ms,
-            } => Event::InterviewCompleted {
-                actor: Some(actor),
-                question_id,
-                question: text,
-                answer,
-                duration_ms,
-            },
-            Self::Expired {
-                question_id,
-                text,
-                stage,
-                duration_ms,
-            } => Event::InterviewTimeout {
-                actor: None,
-                question_id,
-                question: text,
-                stage,
-                duration_ms,
-            },
-            Self::Interrupted {
-                question_id,
-                text,
-                stage,
-                reason,
-                duration_ms,
-            } => Event::InterviewInterrupted {
-                actor: None,
-                question_id,
-                question: text,
-                stage,
-                reason,
-                duration_ms,
-            },
-        }
-    }
-
     fn question_id(&self) -> &str {
         match self {
             Self::Asked(asked) => &asked.question_id,
@@ -266,52 +207,21 @@ impl QuestionNotice {
     }
 }
 
-/// Where the adapter posts what happens to a question: the run's event
-/// stream, whichever way the process reaches it.
+/// Where the adapter reports what happens to a question, when something
+/// observes it: a test's board. A run's own record of a question is
+/// Petri's, and who answered it is the server's platform record.
 #[async_trait::async_trait]
 pub trait QuestionSink: Send + Sync {
     async fn post(&self, notice: QuestionNotice) -> anyhow::Result<()>;
 }
 
-/// The worker's sink: the run event sink its lifecycle events go through.
-pub struct EventSinkQuestions {
-    sink:   RunEventSink,
-    run_id: RunId,
-}
-
-impl EventSinkQuestions {
-    #[must_use]
-    pub fn new(sink: RunEventSink, run_id: RunId) -> Self {
-        Self { sink, run_id }
-    }
-}
+/// A sink that drops every notice: the adapter with nothing observing it.
+struct Unobserved;
 
 #[async_trait::async_trait]
-impl QuestionSink for EventSinkQuestions {
-    async fn post(&self, notice: QuestionNotice) -> anyhow::Result<()> {
-        workflow_event::append_event_to_sink(&self.sink, &self.run_id, &notice.into_event())
-            .await
-            .map_err(anyhow::Error::new)
-    }
-}
-
-/// The server's sink for a run in its own process: the run's database.
-pub struct DatabaseQuestions {
-    store:  RunDatabase,
-    run_id: RunId,
-}
-
-impl DatabaseQuestions {
-    #[must_use]
-    pub fn new(store: RunDatabase, run_id: RunId) -> Self {
-        Self { store, run_id }
-    }
-}
-
-#[async_trait::async_trait]
-impl QuestionSink for DatabaseQuestions {
-    async fn post(&self, notice: QuestionNotice) -> anyhow::Result<()> {
-        workflow_event::append_event(&self.store, &self.run_id, &notice.into_event()).await
+impl QuestionSink for Unobserved {
+    async fn post(&self, _notice: QuestionNotice) -> anyhow::Result<()> {
+        Ok(())
     }
 }
 
@@ -415,20 +325,22 @@ pub struct FabroInterviewer {
 }
 
 impl FabroInterviewer {
-    /// Over the control interviewer the run's answers are delivered to,
-    /// and the sink its questions are posted through.
+    /// Over the control interviewer the run's answers are delivered to.
     #[must_use]
-    pub fn new(
-        answers: Arc<ControlInterviewer>,
-        sink: Arc<dyn QuestionSink>,
-        approval: Approval,
-    ) -> Self {
+    pub fn new(answers: Arc<ControlInterviewer>, approval: Approval) -> Self {
         Self {
             answers,
-            sink,
+            sink: Arc::new(Unobserved),
             approval,
             observed: Arc::new(Observed::default()),
         }
+    }
+
+    /// Report what happens to each question to `sink` as well.
+    #[must_use]
+    pub fn with_sink(mut self, sink: Arc<dyn QuestionSink>) -> Self {
+        self.sink = sink;
+        self
     }
 
     /// The observer that labels each firing as the projection does and

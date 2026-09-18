@@ -156,7 +156,7 @@ impl Gate {
     }
 
     fn interviewer(&self, approval: Approval) -> FabroInterviewer {
-        FabroInterviewer::new(Arc::clone(&self.control), self.board.clone(), approval)
+        FabroInterviewer::new(Arc::clone(&self.control), approval).with_sink(self.board.clone())
     }
 
     fn marker(&self, name: &str) -> bool {

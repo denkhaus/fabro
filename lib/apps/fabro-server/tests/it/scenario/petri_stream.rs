@@ -358,20 +358,6 @@ async fn a_reconnecting_client_receives_every_stream_item_once_in_order() {
         .count();
     assert_eq!(finished, 1, "the stream ends with the run's finish");
 
-    // The legacy cursors are refused for a Petri run; the stream cursor is
-    // refused for nothing else.
-    let req = Request::builder()
-        .method("GET")
-        .uri(api(&format!("/runs/{run_id}/events?since_seq=1")))
-        .body(Body::empty())
-        .expect("events request should build");
-    let response = app
-        .clone()
-        .oneshot(req)
-        .await
-        .expect("events request routes");
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
-
     capture_fixture(&app, &run_id, "parallel", &projection).await;
 }
 

@@ -36,11 +36,11 @@ use fabro_types::{
     BlockedReason, CheckpointRecord as ViewCheckpoint, CodingAgentEvent, CodingEvent, Conclusion,
     FailureCategory, FailureDetail, FailureReason, InterviewOption, InterviewQuestionRecord,
     ModelRef, ModelUsage, ParallelBranchId, ParallelBranchResult, PendingInterviewRecord,
-    PullRequestLink, RunApproval, RunApprovalState, RunControlAction, RunDiff, RunFailure, RunId,
-    RunProjection, RunSandbox, RunSandboxPlan, RunStatus, RunTiming, SandboxProviderKind,
-    StageCompletion, StageHandler, StageId, StageInferenceProjection, StageModelUsage,
-    StageOutcome, StageProjection, StageState, StageTiming, StartRecord, SuccessReason,
-    first_event_seq, timing, usage_rollup,
+    PullRequestCreation, PullRequestCreationStatus, PullRequestLink, RunApproval, RunApprovalState,
+    RunControlAction, RunDiff, RunFailure, RunId, RunProjection, RunSandbox, RunSandboxPlan,
+    RunStatus, RunTiming, SandboxProviderKind, StageCompletion, StageHandler, StageId,
+    StageInferenceProjection, StageModelUsage, StageOutcome, StageProjection, StageState,
+    StageTiming, StartRecord, SuccessReason, first_event_seq, timing, usage_rollup,
 };
 use lithos_llm::catalog::{ModelId, ProviderId};
 use lithos_llm::types::Usage;
@@ -258,12 +258,62 @@ impl RunView {
                     },
                 });
             }
+            PlatformRecord::PullRequestRequested(record) => {
+                projection.pull_request_creation = Some(PullRequestCreation {
+                    id:           record.creation_id,
+                    status:       PullRequestCreationStatus::Pending,
+                    model:        record.model.clone(),
+                    force:        record.force,
+                    requested_at: at,
+                    updated_at:   at,
+                    pull_request: None,
+                    error:        None,
+                });
+            }
             PlatformRecord::PullRequestCreated(record) => {
-                projection.pull_request = Some(PullRequestLink {
+                let link = PullRequestLink {
                     owner:  record.owner.clone(),
                     repo:   record.repo.clone(),
                     number: record.number,
-                });
+                };
+                projection.pull_request = Some(link.clone());
+                if let Some(creation) = projection
+                    .pull_request_creation
+                    .as_mut()
+                    .filter(|creation| creation.is_pending())
+                {
+                    creation.succeed(link, at);
+                }
+            }
+            PlatformRecord::PullRequestFailed(record) => {
+                if let Some(creation) =
+                    projection
+                        .pull_request_creation
+                        .as_mut()
+                        .filter(|creation| {
+                            creation.is_pending()
+                                && record
+                                    .creation_id
+                                    .is_none_or(|creation_id| creation_id == creation.id)
+                        })
+                {
+                    creation.fail(record.error.clone(), at);
+                }
+            }
+            PlatformRecord::PullRequestLinked(record) => {
+                let link = record.link();
+                projection.pull_request = Some(link.clone());
+                if let Some(creation) = projection
+                    .pull_request_creation
+                    .as_mut()
+                    .filter(|creation| creation.is_pending())
+                {
+                    creation.succeed(link, at);
+                }
+            }
+            PlatformRecord::PullRequestUnlinked(_) => {
+                projection.pull_request = None;
+                projection.pull_request_creation = None;
             }
         }
     }
@@ -1101,8 +1151,24 @@ fn fold_lifecycle(projection: &mut RunProjection, record: &RunLifecycleRecord, a
                 at,
             );
         }
-        Kind::Runnable
-        | Kind::Starting
+        Kind::Runnable => {
+            // A run left in flight by a restart goes back to the queue: the
+            // resume's `runnable` steps back from wherever the run stood.
+            let in_flight = matches!(
+                projection.status,
+                RunStatus::Starting
+                    | RunStatus::Running
+                    | RunStatus::Blocked { .. }
+                    | RunStatus::Paused { .. }
+            );
+            if in_flight && record.status == Some(RunStatus::Runnable) {
+                projection.status = RunStatus::Runnable;
+                projection.status_updated_at = at;
+            } else if let Some(status) = record.status {
+                apply_status(projection, status, at);
+            }
+        }
+        Kind::Starting
         | Kind::Running
         | Kind::Blocked
         | Kind::Unblocked

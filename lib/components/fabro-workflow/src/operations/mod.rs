@@ -1,19 +1,34 @@
-mod archive;
 mod create;
-mod run_store;
 mod source;
 mod validate;
 
-pub use archive::{
-    ArchiveOutcome, UnarchiveOutcome, archive, archived_rejection_message, ensure_not_archived,
-    unarchive,
-};
 pub use create::{
     CompiledRun, CreateRunCompileInput, CreateRunPersistenceInput, CreateRunPersistenceMetadata,
     CreatedRun, MaterializedRun, assemble_create_run_persistence_input, compile_admitted_run,
     make_run_dir, materialize_admitted_run, persist_create_run,
 };
+use fabro_types::RunId;
 pub use source::WorkflowInput;
 pub use validate::{ValidateInput, validate};
 
+pub use crate::error::Error;
 pub use crate::transforms::RenderMode;
+
+/// The canonical "run is archived — mutation rejected" error message. Shared
+/// by the server's HTTP guards and the CLI so the user sees the same
+/// actionable guidance everywhere.
+#[must_use]
+pub fn archived_rejection_message(run_id: &RunId) -> String {
+    format!("run {run_id} is archived; run `fabro unarchive {run_id}` to restore it and try again")
+}
+
+/// Returns `Err(Error::Precondition)` when the given status represents an
+/// archived run. Use this at any mutation entry point that would otherwise
+/// transition the run.
+pub fn ensure_not_archived(archived: bool, run_id: &RunId) -> Result<(), Error> {
+    if archived {
+        Err(Error::Precondition(archived_rejection_message(run_id)))
+    } else {
+        Ok(())
+    }
+}

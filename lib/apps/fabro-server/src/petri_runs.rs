@@ -164,8 +164,8 @@ mod tests {
     use fabro_config::daemon::ServerDaemon;
     use fabro_petri::petri::RunStore as _;
     use fabro_static::EnvVars;
+    use fabro_store::platform_records::{PlatformRecord, RunLifecycleKind, RunLifecycleRecord};
     use fabro_types::{RunId, RunStatus, WorkflowPath, WorkflowVersion};
-    use fabro_workflow::event::{Event, append_event};
     use serde_json::json;
     use tokio::io::AsyncRead;
     use tokio::sync::Notify;
@@ -173,7 +173,9 @@ mod tests {
     use tower::ServiceExt as _;
 
     use super::*;
-    use crate::server::{AppState, reconcile_incomplete_runs_on_startup, spawn_scheduler};
+    use crate::server::{
+        AppState, reconcile_incomplete_runs_on_startup, run_records, spawn_scheduler,
+    };
     use crate::test_support::{
         TestAppStateBuilder, build_test_router, test_register_workflow_version,
         test_secret_store_path, test_store_bundle,
@@ -414,16 +416,17 @@ mod tests {
 
         // The worker took the run as far as running and holds its lease;
         // then the server died, so nothing released it.
-        let run_store = before
-            .stores
-            .runs
-            .open_run(&run_id)
+        for (transition, status) in [
+            (RunLifecycleKind::Starting, RunStatus::Starting),
+            (RunLifecycleKind::Running, RunStatus::Running),
+        ] {
+            run_records::lifecycle(
+                &before,
+                run_id,
+                RunLifecycleRecord::new(transition).with_status(status),
+            )
             .await
-            .expect("the run opens");
-        for event in [Event::RunStarting, Event::RunRunning] {
-            append_event(&run_store, &run_id, &event)
-                .await
-                .expect("the lifecycle event appends");
+            .expect("the lifecycle record appends");
         }
         let held = before
             .petri_runs
@@ -465,30 +468,33 @@ mod tests {
             None,
             "the previous worker's lease is released"
         );
-        let reader = after
-            .stores
-            .runs
-            .open_run_reader(&run_id)
+        let run_state = run_records::projection(&after, run_id)
             .await
-            .expect("the run opens for reading");
-        let run_state = reader.state().await.expect("the run state loads");
+            .expect("the run state loads")
+            .expect("the run projects");
         assert_eq!(run_state.status, RunStatus::Runnable);
-        let names = reader
-            .list_events()
+        let transitions = after
+            .stores
+            .run_summaries
+            .platform_records()
+            .read(&run_id)
             .await
-            .expect("the history lists")
+            .expect("the records list")
             .into_iter()
-            .map(|envelope| envelope.event.event_name().to_string())
+            .filter_map(|stored| match stored.record {
+                PlatformRecord::RunLifecycle(record) => Some(record.transition),
+                _ => None,
+            })
             .collect::<Vec<_>>();
         assert_eq!(
-            &names[names.len() - 4..],
+            &transitions[transitions.len() - 4..],
             [
-                "run.starting",
-                "run.running",
-                "run.start_requested",
-                "run.runnable"
+                RunLifecycleKind::Starting,
+                RunLifecycleKind::Running,
+                RunLifecycleKind::StartRequested,
+                RunLifecycleKind::Runnable
             ],
-            "{names:?}"
+            "{transitions:?}"
         );
 
         write_test_server_record(&after);

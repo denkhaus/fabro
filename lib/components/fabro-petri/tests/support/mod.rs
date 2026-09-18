@@ -129,9 +129,9 @@ pub(crate) fn run_request(
 pub(crate) fn no_questions(sink: Arc<dyn QuestionSink>) -> FabroInterviewer {
     FabroInterviewer::new(
         Arc::new(fabro_interview::ControlInterviewer::new()),
-        sink,
         Approval::Prompt,
     )
+    .with_sink(sink)
 }
 
 /// A sink that drops every notice.

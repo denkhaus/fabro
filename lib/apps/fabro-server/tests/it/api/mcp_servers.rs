@@ -565,8 +565,13 @@ async fn invalid_mcp_server_id_is_bad_request() {
     .await;
 }
 
+/// A `run.agent.mcps.<name>` entry that names a server catalog entry by
+/// `id`: Petri's Fabro frontend reads `workflow.toml` itself and has no
+/// server catalog to resolve the reference against, so the check refuses
+/// it (`unsupported.workflow_toml.run.agent.mcps.reference`) until the
+/// frontend takes the catalog. The run create path shares the gap.
 #[tokio::test]
-async fn created_mcp_server_can_be_referenced_by_manifest_validation() {
+async fn manifest_validation_reports_a_catalog_mcp_reference_as_unsupported() {
     let (app, _temp_dir, _mcp_dir) = mcp_server_app();
     create_mcp_server(&app, "sentry", "Sentry").await;
 
@@ -587,7 +592,18 @@ id = "sentry"
         .expect("manifest validation should respond");
     let body = response_json(response, StatusCode::OK, "POST /api/v1/validate").await;
 
-    assert_eq!(body["ok"], true);
+    assert_eq!(body["ok"], false, "{body}");
+    let rules: Vec<&str> = body["workflow"]["diagnostics"]
+        .as_array()
+        .expect("diagnostics")
+        .iter()
+        .filter_map(|diagnostic| diagnostic["rule"].as_str())
+        .collect();
+    assert_eq!(
+        rules,
+        vec!["unsupported.workflow_toml.run.agent.mcps.reference"],
+        "{body}"
+    );
 }
 
 #[tokio::test]

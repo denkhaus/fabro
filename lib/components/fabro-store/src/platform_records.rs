@@ -32,8 +32,8 @@ use fabro_types::run_event::{
     RunNoticeLevel, RunPairStartedProps, RunRunnableSource, RunStartedProps, RunSupersededByProps,
 };
 use fabro_types::{
-    BlobHash, DiffSummary, EventBody, GitIdentity, PairId, PairTarget, Principal, RunControlAction,
-    RunEvent, RunId, RunSpec, RunStatus,
+    BlobHash, DiffSummary, EventBody, GitIdentity, PairId, PairTarget, Principal,
+    PullRequestCreationId, PullRequestLink, RunControlAction, RunEvent, RunId, RunSpec, RunStatus,
 };
 use serde::{Deserialize, Serialize};
 use sqlx::sqlite::{SqliteConnection, SqliteRow};
@@ -125,9 +125,21 @@ pub enum PlatformRecordKind {
     #[serde(rename = "checkpoint")]
     #[strum(serialize = "checkpoint")]
     Checkpoint,
+    #[serde(rename = "pull_request.requested")]
+    #[strum(serialize = "pull_request.requested")]
+    PullRequestRequested,
     #[serde(rename = "pull_request.created")]
     #[strum(serialize = "pull_request.created")]
     PullRequestCreated,
+    #[serde(rename = "pull_request.failed")]
+    #[strum(serialize = "pull_request.failed")]
+    PullRequestFailed,
+    #[serde(rename = "pull_request.linked")]
+    #[strum(serialize = "pull_request.linked")]
+    PullRequestLinked,
+    #[serde(rename = "pull_request.unlinked")]
+    #[strum(serialize = "pull_request.unlinked")]
+    PullRequestUnlinked,
     #[serde(rename = "notification.sent")]
     #[strum(serialize = "notification.sent")]
     NotificationSent,
@@ -176,8 +188,19 @@ pub enum PlatformRecord {
     /// record, written after the commit succeeds.
     #[serde(rename = "checkpoint")]
     Checkpoint(CheckpointRecord),
+    /// A pull request was asked for: the supervisor creates it.
+    #[serde(rename = "pull_request.requested")]
+    PullRequestRequested(PullRequestRequestedRecord),
     #[serde(rename = "pull_request.created")]
     PullRequestCreated(PullRequestCreatedRecord),
+    /// The requested pull request could not be created.
+    #[serde(rename = "pull_request.failed")]
+    PullRequestFailed(PullRequestFailedRecord),
+    /// An existing pull request was linked to the run by hand.
+    #[serde(rename = "pull_request.linked")]
+    PullRequestLinked(PullRequestLinkedRecord),
+    #[serde(rename = "pull_request.unlinked")]
+    PullRequestUnlinked(PullRequestLinkedRecord),
     #[serde(rename = "notification.sent")]
     NotificationSent(NotificationSentRecord),
     #[serde(rename = "run.paired")]
@@ -200,7 +223,11 @@ impl PlatformRecord {
             Self::RunBranch(_) => PlatformRecordKind::RunBranch,
             Self::GitIdentity(_) => PlatformRecordKind::GitIdentity,
             Self::Checkpoint(_) => PlatformRecordKind::Checkpoint,
+            Self::PullRequestRequested(_) => PlatformRecordKind::PullRequestRequested,
             Self::PullRequestCreated(_) => PlatformRecordKind::PullRequestCreated,
+            Self::PullRequestFailed(_) => PlatformRecordKind::PullRequestFailed,
+            Self::PullRequestLinked(_) => PlatformRecordKind::PullRequestLinked,
+            Self::PullRequestUnlinked(_) => PlatformRecordKind::PullRequestUnlinked,
             Self::NotificationSent(_) => PlatformRecordKind::NotificationSent,
             Self::RunPaired(_) => PlatformRecordKind::RunPaired,
         }
@@ -225,6 +252,10 @@ impl PlatformRecord {
             | Self::InterviewAnswered(_)
             | Self::RunBranch(_)
             | Self::GitIdentity(_)
+            | Self::PullRequestRequested(_)
+            | Self::PullRequestFailed(_)
+            | Self::PullRequestLinked(_)
+            | Self::PullRequestUnlinked(_)
             | Self::RunPaired(_) => None,
         }
     }
@@ -356,6 +387,12 @@ pub struct InterviewAnsweredRecord {
     pub principal: Option<Principal>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub channel:   Option<String>,
+    /// The question's text, for a reader that shows the answer beside it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub text:      Option<String>,
+    /// The answer as the person gave it, rendered as text.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub answer:    Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -405,6 +442,48 @@ pub struct PullRequestCreatedRecord {
     pub draft:     bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub operation: Option<OperationKey>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PullRequestRequestedRecord {
+    pub creation_id: PullRequestCreationId,
+    pub model:       String,
+    #[serde(default)]
+    pub force:       bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PullRequestFailedRecord {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub creation_id: Option<PullRequestCreationId>,
+    pub error:       String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PullRequestLinkedRecord {
+    pub owner:  String,
+    pub repo:   String,
+    pub number: u64,
+}
+
+impl PullRequestLinkedRecord {
+    #[must_use]
+    pub fn link(&self) -> PullRequestLink {
+        PullRequestLink {
+            owner:  self.owner.clone(),
+            repo:   self.repo.clone(),
+            number: self.number,
+        }
+    }
+
+    #[must_use]
+    pub fn from_link(link: &PullRequestLink) -> Self {
+        Self {
+            owner:  link.owner.clone(),
+            repo:   link.repo.clone(),
+            number: link.number,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -786,6 +865,8 @@ fn interview_answered_record(
         question: props.question_id.clone(),
         principal,
         channel: None,
+        text: Some(props.question.clone()),
+        answer: Some(props.answer.clone()),
     }
 }
 
@@ -848,6 +929,8 @@ mod tests {
                     question:  "q-1".to_string(),
                     principal: None,
                     channel:   Some("web".to_string()),
+                    text:      None,
+                    answer:    None,
                 })
             }
             PlatformRecordKind::RunBranch => PlatformRecord::RunBranch(RunBranchRecord {
@@ -891,6 +974,33 @@ mod tests {
                     head_sha:  None,
                     draft:     false,
                     operation: None,
+                })
+            }
+            PlatformRecordKind::PullRequestRequested => {
+                PlatformRecord::PullRequestRequested(PullRequestRequestedRecord {
+                    creation_id: PullRequestCreationId::new(),
+                    model:       "gpt-5.4".to_string(),
+                    force:       false,
+                })
+            }
+            PlatformRecordKind::PullRequestFailed => {
+                PlatformRecord::PullRequestFailed(PullRequestFailedRecord {
+                    creation_id: None,
+                    error:       "no remote".to_string(),
+                })
+            }
+            PlatformRecordKind::PullRequestLinked => {
+                PlatformRecord::PullRequestLinked(PullRequestLinkedRecord {
+                    owner:  "fabro-sh".to_string(),
+                    repo:   "fabro".to_string(),
+                    number: 7,
+                })
+            }
+            PlatformRecordKind::PullRequestUnlinked => {
+                PlatformRecord::PullRequestUnlinked(PullRequestLinkedRecord {
+                    owner:  "fabro-sh".to_string(),
+                    repo:   "fabro".to_string(),
+                    number: 7,
                 })
             }
             PlatformRecordKind::NotificationSent => {

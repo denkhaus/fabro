@@ -169,7 +169,8 @@ impl RunningServer {
             .stdout(self.stderr_log())
             .stderr(self.stderr_log());
         let mut child = cmd.spawn().expect("the server spawns");
-        wait_for_http_ready(&self.api_base_url, &mut child).await;
+        let log_path = self.storage_dir.with_file_name("server.stderr.log");
+        wait_for_http_ready(&self.api_base_url, &mut child, &log_path).await;
         self.child = Some(child);
     }
 
@@ -370,7 +371,7 @@ fn reserve_port() -> u16 {
         .port()
 }
 
-async fn wait_for_http_ready(base_url: &str, child: &mut Child) {
+async fn wait_for_http_ready(base_url: &str, child: &mut Child, log_path: &Path) {
     let client = fabro_test::test_http_client();
     let deadline = Instant::now() + Duration::from_secs(10);
     loop {
@@ -378,7 +379,13 @@ async fn wait_for_http_ready(base_url: &str, child: &mut Child) {
             Ok(response) if response.status().is_success() => return,
             Ok(_) | Err(_) if Instant::now() < deadline => {
                 if let Some(status) = child.try_wait().expect("the server polls") {
-                    panic!("the server exited before it was ready with status {status}");
+                    let log = std::fs::read_to_string(log_path).unwrap_or_default();
+                    let tail = log.lines().rev().take(20).collect::<Vec<_>>();
+                    panic!(
+                        "the server exited before it was ready with status {status}; its log ends \
+                         with:\n{}",
+                        tail.into_iter().rev().collect::<Vec<_>>().join("\n")
+                    );
                 }
                 tokio::time::sleep(Duration::from_millis(25)).await;
             }

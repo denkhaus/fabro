@@ -960,11 +960,7 @@ impl GateRun {
             Launch::default(),
             &runtime,
         );
-        let interviewer = FabroInterviewer::new(
-            Arc::new(ControlInterviewer::new()),
-            Arc::new(support::Silent),
-            approval,
-        );
+        let interviewer = FabroInterviewer::new(Arc::new(ControlInterviewer::new()), approval);
         let store = self
             .projector
             .observe_store(Arc::new(SqliteRunStore::new(self.scenario.pool.clone())));

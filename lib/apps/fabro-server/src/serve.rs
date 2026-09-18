@@ -40,7 +40,7 @@ use crate::server::{
 };
 use crate::server_secrets::{ServerSecrets, process_env_snapshot};
 use crate::startup::{resolve_startup, validate_startup_configuration};
-use crate::{migrations, static_files};
+use crate::static_files;
 
 pub const DEFAULT_TCP_PORT: u16 = 32276;
 type EnvLookup = Arc<dyn Fn(&str) -> Option<String> + Send + Sync>;
@@ -748,25 +748,14 @@ where
     } else {
         None
     };
-    let blob_activation = migrations::activate_blob_storage(
-        &database,
-        &sqlite_path,
+    let store = Arc::new(fabro_store::Database::new(
         object_store,
         slatedb_prefix,
         flush_interval,
         cache_path,
-    )
-    .await
-    .context("activating SQLite blob storage")?;
-    migrations::activate_run_history(
-        &database,
-        &sqlite_path,
-        &blob_activation.store,
-        &blob_activation.run_history_identity,
-    )
-    .await
-    .context("activating SQLite run history")?;
-    let store = blob_activation.store;
+        Arc::new(fabro_store::BlobStore::new(database.clone_pool())),
+        Arc::new(fabro_store::RunSummaryStore::new(database.clone_pool())),
+    ));
     // Refresh tokens now live in SQLite. Nothing reads the old records and no
     // reaper collects them any more, so clear them out once rather than
     // leaving them in the object store forever. Pending authorization codes

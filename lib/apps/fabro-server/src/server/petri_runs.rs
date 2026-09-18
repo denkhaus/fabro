@@ -36,15 +36,16 @@ use fabro_interview::ControlInterviewer;
 use fabro_petri::controls::RunControls;
 use fabro_petri::engine::{self, Conclusion, Execution, RunRequest};
 use fabro_petri::hooks::HooksSpec;
-use fabro_petri::interview::{Approval, DatabaseQuestions, FabroInterviewer};
+use fabro_petri::interview::{Approval, FabroInterviewer};
 use fabro_petri::petri::StoreError;
 use fabro_petri::platform_records::SqlitePlatformRecords;
 use fabro_petri::recovery::{self, Recovery, RecoveryRequest};
 use fabro_petri::runtime::{self, RuntimeSpec};
 use fabro_petri::secrets::VaultSecrets;
 use fabro_petri::{SqliteRunStore, admission};
+use fabro_store::platform_records::{RunLifecycleKind, RunLifecycleRecord};
 use fabro_types::settings::run::{ApprovalMode, RunMode};
-use fabro_types::{PetriAdmission, RunId, RunRunnableSource, RunTarget, RunTiming, StageOutcome};
+use fabro_types::{PetriAdmission, RunId, RunRunnableSource, RunTarget};
 use fabro_util::error as error_util;
 use fabro_workflow::Error as WorkflowError;
 use fabro_workflow::run_status::{FailureReason, RunStatus, SuccessReason};
@@ -53,7 +54,10 @@ use tokio::task;
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
 
-use super::{AppState, RunAnswerTransport, RunExecutionMode, clear_live_run_state, workflow_event};
+use super::{
+    AppState, RunAnswerTransport, RunExecutionMode, clear_live_run_state, run_records,
+    stream_follower,
+};
 use crate::petri_check;
 use crate::petri_runs::PetriRuns;
 use crate::run_compiler::{PreparedRun, RunCompilerError};
@@ -189,28 +193,21 @@ pub(crate) async fn execute(state: Arc<AppState>, run_id: RunId) {
         (run_dir, cancel, managed_run.execution_mode)
     };
 
-    let run_store = match state.stores.runs.open_run(&run_id).await {
-        Ok(run_store) => run_store,
-        Err(err) => {
-            error!(run_id = %run_id, error = %err, "Failed to open run store");
+    stream_follower::follow_run(&state, run_id).await;
+    let run_state = match run_records::projection(&state, run_id).await {
+        Ok(Some(run_state)) => run_state,
+        Ok(None) => {
+            error!(run_id = %run_id, "Run not found at launch");
             finish(
                 &state,
                 run_id,
                 RunStatus::Failed {
                     reason: FailureReason::WorkflowError,
                 },
-                Some(format!("Failed to open run store: {err}")),
+                Some("Run not found at launch".to_string()),
             );
             return;
         }
-    };
-    tokio::spawn(super::forward_run_events_to_global(
-        Arc::clone(&state),
-        run_id,
-        run_store.subscribe(),
-    ));
-    let run_state = match run_store.state().await {
-        Ok(run_state) => run_state,
         Err(err) => {
             error!(run_id = %run_id, error = %err, "Failed to load run state");
             finish(
@@ -242,7 +239,7 @@ pub(crate) async fn execute(state: Arc<AppState>, run_id: RunId) {
                 Ok(graphs) => Execution::Start(graphs),
                 Err(err) => {
                     let message = error_util::collect_chain(&err).join(": ");
-                    fail_before_execution(&state, &run_store, run_id, &message).await;
+                    fail_before_execution(&state, run_id, &message).await;
                     return;
                 }
             }
@@ -257,7 +254,6 @@ pub(crate) async fn execute(state: Arc<AppState>, run_id: RunId) {
             let message = error_util::collect_chain(&err).join(": ");
             fail_before_execution(
                 &state,
-                &run_store,
                 run_id,
                 &format!("the vault could not be read for the run: {message}"),
             )
@@ -266,35 +262,36 @@ pub(crate) async fn execute(state: Arc<AppState>, run_id: RunId) {
         }
     };
     let started = Instant::now();
-    for event in [
-        workflow_event::Event::RunStarting,
-        workflow_event::Event::RunRunning,
+    for record in [
+        run_records::transition(RunLifecycleKind::Starting, RunStatus::Starting),
+        run_records::transition(RunLifecycleKind::Running, RunStatus::Running),
     ] {
-        if let Err(err) = workflow_event::append_event(&run_store, &run_id, &event).await {
-            error!(run_id = %run_id, error = %err, "Failed to persist run lifecycle event");
+        if let Err(err) = run_records::lifecycle(&state, run_id, record).await {
+            error!(run_id = %run_id, error = %err, "Failed to persist run lifecycle record");
             finish(
                 &state,
                 run_id,
                 RunStatus::Failed {
                     reason: FailureReason::WorkflowError,
                 },
-                Some(format!("Failed to persist run lifecycle event: {err}")),
+                Some(format!("Failed to persist run lifecycle record: {err}")),
             );
             return;
         }
     }
-    // The answer endpoint reaches this interviewer directly, as it does
-    // for a legacy run in this process.
+    // The answer endpoint reaches this interviewer directly. The lifecycle
+    // records above already moved the live status to Running; a run that
+    // ended meanwhile (cancelled while starting) takes no transport.
     let interviewer = Arc::new(ControlInterviewer::new());
     {
         let mut runs = state.runs.lock().expect("runs lock poisoned");
-        if let Some(managed_run) = runs.get_mut(&run_id) {
-            if managed_run.status == RunStatus::Starting {
-                managed_run.status = RunStatus::Running;
-                managed_run.answer_transport = Some(RunAnswerTransport::InProcess {
-                    interviewer: Arc::clone(&interviewer),
-                });
-            }
+        if let Some(managed_run) = runs
+            .get_mut(&run_id)
+            .filter(|managed_run| !managed_run.status.is_terminal())
+        {
+            managed_run.answer_transport = Some(RunAnswerTransport::InProcess {
+                interviewer: Arc::clone(&interviewer),
+            });
         }
     }
     let approval = if run_state.spec.settings.run.execution.approval == ApprovalMode::Auto {
@@ -302,8 +299,7 @@ pub(crate) async fn execute(state: Arc<AppState>, run_id: RunId) {
     } else {
         Approval::Prompt
     };
-    let questions = Arc::new(DatabaseQuestions::new(run_store.clone(), run_id));
-    let petri_interviewer = FabroInterviewer::new(interviewer, questions, approval);
+    let petri_interviewer = FabroInterviewer::new(interviewer, approval);
     let observers = vec![petri_interviewer.observer()];
     let (_, eligible) = state.resolve_llm_client_with_ready_ids().await;
     let dry_run = run_state.spec.settings.run.execution.mode == RunMode::DryRun;
@@ -333,11 +329,12 @@ pub(crate) async fn execute(state: Arc<AppState>, run_id: RunId) {
         hooks: Some(hooks),
     };
     let result = Box::pin(engine::run(request)).await;
-    let timing = RunTiming {
-        wall_time_ms: u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
-        ..RunTiming::default()
-    };
-    let (status, error, event) = match engine::conclusion(&result) {
+    info!(
+        run_id = %run_id,
+        elapsed_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
+        "Petri run ended"
+    );
+    let (status, error, record) = match engine::conclusion(&result) {
         Conclusion::Succeeded => {
             info!(run_id = %run_id, "Petri run completed");
             (
@@ -345,24 +342,15 @@ pub(crate) async fn execute(state: Arc<AppState>, run_id: RunId) {
                     reason: SuccessReason::Completed,
                 },
                 None,
-                workflow_event::Event::WorkflowRunCompleted {
-                    timing,
-                    artifact_count: 0,
-                    status: StageOutcome::Succeeded.to_string(),
-                    reason: SuccessReason::Completed,
-                    final_git_commit_sha: None,
-                    final_patch: None,
-                    diff_summary: None,
-                    usage: None,
-                },
+                run_records::succeeded(SuccessReason::Completed),
             )
         }
         Conclusion::Failed { reason, message } => {
             info!(run_id = %run_id, error = %message, "Petri run did not succeed");
-            failed(reason, message, timing)
+            failed(reason, message)
         }
     };
-    if let Err(err) = workflow_event::append_event(&run_store, &run_id, &event).await {
+    if let Err(err) = run_records::lifecycle(&state, run_id, record).await {
         error!(run_id = %run_id, error = %err, "Failed to persist run outcome");
     }
     // The view trails the terminal record; the aggregate reads the settled
@@ -397,7 +385,6 @@ pub(crate) async fn execute(state: Arc<AppState>, run_id: RunId) {
 pub(crate) async fn reconcile_on_startup(
     state: &Arc<AppState>,
     run_id: RunId,
-    run_store: &fabro_store::RunDatabase,
     run_state: &fabro_store::RunProjection,
 ) -> anyhow::Result<()> {
     let key = PetriRuns::key(&run_id);
@@ -442,9 +429,8 @@ pub(crate) async fn reconcile_on_startup(
                     error = %reason,
                     "Petri run left in flight by the previous server cannot resume; reporting it failed"
                 );
-                let (_, _, event) =
-                    failed(FailureReason::WorkflowError, reason, RunTiming::default());
-                workflow_event::append_event(run_store, &run_id, &event).await?;
+                let (_, _, record) = failed(FailureReason::WorkflowError, reason);
+                run_records::lifecycle(state, run_id, record).await?;
                 return Ok(());
             }
         }
@@ -457,17 +443,12 @@ pub(crate) async fn reconcile_on_startup(
         mode = super::worker_mode_arg(mode),
         "Petri run left in flight by the previous server; relaunching its worker"
     );
-    for event in [
-        workflow_event::Event::RunStartRequested {
-            resume: true,
-            actor:  None,
-        },
-        workflow_event::Event::RunRunnable {
-            source: RunRunnableSource::StartRequested,
-            actor:  None,
-        },
-    ] {
-        workflow_event::append_event(run_store, &run_id, &event).await?;
+    let mut start_requested = RunLifecycleRecord::new(RunLifecycleKind::StartRequested);
+    start_requested.source = Some("resume".to_string());
+    let mut runnable = run_records::transition(RunLifecycleKind::Runnable, RunStatus::Runnable);
+    runnable.source = Some(<&'static str>::from(RunRunnableSource::StartRequested).to_string());
+    for record in [start_requested, runnable] {
+        run_records::lifecycle(state, run_id, record).await?;
     }
     let mut runs = state.runs.lock().expect("runs lock poisoned");
     runs.insert(
@@ -483,39 +464,27 @@ pub(crate) async fn reconcile_on_startup(
     Ok(())
 }
 
-/// The failed status, its message, and the `run.failed` event for it.
+/// The failed status, its message, and the `failed` lifecycle record for it.
 fn failed(
     reason: FailureReason,
     message: String,
-    timing: RunTiming,
-) -> (RunStatus, Option<String>, workflow_event::Event) {
-    let error = match reason {
-        FailureReason::Cancelled => WorkflowError::Cancelled,
-        _ => WorkflowError::engine(message.clone()),
+) -> (RunStatus, Option<String>, RunLifecycleRecord) {
+    let detail = match reason {
+        FailureReason::Cancelled => WorkflowError::Cancelled.to_string(),
+        _ => message.clone(),
     };
     (
         RunStatus::Failed { reason },
         Some(message),
-        workflow_event::Event::workflow_run_failed_from_error(
-            &error, timing, reason, None, None, None, None,
-        ),
+        run_records::failed(reason, detail),
     )
 }
 
 /// Record a failure that happened before Petri ran, then finish the run.
-async fn fail_before_execution(
-    state: &Arc<AppState>,
-    run_store: &fabro_store::RunDatabase,
-    run_id: RunId,
-    message: &str,
-) {
+async fn fail_before_execution(state: &Arc<AppState>, run_id: RunId, message: &str) {
     error!(run_id = %run_id, error = message, "Petri run cannot start");
-    let (status, error, event) = failed(
-        FailureReason::WorkflowError,
-        message.to_string(),
-        RunTiming::default(),
-    );
-    if let Err(err) = workflow_event::append_event(run_store, &run_id, &event).await {
+    let (status, error, record) = failed(FailureReason::WorkflowError, message.to_string());
+    if let Err(err) = run_records::lifecycle(state, run_id, record).await {
         error!(run_id = %run_id, error = %err, "Failed to persist run failure status");
     }
     finish(state, run_id, status, error);

@@ -6,23 +6,24 @@
     )
 )]
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use fabro_config::Storage;
 use fabro_graphviz::graph::{AttrValue, Graph};
+use fabro_store::platform_records::{
+    PlatformRecord, RunCreatedRecord, RunLifecycleKind, RunLifecycleRecord,
+};
 use fabro_store::{BlobStore, Database};
 use fabro_template::TemplateContext;
 use fabro_types::{
     AutomationRef, BlobHash, ForkSourceRef, GitContext, ManifestPath, PetriAdmission, RunId,
-    RunProvenance, RunTarget, WorkflowSettings, WorkflowVersionId,
+    RunProvenance, RunStatus, RunTarget, WorkflowSettings, WorkflowVersionId,
 };
-use fabro_util::json::normalize_json_value;
 use tokio::task::spawn_blocking;
 
 use super::source::{ResolveWorkflowInput, WorkflowInput, resolve_workflow};
 use crate::error::Error;
-use crate::event::{self, Event, append_event};
 use crate::pipeline::types::PersistOptions;
 use crate::pipeline::{self, Persisted, TransformOptions, Validated};
 use crate::records::RunSpec;
@@ -378,6 +379,8 @@ pub async fn persist_create_run(
     })
 }
 
+/// The run's first records: `run.created` with the spec Fabro built, and
+/// the `submitted` lifecycle transition. Both wake the run's projector.
 async fn persist_created_run(
     store: &Database,
     persisted: &Persisted,
@@ -399,50 +402,32 @@ async fn persist_created_run(
         write_optional_blob(&blob_store, definition_bytes.as_deref()),
         async { blob_store.write(&spec_bytes).await.map_err(store_error) },
     )?;
+    let _ = workflow_source;
 
     let title = explicit_title.unwrap_or_else(|| fabro_types::infer_run_title(record.graph.goal()));
-    let first_event = Event::RunCreated {
-        run_id: record.run_id,
+    let mut spec = record.clone();
+    spec.definition_blob = definition_blob;
+    spec.spec_blob = Some(spec_blob);
+    let created = PlatformRecord::RunCreated(RunCreatedRecord {
+        spec,
         title: Some(title),
-        settings: normalize_json_value(
-            serde_json::to_value(&record.settings).map_err(|err| Error::engine(err.to_string()))?,
-        ),
-        graph: normalize_json_value(
-            serde_json::to_value(&record.graph).map_err(|err| Error::engine(err.to_string()))?,
-        ),
-        workflow_source: (!workflow_source.is_empty()).then(|| workflow_source.to_string()),
-        labels: record
-            .labels
-            .clone()
-            .into_iter()
-            .collect::<BTreeMap<_, _>>(),
-        source_directory: record.source_directory.clone(),
-        workflow_slug: record.workflow_slug.clone(),
-        workflow_version_id: record.workflow_version_id,
-        target: record.target.clone(),
-        automation: record.automation.clone(),
-        provenance: record.provenance.clone(),
-        spec_blob: Some(spec_blob),
-        git: record.git.clone(),
-        fork_source_ref: record.fork_source_ref.clone(),
-        retried_from: None,
         parent_id,
+        retried_from: None,
         web_url,
-        admission: record.admission.clone(),
-    };
-    let run_store = event::create_run(
-        store,
-        &record.run_id,
-        &first_event,
-        record.run_id.created_at(),
-    )
-    .await
-    .map_err(|err| Error::engine_with_source("failed to create run store", err))?;
-    append_event(&run_store, &record.run_id, &Event::RunSubmitted {
-        definition_blob,
-    })
-    .await
-    .map_err(store_error)
+    });
+    let submitted = PlatformRecord::RunLifecycle(
+        RunLifecycleRecord::new(RunLifecycleKind::Submitted).with_status(RunStatus::Submitted),
+    );
+    let summaries = store.run_summary_store();
+    let platform_records = summaries.platform_records();
+    for platform_record in [created, submitted] {
+        platform_records
+            .append(&record.run_id, &platform_record, None)
+            .await
+            .map_err(store_error)?;
+    }
+    summaries.notify_platform_record(record.run_id);
+    Ok(())
 }
 
 async fn write_optional_blob(

@@ -5,8 +5,6 @@ mod blob_store;
 mod error;
 mod keyed_mutex;
 mod keys;
-mod legacy_blob_import;
-mod legacy_run_history_import;
 pub mod platform_records;
 #[cfg(test)]
 mod record;
@@ -35,15 +33,6 @@ pub use fabro_types::{
     BlobHash, EventEnvelope, PendingInterviewRecord, Run, RunProjection, StageId, StageProjection,
 };
 pub use keyed_mutex::{KeyedMutex, KeyedMutexGuard};
-pub use legacy_blob_import::{
-    LegacyBlobImportError, LegacyBlobImportReport, LegacyBlobInventory, LegacyBlobInventoryError,
-    LegacyBlobVerificationError, LegacyBlobVerificationReport,
-};
-pub use legacy_run_history_import::{
-    LegacyRunHistoryDiagnostics, LegacyRunHistoryImportError, LegacyRunHistoryImportReport,
-    LegacyRunHistorySourceIdentity, LegacyRunHistorySourceIdentityError,
-    LegacyRunHistoryVerificationError, LegacyRunHistoryVerificationReport,
-};
 pub use platform_records::{
     PlatformRecord, PlatformRecordHook, PlatformRecordKind, PlatformRecordStore, StagePosition,
     StoredPlatformRecord,

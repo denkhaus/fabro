@@ -355,31 +355,6 @@ impl RunSummaryStore {
         Ok(())
     }
 
-    #[cfg(test)]
-    pub(crate) async fn test_mark_run_history_activated(&self) -> Result<()> {
-        sqlx::query(
-            r"
-INSERT INTO legacy_run_history_activation (
-    singleton, source_fingerprint, source_runs, source_events, activated_at_ms
-) VALUES (1, zeroblob(32), 0, 0, 1)
-ON CONFLICT(singleton) DO NOTHING
-",
-        )
-        .execute(&self.pool)
-        .await?;
-        Ok(())
-    }
-
-    #[cfg(test)]
-    pub(crate) async fn test_is_run_history_tombstoned(&self, run_id: &RunId) -> Result<bool> {
-        Ok(sqlx::query_scalar(
-            "SELECT EXISTS(SELECT 1 FROM legacy_run_history_deletions WHERE run_id = ?)",
-        )
-        .bind(run_id.to_string())
-        .fetch_one(&self.pool)
-        .await?)
-    }
-
     pub(crate) async fn acquire(&self) -> Result<PoolConnection<Sqlite>> {
         Ok(self.pool.acquire().await?)
     }
@@ -571,31 +546,11 @@ ON CONFLICT(singleton) DO NOTHING
         Ok(Some(run_id))
     }
 
-    pub(crate) async fn delete_canonical(&self, run_id: &RunId, deleted_at_ms: i64) -> Result<()> {
-        // This transaction reads the activation marker before it writes the
-        // tombstone and run deletion. A deferred SQLite transaction can fail
-        // immediately when that read transaction is upgraded while another
-        // writer is active, bypassing the configured busy timeout. Reserve
-        // the write lock up front so concurrent deletes wait normally.
+    pub(crate) async fn delete_canonical(&self, run_id: &RunId) -> Result<()> {
+        // Reserve the write lock up front: a deferred transaction upgraded
+        // while another writer is active can fail at once, bypassing the
+        // configured busy timeout, so concurrent deletes wait normally.
         let mut transaction = self.pool.begin_with("BEGIN IMMEDIATE").await?;
-        let activated: bool = sqlx::query_scalar(
-            "SELECT EXISTS(SELECT 1 FROM legacy_run_history_activation WHERE singleton = 1)",
-        )
-        .fetch_one(&mut *transaction)
-        .await?;
-        if activated {
-            sqlx::query(
-                r"
-INSERT INTO legacy_run_history_deletions (run_id, deleted_at_ms)
-VALUES (?, ?)
-ON CONFLICT(run_id) DO UPDATE SET deleted_at_ms = excluded.deleted_at_ms
-",
-            )
-            .bind(run_id.to_string())
-            .bind(deleted_at_ms)
-            .execute(&mut *transaction)
-            .await?;
-        }
         sqlx::query("DELETE FROM runs WHERE id = ?")
             .bind(run_id.to_string())
             .execute(&mut *transaction)
@@ -849,71 +804,6 @@ impl RunSummaryStore {
             });
         }
         decode_event_rows_with_json(&rows, run_id)
-    }
-
-    pub(crate) async fn insert_imported_run_on_connection(
-        connection: &mut SqliteConnection,
-        entry: &ProjectedRun,
-    ) -> Result<()> {
-        let record = PreparedRunSummary::from_entry(entry);
-        ensure_entry_identity(entry, &record, entry.last_seq)?;
-        if !(1..=keys::MAX_EVENT_SEQ).contains(&entry.last_seq) {
-            return Err(Error::RunHeadMismatch {
-                run_id:            entry.run_id.to_string(),
-                expected_last_seq: entry.last_seq,
-                actual_last_seq:   None,
-            });
-        }
-        insert_run_on_connection(connection, &record).await
-    }
-
-    pub(crate) async fn insert_imported_event_on_connection(
-        connection: &mut SqliteConnection,
-        run_id: &RunId,
-        payload: &EventPayload,
-        envelope: &EventEnvelope,
-        event_json: &str,
-    ) -> Result<()> {
-        payload.validate(run_id)?;
-        let decoded = RunEvent::try_from(payload)?;
-        if envelope.event != decoded || envelope.event.run_id != *run_id {
-            return Err(run_event_mismatch(run_id, envelope.seq, "event_json"));
-        }
-        if !(1..=keys::MAX_EVENT_SEQ).contains(&envelope.seq) {
-            return Err(run_event_mismatch(run_id, envelope.seq, "seq"));
-        }
-        insert_event_json_on_connection(connection, run_id, envelope, event_json).await
-    }
-
-    pub(crate) async fn verify_current_run_on_connection(
-        connection: &mut SqliteConnection,
-        entry: &ProjectedRun,
-    ) -> Result<()> {
-        let record = PreparedRunSummary::from_entry(entry);
-        ensure_entry_identity(entry, &record, entry.last_seq)?;
-        let row = sqlx::query(
-            r"
-SELECT id, source_last_seq, created_at_ms, started_at_ms, last_event_at_ms, completed_at_ms,
-       status, archived_at_ms, parent_id, title, workflow_slug, workflow_name,
-       repository_name, automation_id, diff_files_changed, diff_additions, diff_deletions,
-       input_tokens, output_tokens, reasoning_tokens, cache_read_tokens, cache_write_tokens,
-       total_usd_micros, summary_json
-FROM runs
-WHERE id = ?
-",
-        )
-        .bind(entry.run_id.to_string())
-        .fetch_optional(connection)
-        .await?
-        .ok_or_else(|| Error::RunNotFound(entry.run_id.to_string()))?;
-
-        let run = &record.run;
-        verify_run_field(&row, run, "id", &run.id.to_string())?;
-        verify_run_field(&row, run, "source_last_seq", &i64::from(record.last_seq))?;
-        // The run's row is written by its projector from Petri's records
-        // and the platform records; the legacy fold knows the lifecycle
-        // alone, so only the identity and the legacy guard are checked here.
-        Ok(())
     }
 
     pub(crate) async fn list_events_from_with_limit_on_connection(
@@ -1226,20 +1116,6 @@ fn decode_event_rows_with_json(
     rows.iter()
         .map(|row| decode_event_row_with_json(row, run_id, &run_id_text))
         .collect()
-}
-
-fn verify_run_field<T>(row: &SqliteRow, run: &Run, field: &'static str, expected: &T) -> Result<()>
-where
-    T: for<'row> sqlx::Decode<'row, Sqlite> + sqlx::Type<Sqlite> + PartialEq,
-{
-    let stored: T = row.try_get(field)?;
-    if &stored != expected {
-        return Err(Error::RunSummaryMismatch {
-            run_id: run.id.to_string(),
-            field,
-        });
-    }
-    Ok(())
 }
 
 fn decode_event_row(
@@ -2184,11 +2060,9 @@ mod tests {
         .await
         .unwrap();
         transaction.commit().await.unwrap();
-        store.test_mark_run_history_activated().await.unwrap();
-
         let blocker = store.pool.begin_with("BEGIN IMMEDIATE").await.unwrap();
         let contender = store.clone();
-        let delete = tokio::spawn(async move { contender.delete_canonical(&id, 2).await });
+        let delete = tokio::spawn(async move { contender.delete_canonical(&id).await });
         time::sleep(Duration::from_millis(25)).await;
         assert!(
             !delete.is_finished(),
@@ -2198,7 +2072,6 @@ mod tests {
         blocker.commit().await.unwrap();
         delete.await.unwrap().unwrap();
         assert!(!store.contains(&id).await.unwrap());
-        assert!(store.test_is_run_history_tombstoned(&id).await.unwrap());
     }
 
     #[tokio::test]

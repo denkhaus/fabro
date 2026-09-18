@@ -238,24 +238,11 @@ impl Database {
         Ok(())
     }
 
-    /// The run's projection: for a legacy run the reducer's fold of its
-    /// events; for a Petri run the projection its projector last committed
-    /// over Petri's records and the platform records, falling back to the
-    /// legacy fold (the lifecycle alone) until the first view pass commits.
+    /// The run's projection: the one its projector last committed over
+    /// Petri's records and the platform records, or `None` before the
+    /// first view pass commits (or for no such run).
     pub async fn load_run_projection(&self, run_id: &RunId) -> Result<Option<Arc<RunProjection>>> {
-        let legacy = if let Some(active) = self.get_active_run(run_id).await {
-            active.projection_snapshot().await?
-        } else {
-            match self.run_summary_store.load_projection(run_id).await {
-                Ok(projected) => projected.projection,
-                Err(Error::RunNotFound(_)) => return Ok(None),
-                Err(error) => return Err(error),
-            }
-        };
-        if let Some(petri) = self.run_summary_store.load_petri_projection(run_id).await? {
-            return Ok(Some(petri));
-        }
-        Ok(Some(legacy))
+        self.run_summary_store.load_petri_projection(run_id).await
     }
 
     /// Install the wake-up called after a platform record of a Petri run is
@@ -277,9 +264,7 @@ impl Database {
             Some(active) => Some(active.state_lock.lock().await),
             None => None,
         };
-        self.run_summary_store
-            .delete_canonical(run_id, Utc::now().timestamp_millis())
-            .await?;
+        self.run_summary_store.delete_canonical(run_id).await?;
         active_runs.remove(run_id);
         Ok(())
     }
@@ -863,67 +848,6 @@ mod tests {
         let reopened = store.open_run(&test_run_id("run-2")).await.unwrap();
         let read = reopened.read_blob(&shared_blob_hash).await.unwrap();
         assert_eq!(read.as_deref(), Some(shared_blob.as_slice()));
-    }
-
-    #[tokio::test]
-    async fn activated_delete_tombstone_prevents_legacy_history_resurrection() {
-        let (directory, summaries) = make_run_summary_store().await;
-        let (_object_store, store) = make_store_with_run_summaries(Arc::clone(&summaries));
-        let run_id = test_run_id("run-1");
-        let created = event_payload(
-            "run-1",
-            "2026-03-27T12:00:00Z",
-            "run.created",
-            &serde_json::json!({
-                "settings": sample_run_spec("run-1").settings,
-                "graph": sample_run_spec("run-1").graph,
-                "provenance": test_support::test_run_provenance(),
-            }),
-        );
-        store
-            .put_unvalidated_legacy_run_event(&run_id, 1, created.as_value())
-            .await
-            .unwrap();
-        let run = store.create_run(&run_id).await.unwrap();
-        run.append_event(&created).await.unwrap();
-        summaries.test_mark_run_history_activated().await.unwrap();
-
-        store.delete_run(&run_id).await.unwrap();
-
-        assert!(
-            summaries
-                .test_is_run_history_tombstoned(&run_id)
-                .await
-                .unwrap()
-        );
-        assert!(store.open_run(&run_id).await.is_err());
-        let database = fabro_db::Database::connect(directory.path().join("fabro.sqlite3"))
-            .await
-            .unwrap();
-        let report = store
-            .import_legacy_run_history_into(database.pool())
-            .await
-            .unwrap();
-        assert_eq!(report.tombstoned_source_runs, 1);
-        assert_eq!(report.tombstoned_source_events, 1);
-        assert!(store.open_run(&run_id).await.is_err());
-
-        let verification = store
-            .verify_legacy_run_history_in(database.pool())
-            .await
-            .unwrap();
-        assert_eq!(verification.tombstoned_source_runs, 1);
-        assert_eq!(verification.tombstoned_source_events, 1);
-
-        let recreated = store.create_run(&run_id).await.unwrap();
-        recreated.append_event(&created).await.unwrap();
-        assert!(
-            store
-                .verify_legacy_run_history_in(database.pool())
-                .await
-                .is_err(),
-            "a tombstone and live canonical data must fail verification"
-        );
     }
 
     #[tokio::test]

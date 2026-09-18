@@ -103,14 +103,14 @@ async fn write_run_blob(
     if let Some(response) = reject_if_archived(state.as_ref(), &id).await {
         return response;
     }
-    match state.stores.runs.open_run(&id).await {
-        Ok(run_store) => match run_store.write_blob(&body).await {
-            Ok(blob_hash) => Json(WriteBlobResponse { hash: blob_hash }).into_response(),
-            Err(err) => {
-                ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string()).into_response()
-            }
-        },
-        Err(_) => ApiError::not_found("Run not found.").into_response(),
+    if let Err(err) = state.load_run_projection(&id).await {
+        return err.into_response();
+    }
+    match state.store_ref().blobs().write(&body).await {
+        Ok(blob_hash) => Json(WriteBlobResponse { hash: blob_hash }).into_response(),
+        Err(err) => {
+            ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string()).into_response()
+        }
     }
 }
 
@@ -118,15 +118,15 @@ async fn read_run_blob(
     RequireRunBlob(id, blob_hash): RequireRunBlob,
     State(state): State<Arc<AppState>>,
 ) -> Response {
-    match state.stores.runs.open_run_reader(&id).await {
-        Ok(run_store) => match run_store.read_blob(&blob_hash).await {
-            Ok(Some(bytes)) => octet_stream_response(bytes),
-            Ok(None) => ApiError::not_found("Blob not found.").into_response(),
-            Err(err) => {
-                ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string()).into_response()
-            }
-        },
-        Err(_) => ApiError::not_found("Run not found.").into_response(),
+    if let Err(err) = state.load_run_projection(&id).await {
+        return err.into_response();
+    }
+    match state.store_ref().blobs().read(&blob_hash).await {
+        Ok(Some(bytes)) => octet_stream_response(bytes),
+        Ok(None) => ApiError::not_found("Blob not found.").into_response(),
+        Err(err) => {
+            ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string()).into_response()
+        }
     }
 }
 
