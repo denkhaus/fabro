@@ -21,8 +21,9 @@
 //! token, which cancels Petri's root invocation politely; an
 //! `interview.answer` message reaches the control interviewer the run's
 //! questions wait on (`fabro_petri::interview`), so a human gate answered
-//! through the API continues; pause and unpause hold and release admission
-//! through the run's [`RunControls`]; a steer goes to the run's one live
+//! through the API continues; pause and unpause (and `SIGUSR1`/`SIGUSR2`)
+//! hold and release admission through the run's [`RunControls`]; a steer
+//! goes to the run's one live
 //! agent stage, or is refused with a `run.notice` record saying why. The
 //! paused state is mirrored to Fabro's lifecycle: a `paused` lifecycle
 //! record when admission is held and `unpaused` when it is released, so
@@ -125,12 +126,12 @@ pub(super) async fn execute(worker: PetriWorker<'_>) -> Result<()> {
     ));
 
     let cancel_token = CancellationToken::new();
-    runner::install_signal_handlers(cancel_token.clone())?;
+    let controls = RunControls::new();
+    runner::install_signal_handlers(cancel_token.clone(), controls.clone())?;
     let interviewer = Arc::new(ControlInterviewer::new());
     // Fabro's own records of the run, over the client.
     let records: Arc<dyn PlatformRecords> =
         Arc::new(HttpPlatformRecords::new(worker.client.clone_for_reuse()));
-    let controls = RunControls::new();
     let petri_controls = Arc::new(PetriControls::new(
         run_id,
         controls.clone(),

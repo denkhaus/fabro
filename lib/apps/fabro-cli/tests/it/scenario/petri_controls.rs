@@ -1,6 +1,7 @@
 //! The run controls on a Petri run through a real server and its worker:
 //! a pause holds the next stage until the unpause and the API says
-//! `paused` in between; a steer reaches the agent stage on the twin, which
+//! `paused` in between; `SIGUSR1` and `SIGUSR2` on the worker do the same
+//! without the API; a steer reaches the agent stage on the twin, which
 //! sees it in its next request, and the stream carries the control record;
 //! a run paused when its server and worker die resumes paused and goes on
 //! once unpaused.
@@ -226,6 +227,84 @@ async fn a_pause_holds_the_next_stage_until_the_unpause() {
         "b started before the unpause: {names:?}"
     );
     assert!(pending_control(&server, &run_id).await.is_null());
+    server.shutdown();
+}
+
+/// `SIGUSR1` on the worker pauses the run the way the API's pause does,
+/// and `SIGUSR2` unpauses it: `b` is held at admission in between, Petri's
+/// records and Fabro's lifecycle both carry the pause and the unpause, and
+/// no control request is recorded, since none went through the API.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_user_signals_pause_and_unpause_the_worker() {
+    if host_plugin().is_none() {
+        return;
+    }
+    let context = test_context!();
+    let server = RunningServer::start().await;
+    let gate = context.temp_dir.join("a.gate");
+    let marker = context.temp_dir.join("b.marker");
+    let workspace = two_stage_workspace(&context, &gate, &marker);
+    let run_id = run_detached(&context, &server, &workspace);
+
+    wait_for_status(&server, &run_id, &["running"]).await;
+    let worker = wait_for_worker(&run_id);
+    wait_until_gate_is_polled(&gate);
+    eprintln!("run {run_id}: a is waiting on the gate; sending SIGUSR1 to worker {worker}");
+
+    fabro_proc::sigusr1(worker);
+    wait_for_status(&server, &run_id, &["paused"]).await;
+    eprintln!("run {run_id} is paused");
+
+    std::fs::write(&gate, "go").expect("the gate opens");
+    wait_for_stream_count(&server, &run_id, "step.finished", 2).await;
+    tokio::time::sleep(HOLD).await;
+    assert!(!marker.exists(), "b started while the run was paused");
+    assert_eq!(run_status(&server, &run_id).await, "paused");
+    assert!(pending_control(&server, &run_id).await.is_null());
+
+    fabro_proc::sigusr2(worker);
+    let status = wait_for_status(&server, &run_id, &["succeeded", "failed"]).await;
+    let items = settled_stream(&server, &run_id).await;
+    let names = stream_names(&items);
+    assert_eq!(
+        status,
+        "succeeded",
+        "stream: {names:?}\nserver stderr:\n{}",
+        server.stderr_text()
+    );
+    assert!(marker.exists(), "b ran after the unpause");
+    assert_petri_succeeded(&server, &run_id).await;
+
+    for event in [
+        "run.paused",
+        "run.unpaused",
+        "lifecycle:paused",
+        "lifecycle:unpaused",
+    ] {
+        assert_eq!(count_of(&names, event), 1, "{event}: {names:?}");
+    }
+    for event in ["lifecycle:pause_requested", "lifecycle:unpause_requested"] {
+        assert_eq!(
+            count_of(&names, event),
+            0,
+            "a signal is not an API request: {event}: {names:?}"
+        );
+    }
+    let unpaused = names
+        .iter()
+        .position(|name| name == "run.unpaused")
+        .expect("the unpause is recorded");
+    let b_started = names
+        .iter()
+        .enumerate()
+        .filter(|(_, name)| *name == "step.started")
+        .nth(2)
+        .map(|(index, _)| index)
+        .expect("b started");
+    assert!(
+        unpaused < b_started,
+        "b started before the unpause: {names:?}"
+    );
     server.shutdown();
 }
 

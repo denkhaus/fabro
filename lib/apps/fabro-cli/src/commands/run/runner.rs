@@ -13,6 +13,7 @@ use fabro_interview::{
     WorkerControlMessage,
 };
 use fabro_manifest::SuppliedWorkflowVersionPackager;
+use fabro_petri::controls::RunControls;
 use fabro_tool::fabro_client::ClientBackend;
 use fabro_types::RunId;
 use fabro_vault::{SecretStore, Vault};
@@ -684,8 +685,13 @@ fn worker_title(run_id: &RunId, phase: WorkerTitlePhase) -> String {
     format!("fabro {short_id} {phase}")
 }
 
-/// `SIGTERM` and `SIGINT` cancel the run, the way the server's cancel does.
-pub(super) fn install_signal_handlers(cancel_token: CancellationToken) -> Result<()> {
+/// `SIGTERM` and `SIGINT` cancel the run, the way the server's cancel does;
+/// `SIGUSR1` pauses it and `SIGUSR2` unpauses it, the way the server's pause
+/// and unpause do, through the run's controls.
+pub(super) fn install_signal_handlers(
+    cancel_token: CancellationToken,
+    controls: RunControls,
+) -> Result<()> {
     #[cfg(unix)]
     {
         let mut terminate = signal(SignalKind::terminate())?;
@@ -702,6 +708,27 @@ pub(super) fn install_signal_handlers(cancel_token: CancellationToken) -> Result
                 cancel_token.cancel();
             }
         });
+
+        let mut pause = signal(SignalKind::user_defined1())?;
+        let pause_controls = controls.clone();
+        tokio::spawn(async move {
+            while pause.recv().await.is_some() {
+                tracing::info!("SIGUSR1: pause requested; admission is held");
+                pause_controls.pause();
+            }
+        });
+
+        let mut unpause = signal(SignalKind::user_defined2())?;
+        tokio::spawn(async move {
+            while unpause.recv().await.is_some() {
+                controls.unpause().await;
+                tracing::info!("SIGUSR2: unpause recorded; admission is released");
+            }
+        });
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = (cancel_token, controls);
     }
 
     Ok(())
@@ -729,8 +756,8 @@ mod tests {
 
     use super::super::petri_worker::PetriControls;
     use super::{
-        AppliedWorkerControlDeliveryIds, WorkerControlConnectError, WorkerControlSocket,
-        WorkerControls, WorkerTitlePhase, apply_worker_control_delivery_frame,
+        AppliedWorkerControlDeliveryIds, RunControls, WorkerControlConnectError,
+        WorkerControlSocket, WorkerControls, WorkerTitlePhase, apply_worker_control_delivery_frame,
         apply_worker_control_message, build_worker_control_stream_request,
         connect_worker_control_stream, handle_worker_control_socket, initial_worker_title_phase,
         load_worker_vault, next_worker_control_reconnect_backoff, worker_title,
@@ -742,7 +769,7 @@ mod tests {
     fn test_controls() -> WorkerControls {
         Arc::new(PetriControls::new(
             fixtures::RUN_1,
-            fabro_petri::controls::RunControls::new(),
+            RunControls::new(),
             Arc::new(fabro_petri::test_support::MemoryPlatformRecords::new()),
         ))
     }
