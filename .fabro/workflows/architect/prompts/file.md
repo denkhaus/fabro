@@ -24,6 +24,8 @@ Ownership rule (ADR-0018 D2): this flow files seeds; it NEVER closes or relabels
 1. SELF-PARK CHECK first (the natural regenerative stop): if `architecture_findings` has FEWER THAN 2 candidates, file NOTHING — write the marker-only pass (step 3) and commit with "(0 seeds)". One stray finding is not a systemic pass; it rides the next due pass.
 2. If 2 or more candidates: for each finding, `sd search` its central theme; only when nothing matches the concrete change, `sd create` with the labels from its `kind` (`needs-user` kind -> `--labels needs-user,revision` and the description cites ADR-0019 with `implementation awaits explicit user approval` when capability-affecting), its title, description, and priority. Record every created id.
 
+   Upstream-cost guard routing (fabro-b9d0): a finding whose description names an upstream-existing path under structural change (restructure, split, rename, or delete) keeps kind `needs-user` UNCONDITIONALLY — file it with `--labels needs-user,revision` and never downgrade it to ordinary `revision` line work; its description must carry the upstream churn rate and the recurring merge-cost statement the analyst recorded (guard lives in the analyze stage prompt).
+
    Basis line (MANDATORY in every seed description, last line): `Basis: architect pass <arch_review_date>, friction <score/verdict from arch_score_json>, commit <git rev-parse HEAD of this worktree>`. A seed without a basis degrades triage.
 
    A finding that DUPLICATES an existing seed (same concrete change) is dropped with `duplicate_of: <id>` recorded in the journal — never filed twice.
