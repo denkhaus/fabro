@@ -18,11 +18,13 @@ use std::sync::Arc;
 use axum::extract::DefaultBodyLimit;
 use axum::routing::{get, post};
 use fabro_api::types::{
-    PetriAccess, PetriAppendRequest, PetriOpenRequest, PetriOpenResponse, PetriRecord,
-    PetriRecordList, PetriReleaseRequest, WriteBlobResponse,
+    PetriAccess, PetriAppendRequest, PetriOpenRequest, PetriOpenResponse, PetriPlatformRecord,
+    PetriPlatformRecordAppendRequest, PetriPlatformRecordList, PetriRecord, PetriRecordList,
+    PetriReleaseRequest, WriteBlobResponse,
 };
 use fabro_petri::petri::{Access, Digest, OwnerId, Record, StoreError};
 use fabro_petri::run_store::{log_id_text, parse_log_id};
+use fabro_store::{PlatformRecord, PlatformRecordKind, StagePosition, StoredPlatformRecord};
 use fabro_types::BlobHash;
 use fabro_util::error::collect_chain;
 use serde_json::{Map, Value, json};
@@ -51,11 +53,20 @@ pub(super) fn routes() -> Router<Arc<AppState>> {
             post(write_blob).layer(DefaultBodyLimit::disable()),
         )
         .route("/runs/{id}/petri/blobs/{blobHash}", get(read_blob))
+        .route(
+            "/runs/{id}/petri/platform-records",
+            get(list_platform_records).post(append_platform_record),
+        )
 }
 
 #[derive(serde::Deserialize)]
 struct OwnerQuery {
     owner: String,
+}
+
+#[derive(serde::Deserialize)]
+struct KindQuery {
+    kind: Option<String>,
 }
 
 async fn open_run(
@@ -209,6 +220,115 @@ async fn read_blob(
         .into_response(),
         Err(err) => store_error_response(id, &err),
     }
+}
+
+/// The run's platform records, of one kind when the query names it.
+async fn list_platform_records(
+    RequireWorkerRunScoped(id): RequireWorkerRunScoped,
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<KindQuery>,
+) -> Response {
+    let store = state.stores.run_summaries.platform_records();
+    let records = match query.kind.as_deref() {
+        Some(kind) => match kind.parse::<PlatformRecordKind>() {
+            Ok(kind) => store.read_kind(&id, kind).await,
+            Err(_) => {
+                return ApiError::bad_request(format!("`{kind}` is not a platform record kind."))
+                    .into_response();
+            }
+        },
+        None => store.read(&id).await,
+    };
+    match records {
+        Ok(records) => match records
+            .into_iter()
+            .map(|stored| wire_platform_record(&stored))
+            .collect::<Result<Vec<_>, _>>()
+        {
+            Ok(records) => Json(PetriPlatformRecordList { records }).into_response(),
+            Err(err) => err.into_response(),
+        },
+        Err(err) => platform_store_error_response(id, &err),
+    }
+}
+
+/// Store one platform record for the run and wake its projector.
+async fn append_platform_record(
+    RequireWorkerRunScoped(id): RequireWorkerRunScoped,
+    State(state): State<Arc<AppState>>,
+    Json(request): Json<PetriPlatformRecordAppendRequest>,
+) -> Response {
+    let record: PlatformRecord = match serde_json::from_value(Value::Object(request.record)) {
+        Ok(record) => record,
+        Err(err) => {
+            return ApiError::bad_request(format!("Invalid platform record: {err}"))
+                .into_response();
+        }
+    };
+    let position = match (request.execution, request.firing) {
+        (Some(execution), Some(firing)) => Some(StagePosition { execution, firing }),
+        _ => None,
+    };
+    let summaries = &state.stores.run_summaries;
+    match summaries
+        .platform_records()
+        .append(&id, &record, position)
+        .await
+    {
+        Ok(stored) => {
+            summaries.notify_platform_record(id);
+            match wire_platform_record(&stored) {
+                Ok(record) => Json(record).into_response(),
+                Err(err) => err.into_response(),
+            }
+        }
+        Err(err) => platform_store_error_response(id, &err),
+    }
+}
+
+/// A stored platform record as the wire carries it.
+fn wire_platform_record(stored: &StoredPlatformRecord) -> Result<PetriPlatformRecord, ApiError> {
+    let record = serde_json::to_value(&stored.record).map_err(|err| {
+        ApiError::with_code(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!(
+                "The stored platform record at seq {} does not encode: {err}",
+                stored.seq
+            ),
+            "petri_store_failed",
+        )
+    })?;
+    let Value::Object(record) = record else {
+        return Err(ApiError::with_code(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!(
+                "The stored platform record at seq {} is not a JSON object.",
+                stored.seq
+            ),
+            "petri_store_failed",
+        ));
+    };
+    Ok(PetriPlatformRecord {
+        seq: stored.seq,
+        recorded_at: stored.recorded_at,
+        record,
+        execution: stored.position.map(|position| position.execution),
+        firing: stored.position.map(|position| position.firing),
+    })
+}
+
+fn platform_store_error_response(run_id: RunId, err: &fabro_store::Error) -> Response {
+    tracing::error!(
+        run_id = %run_id,
+        error = %collect_chain(err).join(": "),
+        "platform record store failed"
+    );
+    ApiError::with_code(
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "The platform record store failed; see the server log.",
+        "petri_store_failed",
+    )
+    .into_response()
 }
 
 fn unknown_log(log: &str) -> Response {

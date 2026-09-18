@@ -38,6 +38,10 @@ impl EnvVars {
     pub const FABRO_TEST_IN_MEMORY_STORE: &'static str = "FABRO_TEST_IN_MEMORY_STORE";
     pub const FABRO_TEST_DISABLE_SPA_ASSETS: &'static str = "FABRO_TEST_DISABLE_SPA_ASSETS";
     pub const FABRO_TEST_MODE: &'static str = "FABRO_TEST_MODE";
+    /// A directory of hold and release files a test uses to pause a Petri
+    /// run's checkpoint at a named point (`fabro_petri::hooks`); unset
+    /// outside tests.
+    pub const FABRO_TEST_CHECKPOINT_GATES: &'static str = "FABRO_TEST_CHECKPOINT_GATES";
     pub const FABRO_VERBOSE: &'static str = "FABRO_VERBOSE";
     pub const FABRO_WEB_URL: &'static str = "FABRO_WEB_URL";
     pub const FABRO_WORKER_TOKEN: &'static str = "FABRO_WORKER_TOKEN";
@@ -222,6 +226,7 @@ mod tests {
             EnvVars::FABRO_TEST_IN_MEMORY_STORE,
             EnvVars::FABRO_TEST_DISABLE_SPA_ASSETS,
             EnvVars::FABRO_TEST_MODE,
+            EnvVars::FABRO_TEST_CHECKPOINT_GATES,
             EnvVars::FABRO_VERBOSE,
             EnvVars::FABRO_WEB_URL,
             EnvVars::FABRO_WORKER_TOKEN,

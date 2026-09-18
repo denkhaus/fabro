@@ -18,17 +18,20 @@
 //! What the caller supplies beyond the runtime: the interviewer its
 //! questions go to ([`interview`](crate::interview) in the worker and the
 //! server), the secret provider over the vault ([`secrets`](crate::secrets))
-//! and the blob table ([`blobs`](crate::blobs)) when it has them. What the
-//! standalone runner's defaults give the run: Petri's local hook service
-//! for `[[run.hooks]]`, no `ExecutionHooks` of Fabro's own, no host tools,
-//! and `Retention::Always` for every workspace, Fabro's default.
+//! and the blob table ([`blobs`](crate::blobs)) when it has them, and a
+//! [`HooksSpec`] for Fabro's own [`FabroHooks`], which wrap Petri's local
+//! hook service: the checkpoint commit before every durable finish and its
+//! platform record after every route, with a failed commit ending the run
+//! as a `checkpoint_failed` failure. What the standalone runner's defaults
+//! give the run: Petri's local hook service for `[[run.hooks]]`, no host
+//! tools, and `Retention::Always` for every workspace, Fabro's default.
 //! Cancellation rides the caller's token: when it fires, the root
 //! invocation is cancelled politely and Petri records why.
 //!
 //! A resume here is Petri's own: the run continues from its records, and
-//! sandbox leases are reconciled by label. Full recovery, where the
-//! workspace a resumed stage sees is restored to the snapshot its durable
-//! state names, is the integration plan's F3.5 and lands after this.
+//! sandbox leases are reconciled by label. What the workspaces look like
+//! when it does is the server's business before it relaunches the worker
+//! ([`recovery`](crate::recovery)).
 //!
 //! No stage or agent event is projected into Fabro's tables here; the
 //! caller appends only the run lifecycle events Fabro's read side needs to
@@ -38,13 +41,14 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use fabro_types::{FailureReason, SandboxProviderKind};
+use fabro_types::{FailureReason, RunId, SandboxProviderKind};
 use petri_execution::host::{self, HostError, HostRun};
 use petri_execution::inspect::{self, InspectError, RunInspection};
 use petri_execution::{
     Access, CancelReason, ExecutionObserver, InterviewDispatcher, Interviewer, InvocationId,
     RECEIPT_FILE, RunKey, RunStore,
 };
+use petri_runtime::driver::lifecycle::ExecutionHooks;
 use petri_runtime::executor::{Retention, SecretProvider};
 use petri_runtime::{RunOptions, SandboxBackend};
 use tokio::fs;
@@ -53,6 +57,7 @@ use tracing::{debug, info, warn};
 
 use crate::admission::AdmittedGraphs;
 use crate::blobs::{Blobs, RunBlobs};
+use crate::hooks::{FabroHooks, HooksSpec};
 use crate::runtime::RuntimeSpec;
 use crate::secrets::SharedSecrets;
 
@@ -95,6 +100,9 @@ pub struct RunRequest {
     /// Where offloaded stage values go; `None` keeps Petri's local store
     /// under the run directory.
     pub blobs:       Option<Arc<dyn Blobs>>,
+    /// Fabro's hooks: the checkpoint commit and its record. `None` runs
+    /// with Petri's local hook service alone.
+    pub hooks:       Option<HooksSpec>,
 }
 
 /// The recorded status of a finished run.
@@ -168,12 +176,32 @@ pub async fn run(request: RunRequest) -> Result<RunOutcome, RunError> {
     if let Some(blobs) = request.blobs {
         runtime = runtime.capability(RunBlobs::output_store(blobs));
     }
+    let fabro_hooks = request.hooks.map(|spec| {
+        let inner = runtime
+            .installed_hooks()
+            .unwrap_or_else(|| Arc::new(NoHooks));
+        let run_id = spec_run_id(&request.run_id);
+        Arc::new(FabroHooks::new(
+            spec,
+            inner,
+            run_id,
+            key.clone(),
+            request.run_dir.clone(),
+            Arc::clone(&request.store),
+        ))
+    });
+    if let Some(hooks) = &fabro_hooks {
+        runtime = runtime.hooks(Arc::clone(hooks) as Arc<dyn ExecutionHooks>);
+    }
 
     let dispatcher = InterviewDispatcher::new(request.interviewer);
     let cancel = request.cancel.clone();
     let mut cancel_task = None;
     let with_handle = |handle: petri_execution::CoordinatorHandle, secrets| {
         dispatcher.wire(handle.clone(), secrets);
+        if let Some(hooks) = &fabro_hooks {
+            hooks.attach(handle.clone());
+        }
         cancel_task = Some(tokio::spawn(async move {
             cancel.cancelled().await;
             info!("cancelling the Petri run");
@@ -213,8 +241,36 @@ pub async fn run(request: RunRequest) -> Result<RunOutcome, RunError> {
         Err(error) => warn!(error = %error, "Petri run ended with a host error"),
     }
     let inspection = inspect(request.store.as_ref(), &key).await?;
-    outcome(inspection, result.err())
+    let mut outcome = outcome(inspection, result.err())?;
+    // A failed checkpoint cancelled the run; what Fabro reports is the
+    // checkpoint failure, not a cancellation.
+    if let Some(failure) = fabro_hooks
+        .as_ref()
+        .and_then(|hooks| hooks.checkpoint_failure())
+    {
+        outcome.status = RunStatus::Failed;
+        outcome.failure = Some(failure);
+    }
+    Ok(outcome)
 }
+
+/// The Fabro run id the run key names. A key that is not one (a test's
+/// bare key) still gets hooks, under a fresh id for its platform records.
+fn spec_run_id(run_id: &str) -> RunId {
+    run_id.parse().unwrap_or_else(|_| {
+        warn!(
+            run_id,
+            "the Petri run key is not a Fabro run id; platform records use a fresh id"
+        );
+        RunId::new()
+    })
+}
+
+/// No host hooks at all: what Fabro's hooks wrap when the runtime installed
+/// none.
+struct NoHooks;
+
+impl ExecutionHooks for NoHooks {}
 
 /// What the run's record says, read through a handle that holds no lease:
 /// the same derivation [`run`] ends with, for a caller that only holds the

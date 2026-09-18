@@ -376,6 +376,13 @@ pub struct GitIdentityRecord {
 pub struct CheckpointRecord {
     pub execution:      u64,
     pub firing:         u64,
+    /// The attempt whose files the commit holds; absent on a record written
+    /// before the field existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub attempt:        Option<u32>,
+    /// The Petri workspace id the commit was made in.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workspace:      Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub git_commit_sha: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -857,6 +864,8 @@ mod tests {
             PlatformRecordKind::Checkpoint => PlatformRecord::Checkpoint(CheckpointRecord {
                 execution:      0,
                 firing:         3,
+                attempt:        Some(1),
+                workspace:      Some("invocation-0-scope-0".to_string()),
                 git_commit_sha: Some("def".to_string()),
                 diff_summary:   Some(DiffSummary {
                     files_changed: 1,

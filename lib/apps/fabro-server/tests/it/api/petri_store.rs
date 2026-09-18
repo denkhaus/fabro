@@ -346,3 +346,91 @@ async fn a_worker_store_leases_for_its_launch_not_for_petris_owner() {
     drop(created);
     wait_until_released(server_store, &key).await;
 }
+
+/// A worker stores Fabro's platform records for its run over the API and
+/// reads them back by kind: what the checkpoint hooks do from the worker
+/// process.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_worker_appends_and_reads_platform_records_over_the_api() {
+    use fabro_petri::platform_records::{HttpPlatformRecords, PlatformRecords};
+    use fabro_store::platform_records::{CheckpointRecord, DecisionRef, OperationKey};
+    use fabro_store::{PlatformRecord, PlatformRecordKind, StagePosition};
+
+    let state = test_app_state();
+    let base_url = serve(Arc::clone(&state), |router| router).await;
+    let run_id = RunId::new();
+    let token = state.test_issue_worker_token(&run_id);
+    let records =
+        HttpPlatformRecords::new(worker_client(&base_url, &token, Duration::from_secs(5)).await);
+
+    let checkpoint = PlatformRecord::Checkpoint(CheckpointRecord {
+        execution:      0,
+        firing:         3,
+        attempt:        Some(1),
+        workspace:      Some("invocation-0-scope-0".to_string()),
+        git_commit_sha: Some("abc123".to_string()),
+        diff_summary:   None,
+        patch_blob:     None,
+        operation:      Some(OperationKey {
+            execution: 0,
+            decision:  DecisionRef::AttemptStart {
+                firing:  3,
+                attempt: 1,
+            },
+            effect:    "checkpoint".to_string(),
+        }),
+    });
+    let position = Some(StagePosition {
+        execution: 0,
+        firing:    3,
+    });
+    let stored = records
+        .append(&run_id, &checkpoint, position)
+        .await
+        .expect("the record appends over the API");
+    assert_eq!(stored.seq, 1);
+    assert_eq!(stored.position, position);
+    let notice = PlatformRecord::RunArchived;
+    records
+        .append(&run_id, &notice, None)
+        .await
+        .expect("a second record appends");
+
+    let checkpoints = records
+        .read_kind(&run_id, PlatformRecordKind::Checkpoint)
+        .await
+        .expect("the checkpoints read back");
+    assert_eq!(checkpoints.len(), 1);
+    assert_eq!(checkpoints[0].seq, 1);
+    assert_eq!(checkpoints[0].position, position);
+    assert!(matches!(
+        &checkpoints[0].record,
+        PlatformRecord::Checkpoint(record) if record.git_commit_sha.as_deref() == Some("abc123")
+            && record.operation == checkpoint_operation(&checkpoint)
+    ));
+    let archived = records
+        .read_kind(&run_id, PlatformRecordKind::RunArchived)
+        .await
+        .expect("the archive record reads back");
+    assert_eq!(archived.len(), 1);
+    assert_eq!(archived[0].seq, 2);
+    assert_eq!(archived[0].position, None);
+
+    // Another run's token cannot read this run's records.
+    let other = state.test_issue_worker_token(&RunId::new());
+    let foreign =
+        HttpPlatformRecords::new(worker_client(&base_url, &other, Duration::from_secs(5)).await);
+    assert!(
+        foreign
+            .read_kind(&run_id, PlatformRecordKind::Checkpoint)
+            .await
+            .is_err(),
+        "a worker token names one run"
+    );
+}
+
+fn checkpoint_operation(
+    record: &fabro_store::PlatformRecord,
+) -> Option<fabro_store::platform_records::OperationKey> {
+    record.operation().cloned()
+}

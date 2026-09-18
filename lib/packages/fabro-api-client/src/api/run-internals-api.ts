@@ -40,6 +40,12 @@ import type { PetriOpenRequest } from '../models';
 // @ts-ignore
 import type { PetriOpenResponse } from '../models';
 // @ts-ignore
+import type { PetriPlatformRecord } from '../models';
+// @ts-ignore
+import type { PetriPlatformRecordAppendRequest } from '../models';
+// @ts-ignore
+import type { PetriPlatformRecordList } from '../models';
+// @ts-ignore
 import type { PetriRecordList } from '../models';
 // @ts-ignore
 import type { PetriReleaseRequest } from '../models';
@@ -66,6 +72,51 @@ import type { WriteRunBlobRequest } from '../models';
  */
 export const RunInternalsApiAxiosParamCreator = function (configuration?: Configuration) {
     return {
+        /**
+         * Stores one platform record at the run\'s next `seq`, tied to the Petri stage named by `execution` and `firing` when it belongs to one. The record is the JSON of a Fabro platform record, tagged by `kind`.
+         * @summary Append Petri Platform Record
+         * @param {string} id Unique run identifier (ULID).
+         * @param {PetriPlatformRecordAppendRequest} petriPlatformRecordAppendRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        appendPetriPlatformRecord: async (id: string, petriPlatformRecordAppendRequest: PetriPlatformRecordAppendRequest, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'id' is not null or undefined
+            assertParamExists('appendPetriPlatformRecord', 'id', id)
+            // verify required parameter 'petriPlatformRecordAppendRequest' is not null or undefined
+            assertParamExists('appendPetriPlatformRecord', 'petriPlatformRecordAppendRequest', petriPlatformRecordAppendRequest)
+            const localVarPath = `/api/v1/runs/{id}/petri/platform-records`
+                .replace(`{${"id"}}`, encodeURIComponent(String(id)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            // authentication SessionCookie required
+
+            // authentication BearerAuth required
+            // http bearer authentication required
+            await setBearerAuthToObject(localVarHeaderParameter, configuration)
+
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+            localVarHeaderParameter['Accept'] = 'application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+            localVarRequestOptions.data = serializeDataIfNeeded(petriPlatformRecordAppendRequest, localVarRequestOptions, configuration)
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
         /**
          * Appends one batch of records to one log at the sequences they carry, durably, in one transaction. A record equal to the one already stored at its `seq` is accepted without a second append, so a batch whose reply was lost is safe to resend. A different record at a taken `seq`, or a `seq` past the log\'s end, is refused with `petri_record_conflict` and the batch stores nothing.
          * @summary Append Petri Records
@@ -520,6 +571,51 @@ export const RunInternalsApiAxiosParamCreator = function (configuration?: Config
             }
 
             localVarHeaderParameter['Accept'] = 'application/octet-stream,application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * The run\'s platform records (Fabro\'s own facts about a Petri run: a checkpoint commit, a pull request, a notification), in `seq` order, optionally of one kind. What a run\'s worker reads to find an effect it already performed before performing it again.
+         * @summary List Petri Platform Records
+         * @param {string} id Unique run identifier (ULID).
+         * @param {string} [kind] Only the platform records of this kind, as its &#x60;kind&#x60; tag spells it (&#x60;checkpoint&#x60;, &#x60;pull_request.created&#x60;, ...).
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listPetriPlatformRecords: async (id: string, kind?: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'id' is not null or undefined
+            assertParamExists('listPetriPlatformRecords', 'id', id)
+            const localVarPath = `/api/v1/runs/{id}/petri/platform-records`
+                .replace(`{${"id"}}`, encodeURIComponent(String(id)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            // authentication SessionCookie required
+
+            // authentication BearerAuth required
+            // http bearer authentication required
+            await setBearerAuthToObject(localVarHeaderParameter, configuration)
+
+            if (kind !== undefined) {
+                localVarQueryParameter['kind'] = kind;
+            }
+
+            localVarHeaderParameter['Accept'] = 'application/json';
 
             setSearchParams(localVarUrlObj, localVarQueryParameter);
             let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
@@ -1247,6 +1343,20 @@ export const RunInternalsApiFp = function(configuration?: Configuration) {
     const localVarAxiosParamCreator = RunInternalsApiAxiosParamCreator(configuration)
     return {
         /**
+         * Stores one platform record at the run\'s next `seq`, tied to the Petri stage named by `execution` and `firing` when it belongs to one. The record is the JSON of a Fabro platform record, tagged by `kind`.
+         * @summary Append Petri Platform Record
+         * @param {string} id Unique run identifier (ULID).
+         * @param {PetriPlatformRecordAppendRequest} petriPlatformRecordAppendRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async appendPetriPlatformRecord(id: string, petriPlatformRecordAppendRequest: PetriPlatformRecordAppendRequest, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<PetriPlatformRecord>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.appendPetriPlatformRecord(id, petriPlatformRecordAppendRequest, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['RunInternalsApi.appendPetriPlatformRecord']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
          * Appends one batch of records to one log at the sequences they carry, durably, in one transaction. A record equal to the one already stored at its `seq` is accepted without a second append, so a batch whose reply was lost is safe to resend. A different record at a taken `seq`, or a `seq` past the log\'s end, is refused with `petri_record_conflict` and the batch stores nothing.
          * @summary Append Petri Records
          * @param {string} id Unique run identifier (ULID).
@@ -1387,6 +1497,20 @@ export const RunInternalsApiFp = function(configuration?: Configuration) {
             const localVarAxiosArgs = await localVarAxiosParamCreator.getStageArtifact(id, stageId, filename, retry, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
             const localVarOperationServerBasePath = operationServerMap['RunInternalsApi.getStageArtifact']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * The run\'s platform records (Fabro\'s own facts about a Petri run: a checkpoint commit, a pull request, a notification), in `seq` order, optionally of one kind. What a run\'s worker reads to find an effect it already performed before performing it again.
+         * @summary List Petri Platform Records
+         * @param {string} id Unique run identifier (ULID).
+         * @param {string} [kind] Only the platform records of this kind, as its &#x60;kind&#x60; tag spells it (&#x60;checkpoint&#x60;, &#x60;pull_request.created&#x60;, ...).
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async listPetriPlatformRecords(id: string, kind?: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<PetriPlatformRecordList>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.listPetriPlatformRecords(id, kind, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['RunInternalsApi.listPetriPlatformRecords']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
@@ -1616,6 +1740,17 @@ export const RunInternalsApiFactory = function (configuration?: Configuration, b
     const localVarFp = RunInternalsApiFp(configuration)
     return {
         /**
+         * Stores one platform record at the run\'s next `seq`, tied to the Petri stage named by `execution` and `firing` when it belongs to one. The record is the JSON of a Fabro platform record, tagged by `kind`.
+         * @summary Append Petri Platform Record
+         * @param {string} id Unique run identifier (ULID).
+         * @param {PetriPlatformRecordAppendRequest} petriPlatformRecordAppendRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        appendPetriPlatformRecord(id: string, petriPlatformRecordAppendRequest: PetriPlatformRecordAppendRequest, options?: RawAxiosRequestConfig): AxiosPromise<PetriPlatformRecord> {
+            return localVarFp.appendPetriPlatformRecord(id, petriPlatformRecordAppendRequest, options).then((request) => request(axios, basePath));
+        },
+        /**
          * Appends one batch of records to one log at the sequences they carry, durably, in one transaction. A record equal to the one already stored at its `seq` is accepted without a second append, so a batch whose reply was lost is safe to resend. A different record at a taken `seq`, or a `seq` past the log\'s end, is refused with `petri_record_conflict` and the batch stores nothing.
          * @summary Append Petri Records
          * @param {string} id Unique run identifier (ULID).
@@ -1727,6 +1862,17 @@ export const RunInternalsApiFactory = function (configuration?: Configuration, b
          */
         getStageArtifact(id: string, stageId: string, filename: string, retry: number, options?: RawAxiosRequestConfig): AxiosPromise<File> {
             return localVarFp.getStageArtifact(id, stageId, filename, retry, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * The run\'s platform records (Fabro\'s own facts about a Petri run: a checkpoint commit, a pull request, a notification), in `seq` order, optionally of one kind. What a run\'s worker reads to find an effect it already performed before performing it again.
+         * @summary List Petri Platform Records
+         * @param {string} id Unique run identifier (ULID).
+         * @param {string} [kind] Only the platform records of this kind, as its &#x60;kind&#x60; tag spells it (&#x60;checkpoint&#x60;, &#x60;pull_request.created&#x60;, ...).
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listPetriPlatformRecords(id: string, kind?: string, options?: RawAxiosRequestConfig): AxiosPromise<PetriPlatformRecordList> {
+            return localVarFp.listPetriPlatformRecords(id, kind, options).then((request) => request(axios, basePath));
         },
         /**
          * Every record of one log of the run, in `seq` order, unchanged.
@@ -1908,6 +2054,18 @@ export const RunInternalsApiFactory = function (configuration?: Configuration, b
  */
 export class RunInternalsApi extends BaseAPI {
     /**
+     * Stores one platform record at the run\'s next `seq`, tied to the Petri stage named by `execution` and `firing` when it belongs to one. The record is the JSON of a Fabro platform record, tagged by `kind`.
+     * @summary Append Petri Platform Record
+     * @param {string} id Unique run identifier (ULID).
+     * @param {PetriPlatformRecordAppendRequest} petriPlatformRecordAppendRequest
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public appendPetriPlatformRecord(id: string, petriPlatformRecordAppendRequest: PetriPlatformRecordAppendRequest, options?: RawAxiosRequestConfig) {
+        return RunInternalsApiFp(this.configuration).appendPetriPlatformRecord(id, petriPlatformRecordAppendRequest, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
      * Appends one batch of records to one log at the sequences they carry, durably, in one transaction. A record equal to the one already stored at its `seq` is accepted without a second append, so a batch whose reply was lost is safe to resend. A different record at a taken `seq`, or a `seq` past the log\'s end, is refused with `petri_record_conflict` and the batch stores nothing.
      * @summary Append Petri Records
      * @param {string} id Unique run identifier (ULID).
@@ -2028,6 +2186,18 @@ export class RunInternalsApi extends BaseAPI {
      */
     public getStageArtifact(id: string, stageId: string, filename: string, retry: number, options?: RawAxiosRequestConfig) {
         return RunInternalsApiFp(this.configuration).getStageArtifact(id, stageId, filename, retry, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * The run\'s platform records (Fabro\'s own facts about a Petri run: a checkpoint commit, a pull request, a notification), in `seq` order, optionally of one kind. What a run\'s worker reads to find an effect it already performed before performing it again.
+     * @summary List Petri Platform Records
+     * @param {string} id Unique run identifier (ULID).
+     * @param {string} [kind] Only the platform records of this kind, as its &#x60;kind&#x60; tag spells it (&#x60;checkpoint&#x60;, &#x60;pull_request.created&#x60;, ...).
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public listPetriPlatformRecords(id: string, kind?: string, options?: RawAxiosRequestConfig) {
+        return RunInternalsApiFp(this.configuration).listPetriPlatformRecords(id, kind, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**

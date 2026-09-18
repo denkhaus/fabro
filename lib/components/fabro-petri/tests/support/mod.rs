@@ -117,6 +117,7 @@ pub(crate) fn run_request(
         interviewer: Arc::new(interviewer),
         secrets: None,
         blobs: None,
+        hooks: None,
     }
 }
 

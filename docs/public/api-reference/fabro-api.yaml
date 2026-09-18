@@ -3418,6 +3418,59 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /api/v1/runs/{id}/petri/platform-records:
+    get:
+      operationId: listPetriPlatformRecords
+      tags: [Run Internals]
+      summary: List Petri Platform Records
+      description: |
+        The run's platform records (Fabro's own facts about a Petri run: a
+        checkpoint commit, a pull request, a notification), in `seq` order,
+        optionally of one kind. What a run's worker reads to find an effect
+        it already performed before performing it again.
+      parameters:
+        - $ref: "#/components/parameters/RunId"
+        - $ref: "#/components/parameters/PetriPlatformRecordKind"
+      responses:
+        "200":
+          description: The run's platform records
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PetriPlatformRecordList"
+    post:
+      operationId: appendPetriPlatformRecord
+      tags: [Run Internals]
+      summary: Append Petri Platform Record
+      description: |
+        Stores one platform record at the run's next `seq`, tied to the
+        Petri stage named by `execution` and `firing` when it belongs to one.
+        The record is the JSON of a Fabro platform record, tagged by `kind`.
+      parameters:
+        - $ref: "#/components/parameters/RunId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PetriPlatformRecordAppendRequest"
+      responses:
+        "200":
+          description: The record as stored
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PetriPlatformRecord"
+        "400":
+          description: The record is not a platform record
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /api/v1/runs/{id}/stages/{stageId}/logs/output:
     get:
       operationId: getRunStageCommandLog
@@ -6221,6 +6274,17 @@ components:
       schema:
         type: string
       example: 18f3c2a9e1b4-42017-0-9f3a1c7e2b5d
+
+    PetriPlatformRecordKind:
+      name: kind
+      in: query
+      required: false
+      description: >-
+        Only the platform records of this kind, as its `kind` tag spells it
+        (`checkpoint`, `pull_request.created`, ...).
+      schema:
+        type: string
+      example: checkpoint
 
     ArtifactFilename:
       name: filename
@@ -10999,6 +11063,71 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/PetriRecord"
+
+    PetriPlatformRecord:
+      description: >-
+        One of Fabro's platform records of a Petri run, as stored: the
+        record's JSON tagged by `kind`, its position in the run's platform
+        record sequence, and the Petri stage it belongs to when it belongs
+        to one.
+      type: object
+      required:
+        - seq
+        - recorded_at
+        - record
+      properties:
+        seq:
+          type: integer
+          format: uint64
+          description: The record's position in the run's platform records, from 1.
+          example: 4
+        recorded_at:
+          type: integer
+          format: uint64
+          description: Milliseconds since the Unix epoch when the record was stored.
+          example: 1758067200123
+        record:
+          type: object
+          additionalProperties: true
+          description: The platform record itself, tagged by `kind`.
+        execution:
+          type: integer
+          format: uint64
+          description: The Petri execution the record belongs to, with `firing`.
+        firing:
+          type: integer
+          format: uint64
+          description: The Petri firing the record belongs to, with `execution`.
+
+    PetriPlatformRecordAppendRequest:
+      description: One platform record to store for the run.
+      type: object
+      required:
+        - record
+      properties:
+        record:
+          type: object
+          additionalProperties: true
+          description: The platform record, tagged by `kind`.
+        execution:
+          type: integer
+          format: uint64
+          description: The Petri execution the record belongs to, with `firing`.
+        firing:
+          type: integer
+          format: uint64
+          description: The Petri firing the record belongs to, with `execution`.
+
+    PetriPlatformRecordList:
+      description: The run's platform records, in `seq` order.
+      type: object
+      required:
+        - records
+      properties:
+        records:
+          type: array
+          items:
+            $ref: "#/components/schemas/PetriPlatformRecord"
 
     CommandTermination:
       description: Terminal state for a command execution.

@@ -261,7 +261,8 @@ impl RunSummaryStore {
             .unwrap_or_else(PoisonError::into_inner) = Some(hook);
     }
 
-    pub(crate) fn notify_platform_record(&self, run_id: RunId) {
+    /// Wake the run's projector: a platform record was committed for the run.
+    pub fn notify_platform_record(&self, run_id: RunId) {
         let hook = self
             .platform_hook
             .read()

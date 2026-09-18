@@ -23,7 +23,10 @@
 //! item that follows.
 //!
 //! After a server restart, [`reconcile_on_startup`] hands a Petri run the
-//! previous server left in flight back to a worker in resume mode.
+//! previous server left in flight back to a worker in resume mode, once the
+//! recovery protocol (`fabro_petri::recovery`) has brought every live
+//! workspace to the snapshot its durable state names, or reports the run
+//! failed when it cannot.
 
 use std::collections::{BTreeMap, HashSet};
 use std::sync::Arc;
@@ -34,8 +37,11 @@ use fabro_interview::ControlInterviewer;
 use fabro_llm::selection;
 use fabro_petri::check::{self, Bundle, CheckError, CheckRequest, Diagnostic, Launch};
 use fabro_petri::engine::{self, Conclusion, Execution, RunRequest};
+use fabro_petri::hooks::HooksSpec;
 use fabro_petri::interview::{Approval, DatabaseQuestions, FabroInterviewer};
 use fabro_petri::petri::StoreError;
+use fabro_petri::platform_records::SqlitePlatformRecords;
+use fabro_petri::recovery::{self, Recovery, RecoveryRequest};
 use fabro_petri::runtime::{self, RuntimeSpec};
 use fabro_petri::secrets::VaultSecrets;
 use fabro_petri::{SqliteRunStore, admission};
@@ -378,6 +384,12 @@ pub(crate) async fn execute(state: Arc<AppState>, run_id: RunId) {
     let observers = vec![petri_interviewer.observer()];
     let (_, eligible) = state.resolve_llm_client_with_ready_ids().await;
     let dry_run = run_state.spec.settings.run.execution.mode == RunMode::DryRun;
+    let hooks = HooksSpec::for_run(
+        Arc::new(SqlitePlatformRecords::new(Arc::clone(
+            &state.stores.run_summaries,
+        ))),
+        &run_state.spec.settings.run,
+    );
     let request = RunRequest {
         run_id: run_id.to_string(),
         run_dir: run_dir.join("petri"),
@@ -392,6 +404,7 @@ pub(crate) async fn execute(state: Arc<AppState>, run_id: RunId) {
         observers,
         secrets: Some(Arc::new(VaultSecrets::from_vault(&vault))),
         blobs: Some(state.store_ref().blobs()),
+        hooks: Some(hooks),
     };
     let result = Box::pin(engine::run(request)).await;
     let timing = RunTiming {
@@ -430,21 +443,22 @@ pub(crate) async fn execute(state: Arc<AppState>, run_id: RunId) {
 }
 
 /// Bring a Petri run the server left in flight back to its worker after a
-/// restart: the run continues from its records, as Petri's own resume does.
+/// restart: the run continues from its records, as Petri's own resume does,
+/// on workspaces that match them.
 ///
 /// The lease the previous worker held is released from outside, which
-/// fences that worker should it still be alive; then the run is asked to
-/// start again as a resume (`run.start_requested` with `resume`, then
-/// `run.runnable`, the same pair the API's resume appends), and a managed
-/// run is registered for the scheduler in resume mode when Petri's store
-/// holds the run, else in start mode: a worker that died before it created
-/// the run's record left nothing to continue from, so the run starts from
-/// its admitted graphs.
-///
-/// Full recovery, where the workspace a resumed stage sees is restored to
-/// the snapshot its durable state names, is the integration plan's F3.5.
-/// Until it lands, a retained workspace is used as the previous worker left
-/// it.
+/// fences that worker should it still be alive. Then the recovery protocol
+/// reads the run's durable execution state: a run with a failed checkpoint
+/// is reported failed here and never resumed; otherwise every live
+/// workspace on this host is verified against, reset to, or restored from
+/// the snapshot its last durable finish names, and a finish with no
+/// snapshot fails the run rather than resume it on stale files. The run is
+/// then asked to start again as a resume (`run.start_requested` with
+/// `resume`, then `run.runnable`, the same pair the API's resume appends),
+/// and a managed run is registered for the scheduler in resume mode when
+/// Petri's store holds the run, else in start mode: a worker that died
+/// before it created the run's record left nothing to continue from, so the
+/// run starts from its admitted graphs.
 pub(crate) async fn reconcile_on_startup(
     state: &Arc<AppState>,
     run_id: RunId,
@@ -459,8 +473,46 @@ pub(crate) async fn reconcile_on_startup(
             return Err(anyhow::Error::new(err).context("releasing the Petri run's lease"));
         }
     };
+    let run_dir = Storage::new(state.server_storage_dir())
+        .run_scratch(&run_id)
+        .root()
+        .to_path_buf();
     let mode = if held {
-        RunExecutionMode::Resume
+        let request = RecoveryRequest::for_run(
+            run_id,
+            run_dir.join("petri"),
+            Arc::new(SqliteRunStore::new(state.db_pool.clone())),
+            Arc::new(SqlitePlatformRecords::new(Arc::clone(
+                &state.stores.run_summaries,
+            ))),
+            &run_state.spec.settings.run,
+        );
+        match recovery::recover(request)
+            .await
+            .map_err(|err| anyhow::Error::new(err).context("recovering the Petri run"))?
+        {
+            Recovery::Start => RunExecutionMode::Start,
+            Recovery::Resume { workspaces } => {
+                info!(
+                    run_id = %run_id,
+                    workspaces = workspaces.len(),
+                    "Petri run's workspaces match its durable state"
+                );
+                RunExecutionMode::Resume
+            }
+            Recovery::Failed { reason } => {
+                warn!(
+                    run_id = %run_id,
+                    petri_key = %key,
+                    error = %reason,
+                    "Petri run left in flight by the previous server cannot resume; reporting it failed"
+                );
+                let (_, _, event) =
+                    failed(FailureReason::WorkflowError, reason, RunTiming::default());
+                workflow_event::append_event(run_store, &run_id, &event).await?;
+                return Ok(());
+            }
+        }
     } else {
         RunExecutionMode::Start
     };
@@ -482,10 +534,6 @@ pub(crate) async fn reconcile_on_startup(
     ] {
         workflow_event::append_event(run_store, &run_id, &event).await?;
     }
-    let run_dir = Storage::new(state.server_storage_dir())
-        .run_scratch(&run_id)
-        .root()
-        .to_path_buf();
     let mut runs = state.runs.lock().expect("runs lock poisoned");
     runs.insert(
         run_id,

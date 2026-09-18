@@ -33,7 +33,17 @@
 //! - [`projection`] and [`projector`]: the view of a Petri run, folded from its
 //!   records and Fabro's platform records, and the pass that writes it after
 //!   each committed record;
-//! - the platform adapters still to come: hooks and the run tools.
+//! - [`hooks`]: Fabro's `ExecutionHooks`, the checkpoint commit in
+//!   `prepare_result` and its platform record in `transition`, around Petri's
+//!   own hook service for `[[run.hooks]]`;
+//! - [`checkpoint`]: the Git snapshots of a run's host workspaces and the
+//!   snapshot repository they are published to;
+//! - [`recovery`]: the resume-on-restart protocol, which brings every live
+//!   workspace to the snapshot its durable state names before the run goes back
+//!   to a worker;
+//! - [`platform_records`]: Fabro's platform records as the adapters reach them,
+//!   in the server's database or over its API from a worker;
+//! - the platform adapter still to come: the run tools.
 //!
 //! The Petri packages are pinned by revision in the workspace `Cargo.toml`
 //! under `petri_*` keys.
@@ -41,17 +51,22 @@
 pub mod admission;
 pub mod blobs;
 pub mod check;
+pub mod checkpoint;
 pub mod engine;
+pub mod hooks;
 pub mod http_store;
 pub mod interview;
 pub mod petri;
+pub mod platform_records;
 pub mod projection;
 pub mod projector;
+pub mod recovery;
 pub mod run_store;
 pub mod runtime;
 pub mod secrets;
 #[cfg(feature = "test-support")]
 pub mod test_support;
+pub mod workspace;
 
 pub use http_store::HttpRunStore;
 pub use run_store::SqliteRunStore;
