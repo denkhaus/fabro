@@ -44,6 +44,7 @@ use tokio_tungstenite::tungstenite::protocol::{self, Message as WebSocketMessage
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, connect_async, tungstenite};
 use tokio_util::sync::CancellationToken;
 
+use super::petri_worker::{self, PetriWorker};
 use crate::args::RunWorkerMode;
 use crate::shared::github::build_github_credentials;
 use crate::{command_context, server_client};
@@ -55,7 +56,7 @@ const RUN_STORE_RETRY_DELAYS: [Duration; 3] = [
 ];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum WorkerTitlePhase {
+pub(super) enum WorkerTitlePhase {
     Start,
     Resume,
     Init,
@@ -85,6 +86,20 @@ pub(crate) async fn execute(
         .state()
         .await
         .with_context(|| format!("failed to load run state for {run_id}"))?;
+    if run_state.spec.engine.is_petri() {
+        return Box::pin(petri_worker::execute(PetriWorker {
+            run_id,
+            target,
+            client,
+            run_store,
+            run_state,
+            storage_dir: &storage_dir,
+            run_dir,
+            mode,
+            worker_token,
+        }))
+        .await;
+    }
     let run_spec = &run_state.spec;
     let catalog = Arc::new(
         command_context::load_cli_catalog().context("failed to build worker LLM catalog")?,
@@ -237,7 +252,7 @@ fn build_fabro_run_tool_services(
 ///
 /// A worker always receives the server storage root so it can load the same
 /// secret vault as the server.
-async fn load_worker_vault(storage_dir: &Path) -> Result<Arc<AsyncRwLock<Vault>>> {
+pub(super) async fn load_worker_vault(storage_dir: &Path) -> Result<Arc<AsyncRwLock<Vault>>> {
     let storage = Storage::new(storage_dir);
     let vault = SecretStore::open_snapshot(storage.sqlite_path(), storage.secrets_path())
         .await
@@ -286,7 +301,7 @@ impl AppliedWorkerControlDeliveryIds {
     }
 }
 
-struct WorkerControlManagerHandle {
+pub(super) struct WorkerControlManagerHandle {
     first_connection: Option<oneshot::Receiver<Result<()>>>,
     fatal:            Option<oneshot::Receiver<anyhow::Error>>,
     done:             CancellationToken,
@@ -294,7 +309,7 @@ struct WorkerControlManagerHandle {
 }
 
 impl WorkerControlManagerHandle {
-    async fn wait_for_first_connection(&mut self) -> Result<()> {
+    pub(super) async fn wait_for_first_connection(&mut self) -> Result<()> {
         let receiver = self
             .first_connection
             .take()
@@ -304,7 +319,7 @@ impl WorkerControlManagerHandle {
             .context("worker control manager stopped before first connection")?
     }
 
-    async fn fatal_control_loss(&mut self) -> anyhow::Error {
+    pub(super) async fn fatal_control_loss(&mut self) -> anyhow::Error {
         let Some(receiver) = self.fatal.take() else {
             return anyhow!("worker control fatal receiver missing");
         };
@@ -313,7 +328,7 @@ impl WorkerControlManagerHandle {
             .unwrap_or_else(|_| anyhow!("worker control manager stopped before workflow completed"))
     }
 
-    fn finish(&self) {
+    pub(super) fn finish(&self) {
         self.done.cancel();
         self.task.abort();
     }
@@ -380,7 +395,7 @@ enum WorkerControlConnectError {
     Other(anyhow::Error),
 }
 
-fn spawn_worker_control_manager(
+pub(super) fn spawn_worker_control_manager(
     target: ServerTarget,
     run_id: RunId,
     worker_token: String,
@@ -1012,7 +1027,7 @@ impl RunStoreBackend for HttpRunStore {
     }
 }
 
-fn set_worker_title(run_id: &RunId, phase: WorkerTitlePhase) {
+pub(super) fn set_worker_title(run_id: &RunId, phase: WorkerTitlePhase) {
     fabro_proc::title_set(&worker_title(run_id, phase));
 }
 
@@ -1064,7 +1079,7 @@ fn update_worker_title_from_event(event: &RunEvent) {
     }
 }
 
-fn stamp_system_worker(mut event: RunEvent) -> RunEvent {
+pub(super) fn stamp_system_worker(mut event: RunEvent) -> RunEvent {
     if event.actor.is_none() {
         event.actor = Some(Principal::Worker {
             run_id: event.run_id,
@@ -1123,7 +1138,7 @@ fn requires_github_credentials(run: &RunNamespace, has_repo_origin: bool) -> boo
         && has_repo_origin
 }
 
-fn install_signal_handlers(
+pub(super) fn install_signal_handlers(
     run_control: Arc<RunControlState>,
     cancel_token: CancellationToken,
 ) -> Result<()> {

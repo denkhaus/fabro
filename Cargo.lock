@@ -2396,6 +2396,7 @@ dependencies = [
  "fabro-checkpoint",
  "fabro-client",
  "fabro-config",
+ "fabro-db",
  "fabro-dump",
  "fabro-environment",
  "fabro-github",
@@ -2410,6 +2411,7 @@ dependencies = [
  "fabro-mcp",
  "fabro-mcp-server",
  "fabro-oauth",
+ "fabro-petri",
  "fabro-proc",
  "fabro-redact",
  "fabro-sandbox",
@@ -2888,6 +2890,7 @@ version = "0.357.0-nightly.0"
 dependencies = [
  "anyhow",
  "async-trait",
+ "bytes",
  "fabro-api",
  "fabro-auth",
  "fabro-client",

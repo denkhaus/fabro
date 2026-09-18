@@ -8,6 +8,7 @@ mod artifacts;
 mod auth;
 mod exec;
 mod lifecycle;
+mod petri;
 mod server_lifecycle;
 mod smoke;
 

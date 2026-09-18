@@ -20,6 +20,7 @@ pub(crate) mod fork;
 pub(crate) mod logs;
 pub(crate) mod output;
 pub(crate) mod overrides;
+mod petri_worker;
 pub(crate) mod preview;
 mod remote_workflow;
 mod resolution;
