@@ -1089,6 +1089,11 @@ pub(crate) struct RunWorkerArgs {
     /// Worker mode
     #[arg(long, value_enum)]
     pub(crate) mode: RunWorkerMode,
+
+    /// The Fabro home the server runs under, for the skills a Petri run's
+    /// agents read
+    #[arg(long, hide = true)]
+    pub(crate) fabro_home: Option<PathBuf>,
 }
 
 #[derive(Args, Debug, Clone, Default)]

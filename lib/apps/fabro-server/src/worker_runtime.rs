@@ -48,6 +48,9 @@ pub(crate) struct WorkerLaunchSpec {
     pub(crate) fabro_log:              Option<String>,
     pub(crate) active_config_path:     PathBuf,
     pub(crate) github_app_private_key: Option<String>,
+    /// The Fabro home the server resolved, so a Petri run's skills step
+    /// reads the same home whatever the worker's environment says.
+    pub(crate) fabro_home:             PathBuf,
 }
 
 pub(crate) struct StartedWorker {
@@ -89,6 +92,8 @@ impl LocalWorkerRuntime {
             .arg(spec.run_id.to_string())
             .arg("--mode")
             .arg(spec.mode)
+            .arg("--fabro-home")
+            .arg(&spec.fabro_home)
             .stdin(Stdio::null())
             .stdout(worker_stdout)
             .stderr(Stdio::piped());

@@ -3788,6 +3788,7 @@ fn worker_launch_spec(
         fabro_log,
         active_config_path: state.active_config_path().to_path_buf(),
         github_app_private_key,
+        fabro_home: fabro_config::Home::from_env().root().to_path_buf(),
     })
 }
 

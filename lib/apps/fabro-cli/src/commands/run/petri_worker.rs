@@ -17,18 +17,24 @@
 //! (`run.starting`, `run.running`, then `run.completed` or `run.failed`)
 //! through the client, as the legacy worker does.
 //!
-//! Of the server's controls, cancel is wired: the control channel's cancel
-//! and `SIGTERM`/`SIGINT` fire one token, which cancels Petri's root
-//! invocation politely. Pause, unpause and steer are received and ignored
-//! with a warning until their Petri adapters land. A control channel that
-//! is lost for good cancels the run the same way, and the worker exits with
-//! that loss as its error once the run has settled.
+//! Of the server's controls, cancel and answers are wired: the control
+//! channel's cancel and `SIGTERM`/`SIGINT` fire one token, which cancels
+//! Petri's root invocation politely, and an `interview.answer` message
+//! reaches the control interviewer the run's questions wait on
+//! (`fabro_petri::interview`), so a human gate answered through the API
+//! continues. Pause, unpause and steer are received and ignored with a
+//! warning until their Petri adapters land. A control channel that is lost
+//! for good cancels the run the same way, and the worker exits with that
+//! loss as its error once the run has settled.
 //!
 //! The runtime's settings layer is left empty here: the run's graphs were
 //! lowered and admitted at create time with the server's layer, and nothing
 //! lowers again at execution. The model client is built from the worker's
 //! catalog and vault snapshot for the providers whose credentials resolve,
-//! the same eligible set the legacy worker's LLM backend uses.
+//! the same eligible set the legacy worker's LLM backend uses. The same
+//! vault snapshot is the run's secret provider, the run's blobs go to the
+//! server's blob table through the worker's client, and the Fabro home the
+//! server named on the command line is the home the skills step reads.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -39,17 +45,22 @@ use fabro_auth::VaultCredentialSource;
 use fabro_client::{Client, ServerTarget};
 use fabro_interview::ControlInterviewer;
 use fabro_llm::credentials::{CredentialProvider, readiness};
+use fabro_petri::blobs::ClientBlobs;
 use fabro_petri::engine::{self, Conclusion, Execution, RunRequest};
+use fabro_petri::interview::{Approval, EventSinkQuestions, FabroInterviewer};
 use fabro_petri::petri::OwnerId;
 use fabro_petri::runtime::{self, RuntimeSpec};
+use fabro_petri::secrets::VaultSecrets;
 use fabro_petri::{HttpRunStore, admission};
 use fabro_store::RunProjection;
-use fabro_types::settings::run::RunMode;
+use fabro_types::settings::run::{ApprovalMode, RunMode};
 use fabro_types::{FailureReason, RunId, RunTiming, StageOutcome, SuccessReason};
+use fabro_vault::Vault;
 use fabro_workflow::Error as WorkflowError;
 use fabro_workflow::event::{self as workflow_event, Emitter, Event, RunEventSink};
 use fabro_workflow::run_control::RunControlState;
 use fabro_workflow::runtime_store::RunStoreHandle;
+use tokio::sync::RwLock as AsyncRwLock;
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
@@ -69,6 +80,9 @@ pub(super) struct PetriWorker<'a> {
     pub(super) storage_dir:  &'a Path,
     pub(super) run_dir:      PathBuf,
     pub(super) mode:         RunWorkerMode,
+    /// The Fabro home the server named; `None` falls back to Petri's own
+    /// lookup of the worker's environment.
+    pub(super) fabro_home:   Option<PathBuf>,
     pub(super) worker_token: &'a str,
 }
 
@@ -102,7 +116,7 @@ pub(super) async fn execute(worker: PetriWorker<'_>) -> Result<()> {
         worker.target.clone(),
         run_id,
         worker.worker_token.to_owned(),
-        interviewer,
+        Arc::clone(&interviewer),
         cancel_token.clone(),
         steering_hub,
         run_control,
@@ -110,14 +124,25 @@ pub(super) async fn execute(worker: PetriWorker<'_>) -> Result<()> {
     control_manager.wait_for_first_connection().await?;
     warn!(
         run_id = %run_id,
-        "a Petri run answers cancel only: pause, unpause and steer are not wired yet and are ignored"
+        "a Petri run answers cancel and questions only: pause, unpause and steer are not wired \
+         yet and are ignored"
     );
     let sink = RunEventSink::map(
         runner::stamp_system_worker,
         RunEventSink::backend(worker.run_store.clone()),
     );
+    let approval = if worker.run_state.spec.settings.run.execution.approval == ApprovalMode::Auto {
+        Approval::Auto
+    } else {
+        Approval::Prompt
+    };
+    let questions = Arc::new(EventSinkQuestions::new(sink.clone(), run_id));
+    let petri_interviewer = FabroInterviewer::new(interviewer, questions, approval);
+    let observers = vec![petri_interviewer.observer()];
 
-    let runtime = runtime_spec(worker.storage_dir, &worker.run_state).await?;
+    let vault = runner::load_worker_vault(worker.storage_dir).await?;
+    let secrets = VaultSecrets::from_vault(&*vault.read().await);
+    let runtime = runtime_spec(&vault, &worker.run_state, worker.fabro_home.clone()).await?;
     let execution = match worker.mode {
         RunWorkerMode::Start => {
             let client = worker.client.clone_for_reuse();
@@ -156,6 +181,13 @@ pub(super) async fn execute(worker: PetriWorker<'_>) -> Result<()> {
             .provider
             .clone(),
         cancel: cancel_token.clone(),
+        interviewer: Arc::new(petri_interviewer),
+        observers,
+        secrets: Some(Arc::new(secrets)),
+        blobs: Some(Arc::new(ClientBlobs::new(
+            worker.client.clone_for_reuse(),
+            run_id,
+        ))),
     };
     let run = Box::pin(engine::run(request));
     tokio::pin!(run);
@@ -229,12 +261,17 @@ pub(super) async fn execute(worker: PetriWorker<'_>) -> Result<()> {
 
 /// The runtime the worker hands Petri: no settings layer (nothing lowers
 /// at execution), the model client over the worker's catalog and vault for
-/// the providers whose credentials resolve, and the run's mode.
-async fn runtime_spec(storage_dir: &Path, run_state: &RunProjection) -> Result<RuntimeSpec> {
+/// the providers whose credentials resolve, the run's mode, and the Fabro
+/// home the server named.
+async fn runtime_spec(
+    vault: &Arc<AsyncRwLock<Vault>>,
+    run_state: &RunProjection,
+    fabro_home: Option<PathBuf>,
+) -> Result<RuntimeSpec> {
     let catalog =
         command_context::load_cli_catalog().context("failed to build worker LLM catalog")?;
-    let vault = runner::load_worker_vault(storage_dir).await?;
-    let credentials: Arc<dyn CredentialProvider> = Arc::new(VaultCredentialSource::new(vault));
+    let credentials: Arc<dyn CredentialProvider> =
+        Arc::new(VaultCredentialSource::new(Arc::clone(vault)));
     let ready = readiness(catalog.enabled_providers(), credentials.as_ref()).await;
     for (provider, issue) in &ready.issues {
         warn!(provider = %provider, error = %issue, "model provider credentials unusable");
@@ -250,6 +287,6 @@ async fn runtime_spec(storage_dir: &Path, run_state: &RunProjection) -> Result<R
         settings_toml: None,
         model_client,
         dry_run: run_state.spec.settings.run.execution.mode == RunMode::DryRun,
-        fabro_home: None,
+        fabro_home,
     })
 }
