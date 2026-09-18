@@ -43,6 +43,8 @@ mod support;
 
 const HOST_PLUGIN: &str = "sandbox-driver-host";
 const HOST_PLUGIN_OVERRIDE: &str = "PETRI_SANDBOX_HOST_PLUGIN";
+const DOCKER_PLUGIN: &str = "sandbox-driver-docker";
+const DOCKER_PLUGIN_OVERRIDE: &str = "PETRI_SANDBOX_DOCKER_PLUGIN";
 const REQUIRE_ENV: &str = "FABRO_REQUIRE_SANDBOX_PLUGINS";
 
 /// The host plugin as Petri's lookup finds it: the override variable, else
@@ -99,6 +101,39 @@ fn admit(workflow: &str, settings: &str) -> AdmittedGraphs {
     }
 }
 
+/// The Docker plugin as Petri's lookup finds it, with a daemon that
+/// answers. `None`, after saying so, when the test should skip; a panic
+/// when the environment forbids a skip and the plugin is missing.
+fn docker_plugin() -> Option<PathBuf> {
+    let found = env::var_os(DOCKER_PLUGIN_OVERRIDE)
+        .map(PathBuf::from)
+        .or_else(|| {
+            env::split_paths(&env::var_os("PATH")?)
+                .map(|dir| dir.join(DOCKER_PLUGIN))
+                .find(|candidate| candidate.is_file())
+        });
+    let Some(found) = found else {
+        assert!(
+            env::var_os(REQUIRE_ENV).is_none(),
+            "{REQUIRE_ENV} is set, but {DOCKER_PLUGIN} is not on PATH and {DOCKER_PLUGIN_OVERRIDE} \
+             is unset"
+        );
+        eprintln!("skipping: {DOCKER_PLUGIN} is not on PATH and {DOCKER_PLUGIN_OVERRIDE} is unset");
+        return None;
+    };
+    let daemon = std::process::Command::new("docker")
+        .args(["version", "--format", "{{.Server.Version}}"])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .is_ok_and(|status| status.success());
+    if !daemon {
+        eprintln!("skipping: no Docker daemon answers");
+        return None;
+    }
+    Some(found)
+}
+
 /// One run's pieces: the store, its platform records, where it ran.
 struct Harness {
     run_id:  RunId,
@@ -120,35 +155,68 @@ impl Harness {
         }
     }
 
-    fn hooks(&self) -> HooksSpec {
+    fn hooks(&self, provider: &SandboxProviderKind) -> HooksSpec {
         HooksSpec {
             records:         Arc::clone(&self.records) as Arc<dyn PlatformRecords>,
             author:          GitAuthor::default(),
             checkpoint:      RunCheckpointSettings::default(),
-            host_workspaces: true,
+            host_workspaces: *provider == SandboxProviderKind::LOCAL,
             test_gates:      None,
         }
     }
 
     /// Run the bundle to its end through the engine module, as the worker
-    /// does, and report what the record says.
+    /// does, on the local provider, and report what the record says.
     async fn run(&self, workflow: &str, settings: &str) -> engine::RunOutcome {
+        self.run_on(SandboxProviderKind::LOCAL, workflow, settings)
+            .await
+    }
+
+    /// [`run`](Self::run) on `provider`.
+    async fn run_on(
+        &self,
+        provider: SandboxProviderKind,
+        workflow: &str,
+        settings: &str,
+    ) -> engine::RunOutcome {
         let (interviewer, observers) = no_questions();
+        let hooks = self.hooks(&provider);
         let request = RunRequest {
             run_id: self.run_id.to_string(),
             run_dir: self.run_dir.clone(),
             execution: Execution::Start(admit(workflow, settings)),
             store: Arc::clone(&self.store) as Arc<dyn petri_store::RunStore>,
             runtime: RuntimeSpec::default(),
-            provider: SandboxProviderKind::LOCAL,
+            provider,
             cancel: CancellationToken::new(),
             interviewer,
             observers,
             secrets: None,
             blobs: None,
-            hooks: Some(self.hooks()),
+            hooks: Some(hooks),
         };
         engine::run(request).await.expect("the run executes")
+    }
+
+    /// The commits the snapshot repository of `workspace` holds, oldest
+    /// first, as `(sha, subject, key)`: every checkpoint's history, whatever
+    /// site committed it.
+    async fn snapshot_commits(
+        &self,
+        workspace: &str,
+    ) -> Vec<(String, String, Option<CheckpointKey>)> {
+        let repository = self.workspaces().snapshot_repository(workspace);
+        // Topological, so the linear run history reads parents first even
+        // when commits share a timestamp.
+        let log = git(&repository, &[
+            "log",
+            "--topo-order",
+            "--reverse",
+            "--all",
+            "--format=%H%x00%s%x00%B%x1e",
+        ])
+        .await;
+        parse_log(&log)
     }
 
     async fn inspection(&self) -> RunInspection {
@@ -247,6 +315,10 @@ async fn git(path: &Path, args: &[&str]) -> String {
 /// The commits on the run branch, oldest first, as `(sha, subject, key)`.
 async fn commits(path: &Path) -> Vec<(String, String, Option<CheckpointKey>)> {
     let log = git(path, &["log", "--reverse", "--format=%H%x00%s%x00%B%x1e"]).await;
+    parse_log(&log)
+}
+
+fn parse_log(log: &str) -> Vec<(String, String, Option<CheckpointKey>)> {
     log.split('\u{1e}')
         .filter(|entry| !entry.trim().is_empty())
         .map(|entry| {
@@ -562,7 +634,7 @@ async fn a_run_hook_blocks_a_tool_effect_through_the_forwarded_service() {
         observers,
         secrets: None,
         blobs: None,
-        hooks: Some(harness.hooks()),
+        hooks: Some(harness.hooks(&SandboxProviderKind::LOCAL)),
     };
     let outcome = engine::run(request).await.expect("the run executes");
     assert_eq!(outcome.status, RunStatus::Success, "{outcome:?}");
@@ -688,4 +760,105 @@ async fn parallel_branches_checkpoint_the_shared_workspace_in_turn() {
     );
     assert_eq!(inspection.executions.len(), 3, "the root and two branches");
     assert_eq!(harness.workspace().await, "invocation-0-scope-0");
+}
+
+/// On Docker the workspace lives inside the container: every finished
+/// stage is committed there, the commit leaves the container as a bundle,
+/// and the snapshot repository on the host holds each checkpoint under
+/// its ref, with the platform records naming the same commits.
+#[tokio::test]
+async fn a_docker_run_commits_inside_the_container_and_publishes_every_checkpoint() {
+    if docker_plugin().is_none() {
+        return;
+    }
+    assert_sandbox_run_publishes_every_checkpoint(SandboxProviderKind::DOCKER).await;
+}
+
+/// The same protocol on Daytona: the sandbox-driver facets are provider
+/// neutral, so the commit, the bundle and the restore take one path. Live:
+/// it needs `DAYTONA_API_KEY` and the Daytona plugin, and provisions a
+/// sandbox.
+#[tokio::test]
+#[ignore = "requires live Daytona credentials and provisions a sandbox"]
+async fn a_daytona_run_commits_inside_the_sandbox_and_publishes_every_checkpoint() {
+    assert!(
+        env::var_os("DAYTONA_API_KEY").is_some(),
+        "DAYTONA_API_KEY must be set to run this live test"
+    );
+    assert_sandbox_run_publishes_every_checkpoint(SandboxProviderKind::DAYTONA).await;
+}
+
+/// Bytes of incompressible data the first stage writes: past the plugin
+/// transport's 16 MiB cap on one file read, so its bundle leaves the
+/// sandbox in more than one part.
+const LARGE_FILE_BYTES: usize = 20 * 1024 * 1024;
+
+/// A two-stage run on `provider`, whose workspace lives inside a sandbox:
+/// nothing of it is on the host, every checkpoint is published, and the
+/// bundles carried the stages' files, a large one in parts.
+async fn assert_sandbox_run_publishes_every_checkpoint(provider: SandboxProviderKind) {
+    let harness = Harness::new();
+    let workflow = workflow(
+        &format!(
+            "  write [shape=parallelogram, script=\"echo one > out.txt && head -c \
+             {LARGE_FILE_BYTES} /dev/urandom > large.bin\"]\n  check [shape=parallelogram, \
+             script=\"test \\\"$(cat out.txt)\\\" = one && git log --format=%s | head -1 | grep -q \
+             write\"]"
+        ),
+        "  start -> write -> check -> exit",
+    );
+    let outcome = harness.run_on(provider, &workflow, SETTINGS).await;
+    assert_eq!(outcome.status, RunStatus::Success, "{outcome:?}");
+    assert!(outcome.complete, "{:?}", outcome.incomplete);
+
+    let checkpoints = harness.checkpoints();
+    assert_eq!(checkpoints.len(), 4, "{checkpoints:?}");
+    let workspace = "invocation-0-scope-0";
+    assert!(
+        !harness.workspaces().workspace_exists(workspace).await,
+        "nothing of the workspace is on the host"
+    );
+    let published = harness
+        .workspaces()
+        .published(workspace)
+        .await
+        .expect("the snapshot repository lists");
+    let mut by_key: Vec<(CheckpointKey, String)> = published
+        .iter()
+        .map(|snapshot| (snapshot.key, snapshot.sha.clone()))
+        .collect();
+    let mut recorded = checkpoints.clone();
+    recorded.sort();
+    by_key.sort();
+    assert_eq!(by_key, recorded, "every record names a published snapshot");
+
+    let commits = harness.snapshot_commits(workspace).await;
+    let subjects: Vec<&str> = commits
+        .iter()
+        .map(|(_, subject, _)| subject.as_str())
+        .collect();
+    let run_id = harness.run_id.to_string();
+    assert_eq!(subjects, vec![
+        format!("fabro({run_id}): start (success)"),
+        format!("fabro({run_id}): write (success)"),
+        format!("fabro({run_id}): check (success)"),
+        format!("fabro({run_id}): exit (success)"),
+    ]);
+    let (write_sha, _, _) = &commits[1];
+    let repository = harness.workspaces().snapshot_repository(workspace);
+    assert_eq!(
+        git(&repository, &["show", &format!("{write_sha}:out.txt")]).await,
+        "one",
+        "the bundle carried the stage's files"
+    );
+    assert_eq!(
+        git(&repository, &[
+            "cat-file",
+            "-s",
+            &format!("{write_sha}:large.bin")
+        ])
+        .await,
+        LARGE_FILE_BYTES.to_string(),
+        "the large file came through the split transfer whole"
+    );
 }

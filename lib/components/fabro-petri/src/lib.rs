@@ -36,11 +36,13 @@
 //! - [`hooks`]: Fabro's `ExecutionHooks`, the checkpoint commit in
 //!   `prepare_result` and its platform record in `transition`, around Petri's
 //!   own hook service for `[[run.hooks]]`;
-//! - [`checkpoint`]: the Git snapshots of a run's host workspaces and the
-//!   snapshot repository they are published to;
+//! - [`checkpoint`]: the Git snapshots of a run's workspaces, on the host or
+//!   inside a Docker or Daytona sandbox, and the snapshot repository they are
+//!   published to;
 //! - [`recovery`]: the resume-on-restart protocol, which brings every live
-//!   workspace to the snapshot its durable state names before the run goes back
-//!   to a worker;
+//!   workspace to the snapshot its durable state names: a host workspace before
+//!   the run goes back to a worker, a sandbox workspace in the worker when its
+//!   scope is acquired;
 //! - [`platform_records`]: Fabro's platform records as the adapters reach them,
 //!   in the server's database or over its API from a worker;
 //! - [`host_tools`]: Fabro's run tools on every native agent session of a run,

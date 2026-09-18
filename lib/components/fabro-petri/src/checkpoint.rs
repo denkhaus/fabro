@@ -14,26 +14,38 @@
 //! at `scopes/<workspace id>/work`, the layout `HostExecutor::workspace_for`
 //! names. This module reaches it there and runs `git` on the host, which
 //! is where the worker, and the server at recovery, run. A Docker or
-//! Daytona workspace lives inside its sandbox, out of reach of this module:
-//! the hooks record that no snapshot was taken and recovery resumes such a
-//! run on the retained sandbox as it was left.
+//! Daytona workspace lives inside its sandbox: there `git` runs inside the
+//! scope through the environment Petri hands the hooks at
+//! `scope_acquired`, the same capability a step spawns its process with,
+//! and the same commands run on both sites through one runner
+//! ([`Site`]). Only the transfer differs: a sandbox commit leaves its
+//! sandbox as a Git bundle and a restore enters one the same way.
 //!
 //! # The snapshot repository
 //!
-//! Every checkpoint commit is also pushed to a bare repository beside the
-//! run's workspaces, `snapshots/<workspace id>.git`, under an immutable ref
-//! per checkpoint (`refs/checkpoints/<execution>/<firing>/<attempt>`). A
-//! workspace that is gone at recovery is restored from it, and the refs
-//! are what recovery reconciles a missing record from.
+//! Every checkpoint commit is also published to a bare repository beside
+//! the run's workspaces, `snapshots/<workspace id>.git`, under an immutable
+//! ref per checkpoint (`refs/checkpoints/<execution>/<firing>/<attempt>`).
+//! A host workspace pushes to it; a sandbox workspace bundles the commit
+//! (`git bundle create`, against the newest ancestor the repository already
+//! holds), the bundle is read out of the sandbox through the environment's
+//! file transfer in parts the transport accepts, and the repository fetches
+//! it. A workspace that is gone at recovery is restored from the
+//! repository: a host directory fetches from it, a sandbox receives a
+//! bundle of the checkpoint and fetches from that. The refs are what
+//! recovery reconciles a missing record from, whatever the provider.
 
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
+use std::sync::Arc;
 use std::time::Duration;
 
 use fabro_checkpoint::author::GitAuthor;
 use fabro_checkpoint::trailer::{self, Trailer};
 use fabro_store::platform_records::{DecisionRef, OperationKey};
 use fabro_types::settings::run::RunCheckpointSettings;
+use petri_runtime::executor::{EnvError, ExecEnv, OutputMode, ProcessSpec, Sig};
+use petri_runtime::ir::LogStream;
 use tokio::process::Command;
 use tokio::{fs, time};
 
@@ -51,6 +63,13 @@ pub const ATTEMPT_TRAILER: &str = "Fabro-Attempt";
 
 const FOOTER: &str = "\u{2692}\u{fe0f} Generated with [Fabro](https://fabro.sh)";
 const REFS_PREFIX: &str = "refs/checkpoints/";
+
+/// Where a bundle waits inside a sandbox on its way in or out: outside the
+/// workspace, so no checkpoint ever commits it.
+const TRANSFER_DIR: &str = "/tmp/fabro-snapshots";
+/// The largest piece of a bundle read out of a sandbox at once: half the
+/// plugin transport's 16 MiB cap on one file read.
+const TRANSFER_PART_BYTES: u64 = 8 * 1024 * 1024;
 
 /// Directories never committed, the legacy executor's list: build output
 /// and dependency caches a stage regenerates.
@@ -120,6 +139,11 @@ impl CheckpointKey {
         }
     }
 
+    /// The key as a file name fragment.
+    fn transfer_name(self) -> String {
+        format!("{}-{}-{}", self.execution, self.firing, self.attempt)
+    }
+
     fn from_ref(name: &str) -> Option<Self> {
         let mut parts = name.strip_prefix(REFS_PREFIX)?.split('/');
         let execution = parts.next()?.parse().ok()?;
@@ -173,6 +197,40 @@ pub enum CheckpointError {
     },
     #[error("the restored workspace is at {actual}, not the snapshot {expected}")]
     RestoreMismatch { expected: String, actual: String },
+    #[error("the snapshot bundle could not be {action} the sandbox")]
+    Transfer {
+        /// `read out of` or `written into`.
+        action: &'static str,
+        #[source]
+        source: EnvError,
+    },
+}
+
+/// Where a workspace's `git` runs: in a directory on this host, or inside
+/// a scope's sandbox through the environment Petri handed the hooks.
+#[derive(Clone)]
+pub enum Site {
+    Host(PathBuf),
+    Sandbox(Arc<dyn ExecEnv>),
+}
+
+impl std::fmt::Debug for Site {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Host(path) => f.debug_tuple("Host").field(path).finish(),
+            Self::Sandbox(env) => f
+                .debug_tuple("Sandbox")
+                .field(&env.workspace_path())
+                .finish(),
+        }
+    }
+}
+
+/// What one `git` run produced, on either site.
+struct GitOutput {
+    success: bool,
+    stdout:  Vec<u8>,
+    stderr:  Vec<u8>,
 }
 
 /// A checkpoint commit: the commit, and whether an earlier attempt of the
@@ -246,6 +304,11 @@ impl RunWorkspaces {
             .unwrap_or(false)
     }
 
+    /// The host site of a workspace.
+    fn host(&self, workspace: &str) -> Site {
+        Site::Host(self.workspace_path(workspace))
+    }
+
     /// Commit the workspace's files on the run branch as the snapshot of
     /// `key`, and publish it. An earlier commit of the same key that the
     /// workspace still sits on, unchanged, is reused.
@@ -256,17 +319,49 @@ impl RunWorkspaces {
         node: &str,
         status: &str,
     ) -> Result<Snapshot, CheckpointError> {
-        let path = self.workspace_path(workspace);
         if !self.workspace_exists(workspace).await {
             return Err(CheckpointError::WorkspaceMissing {
                 workspace: workspace.to_string(),
-                path,
+                path:      self.workspace_path(workspace),
             });
         }
-        self.ensure_repository(&path).await?;
+        self.commit_at(&self.host(workspace), workspace, key, node, status)
+            .await
+    }
+
+    /// [`commit`](Self::commit) for a workspace inside a sandbox: `git`
+    /// runs in the scope through `env`, and the commit reaches the
+    /// snapshot repository as a bundle.
+    pub async fn commit_in(
+        &self,
+        env: &Arc<dyn ExecEnv>,
+        workspace: &str,
+        key: CheckpointKey,
+        node: &str,
+        status: &str,
+    ) -> Result<Snapshot, CheckpointError> {
+        self.commit_at(
+            &Site::Sandbox(Arc::clone(env)),
+            workspace,
+            key,
+            node,
+            status,
+        )
+        .await
+    }
+
+    async fn commit_at(
+        &self,
+        site: &Site,
+        workspace: &str,
+        key: CheckpointKey,
+        node: &str,
+        status: &str,
+    ) -> Result<Snapshot, CheckpointError> {
+        self.ensure_repository(site).await?;
         if let Some(existing) = self.published_sha(workspace, key).await? {
-            if self.head(&path).await?.as_deref() == Some(existing.as_str())
-                && self.is_clean(&path).await?
+            if self.head(site).await?.as_deref() == Some(existing.as_str())
+                && self.is_clean(site).await?
             {
                 return Ok(Snapshot {
                     sha:    existing,
@@ -290,11 +385,11 @@ impl RunWorkspaces {
                 .iter()
                 .map(|glob| format!(":(glob,exclude){glob}")),
         );
-        self.git(&path, "add", &add).await?;
+        self.git(site, "add", &add).await?;
         let message = self.message(key, node, status);
         let user_name = format!("user.name={}", self.author.name);
         let user_email = format!("user.email={}", self.author.email);
-        self.git(&path, "commit", &[
+        self.git(site, "commit", &[
             "-c",
             &user_name,
             "-c",
@@ -306,13 +401,16 @@ impl RunWorkspaces {
             &message,
         ])
         .await?;
-        let sha = self.git(&path, "rev-parse", &["rev-parse", "HEAD"]).await?;
-        self.publish(workspace, &path, key, &sha).await?;
+        let sha = self.git(site, "rev-parse", &["rev-parse", "HEAD"]).await?;
+        match site {
+            Site::Host(path) => self.publish(workspace, path, key, &sha).await?,
+            Site::Sandbox(env) => self.publish_from_sandbox(env, workspace, key, &sha).await?,
+        }
         Ok(Snapshot { sha, reused: false })
     }
 
     /// The commit of `key`, from the snapshot repository first, else from
-    /// the workspace's own history by the trailers.
+    /// the host workspace's own history by the trailers.
     pub async fn find(
         &self,
         workspace: &str,
@@ -321,12 +419,12 @@ impl RunWorkspaces {
         if let Some(sha) = self.published_sha(workspace, key).await? {
             return Ok(Some(sha));
         }
-        let path = self.workspace_path(workspace);
-        if !self.workspace_exists(workspace).await || self.head(&path).await?.is_none() {
+        let site = self.host(workspace);
+        if !self.workspace_exists(workspace).await || self.head(&site).await?.is_none() {
             return Ok(None);
         }
         let listed = self
-            .git(&path, "log", &[
+            .git(&site, "log", &[
                 "log",
                 "--format=%H",
                 "--extended-regexp",
@@ -350,7 +448,7 @@ impl RunWorkspaces {
             return Ok(Vec::new());
         }
         let listed = self
-            .git(&repository, "for-each-ref", &[
+            .git(&Site::Host(repository), "for-each-ref", &[
                 "for-each-ref",
                 "--format=%(refname) %(objectname)",
                 REFS_PREFIX,
@@ -376,7 +474,7 @@ impl RunWorkspaces {
         ancestor: &str,
         descendant: &str,
     ) -> Result<bool, CheckpointError> {
-        let repository = self.snapshot_repository(workspace);
+        let repository = Site::Host(self.snapshot_repository(workspace));
         Ok(self
             .git_status(&repository, "merge-base", &[
                 "merge-base",
@@ -390,21 +488,74 @@ impl RunWorkspaces {
 
     /// The workspace's `HEAD`, or `None` when it has no commit.
     pub async fn workspace_head(&self, workspace: &str) -> Result<Option<String>, CheckpointError> {
-        let path = self.workspace_path(workspace);
-        self.head(&path).await
+        self.head(&self.host(workspace)).await
+    }
+
+    /// [`workspace_head`](Self::workspace_head) for a workspace inside a
+    /// sandbox.
+    pub async fn workspace_head_in(
+        &self,
+        env: &Arc<dyn ExecEnv>,
+    ) -> Result<Option<String>, CheckpointError> {
+        self.head(&Site::Sandbox(Arc::clone(env))).await
     }
 
     /// Whether the workspace sits on `sha` with nothing changed since.
     pub async fn matches(&self, workspace: &str, sha: &str) -> Result<bool, CheckpointError> {
-        let path = self.workspace_path(workspace);
-        Ok(self.head(&path).await?.as_deref() == Some(sha) && self.is_clean(&path).await?)
+        self.matches_at(&self.host(workspace), sha).await
+    }
+
+    /// [`matches`](Self::matches) for a workspace inside a sandbox.
+    pub async fn matches_in(
+        &self,
+        env: &Arc<dyn ExecEnv>,
+        sha: &str,
+    ) -> Result<bool, CheckpointError> {
+        self.matches_at(&Site::Sandbox(Arc::clone(env)), sha).await
+    }
+
+    async fn matches_at(&self, site: &Site, sha: &str) -> Result<bool, CheckpointError> {
+        Ok(self.head(site).await?.as_deref() == Some(sha) && self.is_clean(site).await?)
+    }
+
+    /// Whether a sandbox workspace's repository holds the commit `sha`, so
+    /// a reset can reach it without a transfer.
+    pub async fn has_commit_in(
+        &self,
+        env: &Arc<dyn ExecEnv>,
+        sha: &str,
+    ) -> Result<bool, CheckpointError> {
+        let site = Site::Sandbox(Arc::clone(env));
+        if self
+            .git_status(&site, "rev-parse", &["rev-parse", "--git-dir"])
+            .await?
+            .is_none()
+        {
+            return Ok(false);
+        }
+        Ok(self
+            .git_status(&site, "cat-file", &[
+                "cat-file",
+                "-e",
+                &format!("{sha}^{{commit}}"),
+            ])
+            .await?
+            .is_some())
     }
 
     /// Bring the workspace back to `sha`: tracked files reset, untracked
     /// files removed, the excluded caches left alone.
     pub async fn reset(&self, workspace: &str, sha: &str) -> Result<(), CheckpointError> {
-        let path = self.workspace_path(workspace);
-        self.git(&path, "reset", &["reset", "-q", "--hard", sha])
+        self.reset_at(&self.host(workspace), sha).await
+    }
+
+    /// [`reset`](Self::reset) for a workspace inside a sandbox.
+    pub async fn reset_in(&self, env: &Arc<dyn ExecEnv>, sha: &str) -> Result<(), CheckpointError> {
+        self.reset_at(&Site::Sandbox(Arc::clone(env)), sha).await
+    }
+
+    async fn reset_at(&self, site: &Site, sha: &str) -> Result<(), CheckpointError> {
+        self.git(site, "reset", &["reset", "-q", "--hard", sha])
             .await?;
         let mut clean = vec!["clean".to_string(), "-fdq".to_string()];
         for dir in EXCLUDE_DIRS {
@@ -415,7 +566,7 @@ impl RunWorkspaces {
             clean.push("-e".to_string());
             clean.push(glob.clone());
         }
-        self.git(&path, "clean", &clean).await?;
+        self.git(site, "clean", &clean).await?;
         Ok(())
     }
 
@@ -434,10 +585,11 @@ impl RunWorkspaces {
                 path: path.clone(),
                 source,
             })?;
-        self.git(&path, "init", &["init", "-q"]).await?;
+        let site = Site::Host(path);
+        self.git(&site, "init", &["init", "-q"]).await?;
         let repository = self.snapshot_repository(workspace);
         let repository = repository.to_string_lossy().into_owned();
-        self.git(&path, "fetch", &[
+        self.git(&site, "fetch", &[
             "fetch",
             "-q",
             &repository,
@@ -445,7 +597,7 @@ impl RunWorkspaces {
         ])
         .await?;
         let branch = self.run_branch();
-        self.git(&path, "checkout", &[
+        self.git(&site, "checkout", &[
             "checkout",
             "-q",
             "-B",
@@ -453,7 +605,75 @@ impl RunWorkspaces {
             "FETCH_HEAD",
         ])
         .await?;
-        let actual = self.git(&path, "rev-parse", &["rev-parse", "HEAD"]).await?;
+        self.verify_restored(&site, sha).await
+    }
+
+    /// [`restore`](Self::restore) into a sandbox: the snapshot enters the
+    /// scope as a bundle of the checkpoint's ref, and the workspace, fresh
+    /// or stale, is fetched from it and forced onto the run branch at `sha`.
+    pub async fn restore_in(
+        &self,
+        env: &Arc<dyn ExecEnv>,
+        workspace: &str,
+        key: CheckpointKey,
+        sha: &str,
+    ) -> Result<(), CheckpointError> {
+        let site = Site::Sandbox(Arc::clone(env));
+        let repository = self.snapshot_repository(workspace);
+        let bundle = self.transfer_path(&format!("restore-{}.bundle", key.transfer_name()));
+        let staged = self.run_dir.join("snapshots").join(format!(
+            "{workspace}.restore-{}.bundle",
+            key.transfer_name()
+        ));
+        self.git(&Site::Host(repository), "bundle create", &[
+            "bundle",
+            "create",
+            &staged.to_string_lossy(),
+            &key.snapshot_ref(),
+        ])
+        .await?;
+        let bytes = fs::read(&staged)
+            .await
+            .map_err(|source| CheckpointError::Io {
+                path: staged.clone(),
+                source,
+            })?;
+        let _ = fs::remove_file(&staged).await;
+        env.write_file(Path::new(&bundle), &bytes)
+            .await
+            .map_err(|source| CheckpointError::Transfer {
+                action: "written into",
+                source,
+            })?;
+        let restored = async {
+            self.git(&site, "init", &["init", "-q"]).await?;
+            self.git(&site, "fetch", &[
+                "fetch",
+                "-q",
+                &bundle,
+                &key.snapshot_ref(),
+            ])
+            .await?;
+            let branch = self.run_branch();
+            self.git(&site, "checkout", &[
+                "checkout",
+                "-q",
+                "-f",
+                "-B",
+                &branch,
+                "FETCH_HEAD",
+            ])
+            .await?;
+            self.reset_at(&site, "HEAD").await?;
+            self.verify_restored(&site, sha).await
+        }
+        .await;
+        self.remove_transfer(&site, &bundle).await;
+        restored
+    }
+
+    async fn verify_restored(&self, site: &Site, sha: &str) -> Result<(), CheckpointError> {
+        let actual = self.git(site, "rev-parse", &["rev-parse", "HEAD"]).await?;
         if actual != sha {
             return Err(CheckpointError::RestoreMismatch {
                 expected: sha.to_string(),
@@ -502,17 +722,17 @@ impl RunWorkspaces {
 
     /// A repository on the run branch, initialised when the workspace has
     /// none.
-    async fn ensure_repository(&self, path: &Path) -> Result<(), CheckpointError> {
+    async fn ensure_repository(&self, site: &Site) -> Result<(), CheckpointError> {
         if self
-            .git_status(path, "rev-parse", &["rev-parse", "--git-dir"])
+            .git_status(site, "rev-parse", &["rev-parse", "--git-dir"])
             .await?
             .is_none()
         {
-            self.git(path, "init", &["init", "-q"]).await?;
+            self.git(site, "init", &["init", "-q"]).await?;
         }
         let branch = self.run_branch();
         let current = self
-            .git_status(path, "symbolic-ref", &[
+            .git_status(site, "symbolic-ref", &[
                 "symbolic-ref",
                 "-q",
                 "--short",
@@ -520,19 +740,17 @@ impl RunWorkspaces {
             ])
             .await?;
         if current.as_deref() != Some(branch.as_str()) {
-            self.git(path, "checkout", &["checkout", "-q", "-B", &branch])
+            self.git(site, "checkout", &["checkout", "-q", "-B", &branch])
                 .await?;
         }
         Ok(())
     }
 
-    async fn publish(
+    /// The bare snapshot repository of the workspace, created on first use.
+    async fn ensure_snapshot_repository(
         &self,
         workspace: &str,
-        path: &Path,
-        key: CheckpointKey,
-        sha: &str,
-    ) -> Result<(), CheckpointError> {
+    ) -> Result<PathBuf, CheckpointError> {
         let repository = self.snapshot_repository(workspace);
         if !fs::try_exists(&repository).await.unwrap_or(false) {
             fs::create_dir_all(&repository)
@@ -541,12 +759,27 @@ impl RunWorkspaces {
                     path: repository.clone(),
                     source,
                 })?;
-            self.git(&repository, "init --bare", &["init", "-q", "--bare"])
-                .await?;
+            self.git(&Site::Host(repository.clone()), "init --bare", &[
+                "init", "-q", "--bare",
+            ])
+            .await?;
         }
+        Ok(repository)
+    }
+
+    /// Publish a host workspace's commit: a push into the snapshot
+    /// repository.
+    async fn publish(
+        &self,
+        workspace: &str,
+        path: &Path,
+        key: CheckpointKey,
+        sha: &str,
+    ) -> Result<(), CheckpointError> {
+        let repository = self.ensure_snapshot_repository(workspace).await?;
         let refspec = format!("{sha}:{}", key.snapshot_ref());
         let repository = repository.to_string_lossy().into_owned();
-        self.git(path, "push", &[
+        self.git(&Site::Host(path.to_path_buf()), "push", &[
             "push",
             "-q",
             "--force",
@@ -555,6 +788,176 @@ impl RunWorkspaces {
         ])
         .await?;
         Ok(())
+    }
+
+    /// Publish a sandbox workspace's commit: a bundle of the run branch
+    /// since the newest ancestor the snapshot repository already holds,
+    /// read out of the sandbox in parts, fetched into the repository, and
+    /// named there under the checkpoint's ref.
+    async fn publish_from_sandbox(
+        &self,
+        env: &Arc<dyn ExecEnv>,
+        workspace: &str,
+        key: CheckpointKey,
+        sha: &str,
+    ) -> Result<(), CheckpointError> {
+        let site = Site::Sandbox(Arc::clone(env));
+        let repository = self.ensure_snapshot_repository(workspace).await?;
+        let branch = format!("refs/heads/{}", self.run_branch());
+        // The bundle carries only what the repository lacks when the
+        // commit's parent is already there; the whole history otherwise.
+        let parent = self
+            .git_status(&site, "rev-parse", &[
+                "rev-parse",
+                "-q",
+                "--verify",
+                "HEAD~1",
+            ])
+            .await?;
+        let basis = match parent {
+            Some(parent)
+                if self
+                    .git_status(&Site::Host(repository.clone()), "cat-file", &[
+                        "cat-file",
+                        "-e",
+                        &format!("{parent}^{{commit}}"),
+                    ])
+                    .await?
+                    .is_some() =>
+            {
+                Some(parent)
+            }
+            _ => None,
+        };
+        let revision = match &basis {
+            Some(parent) => format!("{parent}..{branch}"),
+            None => branch.clone(),
+        };
+        let bundle = self.transfer_path(&format!("publish-{}.bundle", key.transfer_name()));
+        let published = async {
+            self.sh(&site, "prepare the transfer directory", &[
+                "mkdir -p -- \"$(dirname -- \"$1\")\"",
+                "sh",
+                &bundle,
+            ])
+            .await?;
+            self.git(&site, "bundle create", &[
+                "bundle", "create", &bundle, &revision,
+            ])
+            .await?;
+            let bytes = self.read_out(env, &site, &bundle).await?;
+            let staged = self.run_dir.join("snapshots").join(format!(
+                "{workspace}.publish-{}.bundle",
+                key.transfer_name()
+            ));
+            fs::write(&staged, &bytes)
+                .await
+                .map_err(|source| CheckpointError::Io {
+                    path: staged.clone(),
+                    source,
+                })?;
+            let fetched = self
+                .git(&Site::Host(repository.clone()), "fetch", &[
+                    "fetch",
+                    "-q",
+                    &staged.to_string_lossy(),
+                    &branch,
+                ])
+                .await;
+            let _ = fs::remove_file(&staged).await;
+            fetched?;
+            self.git(&Site::Host(repository.clone()), "update-ref", &[
+                "update-ref",
+                &key.snapshot_ref(),
+                sha,
+            ])
+            .await?;
+            Ok(())
+        }
+        .await;
+        self.remove_transfer(&site, &bundle).await;
+        published
+    }
+
+    /// Where a transfer file of this run waits inside a sandbox.
+    fn transfer_path(&self, name: &str) -> String {
+        format!("{TRANSFER_DIR}/{}/{name}", self.run_id)
+    }
+
+    /// Read a file out of the sandbox in parts the transport accepts: the
+    /// file is split beside itself, each part comes through the
+    /// environment's file read, and the parts are removed as they go.
+    async fn read_out(
+        &self,
+        env: &Arc<dyn ExecEnv>,
+        site: &Site,
+        path: &str,
+    ) -> Result<Vec<u8>, CheckpointError> {
+        let script = format!(
+            "split -b {TRANSFER_PART_BYTES} -a 4 -- \"$1\" \"$1.part.\" && rm -f -- \"$1\" && ls \
+             -1 -- \"$1\".part.*"
+        );
+        let listed = self
+            .sh(site, "split the bundle", &[&script, "sh", path])
+            .await?;
+        let mut bytes = Vec::new();
+        for part in listed
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty())
+        {
+            let read = env.read_file(Path::new(part)).await.map_err(|source| {
+                CheckpointError::Transfer {
+                    action: "read out of",
+                    source,
+                }
+            })?;
+            let Some(read) = read else {
+                return Err(CheckpointError::Command {
+                    action: "read the bundle".to_string(),
+                    status: "missing".to_string(),
+                    detail: format!("`{part}` is not in the sandbox"),
+                });
+            };
+            bytes.extend(read);
+            self.remove_transfer(site, part).await;
+        }
+        Ok(bytes)
+    }
+
+    /// Remove a transfer file from the sandbox, best effort.
+    async fn remove_transfer(&self, site: &Site, path: &str) {
+        let _ = self
+            .sh(site, "remove the bundle", &["rm -f -- \"$1\"", "sh", path])
+            .await;
+    }
+
+    /// Run a shell command in the sandbox; a non-zero exit is the error.
+    async fn sh(
+        &self,
+        site: &Site,
+        action: &str,
+        args: &[&str],
+    ) -> Result<String, CheckpointError> {
+        let Site::Sandbox(env) = site else {
+            return Err(CheckpointError::Command {
+                action: action.to_string(),
+                status: "no sandbox".to_string(),
+                detail: "a shell transfer runs in a sandbox only".to_string(),
+            });
+        };
+        let mut all = vec!["-c"];
+        all.extend(args);
+        let output = self.run_sandbox(env, "sh", &all, action).await?;
+        if output.success {
+            Ok(String::from_utf8_lossy(&output.stdout).trim().to_owned())
+        } else {
+            Err(CheckpointError::Command {
+                action: action.to_string(),
+                status: "failed".to_string(),
+                detail: detail(&output.stderr),
+            })
+        }
     }
 
     async fn published_sha(
@@ -566,7 +969,7 @@ impl RunWorkspaces {
         if !fs::try_exists(&repository).await.unwrap_or(false) {
             return Ok(None);
         }
-        self.git_status(&repository, "rev-parse", &[
+        self.git_status(&Site::Host(repository), "rev-parse", &[
             "rev-parse",
             "-q",
             "--verify",
@@ -575,71 +978,85 @@ impl RunWorkspaces {
         .await
     }
 
-    async fn head(&self, path: &Path) -> Result<Option<String>, CheckpointError> {
-        self.git_status(path, "rev-parse", &["rev-parse", "-q", "--verify", "HEAD"])
+    async fn head(&self, site: &Site) -> Result<Option<String>, CheckpointError> {
+        self.git_status(site, "rev-parse", &["rev-parse", "-q", "--verify", "HEAD"])
             .await
     }
 
-    async fn is_clean(&self, path: &Path) -> Result<bool, CheckpointError> {
-        let status = self.git(path, "status", &["status", "--porcelain"]).await?;
+    async fn is_clean(&self, site: &Site) -> Result<bool, CheckpointError> {
+        let status = self.git(site, "status", &["status", "--porcelain"]).await?;
         Ok(status.trim().is_empty())
     }
 
-    /// Run `git` in `cwd`; a non-zero exit is the error.
+    /// Run `git` at `site`; a non-zero exit is the error.
     async fn git<S: AsRef<str>>(
         &self,
-        cwd: &Path,
+        site: &Site,
         action: &str,
         args: &[S],
     ) -> Result<String, CheckpointError> {
-        let output = self.run(cwd, action, args).await?;
-        if output.status.success() {
+        let output = self.run(site, action, args).await?;
+        if output.success {
             Ok(String::from_utf8_lossy(&output.stdout).trim().to_owned())
         } else {
             Err(CheckpointError::Command {
                 action: action.to_string(),
-                status: output.status.to_string(),
+                status: "non-zero exit".to_string(),
                 detail: detail(&output.stderr),
             })
         }
     }
 
-    /// Run `git` in `cwd`; a non-zero exit is `None`, for the queries whose
+    /// Run `git` at `site`; a non-zero exit is `None`, for the queries whose
     /// answer it is (an unborn `HEAD`, a missing ref, no repository).
     async fn git_status<S: AsRef<str>>(
         &self,
-        cwd: &Path,
+        site: &Site,
         action: &str,
         args: &[S],
     ) -> Result<Option<String>, CheckpointError> {
-        let output = self.run(cwd, action, args).await?;
+        let output = self.run(site, action, args).await?;
         Ok(output
-            .status
-            .success()
+            .success
             .then(|| String::from_utf8_lossy(&output.stdout).trim().to_owned()))
     }
 
+    /// Run `git` with the arguments and the configuration every checkpoint
+    /// command carries, at either site.
     async fn run<S: AsRef<str>>(
         &self,
-        cwd: &Path,
+        site: &Site,
         action: &str,
         args: &[S],
-    ) -> Result<std::process::Output, CheckpointError> {
+    ) -> Result<GitOutput, CheckpointError> {
+        let mut all: Vec<&str> = vec![
+            "-c",
+            "core.hooksPath=/dev/null",
+            "-c",
+            "commit.gpgsign=false",
+            "-c",
+            "gc.auto=0",
+            "-c",
+            "advice.detachedHead=false",
+            "-c",
+            "init.defaultBranch=main",
+        ];
+        all.extend(args.iter().map(AsRef::as_ref));
+        match site {
+            Site::Host(cwd) => self.run_host(cwd, &all, action).await,
+            Site::Sandbox(env) => self.run_sandbox(env, "git", &all, action).await,
+        }
+    }
+
+    async fn run_host(
+        &self,
+        cwd: &Path,
+        args: &[&str],
+        action: &str,
+    ) -> Result<GitOutput, CheckpointError> {
         let mut command = Command::new("git");
         command
-            .args([
-                "-c",
-                "core.hooksPath=/dev/null",
-                "-c",
-                "commit.gpgsign=false",
-                "-c",
-                "gc.auto=0",
-                "-c",
-                "advice.detachedHead=false",
-                "-c",
-                "init.defaultBranch=main",
-            ])
-            .args(args.iter().map(AsRef::as_ref))
+            .args(args)
             .current_dir(cwd)
             .env("GIT_TERMINAL_PROMPT", "0")
             .env_remove("GIT_DIR")
@@ -650,7 +1067,11 @@ impl RunWorkspaces {
             .stderr(Stdio::piped())
             .kill_on_drop(true);
         match time::timeout(self.timeout, command.output()).await {
-            Ok(Ok(output)) => Ok(output),
+            Ok(Ok(output)) => Ok(GitOutput {
+                success: output.status.success(),
+                stdout:  output.stdout,
+                stderr:  output.stderr,
+            }),
             Ok(Err(source)) => Err(CheckpointError::Spawn {
                 action: action.to_string(),
                 source,
@@ -660,6 +1081,73 @@ impl RunWorkspaces {
                 timeout: self.timeout,
             }),
         }
+    }
+
+    /// Run `program` inside the sandbox, in its workspace, with the
+    /// checkpoint's deadline on the process and both streams captured.
+    async fn run_sandbox(
+        &self,
+        env: &Arc<dyn ExecEnv>,
+        program: &str,
+        args: &[&str],
+        action: &str,
+    ) -> Result<GitOutput, CheckpointError> {
+        let spec = ProcessSpec::new(program, args)
+            .with_output(OutputMode::Bytes)
+            .with_timeout(Some(self.timeout))
+            .with_env(
+                [("GIT_TERMINAL_PROMPT".into(), "0".into())]
+                    .into_iter()
+                    .collect(),
+            );
+        let mut handle = env
+            .spawn(spec)
+            .await
+            .map_err(|error| CheckpointError::Command {
+                action: action.to_string(),
+                status: "spawn failed".to_string(),
+                detail: error.to_string(),
+            })?;
+        let Some(mut chunks) = handle.bytes() else {
+            let _ = handle.signal(Sig::Kill).await;
+            let _ = handle.wait().await;
+            return Err(CheckpointError::Command {
+                action: action.to_string(),
+                status: "no output stream".to_string(),
+                detail: "the sandbox offered no byte stream for the command".to_string(),
+            });
+        };
+        let drain = tokio::spawn(async move {
+            let mut stdout = Vec::new();
+            let mut stderr = Vec::new();
+            while let Some(chunk) = chunks.recv().await {
+                match chunk.stream {
+                    LogStream::Stdout => stdout.extend(chunk.bytes),
+                    LogStream::Stderr => stderr.extend(chunk.bytes),
+                }
+            }
+            (stdout, stderr)
+        });
+        let status = handle
+            .wait()
+            .await
+            .map_err(|error| CheckpointError::Command {
+                action: action.to_string(),
+                status: "wait failed".to_string(),
+                detail: error.to_string(),
+            })?;
+        let (stdout, stderr) = drain.await.unwrap_or_default();
+        if status.timed_out {
+            return Err(CheckpointError::TimedOut {
+                action:  action.to_string(),
+                timeout: self.timeout,
+            });
+        }
+        Ok(GitOutput {
+            success: status.is_success(),
+            stdout,
+            stderr,
+        })
     }
 }
 
