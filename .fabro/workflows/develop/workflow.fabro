@@ -431,7 +431,13 @@ digraph Develop {
     // latched). The soft exit parks cheaply; the next fire retries.
     planner -> claim_check [label="Seed claimed"]
     claim_check -> implementer [label="Seed id present"]
-    claim_check -> exit [kind="soft", label="Claim contract failed (no seed id)", condition="outcome=failed"]
+    // Contract retry: the planner's context_updates drop is intermittent
+    // per attempt (~50% observed 2026-09-18) — re-entering the planner
+    // gives the claim a second (third, ...) chance instead of parking the
+    // pass cheap-but-counted toward the schedule breaker. Bounds: the
+    // graph max_node_visits=20 and the 63m stall watchdog cap the retry
+    // loop; a planner hard failure exits via its own goal-gate edge.
+    claim_check -> planner [label="Claim contract failed, re-plan", condition="outcome=failed"]
 
     implementer -> planner  [label="Blocked", condition="outcome=failed"]
     implementer -> tester   [label="Implemented"]
