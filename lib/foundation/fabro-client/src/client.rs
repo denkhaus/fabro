@@ -2039,6 +2039,45 @@ impl Client {
         Ok(response.into_inner().hash)
     }
 
+    /// Store one of Fabro's platform records for the run, tied to a Petri
+    /// stage when it belongs to one, and get it back as stored.
+    pub async fn append_petri_platform_record(
+        &self,
+        run_id: &RunId,
+        body: types::PetriPlatformRecordAppendRequest,
+    ) -> Result<types::PetriPlatformRecord> {
+        let response = self
+            .send_api(|client| async move {
+                client
+                    .append_petri_platform_record()
+                    .id(run_id.to_string())
+                    .body(body.clone())
+                    .send()
+                    .await
+            })
+            .await?;
+        Ok(response.into_inner())
+    }
+
+    /// The run's platform records in `seq` order, of one kind when `kind`
+    /// names it.
+    pub async fn list_petri_platform_records(
+        &self,
+        run_id: &RunId,
+        kind: Option<&str>,
+    ) -> Result<Vec<types::PetriPlatformRecord>> {
+        let response = self
+            .send_api(|client| async move {
+                let mut request = client.list_petri_platform_records().id(run_id.to_string());
+                if let Some(kind) = kind {
+                    request = request.kind(kind);
+                }
+                request.send().await
+            })
+            .await?;
+        Ok(response.into_inner().records)
+    }
+
     /// The blob with this digest, or `None` when the store holds no such
     /// blob. A run the store does not hold is an error.
     pub async fn read_petri_blob(

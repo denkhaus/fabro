@@ -376,6 +376,13 @@ pub struct GitIdentityRecord {
 pub struct CheckpointRecord {
     pub execution:      u64,
     pub firing:         u64,
+    /// The attempt whose files the commit holds; absent on a record written
+    /// before the field existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub attempt:        Option<u32>,
+    /// The Petri workspace id the commit was made in.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workspace:      Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub git_commit_sha: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -766,7 +773,7 @@ fn pull_request_created_record(props: &PullRequestCreatedProps) -> PullRequestCr
 
 fn run_paired_record(props: &RunPairStartedProps) -> RunPairedRecord {
     RunPairedRecord {
-        pair_id: props.pair_id.clone(),
+        pair_id: props.pair_id,
         target:  props.target.clone(),
     }
 }
@@ -784,6 +791,7 @@ fn interview_answered_record(
 
 #[cfg(test)]
 mod tests {
+    use fabro_types::test_support::test_run_spec;
     use fabro_types::{FailureReason, RunStatus, fixtures};
     use serde_json::json;
 
@@ -803,7 +811,7 @@ mod tests {
     fn sample(kind: PlatformRecordKind) -> PlatformRecord {
         match kind {
             PlatformRecordKind::RunCreated => PlatformRecord::RunCreated(RunCreatedRecord {
-                spec:         fabro_types::test_support::test_run_spec(),
+                spec:         test_run_spec(),
                 title:        Some("A run".to_string()),
                 parent_id:    None,
                 retried_from: None,
@@ -855,6 +863,8 @@ mod tests {
             PlatformRecordKind::Checkpoint => PlatformRecord::Checkpoint(CheckpointRecord {
                 execution:      0,
                 firing:         3,
+                attempt:        Some(1),
+                workspace:      Some("invocation-0-scope-0".to_string()),
                 git_commit_sha: Some("def".to_string()),
                 diff_summary:   Some(DiffSummary {
                     files_changed: 1,
@@ -957,7 +967,7 @@ mod tests {
         assert_eq!(json(&stored), json(&[first, second.clone()]));
         assert_eq!(
             json(&store.read_after(&run, 1).await.expect("the tail reads")),
-            json(&[second.clone()])
+            json(std::slice::from_ref(&second))
         );
         assert_eq!(
             json(

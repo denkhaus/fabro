@@ -62,6 +62,9 @@ const WORKER_ENV_ALLOWLIST: &[&str] = &[
     EnvVars::PETRI_SANDBOX_PLUGIN_DEV,
     EnvVars::PETRI_SANDBOX_DOCKER_HOST_ADDRESS,
     EnvVars::PETRI_SANDBOX_ACTION_HOST_IMAGE,
+    // A test's checkpoint gates: the worker's hooks hold at a named point
+    // until the test releases them, so a crash can be placed there.
+    EnvVars::FABRO_TEST_CHECKPOINT_GATES,
 ];
 
 const RENDER_GRAPH_ENV_ALLOWLIST: &[&str] = &[EnvVars::PATH, EnvVars::HOME, EnvVars::TMPDIR];

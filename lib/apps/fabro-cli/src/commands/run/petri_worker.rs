@@ -24,6 +24,10 @@
 //! is lost for good cancels the run the same way, and the worker exits with
 //! that loss as its error once the run has settled.
 //!
+//! Fabro's hooks ride the run with their platform records over the same
+//! client: the checkpoint commit in the run's host workspace before every
+//! durable finish, and its record after every route.
+//!
 //! The runtime's settings layer is left empty here: the run's graphs were
 //! lowered and admitted at create time with the server's layer, and nothing
 //! lowers again at execution. The model client is built from the worker's
@@ -40,9 +44,12 @@ use fabro_client::{Client, ServerTarget};
 use fabro_interview::ControlInterviewer;
 use fabro_llm::credentials::{CredentialProvider, readiness};
 use fabro_petri::engine::{self, Conclusion, Execution, RunRequest};
+use fabro_petri::hooks::HooksSpec;
 use fabro_petri::petri::OwnerId;
+use fabro_petri::platform_records::HttpPlatformRecords;
 use fabro_petri::runtime::{self, RuntimeSpec};
 use fabro_petri::{HttpRunStore, admission};
+use fabro_static::EnvVars;
 use fabro_store::RunProjection;
 use fabro_types::settings::run::RunMode;
 use fabro_types::{FailureReason, RunId, RunTiming, StageOutcome, SuccessReason};
@@ -141,6 +148,11 @@ pub(super) async fn execute(worker: PetriWorker<'_>) -> Result<()> {
     }
     runner::set_worker_title(&run_id, WorkerTitlePhase::Running);
 
+    let hooks = HooksSpec::for_run(
+        Arc::new(HttpPlatformRecords::new(worker.client.clone_for_reuse())),
+        &worker.run_state.spec.settings.run,
+    )
+    .with_test_gates(test_checkpoint_gates());
     let request = RunRequest {
         run_id: run_id.to_string(),
         run_dir: worker.run_dir.join("petri"),
@@ -156,6 +168,7 @@ pub(super) async fn execute(worker: PetriWorker<'_>) -> Result<()> {
             .provider
             .clone(),
         cancel: cancel_token.clone(),
+        hooks: Some(hooks),
     };
     let run = Box::pin(engine::run(request));
     tokio::pin!(run);
@@ -225,6 +238,15 @@ pub(super) async fn execute(worker: PetriWorker<'_>) -> Result<()> {
         None => Ok(()),
         Some(message) => Err(anyhow!("Petri run failed: {message}")),
     }
+}
+
+/// A test's checkpoint gate directory, when the server forwarded one.
+#[expect(
+    clippy::disallowed_methods,
+    reason = "the gate directory is a test-only process-env facade the server forwards by name"
+)]
+fn test_checkpoint_gates() -> Option<PathBuf> {
+    std::env::var_os(EnvVars::FABRO_TEST_CHECKPOINT_GATES).map(PathBuf::from)
 }
 
 /// The runtime the worker hands Petri: no settings layer (nothing lowers

@@ -23,22 +23,37 @@
 //! - [`HttpRunStore`]: the same store as a run's worker process reaches it,
 //!   over the server's API with the worker's token and its launch id as the
 //!   lease owner;
-//! - the platform adapters still to come: hooks, interviews over Fabro's API,
-//!   secrets, output storage, the run tools, the event projection.
+//! - [`hooks`]: Fabro's `ExecutionHooks`, the checkpoint commit in
+//!   `prepare_result` and its platform record in `transition`, around Petri's
+//!   own hook service for `[[run.hooks]]`;
+//! - [`checkpoint`]: the Git snapshots of a run's host workspaces and the
+//!   snapshot repository they are published to;
+//! - [`recovery`]: the resume-on-restart protocol, which brings every live
+//!   workspace to the snapshot its durable state names before the run goes back
+//!   to a worker;
+//! - [`platform_records`]: Fabro's platform records as the adapters reach them,
+//!   in the server's database or over its API from a worker;
+//! - the platform adapters still to come: interviews over Fabro's API, secrets,
+//!   output storage, the run tools, the event projection.
 //!
 //! The Petri packages are pinned by revision in the workspace `Cargo.toml`
 //! under `petri_*` keys.
 
 pub mod admission;
 pub mod check;
+pub mod checkpoint;
 pub mod engine;
+pub mod hooks;
 pub mod http_store;
 pub mod interviewer;
 pub mod petri;
+pub mod platform_records;
+pub mod recovery;
 pub mod run_store;
 pub mod runtime;
 #[cfg(feature = "test-support")]
 pub mod test_support;
+pub mod workspace;
 
 pub use http_store::HttpRunStore;
 pub use run_store::SqliteRunStore;

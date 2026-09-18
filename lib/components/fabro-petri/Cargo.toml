@@ -25,6 +25,8 @@ fabro-db = { path = "../../foundation/fabro-db" }
 fabro-http.workspace = true
 fabro-store = { path = "../fabro-store" }
 fabro-types = { path = "../../foundation/fabro-types" }
+fabro-checkpoint = { path = "../fabro-checkpoint" }
+fabro-util = { path = "../../foundation/fabro-util" }
 petri_runtime.workspace = true
 petri_execution.workspace = true
 petri_store.workspace = true
@@ -46,6 +48,7 @@ tokio-util.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
+fabro-petri = { path = ".", features = ["test-support"] }
 fabro-auth = { path = "../../foundation/fabro-auth", features = ["test-support"] }
 fabro-llm = { path = "../fabro-llm", features = ["test-support"] }
 fabro-store = { path = "../fabro-store", features = ["test-support"] }
