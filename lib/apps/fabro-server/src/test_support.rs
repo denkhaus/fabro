@@ -707,6 +707,13 @@ pub(crate) fn load_test_server_secrets(
     ServerSecrets::load(path, env).expect("test server secrets should load")
 }
 
+/// The database pool the app state's stores share, for a test that reads
+/// what a run wrote through another store over the same database.
+#[must_use]
+pub fn test_app_db_pool(state: &AppState) -> DbPool {
+    state.db_pool.clone()
+}
+
 pub fn test_secret_store_path() -> PathBuf {
     let dir = std::env::temp_dir().join(format!("fabro-test-{}", Ulid::new()));
     std::fs::create_dir_all(&dir).expect("test temp dir should be creatable");

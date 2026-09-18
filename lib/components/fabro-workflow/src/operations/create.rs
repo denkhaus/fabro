@@ -274,6 +274,95 @@ pub async fn create(
     Box::pin(persist_create_run(store, persistence_input)).await
 }
 
+/// Stage two for a run another engine admitted: the Fabro graph is parsed
+/// and transformed for the read side (the goal, the node count, labels), with
+/// no lint rule, no model resolution and no promotion of template
+/// diagnostics. The engine that admitted the run judged the workflow; a
+/// graph Fabro's own parser cannot read is still refused, since the read side
+/// needs one.
+pub fn compile_admitted_run(input: CreateRunCompileInput) -> Result<CompiledRun, Error> {
+    let CreateRunCompileInput {
+        workflow,
+        settings,
+        vars,
+        cwd,
+        workflow_path,
+        workflow_bundle,
+        configured_providers,
+    } = input;
+    let resolved = resolve_workflow(ResolveWorkflowInput {
+        workflow,
+        settings,
+        cwd,
+    })
+    .map_err(|err| Error::Parse(err.to_string()))?;
+    let settings = resolved.settings;
+    let labels = settings.combined_labels();
+    let definition = match (workflow_path, workflow_bundle) {
+        (Some(workflow_path), Some(workflow_bundle)) => {
+            Some(RunDefinition::new(workflow_path, workflow_bundle))
+        }
+        _ => None,
+    };
+    let mut parsed = pipeline::parse(&resolved.raw_source)?;
+    apply_goal_override(&mut parsed.graph, resolved.goal_override.as_deref());
+    let transformed = pipeline::transform(parsed, &TransformOptions {
+        current_dir:       resolved.current_dir.clone(),
+        file_resolver:     resolved.file_resolver.clone(),
+        template_context:  template_context(Some(&settings), vars),
+        source_name:       resolved
+            .dot_path
+            .as_ref()
+            .map(|path| path.display().to_string()),
+        render_mode:       RenderMode::Structural,
+        custom_transforms: Vec::new(),
+        model_resolution:  None,
+    })?;
+    let validated = Validated::new(
+        transformed.graph,
+        transformed.source,
+        transformed.diagnostics,
+    );
+    Ok(CompiledRun {
+        validated,
+        settings,
+        raw_source: resolved.raw_source,
+        workflow_slug: resolved.workflow_slug,
+        dot_path: resolved.dot_path,
+        definition,
+        source_directory: resolved.working_directory.to_string_lossy().to_string(),
+        labels,
+        configured_providers,
+    })
+}
+
+/// Stage three for a run another engine admitted: no model pinning, since
+/// the engine pinned every route at its own admission.
+#[must_use]
+pub fn materialize_admitted_run(compiled: CompiledRun) -> MaterializedRun {
+    let CompiledRun {
+        validated,
+        settings,
+        raw_source,
+        workflow_slug,
+        dot_path,
+        definition,
+        source_directory,
+        labels,
+        configured_providers: _,
+    } = compiled;
+    MaterializedRun {
+        validated,
+        settings,
+        raw_source,
+        workflow_slug,
+        dot_path,
+        definition,
+        source_directory,
+        labels,
+    }
+}
+
 /// Resolve, preprocess, validate, and promote a workflow for run creation.
 ///
 /// This stage is synchronous and may read workflow files. Async callers must

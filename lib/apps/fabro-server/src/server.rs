@@ -88,7 +88,7 @@ use fabro_types::settings::server::{
     GithubIntegrationSettings, GithubIntegrationStrategy, LogDestination,
 };
 use fabro_types::{
-    AgentBackend, AskFabro, AskFabroUnavailableReason, BlobHash, EventBody,
+    AgentBackend, AskFabro, AskFabroUnavailableReason, BlobHash, Engine, EventBody,
     InterviewQuestionRecord, ModelRef, ModelTestMode, PairId, PairMessageId, PairTarget,
     PendingReason, Principal, PullRequestLink, QuestionType, RunControlAction, RunEvent, RunId,
     RunRunnableSource, RunStatusKind, SandboxProviderKind, ServerSettings, SessionCapability,
@@ -166,6 +166,7 @@ use crate::{
 
 mod automation_scheduler;
 mod handler;
+mod petri_runs;
 mod pull_request_supervisor;
 pub(crate) mod resource_sampler;
 mod session_runtime;
@@ -1126,6 +1127,9 @@ pub struct AppState {
 
     pub(super) server_secrets: ServerSecrets,
     pub(crate) llm_source: Arc<dyn CredentialProvider>,
+    /// The database pool the stores share, for the Petri run store a
+    /// server-process run writes its records through.
+    pub(crate) db_pool: DbPool,
     manifest_run_defaults: RwLock<Arc<RunLayer>>,
     manifest_run_settings: RwLock<std::result::Result<RunNamespace, SharedError>>,
     pub(crate) server_settings: RwLock<Arc<ServerSettings>>,
@@ -2430,6 +2434,7 @@ pub(crate) fn build_app_state(config: AppStateConfig) -> anyhow::Result<Arc<AppS
         automation_materializer_override,
     } = config;
 
+    let store_pool = db_pool.clone();
     let automation_migration_pool = db_pool.clone();
     load_store_blocking("automation environment migration", move || async move {
         fabro_automation::backfill_environment_selectors(&automation_migration_pool)
@@ -2595,6 +2600,7 @@ pub(crate) fn build_app_state(config: AppStateConfig) -> anyhow::Result<Arc<AppS
         parent_link_lock: AsyncMutex::new(()),
         server_secrets,
         llm_source,
+        db_pool: store_pool,
         manifest_run_defaults: RwLock::new(current_manifest_run_defaults),
         manifest_run_settings: RwLock::new(current_manifest_run_settings),
         server_settings: RwLock::new(current_server_settings),
@@ -3957,12 +3963,38 @@ async fn execute_run(state: Arc<AppState>, run_id: RunId) {
         return;
     }
 
+    match run_engine(&state, run_id).await {
+        Ok(Engine::Petri) => {
+            Box::pin(petri_runs::execute(state, run_id)).await;
+            return;
+        }
+        Ok(Engine::Legacy) => {}
+        Err(err) => {
+            tracing::error!(run_id = %run_id, error = %err, "Failed to read the run's engine");
+            fail_managed_run(
+                &state,
+                run_id,
+                FailureReason::WorkflowError,
+                format!("Failed to read the run's engine: {err}"),
+            );
+            state.scheduler_notify.notify_one();
+            return;
+        }
+    }
+
     if state.registry_factory_override.is_some() {
         Box::pin(execute_run_in_process(state, run_id)).await;
         return;
     }
 
     Box::pin(execute_run_subprocess(state, run_id)).await;
+}
+
+/// The engine the run was created for, from its stored spec.
+async fn run_engine(state: &AppState, run_id: RunId) -> anyhow::Result<Engine> {
+    let run_store = state.stores.runs.open_run(&run_id).await?;
+    let run_state = run_store.state().await?;
+    Ok(run_state.spec.engine.engine())
 }
 
 async fn execute_run_in_process(state: Arc<AppState>, run_id: RunId) {

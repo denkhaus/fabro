@@ -27,11 +27,11 @@ use fabro_store::{
     RunSummaryListQuery, RunSummarySort, RunSummarySortDirection, RunSummaryVisibility,
 };
 use fabro_types::{
-    AutomationRef, ContextWindowStaleness, ManifestPath, Principal, Run, RunClientProvenance,
-    RunId, RunProvenance, RunServerProvenance, RunStatusKind, RunTarget, SandboxProviderKind,
-    StageContextWindow, StageContextWindowUnavailableReason, StageHandler, StageModelUsage,
-    StageProjection, SystemActorKind, ValidatedRunTarget, json_scalar_to_toml_value,
-    parse_blob_ref,
+    AutomationRef, ContextWindowStaleness, Engine, ManifestPath, Principal, Run,
+    RunClientProvenance, RunId, RunProvenance, RunServerProvenance, RunStatusKind, RunTarget,
+    SandboxProviderKind, StageContextWindow, StageContextWindowUnavailableReason, StageHandler,
+    StageModelUsage, StageProjection, SystemActorKind, ValidatedRunTarget,
+    json_scalar_to_toml_value, parse_blob_ref,
 };
 use fabro_util::error as error_util;
 use fabro_util::version::FABRO_VERSION;
@@ -48,7 +48,8 @@ use super::super::{
     AppState, DeleteRunOutcome, ListResponse, RunExecutionMode, VariableError, answer_from_request,
     api_question_from_pending_interview, clamp_page_limit, clamp_page_offset, default_page_limit,
     delete_run_internal, load_pending_interview, managed_run, parse_run_id_path,
-    parse_stage_id_path, reject_if_archived, submit_pending_interview_answer, workflow_event,
+    parse_stage_id_path, petri_runs, reject_if_archived, submit_pending_interview_answer,
+    workflow_event,
 };
 use crate::error::ApiError;
 use crate::principal_middleware::{
@@ -767,13 +768,27 @@ async fn finalize_created_run(
             ready_provider_ids.clone()
         }
     };
-    let pinned =
-        match run_compiler::compile_and_pin(prepared, run_materialization_provider_ids, catalog)
-            .await
-        {
-            Ok(pinned) => pinned,
-            Err(error) => return run_intent_admission_error(error.into()),
-        };
+    // Petri compiles a Petri run: the bundle goes to `Runtime::check`, its
+    // diagnostics come back in Fabro's shape, and the admitted graph is what
+    // the run executes. The legacy compile, lint and model pinning are
+    // skipped for it; Fabro's own settings resolution ran above as for any
+    // run.
+    let engine = petri_runs::engine_for(prepared.settings(), &state.server_settings());
+    let pinned = match engine {
+        Engine::Legacy => {
+            run_compiler::compile_and_pin(prepared, run_materialization_provider_ids, catalog).await
+        }
+        Engine::Petri => {
+            match petri_runs::admit(&state, &prepared, &run_materialization_provider_ids).await {
+                Ok(admission) => run_compiler::compile_admitted(prepared, admission).await,
+                Err(error) => Err(error),
+            }
+        }
+    };
+    let pinned = match pinned {
+        Ok(pinned) => pinned,
+        Err(error) => return run_intent_admission_error(error.into()),
+    };
     let persistence_input = run_compiler::assemble_run(pinned);
     let created = match Box::pin(operations::persist_create_run(
         state.stores.runs.as_ref(),
@@ -947,9 +962,14 @@ fn run_intent_admission_error(error: RunIntentAdmissionError) -> Response {
             ),
         },
         // Return the curated compiler detail; retain its source chain in the log.
+        // A validation failure names its diagnostics, since the message alone
+        // ("Validation failed") tells the caller nothing to fix.
         RunIntentAdmissionError::Compiler(error) => intent_error(
             StatusCode::UNPROCESSABLE_ENTITY,
-            format!("run intent could not be compiled: {error}"),
+            format!(
+                "run intent could not be compiled: {}",
+                compiler_error_detail(&error)
+            ),
             "run_compile_invalid",
         ),
         RunIntentAdmissionError::VariableSnapshot { .. } => intent_error(
@@ -967,6 +987,26 @@ fn run_intent_admission_error(error: RunIntentAdmissionError) -> Response {
             "originating worker run not found",
             "worker_run_not_found",
         ),
+    }
+}
+
+/// The compiler error's text, with every error diagnostic of a validation
+/// failure listed as `rule: message`.
+fn compiler_error_detail(error: &run_compiler::RunCompilerError) -> String {
+    let run_compiler::RunCompilerError::Workflow(WorkflowError::ValidationFailed { diagnostics }) =
+        error
+    else {
+        return error.to_string();
+    };
+    let listed = diagnostics
+        .iter()
+        .filter(|diagnostic| diagnostic.severity == fabro_validate::Severity::Error)
+        .map(|diagnostic| format!("{}: {}", diagnostic.rule, diagnostic.message))
+        .collect::<Vec<_>>();
+    if listed.is_empty() {
+        error.to_string()
+    } else {
+        format!("{error}: {}", listed.join("; "))
     }
 }
 

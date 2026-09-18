@@ -13,7 +13,10 @@
 //!    fabro-workflow pipeline.
 //! 3. Model pinning — materialize run-level model settings against the catalog
 //!    and the configured provider set. Stages 2's graph compilation and stage 3
-//!    share one blocking dispatch via [`compile_and_pin`].
+//!    share one blocking dispatch via [`compile_and_pin`]. A run Petri admitted
+//!    takes [`compile_admitted`] instead: Petri compiled, linted and pinned
+//!    models at its own admission, so only the Fabro graph the read side
+//!    displays is parsed here.
 //! 4. [`assemble_run`] — purely assemble the complete persistence input; no
 //!    field is mutated after assembly.
 //!
@@ -37,8 +40,8 @@ use fabro_llm::lithos_catalog::Catalog;
 use fabro_types::settings::interp::{InterpString, ResolveError};
 use fabro_types::settings::run::{McpServerSettings, RunGoal};
 use fabro_types::{
-    AutomationRef, GitContext, ManifestPath, RunId, RunProvenance, RunTarget, WorkflowSettings,
-    WorkflowVersionId,
+    AutomationRef, GitContext, ManifestPath, PetriAdmission, RunEngine, RunId, RunProvenance,
+    RunTarget, WorkflowSettings, WorkflowVersionId,
 };
 use fabro_util::workspace_glob::{WorkspaceGlob, WorkspaceGlobError};
 use fabro_workflow::Error as WorkflowError;
@@ -136,6 +139,19 @@ impl PreparedRun {
         &self.layered.settings
     }
 
+    /// The acquired bundle, for an engine that compiles it itself.
+    pub(crate) fn workflow_bundle(&self) -> &WorkflowBundle {
+        &self.layered.workflow_bundle
+    }
+
+    pub(crate) fn entrypoint(&self) -> &ManifestPath {
+        &self.layered.entrypoint
+    }
+
+    pub(crate) fn target(&self) -> Option<&RunTarget> {
+        self.layered.metadata.target.as_ref()
+    }
+
     pub(crate) fn with_target_and_git(
         mut self,
         target: RunTarget,
@@ -173,6 +189,8 @@ struct GraphCompiledRun {
 pub(crate) struct PinnedRun {
     materialized: MaterializedRun,
     metadata:     RunMetadata,
+    /// The engine the run was created for, with what it admitted.
+    engine:       RunEngine,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -391,6 +409,50 @@ pub(crate) async fn compile_and_pin(
     })?
 }
 
+/// Stages two and three for a run Petri admitted: parse the Fabro graph
+/// the read side displays, with no lint and no model pinning, and record
+/// the admission on the run.
+pub(crate) async fn compile_admitted(
+    prepared: PreparedRun,
+    admission: PetriAdmission,
+) -> Result<PinnedRun> {
+    task::spawn_blocking(move || {
+        let PreparedRun {
+            layered:
+                LayeredRun {
+                    workflow_bundle,
+                    entrypoint,
+                    workflow,
+                    settings,
+                    cwd,
+                    metadata,
+                },
+            vars,
+        } = prepared;
+        let compiled = operations::compile_admitted_run(CreateRunCompileInput {
+            workflow: WorkflowInput::Bundled(workflow),
+            settings,
+            vars,
+            cwd,
+            workflow_path: Some(entrypoint),
+            workflow_bundle: Some(workflow_bundle),
+            configured_providers: Vec::new(),
+        })?;
+        Ok(PinnedRun {
+            materialized: operations::materialize_admitted_run(compiled),
+            metadata,
+            engine: RunEngine::Petri(admission),
+        })
+    })
+    .await
+    .map_err(|source| {
+        RunCompilerError::Workflow(WorkflowError::engine_with_source(
+            "workflow create task failed",
+            source,
+        ))
+    })?
+}
+
 /// Stage two's graph compilation: parse, transform, and validate through the
 /// fabro-workflow pipeline, with undefined template variables promoted to
 /// hard errors.
@@ -435,6 +497,7 @@ fn pin_models(compiled: GraphCompiledRun, catalog: &Catalog) -> Result<PinnedRun
     Ok(PinnedRun {
         materialized,
         metadata,
+        engine: RunEngine::Legacy,
     })
 }
 
@@ -445,6 +508,7 @@ pub(crate) fn assemble_run(pinned: PinnedRun) -> CreateRunPersistenceInput {
     let PinnedRun {
         materialized,
         metadata,
+        engine,
     } = pinned;
     let RunMetadata {
         run_id,
@@ -472,7 +536,7 @@ pub(crate) fn assemble_run(pinned: PinnedRun) -> CreateRunPersistenceInput {
         parent_id,
         provenance,
         web_url,
-        engine: fabro_types::RunEngine::Legacy,
+        engine,
     })
 }
 

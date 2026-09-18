@@ -17,8 +17,8 @@ pub use archive::{
 pub use create::{
     CompiledRun, CreateRunCompileInput, CreateRunInput, CreateRunPersistenceInput,
     CreateRunPersistenceMetadata, CreatedRun, MaterializedRun,
-    assemble_create_run_persistence_input, compile_create_run, create, make_run_dir,
-    materialize_create_run, persist_create_run,
+    assemble_create_run_persistence_input, compile_admitted_run, compile_create_run, create,
+    make_run_dir, materialize_admitted_run, materialize_create_run, persist_create_run,
 };
 pub use fork::{ForkOutcome, ForkRunInput, ResolvedForkTarget, fork_run};
 pub use resume::resume;
