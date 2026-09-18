@@ -1391,6 +1391,112 @@ All checks passed.
         }
     }
 
+    /// fabro-c42f regression pin (basis run 01M2SN3TE4FZ): the planner's
+    /// final message was pure prose — no JSON object anywhere — and the
+    /// stage nevertheless COMPLETED, so the graph continued without
+    /// `current_seed_id` and burned a full implementer cycle until the
+    /// deterministic evidence node caught the missing key. Table-driven over
+    /// both schema kinds: a prose response with no fallback source must FAIL
+    /// the stage with the exhausted-repair reason and persist NOTHING —
+    /// neither a preferred label nor an `output.<node>` payload, so the
+    /// "succeeded with dropped updates" shape cannot recur.
+    #[tokio::test]
+    async fn codergen_handler_prose_response_fails_stage_instead_of_completing() {
+        struct ProseBackend;
+
+        #[async_trait]
+        impl CodergenBackend for ProseBackend {
+            async fn run(&self, _request: CodergenRunRequest<'_>) -> Result<CodergenResult, Error> {
+                // The 349-char incident shape: analysis prose, no braces, no
+                // embedded JSON object for any validator to find.
+                Ok(CodergenResult::Text {
+                    text:              "Commit 4f8a254 only filed the seed; no implementation \
+                           landed, so the candidate stays claimable. Skipping it and \
+                           moving to the next seed."
+                        .to_string(),
+                    usage:             None,
+                    usage_by_model:    Vec::new(),
+                    files_touched:     Vec::new(),
+                    last_file_touched: None,
+                    timing:            StageTiming::default(),
+                })
+            }
+        }
+
+        // Mirrors the develop planner's file schema (fabro-9ec3): routing
+        // contract fields plus a `context_updates` object, as an inline JSON
+        // Schema (the file-inlining transform resolves `@schemas/...` to
+        // this shape before handlers parse it).
+        let file_schema = serde_json::json!({
+            "type": "object",
+            "required": ["outcome", "preferred_next_label"],
+            "properties": {
+                "outcome": { "type": "string" },
+                "preferred_next_label": { "type": "string" },
+                "context_updates": { "type": "object" },
+                "failure_reason": { "type": "string" }
+            },
+            "additionalProperties": true
+        })
+        .to_string();
+
+        let cases: &[(&str, &str)] = &[
+            ("routing kind", "routing"),
+            ("file schema kind", file_schema.as_str()),
+        ];
+
+        for (name, schema_value) in cases {
+            let handler = AgentHandler::new(Some(Box::new(ProseBackend)));
+            let mut node = Node::new("planner");
+            node.attrs.insert(
+                "output_schema".to_string(),
+                AttrValue::String((*schema_value).to_string()),
+            );
+            node.attrs
+                .insert("output_retries".to_string(), AttrValue::Integer(0));
+            let context = test_context();
+            let graph = Graph::new("test");
+            let tmp = TempDir::new().unwrap();
+
+            let outcome = handler
+                .execute(
+                    &node,
+                    &context,
+                    &graph,
+                    tmp.path(),
+                    &make_services(),
+                    &AttemptInfo::first(),
+                )
+                .await
+                .unwrap();
+
+            assert_eq!(
+                outcome.status,
+                crate::outcome::StageOutcome::Failed {
+                    retry_requested: false,
+                },
+                "case: {name} — prose must fail the stage, not complete it"
+            );
+            assert_eq!(
+                outcome.failure_reason(),
+                Some("output schema validation failed after 0 repair attempt(s)"),
+                "case: {name}"
+            );
+            assert!(
+                outcome.preferred_label.is_none(),
+                "case: {name} — no label may be extracted from prose"
+            );
+            assert!(
+                !outcome.context_updates.contains_key("output.planner"),
+                "case: {name} — nothing may persist under output.<node> for prose"
+            );
+            assert!(
+                !outcome.context_updates.contains_key("current_seed_id"),
+                "case: {name} — no seed key may leak from a prose response"
+            );
+        }
+    }
+
     #[tokio::test]
     async fn codergen_handler_custom_output_schema_updates_output_context_key() {
         struct CustomOutputBackend;
