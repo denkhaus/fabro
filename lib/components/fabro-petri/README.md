@@ -34,8 +34,27 @@ Every adapter the integration plan describes lands here.
   through `inspect_run` and mapped to the conclusion Fabro's read side
   records. The run's worker process runs it over `HttpRunStore`; the server
   runs it in its own process only under its test override, over
-  `SqliteRunStore`. `interviewer::Unattended` fails any question until the
-  interview adapter lands.
+  `SqliteRunStore`. The caller supplies the interviewer, and the secret
+  provider and blob table when it has them.
+- `interview`: Petri's `Interviewer` over Fabro's questions API and the
+  worker's control channel. A human gate's question is posted as the
+  `interview.started` event a legacy `human` stage emits (through the
+  worker's run event sink, or the run's database in the server process), so
+  `GET /runs/{id}/questions`, the web app and Slack list it; the answer
+  posted to `/questions/{qid}/answer` reaches the worker's control
+  interviewer over the control bus (or the in-process one directly) under
+  the same id, and is mapped onto Petri's answer. The question id is
+  derived from Petri's identity (node, execution, firing, occurrence, ask).
+  An expired or cancelled question is completed as `interview.timeout` or
+  `interview.interrupted`; an auto-approved run answers itself. The module
+  docs mark the hook points the read side takes over.
+- `secrets`: Petri's `SecretProvider` over the vault's token entries, so a
+  `{{ secrets.NAME }}` reference resolves at spawn into a command's
+  environment and is masked in every record; a sensitive answer registers
+  as a dynamic secret.
+- `blobs`: Petri's `OutputStore` over Fabro's `blobs` table, through the
+  server's `BlobStore` or the worker's client, so a large stage value
+  leaves the records for the table under `blob://sha256/<hex>`.
 - `HttpRunStore`: the same store as a run's worker process reaches it, over
   the server's `/api/v1/runs/{id}/petri/*` endpoints with the worker's token.
   The server answers from its `SqliteRunStore`, so the lease and the
@@ -46,8 +65,8 @@ Every adapter the integration plan describes lands here.
 - `petri`: the Petri store vocabulary re-exported for the server, which
   answers the worker endpoints from a `SqliteRunStore` without naming a Petri
   package in its own manifest.
-- The platform adapters the plan adds after it: hooks, interviews over
-  Fabro's API, secrets, output storage, run tools, the event projection.
+- The platform adapters the plan adds after it: hooks, run tools, the
+  event projection.
 
 A run goes to Petri when its workflow version's `workflow.toml` names
 `engine = "petri"` in `[workflow]`, or when the server's
@@ -78,6 +97,21 @@ Integration tests live under `tests/`:
   (`petri_testkit::run_store::conformance`) against `SqliteRunStore`, plus the
   operator release, lease exclusivity, a crash between appends, and blob
   interoperation with Fabro's `BlobStore`.
+- `interview.rs` runs human gates through the engine assembly with the
+  interview adapter over a control interviewer: a gate answered under the
+  posted id, two parallel gates each bound to their own answer, an expiry
+  with the gate's default, an auto-approved run, and a cancelled run.
+- `secrets.rs` resolves a `{{ secrets.NAME }}` reference from a vault into
+  a command's environment over `SqliteRunStore` and checks the value is in
+  no `petri_records` row while the masked output is.
+- `blobs.rs` offloads a command's large output to the `blobs` table and
+  reads it back by the `blob://sha256/<hex>` reference a record carries.
+- `model.rs` runs the `hello` bundle against the OpenAI twin with a model
+  client over a vault that holds the key, and checks the skills step
+  searched the configured Fabro home.
+
+Those four need the host plugin like `runs.rs` does, and `model.rs` also
+starts the twin.
 
 The conformance suite over `HttpRunStore` needs a server to talk to, so it
 lives with the server's integration tests
@@ -94,13 +128,17 @@ The server's end-to-end coverage is `lib/apps/fabro-server/tests/it/scenario/pet
 the `hello` bundle on the OpenAI twin and a command-only bundle run to
 completion through the create handler and the scheduler, in the server
 process under its test override, under the version flag and under the
-server setting, and Petri's diagnostics refuse a run at create. The
-server's `petri_runs` unit tests cover the lease ending at worker exit and
-the restart reconcile that relaunches a worker in resume mode.
+server setting, a human gate is answered through the questions API, and
+Petri's diagnostics refuse a run at create. The server's `petri_runs` unit
+tests cover the lease ending at worker exit and the restart reconcile that
+relaunches a worker in resume mode.
 
 The worker path is covered with the real binary in
 `lib/apps/fabro-cli/tests/it/scenario/petri.rs`: a command-only Petri run
 executes in the worker a foreground server launched, its records reach
 `petri_records` over the HTTP store and its lease ends with the worker; and
 a run whose server and worker are both killed mid-stage resumes in a new
-worker after the server restarts, with one `run.completed`.
+worker after the server restarts, with one `run.completed`; a human gate in
+the worker is answered through the questions API over the control channel;
+two parallel gates each bind their own answer; and an unanswered gate
+expires with its default.
