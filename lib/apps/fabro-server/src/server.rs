@@ -4805,3 +4805,9 @@ mod tests;
 // Fork seam (ADR-0021 D7): fork taxonomy tests live in a fork-only file.
 #[cfg(test)]
 mod fork_taxonomy_tests;
+// Fork seam (fabro-ab8e): fork-added tests extracted out of `tests.rs` into
+// fork-owned files so upstream merges never reshape or drop them.
+#[cfg(test)]
+mod fork_slack_interview_tests;
+#[cfg(test)]
+mod fork_staleness_supervisor_tests;
