@@ -15,7 +15,7 @@ pub(crate) use mcp_client::McpStdioTestClient;
 
 pub(crate) fn run_output_filters(context: &TestContext) -> Vec<(String, String)> {
     let mut filters = context.filters();
-    filters.push((r"\b\d+ms\b".to_string(), "[TIME]".to_string()));
+    filters.push((r"\b\d+(\.\d+)?(ms|s)\b".to_string(), "[TIME]".to_string()));
     filters.push((
         r"(?m)^(Graph: ).+$".to_string(),
         "${1}[GRAPH_PATH]".to_string(),

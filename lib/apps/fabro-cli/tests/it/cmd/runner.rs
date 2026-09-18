@@ -20,7 +20,7 @@ use httpmock::MockServer;
 
 use super::support::{
     command_log_text, created_run_id, find_run_dir, local_dev_token, output_stderr, run_events,
-    run_state, server_endpoint, server_target, wait_for_event_names, wait_for_status,
+    run_state, server_endpoint, server_target, wait_for_lifecycle, wait_for_status,
     write_gated_workflow,
 };
 use crate::support::{issue_test_worker_jwt, seed_dev_token_auth, unique_run_id};
@@ -525,7 +525,7 @@ methods = ["dev-token"]
         std::fs::read_to_string(storage_dir.join("logs/server.log")).unwrap_or_default();
     assert_no_worker_env_leak("server log", &server_log);
     assert!(
-        server_log.contains("Workflow run started"),
+        server_log.contains("Petri worker starting"),
         "main server log should include worker tracing, got:\n{server_log}"
     );
     assert!(
@@ -541,7 +541,7 @@ methods = ["dev-token"]
     );
     let run_log = std::fs::read_to_string(&run_log_path).expect("run log should be readable");
     assert!(
-        run_log.contains("Workflow run started"),
+        run_log.contains("Petri worker starting"),
         "per-run log should include worker tracing, got:\n{run_log}"
     );
     assert!(
@@ -761,11 +761,12 @@ fn detached_run_answers_pending_question_without_interview_scratch_files() {
             .expect("question id should be present")
             .to_string();
 
-        assert_eq!(question["stage"], "approve");
+        assert_eq!(question["stage"], "approve@1");
 
         let response = client
             .post(format!(
-                "{base_url}/api/v1/runs/{run_id}/questions/{question_id}/answer"
+                "{base_url}/api/v1/runs/{run_id}/questions/{}/answer",
+                question_id.replace('#', "%23")
             ))
             .json(&serde_json::json!({ "kind": "selected", "option_key": "A" }))
             .send()
@@ -829,7 +830,7 @@ fn detached_run_cancel_reaches_worker_over_control_websocket() {
     let run_id = created_run_id(&output);
 
     let run_dir = context.find_run_dir(&run_id);
-    wait_for_event_names(&run_dir, &["run.running"]);
+    wait_for_lifecycle(&run_dir, "running");
     tokio::runtime::Runtime::new()
         .expect("test runtime should build")
         .block_on(async {
@@ -882,7 +883,7 @@ fn worker_exits_after_sigterm_cancel_even_when_stdin_stays_open() {
     let mut child = spawn_worker_process(&context, &server, &run_dir, &run_id, "start");
     let stdin = child.stdin.take().expect("worker stdin should be piped");
 
-    wait_for_event_names(&run_dir, &["run.running"]);
+    wait_for_lifecycle(&run_dir, "running");
     let worker_pid = child.id();
     assert!(worker_pid > 0, "worker pid should be present");
     fabro_proc::sigterm(worker_pid);

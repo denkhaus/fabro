@@ -69,6 +69,13 @@ pub(crate) async fn execute(
         .get_run_state(&run_id)
         .await
         .with_context(|| format!("failed to load run state for {run_id}"))?;
+    if matches!(mode, RunWorkerMode::Resume) && run_state.status.is_terminal() {
+        let how = match run_state.status {
+            fabro_types::RunStatus::Succeeded { .. } => "successfully",
+            _ => "already",
+        };
+        anyhow::bail!("Precondition failed: run already finished {how} — nothing to resume");
+    }
     Box::pin(petri_worker::execute(PetriWorker {
         run_id,
         target,

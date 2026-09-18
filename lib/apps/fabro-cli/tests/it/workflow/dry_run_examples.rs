@@ -16,7 +16,6 @@ fn dry_run_branching() {
     ----- stderr -----
         Run: [ULID]
         Web UI: http://localhost:3000/runs/[ULID]
-        Sandbox: local (ready in [TIME])
         ✓ Start  [TIME]
         ✓ Plan  [TIME]
         ✓ Implement  [TIME]
@@ -28,9 +27,6 @@ fn dry_run_branching() {
     Run:       [ULID]
     Status:    SUCCEEDED
     Duration:  [DURATION]
-
-    === Output ===
-    [Simulated] Response for stage: validate
     ");
 }
 
@@ -48,7 +44,6 @@ fn dry_run_conditions() {
     ----- stderr -----
         Run: [ULID]
         Web UI: http://localhost:3000/runs/[ULID]
-        Sandbox: local (ready in [TIME])
         ✓ start  [TIME]
         ✓ Decide  [TIME]
         ✓ Path B  [TIME]
@@ -58,9 +53,6 @@ fn dry_run_conditions() {
     Run:       [ULID]
     Status:    SUCCEEDED
     Duration:  [DURATION]
-
-    === Output ===
-    [Simulated] Response for stage: path_b
     ");
 }
 
@@ -72,7 +64,8 @@ fn dry_run_parallel() {
     cmd.args(["--dry-run", "--auto-approve"]);
     cmd.arg(&workflow);
     let mut filters = run_output_filters(&context);
-    filters.push((r"\bbranch[12]\b".to_string(), "[BRANCH]".to_string()));
+    // The two branches run concurrently and finish in either order.
+    filters.push((r"\bBranch [12]\b".to_string(), "Branch [N]".to_string()));
     fabro_snapshot!(filters, cmd, @"
     success: true
     exit_code: 0
@@ -80,11 +73,10 @@ fn dry_run_parallel() {
     ----- stderr -----
         Run: [ULID]
         Web UI: http://localhost:3000/runs/[ULID]
-        Sandbox: local (ready in [TIME])
         ✓ start  [TIME]
-            ✓ [BRANCH]  [TIME]
-            ✓ [BRANCH]  [TIME]
         ✓ Fork Work  [TIME]
+        ✓ Branch [N]  [TIME]
+        ✓ Branch [N]  [TIME]
         ✓ Merge Results  [TIME]
         ✓ Review  [TIME]
         ✓ exit  [TIME]
@@ -93,9 +85,6 @@ fn dry_run_parallel() {
     Run:       [ULID]
     Status:    SUCCEEDED
     Duration:  [DURATION]
-
-    === Output ===
-    [Simulated] Response for stage: review
     ");
 }
 
@@ -113,7 +102,6 @@ fn dry_run_styled() {
     ----- stderr -----
         Run: [ULID]
         Web UI: http://localhost:3000/runs/[ULID]
-        Sandbox: local (ready in [TIME])
         ✓ start  [TIME]
         ✓ Plan  [TIME]
         ✓ Implement  [TIME]
@@ -124,9 +112,6 @@ fn dry_run_styled() {
     Run:       [ULID]
     Status:    SUCCEEDED
     Duration:  [DURATION]
-
-    === Output ===
-    [Simulated] Response for stage: critical_review
     ");
 }
 
@@ -144,7 +129,6 @@ fn dry_run_inferred_command() {
     ----- stderr -----
         Run: [ULID]
         Web UI: http://localhost:3000/runs/[ULID]
-        Sandbox: local (ready in [TIME])
         ✓ Start  [TIME]
         ✓ Echo  [TIME]
         ✓ Exit  [TIME]

@@ -1497,7 +1497,7 @@ fn create_invalid_workflow_fails_without_creating_run() {
     ----- stdout -----
     ----- stderr -----
       × could not create run
-      ╰─▶ run intent could not be compiled: Validation failed: start_node: Pipeline must have exactly one start node (shape=Mdiamond or id start/Start); exit_no_outgoing: Exit node 'exit' has 1 outgoing edge(s) but must have none
+      ╰─▶ run intent could not be compiled: Validation failed: attractor.no_start: the workflow has no start node (`shape=Mdiamond`, `type=start`, or an id of `start`)
     ");
 
     let run_count = run_count_for_test_case(&context);
@@ -1523,7 +1523,7 @@ fn create_rejects_unbound_template_inputs_without_creating_run() {
     ----- stdout -----
     ----- stderr -----
       × could not create run
-      ╰─▶ run intent could not be compiled: Validation failed: template_undefined_variable: undefined template variable `inputs.app_dir` in graph attribute `goal`; template_undefined_variable: undefined template variable `inputs.app_dir` in node `work` attribute `prompt`
+      ╰─▶ run intent could not be compiled: Validation failed: unsupported.template.unbound_input: the graph `goal` reads `{{ inputs.app_dir }}`, which no input binds; unsupported.template.unbound_input: node `work` `prompt` reads `{{ inputs.app_dir }}`, which no input binds
     ");
 
     let run_count = run_count_for_test_case(&context);

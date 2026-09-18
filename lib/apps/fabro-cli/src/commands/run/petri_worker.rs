@@ -266,6 +266,9 @@ pub(super) async fn execute(worker: PetriWorker<'_>) -> Result<()> {
             } else {
                 WorkerTitlePhase::Failed
             };
+            // A cancelled run ended the way it was asked to: the worker
+            // exits cleanly; any other failure is the worker's exit status.
+            let failure = (reason != FailureReason::Cancelled).then_some(message);
             (
                 (
                     RunLifecycleKind::Failed,
@@ -273,7 +276,7 @@ pub(super) async fn execute(worker: PetriWorker<'_>) -> Result<()> {
                     Some(detail),
                 ),
                 phase,
-                Some(message),
+                failure,
             )
         }
     };
