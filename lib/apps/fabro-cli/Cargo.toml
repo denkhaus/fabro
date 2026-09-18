@@ -29,7 +29,6 @@ pebble-coding-agent.workspace = true
 pebble-cli-core.workspace = true
 sandbox-driver.workspace = true
 fabro-dump = { path = "../../components/fabro-dump" }
-fabro-hooks = { path = "../../components/fabro-hooks" }
 fabro-install = { path = "../../components/fabro-install" }
 fabro-interview = { path = "../../components/fabro-interview" }
 fabro-mcp = { path = "../../components/fabro-mcp" }

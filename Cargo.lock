@@ -2401,7 +2401,6 @@ dependencies = [
  "fabro-environment",
  "fabro-github",
  "fabro-graphviz",
- "fabro-hooks",
  "fabro-http",
  "fabro-install",
  "fabro-interview",
@@ -2640,31 +2639,6 @@ dependencies = [
  "serde_json",
  "strum 0.28.0",
  "thiserror 2.0.18",
-]
-
-[[package]]
-name = "fabro-hooks"
-version = "0.357.0-nightly.0"
-dependencies = [
- "async-trait",
- "fabro-auth",
- "fabro-http",
- "fabro-llm",
- "fabro-redact",
- "fabro-sandbox",
- "fabro-types",
- "fabro-util",
- "httpmock",
- "lithos-llm",
- "pebble-agent",
- "pebble-coding-agent",
- "regex",
- "serde",
- "serde_json",
- "tokio",
- "tokio-util",
- "toml 0.8.23",
- "tracing",
 ]
 
 [[package]]
@@ -3005,7 +2979,6 @@ dependencies = [
  "fabro-environment",
  "fabro-github",
  "fabro-graphviz",
- "fabro-hooks",
  "fabro-http",
  "fabro-install",
  "fabro-interview",

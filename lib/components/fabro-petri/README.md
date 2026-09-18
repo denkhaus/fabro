@@ -10,18 +10,6 @@ member that lists them as dependencies. Every other Fabro crate reaches the
 engine through what this crate exports. A Petri pin move is therefore a change
 to this crate and the lockfile, nothing else.
 
-## Engine freeze
-
-The engine half of `fabro-workflow` (`handler/`, `lifecycle/`,
-`pipeline/execute`, `graph/routing.rs`, `node_handler.rs`, `retry.rs`,
-`condition.rs`, `context.rs` and `model_fallback.rs` under its `src/`) takes
-bug fixes only. New engine behaviour goes to Petri and reaches Fabro through
-this crate. The `Engine freeze` CI check
-(`.github/workflows/engine-freeze.yml`) fails a pull request that adds lines
-under those paths unless it carries the `bugfix` label. The path list is in
-`scripts/check-engine-freeze.sh`; run it locally as
-`scripts/check-engine-freeze.sh origin/main` to see what a branch adds there.
-
 ## What it holds
 
 Every adapter the integration plan describes lands here.
