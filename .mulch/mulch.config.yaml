@@ -25,6 +25,7 @@ domains:
   develop-loop: {}
   loop-assets: {}
   workflow-engine: {}
+  process: {}
 governance:
   max_entries: 100
   warn_entries: 150
