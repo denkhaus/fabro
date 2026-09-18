@@ -525,6 +525,39 @@ async fn the_startup_pass_catches_up_a_view_nobody_signalled() {
     assert_eq!((again.runs, again.projected), (1, 0), "nothing left to do");
 }
 
+/// Passes over one run never interleave: the startup pass and a signalled
+/// pass racing over the same run commit one stream, contiguous and without
+/// a duplicate.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn concurrent_passes_over_one_run_commit_one_contiguous_stream() {
+    if host_plugin().is_none() {
+        return;
+    }
+    let scenario = parallel_scenario().await;
+    run_unobserved(&scenario).await;
+    let projector = Projector::new(scenario.pool.clone(), scenario.pool.clone());
+    let mut passes = Vec::new();
+    for _ in 0..4 {
+        let projector = Arc::clone(&projector);
+        let run_id = scenario.run_id;
+        passes.push(tokio::spawn(
+            async move { projector.project_run(run_id).await },
+        ));
+    }
+    projector.signal(scenario.run_id);
+    projector
+        .startup_pass()
+        .await
+        .expect("the startup pass runs");
+    for pass in passes {
+        pass.await
+            .expect("the pass task joins")
+            .expect("a concurrent pass commits or skips");
+    }
+    projector.settle(scenario.run_id).await;
+    assert_view_equals_rebuild(&scenario.pool, scenario.run_id).await;
+}
+
 /// Every Petri record of the run, as `(log, seq, recorded_at, record_json)`.
 async fn petri_rows(pool: &DbPool, run_id: RunId) -> Vec<(String, i64, i64, String)> {
     sqlx::query_as(

@@ -107,6 +107,8 @@ pub struct PassReport {
 pub struct StartupReport {
     pub runs:      usize,
     pub projected: usize,
+    /// Runs whose pass failed and was left for the next signal.
+    pub failed:    usize,
 }
 
 /// Why a pass could not run or commit.
@@ -149,6 +151,9 @@ pub struct Projector {
     store:    SqliteRunStore,
     platform: PlatformRecordStore,
     slots:    Mutex<HashMap<RunId, Slot>>,
+    /// One pass at a time per run: a signalled pass and the startup pass
+    /// over the same run never interleave their reads and writes.
+    passes:   Mutex<HashMap<RunId, Arc<tokio::sync::Mutex<()>>>>,
     /// Test-only: stop the next pass after its reads, before its view
     /// transaction, as a crash there would.
     fault:    AtomicBool,
@@ -172,6 +177,7 @@ impl Projector {
             records,
             pool: views,
             slots: Mutex::default(),
+            passes: Mutex::default(),
             fault: AtomicBool::new(false),
         })
     }
@@ -260,9 +266,22 @@ impl Projector {
                 continue;
             };
             report.runs += 1;
-            let pass = self.project_run(run_id).await?;
-            if !pass.skipped {
-                report.projected += 1;
+            match self.project_run(run_id).await {
+                Ok(pass) => {
+                    if !pass.skipped {
+                        report.projected += 1;
+                    }
+                }
+                // One run's view trailing never stops the server: the next
+                // signal for the run retries its pass.
+                Err(error) => {
+                    warn!(
+                        run_id = %run_id,
+                        error = %collect_chain(&error).join(": "),
+                        "Petri projection pass failed at startup; the next signal retries it"
+                    );
+                    report.failed += 1;
+                }
             }
         }
         if report.projected > 0 {
@@ -275,8 +294,10 @@ impl Projector {
         Ok(report)
     }
 
-    /// One view pass for the run.
+    /// One view pass for the run. Passes over one run run one at a time.
     pub async fn project_run(&self, run_id: RunId) -> Result<PassReport, ProjectError> {
+        let pass = Arc::clone(lock(&self.passes).entry(run_id).or_default());
+        let _one_at_a_time = pass.lock().await;
         let stored = self.load_view(&run_id).await?;
         let key = RunKey::new(run_id.to_string());
         let platform_head = self
