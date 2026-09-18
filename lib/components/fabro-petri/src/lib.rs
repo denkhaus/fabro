@@ -43,7 +43,8 @@
 //!   to a worker;
 //! - [`platform_records`]: Fabro's platform records as the adapters reach them,
 //!   in the server's database or over its API from a worker;
-//! - the platform adapter still to come: the run tools.
+//! - [`host_tools`]: Fabro's run tools on every native agent session of a run,
+//!   through Petri's `HostTools` capability.
 //!
 //! The Petri packages are pinned by revision in the workspace `Cargo.toml`
 //! under `petri_*` keys.
@@ -54,6 +55,7 @@ pub mod check;
 pub mod checkpoint;
 pub mod engine;
 pub mod hooks;
+pub mod host_tools;
 pub mod http_store;
 pub mod interview;
 pub mod petri;

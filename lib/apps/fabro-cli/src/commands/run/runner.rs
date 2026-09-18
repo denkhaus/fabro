@@ -214,7 +214,7 @@ struct WorkerTokenScopeClaim {
     scope: String,
 }
 
-fn fabro_run_tools_enabled_from_worker_token(worker_token: &str) -> bool {
+pub(super) fn fabro_run_tools_enabled_from_worker_token(worker_token: &str) -> bool {
     // Local tool registration only. The server validates the token signature and
     // scopes.
     insecure_decode::<WorkerTokenScopeClaim>(worker_token)
@@ -234,7 +234,7 @@ fn worker_scope_has_run_tools(scope_claim: &str) -> bool {
     has_run_worker && has_agent_run_tools
 }
 
-fn build_fabro_run_tool_services(
+pub(super) fn build_fabro_run_tool_services(
     worker_token: &str,
     client: fabro_client::Client,
     current_run_id: RunId,
