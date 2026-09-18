@@ -11,8 +11,6 @@ import type {
   CommandLogResponse,
   Environment,
   EnvironmentListResponse,
-  EventEnvelope,
-  ListRunEvents200Response,
   ListRunsDirectionEnum,
   ListRunsSortEnum,
   McpServer,
@@ -54,7 +52,6 @@ import {
   automationsApi,
   environmentsApi,
   fetchAllPages,
-  fetchAllStageEvents,
   generatedAxios,
   humanInTheLoopApi,
   insightsApi,
@@ -369,16 +366,6 @@ export function useRunPullRequest(id: string | undefined) {
   );
 }
 
-export function useRunStageEvents(id: string | undefined, stageId: string | undefined) {
-  return useSWR<EventEnvelope[]>(
-    id && stageId ? queryKeys.runs.stageEvents(id, stageId) : null,
-    () =>
-      fetchAllStageEvents(`run ${id} stage ${stageId}`, (sinceSeq, limit) =>
-        apiData(() => runInternalsApi.listStageEvents(id!, stageId!, sinceSeq, limit)),
-      ),
-  );
-}
-
 export function useRunStageContextWindow(
   id: string | undefined,
   stageId: string | undefined,
@@ -389,59 +376,20 @@ export function useRunStageContextWindow(
   );
 }
 
-/**
- * `GET /runs/{id}/events` answers in the run engine's envelope: a legacy run
- * pages `EventEnvelope`s by `since_seq`, a Petri run pages `RunStreamItem`s
- * by `after`. The stream page names the Petri event contract version it
- * follows; the legacy page never does.
- */
-function isRunStreamPage(
-  page: ListRunEvents200Response,
-): page is Extract<ListRunEvents200Response, { event_contract_version: number }> {
-  return "event_contract_version" in page;
-}
-
-export function useRunEventsList(id: string | undefined) {
-  return useSWR<EventEnvelope[]>(
-    id ? queryKeys.runs.events(id, 1000) : null,
-    () =>
-      fetchAllStageEvents(`run ${id} events`, async (sinceSeq, limit) => {
-        const page = await apiData(() =>
-          runInternalsApi.listRunEvents(id!, sinceSeq, limit),
-        );
-        // A Petri run's events are a stream, read by `useRunStream`; the
-        // legacy list of such a run is empty.
-        if (isRunStreamPage(page)) {
-          return { data: [], meta: { has_more: false } };
-        }
-        return page;
-      }),
-  );
-}
-
 const STREAM_PAGE_LIMIT = 1000;
 const STREAM_MAX_PAGES = 50;
 
 /**
- * Every item of a Petri run's stream, paged by `after` (the last
- * `stream_seq` seen). A legacy run has no stream: its page comes back in
- * the legacy envelope and reads as empty here.
+ * Every item of a run's stream (`GET /runs/{id}/events`), paged by `after`
+ * (the last `stream_seq` seen).
  */
 async function fetchRunStream(id: string): Promise<RunStreamItem[]> {
   const items: RunStreamItem[] = [];
   let after = 0;
   for (let pages = 0; pages < STREAM_MAX_PAGES; pages += 1) {
     const page = await apiData(() =>
-      runInternalsApi.listRunEvents(
-        id,
-        undefined,
-        STREAM_PAGE_LIMIT,
-        undefined,
-        undefined,
-        after,
-      ),
+      runInternalsApi.listRunEvents(id, STREAM_PAGE_LIMIT, after),
     );
-    if (!isRunStreamPage(page)) return items;
     if (page.data.length === 0) return items;
     items.push(...page.data);
     const last = page.data[page.data.length - 1];
@@ -454,7 +402,7 @@ async function fetchRunStream(id: string): Promise<RunStreamItem[]> {
   return items;
 }
 
-/** A Petri run's stream: Petri's events and Fabro's platform records, in order. */
+/** A run's stream: Petri's events and Fabro's platform records, in order. */
 export function useRunStream(id: string | undefined) {
   return useSWR<RunStreamItem[]>(
     id ? queryKeys.runs.stream(id) : null,

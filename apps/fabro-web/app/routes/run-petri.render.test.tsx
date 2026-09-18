@@ -108,7 +108,6 @@ describe("a command-only run", () => {
     const html = render(
       <RunWaterfall
         runId="run-1"
-        events={[]}
         phases={deriveRunPhasesFromStream(fixture.stream, createdAt(fixture))}
         stages={runStages(fixture)}
         createdAtIso={createdAt(fixture)}

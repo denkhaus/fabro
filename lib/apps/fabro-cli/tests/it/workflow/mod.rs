@@ -18,8 +18,8 @@ pub(super) mod plugin;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use fabro_store::EventEnvelope;
 use fabro_test::{TestContext, expect_reqwest_status};
+use fabro_types::RunStreamItem;
 use serde_json::Value;
 
 use crate::cmd::support::{RunProjection, server_endpoint};
@@ -54,7 +54,7 @@ pub(super) fn completed_nodes(run_dir: &Path) -> Vec<String> {
 pub(super) fn has_event(run_dir: &Path, event_name: &str) -> bool {
     run_events(run_dir)
         .into_iter()
-        .any(|event| event.event.event_name() == event_name)
+        .any(|item| item.name() == Some(event_name))
 }
 
 pub(super) fn dump_export(context: &TestContext, run_id: &str) -> PathBuf {
@@ -156,15 +156,15 @@ fn run_state(run_dir: &Path) -> RunProjection {
     ))
 }
 
-fn run_events(run_dir: &Path) -> Vec<EventEnvelope> {
+fn run_events(run_dir: &Path) -> Vec<RunStreamItem> {
     let run_id = infer_run_id(run_dir);
     let runs_dir = run_dir.parent().expect("run dir should have parent");
     let storage_dir = runs_dir.parent().expect("runs dir should have parent");
     let response: serde_json::Value = block_on(get_server_json_for_storage(
         storage_dir,
-        &format!("/api/v1/runs/{run_id}/events"),
+        &format!("/api/v1/runs/{run_id}/events?after=0&limit=1000"),
     ));
-    crate::support::parse_event_envelopes(&response)
+    crate::support::parse_stream_items(&response)
 }
 
 /// Runs a scenario against every sandbox provider fabro supports:

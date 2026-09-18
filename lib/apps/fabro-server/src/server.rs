@@ -23,8 +23,8 @@ use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use bytes::Bytes;
 use chrono::{DateTime, Utc};
 pub use fabro_api::types::{
-    AggregateUsage, AggregateUsageTotals, ApiQuestion, AppendEventResponse, ArtifactEntry,
-    ArtifactListResponse, BatchDeleteRunsRequest, BatchDeleteRunsResponse, BatchDeleteRunsResult,
+    AggregateUsage, AggregateUsageTotals, ApiQuestion, ArtifactEntry, ArtifactListResponse,
+    BatchDeleteRunsRequest, BatchDeleteRunsResponse, BatchDeleteRunsResult,
     BatchDeleteRunsResultOutcome, BatchDeleteRunsSummary, BatchRunLifecycleRequest,
     BatchRunLifecycleResponse, BatchRunLifecycleResult, BatchRunLifecycleResultOutcome,
     BatchRunLifecycleSummary, CloseRunPullRequestResponse, CompletionResponse,
@@ -33,8 +33,8 @@ pub use fabro_api::types::{
     DenyRunRequest, DiskUsageResponse, DiskUsageRunRow, DiskUsageSummaryRow, ErrorResponseEntry,
     IntegrationConnectionKind, IntegrationConnectionState, IntegrationConnectionStatus,
     IntegrationProvider, IntegrationStatus, LinkRunPullRequestRequest, MergeRunPullRequestRequest,
-    MergeRunPullRequestResponse, ModelReference, PaginatedEventList, PaginatedRunList,
-    PaginationMeta, PreflightResponse, PreviewUrlRequest, PreviewUrlResponse, Provider,
+    MergeRunPullRequestResponse, ModelReference, PaginatedRunList, PaginationMeta,
+    PreflightResponse, PreviewUrlRequest, PreviewUrlResponse, Provider,
     ProviderCredentialTestRequest, ProviderCredentialTestResponse, ProviderList, PruneRunEntry,
     PruneRunsRequest, PruneRunsResponse, RenderWorkflowGraphDirection, RenderWorkflowGraphRequest,
     Run, RunArtifactEntry, RunArtifactListResponse, RunError, RunManifest, RunStage, RunUsage,
@@ -170,7 +170,6 @@ mod session_runtime;
 pub(crate) mod stream_follower;
 
 pub(crate) use automation_scheduler::spawn_automation_scheduler;
-pub(crate) use handler::events::EventListParams;
 pub(crate) use handler::graph::render_graph_bytes;
 #[cfg(test)]
 pub(in crate::server) use handler::graph::{

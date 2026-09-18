@@ -1,6 +1,5 @@
 import type { Stage } from "../stage-sidebar";
 import {
-  debugCategory,
   debugCategoryLabel,
   debugCategoryTone,
   type DebugCategory,
@@ -12,18 +11,15 @@ export interface CategoryCount {
   count: number;
 }
 
-/** What the summary counts: a legacy event, or a Petri stream row with its own category. */
+/** What the summary counts: a stream row with its category. */
 export interface CategorizedEvent {
-  event?: string | null;
-  category?: DebugCategory;
+  category: DebugCategory;
 }
 
 export function summarizeEventCategories(events: CategorizedEvent[]): CategoryCount[] {
   const counts = new Map<DebugCategory, number>();
   for (const event of events) {
-    const cat = event.category ?? (event.event ? debugCategory(event.event) : null);
-    if (!cat) continue;
-    counts.set(cat, (counts.get(cat) ?? 0) + 1);
+    counts.set(event.category, (counts.get(event.category) ?? 0) + 1);
   }
   return Array.from(counts.entries())
     .map(([category, count]) => ({ category, count }))

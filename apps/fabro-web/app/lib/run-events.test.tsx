@@ -2,11 +2,9 @@ import { describe, expect, test } from "bun:test";
 import type { Key } from "swr";
 
 import { loadPetriFixture } from "./petri-fixtures";
-import {
-  queryKeysForRunEvent,
-  queryKeysForStreamItem,
-  subscribeToRunEvents,
-} from "./run-events";
+import { streamItemName } from "./petri-stream";
+import { queryKeysForStreamItem, subscribeToRunEvents } from "./run-events";
+import { makePetriItem, makePlatformItem } from "./test-utils";
 import {
   createCrossTabSseCoordinator,
   type BroadcastChannelLike,
@@ -40,194 +38,6 @@ class FakeBroadcastChannel implements BroadcastChannelLike {
 
   close() {}
 }
-
-describe("queryKeysForRunEvent", () => {
-  test("terminal events invalidate run-scoped resources", () => {
-    expect(queryKeysForRunEvent("run-1", "run.completed")).toEqual([
-      queryKeys.runs.detail("run-1"),
-      queryKeys.runs.state("run-1"),
-      ...queryKeys.runs.filesAllScopes("run-1"),
-      queryKeys.runs.commits("run-1"),
-      queryKeys.runs.usage("run-1"),
-      queryKeys.runs.stages("run-1"),
-      queryKeys.runs.graph("run-1", "LR"),
-      queryKeys.runs.graph("run-1", "TB"),
-    ]);
-  });
-
-  test("stage.retrying invalidates stage-scoped and run-scoped resources", () => {
-    expect(queryKeysForRunEvent("run-1", "stage.retrying", "verify@2")).toEqual([
-      queryKeys.runs.stages("run-1"),
-      queryKeys.runs.usage("run-1"),
-      queryKeys.runs.events("run-1", 1000),
-      queryKeys.runs.graph("run-1", "LR"),
-      queryKeys.runs.graph("run-1", "TB"),
-      queryKeys.runs.detail("run-1"),
-      queryKeys.runs.state("run-1"),
-      queryKeys.runs.stageEvents("run-1", "verify@2"),
-      queryKeys.runs.stageContextWindow("run-1", "verify@2"),
-    ]);
-  });
-
-  test("stage-scoped steering events invalidate run events and stage-scoped resources", () => {
-    expect(queryKeysForRunEvent("run-1", "agent.session.activated", "agent@1")).toEqual([
-      queryKeys.runs.events("run-1", 1000),
-      queryKeys.runs.stageEvents("run-1", "agent@1"),
-      queryKeys.runs.stageContextWindow("run-1", "agent@1"),
-    ]);
-  });
-
-  test("stage-scoped interrupt injection invalidates run events and stage-scoped resources", () => {
-    expect(queryKeysForRunEvent("run-1", "agent.interrupt.injected", "nap@1")).toEqual([
-      queryKeys.runs.events("run-1", 1000),
-      queryKeys.runs.stageEvents("run-1", "nap@1"),
-      queryKeys.runs.stageContextWindow("run-1", "nap@1"),
-    ]);
-  });
-
-  test("interrupt settlement invalidates projected control state and stage activity", () => {
-    expect(queryKeysForRunEvent("run-1", "agent.round.interrupted", "nap@1")).toEqual([
-      queryKeys.runs.detail("run-1"),
-      queryKeys.runs.usage("run-1"),
-      queryKeys.runs.state("run-1"),
-      queryKeys.runs.events("run-1", 1000),
-      queryKeys.runs.stageEvents("run-1", "nap@1"),
-      queryKeys.runs.stageContextWindow("run-1", "nap@1"),
-    ]);
-  });
-
-  test("parallel branch lifecycle invalidates the stages list backing live branch rows", () => {
-    // Branches bypass stage.started/stage.completed, so these events are the
-    // only signal that a branch row's status changed.
-    expect(queryKeysForRunEvent("run-1", "parallel.branch.started", "review_glm@1")).toEqual([
-      queryKeys.runs.stages("run-1"),
-      queryKeys.runs.events("run-1", 1000),
-      queryKeys.runs.graph("run-1", "LR"),
-      queryKeys.runs.graph("run-1", "TB"),
-      queryKeys.runs.stageEvents("run-1", "review_glm@1"),
-    ]);
-    expect(queryKeysForRunEvent("run-1", "parallel.branch.completed", "review_glm@1")).toEqual([
-      queryKeys.runs.stages("run-1"),
-      queryKeys.runs.events("run-1", 1000),
-      queryKeys.runs.graph("run-1", "LR"),
-      queryKeys.runs.graph("run-1", "TB"),
-      queryKeys.runs.stageEvents("run-1", "review_glm@1"),
-    ]);
-  });
-
-  test("fork lifecycle invalidates run-scoped resources without a stage id", () => {
-    for (const event of ["parallel.started", "parallel.completed"]) {
-      expect(queryKeysForRunEvent("run-1", event)).toEqual([
-        queryKeys.runs.stages("run-1"),
-        queryKeys.runs.events("run-1", 1000),
-        queryKeys.runs.graph("run-1", "LR"),
-        queryKeys.runs.graph("run-1", "TB"),
-      ]);
-    }
-  });
-
-  test("cancel requests invalidate the durable run summary", () => {
-    expect(queryKeysForRunEvent("run-1", "run.cancel.requested")).toEqual([
-      queryKeys.runs.detail("run-1"),
-    ]);
-  });
-
-  test("pair messages invalidate stage-scoped resources", () => {
-    expect(queryKeysForRunEvent("run-1", "agent.pair.user_message", "nap@1")).toEqual([
-      queryKeys.runs.stageEvents("run-1", "nap@1"),
-      queryKeys.runs.stageContextWindow("run-1", "nap@1"),
-    ]);
-    expect(queryKeysForRunEvent("run-1", "agent.pair.system_message", "nap@1")).toEqual([
-      queryKeys.runs.stageEvents("run-1", "nap@1"),
-      queryKeys.runs.stageContextWindow("run-1", "nap@1"),
-    ]);
-  });
-
-  test("todo events invalidate run state and run events", () => {
-    for (const event of ["todo.created", "todo.updated", "todo.deleted"]) {
-      expect(queryKeysForRunEvent("run-1", event)).toEqual([
-        queryKeys.runs.state("run-1"),
-        queryKeys.runs.events("run-1", 1000),
-      ]);
-    }
-  });
-
-  test("todo events with a stage id also invalidate that stage's events", () => {
-    expect(queryKeysForRunEvent("run-1", "todo.created", "code@1")).toEqual([
-      queryKeys.runs.state("run-1"),
-      queryKeys.runs.events("run-1", 1000),
-      queryKeys.runs.stageEvents("run-1", "code@1"),
-    ]);
-  });
-
-  test("every inference projection transition invalidates live run state", () => {
-    for (const event of [
-      "agent.llm.started",
-      "agent.error",
-    ]) {
-      expect(queryKeysForRunEvent("run-1", event, "code@1")).toEqual([
-        queryKeys.runs.detail("run-1"),
-        queryKeys.runs.state("run-1"),
-        queryKeys.runs.usage("run-1"),
-        queryKeys.runs.stageEvents("run-1", "code@1"),
-      ]);
-    }
-    for (const event of ["agent.llm.first_output", "agent.llm.retry"]) {
-      expect(queryKeysForRunEvent("run-1", event, "code@1")).toEqual([
-        queryKeys.runs.state("run-1"),
-        queryKeys.runs.stageEvents("run-1", "code@1"),
-      ]);
-    }
-    expect(
-      queryKeysForRunEvent("run-1", "agent.message", "code@1"),
-    ).toEqual([
-      queryKeys.runs.detail("run-1"),
-      queryKeys.runs.state("run-1"),
-      queryKeys.runs.usage("run-1"),
-      queryKeys.runs.stageEvents("run-1", "code@1"),
-      queryKeys.runs.stageContextWindow("run-1", "code@1"),
-    ]);
-    expect(queryKeysForRunEvent("run-1", "agent.session.ended")).toEqual([
-      queryKeys.runs.detail("run-1"),
-      queryKeys.runs.state("run-1"),
-      queryKeys.runs.usage("run-1"),
-    ]);
-  });
-
-  test("ACP timing events invalidate live summaries and stage events", () => {
-    for (const event of [
-      "agent.acp.started",
-      "agent.acp.completed",
-      "agent.acp.cancelled",
-      "agent.acp.timed_out",
-    ]) {
-      expect(queryKeysForRunEvent("run-1", event, "code@1")).toEqual([
-        queryKeys.runs.detail("run-1"),
-        queryKeys.runs.state("run-1"),
-        queryKeys.runs.usage("run-1"),
-        queryKeys.runs.stageEvents("run-1", "code@1"),
-      ]);
-    }
-  });
-
-  test("tool timing events invalidate live summaries and stage resources", () => {
-    for (const event of ["agent.tool.started", "agent.tool.completed"]) {
-      expect(queryKeysForRunEvent("run-1", event, "code@1")).toEqual([
-        queryKeys.runs.detail("run-1"),
-        queryKeys.runs.state("run-1"),
-        queryKeys.runs.usage("run-1"),
-        queryKeys.runs.stageEvents("run-1", "code@1"),
-        queryKeys.runs.stageContextWindow("run-1", "code@1"),
-      ]);
-    }
-  });
-
-  test("watchdog timeout refreshes the stage events for that stage", () => {
-    expect(
-      queryKeysForRunEvent("run-1", "watchdog.timeout", "code@1"),
-    ).toEqual([queryKeys.runs.stageEvents("run-1", "code@1")]);
-  });
-});
 
 describe("queryKeysForStreamItem", () => {
   const parallel = loadPetriFixture("parallel");
@@ -351,13 +161,15 @@ describe("subscribeToRunEvents", () => {
     await waitFor(() => created.length === 1);
     keys.length = 0;
 
-    source.emit({ event: "checkpoint.completed", run_id: "other-run" });
-    source.emit({ event: "checkpoint.completed", run_id: "run-coordinated" });
+    source.emit(makePlatformItem(1, { kind: "checkpoint" }, { run_id: "other-run" }));
+    source.emit(makePlatformItem(1, { kind: "checkpoint" }, { run_id: "run-coordinated" }));
 
     expect(created).toEqual(["/api/v1/attach"]);
     expect(keys).toEqual([
       ...queryKeys.runs.filesAllScopes("run-coordinated"),
       queryKeys.runs.commits("run-coordinated"),
+      queryKeys.runs.state("run-coordinated"),
+      queryKeys.runs.stream("run-coordinated"),
     ]);
 
     cleanup();
@@ -381,15 +193,25 @@ describe("subscribeToRunEvents", () => {
     await waitFor(() => source.onmessage !== null);
     keys.length = 0;
 
-    source.emit({ event: "run.failed", run_id: "run-terminal" });
+    source.emit(
+      makePlatformItem(
+        1,
+        { kind: "run.lifecycle", transition: "failed", status: { kind: "failed", reason: "error" } },
+        { run_id: "run-terminal" },
+      ),
+    );
     expect(source.closed).toBe(false);
     expect(keys).toContainEqual(queryKeys.runs.files("run-terminal"));
     expect(keys).toContainEqual(queryKeys.runs.usage("run-terminal"));
 
     keys.length = 0;
-    source.emit({ event: "run.archived", run_id: "run-terminal" });
+    source.emit(makePlatformItem(2, { kind: "run.archived" }, { run_id: "run-terminal" }));
     expect(source.closed).toBe(false);
-    expect(keys).toEqual([queryKeys.runs.detail("run-terminal")]);
+    expect(keys).toEqual([
+      queryKeys.runs.detail("run-terminal"),
+      queryKeys.runs.state("run-terminal"),
+      queryKeys.runs.stream("run-terminal"),
+    ]);
 
     cleanup();
     coordinator.close();
@@ -416,12 +238,14 @@ describe("subscribeToRunEvents", () => {
     expect(created).toEqual(["/api/v1/runs/run-refcount/attach"]);
 
     firstCleanup();
-    source.emit({ event: "checkpoint.completed" });
+    source.emit(makePlatformItem(1, { kind: "checkpoint" }, { run_id: "run-refcount" }));
 
     expect(source.closed).toBe(false);
     expect(keys).toEqual([
       ...queryKeys.runs.filesAllScopes("run-refcount"),
       queryKeys.runs.commits("run-refcount"),
+      queryKeys.runs.state("run-refcount"),
+      queryKeys.runs.stream("run-refcount"),
     ]);
 
     secondCleanup();
@@ -449,15 +273,21 @@ describe("subscribeToRunEvents", () => {
     }, {
       debounceMs: 0,
       coordinator,
-      onEvent: (payload) => {
-        if (payload.event) seen.push(payload.event);
+      onItem: (item) => {
+        seen.push(streamItemName(item));
       },
     });
 
-    source.emit({ id: "evt-1", event: "agent.steer.buffered", properties: {} });
+    source.emit(
+      makePlatformItem(1, { kind: "run.notice", code: "steer_refused" }, { run_id: "run-shared-payload" }),
+    );
 
-    expect(seen).toEqual(["agent.steer.buffered"]);
-    expect(keys).toEqual([queryKeys.runs.events("run-shared-payload", 1000)]);
+    expect(seen).toEqual(["run.notice"]);
+    expect(keys).toEqual([
+      queryKeys.runs.detail("run-shared-payload"),
+      queryKeys.runs.state("run-shared-payload"),
+      queryKeys.runs.stream("run-shared-payload"),
+    ]);
 
     firstCleanup();
     secondCleanup();
@@ -478,7 +308,19 @@ describe("subscribeToRunEvents", () => {
       { debounceMs: 0, coordinator },
     );
 
+    // A frame that is not a stream item invalidates nothing and keeps the
+    // source open.
     source.emit({ event: "run.failed" });
+    expect(source.closed).toBe(false);
+    expect(keys).toEqual([]);
+
+    source.emit(
+      makePlatformItem(
+        1,
+        { kind: "run.lifecycle", transition: "dead", status: { kind: "dead", reason: "lease_lost" } },
+        { run_id: "run-terminal" },
+      ),
+    );
 
     expect(source.closed).toBe(true);
     expect(keys).toContainEqual(queryKeys.runs.files("run-terminal"));
@@ -488,7 +330,7 @@ describe("subscribeToRunEvents", () => {
     coordinator.close();
   });
 
-  test("envelope with suffixed stage_id invalidates stageEvents(runId, stageId)", async () => {
+  test("a stage's step.finished on the run's own stream invalidates its stage keys", async () => {
     const source = new FakeEventSource();
     const keys: Key[] = [];
     const coordinator = createCoordinator(() => source);
@@ -503,43 +345,19 @@ describe("subscribeToRunEvents", () => {
     );
 
     await waitFor(() => source.onmessage !== null);
-    source.emit({
-      event: "stage.retrying",
-      run_id: "run-stage",
-      stage_id: "verify@2",
-      node_id: "verify",
-    });
-
-    expect(keys).toContainEqual(queryKeys.runs.stageEvents("run-stage", "verify@2"));
-    expect(keys).toContainEqual(queryKeys.runs.stages("run-stage"));
-    expect(keys).toContainEqual(queryKeys.runs.events("run-stage", 1000));
-    expect(keys).toContainEqual(queryKeys.runs.graph("run-stage", "LR"));
-    expect(keys).toContainEqual(queryKeys.runs.detail("run-stage"));
-    expect(keys).not.toContainEqual(queryKeys.runs.stageEvents("run-stage", "verify"));
-
-    cleanup();
-    coordinator.close();
-  });
-
-  test("falls back to node_id when an event has no stage_id", async () => {
-    const source = new FakeEventSource();
-    const keys: Key[] = [];
-    const coordinator = createCoordinator(() => source);
-    const cleanup = subscribeToRunEvents(
-      "run-stage-node",
-      (key) => {
-        keys.push(key);
-        return Promise.resolve();
-      },
-      () => source,
-      { debounceMs: 0, coordinator },
+    source.emit(
+      makePetriItem(
+        1,
+        { event: "step.finished", firing: 2 },
+        { stage: { name: "verify", visit: 2 }, run_id: "run-stage" },
+      ),
     );
 
-    await waitFor(() => source.onmessage !== null);
-    source.emit({ event: "stage.started", run_id: "run-stage-node", node_id: "verify" });
-
-    expect(keys).toContainEqual(queryKeys.runs.stageEvents("run-stage-node", "verify"));
-    expect(keys).toContainEqual(queryKeys.runs.stages("run-stage-node"));
+    expect(keys).toContainEqual(queryKeys.runs.stageEvents("run-stage", "verify@2"));
+    expect(keys).toContainEqual(queryKeys.runs.stageContextWindow("run-stage", "verify@2"));
+    expect(keys).toContainEqual(queryKeys.runs.stages("run-stage"));
+    expect(keys).toContainEqual(queryKeys.runs.stream("run-stage"));
+    expect(keys).not.toContainEqual(queryKeys.runs.stageEvents("run-stage", "verify@1"));
 
     cleanup();
     coordinator.close();
@@ -613,27 +431,3 @@ async function waitFor(condition: () => boolean, timeoutMs = 200) {
   }
   throw new Error("condition did not become true before timeout");
 }
-
-describe("agent session events", () => {
-  test("refresh the run state the stage sidebar reads its agent facts from", () => {
-    for (const event of [
-      "agent.route.failover",
-      "agent.route.failover.stopped",
-      "agent.mcp.server.ready",
-      "agent.mcp.server.failed",
-      "agent.mcp.server.disconnected",
-      "agent.skills.discovered",
-      "agent.skill.activated",
-      "agent.sub.spawned",
-      "agent.sub.completed",
-      "agent.sub.failed",
-      "agent.compaction.completed",
-    ]) {
-      expect(queryKeysForRunEvent("run-1", event, "code@1")).toEqual([
-        queryKeys.runs.state("run-1"),
-        queryKeys.runs.events("run-1", 1000),
-        queryKeys.runs.stageEvents("run-1", "code@1"),
-      ]);
-    }
-  });
-});

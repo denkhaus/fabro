@@ -54,7 +54,6 @@ models/agent-tools-available-props.ts
 models/aggregate-usage-totals.ts
 models/aggregate-usage.ts
 models/api-question.ts
-models/append-event-response.ts
 models/approval-mode.ts
 models/artifact-batch-upload-entry.ts
 models/artifact-batch-upload-manifest.ts
@@ -153,8 +152,6 @@ models/environment-settings.ts
 models/environment.ts
 models/error-response-entry.ts
 models/error-response.ts
-models/event-envelope.ts
-models/event-seq.ts
 models/exec-output-tail.ts
 models/execute-query-request.ts
 models/execute-query-response-rows-inner-inner.ts
@@ -214,7 +211,6 @@ models/interview-option.ts
 models/interview-provider-settings.ts
 models/interview-question-record.ts
 models/link-run-pull-request-request.ts
-models/list-run-events200-response.ts
 models/llm-output-kind.ts
 models/llm-retry-classification-after.ts
 models/llm-retry-classification-never.ts
@@ -263,7 +259,6 @@ models/object-store-local-settings.ts
 models/object-store-s3-settings.ts
 models/object-store-settings.ts
 models/paginated-api-question-list.ts
-models/paginated-event-list.ts
 models/paginated-history-entry-list.ts
 models/paginated-model-list.ts
 models/paginated-run-commit-list.ts
@@ -389,10 +384,6 @@ models/run-control-action.ts
 models/run-diff.ts
 models/run-environment-settings.ts
 models/run-error.ts
-models/run-event-detail-response-content.ts
-models/run-event-detail-response-event.ts
-models/run-event-detail-response.ts
-models/run-event.ts
 models/run-execution-settings.ts
 models/run-failure.ts
 models/run-files-meta.ts

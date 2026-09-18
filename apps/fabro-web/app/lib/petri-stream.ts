@@ -47,17 +47,7 @@ export function isPlatformItem(item: RunStreamItem): boolean {
   return item.kind === "platform";
 }
 
-/**
- * Whether the projection is of a run that executes on Petri: every run
- * does, so this is whether the projection carries a spec at all.
- */
-export function isPetriRun(
-  projection: RunProjection | null | undefined,
-): boolean {
-  return isRecord(projection?.spec?.admission);
-}
-
-/** Whether an SSE payload is a run stream item rather than a legacy event. */
+/** Whether an SSE frame, parsed, is a run stream item. */
 export function isStreamItemPayload(
   payload: unknown,
 ): payload is RunStreamItem {
@@ -329,8 +319,7 @@ export function isTerminalLifecycleItem(item: RunStreamItem): boolean {
 
 /**
  * The run's phases before its stages own the timeline, from the platform
- * `run.lifecycle` records: the same slices `deriveRunPhases` cuts from the
- * legacy lifecycle events.
+ * `run.lifecycle` records.
  */
 export function deriveRunPhasesFromStream(
   stream: PetriStream,
@@ -559,7 +548,7 @@ export function reducerTranscriptFromProjection(
 }
 
 // The command step's own bookkeeping (`command.output`, `failure_class`)
-// joins the engine keys the legacy Context tab hides.
+// joins the engine keys the Context tab hides.
 const ENGINE_CONTEXT_KEYS = new Set([
   "last_stage",
   "last_response",

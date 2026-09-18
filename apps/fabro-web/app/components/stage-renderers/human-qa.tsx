@@ -1,4 +1,3 @@
-import { useMemo } from "react";
 import {
   ArrowPathIcon,
   ChatBubbleLeftEllipsisIcon,
@@ -7,7 +6,6 @@ import {
   ExclamationTriangleIcon,
   NoSymbolIcon,
 } from "@heroicons/react/20/solid";
-import type { EventEnvelope } from "@qltysh/fabro-api-client";
 
 import type { Stage } from "../stage-sidebar";
 import {
@@ -19,11 +17,10 @@ import { formatAbsoluteTs, formatDurationMs } from "../../lib/format";
 import { ACTIVE_STAGE_STATES } from "../../lib/stage-sidebar";
 import { Markdown } from "./primitives";
 import { StageMetaBar } from "./meta-bar";
-import {
-  parseHumanInterviewPairs,
-  type HumanInterviewPair,
-  type HumanResolution,
-  type InterviewOption,
+import type {
+  HumanInterviewPair,
+  HumanResolution,
+  InterviewOption,
 } from "./helpers";
 
 function questionTypeLabel(type: string): string {
@@ -224,18 +221,12 @@ function QuestionBlock({
 
 export function HumanQA({
   stage,
-  events,
-  pairs: givenPairs,
+  pairs,
 }: {
   stage: Stage;
-  events: EventEnvelope[];
-  /** The pairs when the caller derived them (a Petri run's stream). */
-  pairs?: HumanInterviewPair[];
+  /** The stage's questions and their answers (`parsePetriInterviewPairs`). */
+  pairs: HumanInterviewPair[];
 }) {
-  const pairs = useMemo(
-    () => givenPairs ?? parseHumanInterviewPairs(events),
-    [givenPairs, events],
-  );
   const stageActive = ACTIVE_STAGE_STATES.has(stage.status);
   const pendingCount = pairs.filter((p) => p.resolution == null).length;
 

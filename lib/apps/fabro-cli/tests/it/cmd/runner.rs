@@ -12,11 +12,10 @@ use std::process::{Child, ExitStatus, Output, Stdio};
 use std::time::{Duration, Instant};
 
 use fabro_client::ServerTarget;
-use fabro_store::EventEnvelope;
 use fabro_test::{
     assert_reqwest_status, expect_reqwest_json, fabro_json_snapshot, fabro_snapshot, test_context,
 };
-use fabro_types::{EventBody, FailureReason, RunEvent, StageId};
+use fabro_types::{FailureReason, RunStreamItem, StageId};
 use httpmock::MockServer;
 
 use super::support::{
@@ -36,12 +35,24 @@ fn auth_context() -> fabro_test::TestContext {
     context
 }
 
-fn stored_worker_events(run_dir: &std::path::Path) -> Vec<RunEvent> {
-    run_events(run_dir).iter().map(run_event).collect()
+fn stored_worker_events(run_dir: &std::path::Path) -> Vec<RunStreamItem> {
+    run_events(run_dir)
 }
 
-fn run_event(event: &EventEnvelope) -> RunEvent {
-    event.event.clone()
+/// The platform record of `item`, when it carries one.
+fn platform_record(item: &RunStreamItem) -> Option<&serde_json::Value> {
+    item.item.get("record")
+}
+
+/// Whether `item` is the `run.lifecycle` record that moved the run to
+/// `status` (`succeeded`, `failed`, ...) for `reason`.
+fn is_lifecycle(item: &RunStreamItem, status: &str, reason: &str) -> bool {
+    let Some(record) = platform_record(item) else {
+        return false;
+    };
+    record["kind"] == "run.lifecycle"
+        && record["status"]["kind"] == status
+        && record["status"]["reason"] == reason
 }
 
 fn assert_worker_succeeded(run_dir: &std::path::Path, stdout: &[u8]) {
@@ -50,10 +61,11 @@ fn assert_worker_succeeded(run_dir: &std::path::Path, stdout: &[u8]) {
         "worker should not emit event transport on stdout"
     );
     let events = stored_worker_events(run_dir);
-    assert!(events.iter().any(|event| matches!(
-        &event.body,
-        EventBody::RunCompleted(props) if props.status == "succeeded"
-    )));
+    assert!(
+        events
+            .iter()
+            .any(|item| is_lifecycle(item, "succeeded", "completed"))
+    );
 }
 
 fn spawn_worker_process(
@@ -777,11 +789,13 @@ fn detached_run_answers_pending_question_without_interview_scratch_files() {
         .success();
 
     let events = stored_worker_events(&run_dir);
-    assert!(events.iter().any(|event| matches!(
-        &event.body,
-        EventBody::InterviewCompleted(props)
-            if props.question_id == question_id && props.answer == "A"
-    )));
+    assert!(events.iter().any(|item| {
+        platform_record(item).is_some_and(|record| {
+            record["kind"] == "interview.answered"
+                && record["question"] == question_id
+                && record["answer"] == "A"
+        })
+    }));
 }
 
 #[test]
@@ -836,10 +850,11 @@ fn detached_run_cancel_reaches_worker_over_control_websocket() {
 
     wait_for_status(&run_dir, &["failed"]);
     let events = stored_worker_events(&run_dir);
-    assert!(events.iter().any(|event| matches!(
-        &event.body,
-        EventBody::RunFailed(props) if props.failure.reason == FailureReason::Cancelled
-    )));
+    assert!(
+        events
+            .iter()
+            .any(|item| is_lifecycle(item, "failed", "cancelled"))
+    );
 }
 
 #[cfg(unix)]

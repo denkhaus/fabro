@@ -16,7 +16,6 @@ import {
 import { Tooltip } from "./ui";
 import { formatAbsoluteTs } from "../lib/format";
 import {
-  debugCategory,
   debugCategoryColor,
   debugCategoryLabel,
   debugCategoryTone,
@@ -28,20 +27,19 @@ import { FloatingTooltip } from "./floating-tooltip";
 import { useWindowEvent } from "../hooks/effects";
 
 /**
- * What a debug row needs of an event: a legacy `EventEnvelope`, or a Petri
- * run stream item as `debugRowsFromStream` shapes it (with its own
- * category, since Petri's `<subject>.<verb>` names map to none of the
- * legacy prefixes).
+ * What a debug row needs of a run stream item, as `debugRowsFromStream`
+ * shapes it: the `stream_seq`, the item's name, when it was recorded, and
+ * its category (`petri` or `platform`).
  */
 export interface DebugRowLike {
   seq: number;
   event?: string | null;
   ts: string;
-  category?: DebugCategory;
+  category: DebugCategory;
 }
 
 export function debugRowCategory(row: DebugRowLike): DebugCategory {
-  return row.category ?? debugCategory(row.event);
+  return row.category;
 }
 
 export function DebugEventRow({

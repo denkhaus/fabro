@@ -22,19 +22,15 @@ import { DUMMY_BASE_URL, assertParamExists, setApiKeyToObject, setBasicAuthToObj
 // @ts-ignore
 import { BASE_PATH, COLLECTION_FORMATS, type RequestArgs, BaseAPI, RequiredError, operationServerMap } from '../base';
 // @ts-ignore
-import type { AppendEventResponse } from '../models';
-// @ts-ignore
 import type { ArtifactListResponse } from '../models';
 // @ts-ignore
 import type { CommandLogResponse } from '../models';
 // @ts-ignore
 import type { ErrorResponse } from '../models';
 // @ts-ignore
-import type { ListRunEvents200Response } from '../models';
-// @ts-ignore
-import type { PaginatedEventList } from '../models';
-// @ts-ignore
 import type { PaginatedRunStageList } from '../models';
+// @ts-ignore
+import type { PaginatedRunStreamList } from '../models';
 // @ts-ignore
 import type { PetriAppendRequest } from '../models';
 // @ts-ignore
@@ -55,10 +51,6 @@ import type { PetriReleaseRequest } from '../models';
 import type { RunArtifactListResponse } from '../models';
 // @ts-ignore
 import type { RunCheckpoint } from '../models';
-// @ts-ignore
-import type { RunEvent } from '../models';
-// @ts-ignore
-import type { RunEventDetailResponse } from '../models';
 // @ts-ignore
 import type { RunProjection } from '../models';
 // @ts-ignore
@@ -169,60 +161,14 @@ export const RunInternalsApiAxiosParamCreator = function (configuration?: Config
             };
         },
         /**
-         * Appends a validated event to the run event log. Intended for trusted internal callers.
-         * @summary Append Run Event
-         * @param {string} id Unique run identifier (ULID).
-         * @param {RunEvent} runEvent
-         * @param {*} [options] Override http request option.
-         * @throws {RequiredError}
-         */
-        appendRunEvent: async (id: string, runEvent: RunEvent, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
-            // verify required parameter 'id' is not null or undefined
-            assertParamExists('appendRunEvent', 'id', id)
-            // verify required parameter 'runEvent' is not null or undefined
-            assertParamExists('appendRunEvent', 'runEvent', runEvent)
-            const localVarPath = `/api/v1/runs/{id}/events`
-                .replace(`{${"id"}}`, encodeURIComponent(String(id)));
-            // use dummy base URL string because the URL constructor only accepts absolute URLs.
-            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
-            let baseOptions;
-            if (configuration) {
-                baseOptions = configuration.baseOptions;
-            }
-
-            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
-            const localVarHeaderParameter = {} as any;
-            const localVarQueryParameter = {} as any;
-
-            // authentication SessionCookie required
-
-            // authentication BearerAuth required
-            // http bearer authentication required
-            await setBearerAuthToObject(localVarHeaderParameter, configuration)
-
-            localVarHeaderParameter['Content-Type'] = 'application/json';
-            localVarHeaderParameter['Accept'] = 'application/json';
-
-            setSearchParams(localVarUrlObj, localVarQueryParameter);
-            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
-            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
-            localVarRequestOptions.data = serializeDataIfNeeded(runEvent, localVarRequestOptions, configuration)
-
-            return {
-                url: toPathString(localVarUrlObj),
-                options: localVarRequestOptions,
-            };
-        },
-        /**
-         * Opens an ordered server-sent event stream, replaying persisted items and continuing with live updates while the run remains active. Each `data:` frame is one JSON object in the run engine\'s envelope.  For a legacy run the frames are `EventEnvelope`s and the stream starts at `since_seq` (inclusive; the next unseen event when omitted). It ends after `run.completed` or `run.failed`.  For a Petri run the frames are `RunStreamItem`s and the stream starts after `after` (the last `stream_seq` the client saw; `0` replays the whole run; the next unseen item when omitted). It ends once the run is no longer active and every committed item has been sent. A reconnecting client passes its last `stream_seq` as `after` and deduplicates by `id`.
+         * Opens an ordered server-sent event stream of the run\'s stream, replaying committed items and continuing with live ones while the run remains active. Each `data:` frame is one `RunStreamItem`. The stream starts after `after` (the last `stream_seq` the client saw; `0` replays the whole run; the next unseen item when omitted). It ends once the run is no longer active and every committed item has been sent. A reconnecting client passes its last `stream_seq` as `after` and deduplicates by `id`.
          * @summary Attach Run Events
          * @param {string} id Unique run identifier (ULID).
-         * @param {number} [sinceSeq] First event sequence number to include.
          * @param {number} [after] Run stream cursor for a Petri run: the last &#x60;stream_seq&#x60; the client saw, exclusive. &#x60;0&#x60; starts at the first item.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        attachRunEvents: async (id: string, sinceSeq?: number, after?: number, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+        attachRunEvents: async (id: string, after?: number, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
             // verify required parameter 'id' is not null or undefined
             assertParamExists('attachRunEvents', 'id', id)
             const localVarPath = `/api/v1/runs/{id}/attach`
@@ -243,10 +189,6 @@ export const RunInternalsApiAxiosParamCreator = function (configuration?: Config
             // authentication BearerAuth required
             // http bearer authentication required
             await setBearerAuthToObject(localVarHeaderParameter, configuration)
-
-            if (sinceSeq !== undefined) {
-                localVarQueryParameter['since_seq'] = sinceSeq;
-            }
 
             if (after !== undefined) {
                 localVarQueryParameter['after'] = after;
@@ -293,55 +235,6 @@ export const RunInternalsApiAxiosParamCreator = function (configuration?: Config
             await setBearerAuthToObject(localVarHeaderParameter, configuration)
 
             localVarHeaderParameter['Accept'] = 'application/zip,application/json';
-
-            setSearchParams(localVarUrlObj, localVarQueryParameter);
-            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
-            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
-
-            return {
-                url: toPathString(localVarUrlObj),
-                options: localVarRequestOptions,
-            };
-        },
-        /**
-         * Returns one stored run event by source event sequence with content fields separated and truncated.
-         * @summary Get Run Event Detail
-         * @param {string} id Unique run identifier (ULID).
-         * @param {number} seq
-         * @param {number} [maxContentLength]
-         * @param {*} [options] Override http request option.
-         * @throws {RequiredError}
-         */
-        getRunEventDetail: async (id: string, seq: number, maxContentLength?: number, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
-            // verify required parameter 'id' is not null or undefined
-            assertParamExists('getRunEventDetail', 'id', id)
-            // verify required parameter 'seq' is not null or undefined
-            assertParamExists('getRunEventDetail', 'seq', seq)
-            const localVarPath = `/api/v1/runs/{id}/events/{seq}`
-                .replace(`{${"id"}}`, encodeURIComponent(String(id)))
-                .replace(`{${"seq"}}`, encodeURIComponent(String(seq)));
-            // use dummy base URL string because the URL constructor only accepts absolute URLs.
-            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
-            let baseOptions;
-            if (configuration) {
-                baseOptions = configuration.baseOptions;
-            }
-
-            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
-            const localVarHeaderParameter = {} as any;
-            const localVarQueryParameter = {} as any;
-
-            // authentication SessionCookie required
-
-            // authentication BearerAuth required
-            // http bearer authentication required
-            await setBearerAuthToObject(localVarHeaderParameter, configuration)
-
-            if (maxContentLength !== undefined) {
-                localVarQueryParameter['max_content_length'] = maxContentLength;
-            }
-
-            localVarHeaderParameter['Accept'] = 'application/json';
 
             setSearchParams(localVarUrlObj, localVarQueryParameter);
             let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
@@ -718,18 +611,15 @@ export const RunInternalsApiAxiosParamCreator = function (configuration?: Config
             };
         },
         /**
-         * Returns a paginated JSON list of the run\'s events. The shape depends on the engine the run was created for (`RunSpec.engine`).  For a legacy run (`engine.kind = legacy`): stored run events in the legacy envelope (`PaginatedEventList`). Ascending order uses `since_seq` as an inclusive cursor. Descending order uses `before_seq` as an exclusive cursor and starts at the newest event when `before_seq` is omitted.  For a Petri run (`engine.kind = petri`): the run stream (`PaginatedRunStreamList`), one ordered delivery of Petri\'s own `RunEvent`s and Fabro\'s platform records in the `RunStreamItem` envelope, in `stream_seq` order. The cursor is `after`: the last `stream_seq` the client saw, exclusive; the first page is `after=0`. `since_seq`, `before_seq` and `order` are not accepted for a Petri run. A client that reconnects resumes from its last `stream_seq` and deduplicates by each item\'s `id`; every item is delivered once, in order, with no gap.
+         * Returns one page of the run\'s stream (`PaginatedRunStreamList`): one ordered delivery of Petri\'s own `RunEvent`s and Fabro\'s platform records in the `RunStreamItem` envelope, in `stream_seq` order. The cursor is `after`: the last `stream_seq` the client saw, exclusive; the first page is `after=0`. A client that reconnects resumes from its last `stream_seq` and deduplicates by each item\'s `id`; every item is delivered once, in order, with no gap.
          * @summary List Run Events
          * @param {string} id Unique run identifier (ULID).
-         * @param {number} [sinceSeq] First event sequence number to include.
          * @param {number} [limit] Maximum number of events to return.
-         * @param {number} [beforeSeq] Exclusive upper event sequence cursor for descending order. Omit on the first descending request to start from the newest event.
-         * @param {ListRunEventsOrderEnum} [order] Event sequence order. &#x60;since_seq&#x60; is valid only with &#x60;asc&#x60;; &#x60;before_seq&#x60; is valid only with &#x60;desc&#x60;.
          * @param {number} [after] Run stream cursor for a Petri run: the last &#x60;stream_seq&#x60; the client saw, exclusive. &#x60;0&#x60; starts at the first item.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        listRunEvents: async (id: string, sinceSeq?: number, limit?: number, beforeSeq?: number, order?: ListRunEventsOrderEnum, after?: number, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+        listRunEvents: async (id: string, limit?: number, after?: number, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
             // verify required parameter 'id' is not null or undefined
             assertParamExists('listRunEvents', 'id', id)
             const localVarPath = `/api/v1/runs/{id}/events`
@@ -751,20 +641,8 @@ export const RunInternalsApiAxiosParamCreator = function (configuration?: Config
             // http bearer authentication required
             await setBearerAuthToObject(localVarHeaderParameter, configuration)
 
-            if (sinceSeq !== undefined) {
-                localVarQueryParameter['since_seq'] = sinceSeq;
-            }
-
             if (limit !== undefined) {
                 localVarQueryParameter['limit'] = limit;
-            }
-
-            if (beforeSeq !== undefined) {
-                localVarQueryParameter['before_seq'] = beforeSeq;
-            }
-
-            if (order !== undefined) {
-                localVarQueryParameter['order'] = order;
             }
 
             if (after !== undefined) {
@@ -864,60 +742,6 @@ export const RunInternalsApiAxiosParamCreator = function (configuration?: Config
             // authentication BearerAuth required
             // http bearer authentication required
             await setBearerAuthToObject(localVarHeaderParameter, configuration)
-
-            localVarHeaderParameter['Accept'] = 'application/json';
-
-            setSearchParams(localVarUrlObj, localVarQueryParameter);
-            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
-            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
-
-            return {
-                url: toPathString(localVarUrlObj),
-                options: localVarRequestOptions,
-            };
-        },
-        /**
-         * Returns a paginated JSON list of stored run events scoped to a single stage visit.
-         * @summary List Stage Events
-         * @param {string} id Unique run identifier (ULID).
-         * @param {string} stageId Identifier of a stage within a run\&#39;s workflow graph, serialized as &#x60;node_id@visit&#x60;.
-         * @param {number} [sinceSeq] First event sequence number to include.
-         * @param {number} [limit] Maximum number of events to return.
-         * @param {*} [options] Override http request option.
-         * @throws {RequiredError}
-         */
-        listStageEvents: async (id: string, stageId: string, sinceSeq?: number, limit?: number, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
-            // verify required parameter 'id' is not null or undefined
-            assertParamExists('listStageEvents', 'id', id)
-            // verify required parameter 'stageId' is not null or undefined
-            assertParamExists('listStageEvents', 'stageId', stageId)
-            const localVarPath = `/api/v1/runs/{id}/stages/{stageId}/events`
-                .replace(`{${"id"}}`, encodeURIComponent(String(id)))
-                .replace(`{${"stageId"}}`, encodeURIComponent(String(stageId)));
-            // use dummy base URL string because the URL constructor only accepts absolute URLs.
-            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
-            let baseOptions;
-            if (configuration) {
-                baseOptions = configuration.baseOptions;
-            }
-
-            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
-            const localVarHeaderParameter = {} as any;
-            const localVarQueryParameter = {} as any;
-
-            // authentication SessionCookie required
-
-            // authentication BearerAuth required
-            // http bearer authentication required
-            await setBearerAuthToObject(localVarHeaderParameter, configuration)
-
-            if (sinceSeq !== undefined) {
-                localVarQueryParameter['since_seq'] = sinceSeq;
-            }
-
-            if (limit !== undefined) {
-                localVarQueryParameter['limit'] = limit;
-            }
 
             localVarHeaderParameter['Accept'] = 'application/json';
 
@@ -1384,30 +1208,15 @@ export const RunInternalsApiFp = function(configuration?: Configuration) {
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
-         * Appends a validated event to the run event log. Intended for trusted internal callers.
-         * @summary Append Run Event
-         * @param {string} id Unique run identifier (ULID).
-         * @param {RunEvent} runEvent
-         * @param {*} [options] Override http request option.
-         * @throws {RequiredError}
-         */
-        async appendRunEvent(id: string, runEvent: RunEvent, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<AppendEventResponse>> {
-            const localVarAxiosArgs = await localVarAxiosParamCreator.appendRunEvent(id, runEvent, options);
-            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
-            const localVarOperationServerBasePath = operationServerMap['RunInternalsApi.appendRunEvent']?.[localVarOperationServerIndex]?.url;
-            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
-        },
-        /**
-         * Opens an ordered server-sent event stream, replaying persisted items and continuing with live updates while the run remains active. Each `data:` frame is one JSON object in the run engine\'s envelope.  For a legacy run the frames are `EventEnvelope`s and the stream starts at `since_seq` (inclusive; the next unseen event when omitted). It ends after `run.completed` or `run.failed`.  For a Petri run the frames are `RunStreamItem`s and the stream starts after `after` (the last `stream_seq` the client saw; `0` replays the whole run; the next unseen item when omitted). It ends once the run is no longer active and every committed item has been sent. A reconnecting client passes its last `stream_seq` as `after` and deduplicates by `id`.
+         * Opens an ordered server-sent event stream of the run\'s stream, replaying committed items and continuing with live ones while the run remains active. Each `data:` frame is one `RunStreamItem`. The stream starts after `after` (the last `stream_seq` the client saw; `0` replays the whole run; the next unseen item when omitted). It ends once the run is no longer active and every committed item has been sent. A reconnecting client passes its last `stream_seq` as `after` and deduplicates by `id`.
          * @summary Attach Run Events
          * @param {string} id Unique run identifier (ULID).
-         * @param {number} [sinceSeq] First event sequence number to include.
          * @param {number} [after] Run stream cursor for a Petri run: the last &#x60;stream_seq&#x60; the client saw, exclusive. &#x60;0&#x60; starts at the first item.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        async attachRunEvents(id: string, sinceSeq?: number, after?: number, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<string>> {
-            const localVarAxiosArgs = await localVarAxiosParamCreator.attachRunEvents(id, sinceSeq, after, options);
+        async attachRunEvents(id: string, after?: number, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<string>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.attachRunEvents(id, after, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
             const localVarOperationServerBasePath = operationServerMap['RunInternalsApi.attachRunEvents']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
@@ -1423,21 +1232,6 @@ export const RunInternalsApiFp = function(configuration?: Configuration) {
             const localVarAxiosArgs = await localVarAxiosParamCreator.downloadRunArtifacts(id, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
             const localVarOperationServerBasePath = operationServerMap['RunInternalsApi.downloadRunArtifacts']?.[localVarOperationServerIndex]?.url;
-            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
-        },
-        /**
-         * Returns one stored run event by source event sequence with content fields separated and truncated.
-         * @summary Get Run Event Detail
-         * @param {string} id Unique run identifier (ULID).
-         * @param {number} seq
-         * @param {number} [maxContentLength]
-         * @param {*} [options] Override http request option.
-         * @throws {RequiredError}
-         */
-        async getRunEventDetail(id: string, seq: number, maxContentLength?: number, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<RunEventDetailResponse>> {
-            const localVarAxiosArgs = await localVarAxiosParamCreator.getRunEventDetail(id, seq, maxContentLength, options);
-            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
-            const localVarOperationServerBasePath = operationServerMap['RunInternalsApi.getRunEventDetail']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
@@ -1554,19 +1348,16 @@ export const RunInternalsApiFp = function(configuration?: Configuration) {
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
-         * Returns a paginated JSON list of the run\'s events. The shape depends on the engine the run was created for (`RunSpec.engine`).  For a legacy run (`engine.kind = legacy`): stored run events in the legacy envelope (`PaginatedEventList`). Ascending order uses `since_seq` as an inclusive cursor. Descending order uses `before_seq` as an exclusive cursor and starts at the newest event when `before_seq` is omitted.  For a Petri run (`engine.kind = petri`): the run stream (`PaginatedRunStreamList`), one ordered delivery of Petri\'s own `RunEvent`s and Fabro\'s platform records in the `RunStreamItem` envelope, in `stream_seq` order. The cursor is `after`: the last `stream_seq` the client saw, exclusive; the first page is `after=0`. `since_seq`, `before_seq` and `order` are not accepted for a Petri run. A client that reconnects resumes from its last `stream_seq` and deduplicates by each item\'s `id`; every item is delivered once, in order, with no gap.
+         * Returns one page of the run\'s stream (`PaginatedRunStreamList`): one ordered delivery of Petri\'s own `RunEvent`s and Fabro\'s platform records in the `RunStreamItem` envelope, in `stream_seq` order. The cursor is `after`: the last `stream_seq` the client saw, exclusive; the first page is `after=0`. A client that reconnects resumes from its last `stream_seq` and deduplicates by each item\'s `id`; every item is delivered once, in order, with no gap.
          * @summary List Run Events
          * @param {string} id Unique run identifier (ULID).
-         * @param {number} [sinceSeq] First event sequence number to include.
          * @param {number} [limit] Maximum number of events to return.
-         * @param {number} [beforeSeq] Exclusive upper event sequence cursor for descending order. Omit on the first descending request to start from the newest event.
-         * @param {ListRunEventsOrderEnum} [order] Event sequence order. &#x60;since_seq&#x60; is valid only with &#x60;asc&#x60;; &#x60;before_seq&#x60; is valid only with &#x60;desc&#x60;.
          * @param {number} [after] Run stream cursor for a Petri run: the last &#x60;stream_seq&#x60; the client saw, exclusive. &#x60;0&#x60; starts at the first item.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        async listRunEvents(id: string, sinceSeq?: number, limit?: number, beforeSeq?: number, order?: ListRunEventsOrderEnum, after?: number, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<ListRunEvents200Response>> {
-            const localVarAxiosArgs = await localVarAxiosParamCreator.listRunEvents(id, sinceSeq, limit, beforeSeq, order, after, options);
+        async listRunEvents(id: string, limit?: number, after?: number, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<PaginatedRunStreamList>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.listRunEvents(id, limit, after, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
             const localVarOperationServerBasePath = operationServerMap['RunInternalsApi.listRunEvents']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
@@ -1598,22 +1389,6 @@ export const RunInternalsApiFp = function(configuration?: Configuration) {
             const localVarAxiosArgs = await localVarAxiosParamCreator.listStageArtifacts(id, stageId, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
             const localVarOperationServerBasePath = operationServerMap['RunInternalsApi.listStageArtifacts']?.[localVarOperationServerIndex]?.url;
-            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
-        },
-        /**
-         * Returns a paginated JSON list of stored run events scoped to a single stage visit.
-         * @summary List Stage Events
-         * @param {string} id Unique run identifier (ULID).
-         * @param {string} stageId Identifier of a stage within a run\&#39;s workflow graph, serialized as &#x60;node_id@visit&#x60;.
-         * @param {number} [sinceSeq] First event sequence number to include.
-         * @param {number} [limit] Maximum number of events to return.
-         * @param {*} [options] Override http request option.
-         * @throws {RequiredError}
-         */
-        async listStageEvents(id: string, stageId: string, sinceSeq?: number, limit?: number, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<PaginatedEventList>> {
-            const localVarAxiosArgs = await localVarAxiosParamCreator.listStageEvents(id, stageId, sinceSeq, limit, options);
-            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
-            const localVarOperationServerBasePath = operationServerMap['RunInternalsApi.listStageEvents']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
@@ -1777,27 +1552,15 @@ export const RunInternalsApiFactory = function (configuration?: Configuration, b
             return localVarFp.appendPetriRecords(id, log, petriAppendRequest, options).then((request) => request(axios, basePath));
         },
         /**
-         * Appends a validated event to the run event log. Intended for trusted internal callers.
-         * @summary Append Run Event
-         * @param {string} id Unique run identifier (ULID).
-         * @param {RunEvent} runEvent
-         * @param {*} [options] Override http request option.
-         * @throws {RequiredError}
-         */
-        appendRunEvent(id: string, runEvent: RunEvent, options?: RawAxiosRequestConfig): AxiosPromise<AppendEventResponse> {
-            return localVarFp.appendRunEvent(id, runEvent, options).then((request) => request(axios, basePath));
-        },
-        /**
-         * Opens an ordered server-sent event stream, replaying persisted items and continuing with live updates while the run remains active. Each `data:` frame is one JSON object in the run engine\'s envelope.  For a legacy run the frames are `EventEnvelope`s and the stream starts at `since_seq` (inclusive; the next unseen event when omitted). It ends after `run.completed` or `run.failed`.  For a Petri run the frames are `RunStreamItem`s and the stream starts after `after` (the last `stream_seq` the client saw; `0` replays the whole run; the next unseen item when omitted). It ends once the run is no longer active and every committed item has been sent. A reconnecting client passes its last `stream_seq` as `after` and deduplicates by `id`.
+         * Opens an ordered server-sent event stream of the run\'s stream, replaying committed items and continuing with live ones while the run remains active. Each `data:` frame is one `RunStreamItem`. The stream starts after `after` (the last `stream_seq` the client saw; `0` replays the whole run; the next unseen item when omitted). It ends once the run is no longer active and every committed item has been sent. A reconnecting client passes its last `stream_seq` as `after` and deduplicates by `id`.
          * @summary Attach Run Events
          * @param {string} id Unique run identifier (ULID).
-         * @param {number} [sinceSeq] First event sequence number to include.
          * @param {number} [after] Run stream cursor for a Petri run: the last &#x60;stream_seq&#x60; the client saw, exclusive. &#x60;0&#x60; starts at the first item.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        attachRunEvents(id: string, sinceSeq?: number, after?: number, options?: RawAxiosRequestConfig): AxiosPromise<string> {
-            return localVarFp.attachRunEvents(id, sinceSeq, after, options).then((request) => request(axios, basePath));
+        attachRunEvents(id: string, after?: number, options?: RawAxiosRequestConfig): AxiosPromise<string> {
+            return localVarFp.attachRunEvents(id, after, options).then((request) => request(axios, basePath));
         },
         /**
          * Streams a ZIP archive with the latest captured version of each artifact path. Stage order, retry number, and then stage ID determine the latest version, matching the artifacts page. Captures from the graph\'s boundary nodes are excluded, identified by their `start` and `exit` handler type rather than by node name.  The archive streams, so the response status is sent before the first artifact is read. A failure after that point aborts the transfer rather than returning `500`. The ZIP central directory is written last, so a truncated download does not open as a valid archive.
@@ -1808,18 +1571,6 @@ export const RunInternalsApiFactory = function (configuration?: Configuration, b
          */
         downloadRunArtifacts(id: string, options?: RawAxiosRequestConfig): AxiosPromise<File> {
             return localVarFp.downloadRunArtifacts(id, options).then((request) => request(axios, basePath));
-        },
-        /**
-         * Returns one stored run event by source event sequence with content fields separated and truncated.
-         * @summary Get Run Event Detail
-         * @param {string} id Unique run identifier (ULID).
-         * @param {number} seq
-         * @param {number} [maxContentLength]
-         * @param {*} [options] Override http request option.
-         * @throws {RequiredError}
-         */
-        getRunEventDetail(id: string, seq: number, maxContentLength?: number, options?: RawAxiosRequestConfig): AxiosPromise<RunEventDetailResponse> {
-            return localVarFp.getRunEventDetail(id, seq, maxContentLength, options).then((request) => request(axios, basePath));
         },
         /**
          * Returns the worker tracing log for a run when it is available.
@@ -1911,19 +1662,16 @@ export const RunInternalsApiFactory = function (configuration?: Configuration, b
             return localVarFp.listRunArtifacts(id, options).then((request) => request(axios, basePath));
         },
         /**
-         * Returns a paginated JSON list of the run\'s events. The shape depends on the engine the run was created for (`RunSpec.engine`).  For a legacy run (`engine.kind = legacy`): stored run events in the legacy envelope (`PaginatedEventList`). Ascending order uses `since_seq` as an inclusive cursor. Descending order uses `before_seq` as an exclusive cursor and starts at the newest event when `before_seq` is omitted.  For a Petri run (`engine.kind = petri`): the run stream (`PaginatedRunStreamList`), one ordered delivery of Petri\'s own `RunEvent`s and Fabro\'s platform records in the `RunStreamItem` envelope, in `stream_seq` order. The cursor is `after`: the last `stream_seq` the client saw, exclusive; the first page is `after=0`. `since_seq`, `before_seq` and `order` are not accepted for a Petri run. A client that reconnects resumes from its last `stream_seq` and deduplicates by each item\'s `id`; every item is delivered once, in order, with no gap.
+         * Returns one page of the run\'s stream (`PaginatedRunStreamList`): one ordered delivery of Petri\'s own `RunEvent`s and Fabro\'s platform records in the `RunStreamItem` envelope, in `stream_seq` order. The cursor is `after`: the last `stream_seq` the client saw, exclusive; the first page is `after=0`. A client that reconnects resumes from its last `stream_seq` and deduplicates by each item\'s `id`; every item is delivered once, in order, with no gap.
          * @summary List Run Events
          * @param {string} id Unique run identifier (ULID).
-         * @param {number} [sinceSeq] First event sequence number to include.
          * @param {number} [limit] Maximum number of events to return.
-         * @param {number} [beforeSeq] Exclusive upper event sequence cursor for descending order. Omit on the first descending request to start from the newest event.
-         * @param {ListRunEventsOrderEnum} [order] Event sequence order. &#x60;since_seq&#x60; is valid only with &#x60;asc&#x60;; &#x60;before_seq&#x60; is valid only with &#x60;desc&#x60;.
          * @param {number} [after] Run stream cursor for a Petri run: the last &#x60;stream_seq&#x60; the client saw, exclusive. &#x60;0&#x60; starts at the first item.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        listRunEvents(id: string, sinceSeq?: number, limit?: number, beforeSeq?: number, order?: ListRunEventsOrderEnum, after?: number, options?: RawAxiosRequestConfig): AxiosPromise<ListRunEvents200Response> {
-            return localVarFp.listRunEvents(id, sinceSeq, limit, beforeSeq, order, after, options).then((request) => request(axios, basePath));
+        listRunEvents(id: string, limit?: number, after?: number, options?: RawAxiosRequestConfig): AxiosPromise<PaginatedRunStreamList> {
+            return localVarFp.listRunEvents(id, limit, after, options).then((request) => request(axios, basePath));
         },
         /**
          * Returns the ordered list of stages in a run\'s workflow graph with their current status and timing. Stages are bounded by the workflow graph size, typically fewer than 20.
@@ -1947,19 +1695,6 @@ export const RunInternalsApiFactory = function (configuration?: Configuration, b
          */
         listStageArtifacts(id: string, stageId: string, options?: RawAxiosRequestConfig): AxiosPromise<ArtifactListResponse> {
             return localVarFp.listStageArtifacts(id, stageId, options).then((request) => request(axios, basePath));
-        },
-        /**
-         * Returns a paginated JSON list of stored run events scoped to a single stage visit.
-         * @summary List Stage Events
-         * @param {string} id Unique run identifier (ULID).
-         * @param {string} stageId Identifier of a stage within a run\&#39;s workflow graph, serialized as &#x60;node_id@visit&#x60;.
-         * @param {number} [sinceSeq] First event sequence number to include.
-         * @param {number} [limit] Maximum number of events to return.
-         * @param {*} [options] Override http request option.
-         * @throws {RequiredError}
-         */
-        listStageEvents(id: string, stageId: string, sinceSeq?: number, limit?: number, options?: RawAxiosRequestConfig): AxiosPromise<PaginatedEventList> {
-            return localVarFp.listStageEvents(id, stageId, sinceSeq, limit, options).then((request) => request(axios, basePath));
         },
         /**
          * Opens the run in the Petri run store for the worker. `create` inserts the run and takes its writer lease for `owner`; `write` takes the lease of an existing run; `read` takes no lease. The lease is idempotent per owner: a retry by the owner that holds it gets the same lease. Another live owner is refused with `petri_run_leased`. The lease ends when the worker releases it, when the server observes the worker exit, or by operator release, never by timeout.
@@ -2095,28 +1830,15 @@ export class RunInternalsApi extends BaseAPI {
     }
 
     /**
-     * Appends a validated event to the run event log. Intended for trusted internal callers.
-     * @summary Append Run Event
-     * @param {string} id Unique run identifier (ULID).
-     * @param {RunEvent} runEvent
-     * @param {*} [options] Override http request option.
-     * @throws {RequiredError}
-     */
-    public appendRunEvent(id: string, runEvent: RunEvent, options?: RawAxiosRequestConfig) {
-        return RunInternalsApiFp(this.configuration).appendRunEvent(id, runEvent, options).then((request) => request(this.axios, this.basePath));
-    }
-
-    /**
-     * Opens an ordered server-sent event stream, replaying persisted items and continuing with live updates while the run remains active. Each `data:` frame is one JSON object in the run engine\'s envelope.  For a legacy run the frames are `EventEnvelope`s and the stream starts at `since_seq` (inclusive; the next unseen event when omitted). It ends after `run.completed` or `run.failed`.  For a Petri run the frames are `RunStreamItem`s and the stream starts after `after` (the last `stream_seq` the client saw; `0` replays the whole run; the next unseen item when omitted). It ends once the run is no longer active and every committed item has been sent. A reconnecting client passes its last `stream_seq` as `after` and deduplicates by `id`.
+     * Opens an ordered server-sent event stream of the run\'s stream, replaying committed items and continuing with live ones while the run remains active. Each `data:` frame is one `RunStreamItem`. The stream starts after `after` (the last `stream_seq` the client saw; `0` replays the whole run; the next unseen item when omitted). It ends once the run is no longer active and every committed item has been sent. A reconnecting client passes its last `stream_seq` as `after` and deduplicates by `id`.
      * @summary Attach Run Events
      * @param {string} id Unique run identifier (ULID).
-     * @param {number} [sinceSeq] First event sequence number to include.
      * @param {number} [after] Run stream cursor for a Petri run: the last &#x60;stream_seq&#x60; the client saw, exclusive. &#x60;0&#x60; starts at the first item.
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      */
-    public attachRunEvents(id: string, sinceSeq?: number, after?: number, options?: RawAxiosRequestConfig) {
-        return RunInternalsApiFp(this.configuration).attachRunEvents(id, sinceSeq, after, options).then((request) => request(this.axios, this.basePath));
+    public attachRunEvents(id: string, after?: number, options?: RawAxiosRequestConfig) {
+        return RunInternalsApiFp(this.configuration).attachRunEvents(id, after, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**
@@ -2128,19 +1850,6 @@ export class RunInternalsApi extends BaseAPI {
      */
     public downloadRunArtifacts(id: string, options?: RawAxiosRequestConfig) {
         return RunInternalsApiFp(this.configuration).downloadRunArtifacts(id, options).then((request) => request(this.axios, this.basePath));
-    }
-
-    /**
-     * Returns one stored run event by source event sequence with content fields separated and truncated.
-     * @summary Get Run Event Detail
-     * @param {string} id Unique run identifier (ULID).
-     * @param {number} seq
-     * @param {number} [maxContentLength]
-     * @param {*} [options] Override http request option.
-     * @throws {RequiredError}
-     */
-    public getRunEventDetail(id: string, seq: number, maxContentLength?: number, options?: RawAxiosRequestConfig) {
-        return RunInternalsApiFp(this.configuration).getRunEventDetail(id, seq, maxContentLength, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**
@@ -2241,19 +1950,16 @@ export class RunInternalsApi extends BaseAPI {
     }
 
     /**
-     * Returns a paginated JSON list of the run\'s events. The shape depends on the engine the run was created for (`RunSpec.engine`).  For a legacy run (`engine.kind = legacy`): stored run events in the legacy envelope (`PaginatedEventList`). Ascending order uses `since_seq` as an inclusive cursor. Descending order uses `before_seq` as an exclusive cursor and starts at the newest event when `before_seq` is omitted.  For a Petri run (`engine.kind = petri`): the run stream (`PaginatedRunStreamList`), one ordered delivery of Petri\'s own `RunEvent`s and Fabro\'s platform records in the `RunStreamItem` envelope, in `stream_seq` order. The cursor is `after`: the last `stream_seq` the client saw, exclusive; the first page is `after=0`. `since_seq`, `before_seq` and `order` are not accepted for a Petri run. A client that reconnects resumes from its last `stream_seq` and deduplicates by each item\'s `id`; every item is delivered once, in order, with no gap.
+     * Returns one page of the run\'s stream (`PaginatedRunStreamList`): one ordered delivery of Petri\'s own `RunEvent`s and Fabro\'s platform records in the `RunStreamItem` envelope, in `stream_seq` order. The cursor is `after`: the last `stream_seq` the client saw, exclusive; the first page is `after=0`. A client that reconnects resumes from its last `stream_seq` and deduplicates by each item\'s `id`; every item is delivered once, in order, with no gap.
      * @summary List Run Events
      * @param {string} id Unique run identifier (ULID).
-     * @param {number} [sinceSeq] First event sequence number to include.
      * @param {number} [limit] Maximum number of events to return.
-     * @param {number} [beforeSeq] Exclusive upper event sequence cursor for descending order. Omit on the first descending request to start from the newest event.
-     * @param {ListRunEventsOrderEnum} [order] Event sequence order. &#x60;since_seq&#x60; is valid only with &#x60;asc&#x60;; &#x60;before_seq&#x60; is valid only with &#x60;desc&#x60;.
      * @param {number} [after] Run stream cursor for a Petri run: the last &#x60;stream_seq&#x60; the client saw, exclusive. &#x60;0&#x60; starts at the first item.
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      */
-    public listRunEvents(id: string, sinceSeq?: number, limit?: number, beforeSeq?: number, order?: ListRunEventsOrderEnum, after?: number, options?: RawAxiosRequestConfig) {
-        return RunInternalsApiFp(this.configuration).listRunEvents(id, sinceSeq, limit, beforeSeq, order, after, options).then((request) => request(this.axios, this.basePath));
+    public listRunEvents(id: string, limit?: number, after?: number, options?: RawAxiosRequestConfig) {
+        return RunInternalsApiFp(this.configuration).listRunEvents(id, limit, after, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**
@@ -2279,20 +1985,6 @@ export class RunInternalsApi extends BaseAPI {
      */
     public listStageArtifacts(id: string, stageId: string, options?: RawAxiosRequestConfig) {
         return RunInternalsApiFp(this.configuration).listStageArtifacts(id, stageId, options).then((request) => request(this.axios, this.basePath));
-    }
-
-    /**
-     * Returns a paginated JSON list of stored run events scoped to a single stage visit.
-     * @summary List Stage Events
-     * @param {string} id Unique run identifier (ULID).
-     * @param {string} stageId Identifier of a stage within a run\&#39;s workflow graph, serialized as &#x60;node_id@visit&#x60;.
-     * @param {number} [sinceSeq] First event sequence number to include.
-     * @param {number} [limit] Maximum number of events to return.
-     * @param {*} [options] Override http request option.
-     * @throws {RequiredError}
-     */
-    public listStageEvents(id: string, stageId: string, sinceSeq?: number, limit?: number, options?: RawAxiosRequestConfig) {
-        return RunInternalsApiFp(this.configuration).listStageEvents(id, stageId, sinceSeq, limit, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**
@@ -2405,9 +2097,3 @@ export class RunInternalsApi extends BaseAPI {
         return RunInternalsApiFp(this.configuration).writeRunBlob(id, body, options).then((request) => request(this.axios, this.basePath));
     }
 }
-
-export const ListRunEventsOrderEnum = {
-    ASC: 'asc',
-    DESC: 'desc'
-} as const;
-export type ListRunEventsOrderEnum = typeof ListRunEventsOrderEnum[keyof typeof ListRunEventsOrderEnum];

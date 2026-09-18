@@ -53,12 +53,12 @@ import {
 } from "../components/ui";
 import { ConditionalDecision } from "../components/stage-renderers/conditional-decision";
 import { FanInResults } from "../components/stage-renderers/fan-in-results";
-import {
-  extractStageContext,
-  type EdgeSelection,
-  type HumanInterviewPair,
-  type ParallelOverview,
-  type ReducerTranscript,
+import type {
+  EdgeSelection,
+  HumanInterviewPair,
+  ParallelOverview,
+  ReducerTranscript,
+  StageContextData,
 } from "../components/stage-renderers/helpers";
 import { HumanQA } from "../components/stage-renderers/human-qa";
 import { ParallelChildren } from "../components/stage-renderers/parallel-children";
@@ -87,7 +87,6 @@ import {
   debugRowsFromStream,
   extractPetriStageContext,
   findPetriEdgeForStage,
-  isPetriRun,
   itemsForStage,
   parallelOverviewFromProjection,
   parsePetriInterviewPairs,
@@ -96,18 +95,12 @@ import {
 } from "../lib/petri-stream";
 import {
   useRun,
-  useRunEventsList,
   useRunStageContextWindow,
-  useRunStageEvents,
   useRunStageLog,
   useRunStages,
   useRunState,
   useRunStream,
 } from "../lib/queries";
-import {
-  STAGE_ACTIVITY_EVENT_TYPES,
-  type StageActivityEventType,
-} from "../lib/run-events";
 import {
   ACTIVE_STAGE_STATES,
   mapRunStagesToSidebarStages,
@@ -120,7 +113,6 @@ import {
   type UnknownRecord,
 } from "../lib/unknown";
 import type {
-  EventEnvelope,
   ReasoningOutput,
   RunProjection,
   RunStreamItem,
@@ -179,8 +171,6 @@ export type StageRenderer =
   | "summary";
 
 type PanelSelection = ThreadDnaSelection;
-
-const STAGE_ACTIVITY_EVENT_SET = new Set<string>(STAGE_ACTIVITY_EVENT_TYPES);
 
 export const EVENT_KINDS = [
   "system",
@@ -267,10 +257,6 @@ export function eventsTabLabel(
   return PRIMARY_TAB_LABEL[renderer];
 }
 
-function assertNever(value: never): never {
-  throw new Error(`Unhandled stage activity event type: ${value}`);
-}
-
 export function selectStageRenderer(handler: StageHandler): StageRenderer {
   switch (handler) {
     case "agent":
@@ -291,12 +277,6 @@ export function selectStageRenderer(handler: StageHandler): StageRenderer {
     default:
       return "summary";
   }
-}
-
-function activityEventStageId(event: EventEnvelope): string | undefined {
-  if (typeof event.stage_id === "string") return event.stage_id;
-  if (typeof event.node_id === "string") return event.node_id;
-  return getString(event.properties ?? {}, "node_id");
 }
 
 interface PendingTool {
@@ -321,20 +301,6 @@ interface PendingCommand {
   script: string;
 }
 
-/**
- * The coding agent's own payload inside an `agent.*` event: `properties.event`
- * is externally tagged, `{ AssistantMessage: {...} }`, so the variant's fields
- * live one level down. An event with no such payload reads as empty.
- */
-function agentEventPayload(props: UnknownRecord): UnknownRecord {
-  const event = getObject(props, "event");
-  if (!event) return {};
-  for (const value of Object.values(event)) {
-    if (isRecord(value)) return value;
-  }
-  return {};
-}
-
 function readTurnReasoning(props: UnknownRecord): ReasoningOutput | null {
   const reasoning = getObject(props, "reasoning");
   if (!reasoning) return null;
@@ -344,194 +310,6 @@ function readTurnReasoning(props: UnknownRecord): ReasoningOutput | null {
   const trace = getString(reasoning, "trace") ?? null;
   if (summary) return trace ? { summary, trace } : { summary };
   return trace ? { trace } : null;
-}
-
-export function buildStageActivity(
-  events: EventEnvelope[],
-  stageId: string,
-): StageActivity {
-  const turns: TurnType[] = [];
-  const pendingTools = new Map<string, PendingTool>();
-  let pendingCommand: PendingCommand | undefined;
-  let sawAssistantMessage = false;
-
-  for (const e of events) {
-    const eventName = e.event;
-    if (activityEventStageId(e) !== stageId) {
-      continue;
-    }
-    if (
-      !eventName ||
-      !STAGE_ACTIVITY_EVENT_SET.has(eventName)
-    ) {
-      continue;
-    }
-    const eventType = eventName as StageActivityEventType;
-    const props: UnknownRecord = e.properties ?? {};
-    switch (eventType) {
-      case "stage.prompt":
-        turns.push({
-          kind: "system",
-          ts: e.ts,
-          content: getString(props, "text") ?? e.text ?? "",
-        });
-        break;
-      case "agent.message": {
-        sawAssistantMessage = true;
-        // A text-free message still marks the end of a model response — it is
-        // the boundary between two batches of tool calls. Dropping it would
-        // splice unrelated batches into one tool group.
-        const message = agentEventPayload(props);
-        const usage = getObject(message, "usage") ?? {};
-        turns.push({
-          kind: "assistant",
-          ts: e.ts,
-          content: getString(message, "text") ?? "",
-          inputTokens: getNumber(usage, "input") ?? 0,
-          outputTokens:
-            (getNumber(usage, "output") ?? 0) + (getNumber(usage, "reasoning") ?? 0),
-          toolCallCount: getNumber(message, "tool_call_count") ?? null,
-          reasoning: readTurnReasoning(message),
-        });
-        break;
-      }
-      case "prompt.completed": {
-        if (!sawAssistantMessage) {
-          // `prompt.completed.usage` is a `ModelUsage`: the model, then the usage.
-          const tokens =
-            getObject(getObject(getObject(props, "usage"), "usage"), "tokens") ?? {};
-          turns.push({
-            kind: "assistant",
-            ts: e.ts,
-            content: getString(props, "response") ?? "",
-            inputTokens: getNumber(tokens, "input") ?? 0,
-            outputTokens: getNumber(tokens, "output") ?? 0,
-            toolCallCount: null,
-            // Only agent.message carries reasoning; prompt stages have none.
-            reasoning: null,
-          });
-        }
-        break;
-      }
-      case "agent.steering.injected": {
-        const text = getString(agentEventPayload(props), "text") ?? "";
-        if (text) {
-          turns.push({ kind: "steer", ts: e.ts, content: text });
-        }
-        break;
-      }
-      case "agent.interrupt.injected":
-        turns.push({
-          kind: "interrupt",
-          ts: e.ts,
-          content: "Agent interrupted",
-        });
-        break;
-      case "agent.round.interrupted":
-        turns.push({
-          kind: "interrupt",
-          ts: e.ts,
-          content: "Interrupted — waiting for steering",
-        });
-        break;
-      case "agent.pair.user_message": {
-        const text = getString(props, "text") ?? e.text ?? "";
-        if (text) {
-          turns.push({ kind: "pair_user", ts: e.ts, content: text });
-        }
-        break;
-      }
-      case "agent.pair.system_message": {
-        const text = getString(props, "text") ?? e.text ?? "";
-        if (text) {
-          turns.push({ kind: "pair_system", ts: e.ts, content: text });
-        }
-        break;
-      }
-      case "agent.tool.started": {
-        const call = agentEventPayload(props);
-        const callId = getString(call, "tool_call_id") ?? e.tool_call_id ?? "";
-        if (!callId) break;
-        const args = call.arguments;
-        pendingTools.set(callId, {
-          ts: e.ts,
-          toolName: getString(call, "tool_name") ?? "",
-          input: typeof args === "string" ? args : JSON.stringify(args ?? ""),
-        });
-        break;
-      }
-      case "agent.tool.completed": {
-        const call = agentEventPayload(props);
-        const callId = getString(call, "tool_call_id") ?? e.tool_call_id ?? "";
-        if (!callId) break;
-        const started = pendingTools.get(callId);
-        pendingTools.delete(callId);
-        const output = call.output ?? "";
-        const result =
-          typeof output === "string" ? output : JSON.stringify(output, null, 2);
-        turns.push({
-          kind: "tool",
-          ts: started?.ts ?? e.ts,
-          toolName: started?.toolName ?? getString(call, "tool_name") ?? "",
-          input: started?.input ?? "",
-          result,
-          isError: call.is_error === true,
-          durationMs: durationBetween(started?.ts, e.ts),
-        });
-        break;
-      }
-      case "command.started": {
-        pendingCommand = {
-          ts: e.ts,
-          script: getString(props, "script") ?? "",
-        };
-        break;
-      }
-      case "command.completed": {
-        turns.push({
-          kind: "command",
-          ts: pendingCommand?.ts ?? e.ts,
-          script: pendingCommand?.script ?? "",
-          running: false,
-          exitCode: getNumber(props, "exit_code") ?? null,
-          durationMs: getNumber(props, "duration_ms") ?? 0,
-          outputBytes: getNumber(props, "output_bytes") ?? 0,
-        });
-        pendingCommand = undefined;
-        break;
-      }
-      default:
-        assertNever(eventType);
-    }
-  }
-
-  if (pendingCommand) {
-    turns.push({
-      kind: "command",
-      ts: pendingCommand.ts,
-      script: pendingCommand.script,
-      running: true,
-      exitCode: null,
-      durationMs: 0,
-      outputBytes: 0,
-    });
-  }
-
-  return {
-    turns,
-    pendingTools: Array.from(pendingTools, ([toolCallId, tool]) => ({
-      toolCallId,
-      toolName: tool.toolName,
-      input: tool.input,
-    })),
-  };
-}
-
-export function eventsToActivity(
-  events: EventEnvelope[],
-  stageId: string,
-): TurnType[] {
-  return buildStageActivity(events, stageId).turns;
 }
 
 /** The stream and projection of a Petri run, threaded into the stage views. */
@@ -672,21 +450,10 @@ export function buildPetriStageActivity(
   };
 }
 
-/** A debug list item: a legacy event, or a Petri stream row. */
-type DebugListItem = EventEnvelope | DebugRow;
+const EMPTY_STREAM: RunStreamItem[] = [];
 
-function isDebugRow(item: DebugListItem): item is DebugRow {
-  return "item" in item && "category" in item;
-}
-
-function debugItemSearchText(item: DebugListItem): string {
-  if (isDebugRow(item)) return debugRowSearchText(item);
-  return `${item.event ?? ""} ${JSON.stringify(item.properties ?? {})}`.toLowerCase();
-}
-
-/** What the details panel shows for a debug item. */
-function debugItemPayload(item: DebugListItem): EventDisplayPayload {
-  if (!isDebugRow(item)) return item;
+/** What the details panel shows for a debug row. */
+function debugItemPayload(item: DebugRow): EventDisplayPayload {
   return {
     event: item.event,
     stream_seq: item.seq,
@@ -2085,7 +1852,7 @@ function EventExportActions({
   stageId,
   className,
 }: {
-  events: EventEnvelope[];
+  events: RunStreamItem[];
   runId: string;
   stageId: string;
   className?: string;
@@ -2178,7 +1945,7 @@ function EventsToolbar({
   totalCount: number;
   providerUsed: StageModelUsage | null;
   usage: Usage;
-  events: EventEnvelope[];
+  events: RunStreamItem[];
   runId: string;
   stageId: string;
 }) {
@@ -2292,7 +2059,6 @@ function StageActivityBody({
   openDebugSeq,
   onDebugSeqChange,
   contextData,
-  runEvents,
   stages,
   petri,
 }: {
@@ -2306,18 +2072,16 @@ function StageActivityBody({
   runId: string;
   selectedStage: Stage;
   commandTurn: CommandTurn | null;
-  debugEvents: DebugListItem[];
-  filteredDebugEvents: DebugListItem[];
+  debugEvents: DebugRow[];
+  filteredDebugEvents: DebugRow[];
   openDebugSeq: number | null;
   onDebugSeqChange: (seq: number | null) => void;
-  contextData: ReturnType<typeof extractStageContext>;
-  runEvents: EventEnvelope[];
+  contextData: StageContextData | null;
   stages: Stage[];
-  /** Set for a stage of a Petri run: the renderers read these, not events. */
-  petri?: PetriStageViews;
+  /** What the stage's renderers show, derived from the stream and projection. */
+  petri: PetriStageViews;
 }) {
   const { turns, pendingTools } = activity;
-  const legacyEvents = petri ? [] : (debugEvents as EventEnvelope[]);
   return (
     <div className="min-h-0 flex-1 overflow-y-auto pt-6 pb-[calc(1.5rem+var(--fabro-interview-dock-clearance,0px))]">
       {effectiveTab === "chat" ? (
@@ -2371,29 +2135,23 @@ function StageActivityBody({
             turn={commandTurn}
           />
         ) : renderer === "human" ? (
-          <HumanQA stage={selectedStage} events={legacyEvents} pairs={petri?.pairs} />
+          <HumanQA stage={selectedStage} pairs={petri.pairs} />
         ) : renderer === "conditional" ? (
           <ConditionalDecision
             stage={selectedStage}
-            runEvents={runEvents}
-            edge={petri?.edge}
+            edge={petri.edge}
             allStages={stages}
             runId={runId}
           />
         ) : renderer === "parallel" ? (
           <ParallelChildren
             stage={selectedStage}
-            events={legacyEvents}
-            overview={petri?.overview}
+            overview={petri.overview}
             runId={runId}
             allStages={stages}
           />
         ) : renderer === "fan_in" ? (
-          <FanInResults
-            stage={selectedStage}
-            events={legacyEvents}
-            reducer={petri?.reducer}
-          />
+          <FanInResults stage={selectedStage} reducer={petri.reducer} />
         ) : renderer === "wait" ? (
           <WaitStatus stage={selectedStage} />
         ) : (
@@ -2454,49 +2212,38 @@ function RunStageActivityStage({
 }) {
   const selectedStageId = selectedStage.id;
   const renderer: StageRenderer = selectStageRenderer(selectedStage.handler);
-  // A Petri run has no legacy stage events: its views read the stream and
-  // the projection, so the query stays idle.
-  const stageEventsQuery = useRunStageEvents(petri ? undefined : runId, selectedStageId);
+  // The stage's views read the run's stream and projection; until those
+  // load, the stage shows as empty.
+  const stream = petri?.stream ?? EMPTY_STREAM;
   const stageItems = useMemo<RunStreamItem[]>(
-    () => (petri ? itemsForStage(petri.stream, selectedStageId) : []),
-    [petri, selectedStageId],
+    () => itemsForStage(stream, selectedStageId),
+    [stream, selectedStageId],
   );
   const stageProjection: StageProjection | undefined =
     petri?.projection.stages[selectedStageId];
   const activity = useMemo(
-    () =>
-      petri
-        ? buildPetriStageActivity(stageItems, stageProjection, renderer)
-        : buildStageActivity(stageEventsQuery.data ?? [], selectedStageId),
-    [petri, stageItems, stageProjection, renderer, stageEventsQuery.data, selectedStageId],
+    () => buildPetriStageActivity(stageItems, stageProjection, renderer),
+    [stageItems, stageProjection, renderer],
   );
   const { turns } = activity;
-  const debugEvents = useMemo<DebugListItem[]>(() => {
-    if (petri) return debugRowsFromStream(stageItems);
-    return (stageEventsQuery.data ?? []).filter(
-      (event) => activityEventStageId(event) === selectedStageId,
-    );
-  }, [petri, stageItems, stageEventsQuery.data, selectedStageId]);
-  const petriViews = useMemo<PetriStageViews | undefined>(
-    () =>
-      petri
-        ? {
-            pairs: parsePetriInterviewPairs(stageItems),
-            edge: findPetriEdgeForStage(petri.stream, selectedStageId),
-            overview: parallelOverviewFromProjection(stageProjection),
-            reducer: reducerTranscriptFromProjection(stageProjection),
-          }
-        : undefined,
-    [petri, stageItems, stageProjection, selectedStageId],
+  const debugEvents = useMemo<DebugRow[]>(
+    () => debugRowsFromStream(stageItems),
+    [stageItems],
+  );
+  const petriViews = useMemo<PetriStageViews>(
+    () => ({
+      pairs: parsePetriInterviewPairs(stageItems),
+      edge: findPetriEdgeForStage(stream, selectedStageId),
+      overview: parallelOverviewFromProjection(stageProjection),
+      reducer: reducerTranscriptFromProjection(stageProjection),
+    }),
+    [stream, stageItems, stageProjection, selectedStageId],
   );
   // The Context tab surfaces the workflow's deliberate per-visit outputs. It
   // only exists when the stage completed and actually wrote something.
   const contextData = useMemo(
-    () =>
-      petri
-        ? extractPetriStageContext(stageItems)
-        : extractStageContext(debugEvents as EventEnvelope[]),
-    [petri, stageItems, debugEvents],
+    () => extractPetriStageContext(stageItems),
+    [stageItems],
   );
   const availableTabs = useMemo<EventsTab[]>(
     () =>
@@ -2511,11 +2258,6 @@ function RunStageActivityStage({
   const isPrimaryAgent = effectiveTab === "primary" && renderer === "agent";
   const isDebug = effectiveTab === "debug";
 
-  // Some renderers need run-scoped events (e.g. conditional renders the
-  // engine-level edge.selected event, which has no stage_id). Only fetch when
-  // the active renderer actually needs it to keep this off the hot path.
-  const needsRunEvents = renderer === "conditional" && !petri;
-  const runEventsQuery = useRunEventsList(needsRunEvents ? runId : undefined);
   const commandTurn = useMemo<CommandTurn | null>(() => {
     if (effectiveTab !== "primary" || renderer !== "command") return null;
     for (let i = turns.length - 1; i >= 0; i -= 1) {
@@ -2598,14 +2340,14 @@ function RunStageActivityStage({
     }
     return Array.from(set).sort();
   }, [isDebug, debugEvents]);
-  const filteredDebugEvents = useMemo<DebugListItem[]>(() => {
+  const filteredDebugEvents = useMemo<DebugRow[]>(() => {
     if (!isDebug) return [];
     const useCategoryFilter = selectedDebugCategories.length > 0;
     const cats = new Set(selectedDebugCategories);
     const needle = search.toLowerCase();
     return debugEvents.filter((event) => {
       if (useCategoryFilter && !cats.has(debugRowCategory(event))) return false;
-      if (needle && !debugItemSearchText(event).includes(needle)) return false;
+      if (needle && !debugRowSearchText(event).includes(needle)) return false;
       return true;
     });
   }, [isDebug, debugEvents, selectedDebugCategories, search]);
@@ -2649,7 +2391,7 @@ function RunStageActivityStage({
               }
               providerUsed={selectedStage.providerUsed}
               usage={selectedStage.usage}
-              events={stageEventsQuery.data ?? []}
+              events={stageItems}
               runId={runId}
               stageId={selectedStageId}
             />
@@ -2690,7 +2432,6 @@ function RunStageActivityStage({
           openDebugSeq={openDebugSeq}
           onDebugSeqChange={setOpenDebugSeq}
           contextData={contextData}
-          runEvents={runEventsQuery.data ?? []}
           stages={stages}
           petri={petriViews}
         />
@@ -2787,19 +2528,18 @@ export default function RunStages() {
     selectedStage?.startedAt ??
     runQuery.data?.timestamps.started_at ??
     runQuery.data?.timestamps.created_at;
-  // The projection says which engine ran the run (a Petri run's stage views
-  // read it and the run's stream) and feeds the insights sidebar of an
-  // agent stage; the context window is fetched only for one.
+  // The stage views read the projection and the run's stream; the
+  // projection also feeds the insights sidebar of an agent stage, and the
+  // context window is fetched only for one.
   const isAgentStage = selectedStage?.handler === "agent";
   const runStateQuery = useRunState(id);
-  const petri = isPetriRun(runStateQuery.data);
-  const streamQuery = useRunStream(petri ? id : undefined);
+  const streamQuery = useRunStream(id);
   const petriData = useMemo<PetriRunData | undefined>(
     () =>
-      petri && runStateQuery.data && streamQuery.data
+      runStateQuery.data && streamQuery.data
         ? { stream: streamQuery.data, projection: runStateQuery.data }
         : undefined,
-    [petri, runStateQuery.data, streamQuery.data],
+    [runStateQuery.data, streamQuery.data],
   );
   const contextWindowQuery = useRunStageContextWindow(
     isAgentStage ? id : undefined,

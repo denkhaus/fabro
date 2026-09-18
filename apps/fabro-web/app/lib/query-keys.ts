@@ -60,7 +60,6 @@ export const queryKeys = {
     usage: (id: string) => ["runs", "usage", id] as const,
     questions: (id: string, limit = 1, offset = 0) =>
       ["runs", "questions", id, limit, offset] as const,
-    events: (id: string, limit = 1000) => ["runs", "events", id, limit] as const,
     /** A Petri run's stream: every `RunStreamItem` in `stream_seq` order. */
     stream: (id: string) => ["runs", "stream", id] as const,
     stageEvents: (id: string, stageId: string) =>

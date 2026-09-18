@@ -3,7 +3,6 @@ import type { RunProjection } from "@qltysh/fabro-api-client";
 
 import { formatAbsoluteTs } from "../lib/format";
 import {
-  isPetriRun,
   platformRecordsOf,
   type PlatformRecordEntry,
 } from "../lib/petri-stream";
@@ -82,15 +81,13 @@ export function PlatformRecordsPanelView({
   );
 }
 
-/** The panel for a run, shown only when the run executes on Petri. */
+/** The panel for a run: the platform records on its stream. */
 export function PlatformRecordsPanel({ runId }: { runId: string }) {
   const runStateQuery = useRunState(runId);
-  const petri = isPetriRun(runStateQuery.data);
-  const streamQuery = useRunStream(petri ? runId : undefined);
+  const streamQuery = useRunStream(runId);
   const records = useMemo(
     () => (streamQuery.data ? platformRecordsOf(streamQuery.data) : []),
     [streamQuery.data],
   );
-  if (!petri) return null;
   return <PlatformRecordsPanelView records={records} projection={runStateQuery.data} />;
 }

@@ -14,10 +14,8 @@ use std::path::{Component, Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
 use bytes::Bytes;
-use fabro_store::{
-    EventEnvelope, RunProjection, SerializableProjection, StageId, retry_storage_segment,
-};
-use fabro_types::{BlobHash, parse_blob_ref};
+use fabro_store::{RunProjection, SerializableProjection, StageId, retry_storage_segment};
+use fabro_types::{BlobHash, RunStreamItem, parse_blob_ref};
 use futures::future::BoxFuture;
 
 pub type BlobReader = Box<dyn FnMut(BlobHash) -> BoxFuture<'static, Result<Option<Bytes>>> + Send>;
@@ -146,15 +144,17 @@ impl RunDump {
         })
     }
 
-    pub fn from_store_state_and_events(
+    /// The dump of a run's projection with its stream: one `RunStreamItem`
+    /// per line of `events.jsonl`, in `stream_seq` order.
+    pub fn from_store_state_and_stream(
         state: &RunProjection,
-        events: &[EventEnvelope],
+        items: &[RunStreamItem],
     ) -> Result<Self> {
         let mut dump = Self::from_projection(state)?;
 
         let mut events_jsonl = Vec::new();
-        for event in events {
-            serde_json::to_writer(&mut events_jsonl, event)?;
+        for item in items {
+            serde_json::to_writer(&mut events_jsonl, item)?;
             events_jsonl.write_all(b"\n")?;
         }
         dump.entries

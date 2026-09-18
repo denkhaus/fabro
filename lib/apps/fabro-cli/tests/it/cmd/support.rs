@@ -22,11 +22,10 @@ use fabro_client::Client;
 use fabro_config::bind::Bind;
 use fabro_config::daemon::ServerDaemon;
 use fabro_config::{Storage, envfile};
-use fabro_store::EventEnvelope;
 use fabro_test::{TestContext, expect_reqwest_status};
 use fabro_types::test_support::test_principal;
 use fabro_types::{
-    GitRunTarget, RunId, RunIntent, RunIntentArgs, RunTarget, StageId, WorkflowPath,
+    GitRunTarget, RunId, RunIntent, RunIntentArgs, RunStreamItem, RunTarget, StageId, WorkflowPath,
     WorkflowVersion,
 };
 use httpmock::{HttpMockResponse, Mock, MockServer};
@@ -881,13 +880,13 @@ pub(crate) fn run_state(run_dir: &Path) -> RunProjection {
     ))
 }
 
-pub(crate) fn run_events(run_dir: &Path) -> Vec<EventEnvelope> {
+pub(crate) fn run_events(run_dir: &Path) -> Vec<RunStreamItem> {
     let run_id = infer_run_id(run_dir);
     let response: serde_json::Value = block_on(get_server_json(
         run_dir,
-        &format!("/api/v1/runs/{run_id}/events"),
+        &format!("/api/v1/runs/{run_id}/events?after=0&limit=1000"),
     ));
-    crate::support::parse_event_envelopes(&response)
+    crate::support::parse_stream_items(&response)
 }
 
 pub(crate) fn command_log_text(run_dir: &Path, stage_id: &StageId) -> String {
@@ -912,7 +911,7 @@ pub(crate) fn wait_for_event_names(run_dir: &Path, expected: &[&str]) {
     loop {
         let event_names = run_events(run_dir)
             .into_iter()
-            .map(|event| event.event.event_name().to_string())
+            .filter_map(|item| item.name().map(str::to_string))
             .collect::<Vec<_>>();
 
         if expected

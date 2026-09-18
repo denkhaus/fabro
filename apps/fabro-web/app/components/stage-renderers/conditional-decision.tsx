@@ -4,11 +4,10 @@ import {
   ArrowLongRightIcon,
   ArrowsRightLeftIcon,
 } from "@heroicons/react/20/solid";
-import type { EventEnvelope } from "@qltysh/fabro-api-client";
 
 import type { Stage } from "../stage-sidebar";
 import { StageMetaBar } from "./meta-bar";
-import { findEdgeForNode, type EdgeSelection } from "./helpers";
+import type { EdgeSelection } from "./helpers";
 
 const REASON_LABEL: Record<string, string> = {
   condition: "Matched condition",
@@ -23,22 +22,16 @@ function reasonLabel(reason: string): string {
 
 export function ConditionalDecision({
   stage,
-  runEvents,
-  edge: givenEdge,
+  edge,
   allStages,
   runId,
 }: {
   stage: Stage;
-  runEvents: EventEnvelope[];
-  /** The edge when the caller derived it (a Petri run's `route.applied`). */
-  edge?: EdgeSelection | null;
+  /** The edge the stage took (its `route.applied`), or null while undecided. */
+  edge: EdgeSelection | null;
   allStages: Stage[];
   runId: string;
 }) {
-  const edge = useMemo(
-    () => (givenEdge !== undefined ? givenEdge : findEdgeForNode(runEvents, stage.nodeId)),
-    [givenEdge, runEvents, stage.nodeId],
-  );
   const targetStage = useMemo(() => {
     if (!edge) return null;
     let pick: Stage | null = null;

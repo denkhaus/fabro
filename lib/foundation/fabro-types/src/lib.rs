@@ -107,8 +107,7 @@ pub use pair::{
     PairTranscriptAssistantMessage, PairTranscriptDetailRef, PairTranscriptEntry,
     PairTranscriptError, PairTranscriptMeta, PairTranscriptResponse, PairTranscriptSystemMessage,
     PairTranscriptToolCall, PairTranscriptToolStatus, PairTranscriptUserMessage,
-    PairTranscriptWarning, RunEventDetailContent, RunEventDetailContentKind,
-    RunEventDetailEnvelope, RunEventDetailResponse, RunPairStatusResponse,
+    PairTranscriptWarning, RunPairStatusResponse,
 };
 pub use parallel::ParallelBranchResult;
 pub use pebble_coding_agent::events::{

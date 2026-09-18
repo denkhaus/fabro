@@ -12,10 +12,10 @@ use fabro_http::header::{ACCEPT, AUTHORIZATION, CONTENT_LENGTH, CONTENT_TYPE};
 use fabro_http::multipart::{Form, Part};
 use fabro_types::settings::run::MergeStrategy;
 use fabro_types::{
-    ArtifactUpload, BlobHash, EventEnvelope, Model, ModelTestMode, PairId, PairMessageRecord,
-    PairMessageRequest, PairRecord, PairStartRequest, PairTranscriptResponse, Run, RunEvent,
-    RunEventDetailResponse, RunId, RunPairStatusResponse, RunProjection, RunSessionMetadata,
-    RunStreamItem, SessionEvent, SessionId, StageId, WorkflowVersion, WorkflowVersionId,
+    ArtifactUpload, BlobHash, Model, ModelTestMode, PairId, PairMessageRecord, PairMessageRequest,
+    PairRecord, PairStartRequest, PairTranscriptResponse, Run, RunId, RunPairStatusResponse,
+    RunProjection, RunSessionMetadata, RunStreamItem, SessionEvent, SessionId, StageId,
+    WorkflowVersion, WorkflowVersionId,
 };
 use fabro_util::exit::{ErrorExt, ExitClass};
 use futures::future::BoxFuture;
@@ -49,12 +49,6 @@ const PULL_REQUEST_CREATION_POLL_INTERVAL: std::time::Duration = std::time::Dura
 const PULL_REQUEST_CREATION_POLL_DEADLINE: std::time::Duration = std::time::Duration::from_mins(15);
 
 type TransportFuture = BoxFuture<'static, Result<(fabro_http::HttpClient, String)>>;
-
-pub struct RunEventStream {
-    stream:          progenitor_client::ByteStream,
-    pending_bytes:   Vec<u8>,
-    buffered_events: VecDeque<EventEnvelope>,
-}
 
 /// The live stream of a Petri run, as `GET /runs/{id}/attach` serves it:
 /// one `RunStreamItem` per `data:` frame, in `stream_seq` order.
@@ -163,42 +157,6 @@ struct ArtifactBatchUploadEntry {
     expected_bytes: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     content_type:   Option<String>,
-}
-
-impl RunEventStream {
-    #[must_use]
-    pub fn new(stream: progenitor_client::ByteStream) -> Self {
-        Self {
-            stream,
-            pending_bytes: Vec::new(),
-            buffered_events: VecDeque::new(),
-        }
-    }
-
-    pub async fn next_event(&mut self) -> Result<Option<EventEnvelope>> {
-        loop {
-            if let Some(event) = self.buffered_events.pop_front() {
-                return Ok(Some(event));
-            }
-
-            if let Some(chunk) = self.stream.next().await {
-                let chunk = chunk.map_err(anyhow::Error::new)?;
-                self.pending_bytes.extend_from_slice(&chunk);
-                self.buffer_sse_events(false)?;
-            } else {
-                self.buffer_sse_events(true)?;
-                return Ok(self.buffered_events.pop_front());
-            }
-        }
-    }
-
-    fn buffer_sse_events(&mut self, finalize: bool) -> Result<()> {
-        for payload in sse::drain_sse_payloads(&mut self.pending_bytes, finalize) {
-            self.buffered_events
-                .push_back(serde_json::from_str(&payload)?);
-        }
-        Ok(())
-    }
 }
 
 impl RunStreamItemStream {
@@ -1307,29 +1265,6 @@ impl Client {
         convert_type(response.into_inner())
     }
 
-    pub async fn get_run_event_detail(
-        &self,
-        run_id: &RunId,
-        seq: u32,
-        max_content_length: Option<u32>,
-    ) -> Result<RunEventDetailResponse> {
-        let seq = non_zero_u64_from_u32(seq).context("event seq must be non-zero")?;
-        let max_content_length = max_content_length.and_then(non_zero_u64_from_u32);
-        let response = self
-            .send_api(|client| async move {
-                let mut builder = client
-                    .get_run_event_detail()
-                    .id(run_id.to_string())
-                    .seq(seq);
-                if let Some(max_content_length) = max_content_length {
-                    builder = builder.max_content_length(max_content_length);
-                }
-                builder.send().await
-            })
-            .await?;
-        convert_type(response.into_inner())
-    }
-
     pub async fn archive_run(&self, run_id: &RunId) -> Result<Run> {
         let response = self
             .send_api(
@@ -1674,160 +1609,6 @@ impl Client {
         convert_type(response.into_inner())
     }
 
-    pub async fn list_run_events(
-        &self,
-        run_id: &RunId,
-        since_seq: Option<u32>,
-        limit: Option<usize>,
-    ) -> Result<Vec<EventEnvelope>> {
-        let mut next_since_seq = since_seq;
-        let mut all_events = Vec::new();
-
-        loop {
-            let page = EventPageCursor::Ascending {
-                since_seq: next_since_seq,
-            };
-            let (page_events, has_more) = self.fetch_run_events_page(run_id, page, limit).await?;
-            let next_page_since_seq = page_events.last().map(|event| event.seq.saturating_add(1));
-            all_events.extend(page_events);
-
-            if limit.is_some() || !has_more || next_page_since_seq.is_none() {
-                break;
-            }
-            next_since_seq = next_page_since_seq;
-        }
-
-        Ok(all_events)
-    }
-
-    /// Returns the newest `max_events` in ascending sequence order.
-    pub async fn list_run_events_tail(
-        &self,
-        run_id: &RunId,
-        max_events: usize,
-    ) -> Result<Vec<EventEnvelope>> {
-        if max_events == 0 {
-            return Ok(Vec::new());
-        }
-
-        // Fetch two events when the caller asks for one so an older server
-        // that silently ignores the new order parameter can be detected.
-        let fetch_target = max_events.max(2);
-        let mut before_seq = None;
-        let mut descending_events: Vec<EventEnvelope> = Vec::new();
-        loop {
-            let remaining = fetch_target - descending_events.len();
-            let (page_events, has_more) = self
-                .fetch_run_events_page(
-                    run_id,
-                    EventPageCursor::Descending { before_seq },
-                    Some(remaining),
-                )
-                .await?;
-
-            let keeps_descending = descending_events
-                .last()
-                .into_iter()
-                .chain(&page_events)
-                .is_sorted_by(|previous, next| previous.seq > next.seq);
-            if !keeps_descending {
-                // An older server ignored the order parameter and returned
-                // ascending history; fetch everything and slice the tail.
-                let mut events = self.list_run_events(run_id, None, None).await?;
-                let tail_start = events.len().saturating_sub(max_events);
-                return Ok(events.split_off(tail_start));
-            }
-
-            before_seq = page_events.last().map(|event| event.seq);
-            descending_events.extend(page_events);
-            if descending_events.len() >= fetch_target || !has_more || before_seq.is_none() {
-                break;
-            }
-        }
-
-        descending_events.reverse();
-        let tail_start = descending_events.len().saturating_sub(max_events);
-        Ok(descending_events.split_off(tail_start))
-    }
-
-    pub async fn list_run_events_until(
-        &self,
-        run_id: &RunId,
-        since_seq: Option<u32>,
-        max_events: usize,
-    ) -> Result<Vec<EventEnvelope>> {
-        if max_events == 0 {
-            return Ok(Vec::new());
-        }
-
-        let mut next_since_seq = since_seq;
-        let mut all_events = Vec::new();
-        while all_events.len() < max_events {
-            let remaining = max_events - all_events.len();
-            let page = EventPageCursor::Ascending {
-                since_seq: next_since_seq,
-            };
-            let (page_events, has_more) = self
-                .fetch_run_events_page(run_id, page, Some(remaining))
-                .await?;
-            let next_page_since_seq = page_events.last().map(|event| event.seq.saturating_add(1));
-            all_events.extend(page_events);
-
-            if !has_more || next_page_since_seq.is_none() {
-                break;
-            }
-            next_since_seq = next_page_since_seq;
-        }
-
-        Ok(all_events)
-    }
-
-    async fn fetch_run_events_page(
-        &self,
-        run_id: &RunId,
-        cursor: EventPageCursor,
-        limit: Option<usize>,
-    ) -> Result<(Vec<EventEnvelope>, bool)> {
-        let response = self
-            .send_api(|client| async move {
-                let mut request = client.list_run_events().id(run_id.to_string());
-                match cursor {
-                    EventPageCursor::Ascending { since_seq } => {
-                        if let Some(seq) = since_seq.and_then(non_zero_u64_from_u32) {
-                            request = request.since_seq(seq);
-                        }
-                    }
-                    EventPageCursor::Descending { before_seq } => {
-                        request = request.order(types::ListRunEventsOrder::Desc);
-                        if let Some(seq) = before_seq.and_then(non_zero_u64_from_u32) {
-                            request = request.before_seq(seq);
-                        }
-                    }
-                }
-                let page_limit = limit.map(|limit| limit.min(1000));
-                if let Some(limit) = page_limit.and_then(non_zero_u64_from_usize) {
-                    request = request.limit(limit);
-                }
-                request.send().await
-            })
-            .await?;
-        let parsed = match response.into_inner() {
-            types::ListRunEventsResponse::EventList(page) => page,
-            types::ListRunEventsResponse::RunStreamList(_) => {
-                bail!(
-                    "run {run_id} executes on Petri; its events are served as a run stream \
-                     (list_run_stream)"
-                );
-            }
-        };
-        let events = parsed
-            .data
-            .into_iter()
-            .map(convert_type::<_, EventEnvelope>)
-            .collect::<Result<Vec<EventEnvelope>>>()?;
-        Ok((events, parsed.meta.has_more))
-    }
-
     /// One page of a Petri run's stream: up to `limit` items with
     /// `stream_seq > after`, in order.
     pub async fn list_run_stream_page(
@@ -1846,25 +1627,41 @@ impl Client {
                 request.send().await
             })
             .await?;
-        match response.into_inner() {
-            types::ListRunEventsResponse::RunStreamList(page) => Ok(RunStreamPage {
-                items:                  page.data,
-                has_more:               page.meta.has_more,
-                event_contract_version: Some(page.event_contract_version),
-            }),
-            // An empty page decodes as either list; a legacy page with
-            // items is a run that does not execute on Petri.
-            types::ListRunEventsResponse::EventList(page) if page.data.is_empty() => {
-                Ok(RunStreamPage {
-                    items:                  Vec::new(),
-                    has_more:               page.meta.has_more,
-                    event_contract_version: None,
-                })
-            }
-            types::ListRunEventsResponse::EventList(_) => {
-                bail!("run {run_id} executes on the legacy engine; its events are not a run stream")
+        let page = response.into_inner();
+        Ok(RunStreamPage {
+            items:                  page.data,
+            has_more:               page.meta.has_more,
+            event_contract_version: Some(page.event_contract_version),
+        })
+    }
+
+    /// At most `max_items` items of a Petri run's stream past `after`, in
+    /// order, page by page.
+    pub async fn list_run_stream_until(
+        &self,
+        run_id: &RunId,
+        after: u64,
+        max_items: usize,
+    ) -> Result<Vec<RunStreamItem>> {
+        let mut cursor = after;
+        let mut all = Vec::new();
+        while all.len() < max_items {
+            let remaining = max_items - all.len();
+            let page = self
+                .list_run_stream_page(run_id, cursor, Some(remaining))
+                .await?;
+            let Some(last) = page.items.last() else {
+                break;
+            };
+            cursor = last.stream_seq;
+            let has_more = page.has_more;
+            all.extend(page.items);
+            if !has_more {
+                break;
             }
         }
+        all.truncate(max_items);
+        Ok(all)
     }
 
     /// Every item of a Petri run's stream past `after`, page by page.
@@ -1906,23 +1703,6 @@ impl Client {
         Ok(RunStreamItemStream::new(response.into_inner()))
     }
 
-    pub async fn attach_run_events(
-        &self,
-        run_id: &RunId,
-        since_seq: Option<u32>,
-    ) -> Result<RunEventStream> {
-        let response = self
-            .send_api(|client| async move {
-                let mut request = client.attach_run_events().id(run_id.to_string());
-                if let Some(seq) = since_seq.and_then(non_zero_u64_from_u32) {
-                    request = request.since_seq(seq);
-                }
-                request.send().await
-            })
-            .await?;
-        Ok(RunEventStream::new(response.into_inner()))
-    }
-
     pub async fn list_run_questions(&self, run_id: &RunId) -> Result<Vec<types::ApiQuestion>> {
         let response = self
             .send_api(|client| async move {
@@ -1955,21 +1735,6 @@ impl Client {
         })
         .await?;
         Ok(())
-    }
-
-    pub async fn append_run_event(&self, run_id: &RunId, event: &RunEvent) -> Result<u32> {
-        let body: types::RunEvent = convert_type(event)?;
-        let response = self
-            .send_api(|client| async move {
-                client
-                    .append_run_event()
-                    .id(run_id.to_string())
-                    .body(body.clone())
-                    .send()
-                    .await
-            })
-            .await?;
-        u32::try_from(response.into_inner().seq).context("append_run_event returned invalid seq")
     }
 
     pub async fn write_run_blob(&self, run_id: &RunId, data: &[u8]) -> Result<BlobHash> {
@@ -2555,12 +2320,6 @@ pub fn apply_bearer_token_auth(
     Ok(builder.default_headers(headers))
 }
 
-#[derive(Clone, Copy)]
-enum EventPageCursor {
-    Ascending { since_seq: Option<u32> },
-    Descending { before_seq: Option<u32> },
-}
-
 fn non_zero_u64_from_u32(value: u32) -> Option<NonZeroU64> {
     NonZeroU64::new(u64::from(value))
 }
@@ -2625,17 +2384,6 @@ mod tests {
             },
             logged_in_at:             now,
         }
-    }
-
-    fn run_event_json(run_id: &RunId, seq: u32) -> serde_json::Value {
-        json!({
-            "seq": seq,
-            "event": "run.running",
-            "id": format!("evt-{seq}"),
-            "run_id": run_id,
-            "ts": "2026-07-24T12:00:00Z",
-            "properties": {},
-        })
     }
 
     fn test_workflow_version(
@@ -3072,116 +2820,6 @@ mod tests {
 
         mock.assert_async().await;
         assert!(models.is_empty());
-    }
-
-    #[tokio::test]
-    async fn list_run_events_tail_pages_backward_and_returns_ascending() {
-        let server = MockServer::start_async().await;
-        let run_id: RunId = "01JT56VE4Z5NZ814GZN2JZD65A".parse().unwrap();
-        let newest_page = server
-            .mock_async(|when, then| {
-                when.method(GET)
-                    .path(format!("/api/v1/runs/{run_id}/events"))
-                    .query_param("order", "desc")
-                    .query_param("limit", "5");
-                then.status(200)
-                    .header("Content-Type", "application/json")
-                    .json_body(json!({
-                        "data": [
-                            run_event_json(&run_id, 6),
-                            run_event_json(&run_id, 5),
-                            run_event_json(&run_id, 4),
-                        ],
-                        "meta": { "has_more": true },
-                    }));
-            })
-            .await;
-        let older_page = server
-            .mock_async(|when, then| {
-                when.method(GET)
-                    .path(format!("/api/v1/runs/{run_id}/events"))
-                    .query_param("order", "desc")
-                    .query_param("before_seq", "4")
-                    .query_param("limit", "2");
-                then.status(200)
-                    .header("Content-Type", "application/json")
-                    .json_body(json!({
-                        "data": [
-                            run_event_json(&run_id, 3),
-                            run_event_json(&run_id, 2),
-                        ],
-                        "meta": { "has_more": true },
-                    }));
-            })
-            .await;
-
-        let client = Client::new_no_proxy(&server.url("")).unwrap();
-        let events = client.list_run_events_tail(&run_id, 5).await.unwrap();
-
-        newest_page.assert_async().await;
-        older_page.assert_async().await;
-        let seqs = events
-            .into_iter()
-            .map(|event| event.seq)
-            .collect::<Vec<_>>();
-        assert_eq!(seqs, vec![2, 3, 4, 5, 6]);
-    }
-
-    #[tokio::test]
-    async fn list_run_events_tail_falls_back_when_server_ignores_descending_order() {
-        let server = MockServer::start_async().await;
-        let run_id: RunId = "01JT56VE4Z5NZ814GZN2JZD65A".parse().unwrap();
-        let unsupported_descending_page = server
-            .mock_async(|when, then| {
-                when.method(GET)
-                    .path(format!("/api/v1/runs/{run_id}/events"))
-                    .query_param("order", "desc")
-                    .query_param("limit", "3");
-                then.status(200)
-                    .header("Content-Type", "application/json")
-                    .json_body(json!({
-                        "data": [
-                            run_event_json(&run_id, 1),
-                            run_event_json(&run_id, 2),
-                            run_event_json(&run_id, 3),
-                        ],
-                        "meta": { "has_more": true },
-                    }));
-            })
-            .await;
-        let full_history = server
-            .mock_async(|when, then| {
-                when.method(GET)
-                    .path(format!("/api/v1/runs/{run_id}/events"))
-                    .query_param_missing("order")
-                    .query_param_missing("before_seq")
-                    .query_param_missing("since_seq")
-                    .query_param_missing("limit");
-                then.status(200)
-                    .header("Content-Type", "application/json")
-                    .json_body(json!({
-                        "data": [
-                            run_event_json(&run_id, 1),
-                            run_event_json(&run_id, 2),
-                            run_event_json(&run_id, 3),
-                            run_event_json(&run_id, 4),
-                            run_event_json(&run_id, 5),
-                        ],
-                        "meta": { "has_more": false },
-                    }));
-            })
-            .await;
-
-        let client = Client::new_no_proxy(&server.url("")).unwrap();
-        let events = client.list_run_events_tail(&run_id, 3).await.unwrap();
-
-        unsupported_descending_page.assert_async().await;
-        full_history.assert_async().await;
-        let seqs = events
-            .into_iter()
-            .map(|event| event.seq)
-            .collect::<Vec<_>>();
-        assert_eq!(seqs, vec![3, 4, 5]);
     }
 
     #[tokio::test]

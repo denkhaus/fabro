@@ -26,25 +26,6 @@ pub(super) fn routes() -> Router<Arc<AppState>> {
         .route("/runs/{id}/attach", get(attach_run_events))
 }
 
-/// Query parameters shared by the paged event listings: a page size.
-#[derive(serde::Deserialize)]
-pub(crate) struct EventListParams {
-    #[serde(default)]
-    since_seq: Option<u32>,
-    #[serde(default)]
-    limit:     Option<usize>,
-}
-
-impl EventListParams {
-    pub(crate) fn since_seq(&self) -> u32 {
-        self.since_seq.unwrap_or(1).max(1)
-    }
-
-    pub(crate) fn limit(&self) -> usize {
-        self.limit.unwrap_or(100).clamp(1, 1000)
-    }
-}
-
 /// Query parameters for `/runs/{id}/events`: the stream cursor and a page
 /// size.
 #[derive(serde::Deserialize)]

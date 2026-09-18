@@ -8,7 +8,6 @@ import {
   deriveRunPhasesFromStream,
   extractPetriStageContext,
   findPetriEdgeForStage,
-  isPetriRun,
   isStreamItemPayload,
   isTerminalLifecycleItem,
   itemsForStage,
@@ -31,7 +30,6 @@ const gate = loadPetriFixture("gate");
 describe("stream items", () => {
   test("a fixture run executes on Petri and its stream is dense", () => {
     for (const fixture of [hello, command, parallel, gate]) {
-      expect(isPetriRun(fixture.projection)).toBe(true);
       const seqs = fixture.stream.map((item) => item.stream_seq);
       expect(seqs).toEqual(seqs.map((_, index) => index + 1));
       for (const item of fixture.stream) {
@@ -39,7 +37,6 @@ describe("stream items", () => {
         expect(item.run_id).toBe(fixture.run_id);
       }
     }
-    expect(isPetriRun({ spec: {} } as never)).toBe(false);
     expect(isStreamItemPayload({ event: "run.completed", seq: 3 })).toBe(false);
   });
 

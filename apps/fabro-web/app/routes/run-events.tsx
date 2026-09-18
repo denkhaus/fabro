@@ -1,6 +1,5 @@
 import { useMemo, useState } from "react";
 import { useParams, useSearchParams } from "react-router";
-import type { EventEnvelope, RunStreamItem } from "@qltysh/fabro-api-client";
 
 import {
   DebugEventDetailsPanel,
@@ -8,10 +7,7 @@ import {
   EventSearchInput,
   MultiSelectFilter,
 } from "../components/event-debug";
-import {
-  debugCategory,
-  debugCategoryLabel,
-} from "../components/event-debug-helpers";
+import { debugCategoryLabel } from "../components/event-debug-helpers";
 import { RunWaterfall } from "../components/run-waterfall";
 import type { RunPhase } from "../lib/run-phases";
 import { StageSidebar } from "../components/stage-sidebar";
@@ -20,50 +16,34 @@ import {
   debugRowSearchText,
   debugRowsFromStream,
   deriveRunPhasesFromStream,
-  isPetriRun,
   type DebugRow,
 } from "../lib/petri-stream";
-import {
-  useRun,
-  useRunEventsList,
-  useRunStages,
-  useRunState,
-  useRunStream,
-} from "../lib/queries";
+import { useRun, useRunStages, useRunStream } from "../lib/queries";
 import { mapRunStagesToSidebarStages } from "../lib/stage-sidebar";
 
 export const handle = { wide: true, fullHeight: true };
 
 type ViewMode = "waterfall" | "events";
 
-const EMPTY_EVENTS: EventEnvelope[] = [];
-const EMPTY_STREAM: RunStreamItem[] = [];
 const EMPTY_ROWS: DebugRow[] = [];
 
 export default function RunEvents() {
   const { id } = useParams();
   const runQuery = useRun(id);
-  const runStateQuery = useRunState(id);
   const stagesQuery = useRunStages(id);
-  // A Petri run's events are its stream; a legacy run's the stored events.
-  // Which one is known from the run's spec, so the other query stays idle.
-  // A state that cannot be read leaves the engine unknown; the legacy list
-  // then loads as it did before the engine existed.
-  const engineKnown =
-    runStateQuery.data !== undefined || runStateQuery.error !== undefined;
-  const petri = isPetriRun(runStateQuery.data);
-  const eventsQuery = useRunEventsList(engineKnown && !petri ? id : undefined);
-  const streamQuery = useRunStream(engineKnown && petri ? id : undefined);
+  // The run's events are its stream: Petri's events and the platform
+  // records, which the waterfall's phases and the events list derive from.
+  const streamQuery = useRunStream(id);
   const streamPhases = useMemo(
     () =>
-      petri && streamQuery.data && runQuery.data
+      streamQuery.data && runQuery.data
         ? deriveRunPhasesFromStream(streamQuery.data, runQuery.data.timestamps.created_at)
         : undefined,
-    [petri, streamQuery.data, runQuery.data],
+    [streamQuery.data, runQuery.data],
   );
   const streamRows = useMemo(
-    () => (petri && streamQuery.data ? debugRowsFromStream(streamQuery.data) : undefined),
-    [petri, streamQuery.data],
+    () => (streamQuery.data ? debugRowsFromStream(streamQuery.data) : undefined),
+    [streamQuery.data],
   );
   const [searchParams, setSearchParams] = useSearchParams();
   const view: ViewMode = searchParams.get("view") === "events" ? "events" : "waterfall";
@@ -99,37 +79,24 @@ export default function RunEvents() {
       {view === "waterfall" ? (
         <WaterfallPane
           runId={id!}
-          events={petri ? (streamQuery.data ? EMPTY_EVENTS : undefined) : eventsQuery.data}
           phases={streamPhases}
-          eventsError={petri ? streamQuery.error : eventsQuery.error}
+          eventsError={streamQuery.error}
           stagesData={stagesQuery.data}
           stagesError={stagesQuery.error}
           createdAt={runQuery.data?.timestamps.created_at}
           completedAt={runQuery.data?.timestamps.completed_at ?? null}
           onRetry={() => {
-            void (petri ? streamQuery.mutate() : eventsQuery.mutate());
+            void streamQuery.mutate();
             void stagesQuery.mutate();
           }}
           view={view}
           onChangeView={setView}
         />
-      ) : petri ? (
+      ) : (
         <StreamEventsView
           rows={streamRows}
           error={streamQuery.error}
           onRetry={() => void streamQuery.mutate()}
-          runStart={
-            runQuery.data?.timestamps.started_at ??
-            runQuery.data?.timestamps.created_at
-          }
-          view={view}
-          onChangeView={setView}
-        />
-      ) : (
-        <EventsView
-          events={eventsQuery.data}
-          error={eventsQuery.error}
-          onRetry={() => void eventsQuery.mutate()}
           runStart={
             runQuery.data?.timestamps.started_at ??
             runQuery.data?.timestamps.created_at
@@ -179,7 +146,6 @@ function ViewToggle({
 
 function WaterfallPane({
   runId,
-  events,
   phases,
   eventsError,
   stagesData,
@@ -191,8 +157,8 @@ function WaterfallPane({
   onChangeView,
 }: {
   runId: string;
-  events: EventEnvelope[] | undefined;
-  phases?: RunPhase[];
+  /** The run's phases once its stream has loaded. */
+  phases: RunPhase[] | undefined;
   eventsError: unknown;
   stagesData: ReturnType<typeof useRunStages>["data"];
   stagesError: unknown;
@@ -204,7 +170,7 @@ function WaterfallPane({
 }) {
   const error = eventsError ?? stagesError;
   const ready =
-    events !== undefined && stagesData !== undefined && createdAt !== undefined;
+    phases !== undefined && stagesData !== undefined && createdAt !== undefined;
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col pt-3">
@@ -228,8 +194,7 @@ function WaterfallPane({
       ) : (
         <RunWaterfall
           runId={runId}
-          events={events!}
-          phases={phases}
+          phases={phases!}
           stages={stagesData!.data ?? []}
           createdAtIso={createdAt!}
           completedAtIso={completedAt}
@@ -239,153 +204,8 @@ function WaterfallPane({
   );
 }
 
-function EventsView({
-  events,
-  error,
-  onRetry,
-  runStart,
-  view,
-  onChangeView,
-}: {
-  events: EventEnvelope[] | undefined;
-  error: unknown;
-  onRetry: () => void;
-  runStart: string | undefined;
-  view: ViewMode;
-  onChangeView: (v: ViewMode) => void;
-}) {
-  const [openSeq, setOpenSeq] = useState<number | null>(null);
-  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
-  const [search, setSearch] = useState("");
-
-  const all = events ?? EMPTY_EVENTS;
-
-  const availableCategories = useMemo<string[]>(() => {
-    const set = new Set<string>();
-    for (const event of all) {
-      if (event.event) set.add(debugCategory(event.event));
-    }
-    return Array.from(set).sort();
-  }, [all]);
-
-  const filtered = useMemo<EventEnvelope[]>(() => {
-    const useCategoryFilter = selectedCategories.length > 0;
-    const cats = new Set(selectedCategories);
-    const needle = search.toLowerCase();
-    return all.filter((event) => {
-      const name = event.event ?? "";
-      if (useCategoryFilter && !cats.has(debugCategory(name))) return false;
-      if (needle) {
-        const blob = `${name} ${JSON.stringify(event.properties ?? {})}`.toLowerCase();
-        if (!blob.includes(needle)) return false;
-      }
-      return true;
-    });
-  }, [all, selectedCategories, search]);
-
-  const openEvent = useMemo<EventEnvelope | null>(
-    () => (openSeq != null ? all.find((e) => e.seq === openSeq) ?? null : null),
-    [all, openSeq],
-  );
-
-  const allCategoriesSelected =
-    selectedCategories.length === 0 ||
-    selectedCategories.length === availableCategories.length;
-  const isFiltering = !allCategoriesSelected || search.length > 0;
-
-  function clearFilters() {
-    setSelectedCategories([]);
-    setSearch("");
-  }
-
-  if (error) {
-    return (
-      <div className="min-w-0 flex-1 pt-3">
-        <ErrorState
-          title="Couldn't load events"
-          description={errorMessage(error)}
-          onRetry={onRetry}
-        />
-      </div>
-    );
-  }
-  if (events === undefined) {
-    return (
-      <div className="min-w-0 flex-1 pt-3">
-        <LoadingState label="Loading events…" />
-      </div>
-    );
-  }
-
-  return (
-    <>
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col pt-3">
-        <div className="shrink-0 border-b border-line">
-          <div className="pl-3 pr-4 sm:pr-6 lg:pr-8">
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-2 pb-3">
-              <div className="flex flex-1 flex-wrap items-center gap-2">
-                <ViewToggle value={view} onChange={onChangeView} />
-                <MultiSelectFilter<string>
-                  selected={selectedCategories}
-                  options={availableCategories}
-                  labelOf={debugCategoryLabel}
-                  onChange={setSelectedCategories}
-                  emptyMeansAll
-                />
-                <EventSearchInput value={search} onChange={setSearch} />
-                {isFiltering && (
-                  <button
-                    type="button"
-                    onClick={clearFilters}
-                    className="rounded px-2 py-1 text-xs text-fg-muted transition-colors hover:bg-overlay hover:text-fg-2 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-teal-500"
-                  >
-                    Clear
-                  </button>
-                )}
-              </div>
-              {all.length > 0 && (
-                <span className="text-xs tabular-nums text-fg-muted">
-                  {isFiltering
-                    ? `${filtered.length.toLocaleString()} of ${all.length.toLocaleString()} events`
-                    : `${all.length.toLocaleString()} events`}
-                </span>
-              )}
-            </div>
-          </div>
-        </div>
-        <div className="min-h-0 flex-1 overflow-y-auto pt-2 pb-[calc(1.5rem+var(--fabro-interview-dock-clearance,0px))]">
-          {all.length === 0 ? (
-            <div className="px-2 py-12">
-              <EmptyState
-                title="No events yet"
-                description="Events will appear here as the run executes."
-              />
-            </div>
-          ) : filtered.length === 0 ? (
-            <div className="px-2 py-6 text-sm text-fg-muted">
-              No events match these filters.
-            </div>
-          ) : (
-            filtered.map((event) => (
-              <DebugEventRow
-                key={`event-${event.seq}`}
-                event={event}
-                runStart={runStart}
-                selected={openSeq === event.seq}
-                onSelect={() => setOpenSeq(event.seq)}
-              />
-            ))
-          )}
-        </div>
-      </div>
-
-      <DebugEventDetailsPanel event={openEvent} onClose={() => setOpenSeq(null)} />
-    </>
-  );
-}
-
 /**
- * The events list of a Petri run: one row per stream item, named by the
+ * The events list of a run: one row per stream item, named by the
  * Petri event (`<subject>.<verb>`) or the platform record kind, with the
  * raw item in the details panel.
  */

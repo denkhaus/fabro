@@ -2776,137 +2776,26 @@ paths:
       tags: [Run Internals]
       summary: List Run Events
       description: |
-        Returns a paginated JSON list of the run's events. The shape depends
-        on the engine the run was created for (`RunSpec.engine`).
-
-        For a legacy run (`engine.kind = legacy`): stored run events in the
-        legacy envelope (`PaginatedEventList`). Ascending order uses
-        `since_seq` as an inclusive cursor. Descending order uses
-        `before_seq` as an exclusive cursor and starts at the newest event
-        when `before_seq` is omitted.
-
-        For a Petri run (`engine.kind = petri`): the run stream
-        (`PaginatedRunStreamList`), one ordered delivery of Petri's own
-        `RunEvent`s and Fabro's platform records in the `RunStreamItem`
-        envelope, in `stream_seq` order. The cursor is `after`: the last
-        `stream_seq` the client saw, exclusive; the first page is `after=0`.
-        `since_seq`, `before_seq` and `order` are not accepted for a Petri
-        run. A client that reconnects resumes from its last `stream_seq` and
-        deduplicates by each item's `id`; every item is delivered once, in
-        order, with no gap.
+        Returns one page of the run's stream (`PaginatedRunStreamList`):
+        one ordered delivery of Petri's own `RunEvent`s and Fabro's platform
+        records in the `RunStreamItem` envelope, in `stream_seq` order. The
+        cursor is `after`: the last `stream_seq` the client saw, exclusive;
+        the first page is `after=0`. A client that reconnects resumes from
+        its last `stream_seq` and deduplicates by each item's `id`; every
+        item is delivered once, in order, with no gap.
       parameters:
         - $ref: "#/components/parameters/RunId"
-        - $ref: "#/components/parameters/SinceSeq"
         - $ref: "#/components/parameters/EventLimit"
-        - $ref: "#/components/parameters/BeforeSeq"
-        - $ref: "#/components/parameters/EventOrder"
         - $ref: "#/components/parameters/StreamAfter"
       responses:
         "200":
-          description: Paginated list of run events, in the run engine's envelope
+          description: One page of the run's stream
           content:
             application/json:
               schema:
-                oneOf:
-                  - $ref: "#/components/schemas/PaginatedEventList"
-                  - $ref: "#/components/schemas/PaginatedRunStreamList"
-        "400":
-          description: Invalid cursor and order combination
-          headers:
-            x-request-id:
-              $ref: "#/components/headers/XRequestId"
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: "#/components/schemas/PaginatedRunStreamList"
         "404":
           description: Run not found
-          headers:
-            x-request-id:
-              $ref: "#/components/headers/XRequestId"
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-    post:
-      operationId: appendRunEvent
-      tags: [Run Internals]
-      summary: Append Run Event
-      description: Appends a validated event to the run event log. Intended for trusted internal callers.
-      parameters:
-        - $ref: "#/components/parameters/RunId"
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/RunEvent"
-      responses:
-        "200":
-          description: Event appended
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AppendEventResponse"
-        "400":
-          description: Invalid event payload
-          headers:
-            x-request-id:
-              $ref: "#/components/headers/XRequestId"
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "404":
-          description: Run not found
-          headers:
-            x-request-id:
-              $ref: "#/components/headers/XRequestId"
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-
-  /api/v1/runs/{id}/events/{seq}:
-    get:
-      operationId: getRunEventDetail
-      tags: [Run Internals]
-      summary: Get Run Event Detail
-      description: Returns one stored run event by source event sequence with content fields separated and truncated.
-      parameters:
-        - $ref: "#/components/parameters/RunId"
-        - name: seq
-          in: path
-          required: true
-          schema:
-            type: integer
-            minimum: 1
-        - name: max_content_length
-          in: query
-          required: false
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 200000
-            default: 20000
-      responses:
-        "200":
-          description: Run event detail
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/RunEventDetailResponse"
-        "400":
-          description: Invalid query parameter
-          headers:
-            x-request-id:
-              $ref: "#/components/headers/XRequestId"
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "404":
-          description: Run or event not found
           headers:
             x-request-id:
               $ref: "#/components/headers/XRequestId"
@@ -2921,23 +2810,16 @@ paths:
       tags: [Run Internals]
       summary: Attach Run Events
       description: |
-        Opens an ordered server-sent event stream, replaying persisted items
-        and continuing with live updates while the run remains active. Each
-        `data:` frame is one JSON object in the run engine's envelope.
-
-        For a legacy run the frames are `EventEnvelope`s and the stream
-        starts at `since_seq` (inclusive; the next unseen event when omitted).
-        It ends after `run.completed` or `run.failed`.
-
-        For a Petri run the frames are `RunStreamItem`s and the stream
-        starts after `after` (the last `stream_seq` the client saw; `0`
-        replays the whole run; the next unseen item when omitted). It ends
-        once the run is no longer active and every committed item has been
-        sent. A reconnecting client passes its last `stream_seq` as `after`
-        and deduplicates by `id`.
+        Opens an ordered server-sent event stream of the run's stream,
+        replaying committed items and continuing with live ones while the
+        run remains active. Each `data:` frame is one `RunStreamItem`. The
+        stream starts after `after` (the last `stream_seq` the client saw;
+        `0` replays the whole run; the next unseen item when omitted). It
+        ends once the run is no longer active and every committed item has
+        been sent. A reconnecting client passes its last `stream_seq` as
+        `after` and deduplicates by `id`.
       parameters:
         - $ref: "#/components/parameters/RunId"
-        - $ref: "#/components/parameters/SinceSeq"
         - $ref: "#/components/parameters/StreamAfter"
       responses:
         "200":
@@ -3438,34 +3320,6 @@ paths:
                 $ref: "#/components/schemas/PaginatedRunStageList"
         "404":
           description: Run not found
-          headers:
-            x-request-id:
-              $ref: "#/components/headers/XRequestId"
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-
-  /api/v1/runs/{id}/stages/{stageId}/events:
-    get:
-      operationId: listStageEvents
-      tags: [Run Internals]
-      summary: List Stage Events
-      description: Returns a paginated JSON list of stored run events scoped to a single stage visit.
-      parameters:
-        - $ref: "#/components/parameters/RunId"
-        - $ref: "#/components/parameters/StageId"
-        - $ref: "#/components/parameters/SinceSeq"
-        - $ref: "#/components/parameters/EventLimit"
-      responses:
-        "200":
-          description: Paginated list of stage events
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/PaginatedEventList"
-        "404":
-          description: Run not found.
           headers:
             x-request-id:
               $ref: "#/components/headers/XRequestId"
@@ -5361,7 +5215,10 @@ paths:
       operationId: attachEvents
       tags: [System]
       summary: Attach Global Events
-      description: Opens a server-sent event stream for live run events across the server.
+      description: >-
+        Opens a server-sent event stream of every run's stream across the
+        server: each `data:` frame is one `RunStreamItem`, as it is
+        committed.
       parameters:
         - name: run_id
           in: query
@@ -6154,31 +6011,6 @@ components:
         minimum: 1
         default: 1
       example: 42
-
-    BeforeSeq:
-      name: before_seq
-      in: query
-      required: false
-      description: |
-        Exclusive upper event sequence cursor for descending order. Omit on
-        the first descending request to start from the newest event.
-      schema:
-        type: integer
-        minimum: 1
-      example: 42
-
-    EventOrder:
-      name: order
-      in: query
-      required: false
-      description: |
-        Event sequence order. `since_seq` is valid only with `asc`;
-        `before_seq` is valid only with `desc`.
-      schema:
-        type: string
-        enum: [asc, desc]
-        default: asc
-      example: desc
 
     EventLimit:
       name: limit
@@ -8098,72 +7930,6 @@ components:
           minimum: 1
         tool_call_id:
           type: string
-
-    RunEventDetailResponse:
-      type: object
-      required:
-        - event
-        - properties
-        - truncated
-        - redacted
-        - max_content_length
-      properties:
-        event:
-          type: object
-          required:
-            - seq
-            - id
-            - ts
-            - run_id
-            - event
-          properties:
-            seq:
-              type: integer
-              minimum: 1
-            id:
-              type: string
-            ts:
-              type: string
-              format: date-time
-            run_id:
-              type: string
-            event:
-              type: string
-            actor:
-              $ref: "#/components/schemas/Principal"
-            session_id:
-              type: string
-            node_id:
-              type: string
-            node_label:
-              type: string
-            stage_id:
-              type: string
-            tool_call_id:
-              type: string
-        properties:
-          type: object
-          additionalProperties: true
-        content:
-          type: object
-          required: [kind, value]
-          properties:
-            kind:
-              type: string
-              enum:
-                - text
-                - tool_output
-                - tool_arguments
-                - error
-                - details
-            value:
-              type: string
-        truncated:
-          type: boolean
-        redacted:
-          type: boolean
-        max_content_length:
-          type: integer
 
     SessionId:
       description: Durable session identifier.
@@ -10609,63 +10375,6 @@ components:
         system_kind:
           $ref: "#/components/schemas/SystemActorKind"
 
-    RunEvent:
-      description: >
-        Internal RunEvent-compatible JSON payload. The server validates this
-        body by deserializing into the typed RunEvent struct.
-      type: object
-      required:
-        - id
-        - ts
-        - run_id
-        - event
-      properties:
-        id:
-          type: string
-        ts:
-          type: string
-          format: date-time
-        run_id:
-          type: string
-        node_id:
-          type: ["string", "null"]
-        node_label:
-          type: ["string", "null"]
-        stage_id:
-          type: ["string", "null"]
-          description: Stage execution identity, formatted as "{node_id}@{visit}".
-        parallel_group_id:
-          type: ["string", "null"]
-          description: >
-            Durable identity of one execution of a parallel node, formatted as
-            "{node_id}@{visit}".
-        parallel_branch_id:
-          oneOf:
-            - $ref: "#/components/schemas/ParallelBranchId"
-            - type: "null"
-        session_id:
-          type: ["string", "null"]
-        parent_session_id:
-          type: ["string", "null"]
-        tool_call_id:
-          type: ["string", "null"]
-          description: >
-            Stable identifier for a tool call, present on agent.tool.* events
-            and other durable events that directly describe the same tool
-            call.
-        actor:
-          oneOf:
-            - $ref: "#/components/schemas/Principal"
-            - type: "null"
-        event:
-          type: string
-          description: Event type discriminator.
-          example: stage.started
-        properties:
-          type: object
-          additionalProperties: true
-      additionalProperties: true
-
     AgentSessionActivatedProps:
       description: Properties for the `agent.session.activated` event.
       type: object
@@ -10812,40 +10521,6 @@ components:
           type: integer
           minimum: 1
 
-    EventSeq:
-      description: Assigned sequence number component of a stored event envelope.
-      type: object
-      required:
-        - seq
-      properties:
-        seq:
-          type: integer
-          description: Assigned event sequence number.
-          example: 42
-
-    EventEnvelope:
-      description: >
-        Stored event envelope with assigned sequence number. On the wire the
-        envelope is flattened: seq sits alongside the RunEvent payload fields
-        at the top level of the JSON object.
-      allOf:
-        - $ref: "#/components/schemas/EventSeq"
-        - $ref: "#/components/schemas/RunEvent"
-
-    PaginatedEventList:
-      description: Paginated list of stored run events.
-      type: object
-      required:
-        - data
-        - meta
-      properties:
-        data:
-          type: array
-          items:
-            $ref: "#/components/schemas/EventEnvelope"
-        meta:
-          $ref: "#/components/schemas/PaginationMeta"
-
     RunStreamItemKind:
       description: Which item shape a run stream item carries.
       type: string
@@ -10938,17 +10613,6 @@ components:
           format: uint32
           minimum: 0
           example: 3
-
-    AppendEventResponse:
-      description: Assigned sequence number for an appended event.
-      type: object
-      required:
-        - seq
-      properties:
-        seq:
-          type: integer
-          description: Assigned event sequence number.
-          example: 42
 
     BlobHash:
       description: >-

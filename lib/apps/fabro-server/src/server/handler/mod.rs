@@ -121,10 +121,6 @@ pub(super) fn demo_routes() -> Router<Arc<AppState>> {
         .route("/runs/{id}/files", get(demo::list_run_files_stub))
         .route("/runs/{id}/commits", get(demo::list_run_commits_stub))
         .route(
-            "/runs/{id}/stages/{stageId}/events",
-            get(demo::get_stage_events),
-        )
-        .route(
             "/runs/{id}/stages/{stageId}/context-window",
             get(not_implemented),
         )

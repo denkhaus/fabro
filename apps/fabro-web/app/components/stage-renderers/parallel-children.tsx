@@ -2,12 +2,10 @@ import { useMemo } from "react";
 import { Link } from "react-router";
 import { ArrowTopRightOnSquareIcon } from "@heroicons/react/20/solid";
 import { StageState } from "@qltysh/fabro-api-client";
-import type { EventEnvelope } from "@qltysh/fabro-api-client";
 
 import type { Stage } from "../stage-sidebar";
 import { formatStageLabel, stageStatusLabel, stageStatusTone } from "../../lib/stage-sidebar";
 import { StageMetaBar } from "./meta-bar";
-import { parseParallelOverview } from "./helpers";
 import type { ParallelBranchSummary, ParallelOverview } from "./helpers";
 
 /** Branch row view state sourced from a live branch stage or completed result. */
@@ -98,23 +96,16 @@ function ChildRow({
 
 export function ParallelChildren({
   stage,
-  events,
-  overview: givenOverview,
+  overview,
   runId,
   allStages,
 }: {
   stage: Stage;
-  events: EventEnvelope[];
-  /** The overview when the caller derived it (a Petri run's projection). */
-  overview?: ParallelOverview;
+  /** The fork's branch count and results from the projection. */
+  overview: ParallelOverview;
   runId: string;
   allStages: Stage[];
 }) {
-  const overview = useMemo(
-    () => givenOverview ?? parseParallelOverview(events),
-    [givenOverview, events],
-  );
-
   const stagesByBranchIndex = useMemo(() => {
     const byIndex = new Map<number, Stage>();
     for (const candidate of allStages) {
