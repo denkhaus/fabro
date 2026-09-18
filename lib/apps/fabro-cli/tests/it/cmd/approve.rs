@@ -14,7 +14,7 @@ fn help() {
     success: true
     exit_code: 0
     ----- stdout -----
-    Approve pending workflow runs
+    Approve a pending run for execution
 
     Usage: fabro approve [OPTIONS] <RUNS>...
 

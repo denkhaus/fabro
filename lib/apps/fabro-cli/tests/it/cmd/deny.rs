@@ -14,7 +14,7 @@ fn help() {
     success: true
     exit_code: 0
     ----- stdout -----
-    Deny pending workflow runs
+    Deny execution of a pending run
 
     Usage: fabro deny [OPTIONS] <RUNS>...
 
