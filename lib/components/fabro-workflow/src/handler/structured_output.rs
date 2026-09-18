@@ -640,9 +640,28 @@ pub(crate) fn apply_validated_output(
     match schema {
         OutputSchemaKind::Routing { .. } => apply_routing_fields(&validated.value, outcome),
         OutputSchemaKind::JsonSchema { .. } => {
+            // Emission semantics (fabro-0a4c): the full payload ALWAYS stays
+            // under `output.<node>` — truncation recovery and compact
+            // response references key on it, and nodes that want it readable
+            // downstream can declare it in `context_allow_keys`. When the
+            // payload carries routing status fields (a file schema can
+            // declare the same routing contract as the built-in kind, e.g.
+            // the develop planner's `@schemas/planner-output.schema.json`),
+            // they apply exactly like the routing kind — preferred label,
+            // outcome status, suggested ids, and the `context_updates`
+            // flatten — so conditional edges route on them and downstream
+            // stages see the declared context keys without knowing the
+            // envelope.
             outcome
                 .context_updates
                 .insert(output_key(&node.id), validated.value.clone());
+            if validated
+                .value
+                .as_object()
+                .is_some_and(contains_routing_field)
+            {
+                apply_routing_fields(&validated.value, outcome);
+            }
         }
     }
 }
@@ -1934,6 +1953,148 @@ mod tests {
             outcome.context_updates.get("output.audit"),
             Some(&serde_json::json!({"passed": true})),
         );
+    }
+
+    #[test]
+    fn apply_validated_output_emission_semantics_table() {
+        // fabro-0a4c: file-schema payloads merge `context_updates` members
+        // into run context as individual keys (like the routing kind) while
+        // the full payload stays under output.<node>; payloads without
+        // context_updates land under output.<node> only; the built-in
+        // routing kind is unchanged.
+        struct Case {
+            name:           &'static str,
+            schema:         OutputSchemaKind,
+            payload:        Value,
+            expect_context: Vec<(&'static str, Value)>,
+            absent_context: Vec<&'static str>,
+            expect_label:   Option<&'static str>,
+            expect_failure: Option<&'static str>,
+        }
+
+        let cases = vec![
+            Case {
+                name:           "file schema with context_updates merges members and keeps output.<node>",
+                schema:         schema(serde_json::json!({"type": "object"})),
+                payload:        serde_json::json!({
+                    "outcome": "succeeded",
+                    "preferred_next_label": "Implemented",
+                    "context_updates": {
+                        "current_seed_id": "fabro-0a4c",
+                        "current_seed_brief": "fix the engine"
+                    }
+                }),
+                expect_context: vec![
+                    ("current_seed_id", serde_json::json!("fabro-0a4c")),
+                    ("current_seed_brief", serde_json::json!("fix the engine")),
+                ],
+                absent_context: vec![],
+                expect_label:   Some("Implemented"),
+                expect_failure: None,
+            },
+            Case {
+                name:           "file schema without context_updates lands under output.<node>",
+                schema:         schema(serde_json::json!({"type": "object"})),
+                payload:        serde_json::json!({"passed": true}),
+                expect_context: vec![],
+                absent_context: vec!["current_seed_id"],
+                expect_label:   None,
+                expect_failure: None,
+            },
+            Case {
+                name:           "file schema with failure routing fields applies outcome and failure_reason",
+                schema:         schema(serde_json::json!({"type": "object"})),
+                payload:        serde_json::json!({
+                    "outcome": "failed",
+                    "failure_reason": "tracker unreadable",
+                    "preferred_next_label": "Blocked"
+                }),
+                expect_context: vec![],
+                absent_context: vec![],
+                expect_label:   Some("Blocked"),
+                expect_failure: Some("tracker unreadable"),
+            },
+            Case {
+                name:           "routing kind unchanged by the file-schema merge",
+                schema:         routing(),
+                payload:        serde_json::json!({
+                    "outcome": "failed",
+                    "failure_reason": "gate red",
+                    "preferred_next_label": "fix",
+                    "context_updates": {"verified": true}
+                }),
+                expect_context: vec![("verified", serde_json::json!(true))],
+                absent_context: vec![],
+                expect_label:   Some("fix"),
+                expect_failure: Some("gate red"),
+            },
+        ];
+
+        for case in cases {
+            let node = Node::new("planner");
+            let validated = ValidatedStructuredOutput {
+                value:    case.payload.clone(),
+                salvaged: false,
+            };
+            let mut outcome = Outcome::success();
+
+            apply_validated_output(&node, &case.schema, &validated, &mut outcome);
+
+            let routing = matches!(case.schema, OutputSchemaKind::Routing { .. });
+            if routing {
+                assert!(
+                    !outcome.context_updates.contains_key("output.planner"),
+                    "{}: routing kind must not emit output.<node>",
+                    case.name
+                );
+            } else {
+                assert_eq!(
+                    outcome.context_updates.get("output.planner"),
+                    Some(&case.payload),
+                    "{}: payload must stay under output.<node>",
+                    case.name
+                );
+            }
+            for (key, value) in case.expect_context {
+                assert_eq!(
+                    outcome.context_updates.get(key),
+                    Some(&value),
+                    "{}: merged key {key}",
+                    case.name
+                );
+            }
+            for key in case.absent_context {
+                assert!(
+                    !outcome.context_updates.contains_key(key),
+                    "{}: key {key} must not be present",
+                    case.name
+                );
+            }
+            assert_eq!(
+                outcome.preferred_label.as_deref(),
+                case.expect_label,
+                "{}",
+                case.name
+            );
+            assert_eq!(
+                outcome.status.is_failure(),
+                case.expect_failure.is_some(),
+                "{}",
+                case.name
+            );
+            if let Some(expected_message) = case.expect_failure {
+                assert_eq!(
+                    outcome
+                        .failure
+                        .as_ref()
+                        .expect("failure detail present")
+                        .message,
+                    expected_message,
+                    "{}",
+                    case.name
+                );
+            }
+        }
     }
 
     #[test]
