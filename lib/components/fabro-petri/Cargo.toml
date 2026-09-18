@@ -39,7 +39,6 @@ async-trait.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sqlx.workspace = true
-tempfile = "3"
 thiserror.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
@@ -50,4 +49,5 @@ fabro-auth = { path = "../../foundation/fabro-auth", features = ["test-support"]
 fabro-llm = { path = "../fabro-llm", features = ["test-support"] }
 fabro-store = { path = "../fabro-store", features = ["test-support"] }
 petri_testkit.workspace = true
+tempfile = "3"
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

@@ -1,14 +1,14 @@
 //! Petri compiles: the create handler hands a workflow version's files, the
-//! run's inputs and the launch to `Runtime::check`, and gets back either the
-//! admitted graphs or Petri's diagnostics.
+//! run's inputs and the launch to `Runtime::check_source`, and gets back
+//! either the admitted graphs or Petri's diagnostics.
 //!
-//! `Runtime::check` reads the workflow and its settings files from disk, so
-//! the bundle is materialized into a temporary directory first, laid out the
-//! way the Fabro frontend expects: the workflow file with `workflow.toml`
-//! beside it under a bundle root that holds a `.fabro` directory (with
-//! `.fabro/project.toml` when the caller has one). The directory is removed
-//! when the check returns. An in-memory `FileSource` entry point on
-//! `Runtime` would remove the round trip; that is a Petri follow-up.
+//! The version's files never touch the disk. They go into a
+//! `frontend::MapFiles` map laid out the way the Fabro frontend expects a
+//! bundle: every file at its bundle-relative path, so `workflow.toml` sits
+//! beside the workflow file, and `.fabro/project.toml` at the root when the
+//! caller has one. The frontend reads the settings files and `@file`
+//! references from that map, and every diagnostic names the bundle-relative
+//! path the map holds the file under.
 //!
 //! The launch binds the compile variables the Fabro frontend reads:
 //! `petri.launch_model` and `petri.launch_provider` as the model default
@@ -17,12 +17,11 @@
 //! and the run starts from an empty workspace.
 
 use std::collections::BTreeMap;
-use std::io;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use petri_runtime::LoadError;
 use petri_runtime::frontend::{
-    self, CompileInputs, LAUNCH_MODEL_VAR, LAUNCH_PROVIDER_VAR, REPOSITORY_VAR, Severity,
+    self, CompileInputs, LAUNCH_MODEL_VAR, LAUNCH_PROVIDER_VAR, MapFiles, REPOSITORY_VAR, Severity,
 };
 use petri_runtime::ir::Graph;
 use serde::{Deserialize, Serialize};
@@ -30,13 +29,8 @@ use serde_json::Value;
 
 use crate::runtime::RuntimeSpec;
 
-/// The directory under the temporary bundle root the version's files land
-/// in. Its parent holds `.fabro`, so the Fabro frontend takes the parent as
-/// the bundle root.
-const BUNDLE_DIR: &str = "bundle";
-
 /// The project settings file the Fabro frontend reads at the bundle root.
-const PROJECT_FILE: &str = ".fabro/project.toml";
+const PROJECT_FILE: &str = petri_frontend_fabro::PROJECT_FILE;
 
 /// One workflow bundle to check: its files by bundle-relative path.
 #[derive(Clone, Debug, Default)]
@@ -48,7 +42,21 @@ pub struct Bundle {
     /// The workflow file to check, one of `files`.
     pub entrypoint:   String,
     /// `.fabro/project.toml` at the bundle root, when the caller has one.
+    /// It takes that path in the map, over a bundle file of the same name.
     pub project_toml: Option<String>,
+}
+
+impl Bundle {
+    /// The bundle as the Fabro frontend reads it: every file at its
+    /// bundle-relative path, and the project settings at
+    /// `.fabro/project.toml`.
+    fn files(&self) -> MapFiles {
+        let mut files = self.files.clone();
+        if let Some(project) = &self.project_toml {
+            files.insert(PROJECT_FILE.to_string(), project.clone());
+        }
+        MapFiles(files)
+    }
 }
 
 /// What the launch binds below the file layers.
@@ -111,38 +119,33 @@ pub enum CheckError {
     /// included; at least one is an error.
     #[error("Petri refused the workflow with {} diagnostic(s)", .0.len())]
     Rejected(Vec<Diagnostic>),
-    /// The bundle could not be materialized for the check.
-    #[error("could not materialize the workflow bundle at `{path}`")]
-    Materialize {
-        path:   PathBuf,
-        #[source]
-        source: io::Error,
-    },
-    /// The bundle's entrypoint is not one of its files, or no frontend
-    /// claims it.
+    /// The bundle's entrypoint is not one of its files.
+    #[error("the workflow entrypoint `{entrypoint}` is not one of the bundle's files")]
+    MissingEntrypoint { entrypoint: String },
+    /// No frontend claims the bundle's entrypoint.
     #[error("the workflow could not be loaded")]
     Load(#[source] LoadError),
 }
 
-/// Materialize the bundle, run `Runtime::check`, and hand back the admitted
-/// graphs or the diagnostics. Blocking: it reads and writes files and
-/// lowers the graph, so a server calls it from its blocking pool.
+/// Run `Runtime::check_source` over the bundle, and hand back the admitted
+/// graphs or the diagnostics. Blocking: it lowers the graph and runs the
+/// admission passes synchronously, so a server calls it from its blocking
+/// pool.
 pub fn check(request: &CheckRequest) -> Result<Admitted, CheckError> {
-    let root = tempfile::tempdir().map_err(|source| CheckError::Materialize {
-        path: std::env::temp_dir(),
-        source,
-    })?;
-    let workflow = materialize(root.path(), &request.bundle)?;
+    let bundle = &request.bundle;
+    let text =
+        bundle
+            .files
+            .get(&bundle.entrypoint)
+            .ok_or_else(|| CheckError::MissingEntrypoint {
+                entrypoint: bundle.entrypoint.clone(),
+            })?;
     let runtime = request.runtime.runtime(false);
     let inputs = compile_inputs(&request.inputs, &request.launch);
     let lowered = runtime
-        .check(&workflow, None, None, &inputs)
+        .check_source(&bundle.entrypoint, text, &bundle.files(), None, &inputs)
         .map_err(CheckError::Load)?;
-    let diagnostics: Vec<Diagnostic> = lowered
-        .diagnostics
-        .iter()
-        .map(|diagnostic| convert(diagnostic, root.path()))
-        .collect();
+    let diagnostics: Vec<Diagnostic> = lowered.diagnostics.iter().map(convert).collect();
     match lowered.graph {
         Some(graph) => Ok(Admitted {
             graph,
@@ -151,39 +154,6 @@ pub fn check(request: &CheckRequest) -> Result<Admitted, CheckError> {
         }),
         None => Err(CheckError::Rejected(diagnostics)),
     }
-}
-
-/// Write the bundle under `root/bundle/`, with `root/.fabro` beside it so
-/// the frontend takes `root` as the bundle root. Returns the entrypoint's
-/// path.
-#[expect(
-    clippy::disallowed_methods,
-    reason = "the check is a blocking function; its caller runs it on the blocking pool"
-)]
-fn materialize(root: &Path, bundle: &Bundle) -> Result<PathBuf, CheckError> {
-    let write = |relative: &str, text: &str| -> Result<(), CheckError> {
-        let path = root.join(relative);
-        let materialize = |source| CheckError::Materialize {
-            path: path.clone(),
-            source,
-        };
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).map_err(materialize)?;
-        }
-        std::fs::write(&path, text).map_err(materialize)
-    };
-    let fabro_dir = root.join(".fabro");
-    std::fs::create_dir_all(&fabro_dir).map_err(|source| CheckError::Materialize {
-        path: fabro_dir,
-        source,
-    })?;
-    if let Some(project) = &bundle.project_toml {
-        write(PROJECT_FILE, project)?;
-    }
-    for (relative, text) in &bundle.files {
-        write(&format!("{BUNDLE_DIR}/{relative}"), text)?;
-    }
-    Ok(root.join(BUNDLE_DIR).join(&bundle.entrypoint))
 }
 
 /// The compile inputs: the intent's inputs, and the launch variables.
@@ -202,8 +172,9 @@ fn compile_inputs(inputs: &BTreeMap<String, Value>, launch: &Launch) -> CompileI
     compile
         .vars
         .insert(LAUNCH_PROVIDER_VAR.into(), text(&launch.provider));
-    // Bound even when absent: `Runtime::lower` would otherwise bind the
-    // temporary bundle root, which is gone by the time the run starts.
+    // `Runtime::check_source` uses the inputs as given, so the repository
+    // is the host's to bind: the launch's path, or `null` for a run that
+    // starts from an empty workspace.
     let repository = launch.repository.as_ref().map_or(Value::Null, |path| {
         Value::String(path.to_string_lossy().into_owned())
     });
@@ -211,30 +182,20 @@ fn compile_inputs(inputs: &BTreeMap<String, Value>, launch: &Launch) -> CompileI
     compile
 }
 
-/// Petri's diagnostic in Fabro's shape, with the file made relative to the
-/// bundle.
-fn convert(diagnostic: &frontend::Diagnostic, root: &Path) -> Diagnostic {
-    let file = diagnostic.span.file.as_str();
-    let prefix = format!("{BUNDLE_DIR}/");
-    let file = Path::new(file)
-        .strip_prefix(root)
-        .map_or(file, |relative| relative.to_str().unwrap_or(file))
-        .to_string();
-    let file = file
-        .strip_prefix(&prefix)
-        .map_or(file.as_str(), |relative| relative)
-        .to_string();
+/// Petri's diagnostic in Fabro's shape. The file is the path the map holds
+/// it under, which is bundle-relative already.
+fn convert(diagnostic: &frontend::Diagnostic) -> Diagnostic {
     Diagnostic {
         severity: match diagnostic.severity {
             Severity::Error => DiagnosticSeverity::Error,
             Severity::Warning => DiagnosticSeverity::Warning,
         },
-        code: diagnostic.code.to_string(),
-        message: diagnostic.message.clone(),
-        hint: diagnostic.hint.clone(),
-        file,
-        line: (diagnostic.span.line > 0).then_some(diagnostic.span.line),
-        column: (diagnostic.span.column > 0).then_some(diagnostic.span.column),
+        code:     diagnostic.code.to_string(),
+        message:  diagnostic.message.clone(),
+        hint:     diagnostic.hint.clone(),
+        file:     diagnostic.span.file.to_string(),
+        line:     (diagnostic.span.line > 0).then_some(diagnostic.span.line),
+        column:   (diagnostic.span.column > 0).then_some(diagnostic.span.column),
     }
 }
 

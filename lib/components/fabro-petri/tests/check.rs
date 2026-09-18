@@ -1,7 +1,8 @@
-//! Petri compiles at create time: `fabro_petri::check` materializes a bundle,
-//! hands it to `Runtime::check`, and returns the admitted graphs or Petri's
-//! diagnostics in Fabro's shape; `fabro_petri::admission` round-trips the
-//! admitted graphs through Fabro's blob store.
+//! Petri compiles at create time: `fabro_petri::check` hands a bundle to
+//! `Runtime::check_source` as an in-memory file map, and returns the
+//! admitted graphs or Petri's diagnostics in Fabro's shape;
+//! `fabro_petri::admission` round-trips the admitted graphs through Fabro's
+//! blob store.
 //!
 //! No sandbox plugin is needed: nothing here runs a graph.
 
@@ -150,6 +151,94 @@ async fn a_launch_binds_the_repository_and_the_model_default() {
         launch["clone"]["repository"],
         repository.path().to_string_lossy().as_ref()
     );
+}
+
+#[tokio::test]
+async fn a_version_that_names_the_petri_engine_is_admitted() {
+    let settings = format!("{SETTINGS}engine = \"petri\"\n");
+    let request = request(
+        bundle(&[
+            ("workflow.fabro", COMMAND_WORKFLOW),
+            ("workflow.toml", &settings),
+        ]),
+        RuntimeSpec::default(),
+    );
+
+    let admitted = check::check(&request).expect("`engine = \"petri\"` is a known key");
+
+    assert!(
+        admitted
+            .warnings
+            .iter()
+            .all(|w| w.code != "unsupported.workflow_toml.key"),
+        "{:?}",
+        admitted.warnings
+    );
+}
+
+#[tokio::test]
+async fn an_unknown_workflow_key_is_refused_and_named_in_workflow_toml() {
+    let settings = format!("{SETTINGS}bogus = \"1\"\n");
+    let request = request(
+        bundle(&[
+            ("workflow.fabro", COMMAND_WORKFLOW),
+            ("workflow.toml", &settings),
+        ]),
+        RuntimeSpec::default(),
+    );
+
+    let Err(CheckError::Rejected(diagnostics)) = check::check(&request) else {
+        panic!("an unknown `[workflow]` key should be refused");
+    };
+
+    let error = diagnostics
+        .iter()
+        .find(|d| d.code == "unsupported.workflow_toml.key")
+        .unwrap_or_else(|| panic!("no unknown-key diagnostic in {diagnostics:?}"));
+    assert!(error.is_error());
+    assert!(error.message.contains("workflow.bogus"), "{error:?}");
+    assert_eq!(error.file, "workflow.toml");
+}
+
+#[tokio::test]
+async fn the_project_settings_are_read_from_the_map() {
+    let workflow = UNKNOWN_MODEL_WORKFLOW.replace(", model=\"no-such-model-9000\"", "");
+    let request = request(
+        Bundle {
+            project_toml: Some("[run.model]\nname = \"gpt-5.4\"\n".to_string()),
+            ..bundle(&[("workflow.fabro", &workflow), ("workflow.toml", SETTINGS)])
+        },
+        runtime_with_openai(),
+    );
+
+    let admitted = check::check(&request).expect("the project model is admitted");
+
+    let work = admitted
+        .graph
+        .body
+        .nodes
+        .iter()
+        .find(|node| node.name == "work")
+        .expect("the work node is in the graph");
+    assert_eq!(work.step.config["provider"], "openai");
+    assert_eq!(work.step.config["model"], "gpt-5.4");
+}
+
+#[tokio::test]
+async fn a_missing_entrypoint_is_an_error() {
+    let request = request(
+        Bundle {
+            entrypoint: "missing.fabro".to_string(),
+            ..bundle(&[("workflow.fabro", COMMAND_WORKFLOW)])
+        },
+        RuntimeSpec::default(),
+    );
+
+    let Err(CheckError::MissingEntrypoint { entrypoint }) = check::check(&request) else {
+        panic!("an entrypoint outside the bundle should be an error");
+    };
+
+    assert_eq!(entrypoint, "missing.fabro");
 }
 
 #[tokio::test]

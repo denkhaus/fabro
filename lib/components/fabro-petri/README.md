@@ -23,10 +23,12 @@ Every adapter the integration plan describes lands here.
   and at execution: the Fabro frontend with the server's settings layer, the
   Attractor step kinds (real, or simulated for a dry run), the model client
   as the `PebbleClient` capability, the Fabro home.
-- `check`: Petri compiles at create time. The workflow version's bundle is
-  materialized into a temporary directory (`Runtime::check` reads files from
-  disk), lowered with the run's inputs and launch, and the admitted graphs or
-  Petri's diagnostics come back in a shape the server maps onto Fabro's.
+- `check`: Petri compiles at create time. The workflow version's bundle goes
+  into an in-memory file map (`frontend::MapFiles`, laid out as the bundle:
+  `workflow.toml` beside the workflow, `.fabro/project.toml` at the root),
+  `Runtime::check_source` lowers it with the run's inputs and launch, and the
+  admitted graphs or Petri's diagnostics come back in a shape the server maps
+  onto Fabro's. Nothing is written to disk.
 - `admission`: the admitted graphs in Fabro's blob store, named on the run
   spec as `RunEngine::Petri(PetriAdmission)`, verified by digest on load.
 - `engine`: a run executed by Petri, started from its admitted graphs or
@@ -71,8 +73,11 @@ Integration tests live under `tests/`:
   is not on `PATH` (every run takes its scope's environment through it);
   the sandbox-plugins CI job requires them.
 - `check.rs` admits the `hello` bundle and round-trips its graph through
-  the blob store, binds the launch, and refuses an unknown attribute and,
-  with a model client over the test catalog, an unknown model
+  the blob store, binds the launch, admits a version whose `workflow.toml`
+  names `engine = "petri"`, reads the project settings from the map, and
+  refuses an unknown attribute, an unknown `[workflow]` key
+  (`unsupported.workflow_toml.key`, named in `workflow.toml`) and, with a
+  model client over the test catalog, an unknown model
   (`attractor.model.unknown`). No plugin is needed.
 - `sqlite_store.rs` runs Petri's store conformance suite
   (`petri_testkit::run_store::conformance`) against `SqliteRunStore`, plus the
