@@ -177,7 +177,10 @@ pub fn isolated_env(home_dir: &Path) -> HashMap<String, String> {
     if let Some(path) = std::env::var_os(EnvVars::PATH).and_then(|value| value.into_string().ok()) {
         env.insert(EnvVars::PATH.to_string(), path);
     }
-    for name in EnvVars::PETRI_SANDBOX_PLUGIN_VARS {
+    for name in EnvVars::PETRI_SANDBOX_PLUGIN_VARS
+        .iter()
+        .chain(EnvVars::DOCKER_VARS)
+    {
         if let Some(value) = std::env::var_os(name).and_then(|value| value.into_string().ok()) {
             env.insert((*name).to_string(), value);
         }
@@ -223,8 +226,12 @@ fn apply_test_isolation_with_lookup(
     }
     // Petri resolves its sandbox-driver plugins from these, in the server a
     // test starts and in the workers that server launches; a developer's
-    // plugin override reaches them like `PATH` does.
-    for name in EnvVars::PETRI_SANDBOX_PLUGIN_VARS {
+    // plugin override reaches them like `PATH` does, and so does the Docker
+    // daemon selection the Docker plugin needs.
+    for name in EnvVars::PETRI_SANDBOX_PLUGIN_VARS
+        .iter()
+        .chain(EnvVars::DOCKER_VARS)
+    {
         if let Some(value) = lookup(name) {
             cmd.env(name, value);
         }

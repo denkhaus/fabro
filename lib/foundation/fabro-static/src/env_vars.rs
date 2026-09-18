@@ -74,6 +74,29 @@ impl EnvVars {
         Self::PETRI_SANDBOX_ACTION_HOST_IMAGE,
     ];
 
+    // The Docker daemon selection the Docker CLI and its client libraries
+    // read: which daemon, over which transport, with which TLS material,
+    // client configuration and context. Petri's Docker plugin forwards them
+    // from the process that launches it, so a run's worker must carry the
+    // server's.
+    pub const DOCKER_HOST: &'static str = "DOCKER_HOST";
+    pub const DOCKER_TLS_VERIFY: &'static str = "DOCKER_TLS_VERIFY";
+    pub const DOCKER_CERT_PATH: &'static str = "DOCKER_CERT_PATH";
+    pub const DOCKER_API_VERSION: &'static str = "DOCKER_API_VERSION";
+    pub const DOCKER_CONFIG: &'static str = "DOCKER_CONFIG";
+    pub const DOCKER_CONTEXT: &'static str = "DOCKER_CONTEXT";
+
+    /// Every Docker daemon selection variable, in one list for the process
+    /// boundaries that forward them.
+    pub const DOCKER_VARS: &'static [&'static str] = &[
+        Self::DOCKER_HOST,
+        Self::DOCKER_TLS_VERIFY,
+        Self::DOCKER_CERT_PATH,
+        Self::DOCKER_API_VERSION,
+        Self::DOCKER_CONFIG,
+        Self::DOCKER_CONTEXT,
+    ];
+
     // LLM providers and tool integrations
     pub const ANTHROPIC_API_KEY: &'static str = "ANTHROPIC_API_KEY";
     pub const AWS_BEARER_TOKEN_BEDROCK: &'static str = "AWS_BEARER_TOKEN_BEDROCK";
@@ -239,6 +262,12 @@ mod tests {
             EnvVars::PETRI_SANDBOX_PLUGIN_DEV,
             EnvVars::PETRI_SANDBOX_DOCKER_HOST_ADDRESS,
             EnvVars::PETRI_SANDBOX_ACTION_HOST_IMAGE,
+            EnvVars::DOCKER_HOST,
+            EnvVars::DOCKER_TLS_VERIFY,
+            EnvVars::DOCKER_CERT_PATH,
+            EnvVars::DOCKER_API_VERSION,
+            EnvVars::DOCKER_CONFIG,
+            EnvVars::DOCKER_CONTEXT,
             EnvVars::ANTHROPIC_API_KEY,
             EnvVars::ANTHROPIC_BASE_URL,
             EnvVars::AWS_BEARER_TOKEN_BEDROCK,

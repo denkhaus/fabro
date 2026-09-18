@@ -48,6 +48,9 @@ pub(crate) struct WorkerLaunchSpec {
     pub(crate) fabro_log:              Option<String>,
     pub(crate) active_config_path:     PathBuf,
     pub(crate) github_app_private_key: Option<String>,
+    /// The vault's Daytona API key, for a run on a Daytona environment:
+    /// Petri's Daytona plugin reads it from the worker's process.
+    pub(crate) daytona_api_key:        Option<String>,
     /// The Fabro home the server resolved, so a Petri run's skills step
     /// reads the same home whatever the worker's environment says.
     pub(crate) fabro_home:             PathBuf,
@@ -108,6 +111,9 @@ impl LocalWorkerRuntime {
         cmd.env(EnvVars::FABRO_WORKER_TOKEN, &spec.worker_token);
         if let Some(pem) = spec.github_app_private_key.as_deref() {
             cmd.env(EnvVars::GITHUB_APP_PRIVATE_KEY, pem);
+        }
+        if let Some(key) = spec.daytona_api_key.as_deref() {
+            cmd.env(EnvVars::DAYTONA_API_KEY, key);
         }
 
         #[cfg(unix)]
