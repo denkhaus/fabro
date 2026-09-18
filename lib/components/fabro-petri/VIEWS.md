@@ -57,7 +57,7 @@ toasts. `RunProjection` (`GET /runs/{id}/state`) serves `attach`, `inspect`,
 | status: submitted, pending, runnable, starting | `lifecycle.status.kind` before Petri runs | platform record `run.lifecycle {kind, reason}` (Fabro's queue and approval are before `run.started`) | run |
 | status: running | `lifecycle.status.kind = running` | `run.started` | run |
 | status: blocked (`human_input_required`) | `lifecycle.status.kind = blocked`, `RunProjection.pending_interviews` | derived: any live firing whose last `wait.state.changed` is `awaiting_answer`; see Questions | run |
-| status: paused | `lifecycle.status.kind = paused`, `pending_control` | `run.paused`, `run.unpaused`; a pending request is derived from Fabro's own control call until the record lands | run |
+| status: paused | `lifecycle.status.kind = paused`, `pending_control` | `run.paused`, `run.unpaused`; a pending request is derived from Fabro's own control call until the record lands. The worker mirrors the same state as platform records `run.lifecycle {paused}` and `{unpaused}`, the way the legacy worker reported it, so the server's live status follows too; they fold to the same status | run |
 | status: succeeded, failed | `lifecycle.status.kind`, `status.reason`, `lifecycle.error`, `Conclusion.status`, `Conclusion.failure` | `run.finished {status}` (`success`, `failed`, `cancelled`) and the root `invocation.finished {result}` (`status` gives `partial_success`; `failure` gives the message and class) | run |
 | status: dead, removing | `lifecycle.status.kind` | platform record `run.lifecycle` (lease lost, delete requested); Petri has no such state | run |
 | cancel reason | `FailureReason::cancelled`, `terminated` | `invocation.cancel.requested {reason}` (`interrupt`, `control`, `stall_timeout`); `run.stalled` beside a watchdog cancel | invocation |
@@ -186,7 +186,7 @@ interviews.
 | expired | `interview.timeout` | `parsed.question_expired {question, waited_ms, default}`; the gate's `step.finished` follows (success with the default, else class `retry_requested`) | question |
 | interrupted | `interview.interrupted {reason}` | `control.requested` with `derived.answer.cancelled`, or `cancel.requested` and the attempt's `cancelled` status | question |
 | agent questions | the same dock | the same `parsed.question` under the agent's stage (Pebble's question tool reaches the same interviewer) | question |
-| steer | `run.steer`, `agent.steering.injected`, `agent.steer.buffered`, `agent.steer.dropped` | `control.requested` with a `{"$steer": …}` value; delivered or not by `derived.deliverable`; buffering is Pebble's, on the envelope | stage |
+| steer | `run.steer`, `agent.steering.injected`, `agent.steer.buffered`, `agent.steer.dropped` | `control.requested` with a `{"$steer": …}` value; delivered or not by `derived.deliverable`; buffering is Pebble's, on the envelope. A steer the worker refused (no live agent stage, or several) is platform record `run.notice {code: steer_refused}` | stage |
 | interrupt | `run.interrupt`, `agent.interrupt.injected`, `agent.round.interrupted` | `control.requested {cancel}` on the firing, envelope `RoundInterrupted` | stage |
 | Slack delivery | `NotificationRouteSettings`, the Slack thread | platform record `notification.sent {question, channel, thread}` | question |
 
