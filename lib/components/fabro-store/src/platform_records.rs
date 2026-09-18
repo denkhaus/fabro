@@ -766,7 +766,7 @@ fn pull_request_created_record(props: &PullRequestCreatedProps) -> PullRequestCr
 
 fn run_paired_record(props: &RunPairStartedProps) -> RunPairedRecord {
     RunPairedRecord {
-        pair_id: props.pair_id.clone(),
+        pair_id: props.pair_id,
         target:  props.target.clone(),
     }
 }
@@ -784,7 +784,7 @@ fn interview_answered_record(
 
 #[cfg(test)]
 mod tests {
-    use fabro_types::{FailureReason, RunStatus, fixtures};
+    use fabro_types::{FailureReason, RunStatus, fixtures, test_support as types_support};
     use serde_json::json;
 
     use super::*;
@@ -803,7 +803,7 @@ mod tests {
     fn sample(kind: PlatformRecordKind) -> PlatformRecord {
         match kind {
             PlatformRecordKind::RunCreated => PlatformRecord::RunCreated(RunCreatedRecord {
-                spec:         fabro_types::test_support::test_run_spec(),
+                spec:         types_support::test_run_spec(),
                 title:        Some("A run".to_string()),
                 parent_id:    None,
                 retried_from: None,
@@ -957,7 +957,7 @@ mod tests {
         assert_eq!(json(&stored), json(&[first, second.clone()]));
         assert_eq!(
             json(&store.read_after(&run, 1).await.expect("the tail reads")),
-            json(&[second.clone()])
+            json(std::slice::from_ref(&second))
         );
         assert_eq!(
             json(

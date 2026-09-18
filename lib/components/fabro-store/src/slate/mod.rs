@@ -13,7 +13,9 @@ use run_store::RunDatabaseInner;
 use slatedb::config::{CompressionCodec, Settings};
 use tokio::sync::{Mutex, MutexGuard, OnceCell};
 
-use crate::{BlobStore, Error, EventPayload, Result, RunProjection, RunSummaryStore, keys};
+use crate::{
+    BlobStore, Error, EventPayload, Result, RunProjection, RunSummaryStore, keys, run_summary_store,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UnreadableRun {
@@ -128,9 +130,13 @@ impl Database {
     ) -> Result<RunDatabase> {
         let (mut active_runs, run_store) = self.reserve_new_run(run_id).await?;
         let (envelope, projected) = run_store.commit_first_event(payload).await?;
+        let platform_record = run_summary_store::platform_record_written(&projected, &envelope);
         run_store.install_in_memory_state(projected);
         Self::cache_active_run(&mut active_runs, &run_store);
         run_store.publish(&envelope);
+        if platform_record.is_some() {
+            self.run_summary_store.notify_platform_record(*run_id);
+        }
         Ok(run_store)
     }
 

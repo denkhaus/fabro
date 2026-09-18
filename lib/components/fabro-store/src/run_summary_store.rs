@@ -1,5 +1,5 @@
 use std::fmt::Write as _;
-use std::sync::{Arc, LazyLock, RwLock};
+use std::sync::{Arc, LazyLock, PoisonError, RwLock};
 
 use chrono::{DateTime, Utc};
 use fabro_types::{
@@ -250,14 +250,14 @@ impl RunSummaryStore {
         *self
             .platform_hook
             .write()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(hook);
+            .unwrap_or_else(PoisonError::into_inner) = Some(hook);
     }
 
     pub(crate) fn notify_platform_record(&self, run_id: RunId) {
         let hook = self
             .platform_hook
             .read()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .unwrap_or_else(PoisonError::into_inner)
             .clone();
         if let Some(hook) = hook {
             hook(run_id);
