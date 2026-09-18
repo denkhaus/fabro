@@ -61,6 +61,34 @@ fn run_failure_json_matches_openapi_shape() {
 }
 
 #[test]
+fn quota_park_failure_carries_structured_reset_deadline() {
+    // fabro-e566: the provider reset deadline is a structured field on the
+    // failure detail, matching the OpenAPI `quota_reset_at` property.
+    let mut detail = FailureDetail::new(
+        "LLM error: provider zai Usage limit reached for 5 hour. Your limit will reset at \
+         2026-09-18 16:56:19",
+        FailureCategory::TransientInfra,
+    );
+    detail.signature = Some(FailureSignature("api_transient|zai|rate_limit".to_string()));
+    detail.quota_reset_at = FailureDetail::parse_quota_reset_at(&detail.message);
+    assert_json(
+        RunFailure {
+            reason: FailureReason::SoftStop,
+            detail,
+        },
+        json!({
+            "reason": "soft_stop",
+            "detail": {
+                "message": "LLM error: provider zai Usage limit reached for 5 hour. Your limit will reset at 2026-09-18 16:56:19",
+                "category": "transient_infra",
+                "signature": "api_transient|zai|rate_limit",
+                "quota_reset_at": "2026-09-18T16:56:19Z"
+            }
+        }),
+    );
+}
+
+#[test]
 fn conclusion_json_uses_failure_object() {
     assert_json(
         Conclusion {

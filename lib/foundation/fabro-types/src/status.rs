@@ -77,10 +77,18 @@ impl RunStatus {
 
     /// Whether the run has reached a terminal outcome and stops poll loops,
     /// finalization, and similar "done" handling.
+    ///
+    /// A quota park ([`BlockedReason::QuotaRateLimit`], fabro-e566) is
+    /// terminal: the worker is gone and only the resume route re-enters it.
     pub fn is_terminal(self) -> bool {
         matches!(
             self,
-            Self::Succeeded { .. } | Self::Failed { .. } | Self::Dead
+            Self::Succeeded { .. }
+                | Self::Failed { .. }
+                | Self::Dead
+                | Self::Blocked {
+                    blocked_reason: BlockedReason::QuotaRateLimit,
+                }
         )
     }
 
@@ -95,17 +103,21 @@ impl RunStatus {
     }
 
     pub fn is_active(self) -> bool {
-        matches!(
-            self,
+        match self {
             Self::Submitted
-                | Self::Pending { .. }
-                | Self::Runnable
-                | Self::Starting
-                | Self::Running
-                | Self::Blocked { .. }
-                | Self::Paused { .. }
-                | Self::Removing
-        )
+            | Self::Pending { .. }
+            | Self::Runnable
+            | Self::Starting
+            | Self::Running
+            | Self::Paused { .. }
+            | Self::Removing => true,
+            // A quota park has no live worker (fabro-e566): terminal-parked,
+            // not active — disk is reclaimable and running-only filters
+            // exclude it, while the resume route still accepts it. A
+            // human-input block keeps its live mid-run semantics.
+            Self::Blocked { blocked_reason } => blocked_reason != BlockedReason::QuotaRateLimit,
+            Self::Succeeded { .. } | Self::Failed { .. } | Self::Dead => false,
+        }
     }
 
     pub fn requires_force_to_delete(self) -> bool {
@@ -125,6 +137,12 @@ impl RunStatus {
             Self::Succeeded { reason } => Some(TerminalStatus::Succeeded { reason }),
             Self::Failed { reason } => Some(TerminalStatus::Failed { reason }),
             Self::Dead => Some(TerminalStatus::Dead),
+            // A quota park is terminal (fabro-e566): rewind/archive/resume
+            // all read `terminal_status`, and unarchive restores the park.
+            // Human-input blocks stay mid-run states (None).
+            Self::Blocked {
+                blocked_reason: blocked_reason @ BlockedReason::QuotaRateLimit,
+            } => Some(TerminalStatus::Blocked { blocked_reason }),
             _ => None,
         }
     }
@@ -174,6 +192,9 @@ impl RunStatus {
                     Self::Starting | Self::Paused { .. } | Self::Blocked { .. },
                     Self::Running
                 )
+                // A quota death can land between starting and running
+                // (fabro-e566): the run.failed remap targets Blocked.
+                | (Self::Starting, Self::Blocked { .. })
                 | (
                     Self::Starting
                         | Self::Running
@@ -374,8 +395,17 @@ impl FailureReason {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum TerminalStatus {
-    Succeeded { reason: SuccessReason },
-    Failed { reason: FailureReason },
+    Succeeded {
+        reason: SuccessReason,
+    },
+    Failed {
+        reason: FailureReason,
+    },
+    /// Terminal-parked quota block (fabro-e566); see
+    /// [`RunStatus::terminal_status`].
+    Blocked {
+        blocked_reason: BlockedReason,
+    },
     Dead,
 }
 
@@ -384,6 +414,7 @@ impl fmt::Display for TerminalStatus {
         match self {
             Self::Succeeded { reason } => write!(f, "succeeded({reason})"),
             Self::Failed { reason } => write!(f, "failed({reason})"),
+            Self::Blocked { blocked_reason } => write!(f, "blocked({blocked_reason})"),
             Self::Dead => f.write_str("dead"),
         }
     }
@@ -394,6 +425,7 @@ impl From<TerminalStatus> for RunStatus {
         match value {
             TerminalStatus::Succeeded { reason } => Self::Succeeded { reason },
             TerminalStatus::Failed { reason } => Self::Failed { reason },
+            TerminalStatus::Blocked { blocked_reason } => Self::Blocked { blocked_reason },
             TerminalStatus::Dead => Self::Dead,
         }
     }
@@ -405,6 +437,15 @@ impl From<TerminalStatus> for RunStatus {
 #[strum(serialize_all = "snake_case")]
 pub enum BlockedReason {
     HumanInputRequired,
+    /// A provider usage-window rate limit (429 family) parked the run
+    /// instead of failing it (fabro-e566): the terminal failure was
+    /// quota-class (SoftStop + TransientInfra + `rate_limit` signature),
+    /// the worker is gone, and the run waits resumable for the window to
+    /// reopen. Unlike `HumanInputRequired` this blocked shape is
+    /// terminal-parked: `is_terminal()` is true and `is_active()` false,
+    /// so poll loops, gather, and the duplicate-child guard treat it like
+    /// a finished run while the resume route can still rewind it.
+    QuotaRateLimit,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -610,5 +651,48 @@ mod tests {
         let to = RunStatus::Running;
         let err = from.transition_to(to).expect_err("should reject");
         assert_eq!(err, InvalidTransition { from, to });
+    }
+
+    // --- quota parks (fabro-e566) ---
+
+    #[test]
+    fn quota_blocked_is_terminal_but_not_active_or_immutable() {
+        let quota = RunStatus::Blocked {
+            blocked_reason: BlockedReason::QuotaRateLimit,
+        };
+        assert!(quota.is_terminal());
+        assert!(!quota.is_active());
+        assert!(!quota.is_immutable());
+        // Human-input blocks stay live mid-run states.
+        let human = RunStatus::Blocked {
+            blocked_reason: BlockedReason::HumanInputRequired,
+        };
+        assert!(!human.is_terminal());
+        assert!(human.is_active());
+    }
+
+    #[test]
+    fn quota_blocked_reports_terminal_status_for_rewind_and_archive() {
+        let quota = RunStatus::Blocked {
+            blocked_reason: BlockedReason::QuotaRateLimit,
+        };
+        assert_eq!(
+            quota.terminal_status(),
+            Some(super::TerminalStatus::Blocked {
+                blocked_reason: BlockedReason::QuotaRateLimit,
+            })
+        );
+        // Round-trips for unarchive restore.
+        assert_eq!(
+            RunStatus::from(quota.terminal_status().expect("terminal")),
+            quota
+        );
+    }
+
+    #[test]
+    fn starting_accepts_blocked_for_quota_deaths() {
+        assert!(RunStatus::Starting.can_transition_to(RunStatus::Blocked {
+            blocked_reason: BlockedReason::QuotaRateLimit,
+        }));
     }
 }

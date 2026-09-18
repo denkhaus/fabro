@@ -561,7 +561,15 @@ ON CONFLICT(run_id) DO UPDATE SET deleted_at_ms = excluded.deleted_at_ms
         query
             .push(" WHERE automation_id = ")
             .push_bind(automation_id.to_string())
-            .push(" AND status IN ('succeeded', 'failed', 'dead')");
+            // Quota parks (fabro-e566) end `blocked` with a conclusion
+            // (completed_at set): they are terminal and stay visible to the
+            // breaker/gate window — the breaker skips them through
+            // `is_quota_park`, never counting them. A human-input block has
+            // no conclusion and stays a live run.
+            .push(
+                " AND (status IN ('succeeded', 'failed', 'dead') \
+                   OR (status = 'blocked' AND completed_at_ms IS NOT NULL))",
+            );
         push_order(
             &mut query,
             RunSummarySort::CreatedAt,
@@ -575,7 +583,12 @@ ON CONFLICT(run_id) DO UPDATE SET deleted_at_ms = excluded.deleted_at_ms
 
     /// Newest non-terminal run created by the given automation, if any
     /// (fabro-09ea overlap guard). Terminal statuses are exactly the
-    /// immutable kinds: succeeded, failed, dead.
+    /// immutable kinds: succeeded, failed, dead — plus quota parks
+    /// (fabro-e566): a `blocked` run whose worker CONCLUDED (has a
+    /// completion timestamp) is a terminal `quota_rate_limit` park, not a
+    /// live run; counting it active would deadlock the line's scheduled
+    /// fires after the provider window reopens. A human-input block has no
+    /// conclusion and stays active.
     ///
     /// A non-terminal CHILD of an automation run also counts as active
     /// (fabro-91ff): a conductor pass that parked at a boundary exit or
@@ -591,6 +604,7 @@ ON CONFLICT(run_id) DO UPDATE SET deleted_at_ms = excluded.deleted_at_ms
 SELECT id
 FROM runs
 WHERE status NOT IN ('succeeded', 'failed', 'dead')
+  AND NOT (status = 'blocked' AND completed_at_ms IS NOT NULL)
   AND (
     automation_id = ?
     OR parent_id IN (SELECT id FROM runs WHERE automation_id = ?)

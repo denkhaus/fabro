@@ -38,7 +38,9 @@ impl RewindOutcome {
     }
 }
 
-/// One-click Resume of a terminal failed run: the engine — not the caller —
+/// One-click Resume of a terminal failed run — or a quota park
+/// (`Blocked { quota_rate_limit }`, fabro-e566), which ends blocked instead
+/// of failed: the engine — not the caller —
 /// selects the rewind target (the entry checkpoint of the last failed stage),
 /// executes the rewind (fork + archive) path, and returns the replacement run
 /// for scheduling. Unlike plain `start {resume:true}` replay, this drops the
@@ -63,6 +65,8 @@ pub async fn resume_from_failure(
             "run already finished successfully — nothing to resume".to_string(),
         ));
     }
+    // Quota parks pass this gate too: their `Blocked { quota_rate_limit }`
+    // status reports a terminal status (fabro-e566).
     if state.status.terminal_status().is_none() {
         return Err(Error::Precondition(format!(
             "run {} must be terminal (failed or dead) to resume; current status is {}",
@@ -479,5 +483,74 @@ mod tests {
             .await
             .unwrap_err();
         assert!(err.to_string().contains("must be terminal"));
+    }
+
+    /// Quota parks (fabro-e566) end `Blocked { quota_rate_limit }`, not
+    /// failed — the resume route must still rewind them (fabro-7627
+    /// semantics unchanged).
+    #[tokio::test]
+    async fn resume_from_failure_accepts_quota_blocked_runs() {
+        let store = test_store();
+        let source_run_id = fixtures::RUN_1;
+        // Soft-exit park checkpoints, then the quota death: the exact
+        // 01M2SRK0PCDXG5F8B8TX2TRGFB failure shape.
+        seed_failed_run(&store, source_run_id, true, false).await;
+        let source = store.open_run(&source_run_id).await.unwrap();
+        crate::test_support::mark_run_running(&source, &source_run_id).await;
+        let mut detail = FailureDetail::new(
+            "LLM error: provider zai Usage limit reached for 5 hour. Your limit will reset at \
+             2026-09-18 16:56:19",
+            FailureCategory::TransientInfra,
+        );
+        detail.signature = Some(fabro_types::FailureSignature(
+            "api_transient|zai|rate_limit".to_string(),
+        ));
+        event::append_event(&source, &source_run_id, &Event::WorkflowRunFailed {
+            failure:              RunFailure {
+                reason: FailureReason::SoftStop,
+                detail,
+            },
+            timing:               fabro_types::RunTiming::wall_only(600_000),
+            final_git_commit_sha: None,
+            final_patch:          None,
+            diff_summary:         None,
+            usage:                None,
+        })
+        .await
+        .unwrap();
+
+        // The lifecycle table parked the run blocked, not failed.
+        let parked = projection_of(&store, source_run_id).await;
+        assert_eq!(parked.status, fabro_types::RunStatus::Blocked {
+            blocked_reason: fabro_types::BlockedReason::QuotaRateLimit,
+        });
+        assert!(
+            parked.status.terminal_status().is_some(),
+            "quota park must report a terminal status: {:?}",
+            parked.status.terminal_status()
+        );
+        let state_status = store
+            .open_run(&source_run_id)
+            .await
+            .unwrap()
+            .state()
+            .await
+            .unwrap()
+            .status;
+        assert_eq!(state_status, parked.status, "store state matches replay");
+
+        // The blocked quota park stays resumable: the engine rewinds to the
+        // failed node's entry checkpoint exactly like a failed run.
+        let outcome = resume_from_failure(
+            &store,
+            &ResumeFailureInput {
+                run_id: source_run_id,
+            },
+            None,
+        )
+        .await
+        .unwrap();
+        assert_eq!(outcome.target().checkpoint_ordinal, 1);
+        assert_eq!(outcome.target().node_id, "analyze");
     }
 }

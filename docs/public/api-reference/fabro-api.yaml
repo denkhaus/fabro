@@ -9611,6 +9611,15 @@ components:
           oneOf:
             - $ref: "#/components/schemas/ExecOutputTail"
             - type: "null"
+        quota_reset_at:
+          oneOf:
+            - type: string
+              format: date-time
+            - type: "null"
+          description: >-
+            Provider usage-window reset deadline parsed from the error text
+            (e.g. `Your limit will reset at ...`), in UTC, when the failure
+            is a quota/rate-limit park (fabro-e566).
 
     RunFailure:
       description: Terminal run failure reason and rich diagnostics.
@@ -11206,10 +11215,15 @@ components:
             $ref: "#/components/schemas/RunArtifactEntry"
 
     BlockedReason:
-      description: Specific reason a run is blocked on external intervention.
+      description: >-
+        Specific reason a run is blocked on external intervention, or — for
+        `quota_rate_limit` — waiting on a provider usage window (fabro-e566):
+        a quota-class terminal failure parks the run blocked instead of
+        failed, resumable through the resume route once the window reopens.
       type: string
       enum:
         - human_input_required
+        - quota_rate_limit
 
     RunControlAction:
       description: Run control action requested by the API.

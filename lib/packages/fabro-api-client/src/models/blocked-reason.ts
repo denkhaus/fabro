@@ -15,11 +15,12 @@
 
 
 /**
- * Specific reason a run is blocked on external intervention.
+ * Specific reason a run is blocked on external intervention, or — for `quota_rate_limit` — waiting on a provider usage window (fabro-e566): a quota-class terminal failure parks the run blocked instead of failed, resumable through the resume route once the window reopens.
  */
 
 export const BlockedReason = {
-    HUMAN_INPUT_REQUIRED: 'human_input_required'
+    HUMAN_INPUT_REQUIRED: 'human_input_required',
+    QUOTA_RATE_LIMIT: 'quota_rate_limit'
 } as const;
 
 export type BlockedReason = typeof BlockedReason[keyof typeof BlockedReason];

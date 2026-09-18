@@ -144,7 +144,7 @@ pub use run_event::{
     bound_run_event_with_budget, coding_event_name, is_coding_event_name, run_event_body_budget,
     sandbox_driver_event_name,
 };
-pub use run_failure::RunFailure;
+pub use run_failure::{RunFailure, is_quota_rate_limit_failure};
 pub use run_id::{RunId, fixtures};
 pub use run_intent::{
     GitCoordinateValidationError, GitRunTarget, RunIntent, RunIntentArgs, RunTarget,
