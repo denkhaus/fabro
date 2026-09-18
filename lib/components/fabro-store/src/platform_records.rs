@@ -15,9 +15,10 @@
 //! today still append Fabro's legacy run events: for a Petri run the run
 //! summary store derives the platform record from the legacy event through
 //! [`platform_record_for`] and stores both in the event's transaction. The
-//! `checkpoint`, `pull_request.created`, `notification.sent` and
-//! `run.paired` kinds are defined here and written by the adapters that
-//! perform those effects.
+//! `run.branch`, `git.identity`, `checkpoint`, `artifact.collected`,
+//! `run.diff`, `pull_request.created`, `notification.sent` and `run.paired`
+//! kinds are defined here and written by the adapters that perform those
+//! effects.
 //!
 //! Every record may carry an [`OperationKey`]: the identity of the external
 //! effect it records (the execution, the Petri decision and the effect
@@ -120,6 +121,12 @@ pub enum PlatformRecordKind {
     #[serde(rename = "checkpoint")]
     #[strum(serialize = "checkpoint")]
     Checkpoint,
+    #[serde(rename = "artifact.collected")]
+    #[strum(serialize = "artifact.collected")]
+    ArtifactCollected,
+    #[serde(rename = "run.diff")]
+    #[strum(serialize = "run.diff")]
+    RunDiff,
     #[serde(rename = "pull_request.requested")]
     #[strum(serialize = "pull_request.requested")]
     PullRequestRequested,
@@ -183,6 +190,14 @@ pub enum PlatformRecord {
     /// record, written after the commit succeeds.
     #[serde(rename = "checkpoint")]
     Checkpoint(CheckpointRecord),
+    /// A file a stage's attempt left in its workspace, collected under
+    /// `[run.artifacts] include` into the blob table.
+    #[serde(rename = "artifact.collected")]
+    ArtifactCollected(ArtifactCollectedRecord),
+    /// The run's whole diff, its run branch against its base commit, written
+    /// when the run finishes.
+    #[serde(rename = "run.diff")]
+    RunDiff(RunDiffRecord),
     /// A pull request was asked for: the supervisor creates it.
     #[serde(rename = "pull_request.requested")]
     PullRequestRequested(PullRequestRequestedRecord),
@@ -218,6 +233,8 @@ impl PlatformRecord {
             Self::RunBranch(_) => PlatformRecordKind::RunBranch,
             Self::GitIdentity(_) => PlatformRecordKind::GitIdentity,
             Self::Checkpoint(_) => PlatformRecordKind::Checkpoint,
+            Self::ArtifactCollected(_) => PlatformRecordKind::ArtifactCollected,
+            Self::RunDiff(_) => PlatformRecordKind::RunDiff,
             Self::PullRequestRequested(_) => PlatformRecordKind::PullRequestRequested,
             Self::PullRequestCreated(_) => PlatformRecordKind::PullRequestCreated,
             Self::PullRequestFailed(_) => PlatformRecordKind::PullRequestFailed,
@@ -234,6 +251,7 @@ impl PlatformRecord {
     pub fn operation(&self) -> Option<&OperationKey> {
         match self {
             Self::Checkpoint(record) => record.operation.as_ref(),
+            Self::ArtifactCollected(record) => record.operation.as_ref(),
             Self::PullRequestCreated(record) => record.operation.as_ref(),
             Self::NotificationSent(record) => record.operation.as_ref(),
             Self::RunCreated(_)
@@ -247,6 +265,7 @@ impl PlatformRecord {
             | Self::InterviewAnswered(_)
             | Self::RunBranch(_)
             | Self::GitIdentity(_)
+            | Self::RunDiff(_)
             | Self::PullRequestRequested(_)
             | Self::PullRequestFailed(_)
             | Self::PullRequestLinked(_)
@@ -396,6 +415,10 @@ pub struct RunBranchRecord {
     pub run_branch: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub base_sha:   Option<String>,
+    /// The Petri workspace the branch was created in: where the run's diff
+    /// is measured.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workspace:  Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -423,6 +446,39 @@ pub struct CheckpointRecord {
     pub patch_blob:     Option<BlobHash>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub operation:      Option<OperationKey>,
+}
+
+/// One file collected from a stage's workspace after its attempt finished.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArtifactCollectedRecord {
+    pub execution: u64,
+    pub firing:    u64,
+    /// The attempt whose workspace the file was read from, 1-based.
+    pub attempt:   u32,
+    /// The file's path relative to the workspace root.
+    pub path:      String,
+    /// The blob that holds the file's bytes.
+    pub blob:      BlobHash,
+    pub bytes:     u64,
+    /// The SHA-256 of the bytes as lowercase hex: with `path`, the identity
+    /// a later capture of the same unchanged file is matched by.
+    pub digest:    String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub operation: Option<OperationKey>,
+}
+
+/// The run's diff: its run branch's head against its base commit.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RunDiffRecord {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base_sha:     Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub head_sha:     Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub diff_summary: Option<DiffSummary>,
+    /// The patch as a text blob; absent when the diff is empty.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub patch_blob:   Option<BlobHash>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -735,6 +791,7 @@ mod tests {
             PlatformRecordKind::RunBranch => PlatformRecord::RunBranch(RunBranchRecord {
                 run_branch: Some("fabro/run-1".to_string()),
                 base_sha:   Some("abc".to_string()),
+                workspace:  Some("invocation-0-scope-0".to_string()),
             }),
             PlatformRecordKind::GitIdentity => PlatformRecord::GitIdentity(GitIdentityRecord {
                 identity: GitIdentity {
@@ -763,6 +820,35 @@ mod tests {
                     },
                     effect:    "commit".to_string(),
                 }),
+            }),
+            PlatformRecordKind::ArtifactCollected => {
+                PlatformRecord::ArtifactCollected(ArtifactCollectedRecord {
+                    execution: 0,
+                    firing:    3,
+                    attempt:   1,
+                    path:      "assets/report.txt".to_string(),
+                    blob:      BlobHash::new(b"report"),
+                    bytes:     6,
+                    digest:    BlobHash::new(b"report").to_string(),
+                    operation: Some(OperationKey {
+                        execution: 0,
+                        decision:  DecisionRef::AttemptStart {
+                            firing:  3,
+                            attempt: 1,
+                        },
+                        effect:    "artifact".to_string(),
+                    }),
+                })
+            }
+            PlatformRecordKind::RunDiff => PlatformRecord::RunDiff(RunDiffRecord {
+                base_sha:     Some("abc".to_string()),
+                head_sha:     Some("def".to_string()),
+                diff_summary: Some(DiffSummary {
+                    files_changed: 1,
+                    additions:     2,
+                    deletions:     0,
+                }),
+                patch_blob:   Some(BlobHash::new(b"patch")),
             }),
             PlatformRecordKind::PullRequestCreated => {
                 PlatformRecord::PullRequestCreated(PullRequestCreatedRecord {

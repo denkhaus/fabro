@@ -13,10 +13,11 @@ use strum::{Display, EnumString, IntoStaticStr};
 
 use crate::agent_props::{AgentSessionActivatedProps, StagePromptProps};
 use crate::{
-    AgentBackend, Checkpoint, Conclusion, GitIdentity, InterviewQuestionRecord, InvalidTransition,
-    ModelRef, ModelUsage, ParallelBranchId, PullRequestCreation, PullRequestLink, RunApproval,
-    RunControlAction, RunDiff, RunId, RunSandbox, RunSpec, RunStatus, RunTiming, StageCompletion,
-    StageHandler, StageId, StageState, StageTiming, StartRecord, timing,
+    AgentBackend, BlobHash, Checkpoint, Conclusion, GitIdentity, InterviewQuestionRecord,
+    InvalidTransition, ModelRef, ModelUsage, ParallelBranchId, PullRequestCreation,
+    PullRequestLink, RunApproval, RunControlAction, RunDiff, RunId, RunSandbox, RunSpec, RunStatus,
+    RunTiming, StageCompletion, StageHandler, StageId, StageState, StageTiming, StartRecord,
+    timing,
 };
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -51,7 +52,26 @@ pub struct RunProjection {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub git_identity:          Option<GitIdentity>,
     pub pending_interviews:    BTreeMap<String, PendingInterviewRecord>,
+    /// The files collected from the run's workspaces under
+    /// `[run.artifacts] include`, one entry per capture, in the order they
+    /// were recorded. The bytes are in the blob table under `blob`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub artifacts:             Vec<RunArtifact>,
     stages:                    HashMap<StageId, StageProjection>,
+}
+
+/// One file a stage's attempt left in its workspace and the run collected.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct RunArtifact {
+    /// The stage that produced the file, as the projection labels it.
+    pub stage_id:      StageId,
+    /// The attempt of the stage, 1-based, as the artifact listing's `retry`.
+    pub retry:         u32,
+    /// The file's path relative to the workspace root.
+    pub relative_path: String,
+    pub size:          u64,
+    /// The blob that holds the file's bytes.
+    pub blob:          BlobHash,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -694,6 +714,7 @@ impl RunProjection {
             retried_from: None,
             git_identity: None,
             pending_interviews: BTreeMap::new(),
+            artifacts: Vec::new(),
             stages: HashMap::new(),
         }
     }

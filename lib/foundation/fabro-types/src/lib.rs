@@ -72,7 +72,10 @@ pub use agent_props::{
 pub use artifact::ArtifactUpload;
 pub use auth::{IdpIdentity, IdpIdentityError};
 pub use blob_hash::BlobHash;
-pub use blob_ref::{format_blob_ref, parse_blob_ref, parse_managed_blob_file_ref};
+pub use blob_ref::{
+    BlobRefEncoding, format_blob_ref, parse_blob_ref, parse_blob_ref_encoded,
+    parse_managed_blob_file_ref,
+};
 pub use catalog_api::{Model, ModelControls, ModelCosts, ModelFeatures, ModelLimits, Provider};
 pub use checkpoint::Checkpoint;
 pub use command_output::{CommandOutputStream, CommandTermination};
@@ -145,7 +148,7 @@ pub use run_intent::{
     TargetValidationError, ValidatedGitRunTarget, ValidatedRunTarget,
 };
 pub use run_projection::{
-    CheckpointRecord, PendingInterviewRecord, RunProjection, StageContextWindow,
+    CheckpointRecord, PendingInterviewRecord, RunArtifact, RunProjection, StageContextWindow,
     StageContextWindowUnavailableReason, StageInferenceProjection, StageModelUsage,
     StageProjection, StageToolBatchProjection, first_event_seq,
 };

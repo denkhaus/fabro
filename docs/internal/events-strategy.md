@@ -12,8 +12,10 @@ over both:
   before and after the engine (`run.created`, `run.lifecycle`, `run.title`,
   `run.parent`, `run.archived`, `run.superseded`, `run.notice`), who answered
   a question (`interview.answered`), the branch and git identity a run works
-  under, a checkpoint commit, the pull request requests and outcomes, a
-  notification sent, a pairing. They are `PlatformRecord` values in
+  under, a checkpoint commit with its diff, a collected artifact
+  (`artifact.collected`), the run's diff (`run.diff`), the pull request
+  requests and outcomes, a notification sent, a pairing. They are
+  `PlatformRecord` values in
   `fabro-store::platform_records`, stored in `platform_records` with a
   per-run `seq`.
 
