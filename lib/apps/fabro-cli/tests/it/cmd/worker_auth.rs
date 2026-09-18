@@ -249,7 +249,11 @@ async fn wait_for_http_ready(base_url: &str, child: &mut Child) {
     }
 }
 
-async fn run_events(api_base_url: &str, run_id: &str, access_token: &str) -> Vec<RunStreamItem> {
+async fn run_stream_items(
+    api_base_url: &str,
+    run_id: &str,
+    access_token: &str,
+) -> Vec<RunStreamItem> {
     let response = fabro_test::test_http_client()
         .get(format!(
             "{api_base_url}/api/v1/runs/{run_id}/events?after=0&limit=1000"
@@ -274,7 +278,7 @@ async fn wait_for_completed_events(
 ) -> Vec<RunStreamItem> {
     let deadline = Instant::now() + COMMAND_TIMEOUT;
     loop {
-        let events = run_events(api_base_url, run_id, access_token).await;
+        let events = run_stream_items(api_base_url, run_id, access_token).await;
         if events.iter().any(is_terminal_lifecycle) {
             return events;
         }

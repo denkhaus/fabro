@@ -56,7 +56,7 @@ pub(super) fn completed_nodes(run_dir: &Path) -> Vec<String> {
 }
 
 pub(super) fn has_event(run_dir: &Path, event_name: &str) -> bool {
-    run_events(run_dir)
+    run_stream_items(run_dir)
         .into_iter()
         .any(|item| item.name() == Some(event_name))
 }
@@ -160,7 +160,7 @@ fn run_state(run_dir: &Path) -> RunProjection {
     ))
 }
 
-fn run_events(run_dir: &Path) -> Vec<RunStreamItem> {
+fn run_stream_items(run_dir: &Path) -> Vec<RunStreamItem> {
     let run_id = infer_run_id(run_dir);
     let runs_dir = run_dir.parent().expect("run dir should have parent");
     let storage_dir = runs_dir.parent().expect("runs dir should have parent");

@@ -19,8 +19,8 @@ use fabro_types::{FailureReason, RunStreamItem, StageId};
 use httpmock::MockServer;
 
 use super::support::{
-    command_log_text, created_run_id, find_run_dir, local_dev_token, output_stderr, run_events,
-    run_state, server_endpoint, server_target, wait_for_lifecycle, wait_for_status,
+    command_log_text, created_run_id, find_run_dir, local_dev_token, output_stderr, run_state,
+    run_stream_items, server_endpoint, server_target, wait_for_lifecycle, wait_for_status,
     write_gated_workflow,
 };
 use crate::support::{issue_test_worker_jwt, seed_dev_token_auth, unique_run_id};
@@ -36,7 +36,7 @@ fn auth_context() -> fabro_test::TestContext {
 }
 
 fn stored_worker_events(run_dir: &std::path::Path) -> Vec<RunStreamItem> {
-    run_events(run_dir)
+    run_stream_items(run_dir)
 }
 
 /// The platform record of `item`, when it carries one.

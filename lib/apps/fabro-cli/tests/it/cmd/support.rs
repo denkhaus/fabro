@@ -472,7 +472,7 @@ pub(crate) fn setup_detached_dry_run(context: &TestContext) -> RunSetup {
     let run_id = created_run_id(&output);
     let run = resolve_run(context, &run_id);
     let deadline = Instant::now() + command_timeout();
-    while run_events(&run.run_dir).is_empty() {
+    while run_stream_items(&run.run_dir).is_empty() {
         assert!(
             Instant::now() < deadline,
             "timed out waiting for store events for {run_id}"
@@ -852,7 +852,7 @@ pub(crate) fn run_state(run_dir: &Path) -> RunProjection {
     ))
 }
 
-pub(crate) fn run_events(run_dir: &Path) -> Vec<RunStreamItem> {
+pub(crate) fn run_stream_items(run_dir: &Path) -> Vec<RunStreamItem> {
     let run_id = infer_run_id(run_dir);
     let response: serde_json::Value = block_on(get_server_json(
         run_dir,
@@ -907,7 +907,7 @@ pub(crate) fn wait_for_lifecycle(run_dir: &Path, transition: &str) {
 fn wait_for_stream_item(run_dir: &Path, what: &str, matches: impl Fn(&RunStreamItem) -> bool) {
     let deadline = std::time::Instant::now() + command_timeout();
     loop {
-        if run_events(run_dir).iter().any(&matches) {
+        if run_stream_items(run_dir).iter().any(&matches) {
             return;
         }
         assert!(
