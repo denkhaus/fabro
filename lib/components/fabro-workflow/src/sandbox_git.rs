@@ -5,13 +5,18 @@
 //! refuse the file transport and external diff drivers) and returns typed
 //! results. Fabro decides what to stage, what to say in a checkpoint
 //! commit, and which ranges the Run Files endpoint reads.
+//!
+//! Every operation takes the driver handle of the run's sandbox and the
+//! directory the run's repository is checked out in, as the run record
+//! carries it.
 
 use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 
-use fabro_sandbox::RunSandbox;
+use fabro_pebble_sandbox::display_for_log;
 use sandbox_driver::{
     Git as _, GitChange, GitDiffEntry, GitDiffOptions, GitFacet, GitFailureKind, GitRevisionRange,
+    Sandbox,
 };
 
 #[derive(Debug, thiserror::Error)]
@@ -19,7 +24,7 @@ use sandbox_driver::{
 pub struct GitCommandError {
     pub message: String,
     #[source]
-    pub source:  fabro_sandbox::Error,
+    pub source:  sandbox_driver::Error,
 }
 
 /// Rename detection threshold for the diffs the Run Files endpoint and the
@@ -120,7 +125,8 @@ pub struct BlobMeta {
 /// the SHAs, not the paths. The `--numstat` companion classifies text vs
 /// binary so callers can skip binary contents without ever fetching them.
 pub async fn list_changed_files_raw(
-    sandbox: &RunSandbox,
+    sandbox: &dyn Sandbox,
+    working_directory: &str,
     base_sha: &str,
     to_sha: &str,
 ) -> std::result::Result<Vec<RawDiffEntry>, DiffError> {
@@ -129,7 +135,7 @@ pub async fn list_changed_files_raw(
         .find_renames(FIND_RENAMES_PERCENT)
         .timeout(RUN_FILES_TIMEOUT);
     let entries = git
-        .diff_entries(sandbox.working_directory(), &options)
+        .diff_entries(working_directory, &options)
         .await
         .map_err(|error| diff_error(&error))?;
     entries
@@ -139,9 +145,11 @@ pub async fn list_changed_files_raw(
         .map_err(|message| DiffError::Permanent { message })
 }
 
-fn diff_facet(sandbox: &RunSandbox) -> std::result::Result<GitFacet<'_>, DiffError> {
-    sandbox.git().map_err(|error| DiffError::Permanent {
-        message: fabro_sandbox::display_for_log(&error),
+/// The sandbox's git facet; a provider without git cannot serve files, and
+/// a retry would not change that.
+fn diff_facet(sandbox: &dyn Sandbox) -> std::result::Result<GitFacet<'_>, DiffError> {
+    sandbox.git().ok_or_else(|| DiffError::Permanent {
+        message: "sandbox provider does not support git".to_string(),
     })
 }
 
@@ -151,7 +159,7 @@ fn diff_facet(sandbox: &RunSandbox) -> std::result::Result<GitFacet<'_>, DiffErr
 /// retry reads the same object; a timeout, a transport failure, or anything
 /// else is transient and surfaces as a 503 for the client to retry.
 fn diff_error(error: &sandbox_driver::Error) -> DiffError {
-    let message = fabro_sandbox::display_for_log(error);
+    let message = display_for_log(error);
     match error {
         sandbox_driver::Error::Io { .. } => DiffError::Permanent { message },
         sandbox_driver::Error::Git(failure) => {
@@ -290,7 +298,8 @@ pub fn summarize_diff_numstat(numstat: &DiffNumstat) -> DiffSummary {
 /// The numstat of `base_sha..to_sha`: the set of binary paths and the
 /// text-file `+/-` totals, from one driver call.
 pub async fn list_diff_numstat(
-    sandbox: &RunSandbox,
+    sandbox: &dyn Sandbox,
+    working_directory: &str,
     base_sha: &str,
     to_sha: &str,
 ) -> std::result::Result<DiffNumstat, DiffError> {
@@ -299,7 +308,7 @@ pub async fn list_diff_numstat(
         .find_renames(FIND_RENAMES_PERCENT)
         .timeout(RUN_FILES_TIMEOUT);
     let rows = git
-        .diff_numstat(sandbox.working_directory(), &options)
+        .diff_numstat(working_directory, &options)
         .await
         .map_err(|error| diff_error(&error))?;
 
@@ -323,7 +332,8 @@ pub async fn list_diff_numstat(
 /// Blob sizes for many SHAs in one driver call, in the order of `shas`.
 /// A blob git does not have yields `BlobMeta { size: None, .. }`.
 pub async fn stream_blob_metadata(
-    sandbox: &RunSandbox,
+    sandbox: &dyn Sandbox,
+    working_directory: &str,
     shas: &[String],
 ) -> std::result::Result<Vec<BlobMeta>, DiffError> {
     if shas.is_empty() {
@@ -331,7 +341,7 @@ pub async fn stream_blob_metadata(
     }
     let git = diff_facet(sandbox)?;
     let sizes = git
-        .blob_sizes(sandbox.working_directory(), shas)
+        .blob_sizes(working_directory, shas)
         .await
         .map_err(|error| diff_error(&error))?;
     Ok(shas
@@ -351,7 +361,8 @@ pub async fn stream_blob_metadata(
 /// as does a blob git does not have or one that is not UTF-8. Callers are
 /// expected to have pre-filtered binary blobs via [`list_diff_numstat`].
 pub async fn stream_blobs(
-    sandbox: &RunSandbox,
+    sandbox: &dyn Sandbox,
+    working_directory: &str,
     shas: &[String],
     size_cap_bytes: u64,
 ) -> std::result::Result<Vec<Option<String>>, DiffError> {
@@ -360,7 +371,7 @@ pub async fn stream_blobs(
     }
     let git = diff_facet(sandbox)?;
     let blobs = git
-        .blobs(sandbox.working_directory(), shas, size_cap_bytes)
+        .blobs(working_directory, shas, size_cap_bytes)
         .await
         .map_err(|error| diff_error(&error))?;
     Ok(blobs
@@ -376,7 +387,28 @@ mod tests {
         reason = "These unit tests use the real git CLI to construct sandbox-git fixture repositories and sync-write fixtures to disk."
     )]
 
+    use std::sync::Arc;
+
+    use sandbox_driver::{SandboxProvider as _, SandboxSource, SandboxSpec};
+    use sandbox_driver_host::HostProvider;
+
     use super::*;
+
+    /// The repository at `repo` as a host sandbox, with the provider it
+    /// lives on and the directory the operations take.
+    async fn host_sandbox(repo: &std::path::Path) -> (HostProvider, Arc<dyn Sandbox>, String) {
+        let provider = HostProvider::new();
+        let sandbox = provider
+            .create(
+                &SandboxSpec::new(SandboxSource::HostDirectory)
+                    .working_directory(repo.display().to_string()),
+                None,
+            )
+            .await
+            .expect("a host sandbox over the repository");
+        let working_directory = sandbox.working_directory().to_string();
+        (provider, sandbox, working_directory)
+    }
 
     // Test helpers for machine-readable diff enumeration. The repo is seeded
     // with a single commit at `base_sha`, then callers mutate and re-commit
@@ -433,10 +465,8 @@ mod tests {
         std::fs::remove_file(repo.join("drop.txt")).unwrap();
         let head = git_commit_all(repo, "change");
 
-        let sandbox = fabro_sandbox::local_sandbox(repo.to_path_buf())
-            .await
-            .unwrap();
-        let entries = list_changed_files_raw(&sandbox, &base, &head)
+        let (_provider, sandbox, working_directory) = host_sandbox(repo).await;
+        let entries = list_changed_files_raw(sandbox.as_ref(), &working_directory, &base, &head)
             .await
             .unwrap();
 
@@ -474,10 +504,8 @@ mod tests {
         std::fs::write(repo.join("new.txt"), &content).unwrap();
         let head = git_commit_all(repo, "rename");
 
-        let sandbox = fabro_sandbox::local_sandbox(repo.to_path_buf())
-            .await
-            .unwrap();
-        let entries = list_changed_files_raw(&sandbox, &base, &head)
+        let (_provider, sandbox, working_directory) = host_sandbox(repo).await;
+        let entries = list_changed_files_raw(sandbox.as_ref(), &working_directory, &base, &head)
             .await
             .unwrap();
 
@@ -520,10 +548,10 @@ mod tests {
         std::fs::write(repo.join("logo.png"), png).unwrap();
         let head = git_commit_all(repo, "change");
 
-        let sandbox = fabro_sandbox::local_sandbox(repo.to_path_buf())
+        let (_provider, sandbox, working_directory) = host_sandbox(repo).await;
+        let stats = list_diff_numstat(sandbox.as_ref(), &working_directory, &base, &head)
             .await
             .unwrap();
-        let stats = list_diff_numstat(&sandbox, &base, &head).await.unwrap();
 
         assert!(
             stats.binary_paths.contains("logo.png"),
@@ -566,11 +594,11 @@ mod tests {
             sha_by_name.insert(path.to_string(), sha.to_string());
         }
 
-        let sandbox = fabro_sandbox::local_sandbox(repo.to_path_buf())
+        let (_provider, sandbox, working_directory) = host_sandbox(repo).await;
+        let shas = vec![sha_by_name["a.txt"].clone(), sha_by_name["b.txt"].clone()];
+        let metas = stream_blob_metadata(sandbox.as_ref(), &working_directory, &shas)
             .await
             .unwrap();
-        let shas = vec![sha_by_name["a.txt"].clone(), sha_by_name["b.txt"].clone()];
-        let metas = stream_blob_metadata(&sandbox, &shas).await.unwrap();
         assert_eq!(metas.len(), 2);
         assert_eq!(metas[0].sha, shas[0]);
         assert_eq!(metas[0].size, Some(4));
@@ -604,13 +632,13 @@ mod tests {
             sha_by_name.insert(path.to_string(), sha.to_string());
         }
 
-        let sandbox = fabro_sandbox::local_sandbox(repo.to_path_buf())
-            .await
-            .unwrap();
+        let (_provider, sandbox, working_directory) = host_sandbox(repo).await;
         let shas = vec![sha_by_name["a.txt"].clone(), sha_by_name["big.txt"].clone()];
 
         // size_cap = 100 bytes — "hello\n" (6) stays, 200-byte blob truncates.
-        let contents = stream_blobs(&sandbox, &shas, 100).await.unwrap();
+        let contents = stream_blobs(sandbox.as_ref(), &working_directory, &shas, 100)
+            .await
+            .unwrap();
         assert_eq!(contents.len(), 2);
         assert_eq!(contents[0].as_deref(), Some("hello\n"));
         assert!(contents[1].is_none(), "oversize blob should be None");
@@ -624,13 +652,15 @@ mod tests {
         std::fs::write(repo.join("x"), "x").unwrap();
         git_commit_all(repo, "seed");
 
-        let sandbox = fabro_sandbox::local_sandbox(repo.to_path_buf())
-            .await
-            .unwrap();
-        let err =
-            list_changed_files_raw(&sandbox, "0000000000000000000000000000000000000000", "HEAD")
-                .await
-                .expect_err("expected error for unknown base sha");
+        let (_provider, sandbox, working_directory) = host_sandbox(repo).await;
+        let err = list_changed_files_raw(
+            sandbox.as_ref(),
+            &working_directory,
+            "0000000000000000000000000000000000000000",
+            "HEAD",
+        )
+        .await
+        .expect_err("expected error for unknown base sha");
         assert!(matches!(err, DiffError::Permanent { .. }), "err: {err:?}");
     }
 }

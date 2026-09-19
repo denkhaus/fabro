@@ -64,8 +64,6 @@ use fabro_mcp_store::McpServerStore;
 use fabro_petri::controls::{RunControls, SteerError};
 use fabro_petri::projector::Projector;
 use fabro_redact::redact_jsonl_line;
-use fabro_sandbox::details::sandbox_details;
-use fabro_sandbox::reconnect::reconnect_for_run;
 use fabro_slack::client::{PostedMessage as SlackPostedMessage, SlackClient};
 use fabro_slack::config::{
     SlackCredentialResolution,
@@ -98,9 +96,7 @@ use fabro_types::{
     RunControlAction, RunId, RunRunnableSource, RunStatus, RunStatusKind, RunStreamItem,
     RunStreamItemKind, SandboxProviderKind, ServerSettings, SuccessReason,
 };
-use fabro_util::error::{
-    SharedError, collect_causes, render_compact_with_causes, render_with_causes,
-};
+use fabro_util::error::{SharedError, render_compact_with_causes};
 use fabro_util::version::FABRO_VERSION;
 use fabro_variable::{Error as VariableError, VariableStore};
 use fabro_vault::{SecretStore, SecretStoreError, SecretType, Vault};
@@ -111,6 +107,7 @@ use fabro_workflow::{Error as WorkflowError, operations, pull_request};
 use futures_util::future::join_all;
 use lithos_llm::catalog::ProviderId;
 use lithos_llm::types::Usage;
+use sandbox_driver::SandboxId;
 use tempfile::NamedTempFile;
 use tokio::fs;
 use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWriteExt, BufReader};
@@ -1548,25 +1545,6 @@ impl AppState {
         })
     }
 
-    /// The same access in `fabro-sandbox`'s shape, for the callers still on
-    /// its reconnect path.
-    pub(crate) async fn legacy_provider_access(
-        &self,
-    ) -> Result<fabro_sandbox::ProviderAccess, SecretStoreError> {
-        Ok(fabro_sandbox::ProviderAccess {
-            providers: self.server_settings().server.sandbox.providers.clone(),
-            daytona:   self
-                .vault_secret(EnvVars::DAYTONA_API_KEY)
-                .await?
-                .map(|api_key| {
-                    fabro_sandbox::DaytonaCredentials::from_api_key(api_key, |name| {
-                        self.config_env_lookup(name)
-                    })
-                    .with_http_client(self.http_client().ok())
-                }),
-        })
-    }
-
     pub(crate) async fn check_daytona_api_key(
         &self,
         api_key: String,
@@ -2869,40 +2847,39 @@ async fn delete_run_sandbox_resource(
     }
 
     let access = state
-        .legacy_provider_access()
+        .provider_access()
         .await
         .map_err(|err| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string()))?;
-    let sandbox = match reconnect_for_run(&record, &access, Some(id), None).await {
-        Ok(sandbox) => sandbox,
+    // Deleted by id through the provider scoped to the run: a sandbox that
+    // no longer carries the run's `petri.run` label is refused, an id the
+    // provider no longer knows is already gone, and a designated host
+    // directory is left in place.
+    let deleted = async {
+        let provider = sandbox_access::run_provider(&record.provider, &access, id)
+            .await
+            .with_context(|| format!("Failed to connect to the {} provider", record.provider))?;
+        let sandbox_id = SandboxId::try_new(&runtime.id)
+            .with_context(|| format!("Invalid {} sandbox id", record.provider))?;
+        provider.delete(&sandbox_id, None).await.with_context(|| {
+            format!(
+                "Failed to delete {} sandbox '{}'",
+                record.provider, runtime.id
+            )
+        })
+    }
+    .await;
+    match deleted {
+        Ok(()) => Ok(SandboxDeleteOutcome::Cleaned),
         Err(err) if force || delete_started => {
             tracing::warn!(
                 run_id = %id,
-                error = %render_with_causes(&err.to_string(), &collect_causes(err.as_ref())),
-                "Skipping sandbox provider delete during run deletion"
-            );
-            return Ok(SandboxDeleteOutcome::Cleaned);
-        }
-        Err(err) => {
-            let detail = render_with_causes(&err.to_string(), &collect_causes(err.as_ref()));
-            return Err(ApiError::new(StatusCode::CONFLICT, detail));
-        }
-    };
-    if let Err(err) = sandbox.delete().await {
-        if force || delete_started {
-            tracing::warn!(
-                run_id = %id,
-                error = %err.display_with_causes(),
+                error = %format!("{err:#}"),
                 "Skipping failed sandbox provider delete during run deletion"
             );
-            return Ok(SandboxDeleteOutcome::Cleaned);
+            Ok(SandboxDeleteOutcome::Cleaned)
         }
-        return Err(ApiError::new(
-            StatusCode::CONFLICT,
-            err.display_with_causes(),
-        ));
+        Err(err) => Err(ApiError::new(StatusCode::CONFLICT, format!("{err:#}"))),
     }
-
-    Ok(SandboxDeleteOutcome::Cleaned)
 }
 
 async fn reject_active_delete_without_force(

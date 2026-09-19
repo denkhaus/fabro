@@ -34,8 +34,7 @@ use fabro_api::types::{
     RunFilesMeta, RunFilesMetaDegradedReason, RunFilesMetaScope, RunFilesMetaSource,
     RunFilesMetaToSha,
 };
-use fabro_sandbox::reconnect::reconnect_for_run;
-use fabro_sandbox::{RunSandbox, Termination};
+use fabro_pebble_sandbox::{SandboxExec, display_for_log};
 use fabro_types::RunId;
 use fabro_util::shell;
 use fabro_workflow::sandbox_git::{
@@ -44,7 +43,8 @@ use fabro_workflow::sandbox_git::{
 };
 use futures_util::FutureExt;
 use sandbox_driver::{
-    Git as _, GitCommit, GitDiffOptions, GitFacet, GitLogOptions, GitRevisionRange,
+    Git as _, GitCommit, GitDiffOptions, GitFacet, GitLogOptions, GitRevisionRange, Sandbox,
+    Termination,
 };
 use serde::Deserialize;
 use tokio::sync::{Mutex, watch};
@@ -52,6 +52,7 @@ use tokio::sync::{Mutex, watch};
 use crate::error::ApiError;
 use crate::principal_middleware::RequiredUser;
 use crate::run_files_security::{RunFilesMetrics, is_sensitive};
+use crate::sandbox_access;
 use crate::server::{AppState, parse_run_id_path};
 
 /// Per-file cap: 256 KiB OR 20k lines (whichever comes first).
@@ -62,8 +63,47 @@ pub(crate) const AGGREGATE_BYTES_CAP: u64 = 5 * 1024 * 1024;
 /// Per-response file-count cap.
 pub(crate) const FILE_COUNT_CAP: usize = 200;
 /// Sandbox git timeout. Matches Unit 3 helpers (10 s).
-const SANDBOX_GIT_TIMEOUT_MS: u64 = 10_000;
-const SANDBOX_GIT_TIMEOUT: Duration = Duration::from_millis(SANDBOX_GIT_TIMEOUT_MS);
+const SANDBOX_GIT_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// A run's sandbox as the Run Files endpoints read it: the driver handle,
+/// brought to `Running`, and the directory the run's repository is checked
+/// out in.
+struct SandboxCheckout {
+    handle:            Arc<dyn Sandbox>,
+    working_directory: String,
+}
+
+impl SandboxCheckout {
+    fn new(handle: Arc<dyn Sandbox>, working_directory: impl Into<String>) -> Self {
+        Self {
+            handle,
+            working_directory: working_directory.into(),
+        }
+    }
+
+    fn sandbox(&self) -> &dyn Sandbox {
+        self.handle.as_ref()
+    }
+
+    fn working_directory(&self) -> &str {
+        &self.working_directory
+    }
+
+    /// The sandbox's git facet; a provider without git cannot serve files.
+    fn git(&self) -> std::result::Result<GitFacet<'_>, ApiError> {
+        self.handle.git().ok_or_else(|| {
+            ApiError::new(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "Sandbox provider does not support git.",
+            )
+        })
+    }
+
+    /// Fabro's exec policy over the sandbox, in the checkout.
+    fn exec(&self) -> SandboxExec<'_> {
+        SandboxExec::new(self.handle.exec()).with_working_dir(self.working_directory.clone())
+    }
+}
 
 /// Below this SHA count the phase-1 `cat-file --batch-check` pre-filter is
 /// skipped — its ~100 ms round-trip dominates for small diffs, and phase-2
@@ -356,12 +396,12 @@ async fn materialize_run_commits(
 }
 
 async fn git_log_commits(
-    sandbox: &RunSandbox,
+    sandbox: &SandboxCheckout,
     base_sha: &str,
     head_sha: &str,
     limit: u64,
 ) -> std::result::Result<Vec<RunCommit>, ApiError> {
-    let git = sandbox_git(sandbox)?;
+    let git = sandbox.git()?;
     let options = GitLogOptions::new(GitRevisionRange::new(base_sha).to(head_sha))
         .first_parent()
         .reverse()
@@ -554,7 +594,7 @@ fn sandbox_read_error_should_fallback(err: &ApiError) -> bool {
 }
 
 async fn materialize_committed_sandbox_path(
-    sandbox: &RunSandbox,
+    sandbox: &SandboxCheckout,
     projection: &fabro_store::RunProjection,
     base_sha: &str,
     run_id: &RunId,
@@ -576,7 +616,7 @@ async fn materialize_committed_sandbox_path(
 }
 
 async fn materialize_committed_range_sandbox_path(
-    sandbox: &RunSandbox,
+    sandbox: &SandboxCheckout,
     fallback_projection: Option<&fabro_store::RunProjection>,
     base_sha: &str,
     to_sha: &str,
@@ -589,8 +629,18 @@ async fn materialize_committed_range_sandbox_path(
     // traversals are mutually independent once `to_sha` is known, and
     // running them sequentially would add ~100 ms per request on Daytona.
     let (raw_res, numstat_res) = tokio::join!(
-        list_changed_files_raw(sandbox, base_sha, to_sha),
-        list_diff_numstat(sandbox, base_sha, to_sha),
+        list_changed_files_raw(
+            sandbox.sandbox(),
+            sandbox.working_directory(),
+            base_sha,
+            to_sha
+        ),
+        list_diff_numstat(
+            sandbox.sandbox(),
+            sandbox.working_directory(),
+            base_sha,
+            to_sha
+        ),
     );
 
     // Permanent errors (bad_sha, missing object) fall through to the
@@ -698,14 +748,14 @@ async fn materialize_committed_range_sandbox_path(
 }
 
 async fn materialize_working_tree_sandbox_path(
-    sandbox: &RunSandbox,
+    sandbox: &SandboxCheckout,
     base_ref: &str,
     scope: RunFilesMetaScope,
     run_id: &RunId,
     start: Instant,
 ) -> ListRunFilesResult {
     let (to_sha, to_sha_committed_at) = resolve_head_sha_and_time(sandbox).await?;
-    let git = sandbox_git(sandbox)?;
+    let git = sandbox.git()?;
     // No head: the driver diffs `base_ref` against the working tree.
     let options = GitDiffOptions::new(GitRevisionRange::new(base_ref))
         .find_renames(50)
@@ -735,13 +785,6 @@ async fn materialize_working_tree_sandbox_path(
     ))
 }
 
-/// The sandbox's git facet; a provider without git cannot serve files.
-fn sandbox_git(sandbox: &RunSandbox) -> std::result::Result<GitFacet<'_>, ApiError> {
-    sandbox
-        .git()
-        .map_err(|err| ApiError::new(StatusCode::SERVICE_UNAVAILABLE, err.display_with_causes()))
-}
-
 /// A driver git failure as the endpoint's transient 503, so the client
 /// retries; a command that timed out says so.
 fn sandbox_git_error(op: &str, error: &sandbox_driver::Error) -> ApiError {
@@ -753,7 +796,7 @@ fn sandbox_git_error(op: &str, error: &sandbox_driver::Error) -> ApiError {
     if timed_out {
         return transient_503(op, "command timed out");
     }
-    transient_503(op, &fabro_sandbox::display_for_log(error))
+    transient_503(op, &display_for_log(error))
 }
 
 /// Build the degraded response from the stored terminal diff patch.
@@ -1165,29 +1208,30 @@ async fn load_projection(
     state.load_run_projection(run_id).await
 }
 
+/// The run's sandbox from its record, attached and running. A sandbox the
+/// provider no longer has is a 409, which the caller degrades to the stored
+/// patch.
 async fn reconnect_run_sandbox(
     state: &Arc<AppState>,
     run_id: &RunId,
     projection: &fabro_store::RunProjection,
-) -> std::result::Result<RunSandbox, ApiError> {
+) -> std::result::Result<SandboxCheckout, ApiError> {
     let record = projection
         .sandbox
         .as_ref()
         .and_then(fabro_types::RunSandbox::instance)
-        .cloned()
         .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "Run sandbox was not created."))?;
     let access = state
-        .legacy_provider_access()
+        .provider_access()
         .await
         .map_err(|err| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string()))?;
-    let sandbox = reconnect_for_run(&record, &access, Some(*run_id), None)
+    let handle = sandbox_access::attach_running_run_sandbox(&access, record, *run_id)
         .await
-        .map_err(|err| ApiError::new(StatusCode::CONFLICT, err.to_string()))?;
-    sandbox
-        .activate()
-        .await
-        .map_err(|err| ApiError::new(StatusCode::CONFLICT, err.display_with_causes()))?;
-    Ok(sandbox)
+        .map_err(|err| ApiError::new(StatusCode::CONFLICT, format!("{err:#}")))?;
+    Ok(SandboxCheckout::new(
+        handle,
+        record.runtime.working_directory.clone(),
+    ))
 }
 
 /// Resolve HEAD's SHA and its commit time in a single sandbox round-trip.
@@ -1195,26 +1239,27 @@ async fn reconnect_run_sandbox(
 /// a space. The commit time is best-effort — if parsing fails the handler
 /// still succeeds without the freshness timestamp.
 async fn resolve_head_sha_and_time(
-    sandbox: &RunSandbox,
+    sandbox: &SandboxCheckout,
 ) -> std::result::Result<(String, Option<chrono::DateTime<chrono::Utc>>), ApiError> {
     resolve_ref_sha_and_time(sandbox, "HEAD").await
 }
 
 async fn resolve_ref_sha_and_time(
-    sandbox: &RunSandbox,
+    sandbox: &SandboxCheckout,
     git_ref: &str,
 ) -> std::result::Result<(String, Option<chrono::DateTime<chrono::Utc>>), ApiError> {
     let ref_q = shell::shell_quote(git_ref);
     let res = sandbox
-        .exec_command(
+        .exec()
+        .run(
             &format!("git -c core.hooksPath=/dev/null show -s --format=%H\\ %cI {ref_q}"),
-            SANDBOX_GIT_TIMEOUT_MS,
+            Some(SANDBOX_GIT_TIMEOUT),
             None,
             None,
             None,
         )
         .await
-        .map_err(|err| ApiError::new(StatusCode::SERVICE_UNAVAILABLE, err.display_with_causes()))?;
+        .map_err(|err| ApiError::new(StatusCode::SERVICE_UNAVAILABLE, display_for_log(&err)))?;
     if !res.success() {
         return Err(ApiError::new(
             StatusCode::SERVICE_UNAVAILABLE,
@@ -1583,7 +1628,7 @@ fn collect_blob_shas(classified: &[ClassifiedEntry]) -> Vec<String> {
 ///   but with a semantically-accurate cause.
 /// - Phase 2 transient error: 503 to the client.
 async fn fetch_blob_table(
-    sandbox: &RunSandbox,
+    sandbox: &SandboxCheckout,
     shas: &[String],
 ) -> std::result::Result<HashMap<String, Option<String>>, ApiError> {
     if shas.is_empty() {
@@ -1598,7 +1643,7 @@ async fn fetch_blob_table(
     // Phase 1 only earns its cost when a single malformed/huge blob could
     // poison a large batch's parse.
     let oversized: HashSet<String> = if shas.len() >= METADATA_PHASE_SHA_THRESHOLD {
-        match stream_blob_metadata(sandbox, shas).await {
+        match stream_blob_metadata(sandbox.sandbox(), sandbox.working_directory(), shas).await {
             Ok(metas) => metas
                 .into_iter()
                 .filter_map(|m| {
@@ -1632,7 +1677,14 @@ async fn fetch_blob_table(
         return Ok(table);
     }
 
-    match stream_blobs(sandbox, &shas_to_fetch, PER_FILE_BYTES_CAP).await {
+    match stream_blobs(
+        sandbox.sandbox(),
+        sandbox.working_directory(),
+        &shas_to_fetch,
+        PER_FILE_BYTES_CAP,
+    )
+    .await
+    {
         Ok(contents) => {
             for (sha, content) in shas_to_fetch.iter().zip(contents) {
                 table.insert(sha.clone(), content);
@@ -1679,12 +1731,17 @@ fn count_flags(data: &[FileDiff]) -> (u64, u64, u64, u64) {
 mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
 
-    use fabro_sandbox::Termination;
-    use fabro_sandbox::test_support::exec_result;
+    use fabro_pebble_sandbox::test_support::{MockSandbox, exec_result};
     use fabro_types::{PetriAdmission, RunId, test_support};
+    use sandbox_driver::ExecResult;
     use tokio::time::{Duration, sleep};
 
     use super::*;
+
+    /// The mock as the Run Files endpoints hold a sandbox.
+    fn checkout(mock: &MockSandbox) -> SandboxCheckout {
+        SandboxCheckout::new(mock.handle(), mock.working_dir)
+    }
 
     fn run_id(_name: &str) -> RunId {
         // RunIds are ULIDs, not arbitrary strings; each test just needs
@@ -1744,7 +1801,7 @@ diff --git a/src/live.rs b/src/live.rs
         });
 
         let body = materialize_working_tree_sandbox_path(
-            &sandbox.sandbox(),
+            &checkout(&sandbox),
             "HEAD",
             RunFilesMetaScope::Uncommitted,
             &RunId::new(),
@@ -1785,20 +1842,17 @@ diff --git a/src/live.rs b/src/live.rs
             "Alice\x1falice@example.com\x1f2026-05-09T18:00:00Z\x1f",
             "external tool update\n\nLonger body.\n\x1e",
         );
-        let sandbox = fabro_sandbox::test_support::MockSandbox::default();
-        sandbox
-            .driver()
-            .scripted_exec()
-            .push_result(fabro_sandbox::test_support::exec_result(
-                stdout,
-                "",
-                Some(0),
-                Termination::Exited,
-                1,
-            ));
+        let sandbox = MockSandbox::default();
+        sandbox.driver().scripted_exec().push_result(exec_result(
+            stdout,
+            "",
+            Some(0),
+            Termination::Exited,
+            1,
+        ));
 
         let commits = git_log_commits(
-            &sandbox.sandbox(),
+            &checkout(&sandbox),
             "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
             "dddddddddddddddddddddddddddddddddddddddd",
             50,
@@ -2850,9 +2904,6 @@ rename to .env.production
 
     // ── fetch_blob_table two-phase error isolation ─────────────────────
 
-    use fabro_sandbox::ExecResult;
-    use fabro_sandbox::test_support::MockSandbox;
-
     /// A sandbox for the two-phase tests: it answers `cat-file --batch-check`
     /// and `cat-file --batch` differently and fails any other command, since
     /// `fetch_blob_table` runs nothing else.
@@ -2913,7 +2964,7 @@ rename to .env.production
 
         let sandbox = blob_sandbox(ok_exec(&batch_check_stdout), ok_exec(&batch_stdout));
 
-        let table = fetch_blob_table(&sandbox.sandbox(), &shas)
+        let table = fetch_blob_table(&checkout(&sandbox), &shas)
             .await
             .expect("transient-only errors should never bubble up for permanent parse fail");
 
@@ -2952,7 +3003,7 @@ rename to .env.production
             ok_exec(&batch_stdout),
         );
 
-        let table = fetch_blob_table(&sandbox.sandbox(), &shas)
+        let table = fetch_blob_table(&checkout(&sandbox), &shas)
             .await
             .expect("small SHA lists skip phase 1 entirely; phase-2 success is the full story");
         assert_eq!(table.get(&sha), Some(&Some("hello".to_string())));

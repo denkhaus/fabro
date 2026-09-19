@@ -16,7 +16,6 @@ use fabro_api::types::{
 use fabro_llm::lithos_catalog::Catalog;
 use fabro_llm::{FabroClient, ModelSelectionError, selection};
 use fabro_pebble_sandbox::{PebbleSandbox, SecretRedactor};
-use fabro_sandbox::reconnect::reconnect_for_run;
 use fabro_store::{ProjectedRunSession, project_run_session, project_run_sessions};
 use fabro_tool::fabro_client::ClientBackend;
 use fabro_types::session_event::{
@@ -50,6 +49,7 @@ use super::super::session_runtime::{InterruptTurnError, SessionTurnLease, StartT
 use super::super::{AppState, PaginationParams, paginate_items, parse_run_id_path};
 use crate::error::ApiError;
 use crate::principal_middleware::RequiredUser;
+use crate::sandbox_access;
 use crate::worker_token::issue_worker_token;
 
 const SESSION_SSE_BUFFER_CAPACITY: usize = 1024;
@@ -727,23 +727,14 @@ async fn build_agent(
         AskFabroBuildError::SandboxUnavailable(anyhow::anyhow!("run sandbox was not created"))
     })?;
     let access = state
-        .legacy_provider_access()
+        .provider_access()
         .await
         .map_err(|err| AskFabroBuildError::Agent(anyhow::Error::new(err)))?;
-    let sandbox = reconnect_for_run(sandbox_instance, &access, Some(run_id), None)
+    let handle = sandbox_access::attach_running_run_sandbox(&access, sandbox_instance, run_id)
         .await
         .map_err(AskFabroBuildError::SandboxUnavailable)?;
-    sandbox
-        .activate()
-        .await
-        .map_err(|err| AskFabroBuildError::SandboxUnavailable(anyhow::Error::new(err)))?;
-    let handle = Arc::clone(
-        sandbox
-            .handle()
-            .map_err(|err| AskFabroBuildError::SandboxUnavailable(anyhow::Error::new(err)))?,
-    );
     let environment: Arc<dyn Environment> = Arc::new(
-        PebbleSandbox::attach(handle, sandbox.working_directory())
+        PebbleSandbox::attach(handle, &sandbox_instance.runtime.working_directory)
             .await
             .map_err(|err| AskFabroBuildError::SandboxUnavailable(anyhow::Error::new(err)))?,
     );
