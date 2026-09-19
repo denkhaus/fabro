@@ -50,6 +50,13 @@ each subsequent pass burns the backlog down one run at a time; do NOT
 create any run here (this leg never starts runs). Keep it best-effort: if
 the signal is ambiguous, say so in the journal and move on.
 
+Open-overflow counts (fabro-552a) may be REPORTED the same way — run
+`nu .fabro/workflows/revisor/scripts/overflow-ledger.nu stats` and note
+`revisor open overflows: <N>` under `observations` when N > 0 (starvation
+signal for open seed fabro-27bb, measured 2026-09-25). REPORT-ONLY: this
+survey NEVER files, consumes, or marks overflow entries — the revisor
+file stage is the one deterministic consumer of the overflow ledger.
+
 ## Journal — every pass
 
 Report through `context_updates.journal` on EVERY pass. Silence is a missing report, not an empty one. Always emit BOTH keys:

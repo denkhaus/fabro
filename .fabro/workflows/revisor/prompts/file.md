@@ -49,6 +49,41 @@ a PREVIOUS pass earns nothing now.
   files zero non-exempt seeds and journals every surviving finding as
   overflow.
 
+## Overflow ledger — deterministic re-file (fabro-552a)
+
+Revision files are the overflow ledger: every `- overflow:` bullet in
+`.fabro/revisions/*.md` is a machine-visible finding that survived dedupe
+but had no balance credit. The script
+`nu .fabro/workflows/revisor/scripts/overflow-ledger.nu` is the ONE
+deterministic consumer surface — THIS stage owns filing; the conductor
+survey may only REPORT counts via `stats` and never files.
+
+1. EVERY pass, before step 1 of the procedure: run
+   `nu .fabro/workflows/revisor/scripts/overflow-ledger.nu open` and
+   merge the listed open overflows into your filing candidates alongside
+   `revision_findings` — they consolidate, dedupe, and balance exactly
+   like current findings (zero-credit handling stays per ADR-0022: they
+   overflow AGAIN and stay open entries; this ledger changes visibility
+   and consumption idempotence only, not the balance rule).
+2. When `sd create` files a rehydrated overflow, IMMEDIATELY mark it
+   consumed: `nu .fabro/workflows/revisor/scripts/overflow-ledger.nu
+   consume --file <file> --line <n> --seed <new-id>` (file and line come
+   from the `open` listing; the `filed-as:` marker is machine-written,
+   never hand-edited). A consumed entry disappears from later `open`
+   listings — nothing is filed twice.
+3. Before journaling a NEW overflow (the zero-credit path), dedupe
+   against the OPEN overflows in the same listing: same theme already
+   open → the new revision file records an
+   `overflow-dup: <existing title> (open in <file>)` LINK line instead
+   of a full `- overflow:` entry — two adjacent passes journal at most
+   ONE open overflow per theme; link lines are never filing input.
+4. Journal every new overflow in the canonical machine-visible shape:
+   `- overflow: <title> — <concrete change>; effect: <expected effect>`
+   (legacy prose shapes are not machine-visible and will be lost).
+
+Backlog-starvation measurement for this mechanism is open seed fabro-27bb
+(re-measure revisor creates:closes around 2026-09-25).
+
 ## Procedure
 
 1. If `revision_findings` is non-empty: FIRST consolidate same-file findings into one multi-arm seed each (filing-balance section above), then for each surviving finding, `sd search` its central theme (see the reference above); only when nothing matches the concrete change, `sd create` with `--labels revision`, its title, description, and priority. Record every created id.
