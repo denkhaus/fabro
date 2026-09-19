@@ -381,10 +381,23 @@ impl RunView {
 
     fn fold_coordinator(&mut self, record: &CoordinatorEvent, event: &RunEvent, at: DateTime<Utc>) {
         match record {
-            CoordinatorEvent::RunStarted { root, .. } => {
+            CoordinatorEvent::RunStarted {
+                root, forked_from, ..
+            } => {
                 self.state.root = Some(root.raw());
                 self.state.started_at = Some(event.recorded_at);
                 if let Some(projection) = self.projection.as_mut() {
+                    // A fork's declaration names its source; a parse failure
+                    // means the source was not a Fabro run, which the
+                    // projection cannot show.
+                    projection.forked_from = forked_from.as_ref().and_then(|origin| {
+                        Some(fabro_types::ForkOrigin {
+                            source_run_id: origin.source.as_str().parse().ok()?,
+                            execution:     origin.position.execution.raw(),
+                            firing:        origin.position.firing.raw(),
+                            rerun_last:    origin.rerun_last,
+                        })
+                    });
                     apply_status(projection, RunStatus::Running, at);
                     projection.start = Some(StartRecord {
                         start_time: at,

@@ -607,6 +607,15 @@ impl RunWorkspaces {
         Ok(self.head(site).await?.as_deref() == Some(sha) && self.is_clean(site).await?)
     }
 
+    /// Whether the host workspace's repository holds the commit `sha`, so a
+    /// reset can reach it; a directory that is no repository holds none.
+    pub async fn has_commit(&self, workspace: &str, sha: &str) -> Result<bool, CheckpointError> {
+        if !self.workspace_exists(workspace).await {
+            return Ok(false);
+        }
+        self.has_commit_at(&self.host(workspace), sha).await
+    }
+
     /// Whether a sandbox workspace's repository holds the commit `sha`, so
     /// a reset can reach it without a transfer.
     pub async fn has_commit_in(
@@ -614,16 +623,20 @@ impl RunWorkspaces {
         env: &Arc<dyn ExecEnv>,
         sha: &str,
     ) -> Result<bool, CheckpointError> {
-        let site = Site::Sandbox(Arc::clone(env));
+        self.has_commit_at(&Site::Sandbox(Arc::clone(env)), sha)
+            .await
+    }
+
+    async fn has_commit_at(&self, site: &Site, sha: &str) -> Result<bool, CheckpointError> {
         if self
-            .git_status(&site, "rev-parse", &["rev-parse", "--git-dir"])
+            .git_status(site, "rev-parse", &["rev-parse", "--git-dir"])
             .await?
             .is_none()
         {
             return Ok(false);
         }
         Ok(self
-            .git_status(&site, "cat-file", &[
+            .git_status(site, "cat-file", &[
                 "cat-file",
                 "-e",
                 &format!("{sha}^{{commit}}"),
