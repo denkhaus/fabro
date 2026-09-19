@@ -337,6 +337,12 @@ digraph Develop {
         // with the aggregate demote pass (preamble_inline_max_within_budget
         // stays quiet).
         preamble_inline_max_kb=16,
+        // fabro-meta-c9f2: evidence.nu puts the integrity header and
+        // seed-work diff at the HEAD of its capture; the old 50-line
+        // tail cap dropped exactly that head ("119 lines omitted" hid
+        // the seed-work diff from this reviewer). 200 keeps ~120-line
+        // captures whole — zero "lines omitted" in the evidence section.
+        preamble_output_max_lines=200,
         // fabro-1dae: read-only is a CAPABILITY, not just policy — an empty
         // fs_write denies every file-tool write (deletes and patch targets
         // included). Deliberately NO fs_hide: review must see every diff,
