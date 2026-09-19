@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::fmt::Write as _;
 use std::sync::Arc;
 
@@ -336,10 +337,94 @@ fn diff_is_journal_only(diff: &str) -> bool {
 }
 
 /// The changed (`b/`-side) path of one `diff --git a/… b/…` header line.
-fn diff_header_b_path(line: &str) -> Option<&str> {
+///
+/// Git C-quotes any path containing special bytes, wrapping it in `"` with
+/// backslash escapes and octal `\nnn` sequences — so a quoted path may carry
+/// a literal ` b/` that a plain `rsplit_once(" b/")` would mis-split
+/// (fabro-c0a2). A quoted a-side therefore locates the b-side by its closing
+/// unescaped quote instead of splitting; plain headers keep the borrowed
+/// fast path, quoted ones decode into an owned `Cow` only when escapes are
+/// present. Malformed quoting (unterminated quote, dangling backslash) is
+/// `None`, so `diff_is_journal_only` fails closed.
+fn diff_header_b_path(line: &str) -> Option<Cow<'_, str>> {
     let rest = line.strip_prefix("diff --git ")?;
-    let (_, b_side) = rest.rsplit_once(" b/")?;
-    Some(b_side)
+    let b_side = if rest.starts_with('"') {
+        let a_body = rest.get(1..)?;
+        let close = closing_quote_index(a_body)?;
+        let after = a_body.get(close + '"'.len_utf8()..)?;
+        let b_quoted = after.strip_prefix(" \"")?;
+        let b_body = b_quoted.strip_prefix("b/")?.strip_suffix('"')?;
+        b_body
+    } else {
+        rest.rsplit_once(" b/")?.1
+    };
+    decode_c_quoted_path(b_side)
+}
+
+/// Byte index of the closing `"` in `body` (opening quote already stripped),
+/// skipping backslash-escaped characters. `None` when the quote never closes.
+fn closing_quote_index(body: &str) -> Option<usize> {
+    let mut escaped = false;
+    for (index, character) in body.char_indices() {
+        if escaped {
+            escaped = false;
+        } else if character == '\\' {
+            escaped = true;
+        } else if character == '"' {
+            return Some(index);
+        }
+    }
+    None
+}
+
+/// Decode a git C-quoted path body (quotes and `b/` prefix stripped) when it
+/// carries escapes, otherwise borrow it unchanged. Escape handling follows
+/// git's `quote_c_style` set (`\a \b \f \n \r \t \v \" \\` plus octal `\nnn`,
+/// which is how git writes an embedded space as `\040`). Documented choice
+/// for an unrecognized escape: keep the backslash literally rather than
+/// fail — the surrounding quoting already fixed the path boundaries, so
+/// only the byte value is uncertain, never the split.
+fn decode_c_quoted_path(body: &str) -> Option<Cow<'_, str>> {
+    if !body.contains('\\') {
+        return Some(Cow::Borrowed(body));
+    }
+    let mut decoded = String::with_capacity(body.len());
+    let mut characters = body.chars();
+    while let Some(character) = characters.next() {
+        if character != '\\' {
+            decoded.push(character);
+            continue;
+        }
+        match characters.next()? {
+            'a' => decoded.push('\u{7}'),
+            'b' => decoded.push('\u{8}'),
+            'f' => decoded.push('\u{c}'),
+            'n' => decoded.push('\n'),
+            'r' => decoded.push('\r'),
+            't' => decoded.push('\t'),
+            'v' => decoded.push('\u{b}'),
+            '"' => decoded.push('"'),
+            '\\' => decoded.push('\\'),
+            digit @ '0'..='7' => {
+                let mut value = digit.to_digit(8)?;
+                for _ in 0..2 {
+                    match characters.clone().next() {
+                        Some(next @ '0'..='7') => {
+                            value = value * 8 + next.to_digit(8)?;
+                            characters.next();
+                        }
+                        _ => break,
+                    }
+                }
+                decoded.push(char::from_u32(value)?);
+            }
+            unknown => {
+                decoded.push('\\');
+                decoded.push(unknown);
+            }
+        }
+    }
+    Some(Cow::Owned(decoded))
 }
 
 #[cfg(test)]
@@ -383,6 +468,38 @@ mod tests {
         assert!(!diff_is_journal_only(""));
         assert!(!diff_is_journal_only("   \n\t"));
         assert!(!diff_is_journal_only("not a git diff at all"));
+    }
+
+    /// Table-driven coverage for quote-aware `diff_header_b_path` parsing
+    /// (fabro-c0a2): plain headers keep their old result, git C-quoted
+    /// headers decode correctly even when the quoted path contains a literal
+    /// ` b/` that the old `rsplit_once(" b/")` mis-split, and escape
+    /// sequences (space via `\040`, backslash via `\\`) decode per git's
+    /// `quote_c_style`. Malformed quoting fails closed to `None`.
+    #[test]
+    fn diff_header_b_path_parses_plain_and_quoted_paths() {
+        let cases: &[(&str, Option<&str>)] = &[
+            ("diff --git a/x b/x", Some("x")),
+            (
+                "diff --git a/.fabro/journal/run.jsonl b/.fabro/journal/run.jsonl",
+                Some(".fabro/journal/run.jsonl"),
+            ),
+            // Space-bearing quoted path containing a literal ` b/`.
+            ("diff --git \"a/p b/ one\" \"b/p b/ one\"", Some("p b/ one")),
+            // Embedded space encoded the way git actually emits it.
+            ("diff --git \"a/p\\040q\" \"b/p\\040q\"", Some("p q")),
+            // Backslash escape: git writes a literal backslash as `\\`.
+            ("diff --git \"a/p\\\\ q\" \"b/p\\\\ q\"", Some("p\\ q")),
+            // Unterminated quoting never yields a mis-split fragment.
+            ("diff --git \"a/p b/ one\" \"b/p b/ one", None),
+        ];
+        for (line, expected) in cases {
+            assert_eq!(
+                diff_header_b_path(line).as_deref(),
+                *expected,
+                "line: {line}"
+            );
+        }
     }
 
     /// The PR content model must be `pr_resolved_model`, never the run-model
