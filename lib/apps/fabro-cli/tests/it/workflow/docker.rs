@@ -1,15 +1,13 @@
-//! Sandbox providers served by sandbox-driver plugin executables, for the
-//! workflow scenarios.
+//! The Docker provider for the workflow scenarios: an environment on
+//! [`DOCKER_IMAGE`], on an isolated server.
 //!
-//! The executables are the driver's own `sandbox-driver-host` and
-//! `sandbox-driver-docker`, found on `PATH`; CI installs them at the rev the
-//! workspace pins, and a developer installs them with
+//! Petri serves every provider through a sandbox-driver plugin executable it
+//! finds on `PATH` (`sandbox-driver-docker` here); CI installs the
+//! executables at the rev the workspace pins, and a developer installs them
+//! with
 //! `cargo install --locked --git https://github.com/lithoscomputer/sandbox-driver --rev <rev> sandbox-driver-host sandbox-driver-docker`.
-//! Each runs under a kind of the scenario's choosing (`host`,
-//! `docker-plugin`): the configured kind names the plugin, whatever the
-//! executable declares. A scenario configured here runs against its own
-//! server so the plugin settings and the environment it creates never leak
-//! into the shared session server.
+//! A scenario configured here runs against its own server so the environment
+//! it creates never leaks into the shared session server.
 
 #![expect(
     clippy::disallowed_methods,
@@ -32,59 +30,27 @@ use crate::cmd::support::server_endpoint;
 /// skipping it.
 const REQUIRE_ENV: &str = "FABRO_REQUIRE_SANDBOX_PLUGINS";
 const DOCKER_IMAGE: &str = "buildpack-deps:noble";
+const DOCKER_PLUGIN: &str = "sandbox-driver-docker";
+/// The environment id the scenario selects with `--environment`.
+pub(crate) const ENVIRONMENT: &str = "docker";
 
-#[derive(Clone, Copy, Debug)]
-pub(crate) enum Plugin {
-    /// The driver's Host executable under the non-bundled `host` kind.
-    Host,
-    /// The driver's Docker executable under the non-bundled `docker-plugin`
-    /// kind: the same containers, reached over stdio.
-    Docker,
-}
-
-impl Plugin {
-    fn kind(self) -> &'static str {
-        match self {
-            Self::Host => "host",
-            Self::Docker => "docker-plugin",
-        }
-    }
-
-    fn executable(self) -> &'static str {
-        match self {
-            Self::Host => "sandbox-driver-host",
-            Self::Docker => "sandbox-driver-docker",
-        }
-    }
-
-    /// The environment id the scenario selects with `--environment`.
-    fn environment(self) -> &'static str {
-        match self {
-            Self::Host => "host-plugin",
-            Self::Docker => "docker-plugin",
-        }
-    }
-}
-
-/// Point `context` at an isolated server that serves `plugin` and has an
-/// environment for it. Returns the environment id, or `None` when the
+/// Point `context` at an isolated server with a Docker environment on
+/// [`DOCKER_IMAGE`]. Returns the environment id, or `None` when the
 /// prerequisites are missing and the test should skip.
-pub(crate) fn configure(context: &mut TestContext, plugin: Plugin) -> Option<&'static str> {
+pub(crate) fn configure(context: &mut TestContext) -> Option<&'static str> {
     let required = std::env::var_os(REQUIRE_ENV).is_some();
-    let Some(executable) = plugin_executable(plugin) else {
+    if plugin_executable().is_none() {
         assert!(
             !required,
-            "{REQUIRE_ENV} is set but the {} executable is not built",
-            plugin.executable()
+            "{REQUIRE_ENV} is set but {DOCKER_PLUGIN} is not on PATH"
         );
         eprintln!(
-            "skipping: {} is not on PATH; install the sandbox-driver executables at the rev \
-             Cargo.toml pins",
-            plugin.executable()
+            "skipping: {DOCKER_PLUGIN} is not on PATH; install the sandbox-driver executables at \
+             the rev Cargo.toml pins"
         );
         return None;
-    };
-    if matches!(plugin, Plugin::Docker) && !docker_image_available() {
+    }
+    if !docker_image_available() {
         assert!(
             !required,
             "{REQUIRE_ENV} is set but no Docker daemon with {DOCKER_IMAGE} is available"
@@ -93,56 +59,27 @@ pub(crate) fn configure(context: &mut TestContext, plugin: Plugin) -> Option<&'s
         return None;
     }
 
-    let storage_dir = context.temp_dir.join("plugin-server-storage");
-    let registry = context.temp_dir.join("host-registry");
-    std::fs::create_dir_all(&registry).expect("registry dir should be created");
-    let settings = match plugin {
-        Plugin::Host => format!(
-            r#"[server.storage]
+    let storage_dir = context.temp_dir.join("docker-server-storage");
+    let settings = format!(
+        r#"[server.storage]
 root = "{storage}"
 
 [server.auth]
 methods = ["dev-token"]
-
-[server.sandbox.providers.host]
-path = "{path}"
-dev = true
-inherit_env = ["PATH", "HOME"]
-
-[server.sandbox.providers.host.env]
-SANDBOX_DRIVER_HOST_REGISTRY = "{registry}"
 "#,
-            storage = toml_path(&storage_dir),
-            path = toml_path(&executable),
-            registry = toml_path(&registry),
-        ),
-        Plugin::Docker => format!(
-            r#"[server.storage]
-root = "{storage}"
-
-[server.auth]
-methods = ["dev-token"]
-
-[server.sandbox.providers.docker-plugin]
-path = "{path}"
-dev = true
-inherit_env = ["PATH", "HOME", "DOCKER_HOST", "DOCKER_CERT_PATH", "DOCKER_TLS_VERIFY"]
-"#,
-            storage = toml_path(&storage_dir),
-            path = toml_path(&executable),
-        ),
-    };
+        storage = toml_path(&storage_dir),
+    );
     context.write_home(".fabro/settings.toml", settings);
     context.isolated_server();
-    create_environment(&context.storage_dir, plugin);
-    Some(plugin.environment())
+    create_environment(&context.storage_dir);
+    Some(ENVIRONMENT)
 }
 
-/// The driver executable on `PATH`, when installed.
-fn plugin_executable(plugin: Plugin) -> Option<PathBuf> {
+/// The Docker plugin executable on `PATH`, when installed.
+fn plugin_executable() -> Option<PathBuf> {
     let path = std::env::var_os("PATH")?;
     std::env::split_paths(&path)
-        .map(|dir| dir.join(plugin.executable()))
+        .map(|dir| dir.join(DOCKER_PLUGIN))
         .find(|candidate| candidate.is_file())
 }
 
@@ -159,17 +96,11 @@ fn toml_path(path: &Path) -> String {
     path.display().to_string().replace('\\', "/")
 }
 
-fn create_environment(storage_dir: &Path, plugin: Plugin) {
+fn create_environment(storage_dir: &Path) {
     let body = json!({
-        "id": plugin.environment(),
-        "provider": plugin.kind(),
-        "image": {
-            "docker": match plugin {
-                Plugin::Host => serde_json::Value::Null,
-                Plugin::Docker => json!(DOCKER_IMAGE),
-            },
-            "dockerfile": null
-        },
+        "id": ENVIRONMENT,
+        "provider": "docker",
+        "image": { "docker": DOCKER_IMAGE, "dockerfile": null },
         "resources": { "cpu": null, "memory": null, "disk": null },
         "network": { "mode": "allow_all", "allow": [] },
         "lifecycle": { "preserve": false, "stop_on_terminal": true, "auto_stop": null },

@@ -9,11 +9,11 @@ mod command_agent_mixed;
 mod command_pipeline;
 mod command_routing;
 mod conditional_branching;
+pub(super) mod docker;
 mod dry_run_examples;
 mod full_stack;
 mod hooks;
 mod human_gate;
-pub(super) mod plugin;
 
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -173,15 +173,14 @@ fn run_stream_items(run_dir: &Path) -> Vec<RunStreamItem> {
 
 /// Runs a scenario against every sandbox provider fabro supports:
 ///
-/// - `local`: the bundled Host provider in-process.
-/// - `daytona`: the bundled Daytona provider, live credentials required.
-/// - `host-plugin`: the driver's Host executable over stdio under the
-///   non-bundled `host` kind, a clone-based managed workspace.
-/// - `docker-plugin`: the driver's Docker executable over stdio under the
-///   non-bundled `docker-plugin` kind.
+/// - `local`: the host provider, the session server's own `local` environment.
+/// - `daytona`: the Daytona provider, live credentials required.
+/// - `docker`: the Docker provider, an environment on `buildpack-deps:noble`
+///   created on an isolated server.
 ///
-/// The plugin variants need the driver's executables on `PATH`; without
-/// them (or without a Docker daemon) they skip,
+/// Petri serves each provider through the matching sandbox-driver plugin
+/// executable on `PATH`. The `docker` variant skips without
+/// `sandbox-driver-docker` or without a Docker daemon that has the image,
 /// unless `FABRO_REQUIRE_SANDBOX_PLUGINS` is set, as CI sets it.
 macro_rules! sandbox_tests {
     ($name:ident) => {
@@ -200,24 +199,10 @@ macro_rules! sandbox_tests {
             }
 
             #[fabro_macros::e2e_test($(live($key)),*)]
-            fn [<host_plugin_ $name>]() {
+            fn [<docker_ $name>]() {
                 let mut context = fabro_test::test_context!();
-                if let Some(environment) =
-                    $crate::workflow::plugin::configure(&mut context, $crate::workflow::plugin::Plugin::Host)
-                {
-                    $crate::workflow::plugin::run_with_server_log(&context, || {
-                        [<scenario_ $name>](&context, environment);
-                    });
-                }
-            }
-
-            #[fabro_macros::e2e_test($(live($key)),*)]
-            fn [<docker_plugin_ $name>]() {
-                let mut context = fabro_test::test_context!();
-                if let Some(environment) =
-                    $crate::workflow::plugin::configure(&mut context, $crate::workflow::plugin::Plugin::Docker)
-                {
-                    $crate::workflow::plugin::run_with_server_log(&context, || {
+                if let Some(environment) = $crate::workflow::docker::configure(&mut context) {
+                    $crate::workflow::docker::run_with_server_log(&context, || {
                         [<scenario_ $name>](&context, environment);
                     });
                 }
@@ -230,7 +215,7 @@ pub(super) use sandbox_tests;
 pub(super) fn timeout_for(sandbox: &str) -> Duration {
     match sandbox {
         "daytona" => Duration::from_mins(10),
-        "docker-plugin" => Duration::from_mins(5),
+        docker::ENVIRONMENT => Duration::from_mins(5),
         _ => Duration::from_mins(3),
     }
 }
