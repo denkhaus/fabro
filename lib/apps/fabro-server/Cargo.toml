@@ -36,6 +36,7 @@ fabro-workflow-version = { path = "../../components/fabro-workflow-version" }
 fabro-validate = { path = "../../components/fabro-validate" }
 fabro-sandbox = { path = "../../components/fabro-sandbox" }
 sandbox-driver.workspace = true
+bollard.workspace = true
 fabro-github = { path = "../../components/fabro-github" }
 pebble-agent.workspace = true
 pebble-coding-agent.workspace = true

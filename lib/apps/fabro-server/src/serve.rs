@@ -42,7 +42,7 @@ use crate::server::{
 };
 use crate::server_secrets::{ServerSecrets, process_env_snapshot};
 use crate::startup::{resolve_startup, validate_startup_configuration};
-use crate::{migrations, static_files};
+use crate::{migrations, sandbox_gc, static_files};
 
 pub const DEFAULT_TCP_PORT: u16 = 32276;
 type EnvLookup = Arc<dyn Fn(&str) -> Option<String> + Send + Sync>;
@@ -826,6 +826,7 @@ where
     let pull_request_staleness_supervisor =
         spawn_pull_request_staleness_supervisor(Arc::clone(&state));
     let approval_expiry_supervisor = spawn_approval_expiry_supervisor(Arc::clone(&state));
+    let sandbox_gc_supervisor = sandbox_gc::spawn_sandbox_gc_supervisor(Arc::clone(&state));
     let router = build_router_with_options(Arc::clone(&state), &auth_mode, RouterOptions {
         web_enabled,
         #[cfg(debug_assertions)]
@@ -998,6 +999,7 @@ where
         pull_request_creation_supervisor.abort();
         pull_request_staleness_supervisor.abort();
         approval_expiry_supervisor.abort();
+        sandbox_gc_supervisor.abort();
     }
     if let Err(join_err) = pull_request_creation_supervisor.await {
         if !join_err.is_cancelled() {
@@ -1012,6 +1014,11 @@ where
     if let Err(join_err) = approval_expiry_supervisor.await {
         if !join_err.is_cancelled() {
             warn!(error = %join_err, "Approval expiry supervisor task panicked");
+        }
+    }
+    if let Err(join_err) = sandbox_gc_supervisor.await {
+        if !join_err.is_cancelled() {
+            warn!(error = %join_err, "Sandbox GC supervisor task panicked");
         }
     }
 
