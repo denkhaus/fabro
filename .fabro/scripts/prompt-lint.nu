@@ -58,6 +58,27 @@ def nu-c-dollar-errors [f] {
     $errors
 }
 
+# check 5: routing-named top-level properties in workflow @schemas/*.json —
+# warnings only: a payload containing such a field opts the node into
+# routing semantics even under a custom schema (fabro-a211)
+def routing-field-schema-warnings [] {
+    let names = [preferred_next_label, outcome, failure_reason, suggested_next_ids, context_updates]
+    mut warnings = []
+    for f in (glob .fabro/workflows/**/schemas/*.json) {
+        if ($f | path type) != 'file' { continue }
+        let schema = (try { open --raw $f | from json } catch { null })
+        if $schema == null { continue }
+        let props = (try { $schema | get properties } catch { null })
+        if ($props == null) or (not ($props | describe | str starts-with 'record')) { continue }
+        for n in $names {
+            if ($props | columns | any {|c| $c == $n }) {
+                $warnings = ($warnings | append $"($f): top-level property '($n)' is routing-named — a payload containing it activates routing semantics")
+            }
+        }
+    }
+    $warnings
+}
+
 def main [] {
     let files = (lint-files)
     if ($files | is-empty) {
@@ -102,6 +123,9 @@ def main [] {
     for f in (prompt-md-files) {
         $errors = ($errors | append (nu-c-dollar-errors $f))
     }
+
+    # 5. routing-named top-level schema properties warn
+    $warnings = ($warnings | append (routing-field-schema-warnings))
 
     for w in ($warnings | uniq) {
         print $"warn: ($w)"
