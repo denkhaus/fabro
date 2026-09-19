@@ -81,8 +81,8 @@ fn dry_run_parallel() {
     ----- stderr -----
         Run: [ULID]
         Web UI: http://localhost:3000/runs/[ULID]
-        Base: [BASE]
         ✓ start  [TIME]
+        Base: [BASE]
         ✓ Fork Work  [TIME]
         ✓ Branch [N]  [TIME]
         ✓ Branch [N]  [TIME]
@@ -114,8 +114,8 @@ fn dry_run_styled() {
     ----- stderr -----
         Run: [ULID]
         Web UI: http://localhost:3000/runs/[ULID]
-        Base: [BASE]
         ✓ start  [TIME]
+        Base: [BASE]
         ✓ Plan  [TIME]
         ✓ Implement  [TIME]
         ✓ Critical Review  [TIME]
