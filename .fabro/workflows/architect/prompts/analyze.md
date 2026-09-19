@@ -32,7 +32,7 @@ Apply the skill's Process step 1 with these groundings, in this order:
 
 ## Step 3 — write the review
 
-Write the review to `.fabro/architecture/reviews/<arch_review_date>.md` with this header:
+Write the review to `.fabro/architecture/reviews/<arch_review_date>.md` with this header. Prior same-date passes are preserved by the rotate stage as `<date>-<HHmm>.md` siblings, and the plain-date name always carries the latest pass — write the plain-date name as instructed.
 
 ```
 # Architecture review — <arch_review_date>
