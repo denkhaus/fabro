@@ -498,6 +498,11 @@ pub(crate) async fn execute(state: Arc<AppState>, run_id: RunId) {
     if let Err(err) = run_records::lifecycle(&state, run_id, record).await {
         error!(run_id = %run_id, error = %err, "Failed to persist run outcome");
     }
+    // The run reads as ended from the moment its terminal record is stored,
+    // so the managed run settles here, before the view catches up: a delete
+    // that arrives between the record and the settle otherwise refuses the
+    // run as active while the API already reports it ended.
+    finish(&state, run_id, status, error);
     // The view trails the terminal record; the aggregate reads the settled
     // projection, as the worker path reads the final state at worker exit.
     state.petri_projector.settle(run_id).await;
@@ -507,7 +512,6 @@ pub(crate) async fn execute(state: Arc<AppState>, run_id: RunId) {
             warn!(run_id = %run_id, error = ?err, "the run's final state could not be read for the usage aggregate");
         }
     }
-    finish(&state, run_id, status, error);
 }
 
 /// Bring a Petri run the server left in flight back to its worker after a
