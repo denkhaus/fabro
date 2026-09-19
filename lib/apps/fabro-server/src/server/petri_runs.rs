@@ -32,7 +32,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
 
-use fabro_config::{Home, SettingsLayer, Storage};
+use fabro_config::{
+    EnvironmentImageLayer, EnvironmentLayer, Home, MergeMap, SettingsLayer, Storage,
+};
 use fabro_interview::ControlInterviewer;
 use fabro_petri::controls::RunControls;
 use fabro_petri::engine::{self, Conclusion, Execution, RunRequest};
@@ -111,7 +113,7 @@ pub(crate) fn runtime_spec(
 fn settings_layer_toml(state: &AppState) -> Option<String> {
     let layer = SettingsLayer {
         version: Some(1),
-        environments: (*state.environment_store().catalog_layer()).clone(),
+        environments: petri_environments(&state.environment_store().catalog_layer()),
         run: Some((*state.manifest_run_defaults()).clone()),
         ..SettingsLayer::default()
     };
@@ -121,6 +123,47 @@ fn settings_layer_toml(state: &AppState) -> Option<String> {
             warn!(error = %err, "server run defaults do not serialize; Petri gets no settings layer");
             None
         }
+    }
+}
+
+/// The catalog with only the keys Petri reads on each environment: the
+/// provider, `image.docker` under `docker` and `daytona`, `resources`
+/// under `daytona`, and `env`. The rest is the platform's (`cwd`,
+/// `network`, `lifecycle`, `labels`, `image.dockerfile`, resources the host
+/// and Docker providers run without, an image the host runs without) and
+/// stays with the server's own resolution; handing it to Petri would only
+/// warn `ignored.workflow_toml.environments.<id>.<key>` on every admit.
+fn petri_environments(catalog: &MergeMap<EnvironmentLayer>) -> MergeMap<EnvironmentLayer> {
+    MergeMap(
+        catalog
+            .0
+            .iter()
+            .map(|(id, environment)| (id.clone(), petri_environment(environment)))
+            .collect(),
+    )
+}
+
+fn petri_environment(environment: &EnvironmentLayer) -> EnvironmentLayer {
+    let provider = environment.provider.as_deref();
+    let image = environment
+        .image
+        .as_ref()
+        .filter(|_| provider != Some("local"))
+        .and_then(|image| image.docker.clone())
+        .map(|docker| EnvironmentImageLayer {
+            docker:     Some(docker),
+            dockerfile: None,
+        });
+    let resources = environment
+        .resources
+        .clone()
+        .filter(|_| provider == Some("daytona"));
+    EnvironmentLayer {
+        provider: environment.provider.clone(),
+        image,
+        resources,
+        env: environment.env.clone(),
+        ..EnvironmentLayer::default()
     }
 }
 
@@ -670,6 +713,62 @@ mod tests {
         );
         assert_eq!(table["browser"]["port"].as_integer(), Some(3100));
         assert_eq!(table["browser"]["tool_timeout"].as_str(), Some("90s"));
+    }
+
+    /// Each catalog environment is serialized with only the keys Petri
+    /// reads, so a run never warns about the platform's keys.
+    #[test]
+    fn the_serialized_catalog_holds_only_the_keys_petri_reads() {
+        let catalog: MergeMap<EnvironmentLayer> = MergeMap(HashMap::from([
+            (
+                "docker".to_string(),
+                toml::from_str(
+                    "provider = \"docker\"\ncwd = \"/srv\"\n\
+                     [image]\ndocker = \"img:1\"\ndockerfile = \"FROM img:1\"\n\
+                     [resources]\ncpu = 2\nmemory = \"4GB\"\n\
+                     [network]\nmode = \"block\"\n[lifecycle]\npreserve = true\n\
+                     [labels]\nteam = \"x\"\n[env]\nLANG = \"C\"\n",
+                )
+                .expect("a docker environment"),
+            ),
+            (
+                "big".to_string(),
+                toml::from_str(
+                    "provider = \"daytona\"\n[image]\ndockerfile = \"FROM x\"\n\
+                     [resources]\ncpu = 8\n",
+                )
+                .expect("a daytona environment"),
+            ),
+            (
+                "local".to_string(),
+                toml::from_str("provider = \"local\"\n[image]\ndocker = \"img:1\"\n")
+                    .expect("a local environment"),
+            ),
+        ]));
+        let text = toml::to_string(&SettingsLayer {
+            version: Some(1),
+            environments: petri_environments(&catalog),
+            ..SettingsLayer::default()
+        })
+        .expect("the layer serializes");
+        let table: toml::Table = text.parse().expect("the layer text is TOML");
+        let environments = table["environments"].as_table().expect("environments");
+        let keys = |id: &str| -> Vec<String> {
+            let mut keys: Vec<String> = environments[id]
+                .as_table()
+                .expect("a table")
+                .iter()
+                .flat_map(|(key, value)| match value.as_table() {
+                    Some(nested) => nested.keys().map(|k| format!("{key}.{k}")).collect(),
+                    None => vec![key.clone()],
+                })
+                .collect();
+            keys.sort();
+            keys
+        };
+        assert_eq!(keys("docker"), ["env.LANG", "image.docker", "provider"]);
+        assert_eq!(keys("big"), ["provider", "resources.cpu"]);
+        assert_eq!(keys("local"), ["provider"]);
     }
 
     /// The settings layer carries the server's `[run]` defaults and its
