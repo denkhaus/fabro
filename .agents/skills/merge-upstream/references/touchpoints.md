@@ -303,3 +303,13 @@ Upstream directions that may supersede our work — re-evaluate per merge:
   notes had it wrong. This merge does not touch fabro-store.
 - Clippy absolute_paths forbids inline `crate::` paths in the seam — a
   "one-line seam" is really import + call (two small hunks).
+- DEPLOY GAP (post-merge, first toolchain release on the new flow): the
+  revisor child 01M2XP626TS98ZTKMR2ZKF4719 failed in 336 ms — sandbox
+  provisioning, docker pull of the fresh fabro-toolchain tag → 401.
+  API-initiated pulls need client-sent registry auth (the host's tofu
+  ghcr_auth docker login does not apply), and the docker sandbox
+  provider settings have NO registry-credential keys. Workaround that
+  held: SSH `docker pull` the pinned tag on the host (image then
+  present, runs provision without pulling). Durable fix seeded (task:
+  registry auth for docker sandbox pulls). Until it lands: env PUT +
+  host pull are ONE deploy step, never separated.

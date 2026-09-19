@@ -145,7 +145,13 @@ Order matters; a red earlier step means fix before continuing.
    changes by definition), build the release image with `just
    image-release` (ghcr.io push), pin the new digest in
    ~/dev/fabro-tofu/variables.tf (fabro_image_ref), and deploy with
-   fabro-tofu:
+   fabro-tofu. TOOLCHAIN IMAGE (2026-09-19 lesson, run
+   01M2XP626TS9): `just image-release` also pushes a new
+   fabro-toolchain tag via run-images.nu; after PUTting it into the
+   server-managed `toolchain` environment, ALSO docker-pull that tag on
+   the prod host (SSH) — API-initiated sandbox pulls carry no registry
+   auth, so a tag missing on the host 401s and fails the run in
+   <1s (product gap seeded; see touchpoints 2026-09-19).
    PRE-DEPLOY ERA CHECK (2026-09-18 lesson): if the new binary changes
    projection semantics vs the deployed one (status taxonomy, summary
    shape), validate startup against a prod DB snapshot first — copy the
