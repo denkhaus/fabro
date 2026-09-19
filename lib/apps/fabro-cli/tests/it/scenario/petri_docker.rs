@@ -5,6 +5,10 @@
 //! snapshot its durable state names, in the retained container or in a
 //! fresh one when the old one is gone.
 //!
+//! An Ask Fabro session on a finished Docker run attaches to the container
+//! Petri created and reads a file the workflow wrote there, its model the
+//! twin.
+//!
 //! The runs take their scope through the sandbox-driver Docker plugin on
 //! this machine's daemon, so the tests skip, and say why, when the
 //! executable is not found or no daemon answers, unless
@@ -23,7 +27,9 @@ use std::process::{Command, Stdio};
 
 use fabro_petri::checkpoint::CheckpointKey;
 use fabro_static::EnvVars;
-use fabro_test::{expect_reqwest_json, test_context};
+use fabro_test::{
+    TwinScenario, TwinScenarios, TwinToolCall, expect_reqwest_json, test_context, twin_openai,
+};
 use serde_json::json;
 
 use super::petri::{
@@ -35,6 +41,8 @@ use crate::support::TEST_DEV_TOKEN;
 const DOCKER_PLUGIN: &str = "sandbox-driver-docker";
 /// The server-side environment the runs select.
 const ENVIRONMENT: &str = "docker";
+/// The twin's model, for the Ask Fabro session.
+const MODEL: &str = "gpt-5.4";
 
 /// The Docker plugin as Petri's lookup finds it, with a daemon that
 /// answers. `None`, after saying so, when the test should skip; a panic
@@ -74,7 +82,13 @@ fn docker_plugin() -> Option<PathBuf> {
 
 /// A server with a Docker environment beside the default local one.
 async fn docker_server() -> RunningServer {
-    let server = RunningServer::start().await;
+    docker_server_with("", &[]).await
+}
+
+/// `docker_server`, with `settings` appended to the server's settings and
+/// `secrets` in its vault.
+async fn docker_server_with(settings: &str, secrets: &[(&str, &str)]) -> RunningServer {
+    let server = RunningServer::start_with(settings, secrets).await;
     let body = json!({
         "id": ENVIRONMENT,
         "provider": "docker",
@@ -386,6 +400,187 @@ async fn a_lost_container_is_replaced_and_its_workspace_restored_from_the_snapsh
     ]);
     let repository = snapshot_repository(&server, &run_id);
     assert_snapshots_complete(&server, &run_id, &repository);
+    cleanup(&run_id);
+    server.shutdown();
+}
+
+/// What the session is asked, and what the twin is told to answer once it
+/// has read the file.
+const QUESTION: &str = "Read hello.txt in the workspace and tell me what it says.";
+const CONTENT: &str = "hello-from-petri";
+
+/// A one-stage bundle whose command writes `hello.txt` into the workspace.
+fn hello_file_bundle(context: &fabro_test::TestContext) -> PathBuf {
+    write_petri_workflow(
+        context,
+        &format!(
+            "digraph Hello {{\n  graph [goal=\"Write a file\", default_max_retries=0]\n  start \
+             [shape=Mdiamond]\n  exit [shape=Msquare]\n  write [shape=parallelogram, script=\"echo \
+             {CONTENT} > hello.txt\"]\n  start -> write -> exit\n}}\n"
+        ),
+    )
+}
+
+/// The twin's script for the session's turn.
+fn turn_scenario() -> TwinScenario {
+    TwinScenario::responses(MODEL).input_contains(QUESTION)
+}
+
+/// The events of a session turn's stream, in order.
+fn turn_events(stream: &str) -> Vec<serde_json::Value> {
+    stream
+        .lines()
+        .filter_map(|line| line.strip_prefix("data: "))
+        .map(|data| serde_json::from_str(data).expect("session event data is JSON"))
+        .collect()
+}
+
+/// The twin's request log for `namespace`: the input text of each request
+/// that carried the session's question, in order. The server's other
+/// requests to the twin (a run title) are left out.
+async fn question_inputs(twin: &fabro_test::TwinOpenAi, namespace: &str) -> Vec<String> {
+    let logs = twin.request_logs(namespace).await;
+    logs["requests"]
+        .as_array()
+        .expect("the twin request log is an array")
+        .iter()
+        .map(|request| {
+            request["input_text"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string()
+        })
+        .filter(|input| input.contains(QUESTION))
+        .collect()
+}
+
+/// Ask Fabro on a finished Docker run, through a real server: the session
+/// attaches to the container Petri created (stopped at the run's end, so
+/// the attach starts it again) and its tool reads a file the workflow
+/// wrote inside it. Ask Fabro's tool policy is read-only: the shell tool
+/// is hidden from the model and refused, so the turn reads the file with
+/// the model's `read_file` tool, scripted on the twin, and the twin's
+/// follow-up request carries the file's content back as the tool's answer.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_ask_fabro_turn_reads_a_file_inside_the_runs_container() {
+    if docker_plugin().is_none() {
+        return;
+    }
+    let context = test_context!();
+    let twin = twin_openai().await;
+    let namespace = format!("{}::{}", module_path!(), line!());
+    let server = docker_server_with(
+        &format!(
+            "\n[llm.providers.openai]\nbase_url = \"{}\"\n",
+            twin.base_url
+        ),
+        &[(EnvVars::OPENAI_API_KEY, namespace.as_str())],
+    )
+    .await;
+    TwinScenarios::new(namespace.clone())
+        .scenario(turn_scenario().tool_call(TwinToolCall::new(
+            "read_file",
+            json!({ "file_path": "/workspace/hello.txt" }),
+        )))
+        .scenario(turn_scenario().text(format!("hello.txt says: {CONTENT}")))
+        .load(twin)
+        .await;
+    let workspace = hello_file_bundle(&context);
+    let run_id = run_detached_in(&context, &server, &workspace, ENVIRONMENT, &[
+        "--auto-approve",
+    ]);
+    wait_for_success(&server, &run_id).await;
+    assert!(
+        container_of(&run_id).is_some(),
+        "the container is retained after the run"
+    );
+
+    let client = fabro_test::test_http_client();
+    let response = client
+        .post(format!(
+            "{}/api/v1/runs/{run_id}/sessions",
+            server.api_base_url
+        ))
+        .bearer_auth(TEST_DEV_TOKEN)
+        .json(&json!({ "title": "Ask Fabro", "model": MODEL }))
+        .send()
+        .await
+        .expect("the session create sends");
+    let session = expect_reqwest_json(
+        response,
+        fabro_http::StatusCode::CREATED,
+        "POST /api/v1/runs/{id}/sessions",
+    )
+    .await;
+    let session_id = session["id"].as_str().expect("the session id");
+
+    let response = client
+        .post(format!(
+            "{}/api/v1/sessions/{session_id}/turns",
+            server.api_base_url
+        ))
+        .bearer_auth(TEST_DEV_TOKEN)
+        .json(&json!({ "input": QUESTION }))
+        .send()
+        .await
+        .expect("the turn sends");
+    assert_eq!(
+        response.status(),
+        fabro_http::StatusCode::OK,
+        "POST /api/v1/sessions/{{id}}/turns"
+    );
+    // The stream ends with the turn.
+    let stream = response.text().await.expect("the turn's stream reads");
+    let events = turn_events(&stream);
+
+    let outcome = events
+        .iter()
+        .find(|event| {
+            event["event"] == "run.session.turn.succeeded"
+                || event["event"] == "run.session.turn.failed"
+        })
+        .unwrap_or_else(|| panic!("the turn ends: {events:?}"));
+    assert_eq!(
+        outcome["event"],
+        "run.session.turn.succeeded",
+        "the turn ended in the container: {outcome}\nserver stderr:\n{}",
+        server.stderr_text()
+    );
+    let read = events
+        .iter()
+        .find(|event| {
+            event["event"] == "run.session.tool_call.completed"
+                && event["properties"]["tool_name"] == "read_file"
+        })
+        .unwrap_or_else(|| panic!("the read_file call completed: {events:?}"));
+    assert_eq!(read["properties"]["is_error"], false, "{read}");
+    assert!(
+        read["properties"]["output"].to_string().contains(CONTENT),
+        "the tool read the file inside the container: {read}"
+    );
+    // The tool-call round's assistant message carries no text; the reply
+    // is the last one.
+    let reply = events
+        .iter()
+        .rev()
+        .find(|event| event["event"] == "run.session.assistant_message")
+        .unwrap_or_else(|| panic!("the model replied: {events:?}"));
+    assert!(
+        reply["properties"]["text"]
+            .as_str()
+            .is_some_and(|text| text.contains(CONTENT)),
+        "the reply names the file's content: {reply}"
+    );
+
+    // The twin's follow-up request carried the tool's answer.
+    let inputs = question_inputs(twin, &namespace).await;
+    assert_eq!(inputs.len(), 2, "{inputs:?}");
+    assert!(
+        inputs[1].contains(CONTENT),
+        "the model read the file's content from the tool: {}",
+        inputs[1]
+    );
+
     cleanup(&run_id);
     server.shutdown();
 }
