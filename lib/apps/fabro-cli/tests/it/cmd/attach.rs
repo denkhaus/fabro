@@ -1531,40 +1531,6 @@ fn attach_json_errors_without_prompting_for_human_input() {
       {
         "run_id": "[ULID]",
         "stream_seq": 21,
-        "kind": "platform",
-        "id": "[EVENT_ID]",
-        "recorded_at": "[EPOCH_MS]",
-        "item": {
-          "seq": 7,
-          "recorded_at": "[EPOCH_MS]",
-          "record": {
-            "kind": "run.branch",
-            "run_branch": "fabro/run/[ULID]",
-            "base_sha": "[DIGEST]",
-            "workspace": "invocation-0-scope-0"
-          }
-        }
-      },
-      {
-        "run_id": "[ULID]",
-        "stream_seq": 22,
-        "kind": "platform",
-        "id": "[EVENT_ID]",
-        "recorded_at": "[EPOCH_MS]",
-        "item": {
-          "seq": 8,
-          "recorded_at": "[EPOCH_MS]",
-          "record": {
-            "kind": "git.identity",
-            "name": "Fabro",
-            "email": "noreply@fabro.sh",
-            "source": "default"
-          }
-        }
-      },
-      {
-        "run_id": "[ULID]",
-        "stream_seq": 23,
         "kind": "petri",
         "id": "execution 0/7/0",
         "recorded_at": "[EPOCH_MS]",
@@ -1656,7 +1622,7 @@ fn attach_json_errors_without_prompting_for_human_input() {
       },
       {
         "run_id": "[ULID]",
-        "stream_seq": 24,
+        "stream_seq": 22,
         "kind": "petri",
         "id": "execution 0/8/0",
         "recorded_at": "[EPOCH_MS]",
@@ -1736,7 +1702,7 @@ fn attach_json_errors_without_prompting_for_human_input() {
       },
       {
         "run_id": "[ULID]",
-        "stream_seq": 25,
+        "stream_seq": 23,
         "kind": "petri",
         "id": "execution 0/8/1",
         "recorded_at": "[EPOCH_MS]",
@@ -1802,6 +1768,48 @@ fn attach_json_errors_without_prompting_for_human_input() {
             },
             "executed": true,
             "attempts": 1
+          }
+        }
+      },
+      {
+        "run_id": "[ULID]",
+        "stream_seq": 24,
+        "kind": "platform",
+        "id": "[EVENT_ID]",
+        "recorded_at": "[EPOCH_MS]",
+        "item": {
+          "seq": 7,
+          "recorded_at": "[EPOCH_MS]",
+          "record": {
+            "kind": "run.branch",
+            "run_branch": "fabro/run/[ULID]",
+            "base_sha": "[DIGEST]",
+            "workspace": "invocation-0-scope-0"
+          },
+          "position": {
+            "execution": 0,
+            "firing": 1
+          }
+        }
+      },
+      {
+        "run_id": "[ULID]",
+        "stream_seq": 25,
+        "kind": "platform",
+        "id": "[EVENT_ID]",
+        "recorded_at": "[EPOCH_MS]",
+        "item": {
+          "seq": 8,
+          "recorded_at": "[EPOCH_MS]",
+          "record": {
+            "kind": "git.identity",
+            "name": "Fabro",
+            "email": "noreply@fabro.sh",
+            "source": "default"
+          },
+          "position": {
+            "execution": 0,
+            "firing": 1
           }
         }
       },

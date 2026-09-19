@@ -101,7 +101,8 @@ Every adapter the integration plan describes lands here.
 `hooks` writes the platform records Petri cannot: `run.branch` and
 `git.identity` when the first checkpoint creates the run branch (the base
 commit is the workspace's `HEAD` before the branch, or that first commit in
-a workspace with no history), `checkpoint` after every route with the
+a workspace with no history; both carry that checkpoint's stage position, so
+the stream places them with its finish), `checkpoint` after every route with the
 stage's diff from its parent commit (`diff_summary`, and the patch as a
 text blob under `patch_blob`), `artifact.collected` for every file under
 `[run.artifacts] include` a stage left in its workspace (the bytes go to

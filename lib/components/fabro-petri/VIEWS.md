@@ -75,8 +75,8 @@ toasts. `RunProjection` (`GET /runs/{id}/state`) serves `attach`, `inspect`,
 | stages summary | `Conclusion.stages` | derived from the Stages section | stage |
 | diff | `Run.diff`, `Conclusion.diff`, `Checkpoint`'s diff | platform record `checkpoint {diff_summary, patch_blob}`; the final one is the run's | stage |
 | final commit | `Conclusion.final_git_commit_sha` | the last platform record `checkpoint {git_commit_sha}` | stage |
-| run branch, base sha | `StartRecord.run_branch`, `base_sha` | platform record `run.branch {run_branch, base_sha}` | run |
-| Git identity | `RunProjection.git_identity` | platform record `git.identity {name, email, source}` | run |
+| run branch, base sha | `StartRecord.run_branch`, `base_sha` | platform record `run.branch {run_branch, base_sha}`, positioned on the checkpoint that created the branch | run |
+| Git identity | `RunProjection.git_identity` | platform record `git.identity {name, email, source}`, positioned with `run.branch` | run |
 | pull request | `Run.pull_request`, `RunProjection.pull_request`, `pull_request_creation` | see Platform | run |
 | current question | `Run.current_question` | see Questions | question |
 | sandbox | `Run.sandbox`, `RunProjection.sandbox` | see Sandbox | invocation |
@@ -428,7 +428,7 @@ record where Fabro does.
 | tools available to an agent | `agent_tools`, the insights sidebar's tool list | a `custom attractor.tools {node, firing, attempt, session, tools[] {name, description, source, category}}` from the native backend once per session, where it calls the `HostTools` builders; Pebble's `SessionStarted` carries only the provider and model |
 | question option `description` and `preview`, `context_display` | the interview dock, the human Q&A renderer | optional fields on Petri's `QuestionOption` (`description`, `preview`) and `Question` (`context`), set by the human gate from the edge attributes Fabro's lowering already reads |
 | who answered | `interview.completed` `actor`, Slack attribution | platform record `interview.answered {question, principal, channel}` written by Fabro's interviewer beside its `InterviewReply` |
-| run branch and base sha | `StartRecord`, `run diff`, the commits picker | platform record `run.branch {run_branch, base_sha}` written when Fabro creates the run branch |
+| run branch and base sha | `StartRecord`, `run diff`, the commits picker | platform record `run.branch {run_branch, base_sha}` written when Fabro creates the run branch, at that checkpoint's stage position |
 | Git identity | `git_identity` | platform record `git.identity {name, email, source}` |
 | diff summary and patch per checkpoint | `Run.diff`, `Conclusion.diff`, `StageProjection.diff`, the changes sort | `diff_summary` and `patch_blob` on the `checkpoint` platform record |
 | lifecycle before the engine, archive, title, parent, supersede, notices | the run list, header, `runs ps`, `run events --pretty` | platform records `run.created`, `run.lifecycle`, `run.archived`, `run.unarchived`, `run.title`, `run.parent`, `run.superseded`, `run.notice` |

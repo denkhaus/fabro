@@ -1185,9 +1185,9 @@ async fn a_finished_petri_run_reads_back_through_the_cli() {
     [CLOCK]   Engine: petri run started
     [CLOCK] ▶ start
     [CLOCK]    │ checkout: [TEMP_DIR]/petri-workspace is not a Git repository; the workspace starts empty
+    [CLOCK] ✓ start  [DURATION]
     [CLOCK]   Branch: fabro/run/[ULID] from [SHA]
     [CLOCK]   Git identity: Fabro <noreply@fabro.sh>  default
-    [CLOCK] ✓ start  [DURATION]
     [CLOCK]    ⎘ Checkpoint [SHA]
     [CLOCK] ▶ say
     [CLOCK]    start → say continue

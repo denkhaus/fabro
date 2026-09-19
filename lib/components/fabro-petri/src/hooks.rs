@@ -19,7 +19,8 @@
 //!   routes, so no route is taken. The commit that creates the run branch also
 //!   records where it started: the `run.branch` platform record (the branch
 //!   name and the base commit) and the `git.identity` record (who authors the
-//!   commits, and where that identity came from).
+//!   commits, and where that identity came from), both at that checkpoint's
+//!   stage position, so the stream orders them with the firing's finish.
 //! - `transition`: the platform checkpoint record, keyed on the Petri position
 //!   and the checkpoint's operation identity, with the stage's diff from its
 //!   parent commit (`diff_summary`, and the patch as a blob); then the stage's
@@ -539,7 +540,7 @@ impl FabroHooks {
             .base_sha
             .clone()
             .unwrap_or_else(|| snapshot.sha.clone());
-        if let Err(error) = self.record_branch(workspace, base_sha).await {
+        if let Err(error) = self.record_branch(key, workspace, base_sha).await {
             warn!(run_id = %self.run_id, error = %error, "the run branch was not recorded");
         }
     }
@@ -547,8 +548,21 @@ impl FabroHooks {
     /// The `run.branch` and `git.identity` records, once per run: the first
     /// workspace to create the run branch names where it started. A run
     /// that already recorded its branch (a resume, or a nested workspace
-    /// after the root's) records nothing.
-    async fn record_branch(&self, workspace: &str, base_sha: String) -> Result<(), String> {
+    /// after the root's) records nothing. Both records take the position of
+    /// the checkpoint that created the branch, so the stream places them
+    /// with that firing (after its finish, before its routes) rather than by
+    /// the clock, which would put them on either side of the finish from
+    /// one run to the next.
+    async fn record_branch(
+        &self,
+        key: CheckpointKey,
+        workspace: &str,
+        base_sha: String,
+    ) -> Result<(), String> {
+        let position = StagePosition {
+            execution: key.execution,
+            firing:    key.firing,
+        };
         let branch = self
             .branch
             .get_or_try_init(|| async {
@@ -564,7 +578,7 @@ impl FabroHooks {
                     .append(
                         &self.run_id,
                         &PlatformRecord::RunBranch(record.clone()),
-                        None,
+                        Some(position),
                     )
                     .await
                     .map_err(|error| {
@@ -577,7 +591,7 @@ impl FabroHooks {
                     identity: self.identity.clone(),
                 });
                 self.records
-                    .append(&self.run_id, &identity, None)
+                    .append(&self.run_id, &identity, Some(position))
                     .await
                     .map_err(|error| {
                         format!(
