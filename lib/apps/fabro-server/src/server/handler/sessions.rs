@@ -15,7 +15,7 @@ use fabro_api::types::{
 };
 use fabro_llm::lithos_catalog::Catalog;
 use fabro_llm::{FabroClient, ModelSelectionError, selection};
-use fabro_sandbox::SecretRedactor;
+use fabro_pebble_sandbox::{PebbleSandbox, SecretRedactor};
 use fabro_sandbox::reconnect::reconnect_for_run;
 use fabro_store::{ProjectedRunSession, project_run_session, project_run_sessions};
 use fabro_tool::fabro_client::ClientBackend;
@@ -737,7 +737,16 @@ async fn build_agent(
         .activate()
         .await
         .map_err(|err| AskFabroBuildError::SandboxUnavailable(anyhow::Error::new(err)))?;
-    let environment: Arc<dyn Environment> = Arc::new(sandbox);
+    let handle = Arc::clone(
+        sandbox
+            .handle()
+            .map_err(|err| AskFabroBuildError::SandboxUnavailable(anyhow::Error::new(err)))?,
+    );
+    let environment: Arc<dyn Environment> = Arc::new(
+        PebbleSandbox::attach(handle, sandbox.working_directory())
+            .await
+            .map_err(|err| AskFabroBuildError::SandboxUnavailable(anyhow::Error::new(err)))?,
+    );
 
     // Give the Ask Fabro agent access to read-only run-inspection tools scoped
     // to its owning run. The session reaches the local HTTP API via a same-run
