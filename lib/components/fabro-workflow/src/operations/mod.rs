@@ -1,5 +1,9 @@
 mod create;
+mod fork;
+mod retry;
+mod rewind;
 mod source;
+mod timeline;
 mod validate;
 
 pub use create::{
@@ -8,7 +12,16 @@ pub use create::{
     make_run_dir, materialize_admitted_run, persist_create_run,
 };
 use fabro_types::RunId;
+pub use fork::{
+    ForkedRunInput, ResolvedForkTarget, ensure_forkable, ensure_terminal, forked_run_record,
+    persist_forked_run,
+};
+pub use retry::{ensure_retryable, reruns_last};
+pub use rewind::{ensure_rewindable, superseded_record};
 pub use source::WorkflowInput;
+pub use timeline::{
+    ForkTarget, RunTimeline, StageLabel, StageLabels, TimelineEntry, TimelinePosition,
+};
 pub use validate::{ValidateInput, validate};
 
 pub use crate::error::Error;
