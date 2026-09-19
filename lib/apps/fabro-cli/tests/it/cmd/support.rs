@@ -484,10 +484,6 @@ pub(crate) fn setup_detached_dry_run(context: &TestContext) -> RunSetup {
     run
 }
 
-pub(crate) fn setup_seeded_artifact_run(context: &TestContext) -> RunSetup {
-    seed_artifact_run(context)
-}
-
 pub(crate) fn setup_project_fixture(context: &TestContext) -> ProjectFixture {
     let project_dir = context.temp_dir.join("project");
     let fabro_root = project_dir.join(".fabro");
@@ -993,41 +989,6 @@ async fn seed_dry_run(context: &TestContext) -> RunSetup {
     .await
 }
 
-/// A completed dry run of the artifact workflow, with artifacts uploaded
-/// for its stages through the API.
-fn seed_artifact_run(context: &TestContext) -> RunSetup {
-    let workflow = context.temp_dir.join("artifact_run.fabro");
-    write_text_file(&workflow, artifact_workflow_source());
-    let run = run_completed_dry_run(context, &workflow);
-
-    let (client, base_url) = server_endpoint(&context.storage_dir)
-        .expect("test server endpoint should be available for seeded artifacts");
-    block_on(async {
-        for (stage_id, retry, path, contents) in [
-            ("create_assets@1", 1, "assets/node_a/summary.txt", "alpha"),
-            ("create_assets@1", 1, "assets/shared/report.txt", "one"),
-            ("create_assets@2", 1, "assets/shared/report.txt", "two"),
-            ("create_colliding@1", 1, "assets/other/summary.txt", "beta"),
-            ("create_colliding@1", 1, "assets/retry/report.txt", "second"),
-            ("retry_assets@1", 1, "assets/retry/report.txt", "first"),
-            ("retry_assets@1", 2, "assets/retry/report.txt", "second"),
-        ] {
-            upload_seeded_artifact(
-                &client,
-                &base_url,
-                &run.run_id,
-                stage_id,
-                retry,
-                path,
-                contents,
-            )
-            .await;
-        }
-    });
-
-    run
-}
-
 async fn create_seeded_run(
     context: &TestContext,
     target_path: &str,
@@ -1086,32 +1047,6 @@ async fn create_seeded_run(
     }
 }
 
-async fn upload_seeded_artifact(
-    client: &fabro_http::HttpClient,
-    base_url: &str,
-    run_id: &str,
-    stage_id: &str,
-    retry: u32,
-    path: &str,
-    contents: &str,
-) {
-    let response = client
-        .post(format!(
-            "{base_url}/api/v1/runs/{run_id}/stages/{stage_id}/artifacts?filename={path}&retry={retry}"
-        ))
-        .header(fabro_http::header::CONTENT_TYPE, "application/octet-stream")
-        .body(contents.to_string())
-        .send()
-        .await
-        .unwrap_or_else(|err| panic!("seeded artifact upload should execute: {err}"));
-    expect_reqwest_status(
-        response,
-        fabro_http::StatusCode::NO_CONTENT,
-        format!("POST /api/v1/runs/{run_id}/stages/{stage_id}/artifacts ({path}, retry {retry})"),
-    )
-    .await;
-}
-
 fn test_label_map(context: &TestContext) -> std::collections::HashMap<String, String> {
     test_labels(context)
         .into_iter()
@@ -1140,19 +1075,6 @@ fn fast_simple_workflow_source() -> &'static str {
     report    [shape=parallelogram, label="Report", script="true"]
 
     start -> run_tests -> report -> exit
-}
-"#
-}
-
-fn artifact_workflow_source() -> &'static str {
-    r#"digraph ArtifactRun {
-  graph [goal="Exercise artifact commands", default_max_retries=0]
-  start [shape=Mdiamond]
-  exit [shape=Msquare]
-  create_assets [shape=parallelogram, script="true", max_retries=0]
-  retry_assets [shape=parallelogram, script="true", retry_policy="linear", timeout="500ms"]
-  create_colliding [shape=parallelogram, script="true", max_retries=0]
-  start -> create_assets -> retry_assets -> create_colliding -> exit
 }
 "#
 }

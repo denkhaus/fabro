@@ -93,6 +93,7 @@ use fabro_types::settings::run::NotificationRouteSettings;
 use fabro_types::settings::server::{
     GithubIntegrationSettings, GithubIntegrationStrategy, LogDestination,
 };
+use fabro_types::usage_rollup::{ProjectionUsageRollup, usage_rollup_from_projection};
 use fabro_types::{
     AskFabro, AskFabroUnavailableReason, BlobHash, FailureReason, InterviewQuestionRecord,
     ModelRef, ModelTestMode, PendingReason, Principal, PullRequestLink, QuestionType,
@@ -1352,16 +1353,10 @@ pub(crate) fn accumulate_concluded_run_usage(
         .aggregate_usage
         .lock()
         .expect("aggregate_usage lock poisoned");
-    accumulate_usage_rollup(
-        &mut agg,
-        &fabro_types::usage_rollup::usage_rollup_from_projection(final_state),
-    );
+    accumulate_usage_rollup(&mut agg, &usage_rollup_from_projection(final_state));
 }
 
-fn accumulate_usage_rollup(
-    accumulator: &mut UsageAccumulator,
-    rollup: &fabro_types::usage_rollup::ProjectionUsageRollup,
-) {
+fn accumulate_usage_rollup(accumulator: &mut UsageAccumulator, rollup: &ProjectionUsageRollup) {
     accumulator.total_runs += 1;
     accumulator.total_timing = accumulator.total_timing.saturating_add(&rollup.timing);
     for model in &rollup.by_model {

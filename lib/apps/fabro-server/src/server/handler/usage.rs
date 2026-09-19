@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
+use fabro_types::usage_rollup::usage_rollup_from_projection;
 use fabro_types::{
     Graph, RunProjection, StageHandler, StageId, StageProjection, StageState, StageTiming,
     usage_is_empty,
@@ -93,7 +94,7 @@ async fn get_run_usage(
         Err(err) => return err.into_response(),
     };
 
-    let rollup = fabro_types::usage_rollup::usage_rollup_from_projection(&projection);
+    let rollup = usage_rollup_from_projection(&projection);
     let by_model = rollup
         .by_model
         .iter()

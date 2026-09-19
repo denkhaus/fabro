@@ -83,11 +83,6 @@ pub(crate) fn join_sandbox_path(base: &str, relative_path: &str) -> String {
     format!("{}/{relative_path}", base.trim_end_matches('/'))
 }
 
-/// Creates the run branch in the sandbox's checkout through the driver's
-/// git facet: a new run branches from `HEAD`, a fork from the source run's
-/// checkpoint. The branch is created at that base, or moved to it when an
-/// earlier attempt already created it.
-
 #[cfg(test)]
 mod tests {
     #[test]
