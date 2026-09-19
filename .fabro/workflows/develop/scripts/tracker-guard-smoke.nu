@@ -68,7 +68,39 @@ if (sd-issue-count (ok-issues 3)) != 3 { fail "sd-issue-count 3-issue != 3" }
 if (sd-issue-count $sd_dead) != -1 { fail "sd-issue-count failure != -1" }
 if (sd-issue-count $bad_json) != -1 { fail "sd-issue-count bad JSON != -1" }
 
-print "tracker-guard-smoke: ok — both-empty, non-empty, and fail-open routes verified"
+print "tracker-guard-smoke: ok — routing, fail-open, and stale-claim requeue pure logic verified"
+
+# --- Stale-claim requeue arm (fabro-d9f7), pure functions ---
+let now = ("2026-09-19T09:00:00Z" | into datetime)
+
+# sd-issues: parse classes mirror sd-issue-count (null on failure).
+if (sd-issues (ok-issues 2) | length) != 2 { fail "sd-issues 2-issue != 2" }
+if (sd-issues $sd_dead) != null { fail "sd-issues failure != null" }
+if (sd-issues $bad_json) != null { fail "sd-issues bad JSON != null" }
+if (sd-issues $sd_err) != null { fail "sd-issues success:false != null" }
+
+# seed-ref-ts: max across claiming journals; updatedAt fallback.
+let claims = [
+    {seed: "fabro-x1", ts: ("2026-09-18T00:00:00Z" | into datetime)}
+    {seed: "fabro-x1", ts: ("2026-09-19T00:00:00Z" | into datetime)}
+    {seed: "fabro-x2", ts: ("2026-09-19T08:00:00Z" | into datetime)}
+]
+let s_old_claim = {id: "fabro-x1", updatedAt: "2026-09-19T08:59:00Z"}
+let s_live_claim = {id: "fabro-x2", updatedAt: "2026-09-10T00:00:00Z"}
+let s_no_claim = {id: "fabro-x3", updatedAt: "2026-09-19T02:00:00Z"}
+if (seed-ref-ts $s_old_claim $claims) != ("2026-09-19T00:00:00Z" | into datetime) { fail "seed-ref-ts not max of claims" }
+if (seed-ref-ts $s_live_claim $claims) != ("2026-09-19T08:00:00Z" | into datetime) { fail "seed-ref-ts live claim wrong" }
+if (seed-ref-ts $s_no_claim $claims) != ("2026-09-19T02:00:00Z" | into datetime) { fail "seed-ref-ts no-claim not updatedAt fallback" }
+
+# stale-claim-ids: stale old-claim requeued; live-claim seed kept even
+# with a stale updatedAt; no-claim stale updatedAt requeued; current
+# seed NEVER requeued; exact-threshold age is NOT stale (strict >).
+let seeds = [$s_old_claim, $s_live_claim, $s_no_claim]
+let got = (stale-claim-ids $seeds $claims $now 6.0 "fabro-none")
+if $got != ["fabro-x1" "fabro-x3"] { fail $"stale-claim-ids wrong set: ($got | to json -r)" }
+if (stale-claim-ids ($seeds | append {id: "fabro-x1", updatedAt: "2026-09-01T00:00:00Z"}) $claims $now 6.0 "fabro-x1") != ["fabro-x3"] { fail "current seed not excluded" }
+let boundary = {id: "fabro-x9", updatedAt: "2026-09-19T03:00:00Z"}
+if (stale-claim-ids [$boundary] [] $now 6.0 "") != [] { fail "exact-threshold age must not be stale" }
 
 # Sourcing tracker-guard.nu imports its `def main`; nu auto-invokes it
 # after the top level runs — exit explicitly so the smoke never shells
