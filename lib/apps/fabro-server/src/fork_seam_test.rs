@@ -475,7 +475,8 @@ async fn sweep_deletes_non_revisable_sandboxes_and_stale_tags_with_a_summary() {
         .expect("sweep completes");
 
     // The aged-out run 0 is deleted; runs 1 and 2 sit inside the
-    // carve-out and BOTH remain listed as managed sandboxes. The old toolchain tag is untagged, its bytes freed.
+    // carve-out and BOTH remain listed as managed sandboxes. The old toolchain tag
+    // is untagged, its bytes freed.
     assert_eq!(report.sandboxes_removed, 1);
     assert_eq!(report.image_tags_removed, 1);
     assert_eq!(report.freed_bytes, 7_000_000_000);
