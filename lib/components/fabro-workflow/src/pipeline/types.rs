@@ -3,11 +3,11 @@ use std::sync::Arc;
 
 use fabro_graphviz::graph::Graph;
 use fabro_template::TemplateContext;
+use fabro_types::RunSpec;
 use fabro_types::diagnostic::{Diagnostic, Severity};
 
 use crate::error::Error;
 use crate::file_resolver::FileResolver;
-use crate::records::RunSpec;
 use crate::transforms::{RenderMode, Transform};
 
 /// Output of the PARSE phase.

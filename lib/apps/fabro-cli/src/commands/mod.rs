@@ -10,7 +10,6 @@ pub(crate) mod install;
 pub(crate) mod mcp;
 pub(crate) mod model;
 pub(crate) mod parent;
-pub(crate) mod parse;
 pub(crate) mod pr;
 pub(crate) mod preflight;
 pub(crate) mod provider;

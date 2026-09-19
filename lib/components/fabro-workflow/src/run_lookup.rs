@@ -12,11 +12,10 @@ use chrono::{DateTime, Utc};
 use fabro_config::Storage;
 use fabro_config::user::default_storage_dir;
 use fabro_store::Database;
-use fabro_types::{Run, RunId};
+use fabro_types::{Run, RunId, RunStatus};
 use serde::Serialize;
 
 use crate::operations::make_run_dir;
-use crate::run_status::RunStatus;
 
 #[derive(Debug, Clone)]
 struct RunLocalState {
@@ -448,11 +447,10 @@ mod tests {
     use std::sync::Arc;
 
     use fabro_store::RunSummaryStore;
-    use fabro_types::{RunProjection, RunStatus, fixtures, test_support};
+    use fabro_types::{RunProjection, RunSpec, RunStatus, fixtures, test_support};
 
     use super::scan_runs_combined;
     use crate::operations::make_run_dir;
-    use crate::records::RunSpec;
 
     fn sample_run_spec() -> RunSpec {
         RunSpec {

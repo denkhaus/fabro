@@ -195,7 +195,7 @@ pub use transcript::{
     MessageId, MessageKind, MessageSource, PairMessageRef, TranscriptMessage, text_of,
     tool_call_arguments, tool_result_from_json, tool_result_to_json,
 };
-pub use usage::{ModelRef, ModelUsage, sum_usage, usage_is_empty};
+pub use usage::{ModelRef, ModelUsage, format_cost, sum_usage, usage_is_empty};
 pub use variable::{
     CreateVariableRequest, UpdateVariableRequest, Variable, VariableListResponse, is_env_style_name,
 };

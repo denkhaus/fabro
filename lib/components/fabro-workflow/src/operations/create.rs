@@ -18,7 +18,7 @@ use fabro_store::{BlobStore, Database};
 use fabro_template::TemplateContext;
 use fabro_types::{
     AutomationRef, BlobHash, ForkSourceRef, GitContext, ManifestPath, PetriAdmission, RunId,
-    RunProvenance, RunStatus, RunTarget, WorkflowSettings, WorkflowVersionId,
+    RunProvenance, RunSpec, RunStatus, RunTarget, WorkflowSettings, WorkflowVersionId,
 };
 use tokio::task::spawn_blocking;
 
@@ -26,7 +26,6 @@ use super::source::{ResolveWorkflowInput, WorkflowInput, resolve_workflow};
 use crate::error::Error;
 use crate::pipeline::types::PersistOptions;
 use crate::pipeline::{self, Persisted, TransformOptions, Validated};
-use crate::records::RunSpec;
 use crate::run_materialization;
 use crate::transforms::RenderMode;
 use crate::workflow_bundle::{RunDefinition, WorkflowBundle};
@@ -1786,7 +1785,7 @@ mod tests {
         );
         assert_eq!(
             last_lifecycle_status(&platform_records(&store, fixtures::RUN_1).await),
-            Some(crate::run_status::RunStatus::Submitted)
+            Some(fabro_types::RunStatus::Submitted)
         );
         assert_eq!(
             created.run_dir,

@@ -474,14 +474,6 @@ pub(crate) async fn run_events_stub(
     Sse::new(tokio_stream::iter(events)).into_response()
 }
 
-pub(crate) async fn checkpoint_stub(
-    _auth: RequiredUser,
-    State(_state): State<Arc<AppState>>,
-    Path(_id): Path<String>,
-) -> Response {
-    (StatusCode::OK, Json(serde_json::json!(null))).into_response()
-}
-
 pub(crate) async fn cancel_stub(
     _auth: RequiredUser,
     State(_state): State<Arc<AppState>>,

@@ -10,11 +10,9 @@
 use std::io::Write;
 
 use anyhow::{Result, bail};
-use fabro_types::RunId;
+use fabro_types::{Conclusion, RunId, RunStatus};
 use fabro_util::printer::Printer;
 use fabro_util::terminal::Styles;
-use fabro_workflow::records::Conclusion;
-use fabro_workflow::run_status::RunStatus;
 use tokio::time;
 use tracing::info;
 
@@ -134,10 +132,9 @@ fn print_human_output(
 #[cfg(test)]
 mod tests {
     use fabro_types::{
-        FailureCategory, FailureDetail, FailureReason, RunDiff, RunFailure, RunStatus,
+        Conclusion, FailureCategory, FailureDetail, FailureReason, RunDiff, RunFailure, RunStatus,
         StageOutcome, SuccessReason, fixtures,
     };
-    use fabro_workflow::records::Conclusion;
     use lithos_llm::types::{Cost, CostSource, TokenCounts, Usage};
 
     use super::*;

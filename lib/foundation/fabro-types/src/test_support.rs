@@ -1,9 +1,33 @@
 use std::collections::HashMap;
 
+use lithos_llm::catalog::{ModelId, builtin};
+use lithos_llm::types::{Cost, CostSource, TokenCounts, Usage};
+
 use crate::{
-    AuthMethod, BlobHash, Graph, IdpIdentity, PetriAdmission, PetriGraphRef, Principal,
-    RunProvenance, RunSpec, WorkflowSettings, WorkflowVersionId, fixtures,
+    AuthMethod, BlobHash, Graph, IdpIdentity, ModelRef, ModelUsage, PetriAdmission, PetriGraphRef,
+    Principal, RunProvenance, RunSpec, WorkflowSettings, WorkflowVersionId, fixtures,
 };
+
+/// A fully populated `ModelUsage` for tests: `input_tokens` and
+/// `output_tokens` on an OpenAI model, priced from the catalog at one micro
+/// per token.
+#[must_use]
+pub fn test_usage(model_id: &str, input_tokens: u64, output_tokens: u64) -> ModelUsage {
+    ModelUsage::new(
+        ModelRef::new(builtin::openai(), ModelId::new(model_id)),
+        Usage {
+            tokens: TokenCounts {
+                input: input_tokens,
+                output: output_tokens,
+                ..TokenCounts::default()
+            },
+            cost:   Some(Cost {
+                usd_micros: input_tokens.saturating_add(output_tokens),
+                source:     CostSource::Catalog,
+            }),
+        },
+    )
+}
 
 #[must_use]
 pub fn test_principal() -> Principal {

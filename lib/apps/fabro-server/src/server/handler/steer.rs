@@ -8,8 +8,7 @@ use axum::routing::post;
 use fabro_api::types::{
     InterruptRunRequest, RunControlAcknowledgement, RunControlOutcome, SteerRunRequest,
 };
-use fabro_types::Principal;
-use fabro_workflow::run_status::RunStatus;
+use fabro_types::{Principal, RunStatus};
 
 use super::super::{
     AnswerTransportError, AppState, RunControlAnswer, durable_run_status, reject_if_archived,

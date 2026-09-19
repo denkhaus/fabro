@@ -94,10 +94,10 @@ use fabro_types::settings::server::{
     GithubIntegrationSettings, GithubIntegrationStrategy, LogDestination,
 };
 use fabro_types::{
-    AskFabro, AskFabroUnavailableReason, BlobHash, InterviewQuestionRecord, ModelRef,
-    ModelTestMode, PendingReason, Principal, PullRequestLink, QuestionType, RunControlAction,
-    RunId, RunRunnableSource, RunStatusKind, RunStreamItem, RunStreamItemKind, SandboxProviderKind,
-    ServerSettings,
+    AskFabro, AskFabroUnavailableReason, BlobHash, FailureReason, InterviewQuestionRecord,
+    ModelRef, ModelTestMode, PendingReason, Principal, PullRequestLink, QuestionType,
+    RunControlAction, RunId, RunRunnableSource, RunStatus, RunStatusKind, RunStreamItem,
+    RunStreamItemKind, SandboxProviderKind, ServerSettings, SuccessReason,
 };
 use fabro_util::error::{
     SharedError, collect_causes, render_compact_with_causes, render_with_causes,
@@ -108,7 +108,6 @@ use fabro_vault::{SecretStore, SecretStoreError, SecretType, Vault};
 use fabro_workflow::run_lookup::{
     RunInfo, StatusFilter, filter_runs, scan_runs_with_summaries, scratch_base,
 };
-use fabro_workflow::run_status::{FailureReason, RunStatus, SuccessReason};
 use fabro_workflow::{Error as WorkflowError, operations, pull_request};
 use futures_util::future::join_all;
 use lithos_llm::catalog::ProviderId;
@@ -1355,13 +1354,13 @@ pub(crate) fn accumulate_concluded_run_usage(
         .expect("aggregate_usage lock poisoned");
     accumulate_usage_rollup(
         &mut agg,
-        &fabro_workflow::usage_rollup_from_projection(final_state),
+        &fabro_types::usage_rollup::usage_rollup_from_projection(final_state),
     );
 }
 
 fn accumulate_usage_rollup(
     accumulator: &mut UsageAccumulator,
-    rollup: &fabro_workflow::ProjectionUsageRollup,
+    rollup: &fabro_types::usage_rollup::ProjectionUsageRollup,
 ) {
     accumulator.total_runs += 1;
     accumulator.total_timing = accumulator.total_timing.saturating_add(&rollup.timing);

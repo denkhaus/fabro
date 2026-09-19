@@ -295,9 +295,6 @@ async fn main_inner(worker_token: Option<String>) -> (String, Result<()>) {
                 let styles = Styles::detect_stderr();
                 commands::graph::run(&args, &styles, &base_ctx).await?;
             }
-            Commands::Parse(args) => {
-                commands::parse::run(&args)?;
-            }
             Commands::Artifact(ns) => {
                 commands::artifact::dispatch(ns, &base_ctx).await?;
             }

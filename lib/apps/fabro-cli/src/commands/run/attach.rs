@@ -21,11 +21,9 @@ use anyhow::Result;
 use fabro_api::types;
 use fabro_interview::{Answer, AnswerValue, Question};
 use fabro_types::settings::run::ApprovalMode;
-use fabro_types::{InterviewOption, QuestionType, RunId};
+use fabro_types::{InterviewOption, QuestionType, RunId, RunStatus, StageOutcome};
 use fabro_util::printer::Printer;
 use fabro_util::terminal::Styles;
-use fabro_workflow::outcome::StageOutcome;
-use fabro_workflow::run_status::RunStatus;
 use tokio::signal::ctrl_c;
 use tokio::time::{Duration as TokioDuration, sleep};
 

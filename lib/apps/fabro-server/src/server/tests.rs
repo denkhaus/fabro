@@ -7150,34 +7150,6 @@ async fn list_run_events_returns_paginated_json() {
 }
 
 #[tokio::test]
-async fn get_checkpoint_returns_null_initially() {
-    let state = test_app_state();
-    let app = crate::test_support::build_test_router(Arc::clone(&state));
-
-    // Start a run
-    let req = Request::builder()
-        .method("POST")
-        .uri(api("/runs"))
-        .header("content-type", "application/json")
-        .body(intent_body(&app, MINIMAL_DOT).await)
-        .unwrap();
-
-    let response = app.clone().oneshot(req).await.unwrap();
-    let body = body_json(response.into_body()).await;
-    let run_id = body["id"].as_str().unwrap().parse::<RunId>().unwrap();
-
-    // Get checkpoint immediately (before run completes, may be null)
-    let req = Request::builder()
-        .method("GET")
-        .uri(api(&format!("/runs/{run_id}/checkpoint")))
-        .body(Body::empty())
-        .unwrap();
-
-    let response = app.oneshot(req).await.unwrap();
-    checked_response!(response, StatusCode::OK).await;
-}
-
-#[tokio::test]
 async fn write_and_read_run_blob_accepts_uppercase_hash() {
     let state = test_app_state();
     let app = crate::test_support::build_test_router(Arc::clone(&state));
@@ -7736,7 +7708,6 @@ async fn worker_token_is_rejected_on_user_only_routes() {
         (Method::GET, "/attach".to_string()),
         (Method::DELETE, format!("/runs/{run_id}")),
         (Method::GET, format!("/runs/{run_id}/attach")),
-        (Method::GET, format!("/runs/{run_id}/checkpoint")),
         (Method::POST, format!("/runs/{run_id}/pause")),
         (Method::POST, format!("/runs/{run_id}/unpause")),
         (Method::GET, format!("/runs/{run_id}/graph")),
@@ -9341,11 +9312,11 @@ async fn get_aggregate_usage_saturates_total_cost_across_models() {
 #[test]
 fn aggregate_usage_counts_projection_rollup_usage_visits() {
     let mut accumulator = UsageAccumulator::default();
-    let rollup = fabro_workflow::ProjectionUsageRollup {
+    let rollup = fabro_types::usage_rollup::ProjectionUsageRollup {
         stages:            Vec::new(),
         totals:            test_priced_usage("gpt-5.4", 300, 30).usage,
         by_model:          vec![
-            fabro_workflow::ProjectionUsageByModel {
+            fabro_types::usage_rollup::ProjectionUsageByModel {
                 model:  ModelRef::new(
                     lithos_llm::catalog::builtin::openai(),
                     ModelId::new("gpt-5.4"),
@@ -9353,7 +9324,7 @@ fn aggregate_usage_counts_projection_rollup_usage_visits() {
                 stages: 1,
                 usage:  test_priced_usage("gpt-5.4", 100, 10).usage,
             },
-            fabro_workflow::ProjectionUsageByModel {
+            fabro_types::usage_rollup::ProjectionUsageByModel {
                 model:  ModelRef::new(
                     lithos_llm::catalog::builtin::openai(),
                     ModelId::new("gpt-5.4"),

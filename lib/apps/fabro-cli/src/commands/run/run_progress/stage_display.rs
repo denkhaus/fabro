@@ -3,8 +3,7 @@ use std::convert::TryFrom;
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
-use fabro_types::{INITIAL_SUBAGENT_GENERATION, LlmOutputKind};
-use fabro_workflow::outcome::{StageOutcome, format_cost};
+use fabro_types::{INITIAL_SUBAGENT_GENERATION, LlmOutputKind, StageOutcome, format_cost};
 use indicatif::ProgressBar;
 
 use super::event::ProgressUsage;

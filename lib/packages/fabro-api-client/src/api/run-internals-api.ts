@@ -50,8 +50,6 @@ import type { PetriReleaseRequest } from '../models';
 // @ts-ignore
 import type { RunArtifactListResponse } from '../models';
 // @ts-ignore
-import type { RunCheckpoint } from '../models';
-// @ts-ignore
 import type { RunProjection } from '../models';
 // @ts-ignore
 import type { StageContextWindow } from '../models';
@@ -930,46 +928,6 @@ export const RunInternalsApiAxiosParamCreator = function (configuration?: Config
             };
         },
         /**
-         * Returns the latest checkpoint data for a run, or null if no checkpoint has been recorded yet.
-         * @summary Retrieve Run Checkpoint
-         * @param {string} id Unique run identifier (ULID).
-         * @param {*} [options] Override http request option.
-         * @throws {RequiredError}
-         */
-        retrieveRunCheckpoint: async (id: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
-            // verify required parameter 'id' is not null or undefined
-            assertParamExists('retrieveRunCheckpoint', 'id', id)
-            const localVarPath = `/api/v1/runs/{id}/checkpoint`
-                .replace(`{${"id"}}`, encodeURIComponent(String(id)));
-            // use dummy base URL string because the URL constructor only accepts absolute URLs.
-            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
-            let baseOptions;
-            if (configuration) {
-                baseOptions = configuration.baseOptions;
-            }
-
-            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
-            const localVarHeaderParameter = {} as any;
-            const localVarQueryParameter = {} as any;
-
-            // authentication SessionCookie required
-
-            // authentication BearerAuth required
-            // http bearer authentication required
-            await setBearerAuthToObject(localVarHeaderParameter, configuration)
-
-            localVarHeaderParameter['Accept'] = 'application/json';
-
-            setSearchParams(localVarUrlObj, localVarQueryParameter);
-            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
-            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
-
-            return {
-                url: toPathString(localVarUrlObj),
-                options: localVarRequestOptions,
-            };
-        },
-        /**
          * Returns the persisted dense `WorkflowSettings` snapshot used to launch this run.
          * @summary Retrieve Run Settings
          * @param {string} id Unique run identifier (ULID).
@@ -1385,19 +1343,6 @@ export const RunInternalsApiFp = function(configuration?: Configuration) {
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
-         * Returns the latest checkpoint data for a run, or null if no checkpoint has been recorded yet.
-         * @summary Retrieve Run Checkpoint
-         * @param {string} id Unique run identifier (ULID).
-         * @param {*} [options] Override http request option.
-         * @throws {RequiredError}
-         */
-        async retrieveRunCheckpoint(id: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<RunCheckpoint>> {
-            const localVarAxiosArgs = await localVarAxiosParamCreator.retrieveRunCheckpoint(id, options);
-            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
-            const localVarOperationServerBasePath = operationServerMap['RunInternalsApi.retrieveRunCheckpoint']?.[localVarOperationServerIndex]?.url;
-            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
-        },
-        /**
          * Returns the persisted dense `WorkflowSettings` snapshot used to launch this run.
          * @summary Retrieve Run Settings
          * @param {string} id Unique run identifier (ULID).
@@ -1659,16 +1604,6 @@ export const RunInternalsApiFactory = function (configuration?: Configuration, b
          */
         releasePetriRun(id: string, petriReleaseRequest: PetriReleaseRequest, options?: RawAxiosRequestConfig): AxiosPromise<void> {
             return localVarFp.releasePetriRun(id, petriReleaseRequest, options).then((request) => request(axios, basePath));
-        },
-        /**
-         * Returns the latest checkpoint data for a run, or null if no checkpoint has been recorded yet.
-         * @summary Retrieve Run Checkpoint
-         * @param {string} id Unique run identifier (ULID).
-         * @param {*} [options] Override http request option.
-         * @throws {RequiredError}
-         */
-        retrieveRunCheckpoint(id: string, options?: RawAxiosRequestConfig): AxiosPromise<RunCheckpoint> {
-            return localVarFp.retrieveRunCheckpoint(id, options).then((request) => request(axios, basePath));
         },
         /**
          * Returns the persisted dense `WorkflowSettings` snapshot used to launch this run.
@@ -1939,17 +1874,6 @@ export class RunInternalsApi extends BaseAPI {
      */
     public releasePetriRun(id: string, petriReleaseRequest: PetriReleaseRequest, options?: RawAxiosRequestConfig) {
         return RunInternalsApiFp(this.configuration).releasePetriRun(id, petriReleaseRequest, options).then((request) => request(this.axios, this.basePath));
-    }
-
-    /**
-     * Returns the latest checkpoint data for a run, or null if no checkpoint has been recorded yet.
-     * @summary Retrieve Run Checkpoint
-     * @param {string} id Unique run identifier (ULID).
-     * @param {*} [options] Override http request option.
-     * @throws {RequiredError}
-     */
-    public retrieveRunCheckpoint(id: string, options?: RawAxiosRequestConfig) {
-        return RunInternalsApiFp(this.configuration).retrieveRunCheckpoint(id, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**

@@ -1,8 +1,7 @@
 use std::collections::BTreeMap;
 
 use anyhow::Result;
-use fabro_types::{StageHandler, StageState};
-use fabro_workflow::run_status::RunStatus;
+use fabro_types::{RunStatus, StageHandler, StageState};
 use serde::Serialize;
 
 use crate::args::InspectArgs;

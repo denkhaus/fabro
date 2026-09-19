@@ -8,16 +8,13 @@ use fabro_llm::credentials::CredentialProvider;
 use fabro_llm::lithos_catalog::Catalog;
 use fabro_llm::{Client, ClientOptions, Request, selection};
 use fabro_store::RunProjection;
-use fabro_types::PullRequestLink;
 use fabro_types::settings::run::MergeStrategy;
+use fabro_types::{Conclusion, PullRequestLink, RunSpec, format_cost as outcome_format_cost};
 use fabro_util::text::strip_goal_decoration;
 use lithos_llm::catalog::ProviderId;
 use lithos_llm::types::{Cost, Message, Role};
 use tokio::time::sleep;
 use tracing::{debug, info, warn};
-
-use crate::outcome::format_cost as outcome_format_cost;
-use crate::records::{Conclusion, RunSpec};
 
 /// Maximum length of a PR title (Unicode scalar values).
 const PR_TITLE_MAX_CHARS: usize = 72;
@@ -675,8 +672,8 @@ mod tests {
     use fabro_llm::lithos_catalog::AdapterId;
     use fabro_llm::{Response, ResponseStream};
     use fabro_types::{
-        PetriAdmission, RunProjection, RunSpec, WorkflowSettings, first_event_seq, fixtures,
-        test_support,
+        PetriAdmission, RunProjection, RunSpec, StageSummary, WorkflowSettings, first_event_seq,
+        fixtures, test_support,
     };
     use fabro_vault::{SecretType, Vault};
     use httpmock::Method::{GET, POST};
@@ -685,7 +682,6 @@ mod tests {
     use tokio::sync::RwLock as AsyncRwLock;
 
     use super::*;
-    use crate::records::StageSummary;
 
     /// Answers every completion with one fixed text, attributed to the route
     /// that was asked.
@@ -852,7 +848,7 @@ capabilities = { text = true, tools = true, response_format = { json_object = tr
     fn make_test_conclusion() -> Conclusion {
         Conclusion {
             timestamp:            Utc::now(),
-            status:               crate::outcome::StageOutcome::Succeeded,
+            status:               fabro_types::StageOutcome::Succeeded,
             timing:               fabro_types::RunTiming::wall_only(150_000),
             failure:              None,
             final_git_commit_sha: None,

@@ -107,7 +107,6 @@ pub(super) fn demo_routes() -> Router<Arc<AppState>> {
             "/runs/{id}/stages/{stageId}/logs/output",
             get(not_implemented),
         )
-        .route("/runs/{id}/checkpoint", get(demo::checkpoint_stub))
         .route("/runs/{id}/cancel", post(demo::cancel_stub))
         .route("/runs/{id}/start", post(demo::start_run_stub))
         .route("/runs/{id}/approve", post(demo::start_run_stub))

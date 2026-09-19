@@ -29,7 +29,6 @@ use super::super::{
 
 pub(super) fn routes() -> Router<Arc<AppState>> {
     Router::new()
-        .route("/runs/{id}/checkpoint", get(get_checkpoint))
         .route("/runs/{id}/blobs", post(write_run_blob))
         .route("/runs/{id}/blobs/{blobHash}", get(read_run_blob))
         .route("/runs/{id}/artifacts", get(list_run_artifacts))
@@ -50,24 +49,6 @@ struct ArtifactFilenameParams {
     filename: Option<String>,
     #[serde(default)]
     retry:    Option<u32>,
-}
-
-async fn get_checkpoint(
-    _auth: RequiredUser,
-    State(state): State<Arc<AppState>>,
-    Path(id): Path<String>,
-) -> Response {
-    let id = match parse_run_id_path(&id) {
-        Ok(id) => id,
-        Err(response) => return response,
-    };
-    match state.load_run_projection(&id).await {
-        Ok(projection) => match projection.current_checkpoint() {
-            Some(cp) => (StatusCode::OK, Json(cp.clone())).into_response(),
-            None => (StatusCode::OK, Json(serde_json::json!(null))).into_response(),
-        },
-        Err(err) => err.into_response(),
-    }
 }
 
 async fn write_run_blob(

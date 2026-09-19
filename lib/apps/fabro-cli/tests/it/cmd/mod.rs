@@ -26,7 +26,6 @@ mod model;
 mod model_list;
 mod model_test;
 mod parent;
-mod parse;
 mod pr;
 mod pr_close;
 mod pr_create;

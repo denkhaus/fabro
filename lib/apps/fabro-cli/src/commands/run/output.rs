@@ -6,14 +6,15 @@ use cli_table::format::{Border, Justify, Separator};
 use cli_table::{Cell, CellStruct, Style, Table};
 use fabro_api::types;
 use fabro_types::diagnostic::{Diagnostic, RelatedDiagnostic, Severity};
-use fabro_types::{BlobRefEncoding, PullRequestLink, RunId, StageId, parse_blob_ref_encoded};
+use fabro_types::{
+    BlobRefEncoding, Conclusion, PullRequestLink, RunId, StageId, StageOutcome,
+    parse_blob_ref_encoded,
+};
 use fabro_util::check_report::{CheckDetail, CheckReport, CheckResult, CheckSection, CheckStatus};
 use fabro_util::error::render_with_causes;
 use fabro_util::printer::Printer;
 use fabro_util::terminal::Styles;
 use fabro_util::text::strip_goal_decoration;
-use fabro_workflow::outcome::StageOutcome;
-use fabro_workflow::records::Conclusion;
 use indicatif::HumanDuration;
 
 use crate::server_client;

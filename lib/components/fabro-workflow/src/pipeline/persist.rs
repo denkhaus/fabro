@@ -32,10 +32,9 @@ mod tests {
     use std::collections::HashMap;
 
     use fabro_graphviz::graph::{AttrValue, Edge, Graph, Node};
-    use fabro_types::{PetriAdmission, fixtures, test_support};
+    use fabro_types::{PetriAdmission, RunSpec, fixtures, test_support};
 
     use super::*;
-    use crate::records::RunSpec;
 
     fn graph_and_source() -> (Graph, String) {
         let source = r#"digraph test {

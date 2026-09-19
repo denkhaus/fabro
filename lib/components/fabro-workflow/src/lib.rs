@@ -3,12 +3,12 @@
 //!
 //! Petri executes every run (`fabro-petri` is the seam). This crate keeps
 //! what Fabro itself owns: the create-time compile of the Fabro graph the
-//! read side displays (`pipeline`, `transforms`, `operations`), the run
-//! records and status vocabulary (`records`, `run_status`), the Git
+//! read side displays (`pipeline`, `transforms`, `operations`), the Git
 //! helpers a run's platform effects use (`git`, `sandbox_git`), pull
 //! request creation (`pull_request`), the run tools an agent session calls
 //! (`run_tools`, `services`), the built-in web search backend
-//! (`web_search`).
+//! (`web_search`). The run records and status vocabulary are
+//! `fabro_types`'.
 
 #![cfg_attr(
     test,
@@ -31,26 +31,16 @@ pub mod error;
 pub mod file_resolver;
 pub mod git;
 pub mod operations;
-pub mod outcome;
 pub mod pipeline;
 pub mod pull_request;
-pub mod records;
 pub mod run_lookup;
-pub mod usage_rollup;
 
 pub use error::{Error, Result};
 pub use fabro_types::ManifestPath;
-pub use usage_rollup::{
-    ProjectionUsageByModel, ProjectionUsageRollup, ProjectionUsageStage,
-    usage_rollup_from_projection,
-};
 pub mod run_materialization;
-pub mod run_status;
 pub mod run_tools;
 pub mod sandbox_git;
 pub mod services;
-#[cfg(any(test, feature = "test-support"))]
-pub mod test_support;
 #[doc(hidden)]
 pub mod transforms;
 pub mod web_search;

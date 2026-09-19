@@ -550,12 +550,6 @@ pub(crate) struct GraphArgs {
 }
 
 #[derive(Args)]
-pub(crate) struct ParseArgs {
-    /// Path to the .fabro workflow file
-    pub(crate) workflow: PathBuf,
-}
-
-#[derive(Args)]
 pub(crate) struct ArtifactListArgs {
     #[command(flatten)]
     pub(crate) server: ServerTargetArgs,
@@ -1442,9 +1436,6 @@ pub(crate) enum Commands {
     Validate(ValidateArgs),
     /// Render a workflow graph as SVG
     Graph(GraphArgs),
-    /// Parse a DOT file and print its AST
-    #[command(hide = true)]
-    Parse(ParseArgs),
     /// Inspect and copy run artifacts (screenshots, reports, traces)
     Artifact(ArtifactNamespace),
     /// Export a run's durable state to a directory
@@ -1546,7 +1537,6 @@ impl Commands {
             Self::Preflight(_) => "preflight",
             Self::Validate(_) => "validate",
             Self::Graph(_) => "graph",
-            Self::Parse(_) => "parse",
             Self::RunsCmd(cmd) => cmd.name(),
             Self::Model { command } => match command {
                 Some(ModelsCommand::List(_)) => "model list",

@@ -49,10 +49,11 @@ use fabro_petri::{SqliteRunStore, admission};
 use fabro_store::platform_records::{RunLifecycleKind, RunLifecycleRecord};
 use fabro_types::settings::McpTransport;
 use fabro_types::settings::run::{ApprovalMode, McpServerSettings, RunMode};
-use fabro_types::{PetriAdmission, RunId, RunRunnableSource, RunTarget};
+use fabro_types::{
+    FailureReason, PetriAdmission, RunId, RunRunnableSource, RunStatus, RunTarget, SuccessReason,
+};
 use fabro_util::error as error_util;
 use fabro_workflow::Error as WorkflowError;
-use fabro_workflow::run_status::{FailureReason, RunStatus, SuccessReason};
 use lithos_llm::catalog::ProviderId;
 use tokio::task;
 use tokio_util::sync::CancellationToken;
