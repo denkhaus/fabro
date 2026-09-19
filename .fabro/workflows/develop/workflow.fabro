@@ -175,6 +175,18 @@ digraph Develop {
         // cycles collapse to their LATEST visit — one section per stage
         // instead of one per cycle (render-only; history stays intact).
         preamble_stages_latest_only=true,
+        // fabro-269d (fabro-47b5 adoption, user decision 2026-09-17 GO):
+        // per-node tool allow-list — exactly what this prompt demonstrably
+        // uses: the file tools, the shell (loop-asset escape hatch, just/sd/
+        // ml/nu), and use_skill (skills="discover" loads the vendored style
+        // guide through it). spawn_agent, the web tools, and the fabro-run
+        // catalog are denied mechanically by the same list (question tools
+        // stay exempt engine-side). Restricting, never extending (ADR-0019).
+        tools="read_file,write_file,edit_file,glob,grep,shell,use_skill",
+        // Same discipline as the reviewer: no fabro-run tools. Effective
+        // denial is the tools allow-list above (stage_policy filters every
+        // unlisted name); the empty opt-in records the intent explicitly.
+        fabro_tools="",
         // fabro-e47c pattern, closed on the implementer 2026-09-03: the ##
         // Context section is a strict input contract — the seed trio the
         // prompt names (review feedback rides INSIDE the brief the planner
@@ -265,16 +277,20 @@ digraph Develop {
         max_retries=1
     ]
 
-    // Reviewer: AGENT node — read-only by capability (empty fs_write,
-    // fabro-1dae) and policy (the prompt line governs the shell escape
-    // hatch).
+    // Reviewer: AGENT node — read-only BY ENGINE ENFORCEMENT (fabro-269d,
+    // user decision 2026-09-17 GO): the per-node tools allow-list admits
+    // exactly read_file, grep, glob; write_file/edit_file/shell/spawn_agent/
+    // web_* and the fabro-run catalog are denied mechanically, and the
+    // empty fs_write (fabro-1dae) denies every file-tool write.
     // Run 01M0SS23MJ measured shape=tab (prompt handler): tool_time_ms 0
     // on both visits while the prompt promised tools — blob-ref'd evidence
     // and seed spec were UNREADABLE, and reviewer@1 rejected green work as
-    // "verification could not be completed". As an agent node the tools
-    // exist: reading blob refs, read-only git, re-running the gate are
-    // real fallbacks; modification stays denied (capability for file
-    // tools, policy for shell).
+    // "verification could not be completed". As an agent node read
+    // tools exist (blob-ref reads via read_file, diff inspection via
+    // grep/glob); shell-side needs (read-only git, gate re-runs) are
+    // intentionally sacrificed per the 2026-09-17 decision — a review
+    // that genuinely cannot complete without them surfaces as a
+    // verdict, not a workaround.
     //
     // fidelity="summary:high" is the evidence pipe: the default `compact`
     // preamble truncates a command node's output to roughly the first 300
@@ -330,9 +346,10 @@ digraph Develop {
         preamble_allow_keys="current_seed_id,current_seed_title,current_seed_brief,implementation_summary,command.output",
         // fabro-900e: stable context_updates contract (see planner).
         context_allow_keys="review_verdict,review_feedback,journal",
-        // fabro-9467: the reviewer is a prompt node (no tools) — a demoted
-        // evidence value (8KB default ceiling) is a preview it can never
-        // open. Evidence captures reach ~14KB (first auto-merge run), so
+        // fabro-9467 (updated by fabro-269d): the reviewer is an agent
+        // node whose allow-list keeps read_file — a demoted evidence
+        // value (8KB default ceiling) opens via read_file paging.
+        // Evidence captures reach ~14KB (first auto-merge run), so
         // 16KB inline keeps them whole. Graph budget is 24KB: no conflict
         // with the aggregate demote pass (preamble_inline_max_within_budget
         // stays quiet).
@@ -346,9 +363,20 @@ digraph Develop {
         // fabro-1dae: read-only is a CAPABILITY, not just policy — an empty
         // fs_write denies every file-tool write (deletes and patch targets
         // included). Deliberately NO fs_hide: review must see every diff,
-        // including illegal loop-asset touches, to reject them. Shell remains
-        // the documented escape hatch; the prompt's policy line governs it.
+        // including illegal loop-asset touches, to reject them. Shell is
+        // denied at the engine layer too (fabro-269d tools allow-list) —
+        // no escape hatch remains; the prompt line states the enforcement.
         fs_write="",
+        // fabro-269d (fabro-47b5 adoption, user decision 2026-09-17 GO):
+        // the read-only allow-list. shell is EXCLUDED deliberately — the
+        // seed body proposed including it, but the user decision requires
+        // write/shell denied at the engine layer and the decision wins.
+        tools="read_file,grep,glob",
+        // fabro-269d: default-denied fabro-run catalog — before this, a
+        // reviewer invoked fabro_run_interact (run 01M2RDM3AZ seq 440).
+        // Effective denial is the tools allow-list above (stage_policy
+        // admits only listed names); the empty opt-in records the intent.
+        fabro_tools="",
         output_schema="routing",
         output_retries=2,
         max_visits=20,
