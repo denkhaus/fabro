@@ -26,8 +26,6 @@ use fabro_install::{
 };
 use fabro_llm::lithos_catalog::{Catalog, CatalogProvider};
 use fabro_llm::probe::{self, ApiKeyProbeError, ModelTestStatus};
-use fabro_sandbox::daytona;
-use fabro_sandbox::driver::DaytonaCredentials;
 use fabro_static::EnvVars;
 use fabro_store::ArtifactStore;
 use fabro_types::settings::server::ObjectStoreSettings;
@@ -49,6 +47,9 @@ use tracing::{error, info, warn};
 use zeroize::Zeroizing;
 
 use crate::error::ApiError;
+use crate::sandbox_access::{
+    DAYTONA_CREDENTIAL_PROBE_TIMEOUT, DaytonaCredentials, DaytonaKeyCheck, check_daytona_api_key,
+};
 use crate::serve::{self, DEFAULT_TCP_PORT};
 use crate::server_secrets::{ServerSecrets, process_env_snapshot};
 use crate::{security_headers, server, static_files};
@@ -1004,14 +1005,14 @@ async fn post_install_sandbox_test(
 async fn check_install_daytona_api_key(
     state: &InstallAppState,
     api_key: String,
-) -> anyhow::Result<daytona::DaytonaKeyCheck> {
+) -> anyhow::Result<DaytonaKeyCheck> {
     let credentials = DaytonaCredentials::new(api_key)
         .with_api_url(state.upstreams.daytona_api_base_url.clone())
         .with_organization_id(state.upstreams.daytona_organization_id.clone())
         .with_http_client(Some(
             fabro_http::http_client().context("failed to build HTTP client")?,
         ));
-    daytona::check_daytona_api_key(&credentials, daytona::DAYTONA_CREDENTIAL_PROBE_TIMEOUT).await
+    check_daytona_api_key(&credentials, DAYTONA_CREDENTIAL_PROBE_TIMEOUT).await
 }
 
 async fn put_install_sandbox(

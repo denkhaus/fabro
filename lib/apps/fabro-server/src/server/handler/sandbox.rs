@@ -748,7 +748,7 @@ async fn reconnect_run_sandbox_instance(
 }
 
 async fn load_provider_access(state: &AppState) -> Result<ProviderAccess, Response> {
-    state.provider_access().await.map_err(|err| {
+    state.legacy_provider_access().await.map_err(|err| {
         tracing::error!(error = ?err, "Loading Daytona API key failed");
         ApiError::new(
             StatusCode::INTERNAL_SERVER_ERROR,

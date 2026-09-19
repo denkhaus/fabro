@@ -65,9 +65,7 @@ use fabro_petri::controls::{RunControls, SteerError};
 use fabro_petri::projector::Projector;
 use fabro_redact::redact_jsonl_line;
 use fabro_sandbox::details::sandbox_details;
-use fabro_sandbox::driver::{DaytonaCredentials, ProviderAccess, ProviderConnectOptions};
 use fabro_sandbox::reconnect::reconnect_for_run;
-use fabro_sandbox::{SandboxInventory, daytona};
 use fabro_slack::client::{PostedMessage as SlackPostedMessage, SlackClient};
 use fabro_slack::config::{
     SlackCredentialResolution,
@@ -150,6 +148,10 @@ use crate::principal_middleware::{
 };
 use crate::request_id::{self, RequestId};
 use crate::run_files::{FilesInFlight, new_files_in_flight};
+use crate::sandbox_access::{
+    self, DAYTONA_CREDENTIAL_PROBE_TIMEOUT, DaytonaCredentials, DaytonaKeyCheck, ProviderAccess,
+    SandboxInventory,
+};
 use crate::server_secrets::ServerSecrets;
 use crate::spawn_env::apply_render_graph_env;
 use crate::worker_control::{
@@ -1546,11 +1548,30 @@ impl AppState {
         })
     }
 
+    /// The same access in `fabro-sandbox`'s shape, for the callers still on
+    /// its reconnect path.
+    pub(crate) async fn legacy_provider_access(
+        &self,
+    ) -> Result<fabro_sandbox::ProviderAccess, SecretStoreError> {
+        Ok(fabro_sandbox::ProviderAccess {
+            providers: self.server_settings().server.sandbox.providers.clone(),
+            daytona:   self
+                .vault_secret(EnvVars::DAYTONA_API_KEY)
+                .await?
+                .map(|api_key| {
+                    fabro_sandbox::DaytonaCredentials::from_api_key(api_key, |name| {
+                        self.config_env_lookup(name)
+                    })
+                    .with_http_client(self.http_client().ok())
+                }),
+        })
+    }
+
     pub(crate) async fn check_daytona_api_key(
         &self,
         api_key: String,
-    ) -> anyhow::Result<daytona::DaytonaKeyCheck> {
-        self.check_daytona_api_key_with_timeout(api_key, daytona::DAYTONA_CREDENTIAL_PROBE_TIMEOUT)
+    ) -> anyhow::Result<DaytonaKeyCheck> {
+        self.check_daytona_api_key_with_timeout(api_key, DAYTONA_CREDENTIAL_PROBE_TIMEOUT)
             .await
     }
 
@@ -1558,8 +1579,9 @@ impl AppState {
         &self,
         api_key: String,
         probe_timeout: Duration,
-    ) -> anyhow::Result<daytona::DaytonaKeyCheck> {
-        daytona::check_daytona_api_key(&self.daytona_credentials(api_key), probe_timeout).await
+    ) -> anyhow::Result<DaytonaKeyCheck> {
+        sandbox_access::check_daytona_api_key(&self.daytona_credentials(api_key), probe_timeout)
+            .await
     }
 
     /// Borrow the persistent store so sibling modules can open run readers
@@ -2386,35 +2408,23 @@ fn build_sandbox_inventory(
     http_client: Option<fabro_http::HttpClient>,
 ) -> SandboxInventory {
     let provider_settings = &server_settings.server.sandbox.providers;
+    let access = ProviderAccess {
+        providers: provider_settings.clone(),
+        daytona:   daytona_api_key.map(|api_key| {
+            DaytonaCredentials::from_api_key(api_key, |name| env_lookup(name))
+                .with_http_client(http_client)
+        }),
+    };
     let mut inventory = SandboxInventory::empty();
 
     if provider_settings.is_enabled(&SandboxProviderKind::LOCAL) {
         inventory = inventory.with_host_directories(SandboxProviderKind::LOCAL);
     }
-
-    if let Some(docker) = provider_settings.get(&SandboxProviderKind::DOCKER) {
-        if docker.enabled {
-            inventory = inventory.with_lazy(
-                SandboxProviderKind::DOCKER,
-                docker.clone(),
-                ProviderConnectOptions::default(),
-            );
-        }
+    if provider_settings.is_enabled(&SandboxProviderKind::DOCKER) {
+        inventory = inventory.with_lazy(SandboxProviderKind::DOCKER, access.clone());
     }
-
-    if let Some(daytona) = provider_settings.get(&SandboxProviderKind::DAYTONA) {
-        if let Some(api_key) = daytona_api_key.filter(|_| daytona.enabled) {
-            let credentials = DaytonaCredentials::from_api_key(api_key, |name| env_lookup(name))
-                .with_http_client(http_client);
-            inventory = inventory.with_lazy(
-                SandboxProviderKind::DAYTONA,
-                daytona.clone(),
-                ProviderConnectOptions {
-                    host_registry_root: None,
-                    daytona:            Some(credentials),
-                },
-            );
-        }
+    if provider_settings.is_enabled(&SandboxProviderKind::DAYTONA) && access.daytona.is_some() {
+        inventory = inventory.with_lazy(SandboxProviderKind::DAYTONA, access);
     }
 
     inventory
@@ -2859,7 +2869,7 @@ async fn delete_run_sandbox_resource(
     }
 
     let access = state
-        .provider_access()
+        .legacy_provider_access()
         .await
         .map_err(|err| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string()))?;
     let sandbox = match reconnect_for_run(&record, &access, Some(id), None).await {

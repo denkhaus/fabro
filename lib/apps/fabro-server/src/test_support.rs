@@ -18,7 +18,6 @@ use fabro_config::user::default_storage_dir;
 use fabro_config::{LlmLayer, RunLayer, ServerSettingsBuilder, Storage, envfile};
 use fabro_db::DbPool;
 use fabro_llm::lithos_catalog::Catalog;
-use fabro_sandbox::SandboxInventory;
 use fabro_static::EnvVars;
 use fabro_store::{ArtifactStore, Database, test_support as store_test_support};
 use fabro_types::settings::ServerAuthMethod;
@@ -39,6 +38,7 @@ use crate::interp::process_env_var;
 use crate::jwt_auth::{AuthMode, ConfiguredAuth};
 #[cfg(test)]
 use crate::principal_middleware::{AuthContextSlot, RequestAuthContext};
+use crate::sandbox_access::SandboxInventory;
 use crate::server::{
     self, AppState, AppStateConfig, EnvLookup, ResolvedAppStateSettings, RouterOptions,
     build_app_state,
@@ -157,7 +157,8 @@ impl TestAppStateBuilder {
         self
     }
 
-    pub fn sandbox_inventory(mut self, sandbox_inventory: SandboxInventory) -> Self {
+    #[cfg(test)]
+    pub(crate) fn sandbox_inventory(mut self, sandbox_inventory: SandboxInventory) -> Self {
         self.sandbox_inventory = Some(sandbox_inventory);
         self
     }

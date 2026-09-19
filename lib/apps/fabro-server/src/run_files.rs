@@ -1177,7 +1177,7 @@ async fn reconnect_run_sandbox(
         .cloned()
         .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "Run sandbox was not created."))?;
     let access = state
-        .provider_access()
+        .legacy_provider_access()
         .await
         .map_err(|err| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string()))?;
     let sandbox = reconnect_for_run(&record, &access, Some(*run_id), None)

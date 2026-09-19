@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 use std::future::Future;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
-use std::time::Duration;
+use std::sync::{Arc, Mutex, PoisonError};
+use std::time::{Duration, SystemTime};
 
 use anyhow::{Context as _, Result, anyhow, bail};
 use fabro_api::types;
@@ -19,9 +19,6 @@ use fabro_petri::check::Launch;
 use fabro_petri::run_graph;
 use fabro_petri::runtime::RuntimeSpec;
 use fabro_proc::ProcessError;
-use fabro_sandbox::{
-    CloneRequest, ProviderAccess, RunSandbox, SandboxSpec, sandbox_spec_for_environment,
-};
 use fabro_static::EnvVars;
 use fabro_types::diagnostic::{Diagnostic, Severity};
 use fabro_types::settings::cli::OutputVerbosity;
@@ -36,12 +33,17 @@ use fabro_workflow::Error as WorkflowError;
 use fabro_workflow::workflow_bundle::{BundledWorkflow, ParsedWorkflowConfig, WorkflowBundle};
 use futures_util::stream::{self, StreamExt};
 use lithos_llm::catalog::ProviderId;
+use sandbox_driver::{
+    GitBackoff, GitCredentials, GitFailure, GitFailureKind, GitRetryPolicy, HealthStatus,
+    ProviderHealth,
+};
 use tokio::process::Command;
 use tokio::task;
 #[cfg(test)]
 use tokio::time;
 use tokio_util::sync::CancellationToken;
 
+use crate::sandbox_access::{self, ProviderAccess};
 use crate::server::{AppState, petri_runs};
 use crate::{petri_check, run_compiler};
 
@@ -830,50 +832,11 @@ async fn run_ls_remote(mut command: Command) -> std::result::Result<(), String> 
     })
 }
 
-fn preflight_sandbox_spec(
-    sandbox_provider: &SandboxProviderKind,
-    prepared: &PreparedManifest,
-    resolved_run: &RunNamespace,
-    access: &ProviderAccess,
-) -> std::result::Result<SandboxSpec, fabro_sandbox::Error> {
-    let clone_origin_url = prepared
-        .git
-        .as_ref()
-        .map(|git| fabro_github::normalize_repo_origin_url(&git.origin_url));
-    let clone_branch = prepared.git.as_ref().map(|git| git.branch.clone());
-
-    if sandbox_provider.bundled() == Some(BundledProvider::Local) {
-        let working_directory = resolved_run
-            .environment
-            .local_working_directory(Some(&prepared.source_directory))
-            .map_err(|err| {
-                fabro_sandbox::Error::context(
-                    "Failed to resolve local environment working directory",
-                    err,
-                )
-            })?;
-        return Ok(SandboxSpec::local(working_directory, access.clone()));
-    }
-    // No vault is available on this path, so a `{{ secrets.* }}` value keeps
-    // its source form. Preflight never clones.
-    let spec = sandbox_spec_for_environment(
-        &resolved_run.environment,
-        resolved_run.environment.unresolved_env(),
-    )?;
-    let clone = CloneRequest {
-        origin_url: clone_origin_url,
-        branch: clone_branch,
-        ..CloneRequest::none()
-    };
-    Ok(SandboxSpec {
-        kind: sandbox_provider.clone(),
-        access: access.clone(),
-        spec,
-        clone,
-        run_id: None,
-    })
-}
-
+/// The sandbox check of preflight: the run's provider is reachable and its
+/// credential accepted, as the provider's own health check reports. No
+/// sandbox is created: Petri creates the run's, in the run's own shape,
+/// when the run starts. A `local` environment must also resolve the
+/// directory the run would work in.
 async fn run_sandbox_check(
     checks: &mut Vec<CheckResult>,
     sandbox_provider: &SandboxProviderKind,
@@ -881,86 +844,78 @@ async fn run_sandbox_check(
     resolved_run: &RunNamespace,
     access: &ProviderAccess,
 ) -> bool {
-    let spec = match preflight_sandbox_spec(sandbox_provider, prepared, resolved_run, access) {
-        Ok(spec) => spec,
-        Err(err) => {
+    if sandbox_provider.bundled() == Some(BundledProvider::Local) {
+        if let Err(err) = resolved_run
+            .environment
+            .local_working_directory(Some(&prepared.source_directory))
+        {
             checks.push(CheckResult {
                 name:        "Sandbox".into(),
                 status:      CheckStatus::Error,
                 summary:     "failed".into(),
                 details:     vec![CheckDetail::new(format!("Provider: {sandbox_provider}"))],
-                remediation: Some(err.to_string()),
+                remediation: Some(format!(
+                    "Failed to resolve local environment working directory: {err}"
+                )),
             });
             return false;
         }
-    };
-    let sandbox_result: Result<Arc<RunSandbox>, String> = spec.build(None).await.map_err(|err| {
-        if *sandbox_provider == SandboxProviderKind::DAYTONA {
-            format!("Daytona sandbox creation failed: {err}")
-        } else {
-            err.to_string()
-        }
-    });
+    }
+    let health = sandbox_access::provider_health(sandbox_provider, access)
+        .await
+        .map_err(|err| format!("{err:#}"));
+    let check = sandbox_health_check(sandbox_provider, health);
+    let passed = check.status == CheckStatus::Pass;
+    checks.push(check);
+    passed
+}
 
-    match sandbox_result {
-        Ok(sandbox) => match sandbox.initialize().await {
-            Ok(()) => {
-                let mut details = vec![CheckDetail::new(format!("Provider: {sandbox_provider}"))];
-                if sandbox_provider.clones_workspace()
-                    && prepared.git.is_none()
-                    && !clone_disabled_for_provider(sandbox_provider, resolved_run)
-                {
-                    details.push(CheckDetail {
-                        text: "No clone source present; sandbox workspace will be empty".into(),
-                        warn: true,
-                    });
-                }
-                if let Err(err) = sandbox.delete().await {
-                    checks.push(CheckResult {
-                        name: "Sandbox".into(),
-                        status: CheckStatus::Error,
-                        summary: "cleanup failed".into(),
-                        details,
-                        remediation: Some(format!("Sandbox cleanup failed: {err}")),
-                    });
-                    return false;
-                }
-                checks.push(CheckResult {
-                    name: "Sandbox".into(),
-                    status: CheckStatus::Pass,
-                    summary: sandbox_provider.to_string(),
-                    details,
-                    remediation: None,
-                });
-                true
-            }
-            Err(err) => {
-                let cleanup_error = sandbox.delete().await.err();
-                checks.push(CheckResult {
-                    name:        "Sandbox".into(),
-                    status:      CheckStatus::Error,
-                    summary:     "failed".into(),
-                    details:     vec![CheckDetail::new(format!("Provider: {sandbox_provider}"))],
-                    remediation: Some(cleanup_error.map_or_else(
-                        || format!("Sandbox init failed: {err}"),
-                        |cleanup| {
-                            format!("Sandbox init failed: {err}; cleanup also failed: {cleanup}")
-                        },
-                    )),
-                });
-                false
-            }
+/// The preflight check for a provider's health report: a connection
+/// failure and an unreachable or rejected backend fail with the reason; a
+/// healthy backend, or one whose provider has no health check, passes.
+fn sandbox_health_check(
+    sandbox_provider: &SandboxProviderKind,
+    health: std::result::Result<ProviderHealth, String>,
+) -> CheckResult {
+    let details = vec![CheckDetail::new(format!("Provider: {sandbox_provider}"))];
+    let failure = |remediation: String| CheckResult {
+        name:        "Sandbox".into(),
+        status:      CheckStatus::Error,
+        summary:     "failed".into(),
+        details:     details.clone(),
+        remediation: Some(remediation),
+    };
+    let health = match health {
+        Ok(health) => health,
+        Err(err) => return failure(err),
+    };
+    match health.status {
+        HealthStatus::Ok | HealthStatus::Unknown => CheckResult {
+            name: "Sandbox".into(),
+            status: CheckStatus::Pass,
+            summary: sandbox_provider.to_string(),
+            details,
+            remediation: None,
         },
-        Err(err) => {
-            checks.push(CheckResult {
-                name:        "Sandbox".into(),
-                status:      CheckStatus::Error,
-                summary:     "failed".into(),
-                details:     vec![CheckDetail::new(format!("Provider: {sandbox_provider}"))],
-                remediation: Some(err),
-            });
-            false
-        }
+        HealthStatus::Unreachable => failure(format!(
+            "{sandbox_provider} backend is unreachable: {}",
+            health
+                .message
+                .unwrap_or_else(|| "the backend did not answer".to_string())
+        )),
+        HealthStatus::Unauthorized if !health.missing_permissions.is_empty() => failure(format!(
+            "{sandbox_provider} credential is missing required permissions: {}",
+            health.missing_permissions.join(", ")
+        )),
+        HealthStatus::Unauthorized => failure(format!(
+            "{sandbox_provider} rejected the credential: {}",
+            health
+                .message
+                .unwrap_or_else(|| "the credential was rejected".to_string())
+        )),
+        _ => failure(format!(
+            "{sandbox_provider} reported an unknown health state"
+        )),
     }
 }
 
@@ -1268,13 +1223,112 @@ where
     F: FnMut() -> Fut,
     Fut: Future<Output = std::result::Result<(), String>>,
 {
-    fabro_sandbox::retry_git_messages(
-        &fabro_sandbox::repository_probe_policy(),
+    retry_git_messages(
+        &repository_probe_policy(),
         Some(&snapshot),
         "repository probe",
         run,
     )
     .await
+}
+
+// ── Fabro's retry budget for git operations against GitHub ─────────────────
+//
+// The driver owns the retry loop and the decision
+// (`sandbox_driver::retry_git`): a remote that cannot be reached is retried,
+// a rejected credential is retried only while the token is fresh enough to
+// still be replicating to GitHub's git endpoints, a static credential fails
+// fast, and a command whose outcome is unknown is never replayed. Fabro
+// keeps what is policy: how many attempts the host-side repository probe
+// gets, how it paces them, and when the credential it runs with was minted.
+//
+// Retries reuse the same token on purpose. Replication of a given token
+// only makes progress, so each attempt strictly improves the odds, while
+// re-minting would restart the replication clock.
+
+/// The username GitHub expects with an installation token or PAT.
+const GITHUB_TOKEN_USERNAME: &str = "x-access-token";
+
+/// Backoff between attempts: 3s, then 9s.
+///
+/// GitHub's guidance for token replication is to wait a few seconds and
+/// retry with the same token. Sub-second delays land inside the same
+/// replication window and spend an attempt for nothing.
+fn replication_backoff() -> GitBackoff {
+    GitBackoff::new(Duration::from_secs(3), 3.0, Duration::from_secs(10))
+}
+
+/// Host-side repository probes get 3 attempts at replication pacing, with
+/// no deadline of their own.
+fn repository_probe_policy() -> GitRetryPolicy {
+    GitRetryPolicy::new(3, replication_backoff())
+}
+
+/// Credentials carrying only the token's mint time, which is all the
+/// driver's decision reads for git that ran outside a sandbox. The token
+/// itself never leaves its snapshot.
+fn credential_age(snapshot: Option<&TokenSnapshot>) -> Option<GitCredentials> {
+    let snapshot = snapshot?;
+    let credentials = GitCredentials::new(GITHUB_TOKEN_USERNAME, "");
+    Some(match snapshot.minted_at() {
+        Some(minted_at) => credentials.minted_at(SystemTime::from(minted_at)),
+        None => credentials,
+    })
+}
+
+/// The driver's failure for a rendered git message, so git that ran
+/// outside a sandbox (the host-side repository probe) is classified the
+/// same way as git the driver ran.
+fn classified_git_failure(operation: &str, message: &str) -> sandbox_driver::Error {
+    sandbox_driver::Error::Git(GitFailure::classified(
+        operation,
+        GitFailureKind::from_message(message),
+        None,
+    ))
+}
+
+/// Runs a host-side git operation that reports failures as rendered
+/// messages under `policy`, retrying while the driver's decision says the
+/// message is transient for the token behind `snapshot`. The final failure
+/// comes back as the operation's own message.
+async fn retry_git_messages<F, Fut>(
+    policy: &GitRetryPolicy,
+    snapshot: Option<&TokenSnapshot>,
+    operation: &str,
+    mut run: F,
+) -> std::result::Result<(), String>
+where
+    F: FnMut() -> Fut,
+    Fut: Future<Output = std::result::Result<(), String>>,
+{
+    let credentials = credential_age(snapshot);
+    // The operation's own message is kept beside the classified failure the
+    // driver decides on, so the caller reads the message it knows.
+    let last_message = Mutex::new(None);
+    let result = sandbox_driver::retry_git(
+        policy,
+        credentials.as_ref(),
+        operation,
+        |_attempt, _timeout| {
+            let attempt = run();
+            let last_message = &last_message;
+            async move {
+                attempt.await.map_err(|message| {
+                    let error = classified_git_failure(operation, &message);
+                    *last_message.lock().unwrap_or_else(PoisonError::into_inner) = Some(message);
+                    error
+                })
+            }
+        },
+    )
+    .await;
+    match result {
+        Ok(_) => Ok(()),
+        Err(failure) => Err(last_message
+            .into_inner()
+            .unwrap_or_else(PoisonError::into_inner)
+            .unwrap_or_else(|| failure.error.to_string())),
+    }
 }
 
 async fn run_probe_ls_remote(url: &str, token: &ResolvedToken) -> std::result::Result<(), String> {
@@ -1933,29 +1987,177 @@ provider = "local"
         );
     }
 
+    fn health(status: HealthStatus, message: Option<&str>) -> ProviderHealth {
+        let mut health = ProviderHealth::new(status);
+        health.message = message.map(str::to_string);
+        health
+    }
+
     #[test]
-    fn preflight_sandbox_spec_disables_docker_clone_but_preserves_clone_metadata() {
-        let (prepared, resolved) = prepared_and_resolved_for_sandbox(
+    fn a_healthy_or_uncheckable_provider_passes_the_sandbox_check() {
+        for status in [HealthStatus::Ok, HealthStatus::Unknown] {
+            let check =
+                sandbox_health_check(&SandboxProviderKind::DOCKER, Ok(health(status, None)));
+            assert_eq!(check.status, CheckStatus::Pass, "{status:?}");
+            assert_eq!(check.summary, "docker");
+            assert_eq!(check.details[0].text, "Provider: docker");
+            assert!(check.remediation.is_none());
+        }
+    }
+
+    #[test]
+    fn an_unreachable_backend_fails_the_sandbox_check_with_its_reason() {
+        let check = sandbox_health_check(
             &SandboxProviderKind::DOCKER,
-            true,
-            Some(git_context("https://github.com/acme/widgets", "main")),
+            Ok(health(
+                HealthStatus::Unreachable,
+                Some("connection refused on /var/run/docker.sock"),
+            )),
+        );
+        assert_eq!(check.status, CheckStatus::Error);
+        assert_eq!(check.summary, "failed");
+        assert_eq!(
+            check.remediation.as_deref(),
+            Some("docker backend is unreachable: connection refused on /var/run/docker.sock")
+        );
+    }
+
+    #[test]
+    fn a_rejected_credential_fails_the_sandbox_check_naming_the_missing_scopes() {
+        let mut unauthorized = health(HealthStatus::Unauthorized, Some("forbidden"));
+        unauthorized.missing_permissions = vec!["write:sandboxes".to_string()];
+        let check = sandbox_health_check(&SandboxProviderKind::DAYTONA, Ok(unauthorized));
+        assert_eq!(check.status, CheckStatus::Error);
+        assert_eq!(
+            check.remediation.as_deref(),
+            Some("daytona credential is missing required permissions: write:sandboxes")
         );
 
-        let spec = preflight_sandbox_spec(
-            &SandboxProviderKind::DOCKER,
+        let check = sandbox_health_check(
+            &SandboxProviderKind::DAYTONA,
+            Ok(health(HealthStatus::Unauthorized, Some("bad key"))),
+        );
+        assert_eq!(
+            check.remediation.as_deref(),
+            Some("daytona rejected the credential: bad key")
+        );
+    }
+
+    #[test]
+    fn a_provider_that_cannot_connect_fails_the_sandbox_check_with_the_connect_error() {
+        let check = sandbox_health_check(
+            &SandboxProviderKind::DAYTONA,
+            Err("Daytona sandboxes require DAYTONA_API_KEY in the vault".to_string()),
+        );
+        assert_eq!(check.status, CheckStatus::Error);
+        assert_eq!(
+            check.remediation.as_deref(),
+            Some("Daytona sandboxes require DAYTONA_API_KEY in the vault")
+        );
+    }
+
+    #[tokio::test]
+    async fn the_local_sandbox_check_passes_through_the_host_providers_health() {
+        let (prepared, resolved) =
+            prepared_and_resolved_for_sandbox(&SandboxProviderKind::LOCAL, false, None);
+        let mut checks = Vec::new();
+        let passed = run_sandbox_check(
+            &mut checks,
+            &SandboxProviderKind::LOCAL,
             &prepared,
             &resolved,
             &ProviderAccess::default(),
-        );
+        )
+        .await;
+        assert!(passed, "{checks:?}");
+        assert_eq!(checks[0].name, "Sandbox");
+        assert_eq!(checks[0].status, CheckStatus::Pass);
+    }
 
-        let spec = spec.expect("Docker preflight sandbox spec");
-        assert_eq!(spec.kind, SandboxProviderKind::DOCKER);
-        assert!(spec.clone.skip);
-        assert_eq!(
-            spec.clone.origin_url.as_deref(),
-            Some("https://github.com/acme/widgets")
+    #[tokio::test]
+    async fn the_daytona_sandbox_check_fails_without_a_vault_key() {
+        let (prepared, resolved) =
+            prepared_and_resolved_for_sandbox(&SandboxProviderKind::DAYTONA, false, None);
+        let mut checks = Vec::new();
+        let passed = run_sandbox_check(
+            &mut checks,
+            &SandboxProviderKind::DAYTONA,
+            &prepared,
+            &resolved,
+            &ProviderAccess::default(),
+        )
+        .await;
+        assert!(!passed);
+        assert_eq!(checks[0].status, CheckStatus::Error);
+        assert!(
+            checks[0]
+                .remediation
+                .as_deref()
+                .unwrap_or_default()
+                .contains("DAYTONA_API_KEY"),
+            "{checks:?}"
         );
-        assert_eq!(spec.clone.branch.as_deref(), Some("main"));
+    }
+
+    fn snapshot(age: Duration) -> TokenSnapshot {
+        let now = chrono::Utc::now();
+        TokenSnapshot {
+            generation: 1,
+            provenance: fabro_github::token_source::TokenProvenance::Minted {
+                minted_at:  now - chrono::Duration::from_std(age).unwrap(),
+                expires_at: now + chrono::Duration::hours(1),
+            },
+        }
+    }
+
+    fn static_snapshot() -> TokenSnapshot {
+        TokenSnapshot {
+            generation: 0,
+            provenance: fabro_github::token_source::TokenProvenance::Static,
+        }
+    }
+
+    #[test]
+    fn probe_backoff_paces_at_replication_intervals() {
+        let backoff = repository_probe_policy().backoff;
+        assert_eq!(backoff.delay_after(1), Duration::from_secs(3));
+        assert_eq!(backoff.delay_after(2), Duration::from_secs(9));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn host_side_retries_keep_the_operations_own_message() {
+        let calls = Mutex::new(0_u32);
+        let result = retry_git_messages(
+            &repository_probe_policy(),
+            Some(&snapshot(Duration::from_secs(1))),
+            "repository probe",
+            || {
+                let attempt = {
+                    let mut calls = calls.lock().unwrap();
+                    *calls += 1;
+                    *calls
+                };
+                async move {
+                    if attempt < 3 {
+                        Err(format!("remote: Repository not found. (attempt {attempt})"))
+                    } else {
+                        Ok(())
+                    }
+                }
+            },
+        )
+        .await;
+        assert_eq!(result, Ok(()));
+        assert_eq!(*calls.lock().unwrap(), 3);
+
+        let permanent = retry_git_messages(
+            &repository_probe_policy(),
+            Some(&static_snapshot()),
+            "repository probe",
+            || async { Err("remote: Repository not found.".to_owned()) },
+        )
+        .await;
+        assert_eq!(permanent, Err("remote: Repository not found.".to_owned()));
     }
 
     #[test]

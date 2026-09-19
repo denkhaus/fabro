@@ -727,7 +727,7 @@ async fn build_agent(
         AskFabroBuildError::SandboxUnavailable(anyhow::anyhow!("run sandbox was not created"))
     })?;
     let access = state
-        .provider_access()
+        .legacy_provider_access()
         .await
         .map_err(|err| AskFabroBuildError::Agent(anyhow::Error::new(err)))?;
     let sandbox = reconnect_for_run(sandbox_instance, &access, Some(run_id), None)
