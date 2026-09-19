@@ -20,8 +20,8 @@ use httpmock::MockServer;
 
 use super::support::{
     command_log_text, created_run_id, find_run_dir, local_dev_token, output_stderr, run_state,
-    run_stream_items, server_endpoint, server_target, wait_for_lifecycle, wait_for_status,
-    write_gated_workflow,
+    run_stream_items, server_endpoint, server_target, wait_for_lifecycle, wait_for_run_finished,
+    wait_for_status, write_gated_workflow,
 };
 use crate::support::{issue_test_worker_jwt, seed_dev_token_auth, unique_run_id};
 
@@ -849,12 +849,22 @@ fn detached_run_cancel_reaches_worker_over_control_websocket() {
             .await;
         });
 
-    wait_for_status(&run_dir, &["failed"]);
+    // The projection concludes the run from Petri's `run.finished` record
+    // before the worker stores the platform's terminal `run.lifecycle`
+    // record, so wait for that record rather than for the status.
+    wait_for_run_finished(&run_dir);
     let events = stored_worker_events(&run_dir);
     assert!(
         events
             .iter()
-            .any(|item| is_lifecycle(item, "failed", "cancelled"))
+            .any(|item| is_lifecycle(item, "failed", "cancelled")),
+        "no failed/cancelled lifecycle record\nstored events:\n{}\nrun state:\n{}",
+        events
+            .iter()
+            .map(|item| serde_json::to_string(&item.item).unwrap_or_default())
+            .collect::<Vec<_>>()
+            .join("\n"),
+        serde_json::to_string_pretty(&run_state(&run_dir)).unwrap_or_default()
     );
 }
 
