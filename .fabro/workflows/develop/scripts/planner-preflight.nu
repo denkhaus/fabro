@@ -73,6 +73,11 @@
 #     exclusion — in-flight-claims below maps recent unmerged develop
 #     run branches to claimed seed ids via the stage-journal fallback
 #     and reports them per-candidate as in_flight/in_flight_run.
+#     fabro-32db (2026-09-19): a claim is in flight ONLY while its run
+#     is NON-TERMINAL — provably-terminal branches (tip subject
+#     `closeout`, squash `(#n)`, or `(failed)` older than the retry
+#     grace window; terminal-tip? below) are excluded, so an orphaned
+#     terminal-run claim never blocks candidate selection.
 #   RETIRED with fabro-83df (2026-09-19): the former live-close arm
 #     (fabro-ead4 note+close for every unambiguous duplicate) and the
 #     report-only/live route split — report-only is the only mode now.
@@ -88,10 +93,47 @@
 # (dead) seeds surface mechanically in the verdict table below.
 source anchor_check.nu
 
+# Run terminality, tip-subject form (fabro-32db): the shared definition
+# is "a seed claim is in flight ONLY while its run is non-terminal".
+# Git-only terminality proof is the run branch's TIP COMMIT SUBJECT —
+# every stage completion lands as `fabro(<run>): <node> (<status>)`, so:
+#   - tip node `closeout` (the develop graph's terminal node, any
+#     status) -> the run completed its graph: TERMINAL;
+#   - tip subject ending `(#n)` -> the PR squash-merged: TERMINAL;
+#   - tip status `failed` -> terminal ONLY past a retry-grace window:
+#     the engine retries/bounces failed stages within minutes (observed
+#     `evidence (failed)` then `tester (succeeded)` in run
+#     01M2RJSBP8XSPCKTEACR7E1PYP), so a FRESH failed tip may still move;
+#   - anything else (intermediate `(succeeded)` tip, unparseable
+#     subject, git log failure) -> NOT provably terminal, stays
+#     in-flight — fail-open direction preserved (advisory, never
+#     blocks). NOTE: the journal-last-record form of the hypothesis is
+#     FALSE for failed runs (a failed run's journal ends mid-flight
+#     with no closeout record — run 01M2WAY0KH's journal stops at
+#     `evidence`); the tip subject carries the status the journal drops.
+const TERMINAL_GRACE_MIN_DEFAULT = 60
+
+def terminal-tip? [run: string, subject: string, age_sec: int, grace_min: float]: nothing -> bool {
+    let s = ($subject | str trim)
+    # starts/ends-with over interpolated regexes: nu's $'...' treats
+    # every bare (...) as interpolation, so paren-heavy regex cannot be
+    # interpolated safely — prefix/suffix matching needs no escapes.
+    if ($s | str starts-with $"fabro\(($run)\): closeout ") { return true }
+    if ($s =~ '\(#\d+\)$') { return true }
+    if ($s | str starts-with $"fabro\(($run)\): ") and ($s | str ends-with " (failed)") {
+        return ($age_sec > ($grace_min * 60))
+    }
+    false
+}
+
 # In-flight run/PR exclusion (fabro-9ec3 arm 2; complements engine-side
 # fabro-9372 and the planner prompt's fabro_runs_list guard): a seed id
-# claimed by a RECENT, UNMERGED develop run branch is in flight — the
-# ~15-min claim-to-PR window plus the open-PR lifetime. Credential-less:
+# claimed by a RECENT, UNMERGED, NON-TERMINAL develop run branch is in
+# flight — the ~15-min claim-to-PR window plus the open-PR lifetime.
+# Terminal-run branches (fabro-32db) are excluded: their claims are
+# orphaned, not in flight — a requeued seed must not stay marked
+# in-flight forever by the dead run's unmerged branch (the af22
+# deadlock: guard requeues at 6h, preflight re-marks, planner re-skips). Credential-less:
 # derives the remote from --base (same as dup-run-check), fetches
 # refs/heads/fabro/run/* once into a scratch namespace, keeps branches
 # committed within the last 14 days (newest first, max 12), drops
@@ -129,11 +171,17 @@ def in-flight-claims [remote: string, base: string, self_id: string] {
     let recent = ($rows | each {|r| $r | update ts ($r.ts | into int)}
         | where {|r| ($now - $r.ts) < 1209600}
         | first 12)
+    let grace_min = ($env.FABRO_PREFLIGHT_TERMINAL_GRACE_MIN? | default $TERMINAL_GRACE_MIN_DEFAULT | into float)
     mut claims = []
     for r in $recent {
         if $self_id != null and $r.run == $self_id { continue }
         let merged = (do { ^git merge-base --is-ancestor $r.sha $base } | complete)
         if $merged.exit_code == 0 { continue }
+        # Terminal-run exclusion (fabro-32db): a provably-terminal
+        # branch's claims are orphaned, not in flight. Fail-open: a git
+        # log failure leaves the branch treated as in-flight (advisory).
+        let tip = (do { ^git log -1 --format=%s $r.sha } | complete)
+        if $tip.exit_code == 0 and (terminal-tip? $r.run $tip.stdout ($now - $r.ts) $grace_min) { continue }
         for seed in (journal-claims $r.sha $r.run) {
             $claims = ($claims | append {seed: $seed, run: $r.run})
         }
