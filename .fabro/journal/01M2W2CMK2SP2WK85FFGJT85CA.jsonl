@@ -4,3 +4,4 @@
 {"$schema":"fabro-journal-v1","run_id":"01M2W2CMK2SP2WK85FFGJT85CA","node":"claim_check","visit":1,"status":"succeeded","ts":"2026-09-19T05:34:41Z","data":{}}
 {"$schema":"fabro-journal-v1","run_id":"01M2W2CMK2SP2WK85FFGJT85CA","node":"implementer","visit":1,"status":"succeeded","ts":"2026-09-19T05:37:00Z","data":{"painpoints":[],"observations":["Fixture gotcha: re-planting a dated review with echo resets its mtime to now, so the first case-2 run silently tested the current-time fallback instead of the `-2` collision path — fixture tests of mtime-derived naming must `touch -d` the timestamp explicitly (recorded in mx-76bb49)."]}}
 {"$schema":"fabro-journal-v1","run_id":"01M2W2CMK2SP2WK85FFGJT85CA","node":"tester","visit":1,"status":"succeeded","ts":"2026-09-19T05:37:10Z","data":{}}
+{"$schema":"fabro-journal-v1","run_id":"01M2W2CMK2SP2WK85FFGJT85CA","node":"evidence","visit":1,"status":"succeeded","ts":"2026-09-19T05:37:13Z","data":{}}
