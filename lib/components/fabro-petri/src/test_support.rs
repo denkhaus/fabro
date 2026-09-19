@@ -6,6 +6,7 @@
 
 use std::collections::HashMap;
 use std::sync::{Mutex, MutexGuard, PoisonError};
+use std::time::Duration;
 
 use async_trait::async_trait;
 use bytes::Bytes;
@@ -16,6 +17,20 @@ pub use petri_testkit::run_store;
 
 use crate::blobs::Blobs;
 use crate::platform_records::{PlatformRecordError, PlatformRecords};
+use crate::projector::Projector;
+
+/// Whether the projector keeps a cache for the run: the replay and the
+/// view its passes continue from.
+#[must_use]
+pub fn cache_held(projector: &Projector, run_id: RunId) -> bool {
+    projector.caches.holds(run_id)
+}
+
+/// Drop the projector's caches not used for `idle`, as its passes do
+/// after the documented idle period; how many were dropped.
+pub fn drop_idle_caches(projector: &Projector, idle: Duration) -> usize {
+    projector.caches.sweep(idle)
+}
 
 /// A blob table in memory.
 #[derive(Debug, Default)]

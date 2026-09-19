@@ -3,7 +3,9 @@
 //! missed its wake-ups catches up on the next signal; a crash between the
 //! record commit and the view transaction is recovered by applying only the
 //! missing suffix; two projectors over one store agree over nested child
-//! executions; and a torn tail holds the view where it stands.
+//! executions; a torn tail holds the view where it stands; and a pass over
+//! a live run costs its new records, with the cache that makes it so
+//! dropped at a restart, after the idle period and at the run's finish.
 //!
 //! Every run here takes its scope's environment through the sandbox-driver
 //! host plugin, so the tests skip, and say why, when the executable is not
@@ -25,13 +27,13 @@ use std::time::{Duration, Instant};
 
 use fabro_db::DbPool;
 use fabro_interview::ControlInterviewer;
-use fabro_petri::SqliteRunStore;
 use fabro_petri::blobs::{Blobs, RunBlobs};
 use fabro_petri::check::Launch;
 use fabro_petri::engine::{self, RunStatus as EngineRunStatus};
 use fabro_petri::interview::{Approval, FabroInterviewer};
 use fabro_petri::projector::{self, Projector};
 use fabro_petri::runtime::RuntimeSpec;
+use fabro_petri::{SqliteRunStore, test_support as petri_support};
 use fabro_store::platform_records::{
     PlatformRecord, PlatformRecordStore, RunCreatedRecord, RunLifecycleKind, RunLifecycleRecord,
 };
@@ -966,6 +968,181 @@ async fn a_torn_tail_holds_the_view_and_reports_the_run_incomplete() {
         json(&after),
         "the projection stands where it was"
     );
+}
+
+/// The run's records the projection reads (the coordinator log and the
+/// execution logs; the sandbox ledger has no events) in the order they
+/// were recorded: by `recorded_at`, the coordinator log first on a tie,
+/// each log's own order kept. The ledger's records are copied to `staged`
+/// first, since they are no part of any batch.
+async fn in_recorded_order<'a>(
+    rows: &'a [(String, i64, i64, String)],
+    staged: &DbPool,
+    run_id: RunId,
+) -> Vec<&'a (String, i64, i64, String)> {
+    let (ledger, projected): (Vec<_>, Vec<_>) = rows.iter().partition(|row| row.0 == "resources");
+    for row in ledger {
+        insert_petri_row(staged, run_id, row).await;
+    }
+    let mut ordered = projected;
+    ordered.sort_by_key(|row| (row.2, row.0 != "coordinator", row.0.clone(), row.1));
+    ordered
+}
+
+/// One committed pass over the run, run again while a platform record
+/// contends it.
+async fn committed_pass(projector: &Projector, run_id: RunId) -> projector::PassReport {
+    loop {
+        let report = projector
+            .project_run(run_id)
+            .await
+            .expect("the pass commits");
+        if !report.contended {
+            return report;
+        }
+    }
+}
+
+/// The records land in batches and a pass follows each: every pass feeds
+/// only its batch through Petri's derivation, never the run so far, and
+/// the view the batches build is the rebuild. The finished run's cache is
+/// dropped, and a pass over it is skipped.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_pass_over_a_live_run_costs_its_new_records_not_the_run() {
+    const BATCH: usize = 7;
+    if host_plugin().is_none() {
+        return;
+    }
+    let scenario = parallel_scenario().await;
+    run_unobserved(&scenario).await;
+    let rows = petri_rows(&scenario.pool, scenario.run_id).await;
+    let staged = copy_run_without_records(&scenario.pool, scenario.run_id).await;
+    let ordered = in_recorded_order(&rows, &staged, scenario.run_id).await;
+    assert!(
+        ordered.len() > 4 * BATCH,
+        "enough records for several batches: {}",
+        ordered.len()
+    );
+    let projector = Projector::new(staged.clone(), staged.clone());
+    let mut replayed = Vec::new();
+    for batch in ordered.chunks(BATCH) {
+        for row in batch {
+            insert_petri_row(&staged, scenario.run_id, row).await;
+        }
+        let report = committed_pass(&projector, scenario.run_id).await;
+        assert!(!report.skipped, "a batch is folded: {report:?}");
+        assert!(
+            report.replayed_records <= batch.len(),
+            "pass {}: {} records replayed for a batch of {}",
+            replayed.len(),
+            report.replayed_records,
+            batch.len()
+        );
+        replayed.push(report.replayed_records);
+    }
+    assert_eq!(
+        replayed.iter().sum::<usize>(),
+        ordered.len(),
+        "every record was fed once: {replayed:?}"
+    );
+    assert_view_equals_rebuild(&staged, scenario.run_id).await;
+    assert!(
+        !petri_support::cache_held(&projector, scenario.run_id),
+        "a finished run's cache is dropped"
+    );
+    let again = committed_pass(&projector, scenario.run_id).await;
+    assert!(again.skipped, "nothing is left to fold: {again:?}");
+    assert!(again.health.complete, "{:?}", again.health.incomplete);
+}
+
+/// The cache is dropped with the process and after the idle period, and
+/// rebuilt by one full replay: the first pass over new records after
+/// either feeds the run so far through Petri's derivation, the next only
+/// its new records. Nothing is checkpointed for it, and the view it
+/// continues is the rebuild.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_restart_and_the_idle_period_drop_the_cache_and_one_full_replay_rebuilds_it() {
+    const BATCH: usize = 5;
+    if host_plugin().is_none() {
+        return;
+    }
+    let scenario = parallel_scenario().await;
+    run_unobserved(&scenario).await;
+    let rows = petri_rows(&scenario.pool, scenario.run_id).await;
+    let staged = copy_run_without_records(&scenario.pool, scenario.run_id).await;
+    let ordered = in_recorded_order(&rows, &staged, scenario.run_id).await;
+    let half = ordered.len() / 2;
+    assert!(half > 3 * BATCH, "enough records: {}", ordered.len());
+    let mut fed = 0;
+    let mut feed = |count: usize| {
+        let rows: Vec<_> = ordered[fed..(fed + count).min(ordered.len())].to_vec();
+        fed += rows.len();
+        rows
+    };
+
+    for row in feed(half) {
+        insert_petri_row(&staged, scenario.run_id, row).await;
+    }
+    let before = Projector::new(staged.clone(), staged.clone());
+    let first = committed_pass(&before, scenario.run_id).await;
+    assert_eq!(
+        first.replayed_records, half,
+        "the first pass replays the run so far"
+    );
+    assert!(!first.health.complete, "the run has not finished");
+    assert!(
+        petri_support::cache_held(&before, scenario.run_id),
+        "a live run's cache is kept"
+    );
+    drop(before);
+
+    // A restarted server builds a new projector: no cache, and the next
+    // pass replays the run whole once.
+    let after = Projector::new(staged.clone(), staged.clone());
+    assert!(
+        !petri_support::cache_held(&after, scenario.run_id),
+        "a restart holds no cache"
+    );
+    for row in feed(BATCH) {
+        insert_petri_row(&staged, scenario.run_id, row).await;
+    }
+    let rebuilt = committed_pass(&after, scenario.run_id).await;
+    assert_eq!(
+        rebuilt.replayed_records,
+        half + BATCH,
+        "the first pass after a restart replays the run so far"
+    );
+    assert!(petri_support::cache_held(&after, scenario.run_id));
+    for row in feed(BATCH) {
+        insert_petri_row(&staged, scenario.run_id, row).await;
+    }
+    let live = committed_pass(&after, scenario.run_id).await;
+    assert_eq!(
+        live.replayed_records, BATCH,
+        "the next pass replays its batch"
+    );
+
+    // The idle period passes: the cache is dropped, and rebuilt the same way.
+    assert_eq!(
+        petri_support::drop_idle_caches(&after, Duration::ZERO),
+        1,
+        "the run's cache was idle"
+    );
+    assert!(!petri_support::cache_held(&after, scenario.run_id));
+    for row in feed(BATCH) {
+        insert_petri_row(&staged, scenario.run_id, row).await;
+    }
+    let idle = committed_pass(&after, scenario.run_id).await;
+    assert_eq!(idle.replayed_records, half + 3 * BATCH);
+    let rest = feed(ordered.len());
+    let rest_len = rest.len();
+    for row in rest {
+        insert_petri_row(&staged, scenario.run_id, row).await;
+    }
+    let last = committed_pass(&after, scenario.run_id).await;
+    assert_eq!(last.replayed_records, rest_len);
+    assert!(last.health.complete, "{:?}", last.health.incomplete);
+    assert_view_equals_rebuild(&staged, scenario.run_id).await;
 }
 
 /// A gate scenario runs through the engine assembly with the interview
