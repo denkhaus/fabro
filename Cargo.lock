@@ -2006,7 +2006,7 @@ dependencies = [
  "progenitor-client",
  "regress",
  "reqwest 0.13.4",
- "sandbox-driver 0.1.0 (git+https://github.com/lithoscomputer/sandbox-driver?rev=07600aa5c6695ec4c999da93c05d2cb78fe11b0c)",
+ "sandbox-driver",
  "serde",
  "serde_json",
  "serde_yaml",
@@ -2145,7 +2145,7 @@ dependencies = [
  "ring",
  "rmcp",
  "rustls",
- "sandbox-driver 0.1.0 (git+https://github.com/lithoscomputer/sandbox-driver?rev=07600aa5c6695ec4c999da93c05d2cb78fe11b0c)",
+ "sandbox-driver",
  "sandbox-driver-host",
  "scopeguard",
  "semver",
@@ -2523,7 +2523,7 @@ dependencies = [
  "fabro-types",
  "fabro-util",
  "pebble-coding-agent",
- "sandbox-driver 0.1.0 (git+https://github.com/lithoscomputer/sandbox-driver?rev=07600aa5c6695ec4c999da93c05d2cb78fe11b0c)",
+ "sandbox-driver",
  "sandbox-driver-host",
  "sandbox-driver-testing",
  "serde_json",
@@ -2674,11 +2674,11 @@ dependencies = [
  "percent-encoding",
  "rand 0.9.4",
  "reqwest 0.12.28",
- "sandbox-driver 0.1.0 (git+https://github.com/lithoscomputer/sandbox-driver?rev=07600aa5c6695ec4c999da93c05d2cb78fe11b0c)",
+ "sandbox-driver",
  "sandbox-driver-daytona",
  "sandbox-driver-docker",
  "sandbox-driver-host",
- "sandbox-driver-protocol 0.1.0 (git+https://github.com/lithoscomputer/sandbox-driver?rev=07600aa5c6695ec4c999da93c05d2cb78fe11b0c)",
+ "sandbox-driver-protocol",
  "sandbox-driver-testing",
  "serde",
  "serde_json",
@@ -2880,7 +2880,7 @@ dependencies = [
  "hex",
  "lithos-llm",
  "pebble-coding-agent",
- "sandbox-driver 0.1.0 (git+https://github.com/lithoscomputer/sandbox-driver?rev=07600aa5c6695ec4c999da93c05d2cb78fe11b0c)",
+ "sandbox-driver",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -2987,7 +2987,7 @@ dependencies = [
  "httpmock",
  "lithos-llm",
  "pebble-coding-agent",
- "sandbox-driver 0.1.0 (git+https://github.com/lithoscomputer/sandbox-driver?rev=07600aa5c6695ec4c999da93c05d2cb78fe11b0c)",
+ "sandbox-driver",
  "sandbox-driver-host",
  "scopeguard",
  "serde",
@@ -5177,7 +5177,7 @@ checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
 [[package]]
 name = "petri-attractor-steps"
 version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/petri.git?rev=13e1044e9796101f2a97b4dd2f2ee81e96941939#13e1044e9796101f2a97b4dd2f2ee81e96941939"
+source = "git+https://github.com/lithoscomputer/petri.git?rev=12e8a176d0d93eb7d78c1807d923d35941ffceaf#12e8a176d0d93eb7d78c1807d923d35941ffceaf"
 dependencies = [
  "async-trait",
  "globset",
@@ -5208,7 +5208,7 @@ dependencies = [
 [[package]]
 name = "petri-driver"
 version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/petri.git?rev=13e1044e9796101f2a97b4dd2f2ee81e96941939#13e1044e9796101f2a97b4dd2f2ee81e96941939"
+source = "git+https://github.com/lithoscomputer/petri.git?rev=12e8a176d0d93eb7d78c1807d923d35941ffceaf#12e8a176d0d93eb7d78c1807d923d35941ffceaf"
 dependencies = [
  "async-trait",
  "getrandom 0.3.4",
@@ -5228,7 +5228,7 @@ dependencies = [
 [[package]]
 name = "petri-engine"
 version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/petri.git?rev=13e1044e9796101f2a97b4dd2f2ee81e96941939#13e1044e9796101f2a97b4dd2f2ee81e96941939"
+source = "git+https://github.com/lithoscomputer/petri.git?rev=12e8a176d0d93eb7d78c1807d923d35941ffceaf#12e8a176d0d93eb7d78c1807d923d35941ffceaf"
 dependencies = [
  "petri-ir",
  "serde",
@@ -5240,7 +5240,7 @@ dependencies = [
 [[package]]
 name = "petri-execution"
 version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/petri.git?rev=13e1044e9796101f2a97b4dd2f2ee81e96941939#13e1044e9796101f2a97b4dd2f2ee81e96941939"
+source = "git+https://github.com/lithoscomputer/petri.git?rev=12e8a176d0d93eb7d78c1807d923d35941ffceaf#12e8a176d0d93eb7d78c1807d923d35941ffceaf"
 dependencies = [
  "async-trait",
  "petri-driver",
@@ -5264,7 +5264,7 @@ dependencies = [
 [[package]]
 name = "petri-executor"
 version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/petri.git?rev=13e1044e9796101f2a97b4dd2f2ee81e96941939#13e1044e9796101f2a97b4dd2f2ee81e96941939"
+source = "git+https://github.com/lithoscomputer/petri.git?rev=12e8a176d0d93eb7d78c1807d923d35941ffceaf#12e8a176d0d93eb7d78c1807d923d35941ffceaf"
 dependencies = [
  "async-trait",
  "libc",
@@ -5279,15 +5279,15 @@ dependencies = [
 [[package]]
 name = "petri-executor-sandbox"
 version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/petri.git?rev=13e1044e9796101f2a97b4dd2f2ee81e96941939#13e1044e9796101f2a97b4dd2f2ee81e96941939"
+source = "git+https://github.com/lithoscomputer/petri.git?rev=12e8a176d0d93eb7d78c1807d923d35941ffceaf#12e8a176d0d93eb7d78c1807d923d35941ffceaf"
 dependencies = [
  "async-trait",
  "petri-executor",
  "petri-ir",
- "sandbox-driver 0.1.0 (git+https://github.com/lithoscomputer/sandbox-driver.git?rev=64c14b89d078a4b34d1555092ad01d41541f7a7d)",
- "sandbox-driver-daytona-config 0.1.0 (git+https://github.com/lithoscomputer/sandbox-driver.git?rev=64c14b89d078a4b34d1555092ad01d41541f7a7d)",
- "sandbox-driver-docker-config 0.1.0 (git+https://github.com/lithoscomputer/sandbox-driver.git?rev=64c14b89d078a4b34d1555092ad01d41541f7a7d)",
- "sandbox-driver-protocol 0.1.0 (git+https://github.com/lithoscomputer/sandbox-driver.git?rev=64c14b89d078a4b34d1555092ad01d41541f7a7d)",
+ "sandbox-driver",
+ "sandbox-driver-daytona-config",
+ "sandbox-driver-docker-config",
+ "sandbox-driver-protocol",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -5301,7 +5301,7 @@ dependencies = [
 [[package]]
 name = "petri-frontend"
 version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/petri.git?rev=13e1044e9796101f2a97b4dd2f2ee81e96941939#13e1044e9796101f2a97b4dd2f2ee81e96941939"
+source = "git+https://github.com/lithoscomputer/petri.git?rev=12e8a176d0d93eb7d78c1807d923d35941ffceaf#12e8a176d0d93eb7d78c1807d923d35941ffceaf"
 dependencies = [
  "marked-yaml",
  "petri-ir",
@@ -5315,7 +5315,7 @@ dependencies = [
 [[package]]
 name = "petri-frontend-attractor"
 version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/petri.git?rev=13e1044e9796101f2a97b4dd2f2ee81e96941939#13e1044e9796101f2a97b4dd2f2ee81e96941939"
+source = "git+https://github.com/lithoscomputer/petri.git?rev=12e8a176d0d93eb7d78c1807d923d35941ffceaf#12e8a176d0d93eb7d78c1807d923d35941ffceaf"
 dependencies = [
  "minijinja",
  "petri-frontend",
@@ -5332,7 +5332,7 @@ dependencies = [
 [[package]]
 name = "petri-frontend-fabro"
 version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/petri.git?rev=13e1044e9796101f2a97b4dd2f2ee81e96941939#13e1044e9796101f2a97b4dd2f2ee81e96941939"
+source = "git+https://github.com/lithoscomputer/petri.git?rev=12e8a176d0d93eb7d78c1807d923d35941ffceaf#12e8a176d0d93eb7d78c1807d923d35941ffceaf"
 dependencies = [
  "petri-frontend",
  "petri-frontend-attractor",
@@ -5348,7 +5348,7 @@ dependencies = [
 [[package]]
 name = "petri-frontend-native"
 version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/petri.git?rev=13e1044e9796101f2a97b4dd2f2ee81e96941939#13e1044e9796101f2a97b4dd2f2ee81e96941939"
+source = "git+https://github.com/lithoscomputer/petri.git?rev=12e8a176d0d93eb7d78c1807d923d35941ffceaf#12e8a176d0d93eb7d78c1807d923d35941ffceaf"
 dependencies = [
  "petri-frontend",
  "petri-ir",
@@ -5359,7 +5359,7 @@ dependencies = [
 [[package]]
 name = "petri-ir"
 version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/petri.git?rev=13e1044e9796101f2a97b4dd2f2ee81e96941939#13e1044e9796101f2a97b4dd2f2ee81e96941939"
+source = "git+https://github.com/lithoscomputer/petri.git?rev=12e8a176d0d93eb7d78c1807d923d35941ffceaf#12e8a176d0d93eb7d78c1807d923d35941ffceaf"
 dependencies = [
  "regex",
  "serde",
@@ -5372,7 +5372,7 @@ dependencies = [
 [[package]]
 name = "petri-runtime"
 version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/petri.git?rev=13e1044e9796101f2a97b4dd2f2ee81e96941939#13e1044e9796101f2a97b4dd2f2ee81e96941939"
+source = "git+https://github.com/lithoscomputer/petri.git?rev=12e8a176d0d93eb7d78c1807d923d35941ffceaf#12e8a176d0d93eb7d78c1807d923d35941ffceaf"
 dependencies = [
  "async-trait",
  "petri-driver",
@@ -5393,7 +5393,7 @@ dependencies = [
 [[package]]
 name = "petri-steps"
 version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/petri.git?rev=13e1044e9796101f2a97b4dd2f2ee81e96941939#13e1044e9796101f2a97b4dd2f2ee81e96941939"
+source = "git+https://github.com/lithoscomputer/petri.git?rev=12e8a176d0d93eb7d78c1807d923d35941ffceaf#12e8a176d0d93eb7d78c1807d923d35941ffceaf"
 dependencies = [
  "async-trait",
  "petri-executor",
@@ -5409,7 +5409,7 @@ dependencies = [
 [[package]]
 name = "petri-store"
 version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/petri.git?rev=13e1044e9796101f2a97b4dd2f2ee81e96941939#13e1044e9796101f2a97b4dd2f2ee81e96941939"
+source = "git+https://github.com/lithoscomputer/petri.git?rev=12e8a176d0d93eb7d78c1807d923d35941ffceaf#12e8a176d0d93eb7d78c1807d923d35941ffceaf"
 dependencies = [
  "async-trait",
  "getrandom 0.3.4",
@@ -5424,7 +5424,7 @@ dependencies = [
 [[package]]
 name = "petri-testkit"
 version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/petri.git?rev=13e1044e9796101f2a97b4dd2f2ee81e96941939#13e1044e9796101f2a97b4dd2f2ee81e96941939"
+source = "git+https://github.com/lithoscomputer/petri.git?rev=12e8a176d0d93eb7d78c1807d923d35941ffceaf#12e8a176d0d93eb7d78c1807d923d35941ffceaf"
 dependencies = [
  "async-trait",
  "petri-driver",
@@ -5434,7 +5434,7 @@ dependencies = [
  "petri-ir",
  "petri-steps",
  "petri-store",
- "sandbox-driver 0.1.0 (git+https://github.com/lithoscomputer/sandbox-driver.git?rev=64c14b89d078a4b34d1555092ad01d41541f7a7d)",
+ "sandbox-driver",
  "serde",
  "serde_json",
  "smol_str",
@@ -6318,23 +6318,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "sandbox-driver"
-version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/sandbox-driver.git?rev=64c14b89d078a4b34d1555092ad01d41541f7a7d#64c14b89d078a4b34d1555092ad01d41541f7a7d"
-dependencies = [
- "async-trait",
- "globset",
- "humantime",
- "rand 0.10.1",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "tokio",
- "tokio-util",
- "tracing",
-]
-
-[[package]]
 name = "sandbox-driver-daytona"
 version = "0.1.0"
 source = "git+https://github.com/lithoscomputer/sandbox-driver?rev=07600aa5c6695ec4c999da93c05d2cb78fe11b0c#07600aa5c6695ec4c999da93c05d2cb78fe11b0c"
@@ -6347,11 +6330,11 @@ dependencies = [
  "hmac 0.12.1",
  "rand 0.10.1",
  "reqwest 0.13.4",
- "sandbox-driver 0.1.0 (git+https://github.com/lithoscomputer/sandbox-driver?rev=07600aa5c6695ec4c999da93c05d2cb78fe11b0c)",
- "sandbox-driver-daytona-config 0.1.0 (git+https://github.com/lithoscomputer/sandbox-driver?rev=07600aa5c6695ec4c999da93c05d2cb78fe11b0c)",
+ "sandbox-driver",
+ "sandbox-driver-daytona-config",
  "sandbox-driver-docker",
- "sandbox-driver-docker-config 0.1.0 (git+https://github.com/lithoscomputer/sandbox-driver?rev=07600aa5c6695ec4c999da93c05d2cb78fe11b0c)",
- "sandbox-driver-protocol 0.1.0 (git+https://github.com/lithoscomputer/sandbox-driver?rev=07600aa5c6695ec4c999da93c05d2cb78fe11b0c)",
+ "sandbox-driver-docker-config",
+ "sandbox-driver-protocol",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -6366,17 +6349,7 @@ name = "sandbox-driver-daytona-config"
 version = "0.1.0"
 source = "git+https://github.com/lithoscomputer/sandbox-driver?rev=07600aa5c6695ec4c999da93c05d2cb78fe11b0c#07600aa5c6695ec4c999da93c05d2cb78fe11b0c"
 dependencies = [
- "sandbox-driver-docker-config 0.1.0 (git+https://github.com/lithoscomputer/sandbox-driver?rev=07600aa5c6695ec4c999da93c05d2cb78fe11b0c)",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "sandbox-driver-daytona-config"
-version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/sandbox-driver.git?rev=64c14b89d078a4b34d1555092ad01d41541f7a7d#64c14b89d078a4b34d1555092ad01d41541f7a7d"
-dependencies = [
- "sandbox-driver-docker-config 0.1.0 (git+https://github.com/lithoscomputer/sandbox-driver.git?rev=64c14b89d078a4b34d1555092ad01d41541f7a7d)",
+ "sandbox-driver-docker-config",
  "serde",
  "serde_json",
 ]
@@ -6390,9 +6363,9 @@ dependencies = [
  "async-trait",
  "bollard",
  "futures-util",
- "sandbox-driver 0.1.0 (git+https://github.com/lithoscomputer/sandbox-driver?rev=07600aa5c6695ec4c999da93c05d2cb78fe11b0c)",
- "sandbox-driver-docker-config 0.1.0 (git+https://github.com/lithoscomputer/sandbox-driver?rev=07600aa5c6695ec4c999da93c05d2cb78fe11b0c)",
- "sandbox-driver-protocol 0.1.0 (git+https://github.com/lithoscomputer/sandbox-driver?rev=07600aa5c6695ec4c999da93c05d2cb78fe11b0c)",
+ "sandbox-driver",
+ "sandbox-driver-docker-config",
+ "sandbox-driver-protocol",
  "serde",
  "serde_json",
  "tar",
@@ -6412,15 +6385,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "sandbox-driver-docker-config"
-version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/sandbox-driver.git?rev=64c14b89d078a4b34d1555092ad01d41541f7a7d#64c14b89d078a4b34d1555092ad01d41541f7a7d"
-dependencies = [
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "sandbox-driver-host"
 version = "0.1.0"
 source = "git+https://github.com/lithoscomputer/sandbox-driver?rev=07600aa5c6695ec4c999da93c05d2cb78fe11b0c#07600aa5c6695ec4c999da93c05d2cb78fe11b0c"
@@ -6428,8 +6392,8 @@ dependencies = [
  "anyhow",
  "async-trait",
  "nix 0.30.1",
- "sandbox-driver 0.1.0 (git+https://github.com/lithoscomputer/sandbox-driver?rev=07600aa5c6695ec4c999da93c05d2cb78fe11b0c)",
- "sandbox-driver-protocol 0.1.0 (git+https://github.com/lithoscomputer/sandbox-driver?rev=07600aa5c6695ec4c999da93c05d2cb78fe11b0c)",
+ "sandbox-driver",
+ "sandbox-driver-protocol",
  "serde",
  "serde_json",
  "tokio",
@@ -6446,24 +6410,7 @@ dependencies = [
  "async-trait",
  "base64",
  "rand 0.10.1",
- "sandbox-driver 0.1.0 (git+https://github.com/lithoscomputer/sandbox-driver?rev=07600aa5c6695ec4c999da93c05d2cb78fe11b0c)",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "tokio",
- "tokio-util",
- "tracing",
-]
-
-[[package]]
-name = "sandbox-driver-protocol"
-version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/sandbox-driver.git?rev=64c14b89d078a4b34d1555092ad01d41541f7a7d#64c14b89d078a4b34d1555092ad01d41541f7a7d"
-dependencies = [
- "async-trait",
- "base64",
- "rand 0.10.1",
- "sandbox-driver 0.1.0 (git+https://github.com/lithoscomputer/sandbox-driver.git?rev=64c14b89d078a4b34d1555092ad01d41541f7a7d)",
+ "sandbox-driver",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -6478,7 +6425,7 @@ version = "0.1.0"
 source = "git+https://github.com/lithoscomputer/sandbox-driver?rev=07600aa5c6695ec4c999da93c05d2cb78fe11b0c#07600aa5c6695ec4c999da93c05d2cb78fe11b0c"
 dependencies = [
  "async-trait",
- "sandbox-driver 0.1.0 (git+https://github.com/lithoscomputer/sandbox-driver?rev=07600aa5c6695ec4c999da93c05d2cb78fe11b0c)",
+ "sandbox-driver",
  "tokio",
 ]
 
