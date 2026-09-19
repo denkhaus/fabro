@@ -21,7 +21,7 @@ Tracker mechanics (sd is installed and authoritative):
 
 ## Rust work — read the vendored style guide FIRST (hard gate)
 
-When the seed touches Rust (any `*.rs`, `Cargo.toml`, or a crate under `lib/`): your FIRST action after reading the brief is to read `.fabro/skills/rust-style-guide/SKILL.md` with `read_file`, then the guideline PAGES covering this diff (the guide's table of contents names them — load only the relevant pages). The guide is the binding coding policy: the design and every edit conform to it from the start, never retrofitted after review. A Rust implementation written without the prior guide read is a failed pass, not a style choice. Do not paraphrase the guide from memory — the vendored file is the source. Non-Rust briefs skip this gate.
+When the seed touches Rust (any `*.rs`, `Cargo.toml`, or a crate under `lib/`): your FIRST action after reading the brief is to read `.fabro/skills/rust-style-guide/SKILL.md` via a shell read (e.g. `sed -n '1,200p'` or `cat` — the node's fs_hide=".fabro/**" hides the path from file tools), then the guideline PAGES covering this diff (the guide's table of contents names them — load only the relevant pages). The guide is the binding coding policy: the design and every edit conform to it from the start, never retrofitted after review. A Rust implementation written without the prior guide read is a failed pass, not a style choice. Do not paraphrase the guide from memory — the vendored file is the source. Non-Rust briefs skip this gate.
 
 ## Your job this pass
 
