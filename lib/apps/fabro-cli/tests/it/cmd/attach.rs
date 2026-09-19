@@ -392,8 +392,8 @@ fn attach_replays_completed_detached_run() {
     ----- stdout -----
     ----- stderr -----
         Web UI: http://localhost:3000/runs/[ULID]
-        Base: [BASE]
         ✓ Start  [TIME]
+        Base: [BASE]
         ✓ Run Tests  [TIME]
         ✓ Report  [TIME]
         ✓ Exit  [TIME]
@@ -637,8 +637,8 @@ fn attach_before_completion_streams_to_finished_state() {
     ----- stdout -----
     ----- stderr -----
         Web UI: http://localhost:3000/runs/[ULID]
-        Base: [BASE]
         ✓ start  [DURATION]
+        Base: [BASE]
         ✓ wait  [DURATION]
         ✓ exit  [DURATION]
     ");
@@ -904,7 +904,7 @@ fn attach_json_errors_without_prompting_for_human_input() {
             "recorded_at": "[EPOCH_MS]",
             "body": {
               "event": "run.started",
-              "format_version": 6,
+              "format_version": 7,
               "key": "[ULID]",
               "root": 0,
               "middleware_chain": [

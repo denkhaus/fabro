@@ -215,9 +215,9 @@ fn events_pretty_formats_small_run() {
     [CLOCK]   · running
     [CLOCK]   Engine: petri run started
     [CLOCK] ▶ Start
+    [CLOCK] ✓ Start  [DURATION]
     [CLOCK]   Branch: fabro/run/[ULID] from [SHA]
     [CLOCK]   Git identity: Fabro <noreply@fabro.sh>  default
-    [CLOCK] ✓ Start  [DURATION]
     [CLOCK]    ⎘ Checkpoint [SHA]
     [CLOCK] ▶ Run Tests
     [CLOCK]    start → run_tests continue

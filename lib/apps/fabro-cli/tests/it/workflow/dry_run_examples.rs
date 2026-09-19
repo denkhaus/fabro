@@ -16,8 +16,8 @@ fn dry_run_branching() {
     ----- stderr -----
         Run: [ULID]
         Web UI: http://localhost:3000/runs/[ULID]
-        Base: [BASE]
         ✓ Start  [TIME]
+        Base: [BASE]
         ✓ Plan  [TIME]
         ✓ Implement  [TIME]
         ✓ Validate  [TIME]
@@ -48,8 +48,8 @@ fn dry_run_conditions() {
     ----- stderr -----
         Run: [ULID]
         Web UI: http://localhost:3000/runs/[ULID]
-        Base: [BASE]
         ✓ start  [TIME]
+        Base: [BASE]
         ✓ Decide  [TIME]
         ✓ Path B  [TIME]
         ✓ exit  [TIME]
@@ -145,8 +145,8 @@ fn dry_run_inferred_command() {
     ----- stderr -----
         Run: [ULID]
         Web UI: http://localhost:3000/runs/[ULID]
-        Base: [BASE]
         ✓ Start  [TIME]
+        Base: [BASE]
         ✓ Echo  [TIME]
         ✓ Exit  [TIME]
 
