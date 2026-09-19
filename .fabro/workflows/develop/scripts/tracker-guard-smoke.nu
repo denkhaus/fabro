@@ -79,28 +79,65 @@ if (sd-issues $sd_dead) != null { fail "sd-issues failure != null" }
 if (sd-issues $bad_json) != null { fail "sd-issues bad JSON != null" }
 if (sd-issues $sd_err) != null { fail "sd-issues success:false != null" }
 
-# seed-ref-ts: max across claiming journals; updatedAt fallback.
+# Claims carry fabro-32db terminality: terminal=true marks a claim by a
+# provably terminal run (closeout journal) — not in flight, requeueable
+# immediately; live claims keep the silence clock.
 let claims = [
     {seed: "fabro-x1", ts: ("2026-09-18T00:00:00Z" | into datetime)}
     {seed: "fabro-x1", ts: ("2026-09-19T00:00:00Z" | into datetime)}
     {seed: "fabro-x2", ts: ("2026-09-19T08:00:00Z" | into datetime)}
+    {seed: "fabro-x4", ts: ("2026-09-19T08:30:00Z" | into datetime), terminal: true}
+    {seed: "fabro-x5", ts: ("2026-09-18T00:00:00Z" | into datetime), terminal: true}
+    {seed: "fabro-x5", ts: ("2026-09-19T08:10:00Z" | into datetime)}
 ]
 let s_old_claim = {id: "fabro-x1", updatedAt: "2026-09-19T08:59:00Z"}
 let s_live_claim = {id: "fabro-x2", updatedAt: "2026-09-10T00:00:00Z"}
 let s_no_claim = {id: "fabro-x3", updatedAt: "2026-09-19T02:00:00Z"}
-if (seed-ref-ts $s_old_claim $claims) != ("2026-09-19T00:00:00Z" | into datetime) { fail "seed-ref-ts not max of claims" }
-if (seed-ref-ts $s_live_claim $claims) != ("2026-09-19T08:00:00Z" | into datetime) { fail "seed-ref-ts live claim wrong" }
-if (seed-ref-ts $s_no_claim $claims) != ("2026-09-19T02:00:00Z" | into datetime) { fail "seed-ref-ts no-claim not updatedAt fallback" }
+let s_term_claim = {id: "fabro-x4", updatedAt: "2026-09-19T08:59:00Z"}
+let s_term_plus_live = {id: "fabro-x5", updatedAt: "2026-09-01T00:00:00Z"}
 
 # stale-claim-ids: stale old-claim requeued; live-claim seed kept even
-# with a stale updatedAt; no-claim stale updatedAt requeued; current
+# with a stale updatedAt; no-claim stale updatedAt requeued; TERMINAL
+# claim requeued IMMEDIATELY even with a fresh ts (fabro-32db); a live
+# claim alongside a terminal one governs (re-claimed seed stays); current
 # seed NEVER requeued; exact-threshold age is NOT stale (strict >).
-let seeds = [$s_old_claim, $s_live_claim, $s_no_claim]
+let seeds = [$s_old_claim, $s_live_claim, $s_no_claim, $s_term_claim, $s_term_plus_live]
 let got = (stale-claim-ids $seeds $claims $now 6.0 "fabro-none")
-if $got != ["fabro-x1" "fabro-x3"] { fail $"stale-claim-ids wrong set: ($got | to json -r)" }
-if (stale-claim-ids ($seeds | append {id: "fabro-x1", updatedAt: "2026-09-01T00:00:00Z"}) $claims $now 6.0 "fabro-x1") != ["fabro-x3"] { fail "current seed not excluded" }
+if $got != ["fabro-x1" "fabro-x3" "fabro-x4"] { fail $"stale-claim-ids wrong set: ($got | to json -r)" }
+if (stale-claim-ids ($seeds | append {id: "fabro-x1", updatedAt: "2026-09-01T00:00:00Z"}) $claims $now 6.0 "fabro-x1") != ["fabro-x3" "fabro-x4"] { fail "current seed not excluded" }
 let boundary = {id: "fabro-x9", updatedAt: "2026-09-19T03:00:00Z"}
 if (stale-claim-ids [$boundary] [] $now 6.0 "") != [] { fail "exact-threshold age must not be stale" }
+# claims WITHOUT the terminal key (pre-fabro-32db shape) behave as live:
+# the fresh 08:30 ts keeps fabro-x4-style claims unrequeueable.
+let legacy_claims = [{seed: "fabro-x4", ts: ("2026-09-19T08:30:00Z" | into datetime)}]
+if (stale-claim-ids [$s_term_claim] $legacy_claims $now 6.0 "") != [] { fail "terminal-absent claim must default live" }
+
+# --- Preflight in-flight arm (fabro-32db): terminal-tip? pure logic ---
+# Sourcing planner-preflight.nu alongside tracker-guard.nu is safe: the
+# smoke exits before either auto-invoked `def main` shells out.
+const PREFLIGHT = "planner-preflight.nu"
+source $PREFLIGHT
+
+# closeout tip (either status) is terminal: the develop graph ended.
+if not (terminal-tip? "01M2TEST" "fabro(01M2TEST): closeout (succeeded)" 0 60) { fail "closeout succeeded tip must be terminal" }
+if not (terminal-tip? "01M2TEST" "fabro(01M2TEST): closeout (failed)" 0 60) { fail "closeout failed tip must be terminal" }
+# squash-merge landing subject is terminal (the PR landed).
+if not (terminal-tip? "01M2TEST" "fabro-274d: recover oversized findings (#138)" 0 60) { fail "squash-merge tip must be terminal" }
+# af22 regression pin (fabro-32db): the orphaned terminal-failed branch
+# tip of run 01M2WAY0KH — `reviewer (failed)` — is terminal past grace.
+if not (terminal-tip? "01M2WAY0KHV8F0JB5GTW8TWHMW" "fabro(01M2WAY0KHV8F0JB5GTW8TWHMW): reviewer (failed)" 21600 60) { fail "stale failed tip (af22 shape) must be terminal" }
+# a FRESH failed tip stays in-flight: the engine retries/bounces failed
+# stages within minutes (run 01M2RJSBP8 evidence-failed -> tester).
+if (terminal-tip? "01M2WAY0KHV8F0JB5GTW8TWHMW" "fabro(01M2WAY0KHV8F0JB5GTW8TWHMW): reviewer (failed)" 600 60) { fail "fresh failed tip must stay in-flight" }
+# intermediate succeeded tips are mid-flight, any age.
+if (terminal-tip? "01M2TEST" "fabro(01M2TEST): claim_check (succeeded)" 86400 60) { fail "intermediate succeeded tip must not be terminal" }
+if (terminal-tip? "01M2TEST" "fabro(01M2TEST): reviewer (succeeded)" 86400 60) { fail "non-closeout succeeded tip must not be terminal" }
+# a failed tip for a DIFFERENT run id never matches this run.
+if (terminal-tip? "01M2OTHER" "fabro(01M2TEST): reviewer (failed)" 86400 60) { fail "other-run failed tip must not match" }
+# unparseable subject: fail-open toward in-flight.
+if (terminal-tip? "01M2TEST" "" 86400 60) { fail "empty subject must not be terminal" }
+# grace boundary: exactly grace age is NOT terminal (strict >).
+if (terminal-tip? "01M2TEST" "fabro(01M2TEST): reviewer (failed)" 3600 60) { fail "exact-grace failed tip must not be terminal" }
 
 # Sourcing tracker-guard.nu imports its `def main`; nu auto-invokes it
 # after the top level runs — exit explicitly so the smoke never shells

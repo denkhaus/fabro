@@ -43,7 +43,15 @@
 # journal-claims mechanism (seed ids on `"node":"planner"` journal
 # lines — the documented PROJECT_FACTS fallback); a claiming journal
 # fresher than the threshold means a live run owns the claim and the
-# seed is never requeued. Fail-open on this arm too: degraded inputs (sd
+# seed is never requeued. fabro-32db alignment: a claim whose claiming
+# journal is provably TERMINAL (last record node `closeout` — the
+# develop graph's terminal node) is NOT in flight and is requeueable
+# IMMEDIATELY, no 6h wait; live (non-terminal) claims alone keep the
+# reference clock. Runs whose terminality is unprovable (journal
+# absent — e.g. a failed run's branch-only journal — or ending
+# mid-flight) keep the 6h journal-silence clock / sd updatedAt
+# fallback.
+# Fail-open on this arm too: degraded inputs (sd
 # failure, unreadable journal dir) skip requeueing entirely and report
 # degraded — never a false requeue. Self-exclusion at BOTH grains: the
 # current run's journal is skipped entirely (the engine pipes
@@ -98,31 +106,33 @@ def guard-decision [open_res: record, inprog_res: record] {
     }
 }
 
-# Reference clock for one seed's claim age: the latest claiming develop
-# journal's last ts, falling back to sd updatedAt when no develop
-# journal claims it (claim with a lost/absent journal). `claims` is a
-# table of {seed: string, ts: datetime} (one entry per claiming journal;
-# the max is taken here).
-def seed-ref-ts [seed: record, claims: list]: nothing -> datetime {
-    let ts = ($claims | where seed == $seed.id | get -o ts)
-    if ($ts | is-empty) {
-        ($seed.updatedAt | into datetime)
-    } else {
-        ($ts | math max)
-    }
-}
-
 # Pure stale-claim decision (smoke-testable): the ids of in_progress
-# seeds that are NOT the current run's seed and whose reference clock is
-# older than the threshold. A claiming journal fresher than the
-# threshold (live run) keeps the reference clock fresh, so a live-claimed
-# seed is never listed — never requeue it.
+# seeds that are NOT the current run's seed and whose claim is not kept
+# alive by a LIVE run. `claims` is a table of {seed, ts, terminal?} —
+# terminal marks a claim by a provably terminal run (fabro-32db): such
+# a claim is NOT in flight and is stale IMMEDIATELY (a closeout journal
+# must never pin the seed past its run's death). When at least one LIVE
+# claim exists, the live claims' freshest ts is the reference clock;
+# when no develop journal claims the seed at all, sd updatedAt stands
+# in (claim with a lost/absent journal). A live claiming journal fresher
+# than the threshold means a live run owns the claim and the seed is
+# never listed — never requeue it.
 def stale-claim-ids [seeds: list, claims: list, now: datetime, stale_hours: float, current_seed: string]: nothing -> list<string> {
     $seeds
     | where {|s| $s.id != $current_seed }
     | where {|s|
-        let ref = (seed-ref-ts $s $claims)
-        ($now - $ref) > ($stale_hours * 1hr)
+        let mine = ($claims | where seed == $s.id)
+        let live = ($mine | where {|c| not ($c.terminal? | default false)})
+        if ($mine | is-empty) {
+            # no claiming journal: sd updatedAt is the claim clock
+            ($now - ($s.updatedAt | into datetime)) > ($stale_hours * 1hr)
+        } else if ($live | is-empty) {
+            # only terminal claims: orphaned NOW, no silence wait
+            true
+        } else {
+            let ref = ($live | get ts | math max)
+            ($now - $ref) > ($stale_hours * 1hr)
+        }
     }
     | get id
 }
@@ -154,8 +164,14 @@ def develop-claims [journal_dir: string, seed_ids: list, self_run: string]: noth
         if not ($recs | any {|r| $r.node? == "planner" }) { return [] }
         let planner_text = ($recs | where {|r| $r.node? == "planner" } | to json)
         let last_ts = ($recs | get ts | last)
+        # fabro-32db: terminal = the journal's last record is the
+        # workflow's terminal node (closeout) — the run completed its
+        # graph, so its claims are not in flight. A journal ending at an
+        # intermediate node is live-or-crashed: unprovable, keeps the
+        # silence clock.
+        let terminal = (($recs | last | get -o node? | default "") == "closeout")
         $seed_ids | each {|sid|
-            if ($planner_text | str contains $sid) { {seed: $sid, ts: ($last_ts | into datetime)} }
+            if ($planner_text | str contains $sid) { {seed: $sid, ts: ($last_ts | into datetime), terminal: $terminal} }
         } | flatten
     } | flatten)
     {claims: $claims, degraded: false}
