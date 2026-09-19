@@ -111,17 +111,45 @@ impl LiveAgents {
 fn parse_label(stage: &str) -> Option<(&str, Option<u64>, u32)> {
     let (node, visit) = stage.rsplit_once('@')?;
     let visit = visit.parse().ok()?;
-    let (node, execution) = match node.rsplit_once("/e") {
-        Some((name, execution)) => match execution.parse::<u64>() {
-            Ok(execution) => (name, Some(execution)),
-            Err(_) => (node, None),
-        },
-        None => (node, None),
-    };
+    let suffixed = node
+        .rsplit_once("/e")
+        .and_then(|(name, execution)| Some((name, execution.parse::<u64>().ok()?)));
+    let (node, execution) =
+        suffixed.map_or((node, None), |(name, execution)| (name, Some(execution)));
     if node.is_empty() {
         return None;
     }
     Some((node, execution, visit))
+}
+
+type LabelledAgent = ((ExecutionId, FiringId), String);
+
+/// The one live agent an unnamed steer goes to.
+fn one_live_agent(mut live: Vec<LabelledAgent>) -> Result<LabelledAgent, SteerError> {
+    match live.len() {
+        0 => Err(SteerError::NoLiveAgent),
+        1 => Ok(live.remove(0)),
+        _ => Err(SteerError::SeveralLiveAgents(
+            live.into_iter().map(|(_, label)| label).collect(),
+        )),
+    }
+}
+
+/// The one live agent the label `stage` names, out of the firings that
+/// answer to it.
+fn labelled_agent(
+    stage: &str,
+    mut matches: Vec<LabelledAgent>,
+) -> Result<LabelledAgent, SteerError> {
+    match matches.len() {
+        0 => Err(SteerError::Control(ControlError::NoSuchStage(
+            stage.to_owned(),
+        ))),
+        1 => Ok(matches.remove(0)),
+        _ => Err(SteerError::SeveralLiveAgents(
+            matches.into_iter().map(|(_, label)| label).collect(),
+        )),
+    }
 }
 
 /// One run's controls. Clone freely: every clone drives the same service.
@@ -183,47 +211,26 @@ impl RunControls {
     pub async fn steer(&self, stage: Option<&str>, text: &str) -> Result<String, SteerError> {
         let live = self.agents().labelled();
         let ((execution, firing), label) = match stage {
-            None => match live.len() {
-                0 => return Err(SteerError::NoLiveAgent),
-                1 => live.into_iter().next().expect("one live agent"),
-                _ => {
-                    return Err(SteerError::SeveralLiveAgents(
-                        live.into_iter().map(|(_, label)| label).collect(),
-                    ));
-                }
-            },
-            Some(stage) => match parse_label(stage) {
-                Some((node, execution, visit)) => {
-                    let agents = self.agents();
-                    let mut matches: Vec<_> = live
-                        .into_iter()
-                        .filter(|(key, _)| {
-                            let agent = &agents.firings[key];
-                            agent.node == node
-                                && agent.visit == visit
-                                && execution.is_none_or(|execution| key.0.raw() == execution)
-                        })
-                        .collect();
-                    match matches.len() {
-                        0 => {
-                            return Err(SteerError::Control(ControlError::NoSuchStage(
-                                stage.to_owned(),
-                            )));
-                        }
-                        1 => matches.remove(0),
-                        _ => {
-                            return Err(SteerError::SeveralLiveAgents(
-                                matches.into_iter().map(|(_, label)| label).collect(),
-                            ));
-                        }
-                    }
-                }
-                None => {
+            None => one_live_agent(live)?,
+            Some(stage) => {
+                let Some((node, execution, visit)) = parse_label(stage) else {
                     // A node name: the service's own live-stage index.
                     self.service.steer(stage, text).await?;
                     return Ok(stage.to_owned());
-                }
-            },
+                };
+                let agents = self.agents();
+                let matches = live
+                    .into_iter()
+                    .filter(|(key, _)| {
+                        let agent = &agents.firings[key];
+                        agent.node == node
+                            && agent.visit == visit
+                            && execution.is_none_or(|execution| key.0.raw() == execution)
+                    })
+                    .collect();
+                drop(agents);
+                labelled_agent(stage, matches)?
+            }
         };
         self.service.steer_firing(execution, firing, text).await?;
         Ok(label)
