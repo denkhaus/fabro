@@ -25,14 +25,18 @@
 //! hold and release admission through the run's [`RunControls`]; a steer
 //! goes to the agent stage it names (`node@visit`, or the node name) or,
 //! unnamed, to the run's one live agent stage, and is refused with a
-//! `run.notice` record saying why when neither resolves. The
+//! `run.notice` record saying why when neither resolves; an interrupt
+//! resolves its stage the same way and stops the stage's current model
+//! turn, with the text of an `interrupt_then_steer` as the stage's next
+//! input, and is refused with a `run.notice` (`no_live_turn`,
+//! `no_such_stage`) when Petri refuses it. The
 //! paused state is mirrored to Fabro's lifecycle: a `paused` lifecycle
 //! record when admission is held and `unpaused` when it is released, so
 //! the server's live status and the projection agree with Petri's own
 //! `run.paused` and `run.unpaused` records. A resumed run that was paused when
 //! its worker died comes back paused, and the mirror reports that too. The
-//! interrupt and pair controls have no Petri adapter yet and are ignored with a
-//! warning. A control channel that is lost for good cancels the run the same
+//! pair controls have no Petri adapter yet and are ignored with a warning.
+//! A control channel that is lost for good cancels the run the same
 //! way, and the worker exits with that loss as its error once the run has
 //! settled.
 //!
@@ -65,7 +69,7 @@ use fabro_client::{Client, ServerTarget};
 use fabro_interview::{ControlInterviewer, WorkerControlMessage};
 use fabro_llm::credentials::{CredentialProvider, readiness};
 use fabro_petri::blobs::ClientBlobs;
-use fabro_petri::controls::RunControls;
+use fabro_petri::controls::{ControlError, RunControls, SteerError};
 use fabro_petri::engine::{self, Conclusion, Execution, RunRequest};
 use fabro_petri::hooks::HooksSpec;
 use fabro_petri::interview::{Approval, FabroInterviewer};
@@ -80,7 +84,7 @@ use fabro_store::platform_records::{
     PlatformRecord, RunLifecycleKind, RunLifecycleRecord, RunNoticeRecord,
 };
 use fabro_types::settings::run::{ApprovalMode, RunMode};
-use fabro_types::{FailureReason, RunId, RunNoticeLevel, RunStatus, SuccessReason};
+use fabro_types::{FailureReason, Principal, RunId, RunNoticeLevel, RunStatus, SuccessReason};
 use fabro_vault::Vault;
 use fabro_workflow::Error as WorkflowError;
 use fabro_workflow::services::FabroRunToolServices;
@@ -343,9 +347,13 @@ impl PetriControls {
                     }
                 }
             }
-            WorkerControlMessage::Interrupt { .. }
-            | WorkerControlMessage::InterruptThenSteer { .. }
-            | WorkerControlMessage::PairStart { .. }
+            WorkerControlMessage::Interrupt { stage, actor } => {
+                self.interrupt(stage.as_deref(), None, &actor).await;
+            }
+            WorkerControlMessage::InterruptThenSteer { text, stage, actor } => {
+                self.interrupt(stage.as_deref(), Some(&text), &actor).await;
+            }
+            WorkerControlMessage::PairStart { .. }
             | WorkerControlMessage::PairMessage { .. }
             | WorkerControlMessage::PairEnd { .. } => {
                 warn!(
@@ -355,6 +363,29 @@ impl PetriControls {
                 );
             }
             WorkerControlMessage::InterviewAnswer { .. } | WorkerControlMessage::RunCancel => {}
+        }
+    }
+
+    /// Stop the named stage's model turn, `text` as its next input when
+    /// given. A refusal is a `run.notice` whose code says why: `no_live_turn`
+    /// when the stage has no model turn in flight, `no_such_stage` when the
+    /// name is not running, `interrupt_refused` otherwise.
+    async fn interrupt(&self, stage: Option<&str>, text: Option<&str>, actor: &Principal) {
+        match self.controls.interrupt(stage, text).await {
+            Ok(stage) => {
+                info!(
+                    run_id = %self.run_id,
+                    stage,
+                    steered = text.is_some(),
+                    actor = ?actor,
+                    "interrupt delivered"
+                );
+            }
+            Err(error) => {
+                warn!(run_id = %self.run_id, error = %error, "interrupt refused");
+                self.notice(interrupt_refusal_code(&error), error.to_string())
+                    .await;
+            }
         }
     }
 
@@ -368,6 +399,19 @@ impl PetriControls {
         });
         if let Err(error) = self.records.append(&self.run_id, &record, None).await {
             warn!(run_id = %self.run_id, error = %error, "the control notice was not recorded");
+        }
+    }
+}
+
+/// The notice code of a refused interrupt.
+fn interrupt_refusal_code(error: &SteerError) -> &'static str {
+    match error {
+        SteerError::Control(ControlError::NoLiveTurn) => "no_live_turn",
+        SteerError::Control(ControlError::NoSuchStage(_)) => "no_such_stage",
+        SteerError::NoLiveAgent
+        | SteerError::SeveralLiveAgents(_)
+        | SteerError::Control(ControlError::NotLive | ControlError::Finished) => {
+            "interrupt_refused"
         }
     }
 }

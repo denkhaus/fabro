@@ -5,7 +5,7 @@ use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::post;
-use fabro_api::types::SteerRunRequest;
+use fabro_api::types::{InterruptRunRequest, SteerRunRequest};
 use fabro_types::Principal;
 use fabro_workflow::run_status::RunStatus;
 
@@ -19,11 +19,35 @@ pub(super) fn routes() -> axum::Router<Arc<AppState>> {
         .route("/runs/{id}/interrupt", post(interrupt_run))
 }
 
+/// A control forwarded to the run's worker. The worker resolves the stage
+/// and delivers the control to Petri; what it cannot deliver it refuses on
+/// the run's stream as a `run.notice` whose code says why.
 enum RunControlRequest {
+    /// Guidance for a live agent stage's session, run as a follow-up turn.
     Steer {
         text:  String,
         stage: Option<String>,
     },
+    /// Stop a live agent stage's current model turn and keep its session;
+    /// `text`, when given, is the stage's next input.
+    Interrupt {
+        stage: Option<String>,
+        text:  Option<String>,
+    },
+}
+
+impl RunControlRequest {
+    fn name(&self) -> &'static str {
+        match self {
+            Self::Steer { .. } => "steer",
+            Self::Interrupt { .. } => "interrupt",
+        }
+    }
+}
+
+/// A stage name, when given, must not be blank.
+fn blank_stage(stage: Option<&str>) -> bool {
+    stage.is_some_and(|stage| stage.trim().is_empty())
 }
 
 async fn steer_run(
@@ -43,37 +67,42 @@ async fn steer_run(
         return ApiError::bad_request("Steer text must not be empty.").into_response();
     }
     let stage = stage.map(String::from);
-    if stage
-        .as_deref()
-        .is_some_and(|stage| stage.trim().is_empty())
-    {
+    if blank_stage(stage.as_deref()) {
         return ApiError::bad_request("Steer stage must not be empty.").into_response();
     }
-    if interrupt {
-        return interrupt_unsupported();
-    }
-    control_run(actor, state, id, RunControlRequest::Steer { text, stage }).await
+    let control = if interrupt {
+        RunControlRequest::Interrupt {
+            stage,
+            text: Some(text),
+        }
+    } else {
+        RunControlRequest::Steer { text, stage }
+    };
+    control_run(actor, state, id, control).await
 }
 
-/// Interrupting a live agent turn has no adapter over Petri's control
-/// service yet, which delivers a steer to a live stage and cancels a whole
-/// run but does not interrupt one stage's turn; the request is refused
-/// with that reason rather than accepted and dropped.
+/// Stop a live agent stage's current model turn. The body is optional: no
+/// body interrupts the run's one live agent stage and leaves it waiting
+/// for the next steer.
 async fn interrupt_run(
-    RequireRunManagementTarget(_id, _actor): RequireRunManagementTarget,
-    State(_state): State<Arc<AppState>>,
+    RequireRunManagementTarget(id, actor): RequireRunManagementTarget,
+    State(state): State<Arc<AppState>>,
+    body: Option<Json<InterruptRunRequest>>,
 ) -> Response {
-    interrupt_unsupported()
-}
-
-fn interrupt_unsupported() -> Response {
-    ApiError::with_code(
-        StatusCode::NOT_IMPLEMENTED,
-        "Interrupting a run's agent turn is not supported: Petri's control service has no \
-         per-stage interrupt yet. Steer the run without `interrupt`, or cancel it.",
-        "interrupt_unsupported",
-    )
-    .into_response()
+    let InterruptRunRequest { stage, text } = body.map(|Json(body)| body).unwrap_or_default();
+    let stage = stage.map(String::from);
+    if blank_stage(stage.as_deref()) {
+        return ApiError::bad_request("Interrupt stage must not be empty.").into_response();
+    }
+    let text = text.map(String::from);
+    if text.as_deref().is_some_and(|text| text.trim().is_empty()) {
+        return ApiError::bad_request("Interrupt text must not be empty.").into_response();
+    }
+    control_run(actor, state, id, RunControlRequest::Interrupt {
+        stage,
+        text,
+    })
+    .await
 }
 
 async fn control_run(
@@ -92,8 +121,13 @@ async fn control_run(
         let runs = state.runs.lock().expect("runs lock poisoned");
         match runs.get(&id) {
             Some(managed_run) => {
-                match managed_run.status {
-                    RunStatus::Blocked { .. } => {
+                match (&control, &managed_run.status) {
+                    // A blocked run may still have an agent stage running a
+                    // turn beside the question; the worker judges the
+                    // interrupt per stage and refuses the gate itself.
+                    (RunControlRequest::Interrupt { .. }, RunStatus::Blocked { .. })
+                    | (_, RunStatus::Running) => {}
+                    (RunControlRequest::Steer { .. }, RunStatus::Blocked { .. }) => {
                         return ApiError::with_code(
                             StatusCode::CONFLICT,
                             "Run is blocked on a question; use the interview-answer endpoint \
@@ -102,25 +136,30 @@ async fn control_run(
                         )
                         .into_response();
                     }
-                    RunStatus::Submitted
-                    | RunStatus::Pending { .. }
-                    | RunStatus::Runnable
-                    | RunStatus::Starting
-                    | RunStatus::Paused { .. } => {
+                    (
+                        _,
+                        RunStatus::Submitted
+                        | RunStatus::Pending { .. }
+                        | RunStatus::Runnable
+                        | RunStatus::Starting
+                        | RunStatus::Paused { .. },
+                    ) => {
                         return ApiError::with_code(
                             StatusCode::CONFLICT,
                             "Run is not currently running.",
-                            "run_not_steerable",
+                            not_controllable_code(&control),
                         )
                         .into_response();
                     }
-                    RunStatus::Failed { .. }
-                    | RunStatus::Succeeded { .. }
-                    | RunStatus::Removing
-                    | RunStatus::Dead => {
+                    (
+                        _,
+                        RunStatus::Failed { .. }
+                        | RunStatus::Succeeded { .. }
+                        | RunStatus::Removing
+                        | RunStatus::Dead,
+                    ) => {
                         return terminal_control_response(&control);
                     }
-                    RunStatus::Running => {}
                 }
                 // Plain steers buffer in the worker hub when no agent session
                 // is active; if active agents exist but none are steerable,
@@ -153,8 +192,14 @@ async fn control_run(
         .into_response();
     };
 
-    let RunControlRequest::Steer { text, stage } = control;
-    let result = answer_transport.steer(text, stage, actor).await;
+    let result = match control {
+        RunControlRequest::Steer { text, stage } => {
+            answer_transport.steer(text, stage, actor).await
+        }
+        RunControlRequest::Interrupt { stage, text } => {
+            answer_transport.interrupt(stage, text, actor).await
+        }
+    };
 
     match result {
         Ok(()) => StatusCode::ACCEPTED.into_response(),
@@ -173,11 +218,19 @@ async fn control_run(
     }
 }
 
-fn terminal_control_response(_control: &RunControlRequest) -> Response {
+/// The 409 code of a control the run's status refuses.
+fn not_controllable_code(control: &RunControlRequest) -> &'static str {
+    match control {
+        RunControlRequest::Steer { .. } => "run_not_steerable",
+        RunControlRequest::Interrupt { .. } => "run_not_interruptible",
+    }
+}
+
+fn terminal_control_response(control: &RunControlRequest) -> Response {
     ApiError::with_code(
         StatusCode::CONFLICT,
-        "Run is no longer steerable.",
-        "run_not_steerable",
+        format!("Run no longer accepts a {}.", control.name()),
+        not_controllable_code(control),
     )
     .into_response()
 }

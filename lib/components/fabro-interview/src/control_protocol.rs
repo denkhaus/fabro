@@ -83,19 +83,24 @@ impl WorkerControlEnvelope {
     }
 
     #[must_use]
-    pub fn interrupt(actor: Principal) -> Self {
+    pub fn interrupt(stage: Option<String>, actor: Principal) -> Self {
         Self {
             v:       WORKER_CONTROL_PROTOCOL_VERSION,
-            message: WorkerControlMessage::Interrupt { actor },
+            message: WorkerControlMessage::Interrupt { stage, actor },
         }
     }
 
     #[must_use]
-    pub fn interrupt_then_steer(text: impl Into<String>, actor: Principal) -> Self {
+    pub fn interrupt_then_steer(
+        text: impl Into<String>,
+        stage: Option<String>,
+        actor: Principal,
+    ) -> Self {
         Self {
             v:       WORKER_CONTROL_PROTOCOL_VERSION,
             message: WorkerControlMessage::InterruptThenSteer {
                 text: text.into(),
+                stage,
                 actor,
             },
         }
@@ -173,9 +178,21 @@ pub enum WorkerControlMessage {
         actor: Principal,
     },
     #[serde(rename = "run.interrupt")]
-    Interrupt { actor: Principal },
+    Interrupt {
+        /// The stage whose model turn to stop (`node@visit`, or the node
+        /// name); `None` interrupts the run's one live agent stage.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        stage: Option<String>,
+        actor: Principal,
+    },
     #[serde(rename = "run.interrupt_then_steer")]
-    InterruptThenSteer { text: String, actor: Principal },
+    InterruptThenSteer {
+        text:  String,
+        /// The stage to interrupt and steer, as for `Interrupt`.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        stage: Option<String>,
+        actor: Principal,
+    },
     #[serde(rename = "pair.start")]
     PairStart {
         run_id:  RunId,
@@ -320,7 +337,7 @@ mod tests {
 
     #[test]
     fn interrupt_round_trips_through_json() {
-        let envelope = WorkerControlEnvelope::interrupt(Principal::System {
+        let envelope = WorkerControlEnvelope::interrupt(None, Principal::System {
             system_kind: SystemActorKind::Engine,
         });
         let json = serde_json::to_string(&envelope).unwrap();
@@ -334,14 +351,17 @@ mod tests {
 
     #[test]
     fn interrupt_then_steer_round_trips_through_json() {
-        let envelope =
-            WorkerControlEnvelope::interrupt_then_steer("stop, do X instead", Principal::System {
+        let envelope = WorkerControlEnvelope::interrupt_then_steer(
+            "stop, do X instead",
+            Some("code@2".to_string()),
+            Principal::System {
                 system_kind: SystemActorKind::Engine,
-            });
+            },
+        );
         let json = serde_json::to_string(&envelope).unwrap();
         assert_eq!(
             json,
-            r#"{"v":1,"type":"run.interrupt_then_steer","text":"stop, do X instead","actor":{"kind":"system","system_kind":"engine"}}"#
+            r#"{"v":1,"type":"run.interrupt_then_steer","text":"stop, do X instead","stage":"code@2","actor":{"kind":"system","system_kind":"engine"}}"#
         );
         let parsed: WorkerControlEnvelope = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed, envelope);

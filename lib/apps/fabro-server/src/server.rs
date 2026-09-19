@@ -413,6 +413,29 @@ impl RunAnswerTransport {
         }
     }
 
+    /// Forward an interrupt to the worker, for the stage it names or the
+    /// run's one live agent stage; `text`, when given, is the stage's next
+    /// input.
+    async fn interrupt(
+        &self,
+        stage: Option<String>,
+        text: Option<String>,
+        actor: Principal,
+    ) -> Result<(), AnswerTransportError> {
+        match self {
+            Self::Worker { run_id, bus } => {
+                let message = match text {
+                    Some(text) => WorkerControlEnvelope::interrupt_then_steer(text, stage, actor),
+                    None => WorkerControlEnvelope::interrupt(stage, actor),
+                };
+                Self::publish_worker_control(*run_id, bus, message)
+                    .await
+                    .map_err(|err| Self::answer_error_from_bus(&err))
+            }
+            Self::InProcess { .. } => Err(AnswerTransportError::Closed),
+        }
+    }
+
     async fn pause_run(&self) -> Result<(), AnswerTransportError> {
         match self {
             Self::Worker { run_id, bus } => {

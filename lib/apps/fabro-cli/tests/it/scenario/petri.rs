@@ -808,7 +808,7 @@ async fn run_status_offline(server: &RunningServer) -> Option<String> {
 }
 
 /// The run's pending questions, as the API lists them.
-async fn questions(server: &RunningServer, run_id: &str) -> Vec<serde_json::Value> {
+pub(super) async fn questions(server: &RunningServer, run_id: &str) -> Vec<serde_json::Value> {
     run_json(server, &format!("runs/{run_id}/questions")).await["data"]
         .as_array()
         .cloned()
@@ -816,7 +816,7 @@ async fn questions(server: &RunningServer, run_id: &str) -> Vec<serde_json::Valu
 }
 
 /// Wait until `count` questions are pending at once.
-async fn wait_for_questions(
+pub(super) async fn wait_for_questions(
     server: &RunningServer,
     run_id: &str,
     count: usize,
@@ -838,7 +838,12 @@ async fn wait_for_questions(
 /// Answer a question through the API, as the web app and the CLI do. The
 /// question id is Petri's (`gate#2`), so it travels as one percent-encoded
 /// path segment, as the generated clients send it.
-async fn answer(server: &RunningServer, run_id: &str, question_id: &str, body: serde_json::Value) {
+pub(super) async fn answer(
+    server: &RunningServer,
+    run_id: &str,
+    question_id: &str,
+    body: serde_json::Value,
+) {
     let mut url = fabro_http::Url::parse(&format!(
         "{}/api/v1/runs/{run_id}/questions",
         server.api_base_url

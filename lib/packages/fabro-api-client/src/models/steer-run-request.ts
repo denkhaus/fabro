@@ -23,7 +23,7 @@ export interface SteerRunRequest {
      */
     'text': string;
     /**
-     * When true, apply a worker-control interrupt first, then deliver this text as steering in the same control operation. When false (default), append to the steering queue and let the agent pick it up at the next turn boundary.
+     * When true, stop the stage\'s current model turn first and make this text its next input, in one control. When false (default), the text is guidance the agent runs as a follow-up turn once its current answer is reached.
      */
     'interrupt'?: boolean;
     /**

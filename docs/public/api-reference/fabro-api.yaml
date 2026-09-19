@@ -1719,11 +1719,19 @@ paths:
       tags: [Human-in-the-Loop]
       summary: Steer Run
       description: |
-        Send a mid-run steering message to the live agent session(s) of a
-        running run. Set `interrupt=true` to atomically interrupt the active
-        steerable agent round first, then deliver this message as the next
-        user turn. Without `interrupt=true`, the message is appended to the
-        steering queue and may buffer until the next steerable agent session.
+        Send a mid-run steering message to a live agent stage of a running
+        run: the stage `stage` names, or the run's one live agent stage.
+        Without `interrupt`, the text is guidance for the stage's session,
+        run as a follow-up turn once its current answer is reached. With
+        `interrupt=true`, the stage's current model turn (the model request
+        and the tool calls it is running) is stopped first, the session is
+        kept, and the text is the stage's next input. The control is
+        forwarded to the run's worker; a control the worker cannot deliver
+        (no live agent stage, several unnamed, a stage that is not running,
+        or, for an interrupt, a stage with no model turn in flight) is
+        refused on the run's event stream as a `run.notice` record whose
+        code says why (`steer_refused`, `no_live_turn`, `no_such_stage`,
+        `interrupt_refused`).
       parameters:
         - $ref: "#/components/parameters/RunId"
       requestBody:
@@ -2037,14 +2045,38 @@ paths:
       tags: [Human-in-the-Loop]
       summary: Interrupt Run
       description: |
-        Interrupt the active steerable agent round without sending steering
-        text. The agent keeps its steering lease and waits for a later steer
-        message before starting another LLM round.
+        Stop the current model turn of a live agent stage (the stage `stage`
+        names, or the run's one live agent stage) and keep its session. With
+        `text`, the text is the stage's next input; without, the stage waits
+        for the next steer message before starting another model turn. The
+        control is forwarded to the run's worker; an interrupt the worker
+        cannot deliver (a stage with no model turn in flight, such as an
+        agent between turns or a human gate; a stage that is not running; no
+        live agent stage, or several unnamed) is refused on the run's event
+        stream as a `run.notice` record whose code says why (`no_live_turn`,
+        `no_such_stage`, `interrupt_refused`). A delivered interrupt is the
+        stage's `control.requested` record with `$interrupt`, followed by an
+        `attractor.turn.interrupted` progress record.
       parameters:
         - $ref: "#/components/parameters/RunId"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InterruptRunRequest"
       responses:
         "202":
           description: Interrupt accepted and forwarded to the worker
+        "400":
+          description: Invalid request body
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "404":
           description: Run not found
           headers:
@@ -2057,9 +2089,7 @@ paths:
         "409":
           description: |
             Run is not currently interruptible. Returned when the run is in a
-            terminal state, blocked (use the answer endpoint instead), has no
-            active steerable agent session, or active agent sessions have no
-            live control channel.
+            terminal state or is not running yet.
           headers:
             x-request-id:
               $ref: "#/components/headers/XRequestId"
@@ -9941,10 +9971,10 @@ components:
         interrupt:
           type: boolean
           description: |
-            When true, apply a worker-control interrupt first, then deliver
-            this text as steering in the same control operation. When false
-            (default), append to the steering queue and let the agent pick it
-            up at the next turn boundary.
+            When true, stop the stage's current model turn first and make
+            this text its next input, in one control. When false (default),
+            the text is guidance the agent runs as a follow-up turn once its
+            current answer is reached.
           default: false
         stage:
           type: string
@@ -9956,6 +9986,28 @@ components:
           minLength: 1
           maxLength: 200
           example: code@2
+
+    InterruptRunRequest:
+      description: Request body for interrupting a live agent stage's model turn.
+      type: object
+      properties:
+        stage:
+          type: string
+          description: |
+            The agent stage to interrupt: its stage identifier
+            (`node_id@visit`) or its node name. Omit it to interrupt the
+            run's one live agent stage.
+          minLength: 1
+          maxLength: 200
+          example: code@2
+        text:
+          type: string
+          description: |
+            The stage's next input once its turn is stopped. Omit it to let
+            the stage wait for the next steer message.
+          minLength: 1
+          maxLength: 8192
+          example: Stop and summarize what you have so far.
 
     StartRunRequest:
       description: Request body for starting or resuming a run.

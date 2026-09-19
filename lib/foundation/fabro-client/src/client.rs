@@ -1128,9 +1128,40 @@ impl Client {
         convert_type(response.into_inner())
     }
 
-    pub async fn interrupt_run(&self, run_id: &RunId) -> Result<()> {
-        self.send_api(|client| async move {
-            client.interrupt_run().id(run_id.to_string()).send().await
+    /// Interrupt a run's live agent stage: stop its current model turn and
+    /// keep its session. The stage is the one `stage` names (`node@visit`,
+    /// or the node name) or the run's one live agent stage; `text`, when
+    /// given, is the stage's next input, else the stage waits for the next
+    /// steer.
+    pub async fn interrupt_run(
+        &self,
+        run_id: &RunId,
+        stage: Option<String>,
+        text: Option<String>,
+    ) -> Result<()> {
+        let stage = stage
+            .map(|stage| {
+                types::InterruptRunRequestStage::try_from(stage)
+                    .map_err(|e| anyhow!("invalid interrupt stage: {e}"))
+            })
+            .transpose()?;
+        let text = text
+            .map(|text| {
+                types::InterruptRunRequestText::try_from(text)
+                    .map_err(|e| anyhow!("invalid interrupt text: {e}"))
+            })
+            .transpose()?;
+        let body = types::InterruptRunRequest { stage, text };
+        self.send_api(|client| {
+            let body = body.clone();
+            async move {
+                client
+                    .interrupt_run()
+                    .id(run_id.to_string())
+                    .body(body)
+                    .send()
+                    .await
+            }
         })
         .await?;
         Ok(())
