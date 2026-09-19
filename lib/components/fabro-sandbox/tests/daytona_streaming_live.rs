@@ -35,7 +35,6 @@ mod daytona_streaming_live {
                 SandboxSpec::new(SandboxSource::HostDirectory),
                 &CloneRequest::none(),
                 None,
-                None,
             )
             .await?,
         );
@@ -68,7 +67,6 @@ mod daytona_streaming_live {
             &daytona_access(live_credentials()?),
             SandboxSpec::new(SandboxSource::HostDirectory),
             &CloneRequest::none(),
-            None,
             None,
         )
         .await?;
@@ -169,7 +167,6 @@ mod daytona_streaming_live {
             SandboxSpec::new(SandboxSource::HostDirectory)
                 .label("team".to_string(), "platform".to_string()),
             &CloneRequest::none(),
-            None,
             Some(run_id),
         )
         .await?;
@@ -204,66 +201,6 @@ mod daytona_streaming_live {
         Ok(())
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    #[ignore = "requires live Daytona credentials and provisions a sandbox"]
-    async fn daytona_clone_layout_live_smoke() -> Result<()> {
-        ensure!(
-            daytona_api_key_present(),
-            "DAYTONA_API_KEY must be set to run this live smoke test"
-        );
-
-        let sandbox = provider_sandbox(
-            SandboxProviderKind::DAYTONA,
-            &daytona_access(live_credentials()?),
-            SandboxSpec::new(SandboxSource::HostDirectory),
-            &CloneRequest {
-                origin_url: Some("https://github.com/brynary/rack-test".to_string()),
-                ..CloneRequest::default()
-            },
-            None,
-            None,
-        )
-        .await?;
-
-        sandbox.initialize().await?;
-        ensure_eq(
-            &sandbox.working_directory(),
-            &"/home/daytona/workspace/rack-test",
-            "working directory should be the workspace symlink",
-        )?;
-
-        let result = sandbox
-            .exec_command(
-                "test -d /home/daytona/repos/brynary/rack-test/.git && \
-                 test -L /home/daytona/workspace/rack-test && \
-                 test \"$(readlink /home/daytona/workspace/rack-test)\" = /home/daytona/repos/brynary/rack-test && \
-                 test \"$(git -C /home/daytona/repos/brynary/rack-test rev-parse HEAD)\" = \
-                      \"$(git -C /home/daytona/workspace/rack-test rev-parse HEAD)\" && \
-                 git rev-parse --is-inside-work-tree",
-                30_000,
-                None,
-                None,
-                None,
-            )
-            .await?;
-        let cleanup_result = sandbox.delete().await.context("clean up Daytona sandbox");
-
-        ensure!(
-            result.success(),
-            "layout verification failed: stdout={} stderr={}",
-            result.stdout_lossy(),
-            result.stderr_lossy()
-        );
-        ensure_contains(
-            &result.stdout_lossy(),
-            "true",
-            "default cwd should be inside the work tree",
-        )?;
-        cleanup_result?;
-
-        Ok(())
-    }
-
     // Regression test for glob patterns that contain a path separator. Before
     // the glob fix, Daytona ran `find <base> -name <pattern>`, and `find -name`
     // matches only the basename and rejects patterns containing `/`. So
@@ -284,7 +221,6 @@ mod daytona_streaming_live {
             &daytona_access(live_credentials()?),
             SandboxSpec::new(SandboxSource::HostDirectory),
             &CloneRequest::none(),
-            None,
             None,
         )
         .await?;

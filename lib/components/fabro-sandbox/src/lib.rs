@@ -10,8 +10,6 @@ mod git_policy;
 
 mod managed_labels;
 
-mod credentials;
-
 pub mod details;
 
 pub mod driver;
@@ -23,7 +21,6 @@ mod pebble_environment;
 pub mod reconnect;
 mod redact;
 
-mod clone;
 pub mod docker;
 pub mod provider_sandbox;
 
@@ -46,17 +43,13 @@ pub use fabro_github::token_source::{
     InstallationTokenSource, ResolvedToken, TokenProvenance, TokenSnapshot,
 };
 pub use fabro_types::{RunSandboxInstance, SandboxProviderKind};
-pub use git_policy::{
-    GitRetryReason, checkpoint_push_policy, publish_push_policy, repository_probe_policy,
-    retry_git_messages, transient_git_failure,
-};
+pub use git_policy::{repository_probe_policy, retry_git_messages};
 pub use provider::{SandboxInventory, SandboxLookupError};
 pub use provider_sandbox::{attach_provider_sandbox, local_sandbox, provider_sandbox};
 pub use reconnect::{open_terminal_for_run, reconnect_for_run};
 pub use redact::SecretRedactor;
 pub use sandbox::{
-    DEFAULT_EXEC_OUTPUT_TAIL_BYTES, GitRunInfo, GitSetupIntent, PushAttempt, PushError, PushReport,
-    SandboxFile, SandboxWorkspaceLayout, redacted_output_tail, setup_git,
+    DEFAULT_EXEC_OUTPUT_TAIL_BYTES, SandboxFile, SandboxWorkspaceLayout, redacted_output_tail,
 };
 /// Driver types a run sandbox speaks: what a command is and how it ended,
 /// what the file and search operations return, and what an environment

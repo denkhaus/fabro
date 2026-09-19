@@ -15,29 +15,24 @@
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::{Arc, OnceLock};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
-use fabro_github::GitHubCredentials;
-use fabro_github::token_source::TokenSnapshot;
 use fabro_types::SandboxProviderKind;
 use fabro_util::workspace_glob::WorkspaceGlob;
 use pebble_coding_agent::mcp::{PortRoute, PortRouteError, PortRoutes};
 use sandbox_driver::{
     DirEntry, EventContext, ExecControls, ExecResult, ExecSpec, ExecStreamingResult, FileKind,
-    GitRetryPolicy, GrepMatch, GrepOptions, PreviewUrls, PtyOptions, PtySession, PtySize,
-    Sandbox as DriverHandle, SandboxProvider as DriverProvider, SandboxSpec as DriverSpec,
-    SandboxState, Search as _, StdioProcess, WaitOptions, WalkOptions,
+    GrepMatch, GrepOptions, PreviewUrls, PtyOptions, PtySession, PtySize, Sandbox as DriverHandle,
+    SandboxProvider as DriverProvider, SandboxSpec as DriverSpec, SandboxState, Search as _,
+    StdioProcess, WaitOptions, WalkOptions,
 };
 use tokio::sync::OnceCell;
 use tokio_util::sync::CancellationToken;
 
-use crate::clone::{self, GitHubClone};
 use crate::clone_source::{self, CloneDecision, EmptyWorkspaceReason};
-use crate::credentials::{self, RepoCredentials};
 use crate::environment::CloneRequest;
 use crate::exec::SandboxExec;
-use crate::sandbox::{self, PushError, PushReport, SandboxFile, SandboxWorkspaceLayout};
-use crate::{GitRunInfo, GitSetupIntent};
+use crate::sandbox::{self, SandboxFile, SandboxWorkspaceLayout};
 
 /// Where a clone-based provider puts its files: the run works under
 /// `workspace_root`, and repositories check out under `repos_root`.
@@ -70,22 +65,18 @@ pub(crate) enum LayoutSource {
 
 /// What `initialize` does to the workspace once the sandbox runs.
 enum WorkspacePlan {
-    /// Clone this GitHub repository into the layout.
-    Clone(GitHubClone),
     /// Create the empty workspace root and nothing else.
     Empty(EmptyWorkspaceReason),
     /// The workspace was prepared by an earlier process; leave it alone.
     Attached,
 }
 
-/// The run's workspace on a sandbox: the layout, the clone fabro performs
-/// into it (if any), and the GitHub credentials its checkout carries. A
-/// workspace fabro did not clone into is still a checkout the run may push
-/// from, with whatever credentials the checkout carries itself.
+/// The run's workspace on a sandbox: the layout and what fabro does to it
+/// at `initialize`. Fabro no longer clones into a sandbox; a workspace an
+/// earlier process prepared is described by the run record.
 pub(crate) struct RepoWorkspace {
     layout:              OnceLock<WorkspaceLayout>,
     plan:                WorkspacePlan,
-    credentials:         RepoCredentials,
     repo_cloned:         OnceLock<bool>,
     origin_url:          OnceLock<String>,
     /// The directory the run works in once known: the repository link for a
@@ -97,14 +88,11 @@ pub(crate) struct RepoWorkspace {
 }
 
 impl RepoWorkspace {
-    /// Decide the clone for a new sandbox. Fails before any provider call
+    /// Plan the workspace for a new sandbox. Fails before any provider call
     /// when the selectors are inconsistent (a pin without a branch, a
-    /// non-GitHub origin without `skip`).
-    pub(crate) fn plan(
-        layout: LayoutSource,
-        clone: &CloneRequest,
-        github_app: Option<&GitHubCredentials>,
-    ) -> crate::Result<Self> {
+    /// non-GitHub origin without `skip`), and when the request asks for a
+    /// clone: fabro no longer clones into a sandbox.
+    pub(crate) fn plan(layout: LayoutSource, clone: &CloneRequest) -> crate::Result<Self> {
         let decision = clone_source::decide_clone(
             clone.skip,
             clone.origin_url.as_deref(),
@@ -112,10 +100,6 @@ impl RepoWorkspace {
             clone.tag.as_deref(),
             clone.commit_sha.as_deref(),
         )?;
-        let credentials = RepoCredentials::new(credentials::build_token_source(
-            github_app,
-            clone.origin_url.as_deref(),
-        )?);
         let plan = match decision {
             CloneDecision::EmptyWorkspace { reason } => WorkspacePlan::Empty(reason),
             CloneDecision::GitHub {
@@ -123,18 +107,17 @@ impl RepoWorkspace {
                 branch,
                 tag,
                 commit_sha,
-            } => WorkspacePlan::Clone(GitHubClone {
-                origin_url,
-                branch,
-                tag,
-                commit_sha,
-                depth: clone.depth,
-            }),
+            } => {
+                return Err(crate::Error::message(format!(
+                    "fabro no longer clones a repository into a sandbox (requested {origin_url}, \
+                     branch {branch:?}, tag {tag:?}, commit {commit_sha:?}); the run's checkout \
+                     is prepared by the engine"
+                )));
+            }
         };
         Ok(Self {
             layout: layout.into_cell(),
             plan,
-            credentials,
             repo_cloned: OnceLock::new(),
             origin_url: OnceLock::new(),
             execution_directory: OnceLock::new(),
@@ -143,8 +126,7 @@ impl RepoWorkspace {
     }
 
     /// A workspace prepared by an earlier process, described by the run
-    /// record. Pushes from a reattached sandbox use whatever credentials the
-    /// checkout's credential store already carries.
+    /// record.
     pub(crate) fn attached(
         layout: LayoutSource,
         repo_cloned: bool,
@@ -154,7 +136,6 @@ impl RepoWorkspace {
         let workspace = Self {
             layout:              layout.into_cell(),
             plan:                WorkspacePlan::Attached,
-            credentials:         RepoCredentials::none(),
             repo_cloned:         OnceLock::new(),
             origin_url:          OnceLock::new(),
             execution_directory: OnceLock::new(),
@@ -178,7 +159,6 @@ impl RepoWorkspace {
         Self {
             layout:              LayoutSource::ProviderWorkingDirectory.into_cell(),
             plan:                WorkspacePlan::Attached,
-            credentials:         RepoCredentials::none(),
             repo_cloned:         OnceLock::new(),
             origin_url:          OnceLock::new(),
             execution_directory: OnceLock::new(),
@@ -461,8 +441,8 @@ impl RunSandbox {
         self.learn_platform().await
     }
 
-    /// Prepare the workspace after the sandbox runs for the first time:
-    /// an empty root, or fabro's clone.
+    /// Prepare the workspace after the sandbox runs for the first time: an
+    /// empty root.
     async fn prepare_workspace(&self) -> crate::Result<()> {
         let workspace = &self.workspace;
         let layout = workspace
@@ -493,55 +473,6 @@ impl RunSandbox {
                     .execution_directory
                     .set(layout.workspace_root.clone());
                 Ok(())
-            }
-            WorkspacePlan::Clone(plan) => {
-                tracing::debug!(
-                    url = plan.origin_url.as_str(),
-                    branch = plan.branch.as_deref().unwrap_or(""),
-                    "Git clone started"
-                );
-                let started = Instant::now();
-                let handle = self.handle()?;
-                // The clone names every directory it touches, so it runs
-                // without fabro's working-directory override.
-                let exec = SandboxExec::new(handle.exec());
-                let outcome = clone::clone_github_repo(
-                    &self.kind,
-                    handle.as_ref(),
-                    &exec,
-                    plan,
-                    &layout.workspace_root,
-                    &layout.repos_root,
-                    &workspace.credentials,
-                )
-                .await;
-                match outcome {
-                    Ok(outcome) => {
-                        let _ = workspace.repo_cloned.set(true);
-                        let _ = workspace.origin_url.set(plan.origin_url.clone());
-                        let _ = workspace
-                            .checkout_path
-                            .set(outcome.layout.primary_repo_path.clone());
-                        let _ = workspace
-                            .execution_directory
-                            .set(outcome.layout.execution_directory.clone());
-                        tracing::debug!(
-                            url = plan.origin_url.as_str(),
-                            duration_ms = elapsed_ms(started),
-                            "Git clone completed"
-                        );
-                        Ok(())
-                    }
-                    Err(error) => {
-                        tracing::error!(
-                            url = plan.origin_url.as_str(),
-                            error = %error,
-                            causes = ?error.causes(),
-                            "Git clone failed"
-                        );
-                        Err(error)
-                    }
-                }
             }
         }
     }
@@ -834,7 +765,7 @@ impl RunSandbox {
     }
 
     /// Create the sandbox when it is pending, bring it to `Running`, and
-    /// prepare fabro's workspace (empty root or clone) on first use.
+    /// prepare fabro's empty workspace root on first use.
     pub async fn initialize(&self) -> crate::Result<()> {
         self.ensure_created().await?;
         self.make_ready().await?;
@@ -876,8 +807,9 @@ impl RunSandbox {
         self.release().await
     }
 
-    /// The directory the run works in: the cloned repository's link for a
-    /// clone-based workspace, the provider's working directory otherwise.
+    /// The directory the run works in: the repository link for a workspace
+    /// an earlier process cloned into, the provider's working directory
+    /// otherwise.
     pub fn working_directory(&self) -> &str {
         self.workspace
             .working_directory()
@@ -922,67 +854,11 @@ impl RunSandbox {
         self.workspace.record()
     }
 
-    pub async fn setup_git(&self, intent: &GitSetupIntent) -> crate::Result<Option<GitRunInfo>> {
-        if !self.repo_cloned() {
-            return Ok(None);
-        }
-        sandbox::setup_git(self, intent).await.map(Some)
-    }
-
-    /// Push `refspec` from the run's checkout. A checkout fabro cloned
-    /// pushes with the credentials it was cloned with. Any other checkout
-    /// pushes only when it has an origin, with whatever credentials it
-    /// carries itself; a workspace without one has nothing to push.
-    pub async fn git_push_ref(
-        &self,
-        refspec: &str,
-        policy: &GitRetryPolicy,
-    ) -> Result<PushReport, PushError> {
-        let workspace = &self.workspace;
-        if workspace.repo_cloned() {
-            return sandbox::git_push(self, Some(&workspace.credentials), refspec, policy).await;
-        }
-        let has_origin = match self
-            .exec_command("git remote get-url origin", 10_000, None, None, None)
-            .await
-        {
-            Ok(result) => result.success(),
-            Err(err) => {
-                return Err(PushError {
-                    report: PushReport::default(),
-                    error:  crate::Error::context("git remote get-url origin", err),
-                });
-            }
-        };
-        if !has_origin {
-            return Ok(PushReport::default());
-        }
-        sandbox::git_push(self, None, refspec, policy).await
-    }
-
     pub fn origin_url(&self) -> Option<&str> {
         if !self.workspace.repo_cloned() {
             return None;
         }
         self.workspace.origin_url.get().map(String::as_str)
-    }
-
-    /// Renew the credentials the agent's own git commands read for the
-    /// checkout: resolve the current token and rewrite the checkout's
-    /// credential store with it. Returns the token's non-secret description,
-    /// or `None` when this sandbox has no managed credentials or no
-    /// checkout to install them in.
-    #[tracing::instrument(name = "git_op", skip_all, fields(op = "refresh-credentials"))]
-    pub async fn refresh_ambient_credentials(&self) -> crate::Result<Option<TokenSnapshot>> {
-        let workspace = &self.workspace;
-        let Some(checkout) = workspace.checkout_path.get() else {
-            return Ok(None);
-        };
-        let Some(token) = workspace.credentials.resolve().await? else {
-            return Ok(None);
-        };
-        RepoCredentials::install(&self.git()?, checkout, &token).await?;
-        Ok(Some(token.snapshot))
     }
 
     /// The local command that opens a shell in the sandbox, from the
@@ -1074,10 +950,6 @@ impl PortRoutes for SandboxPortRoutes {
 }
 
 impl RunSandbox {
-    fn repo_cloned(&self) -> bool {
-        self.workspace.repo_cloned()
-    }
-
     /// Delete the sandbox on the provider. A pending sandbox that was never
     /// created has nothing to release.
     async fn release(&self) -> crate::Result<()> {
@@ -1087,10 +959,6 @@ impl RunSandbox {
             None => self.handle().map(|_| ()),
         }
     }
-}
-
-fn elapsed_ms(started: Instant) -> u64 {
-    u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX)
 }
 
 #[cfg(test)]

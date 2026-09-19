@@ -2657,10 +2657,8 @@ version = "0.361.0-nightly.0"
 dependencies = [
  "anyhow",
  "async-trait",
- "base64",
  "chrono",
  "fabro-github",
- "fabro-proc",
  "fabro-redact",
  "fabro-static",
  "fabro-test",
@@ -2671,22 +2669,18 @@ dependencies = [
  "reqwest 0.13.4",
  "sandbox-driver",
  "sandbox-driver-daytona",
- "sandbox-driver-daytona-config",
  "sandbox-driver-docker",
  "sandbox-driver-docker-config",
  "sandbox-driver-host",
  "sandbox-driver-protocol",
  "sandbox-driver-testing",
- "serde",
  "serde_json",
- "strum 0.28.0",
  "tempfile",
  "thiserror 2.0.18",
  "tokio",
  "tokio-util",
  "toml 0.8.23",
  "tracing",
- "uuid",
 ]
 
 [[package]]

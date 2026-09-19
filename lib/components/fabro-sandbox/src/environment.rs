@@ -5,9 +5,9 @@
 //! the same driver [`SandboxSpec`] built here; a bundled provider adds only
 //! what its backend needs on top (the Docker working directory and default
 //! image, the Daytona snapshot and timers) in its own overlay, and the
-//! ownership scope adds fabro's labels. The clone policy travels beside the
-//! spec as a [`CloneRequest`]: cloning is fabro's work once the sandbox
-//! exists, not the provider's.
+//! ownership scope adds fabro's labels. The clone request travels beside
+//! the spec as a [`CloneRequest`]: fabro validates and records it, and
+//! refuses one that asks for a clone.
 
 use std::collections::BTreeMap;
 
@@ -19,7 +19,9 @@ use sandbox_driver::{
     Capabilities, LifecycleTimers, NetworkPolicy, Resources, SandboxSource, SandboxSpec,
 };
 
-/// What to clone into a provider sandbox, if anything.
+/// The repository a provider sandbox is named for, if any. Fabro validates
+/// and records the request; it no longer clones, so a request that asks
+/// for a clone is refused when the sandbox is planned.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct CloneRequest {
     pub origin_url: Option<String>,

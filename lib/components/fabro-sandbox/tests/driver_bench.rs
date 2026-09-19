@@ -367,7 +367,6 @@ async fn agent_tool_call_latency_through_the_driver() {
         }),
         &CloneRequest::none(),
         None,
-        None,
     )
     .await
     .expect("fabro docker sandbox");

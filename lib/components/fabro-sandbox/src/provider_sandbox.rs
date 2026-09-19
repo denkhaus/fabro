@@ -13,7 +13,6 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use fabro_github::GitHubCredentials;
 use fabro_types::{BundledProvider, RunId, SandboxProviderKind};
 use sandbox_driver::{
     EventContext, OwnedProvider, SandboxId, SandboxProvider, SandboxSource,
@@ -36,10 +35,9 @@ pub async fn provider_sandbox(
     access: &ProviderAccess,
     spec: DriverSpec,
     clone: &CloneRequest,
-    github_app: Option<&GitHubCredentials>,
     run_id: Option<RunId>,
 ) -> crate::Result<RunSandbox> {
-    let workspace = RepoWorkspace::plan(layout_source(&kind), clone, github_app)?;
+    let workspace = RepoWorkspace::plan(layout_source(&kind), clone)?;
     let provider = connect(&kind, access, run_id.as_ref()).await?;
     let mut spec = spec;
     if let Some(run_id) = &run_id {
@@ -88,8 +86,7 @@ async fn designate_directory(spec: &DriverSpec) -> crate::Result<()> {
 /// its [`SandboxSpec`] and initializes it itself.
 pub async fn local_sandbox(working_directory: impl Into<PathBuf>) -> crate::Result<RunSandbox> {
     let spec = SandboxSpec::local(working_directory, ProviderAccess::default());
-    let sandbox =
-        provider_sandbox(spec.kind, &spec.access, spec.spec, &spec.clone, None, None).await?;
+    let sandbox = provider_sandbox(spec.kind, &spec.access, spec.spec, &spec.clone, None).await?;
     sandbox.initialize().await?;
     Ok(sandbox)
 }

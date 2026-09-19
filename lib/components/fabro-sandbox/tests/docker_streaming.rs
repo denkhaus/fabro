@@ -49,7 +49,6 @@ async fn streaming_timeout_terminates_docker_exec_before_returning() {
         }),
         &CloneRequest::none(),
         None,
-        None,
     )
     .await
     .expect("docker sandbox should construct");
@@ -119,7 +118,6 @@ async fn streaming_command_receives_exact_stdin_and_eof() {
         }),
         &CloneRequest::none(),
         None,
-        None,
     )
     .await
     .expect("docker sandbox should construct");
@@ -161,65 +159,6 @@ async fn streaming_command_receives_exact_stdin_and_eof() {
     );
 }
 
-#[tokio::test]
-#[ignore = "requires real Docker container lifecycle, image, network, and a public GitHub clone"]
-async fn cloned_docker_sandbox_uses_repos_checkout_and_workspace_symlink() {
-    let image = "buildpack-deps:noble";
-    if !docker_image_available(image).await {
-        return;
-    }
-
-    let sandbox = provider_sandbox(
-        SandboxProviderKind::DOCKER,
-        &ProviderAccess::default(),
-        SandboxSpec::new(SandboxSource::Image {
-            reference: image.to_string(),
-        }),
-        &CloneRequest {
-            origin_url: Some("https://github.com/brynary/rack-test".to_string()),
-            ..CloneRequest::default()
-        },
-        None,
-        None,
-    )
-    .await
-    .expect("docker sandbox should construct");
-    sandbox
-        .initialize()
-        .await
-        .expect("docker sandbox should initialize");
-
-    assert_eq!(sandbox.working_directory(), "/workspace/rack-test");
-
-    let result = sandbox
-        .exec_command(
-            "test -d /repos/brynary/rack-test/.git && \
-             test -L /workspace/rack-test && \
-             test \"$(readlink /workspace/rack-test)\" = /repos/brynary/rack-test && \
-             test \"$(git -C /repos/brynary/rack-test rev-parse HEAD)\" = \
-                  \"$(git -C /workspace/rack-test rev-parse HEAD)\" && \
-             git rev-parse --is-inside-work-tree",
-            10_000,
-            None,
-            None,
-            None,
-        )
-        .await
-        .expect("layout verification command should run");
-    sandbox
-        .delete()
-        .await
-        .expect("docker cleanup should succeed");
-
-    assert!(
-        result.success(),
-        "layout verification failed: stdout={} stderr={}",
-        result.stdout_lossy(),
-        result.stderr_lossy()
-    );
-    assert!(result.stdout_lossy().contains("true"));
-}
-
 // Both command paths must evaluate the same interpreter, so Bash-only syntax
 // that `sh` rejects has to behave identically through `exec_command` and
 // `exec_command_streaming`. Neither path is evidence for the other: they build
@@ -241,7 +180,6 @@ async fn docker_runs_clean_bash_through_both_command_paths() {
         })
         .env_var("BASH_ENV".to_string(), "/tmp/fabro-bash-env".to_string()),
         &CloneRequest::none(),
-        None,
         None,
     )
     .await
@@ -333,7 +271,6 @@ async fn docker_glob_matches_patterns_containing_a_path_separator() {
         }),
         &CloneRequest::none(),
         None,
-        None,
     )
     .await
     .expect("docker sandbox should construct");
@@ -413,7 +350,6 @@ async fn docker_runtime_directory_is_private_and_outside_workspace() {
         }),
         &CloneRequest::none(),
         None,
-        None,
     )
     .await
     .expect("docker sandbox should construct");
@@ -487,7 +423,6 @@ async fn docker_sandbox_satisfies_pebbles_environment_contract() {
             reference: image.to_string(),
         }),
         &CloneRequest::none(),
-        None,
         None,
     )
     .await

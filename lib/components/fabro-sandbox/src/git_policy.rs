@@ -1,12 +1,12 @@
-//! Fabro's retry budgets for git operations against GitHub.
+//! Fabro's retry budget for git operations against GitHub.
 //!
 //! The driver owns the retry loop and the decision
 //! ([`sandbox_driver::retry_git`]): a remote that cannot be reached is retried,
 //! a rejected credential is retried only while the token is fresh enough to
 //! still be replicating to GitHub's git endpoints, a static credential fails
 //! fast, and a command whose outcome is unknown is never replayed. Fabro keeps
-//! what is policy: how many attempts each operation gets, how long the
-//! operation may take, and when the credential it pushes with was minted.
+//! what is policy: how many attempts the host-side repository probe gets,
+//! how it paces them, and when the credential it runs with was minted.
 //!
 //! Retries reuse the same token on purpose. Replication of a given token
 //! only makes progress, so each attempt strictly improves the odds, while
@@ -18,20 +18,9 @@ use std::time::{Duration, SystemTime};
 
 use fabro_github::token_source::TokenSnapshot;
 use sandbox_driver::{GitBackoff, GitCredentials, GitFailure, GitFailureKind, GitRetryPolicy};
-use serde::{Deserialize, Serialize};
 
-use crate::credentials::GITHUB_TOKEN_USERNAME;
-
-/// Why a failed git push attempt is safe to retry.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, strum::Display)]
-#[serde(rename_all = "snake_case")]
-#[strum(serialize_all = "snake_case")]
-pub enum GitRetryReason {
-    /// A recently minted token may not have reached every GitHub git endpoint.
-    TokenReplication,
-    /// The failure came from transient network or service infrastructure.
-    TransientInfra,
-}
+/// The username GitHub expects with an installation token or PAT.
+const GITHUB_TOKEN_USERNAME: &str = "x-access-token";
 
 /// Backoff between attempts: 3s, then 9s.
 ///
@@ -42,51 +31,11 @@ fn replication_backoff() -> GitBackoff {
     GitBackoff::new(Duration::from_secs(3), 3.0, Duration::from_secs(10))
 }
 
-/// The clone policy: 3 attempts at replication pacing, inside whatever is
-/// left of the whole-clone budget.
-pub(crate) fn clone_policy(remaining: Duration) -> GitRetryPolicy {
-    GitRetryPolicy::new(3, replication_backoff()).max_elapsed(remaining)
-}
-
-/// Host-side repository probes use the clone's attempt count and pacing,
-/// with no deadline of their own.
+/// Host-side repository probes get 3 attempts at replication pacing, with
+/// no deadline of their own.
 #[must_use]
 pub fn repository_probe_policy() -> GitRetryPolicy {
     GitRetryPolicy::new(3, replication_backoff())
-}
-
-/// Checkpoint pushes stay cheap: the next checkpoint re-pushes the same
-/// branch anyway. Worst case about 90 seconds of wall clock.
-#[must_use]
-pub fn checkpoint_push_policy() -> GitRetryPolicy {
-    GitRetryPolicy::new(3, replication_backoff())
-        .max_elapsed(Duration::from_secs(90))
-        .per_attempt_timeout(Duration::from_mins(1))
-}
-
-/// The terminal publish push guards the whole run's value, so it gets a
-/// real budget: 5 attempts with growing backoff (about 3s, 10s, 33s, 60s),
-/// bounded at 4 minutes of wall clock. The bound must stay under the token
-/// source's `REFRESH_MARGIN` (see the margin-invariant test) so a pinned
-/// token always outlives the operation.
-#[must_use]
-pub fn publish_push_policy() -> GitRetryPolicy {
-    GitRetryPolicy::new(
-        5,
-        GitBackoff::new(Duration::from_secs(3), 10.0 / 3.0, Duration::from_mins(1)),
-    )
-    .max_elapsed(Duration::from_mins(4))
-    .per_attempt_timeout(Duration::from_mins(1))
-}
-
-/// The reason fabro records for a driver retry reason. A reason this build
-/// does not know still retried the attempt, so it is recorded under the
-/// broader class.
-pub(crate) fn recorded_reason(reason: sandbox_driver::GitRetryReason) -> GitRetryReason {
-    match reason {
-        sandbox_driver::GitRetryReason::TokenReplication => GitRetryReason::TokenReplication,
-        _ => GitRetryReason::TransientInfra,
-    }
 }
 
 /// Credentials carrying only the token's mint time, which is all the
@@ -110,19 +59,6 @@ fn classified_failure(operation: &str, message: &str) -> sandbox_driver::Error {
         GitFailureKind::from_message(message),
         None,
     ))
-}
-
-/// Whether a rendered git failure `message` is worth retrying with the
-/// token behind `snapshot`: `None` means the failure is permanent for
-/// these credentials or unrecognized.
-#[must_use]
-pub fn transient_git_failure(
-    message: &str,
-    snapshot: Option<&TokenSnapshot>,
-) -> Option<GitRetryReason> {
-    let credentials = credential_age(snapshot);
-    sandbox_driver::retry_reason(&classified_failure("git", message), credentials.as_ref())
-        .map(recorded_reason)
 }
 
 /// Runs a host-side git operation that reports failures as rendered
@@ -172,7 +108,7 @@ where
 #[cfg(test)]
 mod tests {
     use chrono::Utc;
-    use fabro_github::token_source::{REFRESH_MARGIN, TokenProvenance};
+    use fabro_github::token_source::TokenProvenance;
 
     use super::*;
 
@@ -195,60 +131,10 @@ mod tests {
     }
 
     #[test]
-    fn not_found_follows_the_credential_age() {
-        let message = "repository not found: Repository not found.";
-        assert_eq!(
-            transient_git_failure(message, Some(&snapshot(Duration::from_secs(5)))),
-            Some(GitRetryReason::TokenReplication)
-        );
-        assert_eq!(
-            transient_git_failure(message, Some(&snapshot(Duration::from_mins(2)))),
-            Some(GitRetryReason::TransientInfra)
-        );
-        assert_eq!(
-            transient_git_failure(message, Some(&static_snapshot())),
-            None
-        );
-        assert_eq!(transient_git_failure(message, None), None);
-    }
-
-    #[test]
-    fn infrastructure_failures_retry_without_credentials() {
-        assert_eq!(
-            transient_git_failure("fatal: unable to access: Could not resolve host", None),
-            Some(GitRetryReason::TransientInfra)
-        );
-        assert_eq!(
-            transient_git_failure("fatal: something else entirely", None),
-            None
-        );
-    }
-
-    /// `REFRESH_MARGIN` must exceed every push policy's `max_elapsed`: a
-    /// push resolves its token once, and the token the source returns has
-    /// at least the margin of validity left, so the pinned token outlives
-    /// the operation.
-    #[test]
-    fn refresh_margin_exceeds_every_push_policy_elapsed_bound() {
-        for policy in [checkpoint_push_policy(), publish_push_policy()] {
-            let max_elapsed = policy.max_elapsed.expect("push policies are bounded");
-            assert!(
-                REFRESH_MARGIN > max_elapsed,
-                "margin invariant violated: {max_elapsed:?}"
-            );
-        }
-    }
-
-    #[test]
-    fn publish_backoff_grows_toward_a_one_minute_cap() {
-        let backoff = publish_push_policy().backoff;
+    fn probe_backoff_paces_at_replication_intervals() {
+        let backoff = repository_probe_policy().backoff;
         assert_eq!(backoff.delay_after(1), Duration::from_secs(3));
-        assert_eq!(backoff.delay_after(2), Duration::from_secs(10));
-        assert_eq!(backoff.delay_after(4), Duration::from_mins(1));
-        assert_eq!(
-            repository_probe_policy().backoff.delay_after(2),
-            Duration::from_secs(9)
-        );
+        assert_eq!(backoff.delay_after(2), Duration::from_secs(9));
     }
 
     #[tokio::test(start_paused = true)]

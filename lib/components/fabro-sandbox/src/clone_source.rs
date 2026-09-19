@@ -1,5 +1,3 @@
-use fabro_util::shell;
-
 use crate::sandbox;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -17,12 +15,8 @@ pub(crate) enum CloneDecision {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct GitHubRepoLayout {
-    pub(crate) owner:               String,
-    pub(crate) repo:                String,
-    pub(crate) repos_owner_path:    String,
-    pub(crate) primary_repo_path:   String,
-    pub(crate) primary_repo_link:   String,
-    pub(crate) execution_directory: String,
+    pub(crate) primary_repo_path: String,
+    pub(crate) primary_repo_link: String,
 }
 
 pub(crate) fn github_repo_layout(
@@ -45,11 +39,7 @@ pub(crate) fn github_repo_layout(
     let primary_repo_link = sandbox::join_sandbox_path(workspace_root, &repo);
 
     Ok(GitHubRepoLayout {
-        owner,
-        repo,
-        repos_owner_path,
         primary_repo_path,
-        execution_directory: primary_repo_link.clone(),
         primary_repo_link,
     })
 }
@@ -65,14 +55,6 @@ fn validate_path_component(label: &str, component: &str) -> crate::Result<()> {
         )));
     }
     Ok(())
-}
-
-pub(crate) fn repo_symlink_command(layout: &GitHubRepoLayout) -> String {
-    format!(
-        "ln -s {} {}",
-        shell::shell_quote(&layout.primary_repo_path),
-        shell::shell_quote(&layout.primary_repo_link),
-    )
 }
 
 /// The kind of revision a checkout is pinned to instead of the branch's
@@ -444,12 +426,8 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(layout.owner, "brynary");
-        assert_eq!(layout.repo, "rack-test");
-        assert_eq!(layout.repos_owner_path, "/repos/brynary");
         assert_eq!(layout.primary_repo_path, "/repos/brynary/rack-test");
         assert_eq!(layout.primary_repo_link, "/workspace/rack-test");
-        assert_eq!(layout.execution_directory, "/workspace/rack-test");
     }
 
     #[test]
@@ -461,12 +439,8 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(layout.owner, "fabro-sh");
-        assert_eq!(layout.repo, "fabro");
-        assert_eq!(layout.repos_owner_path, "/repos/fabro-sh");
         assert_eq!(layout.primary_repo_path, "/repos/fabro-sh/fabro");
         assert_eq!(layout.primary_repo_link, "/workspace/fabro");
-        assert_eq!(layout.execution_directory, "/workspace/fabro");
     }
 
     #[test]
@@ -483,21 +457,6 @@ mod tests {
                 "got {error} for {origin}"
             );
         }
-    }
-
-    #[test]
-    fn repo_symlink_command_quotes_both_paths() {
-        let layout = github_repo_layout(
-            "https://github.com/fabro-sh/fabro",
-            "/work space",
-            "/repo root",
-        )
-        .unwrap();
-
-        assert_eq!(
-            repo_symlink_command(&layout),
-            "ln -s '/repo root/fabro-sh/fabro' '/work space/fabro'"
-        );
     }
 
     #[test]

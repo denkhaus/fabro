@@ -520,7 +520,6 @@ async fn build_preflight_report(
         &sandbox_provider,
         prepared,
         &resolved_run,
-        github_app.clone(),
         &access,
     )
     .await;
@@ -882,7 +881,6 @@ fn preflight_sandbox_spec(
     sandbox_provider: &SandboxProviderKind,
     prepared: &PreparedManifest,
     resolved_run: &RunNamespace,
-    github_app: Option<fabro_github::GitHubCredentials>,
     access: &ProviderAccess,
 ) -> std::result::Result<SandboxSpec, fabro_sandbox::Error> {
     let clone_origin_url = prepared
@@ -919,7 +917,6 @@ fn preflight_sandbox_spec(
         access: access.clone(),
         spec,
         clone,
-        github_app,
         run_id: None,
     })
 }
@@ -929,16 +926,9 @@ async fn run_sandbox_check(
     sandbox_provider: &SandboxProviderKind,
     prepared: &PreparedManifest,
     resolved_run: &RunNamespace,
-    github_app: Option<fabro_github::GitHubCredentials>,
     access: &ProviderAccess,
 ) -> bool {
-    let spec = match preflight_sandbox_spec(
-        sandbox_provider,
-        prepared,
-        resolved_run,
-        github_app.clone(),
-        access,
-    ) {
+    let spec = match preflight_sandbox_spec(sandbox_provider, prepared, resolved_run, access) {
         Ok(spec) => spec,
         Err(err) => {
             checks.push(CheckResult {
@@ -2199,7 +2189,6 @@ provider = "local"
             &SandboxProviderKind::DOCKER,
             &prepared,
             &resolved,
-            None,
             &ProviderAccess::default(),
         );
 

@@ -2,7 +2,6 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use anyhow::Context as _;
-use fabro_github::GitHubCredentials;
 use fabro_types::{RunId, RunSandboxInstance, RunSandboxRuntime, SandboxProviderKind};
 use sandbox_driver::{EventContext, SandboxSource, SandboxSpec as DriverSpec};
 
@@ -13,18 +12,17 @@ use crate::{clone_source, provider_sandbox};
 
 /// A run's sandbox on any provider fabro can name: a bundled kind in
 /// process or a sandbox-driver plugin. What the environment asked for, and
-/// how the repository is cloned into it.
+/// the repository the run record names for it.
 #[derive(Clone, Debug)]
 pub struct SandboxSpec {
-    pub kind:       SandboxProviderKind,
+    pub kind:   SandboxProviderKind,
     /// The provider settings and vault credentials the kind needs.
-    pub access:     ProviderAccess,
+    pub access: ProviderAccess,
     /// The environment's request, as the driver spec every provider
     /// starts from.
-    pub spec:       DriverSpec,
-    pub clone:      CloneRequest,
-    pub github_app: Option<GitHubCredentials>,
-    pub run_id:     Option<RunId>,
+    pub spec:   DriverSpec,
+    pub clone:  CloneRequest,
+    pub run_id: Option<RunId>,
 }
 
 impl SandboxSpec {
@@ -41,7 +39,6 @@ impl SandboxSpec {
             spec: DriverSpec::new(SandboxSource::HostDirectory)
                 .working_directory(working_directory.into().display().to_string()),
             clone: CloneRequest::none(),
-            github_app: None,
             run_id: None,
         }
     }
@@ -129,7 +126,6 @@ impl SandboxSpec {
             &self.access,
             self.spec.clone(),
             &self.clone,
-            self.github_app.as_ref(),
             self.run_id,
         )
         .await
@@ -165,7 +161,6 @@ mod tests {
             access: ProviderAccess::default(),
             spec: DriverSpec::new(SandboxSource::HostDirectory),
             clone,
-            github_app: None,
             run_id: None,
         }
     }

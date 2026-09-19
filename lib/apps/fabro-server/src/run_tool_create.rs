@@ -1,4 +1,5 @@
-// Integration regression for the native run tool using production Git setup.
+// Integration regression for the native run tool: a child run targets the
+// branch its parent pushed to.
 use std::collections::HashMap;
 use std::path::Path;
 use std::process::Command;
@@ -81,26 +82,22 @@ async fn run_create_child_checkout_contains_the_parents_pushed_work() {
         repo:   "acme/widgets".to_owned(),
         branch: "main".to_owned(),
         tag:    Some("v1.0.0".to_owned()),
-        sha:    Some(base_sha),
+        sha:    Some(base_sha.clone()),
     })));
-    let sandbox = fabro_sandbox::local_sandbox(&workspace).await.unwrap();
-    // Docker and Daytona use this same setup operation to create the run branch.
-    let git = fabro_sandbox::setup_git(&sandbox, &fabro_sandbox::GitSetupIntent::NewRun {
-        run_id: parent.spec.id().to_string(),
-    })
-    .await
-    .unwrap();
+    // The run branch the engine's checkout creates for the parent.
+    let run_branch = format!("fabro/run/{}", parent.spec.id());
+    run_git(&workspace, &["checkout", "--quiet", "-b", &run_branch]);
     parent.start = Some(fabro_types::StartRecord {
         start_time: chrono::Utc::now(),
-        run_branch: Some(git.run_branch.clone()),
-        base_sha:   Some(git.base_sha),
+        run_branch: Some(run_branch.clone()),
+        base_sha:   Some(base_sha.clone()),
     });
     fs::write(workspace.join("result.txt"), "parent implementation")
         .await
         .unwrap();
     run_git(&workspace, &["add", "."]);
     run_git(&workspace, &["commit", "--quiet", "-m", "implement"]);
-    run_git(&workspace, &["push", "--quiet", "origin", &git.run_branch]);
+    run_git(&workspace, &["push", "--quiet", "origin", &run_branch]);
     let server = MockServer::start_async().await;
     let state_request = mock_parent(&server, &parent).await;
     let client = fabro_client::Client::new_no_proxy(&server.url("")).unwrap();
