@@ -784,9 +784,6 @@ goal = "Show stored artifacts"
 [run.environment]
 id = "local"
 
-[environments.local]
-provider = "local"
-
 [run.artifacts]
 include = ["assets/**"]
 "#,

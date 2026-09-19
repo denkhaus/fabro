@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 use anyhow::{Result, anyhow};
 use fabro_api::types;
-use fabro_config::{RunLayer, WorkflowSettingsBuilder};
+use fabro_config::{RunLayer, SettingsLayer, WorkflowSettingsBuilder};
 use fabro_manifest::CollectedWorkflowClosure;
 use fabro_petri::runtime::RuntimeSpec;
 use fabro_workflow::operations::{ValidateInput, WorkflowInput, validate};
@@ -32,7 +32,7 @@ pub fn validate_manifest(
         &prepared,
         &HashMap::new(),
         petri_check::launch_without_catalog(&prepared.settings),
-        offline_runtime(),
+        offline_runtime(Some(manifest_run_defaults)),
         true,
         true,
     )
@@ -40,15 +40,25 @@ pub fn validate_manifest(
     Ok(run_manifest::validate_response(&prepared, &validated))
 }
 
-/// Petri's runtime for a check away from the server: no operator settings,
-/// no model client, no Fabro home, no run tools.
-fn offline_runtime() -> RuntimeSpec {
+/// Petri's runtime for a check away from the server: the seeded environment
+/// catalog and the given `[run]` layer as the settings layer, the same
+/// defaults the legacy validation judges against, so a bundle that names a
+/// seeded environment validates; no MCP catalog, no model client, no Fabro
+/// home, no run tools.
+fn offline_runtime(run: Option<&RunLayer>) -> RuntimeSpec {
+    let layer = SettingsLayer {
+        version: Some(1),
+        environments: fabro_environment::seeded_catalog_layer(),
+        run: run.cloned(),
+        ..SettingsLayer::default()
+    };
     RuntimeSpec {
-        settings_toml: None,
-        model_client:  None,
-        dry_run:       false,
-        fabro_home:    None,
-        run_tools:     None,
+        settings_toml:    toml::to_string(&layer).ok(),
+        mcp_catalog_toml: None,
+        model_client:     None,
+        dry_run:          false,
+        fabro_home:       None,
+        run_tools:        None,
     }
 }
 
@@ -98,7 +108,7 @@ pub fn validate_collected_workflow(
         &settings,
         &HashMap::new(),
         petri_check::launch_without_catalog(&settings),
-        offline_runtime(),
+        offline_runtime(run_overrides),
         false,
     )
     .map_err(anyhow::Error::new)?;

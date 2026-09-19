@@ -1664,8 +1664,13 @@ mod tests {
         prepared: &PreparedManifest,
         ready_providers: &[ProviderId],
     ) -> Result<Validated, WorkflowError> {
-        let launch =
-            petri_check::launch(&state.catalog(), &prepared.settings, ready_providers, None);
+        let launch = petri_check::launch(
+            &state.catalog(),
+            &prepared.settings,
+            ready_providers,
+            None,
+            None,
+        );
         let runtime = crate::server::petri_runs::runtime_spec(state, ready_providers, false);
         validate_prepared_manifest(
             prepared,
@@ -2560,9 +2565,6 @@ name = "Control Plane"
                 path:   "workflow.toml".to_string(),
                 source: r#"_version = 1
 
-[environments.local]
-provider = "local"
-
 [run.environment]
 id = "local"
 
@@ -2607,9 +2609,6 @@ issues = "read"
             Some(types::ManifestWorkflowConfig {
                 path:   "workflow.toml".to_string(),
                 source: r#"_version = 1
-
-[environments.local]
-provider = "local"
 
 [run.environment]
 id = "local"

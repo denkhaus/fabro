@@ -12,10 +12,12 @@
 //!
 //! The launch binds the compile variables the Fabro frontend reads:
 //! `petri.launch_model` and `petri.launch_provider` as the model default
-//! below every file layer, and `petri.repository` as the repository the root
-//! `start` stage checks out. A caller with no local repository binds `null`,
-//! and the run starts from an empty workspace. The server's run variables
-//! (`{{ vars.NAME }}`) are bound as compile variables beside them.
+//! below every file layer, `petri.launch_environment` as the environment
+//! the run selected over every file layer, and `petri.repository` as the
+//! repository the root `start` stage checks out. A caller with no local
+//! repository binds `null`, and the run starts from an empty workspace. The
+//! server's run variables (`{{ vars.NAME }}`) are bound as compile
+//! variables beside them.
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -23,7 +25,8 @@ use std::path::PathBuf;
 use petri_frontend_attractor::kinds::{AGENT_KIND, PROMPT_KIND};
 use petri_runtime::LoadError;
 use petri_runtime::frontend::{
-    self, CompileInputs, LAUNCH_MODEL_VAR, LAUNCH_PROVIDER_VAR, MapFiles, REPOSITORY_VAR, Severity,
+    self, CompileInputs, LAUNCH_ENVIRONMENT_VAR, LAUNCH_MODEL_VAR, LAUNCH_PROVIDER_VAR, MapFiles,
+    REPOSITORY_VAR, Severity,
 };
 use petri_runtime::ir::Graph;
 use serde::{Deserialize, Serialize};
@@ -61,14 +64,20 @@ impl Bundle {
     }
 }
 
-/// What the launch binds below the file layers.
+/// What the launch binds around the file layers: the model default below
+/// them, the environment selection above them, and the repository.
 #[derive(Clone, Debug, Default)]
 pub struct Launch {
-    pub model:      Option<String>,
-    pub provider:   Option<String>,
+    pub model:       Option<String>,
+    pub provider:    Option<String>,
+    /// The environment the run selected, by its id in the server's
+    /// catalog, over every layer's `[run.environment]`, as the intent's
+    /// selection overrides the bundle in Fabro's own resolution; `None`
+    /// leaves the layers to select.
+    pub environment: Option<String>,
     /// The local repository the root `start` stage checks out into the
     /// workspace; `None` starts the run from an empty workspace.
-    pub repository: Option<PathBuf>,
+    pub repository:  Option<PathBuf>,
 }
 
 /// One check: the bundle, the run's inputs and variables, the launch and
@@ -204,6 +213,12 @@ fn compile_inputs(
     compile
         .vars
         .insert(LAUNCH_PROVIDER_VAR.into(), text(&launch.provider));
+    if let Some(environment) = &launch.environment {
+        compile.vars.insert(
+            LAUNCH_ENVIRONMENT_VAR.into(),
+            Value::String(environment.clone()),
+        );
+    }
     // `Runtime::check_source` uses the inputs as given, so the repository
     // is the host's to bind: the launch's path, or `null` for a run that
     // starts from an empty workspace.

@@ -1287,7 +1287,13 @@ async fn validate_manifest_on_petri(
     vars: HashMap<String, String>,
     ready_providers: &[ProviderId],
 ) -> Result<Validated, WorkflowError> {
-    let launch = petri_check::launch(&state.catalog(), &prepared.settings, ready_providers, None);
+    let launch = petri_check::launch(
+        &state.catalog(),
+        &prepared.settings,
+        ready_providers,
+        None,
+        None,
+    );
     let dry_run = prepared.settings.run.execution.mode == RunMode::DryRun;
     let runtime = petri_runs::runtime_spec(state, ready_providers, dry_run);
     let has_ready_provider = !ready_providers.is_empty();

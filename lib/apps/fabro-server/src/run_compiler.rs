@@ -97,6 +97,9 @@ pub(crate) struct NormalizedRun {
 
 struct RunMetadata {
     run_id:              Option<RunId>,
+    /// The environment the run overrides selected, for Petri's settings
+    /// layer.
+    environment_id:      Option<String>,
     storage_root:        PathBuf,
     workflow_slug:       Option<String>,
     workflow_version_id: Option<WorkflowVersionId>,
@@ -163,6 +166,11 @@ impl PreparedRun {
 
     pub(crate) fn parent_id(&self) -> Option<RunId> {
         self.layered.metadata.parent_id
+    }
+
+    /// The environment the run overrides selected, when they did.
+    pub(crate) fn environment_id(&self) -> Option<&str> {
+        self.layered.metadata.environment_id.as_deref()
     }
 
     pub(crate) fn resolve_run_id(mut self) -> (Self, RunId) {
@@ -296,6 +304,10 @@ pub(crate) fn normalize_source(input: RawRunCompilerInput) -> Result<NormalizedR
             entrypoint: entrypoint.clone(),
         })?;
     workflow.path = entrypoint.clone();
+    let environment_id = run_overrides
+        .as_ref()
+        .and_then(|run| run.environment.as_ref())
+        .and_then(|environment| environment.id.clone());
 
     Ok(NormalizedRun {
         workflow_bundle,
@@ -311,6 +323,7 @@ pub(crate) fn normalize_source(input: RawRunCompilerInput) -> Result<NormalizedR
         inline_goal_override,
         metadata: RunMetadata {
             run_id,
+            environment_id,
             storage_root,
             workflow_slug,
             workflow_version_id,
@@ -434,6 +447,9 @@ pub(crate) fn assemble_run(pinned: PinnedRun) -> CreateRunPersistenceInput {
     } = pinned;
     let RunMetadata {
         run_id,
+        // Consumed at admission, as the launch's environment; the resolved
+        // settings carry the environment the run persists.
+        environment_id: _,
         storage_root,
         workflow_slug,
         workflow_version_id,

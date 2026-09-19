@@ -550,8 +550,7 @@ fn git_backed_run(
     write_text_file(
         &workspace_dir.join("workflow.toml"),
         "_version = 1\n\n[workflow]\ngraph = \"story.fabro\"\n\n[run]\ngoal = \"Change the \
-         story\"\n\n[run.environment]\nid = \"local\"\n\n[environments.local]\nprovider = \
-         \"local\"\n",
+         story\"\n\n[run.environment]\nid = \"local\"\n",
     );
     init_remote_fixture(&workspace_dir, "main");
     let run = run_local_workflow(context, &workspace_dir, "workflow.toml");
@@ -594,10 +593,6 @@ goal = "Exercise sandbox commands"
 
 [run.environment]
 id = "local"
-
-[environments.local]
-provider = "local"
-
 "#,
     );
 

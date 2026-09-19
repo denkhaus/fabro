@@ -28,6 +28,7 @@
 //! workspace to the snapshot its durable state names, or reports the run
 //! failed when it cannot.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -44,7 +45,8 @@ use fabro_petri::runtime::{self, RuntimeSpec};
 use fabro_petri::secrets::VaultSecrets;
 use fabro_petri::{SqliteRunStore, admission};
 use fabro_store::platform_records::{RunLifecycleKind, RunLifecycleRecord};
-use fabro_types::settings::run::{ApprovalMode, RunMode};
+use fabro_types::settings::McpTransport;
+use fabro_types::settings::run::{ApprovalMode, McpServerSettings, RunMode};
 use fabro_types::{PetriAdmission, RunId, RunRunnableSource, RunTarget};
 use fabro_util::error as error_util;
 use fabro_workflow::Error as WorkflowError;
@@ -63,14 +65,16 @@ use crate::petri_runs::PetriRuns;
 use crate::run_compiler::{PreparedRun, RunCompilerError};
 
 /// The runtime Petri gets, at create and at execution: the server's run
-/// defaults as the settings layer, the model client over the server's
-/// catalog and credentials for the eligible providers, and the run mode.
+/// defaults and environment catalog as the settings layer, the MCP
+/// catalog, the model client over the server's catalog and credentials for
+/// the eligible providers, and the run mode.
 pub(crate) fn runtime_spec(
     state: &AppState,
     eligible: &[ProviderId],
     dry_run: bool,
 ) -> RuntimeSpec {
     let settings_toml = settings_layer_toml(state);
+    let mcp_catalog_toml = mcp_catalog_toml(&state.mcp_server_store().catalog_settings());
     let catalog = state.catalog();
     let model_client = match runtime::model_client(
         (*catalog).clone(),
@@ -86,6 +90,7 @@ pub(crate) fn runtime_spec(
     };
     RuntimeSpec {
         settings_toml,
+        mcp_catalog_toml,
         model_client,
         dry_run,
         fabro_home: Some(Home::from_env().root().to_path_buf()),
@@ -95,12 +100,18 @@ pub(crate) fn runtime_spec(
     }
 }
 
-/// The server's `[run]` defaults, as the text of the operator settings
-/// layer the Fabro frontend reads below `.fabro/project.toml` and
-/// `workflow.toml`.
+/// The operator settings layer the Fabro frontend reads below
+/// `.fabro/project.toml` and `workflow.toml`, as text: the server's `[run]`
+/// defaults and the server's environment catalog as `[environments.<id>]`
+/// tables, so a bundle can name any of them and Petri lowers that
+/// environment's image and resources. A bundle's own table wins over the
+/// catalog's key by key, as the frontend layers them; the environment the
+/// run selected is bound above every layer by the launch
+/// (`petri_check::launch`).
 fn settings_layer_toml(state: &AppState) -> Option<String> {
     let layer = SettingsLayer {
         version: Some(1),
+        environments: (*state.environment_store().catalog_layer()).clone(),
         run: Some((*state.manifest_run_defaults()).clone()),
         ..SettingsLayer::default()
     };
@@ -111,6 +122,83 @@ fn settings_layer_toml(state: &AppState) -> Option<String> {
             None
         }
     }
+}
+
+/// The server's MCP catalog as the text the Fabro frontend resolves
+/// `[run.agent.mcps.<name>] id = "..."` references against: one table per
+/// definition, keyed by its id, in the inline `[run.agent.mcps.<name>]`
+/// shape of Fabro's settings files (`type`, then `command`, `url` or
+/// `port`, `env` or `headers`, `protocol`, and the timeouts as durations).
+/// `None` for an empty catalog. The frontend reads the entry with the
+/// rules of an inline entry, so a `{{ secrets.NAME }}` value under `env` or
+/// `headers` resolves at launch as it would in a settings file.
+fn mcp_catalog_toml(catalog: &HashMap<String, McpServerSettings>) -> Option<String> {
+    if catalog.is_empty() {
+        return None;
+    }
+    let table: toml::Table = catalog
+        .iter()
+        .map(|(id, server)| (id.clone(), toml::Value::Table(mcp_catalog_entry(server))))
+        .collect();
+    match toml::to_string(&table) {
+        Ok(text) => Some(text),
+        Err(err) => {
+            warn!(error = %err, "the MCP catalog does not serialize; Petri gets no catalog");
+            None
+        }
+    }
+}
+
+fn mcp_catalog_entry(server: &McpServerSettings) -> toml::Table {
+    let text = |value: &str| toml::Value::String(value.to_string());
+    let strings = |values: &HashMap<String, String>| {
+        toml::Value::Table(
+            values
+                .iter()
+                .map(|(key, value)| (key.clone(), text(value)))
+                .collect(),
+        )
+    };
+    let argv = |command: &[String]| toml::Value::Array(command.iter().map(|w| text(w)).collect());
+    let mut entry = toml::Table::new();
+    match &server.transport {
+        McpTransport::Stdio { command, env } => {
+            entry.insert("type".to_string(), text("stdio"));
+            entry.insert("command".to_string(), argv(command));
+            entry.insert("env".to_string(), strings(env));
+        }
+        McpTransport::Http {
+            protocol,
+            url,
+            headers,
+        } => {
+            entry.insert("type".to_string(), text("http"));
+            entry.insert("protocol".to_string(), text(&protocol.to_string()));
+            entry.insert("url".to_string(), text(url));
+            entry.insert("headers".to_string(), strings(headers));
+        }
+        McpTransport::Sandbox {
+            protocol,
+            command,
+            port,
+            env,
+        } => {
+            entry.insert("type".to_string(), text("sandbox"));
+            entry.insert("protocol".to_string(), text(&protocol.to_string()));
+            entry.insert("command".to_string(), argv(command));
+            entry.insert("port".to_string(), toml::Value::Integer(i64::from(*port)));
+            entry.insert("env".to_string(), strings(env));
+        }
+    }
+    entry.insert(
+        "startup_timeout".to_string(),
+        text(&format!("{}s", server.startup_timeout_secs)),
+    );
+    entry.insert(
+        "tool_timeout".to_string(),
+        text(&format!("{}s", server.tool_timeout_secs)),
+    );
+    entry
 }
 
 /// Petri compiles the run: check the bundle, map the diagnostics, and
@@ -126,7 +214,13 @@ pub(crate) async fn admit(
         Some(RunTarget::Folder { path }) => Some(path.into()),
         Some(RunTarget::Git(_) | RunTarget::None {}) | None => None,
     };
-    let launch = petri_check::launch(&state.catalog(), settings, eligible, repository);
+    let launch = petri_check::launch(
+        &state.catalog(),
+        settings,
+        eligible,
+        prepared.environment_id(),
+        repository,
+    );
     let dry_run = settings.run.execution.mode == RunMode::DryRun;
     let request = petri_check::check_request(
         prepared.workflow_bundle(),
@@ -500,4 +594,104 @@ fn finish(state: &Arc<AppState>, run_id: RunId, status: RunStatus, error: Option
     }
     drop(runs);
     state.scheduler_notify.notify_one();
+}
+
+#[cfg(test)]
+mod tests {
+    use fabro_types::settings::run::McpHttpProtocol;
+
+    use super::*;
+
+    /// Every transport of the catalog serializes in the inline shape Petri's
+    /// Fabro frontend reads, keyed by catalog id, with the timeouts as
+    /// durations; an empty catalog is no text at all.
+    #[test]
+    fn the_mcp_catalog_serializes_in_the_inline_entry_shape() {
+        assert_eq!(mcp_catalog_toml(&HashMap::new()), None);
+        let catalog = HashMap::from([
+            ("files".to_string(), McpServerSettings {
+                name: "files".to_string(),
+                transport: McpTransport::Stdio {
+                    command: vec!["srv".to_string(), "--root".to_string()],
+                    env:     HashMap::from([("TOKEN".to_string(), "{{ secrets.T }}".to_string())]),
+                },
+                startup_timeout_secs: 15,
+                ..McpServerSettings::default()
+            }),
+            ("remote".to_string(), McpServerSettings {
+                name: "remote".to_string(),
+                transport: McpTransport::Http {
+                    protocol: McpHttpProtocol::Sse,
+                    url:      "https://mcp.example/sse".to_string(),
+                    headers:  HashMap::from([("X-Org".to_string(), "fabro".to_string())]),
+                },
+                ..McpServerSettings::default()
+            }),
+            ("browser".to_string(), McpServerSettings {
+                name: "browser".to_string(),
+                transport: McpTransport::Sandbox {
+                    protocol: McpHttpProtocol::StreamableHttp,
+                    command:  vec!["npx".to_string(), "mcp".to_string()],
+                    port:     3100,
+                    env:      HashMap::new(),
+                },
+                tool_timeout_secs: 90,
+                ..McpServerSettings::default()
+            }),
+        ]);
+        let text = mcp_catalog_toml(&catalog).expect("the catalog serializes");
+        let table: toml::Table = text.parse().expect("the catalog text is TOML");
+        assert_eq!(table["files"]["type"].as_str(), Some("stdio"));
+        assert_eq!(
+            table["files"]["command"],
+            toml::Value::Array(vec!["srv".into(), "--root".into()])
+        );
+        assert_eq!(
+            table["files"]["env"]["TOKEN"].as_str(),
+            Some("{{ secrets.T }}")
+        );
+        assert_eq!(table["files"]["startup_timeout"].as_str(), Some("15s"));
+        assert_eq!(table["files"]["tool_timeout"].as_str(), Some("60s"));
+        assert_eq!(table["remote"]["type"].as_str(), Some("http"));
+        assert_eq!(table["remote"]["protocol"].as_str(), Some("sse"));
+        assert_eq!(
+            table["remote"]["url"].as_str(),
+            Some("https://mcp.example/sse")
+        );
+        assert_eq!(table["remote"]["headers"]["X-Org"].as_str(), Some("fabro"));
+        assert_eq!(table["browser"]["type"].as_str(), Some("sandbox"));
+        assert_eq!(
+            table["browser"]["protocol"].as_str(),
+            Some("streamable_http")
+        );
+        assert_eq!(table["browser"]["port"].as_integer(), Some(3100));
+        assert_eq!(table["browser"]["tool_timeout"].as_str(), Some("90s"));
+    }
+
+    /// The settings layer carries the server's `[run]` defaults and its
+    /// environment catalog as `[environments.<id>]` tables.
+    #[test]
+    fn the_settings_layer_carries_the_environment_catalog() {
+        let state = crate::test_support::test_app_state();
+        let text = settings_layer_toml(&state).expect("the layer serializes");
+        let table: toml::Table = text.parse().expect("the layer text is TOML");
+        let environments = table["environments"]
+            .as_table()
+            .expect("an environments table");
+        let listed = state.environment_store().list();
+        let ids: Vec<&str> = listed
+            .iter()
+            .map(|environment| environment.id.as_str())
+            .map(|id| environments.contains_key(id).then_some(id))
+            .map(|found| found.expect("every catalog environment is in the layer"))
+            .collect();
+        assert!(!ids.is_empty(), "{text}");
+        for id in ids {
+            assert!(
+                environments[id]["provider"].is_str(),
+                "`[environments.{id}]` names its provider: {text}"
+            );
+        }
+        assert!(table.contains_key("run"), "{text}");
+    }
 }

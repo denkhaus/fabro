@@ -25,15 +25,17 @@ use lithos_llm::catalog::ProviderId;
 /// Fabro's rule for a model node with no provider ready to run it.
 pub(crate) const NO_READY_PROVIDER_RULE: &str = "fabro.model.no_ready_provider";
 
-/// The launch Fabro binds below the settings: the run's model and provider.
-/// When the settings name neither, the default offering of the eligible
-/// providers is bound as the launch model alone: a node that names no model
-/// runs on it, and a node that names a model the catalog lacks stays
-/// unqualified, so Petri's admission refuses it.
+/// The launch Fabro binds around the settings: the run's model and provider
+/// below them, and the environment the run selected above them. When the
+/// settings name neither model nor provider, the default offering of the
+/// eligible providers is bound as the launch model alone: a node that
+/// names no model runs on it, and a node that names a model the catalog
+/// lacks stays unqualified, so Petri's admission refuses it.
 pub(crate) fn launch(
     catalog: &Catalog,
     settings: &WorkflowSettings,
     eligible: &[ProviderId],
+    environment: Option<&str>,
     repository: Option<PathBuf>,
 ) -> Launch {
     let model = settings.run.model.name.clone().or_else(|| {
@@ -48,6 +50,7 @@ pub(crate) fn launch(
     Launch {
         model,
         provider: settings.run.model.provider.clone(),
+        environment: environment.map(str::to_owned),
         repository,
     }
 }
@@ -56,9 +59,10 @@ pub(crate) fn launch(
 /// name, for a check away from the server.
 pub(crate) fn launch_without_catalog(settings: &WorkflowSettings) -> Launch {
     Launch {
-        model:      settings.run.model.name.clone(),
-        provider:   settings.run.model.provider.clone(),
-        repository: None,
+        model:       settings.run.model.name.clone(),
+        provider:    settings.run.model.provider.clone(),
+        environment: None,
+        repository:  None,
     }
 }
 

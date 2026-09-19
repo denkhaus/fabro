@@ -32,23 +32,30 @@ use crate::host_tools;
 pub struct RuntimeSpec {
     /// The operator's settings layer, as `~/.fabro/settings.toml` text: the
     /// lowest of the three layers the Fabro frontend reads (`[run.model]`
-    /// defaults, `[[run.hooks]]`, `[run.agent.mcps]`).
-    pub settings_toml: Option<String>,
+    /// defaults, `[[run.hooks]]`, `[run.agent.mcps]`, `[run.environment]`
+    /// and the `[environments.<id>]` catalog a bundle may name).
+    pub settings_toml:    Option<String>,
+    /// The server's MCP catalog, as the TOML text the Fabro frontend
+    /// resolves `[run.agent.mcps.<name>] id = "..."` references against: a
+    /// table keyed by catalog id, each entry in the inline
+    /// `[run.agent.mcps.<name>]` shape. `None` leaves every reference
+    /// refused, as the standalone runner refuses it.
+    pub mcp_catalog_toml: Option<String>,
     /// The model client the native agent and prompt steps call, and the
     /// catalog the admission pass resolves model selectors against. `None`
     /// leaves every LLM node unpinned and every model call unconfigured.
-    pub model_client:  Option<Client>,
+    pub model_client:     Option<Client>,
     /// Run the simulated step registry (Fabro's `--dry-run` handlers)
     /// instead of the real one.
-    pub dry_run:       bool,
+    pub dry_run:          bool,
     /// The Fabro home the skills step reads; `None` leaves it to Petri's
     /// own lookup (`FABRO_HOME`, else `$HOME/.fabro`).
-    pub fabro_home:    Option<PathBuf>,
+    pub fabro_home:       Option<PathBuf>,
     /// Fabro's run tools for every native agent session of the run, when
     /// the run enables them (`[run.agent] fabro_tools` and the worker
     /// token's `agent:run_tools` scope); `None` gives the sessions Pebble's
     /// tools alone. See [`crate::host_tools`].
-    pub run_tools:     Option<FabroRunToolServices>,
+    pub run_tools:        Option<FabroRunToolServices>,
 }
 
 impl RuntimeSpec {
@@ -57,8 +64,11 @@ impl RuntimeSpec {
     /// registry: only execution swaps in the stubs.
     #[must_use]
     pub fn runtime(&self, for_execution: bool) -> Runtime {
-        let mut runtime = Runtime::standard()
-            .frontend(Fabro::new().with_settings_toml(self.settings_toml.clone()));
+        let mut runtime = Runtime::standard().frontend(
+            Fabro::new()
+                .with_settings_toml(self.settings_toml.clone())
+                .with_mcp_catalog_toml(self.mcp_catalog_toml.clone()),
+        );
         if let Some(client) = &self.model_client {
             runtime = runtime.capability(PebbleClient(client.clone()));
         }

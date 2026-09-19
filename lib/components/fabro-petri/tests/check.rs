@@ -139,9 +139,10 @@ async fn a_launch_binds_the_repository_and_the_model_default() {
         inputs:             BTreeMap::new(),
         vars:               BTreeMap::new(),
         launch:             Launch {
-            model:      Some("gpt-5.4".to_string()),
-            provider:   None,
-            repository: Some(repository.path().to_path_buf()),
+            model:       Some("gpt-5.4".to_string()),
+            provider:    None,
+            environment: None,
+            repository:  Some(repository.path().to_path_buf()),
         },
         runtime:            RuntimeSpec::default(),
         unbound_is_warning: false,
@@ -314,4 +315,55 @@ async fn a_known_model_is_pinned_at_admission() {
         "{:?}",
         work.step.config
     );
+}
+
+/// The server's environment catalog reaches Petri as `[environments.<id>]`
+/// tables of the settings layer, and the environment the run selected as
+/// the launch: a bundle naming an environment only the catalog declares
+/// admits with the catalog's image; the launch's selection wins over the
+/// bundle's own `[run.environment]`; an id no layer declares is refused
+/// with Petri's diagnostic.
+#[test]
+fn an_unknown_environment_is_refused_and_the_launch_selects_over_the_bundle() {
+    let catalog = "[environments.local]\nprovider = \"local\"\n\
+                   [environments.docker-small]\nprovider = \"docker\"\n\
+                   [environments.docker-small.image]\ndocker = \"alpine:3.20\"\n";
+    let runtime = || RuntimeSpec {
+        settings_toml: Some(catalog.to_string()),
+        ..RuntimeSpec::default()
+    };
+    let bundle_naming = |id: &str| {
+        bundle(&[
+            ("workflow.fabro", COMMAND_WORKFLOW),
+            (
+                "workflow.toml",
+                &format!("_version = 1\n\n[run.environment]\nid = \"{id}\"\n"),
+            ),
+        ])
+    };
+
+    let admitted = check::check(&request(bundle_naming("docker-small"), runtime()))
+        .expect("the catalog's environment admits");
+    let environment = &admitted.graph.params["fabro.environment"];
+    assert_eq!(environment["provider"], "docker");
+    assert_eq!(environment["image"], "alpine:3.20");
+
+    let Err(CheckError::Rejected(diagnostics)) =
+        check::check(&request(bundle_naming("nowhere"), runtime()))
+    else {
+        panic!("an environment no layer declares should be refused");
+    };
+    let refusal = diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.code == "unsupported.workflow_toml.run.environment")
+        .unwrap_or_else(|| panic!("Petri names the unknown environment: {diagnostics:?}"));
+    assert!(
+        refusal.is_error() && refusal.message.contains("nowhere"),
+        "{refusal:?}"
+    );
+
+    let mut selected = request(bundle_naming("nowhere"), runtime());
+    selected.launch.environment = Some("local".to_string());
+    let admitted = check::check(&selected).expect("the launch's selection admits");
+    assert_eq!(admitted.graph.params["fabro.environment"]["id"], "local");
 }

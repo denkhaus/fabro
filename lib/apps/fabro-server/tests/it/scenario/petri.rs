@@ -40,9 +40,9 @@ use fabro_types::{RunId, WorkflowPath, WorkflowVersion};
 use tower::ServiceExt;
 
 use crate::helpers::{
-    api, create_and_start_run_from_intent, read_repo_file, response_json, run_json,
-    settings_from_toml, test_app_state_with_options, test_app_with_scheduler, test_settings,
-    wait_for_run_status,
+    api, create_and_start_run_from_intent, minimal_manifest_json, read_repo_file, response_json,
+    run_json, settings_from_toml, test_app_state_with_options, test_app_with_scheduler,
+    test_settings, wait_for_run_status,
 };
 
 const HOST_PLUGIN: &str = "sandbox-driver-host";
@@ -868,4 +868,401 @@ async fn a_runs_projection_carries_its_docker_sandbox_instance() {
             .stderr(Stdio::null())
             .status();
     }
+}
+
+/// The image the server's `docker-small` environment names in the tests
+/// below: a runner image with `git` for the checkpoint commit, and not the
+/// plugin's default, so the container proves the catalog's image reached it.
+const CATALOG_IMAGE: &str = "ghcr.io/lithoscomputer/ubuntu-22.04:slim";
+
+/// A Docker environment in the server's catalog, with the image it runs.
+async fn create_docker_environment(app: &axum::Router, id: &str, image: &str) {
+    let environment = serde_json::json!({
+        "id": id,
+        "provider": "docker",
+        "image": { "docker": image, "dockerfile": null },
+        "resources": { "cpu": null, "memory": null, "disk": null },
+        "network": { "mode": "allow_all", "allow": [] },
+        "lifecycle": { "preserve": false, "stop_on_terminal": true, "auto_stop": null },
+        "labels": {},
+        "env": {}
+    });
+    let request = Request::builder()
+        .method("POST")
+        .uri(api("/environments"))
+        .header("content-type", "application/json")
+        .body(Body::from(environment.to_string()))
+        .expect("environment request should build");
+    let response = app
+        .clone()
+        .oneshot(request)
+        .await
+        .expect("environment request routes");
+    response_json(
+        response,
+        StatusCode::CREATED,
+        "POST /api/v1/environments".to_string(),
+    )
+    .await;
+}
+
+/// Create a run from `intent` without starting it: the run's id.
+async fn create_run(app: &axum::Router, intent: serde_json::Value) -> String {
+    let request = Request::builder()
+        .method("POST")
+        .uri(api("/runs"))
+        .header("content-type", "application/json")
+        .body(Body::from(intent.to_string()))
+        .expect("create request should build");
+    let response = app
+        .clone()
+        .oneshot(request)
+        .await
+        .expect("create request routes");
+    let body = response_json(response, StatusCode::CREATED, "POST /api/v1/runs").await;
+    body["id"]
+        .as_str()
+        .expect("the created run's id")
+        .to_string()
+}
+
+async fn start_run(app: &axum::Router, run_id: &str) {
+    let request = Request::builder()
+        .method("POST")
+        .uri(api(&format!("/runs/{run_id}/start")))
+        .body(Body::empty())
+        .expect("start request should build");
+    let response = app
+        .clone()
+        .oneshot(request)
+        .await
+        .expect("start request routes");
+    assert_eq!(
+        response.status(),
+        StatusCode::OK,
+        "POST /runs/{run_id}/start"
+    );
+}
+
+/// The root graph Petri admitted for the run, as the run's blob store holds
+/// it: its `params` carry `fabro.environment` and `fabro.launch`, its nodes
+/// their step configuration.
+async fn admitted_root_graph(app: &axum::Router, run_id: &str) -> serde_json::Value {
+    let admission = run_admission(app, run_id).await;
+    let blob = admission["graph"]["blob"]
+        .as_str()
+        .expect("the root graph's blob hash");
+    let request = Request::builder()
+        .method("GET")
+        .uri(api(&format!("/runs/{run_id}/blobs/{blob}")))
+        .body(Body::empty())
+        .expect("blob request should build");
+    let response = app
+        .clone()
+        .oneshot(request)
+        .await
+        .expect("blob request routes");
+    assert_eq!(
+        response.status(),
+        StatusCode::OK,
+        "GET /runs/{run_id}/blobs/{blob}"
+    );
+    let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("the graph blob reads");
+    serde_json::from_slice(&bytes).expect("the graph blob is JSON")
+}
+
+/// A bundle that names a server environment it does not declare admits: the
+/// catalog's `[environments.docker-small]` reaches Petri through the
+/// settings layer, its image lands on the lowered environment, and, with
+/// the Docker plugin and a daemon, the run's container runs that image.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_bundle_naming_a_catalog_environment_runs_on_docker_with_its_image() {
+    let settings = settings_from_toml("_version = 1\n\n[run.environment]\nid = \"local\"\n");
+    let state = test_app_state_with_options(settings, 5);
+    let app = test_app_with_scheduler(Arc::clone(&state));
+    create_docker_environment(&app, "docker-small", CATALOG_IMAGE).await;
+
+    let version_id = register_version(&app, &[
+        ("workflow.fabro", COMMAND_DOT),
+        (
+            "workflow.toml",
+            "_version = 1\n\n[run.environment]\nid = \"docker-small\"\n",
+        ),
+    ])
+    .await;
+    let intent = serde_json::json!({
+        "workflow_version_id": version_id,
+        "target": {"kind": "none"},
+        "environment_id": "docker-small",
+        "args": {},
+    });
+    let run_id = create_run(&app, intent).await;
+    let graph = admitted_root_graph(&app, &run_id).await;
+    let environment = &graph["params"]["fabro.environment"];
+    assert_eq!(environment["id"], "docker-small", "{environment}");
+    assert_eq!(environment["provider"], "docker", "{environment}");
+    assert_eq!(environment["image"], CATALOG_IMAGE, "{environment}");
+    assert_eq!(
+        graph["params"]["fabro.launch"]["sandbox_backend"], "docker",
+        "{}",
+        graph["params"]["fabro.launch"]
+    );
+
+    if docker_plugin().is_none() {
+        return;
+    }
+    start_run(&app, &run_id).await;
+    let status = wait_for_run_status(&app, &run_id, &["succeeded", "failed"]).await;
+    let projection = settled_state(&state, &app, &run_id).await;
+    assert_eq!(status, "succeeded", "run: {projection}");
+    let instance = &projection["sandbox"]["instance"];
+    assert_eq!(instance["provider"], "docker", "{instance}");
+    assert_eq!(
+        instance["image"], CATALOG_IMAGE,
+        "the container runs the catalog's image: {instance}"
+    );
+    let output = Command::new("docker")
+        .args([
+            "ps",
+            "-aq",
+            "--filter",
+            &format!("label=petri.run={run_id}"),
+        ])
+        .output()
+        .expect("docker ps runs");
+    for container in String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+    {
+        let _ = Command::new("docker")
+            .args(["rm", "-f", container])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+    }
+}
+
+/// A bundle's own `[environments.<id>]` table wins over the server's, key
+/// by key: its image replaces the catalog's on the lowered environment.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_bundles_own_environment_table_overrides_the_servers() {
+    let settings = settings_from_toml("_version = 1\n\n[run.environment]\nid = \"local\"\n");
+    let state = test_app_state_with_options(settings, 5);
+    let app = test_app_with_scheduler(Arc::clone(&state));
+    create_docker_environment(&app, "docker-small", CATALOG_IMAGE).await;
+
+    let version_id = register_version(&app, &[
+        ("workflow.fabro", COMMAND_DOT),
+        (
+            "workflow.toml",
+            "_version = 1\n\n[run.environment]\nid = \"docker-small\"\n\n\
+             [environments.docker-small]\nprovider = \"docker\"\n\n\
+             [environments.docker-small.image]\ndocker = \"alpine:3.19\"\n",
+        ),
+    ])
+    .await;
+    let intent = serde_json::json!({
+        "workflow_version_id": version_id,
+        "target": {"kind": "none"},
+        "environment_id": "docker-small",
+        "args": {},
+    });
+    let run_id = create_run(&app, intent).await;
+    let graph = admitted_root_graph(&app, &run_id).await;
+    let environment = &graph["params"]["fabro.environment"];
+    assert_eq!(environment["provider"], "docker", "{environment}");
+    assert_eq!(
+        environment["image"], "alpine:3.19",
+        "the bundle's image over the catalog's: {environment}"
+    );
+}
+
+/// An environment no layer declares is refused before Petri sees the
+/// bundle: the server's own settings resolution refuses it at validation,
+/// and an intent naming an environment the catalog lacks is refused at
+/// create. Petri's own diagnostic for the same bundle is
+/// `fabro-petri::check::an_unknown_environment_is_refused_and_the_launch_selects_over_the_bundle`.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_unknown_environment_id_is_refused_before_petri() {
+    let workspace = tempfile::tempdir().expect("workspace tempdir");
+    let state = test_app_state_with_options(test_settings(), 5);
+    let app = test_app_with_scheduler(Arc::clone(&state));
+
+    let mut manifest = minimal_manifest_json(COMMAND_DOT);
+    manifest["workflows"]["workflow.fabro"]["config"] = serde_json::json!({
+        "path": "workflow.toml",
+        "source": "_version = 1\n\n[run.environment]\nid = \"nowhere\"\n",
+    });
+    let request = Request::builder()
+        .method("POST")
+        .uri(api("/validate"))
+        .header("content-type", "application/json")
+        .body(Body::from(manifest.to_string()))
+        .expect("validate request should build");
+    let response = app
+        .clone()
+        .oneshot(request)
+        .await
+        .expect("validate request routes");
+    let body = response_json(
+        response,
+        StatusCode::BAD_REQUEST,
+        "POST /api/v1/validate".to_string(),
+    )
+    .await;
+    assert_eq!(
+        body["errors"][0]["detail"], "failed to resolve manifest settings",
+        "{body}"
+    );
+
+    let version_id = register_version(&app, &[
+        ("workflow.fabro", COMMAND_DOT),
+        ("workflow.toml", PLAIN_SETTINGS),
+    ])
+    .await;
+    let mut intent = intent(&version_id, workspace.path());
+    intent["environment_id"] = serde_json::json!("nowhere");
+    let request = Request::builder()
+        .method("POST")
+        .uri(api("/runs"))
+        .header("content-type", "application/json")
+        .body(Body::from(intent.to_string()))
+        .expect("create request should build");
+    let response = app
+        .clone()
+        .oneshot(request)
+        .await
+        .expect("create request routes");
+    let status = response.status();
+    let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("the response body reads");
+    let text = String::from_utf8_lossy(&bytes);
+    assert!(
+        status.is_client_error() && text.contains("nowhere"),
+        "the server refuses an environment its catalog lacks: {status} {text}"
+    );
+}
+
+/// An agent workflow with one stage.
+const AGENT_DOT: &str = r#"digraph Agent {
+    graph [goal="Greet with the notes server available"]
+    start [shape=Mdiamond]
+    exit [shape=Msquare]
+    greet [prompt="Say hello. Use no tools."]
+    start -> greet -> exit
+}"#;
+
+/// A bundle referencing a catalog MCP server by id admits without declaring
+/// it: the server's catalog reaches Petri, the entry lands on the agent
+/// node under the reference's name, and the agent session lists the
+/// server's tool to the model.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_bundle_naming_a_catalog_mcp_server_lists_its_tools_to_the_model() {
+    if host_plugin().is_none() {
+        return;
+    }
+    let workspace = tempfile::tempdir().expect("workspace tempdir");
+    let twin = twin_openai().await;
+    let namespace = format!("{}::{}", module_path!(), line!());
+    TwinScenarios::new(&namespace)
+        .scenario(TwinScenario::responses(OPENAI_MODEL).text("Hello."))
+        .load(twin)
+        .await;
+    let settings = test_settings();
+    let state = TestAppStateBuilder::new()
+        .runtime_settings(settings.server_settings, settings.manifest_run_defaults)
+        .max_concurrent_runs(5)
+        .in_process_execution()
+        .llm_overlay(llm_overlay_with_provider_base_url(
+            "openai",
+            twin.base_url.clone(),
+        ))
+        .vault_entries([(EnvVars::OPENAI_API_KEY, namespace.clone())])
+        .build();
+    let app = test_app_with_scheduler(Arc::clone(&state));
+
+    // The catalog entry: the echo server over stdio, checked in under `test/`.
+    let server = crate::helpers::repo_root().join("test/mcp/echo_server.py");
+    let definition = serde_json::json!({
+        "id": "echo-prod",
+        "display_name": "Echo",
+        "description": "The scenario tests' echo server.",
+        "transport": {
+            "type": "stdio",
+            "command": ["python3", server.to_string_lossy()],
+            "env": {}
+        },
+        "startup_timeout_secs": 10,
+        "tool_timeout_secs": 60
+    });
+    let request = Request::builder()
+        .method("POST")
+        .uri(api("/mcp-servers"))
+        .header("content-type", "application/json")
+        .body(Body::from(definition.to_string()))
+        .expect("mcp server request should build");
+    let response = app
+        .clone()
+        .oneshot(request)
+        .await
+        .expect("mcp server request routes");
+    response_json(
+        response,
+        StatusCode::CREATED,
+        "POST /api/v1/mcp-servers".to_string(),
+    )
+    .await;
+
+    let version_id = register_version(&app, &[
+        ("workflow.fabro", AGENT_DOT),
+        (
+            "workflow.toml",
+            "_version = 1\n\n[run.agent.mcps.notes]\nid = \"echo-prod\"\n",
+        ),
+    ])
+    .await;
+    let mut intent = intent(&version_id, workspace.path());
+    intent["args"]["model"] = serde_json::json!(OPENAI_MODEL);
+    let run_id = create_and_start_run_from_intent(&app, intent).await;
+
+    let graph = admitted_root_graph(&app, &run_id).await;
+    let greet = graph["nodes"]
+        .as_array()
+        .expect("the graph's nodes")
+        .iter()
+        .find(|node| node["name"] == "greet")
+        .unwrap_or_else(|| panic!("the greet node: {graph}"));
+    let mcps = &greet["step"]["config"]["mcps"];
+    assert_eq!(mcps.as_array().map(Vec::len), Some(1), "{greet}");
+    assert_eq!(mcps[0]["name"], "notes", "the reference's name: {mcps}");
+    assert_eq!(mcps[0]["source"], "mcp-catalog:echo-prod", "{mcps}");
+    assert_eq!(mcps[0]["transport"]["type"], "stdio", "{mcps}");
+
+    let status = wait_for_run_status(&app, &run_id, &["succeeded", "failed"]).await;
+    assert_eq!(
+        status,
+        "succeeded",
+        "run: {}",
+        run_json(&app, &run_id).await
+    );
+    // The tools the session offered the model, as Petri records them once
+    // per session (`attractor.tools`) and the projection lists them.
+    let projection = settled_state(&state, &app, &run_id).await;
+    let tools: Vec<&str> = projection["stages"]["greet@1"]["agent_tools"]
+        .as_array()
+        .map(|tools| {
+            tools
+                .iter()
+                .filter_map(|tool| tool["name"].as_str())
+                .collect()
+        })
+        .unwrap_or_default();
+    assert!(
+        tools.contains(&"mcp__notes__echo"),
+        "the session lists the catalog server's tool under the reference's name: {tools:?}"
+    );
 }

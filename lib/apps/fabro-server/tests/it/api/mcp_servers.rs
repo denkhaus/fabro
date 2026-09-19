@@ -566,42 +566,38 @@ async fn invalid_mcp_server_id_is_bad_request() {
 }
 
 /// A `run.agent.mcps.<name>` entry that names a server catalog entry by
-/// `id`: Petri's Fabro frontend reads `workflow.toml` itself and has no
-/// server catalog to resolve the reference against, so the check refuses
-/// it (`unsupported.workflow_toml.run.agent.mcps.reference`) until the
-/// frontend takes the catalog. The run create path shares the gap.
+/// `id` validates: the server hands Petri's Fabro frontend its catalog, so
+/// the reference resolves there as it does in the server's own settings
+/// resolution. An id the catalog lacks is refused by that resolution first.
 #[tokio::test]
-async fn manifest_validation_reports_a_catalog_mcp_reference_as_unsupported() {
+async fn manifest_validation_resolves_a_catalog_mcp_reference() {
     let (app, _temp_dir, _mcp_dir) = mcp_server_app();
     create_mcp_server(&app, "sentry", "Sentry").await;
 
-    let mut manifest = minimal_manifest_json(MINIMAL_DOT);
-    manifest["workflows"]["workflow.fabro"]["config"] = json!({
-        "path": "workflow.toml",
-        "source": r#"
-_version = 1
+    let validate = |reference: &str, expected: StatusCode| {
+        let mut manifest = minimal_manifest_json(MINIMAL_DOT);
+        manifest["workflows"]["workflow.fabro"]["config"] = json!({
+            "path": "workflow.toml",
+            "source": format!(
+                "_version = 1\n\n[run.agent.mcps.sentry]\nid = \"{reference}\"\n"
+            )
+        });
+        let app = app.clone();
+        async move {
+            let response = app
+                .oneshot(json_request(Method::POST, "/validate", &manifest))
+                .await
+                .expect("manifest validation should respond");
+            response_json(response, expected, "POST /api/v1/validate").await
+        }
+    };
 
-[run.agent.mcps.sentry]
-id = "sentry"
-"#
-    });
+    let body = validate("sentry", StatusCode::OK).await;
+    assert_eq!(body["ok"], true, "{body}");
 
-    let response = app
-        .oneshot(json_request(Method::POST, "/validate", &manifest))
-        .await
-        .expect("manifest validation should respond");
-    let body = response_json(response, StatusCode::OK, "POST /api/v1/validate").await;
-
-    assert_eq!(body["ok"], false, "{body}");
-    let rules: Vec<&str> = body["workflow"]["diagnostics"]
-        .as_array()
-        .expect("diagnostics")
-        .iter()
-        .filter_map(|diagnostic| diagnostic["rule"].as_str())
-        .collect();
+    let body = validate("nowhere", StatusCode::BAD_REQUEST).await;
     assert_eq!(
-        rules,
-        vec!["unsupported.workflow_toml.run.agent.mcps.reference"],
+        body["errors"][0]["detail"], "failed to resolve manifest settings",
         "{body}"
     );
 }

@@ -559,6 +559,7 @@ async fn runtime_spec(
     };
     Ok(RuntimeSpec {
         settings_toml: None,
+        mcp_catalog_toml: None,
         model_client,
         dry_run: run_state.spec.settings.run.execution.mode == RunMode::DryRun,
         fabro_home,
