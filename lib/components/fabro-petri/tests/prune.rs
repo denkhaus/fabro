@@ -6,6 +6,11 @@
 //! The run takes its scope through the sandbox-driver host plugin, so the
 //! test skips, and says why, when the executable is not found.
 
+#![expect(
+    clippy::disallowed_methods,
+    reason = "the test reads the run directory with sync std::fs between awaits"
+)]
+
 mod support;
 
 use std::path::PathBuf;

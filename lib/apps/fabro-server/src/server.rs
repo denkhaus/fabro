@@ -97,7 +97,7 @@ use fabro_types::{
     RunControlAction, RunId, RunRunnableSource, RunStatus, RunStatusKind, RunStreamItem,
     RunStreamItemKind, SandboxProviderKind, ServerSettings, SuccessReason,
 };
-use fabro_util::error::{SharedError, render_compact_with_causes};
+use fabro_util::error::{SharedError, collect_chain, render_compact_with_causes};
 use fabro_util::version::FABRO_VERSION;
 use fabro_variable::{Error as VariableError, VariableStore};
 use fabro_vault::{SecretStore, SecretStoreError, SecretType, Vault};
@@ -2915,7 +2915,7 @@ async fn delete_run_sandbox_resource(
             }
         }
         Err(error) => {
-            let message = fabro_util::error::collect_chain(&error).join(": ");
+            let message = collect_chain(&error).join(": ");
             if force || delete_started {
                 tracing::warn!(
                     run_id = %id,

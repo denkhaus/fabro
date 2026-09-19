@@ -13,7 +13,7 @@
 //! and each provider removes its sandbox's managed workspace, a host
 //! workspace under the run directory included.
 //!
-//! The runtime a prune runs on is the run's as [`engine`](crate::engine)
+//! The runtime a prune runs on is the run's as [`engine`]
 //! assembles it, reduced to what a prune reads: the store, the run key, the
 //! run directory (where Petri's host registry and action-host markers are)
 //! and the sandbox backend. No step registry, frontend or model client
