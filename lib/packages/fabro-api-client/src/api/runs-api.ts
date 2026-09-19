@@ -42,6 +42,10 @@ import type { DenyRunRequest } from '../models';
 // @ts-ignore
 import type { ErrorResponse } from '../models';
 // @ts-ignore
+import type { ForkRequest } from '../models';
+// @ts-ignore
+import type { ForkResponse } from '../models';
+// @ts-ignore
 import type { LinkRunPullRequestRequest } from '../models';
 // @ts-ignore
 import type { MergeRunPullRequestRequest } from '../models';
@@ -60,11 +64,17 @@ import type { PullRequestResponse } from '../models';
 // @ts-ignore
 import type { RenderWorkflowGraphRequest } from '../models';
 // @ts-ignore
+import type { RewindRequest } from '../models';
+// @ts-ignore
+import type { RewindResponse } from '../models';
+// @ts-ignore
 import type { Run } from '../models';
 // @ts-ignore
 import type { RunIntent } from '../models';
 // @ts-ignore
 import type { RunManifest } from '../models';
+// @ts-ignore
+import type { RunTimelineResponse } from '../models';
 // @ts-ignore
 import type { StartRunRequest } from '../models';
 // @ts-ignore
@@ -536,6 +546,49 @@ export const RunsApiAxiosParamCreator = function (configuration?: Configuration)
             };
         },
         /**
+         * Creates a new run from a checkpoint of the source run and starts it. The new run holds the source\'s records up to the checkpoint\'s position and continues from there in a fresh workspace restored to the checkpoint\'s commit. The source run is left untouched. A checkpoint inside a parallel branch cannot be forked at; fork at the parallel stage instead.
+         * @summary Fork Run
+         * @param {string} id Unique run identifier (ULID).
+         * @param {ForkRequest} [forkRequest]
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        forkRun: async (id: string, forkRequest?: ForkRequest, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'id' is not null or undefined
+            assertParamExists('forkRun', 'id', id)
+            const localVarPath = `/api/v1/runs/{id}/fork`
+                .replace(`{${"id"}}`, encodeURIComponent(String(id)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            // authentication SessionCookie required
+
+            // authentication BearerAuth required
+            // http bearer authentication required
+            await setBearerAuthToObject(localVarHeaderParameter, configuration)
+
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+            localVarHeaderParameter['Accept'] = 'application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+            localVarRequestOptions.data = serializeDataIfNeeded(forkRequest, localVarRequestOptions, configuration)
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
          * Returns the stored pull request record for a run plus live GitHub details when available.
          * @summary Get Run Pull Request
          * @param {string} id Unique run identifier (ULID).
@@ -586,6 +639,46 @@ export const RunsApiAxiosParamCreator = function (configuration?: Configuration)
             // verify required parameter 'id' is not null or undefined
             assertParamExists('getRunPullRequestCreation', 'id', id)
             const localVarPath = `/api/v1/runs/{id}/pull_request/creation`
+                .replace(`{${"id"}}`, encodeURIComponent(String(id)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            // authentication SessionCookie required
+
+            // authentication BearerAuth required
+            // http bearer authentication required
+            await setBearerAuthToObject(localVarHeaderParameter, configuration)
+
+            localVarHeaderParameter['Accept'] = 'application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * Returns the run\'s checkpoints in the order they were recorded, each at its Petri position with the commit it made and the stage it belongs to, and where the run was forked from when it is a fork.
+         * @summary Get Run Timeline
+         * @param {string} id Unique run identifier (ULID).
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getRunTimeline: async (id: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'id' is not null or undefined
+            assertParamExists('getRunTimeline', 'id', id)
+            const localVarPath = `/api/v1/runs/{id}/timeline`
                 .replace(`{${"id"}}`, encodeURIComponent(String(id)));
             // use dummy base URL string because the URL constructor only accepts absolute URLs.
             const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
@@ -1064,6 +1157,89 @@ export const RunsApiAxiosParamCreator = function (configuration?: Configuration)
             setSearchParams(localVarUrlObj, localVarQueryParameter);
             let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
             localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * Creates a new run from the terminal source run\'s last checkpoint and starts it. When the source failed on a stage, that stage runs again on the files of the stage before it; otherwise the new run continues from the last checkpoint as it stands. The new run records `retried_from` and `fork_source_ref`; the source run is left unchanged. Active and archived runs are not retryable.
+         * @summary Retry Run
+         * @param {string} id Unique run identifier (ULID).
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        retryRun: async (id: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'id' is not null or undefined
+            assertParamExists('retryRun', 'id', id)
+            const localVarPath = `/api/v1/runs/{id}/retry`
+                .replace(`{${"id"}}`, encodeURIComponent(String(id)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            // authentication SessionCookie required
+
+            // authentication BearerAuth required
+            // http bearer authentication required
+            await setBearerAuthToObject(localVarHeaderParameter, configuration)
+
+            localVarHeaderParameter['Accept'] = 'application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * Creates a new run from a checkpoint of a terminal source run and starts it, then archives the source run and records `run.superseded_by` on it. Returns 207 when the new run was created but the source archive step failed.
+         * @summary Rewind Run
+         * @param {string} id Unique run identifier (ULID).
+         * @param {RewindRequest} [rewindRequest]
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        rewindRun: async (id: string, rewindRequest?: RewindRequest, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'id' is not null or undefined
+            assertParamExists('rewindRun', 'id', id)
+            const localVarPath = `/api/v1/runs/{id}/rewind`
+                .replace(`{${"id"}}`, encodeURIComponent(String(id)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            // authentication SessionCookie required
+
+            // authentication BearerAuth required
+            // http bearer authentication required
+            await setBearerAuthToObject(localVarHeaderParameter, configuration)
+
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+            localVarHeaderParameter['Accept'] = 'application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+            localVarRequestOptions.data = serializeDataIfNeeded(rewindRequest, localVarRequestOptions, configuration)
 
             return {
                 url: toPathString(localVarUrlObj),
@@ -1556,6 +1732,20 @@ export const RunsApiFp = function(configuration?: Configuration) {
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
+         * Creates a new run from a checkpoint of the source run and starts it. The new run holds the source\'s records up to the checkpoint\'s position and continues from there in a fresh workspace restored to the checkpoint\'s commit. The source run is left untouched. A checkpoint inside a parallel branch cannot be forked at; fork at the parallel stage instead.
+         * @summary Fork Run
+         * @param {string} id Unique run identifier (ULID).
+         * @param {ForkRequest} [forkRequest]
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async forkRun(id: string, forkRequest?: ForkRequest, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<ForkResponse>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.forkRun(id, forkRequest, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['RunsApi.forkRun']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
          * Returns the stored pull request record for a run plus live GitHub details when available.
          * @summary Get Run Pull Request
          * @param {string} id Unique run identifier (ULID).
@@ -1579,6 +1769,19 @@ export const RunsApiFp = function(configuration?: Configuration) {
             const localVarAxiosArgs = await localVarAxiosParamCreator.getRunPullRequestCreation(id, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
             const localVarOperationServerBasePath = operationServerMap['RunsApi.getRunPullRequestCreation']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * Returns the run\'s checkpoints in the order they were recorded, each at its Petri position with the commit it made and the stage it belongs to, and where the run was forked from when it is a fork.
+         * @summary Get Run Timeline
+         * @param {string} id Unique run identifier (ULID).
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async getRunTimeline(id: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<RunTimelineResponse>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.getRunTimeline(id, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['RunsApi.getRunTimeline']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
@@ -1719,6 +1922,33 @@ export const RunsApiFp = function(configuration?: Configuration) {
             const localVarAxiosArgs = await localVarAxiosParamCreator.retrieveRunGraphSource(id, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
             const localVarOperationServerBasePath = operationServerMap['RunsApi.retrieveRunGraphSource']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * Creates a new run from the terminal source run\'s last checkpoint and starts it. When the source failed on a stage, that stage runs again on the files of the stage before it; otherwise the new run continues from the last checkpoint as it stands. The new run records `retried_from` and `fork_source_ref`; the source run is left unchanged. Active and archived runs are not retryable.
+         * @summary Retry Run
+         * @param {string} id Unique run identifier (ULID).
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async retryRun(id: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<Run>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.retryRun(id, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['RunsApi.retryRun']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * Creates a new run from a checkpoint of a terminal source run and starts it, then archives the source run and records `run.superseded_by` on it. Returns 207 when the new run was created but the source archive step failed.
+         * @summary Rewind Run
+         * @param {string} id Unique run identifier (ULID).
+         * @param {RewindRequest} [rewindRequest]
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async rewindRun(id: string, rewindRequest?: RewindRequest, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<RewindResponse>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.rewindRun(id, rewindRequest, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['RunsApi.rewindRun']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
@@ -1950,6 +2180,17 @@ export const RunsApiFactory = function (configuration?: Configuration, basePath?
             return localVarFp.denyRun(id, denyRunRequest, options).then((request) => request(axios, basePath));
         },
         /**
+         * Creates a new run from a checkpoint of the source run and starts it. The new run holds the source\'s records up to the checkpoint\'s position and continues from there in a fresh workspace restored to the checkpoint\'s commit. The source run is left untouched. A checkpoint inside a parallel branch cannot be forked at; fork at the parallel stage instead.
+         * @summary Fork Run
+         * @param {string} id Unique run identifier (ULID).
+         * @param {ForkRequest} [forkRequest]
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        forkRun(id: string, forkRequest?: ForkRequest, options?: RawAxiosRequestConfig): AxiosPromise<ForkResponse> {
+            return localVarFp.forkRun(id, forkRequest, options).then((request) => request(axios, basePath));
+        },
+        /**
          * Returns the stored pull request record for a run plus live GitHub details when available.
          * @summary Get Run Pull Request
          * @param {string} id Unique run identifier (ULID).
@@ -1968,6 +2209,16 @@ export const RunsApiFactory = function (configuration?: Configuration, basePath?
          */
         getRunPullRequestCreation(id: string, options?: RawAxiosRequestConfig): AxiosPromise<PullRequestCreation> {
             return localVarFp.getRunPullRequestCreation(id, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * Returns the run\'s checkpoints in the order they were recorded, each at its Petri position with the commit it made and the stage it belongs to, and where the run was forked from when it is a fork.
+         * @summary Get Run Timeline
+         * @param {string} id Unique run identifier (ULID).
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getRunTimeline(id: string, options?: RawAxiosRequestConfig): AxiosPromise<RunTimelineResponse> {
+            return localVarFp.getRunTimeline(id, options).then((request) => request(axios, basePath));
         },
         /**
          * Links a run under an orchestration parent. Parent links are mutable for all run states, including archived and terminal runs.
@@ -2078,6 +2329,27 @@ export const RunsApiFactory = function (configuration?: Configuration, basePath?
          */
         retrieveRunGraphSource(id: string, options?: RawAxiosRequestConfig): AxiosPromise<string> {
             return localVarFp.retrieveRunGraphSource(id, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * Creates a new run from the terminal source run\'s last checkpoint and starts it. When the source failed on a stage, that stage runs again on the files of the stage before it; otherwise the new run continues from the last checkpoint as it stands. The new run records `retried_from` and `fork_source_ref`; the source run is left unchanged. Active and archived runs are not retryable.
+         * @summary Retry Run
+         * @param {string} id Unique run identifier (ULID).
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        retryRun(id: string, options?: RawAxiosRequestConfig): AxiosPromise<Run> {
+            return localVarFp.retryRun(id, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * Creates a new run from a checkpoint of a terminal source run and starts it, then archives the source run and records `run.superseded_by` on it. Returns 207 when the new run was created but the source archive step failed.
+         * @summary Rewind Run
+         * @param {string} id Unique run identifier (ULID).
+         * @param {RewindRequest} [rewindRequest]
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        rewindRun(id: string, rewindRequest?: RewindRequest, options?: RawAxiosRequestConfig): AxiosPromise<RewindResponse> {
+            return localVarFp.rewindRun(id, rewindRequest, options).then((request) => request(axios, basePath));
         },
         /**
          * Validates runtime readiness for a workflow manifest without creating a run.
@@ -2293,6 +2565,18 @@ export class RunsApi extends BaseAPI {
     }
 
     /**
+     * Creates a new run from a checkpoint of the source run and starts it. The new run holds the source\'s records up to the checkpoint\'s position and continues from there in a fresh workspace restored to the checkpoint\'s commit. The source run is left untouched. A checkpoint inside a parallel branch cannot be forked at; fork at the parallel stage instead.
+     * @summary Fork Run
+     * @param {string} id Unique run identifier (ULID).
+     * @param {ForkRequest} [forkRequest]
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public forkRun(id: string, forkRequest?: ForkRequest, options?: RawAxiosRequestConfig) {
+        return RunsApiFp(this.configuration).forkRun(id, forkRequest, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
      * Returns the stored pull request record for a run plus live GitHub details when available.
      * @summary Get Run Pull Request
      * @param {string} id Unique run identifier (ULID).
@@ -2312,6 +2596,17 @@ export class RunsApi extends BaseAPI {
      */
     public getRunPullRequestCreation(id: string, options?: RawAxiosRequestConfig) {
         return RunsApiFp(this.configuration).getRunPullRequestCreation(id, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * Returns the run\'s checkpoints in the order they were recorded, each at its Petri position with the commit it made and the stage it belongs to, and where the run was forked from when it is a fork.
+     * @summary Get Run Timeline
+     * @param {string} id Unique run identifier (ULID).
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public getRunTimeline(id: string, options?: RawAxiosRequestConfig) {
+        return RunsApiFp(this.configuration).getRunTimeline(id, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**
@@ -2432,6 +2727,29 @@ export class RunsApi extends BaseAPI {
      */
     public retrieveRunGraphSource(id: string, options?: RawAxiosRequestConfig) {
         return RunsApiFp(this.configuration).retrieveRunGraphSource(id, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * Creates a new run from the terminal source run\'s last checkpoint and starts it. When the source failed on a stage, that stage runs again on the files of the stage before it; otherwise the new run continues from the last checkpoint as it stands. The new run records `retried_from` and `fork_source_ref`; the source run is left unchanged. Active and archived runs are not retryable.
+     * @summary Retry Run
+     * @param {string} id Unique run identifier (ULID).
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public retryRun(id: string, options?: RawAxiosRequestConfig) {
+        return RunsApiFp(this.configuration).retryRun(id, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * Creates a new run from a checkpoint of a terminal source run and starts it, then archives the source run and records `run.superseded_by` on it. Returns 207 when the new run was created but the source archive step failed.
+     * @summary Rewind Run
+     * @param {string} id Unique run identifier (ULID).
+     * @param {RewindRequest} [rewindRequest]
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public rewindRun(id: string, rewindRequest?: RewindRequest, options?: RawAxiosRequestConfig) {
+        return RunsApiFp(this.configuration).rewindRun(id, rewindRequest, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**

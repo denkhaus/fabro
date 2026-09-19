@@ -35,7 +35,7 @@ pub(super) fn routes() -> Router<Arc<AppState>> {
         .route("/runs/{id}/unarchive", post(unarchive_run))
 }
 
-async fn run_response(state: &AppState, id: RunId, status: StatusCode) -> Response {
+pub(super) async fn run_response(state: &AppState, id: RunId, status: StatusCode) -> Response {
     match state.stores.run_summaries.get(&id, Utc::now()).await {
         Ok(Some(summary)) => {
             (status, Json(state.decorate_run_summary(summary).await)).into_response()
@@ -116,7 +116,21 @@ pub(in crate::server) async fn queue_run_start(
             ));
         }
     }
+    queue_run(state, id, &run_state, resume, actor).await
+}
 
+/// Queue the run for the scheduler: record that its start was requested
+/// and that it is runnable (or pending approval), and register it as a
+/// managed run in start or resume mode. The caller has checked that the run
+/// may be queued; a fork, seeded to resume, is queued here without the
+/// checkpoint check a resume of an interrupted run makes.
+pub(super) async fn queue_run(
+    state: &AppState,
+    id: RunId,
+    run_state: &fabro_store::RunProjection,
+    resume: bool,
+    actor: Principal,
+) -> Result<(), ApiError> {
     let run_dir = Storage::new(state.server_storage_dir())
         .run_scratch(&id)
         .root()
@@ -810,7 +824,7 @@ async fn batch_delete_runs(
 }
 
 #[derive(Clone, Copy)]
-enum ArchiveAction {
+pub(super) enum ArchiveAction {
     Archive,
     Unarchive,
 }
@@ -986,7 +1000,7 @@ fn batch_result_failure(
 
 /// Archive a terminal run, or unarchive one: idempotent either way, refused
 /// with a precondition error when the run is not terminal.
-async fn run_archive_operation(
+pub(super) async fn run_archive_operation(
     state: &AppState,
     id: &RunId,
     actor: Option<Principal>,

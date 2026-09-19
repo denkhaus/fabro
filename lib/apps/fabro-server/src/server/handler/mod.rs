@@ -14,6 +14,7 @@ mod environments;
 pub(in crate::server) mod events;
 pub(in crate::server) mod graph;
 pub(in crate::server) mod lifecycle;
+mod lineage;
 mod llm_sse;
 mod mcp_servers;
 mod models;
@@ -214,6 +215,7 @@ pub(super) fn real_routes() -> Router<Arc<AppState>> {
         .merge(sandbox::routes())
         .merge(sandboxes::routes())
         .merge(lifecycle::routes())
+        .merge(lineage::routes())
         .merge(steer::routes())
         .merge(pair::routes())
         .merge(petri::routes())

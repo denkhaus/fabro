@@ -12,8 +12,8 @@ pub use auth_store::{
     AuthEntry, AuthStore, AuthStoreError, DevTokenEntry, LockError, OAuthEntry, StoredSubject,
 };
 pub use client::{
-    Client, RunStreamItemStream, RunStreamPage, SessionEventStream, TransportConnector,
-    apply_bearer_token_auth,
+    Client, RewindRunResult, RunStreamItemStream, RunStreamPage, SessionEventStream,
+    TransportConnector, apply_bearer_token_auth,
 };
 pub use credential::{Credential, CredentialFallback};
 pub use error::{
