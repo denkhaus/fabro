@@ -1286,10 +1286,18 @@ fn parse_tmp_daemon_ps_line(line: &str) -> Option<(u32, u64, &str)> {
     Some((pid, elapsed_secs, command))
 }
 
+/// Matches the process title of a test-spawned `fabro server` daemon: a Unix
+/// socket under a `/tmp/.tmp*` tempdir, or anywhere below a
+/// `TestContext` root (`.ft-<label>-<suffix>` under `std::env::temp_dir()`,
+/// which is not `/tmp` on macOS). Real servers bind under `~/.fabro/` or a
+/// configured storage dir, never a `.tmp` or `.ft-` directory.
 fn tmp_daemon_socket_re() -> &'static Regex {
     static TMP_DAEMON_SOCKET_RE: OnceLock<Regex> = OnceLock::new();
     TMP_DAEMON_SOCKET_RE.get_or_init(|| {
-        Regex::new(r"^fabro server unix:/tmp/\.tmp[^/]+/[^/]+\.sock\s*$").expect("static regex")
+        Regex::new(
+            r"^fabro server unix:(?:/tmp/\.tmp[^/]+|(?:/[^/]+)+/\.ft-[^/]+-[^/]+(?:/[^/]+)*)/[^/]+\.sock\s*$",
+        )
+        .expect("static regex")
     })
 }
 
@@ -2780,12 +2788,32 @@ mod tests {
     fn tmp_daemon_socket_regex_matches_only_test_tmp_unix_daemons() {
         let re = tmp_daemon_socket_re();
 
+        // `/tmp/.tmp*` roots.
         assert!(re.is_match("fabro server unix:/tmp/.tmpAbC/fabro.sock"));
-        assert!(!re.is_match("fabro server unix:/tmp/.ft-foo-XYZ/test.sock"));
+        assert!(re.is_match("fabro server unix:/tmp/.tmp5vNC7E/configured.sock   "));
+        // `TestContext` roots under any temp dir, including nested dirs.
+        assert!(re.is_match("fabro server unix:/tmp/.ft-foo-XYZ/test.sock"));
+        assert!(re.is_match(
+            "fabro server unix:/private/var/folders/nm/abc/T/.ft-a_crash_before_t-bMEw4g/install-storage.sock"
+        ));
+        assert!(re.is_match(
+            "fabro server unix:/var/folders/nm/abc/T/.ft-auth_login_reje-Q1w2e3/temp/fabro.sock"
+        ));
+
+        // Not a daemon title.
         assert!(!re.is_match("sh -c fabro server unix:/tmp/.tmpAbC/fabro.sock"));
-        assert!(!re.is_match("fabro server unix:/Users/me/.fabro/fabro.sock"));
-        assert!(!re.is_match("fabro server unix:/tmp/notmatching/fabro.sock"));
         assert!(!re.is_match("fabro server tcp:127.0.0.1:32276"));
+        // Real servers.
+        assert!(!re.is_match("fabro server unix:/Users/me/.fabro/fabro.sock"));
+        assert!(!re.is_match("fabro server unix:/var/lib/fabro/storage/fabro.sock"));
+        assert!(!re.is_match("fabro server unix:/tmp/notmatching/fabro.sock"));
+        assert!(!re.is_match("fabro server unix:/tmp/.tmpAbC/nested/fabro.sock"));
+        // `.ft-` anywhere other than as its own directory component.
+        assert!(!re.is_match("fabro server unix:/tmp/.ft-x-y.sock"));
+        assert!(!re.is_match("fabro server unix:/tmp/my.ft-foo-XYZ/fabro.sock"));
+        assert!(!re.is_match("fabro server unix:/Users/me/.fabro/.ft-foo-XYZ.sock"));
+        assert!(!re.is_match("fabro server unix:/tmp/.ft-noseparator/fabro.sock"));
+        assert!(!re.is_match("fabro server unix:.ft-foo-XYZ/fabro.sock"));
     }
 
     #[test]
