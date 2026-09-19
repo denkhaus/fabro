@@ -39,6 +39,19 @@ digraph Architect {
         context_allow_keys="arch_loop_digest,arch_score_json,arch_churn_hotspots,arch_seed_digest,arch_facts_files,arch_review_date,journal"
     ]
 
+    // Rotate (fabro-491b): deterministic pre-analyze rotation. When a
+    // plain-date review file from an earlier same-date pass exists, the
+    // script preserves it verbatim as a `<date>-<HHmm>.md` sibling so
+    // the analyze write never silently overwrites earlier prose. Fail-
+    // open: any internal error exits 0 and never blocks the pass.
+    rotate [
+        label="Rotate prior same-date review",
+        shape=parallelogram,
+        script="nu .fabro/workflows/architect/scripts/rotate-review.nu",
+        output_schema="routing",
+        timeout="1m"
+    ]
+
     // Analyze: the intellectual core. The stage agent READS the vendored
     // improve-codebase-architecture skill (explicit path, user directive
     // 2026-09-17: no fabro_ask indirection — direct classical application)
@@ -101,7 +114,10 @@ digraph Architect {
     // Gate/base tooling failure is transient (script or git hiccup):
     // soft exit, the daily automation retries next invocation.
     survey -> exit [kind=soft, label="Survey failed (next pass retries)", condition="outcome=failed"]
-    survey -> analyze [label="Architecture due"]
+    survey -> rotate [label="Architecture due"]
+    // Unconditional success edge: the rotate script is fail-open and
+    // always proceeds to analyze.
+    rotate -> analyze [label="Rotated"]
 
     analyze -> file [label="Answer ready", condition="outcome=succeeded"]
     // Analysis hiccup (skill read failure, review write impossible):
