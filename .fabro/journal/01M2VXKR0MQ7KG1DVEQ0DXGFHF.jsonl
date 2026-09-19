@@ -1,0 +1,2 @@
+{"$schema":"fabro-journal-v1","run_id":"01M2VXKR0MQ7KG1DVEQ0DXGFHF","node":"start","visit":1,"status":"succeeded","ts":"2026-09-19T04:08:32Z","data":{}}
+{"$schema":"fabro-journal-v1","run_id":"01M2VXKR0MQ7KG1DVEQ0DXGFHF","node":"select","visit":1,"status":"succeeded","ts":"2026-09-19T04:09:00Z","data":{"painpoints":[],"observations":["merge-upstream listed 0 runs — workflow has no runs yet on this engine","All other unrevised develop runs are stale-evidence (version drift); only the baseline run 01M2VX6PVR is revisable this pass"]}}
