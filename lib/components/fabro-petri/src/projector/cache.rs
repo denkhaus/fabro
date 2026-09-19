@@ -27,7 +27,7 @@ use crate::projection::RunView;
 
 /// How long a run's cache is kept after its last pass. A run blocked on a
 /// question for longer pays one full replay when its next record lands.
-pub(super) const IDLE: Duration = Duration::from_secs(10 * 60);
+pub(super) const IDLE: Duration = Duration::from_mins(10);
 
 /// One live run's cache.
 pub(super) struct RunCache {
