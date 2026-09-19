@@ -43,6 +43,12 @@ mod run_selector;
 mod run_title_generation;
 #[cfg(test)]
 mod run_tool_create;
+// Fork seam (denkhaus line): fork features live in fork-owned files
+// (`sandbox_gc.rs`, `fabro_sandbox::reclaim`) so upstream merges cannot
+// overwrite them; every fork feature is anchored in `fork_seam_test.rs`.
+#[cfg(test)]
+mod fork_seam_test;
+mod sandbox_gc;
 pub mod security_headers;
 pub mod serve;
 pub mod server;

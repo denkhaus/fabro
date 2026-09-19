@@ -2,6 +2,10 @@ pub mod environment;
 pub mod error;
 pub mod fs_scope;
 pub mod provider;
+// Fork extension (denkhaus line): fork features live in fork-owned files
+// so upstream merges cannot overwrite them; anchored in fabro-server's
+// `fork_seam_test.rs`.
+pub mod reclaim;
 pub mod sandbox;
 pub mod sandbox_spec;
 

@@ -34,7 +34,7 @@ pub struct SandboxInventory {
     entries: Vec<Arc<InventoryEntry>>,
 }
 
-struct InventoryEntry {
+pub(crate) struct InventoryEntry {
     kind:       SandboxProviderKind,
     connection: Connection,
 }
@@ -168,12 +168,25 @@ impl SandboxInventory {
             }),
         }
     }
+
+    /// The inventory's entries, for fork extensions that live in their
+    /// own modules (`crate::reclaim`) instead of extending this
+    /// upstream-owned file. Each entry's provider is connected lazily on
+    /// first use and narrowed to fabro's ownership labels.
+    pub(crate) fn entries(&self) -> &[Arc<InventoryEntry>] {
+        &self.entries
+    }
 }
 
 impl InventoryEntry {
+    /// The provider's kind, for error reporting in extension modules.
+    pub(crate) fn kind(&self) -> &SandboxProviderKind {
+        &self.kind
+    }
+
     /// The provider narrowed to fabro's sandboxes, connected on first use;
     /// `None` when the kind has nothing to list.
-    async fn provider(&self) -> crate::Result<Option<&Arc<dyn DriverProvider>>> {
+    pub(crate) async fn provider(&self) -> crate::Result<Option<&Arc<dyn DriverProvider>>> {
         match &self.connection {
             Connection::HostDirectories => Ok(None),
             Connection::Connected(provider) => Ok(Some(provider)),
@@ -274,7 +287,7 @@ pub enum SandboxLookupError {
     },
 }
 
-fn provider_error(
+pub(crate) fn provider_error(
     provider: SandboxProviderKind,
     err: &(dyn std::error::Error + 'static),
 ) -> SandboxProviderLookupError {

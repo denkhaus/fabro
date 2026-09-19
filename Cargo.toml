@@ -118,6 +118,11 @@ sandbox-driver-docker-config = { git = "https://github.com/lithoscomputer/sandbo
 sandbox-driver-daytona = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "64c14b89d078a4b34d1555092ad01d41541f7a7d" }
 sandbox-driver-daytona-config = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "64c14b89d078a4b34d1555092ad01d41541f7a7d" }
 sandbox-driver-testing = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "64c14b89d078a4b34d1555092ad01d41541f7a7d" }
+# bollard: the Docker API client. A transitive dependency of
+# sandbox-driver-docker (same version); the server's sandbox GC uses it
+# directly for the one surface the driver does not model: listing and
+# untagging stale toolchain image tags.
+bollard = "0.18"
 # pebble: the coding agent loop fabro runs its agent stages, Ask Fabro
 # sessions, hook evaluators, and `fabro exec` on. Pinned by rev to pebble
 # `main`. Pebble owns the `PortRoutes` trait fabro implements over its run
