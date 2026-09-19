@@ -33,6 +33,15 @@
 #       gate-command ban pattern rejects `just qualitygate` and its
 #       byte-equivalent body, accepts delegated phrasing, and the
 #       planner node in workflow.fabro references the schema file
+#   (l)-(n) fabro-ead4: the mechanical superseded-close fires for EVERY
+#       unambiguous duplicate candidate (non-top closes succeed while a
+#       trackerless sibling aborts fail-open without stopping them); an
+#       ambiguous duplicate (tracker-closed, no landed evidence, no sha)
+#       is skipped, never closed; a top duplicate close routes "Already
+#       landed" with the real (non-report-only) close; and every report
+#       carries the verdict legend. These cases drive the LIVE close arm
+#       against a scratch seeds tracker initialized in the work clone —
+#       the real tracker is never touched.
 #
 # Usage: nu .fabro/scripts/dup-run-check-fixtures.nu   (exit 0 = all pass)
 
@@ -75,6 +84,34 @@ def preflight [script: path, candidates: string, self: string] {
         exit 1
     }
     $out.stdout | lines | last | from json
+}
+
+# Run planner-preflight.nu WITHOUT --report-only (fabro-ead4): the live
+# closure arm writes to the scratch seeds tracker in CWD, never the real
+# one; parsed routing JSON object.
+def preflight-live [script: path, candidates: string, self: string] {
+    let out = (do { $self | nu $script --base origin/main --candidates $candidates } | complete)
+    if $out.exit_code != 0 {
+        print -e $"planner-preflight exited ($out.exit_code): ($out.stderr)"
+        exit 1
+    }
+    $out.stdout | lines | last | from json
+}
+
+# Read one seed from the scratch seeds tracker via sd (parsed issue
+# record; null on failure) — never parse .seeds/issues.jsonl by hand.
+def sd-stat [id: string] {
+    let r = (do { sd show $id --format json } | complete)
+    if $r.exit_code != 0 { null } else { $r.stdout | from json | get issue }
+}
+
+# Fabricate one scratch-tracker row: the exact compact-JSON-per-line
+# shape sd itself writes (verified against sd init/create output), for
+# the (l)-(n) live close-arm cases.
+def fixture-row [id: string, status: string] {
+    # concat, not $"($id)" interpolation: the literal parentheses around
+    # the id are part of the expected description body.
+    {id: $id, title: ("fixture " + $id), status: $status, type: "task", priority: 2, createdAt: "2026-09-19T00:00:00.000Z", updatedAt: "2026-09-19T00:00:00.000Z", description: ("fixture body (" + $id + ")")} | to json --raw
 }
 
 def main [] {
@@ -159,6 +196,18 @@ def main [] {
         expect 'i: file-seeds-and filed_only (second seed)' $i2.filed_only_matches 1
         expect 'i: file-seeds-and impl matches (second seed)' ($i2.implementation_matches | length) 0
 
+        # (l)-(n) fabro-ead4 fixture history: foreign landed
+        # implementations for fix010 (closes from the live arm, non-top),
+        # fix011 (duplicate verdict but deliberately NO tracker row -> its
+        # close aborts fail-open), and fix012 (top-position close -> the
+        # real "Already landed" route). fix009 gets NO commit at all: it
+        # is tracker-closed with no landed evidence — the ambiguous
+        # duplicate that must stay for planner adjudication.
+        ^git commit -q --allow-empty -m 'Implement dup-close arm for fabro-fix010 (#106)' -m 'Fabro-Run: RUN-OTHER'
+        ^git commit -q --allow-empty -m 'Implement dup-close arm for fabro-fix011 (#107)' -m 'Fabro-Run: RUN-OTHER'
+        ^git commit -q --allow-empty -m 'Implement dup-close arm for fabro-fix012 (#108)' -m 'Fabro-Run: RUN-OTHER'
+        ^git push -q origin main
+
         # (f)-(h) fabro-a32f pre-planner preflight routing (report-only:
         # no tracker writes; the close path is guarded by sd failures into
         # fail-open and is exercised by the dry-run in the seed work).
@@ -220,6 +269,69 @@ def main [] {
         let j2 = (preflight $pre 'fabro-fix008' 'RUN-PREFLIGHT')
         let j2row = ($j2.context_updates | get 'output.preflight' | get candidates | first)
         expect 'j: merged run branch never marks' $j2row.in_flight false
+
+        # (l)-(n) fabro-ead4 live close arm: scratch seeds tracker in the
+        # work clone (CWD) — sd resolves .seeds relative to CWD, so the
+        # fabricated rows are what planner-preflight's sd show/update/
+        # close act on; the real tracker is untouched.
+        sd init | ignore
+        [(fixture-row 'fabro-fix003' 'open')
+         (fixture-row 'fabro-fix009' 'closed')
+         (fixture-row 'fabro-fix010' 'open')
+         (fixture-row 'fabro-fix012' 'open')] | save --append .seeds/issues.jsonl
+
+        # (l) non-top duplicate closes: top is clean (filed-only fix003),
+        # fix011 is duplicate-but-trackerless (close aborts fail-open),
+        # fix010 is a plain non-top duplicate — it MUST close despite the
+        # earlier abort, and the route must stay "Preflight done" (only
+        # the TOP candidate's close routes "Already landed").
+        let l = (preflight-live $pre 'fabro-fix003,fabro-fix011,fabro-fix010' 'RUN-PREFLIGHT')
+        expect 'l: non-top closes leave route' $l.preferred_next_label 'Preflight done'
+        let lrep = ($l.context_updates | get 'output.preflight')
+        expect 'l: closed stays null for clean top' $lrep.closed.seed null
+        let l011 = ($lrep.close_log | where {|e| $e.seed == 'fabro-fix011'} | first)
+        expect 'l: trackerless duplicate close aborted' ($l011.note | str starts-with 'close aborted: sd show failed') true
+        expect 'l: aborted entry not closed' $l011.closed false
+        let l010 = ($lrep.close_log | where {|e| $e.seed == 'fabro-fix010'} | first)
+        expect 'l: non-top duplicate closed despite earlier abort' $l010.closed true
+        expect 'l: non-top close carries landed sha' (($l010.sha | str length) >= 7) true
+        expect 'l: no close attempted for clean top' ($lrep.close_log | where {|e| $e.seed == 'fabro-fix003'} | length) 0
+        expect 'l: aborted close degrades mode' $lrep.mode 'degraded'
+        let lrow = (sd-stat 'fabro-fix010')
+        expect 'l: tracker shows non-top seed closed' $lrow.status 'closed'
+        expect 'l: closure note appended to full body' ($lrow.description | str contains 'fixture body (fabro-fix010) + closure note: superseded: fix landed in ') true
+        expect 'l: close reason names the sha' ($lrow.closeReason | str starts-with 'superseded: fix landed in ') true
+        expect 'l: clean top stays open' (sd-stat 'fabro-fix003').status 'open'
+        expect 'l: legend maps duplicate' ($lrep.legend.duplicate | str contains 'merge-target base') true
+        expect 'l: legend maps clean' ($lrep.legend.clean | str contains 'no landed implementation') true
+        expect 'l: legend maps degraded' ($lrep.legend.degraded | str contains 'check failed') true
+
+        # (m) ambiguous duplicate does NOT close: fix009 is tracker-closed
+        # with no landed implementation and no closing evidence — verdict
+        # duplicate without a sha. The close arm must skip it (journaled)
+        # and leave the tracker row byte-identical; the run routes to the
+        # planner instead of "Already landed".
+        let m = (preflight-live $pre 'fabro-fix009' 'RUN-PREFLIGHT')
+        expect 'm: ambiguous top routes to planner' $m.preferred_next_label 'Preflight done'
+        let mrep = ($m.context_updates | get 'output.preflight')
+        expect 'm: ambiguous duplicate verdict reported' ($mrep.candidates | first | get verdict) 'duplicate'
+        expect 'm: ambiguous duplicate sha null' ($mrep.candidates | first | get sha) null
+        let m9 = ($mrep.close_log | where {|e| $e.seed == 'fabro-fix009'} | first)
+        expect 'm: ambiguous duplicate not closed' $m9.closed false
+        expect 'm: skip note names the guard' ($m9.note | str contains 'skipped: duplicate without implementation evidence') true
+        let mrow = (sd-stat 'fabro-fix009')
+        expect 'm: tracker description untouched' $mrow.description 'fixture body (fabro-fix009)'
+        expect 'm: no spurious closeReason' ($mrow | get -o closeReason | default null) null
+
+        # (n) top-position duplicate close with the LIVE arm (no
+        # --report-only): fix012 closes for real and routes "Already
+        # landed" with the closed seed + sha in the report.
+        let n = (preflight-live $pre 'fabro-fix012' 'RUN-PREFLIGHT')
+        expect 'n: top duplicate close routes Already landed' $n.preferred_next_label 'Already landed'
+        let nrep = ($n.context_updates | get 'output.preflight')
+        expect 'n: closed names the top seed' $nrep.closed.seed 'fabro-fix012'
+        expect 'n: closed sha resolved' (($nrep.closed.sha | str length) >= 7) true
+        expect 'n: tracker shows top seed closed' (sd-stat 'fabro-fix012').status 'closed'
 
         # (k) fabro-9ec3 arm 3: schema ban semantics + graph wiring.
         let wf = ($FIXTURES_DIR | path join '..' 'workflows' 'develop')
