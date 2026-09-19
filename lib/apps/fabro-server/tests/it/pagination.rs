@@ -72,16 +72,31 @@ async fn paginated_endpoints_return_correct_shape() {
     let app = fabro_server::test_support::build_test_router(state);
 
     for ep in ENDPOINTS {
-        // Large limit: paginated shape, has_more = false (all fixture items fit).
-        // Using an explicit large limit instead of the server default so the test
-        // stays robust when datasets (e.g. the built-in model catalog) grow.
-        let json = get_json(app.clone(), &format!("{}?page[limit]=100", ep.path)).await;
-        assert_paginated_shape(&json, ep.name);
-        assert_eq!(
-            json["meta"]["has_more"], false,
-            "{}: large limit should have has_more=false",
-            ep.name
-        );
+        // Walk the collection at the largest page the API allows: every page
+        // has the paginated shape, and the last one reports has_more = false.
+        // The built-in model catalog is larger than one page, so the walk
+        // follows `page[offset]` rather than assuming one page fits.
+        let mut offset = 0;
+        loop {
+            let json = get_json(
+                app.clone(),
+                &format!("{}?page[limit]=100&page[offset]={offset}", ep.path),
+            )
+            .await;
+            assert_paginated_shape(&json, &format!("{} offset={offset}", ep.name));
+            let page_len = json["data"].as_array().unwrap().len();
+            assert!(page_len <= 100, "{}: page exceeded the limit", ep.name);
+            if json["meta"]["has_more"] == false {
+                break;
+            }
+            assert!(
+                page_len == 100,
+                "{}: has_more=true on a page shorter than the limit",
+                ep.name
+            );
+            offset += page_len;
+            assert!(offset < 10_000, "{}: has_more never turned false", ep.name);
+        }
 
         // limit=1: at most 1 item, has_more = true (all fixtures have >1 item)
         let json = get_json(app.clone(), &format!("{}?page[limit]=1", ep.path)).await;

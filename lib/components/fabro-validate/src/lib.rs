@@ -215,8 +215,6 @@ mod tests {
             r#"
 [providers.acme-venice]
 display_name = "Acme Venice"
-adapter = "openai-compatible"
-codec = "openai-chat"
 base_url = "https://api.venice.ai/api/v1"
 auth = { type = "bearer" }
 default_model = "venice-large"
