@@ -56,7 +56,7 @@ report it in the journal, never silently work around it.
   file's upstream churn rate. Negative example (fabro-90ae, rejected
   2026-09-18): a "locality" proposal that split upstream's hottest file
   (`server/tests.rs`, 112 upstream commits/12w) into 19 fork modules —
-  pure recurring merge tax; only a pre-merge close of PR #242 stopped
+  pure recurring merge tax; only a pre-merge close of the offending PR stopped
   it. The constructive direction is fabro-ab8e: extract fork additions
   into fork-owned files, upstream files stay structurally
   upstream-identical.

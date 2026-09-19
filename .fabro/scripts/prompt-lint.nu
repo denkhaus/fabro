@@ -58,6 +58,26 @@ def nu-c-dollar-errors [f] {
     $errors
 }
 
+# check 6: provenance literals in PROMPT files — run ids and PR-number
+# references are evidence, not rules (fabro-41de class; user directive
+# 2026-09-19: prompts stay universal and project-agnostic — provenance
+# lives in the seed Basis). Errors. Scoped to prompt .md files: scripts
+# and schemas legitimately carry synthetic ids and (#n) shape docs.
+def provenance-errors [f] {
+    let text = (open --raw $f)
+    mut errors = []
+    for m in ($text | parse --regex '\brun (?<r>01M[0-9A-HJ-NP-TV-Z]{10,})') {
+        $errors = ($errors | append $"($f): run id literal 'run ($m.r)' — provenance belongs in the seed Basis, not in prompts")
+    }
+    for m in ($text | parse --regex '\b(?<b>01M[0-9A-HJ-NP-TV-Z]{20,})\b') {
+        $errors = ($errors | append $"($f): bare run id literal '($m.b)' — provenance belongs in the seed Basis, not in prompts")
+    }
+    for m in ($text | parse --regex '\bPR #(?<p>\d+)') {
+        $errors = ($errors | append $"($f): PR-number literal 'PR #($m.p)' — provenance belongs in the seed Basis, not in prompts")
+    }
+    $errors
+}
+
 # check 5: routing-named top-level properties in workflow @schemas/*.json —
 # warnings only: a payload containing such a field opts the node into
 # routing semantics even under a custom schema (fabro-a211)
@@ -87,6 +107,11 @@ def main [] {
     }
     mut errors = []
     mut warnings = []
+
+    # 6. provenance literals in prompts (run ids, PR refs)
+    for f in (prompt-md-files) {
+        $errors = ($errors | append (provenance-errors $f))
+    }
 
     let justfile_lines = (if ('justfile' | path exists) { open --raw justfile | lines } else { [] })
 

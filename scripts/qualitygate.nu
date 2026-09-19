@@ -102,13 +102,23 @@ def check-loop-assets [] {
     print '== checking loop-asset scripts =='
     # Full-repo nushell tier (lint-nu.nu): parse check of EVERY script —
     # repo scripts/ and all workflow assets, not just develop's — plus the
-    # interpolated-regex scan that parse checks cannot see (verify.nu
-    # class, run 01M2GVW7GGGB). The gate previously walked develop
-    # scripts only; scripts/verify.nu shipped broken through that gap.
+    # interpolated-regex scan that parse checks cannot see.
+    # The gate previously walked develop scripts only; a verify.nu shipped
+    # broken through that gap.
     let lint = (do { ^nu scripts/lint-nu.nu } | complete)
     print $lint.stdout
     if ($lint.exit_code != 0) {
         print $lint.stderr
+        return false
+    }
+    # Prompt-lint tier (fabro-41de C3 guard, gate-wired 2026-09-19): loop
+    # prompts/graph/toml literals must not rot — unresolvable seed ids,
+    # drifted justfile anchors, provenance literals (run ids, PR refs).
+    # Runs in BOTH gate paths so prompt-only diffs are gated too.
+    let plint = (do { ^nu .fabro/scripts/prompt-lint.nu } | complete)
+    print $plint.stdout
+    if ($plint.exit_code != 0) {
+        print $plint.stderr
         return false
     }
     let smokes = [
