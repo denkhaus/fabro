@@ -870,6 +870,223 @@ async fn a_runs_projection_carries_its_docker_sandbox_instance() {
     }
 }
 
+/// The server reaches the container Petri created, without Petri: the
+/// sandbox tab describes it, Run Files lists and round-trips a file in
+/// its workspace, a preview URL is opened to a port in it, and an Ask
+/// Fabro session runs its turn against it. The container carries Petri's
+/// `petri.run` label and none of Fabro's own, so an attach scoped to
+/// Fabro's retired labels would refuse it; the server's ownership is the
+/// run label.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_server_attaches_to_the_container_petri_created() {
+    if docker_plugin().is_none() {
+        return;
+    }
+    let twin = twin_openai().await;
+    let namespace = format!("{}::{}", module_path!(), line!());
+    TwinScenarios::new(&namespace)
+        .scenario(TwinScenario::responses(OPENAI_MODEL).text("The workspace is /workspace."))
+        .load(twin)
+        .await;
+    let settings = settings_from_toml("_version = 1\n\n[run.environment]\nid = \"docker\"\n");
+    let state = TestAppStateBuilder::new()
+        .runtime_settings(settings.server_settings, settings.manifest_run_defaults)
+        .max_concurrent_runs(5)
+        .in_process_execution()
+        .llm_overlay(llm_overlay_with_provider_base_url(
+            "openai",
+            twin.base_url.clone(),
+        ))
+        .vault_entries([(EnvVars::OPENAI_API_KEY, namespace.clone())])
+        .build();
+    let app = test_app_with_scheduler(Arc::clone(&state));
+    create_docker_environment(&app, "docker", CATALOG_IMAGE).await;
+
+    let version_id = register_version(&app, &[
+        ("workflow.fabro", COMMAND_DOT),
+        ("workflow.toml", PLAIN_SETTINGS),
+    ])
+    .await;
+    let intent = serde_json::json!({
+        "workflow_version_id": version_id,
+        "target": {"kind": "none"},
+        "environment_id": "docker",
+        "args": {},
+    });
+    let run_id = create_and_start_run_from_intent(&app, intent).await;
+    let status = wait_for_run_status(&app, &run_id, &["succeeded", "failed"]).await;
+    assert_eq!(
+        status,
+        "succeeded",
+        "run: {}",
+        run_json(&app, &run_id).await
+    );
+    let projection = settled_state(&state, &app, &run_id).await;
+    let container = projection["sandbox"]["instance"]["runtime"]["id"]
+        .as_str()
+        .expect("the container id")
+        .to_string();
+
+    // The sandbox tab: the record and the daemon's status for the container.
+    let details = response_json(
+        app.clone()
+            .oneshot(get(&format!("/runs/{run_id}/sandbox")))
+            .await
+            .expect("sandbox details route"),
+        StatusCode::OK,
+        format!("GET /api/v1/runs/{run_id}/sandbox"),
+    )
+    .await;
+    assert_eq!(details["sandbox"]["provider"], "docker", "{details}");
+    assert_eq!(details["sandbox"]["runtime"]["id"], container, "{details}");
+    assert_eq!(details["status"]["id"], container, "{details}");
+    assert_eq!(
+        details["status"]["labels"]["petri.run"], run_id,
+        "the container carries Petri's run label: {details}"
+    );
+    assert!(
+        details["status"]["labels"]
+            .as_object()
+            .is_some_and(|labels| !labels.contains_key("sh.fabro.managed")),
+        "Petri stamps no Fabro label: {details}"
+    );
+
+    // Run Files: a file written into the workspace is listed and read back,
+    // which starts the container Petri stopped at the run's end.
+    let put = Request::builder()
+        .method("PUT")
+        .uri(api(&format!(
+            "/runs/{run_id}/sandbox/file?path=/workspace/from-fabro.txt"
+        )))
+        .header("content-type", "application/octet-stream")
+        .body(Body::from("written through the server"))
+        .expect("file upload request should build");
+    crate::helpers::response_text(
+        app.clone().oneshot(put).await.expect("file upload routes"),
+        StatusCode::NO_CONTENT,
+        format!("PUT /api/v1/runs/{run_id}/sandbox/file"),
+    )
+    .await;
+    let listing = response_json(
+        app.clone()
+            .oneshot(get(&format!(
+                "/runs/{run_id}/sandbox/files?path=/workspace"
+            )))
+            .await
+            .expect("sandbox files route"),
+        StatusCode::OK,
+        format!("GET /api/v1/runs/{run_id}/sandbox/files"),
+    )
+    .await;
+    let names: Vec<&str> = listing["data"]
+        .as_array()
+        .expect("the listing's entries")
+        .iter()
+        .filter_map(|entry| entry["name"].as_str())
+        .collect();
+    assert!(
+        names.contains(&"from-fabro.txt"),
+        "the workspace lists the file: {names:?}"
+    );
+    let content = crate::helpers::response_text(
+        app.clone()
+            .oneshot(get(&format!(
+                "/runs/{run_id}/sandbox/file?path=/workspace/from-fabro.txt"
+            )))
+            .await
+            .expect("file download route"),
+        StatusCode::OK,
+        format!("GET /api/v1/runs/{run_id}/sandbox/file"),
+    )
+    .await;
+    assert_eq!(content, "written through the server");
+
+    // A preview URL to a port in the container, through the driver's
+    // forward.
+    let preview = Request::builder()
+        .method("POST")
+        .uri(api(&format!("/runs/{run_id}/preview")))
+        .header("content-type", "application/json")
+        .body(Body::from(
+            serde_json::json!({ "port": 8080, "expires_in_secs": 60, "signed": false }).to_string(),
+        ))
+        .expect("preview request should build");
+    let preview = response_json(
+        app.clone().oneshot(preview).await.expect("preview route"),
+        StatusCode::CREATED,
+        format!("POST /api/v1/runs/{run_id}/preview"),
+    )
+    .await;
+    assert!(
+        preview["url"]
+            .as_str()
+            .is_some_and(|url| url.starts_with("http://")),
+        "{preview}"
+    );
+
+    // Ask Fabro: the session reconnects to the container for its turn and
+    // the turn completes on the model's answer.
+    let session = Request::builder()
+        .method("POST")
+        .uri(api(&format!("/runs/{run_id}/sessions")))
+        .header("content-type", "application/json")
+        .body(Body::from(
+            serde_json::json!({ "title": "Ask Fabro", "model": OPENAI_MODEL }).to_string(),
+        ))
+        .expect("session request should build");
+    let session = response_json(
+        app.clone().oneshot(session).await.expect("session route"),
+        StatusCode::CREATED,
+        format!("POST /api/v1/runs/{run_id}/sessions"),
+    )
+    .await;
+    let session_id = session["id"].as_str().expect("the session id");
+    let turn = Request::builder()
+        .method("POST")
+        .uri(api(&format!("/sessions/{session_id}/turns")))
+        .header("content-type", "application/json")
+        .body(Body::from(r#"{"input":"Where is the workspace?"}"#))
+        .expect("submit-turn request should build");
+    let stream = crate::helpers::response_text(
+        app.clone().oneshot(turn).await.expect("turn route"),
+        StatusCode::OK,
+        format!("POST /api/v1/sessions/{session_id}/turns"),
+    )
+    .await;
+    let events: Vec<serde_json::Value> = stream
+        .lines()
+        .filter_map(|line| line.strip_prefix("data: "))
+        .map(|data| serde_json::from_str(data).expect("session event data should be JSON"))
+        .collect();
+    let failed = events
+        .iter()
+        .find(|event| event["event"] == "run.session.turn.failed");
+    assert!(
+        failed.is_none(),
+        "the turn reached the container: {failed:?}"
+    );
+    assert!(
+        events
+            .iter()
+            .any(|event| event["event"] == "run.session.turn.succeeded"),
+        "the turn completed: {events:?}"
+    );
+
+    let _ = Command::new("docker")
+        .args(["rm", "-f", &container])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+}
+
+fn get(path: &str) -> Request<Body> {
+    Request::builder()
+        .method("GET")
+        .uri(api(path))
+        .body(Body::empty())
+        .expect("GET request should build")
+}
+
 /// The image the server's `docker-small` environment names in the tests
 /// below: a runner image with `git` for the checkpoint commit, and not the
 /// plugin's default, so the container proves the catalog's image reached it.

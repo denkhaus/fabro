@@ -288,13 +288,19 @@ pub(crate) async fn run_provider(
     run_id: RunId,
 ) -> Result<Arc<dyn SandboxProvider>, ConnectError> {
     let provider = connect_provider(kind, access).await?;
+    Ok(scope_to_run(kind, provider, run_id))
+}
+
+/// `provider` narrowed to the sandboxes of `run_id`; see [`run_provider`].
+fn scope_to_run(
+    kind: &SandboxProviderKind,
+    provider: Arc<dyn SandboxProvider>,
+    run_id: RunId,
+) -> Arc<dyn SandboxProvider> {
     if kind.bundled() == Some(BundledProvider::Local) {
-        return Ok(provider);
+        return provider;
     }
-    Ok(Arc::new(OwnedProvider::new(
-        provider,
-        run_ownership(run_id),
-    )))
+    Arc::new(OwnedProvider::new(provider, run_ownership(run_id)))
 }
 
 /// Attaches to a run's sandbox from its record, through the record's
@@ -310,11 +316,22 @@ pub(crate) async fn attach_run_sandbox(
     record: &RunSandboxInstance,
     run_id: RunId,
 ) -> anyhow::Result<Arc<dyn Sandbox>> {
+    let provider = connect_provider(&record.provider, access)
+        .await
+        .with_context(|| format!("Failed to connect to the {} provider", record.provider))?;
+    attach_run_sandbox_on(provider, record, run_id).await
+}
+
+/// [`attach_run_sandbox`] on an already connected, unscoped `provider` for
+/// the record's kind: the run scope is applied here.
+async fn attach_run_sandbox_on(
+    provider: Arc<dyn SandboxProvider>,
+    record: &RunSandboxInstance,
+    run_id: RunId,
+) -> anyhow::Result<Arc<dyn Sandbox>> {
     let kind = &record.provider;
     let sandbox_id = &record.runtime.id;
-    let provider = run_provider(kind, access, run_id)
-        .await
-        .with_context(|| format!("Failed to connect to the {kind} provider"))?;
+    let provider = scope_to_run(kind, provider, run_id);
     let id =
         SandboxId::try_new(sandbox_id).with_context(|| format!("Invalid {kind} sandbox id"))?;
     match provider.attach(&id, None).await {
@@ -876,6 +893,52 @@ mod tests {
             assert!(
                 matches!(error, DriverError::NotOwned { .. }),
                 "{foreign}: {error:?}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn attach_run_sandbox_keys_ownership_on_petris_run_label() {
+        let run_id = RunId::new();
+        let other_run = RunId::new();
+        // Petri's own sandbox for the run, another run's, and one that carries
+        // only Fabro's retired labels.
+        let fabro_labelled = Arc::new(
+            ScriptedSandbox::with_id_and_working_dir("fabro-era", "/workspace")
+                .state(SandboxState::Running)
+                .label("sh.fabro.managed", "true")
+                .label("sh.fabro.run_id", run_id.to_string()),
+        );
+        let provider = scripted_provider("docker", vec![
+            petri_scripted_sandbox("petri-container", &run_id.to_string()),
+            petri_scripted_sandbox("other-runs-container", &other_run.to_string()),
+            fabro_labelled,
+        ]);
+
+        let attached = attach_run_sandbox_on(
+            Arc::clone(&provider),
+            &record(SandboxProviderKind::DOCKER, "petri-container"),
+            run_id,
+        )
+        .await
+        .expect("the container Petri labelled with the run attaches");
+        assert_eq!(attached.id().as_str(), "petri-container");
+
+        for foreign in ["other-runs-container", "fabro-era"] {
+            let error = attach_run_sandbox_on(
+                Arc::clone(&provider),
+                &record(SandboxProviderKind::DOCKER, foreign),
+                run_id,
+            )
+            .await
+            .err()
+            .unwrap_or_else(|| panic!("{foreign} does not carry petri.run={run_id}"));
+            assert!(
+                error.chain().any(|cause| matches!(
+                    cause.downcast_ref::<DriverError>(),
+                    Some(DriverError::NotOwned { .. })
+                )),
+                "{foreign}: {error:#}"
             );
         }
     }
