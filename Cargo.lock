@@ -2043,7 +2043,7 @@ dependencies = [
 
 [[package]]
 name = "fabro-api"
-version = "0.357.0-nightly.0"
+version = "0.361.0-nightly.0"
 dependencies = [
  "chrono",
  "fabro-automation",
@@ -2051,9 +2051,9 @@ dependencies = [
  "fabro-environment",
  "fabro-types",
  "jsonschema",
- "lithos-llm",
+ "lithos-llm 0.1.0 (git+https://github.com/lithoscomputer/lithos-llm?rev=43a42ac28e9d9bcf40a91abc02be4f12ca274ebb)",
  "openapiv3",
- "pebble-coding-agent",
+ "pebble-coding-agent 0.1.0 (git+https://github.com/lithoscomputer/pebble?rev=67c9f486dd28f15c04e8d590a91e6f5563f7605d)",
  "prettyplease",
  "progenitor",
  "progenitor-client",
@@ -2069,7 +2069,7 @@ dependencies = [
 
 [[package]]
 name = "fabro-auth"
-version = "0.357.0-nightly.0"
+version = "0.361.0-nightly.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2082,7 +2082,7 @@ dependencies = [
  "fabro-types",
  "fabro-vault",
  "httpmock",
- "lithos-llm",
+ "lithos-llm 0.1.0 (git+https://github.com/lithoscomputer/lithos-llm?rev=43a42ac28e9d9bcf40a91abc02be4f12ca274ebb)",
  "serde",
  "serde_json",
  "tempfile",
@@ -2094,7 +2094,7 @@ dependencies = [
 
 [[package]]
 name = "fabro-automation"
-version = "0.357.0-nightly.0"
+version = "0.361.0-nightly.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -2115,11 +2115,11 @@ dependencies = [
 
 [[package]]
 name = "fabro-build-support"
-version = "0.357.0-nightly.0"
+version = "0.361.0-nightly.0"
 
 [[package]]
 name = "fabro-checkpoint"
-version = "0.357.0-nightly.0"
+version = "0.361.0-nightly.0"
 dependencies = [
  "fabro-config",
  "fabro-types",
@@ -2127,7 +2127,7 @@ dependencies = [
 
 [[package]]
 name = "fabro-cli"
-version = "0.357.0-nightly.0"
+version = "0.361.0-nightly.0"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -2187,15 +2187,15 @@ dependencies = [
  "insta",
  "jsonwebtoken",
  "libc",
- "lithos-llm",
+ "lithos-llm 0.1.0 (git+https://github.com/lithoscomputer/lithos-llm?rev=43a42ac28e9d9bcf40a91abc02be4f12ca274ebb)",
  "miette",
  "nix 0.30.1",
  "object_store",
  "openssl",
  "paste",
- "pebble-agent",
+ "pebble-agent 0.1.0 (git+https://github.com/lithoscomputer/pebble?rev=67c9f486dd28f15c04e8d590a91e6f5563f7605d)",
  "pebble-cli-core",
- "pebble-coding-agent",
+ "pebble-coding-agent 0.1.0 (git+https://github.com/lithoscomputer/pebble?rev=67c9f486dd28f15c04e8d590a91e6f5563f7605d)",
  "predicates",
  "progenitor-client",
  "rand 0.9.4",
@@ -2230,7 +2230,7 @@ dependencies = [
 
 [[package]]
 name = "fabro-client"
-version = "0.357.0-nightly.0"
+version = "0.361.0-nightly.0"
 dependencies = [
  "anyhow",
  "bytes",
@@ -2244,7 +2244,7 @@ dependencies = [
  "futures",
  "httpmock",
  "libc",
- "lithos-llm",
+ "lithos-llm 0.1.0 (git+https://github.com/lithoscomputer/lithos-llm?rev=43a42ac28e9d9bcf40a91abc02be4f12ca274ebb)",
  "progenitor-client",
  "rand 0.9.4",
  "serde",
@@ -2259,7 +2259,7 @@ dependencies = [
 
 [[package]]
 name = "fabro-config"
-version = "0.357.0-nightly.0"
+version = "0.361.0-nightly.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -2288,7 +2288,7 @@ dependencies = [
 
 [[package]]
 name = "fabro-db"
-version = "0.357.0-nightly.0"
+version = "0.361.0-nightly.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -2301,7 +2301,7 @@ dependencies = [
 
 [[package]]
 name = "fabro-dev"
-version = "0.357.0-nightly.0"
+version = "0.361.0-nightly.0"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -2320,7 +2320,7 @@ dependencies = [
 
 [[package]]
 name = "fabro-dump"
-version = "0.357.0-nightly.0"
+version = "0.361.0-nightly.0"
 dependencies = [
  "anyhow",
  "bytes",
@@ -2334,7 +2334,7 @@ dependencies = [
 
 [[package]]
 name = "fabro-environment"
-version = "0.357.0-nightly.0"
+version = "0.361.0-nightly.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -2356,7 +2356,7 @@ dependencies = [
 
 [[package]]
 name = "fabro-github"
-version = "0.357.0-nightly.0"
+version = "0.361.0-nightly.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2381,7 +2381,7 @@ dependencies = [
 
 [[package]]
 name = "fabro-graphviz"
-version = "0.357.0-nightly.0"
+version = "0.361.0-nightly.0"
 dependencies = [
  "anyhow",
  "fabro-types",
@@ -2395,7 +2395,7 @@ dependencies = [
 
 [[package]]
 name = "fabro-http"
-version = "0.357.0-nightly.0"
+version = "0.361.0-nightly.0"
 dependencies = [
  "fabro-static",
  "http 1.4.0",
@@ -2405,7 +2405,7 @@ dependencies = [
 
 [[package]]
 name = "fabro-install"
-version = "0.357.0-nightly.0"
+version = "0.361.0-nightly.0"
 dependencies = [
  "anyhow",
  "base64",
@@ -2424,7 +2424,7 @@ dependencies = [
 
 [[package]]
 name = "fabro-interview"
-version = "0.357.0-nightly.0"
+version = "0.361.0-nightly.0"
 dependencies = [
  "async-trait",
  "dialoguer",
@@ -2439,7 +2439,7 @@ dependencies = [
 
 [[package]]
 name = "fabro-llm"
-version = "0.357.0-nightly.0"
+version = "0.361.0-nightly.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2455,7 +2455,7 @@ dependencies = [
  "fabro-types",
  "futures",
  "httpmock",
- "lithos-llm",
+ "lithos-llm 0.1.0 (git+https://github.com/lithoscomputer/lithos-llm?rev=43a42ac28e9d9bcf40a91abc02be4f12ca274ebb)",
  "serde",
  "serde_json",
  "strum 0.28.0",
@@ -2468,7 +2468,7 @@ dependencies = [
 
 [[package]]
 name = "fabro-macros"
-version = "0.357.0-nightly.0"
+version = "0.361.0-nightly.0"
 dependencies = [
  "clap",
  "fabro-options-metadata",
@@ -2479,7 +2479,7 @@ dependencies = [
 
 [[package]]
 name = "fabro-manifest"
-version = "0.357.0-nightly.0"
+version = "0.361.0-nightly.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2508,7 +2508,7 @@ dependencies = [
 
 [[package]]
 name = "fabro-mcp-server"
-version = "0.357.0-nightly.0"
+version = "0.361.0-nightly.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -2535,7 +2535,7 @@ dependencies = [
 
 [[package]]
 name = "fabro-mcp-store"
-version = "0.357.0-nightly.0"
+version = "0.361.0-nightly.0"
 dependencies = [
  "chrono",
  "fabro-db",
@@ -2553,7 +2553,7 @@ dependencies = [
 
 [[package]]
 name = "fabro-oauth"
-version = "0.357.0-nightly.0"
+version = "0.361.0-nightly.0"
 dependencies = [
  "anyhow",
  "axum",
@@ -2575,7 +2575,7 @@ dependencies = [
 
 [[package]]
 name = "fabro-options-metadata"
-version = "0.357.0-nightly.0"
+version = "0.361.0-nightly.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -2583,7 +2583,7 @@ dependencies = [
 
 [[package]]
 name = "fabro-petri"
-version = "0.357.0-nightly.0"
+version = "0.361.0-nightly.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2606,8 +2606,8 @@ dependencies = [
  "fabro-vault",
  "fabro-workflow",
  "httpmock",
- "lithos-llm",
- "pebble-coding-agent",
+ "lithos-llm 0.1.0 (git+https://github.com/lithoscomputer/lithos-llm?rev=43a42ac28e9d9bcf40a91abc02be4f12ca274ebb)",
+ "pebble-coding-agent 0.1.0 (git+https://github.com/lithoscomputer/pebble?rev=67c9f486dd28f15c04e8d590a91e6f5563f7605d)",
  "petri-attractor-steps",
  "petri-execution",
  "petri-frontend-attractor",
@@ -2627,7 +2627,7 @@ dependencies = [
 
 [[package]]
 name = "fabro-proc"
-version = "0.357.0-nightly.0"
+version = "0.361.0-nightly.0"
 dependencies = [
  "cc",
  "libc",
@@ -2640,7 +2640,7 @@ dependencies = [
 
 [[package]]
 name = "fabro-redact"
-version = "0.357.0-nightly.0"
+version = "0.361.0-nightly.0"
 dependencies = [
  "aho-corasick",
  "ref-cast",
@@ -2656,7 +2656,7 @@ dependencies = [
 
 [[package]]
 name = "fabro-sandbox"
-version = "0.357.0-nightly.0"
+version = "0.361.0-nightly.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2670,7 +2670,7 @@ dependencies = [
  "fabro-types",
  "fabro-util",
  "futures",
- "pebble-coding-agent",
+ "pebble-coding-agent 0.1.0 (git+https://github.com/lithoscomputer/pebble?rev=67c9f486dd28f15c04e8d590a91e6f5563f7605d)",
  "reqwest 0.13.4",
  "sandbox-driver",
  "sandbox-driver-daytona",
@@ -2694,7 +2694,7 @@ dependencies = [
 
 [[package]]
 name = "fabro-server"
-version = "0.357.0-nightly.0"
+version = "0.361.0-nightly.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2751,12 +2751,12 @@ dependencies = [
  "http-body-util",
  "httpmock",
  "jsonwebtoken",
- "lithos-llm",
+ "lithos-llm 0.1.0 (git+https://github.com/lithoscomputer/lithos-llm?rev=43a42ac28e9d9bcf40a91abc02be4f12ca274ebb)",
  "mime_guess",
  "multer",
  "object_store",
- "pebble-agent",
- "pebble-coding-agent",
+ "pebble-agent 0.1.0 (git+https://github.com/lithoscomputer/pebble?rev=67c9f486dd28f15c04e8d590a91e6f5563f7605d)",
+ "pebble-coding-agent 0.1.0 (git+https://github.com/lithoscomputer/pebble?rev=67c9f486dd28f15c04e8d590a91e6f5563f7605d)",
  "percent-encoding",
  "rand 0.9.4",
  "regex",
@@ -2791,7 +2791,7 @@ dependencies = [
 
 [[package]]
 name = "fabro-slack"
-version = "0.357.0-nightly.0"
+version = "0.361.0-nightly.0"
 dependencies = [
  "fabro-http",
  "fabro-interview",
@@ -2812,18 +2812,18 @@ dependencies = [
 
 [[package]]
 name = "fabro-spa"
-version = "0.357.0-nightly.0"
+version = "0.361.0-nightly.0"
 dependencies = [
  "rust-embed",
 ]
 
 [[package]]
 name = "fabro-static"
-version = "0.357.0-nightly.0"
+version = "0.361.0-nightly.0"
 
 [[package]]
 name = "fabro-store"
-version = "0.357.0-nightly.0"
+version = "0.361.0-nightly.0"
 dependencies = [
  "async-trait",
  "bytes",
@@ -2835,9 +2835,9 @@ dependencies = [
  "futures",
  "hex",
  "insta",
- "lithos-llm",
+ "lithos-llm 0.1.0 (git+https://github.com/lithoscomputer/lithos-llm?rev=43a42ac28e9d9bcf40a91abc02be4f12ca274ebb)",
  "object_store",
- "pebble-coding-agent",
+ "pebble-coding-agent 0.1.0 (git+https://github.com/lithoscomputer/pebble?rev=67c9f486dd28f15c04e8d590a91e6f5563f7605d)",
  "percent-encoding",
  "serde",
  "serde_json",
@@ -2855,7 +2855,7 @@ dependencies = [
 
 [[package]]
 name = "fabro-telemetry"
-version = "0.357.0-nightly.0"
+version = "0.361.0-nightly.0"
 dependencies = [
  "anyhow",
  "base64",
@@ -2881,7 +2881,7 @@ dependencies = [
 
 [[package]]
 name = "fabro-template"
-version = "0.357.0-nightly.0"
+version = "0.361.0-nightly.0"
 dependencies = [
  "anyhow",
  "fabro-types",
@@ -2895,7 +2895,7 @@ dependencies = [
 
 [[package]]
 name = "fabro-test"
-version = "0.357.0-nightly.0"
+version = "0.361.0-nightly.0"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -2920,7 +2920,7 @@ dependencies = [
 
 [[package]]
 name = "fabro-tool"
-version = "0.357.0-nightly.0"
+version = "0.361.0-nightly.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2944,7 +2944,7 @@ dependencies = [
 
 [[package]]
 name = "fabro-tracker"
-version = "0.357.0-nightly.0"
+version = "0.361.0-nightly.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2958,7 +2958,7 @@ dependencies = [
 
 [[package]]
 name = "fabro-types"
-version = "0.357.0-nightly.0"
+version = "0.361.0-nightly.0"
 dependencies = [
  "chrono",
  "clap",
@@ -2966,8 +2966,8 @@ dependencies = [
  "fabro-types",
  "fabro-util",
  "hex",
- "lithos-llm",
- "pebble-coding-agent",
+ "lithos-llm 0.1.0 (git+https://github.com/lithoscomputer/lithos-llm?rev=43a42ac28e9d9bcf40a91abc02be4f12ca274ebb)",
+ "pebble-coding-agent 0.1.0 (git+https://github.com/lithoscomputer/pebble?rev=67c9f486dd28f15c04e8d590a91e6f5563f7605d)",
  "sandbox-driver",
  "serde",
  "serde_json",
@@ -2985,7 +2985,7 @@ dependencies = [
 
 [[package]]
 name = "fabro-util"
-version = "0.357.0-nightly.0"
+version = "0.361.0-nightly.0"
 dependencies = [
  "anyhow",
  "console 0.15.11",
@@ -3008,7 +3008,7 @@ dependencies = [
 
 [[package]]
 name = "fabro-variable"
-version = "0.357.0-nightly.0"
+version = "0.361.0-nightly.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3025,7 +3025,7 @@ dependencies = [
 
 [[package]]
 name = "fabro-vault"
-version = "0.357.0-nightly.0"
+version = "0.361.0-nightly.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3044,7 +3044,7 @@ dependencies = [
 
 [[package]]
 name = "fabro-workflow"
-version = "0.357.0-nightly.0"
+version = "0.361.0-nightly.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3080,13 +3080,13 @@ dependencies = [
  "hex",
  "httpmock",
  "jsonschema",
- "lithos-llm",
+ "lithos-llm 0.1.0 (git+https://github.com/lithoscomputer/lithos-llm?rev=43a42ac28e9d9bcf40a91abc02be4f12ca274ebb)",
  "md5",
  "miette",
  "mime_guess",
  "object_store",
- "pebble-agent",
- "pebble-coding-agent",
+ "pebble-agent 0.1.0 (git+https://github.com/lithoscomputer/pebble?rev=67c9f486dd28f15c04e8d590a91e6f5563f7605d)",
+ "pebble-coding-agent 0.1.0 (git+https://github.com/lithoscomputer/pebble?rev=67c9f486dd28f15c04e8d590a91e6f5563f7605d)",
  "rand 0.9.4",
  "regex",
  "sandbox-driver",
@@ -3108,7 +3108,7 @@ dependencies = [
 
 [[package]]
 name = "fabro-workflow-version"
-version = "0.357.0-nightly.0"
+version = "0.361.0-nightly.0"
 dependencies = [
  "fabro-config",
  "fabro-graphviz",
@@ -4407,7 +4407,7 @@ checksum = "6373607a59f0be73a39b6fe456b8192fcc3585f602af20751600e974dd455e77"
 [[package]]
 name = "lithos-llm"
 version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/lithos-llm?rev=55add4596b861a0623d00c3a54aa5c147c8d504b#55add4596b861a0623d00c3a54aa5c147c8d504b"
+source = "git+https://github.com/lithoscomputer/lithos-llm?rev=43a42ac28e9d9bcf40a91abc02be4f12ca274ebb#43a42ac28e9d9bcf40a91abc02be4f12ca274ebb"
 dependencies = [
  "async-trait",
  "aws-config",
@@ -4419,7 +4419,26 @@ dependencies = [
  "crc32fast",
  "futures-core",
  "futures-util",
+ "indexmap 2.13.0",
  "mime_guess",
+ "reqwest 0.13.4",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "toml 0.8.23",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "lithos-llm"
+version = "0.1.0"
+source = "git+https://github.com/lithoscomputer/lithos-llm?rev=55add4596b861a0623d00c3a54aa5c147c8d504b#55add4596b861a0623d00c3a54aa5c147c8d504b"
+dependencies = [
+ "async-trait",
+ "futures-core",
+ "futures-util",
  "reqwest 0.13.4",
  "serde",
  "serde_json",
@@ -5238,11 +5257,28 @@ checksum = "df94ce210e5bc13cb6651479fa48d14f601d9858cfe0467f43ae157023b938d3"
 [[package]]
 name = "pebble-agent"
 version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/pebble?rev=a39f43e26effdf99635eaf343f095c17157c9c93#a39f43e26effdf99635eaf343f095c17157c9c93"
+source = "git+https://github.com/lithoscomputer/pebble?rev=67c9f486dd28f15c04e8d590a91e6f5563f7605d#67c9f486dd28f15c04e8d590a91e6f5563f7605d"
 dependencies = [
  "async-trait",
  "futures-util",
- "lithos-llm",
+ "lithos-llm 0.1.0 (git+https://github.com/lithoscomputer/lithos-llm?rev=43a42ac28e9d9bcf40a91abc02be4f12ca274ebb)",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "pebble-agent"
+version = "0.1.0"
+source = "git+https://github.com/lithoscomputer/pebble.git?rev=a39f43e26effdf99635eaf343f095c17157c9c93#a39f43e26effdf99635eaf343f095c17157c9c93"
+dependencies = [
+ "async-trait",
+ "futures-util",
+ "lithos-llm 0.1.0 (git+https://github.com/lithoscomputer/lithos-llm?rev=55add4596b861a0623d00c3a54aa5c147c8d504b)",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
@@ -5255,7 +5291,7 @@ dependencies = [
 [[package]]
 name = "pebble-cli-core"
 version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/pebble?rev=a39f43e26effdf99635eaf343f095c17157c9c93#a39f43e26effdf99635eaf343f095c17157c9c93"
+source = "git+https://github.com/lithoscomputer/pebble?rev=67c9f486dd28f15c04e8d590a91e6f5563f7605d#67c9f486dd28f15c04e8d590a91e6f5563f7605d"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -5265,9 +5301,9 @@ dependencies = [
  "fs2",
  "futures-util",
  "humantime",
- "lithos-llm",
- "pebble-agent",
- "pebble-coding-agent",
+ "lithos-llm 0.1.0 (git+https://github.com/lithoscomputer/lithos-llm?rev=43a42ac28e9d9bcf40a91abc02be4f12ca274ebb)",
+ "pebble-agent 0.1.0 (git+https://github.com/lithoscomputer/pebble?rev=67c9f486dd28f15c04e8d590a91e6f5563f7605d)",
+ "pebble-coding-agent 0.1.0 (git+https://github.com/lithoscomputer/pebble?rev=67c9f486dd28f15c04e8d590a91e6f5563f7605d)",
  "rustix",
  "serde",
  "serde_json",
@@ -5284,12 +5320,36 @@ dependencies = [
 [[package]]
 name = "pebble-coding-agent"
 version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/pebble?rev=a39f43e26effdf99635eaf343f095c17157c9c93#a39f43e26effdf99635eaf343f095c17157c9c93"
+source = "git+https://github.com/lithoscomputer/pebble?rev=67c9f486dd28f15c04e8d590a91e6f5563f7605d#67c9f486dd28f15c04e8d590a91e6f5563f7605d"
 dependencies = [
  "async-trait",
  "futures-util",
- "lithos-llm",
- "pebble-agent",
+ "lithos-llm 0.1.0 (git+https://github.com/lithoscomputer/lithos-llm?rev=43a42ac28e9d9bcf40a91abc02be4f12ca274ebb)",
+ "pebble-agent 0.1.0 (git+https://github.com/lithoscomputer/pebble?rev=67c9f486dd28f15c04e8d590a91e6f5563f7605d)",
+ "reqwest 0.13.4",
+ "rmcp",
+ "rustix",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "sse-stream",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "url",
+ "uuid",
+]
+
+[[package]]
+name = "pebble-coding-agent"
+version = "0.1.0"
+source = "git+https://github.com/lithoscomputer/pebble.git?rev=a39f43e26effdf99635eaf343f095c17157c9c93#a39f43e26effdf99635eaf343f095c17157c9c93"
+dependencies = [
+ "async-trait",
+ "futures-util",
+ "lithos-llm 0.1.0 (git+https://github.com/lithoscomputer/lithos-llm?rev=55add4596b861a0623d00c3a54aa5c147c8d504b)",
+ "pebble-agent 0.1.0 (git+https://github.com/lithoscomputer/pebble.git?rev=a39f43e26effdf99635eaf343f095c17157c9c93)",
  "reqwest 0.13.4",
  "rmcp",
  "rustix",
@@ -5329,9 +5389,9 @@ dependencies = [
  "async-trait",
  "globset",
  "jsonschema",
- "lithos-llm",
- "pebble-agent",
- "pebble-coding-agent",
+ "lithos-llm 0.1.0 (git+https://github.com/lithoscomputer/lithos-llm?rev=55add4596b861a0623d00c3a54aa5c147c8d504b)",
+ "pebble-agent 0.1.0 (git+https://github.com/lithoscomputer/pebble.git?rev=a39f43e26effdf99635eaf343f095c17157c9c93)",
+ "pebble-coding-agent 0.1.0 (git+https://github.com/lithoscomputer/pebble.git?rev=a39f43e26effdf99635eaf343f095c17157c9c93)",
  "petri-execution",
  "petri-executor",
  "petri-frontend",
@@ -8065,7 +8125,7 @@ dependencies = [
 
 [[package]]
 name = "twin-github"
-version = "0.357.0-nightly.0"
+version = "0.361.0-nightly.0"
 dependencies = [
  "axum",
  "base64",

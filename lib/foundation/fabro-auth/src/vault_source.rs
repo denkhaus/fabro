@@ -383,8 +383,6 @@ mod tests {
             r#"
 [providers.gateway]
 display_name = "Gateway"
-adapter = "openai-compatible"
-codec = "openai-chat"
 base_url = "https://gateway.test/v1"
 auth = { type = "bearer" }
 default_headers = { "x-portkey-api-key" = "{{ secrets.PORTKEY_API_KEY }}", "x-portkey-config" = "@prod" }

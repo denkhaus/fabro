@@ -8657,8 +8657,8 @@ components:
           example: "Anthropic"
         adapter:
           type: string
-          description: "lithos adapter id the provider speaks, such as `anthropic`, `openai`, `gemini`, or `openai-compatible`."
-          example: "anthropic"
+          description: "lithos adapter id the provider uses: `http` or `bedrock`, or a custom adapter's id."
+          example: "http"
         base_url:
           type: string
           description: Effective API base URL, including any operator override.

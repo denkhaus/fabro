@@ -75,7 +75,7 @@ pub struct Model {
 pub struct Provider {
     pub id:                   ProviderId,
     pub display_name:         String,
-    /// lithos adapter id, such as `openai` or `openai-compatible`.
+    /// lithos adapter id: `http` or `bedrock`, or a custom adapter's id.
     pub adapter:              String,
     pub base_url:             String,
     #[serde(default, skip_serializing_if = "Option::is_none")]

@@ -322,8 +322,6 @@ fn acme_overlay(base_url: &str) -> String {
         r#"
 [providers.acme]
 display_name = "Acme"
-adapter = "openai-compatible"
-codec = "openai-chat"
 base_url = {base_url}
 auth = {{ type = "bearer" }}
 priority = 120
@@ -5268,8 +5266,6 @@ async fn model_api_keeps_duplicate_ids_provider_scoped_and_selects_ready_priorit
         r#"
 [providers.direct]
 display_name = "Direct"
-adapter = "openai-compatible"
-codec = "openai-chat"
 base_url = {direct}
 auth = {{ type = "bearer" }}
 priority = 120
@@ -5287,8 +5283,6 @@ capabilities = {{ text = true }}
 
 [providers.aggregator]
 display_name = "Aggregator"
-adapter = "openai-compatible"
-codec = "openai-chat"
 base_url = {aggregator}
 auth = {{ type = "bearer" }}
 priority = 110
@@ -5451,8 +5445,6 @@ async fn test_model_forwards_and_validates_reasoning_effort() {
         r#"
 [providers.acme]
 display_name = "Acme"
-adapter = "openai-compatible"
-codec = "openai-chat"
 base_url = {base_url}
 auth = {{ type = "bearer" }}
 priority = 120
@@ -6003,8 +5995,8 @@ async fn test_providers_registration_issue_returns_error_without_probe() {
     // An adapter lithos does not ship cannot be built, so the provider is
     // configured (it has a vault key) yet unavailable.
     let overlay = acme_overlay("https://api.acme.test/v1").replace(
-        "adapter = \"openai-compatible\"",
-        "adapter = \"not-an-adapter\"",
+        "display_name = \"Acme\"",
+        "display_name = \"Acme\"\nadapter = \"not-an-adapter\"",
     );
     let state = TestAppStateBuilder::new()
         .runtime_settings(default_test_server_settings(), RunLayer::default())
@@ -6077,8 +6069,7 @@ async fn test_providers_mixed_results_preserve_catalog_order_and_counts() {
         r#"
 [providers.zeta]
 display_name = "Zeta"
-adapter = "openai"
-codec = "openai-responses"
+codecs = ["openai-responses"]
 base_url = {base_url}
 auth = {{ type = "bearer" }}
 priority = 50
@@ -6093,8 +6084,7 @@ probe = true
 
 [providers.alpha]
 display_name = "Alpha"
-adapter = "openai"
-codec = "openai-responses"
+codecs = ["openai-responses"]
 base_url = {base_url}
 auth = {{ type = "bearer" }}
 priority = 40

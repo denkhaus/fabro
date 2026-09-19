@@ -407,12 +407,12 @@ mod tests {
     fn disabled_providers_are_not_selectable() {
         let catalog = test_catalog();
         assert!(matches!(
-            select(&catalog, "gpt-5.4", None, &eligible(&["openrouter"])),
+            select(&catalog, "gpt-5.4", None, &eligible(&["bedrock-openai"])),
             Err(ModelSelectionError::NoEligibleOffering { .. })
         ));
-        let enabled = test_catalog_with_overlay("[providers.openrouter]\nenabled = true\n");
-        let entry = select(&enabled, "gpt-5.4", None, &eligible(&["openrouter"])).unwrap();
-        assert_eq!(entry.provider.id(), &ProviderId::new("openrouter"));
+        let enabled = test_catalog_with_overlay("[providers.bedrock-openai]\nenabled = true\n");
+        let entry = select(&enabled, "gpt-5.4", None, &eligible(&["bedrock-openai"])).unwrap();
+        assert_eq!(entry.provider.id(), &ProviderId::new("bedrock-openai"));
     }
 
     #[test]
