@@ -367,9 +367,11 @@ impl PetriControls {
     }
 
     /// Stop the named stage's model turn, `text` as its next input when
-    /// given. A refusal is a `run.notice` whose code says why: `no_live_turn`
+    /// given. A refusal is a `run.notice` whose code says why (`no_live_turn`
     /// when the stage has no model turn in flight, `no_such_stage` when the
-    /// name is not running, `interrupt_refused` otherwise.
+    /// name is not running, `interrupt_refused` otherwise) and whose message
+    /// names the stage and the reason as Petri spells it, for the web and
+    /// the CLI to show.
     async fn interrupt(&self, stage: Option<&str>, text: Option<&str>, actor: &Principal) {
         match self.controls.interrupt(stage, text).await {
             Ok(stage) => {
@@ -382,9 +384,12 @@ impl PetriControls {
                 );
             }
             Err(error) => {
-                warn!(run_id = %self.run_id, error = %error, "interrupt refused");
-                self.notice(interrupt_refusal_code(&error), error.to_string())
-                    .await;
+                warn!(run_id = %self.run_id, stage, error = %error, "interrupt refused");
+                self.notice(
+                    interrupt_refusal_code(&error),
+                    interrupt_refusal_message(stage, &error),
+                )
+                .await;
             }
         }
     }
@@ -413,6 +418,16 @@ fn interrupt_refusal_code(error: &SteerError) -> &'static str {
         | SteerError::Control(ControlError::NotLive | ControlError::Finished) => {
             "interrupt_refused"
         }
+    }
+}
+
+/// The notice message of a refused interrupt: the stage it named, and the
+/// reason as Petri's `ControlError` (or the resolution's own refusal)
+/// spells it.
+fn interrupt_refusal_message(stage: Option<&str>, error: &SteerError) -> String {
+    match stage {
+        Some(stage) => format!("Interrupt of stage `{stage}` refused: {error}"),
+        None => format!("Interrupt refused: {error}"),
     }
 }
 

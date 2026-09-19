@@ -794,8 +794,8 @@ async fn an_interrupt_ends_the_turn_and_its_text_is_the_next_input() {
 /// blocked on, named by its node, is refused by Petri with `no_live_turn`;
 /// unnamed, with no agent stage live, the worker refuses it with
 /// `interrupt_refused`. Both refusals are `run.notice` records on the
-/// stream, nothing is delivered, and the gate's question is untouched: its
-/// answer routes the run to its end.
+/// stream naming the stage and Petri's reason, nothing is delivered, and
+/// the gate's question is untouched: its answer routes the run to its end.
 #[tokio::test(flavor = "multi_thread")]
 async fn an_interrupt_of_a_gate_stage_is_refused_with_no_live_turn() {
     if host_plugin().is_none() {
@@ -836,10 +836,18 @@ async fn an_interrupt_of_a_gate_stage_is_refused_with_no_live_turn() {
     assert_eq!(count_of(&names, "control.requested"), 0, "{names:?}");
     let refused = notices(&run_stream(&server, &run_id).await);
     assert_eq!(refused.len(), 2, "{refused:?}");
+    // The notice names the stage and carries Petri's reason as it spells
+    // it, so the web and the CLI can show both.
     assert_eq!(refused[0].0, "no_live_turn", "{refused:?}");
-    assert_eq!(refused[0].1, "the stage has no model turn to interrupt");
+    assert_eq!(
+        refused[0].1,
+        "Interrupt of stage `gate` refused: the stage has no model turn to interrupt"
+    );
     assert_eq!(refused[1].0, "interrupt_refused", "{refused:?}");
-    assert_eq!(refused[1].1, "Run has no active steerable agent session.");
+    assert_eq!(
+        refused[1].1,
+        "Interrupt refused: Run has no active steerable agent session."
+    );
     assert_eq!(run_status(&server, &run_id).await, "blocked");
 
     answer(&server, &run_id, &question_id, json!({ "kind": "yes" })).await;
