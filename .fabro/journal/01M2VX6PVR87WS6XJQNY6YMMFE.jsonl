@@ -6,3 +6,4 @@
 {"$schema":"fabro-journal-v1","run_id":"01M2VX6PVR87WS6XJQNY6YMMFE","node":"tester","visit":1,"status":"succeeded","ts":"2026-09-19T04:07:00Z","data":{}}
 {"$schema":"fabro-journal-v1","run_id":"01M2VX6PVR87WS6XJQNY6YMMFE","node":"evidence","visit":1,"status":"succeeded","ts":"2026-09-19T04:07:03Z","data":{}}
 {"$schema":"fabro-journal-v1","run_id":"01M2VX6PVR87WS6XJQNY6YMMFE","node":"reviewer","visit":1,"status":"succeeded","ts":"2026-09-19T04:07:25Z","data":{"painpoints":[],"observations":["Docs-only seed verified end-to-end from the evidence diff plus an independent rg check of both docs files and the lint function; the lint arm's 5 new warnings are disclosed true positives on the intentionally-routing planner schema, and exit code stays 0, so the gate is unaffected."]}}
+{"$schema":"fabro-journal-v1","run_id":"01M2VX6PVR87WS6XJQNY6YMMFE","node":"closeout","visit":1,"status":"succeeded","ts":"2026-09-19T04:07:28Z","data":{}}
