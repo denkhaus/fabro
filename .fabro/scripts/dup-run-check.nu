@@ -32,6 +32,15 @@
 # touching .seeds referencing the id, else any body-matching commit) and
 # reported as `closing_evidence` with the same closure classification.
 #
+# Regression (fabro-395b, 2026-09-19): landed commits that merely REOPEN,
+# VERIFY, or do tracker bookkeeping for the named seed (e769f791
+# 'fabro-29f7: reopen gate seed, verify upstream offers remain unmerged
+# ... (#250)'; f3c12e03 'Verify fabro-6a78 fix in-tree; move seed to
+# in_progress ... (#254)') used to count as landed implementations and
+# mechanically re-closed deliberately reopened seeds in the pre-planner
+# preflight (incident runs 01M2WG2Z42N8P2QKX0K7VXT1MC /
+# 01M2WHTHVGK360638W9H9PN2BT). Such subjects now classify filed-only.
+#
 # Output: one JSON object per seed id (JSONL stream on stdout). Verdicts:
 #   duplicate | clean | degraded
 # Exit 0 unless the invocation itself is wrong (then 2).
@@ -70,9 +79,16 @@ def git-log-matching [base, id, extra] {
 # `revise develop run` variant of the revise-run phrase — previously
 # neither matched, so revisor filing commits landed among
 # implementations with closure=foreign and forced verdict=duplicate.
+# fabro-395b: also classify tracker-bookkeeping subjects naming the seed
+# — reopen/verify/move-seed/close-seed phrasings (incident: e769f791
+# 'fabro-29f7: reopen gate seed, verify ... (#250)' and f3c12e03
+# 'Verify fabro-6a78 fix in-tree; move seed to in_progress ... (#254)'
+# re-closed deliberately reopened seeds on 2026-09-19). Same conservative
+# direction: a false negative routes the planner; a false positive would
+# auto-close live work.
 def classify-filed [rows] {
     $rows | each {|r|
-        {sha: $r.sha, subject: $r.subject, filed_only: ($r.subject =~ '(?i)(revisor (pass|:))|(\brevise\s+(develop\s+)?run\b)|(\bfile\s+\d+\s+[^;()]*seeds?\b)|(;\s*file\s+fabro-[0-9a-z]+)|(\bfile\s+seeds?\s+fabro-[0-9a-z]+)')}
+        {sha: $r.sha, subject: $r.subject, filed_only: ($r.subject =~ '(?i)(revisor (pass|:))|(\brevise\s+(develop\s+)?run\b)|(\bfile\s+\d+\s+[^;()]*seeds?\b)|(;\s*file\s+fabro-[0-9a-z]+)|(\bfile\s+seeds?\s+fabro-[0-9a-z]+)|(\breopen\b)|(\bverify\b)|(\bmove\s+seed\b)|(\bclose\s+seed\b)')}
     }
 }
 
