@@ -41,7 +41,7 @@ Hard rules (each measured at ~50s of wasted implementer recovery):
    Cost-tier the smoke check itself: config-only seeds (no Rust touched) satisfy the smoke check with a parse-level verification (e.g. `python3 -c "import tomllib; tomllib.load(open('<file>','rb'))"` for TOML) — never build binaries to validate config; if a built check is genuinely required, never `cargo run` cold — `cargo build` once with timeout_ms >= 600000, then invoke `target/debug/<bin>`; a timed-out build is not a failure — retry once with a doubled timeout; only a non-zero exit is a failure.
    Cross-crate contract changes — a SUPPLEMENT on top of the mechanical verify call, not an exception to it: when a seed changes a cross-crate contract (a pub fn/type/signature consumed outside its own crate, e.g. `inherit_parent_target`), rg the workspace for callers and existing tests of the changed symbol and run those focused tests in addition to the mechanical verify call — via `cargo nextest run -p <caller-crate> <name-filter>`-style focused invocation. Focused only: NOT the caller's full crate suite, and NOT the workspace suite — both remain forbidden by the surrounding policy; this rule adds a downstream-caller dimension the touched-crate verify dispatcher does not derive, it does not widen any forbidden scope. Motivation (observed once): the crate-scoped verify missed fabro-server fixture drift on such a change; the first gate red was its only signal (~557 KB gate log to dig through), while the actual focused retest cost 0.37 s.
 5. Do NOT close the seed and do NOT review — the Reviewer decides, the deterministic Closeout closes.
-6. If this pass revealed a durable convention, pattern, or failure worth keeping, record it: `ml record <domain> --type ... --description ...`. Skip if nothing surfaced. Either way, the answer has a required home: name the mx-id (format `mx-xxxxxx`) or the literal skip text in `lesson_capture` — see 'Lesson capture' below.
+6. If this pass revealed a durable convention, pattern, or failure worth keeping, record it: `ml record <domain> --type ... --description ...`. Skip if nothing surfaced. Either way, the answer has a required home: name the mx-id (format `mx-xxxxxx`) or the literal skip text in `lesson_capture` — see 'Lesson capture' below. ONE record per lesson (hard rule): a correction or follow-up AMENDS the existing record — `ml record` upserts by `--name`, merging outcomes — or is folded into the same filing; never file a second record for the same lesson. Duplicate stub records beat the real record in `ml search` and starve it of confirmation evidence.
 
 ## Inline verification report — required in every summary
 
@@ -136,6 +136,12 @@ format `mx-xxxxxx`) or you explicitly answer 'nothing durable — skipped'.
 Skipping is a valid answer; only silence is a violation. The answer lands in
 the `lesson_capture` key of the Implemented JSON (step 6 is where the record
 itself happens).
+
+One record per lesson: `lesson_capture` names exactly ONE mx-id. If a
+correction or follow-up was needed, AMEND the existing record (`ml record`
+upserts by `--name`, merging outcomes) and name the SAME id again — never
+file a second record for the same lesson, because duplicate stub records
+beat the real record in `ml search`.
 
 ## Verification-only briefs
 
