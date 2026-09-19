@@ -40,6 +40,26 @@ digraph Develop {
     // and hard errors stay on the untyped exit.
     exit  [shape=Msquare, label="Exit"]
 
+    // Tracker guard (fabro-0da8): deterministic drained-tracker terminal
+    // check AFTER start, BEFORE the preflight and planner — proves tracker
+    // state in ~1-3 s of shell (sd list open + in_progress, both
+    // `--assignee fabro --limit 200`) so the drained-tracker case costs
+    // ZERO planner tokens. Basis (run 01M0SFEYVC9TD6MP816RHEBFQY):
+    // planner@1 spent 27.7s / $0.0186 solely to discover 0 open seeds.
+    // Both lists empty -> routes the existing "Tracker empty" label
+    // contract (declared on the planner's exit edge below) straight to
+    // the exit; either non-empty or ANY sd failure -> fail-open to the
+    // preflight/planner unchanged (never parks, never fails the run).
+    // The node produces no context value — nothing downstream needs one.
+    tracker_guard [
+        label="Tracker guard: empty-tracker fast exit",
+        shape=parallelogram,
+        script="nu .fabro/workflows/develop/scripts/tracker-guard.nu",
+        output_schema="routing",
+        timeout="30s",
+        max_retries=0
+    ]
+
     // Planner preflight: deterministic already-landed check (fabro-a32f).
     // Runs BEFORE the planner LLM lap over the top `sd ready --assignee
     // fabro` candidates, grepping the merge-target base history via
@@ -418,7 +438,15 @@ digraph Develop {
         max_retries=0
     ]
 
-    start -> preflight
+    start -> tracker_guard
+    // fabro-0da8: drained-tracker terminal exit — zero LLM tokens on this
+    // path. Plain edge, natural completion, same family as the planner's
+    // own "Tracker empty" edge below (the label contract predates this
+    // node; this edge reuses it).
+    tracker_guard -> exit [label="Tracker empty", condition="preferred_label=\"Tracker empty\""]
+    // Unconditional fail-open route: non-empty tracker OR any sd failure
+    // all continue into the preflight (then the planner) unchanged.
+    tracker_guard -> preflight [label="Tracker non-empty"]
     // fabro-a32f: mechanical Already-landed exit — the preflight script
     // already performed the closure (note + superseded-close) before
     // routing here; plain edge, natural completion, same family as the
