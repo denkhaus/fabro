@@ -140,6 +140,8 @@ For API-backed agent nodes, Fabro adds the resolved output contract to the task 
 
 Custom schema validation only reads response or command output text. It does not fall back to `status.json` or the last file touched by the agent.
 
+Custom schemas are routing-active. If the validated object contains any recognized routing-named top-level field (`preferred_next_label`, `outcome`, `failure_reason`, `suggested_next_ids`, or `context_updates`), Fabro applies routing semantics — routing fields take effect and `context_updates` merge into flat context keys — even though the node used `output_schema="@schemas/....json"` (or an inline schema) rather than `output_schema="routing"`. Schema authors must avoid those field names at the top level of a custom schema unless routing behavior is intended.
+
 When custom schema validation succeeds, Fabro stores the parsed JSON value in context at:
 
 | Key | Value |
