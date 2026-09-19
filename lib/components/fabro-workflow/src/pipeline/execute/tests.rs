@@ -292,6 +292,7 @@ async fn execute_test_run_with_options(
                 origin_url:         None,
             },
             vault: auth_test_support::empty_vault(),
+            env_lookup: Arc::new(|_: &str| None),
             sandbox_providers:
                 fabro_types::settings::server::ServerSandboxProvidersSettings::default(),
             git: git_options,
@@ -357,6 +358,7 @@ async fn execute_runs_start_to_exit_and_returns_final_context() {
                 origin_url:         None,
             },
             vault: auth_test_support::empty_vault(),
+            env_lookup: Arc::new(|_: &str| None),
             sandbox_providers:
                 fabro_types::settings::server::ServerSandboxProvidersSettings::default(),
             git: None,
@@ -500,6 +502,7 @@ async fn resumed_in_flight_node_starts_a_new_stage_execution() {
                 origin_url:         None,
             },
             vault: auth_test_support::empty_vault(),
+            env_lookup: Arc::new(|_: &str| None),
             sandbox_providers:
                 fabro_types::settings::server::ServerSandboxProvidersSettings::default(),
             git: None,
@@ -611,6 +614,7 @@ async fn run_with_lifecycle(
                 origin_url:         None,
             },
             vault: auth_test_support::empty_vault(),
+            env_lookup: Arc::new(|_: &str| None),
             sandbox_providers:
                 fabro_types::settings::server::ServerSandboxProvidersSettings::default(),
             git: None,
