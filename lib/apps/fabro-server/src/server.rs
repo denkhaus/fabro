@@ -63,6 +63,7 @@ use fabro_llm::{ClientOptions, FabroClient};
 use fabro_mcp_store::McpServerStore;
 use fabro_petri::controls::{RunControls, SteerError};
 use fabro_petri::projector::Projector;
+use fabro_petri::prune::{self, PruneError, PruneRequest};
 use fabro_redact::redact_jsonl_line;
 use fabro_slack::client::{PostedMessage as SlackPostedMessage, SlackClient};
 use fabro_slack::config::{
@@ -107,7 +108,6 @@ use fabro_workflow::{Error as WorkflowError, operations, pull_request};
 use futures_util::future::join_all;
 use lithos_llm::catalog::ProviderId;
 use lithos_llm::types::Usage;
-use sandbox_driver::SandboxId;
 use tempfile::NamedTempFile;
 use tokio::fs;
 use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWriteExt, BufReader};
@@ -2739,6 +2739,11 @@ async fn delete_run_internal(
         .await;
     }
 
+    // Whatever Petri run handles the run's worker held open over the API
+    // drop here, before its sandboxes are pruned through the lease ledger:
+    // the worker is gone or was told to stop above, and a lease it still
+    // held would refuse the prune.
+    state.petri_runs.worker_exited(id);
     let delete_outcome = delete_run_sandbox_resource(state, id, force).await?;
 
     if let Some(mut managed_run) = managed_run {
@@ -2759,7 +2764,6 @@ async fn delete_run_internal(
         .delete_run(&id)
         .await
         .map_err(|err| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string()))?;
-    state.petri_runs.worker_exited(id);
     state
         .petri_projector
         .delete_run(id)
@@ -2834,51 +2838,95 @@ async fn delete_run_sandbox_resource(
     else {
         return Ok(SandboxDeleteOutcome::Cleaned);
     };
-    let runtime = &record.runtime;
     if preserve {
         return Ok(SandboxDeleteOutcome::Preserved(DeleteRunResponse {
             deleted:           true,
             sandbox_preserved: true,
             sandbox:           DeleteRunSandbox {
                 provider: record.provider,
-                id:       runtime.id.clone(),
+                id:       record.runtime.id,
             },
         }));
     }
 
-    let access = state
-        .provider_access()
-        .await
-        .map_err(|err| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string()))?;
-    // Deleted by id through the provider scoped to the run: a sandbox that
-    // no longer carries the run's `petri.run` label is refused, an id the
-    // provider no longer knows is already gone, and a designated host
-    // directory is left in place.
-    let deleted = async {
-        let provider = sandbox_access::run_provider(&record.provider, &access, id)
-            .await
-            .with_context(|| format!("Failed to connect to the {} provider", record.provider))?;
-        let sandbox_id = SandboxId::try_new(&runtime.id)
-            .with_context(|| format!("Invalid {} sandbox id", record.provider))?;
-        provider.delete(&sandbox_id, None).await.with_context(|| {
-            format!(
-                "Failed to delete {} sandbox '{}'",
-                record.provider, runtime.id
-            )
-        })
-    }
+    // Deleted through Petri's lease ledger, as `petri sandbox prune` does:
+    // Petri owns the lease record, checks the provider's fingerprint, and
+    // writes the intent and the tombstone beside the run's other records.
+    // The run directory is the worker's Petri run dir, where the host
+    // registry and a host workspace live; it is removed after this.
+    let run_dir = Storage::new(state.server_storage_dir())
+        .run_scratch(&id)
+        .root()
+        .join("petri");
+    let report = prune::prune(PruneRequest {
+        run_id: id.to_string(),
+        run_dir,
+        store: state.petri_runs.shared_store(),
+        provider: record.provider.clone(),
+    })
     .await;
-    match deleted {
-        Ok(()) => Ok(SandboxDeleteOutcome::Cleaned),
-        Err(err) if force || delete_started => {
-            tracing::warn!(
+    match report {
+        Ok(report) if report.is_clean() => {
+            tracing::debug!(
                 run_id = %id,
-                error = %format!("{err:#}"),
-                "Skipping failed sandbox provider delete during run deletion"
+                provider = %record.provider,
+                deleted = report.deleted.len(),
+                "Run sandboxes pruned through Petri"
             );
             Ok(SandboxDeleteOutcome::Cleaned)
         }
-        Err(err) => Err(ApiError::new(StatusCode::CONFLICT, format!("{err:#}"))),
+        // A lease Petri could not prune keeps its pending intent, so a
+        // later prune tries again; a forced or restarted delete goes on
+        // without it.
+        Ok(report) => {
+            let problems = report
+                .problems
+                .iter()
+                .map(|(lease, problem)| format!("lease {lease}: {problem}"))
+                .collect::<Vec<_>>()
+                .join("; ");
+            if force || delete_started {
+                tracing::warn!(
+                    run_id = %id,
+                    provider = %record.provider,
+                    problems = %problems,
+                    "Skipping the sandboxes Petri could not prune during run deletion"
+                );
+                Ok(SandboxDeleteOutcome::Cleaned)
+            } else {
+                Err(ApiError::new(
+                    StatusCode::CONFLICT,
+                    format!("Failed to delete the run's sandboxes: {problems}"),
+                ))
+            }
+        }
+        // A live process still holds the run: only a forced delete leaves
+        // its sandboxes behind.
+        Err(error @ PruneError::RunHeld { .. }) => {
+            if force {
+                tracing::warn!(
+                    run_id = %id,
+                    error = %error,
+                    "Skipping the sandbox prune of a held run during forced deletion"
+                );
+                Ok(SandboxDeleteOutcome::Cleaned)
+            } else {
+                Err(ApiError::new(StatusCode::CONFLICT, error.to_string()))
+            }
+        }
+        Err(error) => {
+            let message = fabro_util::error::collect_chain(&error).join(": ");
+            if force || delete_started {
+                tracing::warn!(
+                    run_id = %id,
+                    error = %message,
+                    "Skipping the failed sandbox prune during run deletion"
+                );
+                Ok(SandboxDeleteOutcome::Cleaned)
+            } else {
+                Err(ApiError::new(StatusCode::CONFLICT, message))
+            }
+        }
     }
 }
 

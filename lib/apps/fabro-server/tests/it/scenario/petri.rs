@@ -27,6 +27,7 @@ use std::sync::Arc;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use fabro_petri::engine::{self, RunStatus};
+use fabro_petri::petri::{Access, OwnerId, RunKey, RunStore as _};
 use fabro_petri::{SqliteRunStore, projector};
 use fabro_server::server::AppState;
 use fabro_server::test_support::{
@@ -755,6 +756,124 @@ async fn a_runs_projection_carries_its_host_sandbox_instance() {
     let run = run_json(&app, &run_id).await;
     assert_eq!(run["sandbox"]["kind"], "ready", "{run}");
     assert_eq!(run["sandbox"]["instance"]["runtime"]["id"], id, "{run}");
+}
+
+/// Deleting a run deletes its sandboxes through Petri's lease ledger: a
+/// run whose lease a live process holds is refused with a conflict and
+/// keeps its workspace, and once the lease is free the delete removes the
+/// host workspace Petri kept along with the run.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn deleting_a_run_prunes_its_host_workspace_through_petri() {
+    if host_plugin().is_none() {
+        return;
+    }
+    let workspace = tempfile::tempdir().expect("workspace tempdir");
+    let settings = settings_from_toml("_version = 1\n\n[run.environment]\nid = \"local\"\n");
+    let state = test_app_state_with_options(settings, 5);
+    let app = test_app_with_scheduler(Arc::clone(&state));
+
+    let version_id = register_version(&app, &[
+        ("workflow.fabro", COMMAND_DOT),
+        ("workflow.toml", PLAIN_SETTINGS),
+    ])
+    .await;
+    let run_id =
+        create_and_start_run_from_intent(&app, intent(&version_id, workspace.path())).await;
+    let status = wait_for_run_status(&app, &run_id, &["succeeded", "failed"]).await;
+    assert_eq!(
+        status,
+        "succeeded",
+        "run: {}",
+        run_json(&app, &run_id).await
+    );
+    let projection = settled_state(&state, &app, &run_id).await;
+    let working_directory = PathBuf::from(
+        projection["sandbox"]["instance"]["runtime"]["working_directory"]
+            .as_str()
+            .expect("the working directory"),
+    );
+    assert!(
+        working_directory.is_dir(),
+        "the workspace is retained after the run: {}",
+        working_directory.display()
+    );
+
+    // The run's lease is free once its execution let go of the record.
+    let store = state.test_petri_run_store();
+    let key = RunKey::new(run_id.clone());
+    wait_for_free_lease(store, &key).await;
+
+    // A live handle on the run, as its worker holds one, refuses the
+    // delete: Petri will not prune under a lease someone holds.
+    let held = store
+        .open(&key, Access::Write {
+            owner: OwnerId::new("worker-1"),
+        })
+        .await
+        .expect("the worker takes the run");
+    let refused = response_json(
+        app.clone()
+            .oneshot(delete(&run_id))
+            .await
+            .expect("delete route"),
+        StatusCode::CONFLICT,
+        format!("DELETE /api/v1/runs/{run_id}"),
+    )
+    .await;
+    assert!(
+        refused["errors"][0]["detail"]
+            .as_str()
+            .is_some_and(|detail| detail.contains("held by a live process")),
+        "the conflict names the held lease: {refused}"
+    );
+    assert!(
+        working_directory.is_dir(),
+        "the refused delete left the workspace"
+    );
+    drop(held);
+    wait_for_free_lease(store, &key).await;
+
+    crate::helpers::response_status(
+        app.clone()
+            .oneshot(delete(&run_id))
+            .await
+            .expect("delete route"),
+        StatusCode::NO_CONTENT,
+        format!("DELETE /api/v1/runs/{run_id}"),
+    )
+    .await;
+    assert!(
+        !working_directory.exists(),
+        "the host provider removed the workspace Petri kept"
+    );
+    crate::helpers::response_status(
+        app.clone()
+            .oneshot(get(&format!("/runs/{run_id}")))
+            .await
+            .expect("run route"),
+        StatusCode::NOT_FOUND,
+        format!("GET /api/v1/runs/{run_id}"),
+    )
+    .await;
+}
+
+/// Wait until no owner holds the run's lease.
+async fn wait_for_free_lease(store: &SqliteRunStore, key: &RunKey) {
+    for _ in 0..500 {
+        if store.owner(key).await.expect("reads the lease").is_none() {
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+    panic!("the run's lease was not released");
+}
+
+fn delete(run_id: &str) -> Request<Body> {
+    Request::builder()
+        .method("DELETE")
+        .uri(api(&format!("/runs/{run_id}")))
+        .body(Body::empty())
+        .expect("delete request should build")
 }
 
 /// The same on the Docker provider: the instance is the run's container,

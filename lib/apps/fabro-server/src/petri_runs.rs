@@ -23,7 +23,7 @@ use fabro_types::RunId;
 use tracing::debug;
 
 pub(crate) struct PetriRuns {
-    store:   SqliteRunStore,
+    store:   Arc<SqliteRunStore>,
     /// The writer handle each worker holds open, by run and owner.
     handles: Mutex<HashMap<(RunId, OwnerId), Arc<dyn RunLogs>>>,
 }
@@ -31,9 +31,18 @@ pub(crate) struct PetriRuns {
 impl PetriRuns {
     pub(crate) fn new(pool: DbPool) -> Self {
         Self {
-            store:   SqliteRunStore::new(pool),
+            store:   Arc::new(SqliteRunStore::new(pool)),
             handles: Mutex::default(),
         }
+    }
+
+    /// The store the workers' handles are open on, for the server's own
+    /// work on a run's record (the sandbox prune at deletion). The same
+    /// instance matters: a handle dropped here has its lease release
+    /// awaited by this store's next open, so a prune right after
+    /// [`worker_exited`](Self::worker_exited) finds the lease free.
+    pub(crate) fn shared_store(&self) -> Arc<SqliteRunStore> {
+        Arc::clone(&self.store)
     }
 
     /// The Petri run key of a Fabro run.

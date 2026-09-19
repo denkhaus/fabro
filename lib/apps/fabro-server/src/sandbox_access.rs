@@ -184,7 +184,7 @@ pub(crate) enum ConnectError {
 
 /// Connects the provider behind `kind`, unscoped: every sandbox on the
 /// backend is visible to it. Callers that act on a persisted id narrow it
-/// with [`run_provider`].
+/// with [`scope_to_run`].
 ///
 /// Bundled kinds link the driver's provider crates in process. `local` is
 /// the driver's Host provider with a fresh registry: a run's directory is
@@ -278,21 +278,12 @@ fn is_petri_sandbox(labels: &BTreeMap<String, String>) -> bool {
     labels.contains_key(PETRI_RUN_LABEL)
 }
 
-/// The provider for `kind`, narrowed to the sandboxes of `run_id`: an
-/// attach to or a delete of an id whose sandbox does not carry the run's
-/// `petri.run` label is refused. The `local` kind is returned unscoped: a
-/// host directory carries no labels, and nothing else shares the host's
-/// directories with Fabro.
-pub(crate) async fn run_provider(
-    kind: &SandboxProviderKind,
-    access: &ProviderAccess,
-    run_id: RunId,
-) -> Result<Arc<dyn SandboxProvider>, ConnectError> {
-    let provider = connect_provider(kind, access).await?;
-    Ok(scope_to_run(kind, provider, run_id))
-}
-
-/// `provider` narrowed to the sandboxes of `run_id`; see [`run_provider`].
+/// `provider` narrowed to the sandboxes of `run_id`: an attach to an id
+/// whose sandbox does not carry the run's `petri.run` label is refused.
+/// The `local` kind is returned unscoped: a host directory carries no
+/// labels, and nothing else shares the host's directories with Fabro.
+/// Deletion does not come through here: a run's sandboxes are deleted
+/// through Petri's lease ledger (`fabro_petri::prune`).
 fn scope_to_run(
     kind: &SandboxProviderKind,
     provider: Arc<dyn SandboxProvider>,

@@ -170,7 +170,9 @@ pub enum Conclusion {
 
 /// Execute the run to its end and report what the record says.
 pub async fn run(request: RunRequest) -> Result<RunOutcome, RunError> {
-    let backend = backend(&request.provider)?;
+    let backend = backend(&request.provider).ok_or_else(|| RunError::UnsupportedProvider {
+        provider: request.provider.clone(),
+    })?;
     let key = RunKey::new(request.run_id.as_str());
     let mut options = RunOptions::new(&request.run_dir);
     options.run_key = Some(key.clone());
@@ -381,18 +383,17 @@ fn error_chain(error: &RunError) -> String {
     parts.join(": ")
 }
 
-/// The sandbox backend for Fabro's provider kind.
-fn backend(provider: &SandboxProviderKind) -> Result<SandboxBackend, RunError> {
+/// The sandbox backend for Fabro's provider kind; `None` for a kind Petri
+/// does not serve.
+pub(crate) fn backend(provider: &SandboxProviderKind) -> Option<SandboxBackend> {
     if *provider == SandboxProviderKind::LOCAL {
-        Ok(SandboxBackend::Host)
+        Some(SandboxBackend::Host)
     } else if *provider == SandboxProviderKind::DOCKER {
-        Ok(SandboxBackend::Docker)
+        Some(SandboxBackend::Docker)
     } else if *provider == SandboxProviderKind::DAYTONA {
-        Ok(SandboxBackend::Daytona)
+        Some(SandboxBackend::Daytona)
     } else {
-        Err(RunError::UnsupportedProvider {
-            provider: provider.clone(),
-        })
+        None
     }
 }
 

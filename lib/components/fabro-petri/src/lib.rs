@@ -54,7 +54,9 @@
 //! - [`fork`]: a run seeded from another's records up to a checkpoint's
 //!   position, over Petri's `host::fork_from`, with the kept checkpoints, their
 //!   snapshots and the run branch carried over: what rewind, fork and retry are
-//!   built on.
+//!   built on;
+//! - [`prune`]: a run's sandboxes deleted through Petri's lease ledger, as
+//!   `petri sandbox prune` deletes them, when Fabro deletes the run.
 //!
 //! The Petri packages are pinned by revision in the workspace `Cargo.toml`
 //! under `petri_*` keys.
@@ -74,6 +76,7 @@ pub mod petri;
 pub mod platform_records;
 pub mod projection;
 pub mod projector;
+pub mod prune;
 pub mod recovery;
 pub mod run_graph;
 pub mod run_store;
