@@ -67,7 +67,13 @@ digraph Conductor {
         // session loads `.fabro/skills` (rust-style-guide and
         // friends) through the UseSkill tool.
         skills="discover",
-        output_schema="routing",
+        // fabro-3196: file schema (fabro-017f teeth pattern) — keeps
+        // the routing contract AND rejects a revise-handoff routing
+        // ('Develop integrated' / 'Gate stuck — revise anyway')
+        // without a non-empty context_updates.child_run_id (run
+        // 01M2X6AT3V4CPSJC08SMCVB172 dropped it; the revise leg then
+        // failed pass continuity and the child went unreviewed).
+        output_schema="@schemas/develop-output.schema.json",
         output_retries=2,
         retry_policy="standard",
         reasoning_effort="low",
