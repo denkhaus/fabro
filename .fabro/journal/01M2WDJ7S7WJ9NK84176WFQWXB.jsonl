@@ -1,0 +1,2 @@
+{"$schema":"fabro-journal-v1","run_id":"01M2WDJ7S7WJ9NK84176WFQWXB","node":"start","visit":1,"status":"succeeded","ts":"2026-09-19T08:47:19Z","data":{}}
+{"$schema":"fabro-journal-v1","run_id":"01M2WDJ7S7WJ9NK84176WFQWXB","node":"select","visit":1,"status":"succeeded","ts":"2026-09-19T08:47:49Z","data":{"painpoints":[],"observations":["2 unrevised fresh runs (01M2WCNY succeeded, 01M2WAY0 failed) on baseline version 8b7bbe9d; ~76 older develop runs stale-evidence (version drift) or already revised; 0 no-live-sandbox among fresh; 0 merge-upstream runs exist"]}}
