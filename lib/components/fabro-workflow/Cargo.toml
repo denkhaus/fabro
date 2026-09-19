@@ -26,44 +26,31 @@ fabro-config = { path = "../../foundation/fabro-config" }
 fabro-graphviz = { path = "../fabro-graphviz" }
 fabro-sandbox = { path = "../fabro-sandbox" }
 sandbox-driver.workspace = true
-pebble-agent.workspace = true
 pebble-coding-agent.workspace = true
 fabro-github = { path = "../fabro-github" }
-fabro-interview = { path = "../fabro-interview" }
 fabro-template = { path = "../../foundation/fabro-template" }
 fabro-tool = { path = "../fabro-tool" }
 fabro-util = { path = "../../foundation/fabro-util" }
 fabro-redact.workspace = true
 fabro-llm = { path = "../fabro-llm" }
 fabro-store = { path = "../fabro-store" }
-fabro-static.workspace = true
 fabro-types = { path = "../../foundation/fabro-types" }
 lithos-llm = { workspace = true, features = ["runtime"] }
 fabro-http.workspace = true
 thiserror.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-jsonschema.workspace = true
 tokio.workspace = true
 bytes.workspace = true
-object_store.workspace = true
 ulid.workspace = true
-uuid.workspace = true
-rand.workspace = true
 async-trait.workspace = true
-futures.workspace = true
 chrono = { workspace = true, features = ["serde"] }
 dirs = "6"
 scopeguard = "1"
-md5.workspace = true
 hex.workspace = true
-sha2 = { workspace = true }
-mime_guess.workspace = true
 miette.workspace = true
 git2.workspace = true
-tokio-util.workspace = true
 tracing.workspace = true
-walkdir.workspace = true
 tempfile = "3"
 toml.workspace = true
 fabro-vault = { path = "../../foundation/fabro-vault" }
@@ -79,7 +66,6 @@ fabro-github = { path = "../fabro-github", features = ["test-support"] }
 fabro-workflow = { path = ".", features = ["test-support"] }
 fabro-sandbox = { path = "../fabro-sandbox", features = ["test-support"] }
 tokio = { workspace = true, features = ["test-util", "macros"] }
-object_store.workspace = true
 httpmock = "0.8"
 fabro-macros = { path = "../../foundation/fabro-macros" }
 fabro-test = { workspace = true }
