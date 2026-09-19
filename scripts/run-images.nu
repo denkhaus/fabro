@@ -53,6 +53,30 @@ def stage-binary [pkg: string, bin: string] {
     $"($out_dir)/($bin)"
 }
 
+# fabro-c643 ARM 1: stage the cargo-chef cook context into the toolchain
+# build context (.fabro/cook/) — the git-tracked workspace sources,
+# manifests, lockfile, and the OpenAPI spec fabro-api's build.rs reads.
+# Chef's planner stage reduces this to recipe.json at build time, so the
+# image cook always matches the current checkout's dependency graph.
+def stage-cook-context [] {
+    let out = ".fabro/cook"
+    rm -rf $out
+    mkdir $out
+    let files = (git ls-files | lines | where {|f|
+        ($f | str starts-with "lib/") or ($f | str starts-with "test/") or ($f | str starts-with "docs/public/api-reference/") or ($f == "Cargo.toml") or ($f == "Cargo.lock") or ($f == "rust-toolchain") or ($f == "rust-toolchain.toml") or ($f | str starts-with ".cargo/")
+    })
+    if ($files | is-empty) {
+        error make {msg: "run-images: cook context staging found no files (git ls-files empty?)"}
+    }
+    $files | each {|f|
+        let dest = $"($out)/($f)"
+        mkdir ($dest | path dirname)
+        cp --force $f $dest
+    }
+    print $"run-images: staged ($files | length) cook-context files"
+    $out
+}
+
 def build-one [dockerfile: string, tag: string, push: bool] {
     if not ($dockerfile | path exists) {
         let name = ($dockerfile | path basename)
@@ -68,7 +92,12 @@ def build-one [dockerfile: string, tag: string, push: bool] {
         let cli = (stage-binary fabro-cli fabro)
         let validator_hash = (open --raw $validator | hash sha256)
         let cli_hash = (open --raw $cli | hash sha256)
-        ($content | hash sha256) + ($validator_hash | str substring 0..15) + ($cli_hash | str substring 0..15)
+        # fabro-c643: stage the chef cook context BEFORE hashing, and fold
+        # the lockfile hash in — a dependency-graph change must force a
+        # toolchain rebuild even when the Dockerfile is byte-identical.
+        stage-cook-context
+        let lock_hash = (open --raw Cargo.lock | hash sha256)
+        ($content | hash sha256) + ($validator_hash | str substring 0..15) + ($cli_hash | str substring 0..15) + ($lock_hash | str substring 0..15)
     } else {
         ($content | hash sha256)
     })

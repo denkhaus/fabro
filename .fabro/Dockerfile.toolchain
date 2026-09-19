@@ -7,28 +7,70 @@
 # carries 5 critical and 112 high CVEs from its kitchen-sink library set
 # (user directive 2026-09-03 — the lab runner image already made this
 # switch). Only the packages the workspace actually needs get installed.
-FROM ubuntu:24.04
+#
+# fabro-c643 rebuild (user decision 2026-09-17, ADR-0022 one-change-unit):
+#   ARM 1  cargo-chef staged dependency layers cooked at image build time
+#          from the workspace manifests (context staged by
+#          scripts/run-images.nu into .fabro/cook/) into /opt/target, with
+#          CARGO_TARGET_DIR=/opt/target so every run-container cargo build
+#          (nextest/debug builds, compile checks) hits warm dependency
+#          artifacts instead of a ~10-15 min cold compile. Known residual:
+#          clippy rebuilds dependencies with clippy-driver fingerprints, so
+#          the clippy leg of the gate stays cold — nextest and debug-build
+#          legs are the warmed majority.
+#   ARM 2  cargo-insta baked in (fabro-ea41): `cargo insta accept` works
+#          inside runs.
+#   ARM 3  graphviz baked in (fabro-9bf4): `dot` is available for
+#          workflow-graph validation/rendering.
+#   ARM 4  mold linker anchored via /root/.cargo/config.toml rustflags
+#          (fabro-581b). Wired: this image (the run toolchain image — run
+#          containers build with mold through the baked cargo config, and
+#          the chef cook itself links with it). NOT wired: CI pipelines
+#          and any non-toolchain images stay pipeline-owned and out of
+#          scope. Java/openapi-generator deliberately NOT added
+#          (fabro-3b1b deferred by the same user decision).
+FROM ubuntu:24.04 AS base
 
 ARG RUST_NIGHTLY=nightly-2026-04-14
 
 # Native build dependencies: gcc/make for the linker, pkg-config + perl +
 # cmake + xz for the vendored native crates in Cargo.lock (openssl-sys,
 # libz-sys, libgit2 via cmake), git for checkouts, curl + ca-certificates
-# for toolchain installs.
+# for toolchain installs, graphviz (fabro-9bf4: workflow-graph rendering)
+# and mold (fabro-581b: fast linker).
 RUN set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends \
         bash git ca-certificates curl xz-utils \
-        build-essential pkg-config perl cmake; \
+        build-essential pkg-config perl cmake \
+        graphviz mold; \
+    dot -V; \
+    mold --version; \
     rm -rf /var/lib/apt/lists/*
 
 RUN set -eux; \
     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain ${RUST_NIGHTLY}; \
     export PATH="/root/.cargo/bin:${PATH}"; \
     rustup toolchain install ${RUST_NIGHTLY} --profile minimal --component clippy,rustfmt; \
-    cargo install cargo-nextest --locked
+    cargo install cargo-nextest --locked; \
+    cargo install cargo-insta --locked; \
+    cargo install cargo-chef --locked
 
 ENV PATH="/root/.cargo/bin:${PATH}"
+
+# ARM 4 (fabro-581b): anchor mold as the Rust linker for every build that
+# resolves cargo config from /root/.cargo — run containers included, since
+# they run as root with this baked CARGO_HOME. gcc accepts
+# -fuse-ld=mold from gcc 12; ubuntu 24.04 ships gcc 13.
+RUN set -eux; \
+    printf '[target.x86_64-unknown-linux-gnu]\nrustflags = ["-C", "link-arg=-fuse-ld=mold"]\n' \
+        > /root/.cargo/config.toml; \
+    cat /root/.cargo/config.toml
+
+# ARM 1 (fabro-c643): all cargo builds in this image — the chef cook below
+# and every run-container build — share /opt/target, so cooked dependency
+# artifacts are the warm starting point of run builds.
+ENV CARGO_TARGET_DIR=/opt/target
 
 # bun rides the mise toolset (lab exemplar): the bun.sh/install script
 # failed on the ubuntu base ("unzip is required") and mise pins bun@1.4.0
@@ -41,6 +83,34 @@ RUN set -eux; \
     python3 -m pip --version >/dev/null 2>&1 || apt-get update && apt-get install -y --no-install-recommends python3-pip; \
     python3 -m pip install --break-system-packages --no-cache-dir pytest; \
     python3 -m pytest --version
+
+# ─── ARM 1: cargo-chef staged dependency layers ─────────────────────────
+# Planner: cook context is staged by scripts/run-images.nu into
+# .fabro/cook/ (git-tracked workspace manifests + sources + lockfile +
+# the OpenAPI spec). prepare reduces it to a recipe.json.
+FROM base AS chef-plan
+COPY cook /src
+WORKDIR /src
+RUN cargo chef prepare --recipe-path /recipe.json
+
+# Cooker: rebuilds the skeleton from the recipe (manifests + dummy
+# sources only) and compiles every dependency with --all-targets so both
+# normal and dev/test dependency artifacts are warm. fabro-api's build.rs
+# reads docs/public/api-reference/fabro-api.yaml relative to the
+# workspace root — the skeleton does not carry it, so it is staged next
+# to the skeleton or cook dies inside progenitor.
+FROM base AS chef-cook
+COPY --from=chef-plan /recipe.json ./
+COPY --from=chef-plan /src/docs/public/api-reference/fabro-api.yaml docs/public/api-reference/
+RUN cargo chef cook --all-targets --recipe-path /recipe.json
+
+FROM base AS final
+# Warm dependency layers: cooked target dir plus the registry/git caches
+# (pebble-coding-agent is a git-rev dependency) land in the image, and
+# CARGO_TARGET_DIR (set in base) points run-container builds at them.
+COPY --from=chef-cook /opt/target /opt/target
+COPY --from=chef-cook /root/.cargo/registry /root/.cargo/registry
+COPY --from=chef-cook /root/.cargo/git /root/.cargo/git
 
 # Workspace toolset via mise (fabro-5453 world merger): the develop workflow
 # on the merged world invokes `just qualitygate` (tester) and `nu` hook
