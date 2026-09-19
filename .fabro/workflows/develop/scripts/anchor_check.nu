@@ -57,26 +57,73 @@ export def extract-anchors [desc: string] {
     }
 }
 
-# Verify one anchor against the current worktree. Returns a flag record:
+# Workspace member src/ roots (fabro-7611): seed bodies often cite paths
+# crate-relative (`operations/create.rs:556`, meaningful inside
+# lib/components/fabro-workflow/src/), so a root-only join flags them
+# missing_file falsely and planners cannot tell 'file gone' from 'wrong
+# base directory'. Members come from the workspace Cargo.toml (glob
+# entries expanded to dirs holding a Cargo.toml); each member
+# contributes its `src/` dir labeled by its repo-relative path.
+# Fail-open: any parse surprise degrades to [] (root-only resolution).
+export def member-src-roots [root: string] {
+    try {
+        let members = (open ($root | path join 'Cargo.toml') | get -o workspace.members | default [])
+        let dirs = ($members | each {|m|
+            if ($m | str ends-with '*') {
+                let base = ($m | path dirname)
+                glob ($root | path join $base '*') --no-file | where {|d| ($d | path join 'Cargo.toml') | path exists}
+            } else {
+                [($root | path join $m)]
+            }
+        } | flatten)
+        $dirs | each {|d|
+            let src = ($d | path join 'src')
+            if ($src | path exists) { {base: ($d | path relative-to $root | path join 'src'), dir: $src} }
+        } | compact
+    } catch { [] }
+}
+
+# Resolution stage (fabro-7611): a cited anchor path resolves against
+# repo root FIRST (a root hit wins, no member retry), then against each
+# workspace member src/ root in member order. Returns {full, base} on
+# hit (`base` is "root" or the member's repo-relative src dir), null
+# when the path exists nowhere — the caller then reports missing_file
+# knowing the file is gone, not merely cited against the wrong base.
+export def resolve-anchor-path [a_path: string, root: string] {
+    let rp = ($root | path join $a_path)
+    if ($rp | path exists) {
+        {full: $rp, base: "root"}
+    } else {
+        let hit = (try { member-src-roots $root | where {|m| ($m.dir | path join $a_path) | path exists} | first } catch { null })
+        if ($hit == null) { null } else { {full: ($hit.dir | path join $a_path), base: $hit.base} }
+    }
+}
+
+# Verify one anchor against the current worktree (crate-relative paths
+# retried against workspace member src/ roots, fabro-7611). Returns a
+# flag record:
 #   ok           file exists, lines in range, claim (if any) still present
-#   missing_file cited path does not exist
+#   missing_file cited path does not exist at root or any member root
 #   out_of_range line(s) beyond EOF (or unreadable/non-UTF8 file)
 #   mismatch     cited lines no longer contain the quoted claim
+# Every row carries `base` — the base the path resolved against ("root"
+# or a member src dir) — so planners distinguish 'file gone' from
+# 'wrong base directory' on flagged rows.
 export def check-anchor [a: record, root: string] {
-    let p = ($root | path join $a.path)
-    if not ($p | path exists) {
+    let resolved = (resolve-anchor-path $a.path $root)
+    if ($resolved == null) {
         {path: $a.path, line: $a.start, status: "missing_file"}
     } else {
-        let ls = (try { open --raw $p | lines } catch { [] })
+        let ls = (try { open --raw $resolved.full | lines } catch { [] })
         let n = ($ls | length)
         if $n == 0 or $a.start < 1 or $a.end > $n {
-            {path: $a.path, line: $a.start, status: "out_of_range"}
+            {path: $a.path, line: $a.start, status: "out_of_range", base: $resolved.base}
         } else {
             let cited = ($ls | skip ($a.start - 1) | take ($a.end - $a.start + 1) | str join " ")
             if ($a.claim | is-empty) or ((norm-ws $cited) | str contains (norm-ws $a.claim)) {
-                {path: $a.path, line: $a.start, status: "ok"}
+                {path: $a.path, line: $a.start, status: "ok", base: $resolved.base}
             } else {
-                {path: $a.path, line: $a.start, status: "mismatch", claim: $a.claim}
+                {path: $a.path, line: $a.start, status: "mismatch", claim: $a.claim, base: $resolved.base}
             }
         }
     }
