@@ -263,6 +263,16 @@ upstream's new signatures; never revert upstream, never drop our features.
   compiler lists every site, fix mechanically (BilledModelUsage ->
   ModelUsage, billing/billing_by_model -> usage/usage_by_model).
 
+## 2026-09-19 (v0.361.0-nightly.0, merge e5a064b16)
+
+- Schema-rejection fixture class: a hard loader change (codec ->
+  codecs) rejects old-shape inline catalogs AT RUNTIME, so fork-added
+  test fixtures fail in the suite, not at merge time. Resolution per
+  upstream's own migration: the default pair (openai-compatible +
+  openai-chat) is simply dropped (http + ["openai-chat"] are the
+  defaults); non-default pairs become `codecs = [...]`. Diagnosis
+  greps must be UNTRUNCATED (see SKILL.md diagnosis step 3).
+
 ## 2026-09-19 (pre-merge seam-shrink class, user directive)
 
 - Diagnosis-first class: BEFORE `git merge`, fork additions found inline

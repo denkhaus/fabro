@@ -58,7 +58,9 @@ how fork features are secured best. Cover all five points:
    upstream changes a schema, settings key, loader, or event vocabulary,
    grep FORK-OWNED files and fork-added test fixtures for the OLD shape
    (fork files never conflict — they just break), and check operator
-   data (prod settings.toml) whenever a loader turns strict.
+   data (prod settings.toml) whenever a loader turns strict. Scans are
+   FULL-TREE and UNTRUNCATED — a `| head` cut hid a fork fixture in the
+   2026-09-19 session and the test suite, not the diagnosis, caught it.
 4. **Seam-shrink opportunities**: fork additions still living inline in
    upstream-owned files (consts, helpers, doc edits) move into
    fork-owned files BEFORE the merge (minimal seam: mod/import decl +
