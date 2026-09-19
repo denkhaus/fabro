@@ -18,6 +18,15 @@
 #     <sha>"), then emit preferred_next_label "Already landed" — the run
 #     exits with no LLM lap at all (same plain exit edge the planner's
 #     Already-landing used).
+#   - fabro-ead4: the note+close pair fires for EVERY unambiguous
+#     duplicate candidate (verdict exactly "duplicate" WITH a resolvable
+#     landed sha), not only the top row — a duplicate with no sha
+#     (tracker-closed, unresolvable evidence) is AMBIGUOUS and stays for
+#     planner adjudication. Non-top closes are bookkeeping only and never
+#     change the route; each close is fail-open per candidate, journaled
+#     in the report's close_log. The report also carries a one-line
+#     `legend` mapping each verdict string to its meaning so the planner
+#     never re-reads this header to interpret the table.
 #   - anything else -> preferred_next_label "Preflight done"; the full
 #     per-candidate verdict table ships inline to the planner as the
 #     `output.preflight` context key, so the LLM adjudicates only the
@@ -243,48 +252,74 @@ def main [--base: string = "origin/denkhaus", --candidates: string, --report-onl
     # open sd-ready seed that means a foreign landed implementation).
     let topv = ($verdicts | first | default null)
     let landed = ($topv != null and $topv.verdict == "duplicate")
-    let evidence_sha = (if $landed {
-        (($topv.implementation_matches? | default [] | first | default {}).sha? | default (($topv.closing_evidence? | default {}).sha? | default null))
-    } else { null })
 
-    # Deterministic superseded-close: closure note FIRST (tracker stays
-    # self-explaining), then sd close. Any failure aborts the close and
-    # falls through to the planner with the evidence inline — never a
-    # dead-end, never a close without its note.
-    mut closed = {seed: null, sha: null}
-    mut close_note = ""
-    if $landed and not $report_only {
-        let show = (do { sd show $topv.seed --format json } | complete)
-        if $show.exit_code != 0 {
-            $close_note = $"close aborted: sd show failed — planner adjudicates with evidence inline"
-        } else {
+    # Deterministic superseded-close (fabro-ead4): fires for EVERY
+    # candidate whose verdict is exactly "duplicate" WITH resolvable
+    # implementation evidence (a landed sha) — the unambiguous set. A
+    # duplicate WITHOUT a sha (tracker-closed, no closing evidence) is
+    # ambiguous and stays open here for planner adjudication. Closure
+    # note FIRST (tracker stays self-explaining), then sd close; each
+    # candidate is fail-open — one failed note/close is journaled in
+    # close_log and never aborts the remaining closures. Non-top closes
+    # are bookkeeping only: routing still keys off the TOP candidate.
+    # any-typed columns: the record starts null-valued and is later
+    # assigned string fields — an inferred record<seed: nothing, ...> would
+    # reject that assignment (observed nu 0.115 type_mismatch crash).
+    mut closed: record<seed: any, sha: any> = {seed: null, sha: null}
+    mut close_log = []
+    if not $report_only {
+        for v in $verdicts {
+            if $v.verdict != "duplicate" { continue }
+            let m = ($v.implementation_matches? | default [] | first | default {})
+            let sha = ($m.sha? | default (($v.closing_evidence? | default {}).sha? | default null))
+            if $sha == null {
+                $close_log = ($close_log | append {seed: $v.seed, closed: false, note: "skipped: duplicate without implementation evidence — planner adjudicates"})
+                continue
+            }
+            let show = (do { sd show $v.seed --format json } | complete)
+            if $show.exit_code != 0 {
+                $close_log = ($close_log | append {seed: $v.seed, closed: false, note: "close aborted: sd show failed — planner adjudicates with evidence inline"})
+                continue
+            }
             let body_raw = ($show.stdout | from json | get -o issue.description?)
             let body = (if ($body_raw | is-empty) { "" } else { $body_raw })
-            let note = ($body + " + closure note: superseded: fix landed in " + ($evidence_sha | default "?") + " (run " + ($run_id | default "?") + ")")
-            let upd = (do { sd update $topv.seed --description $note } | complete)
+            let note = ($body + " + closure note: superseded: fix landed in " + $sha + " (run " + ($run_id | default "?") + ")")
+            let upd = (do { sd update $v.seed --description $note } | complete)
             if $upd.exit_code != 0 {
-                $close_note = $"close aborted: sd update (closure note) failed: ($upd.stderr | str trim | str substring 0..160)"
+                $close_log = ($close_log | append {seed: $v.seed, closed: false, note: ("close aborted: sd update (closure note) failed: " + ($upd.stderr | str trim | str substring 0..160))})
+                continue
+            }
+            let cls = (do { sd close $v.seed --reason $"superseded: fix landed in ($sha)" } | complete)
+            if $cls.exit_code != 0 {
+                $close_log = ($close_log | append {seed: $v.seed, closed: false, note: ("close aborted: sd close failed: " + ($cls.stderr | str trim | str substring 0..160))})
             } else {
-                let cls = (do { sd close $topv.seed --reason $"superseded: fix landed in ($evidence_sha)" } | complete)
-                if $cls.exit_code != 0 {
-                    $close_note = $"close aborted: sd close failed: ($cls.stderr | str trim | str substring 0..160)"
-                } else {
-                    $closed = {seed: $topv.seed, sha: $evidence_sha}
+                $close_log = ($close_log | append {seed: $v.seed, closed: true, sha: $sha})
+                if $topv != null and $v.seed == $topv.seed {
+                    $closed = {seed: $v.seed, sha: $sha}
                 }
             }
         }
     }
 
-    # The Already-landed route requires the close to have happened (or
-    # report-only dry-run); otherwise continue so the planner can act on
-    # the inline evidence — routing and tracker state never diverge.
+    # The Already-landed route requires the TOP close to have happened
+    # (or report-only dry-run); otherwise continue so the planner can act
+    # on the inline evidence — routing and tracker state never diverge.
     let route = (if $landed and ($report_only or $closed.seed != null) { "Already landed" } else { "Preflight done" })
 
-    let report = {mode: (if (not ($close_note | is-empty)) and $mode == "checked" { "degraded" } else { $mode }),
+    # Verdict legend (fabro-ead4): one field mapping every verdict string
+    # dup-run-check emits to its meaning, so the planner never re-reads
+    # the script header to interpret the table.
+    let legend = {duplicate: "implementation already in merge-target base (or tracker-closed without resolvable evidence)",
+                  clean: "no landed implementation found",
+                  degraded: "check failed (fetch/tracker error)"}
+    let aborts = ($close_log | where {|e| (not $e.closed) and ($e.note | str starts-with "close aborted")} | length)
+    let report = {mode: (if $aborts > 0 and $mode == "checked" { "degraded" } else { $mode }),
                   run_id: ($run_id | default null),
                   candidates: ($verdicts | enumerate | each {|e| row $e.item ($cdesc | get -o $e.index | default "") ($SCRIPT_DIR | path join '../../../..') ($inflight.claims | default [])}),
-                  degraded_reason: (if ($degraded_reason | is-empty) { null } else { $degraded_reason }),
+                  legend: $legend,
+                  degraded_reason: (if $aborts > 0 and ($degraded_reason | is-empty) { ("close_log: " + ($aborts | into string) + " superseded-close(s) aborted") } else if ($degraded_reason | is-empty) { null } else { $degraded_reason }),
                   in_flight_note: ($inflight.note? | default null),
+                  close_log: $close_log,
                   closed: $closed}
     {"outcome": "succeeded",
      "preferred_next_label": $route,
