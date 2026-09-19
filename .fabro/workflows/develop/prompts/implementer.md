@@ -182,7 +182,6 @@ Implemented:
 Blocked:
 {
   "outcome": "failed",
-  "preferred_next_label": "Blocked",
   "failure_reason": "<precisely what blocks implementation>"
 }
 
