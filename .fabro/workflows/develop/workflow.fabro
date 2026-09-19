@@ -67,26 +67,28 @@ digraph Develop {
         max_retries=0
     ]
 
-    // Planner preflight: deterministic already-landed check (fabro-a32f).
-    // Runs BEFORE the planner LLM lap over the top `sd ready --assignee
-    // fabro` candidates, grepping the merge-target base history via
+    // Planner preflight: deterministic already-landed REPORT (fabro-a32f,
+    // report-only redesign fabro-83df, 2026-09-19). Runs BEFORE the
+    // planner LLM lap over the top `sd ready --assignee fabro`
+    // candidates, grepping the merge-target base history via
     // .fabro/scripts/dup-run-check.nu (filed-only revisor commits never
     // count; Fabro-Run trailer identity; landed true-merge or squash
     // `(#n)` commits count). Motivation (run 01M2Q2Q2NY211PVV0E44YDAAQN,
     // PR #207): the planner re-derived a sub-second greppable fact
     // (manual fix commit vs stale tracker row) across three probe rounds
-    // — 93.6s / $0.143. When the TOP candidate's fix commit already sits
-    // in base history the script deterministically writes the
-    // self-explaining closure note + superseded-close and routes the
-    // existing "Already landed" exit — no LLM lap at all. Everything else
-    // hands the per-candidate verdict table to the planner inline
-    // (`output.preflight`), so the ALREADY LANDED prompt arm adjudicates
-    // only the ambiguous residue (goal-named seeds, borderline
-    // classification). Fail-open on every internal error (fetch/tracker/
-    // empty list): the unconditional edge routes the planner normally
-    // with the degraded mode recorded. gatebounce command-node idiom:
-    // output_schema="routing" lets the script emit preferred_next_label
-    // mechanically. Narrows, does not close, open fabro-a01f (claim race).
+    // — 93.6s / $0.143. The script closes NOTHING and never exits early:
+    // it hands the per-candidate verdict table to the planner inline
+    // (`output.preflight`), and the planner's ALREADY LANDED arm (the
+    // fabro-d183 two-branch rule) owns the decision AND the closure —
+    // every close stays review-protected, and a deliberately reopened
+    // seed can no longer be mechanically re-closed by a subject match
+    // (incident 2026-09-19: fabro-29f7/fabro-6a78 auto-closed off
+    // reopen/verify commits, fabro-395b). Fail-open on every internal
+    // error (fetch/tracker/empty list): the unconditional edge routes
+    // the planner normally with the degraded mode recorded.
+    // gatebounce command-node idiom: output_schema="routing" lets the
+    // script emit preferred_next_label mechanically. Narrows, does not
+    // close, open fabro-a01f (claim race).
     preflight [
         label="Planner preflight: already-landed check",
         shape=parallelogram,
@@ -134,7 +136,12 @@ digraph Develop {
         output_schema="@schemas/planner-output.schema.json",
         output_retries=2,
         max_visits=20,
-        goal_gate=true,
+        // NO goal_gate (fabro-92e2, 2026-09-19): the deterministic guard
+        // exits (tracker_guard -> exit) legitimately bypass the planner,
+        // and the gate made those runs die with "goal gate unsatisfied
+        // for node planner". Edge topology already forces planner-first
+        // on every non-deterministic path, so the gate protected nothing
+        // that routing does not already enforce.
         retry_policy="standard",
         // fabro-bbbb: reasoning_effort dropped high -> low. Basis: run
         // 01M1XZCWNBR33BZGHQXNRA80J9 measured the planner at 83.6s wall
@@ -454,13 +461,11 @@ digraph Develop {
     // Unconditional fail-open route: non-empty tracker OR any sd failure
     // all continue into the preflight (then the planner) unchanged.
     tracker_guard -> preflight [label="Tracker non-empty"]
-    // fabro-a32f: mechanical Already-landed exit — the preflight script
-    // already performed the closure (note + superseded-close) before
-    // routing here; plain edge, natural completion, same family as the
-    // planner's own "Already landed" edge below.
-    preflight -> exit [label="Already landed", condition="preferred_label=\"Already landed\""]
-    // Unconditional fail-open: clean, degraded, close-aborted, or script
-    // failure all route the planner normally with the report inline.
+    // Unconditional fail-open, report-only (fabro-83df): clean,
+    // degraded, or script failure all route the planner normally with
+    // the report inline. The former mechanical "Already landed" edge is
+    // GONE — a landed-but-open top candidate is the planner's decision
+    // (its own "Already landed" edge below), never a script exit.
     preflight -> planner [label="Preflight done"]
 
     // Tracker empty = the goal is achieved (NOT an error): the planner

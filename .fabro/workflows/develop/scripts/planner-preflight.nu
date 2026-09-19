@@ -11,33 +11,27 @@
 # commit 34e8f2c vs a stale tracker row) across three LLM probe rounds —
 # 93.6s / $0.143 for what this script answers mechanically.
 #
-# Routes (output_schema="routing" on the node):
-#   - TOP candidate carries a foreign landed implementation -> append the
-#     self-explaining closure note (sd update, full body + note), then
-#     superseded-close (sd close --reason "superseded: fix landed in
-#     <sha>"), then emit preferred_next_label "Already landed" — the run
-#     exits with no LLM lap at all (same plain exit edge the planner's
-#     Already-landing used).
-#   - fabro-ead4: the note+close pair fires for EVERY unambiguous
-#     duplicate candidate (verdict exactly "duplicate" WITH a resolvable
-#     landed sha), not only the top row — a duplicate with no sha
-#     (tracker-closed, unresolvable evidence) is AMBIGUOUS and stays for
-#     planner adjudication. Non-top closes are bookkeeping only and never
-#     change the route; each close is fail-open per candidate, journaled
-#     in the report's close_log. The report also carries a one-line
-#     `legend` mapping each verdict string to its meaning so the planner
-#     never re-reads this header to interpret the table.
-#   - anything else -> preferred_next_label "Preflight done"; the full
-#     per-candidate verdict table ships inline to the planner as the
-#     `output.preflight` context key, so the LLM adjudicates only the
-#     ambiguous residue (goal-named seeds outside the candidate set,
-#     borderline classifications) instead of re-grepping base history.
+# Routes (output_schema="routing" on the node) — REPORT-ONLY
+# (fabro-83df, user decision 2026-09-19): this script closes NOTHING and
+# never exits the run early. It always emits preferred_next_label
+# "Preflight done"; the full per-candidate verdict table ships inline to
+# the planner as the `output.preflight` context key. The planner's
+# ALREADY LANDED arm (fabro-d183 two-branch rule) owns the decision AND
+# any superseded-close — every closure stays review-protected. Rationale
+# (incident 2026-09-19): a commit subject naming a seed id is not
+# evidence that the seed's acceptance criteria are met; the auto-close
+# fired once in 34 runs, on reopen/verify commits (fabro-395b), and the
+# early exit crashed the line on the planner goal gate (fabro-92e2).
+# The report carries a one-line `legend` mapping each verdict string to
+# its meaning so the planner never re-reads this header to interpret the
+# table; verdicts are ADVISORY — a `duplicate` row is a strong hint, the
+# acceptance-criteria judgment stays with the planner.
 #
 # Fail-open (hard rule): ANY internal error — git fetch failure, tracker
-# error, empty candidate list, dup-run-check crash, close failure —
-# routes the planner normally with the degraded mode recorded in the
-# report. This node must never dead-end or block the run; it exits 0 on
-# every degraded path and reserves non-zero for invocation bugs.
+# error, empty candidate list, dup-run-check crash — routes the planner
+# normally with the degraded mode recorded in the report. This node must
+# never dead-end or block the run; it exits 0 on every degraded path and
+# reserves non-zero for invocation bugs.
 #
 # Relationship to open fabro-a01f (claim race / stale tracker snapshot):
 # this preflight NARROWS that window — it catches the merged-but-still-
@@ -79,6 +73,9 @@
 #     exclusion — in-flight-claims below maps recent unmerged develop
 #     run branches to claimed seed ids via the stage-journal fallback
 #     and reports them per-candidate as in_flight/in_flight_run.
+#   RETIRED with fabro-83df (2026-09-19): the former live-close arm
+#     (fabro-ead4 note+close for every unambiguous duplicate) and the
+#     report-only/live route split — report-only is the only mode now.
 #   arm 3: the brief gate-command ban lives in the PLANNER OUTPUT
 #     SCHEMA (.fabro/workflows/develop/schemas/planner-output.schema.json,
 #     wired via the planner node's output_schema) — the fabro-017f teeth
@@ -179,7 +176,7 @@ def row [v: record, desc: string, root: string, claims: list] {
 const SCRIPT_DIR = (path self | path dirname)
 
 
-def main [--base: string = "origin/denkhaus", --candidates: string, --report-only, --top: int = 5]: nothing -> nothing {
+def main [--base: string = "origin/denkhaus", --candidates: string, --top: int = 5]: nothing -> nothing {
     # Non-tty stdin (same nu 0.115 constraint as closeout.nu): the engine
     # pipes internal.run_id, read it through external cat.
     let run_id = (cat | str join | str trim)
@@ -225,7 +222,7 @@ def main [--base: string = "origin/denkhaus", --candidates: string, --report-onl
         }
         {"outcome": "succeeded",
          "preferred_next_label": "Preflight done",
-         "context_updates": {"output.preflight": {"mode": $mode, "run_id": ($run_id | default null), "candidates": [], "degraded_reason": (if ($degraded_reason | is-empty) { null } else { $degraded_reason }), "closed": null}}} | to json --raw | print
+         "context_updates": {"output.preflight": {"mode": $mode, "run_id": ($run_id | default null), "candidates": [], "degraded_reason": (if ($degraded_reason | is-empty) { null } else { $degraded_reason })}}} | to json --raw | print
         return
     }
 
@@ -238,7 +235,7 @@ def main [--base: string = "origin/denkhaus", --candidates: string, --report-onl
     if $res.exit_code != 0 {
         {"outcome": "succeeded",
          "preferred_next_label": "Preflight done",
-         "context_updates": {"output.preflight": {"mode": "degraded", "run_id": ($run_id | default null), "candidates": [], "degraded_reason": ($"dup-run-check failed: ($res.stderr | str trim | str substring 0..200)"), "closed": null}}} | to json --raw | print
+         "context_updates": {"output.preflight": {"mode": "degraded", "run_id": ($run_id | default null), "candidates": [], "degraded_reason": ($"dup-run-check failed: ($res.stderr | str trim | str substring 0..200)")}}} | to json --raw | print
         return
     }
     let verdicts = ($res.stdout | lines | compact | each {|l| $l | from json })
@@ -248,80 +245,23 @@ def main [--base: string = "origin/denkhaus", --candidates: string, --report-onl
     let remote = ($base | split row '/' | first)
     let inflight = (try { in-flight-claims $remote $base ($run_id | default null) } catch { {claims: [], note: "in-flight arm degraded (fail-open)"} })
 
-    # Mechanical route: the TOP candidate's verdict is duplicate (for an
-    # open sd-ready seed that means a foreign landed implementation).
-    let topv = ($verdicts | first | default null)
-    let landed = ($topv != null and $topv.verdict == "duplicate")
-
-    # Deterministic superseded-close (fabro-ead4): fires for EVERY
-    # candidate whose verdict is exactly "duplicate" WITH resolvable
-    # implementation evidence (a landed sha) — the unambiguous set. A
-    # duplicate WITHOUT a sha (tracker-closed, no closing evidence) is
-    # ambiguous and stays open here for planner adjudication. Closure
-    # note FIRST (tracker stays self-explaining), then sd close; each
-    # candidate is fail-open — one failed note/close is journaled in
-    # close_log and never aborts the remaining closures. Non-top closes
-    # are bookkeeping only: routing still keys off the TOP candidate.
-    # any-typed columns: the record starts null-valued and is later
-    # assigned string fields — an inferred record<seed: nothing, ...> would
-    # reject that assignment (observed nu 0.115 type_mismatch crash).
-    mut closed: record<seed: any, sha: any> = {seed: null, sha: null}
-    mut close_log = []
-    if not $report_only {
-        for v in $verdicts {
-            if $v.verdict != "duplicate" { continue }
-            let m = ($v.implementation_matches? | default [] | first | default {})
-            let sha = ($m.sha? | default (($v.closing_evidence? | default {}).sha? | default null))
-            if $sha == null {
-                $close_log = ($close_log | append {seed: $v.seed, closed: false, note: "skipped: duplicate without implementation evidence — planner adjudicates"})
-                continue
-            }
-            let show = (do { sd show $v.seed --format json } | complete)
-            if $show.exit_code != 0 {
-                $close_log = ($close_log | append {seed: $v.seed, closed: false, note: "close aborted: sd show failed — planner adjudicates with evidence inline"})
-                continue
-            }
-            let body_raw = ($show.stdout | from json | get -o issue.description?)
-            let body = (if ($body_raw | is-empty) { "" } else { $body_raw })
-            let note = ($body + " + closure note: superseded: fix landed in " + $sha + " (run " + ($run_id | default "?") + ")")
-            let upd = (do { sd update $v.seed --description $note } | complete)
-            if $upd.exit_code != 0 {
-                $close_log = ($close_log | append {seed: $v.seed, closed: false, note: ("close aborted: sd update (closure note) failed: " + ($upd.stderr | str trim | str substring 0..160))})
-                continue
-            }
-            let cls = (do { sd close $v.seed --reason $"superseded: fix landed in ($sha)" } | complete)
-            if $cls.exit_code != 0 {
-                $close_log = ($close_log | append {seed: $v.seed, closed: false, note: ("close aborted: sd close failed: " + ($cls.stderr | str trim | str substring 0..160))})
-            } else {
-                $close_log = ($close_log | append {seed: $v.seed, closed: true, sha: $sha})
-                if $topv != null and $v.seed == $topv.seed {
-                    $closed = {seed: $v.seed, sha: $sha}
-                }
-            }
-        }
-    }
-
-    # The Already-landed route requires the TOP close to have happened
-    # (or report-only dry-run); otherwise continue so the planner can act
-    # on the inline evidence — routing and tracker state never diverge.
-    let route = (if $landed and ($report_only or $closed.seed != null) { "Already landed" } else { "Preflight done" })
-
+    # Report-only (fabro-83df, 2026-09-19): no closures, no early exit.
+    # The former mechanical superseded-close block (fabro-ead4) is
+    # retired — the planner's ALREADY LANDED arm owns decisions and
+    # closures; verdicts below are advisory input to that arm.
     # Verdict legend (fabro-ead4): one field mapping every verdict string
     # dup-run-check emits to its meaning, so the planner never re-reads
     # the script header to interpret the table.
-    let legend = {duplicate: "implementation already in merge-target base (or tracker-closed without resolvable evidence)",
+    let legend = {duplicate: "advisory: implementation possibly already in merge-target base (or tracker-closed without resolvable evidence) — planner judges acceptance criteria and closes per the two-branch rule",
                   clean: "no landed implementation found",
                   degraded: "check failed (fetch/tracker error)"}
-    let aborts = ($close_log | where {|e| (not $e.closed) and ($e.note | str starts-with "close aborted")} | length)
-    let report = {mode: (if $aborts > 0 and $mode == "checked" { "degraded" } else { $mode }),
+    let report = {mode: $mode,
                   run_id: ($run_id | default null),
                   candidates: ($verdicts | enumerate | each {|e| row $e.item ($cdesc | get -o $e.index | default "") ($SCRIPT_DIR | path join '../../../..') ($inflight.claims | default [])}),
                   legend: $legend,
-                  degraded_reason: (if $aborts > 0 and ($degraded_reason | is-empty) { ("close_log: " + ($aborts | into string) + " superseded-close(s) aborted") } else if ($degraded_reason | is-empty) { null } else { $degraded_reason }),
-                  in_flight_note: ($inflight.note? | default null),
-                  close_log: $close_log,
-                  closed: $closed}
+                  degraded_reason: (if ($degraded_reason | is-empty) { null } else { $degraded_reason }),
+                  in_flight_note: ($inflight.note? | default null)}
     {"outcome": "succeeded",
-     "preferred_next_label": $route,
+     "preferred_next_label": "Preflight done",
      "context_updates": {"output.preflight": $report}} | to json --raw | print
 }

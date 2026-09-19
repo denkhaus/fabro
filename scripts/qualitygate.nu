@@ -111,20 +111,33 @@ def check-loop-assets [] {
         print $lint.stderr
         return false
     }
-    let smoke = '.fabro/workflows/develop/scripts/evidence-smoke.nu'
-    let res = (do { ^nu $smoke } | complete)
-    if $res.exit_code != 0 {
-        print $"loop-asset smoke FAILED: ($smoke)"
-        print ($res.stdout | str trim -r -c "\n" | lines | last 20)
-        print ($res.stderr | str trim -r -c "\n")
-        return false
+    let smokes = [
+        '.fabro/workflows/develop/scripts/evidence-smoke.nu'
+        # Graph-contract pin (fabro-83df/fabro-92e2, incident 2026-09-19):
+        # the develop graph must keep its deterministic-exit contract —
+        # planner ungated, preflight report-only, guard exits intact.
+        '.fabro/workflows/develop/scripts/graph-contract-smoke.nu'
+    ]
+    for smoke in $smokes {
+        let res = (do { ^nu $smoke } | complete)
+        if ($res.exit_code != 0) {
+            print $"loop-asset smoke FAILED: ($smoke)"
+            print ($res.stdout | str trim -r -c "\n" | lines | last 20)
+            print ($res.stderr | str trim -r -c "\n")
+            return false
+        }
     }
     # Checked-in fixture batteries (seed fabro-ac84, run 01M2NDGXSKF8YFANJXRFZGC087):
     # the gate must EXECUTE the fixture scripts under .fabro/scripts/, not just
     # parse them. Discovery is explicit and minimal — name each battery; do NOT
     # blanket-run every .fabro/scripts/*.nu (stage-journal.nu and friction-score.nu
     # are tools, not batteries).
-    let batteries = ['.fabro/scripts/dup-run-check-fixtures.nu']
+    let batteries = [
+        '.fabro/scripts/dup-run-check-fixtures.nu'
+        # planner-preflight anchor battery (fabro-83df report-only
+        # end-to-end case included; 0.5s measured 2026-09-19)
+        '.fabro/scripts/planner-preflight-anchor-fixtures.nu'
+    ]
     for battery in $batteries {
         let res = (do { ^nu $battery } | complete)
         if $res.exit_code != 0 {
