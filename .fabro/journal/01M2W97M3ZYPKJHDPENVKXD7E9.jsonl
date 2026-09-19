@@ -4,3 +4,4 @@
 {"$schema":"fabro-journal-v1","run_id":"01M2W97M3ZYPKJHDPENVKXD7E9","node":"claim_check","visit":1,"status":"succeeded","ts":"2026-09-19T07:35:04Z","data":{}}
 {"$schema":"fabro-journal-v1","run_id":"01M2W97M3ZYPKJHDPENVKXD7E9","node":"implementer","visit":1,"status":"succeeded","ts":"2026-09-19T07:39:46Z","data":{"painpoints":[],"observations":["The negative test initially failed on nu string-interpolation quoting when passed via `nu -c` with embedded quotes; writing the scratch check to a temp .nu file and running `nu <file>` avoided it — cheaper pattern for one-off negative probes of nu lints."]}}
 {"$schema":"fabro-journal-v1","run_id":"01M2W97M3ZYPKJHDPENVKXD7E9","node":"tester","visit":1,"status":"succeeded","ts":"2026-09-19T07:39:57Z","data":{}}
+{"$schema":"fabro-journal-v1","run_id":"01M2W97M3ZYPKJHDPENVKXD7E9","node":"evidence","visit":1,"status":"succeeded","ts":"2026-09-19T07:40:00Z","data":{}}
