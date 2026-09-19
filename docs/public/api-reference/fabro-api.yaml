@@ -1424,7 +1424,16 @@ paths:
       operationId: runPreflight
       tags: [Runs]
       summary: Validate Workflow Manifest
-      description: Validates runtime readiness for a workflow manifest without creating a run.
+      description: |
+        Validates runtime readiness for a workflow manifest without creating
+        a run. The workflow is checked as a run would be admitted: Petri
+        compiles the bundle with the server's settings, run variables and
+        model catalog, and every diagnostic carries Petri's code as its
+        `rule` (`attractor.no_start`, `attractor.model.unknown`,
+        `unsupported.template.unbound_input`), with Fabro's own
+        `fabro.model.no_ready_provider` when a model node has no provider
+        ready to run it. The checks then probe the sandbox, repository
+        access and GitHub credentials.
       requestBody:
         required: true
         content:
@@ -1453,7 +1462,16 @@ paths:
       operationId: validateRunManifest
       tags: [Runs]
       summary: Validate Workflow Manifest
-      description: Validates workflow structure and diagnostics without runtime readiness checks.
+      description: |
+        Validates a workflow manifest without runtime readiness checks. The
+        workflow is checked as a run would be admitted: Petri compiles the
+        bundle with the server's settings, run variables and model catalog,
+        and every diagnostic carries Petri's code as its `rule`
+        (`attractor.no_start`, `attractor.model.unknown`,
+        `unsupported.template.unbound_input`), with Fabro's own
+        `fabro.model.no_ready_provider` when a model node has no provider
+        ready to run it. `workflow` describes the admitted graph, or the DOT
+        as written when Petri refused the workflow.
       requestBody:
         required: true
         content:
@@ -1482,7 +1500,10 @@ paths:
       operationId: renderWorkflowGraph
       tags: [Runs]
       summary: Render Workflow Graph
-      description: Validates and renders a workflow manifest as SVG without creating a run.
+      description: |
+        Validates and renders a workflow manifest as SVG without creating a
+        run. The manifest is checked as `POST /validate` checks it; a
+        workflow Petri refuses is not rendered.
       requestBody:
         required: true
         content:
@@ -9958,6 +9979,11 @@ components:
             $ref: "#/components/schemas/WorkflowDiagnostic"
 
     WorkflowDiagnostic:
+      description: |
+        One diagnostic about a workflow. `rule` is the stable code of the
+        check that raised it: Petri's codes (`attractor.*`, `unsupported.*`,
+        `deprecated.*`, `info.*`, `fabro.hooks.*`) for the compile, and
+        `fabro.model.no_ready_provider` for Fabro's own provider check.
       type: object
       required:
         - rule
@@ -9966,6 +9992,7 @@ components:
       properties:
         rule:
           type: string
+          description: The stable code of the check that raised the diagnostic.
         severity:
           type: string
           enum:
@@ -12644,10 +12671,13 @@ components:
         settings:
           $ref: "#/components/schemas/WorkflowSettings"
         graph:
-          type: object
-          additionalProperties: true
+          $ref: "#/components/schemas/RunGraph"
+          description: |
+            The display graph: the workflow Petri admitted, reduced to what
+            the read side names. The DOT it was written in is `graph_source`.
         graph_source:
           type: ["string", "null"]
+          description: The entrypoint workflow's DOT as written.
         workflow_slug:
           type: ["string", "null"]
         workflow_version_id:
@@ -12689,6 +12719,54 @@ components:
           description: |
             What Petri admitted for the run at create time: the graphs it
             executes and resumes from.
+
+    RunGraph:
+      description: |
+        The display graph of a run: the admitted workflow's name, goal,
+        stages and edges, read off the graph Petri admitted at create time.
+        Lowering artifacts (the goal check, a synthetic fan-in) are left out;
+        the stages are the nodes the workflow declares, imports and
+        `[run.prepare]` steps included.
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          description: The workflow's name, the DOT `digraph` name.
+        goal:
+          type: string
+          description: The run's goal as the run displays it; empty when the workflow has none.
+        nodes:
+          type: object
+          description: The stages by node id.
+          additionalProperties:
+            $ref: "#/components/schemas/RunGraphNode"
+        edges:
+          type: array
+          description: The routing edges as written, one per arm.
+          items:
+            $ref: "#/components/schemas/RunGraphEdge"
+
+    RunGraphNode:
+      description: One stage of a run's display graph.
+      type: object
+      required: [label, kind]
+      properties:
+        label:
+          type: string
+          description: The node's display label, its `label` attribute or its id.
+        kind:
+          $ref: "#/components/schemas/StageHandler"
+
+    RunGraphEdge:
+      description: One routing edge of a run's display graph.
+      type: object
+      required: [from, to]
+      properties:
+        from:
+          type: string
+        to:
+          type: string
 
     PetriAdmission:
       description: |

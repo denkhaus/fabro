@@ -955,7 +955,7 @@ export const RunsApiAxiosParamCreator = function (configuration?: Configuration)
             };
         },
         /**
-         * Validates and renders a workflow manifest as SVG without creating a run.
+         * Validates and renders a workflow manifest as SVG without creating a run. The manifest is checked as `POST /validate` checks it; a workflow Petri refuses is not rendered.
          * @summary Render Workflow Graph
          * @param {RenderWorkflowGraphRequest} renderWorkflowGraphRequest
          * @param {*} [options] Override http request option.
@@ -1247,7 +1247,7 @@ export const RunsApiAxiosParamCreator = function (configuration?: Configuration)
             };
         },
         /**
-         * Validates runtime readiness for a workflow manifest without creating a run.
+         * Validates runtime readiness for a workflow manifest without creating a run. The workflow is checked as a run would be admitted: Petri compiles the bundle with the server\'s settings, run variables and model catalog, and every diagnostic carries Petri\'s code as its `rule` (`attractor.no_start`, `attractor.model.unknown`, `unsupported.template.unbound_input`), with Fabro\'s own `fabro.model.no_ready_provider` when a model node has no provider ready to run it. The checks then probe the sandbox, repository access and GitHub credentials.
          * @summary Validate Workflow Manifest
          * @param {RunManifest} runManifest
          * @param {*} [options] Override http request option.
@@ -1536,7 +1536,7 @@ export const RunsApiAxiosParamCreator = function (configuration?: Configuration)
             };
         },
         /**
-         * Validates workflow structure and diagnostics without runtime readiness checks.
+         * Validates a workflow manifest without runtime readiness checks. The workflow is checked as a run would be admitted: Petri compiles the bundle with the server\'s settings, run variables and model catalog, and every diagnostic carries Petri\'s code as its `rule` (`attractor.no_start`, `attractor.model.unknown`, `unsupported.template.unbound_input`), with Fabro\'s own `fabro.model.no_ready_provider` when a model node has no provider ready to run it. `workflow` describes the admitted graph, or the DOT as written when Petri refused the workflow.
          * @summary Validate Workflow Manifest
          * @param {RunManifest} runManifest
          * @param {*} [options] Override http request option.
@@ -1859,7 +1859,7 @@ export const RunsApiFp = function(configuration?: Configuration) {
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
-         * Validates and renders a workflow manifest as SVG without creating a run.
+         * Validates and renders a workflow manifest as SVG without creating a run. The manifest is checked as `POST /validate` checks it; a workflow Petri refuses is not rendered.
          * @summary Render Workflow Graph
          * @param {RenderWorkflowGraphRequest} renderWorkflowGraphRequest
          * @param {*} [options] Override http request option.
@@ -1952,7 +1952,7 @@ export const RunsApiFp = function(configuration?: Configuration) {
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
-         * Validates runtime readiness for a workflow manifest without creating a run.
+         * Validates runtime readiness for a workflow manifest without creating a run. The workflow is checked as a run would be admitted: Petri compiles the bundle with the server\'s settings, run variables and model catalog, and every diagnostic carries Petri\'s code as its `rule` (`attractor.no_start`, `attractor.model.unknown`, `unsupported.template.unbound_input`), with Fabro\'s own `fabro.model.no_ready_provider` when a model node has no provider ready to run it. The checks then probe the sandbox, repository access and GitHub credentials.
          * @summary Validate Workflow Manifest
          * @param {RunManifest} runManifest
          * @param {*} [options] Override http request option.
@@ -2045,7 +2045,7 @@ export const RunsApiFp = function(configuration?: Configuration) {
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
-         * Validates workflow structure and diagnostics without runtime readiness checks.
+         * Validates a workflow manifest without runtime readiness checks. The workflow is checked as a run would be admitted: Petri compiles the bundle with the server\'s settings, run variables and model catalog, and every diagnostic carries Petri\'s code as its `rule` (`attractor.no_start`, `attractor.model.unknown`, `unsupported.template.unbound_input`), with Fabro\'s own `fabro.model.no_ready_provider` when a model node has no provider ready to run it. `workflow` describes the admitted graph, or the DOT as written when Petri refused the workflow.
          * @summary Validate Workflow Manifest
          * @param {RunManifest} runManifest
          * @param {*} [options] Override http request option.
@@ -2280,7 +2280,7 @@ export const RunsApiFactory = function (configuration?: Configuration, basePath?
             return localVarFp.pauseRun(id, options).then((request) => request(axios, basePath));
         },
         /**
-         * Validates and renders a workflow manifest as SVG without creating a run.
+         * Validates and renders a workflow manifest as SVG without creating a run. The manifest is checked as `POST /validate` checks it; a workflow Petri refuses is not rendered.
          * @summary Render Workflow Graph
          * @param {RenderWorkflowGraphRequest} renderWorkflowGraphRequest
          * @param {*} [options] Override http request option.
@@ -2352,7 +2352,7 @@ export const RunsApiFactory = function (configuration?: Configuration, basePath?
             return localVarFp.rewindRun(id, rewindRequest, options).then((request) => request(axios, basePath));
         },
         /**
-         * Validates runtime readiness for a workflow manifest without creating a run.
+         * Validates runtime readiness for a workflow manifest without creating a run. The workflow is checked as a run would be admitted: Petri compiles the bundle with the server\'s settings, run variables and model catalog, and every diagnostic carries Petri\'s code as its `rule` (`attractor.no_start`, `attractor.model.unknown`, `unsupported.template.unbound_input`), with Fabro\'s own `fabro.model.no_ready_provider` when a model node has no provider ready to run it. The checks then probe the sandbox, repository access and GitHub credentials.
          * @summary Validate Workflow Manifest
          * @param {RunManifest} runManifest
          * @param {*} [options] Override http request option.
@@ -2424,7 +2424,7 @@ export const RunsApiFactory = function (configuration?: Configuration, basePath?
             return localVarFp.updateRun(id, updateRunRequest, options).then((request) => request(axios, basePath));
         },
         /**
-         * Validates workflow structure and diagnostics without runtime readiness checks.
+         * Validates a workflow manifest without runtime readiness checks. The workflow is checked as a run would be admitted: Petri compiles the bundle with the server\'s settings, run variables and model catalog, and every diagnostic carries Petri\'s code as its `rule` (`attractor.no_start`, `attractor.model.unknown`, `unsupported.template.unbound_input`), with Fabro\'s own `fabro.model.no_ready_provider` when a model node has no provider ready to run it. `workflow` describes the admitted graph, or the DOT as written when Petri refused the workflow.
          * @summary Validate Workflow Manifest
          * @param {RunManifest} runManifest
          * @param {*} [options] Override http request option.
@@ -2674,7 +2674,7 @@ export class RunsApi extends BaseAPI {
     }
 
     /**
-     * Validates and renders a workflow manifest as SVG without creating a run.
+     * Validates and renders a workflow manifest as SVG without creating a run. The manifest is checked as `POST /validate` checks it; a workflow Petri refuses is not rendered.
      * @summary Render Workflow Graph
      * @param {RenderWorkflowGraphRequest} renderWorkflowGraphRequest
      * @param {*} [options] Override http request option.
@@ -2753,7 +2753,7 @@ export class RunsApi extends BaseAPI {
     }
 
     /**
-     * Validates runtime readiness for a workflow manifest without creating a run.
+     * Validates runtime readiness for a workflow manifest without creating a run. The workflow is checked as a run would be admitted: Petri compiles the bundle with the server\'s settings, run variables and model catalog, and every diagnostic carries Petri\'s code as its `rule` (`attractor.no_start`, `attractor.model.unknown`, `unsupported.template.unbound_input`), with Fabro\'s own `fabro.model.no_ready_provider` when a model node has no provider ready to run it. The checks then probe the sandbox, repository access and GitHub credentials.
      * @summary Validate Workflow Manifest
      * @param {RunManifest} runManifest
      * @param {*} [options] Override http request option.
@@ -2832,7 +2832,7 @@ export class RunsApi extends BaseAPI {
     }
 
     /**
-     * Validates workflow structure and diagnostics without runtime readiness checks.
+     * Validates a workflow manifest without runtime readiness checks. The workflow is checked as a run would be admitted: Petri compiles the bundle with the server\'s settings, run variables and model catalog, and every diagnostic carries Petri\'s code as its `rule` (`attractor.no_start`, `attractor.model.unknown`, `unsupported.template.unbound_input`), with Fabro\'s own `fabro.model.no_ready_provider` when a model node has no provider ready to run it. `workflow` describes the admitted graph, or the DOT as written when Petri refused the workflow.
      * @summary Validate Workflow Manifest
      * @param {RunManifest} runManifest
      * @param {*} [options] Override http request option.

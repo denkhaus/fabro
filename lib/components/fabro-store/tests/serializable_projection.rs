@@ -2,19 +2,18 @@ use std::collections::{BTreeMap, HashMap};
 
 use chrono::{TimeZone, Utc};
 use fabro_store::{RunProjection, SerializableProjection, StageId};
-use fabro_types::graph::Graph;
 use fabro_types::run::RunSpec;
 use fabro_types::{
     Checkpoint, CheckpointRecord, InterviewQuestionRecord, ModelUsage, ParallelBranchResult,
-    QuestionType, RunDiff, RunSandbox, RunSandboxInstance, RunSandboxPlan, RunSandboxRuntime,
-    RunStatus, SandboxProviderKind, StageCompletion, StageModelUsage, StageOutcome, StartRecord,
-    first_event_seq, fixtures, test_support,
+    QuestionType, RunDiff, RunGraph, RunSandbox, RunSandboxInstance, RunSandboxPlan,
+    RunSandboxRuntime, RunStatus, SandboxProviderKind, StageCompletion, StageModelUsage,
+    StageOutcome, StartRecord, first_event_seq, fixtures, test_support,
 };
 use serde_json::json;
 
 fn sample_run_spec() -> RunSpec {
     RunSpec {
-        graph: Graph::new("ship"),
+        graph: RunGraph::new("ship"),
         workflow_slug: Some("demo".to_string()),
         source_directory: Some("/tmp/project".to_string()),
         labels: HashMap::from([("team".to_string(), "platform".to_string())]),

@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use fabro_llm::{Client, Request};
 use fabro_template::{TemplateContext, TemplateError};
-use fabro_types::{Graph, MAX_RUN_TITLE_CHARS, RunId};
+use fabro_types::{MAX_RUN_TITLE_CHARS, RunGraph, RunId};
 use fabro_util::error;
 use lithos_llm::catalog::ProviderId;
 use serde::Serialize;
@@ -149,20 +149,19 @@ pub(crate) struct WorkflowSummary {
 pub(crate) struct StageSummary {
     id:           String,
     label:        String,
-    handler_type: Option<String>,
+    handler_type: String,
 }
 
-pub(crate) fn workflow_summary(graph: &Graph) -> WorkflowSummary {
-    let mut stages = graph
+pub(crate) fn workflow_summary(graph: &RunGraph) -> WorkflowSummary {
+    let stages = graph
         .nodes
-        .values()
-        .map(|node| StageSummary {
-            id:           node.id.clone(),
-            label:        node.label().to_string(),
-            handler_type: node.handler_type().map(str::to_string),
+        .iter()
+        .map(|(id, node)| StageSummary {
+            id:           id.clone(),
+            label:        node.label.clone(),
+            handler_type: node.kind.to_string(),
         })
         .collect::<Vec<_>>();
-    stages.sort_by(|left, right| left.id.cmp(&right.id));
 
     WorkflowSummary {
         graph_name: graph.name.clone(),
@@ -192,28 +191,36 @@ mod tests {
     use std::sync::{Arc, Mutex};
 
     use async_trait::async_trait;
-    use fabro_graphviz::parser;
     use fabro_llm::adapter::{ProviderAdapter, ResolvedCall};
     use fabro_llm::lithos_catalog::AdapterId;
     use fabro_llm::{Error as LlmError, Response, ResponseStream};
-    use fabro_types::RunId;
+    use fabro_types::{RunGraphEdge, RunGraphNode, RunId, StageHandler};
     use lithos_llm::catalog::builtin;
     use toml::Value as TomlValue;
 
     use super::*;
 
-    fn title_test_graph() -> fabro_types::Graph {
-        parser::parse(
-            r#"digraph Ship {
-                graph [goal="Deploy API token SECRET_123 to production"]
-                start [shape=Mdiamond, label="Start"]
-                plan [shape=box, label="Plan rollout"]
-                deploy [shape=parallelogram, label="Deploy"]
-                exit [shape=Msquare, label="Exit"]
-                start -> plan -> deploy -> exit
-            }"#,
-        )
-        .unwrap()
+    fn title_test_graph() -> RunGraph {
+        let mut graph = RunGraph::new("Ship");
+        graph.goal = "Deploy API token SECRET_123 to production".to_string();
+        for (id, label, kind) in [
+            ("start", "Start", StageHandler::Start),
+            ("plan", "Plan rollout", StageHandler::Agent),
+            ("deploy", "Deploy", StageHandler::Command),
+            ("exit", "Exit", StageHandler::Exit),
+        ] {
+            graph.nodes.insert(id.to_string(), RunGraphNode {
+                label: label.to_string(),
+                kind,
+            });
+        }
+        for (from, to) in [("start", "plan"), ("plan", "deploy"), ("deploy", "exit")] {
+            graph.edges.push(RunGraphEdge {
+                from: from.to_string(),
+                to:   to.to_string(),
+            });
+        }
+        graph
     }
 
     /// Strict rendering already fails on a variable the template asks for and

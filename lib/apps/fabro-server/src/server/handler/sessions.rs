@@ -1062,17 +1062,13 @@ fn build_ask_fabro_run_snapshot(projection: &fabro_types::RunProjection, run_id:
 
     let total_non_meta = graph
         .nodes
-        .values()
-        .filter(|node| !is_ask_fabro_meta_node(node))
+        .keys()
+        .filter(|node_id| !graph.is_boundary(node_id))
         .count();
     let completed_non_meta = projection
         .iter_stages()
         .filter(|(stage_id, stage)| {
-            graph
-                .nodes
-                .get(stage_id.node_id())
-                .is_none_or(|node| !is_ask_fabro_meta_node(node))
-                && stage.effective_state().is_terminal()
+            !graph.is_boundary(stage_id.node_id()) && stage.effective_state().is_terminal()
         })
         .count();
     lines.push(format!(
@@ -1081,12 +1077,7 @@ fn build_ask_fabro_run_snapshot(projection: &fabro_types::RunProjection, run_id:
 
     let recent_stages = projection
         .iter_stages()
-        .filter(|(stage_id, _)| {
-            graph
-                .nodes
-                .get(stage_id.node_id())
-                .is_none_or(|node| !is_ask_fabro_meta_node(node))
-        })
+        .filter(|(stage_id, _)| !graph.is_boundary(stage_id.node_id()))
         .collect::<Vec<_>>();
     let recent_stages = recent_stages
         .iter()
@@ -1119,10 +1110,6 @@ fn build_ask_fabro_run_snapshot(projection: &fabro_types::RunProjection, run_id:
     lines.push(String::new());
     lines.push("Use this snapshot as orientation only. For exact, current, or disputed details, inspect run events with `fabro_run_events`.".to_string());
     lines.join("\n")
-}
-
-fn is_ask_fabro_meta_node(node: &fabro_types::Node) -> bool {
-    matches!(node.handler_type(), Some("start" | "exit"))
 }
 
 fn ask_fabro_stage_summary(
@@ -1792,24 +1779,21 @@ enabled = true
     fn ask_fabro_run_snapshot_summarizes_goal_progress_and_recent_stages() {
         let run_id = RunId::new();
         let now = Utc::now();
-        let mut graph = fabro_types::Graph::new("test");
-        graph.attrs.insert(
-            "goal".to_string(),
-            fabro_types::AttrValue::String("Ship the feature".to_string()),
-        );
+        let mut graph = fabro_types::RunGraph::new("test");
+        graph.goal = "Ship the feature".to_string();
         for node_id in ["start", "plan", "code", "test", "review", "deploy", "exit"] {
-            let mut node = fabro_types::Node::new(node_id);
-            let shape = match node_id {
-                "start" => "Mdiamond",
-                "exit" => "Msquare",
-                "test" => "parallelogram",
-                _ => "box",
+            let kind = match node_id {
+                "start" => fabro_types::StageHandler::Start,
+                "exit" => fabro_types::StageHandler::Exit,
+                "test" => fabro_types::StageHandler::Command,
+                _ => fabro_types::StageHandler::Agent,
             };
-            node.attrs.insert(
-                "shape".to_string(),
-                fabro_types::AttrValue::String(shape.to_string()),
-            );
-            graph.nodes.insert(node_id.to_string(), node);
+            graph
+                .nodes
+                .insert(node_id.to_string(), fabro_types::RunGraphNode {
+                    label: node_id.to_string(),
+                    kind,
+                });
         }
         let spec = fabro_types::RunSpec {
             run_id,
@@ -1834,13 +1818,7 @@ enabled = true
             .iter()
             .enumerate()
         {
-            let handler = projection
-                .spec
-                .graph
-                .nodes
-                .get(*node_id)
-                .and_then(fabro_types::Node::handler_type)
-                .and_then(|handler| handler.parse().ok());
+            let handler = projection.spec.graph.node(node_id).map(|node| node.kind);
             let stage = projection.stage_entry(
                 node_id,
                 1,

@@ -644,10 +644,10 @@ mod tests {
 
     use chrono::{DateTime, Utc};
     use fabro_types::{
-        AutomationRef, BlockedReason, Conclusion, DiffSummary, FailureReason, Graph, PendingReason,
-        PetriAdmission, PullRequestCreationId, RunDiff, RunId, RunProjection, RunSize, RunSpec,
-        RunStatus, RunStatusKind, RunTiming, StageOutcome, SuccessReason, WorkflowSettings,
-        test_support,
+        AutomationRef, BlockedReason, Conclusion, DiffSummary, FailureReason, PendingReason,
+        PetriAdmission, PullRequestCreationId, RunDiff, RunGraph, RunId, RunProjection, RunSize,
+        RunSpec, RunStatus, RunStatusKind, RunTiming, StageOutcome, SuccessReason,
+        WorkflowSettings, test_support,
     };
     use lithos_llm::types::{Cost, CostSource, TokenCounts, Usage};
     use strum::VariantArray as _;
@@ -678,7 +678,7 @@ mod tests {
             RunSpec {
                 run_id,
                 settings: WorkflowSettings::default(),
-                graph: Graph::new("test"),
+                graph: RunGraph::new("test"),
                 graph_source: None,
                 workflow_slug: Some("test-workflow".to_string()),
                 workflow_version_id: None,

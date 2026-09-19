@@ -826,11 +826,7 @@ impl RunProjection {
     /// is the node's handler type, not its name: a node may be named
     /// `start` and still do real work.
     pub fn is_boundary_stage(&self, node_id: &str) -> bool {
-        self.spec()
-            .graph()
-            .nodes
-            .get(node_id)
-            .is_some_and(|node| matches!(node.handler_type(), Some("start" | "exit")))
+        self.spec().graph().is_boundary(node_id)
     }
 
     pub fn status(&self) -> RunStatus {
@@ -917,14 +913,12 @@ impl RunProjection {
 mod title_tests {
     use chrono::Utc;
 
-    use crate::{AttrValue, Graph, RunProjection, RunSpec, test_support};
+    use crate::{RunGraph, RunProjection, RunSpec, test_support};
 
     fn projection_with_goal(goal: Option<&str>) -> RunProjection {
-        let mut graph = Graph::new("test");
+        let mut graph = RunGraph::new("test");
         if let Some(goal) = goal {
-            graph
-                .attrs
-                .insert("goal".to_string(), AttrValue::String(goal.to_string()));
+            graph.goal = goal.to_string();
         }
 
         let spec = RunSpec {

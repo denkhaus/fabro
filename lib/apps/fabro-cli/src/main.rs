@@ -153,13 +153,6 @@ impl CliDiagnostic {
             show_auth_hint,
         }
     }
-
-    fn delegated_diagnostic(&self) -> Option<&dyn miette::Diagnostic> {
-        self.err.chain().find_map(|err| {
-            err.downcast_ref::<fabro_workflow::Error>()
-                .map(|err| err as &dyn miette::Diagnostic)
-        })
-    }
 }
 
 impl Display for CliDiagnostic {
@@ -181,33 +174,9 @@ impl std::error::Error for CliDiagnostic {
 }
 
 impl miette::Diagnostic for CliDiagnostic {
-    fn code<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
-        self.delegated_diagnostic()
-            .and_then(miette::Diagnostic::code)
-    }
-
     fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
-        if self.show_auth_hint && exit::exit_class_for(&self.err) == Some(ExitClass::AuthRequired) {
-            Some(Box::new("Run `fabro auth login` to authenticate."))
-        } else {
-            self.delegated_diagnostic()
-                .and_then(miette::Diagnostic::help)
-        }
-    }
-
-    fn source_code(&self) -> Option<&dyn miette::SourceCode> {
-        self.delegated_diagnostic()
-            .and_then(miette::Diagnostic::source_code)
-    }
-
-    fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
-        self.delegated_diagnostic()
-            .and_then(miette::Diagnostic::labels)
-    }
-
-    fn diagnostic_source(&self) -> Option<&dyn miette::Diagnostic> {
-        self.delegated_diagnostic()
-            .and_then(miette::Diagnostic::diagnostic_source)
+        (self.show_auth_hint && exit::exit_class_for(&self.err) == Some(ExitClass::AuthRequired))
+            .then(|| Box::new("Run `fabro auth login` to authenticate.") as Box<dyn Display + 'a>)
     }
 }
 

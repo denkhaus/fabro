@@ -651,6 +651,9 @@ fn main() {
         ("RunStreamItemKind", "fabro_types::RunStreamItemKind", &[]),
         ("PetriAdmission", "fabro_types::PetriAdmission", &[]),
         ("PetriGraphRef", "fabro_types::PetriGraphRef", &[]),
+        ("RunGraph", "fabro_types::RunGraph", &[]),
+        ("RunGraphNode", "fabro_types::RunGraphNode", &[]),
+        ("RunGraphEdge", "fabro_types::RunGraphEdge", &[]),
         ("PullRequest", "fabro_types::PullRequest", &[]),
         ("PullRequestLink", "fabro_types::PullRequestLink", &[]),
         (

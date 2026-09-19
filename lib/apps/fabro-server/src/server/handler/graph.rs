@@ -52,11 +52,26 @@ async fn render_graph_from_manifest(
         Ok(prepared) => prepared,
         Err(err) => return ApiError::bad_request(err.to_string()).into_response(),
     };
-    let validated = match run_manifest::validate_prepared_manifest_structural(&prepared) {
-        Ok(validated) => validated,
+    let vars = match state.stores.variables.value_map().await {
+        Ok(vars) => vars,
+        Err(err) => {
+            return ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string())
+                .into_response();
+        }
+    };
+    let (_, ready_providers) = state.resolve_llm_client_with_ready_ids().await;
+    let check = match run_manifest::check_prepared_manifest(
+        &state,
+        &prepared,
+        vars,
+        &ready_providers,
+    )
+    .await
+    {
+        Ok(check) => check,
         Err(err) => return ApiError::bad_request(err.to_string()).into_response(),
     };
-    if validated.has_errors() {
+    if check.has_errors() {
         return ApiError::bad_request("Validation failed").into_response();
     }
 

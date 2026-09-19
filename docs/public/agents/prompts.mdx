@@ -64,7 +64,7 @@ Before execution, `{{ goal }}` becomes `Add a /health endpoint to the API server
 | `{{ goal }}` | The graph-level `goal` attribute |
 | `{{ inputs.name }}` | A value from `[run.inputs]` |
 
-Undefined prompt variables render as empty text and produce a `template_undefined_variable` diagnostic. `fabro validate` reports that diagnostic as a warning; run-style commands promote it to an error before proceeding. Environment variables are not available in prompt templates.
+A prompt variable that nothing binds is a diagnostic from the workflow compile. `fabro validate` reports it as a warning (`attractor.unbound_input`) and leaves the text unrendered; run-style commands and `fabro preflight` refuse the workflow with `unsupported.template.unbound_input` before a run is created. Environment variables are not available in prompt templates.
 
 Prompt and goal templates can use static MiniJinja includes to share partials:
 

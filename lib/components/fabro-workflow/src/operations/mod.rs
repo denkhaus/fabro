@@ -2,14 +2,12 @@ mod create;
 mod fork;
 mod retry;
 mod rewind;
-mod source;
 mod timeline;
-mod validate;
 
 pub use create::{
-    CompiledRun, CreateRunCompileInput, CreateRunPersistenceInput, CreateRunPersistenceMetadata,
-    CreatedRun, MaterializedRun, assemble_create_run_persistence_input, compile_admitted_run,
-    make_run_dir, materialize_admitted_run, persist_create_run,
+    AdmittedRunInput, CreateRunPersistenceInput, CreateRunPersistenceMetadata, CreatedRun,
+    MaterializedRun, assemble_create_run_persistence_input, make_run_dir, materialize_admitted_run,
+    persist_create_run,
 };
 use fabro_types::RunId;
 pub use fork::{
@@ -18,14 +16,11 @@ pub use fork::{
 };
 pub use retry::{ensure_retryable, reruns_last};
 pub use rewind::{ensure_rewindable, superseded_record};
-pub use source::WorkflowInput;
 pub use timeline::{
     ForkTarget, RunTimeline, StageLabel, StageLabels, TimelineEntry, TimelinePosition,
 };
-pub use validate::{ValidateInput, validate};
 
 pub use crate::error::Error;
-pub use crate::transforms::RenderMode;
 
 /// The canonical "run is archived — mutation rejected" error message. Shared
 /// by the server's HTTP guards and the CLI so the user sees the same

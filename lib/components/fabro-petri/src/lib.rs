@@ -16,6 +16,8 @@
 //!   its diagnostics come back in a shape Fabro maps onto its own;
 //! - [`admission`]: the admitted graphs in Fabro's blob store, named on the run
 //!   spec;
+//! - [`run_graph`]: the display graph the run spec carries, read off the
+//!   admitted graph's metadata;
 //! - [`engine`]: a run executed by Petri, started or resumed, in the run's
 //!   worker process over the HTTP store (or in the server process under its
 //!   test override), with the outcome read from its record;
@@ -73,6 +75,7 @@ pub mod platform_records;
 pub mod projection;
 pub mod projector;
 pub mod recovery;
+pub mod run_graph;
 pub mod run_store;
 pub mod runtime;
 pub mod secrets;

@@ -1,14 +1,14 @@
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::Path;
 
 use anyhow::{Result, anyhow};
 use fabro_api::types;
-use fabro_config::{RunLayer, SettingsLayer, WorkflowSettingsBuilder};
+use fabro_config::{RunLayer, SettingsLayer, WorkflowSettingsBuilder, project};
 use fabro_manifest::CollectedWorkflowClosure;
+use fabro_petri::run_graph;
 use fabro_petri::runtime::RuntimeSpec;
-use fabro_workflow::operations::{ValidateInput, WorkflowInput, validate};
-use fabro_workflow::pipeline::TEMPLATE_UNDEFINED_VARIABLE_RULE;
 
+use crate::run_manifest::{ManifestCheck, workflow_shape_of};
 use crate::{petri_check, run_intent, run_manifest};
 
 /// Validate a manifest without a model catalog.
@@ -17,7 +17,9 @@ use crate::{petri_check, run_intent, run_manifest};
 /// client's catalog is its own, not the server's. Judging model and provider
 /// availability here would reject workflows the server can run, so Petri
 /// checks the bundle with no model client: the structure, the settings and
-/// the templates, with every model node left for the server on create.
+/// the templates, with every model node left for the server on create. An
+/// input nothing binds is a warning here (`attractor.unbound_input`), since
+/// the run's inputs do not exist yet.
 pub fn validate_manifest(
     manifest_run_defaults: &RunLayer,
     manifest: &types::RunManifest,
@@ -67,8 +69,8 @@ fn offline_runtime(run: Option<&RunLayer>) -> RuntimeSpec {
 /// The supplied run layer is complete, including any already resolved inline
 /// goal. Validation uses only seeded environment defaults, immutable workflow
 /// settings, and explicit inputs; it performs no store, HTTP, user-settings,
-/// project-settings, or model-catalog operation. Undefined template variables
-/// are promoted to errors before the response is returned.
+/// project-settings, or model-catalog operation. An input nothing binds is
+/// an error here (`unsupported.template.unbound_input`), as it is at create.
 pub fn validate_collected_workflow(
     closure: &CollectedWorkflowClosure,
     run_overrides: Option<&RunLayer>,
@@ -94,14 +96,6 @@ pub fn validate_collected_workflow(
     }
     let mut settings = builder.build().map_err(anyhow::Error::new)?;
     settings.run.inputs.extend(input_overrides.clone());
-    let mut validated = validate(ValidateInput {
-        workflow:          WorkflowInput::Bundled(workflow),
-        settings:          settings.clone(),
-        vars:              HashMap::new(),
-        cwd:               PathBuf::from("/workspace"),
-        custom_transforms: Vec::new(),
-    })
-    .map_err(anyhow::Error::new)?;
     let request = petri_check::check_request(
         &lowered.workflow_bundle,
         &lowered.entrypoint,
@@ -113,26 +107,17 @@ pub fn validate_collected_workflow(
     )
     .map_err(anyhow::Error::new)?;
     let checked = petri_check::check(&request, true).map_err(anyhow::Error::new)?;
-    validated.extend_diagnostics(checked.diagnostics);
-    let mut response = types::ValidateResponse {
-        ok:       !validated.has_errors(),
-        workflow: run_manifest::workflow_summary(&validated, lowered.entrypoint.as_path()),
+    let check = ManifestCheck {
+        graph:       checked.admitted.as_ref().map(run_graph::run_graph),
+        diagnostics: checked.diagnostics,
     };
-    promote_template_undefined_variables_to_errors(&mut response);
-    Ok(response)
-}
-
-pub fn promote_template_undefined_variables_to_errors(response: &mut types::ValidateResponse) {
-    let mut promoted = false;
-    for diagnostic in &mut response.workflow.diagnostics {
-        if diagnostic.rule == TEMPLATE_UNDEFINED_VARIABLE_RULE {
-            diagnostic.severity = types::WorkflowDiagnosticSeverity::Error;
-            promoted = true;
-        }
-    }
-    if promoted {
-        response.ok = false;
-    }
+    let working_directory =
+        project::resolve_working_directory_from_run(&settings.run, Path::new("/workspace"));
+    let shape = workflow_shape_of(&check, &workflow.source, &settings, &working_directory);
+    Ok(types::ValidateResponse {
+        ok:       !check.has_errors(),
+        workflow: run_manifest::workflow_summary(&check, &shape, lowered.entrypoint.as_path()),
+    })
 }
 
 #[cfg(test)]
@@ -149,6 +134,10 @@ mod tests {
     use fabro_types::settings::InterpString;
 
     use super::*;
+
+    /// Petri's code for an input a template reads that nothing binds, as
+    /// the check before a run raises it.
+    const UNBOUND_INPUT_RULE: &str = "unsupported.template.unbound_input";
 
     fn write(root: &Path, path: &str, content: &str) {
         let path = root.join(path);
@@ -217,7 +206,7 @@ dockerfile = { path = "Dockerfile" }
     }
 
     #[test]
-    fn collected_validation_matches_legacy_response_for_equivalent_inputs() {
+    fn collected_validation_matches_the_manifest_response_for_equivalent_inputs() {
         let temp = tempfile::tempdir().unwrap();
         let workflow = write_complete_fixture(temp.path());
         let run = run_overrides("inline goal");
@@ -242,14 +231,13 @@ dockerfile = { path = "Dockerfile" }
         })
         .unwrap();
 
-        let mut legacy = validate_manifest(&RunLayer::default(), &manifest.manifest).unwrap();
-        promote_template_undefined_variables_to_errors(&mut legacy);
+        let from_manifest = validate_manifest(&RunLayer::default(), &manifest.manifest).unwrap();
         let collected =
             validate_collected_workflow(package.closure(), Some(&run), &inputs).unwrap();
 
         assert_eq!(
             serde_json::to_value(collected).unwrap(),
-            serde_json::to_value(legacy).unwrap(),
+            serde_json::to_value(from_manifest).unwrap(),
         );
     }
 
@@ -267,10 +255,15 @@ dockerfile = { path = "Dockerfile" }
         let missing =
             validate_collected_workflow(package.closure(), None, &HashMap::new()).unwrap();
         assert!(!missing.ok);
-        assert!(missing.workflow.diagnostics.iter().any(|diagnostic| {
-            diagnostic.rule == TEMPLATE_UNDEFINED_VARIABLE_RULE
-                && diagnostic.severity == types::WorkflowDiagnosticSeverity::Error
-        }));
+        assert!(
+            missing.workflow.diagnostics.iter().any(|diagnostic| {
+                diagnostic.rule == UNBOUND_INPUT_RULE
+                    && diagnostic.severity == types::WorkflowDiagnosticSeverity::Error
+                    && diagnostic.message.contains("inputs.owner")
+            }),
+            "{:?}",
+            missing.workflow.diagnostics
+        );
 
         let present = validate_collected_workflow(
             package.closure(),
@@ -283,7 +276,7 @@ dockerfile = { path = "Dockerfile" }
                 .workflow
                 .diagnostics
                 .iter()
-                .all(|diagnostic| { diagnostic.rule != TEMPLATE_UNDEFINED_VARIABLE_RULE })
+                .all(|diagnostic| diagnostic.rule != UNBOUND_INPUT_RULE)
         );
         assert!(present.ok, "{:?}", present.workflow.diagnostics);
         assert_eq!(present.workflow.goal, "resolved inline goal");

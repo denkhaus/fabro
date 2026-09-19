@@ -28,7 +28,6 @@ fabro-sandbox = { path = "../fabro-sandbox" }
 sandbox-driver.workspace = true
 pebble-coding-agent.workspace = true
 fabro-github = { path = "../fabro-github" }
-fabro-template = { path = "../../foundation/fabro-template" }
 fabro-tool = { path = "../fabro-tool" }
 fabro-util = { path = "../../foundation/fabro-util" }
 fabro-redact.workspace = true
@@ -48,7 +47,6 @@ chrono = { workspace = true, features = ["serde"] }
 dirs = "6"
 scopeguard = "1"
 hex.workspace = true
-miette.workspace = true
 git2.workspace = true
 tracing.workspace = true
 tempfile = "3"

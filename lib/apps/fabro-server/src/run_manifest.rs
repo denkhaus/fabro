@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -7,17 +7,17 @@ use std::time::Duration;
 use anyhow::{Context as _, Result, anyhow, bail};
 use fabro_api::types;
 use fabro_config::parse::SettingsSource;
+use fabro_config::run::resolve_run_goal_from_namespace;
 use fabro_config::{
     CliLayer, CliOutputLayer, EnvironmentLayer, MergeMap, RunLayer, SettingsLayer,
     WorkflowSettingsBuilder, parse_input_overrides, parse_labels, project,
 };
 use fabro_github::token_source::{InstallationTokenSource, ResolvedToken, TokenSnapshot};
-use fabro_graphviz::graph::{Graph, is_llm_handler_type};
+use fabro_graphviz::graph::AttrValue;
+use fabro_graphviz::parser;
 use fabro_graphviz::render::apply_direction;
-use fabro_llm::lithos_catalog::Catalog;
-use fabro_llm::probe::{self, ModelTestStatus};
-use fabro_llm::{FabroClient, selection};
 use fabro_petri::check::Launch;
+use fabro_petri::run_graph;
 use fabro_petri::runtime::RuntimeSpec;
 use fabro_proc::ProcessError;
 use fabro_sandbox::{
@@ -27,34 +27,33 @@ use fabro_static::EnvVars;
 use fabro_types::diagnostic::{Diagnostic, Severity};
 use fabro_types::settings::cli::OutputVerbosity;
 use fabro_types::settings::interp::InterpString;
-use fabro_types::settings::run::{McpServerSettings, RunGoal, RunNamespace};
+use fabro_types::settings::run::{McpServerSettings, RunGoal, RunMode, RunNamespace};
 use fabro_types::{
-    BundledProvider, ManifestPath, RunId, SandboxProviderKind, ServerSettings, WorkflowSettings,
+    BundledProvider, ManifestPath, RunGraph, RunId, SandboxProviderKind, ServerSettings,
+    WorkflowSettings,
 };
 use fabro_util::check_report::{CheckDetail, CheckReport, CheckResult, CheckSection, CheckStatus};
 use fabro_workflow::Error as WorkflowError;
-use fabro_workflow::operations::{ValidateInput, WorkflowInput, validate};
-use fabro_workflow::pipeline::Validated;
 use fabro_workflow::workflow_bundle::{BundledWorkflow, ParsedWorkflowConfig, WorkflowBundle};
 use futures_util::stream::{self, StreamExt};
 use lithos_llm::catalog::ProviderId;
 use tokio::process::Command;
+use tokio::task;
 #[cfg(test)]
 use tokio::time;
 use tokio_util::sync::CancellationToken;
 
-use crate::server::AppState;
+use crate::server::{AppState, petri_runs};
 use crate::{petri_check, run_compiler};
 
 #[derive(Clone)]
 pub(crate) struct PreparedManifest {
-    pub cwd:              PathBuf,
     pub git:              Option<types::GitContext>,
+    /// The entrypoint's DOT as written: what the render endpoint draws.
     pub root_source:      String,
     pub settings:         WorkflowSettings,
     pub target_path:      ManifestPath,
     pub workflow_bundle:  WorkflowBundle,
-    pub workflow_input:   BundledWorkflow,
     pub source_directory: PathBuf,
 }
 
@@ -163,31 +162,35 @@ pub(crate) fn prepare_manifest_with_environment_defaults(
 
     let source_directory = project::resolve_working_directory_from_run(&settings.run, &cwd);
     Ok(PreparedManifest {
-        cwd,
         git: manifest.git.clone(),
         root_source,
         settings,
         target_path,
         workflow_bundle,
-        workflow_input,
         source_directory,
     })
 }
 
-/// Fabro's own structural pass: parse and transform the root workflow, with
-/// the transforms' diagnostics. Enough to render a graph.
-pub(crate) fn validate_prepared_manifest_structural(
-    prepared: &PreparedManifest,
-) -> Result<Validated, WorkflowError> {
-    validate(manifest_validate_input(prepared, HashMap::new()))
+/// What Petri said about a prepared manifest: the display graph when it
+/// admitted the workflow, and every diagnostic, Petri's and Fabro's.
+pub(crate) struct ManifestCheck {
+    pub(crate) graph:       Option<RunGraph>,
+    pub(crate) diagnostics: Vec<Diagnostic>,
 }
 
-/// The structural pass, then Petri's check of the whole bundle under
-/// `launch` and `runtime`, its diagnostics after the transforms' own.
+impl ManifestCheck {
+    pub(crate) fn has_errors(&self) -> bool {
+        self.diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.severity == Severity::Error)
+    }
+}
+
+/// Petri's check of the whole bundle under `launch` and `runtime`.
 /// `has_ready_provider` false adds Fabro's refusal of a model node no
 /// provider can run; `unbound_is_warning` keeps an input nothing binds a
-/// warning, for a validation before the run's inputs exist. Blocking:
-/// Petri lowers the graph synchronously.
+/// warning, for a validation before the run's inputs exist. Blocking: Petri
+/// lowers the graph synchronously.
 pub(crate) fn validate_prepared_manifest(
     prepared: &PreparedManifest,
     vars: &HashMap<String, String>,
@@ -195,8 +198,7 @@ pub(crate) fn validate_prepared_manifest(
     runtime: RuntimeSpec,
     has_ready_provider: bool,
     unbound_is_warning: bool,
-) -> Result<Validated, WorkflowError> {
-    let mut validated = validate(manifest_validate_input(prepared, vars.clone()))?;
+) -> Result<ManifestCheck, WorkflowError> {
     let request = petri_check::check_request(
         &prepared.workflow_bundle,
         &prepared.target_path,
@@ -207,90 +209,65 @@ pub(crate) fn validate_prepared_manifest(
         unbound_is_warning,
     )?;
     let checked = petri_check::check(&request, has_ready_provider)?;
-    validated.extend_diagnostics(checked.diagnostics);
-    Ok(validated)
+    Ok(ManifestCheck {
+        graph:       checked.admitted.as_ref().map(run_graph::run_graph),
+        diagnostics: checked.diagnostics,
+    })
 }
 
-/// The model and provider the run's LLM nodes default to: what the settings
-/// or the graph name, resolved against the ready providers first and the
-/// whole catalog after, as the run's launch binds them.
-fn preflight_model(
-    catalog: &Catalog,
-    graph: &Graph,
-    settings: &WorkflowSettings,
-    ready_providers: &[ProviderId],
-) -> Result<(String, ProviderId)> {
-    let graph_attr = |name: &str| {
-        graph
-            .attrs
-            .get(name)
-            .and_then(|value| value.as_str())
-            .map(str::to_string)
-    };
-    let model = settings
-        .run
-        .model
-        .name
-        .clone()
-        .or_else(|| graph_attr("default_model"));
-    let provider = settings
-        .run
-        .model
-        .provider
-        .clone()
-        .or_else(|| graph_attr("default_provider"))
-        .filter(|provider| !provider.is_empty())
-        .map(ProviderId::new);
-    let eligible = ready_providers.iter().cloned().collect();
-    let selected = selection::resolve_selection_with_catalog_fallback(
-        catalog,
-        model.as_deref(),
-        provider.as_ref(),
-        &eligible,
-    )?;
-    Ok((selected.model, selected.provider))
-}
-
-fn manifest_validate_input(
+/// Check a prepared manifest as a run would be admitted: Petri's check with
+/// the server's runtime and the model client over the ready providers, on
+/// the blocking pool.
+pub(crate) async fn check_prepared_manifest(
+    state: &Arc<AppState>,
     prepared: &PreparedManifest,
     vars: HashMap<String, String>,
-) -> ValidateInput {
-    ValidateInput {
-        workflow: WorkflowInput::Bundled(prepared.workflow_input.clone()),
-        settings: prepared.settings.clone(),
-        vars,
-        cwd: prepared.cwd.clone(),
-        custom_transforms: Vec::new(),
-    }
+    ready_providers: &[ProviderId],
+) -> Result<ManifestCheck, WorkflowError> {
+    let launch = petri_check::launch(
+        &state.catalog(),
+        &prepared.settings,
+        ready_providers,
+        None,
+        None,
+    );
+    let dry_run = prepared.settings.run.execution.mode == RunMode::DryRun;
+    let runtime = petri_runs::runtime_spec(state, ready_providers, dry_run);
+    let has_ready_provider = !ready_providers.is_empty();
+    let prepared = prepared.clone();
+    task::spawn_blocking(move || {
+        validate_prepared_manifest(&prepared, &vars, launch, runtime, has_ready_provider, false)
+    })
+    .await
+    .map_err(|source| WorkflowError::engine_with_source("manifest check task failed", source))?
 }
 
 pub(crate) async fn run_preflight(
     state: &AppState,
     prepared: &PreparedManifest,
-    validated: &Validated,
-    llm_result: Result<FabroClient>,
+    check: &ManifestCheck,
 ) -> Result<(types::PreflightResponse, bool)> {
-    let (report, checks_ok) =
-        build_preflight_report(state, prepared, validated, llm_result).await?;
-    let preflight_ok = !validated.has_errors() && checks_ok;
+    let shape = workflow_shape(check, prepared);
+    let (report, checks_ok) = build_preflight_report(state, prepared, check, &shape).await?;
+    let preflight_ok = !check.has_errors() && checks_ok;
     Ok((
-        preflight_response(
-            validated,
-            prepared.target_path.as_path(),
-            &report,
-            preflight_ok,
-        ),
+        types::PreflightResponse {
+            ok:       preflight_ok,
+            checks:   report_to_api(&report),
+            workflow: workflow_summary(check, &shape, prepared.target_path.as_path()),
+        },
         preflight_ok,
     ))
 }
 
 pub(crate) fn validate_response(
     prepared: &PreparedManifest,
-    validated: &Validated,
+    check: &ManifestCheck,
 ) -> types::ValidateResponse {
+    let shape = workflow_shape(check, prepared);
     types::ValidateResponse {
-        ok:       !validated.has_errors(),
-        workflow: workflow_summary(validated, prepared.target_path.as_path()),
+        ok:       !check.has_errors(),
+        workflow: workflow_summary(check, &shape, prepared.target_path.as_path()),
     }
 }
 
@@ -441,12 +418,11 @@ fn manifest_project_config_path(
 async fn build_preflight_report(
     state: &AppState,
     prepared: &PreparedManifest,
-    validated: &Validated,
-    llm_result: Result<FabroClient>,
+    check: &ManifestCheck,
+    shape: &WorkflowShape,
 ) -> Result<(CheckReport, bool)> {
-    let graph = validated.graph();
-    let mut checks = base_preflight_checks(prepared, graph);
-    if validated.has_errors() {
+    let mut checks = base_preflight_checks(prepared, shape);
+    if check.has_errors() {
         return Ok((
             CheckReport {
                 title:    "Run Preflight".into(),
@@ -459,19 +435,6 @@ async fn build_preflight_report(
         ));
     }
 
-    let catalog = state.catalog();
-    let ready_providers = llm_result
-        .as_ref()
-        .map(FabroClient::provider_ids)
-        .unwrap_or_default();
-    let (run_model, run_provider) = preflight_model(
-        catalog.as_ref(),
-        graph,
-        &prepared.settings,
-        &ready_providers,
-    )?;
-    let run_provider = run_provider.into_string();
-    let (run_model, run_provider) = (run_model.as_str(), run_provider.as_str());
     let resolved_run = prepared.settings.run.clone();
     let server_settings = state.server_settings();
     let github_integration = &server_settings.server.integrations.github;
@@ -531,19 +494,10 @@ async fn build_preflight_report(
         github_app.clone(),
     )
     .await;
-    let llm_ok = run_llm_check(
-        &mut checks,
-        graph,
-        run_model,
-        run_provider,
-        catalog.as_ref(),
-        llm_result,
-    )
-    .await;
     let github_token_ok =
         run_github_token_check(&mut checks, prepared, &resolved_run, github_app).await;
 
-    let checks_ok = sandbox_ok && repository_access_ok && llm_ok && github_token_ok;
+    let checks_ok = sandbox_ok && repository_access_ok && github_token_ok;
 
     Ok((
         CheckReport {
@@ -557,7 +511,7 @@ async fn build_preflight_report(
     ))
 }
 
-fn base_preflight_checks(prepared: &PreparedManifest, graph: &Graph) -> Vec<CheckResult> {
+fn base_preflight_checks(prepared: &PreparedManifest, shape: &WorkflowShape) -> Vec<CheckResult> {
     let setup_command_count = prepared.settings.run.prepare.steps.len();
     let repo_summary = prepared.git.as_ref().map_or_else(
         || "unknown".to_string(),
@@ -600,11 +554,11 @@ fn base_preflight_checks(prepared: &PreparedManifest, graph: &Graph) -> Vec<Chec
         CheckResult {
             name:        "Workflow".into(),
             status:      CheckStatus::Pass,
-            summary:     graph.name.clone(),
+            summary:     shape.name.clone(),
             details:     vec![
-                CheckDetail::new(format!("Nodes: {}", graph.nodes.len())),
-                CheckDetail::new(format!("Edges: {}", graph.edges.len())),
-                CheckDetail::new(format!("Goal: {}", graph.goal())),
+                CheckDetail::new(format!("Nodes: {}", shape.nodes)),
+                CheckDetail::new(format!("Edges: {}", shape.edges)),
+                CheckDetail::new(format!("Goal: {}", shape.goal)),
             ],
             remediation: None,
         },
@@ -1011,190 +965,6 @@ async fn run_sandbox_check(
     }
 }
 
-const MODEL_PREFLIGHT_PROBE_CONCURRENCY: usize = 4;
-
-struct PendingModelProbe {
-    index:         usize,
-    model_id:      String,
-    provider_name: String,
-}
-
-async fn run_llm_check(
-    checks: &mut Vec<CheckResult>,
-    graph: &Graph,
-    model: &str,
-    default_provider: &str,
-    catalog: &Catalog,
-    llm_result: Result<FabroClient>,
-) -> bool {
-    let mut model_providers = std::collections::BTreeSet::new();
-    let mut has_llm_nodes = false;
-    // Each node's selector resolves against the ready providers first and
-    // the whole catalog after, as the run's launch binds it: an alias
-    // becomes the catalog model on the provider that offers it. A selector
-    // the catalog cannot place stays as written; the checks below say why.
-    let eligible = llm_result
-        .as_ref()
-        .map(FabroClient::provider_ids)
-        .unwrap_or_default()
-        .into_iter()
-        .collect::<HashSet<_>>();
-
-    for node in graph.nodes.values() {
-        if !is_llm_handler_type(node.handler_type()) {
-            continue;
-        }
-        has_llm_nodes = true;
-        let node_model = node.model().unwrap_or(model);
-        let node_provider = node.provider().unwrap_or(default_provider);
-        // Only a provider the node names itself constrains the selection:
-        // an unqualified alias goes to whichever eligible provider offers it.
-        let provider = node
-            .provider()
-            .filter(|provider| !provider.is_empty())
-            .map(ProviderId::new);
-        let resolved = selection::resolve_selection_with_catalog_fallback(
-            catalog,
-            Some(node_model),
-            provider.as_ref(),
-            &eligible,
-        )
-        .map_or_else(
-            |_| (node_model.to_string(), node_provider.to_string()),
-            |selected| (selected.model, selected.provider.into_string()),
-        );
-        model_providers.insert(resolved);
-    }
-
-    if !has_llm_nodes {
-        return true;
-    }
-
-    match llm_result {
-        Ok(result) => {
-            let auth_issues = result.auth_issues;
-            let registration_issues = result.build_issues;
-            let client = Arc::new(result.client);
-
-            let mut all_ok = true;
-            let mut completed_checks: Vec<(usize, CheckResult)> = Vec::new();
-            let mut pending_probes = Vec::new();
-            for (index, (model_id, provider_name)) in model_providers.iter().enumerate() {
-                let provider_id = canonical_provider_id(catalog, provider_name);
-                if let Some((_, issue)) = auth_issues
-                    .iter()
-                    .find(|(candidate, _)| candidate == &provider_id)
-                {
-                    all_ok = false;
-                    completed_checks.push((index, CheckResult {
-                        name:        "LLM".into(),
-                        status:      CheckStatus::Warning,
-                        summary:     model_id.clone(),
-                        details:     vec![CheckDetail::new(format!("Provider: {provider_name}"))],
-                        remediation: Some(issue.to_string()),
-                    }));
-                } else if let Some(issue) = registration_issues
-                    .iter()
-                    .find(|issue| issue.provider == provider_id)
-                {
-                    all_ok = false;
-                    completed_checks.push((index, CheckResult {
-                        name:        "LLM".into(),
-                        status:      CheckStatus::Warning,
-                        summary:     model_id.clone(),
-                        details:     vec![CheckDetail::new(format!("Provider: {provider_name}"))],
-                        remediation: Some(issue.cause.to_string()),
-                    }));
-                } else if !client.available_providers().contains(&provider_id) {
-                    all_ok = false;
-                    completed_checks.push((index, CheckResult {
-                        name:        "LLM".into(),
-                        status:      CheckStatus::Warning,
-                        summary:     model_id.clone(),
-                        details:     vec![CheckDetail::new(format!("Provider: {provider_name}"))],
-                        remediation: Some(format!(
-                            "Provider \"{provider_name}\" is not configured"
-                        )),
-                    }));
-                } else {
-                    pending_probes.push(PendingModelProbe {
-                        index,
-                        model_id: model_id.clone(),
-                        provider_name: provider_name.clone(),
-                    });
-                }
-            }
-
-            let mut probe_checks = stream::iter(pending_probes)
-                .map(|probe| {
-                    let client = Arc::clone(&client);
-                    async move {
-                        let outcome = probe::run_basic_probe(
-                            &client,
-                            &format!("{}/{}", probe.provider_name, probe.model_id),
-                            Duration::from_secs(fabro_types::ModelTestMode::Basic.timeout_secs()),
-                        )
-                        .await;
-                        let (status, remediation) = if outcome.status == ModelTestStatus::Ok {
-                            (CheckStatus::Pass, None)
-                        } else {
-                            (
-                                CheckStatus::Error,
-                                Some(format!(
-                                    "Model availability probe failed: {}",
-                                    outcome
-                                        .error_message
-                                        .unwrap_or_else(|| "unknown error".to_string())
-                                )),
-                            )
-                        };
-                        (probe.index, CheckResult {
-                            name: "LLM".into(),
-                            status,
-                            summary: probe.model_id,
-                            details: vec![
-                                CheckDetail::new(format!("Provider: {}", probe.provider_name)),
-                                CheckDetail::new("Probe: basic generation".to_string()),
-                            ],
-                            remediation,
-                        })
-                    }
-                })
-                .buffer_unordered(MODEL_PREFLIGHT_PROBE_CONCURRENCY)
-                .collect::<Vec<_>>()
-                .await;
-
-            if probe_checks
-                .iter()
-                .any(|(_, check)| check.status != CheckStatus::Pass)
-            {
-                all_ok = false;
-            }
-            completed_checks.append(&mut probe_checks);
-            completed_checks.sort_by_key(|(index, _)| *index);
-            checks.extend(completed_checks.into_iter().map(|(_, check)| check));
-            all_ok
-        }
-        Err(err) => {
-            checks.push(CheckResult {
-                name:        "LLM".into(),
-                status:      CheckStatus::Error,
-                summary:     "initialization failed".into(),
-                details:     vec![],
-                remediation: Some(format!("LLM client init failed: {err}")),
-            });
-            false
-        }
-    }
-}
-
-fn canonical_provider_id(catalog: &Catalog, provider_name: &str) -> ProviderId {
-    catalog.enabled_provider(provider_name).map_or_else(
-        || ProviderId::new(provider_name),
-        |provider| provider.id().clone(),
-    )
-}
-
 async fn run_github_token_check(
     checks: &mut Vec<CheckResult>,
     prepared: &PreparedManifest,
@@ -1535,32 +1305,81 @@ async fn mint_github_token(
         .await
 }
 
-fn preflight_response(
-    validated: &Validated,
-    target_path: &Path,
-    report: &CheckReport,
-    ok: bool,
-) -> types::PreflightResponse {
-    types::PreflightResponse {
-        ok,
-        checks: report_to_api(report),
-        workflow: workflow_summary(validated, target_path),
+/// The workflow as the validate and preflight responses describe it: its
+/// name, its size and its goal. From the graph Petri admitted when it did;
+/// for a refused workflow, from the DOT as written, so the response still
+/// names what was checked. The goal is the run's effective goal, as create
+/// materializes it: the settings' `run.goal` when the run has one, else the
+/// workflow's own.
+pub(crate) struct WorkflowShape {
+    name:  String,
+    nodes: usize,
+    edges: usize,
+    goal:  String,
+}
+
+pub(crate) fn workflow_shape(check: &ManifestCheck, prepared: &PreparedManifest) -> WorkflowShape {
+    workflow_shape_of(
+        check,
+        &prepared.root_source,
+        &prepared.settings,
+        &prepared.source_directory,
+    )
+}
+
+pub(crate) fn workflow_shape_of(
+    check: &ManifestCheck,
+    root_source: &str,
+    settings: &WorkflowSettings,
+    working_directory: &Path,
+) -> WorkflowShape {
+    let mut shape = check.graph.as_ref().map_or_else(
+        || {
+            parser::parse(root_source).map_or_else(
+                |_| WorkflowShape {
+                    name:  String::new(),
+                    nodes: 0,
+                    edges: 0,
+                    goal:  String::new(),
+                },
+                |graph| WorkflowShape {
+                    goal:  graph
+                        .attrs
+                        .get("goal")
+                        .and_then(AttrValue::as_str)
+                        .unwrap_or_default()
+                        .to_string(),
+                    nodes: graph.nodes.len(),
+                    edges: graph.edges.len(),
+                    name:  graph.name,
+                },
+            )
+        },
+        |graph| WorkflowShape {
+            name:  graph.name.clone(),
+            nodes: graph.nodes.len(),
+            edges: graph.edges.len(),
+            goal:  graph.goal().to_string(),
+        },
+    );
+    if let Ok(Some(resolved)) = resolve_run_goal_from_namespace(&settings.run, working_directory) {
+        shape.goal = resolved.text;
     }
+    shape
 }
 
 pub(crate) fn workflow_summary(
-    validated: &Validated,
+    check: &ManifestCheck,
+    shape: &WorkflowShape,
     target_path: &Path,
 ) -> types::PreflightWorkflowSummary {
     types::PreflightWorkflowSummary {
-        diagnostics: diagnostics_to_api(validated.diagnostics()),
-        edges:       i64::try_from(validated.graph().edges.len())
-            .expect("graph edge count should fit in i64"),
-        goal:        validated.graph().goal().to_string(),
+        diagnostics: diagnostics_to_api(&check.diagnostics),
+        edges:       i64::try_from(shape.edges).expect("graph edge count should fit in i64"),
+        goal:        shape.goal.clone(),
         graph_path:  Some(target_path.display().to_string()),
-        name:        validated.graph().name.clone(),
-        nodes:       i64::try_from(validated.graph().nodes.len())
-            .expect("graph node count should fit in i64"),
+        name:        shape.name.clone(),
+        nodes:       i64::try_from(shape.nodes).expect("graph node count should fit in i64"),
     }
 }
 
@@ -1647,13 +1466,13 @@ mod tests {
 
     use super::*;
 
-    /// Validate as the endpoints do: the structural pass, then Petri's check
-    /// with the state's model client over `ready_providers`.
+    /// Validate as the endpoints do: Petri's check with the state's model
+    /// client over `ready_providers`.
     fn validate_for_test(
         state: &AppState,
         prepared: &PreparedManifest,
         ready_providers: &[ProviderId],
-    ) -> Result<Validated, WorkflowError> {
+    ) -> Result<ManifestCheck, WorkflowError> {
         let launch = petri_check::launch(
             &state.catalog(),
             &prepared.settings,
@@ -1677,7 +1496,7 @@ mod tests {
     fn validate_with_catalog(
         state: &AppState,
         prepared: &PreparedManifest,
-    ) -> Result<Validated, WorkflowError> {
+    ) -> Result<ManifestCheck, WorkflowError> {
         let providers = state
             .catalog()
             .enabled_provider_ids()
@@ -1798,21 +1617,6 @@ mod tests {
         )
     }
 
-    fn openai_compatible_completion(model: &str) -> serde_json::Value {
-        serde_json::json!({
-            "id": "chatcmpl_preflight",
-            "object": "chat.completion",
-            "created": 1_700_000_000,
-            "model": model,
-            "choices": [{
-                "index": 0,
-                "message": {"role": "assistant", "content": "OK"},
-                "finish_reason": "stop"
-            }],
-            "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2}
-        })
-    }
-
     fn ready_moonshot_and_openrouter_state(
         server: &httpmock::MockServer,
     ) -> Arc<crate::server::AppState> {
@@ -1837,55 +1641,12 @@ enabled = true
             .build()
     }
 
-    async fn preflight_for_model(
-        state: &Arc<crate::server::AppState>,
-        model: &str,
-    ) -> (types::PreflightResponse, bool) {
-        let llm_result = state.resolve_llm_client().await;
-        let mut ready_providers = llm_result
-            .as_ref()
-            .map(FabroClient::provider_ids)
-            .unwrap_or_default();
-        ready_providers.sort();
-        assert_eq!(ready_providers, vec![
-            ProviderId::new("moonshot"),
-            ProviderId::new("openrouter")
-        ]);
-
-        let mut manifest = minimal_manifest();
-        manifest.workflows.get_mut("workflow.fabro").unwrap().source = format!(
-            r#"
-digraph Demo {{
-    start [shape=Mdiamond]
-    exit  [shape=Msquare]
-    work  [prompt="Do work", model="{model}"]
-    start -> work -> exit
-}}
-"#
-        );
-        let prepared = prepare_manifest(
-            &manifest_run_defaults(Some(&default_settings_fixture())),
-            &manifest,
-        )
-        .unwrap();
-        let validated = validate_for_test(state, &prepared, &ready_providers).unwrap();
-        assert!(!validated.has_errors(), "{:?}", validated.diagnostics());
-
-        run_preflight(state.as_ref(), &prepared, &validated, llm_result)
-            .await
-            .unwrap()
-    }
-
     /// Preflight for a workflow naming `model`, which Petri refuses.
     async fn preflight_for_refused_model(
         state: &Arc<crate::server::AppState>,
         model: &str,
     ) -> (types::PreflightResponse, bool) {
-        let llm_result = state.resolve_llm_client().await;
-        let ready_providers = llm_result
-            .as_ref()
-            .map(FabroClient::provider_ids)
-            .unwrap_or_default();
+        let (_, ready_providers) = state.resolve_llm_client_with_ready_ids().await;
         let mut manifest = minimal_manifest();
         manifest.workflows.get_mut("workflow.fabro").unwrap().source = format!(
             r#"
@@ -1903,9 +1664,9 @@ digraph Demo {{
         )
         .unwrap();
         let validated = validate_for_test(state, &prepared, &ready_providers).unwrap();
-        assert!(validated.has_errors(), "{:?}", validated.diagnostics());
+        assert!(validated.has_errors(), "{:?}", validated.diagnostics);
 
-        run_preflight(state.as_ref(), &prepared, &validated, llm_result)
+        run_preflight(state.as_ref(), &prepared, &validated)
             .await
             .unwrap()
     }
@@ -1913,10 +1674,9 @@ digraph Demo {{
     async fn resolve_and_run_preflight(
         state: &AppState,
         prepared: &PreparedManifest,
-        validated: &Validated,
+        check: &ManifestCheck,
     ) -> Result<(types::PreflightResponse, bool)> {
-        let llm_result = state.resolve_llm_client().await;
-        run_preflight(state, prepared, validated, llm_result).await
+        run_preflight(state, prepared, check).await
     }
 
     fn manifest_workflow() -> types::ManifestWorkflow {
@@ -2569,7 +2329,7 @@ issues = "read"
         )
         .unwrap();
         let validated = validate_with_catalog(&state, &prepared).unwrap();
-        assert!(!validated.has_errors(), "{:?}", validated.diagnostics());
+        assert!(!validated.has_errors(), "{:?}", validated.diagnostics);
 
         let (response, _ok) = resolve_and_run_preflight(state.as_ref(), &prepared, &validated)
             .await
@@ -2614,7 +2374,7 @@ issues = "{{ env.GITHUB_ISSUES_PERMISSION }}"
         )
         .unwrap();
         let validated = validate_with_catalog(&state, &prepared).unwrap();
-        assert!(!validated.has_errors(), "{:?}", validated.diagnostics());
+        assert!(!validated.has_errors(), "{:?}", validated.diagnostics);
 
         let (response, ok) = resolve_and_run_preflight(state.as_ref(), &prepared, &validated)
             .await
@@ -2669,7 +2429,7 @@ id = "local"
         .unwrap();
         let validated = validate_with_catalog(&state, &prepared).unwrap();
 
-        assert!(!validated.has_errors(), "{:?}", validated.diagnostics());
+        assert!(!validated.has_errors(), "{:?}", validated.diagnostics);
 
         let (response, ok) = resolve_and_run_preflight(state.as_ref(), &prepared, &validated)
             .await
@@ -2792,139 +2552,18 @@ id = "daytona"
     }
 
     #[tokio::test]
-    async fn preflight_probes_configured_llm_model_availability() {
+    async fn preflight_refuses_an_unknown_unqualified_model_before_any_check() {
         let server = httpmock::MockServer::start_async().await;
-        let response_mock = server
+        let any_provider_call = server
             .mock_async(|when, then| {
-                when.method(httpmock::Method::POST)
-                    .path("/v1/responses")
-                    .header("authorization", "Bearer test-openai-key");
-                then.status(429)
-                    .header("content-type", "application/json")
-                    .json_body(serde_json::json!({
-                        "error": {
-                            "message": "quota limited",
-                            "type": "rate_limit_error"
-                        }
-                    }));
-            })
-            .await;
-        let state = crate::test_support::TestAppStateBuilder::new()
-            .runtime_settings(
-                crate::test_support::default_test_server_settings(),
-                RunLayer::default(),
-            )
-            .max_concurrent_runs(5)
-            .provider_base_url("openai", server.url("/v1"))
-            .build();
-        state
-            .stores
-            .vault
-            .set(
-                "OPENAI_API_KEY",
-                "test-openai-key",
-                fabro_vault::SecretType::Token,
-                None,
-            )
-            .await
-            .unwrap();
-
-        let mut manifest = minimal_manifest();
-        manifest.workflows.get_mut("workflow.fabro").unwrap().source = r#"
-digraph Demo {
-    start [shape=Mdiamond]
-    exit  [shape=Msquare]
-    work  [prompt="Do work", model="gpt-54"]
-    start -> work -> exit
-}
-"#
-        .to_string();
-        let prepared = prepare_manifest(
-            &manifest_run_defaults(Some(&default_settings_fixture())),
-            &manifest,
-        )
-        .unwrap();
-        let validated = validate_with_catalog(&state, &prepared).unwrap();
-
-        let (response, ok) = resolve_and_run_preflight(state.as_ref(), &prepared, &validated)
-            .await
-            .unwrap();
-
-        assert!(!ok);
-        let llm_check = response.checks.sections[0]
-            .checks
-            .iter()
-            .find(|check| check.name == "LLM" && check.summary == "gpt-5.4")
-            .expect("preflight should include the configured LLM model");
-        assert_eq!(llm_check.status, types::PreflightCheckResultStatus::Error);
-        assert!(
-            llm_check
-                .remediation
-                .as_deref()
-                .unwrap_or_default()
-                .contains("quota limited")
-        );
-        assert!(response_mock.calls_async().await >= 1);
-    }
-
-    #[tokio::test]
-    async fn preflight_uses_ready_providers_for_known_shared_alias() {
-        let server = httpmock::MockServer::start_async().await;
-        let openrouter_probe = server
-            .mock_async(|when, then| {
-                when.method(httpmock::Method::POST)
-                    .path("/openrouter/v1/chat/completions")
-                    .header("authorization", "Bearer test-openrouter-key")
-                    .json_body_includes(r#"{"model":"anthropic/claude-fable-5"}"#);
-                then.status(200)
-                    .header("content-type", "application/json")
-                    .json_body(openai_compatible_completion("anthropic/claude-fable-5"));
-            })
-            .await;
-        let state = ready_moonshot_and_openrouter_state(&server);
-
-        let (response, _ok) = preflight_for_model(&state, "claude-fable").await;
-
-        let llm_check = response.checks.sections[0]
-            .checks
-            .iter()
-            .find(|check| check.name == "LLM" && check.summary == "claude-fable-5")
-            .unwrap_or_else(|| {
-                panic!(
-                    "preflight should include Claude Fable: {:?}",
-                    response.checks.sections
-                )
-            });
-        assert_eq!(
-            llm_check
-                .details
-                .iter()
-                .map(|detail| detail.text.as_str())
-                .find(|detail| detail.starts_with("Provider: ")),
-            Some("Provider: openrouter")
-        );
-        assert_eq!(llm_check.status, types::PreflightCheckResultStatus::Pass);
-        openrouter_probe.assert_async().await;
-    }
-
-    #[tokio::test]
-    async fn preflight_uses_ready_providers_for_unknown_unqualified_model() {
-        let server = httpmock::MockServer::start_async().await;
-        let moonshot_probe = server
-            .mock_async(|when, then| {
-                when.method(httpmock::Method::POST)
-                    .path("/moonshot/v1/chat/completions")
-                    .header("authorization", "Bearer test-moonshot-key")
-                    .json_body_includes(r#"{"model":"provider-private-preview"}"#);
-                then.status(200)
-                    .header("content-type", "application/json")
-                    .json_body(openai_compatible_completion("provider-private-preview"));
+                when.any_request();
+                then.status(500);
             })
             .await;
         let state = ready_moonshot_and_openrouter_state(&server);
 
         // Petri admits no model its catalog lacks, so the workflow is refused
-        // before any probe runs: no passthrough of an unknown model.
+        // at its check: no passthrough of an unknown model to a provider.
         let (response, ok) = preflight_for_refused_model(&state, "provider-private-preview").await;
 
         assert!(!ok);
@@ -2939,7 +2578,7 @@ digraph Demo {
                 .all(|check| check.name != "LLM"),
             "no LLM check runs on a refused workflow"
         );
-        assert_eq!(moonshot_probe.calls_async().await, 0);
+        assert_eq!(any_provider_call.calls_async().await, 0);
     }
 
     #[test]
@@ -2964,7 +2603,7 @@ digraph Demo {
 
         // Petri refuses the model node: the provider is not in the catalog.
         let refusal = validated
-            .diagnostics()
+            .diagnostics
             .iter()
             .find(|diagnostic| diagnostic.severity == Severity::Error)
             .expect("unknown provider should fail static validation");
@@ -3010,11 +2649,7 @@ digraph Demo {
             &manifest,
         )
         .unwrap();
-        let llm_result = state.resolve_llm_client().await;
-        let ready_providers = llm_result
-            .as_ref()
-            .map(FabroClient::provider_ids)
-            .unwrap_or_default();
+        let (_, ready_providers) = state.resolve_llm_client_with_ready_ids().await;
         assert!(ready_providers.is_empty());
 
         // With no provider ready there is no model client to resolve the
@@ -3024,14 +2659,14 @@ digraph Demo {
         assert!(validated.has_errors());
         assert!(
             validated
-                .diagnostics()
+                .diagnostics
                 .iter()
                 .any(|diagnostic| diagnostic.rule == petri_check::NO_READY_PROVIDER_RULE),
             "{:?}",
-            validated.diagnostics()
+            validated.diagnostics
         );
 
-        let (response, ok) = run_preflight(state.as_ref(), &prepared, &validated, llm_result)
+        let (response, ok) = run_preflight(state.as_ref(), &prepared, &validated)
             .await
             .unwrap();
         assert!(!ok);

@@ -142,7 +142,9 @@ pub async fn persist_forked_run(store: &Database, input: &ForkedRunInput<'_>) ->
 #[cfg(test)]
 mod tests {
     use chrono::Utc;
-    use fabro_types::{FailureReason, Graph, PetriAdmission, RunSpec, WorkflowSettings, fixtures};
+    use fabro_types::{
+        FailureReason, PetriAdmission, RunGraph, RunSpec, WorkflowSettings, fixtures,
+    };
 
     use super::*;
 
@@ -152,7 +154,7 @@ mod tests {
             RunSpec {
                 run_id:              fixtures::RUN_1,
                 settings:            WorkflowSettings::default(),
-                graph:               Graph::new("source"),
+                graph:               RunGraph::new("source"),
                 graph_source:        Some("digraph source { start -> exit }".to_string()),
                 workflow_slug:       Some("source".to_string()),
                 workflow_version_id: None,

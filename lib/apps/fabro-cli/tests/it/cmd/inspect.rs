@@ -211,9 +211,9 @@ fn inspect_resolves_selector_via_server_endpoint() {
           },
           "graph": {
             "name": "Remote Workflow",
+            "goal": "",
             "nodes": {},
-            "edges": [],
-            "attrs": {}
+            "edges": []
           },
           "workflow_slug": "remote-workflow",
           "source_directory": "/srv/repo",

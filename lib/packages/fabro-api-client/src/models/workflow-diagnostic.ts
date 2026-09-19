@@ -17,7 +17,13 @@
 // @ts-ignore
 import type { RelatedWorkflowDiagnostic } from './related-workflow-diagnostic';
 
+/**
+ * One diagnostic about a workflow. `rule` is the stable code of the check that raised it: Petri\'s codes (`attractor.*`, `unsupported.*`, `deprecated.*`, `info.*`, `fabro.hooks.*`) for the compile, and `fabro.model.no_ready_provider` for Fabro\'s own provider check.
+ */
 export interface WorkflowDiagnostic {
+    /**
+     * The stable code of the check that raised the diagnostic.
+     */
     'rule': string;
     'severity': WorkflowDiagnosticSeverityEnum;
     'message': string;

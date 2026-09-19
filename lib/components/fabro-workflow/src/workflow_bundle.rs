@@ -1,11 +1,7 @@
 use std::collections::HashMap;
-use std::path::PathBuf;
-use std::sync::Arc;
 
 use fabro_types::ManifestPath;
 use serde::{Deserialize, Serialize};
-
-use crate::file_resolver::{BundleFileResolver, FileResolver};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ParsedWorkflowConfig {
@@ -19,18 +15,6 @@ pub struct BundledWorkflow {
     pub source: String,
     pub config: Option<ParsedWorkflowConfig>,
     pub files:  HashMap<ManifestPath, String>,
-}
-
-impl BundledWorkflow {
-    #[must_use]
-    pub fn file_resolver(&self) -> Arc<dyn FileResolver> {
-        Arc::new(BundleFileResolver::new(self.files.clone()))
-    }
-
-    #[must_use]
-    pub fn current_dir(&self) -> PathBuf {
-        self.path.parent_or_dot().to_path_buf()
-    }
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]

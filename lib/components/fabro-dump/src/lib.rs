@@ -494,12 +494,12 @@ mod tests {
 
     use chrono::{TimeZone, Utc};
     use fabro_store::{RunProjection, StageId};
-    use fabro_types::graph::Graph;
     use fabro_types::run::RunSpec;
     use fabro_types::{
-        Checkpoint, CheckpointRecord, Conclusion, RunDiff, RunSandbox, RunSandboxInstance,
-        RunSandboxPlan, RunStatus, SandboxProviderKind, StageCompletion, StageModelUsage,
-        StageOutcome, StartRecord, SuccessReason, first_event_seq, fixtures, test_support,
+        Checkpoint, CheckpointRecord, Conclusion, RunDiff, RunGraph, RunSandbox,
+        RunSandboxInstance, RunSandboxPlan, RunStatus, SandboxProviderKind, StageCompletion,
+        StageModelUsage, StageOutcome, StartRecord, SuccessReason, first_event_seq, fixtures,
+        test_support,
     };
     use futures::executor;
 
@@ -507,7 +507,7 @@ mod tests {
 
     fn sample_run_spec() -> RunSpec {
         RunSpec {
-            graph: Graph::new("ship"),
+            graph: RunGraph::new("ship"),
             graph_source: Some("digraph Ship {}".to_string()),
             workflow_slug: Some("demo".to_string()),
             source_directory: Some("/tmp/project".to_string()),

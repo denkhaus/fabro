@@ -1,10 +1,9 @@
 use std::collections::HashMap;
 
-use fabro_types::graph::Graph;
 use fabro_types::run::{DirtyStatus, GitContext, RunSpec};
 use fabro_types::settings::{ProjectNamespace, WorkflowNamespace};
 use fabro_types::test_support::test_run_spec;
-use fabro_types::{WorkflowSettings, fixtures};
+use fabro_types::{RunGraph, WorkflowSettings, fixtures};
 
 fn sample_run_spec() -> RunSpec {
     let settings = WorkflowSettings {
@@ -21,7 +20,7 @@ fn sample_run_spec() -> RunSpec {
 
     RunSpec {
         settings,
-        graph: Graph::new("ship"),
+        graph: RunGraph::new("ship"),
         workflow_slug: Some("demo".to_string()),
         source_directory: Some("/Users/client/project".to_string()),
         labels: HashMap::from([("team".to_string(), "platform".to_string())]),
@@ -67,7 +66,7 @@ fn run_spec_name_getters_do_not_synthesize_from_graph_or_slug() {
     run_spec.settings.workflow.name = None;
     run_spec.settings.project.name = None;
     run_spec.workflow_slug = Some("release-flow".to_string());
-    run_spec.graph = Graph::new("GraphName");
+    run_spec.graph = RunGraph::new("GraphName");
 
     assert_eq!(run_spec.workflow_name(), None);
     assert_eq!(run_spec.project_name(), None);

@@ -27,6 +27,9 @@ import type { GitContext } from './git-context';
 import type { PetriAdmission } from './petri-admission';
 // May contain unused imports in some cases
 // @ts-ignore
+import type { RunGraph } from './run-graph';
+// May contain unused imports in some cases
+// @ts-ignore
 import type { RunProvenance } from './run-provenance';
 // May contain unused imports in some cases
 // @ts-ignore
@@ -41,7 +44,13 @@ import type { WorkflowSettings } from './workflow-settings';
 export interface RunSpec {
     'run_id': string;
     'settings': WorkflowSettings;
-    'graph': { [key: string]: any; };
+    /**
+     * The display graph: the workflow Petri admitted, reduced to what the read side names. The DOT it was written in is `graph_source`.
+     */
+    'graph': RunGraph;
+    /**
+     * The entrypoint workflow\'s DOT as written.
+     */
     'graph_source'?: string | null;
     'workflow_slug'?: string | null;
     /**

@@ -1,86 +1,16 @@
+//! The workflow graph as written: the typed model `fabro_graphviz::parser`
+//! produces from a DOT file.
+//!
+//! This is the graph the bundler and workflow version registration walk to
+//! find what a workflow references (`import`, `stack.child_workflow`,
+//! `@file` prompts, the goal, the model stylesheet). Petri compiles and
+//! admits the workflow; the graph a run displays is [`crate::RunGraph`],
+//! read off Petri's admitted graph, not this model.
+
 use std::collections::HashMap;
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
-use strum::VariantNames;
-
-use crate::AgentBackend;
-
-/// Policy for a failed node when no explicit recovery route matches.
-///
-/// Explicit routes (a jump, a matching edge condition, a matching preferred
-/// label, or a matching suggested next node) take priority under every
-/// policy. The policy decides what happens when none of them match.
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    Default,
-    PartialEq,
-    Eq,
-    Serialize,
-    Deserialize,
-    strum::Display,
-    strum::EnumString,
-    strum::IntoStaticStr,
-    strum::VariantNames,
-)]
-#[serde(rename_all = "snake_case")]
-#[strum(serialize_all = "snake_case")]
-pub enum OnFailure {
-    /// The outcome stays `failed` and may take an unconditional edge.
-    #[default]
-    Route,
-    /// The outcome stays `failed` and skips the unconditional edge, so the
-    /// run ends unless a retry target applies.
-    Exit,
-    /// The outcome becomes `succeeded` and follows normal success routing.
-    /// The original failure details stay on the outcome for observability.
-    Succeed,
-}
-
-impl OnFailure {
-    #[must_use]
-    pub fn expected_values() -> String {
-        <Self as VariantNames>::VARIANTS.join(", ")
-    }
-}
-
-/// A failure routing policy together with the scope that supplied it, so
-/// failure messages can name the attribute that stopped routing.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ResolvedOnFailure {
-    policy: OnFailure,
-    scope:  AttributeScope,
-}
-
-impl ResolvedOnFailure {
-    #[must_use]
-    pub const fn node(policy: OnFailure) -> Self {
-        Self {
-            policy,
-            scope: AttributeScope::Node,
-        }
-    }
-
-    #[must_use]
-    pub const fn graph(policy: OnFailure) -> Self {
-        Self {
-            policy,
-            scope: AttributeScope::Graph,
-        }
-    }
-
-    #[must_use]
-    pub const fn policy(self) -> OnFailure {
-        self.policy
-    }
-
-    #[must_use]
-    pub const fn scope(self) -> AttributeScope {
-        self.scope
-    }
-}
 
 /// Typed attribute values for nodes, edges, and graph-level attributes.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -132,46 +62,6 @@ impl AttrValue {
             _ => None,
         }
     }
-
-    /// Convert any variant to its string representation.
-    #[must_use]
-    pub fn to_string_value(&self) -> String {
-        match self {
-            Self::String(s) => s.clone(),
-            Self::Integer(n) => n.to_string(),
-            Self::Float(f) => f.to_string(),
-            Self::Boolean(b) => b.to_string(),
-            Self::Duration(d) => format!("{}ms", d.as_millis()),
-        }
-    }
-}
-
-/// Returns true if the handler type is an LLM-based handler (agent or prompt).
-#[must_use]
-pub fn is_llm_handler_type(handler_type: Option<&str>) -> bool {
-    matches!(handler_type, Some("agent" | "prompt"))
-}
-
-pub const KNOWN_HANDLER_TYPES: &[&str] = &[
-    "start",
-    "exit",
-    "agent",
-    "prompt",
-    "human",
-    "conditional",
-    "parallel",
-    "parallel.fan_in",
-    "command",
-    "tool",
-    "stack.manager_loop",
-    "wait",
-];
-
-/// Returns true if the handler type is part of Fabro's built-in handler
-/// vocabulary.
-#[must_use]
-pub fn is_known_handler_type(handler_type: &str) -> bool {
-    KNOWN_HANDLER_TYPES.contains(&handler_type)
 }
 
 /// Maps Graphviz shapes to handler type strings (Section 2.8).
@@ -191,19 +81,6 @@ pub fn shape_to_handler_type(shape: &str) -> Option<&'static str> {
         "insulator" => Some("wait"),
         _ => None,
     }
-}
-
-/// Presence and validity of a node attribute whose value names a workflow
-/// context key (`for_each`, `stdin_source`).
-///
-/// Consumers need three states: the attribute is not set, it is set but not a
-/// usable key (non-string or blank), or it carries a key. Modeling this once
-/// keeps lint rules and handlers agreeing on what "valid" means.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ContextKeyAttr<'a> {
-    Absent,
-    Invalid,
-    Present(&'a str),
 }
 
 /// A node in the workflow graph.
@@ -228,16 +105,10 @@ impl Node {
 
     /// Appends a class, ignoring blank names and ones already present.
     ///
-    /// Classes accumulate from several sources — the `class` attribute,
-    /// enclosing subgraphs, and import placeholders — so every caller needs the
-    /// same de-duplicating append.
-    ///
-    /// The name is trimmed, and a name that is empty or only whitespace is
-    /// dropped. Stylesheet selectors match class names exactly, so a padded
-    /// name would never match any rule.
-    ///
-    /// Order is preserved because the first class is meaningful: it supplies
-    /// the fallback thread ID for fidelity threading.
+    /// Classes accumulate from several sources — the `class` attribute and
+    /// enclosing subgraphs — so every caller needs the same de-duplicating
+    /// append. The name is trimmed, and a name that is empty or only
+    /// whitespace is dropped. Order is preserved.
     pub fn add_class(&mut self, class: &str) {
         let class = class.trim();
         if !class.is_empty() && !self.classes.iter().any(|existing| existing == class) {
@@ -247,14 +118,6 @@ impl Node {
 
     fn str_attr(&self, key: &str) -> Option<&str> {
         self.attrs.get(key).and_then(AttrValue::as_str)
-    }
-
-    fn bool_attr(&self, key: &str) -> Option<bool> {
-        self.attrs.get(key).and_then(AttrValue::as_bool)
-    }
-
-    fn int_attr(&self, key: &str) -> Option<i64> {
-        self.attrs.get(key).and_then(AttrValue::as_i64)
     }
 
     #[must_use]
@@ -286,177 +149,6 @@ impl Node {
     #[must_use]
     pub fn prompt(&self) -> Option<&str> {
         self.str_attr("prompt")
-    }
-
-    /// The shell or Python source a command node runs.
-    #[must_use]
-    pub fn script(&self) -> Option<&str> {
-        self.str_attr("script")
-    }
-
-    /// The prompt a handler should send, falling back to the node label when
-    /// `prompt` is absent or empty.
-    #[must_use]
-    pub fn prompt_or_label(&self) -> &str {
-        self.prompt()
-            .filter(|prompt| !prompt.is_empty())
-            .unwrap_or_else(|| self.label())
-    }
-
-    #[must_use]
-    pub fn for_each(&self) -> Option<&str> {
-        self.str_attr("for_each")
-    }
-
-    #[must_use]
-    pub fn context_key_attr(&self, name: &str) -> ContextKeyAttr<'_> {
-        let Some(value) = self.attrs.get(name) else {
-            return ContextKeyAttr::Absent;
-        };
-        match value.as_str() {
-            Some(source) if !source.trim().is_empty() => ContextKeyAttr::Present(source),
-            _ => ContextKeyAttr::Invalid,
-        }
-    }
-
-    #[must_use]
-    pub fn output_schema(&self) -> Option<&str> {
-        self.str_attr("output_schema")
-    }
-
-    #[must_use]
-    pub fn output_retries(&self) -> i64 {
-        self.int_attr("output_retries").unwrap_or(2).max(0)
-    }
-
-    #[must_use]
-    pub fn max_retries(&self) -> Option<i64> {
-        self.int_attr("max_retries")
-    }
-
-    #[must_use]
-    pub fn max_visits(&self) -> Option<i64> {
-        self.int_attr("max_visits")
-    }
-
-    #[must_use]
-    pub fn goal_gate(&self) -> bool {
-        self.bool_attr("goal_gate").unwrap_or(false)
-    }
-
-    #[must_use]
-    pub fn review_target(&self) -> bool {
-        self.bool_attr("review_target").unwrap_or(false)
-    }
-
-    #[must_use]
-    pub fn retry_target(&self) -> Option<&str> {
-        self.str_attr("retry_target")
-    }
-
-    #[must_use]
-    pub fn fallback_retry_target(&self) -> Option<&str> {
-        self.str_attr("fallback_retry_target")
-    }
-
-    /// Node-level failure policy override. `None` means the node inherits
-    /// the graph-level policy. Invalid values are rejected during workflow
-    /// validation, so runtime resolution treats them as absent.
-    ///
-    /// The deprecated `auto_status=true` attribute is a compatibility alias
-    /// for `on_failure="succeed"`. An explicit `on_failure` attribute wins.
-    #[must_use]
-    pub fn on_failure(&self) -> Option<OnFailure> {
-        match self.attrs.get("on_failure") {
-            Some(value) => value.as_str().and_then(|value| value.parse().ok()),
-            None => self.auto_status().then_some(OnFailure::Succeed),
-        }
-    }
-
-    #[must_use]
-    pub fn fidelity(&self) -> Option<&str> {
-        self.str_attr("fidelity")
-    }
-
-    #[must_use]
-    pub fn thread_id(&self) -> Option<&str> {
-        self.str_attr("thread_id")
-    }
-
-    pub fn timeout(&self) -> Option<Duration> {
-        self.attrs.get("timeout").and_then(AttrValue::as_duration)
-    }
-
-    #[must_use]
-    pub fn model(&self) -> Option<&str> {
-        self.str_attr("model")
-    }
-
-    #[must_use]
-    pub fn provider(&self) -> Option<&str> {
-        self.str_attr("provider")
-    }
-
-    #[must_use]
-    pub fn max_tokens(&self) -> Option<i64> {
-        self.int_attr("max_tokens").filter(|&v| v > 0)
-    }
-
-    #[must_use]
-    pub fn speed(&self) -> Option<&str> {
-        self.str_attr("speed")
-    }
-
-    /// Deprecated spelling of `on_failure="succeed"`. Validation warns when
-    /// it is present; [`Node::on_failure`] resolves the alias at runtime.
-    #[must_use]
-    pub fn auto_status(&self) -> bool {
-        self.bool_attr("auto_status").unwrap_or(false)
-    }
-
-    #[must_use]
-    pub fn allow_partial(&self) -> bool {
-        self.bool_attr("allow_partial").unwrap_or(false)
-    }
-
-    #[must_use]
-    pub fn project_memory(&self) -> bool {
-        self.bool_attr("project_memory").unwrap_or(true)
-    }
-
-    #[must_use]
-    pub fn retry_policy(&self) -> Option<&str> {
-        self.str_attr("retry_policy")
-    }
-
-    #[must_use]
-    pub fn backend(&self) -> Option<&str> {
-        self.str_attr("backend")
-    }
-
-    #[must_use]
-    pub fn agent_backend(&self) -> Option<Result<AgentBackend, strum::ParseError>> {
-        self.backend().map(str::parse)
-    }
-
-    #[must_use]
-    pub fn legacy_acp_command_attr(&self) -> Option<&str> {
-        self.str_attr("acp_command")
-    }
-
-    #[must_use]
-    pub fn acp_command_attr(&self) -> Option<&str> {
-        self.str_attr("acp.command")
-    }
-
-    #[must_use]
-    pub fn acp_config_attr(&self) -> Option<&str> {
-        self.str_attr("acp.config")
-    }
-
-    #[must_use]
-    pub fn selection(&self) -> &str {
-        self.str_attr("selection").unwrap_or("deterministic")
     }
 
     /// Resolve the handler type for this node using explicit type or shape
@@ -493,14 +185,6 @@ impl Edge {
         self.attrs.get(key).and_then(AttrValue::as_str)
     }
 
-    fn bool_attr(&self, key: &str) -> Option<bool> {
-        self.attrs.get(key).and_then(AttrValue::as_bool)
-    }
-
-    fn int_attr(&self, key: &str) -> Option<i64> {
-        self.attrs.get(key).and_then(AttrValue::as_i64)
-    }
-
     #[must_use]
     pub fn label(&self) -> Option<&str> {
         self.str_attr("label")
@@ -509,31 +193,6 @@ impl Edge {
     #[must_use]
     pub fn condition(&self) -> Option<&str> {
         self.str_attr("condition")
-    }
-
-    #[must_use]
-    pub fn weight(&self) -> i64 {
-        self.int_attr("weight").unwrap_or(0)
-    }
-
-    #[must_use]
-    pub fn fidelity(&self) -> Option<&str> {
-        self.str_attr("fidelity")
-    }
-
-    #[must_use]
-    pub fn thread_id(&self) -> Option<&str> {
-        self.str_attr("thread_id")
-    }
-
-    #[must_use]
-    pub fn loop_restart(&self) -> bool {
-        self.bool_attr("loop_restart").unwrap_or(false)
-    }
-
-    #[must_use]
-    pub fn freeform(&self) -> bool {
-        self.bool_attr("freeform").unwrap_or(false)
     }
 }
 
@@ -557,44 +216,6 @@ impl Graph {
         }
     }
 
-    /// Returns all outgoing edges from the given node.
-    #[must_use]
-    pub fn outgoing_edges(&self, node_id: &str) -> Vec<&Edge> {
-        self.edges.iter().filter(|e| e.from == node_id).collect()
-    }
-
-    /// Returns all incoming edges to the given node.
-    #[must_use]
-    pub fn incoming_edges(&self, node_id: &str) -> Vec<&Edge> {
-        self.edges.iter().filter(|e| e.to == node_id).collect()
-    }
-
-    /// Find the start node: shape=Mdiamond, or id "start"/"Start".
-    #[must_use]
-    pub fn find_start_node(&self) -> Option<&Node> {
-        // First: look for shape=Mdiamond
-        let by_shape = self.nodes.values().find(|n| n.shape() == "Mdiamond");
-        if by_shape.is_some() {
-            return by_shape;
-        }
-        // Second: look for id "start" or "Start"
-        self.nodes.get("start").or_else(|| self.nodes.get("Start"))
-    }
-
-    /// Find the exit node: shape=Msquare, or id "exit"/"Exit".
-    #[must_use]
-    pub fn find_exit_node(&self) -> Option<&Node> {
-        let by_shape = self.nodes.values().find(|n| n.shape() == "Msquare");
-        if by_shape.is_some() {
-            return by_shape;
-        }
-        self.nodes
-            .get("exit")
-            .or_else(|| self.nodes.get("Exit"))
-            .or_else(|| self.nodes.get("end"))
-            .or_else(|| self.nodes.get("End"))
-    }
-
     /// Graph-level goal attribute.
     pub fn goal(&self) -> &str {
         self.attrs
@@ -609,100 +230,6 @@ impl Graph {
             .get("model_stylesheet")
             .and_then(AttrValue::as_str)
             .unwrap_or("")
-    }
-
-    /// Graph-level `default_max_retries` (default 0).
-    pub fn default_max_retries(&self) -> i64 {
-        self.attrs
-            .get("default_max_retries")
-            .and_then(AttrValue::as_i64)
-            .unwrap_or(0)
-    }
-
-    /// Graph-level `retry_target`.
-    pub fn retry_target(&self) -> Option<&str> {
-        self.attrs.get("retry_target").and_then(AttrValue::as_str)
-    }
-
-    /// Graph-level `fallback_retry_target`.
-    pub fn fallback_retry_target(&self) -> Option<&str> {
-        self.attrs
-            .get("fallback_retry_target")
-            .and_then(AttrValue::as_str)
-    }
-
-    /// Graph-level failure policy. Invalid values are rejected during
-    /// workflow validation, so runtime resolution can use the compatibility
-    /// default.
-    #[must_use]
-    pub fn on_failure(&self) -> OnFailure {
-        self.attrs
-            .get("on_failure")
-            .and_then(AttrValue::as_str)
-            .and_then(|value| value.parse().ok())
-            .unwrap_or_default()
-    }
-
-    /// Effective failure policy for a node. A node-level `on_failure`
-    /// attribute overrides the graph level; an absent (or invalid, hence
-    /// validation-rejected) node attribute inherits the graph policy.
-    #[must_use]
-    pub fn resolve_on_failure(&self, node: &Node) -> ResolvedOnFailure {
-        match node.on_failure() {
-            Some(policy) => ResolvedOnFailure::node(policy),
-            None => ResolvedOnFailure::graph(self.on_failure()),
-        }
-    }
-
-    /// Graph-level `default_fidelity`.
-    pub fn default_fidelity(&self) -> Option<&str> {
-        self.attrs
-            .get("default_fidelity")
-            .and_then(AttrValue::as_str)
-    }
-
-    /// Graph-level `default_thread`.
-    pub fn default_thread(&self) -> Option<&str> {
-        self.attrs.get("default_thread").and_then(AttrValue::as_str)
-    }
-
-    /// Graph-level `loop_restart_signature_limit` (default 3).
-    /// When the same failure signature repeats this many times, the pipeline
-    /// aborts.
-    pub fn loop_restart_signature_limit(&self) -> usize {
-        #[allow(
-            clippy::cast_possible_truncation,
-            clippy::cast_sign_loss,
-            reason = "Values below 1 are filtered out before this usize conversion."
-        )]
-        self.attrs
-            .get("loop_restart_signature_limit")
-            .and_then(AttrValue::as_i64)
-            .filter(|&v| v >= 1)
-            .map_or(3, |v| v as usize)
-    }
-
-    /// Graph-level `stall_timeout`. Defaults to 1800s. Returns `None` when set
-    /// to zero (disabled).
-    pub fn stall_timeout(&self) -> Option<Duration> {
-        match self
-            .attrs
-            .get("stall_timeout")
-            .and_then(AttrValue::as_duration)
-        {
-            Some(d) if d.is_zero() => None,
-            Some(d) => Some(d),
-            None => Some(Duration::from_mins(30)),
-        }
-    }
-
-    /// Graph-level `max_node_visits` (default 0 = disabled).
-    pub fn max_node_visits(&self) -> u64 {
-        self.attrs
-            .get("max_node_visits")
-            .and_then(AttrValue::as_i64)
-            .and_then(|n| u64::try_from(n).ok())
-            .unwrap_or(0)
     }
 }
 
@@ -784,157 +311,20 @@ mod tests {
     use super::*;
 
     #[test]
-    fn on_failure_parses_and_displays_supported_values() {
-        assert_eq!("route".parse::<OnFailure>().unwrap(), OnFailure::Route);
-        assert_eq!("exit".parse::<OnFailure>().unwrap(), OnFailure::Exit);
-        assert_eq!("succeed".parse::<OnFailure>().unwrap(), OnFailure::Succeed);
-        assert_eq!(OnFailure::Route.to_string(), "route");
-        assert_eq!(OnFailure::Exit.to_string(), "exit");
-        assert_eq!(OnFailure::Succeed.to_string(), "succeed");
-        assert_eq!(OnFailure::expected_values(), "route, exit, succeed");
-    }
-
-    #[test]
-    fn graph_on_failure_defaults_to_route_and_resolves_explicit_values() {
-        let mut graph = Graph::new("test");
-        assert_eq!(graph.on_failure(), OnFailure::Route);
-
-        graph.attrs.insert(
-            "on_failure".to_string(),
-            AttrValue::String("route".to_string()),
-        );
-        assert_eq!(graph.on_failure(), OnFailure::Route);
-
-        graph.attrs.insert(
-            "on_failure".to_string(),
-            AttrValue::String("exit".to_string()),
-        );
-        assert_eq!(graph.on_failure(), OnFailure::Exit);
-    }
-
-    #[test]
-    fn node_on_failure_parses_valid_values_and_ignores_invalid_ones() {
-        let mut node = Node::new("work");
-        assert_eq!(node.on_failure(), None);
-
-        node.attrs.insert(
-            "on_failure".to_string(),
-            AttrValue::String("exit".to_string()),
-        );
-        assert_eq!(node.on_failure(), Some(OnFailure::Exit));
-
-        node.attrs.insert(
-            "on_failure".to_string(),
-            AttrValue::String("stop".to_string()),
-        );
-        assert_eq!(node.on_failure(), None);
-
-        node.attrs
-            .insert("on_failure".to_string(), AttrValue::Boolean(true));
-        assert_eq!(node.on_failure(), None);
-    }
-
-    #[test]
-    fn node_auto_status_is_an_alias_for_on_failure_succeed() {
-        let mut node = Node::new("work");
-        node.attrs
-            .insert("auto_status".to_string(), AttrValue::Boolean(true));
-        assert!(node.auto_status());
-        assert_eq!(node.on_failure(), Some(OnFailure::Succeed));
-
-        // An explicit on_failure attribute wins over the alias.
-        node.attrs.insert(
-            "on_failure".to_string(),
-            AttrValue::String("exit".to_string()),
-        );
-        assert_eq!(node.on_failure(), Some(OnFailure::Exit));
-
-        // auto_status=false does not set a policy.
-        let mut node = Node::new("work");
-        node.attrs
-            .insert("auto_status".to_string(), AttrValue::Boolean(false));
-        assert_eq!(node.on_failure(), None);
-    }
-
-    #[test]
-    fn explicit_invalid_on_failure_does_not_fall_back_to_auto_status() {
-        for value in [
-            AttrValue::String("invalid".to_string()),
-            AttrValue::Boolean(true),
-        ] {
-            let mut node = Node::new("work");
-            node.attrs
-                .insert("auto_status".to_string(), AttrValue::Boolean(true));
-            node.attrs.insert("on_failure".to_string(), value);
-
-            assert_eq!(node.on_failure(), None);
-        }
-    }
-
-    #[test]
-    fn resolve_on_failure_prefers_node_policy_over_graph_policy() {
-        let mut graph = Graph::new("test");
-        graph.attrs.insert(
-            "on_failure".to_string(),
-            AttrValue::String("exit".to_string()),
-        );
-        graph.nodes.insert("bare".to_string(), Node::new("bare"));
-        let mut invalid = Node::new("invalid");
-        invalid.attrs.insert(
-            "on_failure".to_string(),
-            AttrValue::String("bogus".to_string()),
-        );
-        graph.nodes.insert("invalid".to_string(), invalid);
-        let mut route = Node::new("route");
-        route.attrs.insert(
-            "on_failure".to_string(),
-            AttrValue::String("route".to_string()),
-        );
-        graph.nodes.insert("route".to_string(), route);
-
-        // Node attribute wins over the graph policy.
+    fn attr_value_accessors_match_their_variant() {
         assert_eq!(
-            graph.resolve_on_failure(&graph.nodes["route"]),
-            ResolvedOnFailure::node(OnFailure::Route)
+            AttrValue::String("hello".to_string()).as_str(),
+            Some("hello")
         );
-        // Absent and invalid node attributes inherit the graph policy.
-        for node_id in ["bare", "invalid"] {
-            assert_eq!(
-                graph.resolve_on_failure(&graph.nodes[node_id]),
-                ResolvedOnFailure::graph(OnFailure::Exit)
-            );
-        }
-    }
-
-    #[test]
-    fn attr_value_as_str() {
-        let val = AttrValue::String("hello".to_string());
-        assert_eq!(val.as_str(), Some("hello"));
         assert_eq!(AttrValue::Integer(1).as_str(), None);
-    }
-
-    #[test]
-    fn attr_value_as_i64() {
         assert_eq!(AttrValue::Integer(42).as_i64(), Some(42));
         assert_eq!(AttrValue::String("x".to_string()).as_i64(), None);
-    }
-
-    #[test]
-    fn attr_value_as_f64() {
         assert_eq!(AttrValue::Float(3.15).as_f64(), Some(3.15));
         assert_eq!(AttrValue::Integer(1).as_f64(), None);
-    }
-
-    #[test]
-    fn attr_value_as_bool() {
         assert_eq!(AttrValue::Boolean(true).as_bool(), Some(true));
         assert_eq!(AttrValue::String("true".to_string()).as_bool(), None);
-    }
-
-    #[test]
-    fn attr_value_as_duration() {
-        let d = Duration::from_secs(10);
-        assert_eq!(AttrValue::Duration(d).as_duration(), Some(d));
+        let ten = Duration::from_secs(10);
+        assert_eq!(AttrValue::Duration(ten).as_duration(), Some(ten));
         assert_eq!(AttrValue::Integer(10).as_duration(), None);
     }
 
@@ -958,15 +348,6 @@ mod tests {
     }
 
     #[test]
-    fn is_llm_handler_type_checks() {
-        assert!(is_llm_handler_type(Some("agent")));
-        assert!(is_llm_handler_type(Some("prompt")));
-        assert!(!is_llm_handler_type(Some("command")));
-        assert!(!is_llm_handler_type(Some("human")));
-        assert!(!is_llm_handler_type(None));
-    }
-
-    #[test]
     fn node_defaults() {
         let node = Node::new("test");
         assert_eq!(node.id, "test");
@@ -974,31 +355,8 @@ mod tests {
         assert_eq!(node.shape(), "box");
         assert_eq!(node.node_type(), None);
         assert_eq!(node.prompt(), None);
-        assert_eq!(node.script(), None);
-        assert_eq!(node.for_each(), None);
-        assert_eq!(
-            node.context_key_attr("stdin_source"),
-            ContextKeyAttr::Absent
-        );
-        assert_eq!(node.output_schema(), None);
-        assert_eq!(node.output_retries(), 2);
-        assert_eq!(node.max_retries(), None);
-        assert!(!node.goal_gate());
-        assert!(!node.review_target());
-        assert_eq!(node.retry_target(), None);
-        assert_eq!(node.fallback_retry_target(), None);
-        assert_eq!(node.fidelity(), None);
-        assert_eq!(node.thread_id(), None);
         assert!(node.classes.is_empty());
-        assert_eq!(node.timeout(), None);
-        assert_eq!(node.model(), None);
-        assert_eq!(node.provider(), None);
-        assert_eq!(node.speed(), None);
-        assert!(!node.auto_status());
-        assert!(!node.allow_partial());
-        assert_eq!(node.retry_policy(), None);
-        assert_eq!(node.max_visits(), None);
-        assert!(node.project_memory());
+        assert_eq!(node.handler_type(), Some("agent"));
     }
 
     #[test]
@@ -1034,27 +392,22 @@ mod tests {
         let node = node_with("plan", &[("prompt", "Plan the work")]);
         assert_eq!(node.shape(), "box");
         assert_eq!(node.handler_type(), Some("agent"));
+        assert_eq!(node.prompt(), Some("Plan the work"));
     }
 
     #[test]
-    fn explicit_shape_wins_over_script_inference() {
-        let node = node_with("odd", &[("shape", "box"), ("script", "cargo build")]);
-        assert_eq!(node.shape(), "box");
-        assert_eq!(node.handler_type(), Some("agent"));
-    }
+    fn explicit_shape_or_type_wins_over_script_inference() {
+        let shaped = node_with("odd", &[("shape", "box"), ("script", "cargo build")]);
+        assert_eq!(shaped.shape(), "box");
+        assert_eq!(shaped.handler_type(), Some("agent"));
 
-    #[test]
-    fn explicit_type_wins_over_script_inference() {
-        let node = node_with("odd", &[("type", "agent"), ("script", "cargo build")]);
-        assert_eq!(node.shape(), "box");
-        assert_eq!(node.handler_type(), Some("agent"));
+        let typed = node_with("odd", &[("type", "agent"), ("script", "cargo build")]);
+        assert_eq!(typed.shape(), "box");
+        assert_eq!(typed.handler_type(), Some("agent"));
     }
 
     #[test]
     fn any_script_attribute_value_infers_command() {
-        // The command-requires-script lint reports this; inference only asks
-        // whether the attribute is present so the diagnostic lands on a
-        // command node rather than a silently-agent one.
         let empty = node_with("empty", &[("script", "")]);
         assert_eq!(empty.shape(), "parallelogram");
         assert_eq!(empty.handler_type(), Some("command"));
@@ -1068,160 +421,30 @@ mod tests {
     }
 
     #[test]
-    fn legacy_tool_type_resolves_to_command() {
-        let node = node_with("build", &[("type", "tool")]);
-        assert_eq!(node.handler_type(), Some("command"));
-    }
-
-    #[test]
-    fn node_project_memory_false_overrides_default() {
-        let mut node = Node::new("x");
-        node.attrs
-            .insert("project_memory".to_string(), AttrValue::Boolean(false));
-        assert!(!node.project_memory());
-    }
-
-    #[test]
-    fn node_output_retries_defaults_and_clamps_to_zero() {
-        let mut node = Node::new("x");
-        assert_eq!(node.output_retries(), 2);
-
-        node.attrs
-            .insert("output_retries".to_string(), AttrValue::Integer(0));
-        assert_eq!(node.output_retries(), 0);
-
-        node.attrs
-            .insert("output_retries".to_string(), AttrValue::Integer(-3));
-        assert_eq!(node.output_retries(), 0);
-    }
-
-    #[test]
-    fn node_output_schema_returns_string_attr() {
-        let mut node = Node::new("x");
-        node.attrs.insert(
-            "output_schema".to_string(),
-            AttrValue::String("routing".to_string()),
-        );
-
-        assert_eq!(node.output_schema(), Some("routing"));
-    }
-
-    #[test]
-    fn node_prompt_or_label_falls_back_on_absent_and_empty_prompts() {
-        let mut node = Node::new("review");
-        assert_eq!(node.prompt_or_label(), node.label());
-
-        node.attrs
-            .insert("prompt".to_string(), AttrValue::String(String::new()));
-        assert_eq!(node.prompt_or_label(), node.label());
-
-        node.attrs.insert(
-            "prompt".to_string(),
-            AttrValue::String("Review the diff.".to_string()),
-        );
-        assert_eq!(node.prompt_or_label(), "Review the diff.");
-    }
-
-    #[test]
-    fn node_for_each_returns_context_source() {
-        let mut node = Node::new("fanout");
-        node.attrs.insert(
-            "for_each".to_string(),
-            AttrValue::String("context.candidates".to_string()),
-        );
-
-        assert_eq!(node.for_each(), Some("context.candidates"));
-    }
-
-    #[test]
-    fn node_context_key_attr_classifies_presence_and_validity() {
-        let mut node = Node::new("merge");
-        node.attrs.insert(
-            "stdin_source".to_string(),
-            AttrValue::String("context.parallel.results".to_string()),
-        );
-
+    fn explicit_types_and_shapes_resolve_handler_types() {
         assert_eq!(
-            node.context_key_attr("stdin_source"),
-            ContextKeyAttr::Present("context.parallel.results")
+            node_with("build", &[("type", "tool")]).handler_type(),
+            Some("command")
         );
-
-        for invalid in [AttrValue::String("   ".to_string()), AttrValue::Integer(3)] {
-            node.attrs.insert("stdin_source".to_string(), invalid);
-            assert_eq!(
-                node.context_key_attr("stdin_source"),
-                ContextKeyAttr::Invalid
-            );
-        }
-    }
-
-    #[test]
-    fn node_with_attrs() {
-        let mut node = Node::new("plan");
-        node.attrs.insert(
-            "label".to_string(),
-            AttrValue::String("Plan step".to_string()),
+        assert_eq!(
+            node_with("gate", &[("type", "human")]).handler_type(),
+            Some("human")
         );
-        node.attrs.insert(
-            "shape".to_string(),
-            AttrValue::String("diamond".to_string()),
+        assert_eq!(
+            node_with("entry", &[("shape", "Mdiamond")]).handler_type(),
+            Some("start")
         );
-        node.attrs
-            .insert("goal_gate".to_string(), AttrValue::Boolean(true));
-        node.attrs
-            .insert("review_target".to_string(), AttrValue::Boolean(true));
-        node.attrs
-            .insert("max_retries".to_string(), AttrValue::Integer(3));
-
-        assert_eq!(node.label(), "Plan step");
-        assert_eq!(node.shape(), "diamond");
-        assert!(node.goal_gate());
-        assert!(node.review_target());
-        assert_eq!(node.max_retries(), Some(3));
+        assert_eq!(node_with("odd", &[("shape", "star")]).handler_type(), None);
     }
 
     #[test]
-    fn node_max_visits_returns_value() {
-        let mut node = Node::new("test");
-        node.attrs
-            .insert("max_visits".to_string(), AttrValue::Integer(5));
-        assert_eq!(node.max_visits(), Some(5));
-    }
+    fn edge_attributes_are_read_as_written() {
+        let bare = Edge::new("a", "b");
+        assert_eq!(bare.from, "a");
+        assert_eq!(bare.to, "b");
+        assert_eq!(bare.label(), None);
+        assert_eq!(bare.condition(), None);
 
-    #[test]
-    fn node_handler_type_explicit() {
-        let mut node = Node::new("gate");
-        node.attrs
-            .insert("type".to_string(), AttrValue::String("human".to_string()));
-        assert_eq!(node.handler_type(), Some("human"));
-    }
-
-    #[test]
-    fn node_handler_type_from_shape() {
-        let mut node = Node::new("entry");
-        node.attrs.insert(
-            "shape".to_string(),
-            AttrValue::String("Mdiamond".to_string()),
-        );
-        assert_eq!(node.handler_type(), Some("start"));
-    }
-
-    #[test]
-    fn edge_defaults() {
-        let edge = Edge::new("a", "b");
-        assert_eq!(edge.from, "a");
-        assert_eq!(edge.to, "b");
-        assert_eq!(edge.label(), None);
-        assert_eq!(edge.condition(), None);
-        assert_eq!(edge.weight(), 0);
-        assert_eq!(edge.fidelity(), None);
-        assert_eq!(edge.thread_id(), None);
-        assert!(!edge.loop_restart());
-        assert!(!edge.freeform());
-    }
-
-    #[test]
-    fn edge_with_attrs() {
         let mut edge = Edge::new("a", "b");
         edge.attrs
             .insert("label".to_string(), AttrValue::String("next".to_string()));
@@ -1229,199 +452,27 @@ mod tests {
             "condition".to_string(),
             AttrValue::String("outcome=succeeded".to_string()),
         );
-        edge.attrs
-            .insert("weight".to_string(), AttrValue::Integer(5));
-        edge.attrs
-            .insert("loop_restart".to_string(), AttrValue::Boolean(true));
-        edge.attrs
-            .insert("freeform".to_string(), AttrValue::Boolean(true));
-
         assert_eq!(edge.label(), Some("next"));
         assert_eq!(edge.condition(), Some("outcome=succeeded"));
-        assert_eq!(edge.weight(), 5);
-        assert!(edge.loop_restart());
-        assert!(edge.freeform());
     }
 
-    fn sample_graph() -> Graph {
-        let mut g = Graph::new("test_pipeline");
+    #[test]
+    fn graph_goal_and_stylesheet_default_to_empty() {
+        let mut graph = Graph::new("test");
+        assert_eq!(graph.name, "test");
+        assert_eq!(graph.goal(), "");
+        assert_eq!(graph.model_stylesheet(), "");
 
-        let mut start = Node::new("start");
-        start.attrs.insert(
-            "shape".to_string(),
-            AttrValue::String("Mdiamond".to_string()),
-        );
-        g.nodes.insert("start".to_string(), start);
-
-        let mut exit = Node::new("exit");
-        exit.attrs.insert(
-            "shape".to_string(),
-            AttrValue::String("Msquare".to_string()),
-        );
-        g.nodes.insert("exit".to_string(), exit);
-
-        let work = Node::new("work");
-        g.nodes.insert("work".to_string(), work);
-
-        g.edges.push(Edge::new("start", "work"));
-        g.edges.push(Edge::new("work", "exit"));
-
-        g.attrs.insert(
+        graph.attrs.insert(
             "goal".to_string(),
             AttrValue::String("Run tests".to_string()),
         );
-
-        g
-    }
-
-    #[test]
-    fn graph_find_start_node() {
-        let g = sample_graph();
-        let start = g.find_start_node().unwrap();
-        assert_eq!(start.id, "start");
-    }
-
-    #[test]
-    fn graph_find_exit_node() {
-        let g = sample_graph();
-        let exit = g.find_exit_node().unwrap();
-        assert_eq!(exit.id, "exit");
-    }
-
-    #[test]
-    fn graph_find_exit_by_end_id() {
-        let mut g = Graph::new("test");
-        let node = Node::new("end");
-        g.nodes.insert("end".to_string(), node);
-        let exit = g.find_exit_node().unwrap();
-        assert_eq!(exit.id, "end");
-    }
-
-    #[test]
-    fn graph_outgoing_edges() {
-        let g = sample_graph();
-        let edges = g.outgoing_edges("start");
-        assert_eq!(edges.len(), 1);
-        assert_eq!(edges[0].to, "work");
-    }
-
-    #[test]
-    fn graph_incoming_edges() {
-        let g = sample_graph();
-        let edges = g.incoming_edges("exit");
-        assert_eq!(edges.len(), 1);
-        assert_eq!(edges[0].from, "work");
-    }
-
-    #[test]
-    fn graph_goal() {
-        let g = sample_graph();
-        assert_eq!(g.goal(), "Run tests");
-    }
-
-    #[test]
-    fn graph_goal_default() {
-        let g = Graph::new("empty");
-        assert_eq!(g.goal(), "");
-    }
-
-    #[test]
-    fn graph_model_stylesheet_default() {
-        let g = Graph::new("empty");
-        assert_eq!(g.model_stylesheet(), "");
-    }
-
-    #[test]
-    fn graph_default_max_retries() {
-        let g = Graph::new("empty");
-        assert_eq!(g.default_max_retries(), 0);
-    }
-
-    #[test]
-    fn graph_find_start_by_id_fallback() {
-        let mut g = Graph::new("test");
-        // No Mdiamond shape, but id is "start"
-        let node = Node::new("start");
-        g.nodes.insert("start".to_string(), node);
-        assert!(g.find_start_node().is_some());
-    }
-
-    #[test]
-    fn graph_no_start_node() {
-        let g = Graph::new("empty");
-        assert!(g.find_start_node().is_none());
-    }
-
-    #[test]
-    fn graph_stall_timeout_default() {
-        let g = Graph::new("empty");
-        assert_eq!(g.stall_timeout(), Some(Duration::from_mins(30)));
-    }
-
-    #[test]
-    fn graph_stall_timeout_set() {
-        let mut g = Graph::new("test");
-        g.attrs.insert(
-            "stall_timeout".to_string(),
-            AttrValue::Duration(Duration::from_millis(200)),
+        graph.attrs.insert(
+            "model_stylesheet".to_string(),
+            AttrValue::String("* { model: gpt-5.4; }".to_string()),
         );
-        assert_eq!(g.stall_timeout(), Some(Duration::from_millis(200)));
-    }
-
-    #[test]
-    fn graph_stall_timeout_zero_disables() {
-        let mut g = Graph::new("test");
-        g.attrs.insert(
-            "stall_timeout".to_string(),
-            AttrValue::Duration(Duration::ZERO),
-        );
-        assert_eq!(g.stall_timeout(), None);
-    }
-
-    #[test]
-    fn graph_max_node_visits_default() {
-        let g = Graph::new("empty");
-        assert_eq!(g.max_node_visits(), 0);
-    }
-
-    #[test]
-    fn graph_max_node_visits_set() {
-        let mut g = Graph::new("test");
-        g.attrs
-            .insert("max_node_visits".to_string(), AttrValue::Integer(10));
-        assert_eq!(g.max_node_visits(), 10);
-    }
-
-    #[test]
-    fn graph_loop_restart_signature_limit_default() {
-        let g = Graph::new("empty");
-        assert_eq!(g.loop_restart_signature_limit(), 3);
-    }
-
-    #[test]
-    fn graph_loop_restart_signature_limit_set() {
-        let mut g = Graph::new("test");
-        g.attrs.insert(
-            "loop_restart_signature_limit".to_string(),
-            AttrValue::Integer(5),
-        );
-        assert_eq!(g.loop_restart_signature_limit(), 5);
-    }
-
-    #[test]
-    fn graph_loop_restart_signature_limit_invalid_falls_back() {
-        let mut g = Graph::new("test");
-        g.attrs.insert(
-            "loop_restart_signature_limit".to_string(),
-            AttrValue::Integer(0),
-        );
-        assert_eq!(g.loop_restart_signature_limit(), 3);
-
-        g.attrs.insert(
-            "loop_restart_signature_limit".to_string(),
-            AttrValue::Integer(-1),
-        );
-        assert_eq!(g.loop_restart_signature_limit(), 3);
+        assert_eq!(graph.goal(), "Run tests");
+        assert_eq!(graph.model_stylesheet(), "* { model: gpt-5.4; }");
     }
 
     #[test]

@@ -31,6 +31,7 @@ pub mod pull_request;
 pub mod repository;
 pub mod run;
 pub mod run_failure;
+pub mod run_graph;
 pub mod run_id;
 pub mod run_intent;
 pub mod run_projection;
@@ -83,10 +84,7 @@ pub use diff::{DiffStats, DiffSummary, RunDiff};
 pub use engine::{PetriAdmission, PetriGraphRef};
 pub use failure_signature::FailureSignature;
 pub use git_identity::{GitIdentity, GitIdentitySource};
-pub use graph::{
-    AttrValue, AttributeScope, ContextKeyAttr, Edge, Graph, KNOWN_HANDLER_TYPES, Node, OnFailure,
-    ResolvedOnFailure, is_known_handler_type, is_llm_handler_type, shape_to_handler_type,
-};
+pub use graph::{AttrValue, AttributeScope, Edge, Graph, Node, shape_to_handler_type};
 pub use input_scalar::{
     JsonScalarToTomlError, TomlScalarToJsonError, json_scalar_to_toml_value,
     toml_scalar_to_json_value,
@@ -140,6 +138,7 @@ pub use run::{
     RunServerProvenance, RunSpec,
 };
 pub use run_failure::RunFailure;
+pub use run_graph::{RunGraph, RunGraphEdge, RunGraphNode};
 pub use run_id::{RunId, fixtures};
 pub use run_intent::{
     GitCoordinateValidationError, GitRunTarget, RunIntent, RunIntentArgs, RunTarget,

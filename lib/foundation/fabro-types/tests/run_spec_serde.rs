@@ -1,13 +1,12 @@
 use std::collections::HashMap;
 
-use fabro_types::graph::Graph;
 use fabro_types::run::{DirtyStatus, ForkSourceRef, GitContext, RunSpec};
 use fabro_types::settings::InterpString;
 use fabro_types::settings::run::RunGoal;
 use fabro_types::test_support::{test_run_provenance, test_workflow_version_id};
 use fabro_types::{
-    AutomationRef, GitRunTarget, PetriAdmission, ResolvedAutomationGitWorkflowSource, RunTarget,
-    WorkflowSettings, fixtures,
+    AutomationRef, GitRunTarget, PetriAdmission, ResolvedAutomationGitWorkflowSource, RunGraph,
+    RunTarget, WorkflowSettings, fixtures,
 };
 
 fn templated_settings() -> WorkflowSettings {
@@ -21,7 +20,7 @@ fn run_spec_round_trips_templated_settings() {
     let record = RunSpec {
         run_id:              fixtures::RUN_1,
         settings:            templated_settings(),
-        graph:               Graph::new("ship"),
+        graph:               RunGraph::new("ship"),
         graph_source:        None,
         workflow_slug:       Some("demo".to_string()),
         workflow_version_id: Some(test_workflow_version_id()),

@@ -205,8 +205,8 @@ mod tests {
     use super::usage_rollup_from_projection;
     use crate::test_support::{self, test_usage};
     use crate::{
-        AttrValue, Graph, ModelRef, Node, RunProjection, RunSpec, StageCompletion, StageOutcome,
-        first_event_seq,
+        ModelRef, RunGraph, RunGraphNode, RunProjection, RunSpec, StageCompletion, StageHandler,
+        StageOutcome, first_event_seq,
     };
 
     fn test_projection() -> RunProjection {
@@ -438,22 +438,14 @@ mod tests {
     }
 
     fn run_spec_with_boundary_nodes() -> RunSpec {
-        let mut graph = Graph::new("test");
-        graph.nodes.insert("start".to_string(), {
-            let mut node = Node::new("start");
-            node.attrs.insert(
-                "shape".to_string(),
-                AttrValue::String("Mdiamond".to_string()),
-            );
-            node
+        let mut graph = RunGraph::new("test");
+        graph.nodes.insert("start".to_string(), RunGraphNode {
+            label: "start".to_string(),
+            kind:  StageHandler::Start,
         });
-        graph.nodes.insert("exit".to_string(), {
-            let mut node = Node::new("exit");
-            node.attrs.insert(
-                "shape".to_string(),
-                AttrValue::String("Msquare".to_string()),
-            );
-            node
+        graph.nodes.insert("exit".to_string(), RunGraphNode {
+            label: "exit".to_string(),
+            kind:  StageHandler::Exit,
         });
 
         RunSpec {

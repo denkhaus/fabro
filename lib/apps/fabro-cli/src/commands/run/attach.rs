@@ -784,7 +784,7 @@ mod tests {
         let spec = fabro_types::RunSpec {
             run_id,
             settings: fabro_types::WorkflowSettings::default(),
-            graph: fabro_types::Graph::new("test"),
+            graph: fabro_types::RunGraph::new("test"),
             graph_source: None,
             workflow_slug: None,
             workflow_version_id: None,

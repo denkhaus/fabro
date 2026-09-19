@@ -666,14 +666,13 @@ mod tests {
 
     use chrono::Utc;
     use fabro_auth::VaultCredentialSource;
-    use fabro_graphviz::graph::Graph;
     use fabro_llm::adapter::{ProviderAdapter, ResolvedCall};
     use fabro_llm::credentials::CredentialProvider;
     use fabro_llm::lithos_catalog::AdapterId;
     use fabro_llm::{Response, ResponseStream};
     use fabro_types::{
-        PetriAdmission, RunProjection, RunSpec, StageSummary, WorkflowSettings, first_event_seq,
-        fixtures, test_support,
+        PetriAdmission, RunGraph, RunProjection, RunSpec, StageSummary, WorkflowSettings,
+        first_event_seq, fixtures, test_support,
     };
     use fabro_vault::{SecretType, Vault};
     use httpmock::Method::{GET, POST};
@@ -781,7 +780,7 @@ capabilities = { text = true, tools = true, response_format = { json_object = tr
             RunSpec {
                 run_id:              fixtures::RUN_1,
                 settings:            WorkflowSettings::default(),
-                graph:               Graph::new("test"),
+                graph:               RunGraph::new("test"),
                 graph_source:        None,
                 workflow_slug:       None,
                 workflow_version_id: None,

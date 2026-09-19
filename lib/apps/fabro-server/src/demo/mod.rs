@@ -1630,7 +1630,7 @@ mod runs {
     /// agent stage carrying the coding agent's fold of `agent_events()`.
     pub(super) fn run_state() -> fabro_types::RunProjection {
         use fabro_types::{
-            Graph, RunProjection, RunProvenance, RunSpec, StageTiming, WorkflowSettings,
+            RunGraph, RunProjection, RunProvenance, RunSpec, StageTiming, WorkflowSettings,
             first_event_seq,
         };
         use pebble_coding_agent::projection::SessionProjection;
@@ -1639,7 +1639,7 @@ mod runs {
         let spec = RunSpec {
             run_id:              demo_run_id(1),
             settings:            WorkflowSettings::default(),
-            graph:               Graph::new("drift-remediation"),
+            graph:               RunGraph::new("drift-remediation"),
             graph_source:        Some(super::DEMO_GRAPH_DOT.to_string()),
             workflow_slug:       Some("implement".to_string()),
             workflow_version_id: None,

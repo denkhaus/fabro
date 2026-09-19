@@ -4,8 +4,8 @@ use lithos_llm::catalog::{ModelId, builtin};
 use lithos_llm::types::{Cost, CostSource, TokenCounts, Usage};
 
 use crate::{
-    AuthMethod, BlobHash, Graph, IdpIdentity, ModelRef, ModelUsage, PetriAdmission, PetriGraphRef,
-    Principal, RunProvenance, RunSpec, WorkflowSettings, WorkflowVersionId, fixtures,
+    AuthMethod, BlobHash, IdpIdentity, ModelRef, ModelUsage, PetriAdmission, PetriGraphRef,
+    Principal, RunGraph, RunProvenance, RunSpec, WorkflowSettings, WorkflowVersionId, fixtures,
 };
 
 /// A fully populated `ModelUsage` for tests: `input_tokens` and
@@ -65,7 +65,7 @@ pub fn test_run_spec() -> RunSpec {
     RunSpec {
         run_id:              fixtures::RUN_1,
         settings:            WorkflowSettings::default(),
-        graph:               Graph::new("test"),
+        graph:               RunGraph::new("test"),
         graph_source:        None,
         workflow_slug:       None,
         workflow_version_id: None,

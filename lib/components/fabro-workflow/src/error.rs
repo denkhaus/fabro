@@ -1,63 +1,7 @@
-use std::fmt;
-use std::sync::Arc;
-
 use fabro_graphviz::Error as GraphvizError;
-use fabro_template::TemplateError;
 use fabro_types::diagnostic::Diagnostic;
-use fabro_types::settings::ResolveError;
 use fabro_util::error::{SharedError, collect_chain, render_with_causes};
 use thiserror::Error as ThisError;
-
-/// A template error shared across clones of the workflow error that carries
-/// it, so the miette diagnostic and the source chain survive cloning.
-#[derive(Debug, Clone)]
-pub struct SharedTemplateError(Arc<TemplateError>);
-
-impl SharedTemplateError {
-    #[must_use]
-    pub fn new(error: TemplateError) -> Self {
-        Self(Arc::new(error))
-    }
-
-    #[must_use]
-    pub fn inner(&self) -> &TemplateError {
-        &self.0
-    }
-}
-
-impl fmt::Display for SharedTemplateError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Display::fmt(&*self.0, formatter)
-    }
-}
-
-impl std::error::Error for SharedTemplateError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        std::error::Error::source(&*self.0)
-    }
-}
-
-impl miette::Diagnostic for SharedTemplateError {
-    fn code<'a>(&'a self) -> Option<Box<dyn fmt::Display + 'a>> {
-        miette::Diagnostic::code(&*self.0)
-    }
-
-    fn help<'a>(&'a self) -> Option<Box<dyn fmt::Display + 'a>> {
-        miette::Diagnostic::help(&*self.0)
-    }
-
-    fn source_code(&self) -> Option<&dyn miette::SourceCode> {
-        miette::Diagnostic::source_code(&*self.0)
-    }
-
-    fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
-        miette::Diagnostic::labels(&*self.0)
-    }
-
-    fn diagnostic_source(&self) -> Option<&dyn miette::Diagnostic> {
-        miette::Diagnostic::diagnostic_source(&*self.0)
-    }
-}
 
 #[derive(ThisError, Debug, Clone)]
 pub enum Error {
@@ -70,21 +14,6 @@ pub enum Error {
     #[error("Validation failed")]
     ValidationFailed { diagnostics: Vec<Diagnostic> },
 
-    #[error("Validation error: script interpolation failed in {owner}: {source} ({fix})")]
-    ScriptInterpolation {
-        owner:  String,
-        fix:    String,
-        #[source]
-        source: ResolveError,
-    },
-
-    #[error("{message}")]
-    Template {
-        message: String,
-        #[source]
-        source:  SharedTemplateError,
-    },
-
     /// Fabro's own platform work around a run failed: a store call, a
     /// serialization, a spawned task, a Git command.
     #[error("Engine error: {message}")]
@@ -93,9 +22,6 @@ pub enum Error {
         #[source]
         source:  Option<SharedError>,
     },
-
-    #[error("Stylesheet error: {0}")]
-    Stylesheet(String),
 
     #[error("I/O error: {0}")]
     Io(String),
@@ -111,13 +37,6 @@ pub enum Error {
 }
 
 impl Error {
-    pub fn template(message: impl Into<String>, source: TemplateError) -> Self {
-        Self::Template {
-            message: message.into(),
-            source:  SharedTemplateError::new(source),
-        }
-    }
-
     pub fn engine(message: impl Into<String>) -> Self {
         Self::Engine {
             message: message.into(),
@@ -145,8 +64,6 @@ impl Error {
             Self::Engine { source, .. } => source
                 .as_ref()
                 .map_or_else(Vec::new, |source| collect_chain(source)),
-            Self::Template { source, .. } => collect_chain(source),
-            Self::ScriptInterpolation { source, .. } => collect_chain(source),
             _ => Vec::new(),
         }
     }
@@ -154,43 +71,6 @@ impl Error {
     #[must_use]
     pub fn display_with_causes(&self) -> String {
         render_with_causes(&self.to_string(), &self.causes())
-    }
-}
-
-impl miette::Diagnostic for Error {
-    fn code<'a>(&'a self) -> Option<Box<dyn fmt::Display + 'a>> {
-        match self {
-            Self::Template { source, .. } => miette::Diagnostic::code(source),
-            _ => None,
-        }
-    }
-
-    fn help<'a>(&'a self) -> Option<Box<dyn fmt::Display + 'a>> {
-        match self {
-            Self::Template { source, .. } => miette::Diagnostic::help(source),
-            _ => None,
-        }
-    }
-
-    fn source_code(&self) -> Option<&dyn miette::SourceCode> {
-        match self {
-            Self::Template { source, .. } => miette::Diagnostic::source_code(source),
-            _ => None,
-        }
-    }
-
-    fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
-        match self {
-            Self::Template { source, .. } => miette::Diagnostic::labels(source),
-            _ => None,
-        }
-    }
-
-    fn diagnostic_source(&self) -> Option<&dyn miette::Diagnostic> {
-        match self {
-            Self::Template { source, .. } => Some(source),
-            _ => None,
-        }
     }
 }
 
@@ -204,7 +84,6 @@ impl From<GraphvizError> for Error {
     fn from(e: GraphvizError) -> Self {
         match e {
             GraphvizError::Parse(msg) => Self::Parse(msg),
-            GraphvizError::Stylesheet(msg) => Self::Stylesheet(msg),
         }
     }
 }
@@ -271,30 +150,6 @@ mod tests {
             }],
         };
         assert_eq!(err.to_string(), "Validation failed");
-    }
-
-    #[test]
-    fn template_error_variant_preserves_source_chain() {
-        let template_err = fabro_template::render_named(
-            "workflow.fabro",
-            "{{ inputs.missing }}",
-            &fabro_template::TemplateContext::new(),
-        )
-        .unwrap_err();
-
-        let err = Error::template("template expansion failed", template_err);
-        let chain = collect_chain(&err);
-
-        assert!(
-            chain
-                .iter()
-                .any(|part| part.contains("template expansion failed"))
-        );
-        assert!(
-            chain
-                .iter()
-                .any(|part| part.contains("undefined template variable"))
-        );
     }
 
     #[test]
@@ -373,7 +228,6 @@ mod tests {
             },
             Error::engine("engine err"),
             Error::engine_with_source("engine err", TestCause("cause")),
-            Error::Stylesheet("style err".into()),
             Error::Io("io err".into()),
             Error::Precondition("precondition".into()),
             Error::RunNotFound("run".into()),

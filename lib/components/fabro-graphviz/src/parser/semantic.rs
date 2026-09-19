@@ -482,7 +482,13 @@ mod tests {
         };
 
         let graph = ast_to_graph(&dot).unwrap();
-        assert_eq!(graph.edges[0].weight(), 5);
+        assert_eq!(
+            graph.edges[0]
+                .attrs
+                .get("weight")
+                .and_then(AttrValue::as_i64),
+            Some(5)
+        );
     }
 
     #[test]

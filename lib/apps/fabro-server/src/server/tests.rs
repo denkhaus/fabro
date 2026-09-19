@@ -4819,8 +4819,11 @@ async fn validate_endpoint_uses_app_state_catalog_for_model_diagnostics() {
     );
 }
 
+/// An input a bundled prompt reads that nothing binds is Petri's
+/// `unsupported.template.unbound_input`, positioned at the node attribute
+/// that names the prompt file, in the workflow the manifest targets.
 #[tokio::test]
-async fn validate_endpoint_returns_template_source_coordinates() {
+async fn validate_endpoint_reports_an_unbound_input_with_petris_code_and_position() {
     let app = test_app_with();
     let dot = r#"digraph ValidatePlan {
         start [shape=Mdiamond, label="Start"]
@@ -4866,18 +4869,17 @@ async fn validate_endpoint_returns_template_source_coordinates() {
     let diagnostics = body["workflow"]["diagnostics"].as_array().unwrap();
     let diagnostic = diagnostics
         .iter()
-        .find(|diagnostic| diagnostic["rule"] == "template_undefined_variable")
-        .expect("expected template diagnostic");
+        .find(|diagnostic| diagnostic["rule"] == "unsupported.template.unbound_input")
+        .unwrap_or_else(|| panic!("expected Petri's unbound input diagnostic: {diagnostics:?}"));
 
-    assert_eq!(diagnostic["source_path"], "test.md");
-    assert_eq!(diagnostic["line"], 1);
-    assert_eq!(diagnostic["column"], 4);
-    assert!(
-        diagnostic["node_id"]
-            .as_str()
-            .unwrap()
-            .contains("test_imported_prompt")
-    );
+    assert_eq!(diagnostic["severity"], "error");
+    assert_eq!(diagnostic["source_path"], "workflow.fabro");
+    assert_eq!(diagnostic["line"], 4);
+    assert_eq!(diagnostic["column"], 43);
+    let message = diagnostic["message"].as_str().unwrap();
+    assert!(message.contains("test_imported_prompt"), "{message}");
+    assert!(message.contains("inputs.foo"), "{message}");
+    assert_eq!(body["ok"], false);
 }
 
 async fn create_run_for_target(app: &Router, target_path: &str, dot_source: &str) -> String {

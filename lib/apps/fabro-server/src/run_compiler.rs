@@ -7,13 +7,13 @@
 //! 1. [`normalize_source`] — resolve the bundle entrypoint and retain the
 //!    admitted workflow settings, whose dockerfile references are already
 //!    inlined.
-//! 2. [`layer_settings`] + [`apply_run_variables`] + graph compilation — layer
-//!    settings from every configured source, substitute the run-scoped variable
-//!    snapshot, then parse/transform/validate the graph through the
-//!    fabro-workflow pipeline.
-//! 3. [`compile_admitted`] — Petri compiled, linted and pinned models at its
-//!    admission, so only the Fabro graph the read side displays is parsed here,
-//!    and the admission is recorded on the run.
+//! 2. [`layer_settings`] + [`apply_run_variables`] — layer settings from every
+//!    configured source and substitute the run-scoped variable snapshot. The
+//!    prepared run then goes to Petri (`crate::server::petri_runs::admit`),
+//!    which compiles, lints and pins models: its admitted graph is the graph.
+//! 3. [`materialize_admitted`] — record the admission and the display graph
+//!    read off it on the run, and materialize Fabro's run-level settings (the
+//!    goal, the pull request block) around them.
 //! 4. [`assemble_run`] — purely assemble the complete persistence input; no
 //!    field is mutated after assembly.
 //!
@@ -35,14 +35,14 @@ use fabro_config::{
 use fabro_types::settings::interp::{InterpString, ResolveError};
 use fabro_types::settings::run::{McpServerSettings, RunGoal};
 use fabro_types::{
-    AutomationRef, GitContext, ManifestPath, PetriAdmission, RunId, RunProvenance, RunTarget,
-    WorkflowSettings, WorkflowVersionId,
+    AutomationRef, GitContext, ManifestPath, PetriAdmission, RunGraph, RunId, RunProvenance,
+    RunTarget, WorkflowSettings, WorkflowVersionId,
 };
 use fabro_util::workspace_glob::{WorkspaceGlob, WorkspaceGlobError};
 use fabro_workflow::Error as WorkflowError;
 use fabro_workflow::operations::{
-    self, CreateRunCompileInput, CreateRunPersistenceInput, CreateRunPersistenceMetadata,
-    MaterializedRun, WorkflowInput,
+    self, AdmittedRunInput, CreateRunPersistenceInput, CreateRunPersistenceMetadata,
+    MaterializedRun,
 };
 use fabro_workflow::workflow_bundle::{BundledWorkflow, WorkflowBundle};
 use tokio::task;
@@ -125,7 +125,8 @@ pub(crate) struct LayeredRun {
 }
 
 /// Variable-substituted stage output. Callers may inspect the resolved
-/// settings before policy checks, then move it into [`compile_and_pin`].
+/// settings before policy checks, then hand it to Petri's admission and move
+/// it into [`materialize_admitted`].
 pub(crate) struct PreparedRun {
     layered: LayeredRun,
     vars:    HashMap<String, String>,
@@ -185,7 +186,14 @@ impl PreparedRun {
     }
 }
 
-/// Model-pinned stage output ready for pure persistence-input assembly.
+/// What Petri admitted for a run: the stored graphs the run executes from,
+/// and the display graph read off them.
+pub(crate) struct AdmittedRun {
+    pub(crate) admission: PetriAdmission,
+    pub(crate) graph:     RunGraph,
+}
+
+/// Admitted stage output ready for pure persistence-input assembly.
 pub(crate) struct PinnedRun {
     materialized: MaterializedRun,
     metadata:     RunMetadata,
@@ -210,9 +218,9 @@ pub(crate) enum RunCompilerError {
     #[error("Run config variable interpolation failed: {0}")]
     VariableInterpolation(#[from] VariableInterpolationError),
 
-    /// Graph compilation or model pinning failed in the workflow engine. The
-    /// full [`WorkflowError`] is preserved so callers can distinguish
-    /// validation, parse, and model-selection failures.
+    /// Petri refused the workflow, or Fabro's materialization around its
+    /// admission failed. The full [`WorkflowError`] is preserved so callers
+    /// can distinguish validation and parse failures.
     #[error(transparent)]
     Workflow(#[from] WorkflowError),
 }
@@ -393,12 +401,12 @@ pub(crate) fn apply_run_variables(
     Ok(PreparedRun { layered, vars })
 }
 
-/// Stages two and three for a run Petri admitted: parse the Fabro graph
-/// the read side displays, with no lint and no model pinning, and record
-/// the admission on the run.
-pub(crate) async fn compile_admitted(
+/// Stage three for a run Petri admitted: record the admission and its
+/// display graph on the run, and materialize Fabro's run-level settings
+/// around them. Blocking: a `[run.goal]` file is read from disk.
+pub(crate) async fn materialize_admitted(
     prepared: PreparedRun,
-    admission: PetriAdmission,
+    admitted: AdmittedRun,
 ) -> Result<PinnedRun> {
     task::spawn_blocking(move || {
         let PreparedRun {
@@ -411,18 +419,20 @@ pub(crate) async fn compile_admitted(
                     cwd,
                     metadata,
                 },
-            vars,
+            // Consumed at admission, as Petri's compile variables.
+            vars: _,
         } = prepared;
-        let compiled = operations::compile_admitted_run(CreateRunCompileInput {
-            workflow: WorkflowInput::Bundled(workflow),
+        let AdmittedRun { admission, graph } = admitted;
+        let materialized = operations::materialize_admitted_run(AdmittedRunInput {
             settings,
-            vars,
             cwd,
-            workflow_path: Some(entrypoint),
-            workflow_bundle: Some(workflow_bundle),
+            graph,
+            source: workflow.source,
+            workflow_path: entrypoint,
+            workflow_bundle,
         })?;
         Ok(PinnedRun {
-            materialized: operations::materialize_admitted_run(compiled),
+            materialized,
             metadata,
             admission,
         })
@@ -876,21 +886,22 @@ include = ["reports/{{ vars.path }}/*.json"]
             HashMap::from([("owner".to_string(), "payments".to_string())]),
         )
         .expect("settings should prepare");
-        let pinned = compile_admitted(prepared, PetriAdmission::default())
-            .await
-            .expect("the admitted graph should compile");
+        let mut graph = RunGraph::new("Test");
+        graph.goal = "Graph goal".to_string();
+        let pinned = materialize_admitted(prepared, AdmittedRun {
+            admission: PetriAdmission::default(),
+            graph,
+        })
+        .await
+        .expect("the admitted run should materialize");
         let persistence = assemble_run(pinned);
 
         assert_eq!(persistence.run_id(), run_id);
         assert_eq!(persistence.workflow_slug(), Some("compiler-boundary"));
         assert_eq!(persistence.workflow_version_id(), Some(workflow_version_id));
         assert_eq!(persistence.automation(), Some(&automation));
-        assert_eq!(
-            persistence
-                .definition()
-                .map(|definition| &definition.workflow_path),
-            Some(&expected_entrypoint)
-        );
+        assert_eq!(persistence.definition().workflow_path, expected_entrypoint);
+        assert_eq!(persistence.materialized().graph().goal(), "Graph goal");
         assert_eq!(
             persistence.materialized().settings().run.goal.as_ref(),
             Some(&RunGoal::Inline(InterpString::parse("Graph goal")))

@@ -5,8 +5,8 @@ use serde::{Deserialize, Serialize};
 use crate::WorkflowSettings;
 use crate::blob_hash::BlobHash;
 use crate::engine::PetriAdmission;
-use crate::graph::Graph;
 use crate::principal::Principal;
+use crate::run_graph::RunGraph;
 use crate::run_id::RunId;
 use crate::run_intent::RunTarget;
 use crate::run_summary::AutomationRef;
@@ -63,7 +63,9 @@ pub struct ForkSourceRef {
 pub struct RunSpec {
     pub run_id:              RunId,
     pub settings:            WorkflowSettings,
-    pub graph:               Graph,
+    /// The display graph: what Petri admitted, reduced to what the read
+    /// side names. The DOT it was written in is `graph_source`.
+    pub graph:               RunGraph,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub graph_source:        Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -102,7 +104,7 @@ impl RunSpec {
     }
 
     #[must_use]
-    pub fn graph(&self) -> &Graph {
+    pub fn graph(&self) -> &RunGraph {
         &self.graph
     }
 

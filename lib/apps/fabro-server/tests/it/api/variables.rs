@@ -270,12 +270,12 @@ async fn run_config_substitutes_variables_before_persisting_settings() {
 }
 
 #[tokio::test]
-async fn run_create_interpolates_variables_into_node_prompts() {
+async fn run_create_interpolates_variables_into_the_admitted_graph() {
     let workspace = tempfile::tempdir().unwrap();
     // End-to-end through the real run-create path: a server variable resolves
-    // inside a node `prompt` (a DOT graph attribute the settings substitution
-    // pass never touches), proving the variable store is snapshotted into the
-    // template render context at create time.
+    // inside the graph `goal` (a DOT graph attribute the settings substitution
+    // pass never touches), proving the variable store is snapshotted into
+    // Petri's compile variables at create time.
     let state = test_app_state_with_options(test_settings(), 5);
     let app = fabro_server::test_support::build_test_router(std::sync::Arc::clone(&state));
 
@@ -291,7 +291,7 @@ async fn run_create_interpolates_variables_into_node_prompts() {
     response_status(create_variable, StatusCode::OK, "POST /api/v1/variables").await;
 
     let dot = r#"digraph Test {
-        graph [goal="Ship it"]
+        graph [goal="Ship {{ vars.SERVICE }}"]
         start [shape=Mdiamond]
         work  [shape=box, prompt="Service: {{ vars.SERVICE }}"]
         exit  [shape=Msquare]
@@ -315,7 +315,9 @@ async fn run_create_interpolates_variables_into_node_prompts() {
         .expect("create run response should include id");
 
     // The run's stream holds its `run.created` record, whose spec carries
-    // the fully-rendered graph. The view trails the record, so wait for it.
+    // the display graph read off Petri's admitted graph: its goal is the
+    // rendered goal, the same rendering the node prompts went through. The
+    // view trails the record, so wait for it.
     state
         .test_petri_projector()
         .settle(run_id.parse().expect("run id"))
@@ -340,9 +342,12 @@ async fn run_create_interpolates_variables_into_node_prompts() {
         .find(|item| item["item"]["record"]["kind"] == "run.created")
         .expect("expected a run.created record");
     assert_eq!(
-        created["item"]["record"]["spec"]["graph"]["nodes"]["work"]["attrs"]["prompt"]["String"],
-        "Service: billing",
-        "node prompt should interpolate the run variable; record: {created}"
+        created["item"]["record"]["spec"]["graph"]["goal"], "Ship billing",
+        "the admitted goal should interpolate the run variable; record: {created}"
+    );
+    assert_eq!(
+        created["item"]["record"]["spec"]["graph"]["nodes"]["work"]["kind"], "agent",
+        "record: {created}"
     );
 }
 

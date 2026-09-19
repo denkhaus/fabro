@@ -5,7 +5,8 @@
 //! and the launch to Petri's `Runtime::check` through `fabro_petri::check`,
 //! maps Petri's diagnostics onto Fabro's, and stores the admitted graphs in
 //! the blob store so the run executes and resumes from what was admitted.
-//! Petri compiled, linted and pinned models; the legacy compile is skipped.
+//! Petri compiled, linted and pinned models; the run's display graph is read
+//! off its admitted graph (`fabro_petri::run_graph`).
 //!
 //! At execution, a Petri run takes the same path a legacy run does: the
 //! scheduler launches `fabro run __run-worker` with the worker's token, and
@@ -45,13 +46,11 @@ use fabro_petri::platform_records::SqlitePlatformRecords;
 use fabro_petri::recovery::{self, Recovery, RecoveryRequest};
 use fabro_petri::runtime::{self, RuntimeSpec};
 use fabro_petri::secrets::VaultSecrets;
-use fabro_petri::{SqliteRunStore, admission};
+use fabro_petri::{SqliteRunStore, admission, run_graph};
 use fabro_store::platform_records::{RunLifecycleKind, RunLifecycleRecord};
 use fabro_types::settings::McpTransport;
 use fabro_types::settings::run::{ApprovalMode, McpServerSettings, RunMode};
-use fabro_types::{
-    FailureReason, PetriAdmission, RunId, RunRunnableSource, RunStatus, RunTarget, SuccessReason,
-};
+use fabro_types::{FailureReason, RunId, RunRunnableSource, RunStatus, RunTarget, SuccessReason};
 use fabro_util::error as error_util;
 use fabro_workflow::Error as WorkflowError;
 use lithos_llm::catalog::ProviderId;
@@ -65,7 +64,7 @@ use super::{
 };
 use crate::petri_check;
 use crate::petri_runs::PetriRuns;
-use crate::run_compiler::{PreparedRun, RunCompilerError};
+use crate::run_compiler::{AdmittedRun, PreparedRun, RunCompilerError};
 
 /// The runtime Petri gets, at create and at execution: the server's run
 /// defaults and environment catalog as the settings layer, the MCP
@@ -245,14 +244,14 @@ fn mcp_catalog_entry(server: &McpServerSettings) -> toml::Table {
     entry
 }
 
-/// Petri compiles the run: check the bundle, map the diagnostics, and
-/// persist the admitted graphs. A refusal is the same validation error the
-/// legacy compiler raised, carrying Petri's diagnostics.
+/// Petri compiles the run: check the bundle, map the diagnostics, persist
+/// the admitted graphs, and read the display graph off them. A refusal is a
+/// validation error carrying Petri's diagnostics.
 pub(crate) async fn admit(
     state: &AppState,
     prepared: &PreparedRun,
     eligible: &[ProviderId],
-) -> Result<PetriAdmission, RunCompilerError> {
+) -> Result<AdmittedRun, RunCompilerError> {
     let settings = prepared.settings();
     let repository = match prepared.target() {
         Some(RunTarget::Folder { path }) => Some(path.into()),
@@ -301,14 +300,18 @@ pub(crate) async fn admit(
             "Petri's check admitted no graph and raised no error",
         ))
     })?;
-    admission::persist(&state.store_ref().blobs(), &admitted)
+    let admission = admission::persist(&state.store_ref().blobs(), &admitted)
         .await
         .map_err(|err| {
             RunCompilerError::Workflow(WorkflowError::engine_with_source(
                 "the admitted graphs could not be stored",
                 err,
             ))
-        })
+        })?;
+    Ok(AdmittedRun {
+        admission,
+        graph: run_graph::run_graph(&admitted),
+    })
 }
 
 /// Execute a Petri run in the server process, under the test override:

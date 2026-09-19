@@ -70,12 +70,8 @@ fn preflight_rejects_unbound_template_inputs() {
     ----- stderr -----
     Workflow: TemplatedUnbound (3 nodes, 2 edges)
     Graph: [FIXTURES]/templated_unbound.fabro
-    Goal: Demo
+    Goal: Demo {{ inputs.app_dir }}
 
-    error: [FIXTURES]/templated_unbound.fabro:2:26: undefined template variable `inputs.app_dir` in graph attribute `goal` (template_undefined_variable)
-      fix: bind `app_dir` via `[run.inputs]` in workflow.toml, or pass `--input app_dir=<value>`
-    error: [FIXTURES]/templated_unbound.fabro:7:44: undefined template variable `inputs.app_dir` in node `work` attribute `prompt` [node: work] (template_undefined_variable)
-      fix: bind `app_dir` via `[run.inputs]` in workflow.toml, or pass `--input app_dir=<value>`
     error: [FIXTURES]/templated_unbound.fabro:2:12: the graph `goal` reads `{{ inputs.app_dir }}`, which no input binds (unsupported.template.unbound_input)
       fix: pass `--input app_dir=VALUE`, or add a default under `[run.inputs]` in workflow.toml
     error: [FIXTURES]/templated_unbound.fabro:7:25: node `work` `prompt` reads `{{ inputs.app_dir }}`, which no input binds (unsupported.template.unbound_input)

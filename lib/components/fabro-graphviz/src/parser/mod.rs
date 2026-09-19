@@ -70,8 +70,8 @@ mod tests {
         assert_eq!(graph.nodes.len(), 4);
         // start->run_tests, run_tests->report, report->exit
         assert_eq!(graph.edges.len(), 3);
-        assert!(graph.find_start_node().is_some());
-        assert!(graph.find_exit_node().is_some());
+        assert!(graph.nodes.contains_key("start"));
+        assert!(graph.nodes.contains_key("exit"));
     }
 
     #[test]
