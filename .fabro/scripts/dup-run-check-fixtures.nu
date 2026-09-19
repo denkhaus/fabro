@@ -21,6 +21,12 @@
 #       'Improve: revise develop run 01M2Q7VVH, file seeds fabro-6ae9
 #       and fabro-... (#212)') must classify filed-only, NOT as a
 #       foreign implementation forcing a duplicate verdict -> clean
+#   (o)/(p) fabro-395b bookkeeping: landed squash commits that merely
+#       REOPEN ("fabro-X: reopen ... (#n)", e.g. real e769f791) or
+#       VERIFY/move a seed ("Verify fabro-X fix in-tree; move seed to
+#       in_progress (#n)", e.g. real f3c12e03) classify filed-only,
+#       NOT landed implementations -> clean (incident runs
+#       01M2WG2Z42N8P2QKX0K7VXT1MC / 01M2WHTHVGK360638W9H9PN2BT)
 #   (f)-(h) fabro-a32f pre-planner preflight (planner-preflight.nu):
 #       landed top candidate -> "Already landed"; filed-only top
 #       candidate -> "Preflight done"; empty candidate list -> degraded
@@ -183,6 +189,28 @@ def main [] {
         expect 'i: file-seeds-and verdict (second seed)' $i2.verdict 'clean'
         expect 'i: file-seeds-and filed_only (second seed)' $i2.filed_only_matches 1
         expect 'i: file-seeds-and impl matches (second seed)' ($i2.implementation_matches | length) 0
+
+        # (o)/(p) fabro-395b: landed squash commits that merely REOPEN or
+        # VERIFY/move the named seed (the real 2026-09-19 incident shapes:
+        # e769f791 'fabro-29f7: reopen gate seed, verify upstream offers
+        # remain unmerged ... (#250)' and f3c12e03 'Verify fabro-6a78 fix
+        # in-tree; move seed to in_progress ... (#254)') must classify
+        # filed-only, never landed implementations — otherwise the
+        # pre-planner preflight mechanically re-closes deliberately
+        # reopened seeds.
+        ^git commit -q --allow-empty -m 'fabro-fix013: reopen gate seed, verify upstream offers remain unmerged (#109)'
+        ^git commit -q --allow-empty -m 'Verify fabro-fix014 fix in-tree; move seed to in_progress (#110)'
+        ^git push -q origin main
+
+        let o = (check $script 'fabro-fix013' 'RUN-SELF')
+        expect 'o: reopen squash verdict' $o.verdict 'clean'
+        expect 'o: reopen squash filed_only' $o.filed_only_matches 1
+        expect 'o: reopen squash impl matches' ($o.implementation_matches | length) 0
+
+        let p = (check $script 'fabro-fix014' 'RUN-SELF')
+        expect 'p: verify/move-seed squash verdict' $p.verdict 'clean'
+        expect 'p: verify/move-seed squash filed_only' $p.filed_only_matches 1
+        expect 'p: verify/move-seed squash impl matches' ($p.implementation_matches | length) 0
 
         # (l)-(n) fabro-ead4 fixture history: foreign landed
         # implementations for fix010 (closes from the live arm, non-top),
