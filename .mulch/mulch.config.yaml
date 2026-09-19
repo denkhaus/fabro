@@ -27,6 +27,7 @@ domains:
   workflow-engine: {}
   process: {}
   fork-strategy: {}
+  devloop: {}
 governance:
   max_entries: 100
   warn_entries: 150

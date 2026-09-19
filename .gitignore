@@ -23,3 +23,4 @@ docs/internal/agent
 
 # staged validator binary for the toolchain image build (run-images.nu)
 .fabro/bin/
+.fabro/cook/
