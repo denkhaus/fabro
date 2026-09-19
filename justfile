@@ -71,6 +71,12 @@ up:
     just smoke
     just clean
 
+# Host-side dev-artifact prune (target/ stale GC + tmp/docker-context).
+# NEVER touches docker volumes/images/builder cache (30-min toolchain +
+# release-build caches live there) — see scripts/dev-artifact-prune.nu.
+dev-prune:
+    nu scripts/dev-artifact-prune.nu
+
 # Build the release binary and the local docker image (cached; uses cargo dev docker-build)
 build-image: web-deps
     cargo --locked dev docker-build --arch {{ arch }} --tag {{ image }}
@@ -85,6 +91,7 @@ build-image: web-deps
 image-release: web-deps
     nu scripts/image-release.nu "{{ arch }}"
     nu scripts/run-images.nu --push
+    just dev-prune
 
 # Build the run images the lab environments reference (toolchain/mise),
 # on demand: rebuilt only when the Dockerfile content hash changed
