@@ -180,8 +180,8 @@ fn run_stream_items(run_dir: &Path) -> Vec<RunStreamItem> {
 /// - `docker-plugin`: the driver's Docker executable over stdio under the
 ///   non-bundled `docker-plugin` kind.
 ///
-/// The plugin variants need the executables `cargo` builds for
-/// `fabro-sandbox`; without them (or without a Docker daemon) they skip,
+/// The plugin variants need the driver's executables on `PATH`; without
+/// them (or without a Docker daemon) they skip,
 /// unless `FABRO_REQUIRE_SANDBOX_PLUGINS` is set, as CI sets it.
 macro_rules! sandbox_tests {
     ($name:ident) => {

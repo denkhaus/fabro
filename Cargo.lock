@@ -2112,7 +2112,6 @@ dependencies = [
  "fabro-petri",
  "fabro-proc",
  "fabro-redact",
- "fabro-sandbox",
  "fabro-server",
  "fabro-static",
  "fabro-store",
@@ -2609,38 +2608,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "fabro-sandbox"
-version = "0.361.0-nightly.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "chrono",
- "fabro-github",
- "fabro-redact",
- "fabro-static",
- "fabro-test",
- "fabro-types",
- "fabro-util",
- "futures",
- "pebble-coding-agent",
- "reqwest 0.13.4",
- "sandbox-driver",
- "sandbox-driver-daytona",
- "sandbox-driver-docker",
- "sandbox-driver-docker-config",
- "sandbox-driver-host",
- "sandbox-driver-protocol",
- "sandbox-driver-testing",
- "serde_json",
- "tempfile",
- "thiserror 2.0.18",
- "tokio",
- "tokio-util",
- "toml 0.8.23",
- "tracing",
-]
-
-[[package]]
 name = "fabro-server"
 version = "0.361.0-nightly.0"
 dependencies = [
@@ -2677,7 +2644,6 @@ dependencies = [
  "fabro-petri",
  "fabro-proc",
  "fabro-redact",
- "fabro-sandbox",
  "fabro-slack",
  "fabro-spa",
  "fabro-static",

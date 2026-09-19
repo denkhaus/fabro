@@ -33,7 +33,6 @@ fabro-mcp-server = { path = "../fabro-mcp-server" }
 fabro-petri = { path = "../../components/fabro-petri" }
 fabro-manifest = { path = "../../components/fabro-manifest" }
 fabro-proc = { path = "../../foundation/fabro-proc" }
-fabro-sandbox = { path = "../../components/fabro-sandbox" }
 fabro-pebble-sandbox = { path = "../../components/fabro-pebble-sandbox" }
 sandbox-driver.workspace = true
 sandbox-driver-host.workspace = true
@@ -114,7 +113,6 @@ fabro-db = { path = "../../foundation/fabro-db" }
 walkdir.workspace = true
 rmcp = { workspace = true, features = ["client", "transport-child-process"] }
 fabro-build-support = { path = "../../foundation/build-support" }
-fabro-sandbox = { path = "../../components/fabro-sandbox", features = ["test-support"] }
 fabro-server = { path = "../fabro-server", features = ["test-support"] }
 fabro-petri = { path = "../../components/fabro-petri", features = ["test-support"] }
 fabro-workflow = { path = "../../components/fabro-workflow", features = ["test-support"] }
