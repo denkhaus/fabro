@@ -1041,9 +1041,11 @@ mod tests {
         let credentials = DaytonaCredentials::from_api_key("dtn_secret_key".to_string(), |name| {
             (name == EnvVars::DAYTONA_ORGANIZATION_ID).then(|| "org-1".to_string())
         });
+        // The rendering stays out of the assertion messages: a failure must
+        // not print the key it is checking for.
         let rendered = format!("{credentials:?}");
-        assert!(!rendered.contains("dtn_secret_key"), "{rendered}");
-        assert!(rendered.contains("org-1"), "{rendered}");
+        assert!(!rendered.contains("dtn_secret_key"));
+        assert!(rendered.contains("org-1"));
         assert_eq!(
             credentials.config().api_key.as_deref(),
             Some("dtn_secret_key")
