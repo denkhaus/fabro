@@ -1530,8 +1530,8 @@ mod tests {
     }
 
     /// OpenAI and OpenRouter both offer `gpt-5.6-sol` under the `gpt-56-sol`
-    /// alias; OpenRouter ships disabled, so enable it the way an operator
-    /// would.
+    /// alias; both ship enabled, and the overlay makes it the default on
+    /// each.
     fn portable_session_catalog() -> Catalog {
         fabro_llm::test_support::test_catalog_with_overlay(
             r#"

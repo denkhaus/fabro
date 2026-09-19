@@ -89,8 +89,6 @@ level = "info"
 
 [llm.providers.proxy]
 display_name = "Acme Gateway"
-adapter = "openai-compatible"
-codec = "openai-chat"
 base_url = "https://llm-gateway.example.com/v1"
 auth = { type = "bearer" }
 aliases = ["gateway"]
@@ -154,8 +152,6 @@ Several built-in providers ship with `enabled = false`. Turn one on by setting
 ```toml title="settings.toml"
 [llm.providers.proxy]
 display_name = "Acme Gateway"
-adapter = "openai-compatible"
-codec = "openai-chat"
 base_url = "https://llm-gateway.example.com/v1"
 auth = { type = "bearer" }
 priority = 50
@@ -195,11 +191,11 @@ Define or override an LLM provider. The keys are the lithos provider record.
 | Key | Type / values | Default | Description |
 |---|---|---|---|
 | `display_name` | string | required for new providers | Human-readable provider name. |
-| `adapter` | string | required for new providers | lithos adapter id: `anthropic`, `openai`, `gemini`, `openai-compatible`, or `bedrock`. |
-| `codec` | string | required for new providers | Wire codec: `anthropic-messages`, `openai-responses`, `openai-chat`, `gemini-generate`, or `bedrock-converse`. |
-| `base_url` | string | required for new providers | Provider API base URL. The `openai-compatible` adapter appends `/v1/chat/completions` unless the URL already ends in a version segment. |
+| `adapter` | string | `"http"` | lithos adapter id: `http` or `bedrock`. Any other id names a custom adapter the application registered. |
+| `codecs` | array<string> | `["openai-chat"]` | Wire codecs the host speaks, in preference order: `openai-chat`, `openai-responses`, `anthropic-messages`, `gemini-generate`, or `bedrock-converse`. A Chat Completions host needs no line. |
+| `base_url` | string | required for new providers | Provider API base URL. The `openai-chat` codec appends `/v1/chat/completions` unless the URL already ends in a version segment. |
 | `auth` | table | required for new providers | Auth scheme: `{ type = "bearer" }`, `{ type = "header", name = "x-api-key" }`, `{ type = "headers" }`, `{ type = "none" }`, or `{ type = "aws" }`. |
-| `enabled` | boolean | `true` | Set `false` to hide a provider from Fabro. `bedrock`, `bedrock-openai`, `fireworks`, `litellm`, `modal`, `ollama`, and `openrouter` ship disabled. |
+| `enabled` | boolean | `true` | Set `false` to hide a provider from Fabro. `bedrock`, `bedrock-openai`, `litellm`, `modal`, and `ollama` ship disabled. |
 | `priority` | integer | `0` | Higher-priority ready providers win unqualified model and default selection. |
 | `aliases` | array<string> | `[]` | Additional provider names accepted by model routing and fallback config. |
 | `default_model` | string | None | The provider's default model id. |

@@ -3039,8 +3039,6 @@ digraph Demo {
                 r#"
 [providers.acme]
 display_name = "Acme"
-adapter = "openai-compatible"
-codec = "openai-chat"
 base_url = "https://api.acme.test/v1"
 auth = { type = "bearer" }
 default_model = "acme-large"
