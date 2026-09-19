@@ -55,6 +55,8 @@ def main [target: string = ""] {
         print -e $result.stderr
         exit $result.exit_code
     }
+    # Stage-journal inspects coverage (fabro-e907) — always over ALL graphs.
+    stage_journal_coverage_check
     # Loop assets are code, not just graph references: the nushell tier
     # (parse + interpolated-regex scan) runs with graph validation so a
     # broken script never ships past the host check (scripts/verify.nu
@@ -74,6 +76,30 @@ def main [target: string = ""] {
         print -e $plint.stderr
         exit $plint.exit_code
     }
+}
+
+# Class-level inspects-coverage lint (fabro-e907): every workflow whose
+# workflow.toml carries the stage-journal hook must appear in some
+# graph's inspects list — else a journal-producing run has no consumer
+# and its journals are silently lost (fabro-905d blind-spot class).
+# Always runs over ALL graphs, never just a named target.
+def stage_journal_coverage_check [] {
+    let journal_workflows = (glob .fabro/workflows/*/workflow.toml | each {|m|
+        let hooks = (open $m | get -o run | get -o hooks | default [])
+        if ($hooks | any {|h| ($h | get -o name | default "") == "stage-journal" }) {
+            $m | path dirname | path basename
+        }
+    } | compact)
+    let covered = (glob .fabro/workflows/*/workflow.fabro | each {|g|
+        open --raw $g | parse --regex 'inspects\s*=\s*"(?<slugs>[^"]*)"'
+    } | flatten | get -o slugs | default [] | each {|row| $row | split row "," } | flatten
+        | each {|s| $s | str trim } | where {|s| not ($s | is-empty) } | uniq)
+    let uncovered = ($journal_workflows | where {|w| $w not-in $covered })
+    if not ($uncovered | is-empty) {
+        print -e $"validate-workflows: stage-journal workflows missing from every inspects list: ($uncovered | str join ', ')"
+        exit 1
+    }
+    print $"validate-workflows: inspects coverage ok \(($journal_workflows | length) stage-journal workflow\)"
 }
 
 # Resolve the target (or all workflows) to a list of graph file paths.
