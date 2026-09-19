@@ -642,7 +642,12 @@ mod tests {
         let results = Environment::grep(&sandbox, "println", "test.rs", &GrepOptions::default())
             .await
             .unwrap();
-        assert_eq!(results, ["test.rs:2:    println!(\"hello\");"]);
+        // The path is resolved against the working directory before the
+        // driver sees it, and comes back as the driver reports it.
+        let working_dir = sandbox.working_directory();
+        assert_eq!(results, [format!(
+            "{working_dir}/test.rs:2:    println!(\"hello\");"
+        )]);
         drop((directory, provider));
     }
 

@@ -2058,8 +2058,12 @@ provider = "local"
 
     #[tokio::test]
     async fn the_local_sandbox_check_passes_through_the_host_providers_health() {
-        let (prepared, resolved) =
+        let (mut prepared, resolved) =
             prepared_and_resolved_for_sandbox(&SandboxProviderKind::LOCAL, false, None);
+        // The local check resolves the run's working directory from the
+        // manifest's source directory, which must exist on this server.
+        let source = tempfile::tempdir().expect("a source directory");
+        prepared.source_directory = source.path().to_path_buf();
         let mut checks = Vec::new();
         let passed = run_sandbox_check(
             &mut checks,

@@ -1024,8 +1024,11 @@ async fn the_server_attaches_to_the_container_petri_created() {
         "{preview}"
     );
 
-    // Ask Fabro: the session reconnects to the container for its turn and
-    // the turn completes on the model's answer.
+    // Ask Fabro: the session's turn reconnects to the container (attach,
+    // start, the platform probe) before anything else. The in-process app
+    // has no daemon record for the run-tools client the turn builds next,
+    // so the turn stops there, past the sandbox: a failure the sandbox
+    // caused would carry the sandbox code instead.
     let session = Request::builder()
         .method("POST")
         .uri(api(&format!("/runs/{run_id}/sessions")))
@@ -1058,19 +1061,27 @@ async fn the_server_attaches_to_the_container_petri_created() {
         .filter_map(|line| line.strip_prefix("data: "))
         .map(|data| serde_json::from_str(data).expect("session event data should be JSON"))
         .collect();
-    let failed = events
+    let outcome = events
         .iter()
-        .find(|event| event["event"] == "run.session.turn.failed");
+        .find(|event| {
+            event["event"] == "run.session.turn.failed"
+                || event["event"] == "run.session.turn.succeeded"
+        })
+        .unwrap_or_else(|| panic!("the turn ends: {events:?}"));
+    let code = outcome["properties"]["code"].as_str().unwrap_or_default();
     assert!(
-        failed.is_none(),
-        "the turn reached the container: {failed:?}"
+        !matches!(code, "sandbox_unavailable" | "no_sandbox"),
+        "the turn reached the container: {outcome}"
     );
-    assert!(
-        events
-            .iter()
-            .any(|event| event["event"] == "run.session.turn.succeeded"),
-        "the turn completed: {events:?}"
-    );
+    if outcome["event"] == "run.session.turn.failed" {
+        assert_eq!(code, "agent_error", "{outcome}");
+        assert!(
+            outcome["properties"]["error"]
+                .as_str()
+                .is_some_and(|error| error.contains("server record")),
+            "the turn stopped at the run-tools client, after the sandbox: {outcome}"
+        );
+    }
 
     let _ = Command::new("docker")
         .args(["rm", "-f", &container])

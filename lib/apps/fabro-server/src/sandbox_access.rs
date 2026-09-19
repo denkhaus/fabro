@@ -535,10 +535,12 @@ enum Connection {
     #[cfg(test)]
     Connected(Arc<dyn SandboxProvider>),
     /// Connected through [`connect_provider`] on first use.
-    Lazy {
-        access:   ProviderAccess,
-        provider: OnceCell<Arc<dyn SandboxProvider>>,
-    },
+    Lazy(Box<LazyConnection>),
+}
+
+struct LazyConnection {
+    access:   ProviderAccess,
+    provider: OnceCell<Arc<dyn SandboxProvider>>,
 }
 
 impl SandboxInventory {
@@ -569,10 +571,13 @@ impl SandboxInventory {
     /// A provider connected through `access` on first use.
     #[must_use]
     pub(crate) fn with_lazy(self, kind: SandboxProviderKind, access: ProviderAccess) -> Self {
-        self.with_entry(kind, Connection::Lazy {
-            access,
-            provider: OnceCell::new(),
-        })
+        self.with_entry(
+            kind,
+            Connection::Lazy(Box::new(LazyConnection {
+                access,
+                provider: OnceCell::new(),
+            })),
+        )
     }
 
     fn with_entry(mut self, kind: SandboxProviderKind, connection: Connection) -> Self {
@@ -658,9 +663,10 @@ impl InventoryEntry {
             Connection::HostDirectories => Ok(None),
             #[cfg(test)]
             Connection::Connected(provider) => Ok(Some(provider)),
-            Connection::Lazy { access, provider } => provider
+            Connection::Lazy(lazy) => lazy
+                .provider
                 .get_or_try_init(|| async {
-                    connect_provider(&self.kind, access)
+                    connect_provider(&self.kind, &lazy.access)
                         .await
                         .with_context(|| format!("Failed to connect to the {} provider", self.kind))
                 })
@@ -1007,7 +1013,6 @@ mod tests {
         let derived = HostProvider::directory_id(directory.path())
             .await
             .expect("an id for the directory");
-        let mut record = record;
         record.runtime.id = derived.to_string();
         let sandbox = attach_run_sandbox(&ProviderAccess::default(), &record, RunId::new())
             .await
