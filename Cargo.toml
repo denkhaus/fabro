@@ -10,7 +10,7 @@ resolver = "2"
 
 [workspace.package]
 edition = "2021"
-version = "0.360.0-nightly.0"
+version = "0.361.0-nightly.0"
 license = "MIT"
 
 [workspace.dependencies]
@@ -93,7 +93,7 @@ insta = "1"
 fabro-test = { path = "lib/foundation/fabro-test" }
 # Provider-neutral LLM catalog and client. Pinned to a revision until 0.x is
 # published to crates.io.
-lithos-llm = { git = "https://github.com/lithoscomputer/lithos-llm", rev = "55add4596b861a0623d00c3a54aa5c147c8d504b", default-features = false }
+lithos-llm = { git = "https://github.com/lithoscomputer/lithos-llm", rev = "43a42ac28e9d9bcf40a91abc02be4f12ca274ebb", default-features = false }
 # Deterministic OpenAI twin used by twin-mode E2E tests; the same revision
 # lithos-llm verifies its codecs against.
 twin-openai = { git = "https://github.com/lithoscomputer/twins", rev = "ca45f0e50a6716d716aa2f638ca3cf767e88f613" }
@@ -108,16 +108,19 @@ futures-util = "0.3"
 # before a generation serves, and a refusal of a replacement that reports
 # another resource namespace; #22 made the Daytona exec decoder resync on a
 # torn frame and report what it dropped as `ExecStreamingResult::output_loss`
-# instead of failing the command). The CI plugin job installs the driver
-# executables at the same rev, read from this file.
-sandbox-driver = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "64c14b89d078a4b34d1555092ad01d41541f7a7d" }
-sandbox-driver-protocol = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "64c14b89d078a4b34d1555092ad01d41541f7a7d" }
-sandbox-driver-host = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "64c14b89d078a4b34d1555092ad01d41541f7a7d" }
-sandbox-driver-docker = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "64c14b89d078a4b34d1555092ad01d41541f7a7d" }
-sandbox-driver-docker-config = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "64c14b89d078a4b34d1555092ad01d41541f7a7d" }
-sandbox-driver-daytona = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "64c14b89d078a4b34d1555092ad01d41541f7a7d" }
-sandbox-driver-daytona-config = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "64c14b89d078a4b34d1555092ad01d41541f7a7d" }
-sandbox-driver-testing = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "64c14b89d078a4b34d1555092ad01d41541f7a7d" }
+# instead of failing the command; #23 made an idle Host sentinel reap its
+# own process group once its owning provider pid is gone, so a provider
+# that is killed rather than stopped leaves no sentinel behind). The CI
+# plugin job installs the driver executables at the same rev, read from
+# this file.
+sandbox-driver = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "07600aa5c6695ec4c999da93c05d2cb78fe11b0c" }
+sandbox-driver-protocol = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "07600aa5c6695ec4c999da93c05d2cb78fe11b0c" }
+sandbox-driver-host = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "07600aa5c6695ec4c999da93c05d2cb78fe11b0c" }
+sandbox-driver-docker = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "07600aa5c6695ec4c999da93c05d2cb78fe11b0c" }
+sandbox-driver-docker-config = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "07600aa5c6695ec4c999da93c05d2cb78fe11b0c" }
+sandbox-driver-daytona = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "07600aa5c6695ec4c999da93c05d2cb78fe11b0c" }
+sandbox-driver-daytona-config = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "07600aa5c6695ec4c999da93c05d2cb78fe11b0c" }
+sandbox-driver-testing = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "07600aa5c6695ec4c999da93c05d2cb78fe11b0c" }
 # bollard: the Docker API client. A transitive dependency of
 # sandbox-driver-docker (same version); the server's sandbox GC uses it
 # directly for the one surface the driver does not model: listing and
@@ -129,9 +132,9 @@ bollard = "0.18"
 # sandbox, so the pebble and sandbox-driver pins move independently. Pebble
 # pins the same lithos-llm rev as fabro, and its lockfile policy is that
 # every shared crate resolves to the version lithos-llm locks.
-pebble-agent = { git = "https://github.com/lithoscomputer/pebble", rev = "a39f43e26effdf99635eaf343f095c17157c9c93" }
-pebble-coding-agent = { git = "https://github.com/lithoscomputer/pebble", rev = "a39f43e26effdf99635eaf343f095c17157c9c93", features = ["mcp", "search-providers"] }
-pebble-cli-core = { git = "https://github.com/lithoscomputer/pebble", rev = "a39f43e26effdf99635eaf343f095c17157c9c93" }
+pebble-agent = { git = "https://github.com/lithoscomputer/pebble", rev = "67c9f486dd28f15c04e8d590a91e6f5563f7605d" }
+pebble-coding-agent = { git = "https://github.com/lithoscomputer/pebble", rev = "67c9f486dd28f15c04e8d590a91e6f5563f7605d", features = ["mcp", "search-providers"] }
+pebble-cli-core = { git = "https://github.com/lithoscomputer/pebble", rev = "67c9f486dd28f15c04e8d590a91e6f5563f7605d" }
 sentry = { version = "0.35", default-features = false, features = ["backtrace", "contexts", "ureq", "rustls"] }
 fork = "0.2"
 exec = "0.3"

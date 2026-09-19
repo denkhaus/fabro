@@ -133,8 +133,6 @@ fn provider_toml(name: &str, model: &str, base_url: &str, profile: &str) -> Stri
         r#"
 [providers.{name}]
 display_name = "{name}"
-adapter = "openai-compatible"
-codec = "openai-chat"
 base_url = {base_url}
 auth = {{ type = "bearer" }}
 default_model = "{model}"

@@ -286,8 +286,9 @@ mod tests {
 
     use super::*;
 
-    /// Modal and OpenRouter ship disabled; enable them the way an operator
-    /// would so their models become fallback targets.
+    /// Modal ships disabled; enable it the way an operator would so its
+    /// models become fallback targets. OpenRouter ships enabled; the line
+    /// is kept so the overlay reads the same for both.
     fn enabled_fallback_catalog() -> Catalog {
         test_catalog_with_overlay(
             "[providers.modal]\nenabled = true\n\n[providers.openrouter]\nenabled = true\n",

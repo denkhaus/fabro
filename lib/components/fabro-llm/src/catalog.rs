@@ -13,7 +13,8 @@ use fabro_static::EnvVars;
 use fabro_types::AgentProfileKind;
 pub use lithos_llm::catalog::Offering;
 use lithos_llm::catalog::{
-    Catalog, CatalogBuilder, CatalogError, CatalogModel, CatalogProvider, Metadata,
+    Catalog, CatalogBuilder, CatalogError, CatalogModel, CatalogProvider, CodecId, Metadata,
+    adapter_ids, codec_ids,
 };
 use serde::Deserialize;
 
@@ -105,11 +106,16 @@ fn implied_agent_profiles(catalog: &Catalog) -> String {
 }
 
 /// The profile a provider's wire protocol implies, for a provider whose
-/// catalog entry does not name one.
+/// catalog entry does not name one. The protocol is the provider's first
+/// codec, the one the client sends a generation call on; the `bedrock`
+/// adapter speaks Converse to Anthropic-shaped models.
 fn adapter_agent_profile(provider: &CatalogProvider) -> AgentProfileKind {
-    match provider.adapter().as_str() {
-        "anthropic" | "bedrock" => AgentProfileKind::Anthropic,
-        "gemini" => AgentProfileKind::Gemini,
+    if provider.adapter().as_str() == adapter_ids::BEDROCK {
+        return AgentProfileKind::Anthropic;
+    }
+    match provider.codecs().first().map(CodecId::as_str) {
+        Some(codec_ids::ANTHROPIC_MESSAGES) => AgentProfileKind::Anthropic,
+        Some(codec_ids::GEMINI_GENERATE) => AgentProfileKind::Gemini,
         _ => AgentProfileKind::OpenAi,
     }
 }
@@ -245,7 +251,7 @@ enabled = false
             Some(AgentProfileKind::OpenAi)
         );
         assert_eq!(
-            agent_profile(&catalog, "openrouter", None),
+            agent_profile(&catalog, "bedrock-openai", None),
             None,
             "disabled providers have no profile to offer"
         );
@@ -286,8 +292,6 @@ enabled = false
                 r#"
 [providers.acme]
 display_name = "Acme"
-adapter = "openai-compatible"
-codec = "openai-chat"
 base_url = "https://api.acme.test/v1"
 auth = { type = "bearer" }
 default_model = "acme-llama"
@@ -310,6 +314,29 @@ capabilities = { text = true, tools = true }
         assert_eq!(
             agent_profile(&catalog, "acme", Some("acme-llama")),
             Some(AgentProfileKind::OpenAi)
+        );
+    }
+
+    /// The implied profile follows the provider's first codec, so a host that
+    /// speaks Anthropic Messages gets the Anthropic harness.
+    #[test]
+    fn the_implied_profile_follows_the_first_codec() {
+        let overlay = LlmLayer(
+            toml::from_str(
+                r#"
+[providers.acme]
+display_name = "Acme"
+codecs = ["anthropic-messages"]
+base_url = "https://api.acme.test"
+auth = { type = "header", name = "x-api-key" }
+"#,
+            )
+            .unwrap(),
+        );
+        let catalog = build_catalog(&overlay, &|_| None).unwrap();
+        assert_eq!(
+            agent_profile(&catalog, "acme", None),
+            Some(AgentProfileKind::Anthropic)
         );
     }
 }

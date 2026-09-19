@@ -1175,8 +1175,6 @@ mod tests {
             r#"
 [providers.mock]
 display_name = "Mock"
-adapter = "openai-compatible"
-codec = "openai-chat"
 base_url = "http://mock.invalid/v1"
 auth = { type = "bearer" }
 allow_passthrough = true

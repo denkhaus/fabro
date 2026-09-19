@@ -2742,8 +2742,6 @@ async fn shared_thread_compaction_before_routing_audit_succeeds() {
             r#"
 [providers.compact]
 display_name = "Compact"
-adapter = "openai-compatible"
-codec = "openai-chat"
 base_url = {base_url}
 auth = {{ type = "bearer" }}
 default_model = "compact-model"
@@ -2933,8 +2931,6 @@ async fn node_tools_attribute_narrows_the_wire_tool_set() {
             r#"
 [providers.compact]
 display_name = "Compact"
-adapter = "openai-compatible"
-codec = "openai-chat"
 base_url = {base_url}
 auth = {{ type = "bearer" }}
 default_model = "compact-model"
