@@ -18,6 +18,18 @@
 #     => cached COPY layers, image build is near-instant)
 #   - CLI install is skipped when the staged binary is byte-identical
 #
+# Config persistence (fabro-b03f): install-time config lives INSIDE the
+# compose volume (fabro-storage -> /storage/.home/settings.toml, via
+# FABRO_HOME=/storage/.home in the Dockerfile). A routine `just up` image
+# refresh recreates the container but preserves that volume, so the
+# configured state survives. A FRESH volume — project directory renamed,
+# `docker compose down -v`, or `docker volume rm` — boots the server into
+# install mode: /health stays green while every /api/v1/* route 404s.
+# smoke.nu detects install mode and prints the recovery step (install URL
+# + token are in `docker compose logs`, the "install mode active" block).
+# No step in this pipeline removes or orphans the volume (audited:
+# compose-down is plain `down`, clean/dev-prune never touch volumes).
+#
 # Requires: mise toolchain (.mise.toml), docker, and docker compose.
 #
 # Headless shells (no logind session): /run/user/$UID may not exist,

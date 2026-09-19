@@ -6,6 +6,9 @@
 # the routes a user actually hits:
 #
 #   1. /health            — server up
+#   1b. /install          — install-mode discriminator: 200 means the
+#                            stack booted unconfigured (fresh storage
+#                            volume); actionable recovery is printed
 #   2. /                  — SPA index serves AND references >= 1 asset
 #   3. every referenced   — each assets/*.js / *.css the index names
 #      asset                answers 200 (the exact index/asset mismatch
@@ -43,6 +46,32 @@ def main [port: string = "32276", cli: string = "~/.fabro/bin/fabro"]: nothing -
 
     # 1. health
     $results = ($results | append (probe "health endpoint" $"($base)/health"))
+
+    # 1b. install-mode discriminator (fabro-b03f): the configured server
+    # REMOVES /install* routes (server.rs removed_web_route); the
+    # install-mode bootstrap serves /install. A 200 here means the stack
+    # booted UNCONFIGURED — /health stays green while every /api/v1/*
+    # route 404s and the CLI roundtrip below cannot succeed. Name the
+    # mode and the recovery step instead of failing with a bare 404.
+    let install = (do {
+        ^curl -sS -m 5 -H "Accept: text/html" -o /dev/null -w "%{http_code}" $"($base)/install"
+    } | complete)
+    let install_status = ($install.stdout | str trim)
+    let install_mode = ($install.exit_code == 0 and $install_status == "200")
+    $results = ($results | append {
+        name: "server configured (not install mode)"
+        ok: ($install.exit_code == 0 and (not $install_mode))
+        detail: ("GET /install -> " + $install_status + " (200 = install mode; a configured server removes /install)")
+    })
+    if $install_mode {
+        print -e ""
+        print -e "smoke: INSTALL MODE — the server booted unconfigured (storage volume is fresh)."
+        print -e "smoke: API routes 404 until setup is finished. Recover:"
+        print -e "smoke:   docker compose logs fabro | grep -A6 'install mode active'"
+        print -e "smoke: -> install URL + token, finish setup in the browser, re-run 'just smoke'."
+        print -e "smoke: (a routine `just up` image refresh preserves the fabro-storage volume;"
+        print -e "smoke:  a fresh volume means project rename / `down -v` / `docker volume rm`)"
+    }
 
     # 2. SPA index + asset references
     let index = (do { ^curl -sS -m 5 $base } | complete)
