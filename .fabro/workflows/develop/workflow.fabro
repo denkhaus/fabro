@@ -51,11 +51,18 @@ digraph Develop {
     // the exit; either non-empty or ANY sd failure -> fail-open to the
     // preflight/planner unchanged (never parks, never fails the run).
     // The node produces no context value — nothing downstream needs one.
+    // Stale-claim requeue arm (fabro-d9f7): in_progress fabro seeds with
+    // no live claiming develop run older than the stale threshold
+    // (default 6h, FABRO_GUARD_STALE_HOURS) are reset to open here —
+    // requeued ids land in the stdout JSON's `requeued` array; the
+    // routing semantics are unchanged. internal.run_id on stdin gives
+    // the arm its self-run exclusion.
     tracker_guard [
-        label="Tracker guard: empty-tracker fast exit",
+        label="Tracker guard: empty-tracker fast exit + stale-claim requeue",
         shape=parallelogram,
         script="nu .fabro/workflows/develop/scripts/tracker-guard.nu",
         output_schema="routing",
+        stdin_source="internal.run_id",
         timeout="30s",
         max_retries=0
     ]
