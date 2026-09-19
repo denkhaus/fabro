@@ -763,6 +763,57 @@ pub(crate) struct ResumeArgs {
 }
 
 #[derive(Args)]
+pub(crate) struct RetryArgs {
+    #[command(flatten)]
+    pub(crate) server: ServerTargetArgs,
+
+    /// Run ID (or unambiguous prefix)
+    pub(crate) run_id: String,
+}
+
+#[derive(Args)]
+pub(crate) struct ForkArgs {
+    #[command(flatten)]
+    pub(crate) server: ServerTargetArgs,
+
+    /// Run ID (or unambiguous prefix)
+    pub(crate) run_id: String,
+
+    /// Target checkpoint: node name, node@visit, or @ordinal (omit to fork from
+    /// latest)
+    pub(crate) target: Option<String>,
+
+    /// Show the checkpoint timeline instead of forking
+    #[arg(long)]
+    pub(crate) list: bool,
+}
+
+#[derive(Args)]
+pub(crate) struct RewindArgs {
+    #[command(flatten)]
+    pub(crate) server: ServerTargetArgs,
+
+    /// Run ID (or unambiguous prefix)
+    pub(crate) run_id: String,
+
+    /// Target checkpoint: node name, node@visit, or @ordinal (omit with --list)
+    pub(crate) target: Option<String>,
+
+    /// Show the checkpoint timeline instead of rewinding
+    #[arg(long)]
+    pub(crate) list: bool,
+}
+
+#[derive(Args)]
+pub(crate) struct TimelineArgs {
+    #[command(flatten)]
+    pub(crate) server: ServerTargetArgs,
+
+    /// Run ID (or unambiguous prefix)
+    pub(crate) run_id: String,
+}
+
+#[derive(Args)]
 pub(crate) struct WaitArgs {
     #[command(flatten)]
     pub(crate) server: ServerTargetArgs,
@@ -1276,6 +1327,14 @@ pub(crate) enum RunCommands {
     Logs(LogsArgs),
     /// Resume an interrupted workflow run
     Resume(ResumeArgs),
+    /// Retry a finished workflow run from its last checkpoint in a new run
+    Retry(RetryArgs),
+    /// Fork a workflow run from an earlier checkpoint into a new run
+    Fork(ForkArgs),
+    /// Rewind a workflow run to an earlier checkpoint, replacing it
+    Rewind(RewindArgs),
+    /// Show the checkpoint timeline of a workflow run
+    Timeline(TimelineArgs),
     /// Block until a workflow run completes
     Wait(WaitArgs),
     /// Steer a running agent mid-execution
@@ -1296,6 +1355,10 @@ impl RunCommands {
             Self::Events(_) => "events",
             Self::Logs(_) => "logs",
             Self::Resume(_) => "resume",
+            Self::Retry(_) => "retry",
+            Self::Fork(_) => "fork",
+            Self::Rewind(_) => "rewind",
+            Self::Timeline(_) => "timeline",
             Self::Steer(_) => "steer",
             Self::Ask(_) => "ask",
             Self::Wait(_) => "wait",
