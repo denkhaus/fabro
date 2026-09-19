@@ -12,7 +12,8 @@ use fabro_automation::AutomationId;
 use fabro_config::bind::Bind;
 use fabro_config::{LlmLayer, RunLayer, ServerSettingsBuilder};
 use fabro_interview::{
-    AnswerValue, WorkerControlDeliveryFrame, WorkerControlEnvelope, WorkerControlMessage,
+    AnswerValue, WorkerControlAck, WorkerControlDeliveryFrame, WorkerControlEnvelope,
+    WorkerControlMessage, WorkerControlOutcome,
 };
 use fabro_llm::lithos_catalog::Catalog;
 use fabro_store::platform_records::{
@@ -48,7 +49,8 @@ use crate::github_webhooks::compute_signature;
 use crate::jwt_auth::{AuthMode, ConfiguredAuth};
 use crate::test_support::*;
 use crate::worker_control::{
-    LocalWorkerControlBus, WorkerControlBus, WorkerControlCursor, WorkerControlReceiver,
+    LocalWorkerControlBus, WorkerControlAcks, WorkerControlBus, WorkerControlCursor,
+    WorkerControlReceiver,
 };
 use crate::worker_runtime::{
     LocalWorkerRuntime, StartedWorker, WorkerLaunchSpec, WorkerRef, WorkerRuntime,
@@ -320,8 +322,6 @@ fn acme_overlay(base_url: &str) -> String {
         r#"
 [providers.acme]
 display_name = "Acme"
-adapter = "openai-compatible"
-codec = "openai-chat"
 base_url = {base_url}
 auth = {{ type = "bearer" }}
 priority = 120
@@ -929,6 +929,51 @@ async fn worker_control_stream_after_subscription_delivers_only_later_frames() {
 
     assert_eq!(frame.id, second.to_string());
     assert_eq!(frame.envelope, expected);
+}
+
+/// An acknowledgement the worker sends over its control stream settles the
+/// caller waiting on that request; one for another run's request does
+/// not.
+#[tokio::test(flavor = "current_thread")]
+async fn worker_control_stream_acknowledgements_settle_the_waiting_caller() {
+    let (state, app) = jwt_auth_app();
+    let user_bearer = issue_test_user_jwt();
+    let run_id = create_run_with_bearer(&app, &user_bearer).await;
+    let worker_bearer = issue_test_worker_token(&run_id);
+    let server = WorkerControlWsTestServer::spawn(app).await;
+    let mut socket = connect_worker_control_ws(&server, run_id, &worker_bearer, None).await;
+
+    let pending = state.worker_control_acks.register(run_id);
+    let foreign = state.worker_control_acks.register(fixtures::RUN_2);
+    for request_id in [&foreign.request_id, &pending.request_id] {
+        let ack = WorkerControlAck::new(request_id, WorkerControlOutcome::Refused {
+            code:    "no_live_turn".to_string(),
+            message: "the stage has no model turn to interrupt".to_string(),
+        });
+        futures_util::SinkExt::send(
+            &mut socket,
+            WebSocketMessage::Text(serde_json::to_string(&ack).unwrap().into()),
+        )
+        .await
+        .expect("the acknowledgement sends");
+    }
+
+    let outcome = tokio::time::timeout(
+        Duration::from_secs(2),
+        state.worker_control_acks.wait(pending),
+    )
+    .await
+    .expect("the caller is answered");
+    assert_eq!(
+        outcome,
+        Some(WorkerControlOutcome::Refused {
+            code:    "no_live_turn".to_string(),
+            message: "the stage has no model turn to interrupt".to_string(),
+        })
+    );
+    // The other run's request was not this worker's to answer.
+    assert_eq!(state.worker_control_acks.outstanding(), 1);
+    drop(foreign);
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -2742,9 +2787,26 @@ impl WorkerRuntime for RecordingWorkerRuntime {
     }
 }
 
+/// How long a test transport waits for a worker's answer: short, so a
+/// test whose worker never answers sees `pending` at once.
+const TEST_WORKER_CONTROL_ACK_WAIT: Duration = Duration::from_millis(100);
+
 async fn worker_transport_with_receiver(
     run_id: RunId,
 ) -> (RunAnswerTransport, WorkerControlReceiver) {
+    let (transport, receiver, _) = worker_transport_with_acks(run_id).await;
+    (transport, receiver)
+}
+
+/// A worker transport over a private bus, with the acknowledgements a
+/// test answers through.
+async fn worker_transport_with_acks(
+    run_id: RunId,
+) -> (
+    RunAnswerTransport,
+    WorkerControlReceiver,
+    StdArc<WorkerControlAcks>,
+) {
     let bus = StdArc::new(LocalWorkerControlBus::new());
     let receiver = bus
         .subscribe(run_id, WorkerControlCursor::Start)
@@ -2753,8 +2815,50 @@ async fn worker_transport_with_receiver(
     // Ensure the subscription task is waiting before the test publishes.
     tokio::task::yield_now().await;
     let bus: StdArc<dyn WorkerControlBus> = bus;
-    let transport = RunAnswerTransport::Worker { run_id, bus };
-    (transport, receiver)
+    let acks = StdArc::new(WorkerControlAcks::new(TEST_WORKER_CONTROL_ACK_WAIT));
+    let transport = RunAnswerTransport::Worker {
+        run_id,
+        bus,
+        acks: StdArc::clone(&acks),
+    };
+    (transport, receiver, acks)
+}
+
+/// A worker that answers every control carrying a request id with
+/// `outcome`, as the real worker answers over its control stream. The
+/// deliveries it read, for the test to inspect.
+fn answering_worker(
+    run_id: RunId,
+    mut receiver: WorkerControlReceiver,
+    acks: StdArc<WorkerControlAcks>,
+    outcome: WorkerControlOutcome,
+) -> tokio::sync::mpsc::UnboundedReceiver<WorkerControlEnvelope> {
+    let (seen_tx, seen_rx) = tokio::sync::mpsc::unbounded_channel();
+    tokio::spawn(async move {
+        while let Some(Ok(delivery)) = receiver.recv().await {
+            if let Some(request_id) = delivery.envelope.request_id() {
+                acks.resolve(run_id, WorkerControlAck::new(request_id, outcome.clone()));
+            }
+            if seen_tx.send(delivery.envelope).is_err() {
+                return;
+            }
+        }
+    });
+    seen_rx
+}
+
+/// The published envelope without the request id the transport added, so
+/// a test can compare it with the constructor's.
+fn without_request_id(mut envelope: WorkerControlEnvelope) -> WorkerControlEnvelope {
+    match &mut envelope.message {
+        WorkerControlMessage::Steer { request_id, .. }
+        | WorkerControlMessage::Interrupt { request_id, .. }
+        | WorkerControlMessage::InterruptThenSteer { request_id, .. } => {
+            *request_id = None;
+        }
+        _ => {}
+    }
+    envelope
 }
 
 async fn recv_worker_control_envelope(
@@ -2787,15 +2891,73 @@ async fn worker_answer_transport_steer_publishes_plain_steer_message() {
         system_kind: SystemActorKind::Engine,
     };
 
-    transport
+    // Nobody answers: the steer is pending once the wait runs out.
+    let answer = transport
         .steer("try again".to_string(), None, actor.clone())
         .await
         .unwrap();
+    assert_eq!(answer, RunControlAnswer::Pending);
 
+    let envelope = recv_worker_control_envelope(&mut control_rx).await;
+    assert!(envelope.request_id().is_some(), "{envelope:?}");
     assert_eq!(
-        recv_worker_control_envelope(&mut control_rx).await,
+        without_request_id(envelope),
         WorkerControlEnvelope::steer("try again", None, actor)
     );
+}
+
+#[tokio::test]
+async fn worker_answer_transport_steer_returns_the_workers_answer() {
+    let run_id = fixtures::RUN_1;
+    let (transport, control_rx, acks) = worker_transport_with_acks(run_id).await;
+    let actor = Principal::System {
+        system_kind: SystemActorKind::Engine,
+    };
+    let mut seen = answering_worker(run_id, control_rx, acks, WorkerControlOutcome::Delivered {
+        stage: Some("work@1".to_string()),
+    });
+
+    let answer = transport
+        .steer("try again".to_string(), None, actor)
+        .await
+        .unwrap();
+    assert_eq!(answer, RunControlAnswer::Delivered {
+        stage: Some("work@1".to_string()),
+    });
+    let envelope = seen.recv().await.expect("the worker read the steer");
+    assert!(matches!(
+        envelope.message,
+        WorkerControlMessage::Steer { ref text, .. } if text == "try again"
+    ));
+}
+
+#[tokio::test]
+async fn in_process_transport_answers_a_steer_and_an_interrupt_in_place() {
+    let transport = RunAnswerTransport::InProcess {
+        interviewer: StdArc::new(ControlInterviewer::new()),
+        controls:    RunControls::new(),
+    };
+    let actor = Principal::System {
+        system_kind: SystemActorKind::Engine,
+    };
+
+    // The run has no live agent stage: refused at once, no worker asked.
+    let answer = transport
+        .steer("try again".to_string(), None, actor.clone())
+        .await
+        .unwrap();
+    assert_eq!(answer, RunControlAnswer::Refused {
+        code:    "steer_refused".to_string(),
+        message: "Steer refused: Run has no active steerable agent session.".to_string(),
+    });
+    let answer = transport
+        .interrupt(Some("work".to_string()), None, actor)
+        .await
+        .unwrap();
+    assert_eq!(answer, RunControlAnswer::Refused {
+        code:    "no_such_stage".to_string(),
+        message: "Interrupt refused: no stage named `work` is running".to_string(),
+    });
 }
 
 #[tokio::test]
@@ -5104,8 +5266,6 @@ async fn model_api_keeps_duplicate_ids_provider_scoped_and_selects_ready_priorit
         r#"
 [providers.direct]
 display_name = "Direct"
-adapter = "openai-compatible"
-codec = "openai-chat"
 base_url = {direct}
 auth = {{ type = "bearer" }}
 priority = 120
@@ -5123,8 +5283,6 @@ capabilities = {{ text = true }}
 
 [providers.aggregator]
 display_name = "Aggregator"
-adapter = "openai-compatible"
-codec = "openai-chat"
 base_url = {aggregator}
 auth = {{ type = "bearer" }}
 priority = 110
@@ -5287,8 +5445,6 @@ async fn test_model_forwards_and_validates_reasoning_effort() {
         r#"
 [providers.acme]
 display_name = "Acme"
-adapter = "openai-compatible"
-codec = "openai-chat"
 base_url = {base_url}
 auth = {{ type = "bearer" }}
 priority = 120
@@ -5839,8 +5995,8 @@ async fn test_providers_registration_issue_returns_error_without_probe() {
     // An adapter lithos does not ship cannot be built, so the provider is
     // configured (it has a vault key) yet unavailable.
     let overlay = acme_overlay("https://api.acme.test/v1").replace(
-        "adapter = \"openai-compatible\"",
-        "adapter = \"not-an-adapter\"",
+        "display_name = \"Acme\"",
+        "display_name = \"Acme\"\nadapter = \"not-an-adapter\"",
     );
     let state = TestAppStateBuilder::new()
         .runtime_settings(default_test_server_settings(), RunLayer::default())
@@ -5913,8 +6069,7 @@ async fn test_providers_mixed_results_preserve_catalog_order_and_counts() {
         r#"
 [providers.zeta]
 display_name = "Zeta"
-adapter = "openai"
-codec = "openai-responses"
+codecs = ["openai-responses"]
 base_url = {base_url}
 auth = {{ type = "bearer" }}
 priority = 50
@@ -5929,8 +6084,7 @@ probe = true
 
 [providers.alpha]
 display_name = "Alpha"
-adapter = "openai"
-codec = "openai-responses"
+codecs = ["openai-responses"]
 base_url = {base_url}
 auth = {{ type = "bearer" }}
 priority = 40
@@ -8599,6 +8753,122 @@ async fn interrupt_of_an_unknown_run_returns_not_found() {
 
     let response = app.oneshot(req).await.unwrap();
     assert_status!(response, StatusCode::NOT_FOUND).await;
+}
+
+/// A steer the worker delivers: 202 with the outcome and the stage.
+#[tokio::test]
+async fn steer_delivered_by_the_worker_returns_accepted_with_its_stage() {
+    let state = test_app_state();
+    let app = crate::test_support::build_test_router(Arc::clone(&state));
+    let run_id = fixtures::RUN_1;
+    let (transport, control_rx, acks) = worker_transport_with_acks(run_id).await;
+    let _temp_dir = insert_running_control_run(&state, run_id, Some(transport));
+    let _seen = answering_worker(run_id, control_rx, acks, WorkerControlOutcome::Delivered {
+        stage: Some("work@1".to_string()),
+    });
+
+    let req = Request::builder()
+        .method("POST")
+        .uri(api(&format!("/runs/{run_id}/steer")))
+        .header("content-type", "application/json")
+        .body(Body::from(r#"{"text":"try again"}"#))
+        .unwrap();
+
+    let response = app.oneshot(req).await.unwrap();
+    assert_eq!(response.status(), StatusCode::ACCEPTED);
+    let body = body_json(response.into_body()).await;
+    assert_eq!(
+        body,
+        serde_json::json!({ "outcome": "delivered", "stage": "work@1" })
+    );
+}
+
+/// A control the worker refuses: 409 with the refusal's code and reason,
+/// for each code the worker can answer with.
+#[tokio::test]
+async fn control_refused_by_the_worker_returns_conflict_with_its_code() {
+    let state = test_app_state();
+    let app = crate::test_support::build_test_router(Arc::clone(&state));
+    let refusals = [
+        (
+            "steer",
+            r#"{"text":"try again"}"#,
+            "steer_refused",
+            "Steer refused: Run has no active steerable agent session.",
+        ),
+        (
+            "steer",
+            r#"{"text":"try again","stage":"nope"}"#,
+            "no_such_stage",
+            "Steer of stage `nope` refused: no stage named `nope` is running",
+        ),
+        (
+            "interrupt",
+            r#"{"stage":"gate"}"#,
+            "no_live_turn",
+            "Interrupt of stage `gate` refused: the stage has no model turn to interrupt",
+        ),
+        (
+            "interrupt",
+            r#"{"stage":"nope"}"#,
+            "no_such_stage",
+            "Interrupt of stage `nope` refused: no stage named `nope` is running",
+        ),
+        (
+            "interrupt",
+            "{}",
+            "interrupt_refused",
+            "Interrupt refused: Run has no active steerable agent session.",
+        ),
+    ];
+    for (index, (action, body, code, message)) in refusals.into_iter().enumerate() {
+        let run_id = RunId::new();
+        let (transport, control_rx, acks) = worker_transport_with_acks(run_id).await;
+        let _temp_dir = insert_running_control_run(&state, run_id, Some(transport));
+        let _seen = answering_worker(run_id, control_rx, acks, WorkerControlOutcome::Refused {
+            code:    code.to_string(),
+            message: message.to_string(),
+        });
+
+        let req = Request::builder()
+            .method("POST")
+            .uri(api(&format!("/runs/{run_id}/{action}")))
+            .header("content-type", "application/json")
+            .body(Body::from(body))
+            .unwrap();
+        let response = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(response.status(), StatusCode::CONFLICT, "refusal {index}");
+        let response_body = body_json(response.into_body()).await;
+        assert_eq!(response_body["errors"][0]["code"], code, "{response_body}");
+        assert_eq!(
+            response_body["errors"][0]["detail"], message,
+            "{response_body}"
+        );
+    }
+}
+
+/// A worker that never answers: 202 `pending` once the wait runs out,
+/// with the control still forwarded.
+#[tokio::test]
+async fn interrupt_unanswered_by_the_worker_returns_accepted_pending() {
+    let state = test_app_state();
+    let app = crate::test_support::build_test_router(Arc::clone(&state));
+    let run_id = fixtures::RUN_1;
+    let (transport, mut control_rx) = worker_transport_with_receiver(run_id).await;
+    let _temp_dir = insert_running_control_run(&state, run_id, Some(transport));
+
+    let req = Request::builder()
+        .method("POST")
+        .uri(api(&format!("/runs/{run_id}/interrupt")))
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.oneshot(req).await.unwrap();
+    assert_eq!(response.status(), StatusCode::ACCEPTED);
+    let body = body_json(response.into_body()).await;
+    assert_eq!(body, serde_json::json!({ "outcome": "pending" }));
+    let envelope = recv_worker_control_envelope(&mut control_rx).await;
+    assert!(envelope.request_id().is_some(), "{envelope:?}");
 }
 
 #[tokio::test]

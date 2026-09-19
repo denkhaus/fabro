@@ -80,6 +80,9 @@ const WORKER_ENV_ALLOWLIST: &[&str] = &[
     // A test's checkpoint gates: the worker's hooks hold at a named point
     // until the test releases them, so a crash can be placed there.
     EnvVars::FABRO_TEST_CHECKPOINT_GATES,
+    // A test's mute on the worker's control acknowledgements, so the
+    // server's wait for one runs out.
+    EnvVars::FABRO_TEST_CONTROL_ACKS_MUTED,
 ];
 
 const RENDER_GRAPH_ENV_ALLOWLIST: &[&str] = &[EnvVars::PATH, EnvVars::HOME, EnvVars::TMPDIR];

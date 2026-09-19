@@ -1585,12 +1585,16 @@ async fn mcp_interact_actions_resolve_selector_and_call_expected_endpoints() {
         when.method(POST)
             .path(format!("/api/v1/runs/{run_id}/steer"))
             .json_body(serde_json::json!({ "text": "continue", "interrupt": true }));
-        then.status(202);
+        then.status(202)
+            .header("Content-Type", "application/json")
+            .json_body(serde_json::json!({ "outcome": "delivered", "stage": "code@1" }));
     });
     let interrupt = server.mock(|when, then| {
         when.method(POST)
             .path(format!("/api/v1/runs/{run_id}/interrupt"));
-        then.status(202);
+        then.status(202)
+            .header("Content-Type", "application/json")
+            .json_body(serde_json::json!({ "outcome": "delivered", "stage": "code@1" }));
     });
     let cancel = server.mock(|when, then| {
         when.method(POST)

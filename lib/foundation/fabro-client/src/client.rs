@@ -8,6 +8,7 @@ use std::sync::{Arc, RwLock};
 use anyhow::{Context as _, Result, anyhow, bail};
 use bytes::Bytes;
 use fabro_api::types;
+use fabro_api::types::RunControlAcknowledgement;
 use fabro_http::header::{ACCEPT, AUTHORIZATION, CONTENT_LENGTH, CONTENT_TYPE};
 use fabro_http::multipart::{Form, Part};
 use fabro_types::settings::run::MergeStrategy;
@@ -1145,7 +1146,7 @@ impl Client {
         run_id: &RunId,
         stage: Option<String>,
         text: Option<String>,
-    ) -> Result<()> {
+    ) -> Result<RunControlAcknowledgement> {
         let stage = stage
             .map(|stage| {
                 types::InterruptRunRequestStage::try_from(stage)
@@ -1159,30 +1160,33 @@ impl Client {
             })
             .transpose()?;
         let body = types::InterruptRunRequest { stage, text };
-        self.send_api(|client| {
-            let body = body.clone();
-            async move {
-                client
-                    .interrupt_run()
-                    .id(run_id.to_string())
-                    .body(body)
-                    .send()
-                    .await
-            }
-        })
-        .await?;
-        Ok(())
+        let response = self
+            .send_api(|client| {
+                let body = body.clone();
+                async move {
+                    client
+                        .interrupt_run()
+                        .id(run_id.to_string())
+                        .body(body)
+                        .send()
+                        .await
+                }
+            })
+            .await?;
+        Ok(response.into_inner())
     }
 
     /// Steer a run: the named stage (`node@visit`, or the node name), or
-    /// the run's one live agent stage when `stage` is `None`.
+    /// the run's one live agent stage when `stage` is `None`. The worker's
+    /// answer: delivered, or pending when none came in time. A refusal is
+    /// the error, with the refusal's code as its API failure code.
     pub async fn steer_run(
         &self,
         run_id: &RunId,
         text: String,
         interrupt: bool,
         stage: Option<String>,
-    ) -> Result<()> {
+    ) -> Result<RunControlAcknowledgement> {
         let stage = stage
             .map(|stage| {
                 types::SteerRunRequestStage::try_from(stage)
@@ -1195,19 +1199,20 @@ impl Client {
             .stage(stage)
             .try_into()
             .map_err(|e| anyhow!("failed to build SteerRunRequest: {e}"))?;
-        self.send_api(|client| {
-            let body = body.clone();
-            async move {
-                client
-                    .steer_run()
-                    .id(run_id.to_string())
-                    .body(body)
-                    .send()
-                    .await
-            }
-        })
-        .await?;
-        Ok(())
+        let response = self
+            .send_api(|client| {
+                let body = body.clone();
+                async move {
+                    client
+                        .steer_run()
+                        .id(run_id.to_string())
+                        .body(body)
+                        .send()
+                        .await
+                }
+            })
+            .await?;
+        Ok(response.into_inner())
     }
 
     pub async fn get_run_pair_status(&self, run_id: &RunId) -> Result<RunPairStatusResponse> {

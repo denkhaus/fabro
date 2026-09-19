@@ -10,7 +10,7 @@ resolver = "2"
 
 [workspace.package]
 edition = "2021"
-version = "0.357.0-nightly.0"
+version = "0.361.0-nightly.0"
 license = "MIT"
 
 [workspace.dependencies]
@@ -93,7 +93,7 @@ insta = "1"
 fabro-test = { path = "lib/foundation/fabro-test" }
 # Provider-neutral LLM catalog and client. Pinned to a revision until 0.x is
 # published to crates.io.
-lithos-llm = { git = "https://github.com/lithoscomputer/lithos-llm", rev = "55add4596b861a0623d00c3a54aa5c147c8d504b", default-features = false }
+lithos-llm = { git = "https://github.com/lithoscomputer/lithos-llm", rev = "43a42ac28e9d9bcf40a91abc02be4f12ca274ebb", default-features = false }
 # Deterministic OpenAI twin used by twin-mode E2E tests; the same revision
 # lithos-llm verifies its codecs against.
 twin-openai = { git = "https://github.com/lithoscomputer/twins", rev = "ca45f0e50a6716d716aa2f638ca3cf767e88f613" }
@@ -124,21 +124,21 @@ sandbox-driver-testing = { git = "https://github.com/lithoscomputer/sandbox-driv
 # sandbox, so the pebble and sandbox-driver pins move independently. Pebble
 # pins the same lithos-llm rev as fabro, and its lockfile policy is that
 # every shared crate resolves to the version lithos-llm locks.
-pebble-agent = { git = "https://github.com/lithoscomputer/pebble", rev = "a39f43e26effdf99635eaf343f095c17157c9c93" }
-pebble-coding-agent = { git = "https://github.com/lithoscomputer/pebble", rev = "a39f43e26effdf99635eaf343f095c17157c9c93", features = ["mcp", "search-providers"] }
-pebble-cli-core = { git = "https://github.com/lithoscomputer/pebble", rev = "a39f43e26effdf99635eaf343f095c17157c9c93" }
+pebble-agent = { git = "https://github.com/lithoscomputer/pebble", rev = "67c9f486dd28f15c04e8d590a91e6f5563f7605d" }
+pebble-coding-agent = { git = "https://github.com/lithoscomputer/pebble", rev = "67c9f486dd28f15c04e8d590a91e6f5563f7605d", features = ["mcp", "search-providers"] }
+pebble-cli-core = { git = "https://github.com/lithoscomputer/pebble", rev = "67c9f486dd28f15c04e8d590a91e6f5563f7605d" }
 # petri: the workflow engine Fabro runs its workflows on. Pinned by rev, the
 # same way pebble and sandbox-driver are. Petri pins the same pebble,
 # lithos-llm and sandbox-driver revisions as this file, so the workspace links
 # one copy of each. Only `fabro-petri` may depend on these packages; the keys
 # carry the `petri_` prefix so the crate names say where they come from.
-petri_runtime = { git = "https://github.com/lithoscomputer/petri.git", rev = "c874b863671eec309f111e5639c2687f29342042", package = "petri-runtime" }
-petri_execution = { git = "https://github.com/lithoscomputer/petri.git", rev = "c874b863671eec309f111e5639c2687f29342042", package = "petri-execution" }
-petri_store = { git = "https://github.com/lithoscomputer/petri.git", rev = "c874b863671eec309f111e5639c2687f29342042", package = "petri-store" }
-petri_attractor_steps = { git = "https://github.com/lithoscomputer/petri.git", rev = "c874b863671eec309f111e5639c2687f29342042", package = "petri-attractor-steps" }
-petri_frontend_attractor = { git = "https://github.com/lithoscomputer/petri.git", rev = "c874b863671eec309f111e5639c2687f29342042", package = "petri-frontend-attractor" }
-petri_frontend_fabro = { git = "https://github.com/lithoscomputer/petri.git", rev = "c874b863671eec309f111e5639c2687f29342042", package = "petri-frontend-fabro" }
-petri_testkit = { git = "https://github.com/lithoscomputer/petri.git", rev = "c874b863671eec309f111e5639c2687f29342042", package = "petri-testkit" }
+petri_runtime = { git = "https://github.com/lithoscomputer/petri.git", rev = "1fef017a60e436e6c9d5ba86b0cdfb932ed8a08b", package = "petri-runtime" }
+petri_execution = { git = "https://github.com/lithoscomputer/petri.git", rev = "1fef017a60e436e6c9d5ba86b0cdfb932ed8a08b", package = "petri-execution" }
+petri_store = { git = "https://github.com/lithoscomputer/petri.git", rev = "1fef017a60e436e6c9d5ba86b0cdfb932ed8a08b", package = "petri-store" }
+petri_attractor_steps = { git = "https://github.com/lithoscomputer/petri.git", rev = "1fef017a60e436e6c9d5ba86b0cdfb932ed8a08b", package = "petri-attractor-steps" }
+petri_frontend_attractor = { git = "https://github.com/lithoscomputer/petri.git", rev = "1fef017a60e436e6c9d5ba86b0cdfb932ed8a08b", package = "petri-frontend-attractor" }
+petri_frontend_fabro = { git = "https://github.com/lithoscomputer/petri.git", rev = "1fef017a60e436e6c9d5ba86b0cdfb932ed8a08b", package = "petri-frontend-fabro" }
+petri_testkit = { git = "https://github.com/lithoscomputer/petri.git", rev = "1fef017a60e436e6c9d5ba86b0cdfb932ed8a08b", package = "petri-testkit" }
 sentry = { version = "0.35", default-features = false, features = ["backtrace", "contexts", "ureq", "rustls"] }
 fork = "0.2"
 exec = "0.3"

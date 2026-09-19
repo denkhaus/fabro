@@ -9,8 +9,8 @@ use fabro_config::Storage;
 use fabro_interview::{
     AnswerSubmission, ControlInterviewer, WORKER_CONTROL_INVALID_CURSOR_REASON,
     WORKER_CONTROL_PONG_TIMEOUT_REASON, WORKER_CONTROL_WS_LIVENESS_TIMEOUT,
-    WORKER_CONTROL_WS_PING_INTERVAL, WorkerControlDeliveryFrame, WorkerControlEnvelope,
-    WorkerControlMessage,
+    WORKER_CONTROL_WS_PING_INTERVAL, WorkerControlAck, WorkerControlDeliveryFrame,
+    WorkerControlEnvelope, WorkerControlMessage,
 };
 use fabro_manifest::SuppliedWorkflowVersionPackager;
 use fabro_petri::controls::RunControls;
@@ -584,7 +584,7 @@ async fn handle_worker_control_socket(
                         last_liveness = Instant::now();
                         let frame = serde_json::from_str::<WorkerControlDeliveryFrame>(text.as_str())
                             .map_err(|err| WorkerControlConnectError::Other(anyhow::Error::new(err)))?;
-                        apply_worker_control_delivery_frame(
+                        let applied = apply_worker_control_delivery_frame(
                             interviewer,
                             cancel_token,
                             controls,
@@ -592,6 +592,17 @@ async fn handle_worker_control_socket(
                             frame,
                         )
                         .await;
+                        if let Some(ack) = applied.ack {
+                            // The answer goes back over the stream the
+                            // control came in on; a stream that is gone
+                            // reconnects, and the server's wait runs out.
+                            let text = serde_json::to_string(&ack)
+                                .map_err(|err| WorkerControlConnectError::Other(anyhow::Error::new(err)))?;
+                            socket
+                                .send(WebSocketMessage::Text(text.into()))
+                                .await
+                                .map_err(|err| WorkerControlConnectError::Other(anyhow::Error::new(err)))?;
+                        }
                     }
                     Ok(WebSocketMessage::Ping(payload)) => {
                         last_liveness = Instant::now();
@@ -621,43 +632,59 @@ async fn handle_worker_control_socket(
     }
 }
 
+/// What a delivery frame came to: whether it was applied (a duplicate is
+/// not), and the acknowledgement to send back when the control asked for
+/// one.
+#[derive(Debug, Default, PartialEq, Eq)]
+struct AppliedDelivery {
+    applied: bool,
+    ack:     Option<WorkerControlAck>,
+}
+
 async fn apply_worker_control_delivery_frame(
     interviewer: &ControlInterviewer,
     cancel_token: &CancellationToken,
     controls: &WorkerControls,
     applied_ids: &mut AppliedWorkerControlDeliveryIds,
     frame: WorkerControlDeliveryFrame,
-) -> bool {
+) -> AppliedDelivery {
     // Duplicate ids cannot reach us under normal operation: the server replays
     // strictly after the last applied id. Guard against a server-side bug or
     // reconnect race by ignoring recently-applied delivery ids.
     if applied_ids.contains(&frame.id) {
-        return false;
+        return AppliedDelivery::default();
     }
     let frame_id = frame.id;
-    apply_worker_control_message(interviewer, cancel_token, controls, frame.envelope).await;
+    let ack =
+        apply_worker_control_message(interviewer, cancel_token, controls, frame.envelope).await;
     applied_ids.record(frame_id);
-    true
+    AppliedDelivery { applied: true, ack }
 }
 
+/// Apply the control. The acknowledgement to send back when the control
+/// carries a request id and has an outcome to report.
 async fn apply_worker_control_message(
     interviewer: &ControlInterviewer,
     cancel_token: &CancellationToken,
     controls: &WorkerControls,
     message: WorkerControlEnvelope,
-) {
-    match message.message {
+) -> Option<WorkerControlAck> {
+    let request_id = message.request_id().map(str::to_owned);
+    let outcome = match message.message {
         WorkerControlMessage::InterviewAnswer { qid, answer, actor } => {
             let _ = interviewer
                 .submit(&qid, AnswerSubmission::new(answer.into(), actor))
                 .await;
+            None
         }
         WorkerControlMessage::RunCancel => {
             cancel_token.cancel();
             interviewer.interrupt_all().await;
+            None
         }
         other => controls.apply(other).await,
-    }
+    };
+    Some(WorkerControlAck::new(request_id?, outcome?))
 }
 
 pub(super) fn set_worker_title(run_id: &RunId, phase: WorkerTitlePhase) {
@@ -746,9 +773,12 @@ mod tests {
     use fabro_client::ServerTarget;
     use fabro_config::Storage;
     use fabro_interview::{
-        AnswerValue, ControlInterviewer, Interviewer, Question, WorkerControlEnvelope,
+        AnswerValue, ControlInterviewer, Interviewer, Question, WorkerControlAck,
+        WorkerControlEnvelope, WorkerControlOutcome,
     };
-    use fabro_types::{QuestionType, fixtures};
+    use fabro_petri::test_support::MemoryPlatformRecords;
+    use fabro_store::PlatformRecord;
+    use fabro_types::{Principal, QuestionType, SystemActorKind, fixtures};
     use fabro_vault::{SecretType, Vault};
     use tokio::time;
     use tokio_tungstenite::tungstenite::protocol::{Message as TestWebSocketMessage, Role};
@@ -767,11 +797,33 @@ mod tests {
     /// A run's controls over records kept in memory: what the channel
     /// tests drive.
     fn test_controls() -> WorkerControls {
+        test_controls_over(Arc::new(MemoryPlatformRecords::new()))
+    }
+
+    fn test_controls_over(records: Arc<MemoryPlatformRecords>) -> WorkerControls {
         Arc::new(PetriControls::new(
             fixtures::RUN_1,
             RunControls::new(),
-            Arc::new(fabro_petri::test_support::MemoryPlatformRecords::new()),
+            records,
         ))
+    }
+
+    /// The `run.notice` records of the test run, as `(code, message)`.
+    fn notices(records: &MemoryPlatformRecords) -> Vec<(String, String)> {
+        records
+            .records(&fixtures::RUN_1)
+            .into_iter()
+            .filter_map(|stored| match stored.record {
+                PlatformRecord::RunNotice(notice) => Some((notice.code, notice.message)),
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn engine_actor() -> Principal {
+        Principal::System {
+            system_kind: SystemActorKind::Engine,
+        }
     }
 
     #[test]
@@ -921,6 +973,135 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_refused_steer_is_acknowledged_with_the_notice_code() {
+        let interviewer = Arc::new(ControlInterviewer::new());
+        let cancel_token = CancellationToken::new();
+        let records = Arc::new(MemoryPlatformRecords::new());
+        let controls = test_controls_over(Arc::clone(&records));
+
+        // No live agent: refused under the control's own code.
+        let ack = apply_worker_control_message(
+            &interviewer,
+            &cancel_token,
+            &controls,
+            WorkerControlEnvelope::steer("hurry up", None, engine_actor()).with_request_id("req-1"),
+        )
+        .await;
+        assert_eq!(
+            ack,
+            Some(WorkerControlAck::new(
+                "req-1",
+                WorkerControlOutcome::Refused {
+                    code:    "steer_refused".to_string(),
+                    message: "Steer refused: Run has no active steerable agent session."
+                        .to_string(),
+                }
+            ))
+        );
+
+        // A stage that is not running: `no_such_stage`, for a steer as for
+        // an interrupt.
+        let ack = apply_worker_control_message(
+            &interviewer,
+            &cancel_token,
+            &controls,
+            WorkerControlEnvelope::steer("hurry up", Some("work".to_string()), engine_actor())
+                .with_request_id("req-2"),
+        )
+        .await;
+        assert_eq!(
+            ack,
+            Some(WorkerControlAck::new(
+                "req-2",
+                WorkerControlOutcome::Refused {
+                    code:    "no_such_stage".to_string(),
+                    message: "Steer of stage `work` refused: no stage named `work` is running"
+                        .to_string(),
+                }
+            ))
+        );
+        let ack = apply_worker_control_message(
+            &interviewer,
+            &cancel_token,
+            &controls,
+            WorkerControlEnvelope::interrupt(Some("work".to_string()), engine_actor())
+                .with_request_id("req-3"),
+        )
+        .await;
+        assert_eq!(
+            ack,
+            Some(WorkerControlAck::new(
+                "req-3",
+                WorkerControlOutcome::Refused {
+                    code:    "no_such_stage".to_string(),
+                    message: "Interrupt of stage `work` refused: no stage named `work` is running"
+                        .to_string(),
+                }
+            ))
+        );
+
+        // Each refusal is also a notice on the run, under the same code.
+        assert_eq!(
+            notices(&records)
+                .iter()
+                .map(|(code, _)| code.as_str())
+                .collect::<Vec<_>>(),
+            ["steer_refused", "no_such_stage", "no_such_stage"]
+        );
+    }
+
+    #[tokio::test]
+    async fn a_control_without_a_request_id_is_not_acknowledged() {
+        let interviewer = Arc::new(ControlInterviewer::new());
+        let cancel_token = CancellationToken::new();
+        let records = Arc::new(MemoryPlatformRecords::new());
+        let controls = test_controls_over(Arc::clone(&records));
+
+        let ack = apply_worker_control_message(
+            &interviewer,
+            &cancel_token,
+            &controls,
+            WorkerControlEnvelope::steer("hurry up", None, engine_actor()),
+        )
+        .await;
+        assert_eq!(ack, None);
+        assert_eq!(notices(&records).len(), 1, "the refusal is still a notice");
+
+        let ack = apply_worker_control_message(
+            &interviewer,
+            &cancel_token,
+            &controls,
+            WorkerControlEnvelope::pause_run(),
+        )
+        .await;
+        assert_eq!(ack, None);
+    }
+
+    #[tokio::test]
+    async fn muted_acknowledgements_apply_the_control_and_answer_nothing() {
+        let interviewer = Arc::new(ControlInterviewer::new());
+        let cancel_token = CancellationToken::new();
+        let records = Arc::new(MemoryPlatformRecords::new());
+        let controls: WorkerControls = Arc::new(
+            PetriControls::new(fixtures::RUN_1, RunControls::new(), records.clone())
+                .with_muted_acks(true),
+        );
+
+        let ack = apply_worker_control_message(
+            &interviewer,
+            &cancel_token,
+            &controls,
+            WorkerControlEnvelope::interrupt(None, engine_actor()).with_request_id("req-1"),
+        )
+        .await;
+        assert_eq!(ack, None);
+        assert_eq!(notices(&records), [(
+            "interrupt_refused".to_string(),
+            "Interrupt refused: Run has no active steerable agent session.".to_string()
+        )]);
+    }
+
+    #[tokio::test]
     async fn duplicate_delivery_ids_are_not_applied_twice() {
         let interviewer = Arc::new(ControlInterviewer::new());
         let cancel_token = CancellationToken::new();
@@ -940,6 +1121,7 @@ mod tests {
                 frame.clone(),
             )
             .await
+            .applied
         );
         assert!(
             !apply_worker_control_delivery_frame(
@@ -950,6 +1132,7 @@ mod tests {
                 frame,
             )
             .await
+            .applied
         );
 
         assert_eq!(applied_ids.last_applied_id(), Some("local:1"));

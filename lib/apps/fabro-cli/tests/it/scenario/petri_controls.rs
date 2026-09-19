@@ -9,6 +9,11 @@
 //! interrupt of a gate stage is refused with `no_live_turn`; a run paused
 //! when its server and worker die resumes paused and goes on once unpaused.
 //!
+//! The worker answers each steer and interrupt over its control stream,
+//! and the endpoint's response is that answer: `202` with `delivered` and
+//! the stage, `409` with the refusal's code, or `202` with `pending` when
+//! the worker never answers (a test hook mutes the worker's answers).
+//!
 //! The harness is `petri.rs`'s: a foreground server on disk storage, the
 //! run started with `fabro run --detach`, and the host scope through the
 //! sandbox-driver host plugin, so the tests skip, and say why, when the
@@ -108,14 +113,40 @@ async fn steer(server: &RunningServer, run_id: &str, text: &str) {
     steer_stage(server, run_id, text, None).await;
 }
 
-/// `POST /runs/{id}/steer` naming `stage`, or no stage.
+/// `POST /runs/{id}/steer` naming `stage`, or no stage: the worker
+/// answers `delivered`, to the stage it steered.
 async fn steer_stage(server: &RunningServer, run_id: &str, text: &str, stage: Option<&str>) {
+    let (status, body) = steer_request(server, run_id, text, stage).await;
+    assert_eq!(status, 202, "steer: {body}");
+    assert_eq!(body["outcome"], "delivered", "steer: {body}");
+    let delivered = body["stage"].as_str().unwrap_or_default();
+    match stage {
+        Some(stage) => assert_eq!(delivered, stage, "steer: {body}"),
+        None => assert!(!delivered.is_empty(), "steer: {body}"),
+    }
+}
+
+/// `POST /runs/{id}/steer` naming `stage`, or no stage; the status and
+/// body, for a steer the worker may refuse.
+async fn steer_request(
+    server: &RunningServer,
+    run_id: &str,
+    text: &str,
+    stage: Option<&str>,
+) -> (u16, Value) {
     let mut body = json!({ "text": text, "interrupt": false });
     if let Some(stage) = stage {
         body["stage"] = json!(stage);
     }
-    let (status, body) = control(server, run_id, "steer", Some(body)).await;
-    assert_eq!(status, 202, "steer: {body}");
+    control(server, run_id, "steer", Some(body)).await
+}
+
+/// A refused control: 409, with the refusal's code and message in the
+/// error entry.
+fn assert_refused(status: u16, body: &Value, code: &str, message: &str) {
+    assert_eq!(status, 409, "{body}");
+    assert_eq!(body["errors"][0]["code"], code, "{body}");
+    assert_eq!(body["errors"][0]["detail"], message, "{body}");
 }
 
 /// `fabro steer <run> --stage <stage> <text>` against the server.
@@ -138,6 +169,11 @@ fn steer_by_cli(
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains(&format!("Steer delivered to stage {stage}.")),
+        "fabro steer reports the worker's answer\nstderr:\n{stderr}"
+    );
 }
 
 /// `fabro steer --interrupt <run> <text>` against the server: the stage's
@@ -159,6 +195,37 @@ fn interrupt_by_cli(
         "fabro steer --interrupt failed\nstdout:\n{}\nstderr:\n{}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("Interrupt delivered to stage work@1."),
+        "fabro steer --interrupt reports the worker's answer\nstderr:\n{stderr}"
+    );
+}
+
+/// `fabro steer --interrupt <run> --stage <stage> <text>` for a stage the
+/// worker refuses: the command fails and prints the refusal.
+fn interrupt_refused_by_cli(
+    context: &fabro_test::TestContext,
+    server: &RunningServer,
+    run_id: &str,
+    stage: &str,
+    refusal: &str,
+) {
+    let output = context
+        .command()
+        .args(["steer", "--server", &server.target(), run_id])
+        .args(["--interrupt", "--stage", stage, "Stop."])
+        .output()
+        .expect("the steer command executes");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !output.status.success(),
+        "fabro steer --interrupt of `{stage}` succeeded\nstderr:\n{stderr}"
+    );
+    assert!(
+        stderr.contains(refusal),
+        "fabro steer --interrupt prints the refusal `{refusal}`\nstderr:\n{stderr}"
     );
 }
 
@@ -463,6 +530,15 @@ async fn a_steer_reaches_the_agent_stage_on_the_twin() {
     wait_for_status(&server, &run_id, &["running"]).await;
     wait_until_gate_is_polled(&gate);
     eprintln!("run {run_id}: the agent's tool is waiting on the gate");
+    // A stage that is not running: refused in the response, and on the
+    // stream as a notice under the same code.
+    let (status, body) = steer_request(&server, &run_id, "Steer nobody.", Some("nope")).await;
+    assert_refused(
+        status,
+        &body,
+        "no_such_stage",
+        "Steer of stage `nope` refused: no stage named `nope` is running",
+    );
     steer(&server, &run_id, STEER).await;
     wait_for_stream_count(&server, &run_id, "control.requested", 1).await;
     eprintln!("run {run_id}: the steer is recorded");
@@ -478,6 +554,14 @@ async fn a_steer_reaches_the_agent_stage_on_the_twin() {
         server.stderr_text()
     );
     assert_petri_succeeded(&server, &run_id).await;
+    assert_eq!(
+        notices(&items),
+        [(
+            "no_such_stage".to_string(),
+            "Steer of stage `nope` refused: no stage named `nope` is running".to_string()
+        )],
+        "the refused steer is the one notice"
+    );
 
     let delivery = items
         .iter()
@@ -609,8 +693,16 @@ async fn two_live_agent_stages_are_steered_apart_by_their_labels() {
     wait_until_gate_is_polled(&gate_b);
     eprintln!("run {run_id}: both agents' tools are waiting on their gates");
 
-    // Unnamed, the steer has two candidates and is refused with both named.
-    steer(&server, &run_id, "Steer nobody.").await;
+    // Unnamed, the steer has two candidates and is refused with both
+    // named: in the response, and on the stream.
+    let (status, body) = steer_request(&server, &run_id, "Steer nobody.", None).await;
+    assert_eq!(status, 409, "{body}");
+    assert_eq!(body["errors"][0]["code"], "steer_refused", "{body}");
+    let detail = body["errors"][0]["detail"].as_str().unwrap_or_default();
+    assert!(
+        detail.contains("a@1") && detail.contains("b@1"),
+        "the refusal names both live stages: {body}"
+    );
     let names = wait_for_stream_count(&server, &run_id, "run.notice", 1).await;
     assert_eq!(count_of(&names, "control.requested"), 0, "{names:?}");
     let notice = run_stream(&server, &run_id)
@@ -790,22 +882,10 @@ async fn an_interrupt_ends_the_turn_and_its_text_is_the_next_input() {
     server.shutdown();
 }
 
-/// An interrupt of a stage with no model turn to stop: the gate the run is
-/// blocked on, named by its node, is refused by Petri with `no_live_turn`;
-/// unnamed, with no agent stage live, the worker refuses it with
-/// `interrupt_refused`. Both refusals are `run.notice` records on the
-/// stream naming the stage and Petri's reason, nothing is delivered, and
-/// the gate's question is untouched: its answer routes the run to its end.
-#[tokio::test(flavor = "multi_thread")]
-async fn an_interrupt_of_a_gate_stage_is_refused_with_no_live_turn() {
-    if host_plugin().is_none() {
-        return;
-    }
-    let context = test_context!();
-    let server = RunningServer::start().await;
-    let marker = context.temp_dir.join("yes.marker");
-    let workspace = write_petri_workflow(
-        &context,
+/// A workflow of one human gate: `yes` leaves `marker`.
+fn gate_workspace(context: &fabro_test::TestContext, marker: &Path) -> PathBuf {
+    write_petri_workflow(
+        context,
         &format!(
             "digraph Gate {{\n  graph [goal=\"Ask before running\"]\n  start [shape=Mdiamond]\n  \
              exit [shape=Msquare]\n  gate [shape=hexagon, label=\"Go?\", \
@@ -814,7 +894,31 @@ async fn an_interrupt_of_a_gate_stage_is_refused_with_no_live_turn() {
              No\"]\n  yes -> exit\n}}\n",
             marker = marker.display()
         ),
-    );
+    )
+}
+
+const GATE_INTERRUPT_REFUSAL: &str =
+    "Interrupt of stage `gate` refused: the stage has no model turn to interrupt";
+const UNNAMED_INTERRUPT_REFUSAL: &str =
+    "Interrupt refused: Run has no active steerable agent session.";
+
+/// An interrupt of a stage with no model turn to stop: the gate the run is
+/// blocked on, named by its node, is refused by Petri with `no_live_turn`;
+/// unnamed, with no agent stage live, the worker refuses it with
+/// `interrupt_refused`. Each refusal is the endpoint's own answer, a 409
+/// with the code and the reason, and `fabro steer` prints it; each is also
+/// a `run.notice` record on the stream naming the stage and Petri's
+/// reason. Nothing is delivered, and the gate's question is untouched: its
+/// answer routes the run to its end.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_interrupt_of_a_gate_stage_is_refused_with_no_live_turn() {
+    if host_plugin().is_none() {
+        return;
+    }
+    let context = test_context!();
+    let server = RunningServer::start().await;
+    let marker = context.temp_dir.join("yes.marker");
+    let workspace = gate_workspace(&context, &marker);
     let run_id = run_detached_with(&context, &server, &workspace, &[]);
 
     let pending = wait_for_questions(&server, &run_id, 1).await;
@@ -829,25 +933,34 @@ async fn an_interrupt_of_a_gate_stage_is_refused_with_no_live_turn() {
         Some(json!({ "stage": "gate" })),
     )
     .await;
-    assert_eq!(status, 202, "interrupt: {body}");
+    assert_refused(status, &body, "no_live_turn", GATE_INTERRUPT_REFUSAL);
     let (status, body) = control(&server, &run_id, "interrupt", None).await;
-    assert_eq!(status, 202, "interrupt: {body}");
-    let names = wait_for_stream_count(&server, &run_id, "run.notice", 2).await;
+    assert_refused(
+        status,
+        &body,
+        "interrupt_refused",
+        UNNAMED_INTERRUPT_REFUSAL,
+    );
+    interrupt_refused_by_cli(&context, &server, &run_id, "gate", GATE_INTERRUPT_REFUSAL);
+    let names = wait_for_stream_count(&server, &run_id, "run.notice", 3).await;
     assert_eq!(count_of(&names, "control.requested"), 0, "{names:?}");
     let refused = notices(&run_stream(&server, &run_id).await);
-    assert_eq!(refused.len(), 2, "{refused:?}");
     // The notice names the stage and carries Petri's reason as it spells
     // it, so the web and the CLI can show both.
-    assert_eq!(refused[0].0, "no_live_turn", "{refused:?}");
-    assert_eq!(
-        refused[0].1,
-        "Interrupt of stage `gate` refused: the stage has no model turn to interrupt"
-    );
-    assert_eq!(refused[1].0, "interrupt_refused", "{refused:?}");
-    assert_eq!(
-        refused[1].1,
-        "Interrupt refused: Run has no active steerable agent session."
-    );
+    assert_eq!(refused, [
+        (
+            "no_live_turn".to_string(),
+            GATE_INTERRUPT_REFUSAL.to_string()
+        ),
+        (
+            "interrupt_refused".to_string(),
+            UNNAMED_INTERRUPT_REFUSAL.to_string()
+        ),
+        (
+            "no_live_turn".to_string(),
+            GATE_INTERRUPT_REFUSAL.to_string()
+        ),
+    ]);
     assert_eq!(run_status(&server, &run_id).await, "blocked");
 
     answer(&server, &run_id, &question_id, json!({ "kind": "yes" })).await;
@@ -871,6 +984,60 @@ async fn an_interrupt_of_a_gate_stage_is_refused_with_no_live_turn() {
         progress_of_kind(&items, "attractor.turn.interrupted").is_empty(),
         "no turn was stopped: {names:?}"
     );
+    server.shutdown();
+}
+
+/// A worker that never answers a control: the endpoint waits its bound
+/// (5 s) and answers `202` with `pending`; the control was still applied,
+/// so its refusal is on the stream as a notice. The worker's answers are
+/// muted through the server's test hook, forwarded to the worker by name.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_control_the_worker_never_answers_is_pending() {
+    if host_plugin().is_none() {
+        return;
+    }
+    let context = test_context!();
+    let server =
+        RunningServer::start_with_env("", &[], &[(EnvVars::FABRO_TEST_CONTROL_ACKS_MUTED, "1")])
+            .await;
+    let marker = context.temp_dir.join("yes.marker");
+    let workspace = gate_workspace(&context, &marker);
+    let run_id = run_detached_with(&context, &server, &workspace, &[]);
+
+    let pending = wait_for_questions(&server, &run_id, 1).await;
+    let question_id = pending[0]["id"].as_str().expect("an id").to_string();
+    eprintln!("run {run_id}: the gate is asking; interrupting it with the answers muted");
+
+    let asked = Instant::now();
+    let (status, body) = control(
+        &server,
+        &run_id,
+        "interrupt",
+        Some(json!({ "stage": "gate" })),
+    )
+    .await;
+    assert_eq!(status, 202, "interrupt: {body}");
+    assert_eq!(body, json!({ "outcome": "pending" }));
+    assert!(
+        asked.elapsed() >= Duration::from_secs(4),
+        "the endpoint waited its bound for the answer: {:?}",
+        asked.elapsed()
+    );
+    let refused = notices(&run_stream(&server, &run_id).await);
+    assert_eq!(refused, [(
+        "no_live_turn".to_string(),
+        GATE_INTERRUPT_REFUSAL.to_string()
+    )]);
+
+    answer(&server, &run_id, &question_id, json!({ "kind": "yes" })).await;
+    let status = wait_for_status(&server, &run_id, &["succeeded", "failed"]).await;
+    assert_eq!(
+        status,
+        "succeeded",
+        "server stderr:\n{}",
+        server.stderr_text()
+    );
+    assert!(marker.exists(), "the answer routed the gate");
     server.shutdown();
 }
 

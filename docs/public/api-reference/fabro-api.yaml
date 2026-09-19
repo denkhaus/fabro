@@ -1726,12 +1726,14 @@ paths:
         `interrupt=true`, the stage's current model turn (the model request
         and the tool calls it is running) is stopped first, the session is
         kept, and the text is the stage's next input. The control is
-        forwarded to the run's worker; a control the worker cannot deliver
-        (no live agent stage, several unnamed, a stage that is not running,
-        or, for an interrupt, a stage with no model turn in flight) is
-        refused on the run's event stream as a `run.notice` record whose
-        code says why (`steer_refused`, `no_live_turn`, `no_such_stage`,
-        `interrupt_refused`).
+        forwarded to the run's worker, and the worker's answer is this
+        response: `202` with `outcome: delivered` (and the stage's label)
+        once the worker delivered it, `409` with the refusal's code when
+        the worker or Petri refused it, and `202` with `outcome: pending`
+        when the worker gave no answer within the wait (5 s). A refused
+        control is also a `run.notice` record on the run's event stream
+        under the same code (`steer_refused`, `no_live_turn`,
+        `no_such_stage`, `interrupt_refused`).
       parameters:
         - $ref: "#/components/parameters/RunId"
       requestBody:
@@ -1742,7 +1744,13 @@ paths:
               $ref: "#/components/schemas/SteerRunRequest"
       responses:
         "202":
-          description: Steer accepted and forwarded to the worker
+          description: |
+            Steer forwarded to the worker: delivered, or pending when the
+            worker gave no answer within the wait.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunControlAcknowledgement"
         "400":
           description: Invalid request body
           headers:
@@ -1763,9 +1771,16 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "409":
           description: |
-            Run is not currently steerable. Returned when the run is in a
-            terminal state, blocked (use the answer endpoint instead), or
-            active agent sessions have no live control channel.
+            Run is not currently steerable, or the worker refused the
+            steer. The error's `code` says which: `run_not_steerable` (a
+            terminal run, or one not running yet), `use_answer_endpoint`
+            (the run is blocked on a question), `agent_not_steerable` (the
+            active agent sessions have no live control channel),
+            `steer_refused` (no live agent stage, or several and none
+            named), `no_such_stage` (the named stage is not running),
+            `no_live_turn` (with `interrupt=true`: the stage has no model
+            turn in flight), `interrupt_refused` (with `interrupt=true`:
+            no live agent stage, or several and none named).
           headers:
             x-request-id:
               $ref: "#/components/headers/XRequestId"
@@ -2049,14 +2064,19 @@ paths:
         names, or the run's one live agent stage) and keep its session. With
         `text`, the text is the stage's next input; without, the stage waits
         for the next steer message before starting another model turn. The
-        control is forwarded to the run's worker; an interrupt the worker
-        cannot deliver (a stage with no model turn in flight, such as an
-        agent between turns or a human gate; a stage that is not running; no
-        live agent stage, or several unnamed) is refused on the run's event
-        stream as a `run.notice` record whose code says why (`no_live_turn`,
-        `no_such_stage`, `interrupt_refused`). A delivered interrupt is the
-        stage's `control.requested` record with `$interrupt`, followed by an
-        `attractor.turn.interrupted` progress record.
+        control is forwarded to the run's worker, and the worker's answer is
+        this response: `202` with `outcome: delivered` (and the stage's
+        label) once the worker stopped the turn, `409` with the refusal's
+        code when the worker or Petri refused it (a stage with no model
+        turn in flight, such as an agent between turns or a human gate; a
+        stage that is not running; no live agent stage, or several
+        unnamed), and `202` with `outcome: pending` when the worker gave no
+        answer within the wait (5 s). A refused interrupt is also a
+        `run.notice` record on the run's event stream under the same code
+        (`no_live_turn`, `no_such_stage`, `interrupt_refused`). A delivered
+        interrupt is the stage's `control.requested` record with
+        `$interrupt`, followed by an `attractor.turn.interrupted` progress
+        record.
       parameters:
         - $ref: "#/components/parameters/RunId"
       requestBody:
@@ -2067,7 +2087,13 @@ paths:
               $ref: "#/components/schemas/InterruptRunRequest"
       responses:
         "202":
-          description: Interrupt accepted and forwarded to the worker
+          description: |
+            Interrupt forwarded to the worker: delivered, or pending when
+            the worker gave no answer within the wait.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunControlAcknowledgement"
         "400":
           description: Invalid request body
           headers:
@@ -2088,8 +2114,14 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "409":
           description: |
-            Run is not currently interruptible. Returned when the run is in a
-            terminal state or is not running yet.
+            Run is not currently interruptible, or the worker refused the
+            interrupt. The error's `code` says which: `run_not_interruptible`
+            (a terminal run, or one not running yet), `agent_not_steerable`
+            (the active agent sessions have no live control channel),
+            `no_live_turn` (the stage has no model turn in flight),
+            `no_such_stage` (the named stage is not running),
+            `interrupt_refused` (no live agent stage, or several and none
+            named).
           headers:
             x-request-id:
               $ref: "#/components/headers/XRequestId"
@@ -8625,8 +8657,8 @@ components:
           example: "Anthropic"
         adapter:
           type: string
-          description: "lithos adapter id the provider speaks, such as `anthropic`, `openai`, `gemini`, or `openai-compatible`."
-          example: "anthropic"
+          description: "lithos adapter id the provider uses: `http` or `bedrock`, or a custom adapter's id."
+          example: "http"
         base_url:
           type: string
           description: Effective API base URL, including any operator override.
@@ -10178,6 +10210,32 @@ components:
           maxLength: 200
           example: code@2
 
+    RunControlAcknowledgement:
+      description: |
+        The worker's answer to a steer or an interrupt, as the endpoint's
+        `202` body.
+      type: object
+      required:
+        - outcome
+      properties:
+        outcome:
+          $ref: "#/components/schemas/RunControlOutcome"
+        stage:
+          type: string
+          description: >-
+            The label of the stage the control was delivered to
+            (`node@visit`, or `node/e<execution>@visit`); absent when the
+            outcome is `pending`.
+    RunControlOutcome:
+      description: |
+        What became of a forwarded control: `delivered` once the worker
+        delivered it to its stage; `pending` when the worker gave no answer
+        within the wait, in which case the run's event stream says what
+        became of it (a `run.notice` record on refusal).
+      type: string
+      enum:
+        - delivered
+        - pending
     InterruptRunRequest:
       description: Request body for interrupting a live agent stage's model turn.
       type: object

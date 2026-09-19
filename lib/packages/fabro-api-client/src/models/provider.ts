@@ -27,7 +27,7 @@ export interface Provider {
      */
     'display_name': string;
     /**
-     * lithos adapter id the provider speaks, such as `anthropic`, `openai`, `gemini`, or `openai-compatible`.
+     * lithos adapter id the provider uses: `http` or `bedrock`, or a custom adapter\'s id.
      */
     'adapter': string;
     /**

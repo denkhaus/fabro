@@ -81,6 +81,25 @@ pub enum SteerError {
     Control(#[from] ControlError),
 }
 
+impl SteerError {
+    /// The code Fabro knows the refusal by, when the reason has one of its
+    /// own: `no_live_turn` for a stage with no model turn in flight,
+    /// `no_such_stage` for a name that is not running. `None` for a
+    /// refusal named only by the control it refused (`steer_refused`,
+    /// `interrupt_refused`): no live agent, several unnamed, a stage that
+    /// ended, a run that finished.
+    #[must_use]
+    pub fn code(&self) -> Option<&'static str> {
+        match self {
+            Self::Control(ControlError::NoLiveTurn) => Some("no_live_turn"),
+            Self::Control(ControlError::NoSuchStage(_)) => Some("no_such_stage"),
+            Self::NoLiveAgent
+            | Self::SeveralLiveAgents(_)
+            | Self::Control(ControlError::NotLive | ControlError::Finished) => None,
+        }
+    }
+}
+
 /// One live agent firing: the node's name and which firing of the node it
 /// is within its execution, which is the visit its stage label carries.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -420,6 +439,24 @@ mod tests {
             ControlError::NoLiveTurn.to_string(),
             "the stage has no model turn to interrupt"
         );
+    }
+
+    #[test]
+    fn a_refusal_has_a_code_when_its_reason_has_one() {
+        assert_eq!(
+            SteerError::Control(ControlError::NoLiveTurn).code(),
+            Some("no_live_turn")
+        );
+        assert_eq!(
+            SteerError::Control(ControlError::NoSuchStage("work".to_string())).code(),
+            Some("no_such_stage")
+        );
+        assert_eq!(SteerError::NoLiveAgent.code(), None);
+        assert_eq!(
+            SteerError::SeveralLiveAgents(vec!["a@1".to_string()]).code(),
+            None
+        );
+        assert_eq!(SteerError::Control(ControlError::Finished).code(), None);
     }
 
     #[test]
