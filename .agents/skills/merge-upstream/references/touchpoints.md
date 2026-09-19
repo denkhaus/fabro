@@ -33,6 +33,7 @@ the reason both layers exist.
 | Diff-based publish squash-revert protection (fabro-4ebd, closed; backfilled fabro-ec00) | server: pull_request_conflict.rs (fork-surface header, run_scoped_tree_changes + union + git-data-API merge commit), pull_request_supervisor.rs; workflow: pipeline/pull_request.rs out-of-scope merge gate; github: PullRequestFileStatus + list_pull_request_file_statuses; pin = server/fork_publish_conflict_tests.rs | cargo nextest run -p fabro-server -- fork_publish_conflict |
 | Terminal-run sandbox provisioning for Ask-Fabro (fabro-8d30 part b, closed; backfilled fabro-ec00) | server/handler/sessions.rs provision_replacement_sandbox + replacement_sandbox_spec (seam fns pub(super)); pin = handler/fork_session_provisioning_tests.rs (moved out of sessions.rs inline tests) | cargo nextest run -p fabro-server -- fork_session_provisioning |
 | Sandbox GC (fabro-44d8, OPEN) | server: sandbox_gc.rs + supervisor spawn/abort wiring in serve.rs; sandbox: reclaim.rs + pub(crate) accessor seam in provider.rs (entries/kind/provider accessors, InventoryEntry/provider_error visibility); bollard 0.18 workspace dep (root Cargo.toml, lib/apps/fabro-server/Cargo.toml); pin = server/fork_seam_test.rs | cargo nextest run -p fabro-server -- sandbox_gc + cargo nextest run -p fabro-sandbox -- reclaim |
+| Fork catalog overlay (fabro-cd27, OPEN seed owns future pins) | fabro-llm: fork_catalog.rs (OVERLAY const + presence pin) + fork-catalog-overlay.toml (data); seam in catalog.rs = one `use crate::fork_catalog::OVERLAY` + one `.toml_layer()` call in build_catalog (seam-shrunk 2026-09-19 pre-merge) | cargo nextest run -p fabro-llm -- fork_catalog |
 
 ## Obsolescence watchlist
 
@@ -283,3 +284,22 @@ Upstream directions that may supersede our work — re-evaluate per merge:
   (Traefik unmatched-route) while the app container is crash-looping —
   a 404 there means "no container registered", not "no runs"; check the
   host via SSH before concluding the window is open.
+
+## 2026-09-19 (pre-merge diagnosis phase introduced; ahead of v0.361.0-nightly.0)
+
+- PRE-MERGE DIAGNOSIS IS MANDATORY (user directive 2026-09-19, now a
+  phase in SKILL.md): both-touched analysis, feature-risk mapping,
+  semantic drift scan, seam-shrink proposals — presented to the user
+  BEFORE `git merge`.
+- First application (lithos-llm codecs migration analysis): catalog.rs
+  conflict risk LOW (upstream hunks at lines 13/101/241/282/308, fork
+  seam at ~30); ZERO fork-added `codec =` fixtures anywhere; overlay
+  TOML uses no codec/adapter keys → loader-compatible. Seam-shrink
+  executed pre-merge: overlay const+docs moved from catalog.rs into
+  fork_catalog.rs, upstream module doc restored verbatim, missing
+  presence pin added (commit 32265c67c).
+- CORRECTION: fabro-b7c4 (legacy run-catalog keys) lives in fabro-store
+  parse_run_catalog_key, NOT in fabro-llm/catalog.rs — earlier session
+  notes had it wrong. This merge does not touch fabro-store.
+- Clippy absolute_paths forbids inline `crate::` paths in the seam — a
+  "one-line seam" is really import + call (two small hunks).

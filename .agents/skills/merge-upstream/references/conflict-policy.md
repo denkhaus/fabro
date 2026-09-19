@@ -262,3 +262,18 @@ upstream's new signatures; never revert upstream, never drop our features.
   fixtures fail as E0559/E0425 (billing fields, BilledModelUsage) — the
   compiler lists every site, fix mechanically (BilledModelUsage ->
   ModelUsage, billing/billing_by_model -> usage/usage_by_model).
+
+## 2026-09-19 (pre-merge seam-shrink class, user directive)
+
+- Diagnosis-first class: BEFORE `git merge`, fork additions found inline
+  in upstream-owned files (consts, helpers, doc edits) move into
+  fork-owned files on the clean pre-merge tree (behavior-neutral,
+  build+tests+clippy+fmt green, committed) — then the merge meets a
+  minimal seam instead of a refactored upstream file full of fork text.
+  First application: catalog.rs overlay const → fork_catalog.rs (the
+  codecs migration then merged against a one-hunk seam).
+- Seam mechanics: clippy absolute_paths forbids inline `crate::` paths,
+  so the minimal seam is an import line + one call — two small hunks,
+  both adjacent-stable. Restore upstream doc comments BYTE-identical
+  (diff against `git show <merge-base>:<file>`) — hand-retyped wrapping
+  drifts and re-creates a doc hunk.

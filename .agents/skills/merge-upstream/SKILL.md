@@ -39,6 +39,36 @@ or rebase it.
 3. Deployed server state: if the instance was just built from the current
    tree, note it — the final `just up` will rebuild on the merged tree.
 
+## Pre-merge diagnosis (mandatory — user directive 2026-09-19)
+
+After a successful fetch and BEFORE running `git merge`, produce a short
+diagnosis and present it to the user. Ideal merge conditions come from
+knowing the overlap first, not from resolving blind conflicts; this is
+how fork features are secured best. Cover all five points:
+
+1. **Both-touched files**: for every file upstream changes
+   (`git diff --name-only $(git merge-base HEAD upstream/main)..upstream/main`),
+   compute our net fork delta (`git diff <merge-base>..HEAD -- <file>`)
+   and predict per file: clean auto-merge / adjacent-hunk risk / real
+   conflict. Report the counts.
+2. **Features at risk**: map both-touched files against
+   `references/touchpoints.md` rows; name the seeds whose code overlaps
+   upstream changes and the fast verification to run post-merge.
+3. **Semantic drift scan** (the class textual merges never show): when
+   upstream changes a schema, settings key, loader, or event vocabulary,
+   grep FORK-OWNED files and fork-added test fixtures for the OLD shape
+   (fork files never conflict — they just break), and check operator
+   data (prod settings.toml) whenever a loader turns strict.
+4. **Seam-shrink opportunities**: fork additions still living inline in
+   upstream-owned files (consts, helpers, doc edits) move into
+   fork-owned files BEFORE the merge (minimal seam: mod/import decl +
+   one call), with a presence pin if the two-pin rule is unmet. The
+   refactor is behavior-neutral and verified green (build + tests +
+   clippy + fmt) on the pre-merge tree, then committed.
+5. Present the diagnosis — conflict predictions, features at risk,
+   drift findings, seam-shrink proposals — and get the user's go
+   BEFORE merging.
+
 ## Resume after an interrupted session (2026-08-25 lesson)
 
 If a previous merge session died (disk space, crash): the merge commit may
