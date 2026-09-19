@@ -1024,6 +1024,7 @@ impl RunSession {
             hooks: self.hooks,
             sandbox_env: self.sandbox_env,
             vault: self.vault,
+            env_lookup: Arc::new(process_env_var),
             sandbox_providers: self.sandbox_providers,
             git: self.git,
             registry_override: self.registry_override,

@@ -759,7 +759,25 @@ pub fn test_app_state_with_store_and_runtime_settings(
 }
 
 pub(crate) fn default_env_lookup() -> EnvLookup {
-    Arc::new(process_env_var)
+    hermetic_provider_env_lookup(process_env_var)
+}
+
+/// The default test env lookup: `raw` (the process environment) minus the
+/// provider-configuration overrides, so an explicit test override — the
+/// builder's `provider_base_url` overlay — outranks whatever the ambient
+/// process carries (fabro-2dac). Tests that want env-driven provider
+/// behavior inject their own lookup via [`TestAppStateBuilder::env_lookup`].
+///
+/// `OPENAI_BASE_URL` is the one environment override catalog construction
+/// honors above the `[llm]` overlay; scrubbing it here changes test
+/// resolution only, never production env resolution.
+fn hermetic_provider_env_lookup(raw: fn(&str) -> Option<String>) -> EnvLookup {
+    Arc::new(move |name: &str| {
+        if name == EnvVars::OPENAI_BASE_URL {
+            return None;
+        }
+        raw(name)
+    })
 }
 
 pub(crate) fn load_test_server_secrets(
@@ -932,6 +950,7 @@ pub async fn test_register_workflow_version(
 
 #[cfg(test)]
 mod tests {
+    use fabro_static::EnvVars;
     use fabro_types::settings::ObjectStoreSettings;
 
     use super::*;
@@ -941,6 +960,22 @@ mod tests {
             panic!("test server settings should use a local object store");
         };
         Path::new(root)
+    }
+
+    #[test]
+    fn default_env_lookup_scrubs_provider_env_overrides_so_explicit_test_overrides_win() {
+        let lookup = hermetic_provider_env_lookup(|name| Some(format!("process-{name}")));
+
+        assert_eq!(
+            lookup(EnvVars::OPENAI_BASE_URL),
+            None,
+            "an ambient OPENAI_BASE_URL must not defeat the provider_base_url overlay"
+        );
+        assert_eq!(
+            lookup(EnvVars::FABRO_LOG),
+            Some(format!("process-{}", EnvVars::FABRO_LOG)),
+            "unrelated process env still flows through the default test lookup"
+        );
     }
 
     #[test]

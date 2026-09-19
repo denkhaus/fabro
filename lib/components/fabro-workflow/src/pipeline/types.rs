@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use fabro_auth::EnvLookup;
 use fabro_graphviz::graph::Graph;
 use fabro_interview::Interviewer;
 use fabro_llm::lithos_catalog::Catalog;
@@ -309,6 +310,11 @@ pub struct InitOptions {
     pub hooks:             fabro_hooks::HookSettings,
     pub sandbox_env:       SandboxEnvSpec,
     pub vault:             Arc<AsyncRwLock<Vault>>,
+    /// The environment lookup provider-credential resolution consults: the
+    /// process environment in production, injected values in tests so
+    /// readiness never sees provider env vars a test did not install
+    /// (fabro-2dac).
+    pub env_lookup:        EnvLookup,
     /// The server's sandbox provider settings, for reattaching a run's
     /// sandbox on resume.
     pub sandbox_providers: ServerSandboxProvidersSettings,

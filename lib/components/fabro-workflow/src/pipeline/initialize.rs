@@ -345,10 +345,14 @@ const SESSION_ID_HEADER: &str = "x-session-id";
 
 fn build_llm_source(
     vault: Arc<AsyncRwLock<Vault>>,
+    env_lookup: fabro_auth::EnvLookup,
     run_id: fabro_types::RunId,
 ) -> Arc<dyn CredentialProvider> {
     Arc::new(ExtraHeadersCredentialSource::new(
-        Arc::new(VaultCredentialSource::new(vault)),
+        Arc::new(VaultCredentialSource::with_env_lookup(
+            vault,
+            move |name: &str| env_lookup(name),
+        )),
         HashMap::from([(SESSION_ID_HEADER.to_string(), run_id.to_string())]),
     ))
 }
@@ -370,7 +374,11 @@ pub async fn initialize(
     options.run_options.run_dir = run_dir.clone();
     options.run_options.git = options.git.clone();
 
-    let llm_source = build_llm_source(options.vault.clone(), options.run_options.run_id);
+    let llm_source = build_llm_source(
+        options.vault.clone(),
+        Arc::clone(&options.env_lookup),
+        options.run_options.run_id,
+    );
     let search_secrets = search_secrets_from_configured_sources(&options.vault).await;
     let catalog = Arc::clone(&options.catalog);
     let sandbox_git = Arc::new(SandboxGitRuntime::new());
@@ -962,6 +970,7 @@ mod tests {
                 origin_url:         None,
             },
             vault: auth_test_support::empty_vault(),
+            env_lookup: Arc::new(|_: &str| None),
             sandbox_providers:
                 fabro_types::settings::server::ServerSandboxProvidersSettings::default(),
             git: None,
@@ -1244,6 +1253,7 @@ mod tests {
 
         let run_store = memory_store().create_run(&test_run_id()).await.unwrap();
         let initialized = initialize(persisted, InitOptions {
+            env_lookup: Arc::new(|_: &str| None),
             sandbox_env: SandboxEnvSpec {
                 toml_env:           HashMap::from([("TEST_KEY".to_string(), "value".to_string())]),
                 github_integration: None,
@@ -1296,6 +1306,45 @@ mod tests {
             .await
             .ready
             .is_empty()
+        );
+    }
+
+    /// Provider readiness resolves from the env the test injected, never
+    /// from provider env vars the ambient process carries (fabro-2dac): the
+    /// ready set names exactly the provider whose key the test installed.
+    #[tokio::test]
+    async fn initialize_provider_readiness_resolves_injected_env_not_process_env() {
+        let temp = tempfile::tempdir().unwrap();
+        let run_dir = temp.path().join("run");
+        std::fs::create_dir_all(&run_dir).unwrap();
+        let (graph, source) = simple_graph();
+        let persisted = test_persisted(graph, source, &run_dir);
+        let emitter = Arc::new(crate::event::Emitter::new(test_run_id()));
+
+        let run_store = memory_store().create_run(&test_run_id()).await.unwrap();
+        let initialized = initialize(persisted, InitOptions {
+            env_lookup: Arc::new(|name: &str| {
+                (name == EnvVars::DEEPSEEK_API_KEY).then(|| "injected-key".to_string())
+            }),
+            ..test_init_options(
+                run_store.into(),
+                emitter,
+                std::env::current_dir().unwrap(),
+                test_settings(&run_dir),
+            )
+        })
+        .await
+        .unwrap();
+
+        let resolved = readiness(
+            initialized.engine.run.catalog.enabled_providers(),
+            initialized.engine.run.llm_source.as_ref(),
+        )
+        .await;
+        assert_eq!(
+            resolved.ready,
+            vec![lithos_llm::catalog::ProviderId::new("deepseek")],
+            "only the test-injected provider key may configure a provider"
         );
     }
 
@@ -1449,7 +1498,7 @@ mod tests {
         let run_id = test_run_id();
         let expected_session_id = run_id.to_string();
 
-        let source = build_llm_source(vault, run_id);
+        let source = build_llm_source(vault, Arc::new(|_: &str| None), run_id);
         let catalog = test_catalog();
         let resolved = readiness(catalog.enabled_providers(), source.as_ref()).await;
 
@@ -1566,6 +1615,7 @@ mod tests {
                 origin_url:         None,
             },
             vault,
+            env_lookup: Arc::new(|_: &str| None),
             sandbox_providers:
                 fabro_types::settings::server::ServerSandboxProvidersSettings::default(),
             git: None,
@@ -1673,6 +1723,7 @@ mod tests {
                 origin_url:         None,
             },
             vault:             auth_test_support::empty_vault(),
+            env_lookup:        Arc::new(|_: &str| None),
             sandbox_providers:
                 fabro_types::settings::server::ServerSandboxProvidersSettings::default(),
             git:               None,
@@ -1818,6 +1869,7 @@ mod tests {
                 origin_url:         None,
             },
             vault: auth_test_support::empty_vault(),
+            env_lookup: Arc::new(|_: &str| None),
             sandbox_providers:
                 fabro_types::settings::server::ServerSandboxProvidersSettings::default(),
             git: None,
