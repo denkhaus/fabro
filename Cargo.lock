@@ -2051,9 +2051,9 @@ dependencies = [
  "fabro-environment",
  "fabro-types",
  "jsonschema",
- "lithos-llm 0.1.0 (git+https://github.com/lithoscomputer/lithos-llm?rev=43a42ac28e9d9bcf40a91abc02be4f12ca274ebb)",
+ "lithos-llm",
  "openapiv3",
- "pebble-coding-agent 0.1.0 (git+https://github.com/lithoscomputer/pebble?rev=67c9f486dd28f15c04e8d590a91e6f5563f7605d)",
+ "pebble-coding-agent",
  "prettyplease",
  "progenitor",
  "progenitor-client",
@@ -2082,7 +2082,7 @@ dependencies = [
  "fabro-types",
  "fabro-vault",
  "httpmock",
- "lithos-llm 0.1.0 (git+https://github.com/lithoscomputer/lithos-llm?rev=43a42ac28e9d9bcf40a91abc02be4f12ca274ebb)",
+ "lithos-llm",
  "serde",
  "serde_json",
  "tempfile",
@@ -2187,15 +2187,15 @@ dependencies = [
  "insta",
  "jsonwebtoken",
  "libc",
- "lithos-llm 0.1.0 (git+https://github.com/lithoscomputer/lithos-llm?rev=43a42ac28e9d9bcf40a91abc02be4f12ca274ebb)",
+ "lithos-llm",
  "miette",
  "nix 0.30.1",
  "object_store",
  "openssl",
  "paste",
- "pebble-agent 0.1.0 (git+https://github.com/lithoscomputer/pebble?rev=67c9f486dd28f15c04e8d590a91e6f5563f7605d)",
+ "pebble-agent",
  "pebble-cli-core",
- "pebble-coding-agent 0.1.0 (git+https://github.com/lithoscomputer/pebble?rev=67c9f486dd28f15c04e8d590a91e6f5563f7605d)",
+ "pebble-coding-agent",
  "predicates",
  "progenitor-client",
  "rand 0.9.4",
@@ -2244,7 +2244,7 @@ dependencies = [
  "futures",
  "httpmock",
  "libc",
- "lithos-llm 0.1.0 (git+https://github.com/lithoscomputer/lithos-llm?rev=43a42ac28e9d9bcf40a91abc02be4f12ca274ebb)",
+ "lithos-llm",
  "progenitor-client",
  "rand 0.9.4",
  "serde",
@@ -2455,7 +2455,7 @@ dependencies = [
  "fabro-types",
  "futures",
  "httpmock",
- "lithos-llm 0.1.0 (git+https://github.com/lithoscomputer/lithos-llm?rev=43a42ac28e9d9bcf40a91abc02be4f12ca274ebb)",
+ "lithos-llm",
  "serde",
  "serde_json",
  "strum 0.28.0",
@@ -2606,8 +2606,8 @@ dependencies = [
  "fabro-vault",
  "fabro-workflow",
  "httpmock",
- "lithos-llm 0.1.0 (git+https://github.com/lithoscomputer/lithos-llm?rev=43a42ac28e9d9bcf40a91abc02be4f12ca274ebb)",
- "pebble-coding-agent 0.1.0 (git+https://github.com/lithoscomputer/pebble?rev=67c9f486dd28f15c04e8d590a91e6f5563f7605d)",
+ "lithos-llm",
+ "pebble-coding-agent",
  "petri-attractor-steps",
  "petri-execution",
  "petri-frontend-attractor",
@@ -2670,7 +2670,7 @@ dependencies = [
  "fabro-types",
  "fabro-util",
  "futures",
- "pebble-coding-agent 0.1.0 (git+https://github.com/lithoscomputer/pebble?rev=67c9f486dd28f15c04e8d590a91e6f5563f7605d)",
+ "pebble-coding-agent",
  "reqwest 0.13.4",
  "sandbox-driver",
  "sandbox-driver-daytona",
@@ -2751,12 +2751,12 @@ dependencies = [
  "http-body-util",
  "httpmock",
  "jsonwebtoken",
- "lithos-llm 0.1.0 (git+https://github.com/lithoscomputer/lithos-llm?rev=43a42ac28e9d9bcf40a91abc02be4f12ca274ebb)",
+ "lithos-llm",
  "mime_guess",
  "multer",
  "object_store",
- "pebble-agent 0.1.0 (git+https://github.com/lithoscomputer/pebble?rev=67c9f486dd28f15c04e8d590a91e6f5563f7605d)",
- "pebble-coding-agent 0.1.0 (git+https://github.com/lithoscomputer/pebble?rev=67c9f486dd28f15c04e8d590a91e6f5563f7605d)",
+ "pebble-agent",
+ "pebble-coding-agent",
  "percent-encoding",
  "rand 0.9.4",
  "regex",
@@ -2835,9 +2835,9 @@ dependencies = [
  "futures",
  "hex",
  "insta",
- "lithos-llm 0.1.0 (git+https://github.com/lithoscomputer/lithos-llm?rev=43a42ac28e9d9bcf40a91abc02be4f12ca274ebb)",
+ "lithos-llm",
  "object_store",
- "pebble-coding-agent 0.1.0 (git+https://github.com/lithoscomputer/pebble?rev=67c9f486dd28f15c04e8d590a91e6f5563f7605d)",
+ "pebble-coding-agent",
  "percent-encoding",
  "serde",
  "serde_json",
@@ -2966,8 +2966,8 @@ dependencies = [
  "fabro-types",
  "fabro-util",
  "hex",
- "lithos-llm 0.1.0 (git+https://github.com/lithoscomputer/lithos-llm?rev=43a42ac28e9d9bcf40a91abc02be4f12ca274ebb)",
- "pebble-coding-agent 0.1.0 (git+https://github.com/lithoscomputer/pebble?rev=67c9f486dd28f15c04e8d590a91e6f5563f7605d)",
+ "lithos-llm",
+ "pebble-coding-agent",
  "sandbox-driver",
  "serde",
  "serde_json",
@@ -3080,13 +3080,13 @@ dependencies = [
  "hex",
  "httpmock",
  "jsonschema",
- "lithos-llm 0.1.0 (git+https://github.com/lithoscomputer/lithos-llm?rev=43a42ac28e9d9bcf40a91abc02be4f12ca274ebb)",
+ "lithos-llm",
  "md5",
  "miette",
  "mime_guess",
  "object_store",
- "pebble-agent 0.1.0 (git+https://github.com/lithoscomputer/pebble?rev=67c9f486dd28f15c04e8d590a91e6f5563f7605d)",
- "pebble-coding-agent 0.1.0 (git+https://github.com/lithoscomputer/pebble?rev=67c9f486dd28f15c04e8d590a91e6f5563f7605d)",
+ "pebble-agent",
+ "pebble-coding-agent",
  "rand 0.9.4",
  "regex",
  "sandbox-driver",
@@ -4432,24 +4432,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "lithos-llm"
-version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/lithos-llm?rev=55add4596b861a0623d00c3a54aa5c147c8d504b#55add4596b861a0623d00c3a54aa5c147c8d504b"
-dependencies = [
- "async-trait",
- "futures-core",
- "futures-util",
- "reqwest 0.13.4",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "tokio",
- "toml 0.8.23",
- "tracing",
- "uuid",
-]
-
-[[package]]
 name = "litrs"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5261,24 +5243,7 @@ source = "git+https://github.com/lithoscomputer/pebble?rev=67c9f486dd28f15c04e8d
 dependencies = [
  "async-trait",
  "futures-util",
- "lithos-llm 0.1.0 (git+https://github.com/lithoscomputer/lithos-llm?rev=43a42ac28e9d9bcf40a91abc02be4f12ca274ebb)",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "tokio",
- "tokio-util",
- "tracing",
- "uuid",
-]
-
-[[package]]
-name = "pebble-agent"
-version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/pebble.git?rev=a39f43e26effdf99635eaf343f095c17157c9c93#a39f43e26effdf99635eaf343f095c17157c9c93"
-dependencies = [
- "async-trait",
- "futures-util",
- "lithos-llm 0.1.0 (git+https://github.com/lithoscomputer/lithos-llm?rev=55add4596b861a0623d00c3a54aa5c147c8d504b)",
+ "lithos-llm",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
@@ -5301,9 +5266,9 @@ dependencies = [
  "fs2",
  "futures-util",
  "humantime",
- "lithos-llm 0.1.0 (git+https://github.com/lithoscomputer/lithos-llm?rev=43a42ac28e9d9bcf40a91abc02be4f12ca274ebb)",
- "pebble-agent 0.1.0 (git+https://github.com/lithoscomputer/pebble?rev=67c9f486dd28f15c04e8d590a91e6f5563f7605d)",
- "pebble-coding-agent 0.1.0 (git+https://github.com/lithoscomputer/pebble?rev=67c9f486dd28f15c04e8d590a91e6f5563f7605d)",
+ "lithos-llm",
+ "pebble-agent",
+ "pebble-coding-agent",
  "rustix",
  "serde",
  "serde_json",
@@ -5324,32 +5289,8 @@ source = "git+https://github.com/lithoscomputer/pebble?rev=67c9f486dd28f15c04e8d
 dependencies = [
  "async-trait",
  "futures-util",
- "lithos-llm 0.1.0 (git+https://github.com/lithoscomputer/lithos-llm?rev=43a42ac28e9d9bcf40a91abc02be4f12ca274ebb)",
- "pebble-agent 0.1.0 (git+https://github.com/lithoscomputer/pebble?rev=67c9f486dd28f15c04e8d590a91e6f5563f7605d)",
- "reqwest 0.13.4",
- "rmcp",
- "rustix",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "sse-stream",
- "thiserror 2.0.18",
- "tokio",
- "tokio-util",
- "tracing",
- "url",
- "uuid",
-]
-
-[[package]]
-name = "pebble-coding-agent"
-version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/pebble.git?rev=a39f43e26effdf99635eaf343f095c17157c9c93#a39f43e26effdf99635eaf343f095c17157c9c93"
-dependencies = [
- "async-trait",
- "futures-util",
- "lithos-llm 0.1.0 (git+https://github.com/lithoscomputer/lithos-llm?rev=55add4596b861a0623d00c3a54aa5c147c8d504b)",
- "pebble-agent 0.1.0 (git+https://github.com/lithoscomputer/pebble.git?rev=a39f43e26effdf99635eaf343f095c17157c9c93)",
+ "lithos-llm",
+ "pebble-agent",
  "reqwest 0.13.4",
  "rmcp",
  "rustix",
@@ -5384,14 +5325,14 @@ checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
 [[package]]
 name = "petri-attractor-steps"
 version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/petri.git?rev=639ce3e368b84ff48a3d8f695b8c5736b1c1563e#639ce3e368b84ff48a3d8f695b8c5736b1c1563e"
+source = "git+https://github.com/lithoscomputer/petri.git?rev=1fef017a60e436e6c9d5ba86b0cdfb932ed8a08b#1fef017a60e436e6c9d5ba86b0cdfb932ed8a08b"
 dependencies = [
  "async-trait",
  "globset",
  "jsonschema",
- "lithos-llm 0.1.0 (git+https://github.com/lithoscomputer/lithos-llm?rev=55add4596b861a0623d00c3a54aa5c147c8d504b)",
- "pebble-agent 0.1.0 (git+https://github.com/lithoscomputer/pebble.git?rev=a39f43e26effdf99635eaf343f095c17157c9c93)",
- "pebble-coding-agent 0.1.0 (git+https://github.com/lithoscomputer/pebble.git?rev=a39f43e26effdf99635eaf343f095c17157c9c93)",
+ "lithos-llm",
+ "pebble-agent",
+ "pebble-coding-agent",
  "petri-execution",
  "petri-executor",
  "petri-frontend",
@@ -5415,7 +5356,7 @@ dependencies = [
 [[package]]
 name = "petri-driver"
 version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/petri.git?rev=639ce3e368b84ff48a3d8f695b8c5736b1c1563e#639ce3e368b84ff48a3d8f695b8c5736b1c1563e"
+source = "git+https://github.com/lithoscomputer/petri.git?rev=1fef017a60e436e6c9d5ba86b0cdfb932ed8a08b#1fef017a60e436e6c9d5ba86b0cdfb932ed8a08b"
 dependencies = [
  "async-trait",
  "getrandom 0.3.4",
@@ -5435,7 +5376,7 @@ dependencies = [
 [[package]]
 name = "petri-engine"
 version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/petri.git?rev=639ce3e368b84ff48a3d8f695b8c5736b1c1563e#639ce3e368b84ff48a3d8f695b8c5736b1c1563e"
+source = "git+https://github.com/lithoscomputer/petri.git?rev=1fef017a60e436e6c9d5ba86b0cdfb932ed8a08b#1fef017a60e436e6c9d5ba86b0cdfb932ed8a08b"
 dependencies = [
  "petri-ir",
  "serde",
@@ -5447,7 +5388,7 @@ dependencies = [
 [[package]]
 name = "petri-execution"
 version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/petri.git?rev=639ce3e368b84ff48a3d8f695b8c5736b1c1563e#639ce3e368b84ff48a3d8f695b8c5736b1c1563e"
+source = "git+https://github.com/lithoscomputer/petri.git?rev=1fef017a60e436e6c9d5ba86b0cdfb932ed8a08b#1fef017a60e436e6c9d5ba86b0cdfb932ed8a08b"
 dependencies = [
  "async-trait",
  "petri-driver",
@@ -5471,7 +5412,7 @@ dependencies = [
 [[package]]
 name = "petri-executor"
 version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/petri.git?rev=639ce3e368b84ff48a3d8f695b8c5736b1c1563e#639ce3e368b84ff48a3d8f695b8c5736b1c1563e"
+source = "git+https://github.com/lithoscomputer/petri.git?rev=1fef017a60e436e6c9d5ba86b0cdfb932ed8a08b#1fef017a60e436e6c9d5ba86b0cdfb932ed8a08b"
 dependencies = [
  "async-trait",
  "libc",
@@ -5486,7 +5427,7 @@ dependencies = [
 [[package]]
 name = "petri-executor-sandbox"
 version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/petri.git?rev=639ce3e368b84ff48a3d8f695b8c5736b1c1563e#639ce3e368b84ff48a3d8f695b8c5736b1c1563e"
+source = "git+https://github.com/lithoscomputer/petri.git?rev=1fef017a60e436e6c9d5ba86b0cdfb932ed8a08b#1fef017a60e436e6c9d5ba86b0cdfb932ed8a08b"
 dependencies = [
  "async-trait",
  "petri-executor",
@@ -5508,7 +5449,7 @@ dependencies = [
 [[package]]
 name = "petri-frontend"
 version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/petri.git?rev=639ce3e368b84ff48a3d8f695b8c5736b1c1563e#639ce3e368b84ff48a3d8f695b8c5736b1c1563e"
+source = "git+https://github.com/lithoscomputer/petri.git?rev=1fef017a60e436e6c9d5ba86b0cdfb932ed8a08b#1fef017a60e436e6c9d5ba86b0cdfb932ed8a08b"
 dependencies = [
  "marked-yaml",
  "petri-ir",
@@ -5522,7 +5463,7 @@ dependencies = [
 [[package]]
 name = "petri-frontend-attractor"
 version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/petri.git?rev=639ce3e368b84ff48a3d8f695b8c5736b1c1563e#639ce3e368b84ff48a3d8f695b8c5736b1c1563e"
+source = "git+https://github.com/lithoscomputer/petri.git?rev=1fef017a60e436e6c9d5ba86b0cdfb932ed8a08b#1fef017a60e436e6c9d5ba86b0cdfb932ed8a08b"
 dependencies = [
  "minijinja",
  "petri-frontend",
@@ -5539,7 +5480,7 @@ dependencies = [
 [[package]]
 name = "petri-frontend-fabro"
 version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/petri.git?rev=639ce3e368b84ff48a3d8f695b8c5736b1c1563e#639ce3e368b84ff48a3d8f695b8c5736b1c1563e"
+source = "git+https://github.com/lithoscomputer/petri.git?rev=1fef017a60e436e6c9d5ba86b0cdfb932ed8a08b#1fef017a60e436e6c9d5ba86b0cdfb932ed8a08b"
 dependencies = [
  "petri-frontend",
  "petri-frontend-attractor",
@@ -5555,7 +5496,7 @@ dependencies = [
 [[package]]
 name = "petri-frontend-native"
 version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/petri.git?rev=639ce3e368b84ff48a3d8f695b8c5736b1c1563e#639ce3e368b84ff48a3d8f695b8c5736b1c1563e"
+source = "git+https://github.com/lithoscomputer/petri.git?rev=1fef017a60e436e6c9d5ba86b0cdfb932ed8a08b#1fef017a60e436e6c9d5ba86b0cdfb932ed8a08b"
 dependencies = [
  "petri-frontend",
  "petri-ir",
@@ -5566,7 +5507,7 @@ dependencies = [
 [[package]]
 name = "petri-ir"
 version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/petri.git?rev=639ce3e368b84ff48a3d8f695b8c5736b1c1563e#639ce3e368b84ff48a3d8f695b8c5736b1c1563e"
+source = "git+https://github.com/lithoscomputer/petri.git?rev=1fef017a60e436e6c9d5ba86b0cdfb932ed8a08b#1fef017a60e436e6c9d5ba86b0cdfb932ed8a08b"
 dependencies = [
  "regex",
  "serde",
@@ -5579,7 +5520,7 @@ dependencies = [
 [[package]]
 name = "petri-runtime"
 version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/petri.git?rev=639ce3e368b84ff48a3d8f695b8c5736b1c1563e#639ce3e368b84ff48a3d8f695b8c5736b1c1563e"
+source = "git+https://github.com/lithoscomputer/petri.git?rev=1fef017a60e436e6c9d5ba86b0cdfb932ed8a08b#1fef017a60e436e6c9d5ba86b0cdfb932ed8a08b"
 dependencies = [
  "async-trait",
  "petri-driver",
@@ -5600,7 +5541,7 @@ dependencies = [
 [[package]]
 name = "petri-steps"
 version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/petri.git?rev=639ce3e368b84ff48a3d8f695b8c5736b1c1563e#639ce3e368b84ff48a3d8f695b8c5736b1c1563e"
+source = "git+https://github.com/lithoscomputer/petri.git?rev=1fef017a60e436e6c9d5ba86b0cdfb932ed8a08b#1fef017a60e436e6c9d5ba86b0cdfb932ed8a08b"
 dependencies = [
  "async-trait",
  "petri-executor",
@@ -5616,7 +5557,7 @@ dependencies = [
 [[package]]
 name = "petri-store"
 version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/petri.git?rev=639ce3e368b84ff48a3d8f695b8c5736b1c1563e#639ce3e368b84ff48a3d8f695b8c5736b1c1563e"
+source = "git+https://github.com/lithoscomputer/petri.git?rev=1fef017a60e436e6c9d5ba86b0cdfb932ed8a08b#1fef017a60e436e6c9d5ba86b0cdfb932ed8a08b"
 dependencies = [
  "async-trait",
  "getrandom 0.3.4",
@@ -5631,7 +5572,7 @@ dependencies = [
 [[package]]
 name = "petri-testkit"
 version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/petri.git?rev=639ce3e368b84ff48a3d8f695b8c5736b1c1563e#639ce3e368b84ff48a3d8f695b8c5736b1c1563e"
+source = "git+https://github.com/lithoscomputer/petri.git?rev=1fef017a60e436e6c9d5ba86b0cdfb932ed8a08b#1fef017a60e436e6c9d5ba86b0cdfb932ed8a08b"
 dependencies = [
  "async-trait",
  "petri-driver",
@@ -5641,6 +5582,7 @@ dependencies = [
  "petri-ir",
  "petri-steps",
  "petri-store",
+ "sandbox-driver",
  "serde",
  "serde_json",
  "smol_str",
