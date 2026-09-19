@@ -260,14 +260,21 @@ fn bare_fabro_with_unbound_inputs_in_template_partial_validates_structurally_wit
     let context = test_context!();
     let mut cmd = context.validate();
     cmd.arg(fixture("templated_unbound_partial/workflow.fabro"));
-    fabro_snapshot!(context.filters(), cmd, @r#"
+    // The include error names the partial relative to the run's working
+    // directory, so the `../` run is as long as that directory is deep.
+    let mut filters = context.filters();
+    filters.push((
+        r"(\.\./)*\.\.\[FIXTURES\]".to_string(),
+        "[UP][FIXTURES]".to_string(),
+    ));
+    fabro_snapshot!(filters, cmd, @r#"
     success: false
     exit_code: 1
     ----- stdout -----
     ----- stderr -----
     Workflow: TemplatedUnboundPartial (3 nodes, 2 edges)
     Graph: [FIXTURES]/templated_unbound_partial/workflow.fabro
-    error: [FIXTURES]/templated_unbound_partial/workflow.fabro:3:42: node `test_imported_include` `prompt`: template render: could not render include: error in "../../../../../../../..[FIXTURES]/templated_unbound_partial/test-include.partial.md" (in ../../../../../../../..[FIXTURES]/templated_unbound_partial/__petri_root__:1) (attractor.template)
+    error: [FIXTURES]/templated_unbound_partial/workflow.fabro:3:42: node `test_imported_include` `prompt`: template render: could not render include: error in "[UP][FIXTURES]/templated_unbound_partial/test-include.partial.md" (in [UP][FIXTURES]/templated_unbound_partial/__petri_root__:1) (attractor.template)
       × Validation failed
     "#);
 }
