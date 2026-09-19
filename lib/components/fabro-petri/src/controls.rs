@@ -1,5 +1,6 @@
 //! The controls Fabro drives on a live Petri run: pause and unpause at
-//! admission, a steer into the run's agent stage, and cancel.
+//! admission, a steer into the run's agent stage, an interrupt of its
+//! current model turn, and cancel.
 //!
 //! [`RunControls`] is Petri's `ControlService` as the run's worker holds it:
 //! one per run, built before the run and handed to [`engine::run`] in its
@@ -26,6 +27,16 @@
 //!   share one) or by the node's name; unnamed, it goes to the one live agent
 //!   stage. With no live agent, several unnamed, or a name that is not running,
 //!   it is refused with the reason, and nothing is recorded.
+//! - interrupt names its stage the way a steer does and stops the stage's
+//!   current model turn (the model request and the tool calls it runs), keeping
+//!   the session: the firing records `control.requested` with the
+//!   `{"$interrupt": …}` value and the stage reports the stopped turn as
+//!   `attractor.turn.interrupted`. The text given with the interrupt is the
+//!   stage's next input; without one, the next steer is. A stage with no model
+//!   turn in flight (an agent between turns, a gate, a command) refuses it with
+//!   `NoLiveTurn`, and nothing is recorded. The check reads the service's
+//!   live-turn set, which [`engine::run`] installs as a runtime capability
+//!   beside the pause gate.
 //! - cancel is the caller's cancellation token ([`RunRequest::cancel`]); the
 //!   service's own cancel is here for a host that holds only this.
 //!
@@ -41,7 +52,8 @@
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
-use petri_execution::controls::{ControlError, ControlService};
+pub use petri_execution::controls::ControlError;
+use petri_execution::controls::{ControlService, LiveTurns};
 use petri_execution::{
     CoordinatorHandle, CoordinatorRecord, CoordinatorState, ExecutionId, ExecutionObserver,
 };
@@ -49,20 +61,22 @@ use petri_frontend_attractor::kinds::AGENT_KIND;
 use petri_runtime::driver::lifecycle::ExecutionHooks;
 use petri_runtime::engine::{EngineState, Event, EventRecord};
 use petri_runtime::ir::FiringId;
+use petri_runtime::steps::Interrupt;
 use tokio::sync::watch;
 
-/// Why a steer was not delivered.
+/// Why a steer or an interrupt was not delivered.
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum SteerError {
     /// No agent stage is running: the same refusal the legacy server gave a
     /// control that needs a live agent session.
     #[error("Run has no active steerable agent session.")]
     NoLiveAgent,
-    /// More than one agent stage is running and the steer names none, or
+    /// More than one agent stage is running and the control names none, or
     /// names a label several live firings answer to.
-    #[error("Run has several active agent stages ({}); the steer names none of them.", .0.join(", "))]
+    #[error("Run has several active agent stages ({}); the control names none of them.", .0.join(", "))]
     SeveralLiveAgents(Vec<String>),
-    /// The named stage is not running, or the run has ended.
+    /// The named stage is not running, the stage has no model turn to
+    /// interrupt, or the run has ended.
     #[error(transparent)]
     Control(#[from] ControlError),
 }
@@ -209,31 +223,63 @@ impl RunControls {
     /// a node name), or to the one live agent stage when `stage` is `None`.
     /// The label of the stage steered.
     pub async fn steer(&self, stage: Option<&str>, text: &str) -> Result<String, SteerError> {
-        let live = self.agents().labelled();
-        let ((execution, firing), label) = match stage {
-            None => one_live_agent(live)?,
-            Some(stage) => {
-                let Some((node, execution, visit)) = parse_label(stage) else {
-                    // A node name: the service's own live-stage index.
-                    self.service.steer(stage, text).await?;
-                    return Ok(stage.to_owned());
-                };
-                let agents = self.agents();
-                let matches = live
-                    .into_iter()
-                    .filter(|(key, _)| {
-                        let agent = &agents.firings[key];
-                        agent.node == node
-                            && agent.visit == visit
-                            && execution.is_none_or(|execution| key.0.raw() == execution)
-                    })
-                    .collect();
-                drop(agents);
-                labelled_agent(stage, matches)?
-            }
-        };
+        let ((execution, firing), label) = self.resolve(stage)?;
         self.service.steer_firing(execution, firing, text).await?;
         Ok(label)
+    }
+
+    /// Stop the current model turn of the stage `stage` names, or of the one
+    /// live agent stage when `stage` is `None`, and keep its session. With
+    /// `text`, the text is the stage's next input; without, the next steer
+    /// is. Refused with [`ControlError::NoLiveTurn`] when the stage has no
+    /// turn in flight (an agent between turns, or a stage that is not an
+    /// agent). The label of the stage interrupted.
+    pub async fn interrupt(
+        &self,
+        stage: Option<&str>,
+        text: Option<&str>,
+    ) -> Result<String, SteerError> {
+        let ((execution, firing), label) = self.resolve(stage)?;
+        let interrupt = match text {
+            Some(text) => Interrupt::and_steer(text),
+            None => Interrupt::new(),
+        };
+        self.service
+            .interrupt_firing(execution, firing, interrupt)
+            .await?;
+        Ok(label)
+    }
+
+    /// The live firing a control goes to: the one `stage` names by label
+    /// (`node@visit`, `node/e<execution>@visit`) or by node name, or the
+    /// run's one live agent stage when `stage` is `None`.
+    fn resolve(&self, stage: Option<&str>) -> Result<LabelledAgent, SteerError> {
+        let live = self.agents().labelled();
+        let Some(stage) = stage else {
+            return one_live_agent(live);
+        };
+        let Some((node, execution, visit)) = parse_label(stage) else {
+            // A node name: the service's own live-stage index, where a node
+            // running in two executions keeps the latest.
+            return match self.service.stage(stage) {
+                Some(live) => Ok(((live.execution, live.firing), stage.to_owned())),
+                None => Err(SteerError::Control(ControlError::NoSuchStage(
+                    stage.to_owned(),
+                ))),
+            };
+        };
+        let agents = self.agents();
+        let matches = live
+            .into_iter()
+            .filter(|(key, _)| {
+                let agent = &agents.firings[key];
+                agent.node == node
+                    && agent.visit == visit
+                    && execution.is_none_or(|execution| key.0.raw() == execution)
+            })
+            .collect();
+        drop(agents);
+        labelled_agent(stage, matches)
     }
 
     /// Cancel the whole run politely; a second call reaches the kill tier.
@@ -244,6 +290,13 @@ impl RunControls {
     /// The pause gate over `inner`, for the runtime.
     pub(crate) fn hooks(&self, inner: Option<Arc<dyn ExecutionHooks>>) -> Arc<dyn ExecutionHooks> {
         self.service.hooks(inner)
+    }
+
+    /// The live-turn set the agent step marks while a model turn runs, for
+    /// the runtime's capabilities. Without it installed no turn is ever
+    /// live and every interrupt is refused.
+    pub(crate) fn turns(&self) -> LiveTurns {
+        self.service.turns()
     }
 
     /// Hand the service the run's coordinator handle.
@@ -341,6 +394,31 @@ mod tests {
             Err(SteerError::Control(ControlError::NoSuchStage(
                 "work@1".to_string()
             )))
+        );
+    }
+
+    #[tokio::test]
+    async fn an_interrupt_resolves_its_stage_the_way_a_steer_does() {
+        let controls = RunControls::new();
+        assert_eq!(
+            controls.interrupt(None, None).await,
+            Err(SteerError::NoLiveAgent)
+        );
+        assert_eq!(
+            controls.interrupt(Some("work"), Some("stop")).await,
+            Err(SteerError::Control(ControlError::NoSuchStage(
+                "work".to_string()
+            )))
+        );
+        assert_eq!(
+            controls.interrupt(Some("work@1"), None).await,
+            Err(SteerError::Control(ControlError::NoSuchStage(
+                "work@1".to_string()
+            )))
+        );
+        assert_eq!(
+            ControlError::NoLiveTurn.to_string(),
+            "the stage has no model turn to interrupt"
         );
     }
 

@@ -4,8 +4,10 @@
 //! without the API; a steer reaches the agent stage on the twin, which
 //! sees it in its next request, and the stream carries the control record;
 //! two live agent stages are steered apart by their stage labels, and an
-//! unnamed steer between them is refused; a run paused when its server and
-//! worker die resumes paused and goes on once unpaused.
+//! unnamed steer between them is refused; an interrupt during a long tool
+//! call ends the agent's turn and its text is the next input, while an
+//! interrupt of a gate stage is refused with `no_live_turn`; a run paused
+//! when its server and worker die resumes paused and goes on once unpaused.
 //!
 //! The harness is `petri.rs`'s: a foreground server on disk storage, the
 //! run started with `fabro run --detach`, and the host scope through the
@@ -30,9 +32,9 @@ use fabro_test::{TwinScenario, TwinScenarios, TwinToolCall, test_context, twin_o
 use serde_json::{Value, json};
 
 use super::petri::{
-    RunningServer, count_of, host_plugin, run_detached, run_detached_with, run_json, run_status,
-    run_stream, settled_stream, stream_names, wait_for_status, wait_for_worker,
-    wait_until_gate_is_polled, write_petri_workflow,
+    RunningServer, answer, count_of, host_plugin, run_detached, run_detached_with, run_json,
+    run_status, run_stream, settled_stream, stream_names, wait_for_questions, wait_for_status,
+    wait_for_worker, wait_until_gate_is_polled, write_petri_workflow,
 };
 use crate::support::TEST_DEV_TOKEN;
 
@@ -50,6 +52,9 @@ const PROMPT_A: &str = "Alpha: wait for the gate, then report.";
 const PROMPT_B: &str = "Bravo: wait for the gate, then report.";
 const STEER_A: &str = "Steer alpha: mention the word lighthouse.";
 const STEER_B: &str = "Steer bravo: mention the word windmill.";
+/// The text an interrupt carries: the agent's next input once its turn
+/// is stopped.
+const INTERRUPT_STEER: &str = "Stop waiting and summarize what you have.";
 
 /// Two command stages: `a` waits on `gate`, `b` leaves `marker`.
 fn two_stage_workspace(context: &fabro_test::TestContext, gate: &Path, marker: &Path) -> PathBuf {
@@ -133,6 +138,55 @@ fn steer_by_cli(
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
+}
+
+/// `fabro steer --interrupt <run> <text>` against the server: the stage's
+/// current turn is stopped and `text` is its next input.
+fn interrupt_by_cli(
+    context: &fabro_test::TestContext,
+    server: &RunningServer,
+    run_id: &str,
+    text: &str,
+) {
+    let output = context
+        .command()
+        .args(["steer", "--server", &server.target(), run_id])
+        .args(["--interrupt", text])
+        .output()
+        .expect("the steer command executes");
+    assert!(
+        output.status.success(),
+        "fabro steer --interrupt failed\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+/// The stream's `run.notice` records, as `(code, message)`, in order.
+fn notices(items: &[Value]) -> Vec<(String, String)> {
+    items
+        .iter()
+        .filter(|item| item["kind"] == "platform")
+        .map(|item| &item["item"]["record"])
+        .filter(|record| record["kind"] == "run.notice")
+        .map(|record| {
+            (
+                record["code"].as_str().unwrap_or_default().to_string(),
+                record["message"].as_str().unwrap_or_default().to_string(),
+            )
+        })
+        .collect()
+}
+
+/// The stream's `step.progress.recorded` custom payloads of `kind`.
+fn progress_of_kind<'a>(items: &'a [Value], kind: &str) -> Vec<&'a Value> {
+    items
+        .iter()
+        .map(|item| &item["item"]["record"]["body"])
+        .filter(|body| body["event"] == "step.progress.recorded")
+        .map(|body| &body["ev"]["custom"])
+        .filter(|custom| custom["kind"] == kind)
+        .collect()
 }
 
 /// The twin's request inputs that carry `prompt`, in order.
@@ -619,6 +673,196 @@ async fn two_live_agent_stages_are_steered_apart_by_their_labels() {
             inputs[2]
         );
     }
+    server.shutdown();
+}
+
+/// An interrupt while the agent's tool call waits on a gate that never
+/// opens: `fabro steer --interrupt` stops the turn (the tool call is
+/// cancelled, no answer is reached), the session is kept, and the text is
+/// the agent's next input, which the twin answers. The stream carries the
+/// `control.requested` record with the `$interrupt` value and the stage's
+/// `attractor.turn.interrupted` report, and the run succeeds.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_interrupt_ends_the_turn_and_its_text_is_the_next_input() {
+    if host_plugin().is_none() {
+        return;
+    }
+    let context = test_context!();
+    let twin = twin_openai().await;
+    let namespace = format!("{}::{}", module_path!(), line!());
+    let server = RunningServer::start_with(
+        &format!(
+            "\n[llm.providers.openai]\nbase_url = \"{}\"\n",
+            twin.base_url
+        ),
+        &[(EnvVars::OPENAI_API_KEY, &namespace)],
+    )
+    .await;
+    // The gate is never opened: only the interrupt ends the tool call.
+    let gate = context.temp_dir.join("interrupt.gate");
+    TwinScenarios::new(namespace.clone())
+        .scenario(
+            TwinScenario::responses(MODEL)
+                .input_contains(PROMPT)
+                .tool_call(TwinToolCall::new(
+                    "shell",
+                    json!({ "command": format!("while [ ! -f {} ]; do sleep 0.05; done", gate.display()) }),
+                )),
+        )
+        .scenario(
+            TwinScenario::responses(MODEL)
+                .input_contains(INTERRUPT_STEER)
+                .text("Summary: I was waiting on the gate."),
+        )
+        .load(twin)
+        .await;
+    let workspace = write_petri_workflow(
+        &context,
+        &format!(
+            "digraph Interrupt {{\n  graph [goal=\"Wait then report\", default_max_retries=0]\n  \
+             start [shape=Mdiamond]\n  exit [shape=Msquare]\n  work [shape=box, \
+             prompt=\"{PROMPT}\", max_retries=0]\n  start -> work -> exit\n}}\n"
+        ),
+    );
+    let run_id = run_detached_with(&context, &server, &workspace, &[
+        "--auto-approve",
+        "--provider",
+        "openai",
+        "--model",
+        MODEL,
+    ]);
+
+    wait_for_status(&server, &run_id, &["running"]).await;
+    wait_until_gate_is_polled(&gate);
+    eprintln!("run {run_id}: the agent's tool is waiting on the gate; interrupting");
+    interrupt_by_cli(&context, &server, &run_id, INTERRUPT_STEER);
+    wait_for_stream_count(&server, &run_id, "control.requested", 1).await;
+    eprintln!("run {run_id}: the interrupt is recorded");
+
+    let status = wait_for_status(&server, &run_id, &["succeeded", "failed"]).await;
+    let items = settled_stream(&server, &run_id).await;
+    let names = stream_names(&items);
+    assert_eq!(
+        status,
+        "succeeded",
+        "stream: {names:?}\nserver stderr:\n{}",
+        server.stderr_text()
+    );
+    assert!(!gate.exists(), "nothing opened the gate");
+    assert_petri_succeeded(&server, &run_id).await;
+    assert_eq!(notices(&items), Vec::new(), "nothing was refused");
+
+    let delivery = items
+        .iter()
+        .find(|item| item["item"]["record"]["body"]["event"] == "control.requested")
+        .expect("the interrupt is in the stream");
+    let record = &delivery["item"]["record"]["body"];
+    assert_eq!(
+        record["ctl"]["deliver"]["$interrupt"]["steer"], INTERRUPT_STEER,
+        "the control record carries the interrupt and its text: {record}"
+    );
+    assert_eq!(
+        delivery["item"]["derived"]["deliverable"], true,
+        "the interrupt was delivered to a live firing: {delivery}"
+    );
+    let interrupted = progress_of_kind(&items, "attractor.turn.interrupted");
+    assert_eq!(interrupted.len(), 1, "{names:?}");
+    assert_eq!(interrupted[0]["node"], "work", "{}", interrupted[0]);
+    assert_eq!(interrupted[0]["backend"], "api", "{}", interrupted[0]);
+
+    let logs = twin.request_logs(&namespace).await;
+    let inputs = inputs_with(&logs, PROMPT);
+    assert_eq!(
+        inputs.len(),
+        2,
+        "the interrupted turn, then the steered one: {inputs:?}"
+    );
+    assert!(
+        !inputs[0].contains(INTERRUPT_STEER),
+        "the first request came before the interrupt: {}",
+        inputs[0]
+    );
+    assert!(
+        inputs[1].contains(INTERRUPT_STEER),
+        "the next request carries the interrupt's text as its input: {}",
+        inputs[1]
+    );
+    server.shutdown();
+}
+
+/// An interrupt of a stage with no model turn to stop: the gate the run is
+/// blocked on, named by its node, is refused by Petri with `no_live_turn`;
+/// unnamed, with no agent stage live, the worker refuses it with
+/// `interrupt_refused`. Both refusals are `run.notice` records on the
+/// stream, nothing is delivered, and the gate's question is untouched: its
+/// answer routes the run to its end.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_interrupt_of_a_gate_stage_is_refused_with_no_live_turn() {
+    if host_plugin().is_none() {
+        return;
+    }
+    let context = test_context!();
+    let server = RunningServer::start().await;
+    let marker = context.temp_dir.join("yes.marker");
+    let workspace = write_petri_workflow(
+        &context,
+        &format!(
+            "digraph Gate {{\n  graph [goal=\"Ask before running\"]\n  start [shape=Mdiamond]\n  \
+             exit [shape=Msquare]\n  gate [shape=hexagon, label=\"Go?\", \
+             question_type=\"yes_no\"]\n  yes [shape=parallelogram, script=\"touch {marker}\"]\n  \
+             start -> gate\n  gate -> yes [label=\"[Y] Yes\"]\n  gate -> exit [label=\"[N] \
+             No\"]\n  yes -> exit\n}}\n",
+            marker = marker.display()
+        ),
+    );
+    let run_id = run_detached_with(&context, &server, &workspace, &[]);
+
+    let pending = wait_for_questions(&server, &run_id, 1).await;
+    assert_eq!(pending[0]["stage"], "gate@1", "{}", pending[0]);
+    let question_id = pending[0]["id"].as_str().expect("an id").to_string();
+    eprintln!("run {run_id}: the gate is asking; interrupting it");
+
+    let (status, body) = control(
+        &server,
+        &run_id,
+        "interrupt",
+        Some(json!({ "stage": "gate" })),
+    )
+    .await;
+    assert_eq!(status, 202, "interrupt: {body}");
+    let (status, body) = control(&server, &run_id, "interrupt", None).await;
+    assert_eq!(status, 202, "interrupt: {body}");
+    let names = wait_for_stream_count(&server, &run_id, "run.notice", 2).await;
+    assert_eq!(count_of(&names, "control.requested"), 0, "{names:?}");
+    let refused = notices(&run_stream(&server, &run_id).await);
+    assert_eq!(refused.len(), 2, "{refused:?}");
+    assert_eq!(refused[0].0, "no_live_turn", "{refused:?}");
+    assert_eq!(refused[0].1, "the stage has no model turn to interrupt");
+    assert_eq!(refused[1].0, "interrupt_refused", "{refused:?}");
+    assert_eq!(refused[1].1, "Run has no active steerable agent session.");
+    assert_eq!(run_status(&server, &run_id).await, "blocked");
+
+    answer(&server, &run_id, &question_id, json!({ "kind": "yes" })).await;
+    let status = wait_for_status(&server, &run_id, &["succeeded", "failed"]).await;
+    let items = settled_stream(&server, &run_id).await;
+    let names = stream_names(&items);
+    assert_eq!(
+        status,
+        "succeeded",
+        "stream: {names:?}\nserver stderr:\n{}",
+        server.stderr_text()
+    );
+    assert!(marker.exists(), "the answer routed the gate");
+    assert_petri_succeeded(&server, &run_id).await;
+    assert_eq!(
+        count_of(&names, "control.requested"),
+        1,
+        "only the answer was delivered: {names:?}"
+    );
+    assert!(
+        progress_of_kind(&items, "attractor.turn.interrupted").is_empty(),
+        "no turn was stopped: {names:?}"
+    );
     server.shutdown();
 }
 

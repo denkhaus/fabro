@@ -215,9 +215,12 @@ pub async fn run(request: RunRequest) -> Result<RunOutcome, RunError> {
     }
     // The pause gate goes outermost, over Fabro's hooks and Petri's own,
     // so a held attempt runs none of them until the unpause.
+    // The live-turn set beside it: what an interrupt can reach.
     let controls = request.controls;
     let installed = runtime.installed_hooks();
-    runtime = runtime.hooks(controls.hooks(installed));
+    runtime = runtime
+        .hooks(controls.hooks(installed))
+        .capability(controls.turns());
 
     let dispatcher = InterviewDispatcher::new(request.interviewer);
     let cancel = request.cancel.clone();

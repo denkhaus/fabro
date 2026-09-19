@@ -177,6 +177,7 @@ export * from './integration-connection-status';
 export * from './integration-provider';
 export * from './integration-status';
 export * from './integration-webhooks-settings';
+export * from './interrupt-run-request';
 export * from './interview-option';
 export * from './interview-provider-settings';
 export * from './interview-question-record';

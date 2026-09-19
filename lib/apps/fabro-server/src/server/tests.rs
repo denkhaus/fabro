@@ -8392,29 +8392,168 @@ async fn steer_with_active_non_steerable_session_returns_conflict() {
 }
 
 #[tokio::test]
-async fn steer_with_interrupt_returns_unsupported() {
+async fn steer_with_interrupt_forwards_an_interrupt_then_steer_to_the_worker() {
     let state = test_app_state();
     let app = crate::test_support::build_test_router(Arc::clone(&state));
     let run_id = fixtures::RUN_1;
-    let (transport, _control_rx) = worker_transport_with_receiver(run_id).await;
+    let (transport, mut control_rx) = worker_transport_with_receiver(run_id).await;
     let _temp_dir = insert_running_control_run(&state, run_id, Some(transport));
 
     let req = Request::builder()
         .method("POST")
         .uri(api(&format!("/runs/{run_id}/steer")))
         .header("content-type", "application/json")
-        .body(Body::from(r#"{"text":"try again","interrupt":true}"#))
+        .body(Body::from(
+            r#"{"text":"stop and summarize","interrupt":true,"stage":"code@2"}"#,
+        ))
         .unwrap();
 
-    // A steer with an interrupt is not a control a Petri run takes.
     let response = app.oneshot(req).await.unwrap();
-    assert_eq!(response.status(), StatusCode::NOT_IMPLEMENTED);
-    let body = body_json(response.into_body()).await;
-    assert_eq!(body["errors"][0]["code"], "interrupt_unsupported");
+    assert_status!(response, StatusCode::ACCEPTED).await;
+    let envelope = recv_worker_control_envelope(&mut control_rx).await;
+    assert!(
+        matches!(
+            envelope.message,
+            WorkerControlMessage::InterruptThenSteer { ref text, ref stage, .. }
+                if text == "stop and summarize" && stage.as_deref() == Some("code@2")
+        ),
+        "{envelope:?}"
+    );
 }
 
 #[tokio::test]
-async fn interrupt_returns_unsupported() {
+async fn interrupt_forwards_the_stage_and_text_to_the_worker() {
+    let state = test_app_state();
+    let app = crate::test_support::build_test_router(Arc::clone(&state));
+    let run_id = fixtures::RUN_1;
+    let (transport, mut control_rx) = worker_transport_with_receiver(run_id).await;
+    let _temp_dir = insert_running_control_run(&state, run_id, Some(transport));
+
+    // No body: the run's one live agent stage, waiting for the next steer.
+    let req = Request::builder()
+        .method("POST")
+        .uri(api(&format!("/runs/{run_id}/interrupt")))
+        .body(Body::empty())
+        .unwrap();
+    let response = app.clone().oneshot(req).await.unwrap();
+    assert_status!(response, StatusCode::ACCEPTED).await;
+    let envelope = recv_worker_control_envelope(&mut control_rx).await;
+    assert!(
+        matches!(envelope.message, WorkerControlMessage::Interrupt {
+            stage: None,
+            ..
+        }),
+        "{envelope:?}"
+    );
+
+    // A stage alone: a plain interrupt of that stage.
+    let req = Request::builder()
+        .method("POST")
+        .uri(api(&format!("/runs/{run_id}/interrupt")))
+        .header("content-type", "application/json")
+        .body(Body::from(r#"{"stage":"code@2"}"#))
+        .unwrap();
+    let response = app.clone().oneshot(req).await.unwrap();
+    assert_status!(response, StatusCode::ACCEPTED).await;
+    let envelope = recv_worker_control_envelope(&mut control_rx).await;
+    assert!(
+        matches!(
+            envelope.message,
+            WorkerControlMessage::Interrupt { ref stage, .. } if stage.as_deref() == Some("code@2")
+        ),
+        "{envelope:?}"
+    );
+
+    // A stage and a text: the text is the stage's next input.
+    let req = Request::builder()
+        .method("POST")
+        .uri(api(&format!("/runs/{run_id}/interrupt")))
+        .header("content-type", "application/json")
+        .body(Body::from(
+            r#"{"stage":"code@2","text":"stop and summarize"}"#,
+        ))
+        .unwrap();
+    let response = app.oneshot(req).await.unwrap();
+    assert_status!(response, StatusCode::ACCEPTED).await;
+    let envelope = recv_worker_control_envelope(&mut control_rx).await;
+    assert!(
+        matches!(
+            envelope.message,
+            WorkerControlMessage::InterruptThenSteer { ref text, ref stage, .. }
+                if text == "stop and summarize" && stage.as_deref() == Some("code@2")
+        ),
+        "{envelope:?}"
+    );
+}
+
+#[tokio::test]
+async fn interrupt_with_a_blank_stage_or_text_returns_bad_request() {
+    let state = test_app_state();
+    let app = crate::test_support::build_test_router(Arc::clone(&state));
+    let run_id = fixtures::RUN_1;
+    let (transport, _control_rx) = worker_transport_with_receiver(run_id).await;
+    let _temp_dir = insert_running_control_run(&state, run_id, Some(transport));
+
+    for body in [r#"{"stage":"  "}"#, r#"{"text":"  "}"#] {
+        let req = Request::builder()
+            .method("POST")
+            .uri(api(&format!("/runs/{run_id}/interrupt")))
+            .header("content-type", "application/json")
+            .body(Body::from(body))
+            .unwrap();
+        let response = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST, "{body}");
+    }
+}
+
+#[tokio::test]
+async fn interrupt_of_a_blocked_run_is_forwarded_for_the_worker_to_judge() {
+    let state = test_app_state();
+    let app = crate::test_support::build_test_router(Arc::clone(&state));
+    let run_id = fixtures::RUN_1;
+    let (transport, mut control_rx) = worker_transport_with_receiver(run_id).await;
+    let _temp_dir = insert_running_control_run(&state, run_id, Some(transport));
+    {
+        let mut runs = state.runs.lock().expect("runs lock poisoned");
+        runs.get_mut(&run_id).unwrap().status = RunStatus::Blocked {
+            blocked_reason: BlockedReason::HumanInputRequired,
+        };
+    }
+
+    // A steer of a blocked run goes to the answer endpoint; an interrupt
+    // may still name an agent stage running beside the question, so the
+    // worker decides, and refuses a gate with `no_live_turn` on the stream.
+    let req = Request::builder()
+        .method("POST")
+        .uri(api(&format!("/runs/{run_id}/steer")))
+        .header("content-type", "application/json")
+        .body(Body::from(r#"{"text":"try again"}"#))
+        .unwrap();
+    let response = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(response.status(), StatusCode::CONFLICT);
+    let body = body_json(response.into_body()).await;
+    assert_eq!(body["errors"][0]["code"], "use_answer_endpoint");
+
+    let req = Request::builder()
+        .method("POST")
+        .uri(api(&format!("/runs/{run_id}/interrupt")))
+        .header("content-type", "application/json")
+        .body(Body::from(r#"{"stage":"gate@1"}"#))
+        .unwrap();
+    let response = app.oneshot(req).await.unwrap();
+    assert_status!(response, StatusCode::ACCEPTED).await;
+    let envelope = recv_worker_control_envelope(&mut control_rx).await;
+    assert!(
+        matches!(
+            envelope.message,
+            WorkerControlMessage::Interrupt { ref stage, .. } if stage.as_deref() == Some("gate@1")
+        ),
+        "{envelope:?}"
+    );
+}
+
+#[tokio::test]
+async fn interrupt_of_a_finished_run_returns_conflict() {
     let state = test_app_state();
     let app = crate::test_support::build_test_router(Arc::clone(&state));
     let run_id = fixtures::RUN_1;
@@ -8441,12 +8580,44 @@ async fn interrupt_returns_unsupported() {
         .body(Body::empty())
         .unwrap();
 
-    // An interrupt is not a control a Petri run takes: the answer is
-    // `unsupported`, whatever the run's state.
     let response = app.oneshot(req).await.unwrap();
-    assert_eq!(response.status(), StatusCode::NOT_IMPLEMENTED);
+    assert_eq!(response.status(), StatusCode::CONFLICT);
     let body = body_json(response.into_body()).await;
-    assert_eq!(body["errors"][0]["code"], "interrupt_unsupported");
+    assert_eq!(body["errors"][0]["code"], "run_not_interruptible");
+}
+
+#[tokio::test]
+async fn interrupt_of_an_unknown_run_returns_not_found() {
+    let app = test_app_with();
+    let missing_run_id = fixtures::RUN_64;
+
+    let req = Request::builder()
+        .method("POST")
+        .uri(api(&format!("/runs/{missing_run_id}/interrupt")))
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.oneshot(req).await.unwrap();
+    assert_status!(response, StatusCode::NOT_FOUND).await;
+}
+
+#[tokio::test]
+async fn interrupt_without_a_worker_channel_returns_unavailable() {
+    let state = test_app_state();
+    let app = crate::test_support::build_test_router(Arc::clone(&state));
+    let run_id = fixtures::RUN_1;
+    let _temp_dir = insert_running_control_run(&state, run_id, None);
+
+    let req = Request::builder()
+        .method("POST")
+        .uri(api(&format!("/runs/{run_id}/interrupt")))
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.oneshot(req).await.unwrap();
+    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    let body = body_json(response.into_body()).await;
+    assert_eq!(body["errors"][0]["code"], "worker_control_unavailable");
 }
 
 #[tokio::test]

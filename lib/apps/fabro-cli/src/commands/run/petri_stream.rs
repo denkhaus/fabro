@@ -476,6 +476,19 @@ pub(crate) fn format_pretty(
         }
         "step.progress.recorded" => format_progress(&ts, view, label, styles),
         "control.requested" => {
+            if let Some(interrupt) = view.body()?.pointer("/ctl/deliver/$interrupt") {
+                let text = interrupt
+                    .get("steer")
+                    .and_then(Value::as_str)
+                    .map(|text| format!(": {text}"))
+                    .unwrap_or_default();
+                return Some(format!(
+                    "{ts} {} {}{}",
+                    styles.yellow.apply_to("\u{23f8} Interrupt"),
+                    styles.bold.apply_to(label),
+                    text,
+                ));
+            }
             let answer = view.derived()?.get("answer")?;
             let value = answer
                 .get("choice")
@@ -619,6 +632,14 @@ fn format_progress(ts: &str, view: PetriItem<'_>, label: &str, styles: &Styles) 
                 "{ts}    {} {}",
                 styles.dim.apply_to("\u{2699}"),
                 styles.dim.apply_to(format!("{count} {noun} available")),
+            ))
+        }
+        "attractor.turn.interrupted" => {
+            let backend = custom.get("backend").and_then(Value::as_str).unwrap_or("?");
+            Some(format!(
+                "{ts}    {} {}",
+                styles.dim.apply_to("\u{21b3}"),
+                styles.dim.apply_to(format!("turn interrupted ({backend})")),
             ))
         }
         "attractor.checkout" => {
@@ -1186,6 +1207,57 @@ mod tests {
         );
         let line = format_pretty(&listed, &styles, &mut state).expect("a tools line");
         assert!(line.contains("2 tools available"), "{line}");
+    }
+
+    #[test]
+    fn an_interrupt_and_the_turn_it_stopped_render_by_kind() {
+        let styles = Styles::new(false);
+        let mut state = PrettyState::default();
+        let interrupt = petri(
+            8,
+            json!({
+                "origin": "external",
+                "context": {"invocation": 0, "execution": 0},
+                "subject": subject("work", "agent"),
+                "record": {"seq": 20, "body": {"event": "control.requested", "firing": 2,
+                    "ctl": {"deliver": {"$interrupt": {"steer": "stop and summarize"}}}}},
+                "derived": {"deliverable": true}
+            }),
+        );
+        let line = format_pretty(&interrupt, &styles, &mut state).expect("an interrupt line");
+        assert!(
+            line.contains("\u{23f8} Interrupt work: stop and summarize"),
+            "{line}"
+        );
+
+        let plain = petri(
+            9,
+            json!({
+                "origin": "external",
+                "context": {"invocation": 0, "execution": 0},
+                "subject": subject("work", "agent"),
+                "record": {"seq": 21, "body": {"event": "control.requested", "firing": 2,
+                    "ctl": {"deliver": {"$interrupt": {}}}}},
+                "derived": {"deliverable": true}
+            }),
+        );
+        let line = format_pretty(&plain, &styles, &mut state).expect("an interrupt line");
+        assert!(line.ends_with("\u{23f8} Interrupt work"), "{line}");
+
+        let stopped = petri(
+            10,
+            json!({
+                "origin": "external",
+                "context": {"invocation": 0, "execution": 0},
+                "subject": subject("work", "agent"),
+                "record": {"seq": 22, "body": {"event": "step.progress.recorded", "firing": 2,
+                    "ev": {"custom": {"kind": "attractor.turn.interrupted", "node": "work",
+                        "firing": 2, "attempt": 1, "backend": "api", "session": "s-1"}}}},
+                "derived": {}
+            }),
+        );
+        let line = format_pretty(&stopped, &styles, &mut state).expect("a stopped-turn line");
+        assert!(line.contains("\u{21b3} turn interrupted (api)"), "{line}");
     }
 
     #[test]

@@ -24,6 +24,8 @@ import { BASE_PATH, COLLECTION_FORMATS, type RequestArgs, BaseAPI, RequiredError
 // @ts-ignore
 import type { ErrorResponse } from '../models';
 // @ts-ignore
+import type { InterruptRunRequest } from '../models';
+// @ts-ignore
 import type { PaginatedApiQuestionList } from '../models';
 // @ts-ignore
 import type { PairMessageRecord } from '../models';
@@ -422,13 +424,14 @@ export const HumanInTheLoopApiAxiosParamCreator = function (configuration?: Conf
             };
         },
         /**
-         * Interrupt the active steerable agent round without sending steering text. The agent keeps its steering lease and waits for a later steer message before starting another LLM round.
+         * Stop the current model turn of a live agent stage (the stage `stage` names, or the run\'s one live agent stage) and keep its session. With `text`, the text is the stage\'s next input; without, the stage waits for the next steer message before starting another model turn. The control is forwarded to the run\'s worker; an interrupt the worker cannot deliver (a stage with no model turn in flight, such as an agent between turns or a human gate; a stage that is not running; no live agent stage, or several unnamed) is refused on the run\'s event stream as a `run.notice` record whose code says why (`no_live_turn`, `no_such_stage`, `interrupt_refused`). A delivered interrupt is the stage\'s `control.requested` record with `$interrupt`, followed by an `attractor.turn.interrupted` progress record.
          * @summary Interrupt Run
          * @param {string} id Unique run identifier (ULID).
+         * @param {InterruptRunRequest} [interruptRunRequest]
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        interruptRun: async (id: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+        interruptRun: async (id: string, interruptRunRequest?: InterruptRunRequest, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
             // verify required parameter 'id' is not null or undefined
             assertParamExists('interruptRun', 'id', id)
             const localVarPath = `/api/v1/runs/{id}/interrupt`
@@ -450,11 +453,13 @@ export const HumanInTheLoopApiAxiosParamCreator = function (configuration?: Conf
             // http bearer authentication required
             await setBearerAuthToObject(localVarHeaderParameter, configuration)
 
+            localVarHeaderParameter['Content-Type'] = 'application/json';
             localVarHeaderParameter['Accept'] = 'application/json';
 
             setSearchParams(localVarUrlObj, localVarQueryParameter);
             let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
             localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+            localVarRequestOptions.data = serializeDataIfNeeded(interruptRunRequest, localVarRequestOptions, configuration)
 
             return {
                 url: toPathString(localVarUrlObj),
@@ -790,7 +795,7 @@ export const HumanInTheLoopApiAxiosParamCreator = function (configuration?: Conf
             };
         },
         /**
-         * Send a mid-run steering message to the live agent session(s) of a running run. Set `interrupt=true` to atomically interrupt the active steerable agent round first, then deliver this message as the next user turn. Without `interrupt=true`, the message is appended to the steering queue and may buffer until the next steerable agent session.
+         * Send a mid-run steering message to a live agent stage of a running run: the stage `stage` names, or the run\'s one live agent stage. Without `interrupt`, the text is guidance for the stage\'s session, run as a follow-up turn once its current answer is reached. With `interrupt=true`, the stage\'s current model turn (the model request and the tool calls it is running) is stopped first, the session is kept, and the text is the stage\'s next input. The control is forwarded to the run\'s worker; a control the worker cannot deliver (no live agent stage, several unnamed, a stage that is not running, or, for an interrupt, a stage with no model turn in flight) is refused on the run\'s event stream as a `run.notice` record whose code says why (`steer_refused`, `no_live_turn`, `no_such_stage`, `interrupt_refused`).
          * @summary Steer Run
          * @param {string} id Unique run identifier (ULID).
          * @param {SteerRunRequest} steerRunRequest
@@ -1005,14 +1010,15 @@ export const HumanInTheLoopApiFp = function(configuration?: Configuration) {
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
-         * Interrupt the active steerable agent round without sending steering text. The agent keeps its steering lease and waits for a later steer message before starting another LLM round.
+         * Stop the current model turn of a live agent stage (the stage `stage` names, or the run\'s one live agent stage) and keep its session. With `text`, the text is the stage\'s next input; without, the stage waits for the next steer message before starting another model turn. The control is forwarded to the run\'s worker; an interrupt the worker cannot deliver (a stage with no model turn in flight, such as an agent between turns or a human gate; a stage that is not running; no live agent stage, or several unnamed) is refused on the run\'s event stream as a `run.notice` record whose code says why (`no_live_turn`, `no_such_stage`, `interrupt_refused`). A delivered interrupt is the stage\'s `control.requested` record with `$interrupt`, followed by an `attractor.turn.interrupted` progress record.
          * @summary Interrupt Run
          * @param {string} id Unique run identifier (ULID).
+         * @param {InterruptRunRequest} [interruptRunRequest]
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        async interruptRun(id: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<void>> {
-            const localVarAxiosArgs = await localVarAxiosParamCreator.interruptRun(id, options);
+        async interruptRun(id: string, interruptRunRequest?: InterruptRunRequest, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<void>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.interruptRun(id, interruptRunRequest, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
             const localVarOperationServerBasePath = operationServerMap['HumanInTheLoopApi.interruptRun']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
@@ -1118,7 +1124,7 @@ export const HumanInTheLoopApiFp = function(configuration?: Configuration) {
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
-         * Send a mid-run steering message to the live agent session(s) of a running run. Set `interrupt=true` to atomically interrupt the active steerable agent round first, then deliver this message as the next user turn. Without `interrupt=true`, the message is appended to the steering queue and may buffer until the next steerable agent session.
+         * Send a mid-run steering message to a live agent stage of a running run: the stage `stage` names, or the run\'s one live agent stage. Without `interrupt`, the text is guidance for the stage\'s session, run as a follow-up turn once its current answer is reached. With `interrupt=true`, the stage\'s current model turn (the model request and the tool calls it is running) is stopped first, the session is kept, and the text is the stage\'s next input. The control is forwarded to the run\'s worker; a control the worker cannot deliver (no live agent stage, several unnamed, a stage that is not running, or, for an interrupt, a stage with no model turn in flight) is refused on the run\'s event stream as a `run.notice` record whose code says why (`steer_refused`, `no_live_turn`, `no_such_stage`, `interrupt_refused`).
          * @summary Steer Run
          * @param {string} id Unique run identifier (ULID).
          * @param {SteerRunRequest} steerRunRequest
@@ -1244,14 +1250,15 @@ export const HumanInTheLoopApiFactory = function (configuration?: Configuration,
             return localVarFp.getSandboxFile(id, path, options).then((request) => request(axios, basePath));
         },
         /**
-         * Interrupt the active steerable agent round without sending steering text. The agent keeps its steering lease and waits for a later steer message before starting another LLM round.
+         * Stop the current model turn of a live agent stage (the stage `stage` names, or the run\'s one live agent stage) and keep its session. With `text`, the text is the stage\'s next input; without, the stage waits for the next steer message before starting another model turn. The control is forwarded to the run\'s worker; an interrupt the worker cannot deliver (a stage with no model turn in flight, such as an agent between turns or a human gate; a stage that is not running; no live agent stage, or several unnamed) is refused on the run\'s event stream as a `run.notice` record whose code says why (`no_live_turn`, `no_such_stage`, `interrupt_refused`). A delivered interrupt is the stage\'s `control.requested` record with `$interrupt`, followed by an `attractor.turn.interrupted` progress record.
          * @summary Interrupt Run
          * @param {string} id Unique run identifier (ULID).
+         * @param {InterruptRunRequest} [interruptRunRequest]
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        interruptRun(id: string, options?: RawAxiosRequestConfig): AxiosPromise<void> {
-            return localVarFp.interruptRun(id, options).then((request) => request(axios, basePath));
+        interruptRun(id: string, interruptRunRequest?: InterruptRunRequest, options?: RawAxiosRequestConfig): AxiosPromise<void> {
+            return localVarFp.interruptRun(id, interruptRunRequest, options).then((request) => request(axios, basePath));
         },
         /**
          * Returns pending human-in-the-loop questions for a run. Questions are generated when the workflow needs user input to proceed.
@@ -1333,7 +1340,7 @@ export const HumanInTheLoopApiFactory = function (configuration?: Configuration,
             return localVarFp.startRunPair(id, pairStartRequest, options).then((request) => request(axios, basePath));
         },
         /**
-         * Send a mid-run steering message to the live agent session(s) of a running run. Set `interrupt=true` to atomically interrupt the active steerable agent round first, then deliver this message as the next user turn. Without `interrupt=true`, the message is appended to the steering queue and may buffer until the next steerable agent session.
+         * Send a mid-run steering message to a live agent stage of a running run: the stage `stage` names, or the run\'s one live agent stage. Without `interrupt`, the text is guidance for the stage\'s session, run as a follow-up turn once its current answer is reached. With `interrupt=true`, the stage\'s current model turn (the model request and the tool calls it is running) is stopped first, the session is kept, and the text is the stage\'s next input. The control is forwarded to the run\'s worker; a control the worker cannot deliver (no live agent stage, several unnamed, a stage that is not running, or, for an interrupt, a stage with no model turn in flight) is refused on the run\'s event stream as a `run.notice` record whose code says why (`steer_refused`, `no_live_turn`, `no_such_stage`, `interrupt_refused`).
          * @summary Steer Run
          * @param {string} id Unique run identifier (ULID).
          * @param {SteerRunRequest} steerRunRequest
@@ -1459,14 +1466,15 @@ export class HumanInTheLoopApi extends BaseAPI {
     }
 
     /**
-     * Interrupt the active steerable agent round without sending steering text. The agent keeps its steering lease and waits for a later steer message before starting another LLM round.
+     * Stop the current model turn of a live agent stage (the stage `stage` names, or the run\'s one live agent stage) and keep its session. With `text`, the text is the stage\'s next input; without, the stage waits for the next steer message before starting another model turn. The control is forwarded to the run\'s worker; an interrupt the worker cannot deliver (a stage with no model turn in flight, such as an agent between turns or a human gate; a stage that is not running; no live agent stage, or several unnamed) is refused on the run\'s event stream as a `run.notice` record whose code says why (`no_live_turn`, `no_such_stage`, `interrupt_refused`). A delivered interrupt is the stage\'s `control.requested` record with `$interrupt`, followed by an `attractor.turn.interrupted` progress record.
      * @summary Interrupt Run
      * @param {string} id Unique run identifier (ULID).
+     * @param {InterruptRunRequest} [interruptRunRequest]
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      */
-    public interruptRun(id: string, options?: RawAxiosRequestConfig) {
-        return HumanInTheLoopApiFp(this.configuration).interruptRun(id, options).then((request) => request(this.axios, this.basePath));
+    public interruptRun(id: string, interruptRunRequest?: InterruptRunRequest, options?: RawAxiosRequestConfig) {
+        return HumanInTheLoopApiFp(this.configuration).interruptRun(id, interruptRunRequest, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**
@@ -1556,7 +1564,7 @@ export class HumanInTheLoopApi extends BaseAPI {
     }
 
     /**
-     * Send a mid-run steering message to the live agent session(s) of a running run. Set `interrupt=true` to atomically interrupt the active steerable agent round first, then deliver this message as the next user turn. Without `interrupt=true`, the message is appended to the steering queue and may buffer until the next steerable agent session.
+     * Send a mid-run steering message to a live agent stage of a running run: the stage `stage` names, or the run\'s one live agent stage. Without `interrupt`, the text is guidance for the stage\'s session, run as a follow-up turn once its current answer is reached. With `interrupt=true`, the stage\'s current model turn (the model request and the tool calls it is running) is stopped first, the session is kept, and the text is the stage\'s next input. The control is forwarded to the run\'s worker; a control the worker cannot deliver (no live agent stage, several unnamed, a stage that is not running, or, for an interrupt, a stage with no model turn in flight) is refused on the run\'s event stream as a `run.notice` record whose code says why (`steer_refused`, `no_live_turn`, `no_such_stage`, `interrupt_refused`).
      * @summary Steer Run
      * @param {string} id Unique run identifier (ULID).
      * @param {SteerRunRequest} steerRunRequest

@@ -207,6 +207,7 @@ models/integration-connection-status.ts
 models/integration-provider.ts
 models/integration-status.ts
 models/integration-webhooks-settings.ts
+models/interrupt-run-request.ts
 models/interview-option.ts
 models/interview-provider-settings.ts
 models/interview-question-record.ts
@@ -487,7 +488,6 @@ models/server-sandbox-provider-settings.ts
 models/server-sandbox-settings.ts
 models/server-scheduler-settings.ts
 models/server-settings.ts
-models/server-slate-db-settings.ts
 models/server-storage-settings.ts
 models/server-web-settings.ts
 models/session-detail.ts
