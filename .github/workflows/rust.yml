@@ -167,17 +167,20 @@ jobs:
       - name: Install the sandbox-driver plugin executables
         if: steps.sandbox-driver-cache.outputs.cache-hit != 'true'
         run: cargo install --locked --git https://github.com/lithoscomputer/sandbox-driver --rev "${{ steps.sandbox-driver.outputs.rev }}" sandbox-driver-host sandbox-driver-docker
-      # The Docker scenarios in the suite leave the image to Petri, whose
-      # Docker scope runs on its default runner image; the plugin pulls it
-      # on first use, but a 1 GiB pull inside a run's timeout is a flake.
-      # Pull it here, at the pin the checked-out Petri names, so a registry
-      # problem reads as one.
-      - name: Pull Petri's default runner image
+      # The images the suite's Docker tests run. The plugin pulls a missing
+      # image on first use, but a 1 GiB pull inside a run's wait is a flake,
+      # so pull them here, where a registry problem reads as one. Most tests
+      # leave the image to Petri, whose Docker scope runs on its default
+      # runner image at the pin the checked-out Petri names; the
+      # fabro-server catalog scenarios name CATALOG_IMAGE in
+      # lib/apps/fabro-server/tests/it/scenario/petri.rs.
+      - name: Pull the images the Docker tests run
         run: |
           backend="$(dirname "$(cargo metadata --locked --format-version 1 | jq -r '.packages[] | select(.name == "petri-executor-sandbox") | .manifest_path')")/src/backend.rs"
           pin="$(sed -n 's/^const RUNNER_PIN: &str = "\([0-9a-f]*\)";$/\1/p' "$backend")"
           test -n "$pin"
           docker pull "ghcr.io/lithoscomputer/ubuntu-24.04:slim-$pin"
+          docker pull ghcr.io/lithoscomputer/ubuntu-22.04:slim
       - run: cargo nextest run --locked --workspace --status-level slow --profile ci
       # The twin-mode ignored suites this job once ran belonged to fabro-agent,
       # which pebble's coding agent replaced; the agent loop's workflow-level
@@ -205,8 +208,15 @@ jobs:
         with:
           cache-on-failure: true
       - uses: taiki-e/install-action@773334c0e05d7e699e4d78234494308223f3a2cf # nextest
-      # The image the Docker scenarios' environment names.
+      # The image the Docker scenarios' environment names, and Petri's
+      # default runner image, which the fabro-petri Docker test runs.
       - run: docker pull buildpack-deps:noble
+      - name: Pull Petri's default runner image
+        run: |
+          backend="$(dirname "$(cargo metadata --locked --format-version 1 | jq -r '.packages[] | select(.name == "petri-executor-sandbox") | .manifest_path')")/src/backend.rs"
+          pin="$(sed -n 's/^const RUNNER_PIN: &str = "\([0-9a-f]*\)";$/\1/p' "$backend")"
+          test -n "$pin"
+          docker pull "ghcr.io/lithoscomputer/ubuntu-24.04:slim-$pin"
       # Every Petri run takes its scope through a sandbox-driver plugin
       # executable that Petri finds on PATH: `sandbox-driver-host` for the
       # `local` provider, `sandbox-driver-docker` for `docker`. Installed
