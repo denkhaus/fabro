@@ -100,7 +100,6 @@ mime_guess.workspace = true
 regex.workspace = true
 semver.workspace = true
 walkdir.workspace = true
-multer = "3"
 thiserror.workspace = true
 percent-encoding.workspace = true
 url = "2"

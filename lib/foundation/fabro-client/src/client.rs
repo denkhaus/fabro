@@ -1,7 +1,6 @@
 use std::collections::VecDeque;
 use std::future::Future;
 use std::num::NonZeroU64;
-use std::path::Path;
 use std::pin::Pin;
 use std::sync::{Arc, RwLock};
 
@@ -9,25 +8,22 @@ use anyhow::{Context as _, Result, anyhow, bail};
 use bytes::Bytes;
 use fabro_api::types;
 use fabro_api::types::RunControlAcknowledgement;
-use fabro_http::header::{ACCEPT, AUTHORIZATION, CONTENT_LENGTH, CONTENT_TYPE};
-use fabro_http::multipart::{Form, Part};
+use fabro_http::header::{ACCEPT, AUTHORIZATION};
 use fabro_types::settings::run::MergeStrategy;
 use fabro_types::{
-    ArtifactUpload, BlobHash, Model, ModelTestMode, PairId, PairMessageRecord, PairMessageRequest,
-    PairRecord, PairStartRequest, PairTranscriptResponse, Run, RunId, RunPairStatusResponse,
-    RunProjection, RunSessionMetadata, RunStreamItem, SessionEvent, SessionId, StageId,
-    WorkflowVersion, WorkflowVersionId,
+    BlobHash, Model, ModelTestMode, PairId, PairMessageRecord, PairMessageRequest, PairRecord,
+    PairStartRequest, PairTranscriptResponse, Run, RunId, RunPairStatusResponse, RunProjection,
+    RunSessionMetadata, RunStreamItem, SessionEvent, SessionId, StageId, WorkflowVersion,
+    WorkflowVersionId,
 };
 use fabro_util::exit::{ErrorExt, ExitClass};
 use futures::future::BoxFuture;
 use futures::{Stream, StreamExt};
 use lithos_llm::catalog::ProviderId;
 use lithos_llm::types::ReasoningEffort;
-use serde::{Deserialize, Serialize};
-use tokio::fs::File;
+use serde::Deserialize;
 use tokio::sync::Mutex;
 use tokio::time;
-use tokio_util::io::ReaderStream;
 
 use crate::credential::Credential;
 use crate::error::{
@@ -148,23 +144,6 @@ struct OAuthErrorBody {
     error:             String,
     #[serde(default)]
     error_description: Option<String>,
-}
-
-#[derive(Debug, Serialize)]
-struct ArtifactBatchUploadManifest {
-    entries: Vec<ArtifactBatchUploadEntry>,
-}
-
-#[derive(Debug, Serialize)]
-struct ArtifactBatchUploadEntry {
-    part:           String,
-    path:           String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    sha256:         Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    expected_bytes: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    content_type:   Option<String>,
 }
 
 impl RunStreamItemStream {
@@ -2146,142 +2125,6 @@ impl Client {
             bytes.extend_from_slice(&chunk);
         }
         Ok(bytes)
-    }
-
-    #[expect(
-        clippy::disallowed_types,
-        reason = "Client builds raw server API request URLs for wire transit; logging redaction is handled at log boundaries."
-    )]
-    fn stage_artifacts_url(
-        &self,
-        run_id: &RunId,
-        stage_id: &StageId,
-        retry: u32,
-    ) -> Result<fabro_http::Url> {
-        let base_url = self.base_url();
-        let mut url = fabro_http::Url::parse(&base_url)
-            .with_context(|| format!("invalid server base URL {base_url}"))?;
-        url.path_segments_mut()
-            .map_err(|()| anyhow!("server base URL cannot accept path segments"))?
-            .extend([
-                "api",
-                "v1",
-                "runs",
-                &run_id.to_string(),
-                "stages",
-                &stage_id.to_string(),
-                "artifacts",
-            ]);
-        url.query_pairs_mut()
-            .append_pair("retry", &retry.to_string());
-        Ok(url)
-    }
-
-    pub async fn upload_stage_artifact_file(
-        &self,
-        run_id: &RunId,
-        stage_id: &StageId,
-        retry: u32,
-        filename: &str,
-        path: &Path,
-        bearer_token: &str,
-    ) -> Result<()> {
-        let mut url = self.stage_artifacts_url(run_id, stage_id, retry)?;
-        url.query_pairs_mut().append_pair("filename", filename);
-
-        let file = File::open(path)
-            .await
-            .with_context(|| format!("failed to open artifact {}", path.display()))?;
-        let content_length = file
-            .metadata()
-            .await
-            .with_context(|| format!("failed to stat artifact {}", path.display()))?
-            .len();
-        let body = fabro_http::Body::wrap_stream(ReaderStream::new(file));
-
-        let response = self
-            .current_state()
-            .http_client
-            .post(url)
-            .bearer_auth(bearer_token)
-            .header(CONTENT_TYPE, "application/octet-stream")
-            .header(CONTENT_LENGTH, content_length.to_string())
-            .body(body)
-            .send()
-            .await
-            .with_context(|| format!("failed to upload artifact {}", path.display()))?;
-        classify_http_response(response)
-            .await?
-            .map(|_| ())
-            .map_err(|failure| raw_response_failure_error(&failure))
-    }
-
-    pub async fn upload_stage_artifact_batch(
-        &self,
-        run_id: &RunId,
-        stage_id: &StageId,
-        retry: u32,
-        artifact_capture_dir: &Path,
-        artifacts: &[ArtifactUpload],
-        bearer_token: &str,
-    ) -> Result<()> {
-        let url = self.stage_artifacts_url(run_id, stage_id, retry)?;
-        let mut manifest_entries = Vec::with_capacity(artifacts.len());
-        let mut file_parts = Vec::with_capacity(artifacts.len());
-
-        for (index, artifact) in artifacts.iter().enumerate() {
-            let part_name = format!("file{}", index + 1);
-            let path = artifact_capture_dir.join(&artifact.path);
-            let file = File::open(&path)
-                .await
-                .with_context(|| format!("failed to open artifact {}", path.display()))?;
-            let content_length = file
-                .metadata()
-                .await
-                .with_context(|| format!("failed to stat artifact {}", path.display()))?
-                .len();
-
-            manifest_entries.push(ArtifactBatchUploadEntry {
-                part:           part_name.clone(),
-                path:           artifact.path.clone(),
-                sha256:         Some(artifact.content_sha256.clone()),
-                expected_bytes: Some(artifact.bytes),
-                content_type:   Some(artifact.mime.clone()),
-            });
-
-            file_parts.push((
-                part_name,
-                Part::stream_with_length(
-                    fabro_http::Body::wrap_stream(ReaderStream::new(file)),
-                    content_length,
-                )
-                .file_name(artifact.path.clone()),
-            ));
-        }
-
-        let manifest = ArtifactBatchUploadManifest {
-            entries: manifest_entries,
-        };
-        let manifest_part =
-            Part::text(serde_json::to_string(&manifest)?).mime_str("application/json")?;
-        let mut form = Form::new().part("manifest", manifest_part);
-        for (part_name, part) in file_parts {
-            form = form.part(part_name, part);
-        }
-
-        let response = self
-            .current_state()
-            .http_client
-            .post(url)
-            .bearer_auth(bearer_token)
-            .multipart(form)
-            .send()
-            .await
-            .context("failed to upload artifact batch")?;
-        classify_http_response(response)
-            .await?
-            .map(|_| ())
-            .map_err(|failure| raw_response_failure_error(&failure))
     }
 
     pub async fn generate_preview_url(

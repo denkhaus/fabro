@@ -59,8 +59,6 @@ import type { StageContextWindow } from '../models';
 import type { WorkflowSettings } from '../models';
 // @ts-ignore
 import type { WriteBlobResponse } from '../models';
-// @ts-ignore
-import type { WriteRunBlobRequest } from '../models';
 /**
  * RunInternalsApi - axios parameter creator
  */
@@ -800,67 +798,6 @@ export const RunInternalsApiAxiosParamCreator = function (configuration?: Config
             };
         },
         /**
-         * Uploads one or more artifacts for a stage. Intended for trusted internal callers.  The server accepts both: - `application/octet-stream` for single-file uploads with the `filename` query parameter - strict manifest-first `multipart/form-data` uploads documented by `ArtifactBatchUploadManifest`  The generated Rust client currently exposes the octet-stream variant because the OpenAPI code generator in this repo does not support multiple request media types on one operation.
-         * @summary Put Stage Artifact
-         * @param {string} id Unique run identifier (ULID).
-         * @param {string} stageId Identifier of a stage within a run\&#39;s workflow graph, serialized as &#x60;node_id@visit&#x60;.
-         * @param {number} retry Retry attempt number for the artifact.
-         * @param {File} body
-         * @param {string} [filename] Relative artifact path for &#x60;application/octet-stream&#x60; uploads. Ignored for multipart uploads.
-         * @param {*} [options] Override http request option.
-         * @throws {RequiredError}
-         */
-        putStageArtifact: async (id: string, stageId: string, retry: number, body: File, filename?: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
-            // verify required parameter 'id' is not null or undefined
-            assertParamExists('putStageArtifact', 'id', id)
-            // verify required parameter 'stageId' is not null or undefined
-            assertParamExists('putStageArtifact', 'stageId', stageId)
-            // verify required parameter 'retry' is not null or undefined
-            assertParamExists('putStageArtifact', 'retry', retry)
-            // verify required parameter 'body' is not null or undefined
-            assertParamExists('putStageArtifact', 'body', body)
-            const localVarPath = `/api/v1/runs/{id}/stages/{stageId}/artifacts`
-                .replace(`{${"id"}}`, encodeURIComponent(String(id)))
-                .replace(`{${"stageId"}}`, encodeURIComponent(String(stageId)));
-            // use dummy base URL string because the URL constructor only accepts absolute URLs.
-            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
-            let baseOptions;
-            if (configuration) {
-                baseOptions = configuration.baseOptions;
-            }
-
-            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
-            const localVarHeaderParameter = {} as any;
-            const localVarQueryParameter = {} as any;
-
-            // authentication SessionCookie required
-
-            // authentication BearerAuth required
-            // http bearer authentication required
-            await setBearerAuthToObject(localVarHeaderParameter, configuration)
-
-            if (retry !== undefined) {
-                localVarQueryParameter['retry'] = retry;
-            }
-
-            if (filename !== undefined) {
-                localVarQueryParameter['filename'] = filename;
-            }
-
-            localVarHeaderParameter['Content-Type'] = 'application/octet-stream';
-            localVarHeaderParameter['Accept'] = 'application/json';
-
-            setSearchParams(localVarUrlObj, localVarQueryParameter);
-            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
-            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
-            localVarRequestOptions.data = serializeDataIfNeeded(body, localVarRequestOptions, configuration)
-
-            return {
-                url: toPathString(localVarUrlObj),
-                options: localVarRequestOptions,
-            };
-        },
-        /**
          * The blob with this digest, if the store holds one.
          * @summary Read Petri Blob
          * @param {string} id Unique run identifier (ULID).
@@ -1406,23 +1343,6 @@ export const RunInternalsApiFp = function(configuration?: Configuration) {
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
-         * Uploads one or more artifacts for a stage. Intended for trusted internal callers.  The server accepts both: - `application/octet-stream` for single-file uploads with the `filename` query parameter - strict manifest-first `multipart/form-data` uploads documented by `ArtifactBatchUploadManifest`  The generated Rust client currently exposes the octet-stream variant because the OpenAPI code generator in this repo does not support multiple request media types on one operation.
-         * @summary Put Stage Artifact
-         * @param {string} id Unique run identifier (ULID).
-         * @param {string} stageId Identifier of a stage within a run\&#39;s workflow graph, serialized as &#x60;node_id@visit&#x60;.
-         * @param {number} retry Retry attempt number for the artifact.
-         * @param {File} body
-         * @param {string} [filename] Relative artifact path for &#x60;application/octet-stream&#x60; uploads. Ignored for multipart uploads.
-         * @param {*} [options] Override http request option.
-         * @throws {RequiredError}
-         */
-        async putStageArtifact(id: string, stageId: string, retry: number, body: File, filename?: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<void>> {
-            const localVarAxiosArgs = await localVarAxiosParamCreator.putStageArtifact(id, stageId, retry, body, filename, options);
-            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
-            const localVarOperationServerBasePath = operationServerMap['RunInternalsApi.putStageArtifact']?.[localVarOperationServerIndex]?.url;
-            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
-        },
-        /**
          * The blob with this digest, if the store holds one.
          * @summary Read Petri Blob
          * @param {string} id Unique run identifier (ULID).
@@ -1708,20 +1628,6 @@ export const RunInternalsApiFactory = function (configuration?: Configuration, b
             return localVarFp.openPetriRun(id, petriOpenRequest, options).then((request) => request(axios, basePath));
         },
         /**
-         * Uploads one or more artifacts for a stage. Intended for trusted internal callers.  The server accepts both: - `application/octet-stream` for single-file uploads with the `filename` query parameter - strict manifest-first `multipart/form-data` uploads documented by `ArtifactBatchUploadManifest`  The generated Rust client currently exposes the octet-stream variant because the OpenAPI code generator in this repo does not support multiple request media types on one operation.
-         * @summary Put Stage Artifact
-         * @param {string} id Unique run identifier (ULID).
-         * @param {string} stageId Identifier of a stage within a run\&#39;s workflow graph, serialized as &#x60;node_id@visit&#x60;.
-         * @param {number} retry Retry attempt number for the artifact.
-         * @param {File} body
-         * @param {string} [filename] Relative artifact path for &#x60;application/octet-stream&#x60; uploads. Ignored for multipart uploads.
-         * @param {*} [options] Override http request option.
-         * @throws {RequiredError}
-         */
-        putStageArtifact(id: string, stageId: string, retry: number, body: File, filename?: string, options?: RawAxiosRequestConfig): AxiosPromise<void> {
-            return localVarFp.putStageArtifact(id, stageId, retry, body, filename, options).then((request) => request(axios, basePath));
-        },
-        /**
          * The blob with this digest, if the store holds one.
          * @summary Read Petri Blob
          * @param {string} id Unique run identifier (ULID).
@@ -1997,21 +1903,6 @@ export class RunInternalsApi extends BaseAPI {
      */
     public openPetriRun(id: string, petriOpenRequest: PetriOpenRequest, options?: RawAxiosRequestConfig) {
         return RunInternalsApiFp(this.configuration).openPetriRun(id, petriOpenRequest, options).then((request) => request(this.axios, this.basePath));
-    }
-
-    /**
-     * Uploads one or more artifacts for a stage. Intended for trusted internal callers.  The server accepts both: - `application/octet-stream` for single-file uploads with the `filename` query parameter - strict manifest-first `multipart/form-data` uploads documented by `ArtifactBatchUploadManifest`  The generated Rust client currently exposes the octet-stream variant because the OpenAPI code generator in this repo does not support multiple request media types on one operation.
-     * @summary Put Stage Artifact
-     * @param {string} id Unique run identifier (ULID).
-     * @param {string} stageId Identifier of a stage within a run\&#39;s workflow graph, serialized as &#x60;node_id@visit&#x60;.
-     * @param {number} retry Retry attempt number for the artifact.
-     * @param {File} body
-     * @param {string} [filename] Relative artifact path for &#x60;application/octet-stream&#x60; uploads. Ignored for multipart uploads.
-     * @param {*} [options] Override http request option.
-     * @throws {RequiredError}
-     */
-    public putStageArtifact(id: string, stageId: string, retry: number, body: File, filename?: string, options?: RawAxiosRequestConfig) {
-        return RunInternalsApiFp(this.configuration).putStageArtifact(id, stageId, retry, body, filename, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**

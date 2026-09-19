@@ -26,8 +26,6 @@ export * from './aggregate-usage';
 export * from './aggregate-usage-totals';
 export * from './api-question';
 export * from './approval-mode';
-export * from './artifact-batch-upload-entry';
-export * from './artifact-batch-upload-manifest';
 export * from './artifact-entry';
 export * from './artifact-list-response';
 export * from './artifacts-settings';

@@ -4913,31 +4913,21 @@ fn named_workflow_dot(name: &str, goal: &str) -> String {
     )
 }
 
-fn multipart_body(
-    boundary: &str,
-    manifest: &serde_json::Value,
-    files: &[(&str, &str, &[u8])],
-) -> Body {
-    let mut body = Vec::new();
-    body.extend_from_slice(format!("--{boundary}\r\n").as_bytes());
-    body.extend_from_slice(b"Content-Disposition: form-data; name=\"manifest\"\r\n");
-    body.extend_from_slice(b"Content-Type: application/json\r\n\r\n");
-    body.extend_from_slice(serde_json::to_string(manifest).unwrap().as_bytes());
-    body.extend_from_slice(b"\r\n");
-
-    for (part, filename, bytes) in files {
-        body.extend_from_slice(format!("--{boundary}\r\n").as_bytes());
-        body.extend_from_slice(
-            format!("Content-Disposition: form-data; name=\"{part}\"; filename=\"{filename}\"\r\n")
-                .as_bytes(),
-        );
-        body.extend_from_slice(b"Content-Type: application/octet-stream\r\n\r\n");
-        body.extend_from_slice(bytes);
-        body.extend_from_slice(b"\r\n");
-    }
-
-    body.extend_from_slice(format!("--{boundary}--\r\n").as_bytes());
-    Body::from(body)
+/// Write one artifact for a stage the way the hooks do: straight into the
+/// artifact store.
+async fn seed_stage_artifact(
+    state: &AppState,
+    run_id: &str,
+    stage_id: &str,
+    retry: u32,
+    relative_path: &str,
+    bytes: &[u8],
+) {
+    let run_id = run_id.parse::<RunId>().unwrap();
+    let key = ArtifactKey::new(stage_id.parse::<StageId>().unwrap(), retry, relative_path);
+    let mut writer = state.artifact_store.writer(&run_id, &key).unwrap();
+    writer.write_all(bytes).await.unwrap();
+    writer.shutdown().await.unwrap();
 }
 
 /// Create a run via POST /runs, then start it via POST /runs/{id}/start.
@@ -7233,17 +7223,7 @@ async fn stage_artifacts_round_trip() {
 
     let run_id = create_run(&app, MINIMAL_DOT).await;
     let stage_id = "code@2";
-
-    let req = Request::builder()
-        .method("POST")
-        .uri(api(&format!(
-            "/runs/{run_id}/stages/{stage_id}/artifacts?filename=src/lib.rs&retry=1"
-        )))
-        .header("content-type", "application/octet-stream")
-        .body(Body::from("fn main() {}"))
-        .unwrap();
-    let response = app.clone().oneshot(req).await.unwrap();
-    assert_status!(response, StatusCode::NO_CONTENT).await;
+    seed_stage_artifact(&state, &run_id, stage_id, 1, "src/lib.rs", b"fn main() {}").await;
 
     let req = Request::builder()
         .method("GET")
@@ -7287,16 +7267,15 @@ async fn stage_artifacts_keep_same_filename_per_retry() {
     let stage_id = "code@2";
 
     for (retry, body) in [(1, "first"), (2, "second")] {
-        let req = Request::builder()
-            .method("POST")
-            .uri(api(&format!(
-                "/runs/{run_id}/stages/{stage_id}/artifacts?filename=logs/output.txt&retry={retry}"
-            )))
-            .header("content-type", "application/octet-stream")
-            .body(Body::from(body))
-            .unwrap();
-        let response = app.clone().oneshot(req).await.unwrap();
-        assert_status!(response, StatusCode::NO_CONTENT).await;
+        seed_stage_artifact(
+            &state,
+            &run_id,
+            stage_id,
+            retry,
+            "logs/output.txt",
+            body.as_bytes(),
+        )
+        .await;
     }
 
     let req = Request::builder()
@@ -7389,25 +7368,6 @@ async fn create_run_keeps_missing_project_and_workflow_names_absent() {
     assert_eq!(run_state.spec.settings.project.name.as_deref(), None);
     assert_eq!(run_state.spec.settings.workflow.name.as_deref(), None);
     assert_eq!(run_state.spec.graph_name(), Some("Demo"));
-}
-
-#[tokio::test]
-async fn stage_artifact_upload_rejects_invalid_filename() {
-    let state = test_app_state();
-    let app = crate::test_support::build_test_router(Arc::clone(&state));
-
-    let run_id = create_run(&app, MINIMAL_DOT).await;
-
-    let req = Request::builder()
-        .method("POST")
-        .uri(api(&format!(
-            "/runs/{run_id}/stages/code@2/artifacts?filename=../escape.txt&retry=1"
-        )))
-        .header("content-type", "application/octet-stream")
-        .body(Body::from("nope"))
-        .unwrap();
-    let response = app.oneshot(req).await.unwrap();
-    assert_status!(response, StatusCode::BAD_REQUEST).await;
 }
 
 #[tokio::test]
@@ -7760,85 +7720,6 @@ async fn base_worker_token_is_rejected_by_run_tool_only_routes() {
 }
 
 #[tokio::test]
-async fn worker_token_controls_stage_artifact_route() {
-    let (_state, app) = jwt_auth_app();
-    let user_jwt = issue_test_user_jwt();
-    let run_id = create_run_with_bearer(&app, &user_jwt).await;
-    let worker_token = issue_test_worker_token(&run_id);
-    let other_run_id = create_run_with_bearer(&app, &user_jwt).await;
-    let mismatched_worker_token = issue_test_worker_token(&other_run_id);
-
-    let response = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method(Method::POST)
-                .uri(api(&format!(
-                    "/runs/{run_id}/stages/code@2/artifacts?filename=artifact.txt&retry=1"
-                )))
-                .header(header::AUTHORIZATION, format!("Bearer {worker_token}"))
-                .header(header::CONTENT_TYPE, "application/octet-stream")
-                .body(Body::from("artifact"))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_status!(response, StatusCode::NO_CONTENT).await;
-
-    let response = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method(Method::POST)
-                .uri(api(&format!(
-                    "/runs/{run_id}/stages/code@2/artifacts?filename=artifact.txt&retry=1"
-                )))
-                .header(header::AUTHORIZATION, format!("Bearer {user_jwt}"))
-                .header(header::CONTENT_TYPE, "application/octet-stream")
-                .body(Body::from("artifact"))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_status!(response, StatusCode::NO_CONTENT).await;
-
-    let response = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method(Method::POST)
-                .uri(api(&format!(
-                    "/runs/{run_id}/stages/code@2/artifacts?filename=artifact.txt&retry=1"
-                )))
-                .header(
-                    header::AUTHORIZATION,
-                    format!("Bearer {mismatched_worker_token}"),
-                )
-                .header(header::CONTENT_TYPE, "application/octet-stream")
-                .body(Body::from("artifact"))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_status!(response, StatusCode::FORBIDDEN).await;
-
-    let response = app
-        .oneshot(
-            Request::builder()
-                .method(Method::POST)
-                .uri(api(&format!(
-                    "/runs/{run_id}/stages/code@2/artifacts?filename=artifact.txt&retry=1"
-                )))
-                .header(header::CONTENT_TYPE, "application/octet-stream")
-                .body(Body::from("artifact"))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_status!(response, StatusCode::UNAUTHORIZED).await;
-}
-
-#[tokio::test]
 async fn worker_token_is_rejected_on_user_only_routes() {
     let (_state, app) = jwt_auth_app();
     let user_jwt = issue_test_user_jwt();
@@ -7914,104 +7795,6 @@ async fn worker_token_is_rejected_on_user_only_routes() {
         .await
         .unwrap();
     assert_ne!(response.status(), StatusCode::UNAUTHORIZED);
-}
-
-#[tokio::test]
-async fn stage_artifacts_multipart_round_trip() {
-    let state = test_app_state();
-    let app = crate::test_support::build_test_router(Arc::clone(&state));
-
-    let run_id = create_run(&app, MINIMAL_DOT).await;
-    let stage_id = "code@2";
-    let source_bytes = b"fn main() {}\n";
-    let log_bytes = b"build ok\n";
-    let manifest = serde_json::json!({
-        "entries": [
-            {
-                "part": "file1",
-                "path": "src/lib.rs",
-                "sha256": hex::encode(Sha256::digest(source_bytes)),
-                "expected_bytes": source_bytes.len(),
-                "content_type": "text/plain"
-            },
-            {
-                "part": "file2",
-                "path": "logs/output.txt",
-                "sha256": hex::encode(Sha256::digest(log_bytes)),
-                "expected_bytes": log_bytes.len(),
-                "content_type": "text/plain"
-            }
-        ]
-    });
-    let boundary = "fabro-test-boundary";
-
-    let req = Request::builder()
-        .method("POST")
-        .uri(api(&format!(
-            "/runs/{run_id}/stages/{stage_id}/artifacts?retry=1"
-        )))
-        .header(
-            "content-type",
-            format!("multipart/form-data; boundary={boundary}"),
-        )
-        .body(multipart_body(boundary, &manifest, &[
-            ("file1", "src/lib.rs", source_bytes),
-            ("file2", "logs/output.txt", log_bytes),
-        ]))
-        .unwrap();
-    let response = app.clone().oneshot(req).await.unwrap();
-    assert_status!(response, StatusCode::NO_CONTENT).await;
-
-    let req = Request::builder()
-        .method("GET")
-        .uri(api(&format!("/runs/{run_id}/stages/{stage_id}/artifacts")))
-        .body(Body::empty())
-        .unwrap();
-    let response = app.clone().oneshot(req).await.unwrap();
-    let body = response_json!(response, StatusCode::OK).await;
-    assert_eq!(body["data"][0]["filename"], "logs/output.txt");
-    assert_eq!(body["data"][0]["retry"], 1);
-    assert_eq!(body["data"][0]["size"], log_bytes.len());
-    assert_eq!(body["data"][1]["filename"], "src/lib.rs");
-    assert_eq!(body["data"][1]["retry"], 1);
-    assert_eq!(body["data"][1]["size"], source_bytes.len());
-
-    let req = Request::builder()
-        .method("GET")
-        .uri(api(&format!(
-            "/runs/{run_id}/stages/{stage_id}/artifacts/download?filename=logs/output.txt&retry=1"
-        )))
-        .body(Body::empty())
-        .unwrap();
-    let response = app.oneshot(req).await.unwrap();
-    let bytes = response_bytes!(response, StatusCode::OK).await;
-    assert_eq!(&bytes[..], log_bytes);
-}
-
-#[tokio::test]
-async fn stage_artifacts_multipart_requires_manifest_first() {
-    let state = test_app_state();
-    let app = crate::test_support::build_test_router(Arc::clone(&state));
-
-    let run_id = create_run(&app, MINIMAL_DOT).await;
-    let boundary = "fabro-test-boundary";
-    let body = format!(
-        "--{boundary}\r\nContent-Disposition: form-data; name=\"file1\"; filename=\"src/lib.rs\"\r\n\r\nfn main() {{}}\r\n--{boundary}\r\nContent-Disposition: form-data; name=\"manifest\"\r\nContent-Type: application/json\r\n\r\n{{\"entries\":[{{\"part\":\"file1\",\"path\":\"src/lib.rs\"}}]}}\r\n--{boundary}--\r\n"
-    );
-
-    let req = Request::builder()
-        .method("POST")
-        .uri(api(&format!(
-            "/runs/{run_id}/stages/code@2/artifacts?retry=1"
-        )))
-        .header(
-            "content-type",
-            format!("multipart/form-data; boundary={boundary}"),
-        )
-        .body(Body::from(body))
-        .unwrap();
-    let response = app.oneshot(req).await.unwrap();
-    assert_status!(response, StatusCode::BAD_REQUEST).await;
 }
 
 #[tokio::test]

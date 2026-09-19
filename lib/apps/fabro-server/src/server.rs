@@ -10,7 +10,7 @@ use anyhow::Context as _;
 use axum::body::Body;
 #[cfg(test)]
 use axum::body::to_bytes;
-use axum::extract::{self as axum_extract, DefaultBodyLimit, Path, Query, State};
+use axum::extract::{self as axum_extract, Path, Query, State};
 use axum::http::{HeaderMap, Method, StatusCode, header};
 use axum::middleware::{self, Next};
 use axum::response::sse::{Event, KeepAlive, Sse};
@@ -113,7 +113,6 @@ use fabro_workflow::{Error as WorkflowError, operations, pull_request};
 use futures_util::future::join_all;
 use lithos_llm::catalog::ProviderId;
 use lithos_llm::types::Usage;
-use sha2::{Digest, Sha256};
 use tempfile::NamedTempFile;
 use tokio::fs;
 use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWriteExt, BufReader};
@@ -146,8 +145,8 @@ use crate::jwt_auth::{self, AuthMode};
 use crate::petri_runs::PetriRuns;
 use crate::principal_middleware::{
     AuthContextSlot, RequestAuth, RequestAuthContext, RequireRunBlob, RequireRunManagementTarget,
-    RequireRunScoped, RequireStageArtifact, RequireWorkerRunScoped, RequireWorkerRunSegment,
-    RequiredUser, principal_middleware,
+    RequireRunScoped, RequireWorkerRunScoped, RequireWorkerRunSegment, RequiredUser,
+    principal_middleware,
 };
 use crate::request_id::{self, RequestId};
 use crate::run_files::{FilesInFlight, new_files_in_flight};
@@ -3071,14 +3070,6 @@ fn validate_relative_artifact_path(kind: &str, value: &str) -> Result<String, Re
     }
 
     Ok(segments.join("/"))
-}
-
-fn bad_request_response(detail: impl Into<String>) -> Response {
-    ApiError::bad_request(detail.into()).into_response()
-}
-
-fn payload_too_large_response(detail: impl Into<String>) -> Response {
-    ApiError::new(StatusCode::PAYLOAD_TOO_LARGE, detail.into()).into_response()
 }
 
 fn octet_stream_response(bytes: Bytes) -> Response {
