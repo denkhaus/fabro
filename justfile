@@ -111,9 +111,33 @@ web-deps:
 install-cli:
     nu scripts/install-cli.nu "{{ staged }}" "{{ cli_bin }}"
 
-# Start the compose stack (recreates the container when the image changed)
+# Start the compose stack (recreates the container when the image changed).
+#
+# Storage identity (fabro-b03f): both compose files pin `name: fabro`, so
+# the project — and the `fabro_fabro-storage` volume holding the server
+# config (`/storage/.home/settings.toml`) — is the same no matter which
+# directory the stack is brought up from. A routine `just up` refresh
+# therefore reuses the configured storage. If the stack ever comes up
+# unconfigured anyway (fresh volume / first boot), the smoke step fails
+# with the recovery hint: `just install-url`, finish the wizard, the
+# container's restart policy reboots it configured.
 compose-up:
     docker compose up -d
+
+# One-command install-mode recovery: print the install URL + token from
+# the running container's logs (the server logs the full URL on boot in
+# install mode). Open it, finish the wizard; the container restarts
+# configured (restart policy), then `just smoke` goes green.
+install-url:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    url="$(docker compose logs --no-color fabro 2>/dev/null | grep -oE 'https?://[^ ]+/install[?]token=[A-Za-z0-9_-]+' | tail -1 || true)"
+    if [ -z "$url" ]; then
+        echo "No install URL found in container logs — the server may already be" >&2
+        echo "configured, or it is not running. Check: docker compose ps; just logs" >&2
+        exit 1
+    fi
+    echo "$url"
 
 # Stop the compose stack
 compose-down:
