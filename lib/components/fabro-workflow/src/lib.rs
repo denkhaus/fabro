@@ -5,10 +5,10 @@
 //! what Fabro itself owns: the create-time compile of the Fabro graph the
 //! read side displays (`pipeline`, `transforms`, `operations`), the run
 //! records and status vocabulary (`records`, `run_status`), the Git
-//! helpers a run's platform effects use (`git`, `git_identity`,
-//! `sandbox_git`), pull request creation (`pull_request`), the run tools an
-//! agent session calls (`run_tools`, `services`), the built-in web search
-//! backend (`web_search`).
+//! helpers a run's platform effects use (`git`, `sandbox_git`), pull
+//! request creation (`pull_request`), the run tools an agent session calls
+//! (`run_tools`, `services`), the built-in web search backend
+//! (`web_search`).
 
 #![cfg_attr(
     test,
@@ -30,7 +30,6 @@
 pub mod error;
 pub mod file_resolver;
 pub mod git;
-pub mod git_identity;
 pub mod operations;
 pub mod outcome;
 pub mod pipeline;
@@ -39,7 +38,7 @@ pub mod records;
 pub mod run_lookup;
 pub mod usage_rollup;
 
-pub use error::{Error, FailureCategory, FailureSignature, FailureSignatureExt, Result};
+pub use error::{Error, Result};
 pub use fabro_types::ManifestPath;
 pub use usage_rollup::{
     ProjectionUsageByModel, ProjectionUsageRollup, ProjectionUsageStage,

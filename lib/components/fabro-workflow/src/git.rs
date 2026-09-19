@@ -1,16 +1,10 @@
 use std::path::Path;
 use std::process::Command;
 
-pub use fabro_checkpoint::author::GitAuthor;
 use fabro_redact::DisplaySafeUrl;
-use fabro_types::{DirtyStatus, GitContext, WorkflowSettings};
-use tokio::task::{JoinError, spawn_blocking};
-use tokio::time::timeout;
+use fabro_types::{DirtyStatus, GitContext};
 
 use crate::error::{Error, Result};
-
-/// Branch prefix for workflow run branches (e.g. `fabro/run/{run_id}`).
-pub const RUN_BRANCH_PREFIX: &str = "fabro/run/";
 
 /// A local checkout could not be inspected without changing it.
 #[derive(Debug, thiserror::Error)]
@@ -112,16 +106,6 @@ fn sanitized_origin_url(value: &str) -> String {
     fabro_github::normalize_repo_origin_url(url.as_str())
 }
 
-pub fn git_author_from_settings(settings: &WorkflowSettings) -> GitAuthor {
-    settings
-        .run
-        .git
-        .author
-        .clone()
-        .map(|author| GitAuthor::from(&author))
-        .unwrap_or_default()
-}
-
 fn git_error(msg: impl Into<String>) -> Error {
     Error::engine(msg.into())
 }
@@ -138,24 +122,12 @@ fn git_cmd(dir: &Path) -> Command {
     cmd
 }
 
-/// Assert the working directory is a clean git repo (no uncommitted changes).
-pub fn ensure_clean(repo: &Path) -> Result<()> {
-    tracing::debug!(path = %repo.display(), "Checking git cleanliness");
-    let output = git_cmd(repo)
+/// Whether the working directory is a git repo with no uncommitted changes.
+fn working_tree_is_clean(repo: &Path) -> bool {
+    git_cmd(repo)
         .args(["status", "--porcelain"])
         .output()
-        .map_err(|e| Error::engine_with_source("git status failed", e))?;
-
-    if !output.status.success() {
-        return Err(git_error("not a git repository"));
-    }
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    if !stdout.trim().is_empty() {
-        return Err(git_error("working directory has uncommitted changes"));
-    }
-
-    Ok(())
+        .is_ok_and(|output| output.status.success() && output.stdout.trim_ascii().is_empty())
 }
 
 /// Return the SHA of HEAD.
@@ -172,50 +144,6 @@ pub fn head_sha(repo: &Path) -> Result<String> {
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
 
-/// Run a `git push` command and check for success.
-fn run_git_push(cmd: &mut Command) -> Result<()> {
-    let output = cmd
-        .output()
-        .map_err(|e| Error::engine_with_source("git push failed", e))?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(git_error(format!("git push failed: {stderr}")));
-    }
-    Ok(())
-}
-
-/// Push a local ref to an explicit remote URL.
-///
-/// Uses a URL (not a named remote) so the host repo's remote config is
-/// untouched. Disables credential helpers so only the inline URL credentials
-/// are used.
-pub fn push_ref(repo: &Path, url: &str, refname: &str) -> Result<()> {
-    let redacted_url = if let Some(at_pos) = url.find('@') {
-        format!("https://***@{}", &url[at_pos + 1..])
-    } else {
-        url.to_string()
-    };
-    tracing::info!(
-        repo_dir = %repo.display(),
-        url = %redacted_url,
-        refname,
-        "Pushing ref to remote"
-    );
-    run_git_push(git_cmd(repo).args(["-c", "credential.helper=", "push", url, refname]))
-}
-
-/// Push a local branch to the named remote using the user's configured
-/// credentials.
-pub fn push_branch(repo: &Path, remote: &str, branch: &str) -> Result<()> {
-    tracing::info!(
-        repo_dir = %repo.display(),
-        remote,
-        branch,
-        "Pushing branch to remote"
-    );
-    run_git_push(git_cmd(repo).args(["push", remote, branch]))
-}
-
 /// Push a local branch to the named remote without allowing Git to prompt.
 pub fn push_branch_noninteractive(repo: &Path, remote: &str, branch: &str) -> Result<()> {
     tracing::info!(
@@ -224,11 +152,16 @@ pub fn push_branch_noninteractive(repo: &Path, remote: &str, branch: &str) -> Re
         branch,
         "Pushing branch to remote without terminal prompts"
     );
-    run_git_push(
-        git_cmd(repo)
-            .env("GIT_TERMINAL_PROMPT", "0")
-            .args(["push", remote, branch]),
-    )
+    let output = git_cmd(repo)
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .args(["push", remote, branch])
+        .output()
+        .map_err(|e| Error::engine_with_source("git push failed", e))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(git_error(format!("git push failed: {stderr}")));
+    }
+    Ok(())
 }
 
 /// Read the exact commit currently advertised for a remote branch without
@@ -263,48 +196,6 @@ pub fn remote_branch_sha_noninteractive(
         }
     }
     Ok(None)
-}
-
-/// Error from [`blocking_push_with_timeout`].
-pub enum BlockingPushError {
-    /// The git push itself failed.
-    Push(Error),
-    /// The spawned blocking task panicked.
-    Panicked(JoinError),
-    /// The push did not complete within the timeout.
-    TimedOut,
-}
-
-impl std::fmt::Display for BlockingPushError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Push(e) => write!(f, "{e}"),
-            Self::Panicked(e) => write!(f, "task panicked: {e}"),
-            Self::TimedOut => write!(f, "timed out"),
-        }
-    }
-}
-
-/// Run a blocking git-push function with a timeout, flattening the
-/// triple-nested Result.
-pub async fn blocking_push_with_timeout<F>(
-    timeout_secs: u64,
-    f: F,
-) -> std::result::Result<(), BlockingPushError>
-where
-    F: FnOnce() -> Result<()> + Send + 'static,
-{
-    match timeout(
-        std::time::Duration::from_secs(timeout_secs),
-        spawn_blocking(f),
-    )
-    .await
-    {
-        Ok(Ok(Ok(()))) => Ok(()),
-        Ok(Ok(Err(e))) => Err(BlockingPushError::Push(e)),
-        Ok(Err(e)) => Err(BlockingPushError::Panicked(e)),
-        Err(_) => Err(BlockingPushError::TimedOut),
-    }
 }
 
 /// Returns true if the local branch has commits not yet on the remote.
@@ -354,7 +245,7 @@ impl std::fmt::Display for GitSyncStatus {
 
 /// Determine the sync status of the repository relative to a remote.
 pub fn sync_status(repo: &Path, remote: &str, branch: Option<&str>) -> GitSyncStatus {
-    if ensure_clean(repo).is_err() {
+    if !working_tree_is_clean(repo) {
         return GitSyncStatus::Dirty;
     }
     match branch {
@@ -479,26 +370,27 @@ mod tests {
     }
 
     #[test]
-    fn ensure_clean_on_clean_repo() {
+    fn sync_status_is_dirty_with_uncommitted_changes() {
         let dir = tempfile::tempdir().unwrap();
         init_repo(dir.path());
-        assert!(ensure_clean(dir.path()).is_ok());
-    }
-
-    #[test]
-    fn ensure_clean_fails_with_dirty_file() {
-        let dir = tempfile::tempdir().unwrap();
-        init_repo(dir.path());
+        assert_ne!(
+            sync_status(dir.path(), "origin", None),
+            GitSyncStatus::Dirty
+        );
         fs::write(dir.path().join("dirty.txt"), "hello").unwrap();
-        let err = ensure_clean(dir.path()).unwrap_err();
-        assert!(err.to_string().contains("uncommitted changes"));
+        assert_eq!(
+            sync_status(dir.path(), "origin", None),
+            GitSyncStatus::Dirty
+        );
     }
 
     #[test]
-    fn ensure_clean_fails_on_non_repo() {
+    fn sync_status_is_dirty_on_non_repo() {
         let dir = tempfile::tempdir().unwrap();
-        let err = ensure_clean(dir.path()).unwrap_err();
-        assert!(err.to_string().contains("not a git repository"));
+        assert_eq!(
+            sync_status(dir.path(), "origin", None),
+            GitSyncStatus::Dirty
+        );
     }
 
     #[test]
@@ -511,10 +403,10 @@ mod tests {
     }
 
     #[test]
-    fn push_branch_fails_for_nonexistent_remote() {
+    fn push_branch_noninteractive_fails_for_nonexistent_remote() {
         let dir = tempfile::tempdir().unwrap();
         init_repo(dir.path());
-        let result = push_branch(dir.path(), "nonexistent", "main");
+        let result = push_branch_noninteractive(dir.path(), "nonexistent", "main");
         assert!(result.is_err());
     }
 
