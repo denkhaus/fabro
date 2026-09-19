@@ -1009,6 +1009,7 @@ async fn committed_pass(projector: &Projector, run_id: RunId) -> projector::Pass
 /// dropped, and a pass over it is skipped.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_pass_over_a_live_run_costs_its_new_records_not_the_run() {
+    const BATCH: usize = 7;
     if host_plugin().is_none() {
         return;
     }
@@ -1017,7 +1018,6 @@ async fn a_pass_over_a_live_run_costs_its_new_records_not_the_run() {
     let rows = petri_rows(&scenario.pool, scenario.run_id).await;
     let staged = copy_run_without_records(&scenario.pool, scenario.run_id).await;
     let ordered = in_recorded_order(&rows, &staged, scenario.run_id).await;
-    const BATCH: usize = 7;
     assert!(
         ordered.len() > 4 * BATCH,
         "enough records for several batches: {}",
@@ -1062,6 +1062,7 @@ async fn a_pass_over_a_live_run_costs_its_new_records_not_the_run() {
 /// continues is the rebuild.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_restart_and_the_idle_period_drop_the_cache_and_one_full_replay_rebuilds_it() {
+    const BATCH: usize = 5;
     if host_plugin().is_none() {
         return;
     }
@@ -1070,7 +1071,6 @@ async fn a_restart_and_the_idle_period_drop_the_cache_and_one_full_replay_rebuil
     let rows = petri_rows(&scenario.pool, scenario.run_id).await;
     let staged = copy_run_without_records(&scenario.pool, scenario.run_id).await;
     let ordered = in_recorded_order(&rows, &staged, scenario.run_id).await;
-    const BATCH: usize = 5;
     let half = ordered.len() / 2;
     assert!(half > 3 * BATCH, "enough records: {}", ordered.len());
     let mut fed = 0;
