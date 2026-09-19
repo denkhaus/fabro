@@ -1,0 +1,132 @@
+---
+source: lib/components/fabro-dot/src/tests.rs
+expression: report
+---
+.fabro/workflows/card-game/workflow.fabro: CardGame nodes=20 edges=31
+  goal-inline
+  inline@expand_spec
+  inline@impl_setup
+  inline@verify_setup
+  inline@impl_data
+  inline@verify_data
+  inline@impl_logic
+  inline@verify_logic
+  inline@impl_ui
+  inline@verify_ui
+  inline@impl_integration
+  inline@verify_integration
+  inline@review
+.fabro/workflows/card-game-fast/workflow.fabro: CardGameFast nodes=6 edges=7
+  goal-inline
+  inline@plan_app
+  inline@implement_app
+  inline@verify_app
+  inline@fix_app
+.fabro/workflows/code-review/code-review.fabro: CodeReview nodes=26 edges=33
+  goal-inline
+  stylesheet-inline
+  file:output_schema:schemas/file-groups.schema.json@grouping
+  file:prompt:prompts/group-files.md.j2@grouping
+  file:output_schema:schemas/findings.schema.json@finder
+  file:prompt:prompts/finder.md.j2@finder
+  file:output_schema:schemas/verdict.schema.json@verifier
+  file:prompt:prompts/verify.md.j2@verifier
+  file:output_schema:schemas/findings.schema.json@sweeper
+  file:prompt:prompts/sweep.md.j2@sweeper
+  file:output_schema:schemas/verdict.schema.json@sweep_verifier
+  file:prompt:prompts/verify.md.j2@sweep_verifier
+.fabro/workflows/context-demo/workflow.fabro: ContextDemo nodes=3 edges=2
+  goal-inline
+  inline@emit
+.fabro/workflows/daytona-medium/workflow.fabro: DaytonaMedium nodes=3 edges=2
+  goal-inline
+.fabro/workflows/gh-list/workflow.fabro: GhList nodes=4 edges=3
+  goal-inline
+.fabro/workflows/gh-triage/workflow.fabro: GhTriage nodes=3 edges=2
+  goal-inline
+  inline@triage
+.fabro/workflows/goal/workflow.fabro: Goal nodes=6 edges=8
+  goal-inline
+  file:prompt:prompts/continue.md@work
+  file:prompt:prompts/audit.md@audit
+  inline@fixup
+.fabro/workflows/hello/workflow.fabro: Hello nodes=3 edges=2
+  goal-inline
+  inline@greet
+.fabro/workflows/implement-issue/workflow.fabro: ImplementIssue nodes=4 edges=3
+  goal-inline
+  stylesheet-inline
+  inline@plan
+  child:fabro/workflows/implement-plan/workflow.fabro@implement
+.fabro/workflows/implement-plan/workflow.fabro: ImplementPlan nodes=11 edges=14
+  goal-inline
+  inline@fix_lints
+  inline@implement
+  file:prompt:prompts/simplify.md@simplify_opus
+  file:prompt:prompts/simplify.md@simplify_sol
+  inline@fixup
+.fabro/workflows/interview/workflow.fabro: Interview nodes=8 edges=15
+  goal-inline
+  inline@summarize
+.fabro/workflows/patch-cves/workflow.fabro: PatchCves nodes=3 edges=2
+  goal-inline
+  stylesheet-inline
+  file:prompt:prompts/patch-cves.md@patch
+.fabro/workflows/pr-simplify/workflow.fabro: PrSimplify nodes=3 edges=2
+  goal-inline
+  file:prompt:prompts/simplify.md@simplify
+.fabro/workflows/sleeper/workflow.fabro: Sleeper nodes=3 edges=2
+  goal-inline
+  inline@nap
+.fabro/workflows/smoke/workflow.fabro: Smoke nodes=8 edges=7
+  goal-inline
+.fabro/workflows/solitaire/workflow.fabro: Solitaire nodes=20 edges=31
+  goal-inline
+  inline@expand_spec
+  inline@impl_setup
+  inline@verify_setup
+  inline@impl_data
+  inline@verify_data
+  inline@impl_logic
+  inline@verify_logic
+  inline@impl_ui
+  inline@verify_ui
+  inline@impl_integration
+  inline@verify_integration
+  inline@review
+.fabro/workflows/solitaire-fast/workflow.fabro: SolitaireFast nodes=6 edges=7
+  goal-inline
+  inline@plan_app
+  inline@implement_app
+  inline@verify_app
+  inline@fix_app
+test/dot-compatibility/acp-agent-chain.fabro: AcpAgentChain nodes=4 edges=3
+  goal-inline
+test/dot-compatibility/human-default-choice.fabro: HumanDefaultChoice nodes=5 edges=5
+  goal-inline
+  inline@revise
+test/dot-compatibility/subworkflow-manager.fabro: SubworkflowManager nodes=5 edges=4
+  goal-inline
+  inline@plan
+  child:implement-and-test.fabro@impl
+  inline@review
+lib/apps/fabro-cli/tests/it/workflow/fixtures/agent_linear.fabro: AgentLinear nodes=3 edges=2
+  goal-inline
+  inline@work
+lib/apps/fabro-cli/tests/it/workflow/fixtures/command_agent_mixed.fabro: CommandAgentMixed nodes=5 edges=4
+  goal-inline
+  inline@work
+lib/apps/fabro-cli/tests/it/workflow/fixtures/command_pipeline.fabro: CommandPipeline nodes=4 edges=3
+  goal-inline
+lib/apps/fabro-cli/tests/it/workflow/fixtures/command_routing.fabro: CommandRouting nodes=6 edges=6
+  goal-inline
+lib/apps/fabro-cli/tests/it/workflow/fixtures/conditional_branching.fabro: ConditionalBranching nodes=6 edges=6
+  goal-inline
+lib/apps/fabro-cli/tests/it/workflow/fixtures/full_stack.fabro: FullStack nodes=7 edges=7
+  goal-inline
+  inline@plan
+  inline@impl
+lib/apps/fabro-cli/tests/it/workflow/fixtures/human_gate.fabro: HumanGate nodes=6 edges=6
+  goal-inline
+  inline@draft
+  inline@revise

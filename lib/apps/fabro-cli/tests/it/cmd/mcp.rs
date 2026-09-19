@@ -20,7 +20,7 @@ use chrono::{DateTime, Duration as ChronoDuration, Utc};
 use fabro_client::{AuthEntry, AuthStore, DevTokenEntry, OAuthEntry, StoredSubject};
 use fabro_test::{fabro_json_snapshot, fabro_snapshot, test_context};
 use fabro_types::settings::run::{McpServerSettings, McpTransport};
-use fabro_types::{Graph, RunId, WorkflowSettings, test_support};
+use fabro_types::{RunGraph, RunId, WorkflowSettings, test_support};
 use httpmock::Method::{GET, POST};
 use httpmock::MockServer;
 
@@ -2208,7 +2208,7 @@ async fn mcp_events_decodes_run_created_with_model_keyed_fallbacks() {
                 "kind": "run.created",
                 "spec": {
                     "settings": settings,
-                    "graph": Graph::new("Remote Workflow"),
+                    "graph": RunGraph::new("Remote Workflow"),
                     "labels": {},
                     "source_directory": "/srv/repo",
                     "provenance": test_support::test_run_provenance()

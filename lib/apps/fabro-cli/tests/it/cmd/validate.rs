@@ -352,7 +352,7 @@ fn edge_only_node() {
     exit_code: 1
     ----- stdout -----
     ----- stderr -----
-    Workflow: EdgeOnlyNode (2 nodes, 2 edges)
+    Workflow: EdgeOnlyNode (3 nodes, 2 edges)
     Graph: [FIXTURES]/edge_only_node.fabro
     error: [FIXTURES]/edge_only_node.fabro:8:14: `misspelled_node` is named by an edge but never declared (attractor.undeclared_node)
       × Validation failed

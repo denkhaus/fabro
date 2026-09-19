@@ -110,12 +110,13 @@ Before merging changes that add or move shared test helpers, verify:
 
 ## Architecture
 
-Fabro is an AI-powered workflow orchestration platform. Workflows are defined as Graphviz graphs, where each node is a stage (agent, prompt, command, conditional, human, parallel, etc.). Petri, the workflow engine, admits a workflow at create and executes every run; `fabro-petri` is the only crate that imports it.
+Fabro is an AI-powered workflow orchestration platform. Workflows are defined as Graphviz graphs, where each node is a stage (agent, prompt, command, conditional, human, parallel, etc.). Petri, the workflow engine, admits a workflow at create and executes every run. Two crates import it: `fabro-petri` (the engine adapters) and `fabro-dot` (Petri's DOT parser, for reading a graph's shape and file references).
 
 ### Rust crates (`lib/apps/`, `lib/components/`, and `lib/foundation/`)
 - **fabro-cli** — CLI entry point. Commands: `run`, `exec`, `serve`, `validate`, `parse`, `cp`, `model`, `doctor`, `install`, `ps`, `system prune`
 - **fabro-workflow** — Fabro's platform half of a run: creates a run around Petri's admission (the run's display graph is read off the admitted graph), archives, forks and retries runs, and holds the run tools and the pull request pipeline. Compilation and execution are Petri's, through `fabro-petri`
-- **fabro-graphviz** — Graphviz DOT parser, the typed graph model, and SVG rendering
+- **fabro-dot** — The workflow graph as written, read through Petri's DOT parser: its name, goal, node and edge counts, and the files it references (`import`, `stack.child_workflow`, `@file` prompts, the goal). The bundler and the workflow-version store walk references through it; `fabro-graphviz` re-emits Fabro DOT for Graphviz through it
+- **fabro-graphviz** — SVG rendering of workflow graphs through the vendored Graphviz (`graphviz-sys`)
 - **fabro-sandbox** — Local, Docker, and Daytona sandbox providers. `RunSandbox` is also the `Environment` pebble's coding agent runs its tools through; agent stages, Ask Fabro, hook evaluators, and `fabro exec` all run on the `pebble-coding-agent` crate (pinned by rev in the workspace `Cargo.toml`). `RunSandbox` is also the `Environment` pebble's coding agent runs its tools through; agent stages, Ask Fabro, hook evaluators, and `fabro exec` all run on the `pebble-coding-agent` crate (pinned by rev in the workspace `Cargo.toml`). Docker is the default runtime provider and creates clone-based `/workspace` containers through the operator's Docker daemon; Daytona uses the same GitHub-only clone-source contract. Docker daemon access is host-root-equivalent and assumes trusted callers/payloads.
 - **fabro-petri** — Fabro's adapters over Petri, the workflow engine: the one crate that imports the Petri packages (pinned by rev in the workspace `Cargo.toml`), holding the run store over SQLite and the platform adapters
 - **fabro-server** — Axum HTTP server. Routes for runs, sessions, models, completions, usage. SSE event streaming. Demo mode via header
@@ -221,12 +222,13 @@ Before merging changes that add or move shared test helpers, verify:
 
 ## Architecture
 
-Fabro is an AI-powered workflow orchestration platform. Workflows are defined as Graphviz graphs, where each node is a stage (agent, prompt, command, conditional, human, parallel, etc.). Petri, the workflow engine, admits a workflow at create and executes every run; `fabro-petri` is the only crate that imports it.
+Fabro is an AI-powered workflow orchestration platform. Workflows are defined as Graphviz graphs, where each node is a stage (agent, prompt, command, conditional, human, parallel, etc.). Petri, the workflow engine, admits a workflow at create and executes every run. Two crates import it: `fabro-petri` (the engine adapters) and `fabro-dot` (Petri's DOT parser, for reading a graph's shape and file references).
 
 ### Rust crates (`lib/apps/`, `lib/components/`, and `lib/foundation/`)
 - **fabro-cli** — CLI entry point. Commands: `run`, `exec`, `serve`, `validate`, `parse`, `cp`, `model`, `doctor`, `install`, `ps`, `system prune`
 - **fabro-workflow** — Fabro's platform half of a run: creates a run around Petri's admission (the run's display graph is read off the admitted graph), archives, forks and retries runs, and holds the run tools and the pull request pipeline. Compilation and execution are Petri's, through `fabro-petri`
-- **fabro-graphviz** — Graphviz DOT parser, the typed graph model, and SVG rendering
+- **fabro-dot** — The workflow graph as written, read through Petri's DOT parser: its name, goal, node and edge counts, and the files it references (`import`, `stack.child_workflow`, `@file` prompts, the goal). The bundler and the workflow-version store walk references through it; `fabro-graphviz` re-emits Fabro DOT for Graphviz through it
+- **fabro-graphviz** — SVG rendering of workflow graphs through the vendored Graphviz (`graphviz-sys`)
 - **fabro-sandbox** — Local, Docker, and Daytona sandbox providers. `RunSandbox` is also the `Environment` pebble's coding agent runs its tools through; agent stages, Ask Fabro, hook evaluators, and `fabro exec` all run on the `pebble-coding-agent` crate (pinned by rev in the workspace `Cargo.toml`). `RunSandbox` is also the `Environment` pebble's coding agent runs its tools through; agent stages, Ask Fabro, hook evaluators, and `fabro exec` all run on the `pebble-coding-agent` crate (pinned by rev in the workspace `Cargo.toml`). Docker is the default runtime provider and creates clone-based `/workspace` containers through the operator's Docker daemon; Daytona uses the same GitHub-only clone-source contract. Docker daemon access is host-root-equivalent and assumes trusted callers/payloads.
 - **fabro-petri** — Fabro's adapters over Petri, the workflow engine: the one crate that imports the Petri packages (pinned by rev in the workspace `Cargo.toml`), holding the run store over SQLite and the platform adapters
 - **fabro-server** — Axum HTTP server. Routes for runs, sessions, models, completions, usage. SSE event streaming. Demo mode via header

@@ -112,8 +112,9 @@ pebble-cli-core = { git = "https://github.com/lithoscomputer/pebble", rev = "67c
 # petri: the workflow engine Fabro runs its workflows on. Pinned by rev, the
 # same way pebble and sandbox-driver are. Petri pins the same pebble,
 # lithos-llm and sandbox-driver revisions as this file, so the workspace links
-# one copy of each. Only `fabro-petri` may depend on these packages; the keys
-# carry the `petri_` prefix so the crate names say where they come from.
+# one copy of each. Only `fabro-petri` and `fabro-dot` (the DOT parser alone)
+# may depend on these packages; the keys carry the `petri_` prefix so the crate
+# names say where they come from.
 petri_runtime = { git = "https://github.com/lithoscomputer/petri.git", rev = "13e1044e9796101f2a97b4dd2f2ee81e96941939", package = "petri-runtime" }
 petri_execution = { git = "https://github.com/lithoscomputer/petri.git", rev = "13e1044e9796101f2a97b4dd2f2ee81e96941939", package = "petri-execution" }
 petri_store = { git = "https://github.com/lithoscomputer/petri.git", rev = "13e1044e9796101f2a97b4dd2f2ee81e96941939", package = "petri-store" }

@@ -27,6 +27,7 @@ fabro-install = { path = "../../components/fabro-install" }
 fabro-spa = { path = "../fabro-spa" }
 fabro-config = { path = "../../foundation/fabro-config" }
 fabro-environment.workspace = true
+fabro-dot = { path = "../../components/fabro-dot" }
 fabro-graphviz = { path = "../../components/fabro-graphviz" }
 fabro-interview = { path = "../../components/fabro-interview" }
 fabro-slack = { path = "../../components/fabro-slack" }

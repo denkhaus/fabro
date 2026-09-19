@@ -26,15 +26,13 @@ use fabro_config::{
     RunEnvironmentLayer, RunExecutionLayer, RunGoalLayer, RunLayer, RunModelLayer, RunScmLayer,
     WorkflowSettingsBuilder,
 };
-use fabro_graphviz::graph::AttrValue;
-use fabro_graphviz::parser;
+use fabro_dot::WorkflowGraph;
 use fabro_template::validate_static_reference;
-use fabro_types::graph::ReferenceKind;
 use fabro_types::settings::interp::InterpString;
 use fabro_types::settings::run::{ApprovalMode, ResolvedGoalSource, ResolvedRunGoal, RunMode};
 use fabro_types::{
-    DirtyStatus, GitContext, GitHubRepositorySlug, GitRunTarget, ManifestPath, RunTarget,
-    SandboxProviderKind, WorkflowSettings,
+    DirtyStatus, GitContext, GitHubRepositorySlug, GitRunTarget, ManifestPath, ReferenceKind,
+    RunTarget, SandboxProviderKind, WorkflowSettings,
 };
 use fabro_workflow::git::{self, GitSyncStatus};
 pub use fabro_workflow_version::CollectedWorkflowClosure;
@@ -274,9 +272,9 @@ fn resolve_manifest_goal(
 
     // Precedence 3: graph-level `goal` attribute in the DOT, with `@file`
     // sugar for workflow-colocated goal files.
-    let graph = parser::parse(root_source)
+    let graph = WorkflowGraph::parse(&root_dot_path.display().to_string(), root_source)
         .with_context(|| format!("Failed to parse {}", root_dot_path.display()))?;
-    let Some(goal) = graph.attrs.get("goal").and_then(AttrValue::as_str) else {
+    let Some(goal) = graph.goal() else {
         return Ok(None);
     };
     if let Some(reference) = goal.strip_prefix('@') {

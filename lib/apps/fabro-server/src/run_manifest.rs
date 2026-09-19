@@ -12,9 +12,8 @@ use fabro_config::{
     CliLayer, CliOutputLayer, EnvironmentLayer, MergeMap, RunLayer, SettingsLayer,
     WorkflowSettingsBuilder, parse_input_overrides, parse_labels, project,
 };
+use fabro_dot::WorkflowGraph;
 use fabro_github::token_source::{InstallationTokenSource, ResolvedToken, TokenSnapshot};
-use fabro_graphviz::graph::AttrValue;
-use fabro_graphviz::parser;
 use fabro_graphviz::render::apply_direction;
 use fabro_petri::check::Launch;
 use fabro_petri::run_graph;
@@ -1321,6 +1320,7 @@ pub(crate) struct WorkflowShape {
 pub(crate) fn workflow_shape(check: &ManifestCheck, prepared: &PreparedManifest) -> WorkflowShape {
     workflow_shape_of(
         check,
+        &prepared.target_path,
         &prepared.root_source,
         &prepared.settings,
         &prepared.source_directory,
@@ -1329,13 +1329,14 @@ pub(crate) fn workflow_shape(check: &ManifestCheck, prepared: &PreparedManifest)
 
 pub(crate) fn workflow_shape_of(
     check: &ManifestCheck,
+    graph_path: &ManifestPath,
     root_source: &str,
     settings: &WorkflowSettings,
     working_directory: &Path,
 ) -> WorkflowShape {
     let mut shape = check.graph.as_ref().map_or_else(
         || {
-            parser::parse(root_source).map_or_else(
+            WorkflowGraph::parse(&graph_path.to_string(), root_source).map_or_else(
                 |_| WorkflowShape {
                     name:  String::new(),
                     nodes: 0,
@@ -1343,15 +1344,10 @@ pub(crate) fn workflow_shape_of(
                     goal:  String::new(),
                 },
                 |graph| WorkflowShape {
-                    goal:  graph
-                        .attrs
-                        .get("goal")
-                        .and_then(AttrValue::as_str)
-                        .unwrap_or_default()
-                        .to_string(),
-                    nodes: graph.nodes.len(),
-                    edges: graph.edges.len(),
-                    name:  graph.name,
+                    goal:  graph.goal().unwrap_or_default().to_string(),
+                    nodes: graph.node_count(),
+                    edges: graph.edge_count(),
+                    name:  graph.name().to_string(),
                 },
             )
         },

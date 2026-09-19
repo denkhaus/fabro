@@ -16,10 +16,7 @@ pub use dependency::{
     TemplateDependencyKind, TemplateDiscoveryError, discover_static_dependency_closure,
     extract_template_dependencies,
 };
-pub use static_reference::{
-    GraphPosition, GraphReference, GraphReferenceError, StaticReferenceError,
-    validate_static_reference, visit_graph_references,
-};
+pub use static_reference::{StaticReferenceError, validate_static_reference};
 pub use store::{
     BundleTemplateStore, CachedTemplateStore, FilesystemTemplateStore, RecordingTemplateStore,
     TemplateIncludeResolver, TemplateLoadError, TemplateSource, TemplateSourceOrigin,

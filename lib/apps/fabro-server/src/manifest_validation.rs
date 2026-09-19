@@ -113,7 +113,13 @@ pub fn validate_collected_workflow(
     };
     let working_directory =
         project::resolve_working_directory_from_run(&settings.run, Path::new("/workspace"));
-    let shape = workflow_shape_of(&check, &workflow.source, &settings, &working_directory);
+    let shape = workflow_shape_of(
+        &check,
+        &lowered.entrypoint,
+        &workflow.source,
+        &settings,
+        &working_directory,
+    );
     Ok(types::ValidateResponse {
         ok:       !check.has_errors(),
         workflow: run_manifest::workflow_summary(&check, &shape, lowered.entrypoint.as_path()),

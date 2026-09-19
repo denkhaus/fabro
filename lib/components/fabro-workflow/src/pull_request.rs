@@ -3,7 +3,6 @@ use std::sync::{Arc, LazyLock};
 use std::time::Duration;
 
 use fabro_github::{self as github_app, ssh_url_to_https};
-use fabro_graphviz::parser;
 use fabro_llm::credentials::CredentialProvider;
 use fabro_llm::lithos_catalog::Catalog;
 use fabro_llm::{Client, ClientOptions, Request, selection};
@@ -202,7 +201,8 @@ fn format_arc_details_section(
     parts.push(String::new());
     parts.push("</details>".to_string());
 
-    // Workflow graph summary — prefer RunSpec's graph, fall back to DOT parsing
+    // Workflow graph summary, from the run's display graph. The DOT source
+    // travels with the spec, so it is only shown under the spec's summary.
     if let Some(record) = run_spec {
         let workflow_name = if record.graph.name.is_empty() {
             "unnamed"
@@ -227,38 +227,9 @@ fn format_arc_details_section(
         }
         parts.push(String::new());
         parts.push("</details>".to_string());
-    } else if let Some(dot) = dot_source {
-        parts.push(String::new());
-
-        // Extract graph name and count nodes/edges for the summary
-        let (graph_name, node_count, edge_count) = parse_dot_summary(dot);
-
-        parts.push(format!(
-            "<details>\n<summary>Ran <code>{graph_name}</code> ({node_count} {} and {edge_count} {})</summary>",
-            if node_count == 1 { "node" } else { "nodes" },
-            if edge_count == 1 { "edge" } else { "edges" }
-        ));
-        parts.push(String::new());
-        parts.push("```dot".to_string());
-        parts.push(dot.to_string());
-        parts.push("```".to_string());
-        parts.push(String::new());
-        parts.push("</details>".to_string());
     }
 
     parts.join("\n")
-}
-
-/// Parse a DOT source string to extract graph name, node count, and edge count.
-fn parse_dot_summary(dot: &str) -> (String, usize, usize) {
-    match parser::parse(dot) {
-        Ok(graph) => (
-            format!("{}.fabro", graph.name),
-            graph.nodes.len(),
-            graph.edges.len(),
-        ),
-        Err(_) => ("workflow.fabro".to_string(), 0, 0),
-    }
 }
 
 /// Read plan text from the first `plan*` node response in run state.
@@ -671,8 +642,8 @@ mod tests {
     use fabro_llm::lithos_catalog::AdapterId;
     use fabro_llm::{Response, ResponseStream};
     use fabro_types::{
-        PetriAdmission, RunGraph, RunProjection, RunSpec, StageSummary, WorkflowSettings,
-        first_event_seq, fixtures, test_support,
+        PetriAdmission, RunGraph, RunGraphEdge, RunGraphNode, RunProjection, RunSpec, StageHandler,
+        StageSummary, WorkflowSettings, first_event_seq, fixtures, test_support,
     };
     use fabro_vault::{SecretType, Vault};
     use httpmock::Method::{GET, POST};
@@ -913,12 +884,37 @@ capabilities = { text = true, tools = true, response_format = { json_object = tr
     fn format_arc_details_with_dot_graph() {
         let conclusion = make_test_conclusion();
         let dot = "digraph implement {\n  plan [type=\"agent\"]\n  code [type=\"agent\"]\n  plan -> code\n}\n";
-        let section = format_arc_details_section(&conclusion, None, Some(dot));
+        let mut graph = RunGraph::new("implement");
+        for node in ["plan", "code"] {
+            graph.nodes.insert(node.to_string(), RunGraphNode {
+                label: node.to_string(),
+                kind:  StageHandler::Agent,
+            });
+        }
+        graph.edges.push(RunGraphEdge {
+            from: "plan".to_string(),
+            to:   "code".to_string(),
+        });
+        let spec = RunSpec {
+            graph,
+            graph_source: Some(dot.to_string()),
+            ..test_support::test_run_spec()
+        };
+        let section = format_arc_details_section(&conclusion, Some(&spec), Some(dot));
 
         assert!(section.contains("<code>implement.fabro</code>"));
         assert!(section.contains("2 nodes and 1 edge"));
         assert!(section.contains("```dot"));
         assert!(section.contains("digraph implement"));
+    }
+
+    #[test]
+    fn format_arc_details_without_a_spec_has_no_graph_summary() {
+        let conclusion = make_test_conclusion();
+        let section = format_arc_details_section(&conclusion, None, Some("digraph x {}"));
+
+        assert!(!section.contains("```dot"));
+        assert!(!section.contains("Ran <code>"));
     }
 
     // ── read_plan_text tests ────────────────────────────────────────────
@@ -1126,29 +1122,6 @@ capabilities = { text = true, tools = true, response_format = { json_object = tr
         assert_eq!(title, "Vault title");
         assert!(body.contains("Narrative from vault source."));
         response_mock.assert_async().await;
-    }
-
-    // ── parse_dot_summary tests ─────────────────────────────────────────
-
-    #[test]
-    fn parse_dot_summary_basic() {
-        let dot = r#"digraph my_workflow {
-  plan [type="agent"]
-  code [type="agent"]
-  plan -> code
-}"#;
-        let (name, nodes, edges) = parse_dot_summary(dot);
-        assert_eq!(name, "my_workflow.fabro");
-        assert_eq!(nodes, 2);
-        assert_eq!(edges, 1);
-    }
-
-    #[test]
-    fn parse_dot_summary_empty() {
-        let (name, nodes, edges) = parse_dot_summary("");
-        assert_eq!(name, "workflow.fabro");
-        assert_eq!(nodes, 0);
-        assert_eq!(edges, 0);
     }
 
     // ── format_duration_ms tests ────────────────────────────────────────

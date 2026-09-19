@@ -14,7 +14,6 @@ pub mod diff;
 pub mod engine;
 pub mod failure_signature;
 pub mod git_identity;
-pub mod graph;
 mod id;
 mod input_scalar;
 pub mod interview;
@@ -28,6 +27,7 @@ pub mod pair;
 pub mod parallel;
 pub mod principal;
 pub mod pull_request;
+pub mod reference;
 pub mod repository;
 pub mod run;
 pub mod run_failure;
@@ -84,7 +84,6 @@ pub use diff::{DiffStats, DiffSummary, RunDiff};
 pub use engine::{PetriAdmission, PetriGraphRef};
 pub use failure_signature::FailureSignature;
 pub use git_identity::{GitIdentity, GitIdentitySource};
-pub use graph::{AttrValue, AttributeScope, Edge, Graph, Node, shape_to_handler_type};
 pub use input_scalar::{
     JsonScalarToTomlError, TomlScalarToJsonError, json_scalar_to_toml_value,
     toml_scalar_to_json_value,
@@ -129,6 +128,7 @@ pub use pull_request::{
     PullRequestDetailsUnavailableReason, PullRequestGithubDetail, PullRequestLink, PullRequestMeta,
     PullRequestRef, PullRequestResponse, PullRequestTimestamps, PullRequestUser,
 };
+pub use reference::ReferenceKind;
 pub use repository::{
     GitHubRepositorySlug, GitHubRepositorySlugError, RepositoryProvider, RepositoryRef,
     is_valid_git_branch_name, is_valid_git_tag_name, normalize_git_commit_sha,

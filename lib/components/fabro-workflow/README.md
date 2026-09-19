@@ -2,8 +2,9 @@
 
 Fabro's platform half of a workflow run: what Fabro does around the engine.
 
-Petri compiles and executes every run. `fabro-petri` is the one crate that
-talks to it, and this crate keeps what Fabro itself owns:
+Petri compiles and executes every run. `fabro-petri` is the crate that talks
+to the engine (`fabro-dot` reads a graph's shape and file references through
+Petri's parser), and this crate keeps what Fabro itself owns:
 
 - **`operations`** — creating a run around Petri's admission
   (`materialize_admitted_run`, `persist_create_run`), and the other run

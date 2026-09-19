@@ -1,4 +1,3 @@
-use fabro_graphviz::Error as GraphvizError;
 use fabro_types::diagnostic::Diagnostic;
 use fabro_util::error::{SharedError, collect_chain, render_with_causes};
 use thiserror::Error as ThisError;
@@ -77,14 +76,6 @@ impl Error {
 impl From<std::io::Error> for Error {
     fn from(err: std::io::Error) -> Self {
         Self::Io(err.to_string())
-    }
-}
-
-impl From<GraphvizError> for Error {
-    fn from(e: GraphvizError) -> Self {
-        match e {
-            GraphvizError::Parse(msg) => Self::Parse(msg),
-        }
     }
 }
 
