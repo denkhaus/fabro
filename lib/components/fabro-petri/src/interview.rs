@@ -708,12 +708,16 @@ mod tests {
         let mut question = Question::new("gate#3", "Go?");
         question.options = vec![
             QuestionOption {
-                key:   "Y".into(),
-                label: "[Y] Yes".into(),
+                key:         "Y".into(),
+                label:       "[Y] Yes".into(),
+                description: None,
+                preview:     None,
             },
             QuestionOption {
-                key:   "N".into(),
-                label: "[N] No".into(),
+                key:         "N".into(),
+                label:       "[N] No".into(),
+                description: None,
+                preview:     None,
             },
         ];
         question.kind = Some("yes_no".into());
@@ -734,12 +738,16 @@ mod tests {
         let mut approve = Question::new("q", "Ship?");
         approve.options = vec![
             QuestionOption {
-                key:   "A".into(),
-                label: "Approve".into(),
+                key:         "A".into(),
+                label:       "Approve".into(),
+                description: None,
+                preview:     None,
             },
             QuestionOption {
-                key:   "R".into(),
-                label: "Reject".into(),
+                key:         "R".into(),
+                label:       "Reject".into(),
+                description: None,
+                preview:     None,
             },
         ];
         assert_eq!(
