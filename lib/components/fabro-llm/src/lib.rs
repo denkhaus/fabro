@@ -22,6 +22,7 @@ pub mod api;
 pub mod catalog;
 pub mod client;
 pub mod error;
+mod fork_catalog;
 pub mod gateway;
 pub mod probe;
 pub mod selection;

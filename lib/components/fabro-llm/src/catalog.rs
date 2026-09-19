@@ -1,12 +1,12 @@
 //! Catalog construction and the agent-profile reading that is Fabro's own.
 //!
-//! Layer order is fixed: lithos built-ins, the denkhaus fork overlay
-//! ([`FORK_CATALOG_OVERLAY`]), then the operator's `[llm]` overlay. Which
-//! providers are on, which model a selector names, and which model to pick for
-//! a job are lithos questions, answered by [`Catalog`] and [`CatalogProvider`]
-//! (`enabled_providers`, `offerings_matching`, `default_offering_for`, and the
-//! rest). What stays here is the coding harness a model expects, read from the
-//! shared `metadata.agent` namespace that Pebble reads too.
+//! Layer order is fixed: lithos built-ins, then the operator's `[llm]`
+//! overlay. Which providers are on, which model a selector names, and which
+//! model to pick for a job are lithos questions, answered by
+//! [`Catalog`] and [`CatalogProvider`] (`enabled_providers`,
+//! `offerings_matching`, `default_offering_for`, and the rest). What stays
+//! here is the coding harness a model expects, read from the shared
+//! `metadata.agent` namespace that Pebble reads too.
 
 use fabro_config::LlmLayer;
 use fabro_static::EnvVars;
@@ -17,16 +17,10 @@ use lithos_llm::catalog::{
 };
 use serde::Deserialize;
 
+use crate::fork_catalog::OVERLAY;
+
 /// The metadata namespace agent harnesses read.
 const AGENT_METADATA_NAMESPACE: &str = "agent";
-
-/// The denkhaus fork's catalog overlay, layered between the lithos
-/// built-ins and the operator's `[llm]` overlay (later layers win, so
-/// operator settings still override it). Ported from the fork's
-/// `fabro-model` provider TOMLs when upstream deleted that crate for the
-/// lithos catalog; carries the zai glm-5.3 default and the glm-4.7
-/// always-reasoning probe fix (fabro-cd27).
-const FORK_CATALOG_OVERLAY: &str = include_str!("fork-catalog-overlay.toml");
 
 /// Builds the effective catalog.
 ///
@@ -39,7 +33,7 @@ pub fn build_catalog(
 ) -> Result<Catalog, CatalogError> {
     let mut builder = Catalog::builder()
         .with_builtin()
-        .toml_layer("fork catalog overlay", FORK_CATALOG_OVERLAY)?;
+        .toml_layer("fork catalog overlay", OVERLAY)?;
     if !overlay.is_empty() {
         let mut document = overlay.to_overlay_toml();
         document.insert_str(0, "schema_version = 1\n");
