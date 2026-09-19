@@ -283,6 +283,8 @@ pub(crate) async fn execute(state: Arc<AppState>, run_id: RunId) {
     // records above already moved the live status to Running; a run that
     // ended meanwhile (cancelled while starting) takes no transport.
     let interviewer = Arc::new(ControlInterviewer::new());
+    // The steer and interrupt endpoints reach these controls in place.
+    let controls = RunControls::new();
     {
         let mut runs = state.runs.lock().expect("runs lock poisoned");
         if let Some(managed_run) = runs
@@ -291,6 +293,7 @@ pub(crate) async fn execute(state: Arc<AppState>, run_id: RunId) {
         {
             managed_run.answer_transport = Some(RunAnswerTransport::InProcess {
                 interviewer: Arc::clone(&interviewer),
+                controls:    controls.clone(),
             });
         }
     }
@@ -319,9 +322,10 @@ pub(crate) async fn execute(state: Arc<AppState>, run_id: RunId) {
         runtime: runtime_spec(&state, &eligible, dry_run),
         provider: run_state.spec.settings.run.environment.provider.clone(),
         cancel,
-        // The in-process test path drives no pause or steer: the server's
-        // transports for those name the worker.
-        controls: RunControls::new(),
+        // The in-process test path drives no pause: the server's transport
+        // for it names the worker. A steer or an interrupt is answered in
+        // place.
+        controls,
         interviewer: Arc::new(petri_interviewer),
         observers,
         secrets: Some(Arc::new(VaultSecrets::from_vault(&vault))),

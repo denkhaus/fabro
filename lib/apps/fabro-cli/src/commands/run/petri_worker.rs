@@ -29,7 +29,10 @@
 //! resolves its stage the same way and stops the stage's current model
 //! turn, with the text of an `interrupt_then_steer` as the stage's next
 //! input, and is refused with a `run.notice` (`no_live_turn`,
-//! `no_such_stage`) when Petri refuses it. The
+//! `no_such_stage`) when Petri refuses it. A steer or an interrupt that
+//! carries a request id is acknowledged over the control channel with its
+//! outcome, delivered or refused with the notice's code, so the server can
+//! answer the caller in its own response. The
 //! paused state is mirrored to Fabro's lifecycle: a `paused` lifecycle
 //! record when admission is held and `unpaused` when it is released, so
 //! the server's live status and the projection agree with Petri's own
@@ -66,10 +69,10 @@ use std::time::Instant;
 use anyhow::{Context, Result, anyhow};
 use fabro_auth::VaultCredentialSource;
 use fabro_client::{Client, ServerTarget};
-use fabro_interview::{ControlInterviewer, WorkerControlMessage};
+use fabro_interview::{ControlInterviewer, WorkerControlMessage, WorkerControlOutcome};
 use fabro_llm::credentials::{CredentialProvider, readiness};
 use fabro_petri::blobs::ClientBlobs;
-use fabro_petri::controls::{ControlError, RunControls, SteerError};
+use fabro_petri::controls::{RunControls, SteerError};
 use fabro_petri::engine::{self, Conclusion, Execution, RunRequest};
 use fabro_petri::hooks::HooksSpec;
 use fabro_petri::interview::{Approval, FabroInterviewer};
@@ -137,11 +140,10 @@ pub(super) async fn execute(worker: PetriWorker<'_>) -> Result<()> {
     // Fabro's own records of the run, over the client.
     let records: Arc<dyn PlatformRecords> =
         Arc::new(HttpPlatformRecords::new(worker.client.clone_for_reuse()));
-    let petri_controls = Arc::new(PetriControls::new(
-        run_id,
-        controls.clone(),
-        Arc::clone(&records),
-    ));
+    let petri_controls = Arc::new(
+        PetriControls::new(run_id, controls.clone(), Arc::clone(&records))
+            .with_muted_acks(test_control_acks_muted()),
+    );
     let mut control_manager = runner::spawn_worker_control_manager(
         worker.target.clone(),
         run_id,
@@ -301,10 +303,13 @@ pub(super) async fn execute(worker: PetriWorker<'_>) -> Result<()> {
 /// Cancel and answers are applied by the channel itself, before a message
 /// reaches here.
 pub(super) struct PetriControls {
-    run_id:   RunId,
-    controls: RunControls,
+    run_id:     RunId,
+    controls:   RunControls,
     /// Where a refused steer's notice goes.
-    records:  Arc<dyn PlatformRecords>,
+    records:    Arc<dyn PlatformRecords>,
+    /// A test hook: the worker applies every control but acknowledges
+    /// none, so the server's wait for an answer runs out.
+    muted_acks: bool,
 }
 
 impl PetriControls {
@@ -317,7 +322,16 @@ impl PetriControls {
             run_id,
             controls,
             records,
+            muted_acks: false,
         }
+    }
+
+    /// Apply every control but acknowledge none: a test's stand-in for a
+    /// worker that never answers.
+    #[must_use]
+    pub(super) fn with_muted_acks(mut self, muted: bool) -> Self {
+        self.muted_acks = muted;
+        self
     }
 
     /// The run's controls, for a test that reads the paused state back.
@@ -326,33 +340,34 @@ impl PetriControls {
         &self.controls
     }
 
-    pub(super) async fn apply(&self, message: WorkerControlMessage) {
-        match message {
+    /// Apply the control. The outcome, for the channel to acknowledge when
+    /// the control asked for one: `None` for a control that has no
+    /// outcome to report (a pause, an ignored pair control) and when the
+    /// acknowledgements are muted.
+    pub(super) async fn apply(
+        &self,
+        message: WorkerControlMessage,
+    ) -> Option<WorkerControlOutcome> {
+        let outcome = match message {
             WorkerControlMessage::RunPause => {
                 info!(run_id = %self.run_id, "pause requested: admission is held");
                 self.controls.pause();
+                None
             }
             WorkerControlMessage::RunUnpause => {
                 self.controls.unpause().await;
                 info!(run_id = %self.run_id, "unpause recorded: admission is released");
+                None
             }
-            WorkerControlMessage::Steer { text, stage, actor } => {
-                match self.controls.steer(stage.as_deref(), &text).await {
-                    Ok(stage) => {
-                        info!(run_id = %self.run_id, stage, actor = ?actor, "steer delivered");
-                    }
-                    Err(error) => {
-                        warn!(run_id = %self.run_id, error = %error, "steer refused");
-                        self.notice("steer_refused", error.to_string()).await;
-                    }
-                }
+            WorkerControlMessage::Steer {
+                text, stage, actor, ..
+            } => Some(self.steer(stage.as_deref(), &text, &actor).await),
+            WorkerControlMessage::Interrupt { stage, actor, .. } => {
+                Some(self.interrupt(stage.as_deref(), None, &actor).await)
             }
-            WorkerControlMessage::Interrupt { stage, actor } => {
-                self.interrupt(stage.as_deref(), None, &actor).await;
-            }
-            WorkerControlMessage::InterruptThenSteer { text, stage, actor } => {
-                self.interrupt(stage.as_deref(), Some(&text), &actor).await;
-            }
+            WorkerControlMessage::InterruptThenSteer {
+                text, stage, actor, ..
+            } => Some(self.interrupt(stage.as_deref(), Some(&text), &actor).await),
             WorkerControlMessage::PairStart { .. }
             | WorkerControlMessage::PairMessage { .. }
             | WorkerControlMessage::PairEnd { .. } => {
@@ -361,8 +376,36 @@ impl PetriControls {
                     control = control_name(&message),
                     "control has no Petri adapter yet and is ignored"
                 );
+                None
             }
-            WorkerControlMessage::InterviewAnswer { .. } | WorkerControlMessage::RunCancel => {}
+            WorkerControlMessage::InterviewAnswer { .. } | WorkerControlMessage::RunCancel => None,
+        };
+        if self.muted_acks { None } else { outcome }
+    }
+
+    /// Deliver `text` to the named stage, or to the run's one live agent
+    /// stage. A refusal is a `run.notice` whose code says why
+    /// (`no_such_stage` when the name is not running, `steer_refused`
+    /// otherwise) and the same code and reason go back as the outcome.
+    async fn steer(
+        &self,
+        stage: Option<&str>,
+        text: &str,
+        actor: &Principal,
+    ) -> WorkerControlOutcome {
+        match self.controls.steer(stage, text).await {
+            Ok(stage) => {
+                info!(run_id = %self.run_id, stage, actor = ?actor, "steer delivered");
+                WorkerControlOutcome::Delivered { stage: Some(stage) }
+            }
+            Err(error) => {
+                warn!(run_id = %self.run_id, stage, error = %error, "steer refused");
+                self.refuse(
+                    error.code().unwrap_or("steer_refused"),
+                    refusal_message("Steer", stage, &error),
+                )
+                .await
+            }
         }
     }
 
@@ -371,8 +414,13 @@ impl PetriControls {
     /// when the stage has no model turn in flight, `no_such_stage` when the
     /// name is not running, `interrupt_refused` otherwise) and whose message
     /// names the stage and the reason as Petri spells it, for the web and
-    /// the CLI to show.
-    async fn interrupt(&self, stage: Option<&str>, text: Option<&str>, actor: &Principal) {
+    /// the CLI to show; the same code and reason go back as the outcome.
+    async fn interrupt(
+        &self,
+        stage: Option<&str>,
+        text: Option<&str>,
+        actor: &Principal,
+    ) -> WorkerControlOutcome {
         match self.controls.interrupt(stage, text).await {
             Ok(stage) => {
                 info!(
@@ -382,15 +430,26 @@ impl PetriControls {
                     actor = ?actor,
                     "interrupt delivered"
                 );
+                WorkerControlOutcome::Delivered { stage: Some(stage) }
             }
             Err(error) => {
                 warn!(run_id = %self.run_id, stage, error = %error, "interrupt refused");
-                self.notice(
-                    interrupt_refusal_code(&error),
-                    interrupt_refusal_message(stage, &error),
+                self.refuse(
+                    error.code().unwrap_or("interrupt_refused"),
+                    refusal_message("Interrupt", stage, &error),
                 )
-                .await;
+                .await
             }
+        }
+    }
+
+    /// A refused control: its `run.notice` on the run, and the refusal as
+    /// the outcome to acknowledge.
+    async fn refuse(&self, code: &str, message: String) -> WorkerControlOutcome {
+        self.notice(code, message.clone()).await;
+        WorkerControlOutcome::Refused {
+            code: code.to_string(),
+            message,
         }
     }
 
@@ -408,26 +467,13 @@ impl PetriControls {
     }
 }
 
-/// The notice code of a refused interrupt.
-fn interrupt_refusal_code(error: &SteerError) -> &'static str {
-    match error {
-        SteerError::Control(ControlError::NoLiveTurn) => "no_live_turn",
-        SteerError::Control(ControlError::NoSuchStage(_)) => "no_such_stage",
-        SteerError::NoLiveAgent
-        | SteerError::SeveralLiveAgents(_)
-        | SteerError::Control(ControlError::NotLive | ControlError::Finished) => {
-            "interrupt_refused"
-        }
-    }
-}
-
-/// The notice message of a refused interrupt: the stage it named, and the
-/// reason as Petri's `ControlError` (or the resolution's own refusal)
+/// The message of a refused control: the control, the stage it named, and
+/// the reason as Petri's `ControlError` (or the resolution's own refusal)
 /// spells it.
-fn interrupt_refusal_message(stage: Option<&str>, error: &SteerError) -> String {
+fn refusal_message(control: &str, stage: Option<&str>, error: &SteerError) -> String {
     match stage {
-        Some(stage) => format!("Interrupt of stage `{stage}` refused: {error}"),
-        None => format!("Interrupt refused: {error}"),
+        Some(stage) => format!("{control} of stage `{stage}` refused: {error}"),
+        None => format!("{control} refused: {error}"),
     }
 }
 
@@ -503,6 +549,16 @@ fn mirror_paused_state(
 )]
 fn test_checkpoint_gates() -> Option<PathBuf> {
     std::env::var_os(EnvVars::FABRO_TEST_CHECKPOINT_GATES).map(PathBuf::from)
+}
+
+/// Whether a test asked this worker to acknowledge no control, so the
+/// server's wait for an answer runs out.
+#[expect(
+    clippy::disallowed_methods,
+    reason = "the mute is a test-only process-env facade the server forwards by name"
+)]
+fn test_control_acks_muted() -> bool {
+    std::env::var_os(EnvVars::FABRO_TEST_CONTROL_ACKS_MUTED).is_some_and(|value| value == "1")
 }
 
 /// Fabro's run tools for the run's agent sessions, when the run's settings

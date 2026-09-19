@@ -55,11 +55,13 @@ use fabro_db::DbPool;
 use fabro_environment::EnvironmentStore;
 use fabro_interview::{
     Answer, AnswerSubmission, ControlInterviewer, Question, WorkerControlEnvelope,
+    WorkerControlOutcome,
 };
 use fabro_llm::credentials::CredentialProvider;
 use fabro_llm::lithos_catalog::Catalog;
 use fabro_llm::{ClientOptions, FabroClient};
 use fabro_mcp_store::McpServerStore;
+use fabro_petri::controls::{RunControls, SteerError};
 use fabro_petri::projector::Projector;
 use fabro_redact::redact_jsonl_line;
 use fabro_sandbox::details::sandbox_details;
@@ -151,7 +153,10 @@ use crate::request_id::{self, RequestId};
 use crate::run_files::{FilesInFlight, new_files_in_flight};
 use crate::server_secrets::ServerSecrets;
 use crate::spawn_env::apply_render_graph_env;
-use crate::worker_control::{LocalWorkerControlBus, WorkerControlBus, WorkerControlBusError};
+use crate::worker_control::{
+    LocalWorkerControlBus, WORKER_CONTROL_ACK_WAIT, WorkerControlAcks, WorkerControlBus,
+    WorkerControlBusError,
+};
 use crate::worker_runtime::{
     LocalWorkerRuntime, WorkerExit, WorkerLaunchSpec, WorkerRef, WorkerRuntime,
 };
@@ -326,9 +331,14 @@ enum RunAnswerTransport {
     Worker {
         run_id: RunId,
         bus:    Arc<dyn WorkerControlBus>,
+        /// Where the worker's answers to steers and interrupts arrive.
+        acks:   Arc<WorkerControlAcks>,
     },
     InProcess {
         interviewer: Arc<ControlInterviewer>,
+        /// The run's controls, answered in place: the in-process run has
+        /// no worker to forward a steer or an interrupt to.
+        controls:    RunControls,
     },
 }
 
@@ -336,6 +346,46 @@ enum RunAnswerTransport {
 enum AnswerTransportError {
     Closed,
     Timeout,
+}
+
+/// What a steer or an interrupt came to, as far as the caller is told.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum RunControlAnswer {
+    /// The worker delivered it, to the stage named when it had one.
+    Delivered { stage: Option<String> },
+    /// The worker (or Petri) refused it: the code and the reason.
+    Refused { code: String, message: String },
+    /// The control was forwarded but no answer arrived within
+    /// [`WORKER_CONTROL_ACK_WAIT`]; the run's stream says what became of it.
+    Pending,
+}
+
+impl From<WorkerControlOutcome> for RunControlAnswer {
+    fn from(outcome: WorkerControlOutcome) -> Self {
+        match outcome {
+            WorkerControlOutcome::Delivered { stage } => Self::Delivered { stage },
+            WorkerControlOutcome::Refused { code, message } => Self::Refused { code, message },
+        }
+    }
+}
+
+impl RunControlAnswer {
+    /// The answer to a control the run's own controls settled in place:
+    /// `control` names it in the refusal's message, `refused_code` is the
+    /// code of a refusal whose reason has none of its own.
+    fn from_controls(
+        control: &str,
+        refused_code: &str,
+        result: Result<String, SteerError>,
+    ) -> Self {
+        match result {
+            Ok(stage) => Self::Delivered { stage: Some(stage) },
+            Err(error) => Self::Refused {
+                code:    error.code().unwrap_or(refused_code).to_string(),
+                message: format!("{control} refused: {error}"),
+            },
+        }
+    }
 }
 
 impl RunAnswerTransport {
@@ -359,13 +409,34 @@ impl RunAnswerTransport {
         }
     }
 
+    /// Publish a control the worker answers: registered with the run's
+    /// acknowledgements first, so the answer has a waiter, then published
+    /// with the request id, then waited for. `Pending` when no answer
+    /// arrives within [`WORKER_CONTROL_ACK_WAIT`].
+    async fn publish_answered_control(
+        run_id: RunId,
+        bus: &Arc<dyn WorkerControlBus>,
+        acks: &WorkerControlAcks,
+        message: WorkerControlEnvelope,
+    ) -> Result<RunControlAnswer, AnswerTransportError> {
+        let pending = acks.register(run_id);
+        let message = message.with_request_id(pending.request_id.clone());
+        Self::publish_worker_control(run_id, bus, message)
+            .await
+            .map_err(|err| Self::answer_error_from_bus(&err))?;
+        Ok(acks
+            .wait(pending)
+            .await
+            .map_or(RunControlAnswer::Pending, RunControlAnswer::from))
+    }
+
     async fn submit(
         &self,
         qid: &str,
         submission: AnswerSubmission,
     ) -> Result<(), AnswerTransportError> {
         match self {
-            Self::Worker { run_id, bus } => {
+            Self::Worker { run_id, bus, .. } => {
                 let message = WorkerControlEnvelope::interview_answer(qid.to_string(), submission);
                 Self::publish_worker_control(*run_id, bus, message)
                     .await
@@ -380,7 +451,7 @@ impl RunAnswerTransport {
 
     async fn cancel_run(&self) -> Result<(), AnswerTransportError> {
         match self {
-            Self::Worker { run_id, bus } => {
+            Self::Worker { run_id, bus, .. } => {
                 let message = WorkerControlEnvelope::cancel_run();
                 Self::publish_worker_control(*run_id, bus, message)
                     .await
@@ -394,51 +465,55 @@ impl RunAnswerTransport {
     }
 
     /// Forward a steer to the worker, for the stage it names or the run's
-    /// one live agent stage. The in-process test path drives no steer: its
-    /// run has no live agent session to steer.
+    /// one live agent stage, and wait for its answer. The in-process path
+    /// answers from the run's own controls at once.
     async fn steer(
         &self,
         text: String,
         stage: Option<String>,
         actor: Principal,
-    ) -> Result<(), AnswerTransportError> {
+    ) -> Result<RunControlAnswer, AnswerTransportError> {
         match self {
-            Self::Worker { run_id, bus } => {
+            Self::Worker { run_id, bus, acks } => {
                 let message = WorkerControlEnvelope::steer(text, stage, actor);
-                Self::publish_worker_control(*run_id, bus, message)
-                    .await
-                    .map_err(|err| Self::answer_error_from_bus(&err))
+                Self::publish_answered_control(*run_id, bus, acks, message).await
             }
-            Self::InProcess { .. } => Err(AnswerTransportError::Closed),
+            Self::InProcess { controls, .. } => Ok(RunControlAnswer::from_controls(
+                "Steer",
+                "steer_refused",
+                controls.steer(stage.as_deref(), &text).await,
+            )),
         }
     }
 
     /// Forward an interrupt to the worker, for the stage it names or the
-    /// run's one live agent stage; `text`, when given, is the stage's next
-    /// input.
+    /// run's one live agent stage, and wait for its answer; `text`, when
+    /// given, is the stage's next input.
     async fn interrupt(
         &self,
         stage: Option<String>,
         text: Option<String>,
         actor: Principal,
-    ) -> Result<(), AnswerTransportError> {
+    ) -> Result<RunControlAnswer, AnswerTransportError> {
         match self {
-            Self::Worker { run_id, bus } => {
+            Self::Worker { run_id, bus, acks } => {
                 let message = match text {
                     Some(text) => WorkerControlEnvelope::interrupt_then_steer(text, stage, actor),
                     None => WorkerControlEnvelope::interrupt(stage, actor),
                 };
-                Self::publish_worker_control(*run_id, bus, message)
-                    .await
-                    .map_err(|err| Self::answer_error_from_bus(&err))
+                Self::publish_answered_control(*run_id, bus, acks, message).await
             }
-            Self::InProcess { .. } => Err(AnswerTransportError::Closed),
+            Self::InProcess { controls, .. } => Ok(RunControlAnswer::from_controls(
+                "Interrupt",
+                "interrupt_refused",
+                controls.interrupt(stage.as_deref(), text.as_deref()).await,
+            )),
         }
     }
 
     async fn pause_run(&self) -> Result<(), AnswerTransportError> {
         match self {
-            Self::Worker { run_id, bus } => {
+            Self::Worker { run_id, bus, .. } => {
                 let message = WorkerControlEnvelope::pause_run();
                 Self::publish_worker_control(*run_id, bus, message)
                     .await
@@ -450,7 +525,7 @@ impl RunAnswerTransport {
 
     async fn unpause_run(&self) -> Result<(), AnswerTransportError> {
         match self {
-            Self::Worker { run_id, bus } => {
+            Self::Worker { run_id, bus, .. } => {
                 let message = WorkerControlEnvelope::unpause_run();
                 Self::publish_worker_control(*run_id, bus, message)
                     .await
@@ -1036,6 +1111,8 @@ pub struct AppState {
     resource_sampler: resource_sampler::ResourceSampler,
     max_concurrent_runs: usize,
     pub(crate) worker_control_bus: Arc<dyn WorkerControlBus>,
+    /// The steers and interrupts awaiting their worker's answer.
+    pub(crate) worker_control_acks: Arc<WorkerControlAcks>,
     pub(crate) worker_runtime: Arc<dyn WorkerRuntime>,
     /// The Petri runs held open for workers over the API.
     pub(crate) petri_runs: PetriRuns,
@@ -2574,6 +2651,7 @@ pub(crate) fn build_app_state(config: AppStateConfig) -> anyhow::Result<Arc<AppS
         resource_sampler: resource_sampler::ResourceSampler::new(),
         max_concurrent_runs,
         worker_control_bus,
+        worker_control_acks: Arc::new(WorkerControlAcks::new(WORKER_CONTROL_ACK_WAIT)),
         worker_runtime,
         petri_runs,
         petri_projector,
@@ -3025,6 +3103,7 @@ fn clear_live_run_state(run: &mut ManagedRun) {
 
 fn cleanup_worker_control_bus_for_run(state: &AppState, run_id: RunId) {
     let bus = Arc::clone(&state.worker_control_bus);
+    state.worker_control_acks.forget_run(run_id);
     tokio::spawn(async move {
         bus.cleanup_run(run_id).await;
     });
@@ -4004,6 +4083,7 @@ async fn execute_run_subprocess(state: Arc<AppState>, run_id: RunId) {
             managed_run.answer_transport = Some(RunAnswerTransport::Worker {
                 run_id,
                 bus: Arc::clone(&state.worker_control_bus),
+                acks: Arc::clone(&state.worker_control_acks),
             });
         }
     }

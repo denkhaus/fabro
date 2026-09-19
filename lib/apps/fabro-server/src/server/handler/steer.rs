@@ -5,11 +5,15 @@ use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::post;
-use fabro_api::types::{InterruptRunRequest, SteerRunRequest};
+use fabro_api::types::{
+    InterruptRunRequest, RunControlAcknowledgement, RunControlOutcome, SteerRunRequest,
+};
 use fabro_types::Principal;
 use fabro_workflow::run_status::RunStatus;
 
-use super::super::{AnswerTransportError, AppState, durable_run_status, reject_if_archived};
+use super::super::{
+    AnswerTransportError, AppState, RunControlAnswer, durable_run_status, reject_if_archived,
+};
 use crate::error::ApiError;
 use crate::principal_middleware::RequireRunManagementTarget;
 
@@ -20,8 +24,11 @@ pub(super) fn routes() -> axum::Router<Arc<AppState>> {
 }
 
 /// A control forwarded to the run's worker. The worker resolves the stage
-/// and delivers the control to Petri; what it cannot deliver it refuses on
-/// the run's stream as a `run.notice` whose code says why.
+/// and delivers the control to Petri, and answers over its control stream:
+/// the answer is this endpoint's response, 202 once delivered, 409 with
+/// the refusal's code when refused, and 202 `pending` when no answer came
+/// within the wait. What the worker cannot deliver it also refuses on the
+/// run's stream as a `run.notice` whose code says why.
 enum RunControlRequest {
     /// Guidance for a live agent stage's session, run as a follow-up turn.
     Steer {
@@ -202,7 +209,11 @@ async fn control_run(
     };
 
     match result {
-        Ok(()) => StatusCode::ACCEPTED.into_response(),
+        Ok(RunControlAnswer::Delivered { stage }) => accepted(RunControlOutcome::Delivered, stage),
+        Ok(RunControlAnswer::Pending) => accepted(RunControlOutcome::Pending, None),
+        Ok(RunControlAnswer::Refused { code, message }) => {
+            ApiError::with_code(StatusCode::CONFLICT, message, code).into_response()
+        }
         Err(AnswerTransportError::Timeout) => ApiError::with_code(
             StatusCode::SERVICE_UNAVAILABLE,
             "Worker control channel timed out.",
@@ -216,6 +227,16 @@ async fn control_run(
         )
         .into_response(),
     }
+}
+
+/// The 202 of a control the worker took: delivered to `stage`, or still
+/// pending its answer.
+fn accepted(outcome: RunControlOutcome, stage: Option<String>) -> Response {
+    (
+        StatusCode::ACCEPTED,
+        Json(RunControlAcknowledgement { outcome, stage }),
+    )
+        .into_response()
 }
 
 /// The 409 code of a control the run's status refuses.

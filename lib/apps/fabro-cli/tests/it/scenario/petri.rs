@@ -89,6 +89,8 @@ pub(super) struct RunningServer {
     pub(super) api_base_url: String,
     /// The checkpoint gate directory the server forwards to its workers.
     gates_dir:               PathBuf,
+    /// Extra environment on the server process, kept for a relaunch.
+    env:                     Vec<(String, String)>,
 }
 
 impl RunningServer {
@@ -101,6 +103,16 @@ impl RunningServer {
     /// in the vault before the first launch, so the server and its workers
     /// see them from the start.
     pub(super) async fn start_with(settings: &str, secrets: &[(&str, &str)]) -> Self {
+        Self::start_with_env(settings, secrets, &[]).await
+    }
+
+    /// `start_with`, plus `env` on the server process: the test hooks the
+    /// server forwards to its workers by name.
+    pub(super) async fn start_with_env(
+        settings: &str,
+        secrets: &[(&str, &str)],
+        env: &[(&str, &str)],
+    ) -> Self {
         let home_root = tempfile::tempdir_in("/tmp").expect("home tempdir");
         let storage_root = isolated_storage_dir();
         let storage_dir = storage_root.path().join("storage");
@@ -139,6 +151,10 @@ impl RunningServer {
             port,
             api_base_url: format!("http://127.0.0.1:{port}"),
             gates_dir,
+            env: env
+                .iter()
+                .map(|(name, value)| ((*name).to_string(), (*value).to_string()))
+                .collect(),
         };
         server.launch().await;
         server
@@ -158,6 +174,9 @@ impl RunningServer {
             self.home_root.path().join("fabro-home"),
         );
         cmd.env(EnvVars::FABRO_TEST_CHECKPOINT_GATES, &self.gates_dir);
+        for (name, value) in &self.env {
+            cmd.env(name, value);
+        }
         cmd.args(["server", "start", "--foreground"])
             .arg("--storage-dir")
             .arg(&self.storage_dir)

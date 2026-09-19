@@ -129,12 +129,14 @@ impl FabroToolBackend for ClientBackend {
 
     async fn interrupt_run(&self, run_id: &RunId) -> anyhow::Result<()> {
         self.ensure_run_scope(run_id)?;
-        self.client.interrupt_run(run_id, None, None).await
+        self.client.interrupt_run(run_id, None, None).await?;
+        Ok(())
     }
 
     async fn steer_run(&self, run_id: &RunId, text: String, interrupt: bool) -> anyhow::Result<()> {
         self.ensure_run_scope(run_id)?;
-        self.client.steer_run(run_id, text, interrupt, None).await
+        self.client.steer_run(run_id, text, interrupt, None).await?;
+        Ok(())
     }
 
     async fn archive_run(&self, run_id: &RunId) -> anyhow::Result<Run> {

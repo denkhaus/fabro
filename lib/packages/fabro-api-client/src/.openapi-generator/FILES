@@ -386,7 +386,9 @@ models/run-commit-parent.ts
 models/run-commit-person.ts
 models/run-commit.ts
 models/run-commits-meta.ts
+models/run-control-acknowledgement.ts
 models/run-control-action.ts
+models/run-control-outcome.ts
 models/run-diff.ts
 models/run-environment-settings.ts
 models/run-error.ts

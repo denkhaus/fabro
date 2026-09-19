@@ -42,6 +42,8 @@ import type { PreviewUrlRequest } from '../models';
 // @ts-ignore
 import type { PreviewUrlResponse } from '../models';
 // @ts-ignore
+import type { RunControlAcknowledgement } from '../models';
+// @ts-ignore
 import type { RunPairStatusResponse } from '../models';
 // @ts-ignore
 import type { SandboxDetails } from '../models';
@@ -424,7 +426,7 @@ export const HumanInTheLoopApiAxiosParamCreator = function (configuration?: Conf
             };
         },
         /**
-         * Stop the current model turn of a live agent stage (the stage `stage` names, or the run\'s one live agent stage) and keep its session. With `text`, the text is the stage\'s next input; without, the stage waits for the next steer message before starting another model turn. The control is forwarded to the run\'s worker; an interrupt the worker cannot deliver (a stage with no model turn in flight, such as an agent between turns or a human gate; a stage that is not running; no live agent stage, or several unnamed) is refused on the run\'s event stream as a `run.notice` record whose code says why (`no_live_turn`, `no_such_stage`, `interrupt_refused`). A delivered interrupt is the stage\'s `control.requested` record with `$interrupt`, followed by an `attractor.turn.interrupted` progress record.
+         * Stop the current model turn of a live agent stage (the stage `stage` names, or the run\'s one live agent stage) and keep its session. With `text`, the text is the stage\'s next input; without, the stage waits for the next steer message before starting another model turn. The control is forwarded to the run\'s worker, and the worker\'s answer is this response: `202` with `outcome: delivered` (and the stage\'s label) once the worker stopped the turn, `409` with the refusal\'s code when the worker or Petri refused it (a stage with no model turn in flight, such as an agent between turns or a human gate; a stage that is not running; no live agent stage, or several unnamed), and `202` with `outcome: pending` when the worker gave no answer within the wait (5 s). A refused interrupt is also a `run.notice` record on the run\'s event stream under the same code (`no_live_turn`, `no_such_stage`, `interrupt_refused`). A delivered interrupt is the stage\'s `control.requested` record with `$interrupt`, followed by an `attractor.turn.interrupted` progress record.
          * @summary Interrupt Run
          * @param {string} id Unique run identifier (ULID).
          * @param {InterruptRunRequest} [interruptRunRequest]
@@ -795,7 +797,7 @@ export const HumanInTheLoopApiAxiosParamCreator = function (configuration?: Conf
             };
         },
         /**
-         * Send a mid-run steering message to a live agent stage of a running run: the stage `stage` names, or the run\'s one live agent stage. Without `interrupt`, the text is guidance for the stage\'s session, run as a follow-up turn once its current answer is reached. With `interrupt=true`, the stage\'s current model turn (the model request and the tool calls it is running) is stopped first, the session is kept, and the text is the stage\'s next input. The control is forwarded to the run\'s worker; a control the worker cannot deliver (no live agent stage, several unnamed, a stage that is not running, or, for an interrupt, a stage with no model turn in flight) is refused on the run\'s event stream as a `run.notice` record whose code says why (`steer_refused`, `no_live_turn`, `no_such_stage`, `interrupt_refused`).
+         * Send a mid-run steering message to a live agent stage of a running run: the stage `stage` names, or the run\'s one live agent stage. Without `interrupt`, the text is guidance for the stage\'s session, run as a follow-up turn once its current answer is reached. With `interrupt=true`, the stage\'s current model turn (the model request and the tool calls it is running) is stopped first, the session is kept, and the text is the stage\'s next input. The control is forwarded to the run\'s worker, and the worker\'s answer is this response: `202` with `outcome: delivered` (and the stage\'s label) once the worker delivered it, `409` with the refusal\'s code when the worker or Petri refused it, and `202` with `outcome: pending` when the worker gave no answer within the wait (5 s). A refused control is also a `run.notice` record on the run\'s event stream under the same code (`steer_refused`, `no_live_turn`, `no_such_stage`, `interrupt_refused`).
          * @summary Steer Run
          * @param {string} id Unique run identifier (ULID).
          * @param {SteerRunRequest} steerRunRequest
@@ -1010,14 +1012,14 @@ export const HumanInTheLoopApiFp = function(configuration?: Configuration) {
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
-         * Stop the current model turn of a live agent stage (the stage `stage` names, or the run\'s one live agent stage) and keep its session. With `text`, the text is the stage\'s next input; without, the stage waits for the next steer message before starting another model turn. The control is forwarded to the run\'s worker; an interrupt the worker cannot deliver (a stage with no model turn in flight, such as an agent between turns or a human gate; a stage that is not running; no live agent stage, or several unnamed) is refused on the run\'s event stream as a `run.notice` record whose code says why (`no_live_turn`, `no_such_stage`, `interrupt_refused`). A delivered interrupt is the stage\'s `control.requested` record with `$interrupt`, followed by an `attractor.turn.interrupted` progress record.
+         * Stop the current model turn of a live agent stage (the stage `stage` names, or the run\'s one live agent stage) and keep its session. With `text`, the text is the stage\'s next input; without, the stage waits for the next steer message before starting another model turn. The control is forwarded to the run\'s worker, and the worker\'s answer is this response: `202` with `outcome: delivered` (and the stage\'s label) once the worker stopped the turn, `409` with the refusal\'s code when the worker or Petri refused it (a stage with no model turn in flight, such as an agent between turns or a human gate; a stage that is not running; no live agent stage, or several unnamed), and `202` with `outcome: pending` when the worker gave no answer within the wait (5 s). A refused interrupt is also a `run.notice` record on the run\'s event stream under the same code (`no_live_turn`, `no_such_stage`, `interrupt_refused`). A delivered interrupt is the stage\'s `control.requested` record with `$interrupt`, followed by an `attractor.turn.interrupted` progress record.
          * @summary Interrupt Run
          * @param {string} id Unique run identifier (ULID).
          * @param {InterruptRunRequest} [interruptRunRequest]
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        async interruptRun(id: string, interruptRunRequest?: InterruptRunRequest, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<void>> {
+        async interruptRun(id: string, interruptRunRequest?: InterruptRunRequest, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<RunControlAcknowledgement>> {
             const localVarAxiosArgs = await localVarAxiosParamCreator.interruptRun(id, interruptRunRequest, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
             const localVarOperationServerBasePath = operationServerMap['HumanInTheLoopApi.interruptRun']?.[localVarOperationServerIndex]?.url;
@@ -1124,14 +1126,14 @@ export const HumanInTheLoopApiFp = function(configuration?: Configuration) {
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
-         * Send a mid-run steering message to a live agent stage of a running run: the stage `stage` names, or the run\'s one live agent stage. Without `interrupt`, the text is guidance for the stage\'s session, run as a follow-up turn once its current answer is reached. With `interrupt=true`, the stage\'s current model turn (the model request and the tool calls it is running) is stopped first, the session is kept, and the text is the stage\'s next input. The control is forwarded to the run\'s worker; a control the worker cannot deliver (no live agent stage, several unnamed, a stage that is not running, or, for an interrupt, a stage with no model turn in flight) is refused on the run\'s event stream as a `run.notice` record whose code says why (`steer_refused`, `no_live_turn`, `no_such_stage`, `interrupt_refused`).
+         * Send a mid-run steering message to a live agent stage of a running run: the stage `stage` names, or the run\'s one live agent stage. Without `interrupt`, the text is guidance for the stage\'s session, run as a follow-up turn once its current answer is reached. With `interrupt=true`, the stage\'s current model turn (the model request and the tool calls it is running) is stopped first, the session is kept, and the text is the stage\'s next input. The control is forwarded to the run\'s worker, and the worker\'s answer is this response: `202` with `outcome: delivered` (and the stage\'s label) once the worker delivered it, `409` with the refusal\'s code when the worker or Petri refused it, and `202` with `outcome: pending` when the worker gave no answer within the wait (5 s). A refused control is also a `run.notice` record on the run\'s event stream under the same code (`steer_refused`, `no_live_turn`, `no_such_stage`, `interrupt_refused`).
          * @summary Steer Run
          * @param {string} id Unique run identifier (ULID).
          * @param {SteerRunRequest} steerRunRequest
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        async steerRun(id: string, steerRunRequest: SteerRunRequest, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<void>> {
+        async steerRun(id: string, steerRunRequest: SteerRunRequest, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<RunControlAcknowledgement>> {
             const localVarAxiosArgs = await localVarAxiosParamCreator.steerRun(id, steerRunRequest, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
             const localVarOperationServerBasePath = operationServerMap['HumanInTheLoopApi.steerRun']?.[localVarOperationServerIndex]?.url;
@@ -1250,14 +1252,14 @@ export const HumanInTheLoopApiFactory = function (configuration?: Configuration,
             return localVarFp.getSandboxFile(id, path, options).then((request) => request(axios, basePath));
         },
         /**
-         * Stop the current model turn of a live agent stage (the stage `stage` names, or the run\'s one live agent stage) and keep its session. With `text`, the text is the stage\'s next input; without, the stage waits for the next steer message before starting another model turn. The control is forwarded to the run\'s worker; an interrupt the worker cannot deliver (a stage with no model turn in flight, such as an agent between turns or a human gate; a stage that is not running; no live agent stage, or several unnamed) is refused on the run\'s event stream as a `run.notice` record whose code says why (`no_live_turn`, `no_such_stage`, `interrupt_refused`). A delivered interrupt is the stage\'s `control.requested` record with `$interrupt`, followed by an `attractor.turn.interrupted` progress record.
+         * Stop the current model turn of a live agent stage (the stage `stage` names, or the run\'s one live agent stage) and keep its session. With `text`, the text is the stage\'s next input; without, the stage waits for the next steer message before starting another model turn. The control is forwarded to the run\'s worker, and the worker\'s answer is this response: `202` with `outcome: delivered` (and the stage\'s label) once the worker stopped the turn, `409` with the refusal\'s code when the worker or Petri refused it (a stage with no model turn in flight, such as an agent between turns or a human gate; a stage that is not running; no live agent stage, or several unnamed), and `202` with `outcome: pending` when the worker gave no answer within the wait (5 s). A refused interrupt is also a `run.notice` record on the run\'s event stream under the same code (`no_live_turn`, `no_such_stage`, `interrupt_refused`). A delivered interrupt is the stage\'s `control.requested` record with `$interrupt`, followed by an `attractor.turn.interrupted` progress record.
          * @summary Interrupt Run
          * @param {string} id Unique run identifier (ULID).
          * @param {InterruptRunRequest} [interruptRunRequest]
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        interruptRun(id: string, interruptRunRequest?: InterruptRunRequest, options?: RawAxiosRequestConfig): AxiosPromise<void> {
+        interruptRun(id: string, interruptRunRequest?: InterruptRunRequest, options?: RawAxiosRequestConfig): AxiosPromise<RunControlAcknowledgement> {
             return localVarFp.interruptRun(id, interruptRunRequest, options).then((request) => request(axios, basePath));
         },
         /**
@@ -1340,14 +1342,14 @@ export const HumanInTheLoopApiFactory = function (configuration?: Configuration,
             return localVarFp.startRunPair(id, pairStartRequest, options).then((request) => request(axios, basePath));
         },
         /**
-         * Send a mid-run steering message to a live agent stage of a running run: the stage `stage` names, or the run\'s one live agent stage. Without `interrupt`, the text is guidance for the stage\'s session, run as a follow-up turn once its current answer is reached. With `interrupt=true`, the stage\'s current model turn (the model request and the tool calls it is running) is stopped first, the session is kept, and the text is the stage\'s next input. The control is forwarded to the run\'s worker; a control the worker cannot deliver (no live agent stage, several unnamed, a stage that is not running, or, for an interrupt, a stage with no model turn in flight) is refused on the run\'s event stream as a `run.notice` record whose code says why (`steer_refused`, `no_live_turn`, `no_such_stage`, `interrupt_refused`).
+         * Send a mid-run steering message to a live agent stage of a running run: the stage `stage` names, or the run\'s one live agent stage. Without `interrupt`, the text is guidance for the stage\'s session, run as a follow-up turn once its current answer is reached. With `interrupt=true`, the stage\'s current model turn (the model request and the tool calls it is running) is stopped first, the session is kept, and the text is the stage\'s next input. The control is forwarded to the run\'s worker, and the worker\'s answer is this response: `202` with `outcome: delivered` (and the stage\'s label) once the worker delivered it, `409` with the refusal\'s code when the worker or Petri refused it, and `202` with `outcome: pending` when the worker gave no answer within the wait (5 s). A refused control is also a `run.notice` record on the run\'s event stream under the same code (`steer_refused`, `no_live_turn`, `no_such_stage`, `interrupt_refused`).
          * @summary Steer Run
          * @param {string} id Unique run identifier (ULID).
          * @param {SteerRunRequest} steerRunRequest
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        steerRun(id: string, steerRunRequest: SteerRunRequest, options?: RawAxiosRequestConfig): AxiosPromise<void> {
+        steerRun(id: string, steerRunRequest: SteerRunRequest, options?: RawAxiosRequestConfig): AxiosPromise<RunControlAcknowledgement> {
             return localVarFp.steerRun(id, steerRunRequest, options).then((request) => request(axios, basePath));
         },
         /**
@@ -1466,7 +1468,7 @@ export class HumanInTheLoopApi extends BaseAPI {
     }
 
     /**
-     * Stop the current model turn of a live agent stage (the stage `stage` names, or the run\'s one live agent stage) and keep its session. With `text`, the text is the stage\'s next input; without, the stage waits for the next steer message before starting another model turn. The control is forwarded to the run\'s worker; an interrupt the worker cannot deliver (a stage with no model turn in flight, such as an agent between turns or a human gate; a stage that is not running; no live agent stage, or several unnamed) is refused on the run\'s event stream as a `run.notice` record whose code says why (`no_live_turn`, `no_such_stage`, `interrupt_refused`). A delivered interrupt is the stage\'s `control.requested` record with `$interrupt`, followed by an `attractor.turn.interrupted` progress record.
+     * Stop the current model turn of a live agent stage (the stage `stage` names, or the run\'s one live agent stage) and keep its session. With `text`, the text is the stage\'s next input; without, the stage waits for the next steer message before starting another model turn. The control is forwarded to the run\'s worker, and the worker\'s answer is this response: `202` with `outcome: delivered` (and the stage\'s label) once the worker stopped the turn, `409` with the refusal\'s code when the worker or Petri refused it (a stage with no model turn in flight, such as an agent between turns or a human gate; a stage that is not running; no live agent stage, or several unnamed), and `202` with `outcome: pending` when the worker gave no answer within the wait (5 s). A refused interrupt is also a `run.notice` record on the run\'s event stream under the same code (`no_live_turn`, `no_such_stage`, `interrupt_refused`). A delivered interrupt is the stage\'s `control.requested` record with `$interrupt`, followed by an `attractor.turn.interrupted` progress record.
      * @summary Interrupt Run
      * @param {string} id Unique run identifier (ULID).
      * @param {InterruptRunRequest} [interruptRunRequest]
@@ -1564,7 +1566,7 @@ export class HumanInTheLoopApi extends BaseAPI {
     }
 
     /**
-     * Send a mid-run steering message to a live agent stage of a running run: the stage `stage` names, or the run\'s one live agent stage. Without `interrupt`, the text is guidance for the stage\'s session, run as a follow-up turn once its current answer is reached. With `interrupt=true`, the stage\'s current model turn (the model request and the tool calls it is running) is stopped first, the session is kept, and the text is the stage\'s next input. The control is forwarded to the run\'s worker; a control the worker cannot deliver (no live agent stage, several unnamed, a stage that is not running, or, for an interrupt, a stage with no model turn in flight) is refused on the run\'s event stream as a `run.notice` record whose code says why (`steer_refused`, `no_live_turn`, `no_such_stage`, `interrupt_refused`).
+     * Send a mid-run steering message to a live agent stage of a running run: the stage `stage` names, or the run\'s one live agent stage. Without `interrupt`, the text is guidance for the stage\'s session, run as a follow-up turn once its current answer is reached. With `interrupt=true`, the stage\'s current model turn (the model request and the tool calls it is running) is stopped first, the session is kept, and the text is the stage\'s next input. The control is forwarded to the run\'s worker, and the worker\'s answer is this response: `202` with `outcome: delivered` (and the stage\'s label) once the worker delivered it, `409` with the refusal\'s code when the worker or Petri refused it, and `202` with `outcome: pending` when the worker gave no answer within the wait (5 s). A refused control is also a `run.notice` record on the run\'s event stream under the same code (`steer_refused`, `no_live_turn`, `no_such_stage`, `interrupt_refused`).
      * @summary Steer Run
      * @param {string} id Unique run identifier (ULID).
      * @param {SteerRunRequest} steerRunRequest

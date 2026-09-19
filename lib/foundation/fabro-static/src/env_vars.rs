@@ -41,6 +41,10 @@ impl EnvVars {
     /// run's checkpoint at a named point (`fabro_petri::hooks`); unset
     /// outside tests.
     pub const FABRO_TEST_CHECKPOINT_GATES: &'static str = "FABRO_TEST_CHECKPOINT_GATES";
+    /// `1` makes a Petri worker apply every control but acknowledge none,
+    /// so a test sees the server's wait for an answer run out; unset
+    /// outside tests.
+    pub const FABRO_TEST_CONTROL_ACKS_MUTED: &'static str = "FABRO_TEST_CONTROL_ACKS_MUTED";
     pub const FABRO_VERBOSE: &'static str = "FABRO_VERBOSE";
     pub const FABRO_WEB_URL: &'static str = "FABRO_WEB_URL";
     pub const FABRO_WORKER_TOKEN: &'static str = "FABRO_WORKER_TOKEN";
@@ -248,6 +252,7 @@ mod tests {
             EnvVars::FABRO_TEST_DISABLE_SPA_ASSETS,
             EnvVars::FABRO_TEST_MODE,
             EnvVars::FABRO_TEST_CHECKPOINT_GATES,
+            EnvVars::FABRO_TEST_CONTROL_ACKS_MUTED,
             EnvVars::FABRO_VERBOSE,
             EnvVars::FABRO_WEB_URL,
             EnvVars::FABRO_WORKER_TOKEN,
