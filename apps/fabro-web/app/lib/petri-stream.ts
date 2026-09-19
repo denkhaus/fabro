@@ -499,12 +499,13 @@ export function findPetriEdgeForStage(
     if (petriStageLabel(item) !== stageLabel) continue;
     const target = getString(getObject(derived(item), "target"), "name");
     if (!target) continue;
-    const kind = getString(petriBody(item), "kind") ?? "edge";
+    const body = petriBody(item);
+    const kind = getString(body, "kind") ?? "edge";
     latest = {
       fromNode: getString(subjectNode(item), "name") ?? stageLabel,
       toNode: target,
       reason: kind === "jump" ? "jump" : "condition",
-      condition: null,
+      condition: matchedCondition(item) ?? null,
       isJump: kind === "jump",
     };
   }
@@ -633,28 +634,56 @@ export function agentEnvelopesOf(items: PetriStream): PetriAgentEnvelope[] {
   return out;
 }
 
-/** A command stage's script, from its `step.started` record, if recorded. */
+/**
+ * The condition a `route.applied` item's edge matched, as written: the
+ * record's `edge` keys the subject node's `meta.edges`, whose entry carries
+ * the edge's `condition` when it has one (EVENTS.md "Source metadata").
+ */
+export function matchedCondition(item: RunStreamItem): string | undefined {
+  const edge = getNumber(petriBody(item), "edge");
+  if (edge === undefined) return undefined;
+  const edges = getObject(getObject(subjectNode(item), "meta"), "edges");
+  return getString(getObject(edges, String(edge)), "condition");
+}
+
+/**
+ * A command stage's script: the text the step runs rides on the node's
+ * `meta.script`, on every event of the stage (EVENTS.md "Source metadata").
+ */
 export function commandScriptOf(items: PetriStream): string | null {
   for (const item of items) {
-    if (petriEventName(item) !== "step.started") continue;
-    const script =
-      getString(getObject(petriBody(item), "config"), "script") ??
-      getString(getObject(getObject(subjectNode(item), "meta"), "config"), "script");
+    const script = getString(getObject(subjectNode(item), "meta"), "script");
     if (script) return script;
   }
   return null;
 }
 
 /**
- * The exit code and duration of the stage's final `step.finished`: the
- * command step's output carries `exit_status`, its metrics the duration.
+ * What a command's output capture did not keep, from the final
+ * `step.finished` metrics: `output.dropped_bytes` and
+ * `output.truncated_lines` count what the caps cut; `output.incomplete`
+ * says the capture ended on silence, so the tail may be missing by an
+ * amount nobody counted. Absent when the output is whole.
+ */
+export interface CommandOutputLoss {
+  droppedBytes: number;
+  truncatedLines: number;
+  incomplete: boolean;
+}
+
+/**
+ * The exit code, duration and output loss of the stage's final
+ * `step.finished`: the command step's output carries `exit_status`, its
+ * metrics the duration and the loss counters under `custom`.
  */
 export function commandOutcomeOf(items: PetriStream): {
   exitCode: number | null;
   durationMs: number;
+  outputLoss: CommandOutputLoss | null;
 } {
   let exitCode: number | null = null;
   let durationMs = 0;
+  let outputLoss: CommandOutputLoss | null = null;
   for (const item of items) {
     if (petriEventName(item) !== "step.finished") continue;
     const outcome = getObject(petriBody(item), "outcome");
@@ -663,8 +692,32 @@ export function commandOutcomeOf(items: PetriStream): {
     exitCode =
       getNumber(output, "exit_status") ?? getNumber(metrics, "exit_code") ?? exitCode;
     durationMs = getNumber(metrics, "duration_ms") ?? durationMs;
+    const custom = getObject(metrics, "custom");
+    const droppedBytes = getNumber(custom, "output.dropped_bytes") ?? 0;
+    const truncatedLines = getNumber(custom, "output.truncated_lines") ?? 0;
+    const incomplete = getBool(custom, "output.incomplete") === true;
+    outputLoss =
+      droppedBytes > 0 || truncatedLines > 0 || incomplete
+        ? { droppedBytes, truncatedLines, incomplete }
+        : null;
   }
-  return { exitCode, durationMs };
+  return { exitCode, durationMs, outputLoss };
+}
+
+/** The one-line note the stage view shows beside output that is not whole. */
+export function outputLossNote(loss: CommandOutputLoss | null): string | null {
+  if (!loss) return null;
+  const parts: string[] = [];
+  if (loss.droppedBytes > 0) {
+    parts.push(`${loss.droppedBytes.toLocaleString()} bytes dropped`);
+  }
+  if (loss.truncatedLines > 0) {
+    parts.push(`${loss.truncatedLines} ${loss.truncatedLines === 1 ? "line" : "lines"} cut`);
+  }
+  const counted = parts.length > 0 ? `Output truncated: ${parts.join(", ")}` : null;
+  if (!loss.incomplete) return counted;
+  const tail = "the capture ended on silence, so the tail may be missing";
+  return counted ? `${counted}; ${tail}` : `Output may be incomplete: ${tail}`;
 }
 
 // ── Stages from the projection ──────────────────────────────────────────

@@ -200,6 +200,11 @@ function QuestionBlock({
                       {option.description}
                     </span>
                   )}
+                  {option.preview && (
+                    <span className="mt-1 block whitespace-pre-wrap rounded bg-overlay-strong px-2 py-1 font-mono text-[11px]/4 text-fg-3">
+                      {option.preview}
+                    </span>
+                  )}
                 </span>
               </li>
             ))}

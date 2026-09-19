@@ -1,9 +1,9 @@
 {
-  "run_id": "01M2SG2E0BEBVXSJCT8MZE19FT",
+  "run_id": "01M2VPKCKJ26JE3FNEJRZJCZK0",
   "projection": {
     "title": "Ask before running",
     "spec": {
-      "run_id": "01M2SG2E0BEBVXSJCT8MZE19FT",
+      "run_id": "01M2VPKCKJ26JE3FNEJRZJCZK0",
       "settings": {
         "project": {
           "name": null,
@@ -17,7 +17,10 @@
           "metadata": {}
         },
         "run": {
-          "goal": null,
+          "goal": {
+            "type": "inline",
+            "value": "Ask before running"
+          },
           "working_dir": null,
           "metadata": {},
           "inputs": {},
@@ -112,18 +115,10 @@
             "id": "yes",
             "attrs": {
               "script": {
-                "String": "touch /var/folders/nm/bd2dwzy52t1ckn3tklsfmy1c0000gn/T/.tmpdAZvaU/yes"
+                "String": "touch /var/folders/nm/bd2dwzy52t1ckn3tklsfmy1c0000gn/T/.tmpWwhqJ5/yes"
               },
               "shape": {
                 "String": "parallelogram"
-              }
-            }
-          },
-          "start": {
-            "id": "start",
-            "attrs": {
-              "shape": {
-                "String": "Mdiamond"
               }
             }
           },
@@ -135,28 +130,36 @@
               }
             }
           },
+          "gate": {
+            "id": "gate",
+            "attrs": {
+              "shape": {
+                "String": "hexagon"
+              },
+              "label": {
+                "String": "Go?"
+              },
+              "question_type": {
+                "String": "yes_no"
+              }
+            }
+          },
           "no": {
             "id": "no",
             "attrs": {
               "script": {
-                "String": "touch /var/folders/nm/bd2dwzy52t1ckn3tklsfmy1c0000gn/T/.tmpdAZvaU/no"
+                "String": "touch /var/folders/nm/bd2dwzy52t1ckn3tklsfmy1c0000gn/T/.tmpWwhqJ5/no"
               },
               "shape": {
                 "String": "parallelogram"
               }
             }
           },
-          "gate": {
-            "id": "gate",
+          "start": {
+            "id": "start",
             "attrs": {
-              "label": {
-                "String": "Go?"
-              },
               "shape": {
-                "String": "hexagon"
-              },
-              "question_type": {
-                "String": "yes_no"
+                "String": "Mdiamond"
               }
             }
           }
@@ -202,14 +205,14 @@
           }
         }
       },
-      "graph_source": "digraph Gate {\n    graph [goal=\"Ask before running\"]\n    start [shape=Mdiamond]\n    exit [shape=Msquare]\n    gate [shape=hexagon, label=\"Go?\", question_type=\"yes_no\"]\n    yes [shape=parallelogram, script=\"touch /var/folders/nm/bd2dwzy52t1ckn3tklsfmy1c0000gn/T/.tmpdAZvaU/yes\"]\n    no [shape=parallelogram, script=\"touch /var/folders/nm/bd2dwzy52t1ckn3tklsfmy1c0000gn/T/.tmpdAZvaU/no\"]\n    start -> gate\n    gate -> yes [label=\"[Y] Yes\"]\n    gate -> no [label=\"[N] No\"]\n    yes -> exit\n    no -> exit\n}",
+      "graph_source": "digraph Gate {\n    graph [goal=\"Ask before running\"]\n    start [shape=Mdiamond]\n    exit [shape=Msquare]\n    gate [shape=hexagon, label=\"Go?\", question_type=\"yes_no\"]\n    yes [shape=parallelogram, script=\"touch /var/folders/nm/bd2dwzy52t1ckn3tklsfmy1c0000gn/T/.tmpWwhqJ5/yes\"]\n    no [shape=parallelogram, script=\"touch /var/folders/nm/bd2dwzy52t1ckn3tklsfmy1c0000gn/T/.tmpWwhqJ5/no\"]\n    start -> gate\n    gate -> yes [label=\"[Y] Yes\"]\n    gate -> no [label=\"[N] No\"]\n    yes -> exit\n    no -> exit\n}",
       "workflow_slug": "workflow",
-      "workflow_version_id": "1d8cc56da9a35251971537e032912fbeb154d66c4ae546ed2f970c7d03fbc244",
+      "workflow_version_id": "cbc42255519dd8d75cdc69446de1df9ffb66cbe05adce1915ba538af30be6769",
       "target": {
         "kind": "folder",
-        "path": "/private/var/folders/nm/bd2dwzy52t1ckn3tklsfmy1c0000gn/T/.tmpdHiMg3"
+        "path": "/private/var/folders/nm/bd2dwzy52t1ckn3tklsfmy1c0000gn/T/.tmpbgdamH"
       },
-      "source_directory": "/private/var/folders/nm/bd2dwzy52t1ckn3tklsfmy1c0000gn/T/.tmpdHiMg3",
+      "source_directory": "/private/var/folders/nm/bd2dwzy52t1ckn3tklsfmy1c0000gn/T/.tmpbgdamH",
       "provenance": {
         "server": {
           "version": "0.357.0-nightly.0"
@@ -224,125 +227,236 @@
           "auth_method": "dev_token"
         }
       },
-      "spec_blob": "2d6c77e9cc030208cd35d778a57411f681950485aa5b73261f5c724c9217332a",
-      "engine": {
-        "kind": "petri",
+      "definition_blob": "7eaa47f89f68f8117a63b03232b5b2ccc385d84cbcf7373e761fc2b3c2553b9a",
+      "spec_blob": "4d18f978520d8bd02d53edf84bbb4bd8a76353b18a247f4747c19f612d3572dd",
+      "admission": {
         "graph": {
-          "blob": "2cfe649e870e1e244168106779790cce67cd186c19bd5ad7614324579e4e5281",
-          "digest": "2cfe649e870e1e244168106779790cce67cd186c19bd5ad7614324579e4e5281"
+          "blob": "71e1d9f8ec3ac4b2c64344477132e279e8a18569342a50473c56238e00b608ad",
+          "digest": "71e1d9f8ec3ac4b2c64344477132e279e8a18569342a50473c56238e00b608ad"
         }
       }
     },
-    "web_url": "http://localhost:3000/runs/01M2SG2E0BEBVXSJCT8MZE19FT",
+    "web_url": "http://localhost:3000/runs/01M2VPKCKJ26JE3FNEJRZJCZK0",
     "start": {
-      "start_time": "2026-09-18T05:33:16.738Z"
+      "start_time": "2026-09-19T02:05:52.769Z",
+      "run_branch": "fabro/run/01M2VPKCKJ26JE3FNEJRZJCZK0",
+      "base_sha": "965e6fd20fa20aba86e49ce17906e3867904b548"
     },
     "status": {
       "kind": "succeeded",
       "reason": "completed"
     },
-    "status_updated_at": "2026-09-18T05:33:17.412Z",
-    "last_event_at": "2026-09-18T05:33:17.416Z",
+    "status_updated_at": "2026-09-19T02:05:55.828Z",
+    "last_event_at": "2026-09-19T02:05:55.840Z",
     "pending_control": null,
     "checkpoints": [
       {
-        "seq": 28,
+        "seq": 26,
         "checkpoint": {
-          "timestamp": "2026-09-18T05:33:17.013Z",
+          "timestamp": "2026-09-19T02:05:53.658Z",
           "current_node": "start",
-          "completed_nodes": [],
-          "node_retries": {},
-          "context_values": {},
-          "git_commit_sha": "f8b1940177c323c419061d1d56758fdc39bfcd05"
+          "git_commit_sha": "965e6fd20fa20aba86e49ce17906e3867904b548"
         },
         "diff": {}
       },
       {
-        "seq": 41,
+        "seq": 44,
         "checkpoint": {
-          "timestamp": "2026-09-18T05:33:17.134Z",
+          "timestamp": "2026-09-19T02:05:54.307Z",
           "current_node": "gate",
-          "completed_nodes": [],
-          "node_retries": {},
-          "context_values": {},
-          "git_commit_sha": "d55c6e89fe209be998b0c18db7c4590315af1841"
+          "git_commit_sha": "510e5b2c8c16458b679d288f7eee6183f52d7707"
         },
-        "diff": {}
+        "diff": {
+          "summary": {
+            "files_changed": 0,
+            "additions": 0,
+            "deletions": 0
+          }
+        }
       },
       {
-        "seq": 53,
+        "seq": 56,
         "checkpoint": {
-          "timestamp": "2026-09-18T05:33:17.264Z",
+          "timestamp": "2026-09-19T02:05:55.119Z",
           "current_node": "no",
-          "completed_nodes": [],
-          "node_retries": {},
-          "context_values": {},
-          "git_commit_sha": "67996dc3f38bf41af0da8b24a0afebb2277554e1"
+          "git_commit_sha": "66c55d2858904b2bb1eb2a42c6a60932920d7633"
         },
-        "diff": {}
+        "diff": {
+          "summary": {
+            "files_changed": 0,
+            "additions": 0,
+            "deletions": 0
+          }
+        }
       },
       {
-        "seq": 65,
+        "seq": 68,
         "checkpoint": {
-          "timestamp": "2026-09-18T05:33:17.370Z",
+          "timestamp": "2026-09-19T02:05:55.630Z",
           "current_node": "exit",
-          "completed_nodes": [],
-          "node_retries": {},
-          "context_values": {},
-          "git_commit_sha": "49d77497eb2088a5a84c05fe03824f20621e3a3b"
+          "git_commit_sha": "3a5e4349b77394aba3ffef05e359a6ca192f9708"
         },
-        "diff": {}
+        "diff": {
+          "summary": {
+            "files_changed": 0,
+            "additions": 0,
+            "deletions": 0
+          }
+        }
       }
     ],
     "conclusion": {
-      "timestamp": "2026-09-18T05:33:17.412Z",
+      "timestamp": "2026-09-19T02:05:55.828Z",
       "status": "succeeded",
       "timing": {
-        "wall_time_ms": 674,
+        "wall_time_ms": 3059,
         "inference_time_ms": 0,
-        "tool_time_ms": 35,
-        "active_time_ms": 35
+        "tool_time_ms": 57,
+        "active_time_ms": 57
       },
-      "final_git_commit_sha": "49d77497eb2088a5a84c05fe03824f20621e3a3b",
+      "final_git_commit_sha": "3a5e4349b77394aba3ffef05e359a6ca192f9708",
+      "stages": [
+        {
+          "stage_id": "start",
+          "stage_label": "start",
+          "timing": {
+            "wall_time_ms": 0,
+            "inference_time_ms": 0,
+            "tool_time_ms": 0,
+            "active_time_ms": 0
+          },
+          "usage": {
+            "tokens": {
+              "input": 0,
+              "output": 0,
+              "reasoning": 0,
+              "cache_read": 0,
+              "cache_write": 0
+            }
+          },
+          "retries": 0
+        },
+        {
+          "stage_id": "gate",
+          "stage_label": "gate",
+          "timing": {
+            "wall_time_ms": 31,
+            "inference_time_ms": 0,
+            "tool_time_ms": 0,
+            "active_time_ms": 0
+          },
+          "usage": {
+            "tokens": {
+              "input": 0,
+              "output": 0,
+              "reasoning": 0,
+              "cache_read": 0,
+              "cache_write": 0
+            }
+          },
+          "retries": 0
+        },
+        {
+          "stage_id": "no",
+          "stage_label": "no",
+          "timing": {
+            "wall_time_ms": 57,
+            "inference_time_ms": 0,
+            "tool_time_ms": 57,
+            "active_time_ms": 57
+          },
+          "usage": {
+            "tokens": {
+              "input": 0,
+              "output": 0,
+              "reasoning": 0,
+              "cache_read": 0,
+              "cache_write": 0
+            }
+          },
+          "retries": 0
+        },
+        {
+          "stage_id": "exit",
+          "stage_label": "exit",
+          "timing": {
+            "wall_time_ms": 0,
+            "inference_time_ms": 0,
+            "tool_time_ms": 0,
+            "active_time_ms": 0
+          },
+          "usage": {
+            "tokens": {
+              "input": 0,
+              "output": 0,
+              "reasoning": 0,
+              "cache_read": 0,
+              "cache_write": 0
+            }
+          },
+          "retries": 0
+        }
+      ],
       "total_retries": 0,
-      "diff": {}
+      "diff": {
+        "summary": {
+          "files_changed": 0,
+          "additions": 0,
+          "deletions": 0
+        }
+      }
     },
     "sandbox": {
-      "kind": "planned",
+      "kind": "ready",
       "plan": {
         "provider": "local"
+      },
+      "instance": {
+        "provider": "local",
+        "runtime": {
+          "id": "host-g18d696a89e0c30b0-691-0",
+          "working_directory": "/private/var/folders/nm/bd2dwzy52t1ckn3tklsfmy1c0000gn/T/fabro-test-01M2VPKCA7RX3BPKYAV61WX2FR/storage/scratch/20260918-01M2VPKCKJ26JE3FNEJRZJCZK0/petri/scopes/invocation-0-scope-0/work"
+        },
+        "ready_duration_ms": 95,
+        "retained": true
       }
     },
     "pull_request": null,
     "superseded_by": null,
+    "git_identity": {
+      "name": "Fabro",
+      "email": "noreply@fabro.sh",
+      "source": "default"
+    },
     "pending_interviews": {},
     "stages": {
-      "no@1": {
-        "first_event_seq": 453,
+      "start@1": {
+        "first_event_seq": 179,
         "prompt": null,
         "response": null,
         "completion": {
           "outcome": "succeeded",
           "notes": null,
           "failure_reason": null,
-          "timestamp": "2026-09-18T05:33:17.264Z"
+          "timestamp": "2026-09-19T02:05:53.598Z"
         },
         "provider_used": null,
         "diff": null,
         "script_invocation": null,
         "script_timing": null,
         "parallel_results": null,
-        "output": null,
+        "output": "checkout: /private/var/folders/nm/bd2dwzy52t1ckn3tklsfmy1c0000gn/T/.tmpbgdamH is not a Git repository; the workspace starts empty\n",
+        "output_bytes": 130,
         "live_streaming": false,
         "termination": "exited",
-        "started_at": "2026-09-18T05:33:17.135Z",
-        "handler": "command",
+        "started_at": "2026-09-19T02:05:52.804Z",
+        "handler": "start",
         "graph_visit": 1,
         "timing": {
-          "wall_time_ms": 35,
+          "wall_time_ms": 80,
           "inference_time_ms": 0,
-          "tool_time_ms": 35,
-          "active_time_ms": 35
+          "tool_time_ms": 0,
+          "active_time_ms": 0
         },
         "usage": {
           "tokens": {
@@ -356,14 +470,14 @@
         "state": "succeeded"
       },
       "exit@1": {
-        "first_event_seq": 583,
+        "first_event_seq": 2496,
         "prompt": null,
         "response": null,
         "completion": {
           "outcome": "succeeded",
           "notes": null,
           "failure_reason": null,
-          "timestamp": "2026-09-18T05:33:17.370Z"
+          "timestamp": "2026-09-19T02:05:55.485Z"
         },
         "provider_used": null,
         "diff": null,
@@ -373,7 +487,7 @@
         "output": null,
         "live_streaming": false,
         "termination": "exited",
-        "started_at": "2026-09-18T05:33:17.265Z",
+        "started_at": "2026-09-19T02:05:55.121Z",
         "handler": "exit",
         "graph_visit": 1,
         "timing": {
@@ -393,33 +507,33 @@
         },
         "state": "succeeded"
       },
-      "gate@1": {
-        "first_event_seq": 331,
+      "no@1": {
+        "first_event_seq": 1683,
         "prompt": null,
         "response": null,
         "completion": {
           "outcome": "succeeded",
           "notes": null,
           "failure_reason": null,
-          "timestamp": "2026-09-18T05:33:17.134Z"
+          "timestamp": "2026-09-19T02:05:55.020Z"
         },
         "provider_used": null,
         "diff": null,
         "script_invocation": null,
         "script_timing": null,
         "parallel_results": null,
-        "output": "waiting for an answer: Go?\n",
-        "output_bytes": 27,
+        "output": "",
+        "output_bytes": 0,
         "live_streaming": false,
         "termination": "exited",
-        "started_at": "2026-09-18T05:33:17.013Z",
-        "handler": "human",
+        "started_at": "2026-09-19T02:05:54.308Z",
+        "handler": "command",
         "graph_visit": 1,
         "timing": {
-          "wall_time_ms": 17,
+          "wall_time_ms": 57,
           "inference_time_ms": 0,
-          "tool_time_ms": 0,
-          "active_time_ms": 0
+          "tool_time_ms": 57,
+          "active_time_ms": 57
         },
         "usage": {
           "tokens": {
@@ -432,30 +546,30 @@
         },
         "state": "succeeded"
       },
-      "start@1": {
-        "first_event_seq": 60,
+      "gate@1": {
+        "first_event_seq": 1033,
         "prompt": null,
         "response": null,
         "completion": {
           "outcome": "succeeded",
           "notes": null,
           "failure_reason": null,
-          "timestamp": "2026-09-18T05:33:17.013Z"
+          "timestamp": "2026-09-19T02:05:54.202Z"
         },
         "provider_used": null,
         "diff": null,
         "script_invocation": null,
         "script_timing": null,
         "parallel_results": null,
-        "output": "checkout: /private/var/folders/nm/bd2dwzy52t1ckn3tklsfmy1c0000gn/T/.tmpdHiMg3 is not a Git repository; the workspace starts empty\n",
-        "output_bytes": 130,
+        "output": "waiting for an answer: Go?\n",
+        "output_bytes": 27,
         "live_streaming": false,
         "termination": "exited",
-        "started_at": "2026-09-18T05:33:16.742Z",
-        "handler": "start",
+        "started_at": "2026-09-19T02:05:53.658Z",
+        "handler": "human",
         "graph_visit": 1,
         "timing": {
-          "wall_time_ms": 10,
+          "wall_time_ms": 31,
           "inference_time_ms": 0,
           "tool_time_ms": 0,
           "active_time_ms": 0
@@ -475,18 +589,18 @@
   },
   "stream": [
     {
-      "run_id": "01M2SG2E0BEBVXSJCT8MZE19FT",
+      "run_id": "01M2VPKCKJ26JE3FNEJRZJCZK0",
       "stream_seq": 1,
       "kind": "platform",
       "id": "1",
-      "recorded_at": 1789709596683,
+      "recorded_at": 1789783552668,
       "item": {
         "seq": 1,
-        "recorded_at": 1789709596683,
+        "recorded_at": 1789783552668,
         "record": {
           "kind": "run.created",
           "spec": {
-            "run_id": "01M2SG2E0BEBVXSJCT8MZE19FT",
+            "run_id": "01M2VPKCKJ26JE3FNEJRZJCZK0",
             "settings": {
               "project": {
                 "name": null,
@@ -500,7 +614,10 @@
                 "metadata": {}
               },
               "run": {
-                "goal": null,
+                "goal": {
+                  "type": "inline",
+                  "value": "Ask before running"
+                },
                 "working_dir": null,
                 "metadata": {},
                 "inputs": {},
@@ -599,17 +716,11 @@
                     }
                   }
                 },
-                "gate": {
-                  "id": "gate",
+                "start": {
+                  "id": "start",
                   "attrs": {
-                    "label": {
-                      "String": "Go?"
-                    },
-                    "question_type": {
-                      "String": "yes_no"
-                    },
                     "shape": {
-                      "String": "hexagon"
+                      "String": "Mdiamond"
                     }
                   }
                 },
@@ -620,26 +731,32 @@
                       "String": "parallelogram"
                     },
                     "script": {
-                      "String": "touch /var/folders/nm/bd2dwzy52t1ckn3tklsfmy1c0000gn/T/.tmpdAZvaU/no"
+                      "String": "touch /var/folders/nm/bd2dwzy52t1ckn3tklsfmy1c0000gn/T/.tmpWwhqJ5/no"
                     }
                   }
                 },
-                "start": {
-                  "id": "start",
+                "gate": {
+                  "id": "gate",
                   "attrs": {
+                    "question_type": {
+                      "String": "yes_no"
+                    },
+                    "label": {
+                      "String": "Go?"
+                    },
                     "shape": {
-                      "String": "Mdiamond"
+                      "String": "hexagon"
                     }
                   }
                 },
                 "yes": {
                   "id": "yes",
                   "attrs": {
+                    "script": {
+                      "String": "touch /var/folders/nm/bd2dwzy52t1ckn3tklsfmy1c0000gn/T/.tmpWwhqJ5/yes"
+                    },
                     "shape": {
                       "String": "parallelogram"
-                    },
-                    "script": {
-                      "String": "touch /var/folders/nm/bd2dwzy52t1ckn3tklsfmy1c0000gn/T/.tmpdAZvaU/yes"
                     }
                   }
                 }
@@ -685,14 +802,14 @@
                 }
               }
             },
-            "graph_source": "digraph Gate {\n    graph [goal=\"Ask before running\"]\n    start [shape=Mdiamond]\n    exit [shape=Msquare]\n    gate [shape=hexagon, label=\"Go?\", question_type=\"yes_no\"]\n    yes [shape=parallelogram, script=\"touch /var/folders/nm/bd2dwzy52t1ckn3tklsfmy1c0000gn/T/.tmpdAZvaU/yes\"]\n    no [shape=parallelogram, script=\"touch /var/folders/nm/bd2dwzy52t1ckn3tklsfmy1c0000gn/T/.tmpdAZvaU/no\"]\n    start -> gate\n    gate -> yes [label=\"[Y] Yes\"]\n    gate -> no [label=\"[N] No\"]\n    yes -> exit\n    no -> exit\n}",
+            "graph_source": "digraph Gate {\n    graph [goal=\"Ask before running\"]\n    start [shape=Mdiamond]\n    exit [shape=Msquare]\n    gate [shape=hexagon, label=\"Go?\", question_type=\"yes_no\"]\n    yes [shape=parallelogram, script=\"touch /var/folders/nm/bd2dwzy52t1ckn3tklsfmy1c0000gn/T/.tmpWwhqJ5/yes\"]\n    no [shape=parallelogram, script=\"touch /var/folders/nm/bd2dwzy52t1ckn3tklsfmy1c0000gn/T/.tmpWwhqJ5/no\"]\n    start -> gate\n    gate -> yes [label=\"[Y] Yes\"]\n    gate -> no [label=\"[N] No\"]\n    yes -> exit\n    no -> exit\n}",
             "workflow_slug": "workflow",
-            "workflow_version_id": "1d8cc56da9a35251971537e032912fbeb154d66c4ae546ed2f970c7d03fbc244",
+            "workflow_version_id": "cbc42255519dd8d75cdc69446de1df9ffb66cbe05adce1915ba538af30be6769",
             "target": {
               "kind": "folder",
-              "path": "/private/var/folders/nm/bd2dwzy52t1ckn3tklsfmy1c0000gn/T/.tmpdHiMg3"
+              "path": "/private/var/folders/nm/bd2dwzy52t1ckn3tklsfmy1c0000gn/T/.tmpbgdamH"
             },
-            "source_directory": "/private/var/folders/nm/bd2dwzy52t1ckn3tklsfmy1c0000gn/T/.tmpdHiMg3",
+            "source_directory": "/private/var/folders/nm/bd2dwzy52t1ckn3tklsfmy1c0000gn/T/.tmpbgdamH",
             "provenance": {
               "server": {
                 "version": "0.357.0-nightly.0"
@@ -707,29 +824,29 @@
                 "auth_method": "dev_token"
               }
             },
-            "spec_blob": "2d6c77e9cc030208cd35d778a57411f681950485aa5b73261f5c724c9217332a",
-            "engine": {
-              "kind": "petri",
+            "definition_blob": "7eaa47f89f68f8117a63b03232b5b2ccc385d84cbcf7373e761fc2b3c2553b9a",
+            "spec_blob": "4d18f978520d8bd02d53edf84bbb4bd8a76353b18a247f4747c19f612d3572dd",
+            "admission": {
               "graph": {
-                "blob": "2cfe649e870e1e244168106779790cce67cd186c19bd5ad7614324579e4e5281",
-                "digest": "2cfe649e870e1e244168106779790cce67cd186c19bd5ad7614324579e4e5281"
+                "blob": "71e1d9f8ec3ac4b2c64344477132e279e8a18569342a50473c56238e00b608ad",
+                "digest": "71e1d9f8ec3ac4b2c64344477132e279e8a18569342a50473c56238e00b608ad"
               }
             }
           },
           "title": "Ask before running",
-          "web_url": "http://localhost:3000/runs/01M2SG2E0BEBVXSJCT8MZE19FT"
+          "web_url": "http://localhost:3000/runs/01M2VPKCKJ26JE3FNEJRZJCZK0"
         }
       }
     },
     {
-      "run_id": "01M2SG2E0BEBVXSJCT8MZE19FT",
+      "run_id": "01M2VPKCKJ26JE3FNEJRZJCZK0",
       "stream_seq": 2,
       "kind": "platform",
       "id": "2",
-      "recorded_at": 1789709596727,
+      "recorded_at": 1789783552670,
       "item": {
         "seq": 2,
-        "recorded_at": 1789709596727,
+        "recorded_at": 1789783552670,
         "record": {
           "kind": "run.lifecycle",
           "transition": "submitted",
@@ -740,14 +857,14 @@
       }
     },
     {
-      "run_id": "01M2SG2E0BEBVXSJCT8MZE19FT",
+      "run_id": "01M2VPKCKJ26JE3FNEJRZJCZK0",
       "stream_seq": 3,
       "kind": "platform",
       "id": "3",
-      "recorded_at": 1789709596732,
+      "recorded_at": 1789783552712,
       "item": {
         "seq": 3,
-        "recorded_at": 1789709596732,
+        "recorded_at": 1789783552712,
         "record": {
           "kind": "run.lifecycle",
           "transition": "start_requested",
@@ -756,14 +873,14 @@
       }
     },
     {
-      "run_id": "01M2SG2E0BEBVXSJCT8MZE19FT",
+      "run_id": "01M2VPKCKJ26JE3FNEJRZJCZK0",
       "stream_seq": 4,
       "kind": "platform",
       "id": "4",
-      "recorded_at": 1789709596733,
+      "recorded_at": 1789783552720,
       "item": {
         "seq": 4,
-        "recorded_at": 1789709596733,
+        "recorded_at": 1789783552720,
         "record": {
           "kind": "run.lifecycle",
           "transition": "runnable",
@@ -775,14 +892,14 @@
       }
     },
     {
-      "run_id": "01M2SG2E0BEBVXSJCT8MZE19FT",
+      "run_id": "01M2VPKCKJ26JE3FNEJRZJCZK0",
       "stream_seq": 5,
       "kind": "platform",
       "id": "5",
-      "recorded_at": 1789709596735,
+      "recorded_at": 1789783552735,
       "item": {
         "seq": 5,
-        "recorded_at": 1789709596735,
+        "recorded_at": 1789783552735,
         "record": {
           "kind": "run.lifecycle",
           "transition": "starting",
@@ -793,14 +910,14 @@
       }
     },
     {
-      "run_id": "01M2SG2E0BEBVXSJCT8MZE19FT",
+      "run_id": "01M2VPKCKJ26JE3FNEJRZJCZK0",
       "stream_seq": 6,
       "kind": "platform",
       "id": "6",
-      "recorded_at": 1789709596736,
+      "recorded_at": 1789783552749,
       "item": {
         "seq": 6,
-        "recorded_at": 1789709596736,
+        "recorded_at": 1789783552749,
         "record": {
           "kind": "run.lifecycle",
           "transition": "running",
@@ -811,11 +928,11 @@
       }
     },
     {
-      "run_id": "01M2SG2E0BEBVXSJCT8MZE19FT",
+      "run_id": "01M2VPKCKJ26JE3FNEJRZJCZK0",
       "stream_seq": 7,
       "kind": "petri",
       "id": "coordinator/0/0",
-      "recorded_at": 1789709596738,
+      "recorded_at": 1789783552769,
       "item": {
         "id": {
           "log": "coordinator",
@@ -826,15 +943,15 @@
         "context": {
           "invocation": 0
         },
-        "recorded_at": 1789709596738,
+        "recorded_at": 1789783552769,
         "record": {
           "seq": 0,
           "origin": "external",
-          "recorded_at": 1789709596738,
+          "recorded_at": 1789783552769,
           "body": {
             "event": "run.started",
-            "format_version": 5,
-            "key": "01M2SG2E0BEBVXSJCT8MZE19FT",
+            "format_version": 7,
+            "key": "01M2VPKCKJ26JE3FNEJRZJCZK0",
             "root": 0,
             "middleware_chain": [
               "circuit-breaker"
@@ -844,11 +961,11 @@
       }
     },
     {
-      "run_id": "01M2SG2E0BEBVXSJCT8MZE19FT",
+      "run_id": "01M2VPKCKJ26JE3FNEJRZJCZK0",
       "stream_seq": 8,
       "kind": "petri",
       "id": "coordinator/1/0",
-      "recorded_at": 1789709596739,
+      "recorded_at": 1789783552782,
       "item": {
         "id": {
           "log": "coordinator",
@@ -857,24 +974,24 @@
         },
         "origin": "external",
         "context": {},
-        "recorded_at": 1789709596739,
+        "recorded_at": 1789783552782,
         "record": {
           "seq": 1,
           "origin": "external",
-          "recorded_at": 1789709596739,
+          "recorded_at": 1789783552782,
           "body": {
             "event": "graph.registered",
-            "digest": "2cfe649e870e1e244168106779790cce67cd186c19bd5ad7614324579e4e5281"
+            "digest": "71e1d9f8ec3ac4b2c64344477132e279e8a18569342a50473c56238e00b608ad"
           }
         }
       }
     },
     {
-      "run_id": "01M2SG2E0BEBVXSJCT8MZE19FT",
+      "run_id": "01M2VPKCKJ26JE3FNEJRZJCZK0",
       "stream_seq": 9,
       "kind": "petri",
       "id": "coordinator/2/0",
-      "recorded_at": 1789709596740,
+      "recorded_at": 1789783552783,
       "item": {
         "id": {
           "log": "coordinator",
@@ -885,16 +1002,16 @@
         "context": {
           "invocation": 0
         },
-        "recorded_at": 1789709596740,
+        "recorded_at": 1789783552783,
         "record": {
           "seq": 2,
           "origin": "external",
-          "recorded_at": 1789709596740,
+          "recorded_at": 1789783552783,
           "body": {
             "event": "invocation.declared",
             "invocation": 0,
             "call": null,
-            "graph": "2cfe649e870e1e244168106779790cce67cd186c19bd5ad7614324579e4e5281",
+            "graph": "71e1d9f8ec3ac4b2c64344477132e279e8a18569342a50473c56238e00b608ad",
             "context": {},
             "secret_bindings": "none",
             "sandbox": "isolated"
@@ -903,11 +1020,11 @@
       }
     },
     {
-      "run_id": "01M2SG2E0BEBVXSJCT8MZE19FT",
+      "run_id": "01M2VPKCKJ26JE3FNEJRZJCZK0",
       "stream_seq": 10,
       "kind": "petri",
       "id": "coordinator/3/0",
-      "recorded_at": 1789709596740,
+      "recorded_at": 1789783552788,
       "item": {
         "id": {
           "log": "coordinator",
@@ -919,11 +1036,11 @@
           "invocation": 0,
           "execution": 0
         },
-        "recorded_at": 1789709596740,
+        "recorded_at": 1789783552788,
         "record": {
           "seq": 3,
           "origin": "external",
-          "recorded_at": 1789709596740,
+          "recorded_at": 1789783552788,
           "body": {
             "event": "execution.declared",
             "execution": 0,
@@ -951,11 +1068,11 @@
       }
     },
     {
-      "run_id": "01M2SG2E0BEBVXSJCT8MZE19FT",
+      "run_id": "01M2VPKCKJ26JE3FNEJRZJCZK0",
       "stream_seq": 11,
       "kind": "petri",
       "id": "execution 0/0/0",
-      "recorded_at": 1789709596741,
+      "recorded_at": 1789783552802,
       "item": {
         "id": {
           "log": "execution",
@@ -968,11 +1085,11 @@
           "invocation": 0,
           "execution": 0
         },
-        "recorded_at": 1789709596741,
+        "recorded_at": 1789783552802,
         "record": {
           "seq": 0,
           "origin": "external",
-          "recorded_at": 1789709596741,
+          "recorded_at": 1789783552802,
           "body": {
             "event": "execution.started",
             "entry": "graph_entries",
@@ -985,11 +1102,11 @@
       }
     },
     {
-      "run_id": "01M2SG2E0BEBVXSJCT8MZE19FT",
+      "run_id": "01M2VPKCKJ26JE3FNEJRZJCZK0",
       "stream_seq": 12,
       "kind": "petri",
       "id": "execution 0/1/0",
-      "recorded_at": 1789709596742,
+      "recorded_at": 1789783552804,
       "item": {
         "id": {
           "log": "execution",
@@ -1002,11 +1119,11 @@
           "invocation": 0,
           "execution": 0
         },
-        "recorded_at": 1789709596742,
+        "recorded_at": 1789783552804,
         "record": {
           "seq": 1,
           "origin": "external",
-          "recorded_at": 1789709596742,
+          "recorded_at": 1789783552804,
           "body": {
             "event": "admission.decided",
             "decision_id": "execution_start",
@@ -1017,11 +1134,11 @@
       }
     },
     {
-      "run_id": "01M2SG2E0BEBVXSJCT8MZE19FT",
+      "run_id": "01M2VPKCKJ26JE3FNEJRZJCZK0",
       "stream_seq": 13,
       "kind": "petri",
       "id": "execution 0/1/1",
-      "recorded_at": 1789709596742,
+      "recorded_at": 1789783552804,
       "item": {
         "id": {
           "log": "execution",
@@ -1065,7 +1182,7 @@
             "role": "none"
           }
         },
-        "recorded_at": 1789709596742,
+        "recorded_at": 1789783552804,
         "derived": {
           "event": "visit.started",
           "inputs": [
@@ -1080,11 +1197,11 @@
       }
     },
     {
-      "run_id": "01M2SG2E0BEBVXSJCT8MZE19FT",
+      "run_id": "01M2VPKCKJ26JE3FNEJRZJCZK0",
       "stream_seq": 14,
       "kind": "petri",
       "id": "execution 0/1/2",
-      "recorded_at": 1789709596742,
+      "recorded_at": 1789783552804,
       "item": {
         "id": {
           "log": "execution",
@@ -1128,7 +1245,7 @@
             "role": "none"
           }
         },
-        "recorded_at": 1789709596742,
+        "recorded_at": 1789783552804,
         "derived": {
           "event": "wait.state.changed",
           "state": "awaiting_admission"
@@ -1136,11 +1253,11 @@
       }
     },
     {
-      "run_id": "01M2SG2E0BEBVXSJCT8MZE19FT",
+      "run_id": "01M2VPKCKJ26JE3FNEJRZJCZK0",
       "stream_seq": 15,
       "kind": "petri",
       "id": "execution 0/2/0",
-      "recorded_at": 1789709596742,
+      "recorded_at": 1789783552804,
       "item": {
         "id": {
           "log": "execution",
@@ -1153,11 +1270,11 @@
           "invocation": 0,
           "execution": 0
         },
-        "recorded_at": 1789709596742,
+        "recorded_at": 1789783552804,
         "record": {
           "seq": 2,
           "origin": "core",
-          "recorded_at": 1789709596742,
+          "recorded_at": 1789783552804,
           "body": {
             "event": "token.emitted",
             "edge": 5,
@@ -1169,11 +1286,11 @@
       }
     },
     {
-      "run_id": "01M2SG2E0BEBVXSJCT8MZE19FT",
+      "run_id": "01M2VPKCKJ26JE3FNEJRZJCZK0",
       "stream_seq": 16,
       "kind": "petri",
       "id": "execution 0/3/0",
-      "recorded_at": 1789709596742,
+      "recorded_at": 1789783552804,
       "item": {
         "id": {
           "log": "execution",
@@ -1217,11 +1334,11 @@
             "role": "none"
           }
         },
-        "recorded_at": 1789709596742,
+        "recorded_at": 1789783552804,
         "record": {
           "seq": 3,
           "origin": "external",
-          "recorded_at": 1789709596742,
+          "recorded_at": 1789783552804,
           "body": {
             "event": "admission.decided",
             "decision_id": {
@@ -1237,16 +1354,52 @@
       }
     },
     {
-      "run_id": "01M2SG2E0BEBVXSJCT8MZE19FT",
+      "run_id": "01M2VPKCKJ26JE3FNEJRZJCZK0",
       "stream_seq": 17,
       "kind": "petri",
       "id": "execution 0/4/0",
-      "recorded_at": 1789709596825,
+      "recorded_at": 1789783552900,
       "item": {
         "id": {
           "log": "execution",
           "execution": 0,
           "seq": 4,
+          "index": 0
+        },
+        "origin": "external",
+        "context": {
+          "invocation": 0,
+          "execution": 0
+        },
+        "recorded_at": 1789783552900,
+        "record": {
+          "seq": 4,
+          "origin": "external",
+          "recorded_at": 1789783552900,
+          "body": {
+            "event": "scope.acquired",
+            "scope": 0,
+            "lease": 0,
+            "workspace": "invocation-0-scope-0",
+            "provider": "host",
+            "instance": "host-g18d696a89e0c30b0-691-0",
+            "working_directory": "/private/var/folders/nm/bd2dwzy52t1ckn3tklsfmy1c0000gn/T/REDACTED/storage/scratch/20260918-01M2VPKCKJ26JE3FNEJRZJCZK0/petri/scopes/invocation-0-scope-0/work",
+            "duration_ms": 95
+          }
+        }
+      }
+    },
+    {
+      "run_id": "01M2VPKCKJ26JE3FNEJRZJCZK0",
+      "stream_seq": 18,
+      "kind": "petri",
+      "id": "execution 0/5/0",
+      "recorded_at": 1789783552900,
+      "item": {
+        "id": {
+          "log": "execution",
+          "execution": 0,
+          "seq": 5,
           "index": 0
         },
         "origin": "external",
@@ -1285,11 +1438,11 @@
             "role": "none"
           }
         },
-        "recorded_at": 1789709596825,
+        "recorded_at": 1789783552900,
         "record": {
-          "seq": 4,
+          "seq": 5,
           "origin": "external",
-          "recorded_at": 1789709596825,
+          "recorded_at": 1789783552900,
           "body": {
             "event": "step.started",
             "firing": 1,
@@ -1299,16 +1452,16 @@
       }
     },
     {
-      "run_id": "01M2SG2E0BEBVXSJCT8MZE19FT",
-      "stream_seq": 18,
+      "run_id": "01M2VPKCKJ26JE3FNEJRZJCZK0",
+      "stream_seq": 19,
       "kind": "petri",
-      "id": "execution 0/4/1",
-      "recorded_at": 1789709596825,
+      "id": "execution 0/5/1",
+      "recorded_at": 1789783552900,
       "item": {
         "id": {
           "log": "execution",
           "execution": 0,
-          "seq": 4,
+          "seq": 5,
           "index": 1
         },
         "origin": "derived",
@@ -1347,7 +1500,7 @@
             "role": "none"
           }
         },
-        "recorded_at": 1789709596825,
+        "recorded_at": 1789783552900,
         "derived": {
           "event": "wait.state.changed",
           "state": "running"
@@ -1355,16 +1508,16 @@
       }
     },
     {
-      "run_id": "01M2SG2E0BEBVXSJCT8MZE19FT",
-      "stream_seq": 19,
+      "run_id": "01M2VPKCKJ26JE3FNEJRZJCZK0",
+      "stream_seq": 20,
       "kind": "petri",
-      "id": "execution 0/5/0",
-      "recorded_at": 1789709596836,
+      "id": "execution 0/6/0",
+      "recorded_at": 1789783552981,
       "item": {
         "id": {
           "log": "execution",
           "execution": 0,
-          "seq": 5,
+          "seq": 6,
           "index": 0
         },
         "origin": "external",
@@ -1403,18 +1556,18 @@
             "role": "none"
           }
         },
-        "recorded_at": 1789709596836,
+        "recorded_at": 1789783552981,
         "record": {
-          "seq": 5,
+          "seq": 6,
           "origin": "external",
-          "recorded_at": 1789709596836,
+          "recorded_at": 1789783552981,
           "body": {
             "event": "step.progress.recorded",
             "firing": 1,
             "ev": {
               "log": {
                 "stream": "stderr",
-                "line": "checkout: /private/var/folders/nm/bd2dwzy52t1ckn3tklsfmy1c0000gn/T/.tmpdHiMg3 is not a Git repository; the workspace starts empty"
+                "line": "checkout: /private/var/folders/nm/bd2dwzy52t1ckn3tklsfmy1c0000gn/T/.tmpbgdamH is not a Git repository; the workspace starts empty"
               }
             }
           }
@@ -1422,16 +1575,16 @@
       }
     },
     {
-      "run_id": "01M2SG2E0BEBVXSJCT8MZE19FT",
-      "stream_seq": 20,
+      "run_id": "01M2VPKCKJ26JE3FNEJRZJCZK0",
+      "stream_seq": 21,
       "kind": "petri",
-      "id": "execution 0/6/0",
-      "recorded_at": 1789709597013,
+      "id": "execution 0/7/0",
+      "recorded_at": 1789783553598,
       "item": {
         "id": {
           "log": "execution",
           "execution": 0,
-          "seq": 6,
+          "seq": 7,
           "index": 0
         },
         "origin": "external",
@@ -1470,11 +1623,11 @@
             "role": "none"
           }
         },
-        "recorded_at": 1789709597013,
+        "recorded_at": 1789783553598,
         "record": {
-          "seq": 6,
+          "seq": 7,
           "origin": "external",
-          "recorded_at": 1789709597013,
+          "recorded_at": 1789783553598,
           "body": {
             "event": "step.progress.recorded",
             "firing": 1,
@@ -1487,7 +1640,7 @@
                     "firing": 1,
                     "attempt": 1,
                     "workspace": "invocation-0-scope-0",
-                    "git_commit_sha": "f8b1940177c323c419061d1d56758fdc39bfcd05",
+                    "git_commit_sha": "965e6fd20fa20aba86e49ce17906e3867904b548",
                     "reused": false
                   }
                 }
@@ -1505,7 +1658,7 @@
                 "firing": 1,
                 "attempt": 1,
                 "workspace": "invocation-0-scope-0",
-                "git_commit_sha": "f8b1940177c323c419061d1d56758fdc39bfcd05",
+                "git_commit_sha": "965e6fd20fa20aba86e49ce17906e3867904b548",
                 "reused": false
               }
             }
@@ -1514,16 +1667,16 @@
       }
     },
     {
-      "run_id": "01M2SG2E0BEBVXSJCT8MZE19FT",
-      "stream_seq": 21,
+      "run_id": "01M2VPKCKJ26JE3FNEJRZJCZK0",
+      "stream_seq": 22,
       "kind": "petri",
-      "id": "execution 0/7/0",
-      "recorded_at": 1789709597013,
+      "id": "execution 0/8/0",
+      "recorded_at": 1789783553598,
       "item": {
         "id": {
           "log": "execution",
           "execution": 0,
-          "seq": 7,
+          "seq": 8,
           "index": 0
         },
         "origin": "external",
@@ -1562,11 +1715,11 @@
             "role": "none"
           }
         },
-        "recorded_at": 1789709597013,
+        "recorded_at": 1789783553598,
         "record": {
-          "seq": 7,
+          "seq": 8,
           "origin": "external",
-          "recorded_at": 1789709597013,
+          "recorded_at": 1789783553598,
           "body": {
             "event": "step.finished",
             "firing": 1,
@@ -1578,7 +1731,7 @@
                 "failure_class": ""
               },
               "metrics": {
-                "duration_ms": 10
+                "duration_ms": 80
               },
               "context_updates": {
                 "failure_class": "",
@@ -1594,16 +1747,16 @@
       }
     },
     {
-      "run_id": "01M2SG2E0BEBVXSJCT8MZE19FT",
-      "stream_seq": 22,
+      "run_id": "01M2VPKCKJ26JE3FNEJRZJCZK0",
+      "stream_seq": 23,
       "kind": "petri",
-      "id": "execution 0/7/1",
-      "recorded_at": 1789709597013,
+      "id": "execution 0/8/1",
+      "recorded_at": 1789783553598,
       "item": {
         "id": {
           "log": "execution",
           "execution": 0,
-          "seq": 7,
+          "seq": 8,
           "index": 1
         },
         "origin": "derived",
@@ -1642,7 +1795,7 @@
             "role": "none"
           }
         },
-        "recorded_at": 1789709597013,
+        "recorded_at": 1789783553598,
         "derived": {
           "event": "visit.completed",
           "outcome": {
@@ -1652,7 +1805,7 @@
               "failure_class": ""
             },
             "metrics": {
-              "duration_ms": 10
+              "duration_ms": 80
             },
             "context_updates": {
               "failure_class": "",
@@ -1665,16 +1818,91 @@
       }
     },
     {
-      "run_id": "01M2SG2E0BEBVXSJCT8MZE19FT",
-      "stream_seq": 23,
+      "run_id": "01M2VPKCKJ26JE3FNEJRZJCZK0",
+      "stream_seq": 24,
+      "kind": "platform",
+      "id": "7",
+      "recorded_at": 1789783553597,
+      "item": {
+        "seq": 7,
+        "recorded_at": 1789783553597,
+        "record": {
+          "kind": "run.branch",
+          "run_branch": "fabro/run/01M2VPKCKJ26JE3FNEJRZJCZK0",
+          "base_sha": "965e6fd20fa20aba86e49ce17906e3867904b548",
+          "workspace": "invocation-0-scope-0"
+        },
+        "position": {
+          "execution": 0,
+          "firing": 1
+        }
+      }
+    },
+    {
+      "run_id": "01M2VPKCKJ26JE3FNEJRZJCZK0",
+      "stream_seq": 25,
+      "kind": "platform",
+      "id": "8",
+      "recorded_at": 1789783553597,
+      "item": {
+        "seq": 8,
+        "recorded_at": 1789783553597,
+        "record": {
+          "kind": "git.identity",
+          "name": "Fabro",
+          "email": "noreply@fabro.sh",
+          "source": "default"
+        },
+        "position": {
+          "execution": 0,
+          "firing": 1
+        }
+      }
+    },
+    {
+      "run_id": "01M2VPKCKJ26JE3FNEJRZJCZK0",
+      "stream_seq": 26,
+      "kind": "platform",
+      "id": "9",
+      "recorded_at": 1789783553658,
+      "item": {
+        "seq": 9,
+        "recorded_at": 1789783553658,
+        "record": {
+          "kind": "checkpoint",
+          "execution": 0,
+          "firing": 1,
+          "attempt": 1,
+          "workspace": "invocation-0-scope-0",
+          "git_commit_sha": "965e6fd20fa20aba86e49ce17906e3867904b548",
+          "operation": {
+            "execution": 0,
+            "decision": {
+              "attempt_start": {
+                "firing": 1,
+                "attempt": 1
+              }
+            },
+            "effect": "checkpoint"
+          }
+        },
+        "position": {
+          "execution": 0,
+          "firing": 1
+        }
+      }
+    },
+    {
+      "run_id": "01M2VPKCKJ26JE3FNEJRZJCZK0",
+      "stream_seq": 27,
       "kind": "petri",
-      "id": "execution 0/8/0",
-      "recorded_at": 1789709597013,
+      "id": "execution 0/9/0",
+      "recorded_at": 1789783553658,
       "item": {
         "id": {
           "log": "execution",
           "execution": 0,
-          "seq": 8,
+          "seq": 9,
           "index": 0
         },
         "origin": "external",
@@ -1713,11 +1941,11 @@
             "role": "none"
           }
         },
-        "recorded_at": 1789709597013,
+        "recorded_at": 1789783553658,
         "record": {
-          "seq": 8,
+          "seq": 9,
           "origin": "external",
-          "recorded_at": 1789709597013,
+          "recorded_at": 1789783553658,
           "body": {
             "event": "routing.resolved",
             "decision_id": {
@@ -1773,16 +2001,16 @@
       }
     },
     {
-      "run_id": "01M2SG2E0BEBVXSJCT8MZE19FT",
-      "stream_seq": 24,
+      "run_id": "01M2VPKCKJ26JE3FNEJRZJCZK0",
+      "stream_seq": 28,
       "kind": "petri",
-      "id": "execution 0/8/1",
-      "recorded_at": 1789709597013,
+      "id": "execution 0/9/1",
+      "recorded_at": 1789783553658,
       "item": {
         "id": {
           "log": "execution",
           "execution": 0,
-          "seq": 8,
+          "seq": 9,
           "index": 1
         },
         "origin": "derived",
@@ -1824,7 +2052,7 @@
             "role": "none"
           }
         },
-        "recorded_at": 1789709597013,
+        "recorded_at": 1789783553658,
         "derived": {
           "event": "visit.started",
           "inputs": [
@@ -1842,16 +2070,16 @@
       }
     },
     {
-      "run_id": "01M2SG2E0BEBVXSJCT8MZE19FT",
-      "stream_seq": 25,
+      "run_id": "01M2VPKCKJ26JE3FNEJRZJCZK0",
+      "stream_seq": 29,
       "kind": "petri",
-      "id": "execution 0/8/2",
-      "recorded_at": 1789709597013,
+      "id": "execution 0/9/2",
+      "recorded_at": 1789783553658,
       "item": {
         "id": {
           "log": "execution",
           "execution": 0,
-          "seq": 8,
+          "seq": 9,
           "index": 2
         },
         "origin": "derived",
@@ -1893,7 +2121,7 @@
             "role": "none"
           }
         },
-        "recorded_at": 1789709597013,
+        "recorded_at": 1789783553658,
         "derived": {
           "event": "wait.state.changed",
           "state": "awaiting_admission"
@@ -1901,16 +2129,16 @@
       }
     },
     {
-      "run_id": "01M2SG2E0BEBVXSJCT8MZE19FT",
-      "stream_seq": 26,
+      "run_id": "01M2VPKCKJ26JE3FNEJRZJCZK0",
+      "stream_seq": 30,
       "kind": "petri",
-      "id": "execution 0/9/0",
-      "recorded_at": 1789709597013,
+      "id": "execution 0/10/0",
+      "recorded_at": 1789783553658,
       "item": {
         "id": {
           "log": "execution",
           "execution": 0,
-          "seq": 9,
+          "seq": 10,
           "index": 0
         },
         "origin": "core",
@@ -1949,11 +2177,11 @@
             "role": "none"
           }
         },
-        "recorded_at": 1789709597013,
+        "recorded_at": 1789783553658,
         "record": {
-          "seq": 9,
+          "seq": 10,
           "origin": "core",
-          "recorded_at": 1789709597013,
+          "recorded_at": 1789783553658,
           "body": {
             "event": "route.applied",
             "kind": "edge",
@@ -1994,16 +2222,16 @@
       }
     },
     {
-      "run_id": "01M2SG2E0BEBVXSJCT8MZE19FT",
-      "stream_seq": 27,
+      "run_id": "01M2VPKCKJ26JE3FNEJRZJCZK0",
+      "stream_seq": 31,
       "kind": "petri",
-      "id": "execution 0/10/0",
-      "recorded_at": 1789709597013,
+      "id": "execution 0/11/0",
+      "recorded_at": 1789783553658,
       "item": {
         "id": {
           "log": "execution",
           "execution": 0,
-          "seq": 10,
+          "seq": 11,
           "index": 0
         },
         "origin": "core",
@@ -2042,11 +2270,11 @@
             "role": "none"
           }
         },
-        "recorded_at": 1789709597013,
+        "recorded_at": 1789783553658,
         "record": {
-          "seq": 10,
+          "seq": 11,
           "origin": "core",
-          "recorded_at": 1789709597013,
+          "recorded_at": 1789783553658,
           "body": {
             "event": "token.emitted",
             "edge": 0,
@@ -2061,49 +2289,16 @@
       }
     },
     {
-      "run_id": "01M2SG2E0BEBVXSJCT8MZE19FT",
-      "stream_seq": 28,
-      "kind": "platform",
-      "id": "7",
-      "recorded_at": 1789709597013,
-      "item": {
-        "seq": 7,
-        "recorded_at": 1789709597013,
-        "record": {
-          "kind": "checkpoint",
-          "execution": 0,
-          "firing": 1,
-          "attempt": 1,
-          "workspace": "invocation-0-scope-0",
-          "git_commit_sha": "f8b1940177c323c419061d1d56758fdc39bfcd05",
-          "operation": {
-            "execution": 0,
-            "decision": {
-              "attempt_start": {
-                "firing": 1,
-                "attempt": 1
-              }
-            },
-            "effect": "checkpoint"
-          }
-        },
-        "position": {
-          "execution": 0,
-          "firing": 1
-        }
-      }
-    },
-    {
-      "run_id": "01M2SG2E0BEBVXSJCT8MZE19FT",
-      "stream_seq": 29,
+      "run_id": "01M2VPKCKJ26JE3FNEJRZJCZK0",
+      "stream_seq": 32,
       "kind": "petri",
-      "id": "execution 0/11/0",
-      "recorded_at": 1789709597014,
+      "id": "execution 0/12/0",
+      "recorded_at": 1789783553658,
       "item": {
         "id": {
           "log": "execution",
           "execution": 0,
-          "seq": 11,
+          "seq": 12,
           "index": 0
         },
         "origin": "external",
@@ -2145,11 +2340,11 @@
             "role": "none"
           }
         },
-        "recorded_at": 1789709597014,
+        "recorded_at": 1789783553658,
         "record": {
-          "seq": 11,
+          "seq": 12,
           "origin": "external",
-          "recorded_at": 1789709597014,
+          "recorded_at": 1789783553658,
           "body": {
             "event": "admission.decided",
             "decision_id": {
@@ -2165,16 +2360,16 @@
       }
     },
     {
-      "run_id": "01M2SG2E0BEBVXSJCT8MZE19FT",
-      "stream_seq": 30,
+      "run_id": "01M2VPKCKJ26JE3FNEJRZJCZK0",
+      "stream_seq": 33,
       "kind": "petri",
-      "id": "execution 0/12/0",
-      "recorded_at": 1789709597014,
+      "id": "execution 0/13/0",
+      "recorded_at": 1789783553658,
       "item": {
         "id": {
           "log": "execution",
           "execution": 0,
-          "seq": 12,
+          "seq": 13,
           "index": 0
         },
         "origin": "external",
@@ -2216,11 +2411,11 @@
             "role": "none"
           }
         },
-        "recorded_at": 1789709597014,
+        "recorded_at": 1789783553658,
         "record": {
-          "seq": 12,
+          "seq": 13,
           "origin": "external",
-          "recorded_at": 1789709597014,
+          "recorded_at": 1789783553658,
           "body": {
             "event": "step.started",
             "firing": 2,
@@ -2230,16 +2425,16 @@
       }
     },
     {
-      "run_id": "01M2SG2E0BEBVXSJCT8MZE19FT",
-      "stream_seq": 31,
+      "run_id": "01M2VPKCKJ26JE3FNEJRZJCZK0",
+      "stream_seq": 34,
       "kind": "petri",
-      "id": "execution 0/12/1",
-      "recorded_at": 1789709597014,
+      "id": "execution 0/13/1",
+      "recorded_at": 1789783553658,
       "item": {
         "id": {
           "log": "execution",
           "execution": 0,
-          "seq": 12,
+          "seq": 13,
           "index": 1
         },
         "origin": "derived",
@@ -2281,7 +2476,7 @@
             "role": "none"
           }
         },
-        "recorded_at": 1789709597014,
+        "recorded_at": 1789783553658,
         "derived": {
           "event": "wait.state.changed",
           "state": "running"
@@ -2289,16 +2484,16 @@
       }
     },
     {
-      "run_id": "01M2SG2E0BEBVXSJCT8MZE19FT",
-      "stream_seq": 32,
+      "run_id": "01M2VPKCKJ26JE3FNEJRZJCZK0",
+      "stream_seq": 35,
       "kind": "petri",
-      "id": "execution 0/13/0",
-      "recorded_at": 1789709597014,
+      "id": "execution 0/14/0",
+      "recorded_at": 1789783553659,
       "item": {
         "id": {
           "log": "execution",
           "execution": 0,
-          "seq": 13,
+          "seq": 14,
           "index": 0
         },
         "origin": "external",
@@ -2340,11 +2535,11 @@
             "role": "none"
           }
         },
-        "recorded_at": 1789709597014,
+        "recorded_at": 1789783553659,
         "record": {
-          "seq": 13,
+          "seq": 14,
           "origin": "external",
-          "recorded_at": 1789709597014,
+          "recorded_at": 1789783553659,
           "body": {
             "event": "step.progress.recorded",
             "firing": 2,
@@ -2398,16 +2593,16 @@
       }
     },
     {
-      "run_id": "01M2SG2E0BEBVXSJCT8MZE19FT",
-      "stream_seq": 33,
+      "run_id": "01M2VPKCKJ26JE3FNEJRZJCZK0",
+      "stream_seq": 36,
       "kind": "petri",
-      "id": "execution 0/13/1",
-      "recorded_at": 1789709597014,
+      "id": "execution 0/14/1",
+      "recorded_at": 1789783553659,
       "item": {
         "id": {
           "log": "execution",
           "execution": 0,
-          "seq": 13,
+          "seq": 14,
           "index": 1
         },
         "origin": "derived",
@@ -2449,7 +2644,7 @@
             "role": "none"
           }
         },
-        "recorded_at": 1789709597014,
+        "recorded_at": 1789783553659,
         "derived": {
           "event": "wait.state.changed",
           "state": "awaiting_answer"
@@ -2457,16 +2652,16 @@
       }
     },
     {
-      "run_id": "01M2SG2E0BEBVXSJCT8MZE19FT",
-      "stream_seq": 34,
+      "run_id": "01M2VPKCKJ26JE3FNEJRZJCZK0",
+      "stream_seq": 37,
       "kind": "petri",
-      "id": "execution 0/14/0",
-      "recorded_at": 1789709597014,
+      "id": "execution 0/15/0",
+      "recorded_at": 1789783553660,
       "item": {
         "id": {
           "log": "execution",
           "execution": 0,
-          "seq": 14,
+          "seq": 15,
           "index": 0
         },
         "origin": "external",
@@ -2508,11 +2703,11 @@
             "role": "none"
           }
         },
-        "recorded_at": 1789709597014,
+        "recorded_at": 1789783553660,
         "record": {
-          "seq": 14,
+          "seq": 15,
           "origin": "external",
-          "recorded_at": 1789709597014,
+          "recorded_at": 1789783553660,
           "body": {
             "event": "step.progress.recorded",
             "firing": 2,
@@ -2527,16 +2722,16 @@
       }
     },
     {
-      "run_id": "01M2SG2E0BEBVXSJCT8MZE19FT",
-      "stream_seq": 35,
+      "run_id": "01M2VPKCKJ26JE3FNEJRZJCZK0",
+      "stream_seq": 38,
       "kind": "petri",
-      "id": "execution 0/15/0",
-      "recorded_at": 1789709597031,
+      "id": "execution 0/16/0",
+      "recorded_at": 1789783553689,
       "item": {
         "id": {
           "log": "execution",
           "execution": 0,
-          "seq": 15,
+          "seq": 16,
           "index": 0
         },
         "origin": "external",
@@ -2578,11 +2773,11 @@
             "role": "none"
           }
         },
-        "recorded_at": 1789709597031,
+        "recorded_at": 1789783553689,
         "record": {
-          "seq": 15,
+          "seq": 16,
           "origin": "external",
-          "recorded_at": 1789709597031,
+          "recorded_at": 1789783553689,
           "body": {
             "event": "control.requested",
             "firing": 2,
@@ -2606,16 +2801,16 @@
       }
     },
     {
-      "run_id": "01M2SG2E0BEBVXSJCT8MZE19FT",
-      "stream_seq": 36,
+      "run_id": "01M2VPKCKJ26JE3FNEJRZJCZK0",
+      "stream_seq": 39,
       "kind": "petri",
-      "id": "execution 0/15/1",
-      "recorded_at": 1789709597031,
+      "id": "execution 0/16/1",
+      "recorded_at": 1789783553689,
       "item": {
         "id": {
           "log": "execution",
           "execution": 0,
-          "seq": 15,
+          "seq": 16,
           "index": 1
         },
         "origin": "derived",
@@ -2657,7 +2852,7 @@
             "role": "none"
           }
         },
-        "recorded_at": 1789709597031,
+        "recorded_at": 1789783553689,
         "derived": {
           "event": "wait.state.changed",
           "state": "running"
@@ -2665,14 +2860,14 @@
       }
     },
     {
-      "run_id": "01M2SG2E0BEBVXSJCT8MZE19FT",
-      "stream_seq": 37,
+      "run_id": "01M2VPKCKJ26JE3FNEJRZJCZK0",
+      "stream_seq": 40,
       "kind": "platform",
-      "id": "8",
-      "recorded_at": 1789709597031,
+      "id": "10",
+      "recorded_at": 1789783553689,
       "item": {
-        "seq": 8,
-        "recorded_at": 1789709597031,
+        "seq": 10,
+        "recorded_at": 1789783553689,
         "record": {
           "kind": "interview.answered",
           "question": "gate#2",
@@ -2684,21 +2879,22 @@
             },
             "login": "dev",
             "auth_method": "dev_token"
-          }
+          },
+          "answer": "no"
         }
       }
     },
     {
-      "run_id": "01M2SG2E0BEBVXSJCT8MZE19FT",
-      "stream_seq": 38,
+      "run_id": "01M2VPKCKJ26JE3FNEJRZJCZK0",
+      "stream_seq": 41,
       "kind": "petri",
-      "id": "execution 0/16/0",
-      "recorded_at": 1789709597134,
+      "id": "execution 0/17/0",
+      "recorded_at": 1789783554201,
       "item": {
         "id": {
           "log": "execution",
           "execution": 0,
-          "seq": 16,
+          "seq": 17,
           "index": 0
         },
         "origin": "external",
@@ -2740,11 +2936,11 @@
             "role": "none"
           }
         },
-        "recorded_at": 1789709597134,
+        "recorded_at": 1789783554201,
         "record": {
-          "seq": 16,
+          "seq": 17,
           "origin": "external",
-          "recorded_at": 1789709597134,
+          "recorded_at": 1789783554201,
           "body": {
             "event": "step.progress.recorded",
             "firing": 2,
@@ -2757,7 +2953,7 @@
                     "firing": 2,
                     "attempt": 1,
                     "workspace": "invocation-0-scope-0",
-                    "git_commit_sha": "d55c6e89fe209be998b0c18db7c4590315af1841",
+                    "git_commit_sha": "510e5b2c8c16458b679d288f7eee6183f52d7707",
                     "reused": false
                   }
                 }
@@ -2775,7 +2971,7 @@
                 "firing": 2,
                 "attempt": 1,
                 "workspace": "invocation-0-scope-0",
-                "git_commit_sha": "d55c6e89fe209be998b0c18db7c4590315af1841",
+                "git_commit_sha": "510e5b2c8c16458b679d288f7eee6183f52d7707",
                 "reused": false
               }
             }
@@ -2784,16 +2980,16 @@
       }
     },
     {
-      "run_id": "01M2SG2E0BEBVXSJCT8MZE19FT",
-      "stream_seq": 39,
+      "run_id": "01M2VPKCKJ26JE3FNEJRZJCZK0",
+      "stream_seq": 42,
       "kind": "petri",
-      "id": "execution 0/17/0",
-      "recorded_at": 1789709597134,
+      "id": "execution 0/18/0",
+      "recorded_at": 1789783554202,
       "item": {
         "id": {
           "log": "execution",
           "execution": 0,
-          "seq": 17,
+          "seq": 18,
           "index": 0
         },
         "origin": "external",
@@ -2835,11 +3031,11 @@
             "role": "none"
           }
         },
-        "recorded_at": 1789709597134,
+        "recorded_at": 1789783554202,
         "record": {
-          "seq": 17,
+          "seq": 18,
           "origin": "external",
-          "recorded_at": 1789709597134,
+          "recorded_at": 1789783554202,
           "body": {
             "event": "step.finished",
             "firing": 2,
@@ -2856,7 +3052,7 @@
                 "failure_class": ""
               },
               "metrics": {
-                "duration_ms": 17
+                "duration_ms": 31
               },
               "context_updates": {
                 "failure_class": "",
@@ -2876,16 +3072,16 @@
       }
     },
     {
-      "run_id": "01M2SG2E0BEBVXSJCT8MZE19FT",
-      "stream_seq": 40,
+      "run_id": "01M2VPKCKJ26JE3FNEJRZJCZK0",
+      "stream_seq": 43,
       "kind": "petri",
-      "id": "execution 0/17/1",
-      "recorded_at": 1789709597134,
+      "id": "execution 0/18/1",
+      "recorded_at": 1789783554202,
       "item": {
         "id": {
           "log": "execution",
           "execution": 0,
-          "seq": 17,
+          "seq": 18,
           "index": 1
         },
         "origin": "derived",
@@ -2927,7 +3123,7 @@
             "role": "none"
           }
         },
-        "recorded_at": 1789709597134,
+        "recorded_at": 1789783554202,
         "derived": {
           "event": "visit.completed",
           "outcome": {
@@ -2942,7 +3138,7 @@
               "failure_class": ""
             },
             "metrics": {
-              "duration_ms": 17
+              "duration_ms": 31
             },
             "context_updates": {
               "failure_class": "",
@@ -2959,21 +3155,26 @@
       }
     },
     {
-      "run_id": "01M2SG2E0BEBVXSJCT8MZE19FT",
-      "stream_seq": 41,
+      "run_id": "01M2VPKCKJ26JE3FNEJRZJCZK0",
+      "stream_seq": 44,
       "kind": "platform",
-      "id": "9",
-      "recorded_at": 1789709597134,
+      "id": "11",
+      "recorded_at": 1789783554307,
       "item": {
-        "seq": 9,
-        "recorded_at": 1789709597134,
+        "seq": 11,
+        "recorded_at": 1789783554307,
         "record": {
           "kind": "checkpoint",
           "execution": 0,
           "firing": 2,
           "attempt": 1,
           "workspace": "invocation-0-scope-0",
-          "git_commit_sha": "d55c6e89fe209be998b0c18db7c4590315af1841",
+          "git_commit_sha": "510e5b2c8c16458b679d288f7eee6183f52d7707",
+          "diff_summary": {
+            "files_changed": 0,
+            "additions": 0,
+            "deletions": 0
+          },
           "operation": {
             "execution": 0,
             "decision": {
@@ -2992,16 +3193,16 @@
       }
     },
     {
-      "run_id": "01M2SG2E0BEBVXSJCT8MZE19FT",
-      "stream_seq": 42,
+      "run_id": "01M2VPKCKJ26JE3FNEJRZJCZK0",
+      "stream_seq": 45,
       "kind": "petri",
-      "id": "execution 0/18/0",
-      "recorded_at": 1789709597135,
+      "id": "execution 0/19/0",
+      "recorded_at": 1789783554308,
       "item": {
         "id": {
           "log": "execution",
           "execution": 0,
-          "seq": 18,
+          "seq": 19,
           "index": 0
         },
         "origin": "external",
@@ -3043,11 +3244,11 @@
             "role": "none"
           }
         },
-        "recorded_at": 1789709597135,
+        "recorded_at": 1789783554308,
         "record": {
-          "seq": 18,
+          "seq": 19,
           "origin": "external",
-          "recorded_at": 1789709597135,
+          "recorded_at": 1789783554308,
           "body": {
             "event": "routing.resolved",
             "decision_id": {
@@ -3085,6 +3286,7 @@
                     "line": 7,
                     "column": 5
                   },
+                  "script": "touch /var/folders/nm/bd2dwzy52t1ckn3tklsfmy1c0000gn/T/.tmpWwhqJ5/no",
                   "edges": {
                     "4": {
                       "to": "exit",
@@ -3099,16 +3301,16 @@
       }
     },
     {
-      "run_id": "01M2SG2E0BEBVXSJCT8MZE19FT",
-      "stream_seq": 43,
+      "run_id": "01M2VPKCKJ26JE3FNEJRZJCZK0",
+      "stream_seq": 46,
       "kind": "petri",
-      "id": "execution 0/18/1",
-      "recorded_at": 1789709597135,
+      "id": "execution 0/19/1",
+      "recorded_at": 1789783554308,
       "item": {
         "id": {
           "log": "execution",
           "execution": 0,
-          "seq": 18,
+          "seq": 19,
           "index": 1
         },
         "origin": "derived",
@@ -3130,6 +3332,7 @@
                 "line": 7,
                 "column": 5
               },
+              "script": "touch /var/folders/nm/bd2dwzy52t1ckn3tklsfmy1c0000gn/T/.tmpWwhqJ5/no",
               "edges": {
                 "4": {
                   "to": "exit",
@@ -3146,7 +3349,7 @@
             "role": "none"
           }
         },
-        "recorded_at": 1789709597135,
+        "recorded_at": 1789783554308,
         "derived": {
           "event": "visit.started",
           "inputs": [
@@ -3169,16 +3372,16 @@
       }
     },
     {
-      "run_id": "01M2SG2E0BEBVXSJCT8MZE19FT",
-      "stream_seq": 44,
+      "run_id": "01M2VPKCKJ26JE3FNEJRZJCZK0",
+      "stream_seq": 47,
       "kind": "petri",
-      "id": "execution 0/18/2",
-      "recorded_at": 1789709597135,
+      "id": "execution 0/19/2",
+      "recorded_at": 1789783554308,
       "item": {
         "id": {
           "log": "execution",
           "execution": 0,
-          "seq": 18,
+          "seq": 19,
           "index": 2
         },
         "origin": "derived",
@@ -3200,6 +3403,7 @@
                 "line": 7,
                 "column": 5
               },
+              "script": "touch /var/folders/nm/bd2dwzy52t1ckn3tklsfmy1c0000gn/T/.tmpWwhqJ5/no",
               "edges": {
                 "4": {
                   "to": "exit",
@@ -3216,7 +3420,7 @@
             "role": "none"
           }
         },
-        "recorded_at": 1789709597135,
+        "recorded_at": 1789783554308,
         "derived": {
           "event": "wait.state.changed",
           "state": "awaiting_admission"
@@ -3224,16 +3428,16 @@
       }
     },
     {
-      "run_id": "01M2SG2E0BEBVXSJCT8MZE19FT",
-      "stream_seq": 45,
+      "run_id": "01M2VPKCKJ26JE3FNEJRZJCZK0",
+      "stream_seq": 48,
       "kind": "petri",
-      "id": "execution 0/19/0",
-      "recorded_at": 1789709597135,
+      "id": "execution 0/20/0",
+      "recorded_at": 1789783554308,
       "item": {
         "id": {
           "log": "execution",
           "execution": 0,
-          "seq": 19,
+          "seq": 20,
           "index": 0
         },
         "origin": "core",
@@ -3275,11 +3479,11 @@
             "role": "none"
           }
         },
-        "recorded_at": 1789709597135,
+        "recorded_at": 1789783554308,
         "record": {
-          "seq": 19,
+          "seq": 20,
           "origin": "core",
-          "recorded_at": 1789709597135,
+          "recorded_at": 1789783554308,
           "body": {
             "event": "route.applied",
             "kind": "edge",
@@ -3302,6 +3506,7 @@
                 "line": 7,
                 "column": 5
               },
+              "script": "touch /var/folders/nm/bd2dwzy52t1ckn3tklsfmy1c0000gn/T/.tmpWwhqJ5/no",
               "edges": {
                 "4": {
                   "to": "exit",
@@ -3316,16 +3521,16 @@
       }
     },
     {
-      "run_id": "01M2SG2E0BEBVXSJCT8MZE19FT",
-      "stream_seq": 46,
+      "run_id": "01M2VPKCKJ26JE3FNEJRZJCZK0",
+      "stream_seq": 49,
       "kind": "petri",
-      "id": "execution 0/20/0",
-      "recorded_at": 1789709597135,
+      "id": "execution 0/21/0",
+      "recorded_at": 1789783554308,
       "item": {
         "id": {
           "log": "execution",
           "execution": 0,
-          "seq": 20,
+          "seq": 21,
           "index": 0
         },
         "origin": "core",
@@ -3367,11 +3572,11 @@
             "role": "none"
           }
         },
-        "recorded_at": 1789709597135,
+        "recorded_at": 1789783554308,
         "record": {
-          "seq": 20,
+          "seq": 21,
           "origin": "core",
-          "recorded_at": 1789709597135,
+          "recorded_at": 1789783554308,
           "body": {
             "event": "token.emitted",
             "edge": 2,
@@ -3391,16 +3596,16 @@
       }
     },
     {
-      "run_id": "01M2SG2E0BEBVXSJCT8MZE19FT",
-      "stream_seq": 47,
+      "run_id": "01M2VPKCKJ26JE3FNEJRZJCZK0",
+      "stream_seq": 50,
       "kind": "petri",
-      "id": "execution 0/21/0",
-      "recorded_at": 1789709597135,
+      "id": "execution 0/22/0",
+      "recorded_at": 1789783554308,
       "item": {
         "id": {
           "log": "execution",
           "execution": 0,
-          "seq": 21,
+          "seq": 22,
           "index": 0
         },
         "origin": "external",
@@ -3422,6 +3627,7 @@
                 "line": 7,
                 "column": 5
               },
+              "script": "touch /var/folders/nm/bd2dwzy52t1ckn3tklsfmy1c0000gn/T/.tmpWwhqJ5/no",
               "edges": {
                 "4": {
                   "to": "exit",
@@ -3438,11 +3644,11 @@
             "role": "none"
           }
         },
-        "recorded_at": 1789709597135,
+        "recorded_at": 1789783554308,
         "record": {
-          "seq": 21,
+          "seq": 22,
           "origin": "external",
-          "recorded_at": 1789709597135,
+          "recorded_at": 1789783554308,
           "body": {
             "event": "admission.decided",
             "decision_id": {
@@ -3458,16 +3664,16 @@
       }
     },
     {
-      "run_id": "01M2SG2E0BEBVXSJCT8MZE19FT",
-      "stream_seq": 48,
+      "run_id": "01M2VPKCKJ26JE3FNEJRZJCZK0",
+      "stream_seq": 51,
       "kind": "petri",
-      "id": "execution 0/22/0",
-      "recorded_at": 1789709597135,
+      "id": "execution 0/23/0",
+      "recorded_at": 1789783554308,
       "item": {
         "id": {
           "log": "execution",
           "execution": 0,
-          "seq": 22,
+          "seq": 23,
           "index": 0
         },
         "origin": "external",
@@ -3489,6 +3695,7 @@
                 "line": 7,
                 "column": 5
               },
+              "script": "touch /var/folders/nm/bd2dwzy52t1ckn3tklsfmy1c0000gn/T/.tmpWwhqJ5/no",
               "edges": {
                 "4": {
                   "to": "exit",
@@ -3505,11 +3712,11 @@
             "role": "none"
           }
         },
-        "recorded_at": 1789709597135,
+        "recorded_at": 1789783554308,
         "record": {
-          "seq": 22,
+          "seq": 23,
           "origin": "external",
-          "recorded_at": 1789709597135,
+          "recorded_at": 1789783554308,
           "body": {
             "event": "step.started",
             "firing": 3,
@@ -3519,16 +3726,16 @@
       }
     },
     {
-      "run_id": "01M2SG2E0BEBVXSJCT8MZE19FT",
-      "stream_seq": 49,
+      "run_id": "01M2VPKCKJ26JE3FNEJRZJCZK0",
+      "stream_seq": 52,
       "kind": "petri",
-      "id": "execution 0/22/1",
-      "recorded_at": 1789709597135,
+      "id": "execution 0/23/1",
+      "recorded_at": 1789783554308,
       "item": {
         "id": {
           "log": "execution",
           "execution": 0,
-          "seq": 22,
+          "seq": 23,
           "index": 1
         },
         "origin": "derived",
@@ -3550,6 +3757,7 @@
                 "line": 7,
                 "column": 5
               },
+              "script": "touch /var/folders/nm/bd2dwzy52t1ckn3tklsfmy1c0000gn/T/.tmpWwhqJ5/no",
               "edges": {
                 "4": {
                   "to": "exit",
@@ -3566,7 +3774,7 @@
             "role": "none"
           }
         },
-        "recorded_at": 1789709597135,
+        "recorded_at": 1789783554308,
         "derived": {
           "event": "wait.state.changed",
           "state": "running"
@@ -3574,16 +3782,16 @@
       }
     },
     {
-      "run_id": "01M2SG2E0BEBVXSJCT8MZE19FT",
-      "stream_seq": 50,
+      "run_id": "01M2VPKCKJ26JE3FNEJRZJCZK0",
+      "stream_seq": 53,
       "kind": "petri",
-      "id": "execution 0/23/0",
-      "recorded_at": 1789709597264,
+      "id": "execution 0/24/0",
+      "recorded_at": 1789783555020,
       "item": {
         "id": {
           "log": "execution",
           "execution": 0,
-          "seq": 23,
+          "seq": 24,
           "index": 0
         },
         "origin": "external",
@@ -3605,6 +3813,7 @@
                 "line": 7,
                 "column": 5
               },
+              "script": "touch /var/folders/nm/bd2dwzy52t1ckn3tklsfmy1c0000gn/T/.tmpWwhqJ5/no",
               "edges": {
                 "4": {
                   "to": "exit",
@@ -3621,11 +3830,11 @@
             "role": "none"
           }
         },
-        "recorded_at": 1789709597264,
+        "recorded_at": 1789783555020,
         "record": {
-          "seq": 23,
+          "seq": 24,
           "origin": "external",
-          "recorded_at": 1789709597264,
+          "recorded_at": 1789783555020,
           "body": {
             "event": "step.progress.recorded",
             "firing": 3,
@@ -3638,7 +3847,7 @@
                     "firing": 3,
                     "attempt": 1,
                     "workspace": "invocation-0-scope-0",
-                    "git_commit_sha": "67996dc3f38bf41af0da8b24a0afebb2277554e1",
+                    "git_commit_sha": "66c55d2858904b2bb1eb2a42c6a60932920d7633",
                     "reused": false
                   }
                 }
@@ -3656,7 +3865,7 @@
                 "firing": 3,
                 "attempt": 1,
                 "workspace": "invocation-0-scope-0",
-                "git_commit_sha": "67996dc3f38bf41af0da8b24a0afebb2277554e1",
+                "git_commit_sha": "66c55d2858904b2bb1eb2a42c6a60932920d7633",
                 "reused": false
               }
             }
@@ -3665,16 +3874,16 @@
       }
     },
     {
-      "run_id": "01M2SG2E0BEBVXSJCT8MZE19FT",
-      "stream_seq": 51,
+      "run_id": "01M2VPKCKJ26JE3FNEJRZJCZK0",
+      "stream_seq": 54,
       "kind": "petri",
-      "id": "execution 0/24/0",
-      "recorded_at": 1789709597264,
+      "id": "execution 0/25/0",
+      "recorded_at": 1789783555020,
       "item": {
         "id": {
           "log": "execution",
           "execution": 0,
-          "seq": 24,
+          "seq": 25,
           "index": 0
         },
         "origin": "external",
@@ -3696,6 +3905,7 @@
                 "line": 7,
                 "column": 5
               },
+              "script": "touch /var/folders/nm/bd2dwzy52t1ckn3tklsfmy1c0000gn/T/.tmpWwhqJ5/no",
               "edges": {
                 "4": {
                   "to": "exit",
@@ -3712,11 +3922,11 @@
             "role": "none"
           }
         },
-        "recorded_at": 1789709597264,
+        "recorded_at": 1789783555020,
         "record": {
-          "seq": 24,
+          "seq": 25,
           "origin": "external",
-          "recorded_at": 1789709597264,
+          "recorded_at": 1789783555020,
           "body": {
             "event": "step.finished",
             "firing": 3,
@@ -3730,7 +3940,7 @@
                 "failure_class": ""
               },
               "metrics": {
-                "duration_ms": 35
+                "duration_ms": 57
               },
               "context_updates": {
                 "command.output": "",
@@ -3746,16 +3956,16 @@
       }
     },
     {
-      "run_id": "01M2SG2E0BEBVXSJCT8MZE19FT",
-      "stream_seq": 52,
+      "run_id": "01M2VPKCKJ26JE3FNEJRZJCZK0",
+      "stream_seq": 55,
       "kind": "petri",
-      "id": "execution 0/24/1",
-      "recorded_at": 1789709597264,
+      "id": "execution 0/25/1",
+      "recorded_at": 1789783555020,
       "item": {
         "id": {
           "log": "execution",
           "execution": 0,
-          "seq": 24,
+          "seq": 25,
           "index": 1
         },
         "origin": "derived",
@@ -3777,6 +3987,7 @@
                 "line": 7,
                 "column": 5
               },
+              "script": "touch /var/folders/nm/bd2dwzy52t1ckn3tklsfmy1c0000gn/T/.tmpWwhqJ5/no",
               "edges": {
                 "4": {
                   "to": "exit",
@@ -3793,7 +4004,7 @@
             "role": "none"
           }
         },
-        "recorded_at": 1789709597264,
+        "recorded_at": 1789783555020,
         "derived": {
           "event": "visit.completed",
           "outcome": {
@@ -3805,7 +4016,7 @@
               "failure_class": ""
             },
             "metrics": {
-              "duration_ms": 35
+              "duration_ms": 57
             },
             "context_updates": {
               "command.output": "",
@@ -3818,21 +4029,26 @@
       }
     },
     {
-      "run_id": "01M2SG2E0BEBVXSJCT8MZE19FT",
-      "stream_seq": 53,
+      "run_id": "01M2VPKCKJ26JE3FNEJRZJCZK0",
+      "stream_seq": 56,
       "kind": "platform",
-      "id": "10",
-      "recorded_at": 1789709597264,
+      "id": "12",
+      "recorded_at": 1789783555119,
       "item": {
-        "seq": 10,
-        "recorded_at": 1789709597264,
+        "seq": 12,
+        "recorded_at": 1789783555119,
         "record": {
           "kind": "checkpoint",
           "execution": 0,
           "firing": 3,
           "attempt": 1,
           "workspace": "invocation-0-scope-0",
-          "git_commit_sha": "67996dc3f38bf41af0da8b24a0afebb2277554e1",
+          "git_commit_sha": "66c55d2858904b2bb1eb2a42c6a60932920d7633",
+          "diff_summary": {
+            "files_changed": 0,
+            "additions": 0,
+            "deletions": 0
+          },
           "operation": {
             "execution": 0,
             "decision": {
@@ -3851,16 +4067,16 @@
       }
     },
     {
-      "run_id": "01M2SG2E0BEBVXSJCT8MZE19FT",
-      "stream_seq": 54,
+      "run_id": "01M2VPKCKJ26JE3FNEJRZJCZK0",
+      "stream_seq": 57,
       "kind": "petri",
-      "id": "execution 0/25/0",
-      "recorded_at": 1789709597265,
+      "id": "execution 0/26/0",
+      "recorded_at": 1789783555121,
       "item": {
         "id": {
           "log": "execution",
           "execution": 0,
-          "seq": 25,
+          "seq": 26,
           "index": 0
         },
         "origin": "external",
@@ -3882,6 +4098,7 @@
                 "line": 7,
                 "column": 5
               },
+              "script": "touch /var/folders/nm/bd2dwzy52t1ckn3tklsfmy1c0000gn/T/.tmpWwhqJ5/no",
               "edges": {
                 "4": {
                   "to": "exit",
@@ -3898,11 +4115,11 @@
             "role": "none"
           }
         },
-        "recorded_at": 1789709597265,
+        "recorded_at": 1789783555121,
         "record": {
-          "seq": 25,
+          "seq": 26,
           "origin": "external",
-          "recorded_at": 1789709597265,
+          "recorded_at": 1789783555121,
           "body": {
             "event": "routing.resolved",
             "decision_id": {
@@ -3948,16 +4165,16 @@
       }
     },
     {
-      "run_id": "01M2SG2E0BEBVXSJCT8MZE19FT",
-      "stream_seq": 55,
+      "run_id": "01M2VPKCKJ26JE3FNEJRZJCZK0",
+      "stream_seq": 58,
       "kind": "petri",
-      "id": "execution 0/25/1",
-      "recorded_at": 1789709597265,
+      "id": "execution 0/26/1",
+      "recorded_at": 1789783555121,
       "item": {
         "id": {
           "log": "execution",
           "execution": 0,
-          "seq": 25,
+          "seq": 26,
           "index": 1
         },
         "origin": "derived",
@@ -3989,7 +4206,7 @@
             "role": "none"
           }
         },
-        "recorded_at": 1789709597265,
+        "recorded_at": 1789783555121,
         "derived": {
           "event": "visit.started",
           "inputs": [
@@ -4009,16 +4226,16 @@
       }
     },
     {
-      "run_id": "01M2SG2E0BEBVXSJCT8MZE19FT",
-      "stream_seq": 56,
+      "run_id": "01M2VPKCKJ26JE3FNEJRZJCZK0",
+      "stream_seq": 59,
       "kind": "petri",
-      "id": "execution 0/25/2",
-      "recorded_at": 1789709597265,
+      "id": "execution 0/26/2",
+      "recorded_at": 1789783555121,
       "item": {
         "id": {
           "log": "execution",
           "execution": 0,
-          "seq": 25,
+          "seq": 26,
           "index": 2
         },
         "origin": "derived",
@@ -4050,7 +4267,7 @@
             "role": "none"
           }
         },
-        "recorded_at": 1789709597265,
+        "recorded_at": 1789783555121,
         "derived": {
           "event": "wait.state.changed",
           "state": "awaiting_admission"
@@ -4058,16 +4275,16 @@
       }
     },
     {
-      "run_id": "01M2SG2E0BEBVXSJCT8MZE19FT",
-      "stream_seq": 57,
+      "run_id": "01M2VPKCKJ26JE3FNEJRZJCZK0",
+      "stream_seq": 60,
       "kind": "petri",
-      "id": "execution 0/26/0",
-      "recorded_at": 1789709597265,
+      "id": "execution 0/27/0",
+      "recorded_at": 1789783555121,
       "item": {
         "id": {
           "log": "execution",
           "execution": 0,
-          "seq": 26,
+          "seq": 27,
           "index": 0
         },
         "origin": "core",
@@ -4089,6 +4306,7 @@
                 "line": 7,
                 "column": 5
               },
+              "script": "touch /var/folders/nm/bd2dwzy52t1ckn3tklsfmy1c0000gn/T/.tmpWwhqJ5/no",
               "edges": {
                 "4": {
                   "to": "exit",
@@ -4105,11 +4323,11 @@
             "role": "none"
           }
         },
-        "recorded_at": 1789709597265,
+        "recorded_at": 1789783555121,
         "record": {
-          "seq": 26,
+          "seq": 27,
           "origin": "core",
-          "recorded_at": 1789709597265,
+          "recorded_at": 1789783555121,
           "body": {
             "event": "route.applied",
             "kind": "edge",
@@ -4140,16 +4358,16 @@
       }
     },
     {
-      "run_id": "01M2SG2E0BEBVXSJCT8MZE19FT",
-      "stream_seq": 58,
+      "run_id": "01M2VPKCKJ26JE3FNEJRZJCZK0",
+      "stream_seq": 61,
       "kind": "petri",
-      "id": "execution 0/27/0",
-      "recorded_at": 1789709597265,
+      "id": "execution 0/28/0",
+      "recorded_at": 1789783555121,
       "item": {
         "id": {
           "log": "execution",
           "execution": 0,
-          "seq": 27,
+          "seq": 28,
           "index": 0
         },
         "origin": "core",
@@ -4171,6 +4389,7 @@
                 "line": 7,
                 "column": 5
               },
+              "script": "touch /var/folders/nm/bd2dwzy52t1ckn3tklsfmy1c0000gn/T/.tmpWwhqJ5/no",
               "edges": {
                 "4": {
                   "to": "exit",
@@ -4187,11 +4406,11 @@
             "role": "none"
           }
         },
-        "recorded_at": 1789709597265,
+        "recorded_at": 1789783555121,
         "record": {
-          "seq": 27,
+          "seq": 28,
           "origin": "core",
-          "recorded_at": 1789709597265,
+          "recorded_at": 1789783555121,
           "body": {
             "event": "token.emitted",
             "edge": 4,
@@ -4208,16 +4427,16 @@
       }
     },
     {
-      "run_id": "01M2SG2E0BEBVXSJCT8MZE19FT",
-      "stream_seq": 59,
+      "run_id": "01M2VPKCKJ26JE3FNEJRZJCZK0",
+      "stream_seq": 62,
       "kind": "petri",
-      "id": "execution 0/28/0",
-      "recorded_at": 1789709597265,
+      "id": "execution 0/29/0",
+      "recorded_at": 1789783555121,
       "item": {
         "id": {
           "log": "execution",
           "execution": 0,
-          "seq": 28,
+          "seq": 29,
           "index": 0
         },
         "origin": "external",
@@ -4249,11 +4468,11 @@
             "role": "none"
           }
         },
-        "recorded_at": 1789709597265,
+        "recorded_at": 1789783555121,
         "record": {
-          "seq": 28,
+          "seq": 29,
           "origin": "external",
-          "recorded_at": 1789709597265,
+          "recorded_at": 1789783555121,
           "body": {
             "event": "admission.decided",
             "decision_id": {
@@ -4269,16 +4488,16 @@
       }
     },
     {
-      "run_id": "01M2SG2E0BEBVXSJCT8MZE19FT",
-      "stream_seq": 60,
+      "run_id": "01M2VPKCKJ26JE3FNEJRZJCZK0",
+      "stream_seq": 63,
       "kind": "petri",
-      "id": "execution 0/29/0",
-      "recorded_at": 1789709597265,
+      "id": "execution 0/30/0",
+      "recorded_at": 1789783555121,
       "item": {
         "id": {
           "log": "execution",
           "execution": 0,
-          "seq": 29,
+          "seq": 30,
           "index": 0
         },
         "origin": "external",
@@ -4310,11 +4529,11 @@
             "role": "none"
           }
         },
-        "recorded_at": 1789709597265,
+        "recorded_at": 1789783555121,
         "record": {
-          "seq": 29,
+          "seq": 30,
           "origin": "external",
-          "recorded_at": 1789709597265,
+          "recorded_at": 1789783555121,
           "body": {
             "event": "step.started",
             "firing": 4,
@@ -4324,16 +4543,16 @@
       }
     },
     {
-      "run_id": "01M2SG2E0BEBVXSJCT8MZE19FT",
-      "stream_seq": 61,
+      "run_id": "01M2VPKCKJ26JE3FNEJRZJCZK0",
+      "stream_seq": 64,
       "kind": "petri",
-      "id": "execution 0/29/1",
-      "recorded_at": 1789709597265,
+      "id": "execution 0/30/1",
+      "recorded_at": 1789783555121,
       "item": {
         "id": {
           "log": "execution",
           "execution": 0,
-          "seq": 29,
+          "seq": 30,
           "index": 1
         },
         "origin": "derived",
@@ -4365,7 +4584,7 @@
             "role": "none"
           }
         },
-        "recorded_at": 1789709597265,
+        "recorded_at": 1789783555121,
         "derived": {
           "event": "wait.state.changed",
           "state": "running"
@@ -4373,16 +4592,16 @@
       }
     },
     {
-      "run_id": "01M2SG2E0BEBVXSJCT8MZE19FT",
-      "stream_seq": 62,
+      "run_id": "01M2VPKCKJ26JE3FNEJRZJCZK0",
+      "stream_seq": 65,
       "kind": "petri",
-      "id": "execution 0/30/0",
-      "recorded_at": 1789709597370,
+      "id": "execution 0/31/0",
+      "recorded_at": 1789783555485,
       "item": {
         "id": {
           "log": "execution",
           "execution": 0,
-          "seq": 30,
+          "seq": 31,
           "index": 0
         },
         "origin": "external",
@@ -4414,11 +4633,11 @@
             "role": "none"
           }
         },
-        "recorded_at": 1789709597370,
+        "recorded_at": 1789783555485,
         "record": {
-          "seq": 30,
+          "seq": 31,
           "origin": "external",
-          "recorded_at": 1789709597370,
+          "recorded_at": 1789783555485,
           "body": {
             "event": "step.progress.recorded",
             "firing": 4,
@@ -4431,7 +4650,7 @@
                     "firing": 4,
                     "attempt": 1,
                     "workspace": "invocation-0-scope-0",
-                    "git_commit_sha": "49d77497eb2088a5a84c05fe03824f20621e3a3b",
+                    "git_commit_sha": "3a5e4349b77394aba3ffef05e359a6ca192f9708",
                     "reused": false
                   }
                 }
@@ -4449,7 +4668,7 @@
                 "firing": 4,
                 "attempt": 1,
                 "workspace": "invocation-0-scope-0",
-                "git_commit_sha": "49d77497eb2088a5a84c05fe03824f20621e3a3b",
+                "git_commit_sha": "3a5e4349b77394aba3ffef05e359a6ca192f9708",
                 "reused": false
               }
             }
@@ -4458,16 +4677,16 @@
       }
     },
     {
-      "run_id": "01M2SG2E0BEBVXSJCT8MZE19FT",
-      "stream_seq": 63,
+      "run_id": "01M2VPKCKJ26JE3FNEJRZJCZK0",
+      "stream_seq": 66,
       "kind": "petri",
-      "id": "execution 0/31/0",
-      "recorded_at": 1789709597370,
+      "id": "execution 0/32/0",
+      "recorded_at": 1789783555485,
       "item": {
         "id": {
           "log": "execution",
           "execution": 0,
-          "seq": 31,
+          "seq": 32,
           "index": 0
         },
         "origin": "external",
@@ -4499,11 +4718,11 @@
             "role": "none"
           }
         },
-        "recorded_at": 1789709597370,
+        "recorded_at": 1789783555485,
         "record": {
-          "seq": 31,
+          "seq": 32,
           "origin": "external",
-          "recorded_at": 1789709597370,
+          "recorded_at": 1789783555485,
           "body": {
             "event": "step.finished",
             "firing": 4,
@@ -4530,16 +4749,16 @@
       }
     },
     {
-      "run_id": "01M2SG2E0BEBVXSJCT8MZE19FT",
-      "stream_seq": 64,
+      "run_id": "01M2VPKCKJ26JE3FNEJRZJCZK0",
+      "stream_seq": 67,
       "kind": "petri",
-      "id": "execution 0/31/1",
-      "recorded_at": 1789709597370,
+      "id": "execution 0/32/1",
+      "recorded_at": 1789783555485,
       "item": {
         "id": {
           "log": "execution",
           "execution": 0,
-          "seq": 31,
+          "seq": 32,
           "index": 1
         },
         "origin": "derived",
@@ -4571,7 +4790,7 @@
             "role": "none"
           }
         },
-        "recorded_at": 1789709597370,
+        "recorded_at": 1789783555485,
         "derived": {
           "event": "visit.completed",
           "outcome": {
@@ -4593,21 +4812,26 @@
       }
     },
     {
-      "run_id": "01M2SG2E0BEBVXSJCT8MZE19FT",
-      "stream_seq": 65,
+      "run_id": "01M2VPKCKJ26JE3FNEJRZJCZK0",
+      "stream_seq": 68,
       "kind": "platform",
-      "id": "11",
-      "recorded_at": 1789709597370,
+      "id": "13",
+      "recorded_at": 1789783555630,
       "item": {
-        "seq": 11,
-        "recorded_at": 1789709597370,
+        "seq": 13,
+        "recorded_at": 1789783555630,
         "record": {
           "kind": "checkpoint",
           "execution": 0,
           "firing": 4,
           "attempt": 1,
           "workspace": "invocation-0-scope-0",
-          "git_commit_sha": "49d77497eb2088a5a84c05fe03824f20621e3a3b",
+          "git_commit_sha": "3a5e4349b77394aba3ffef05e359a6ca192f9708",
+          "diff_summary": {
+            "files_changed": 0,
+            "additions": 0,
+            "deletions": 0
+          },
           "operation": {
             "execution": 0,
             "decision": {
@@ -4626,50 +4850,16 @@
       }
     },
     {
-      "run_id": "01M2SG2E0BEBVXSJCT8MZE19FT",
-      "stream_seq": 66,
+      "run_id": "01M2VPKCKJ26JE3FNEJRZJCZK0",
+      "stream_seq": 69,
       "kind": "petri",
-      "id": "coordinator/4/0",
-      "recorded_at": 1789709597371,
-      "item": {
-        "id": {
-          "log": "coordinator",
-          "seq": 4,
-          "index": 0
-        },
-        "origin": "external",
-        "context": {
-          "invocation": 0,
-          "execution": 0
-        },
-        "recorded_at": 1789709597371,
-        "record": {
-          "seq": 4,
-          "origin": "external",
-          "recorded_at": 1789709597371,
-          "body": {
-            "event": "execution.finished",
-            "execution": 0,
-            "exit": {
-              "terminal": {
-                "status": "success"
-              }
-            }
-          }
-        }
-      }
-    },
-    {
-      "run_id": "01M2SG2E0BEBVXSJCT8MZE19FT",
-      "stream_seq": 67,
-      "kind": "petri",
-      "id": "execution 0/32/0",
-      "recorded_at": 1789709597371,
+      "id": "execution 0/33/0",
+      "recorded_at": 1789783555633,
       "item": {
         "id": {
           "log": "execution",
           "execution": 0,
-          "seq": 32,
+          "seq": 33,
           "index": 0
         },
         "origin": "external",
@@ -4701,11 +4891,11 @@
             "role": "none"
           }
         },
-        "recorded_at": 1789709597371,
+        "recorded_at": 1789783555633,
         "record": {
-          "seq": 32,
+          "seq": 33,
           "origin": "external",
-          "recorded_at": 1789709597371,
+          "recorded_at": 1789783555633,
           "body": {
             "event": "routing.resolved",
             "decision_id": {
@@ -4723,11 +4913,66 @@
       }
     },
     {
-      "run_id": "01M2SG2E0BEBVXSJCT8MZE19FT",
-      "stream_seq": 68,
+      "run_id": "01M2VPKCKJ26JE3FNEJRZJCZK0",
+      "stream_seq": 70,
+      "kind": "platform",
+      "id": "14",
+      "recorded_at": 1789783555740,
+      "item": {
+        "seq": 14,
+        "recorded_at": 1789783555740,
+        "record": {
+          "kind": "run.diff",
+          "base_sha": "965e6fd20fa20aba86e49ce17906e3867904b548",
+          "head_sha": "3a5e4349b77394aba3ffef05e359a6ca192f9708",
+          "diff_summary": {
+            "files_changed": 0,
+            "additions": 0,
+            "deletions": 0
+          }
+        }
+      }
+    },
+    {
+      "run_id": "01M2VPKCKJ26JE3FNEJRZJCZK0",
+      "stream_seq": 71,
+      "kind": "petri",
+      "id": "coordinator/4/0",
+      "recorded_at": 1789783555741,
+      "item": {
+        "id": {
+          "log": "coordinator",
+          "seq": 4,
+          "index": 0
+        },
+        "origin": "external",
+        "context": {
+          "invocation": 0,
+          "execution": 0
+        },
+        "recorded_at": 1789783555741,
+        "record": {
+          "seq": 4,
+          "origin": "external",
+          "recorded_at": 1789783555741,
+          "body": {
+            "event": "execution.finished",
+            "execution": 0,
+            "exit": {
+              "terminal": {
+                "status": "success"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "run_id": "01M2VPKCKJ26JE3FNEJRZJCZK0",
+      "stream_seq": 72,
       "kind": "petri",
       "id": "coordinator/5/0",
-      "recorded_at": 1789709597371,
+      "recorded_at": 1789783555741,
       "item": {
         "id": {
           "log": "coordinator",
@@ -4739,11 +4984,11 @@
           "invocation": 0,
           "execution": 0
         },
-        "recorded_at": 1789709597371,
+        "recorded_at": 1789783555741,
         "record": {
           "seq": 5,
           "origin": "external",
-          "recorded_at": 1789709597371,
+          "recorded_at": 1789783555741,
           "body": {
             "event": "invocation.finished",
             "invocation": 0,
@@ -4768,11 +5013,11 @@
       }
     },
     {
-      "run_id": "01M2SG2E0BEBVXSJCT8MZE19FT",
-      "stream_seq": 69,
+      "run_id": "01M2VPKCKJ26JE3FNEJRZJCZK0",
+      "stream_seq": 73,
       "kind": "petri",
       "id": "coordinator/6/0",
-      "recorded_at": 1789709597412,
+      "recorded_at": 1789783555827,
       "item": {
         "id": {
           "log": "coordinator",
@@ -4780,12 +5025,49 @@
           "index": 0
         },
         "origin": "external",
-        "context": {},
-        "recorded_at": 1789709597412,
+        "context": {
+          "invocation": 0
+        },
+        "recorded_at": 1789783555827,
         "record": {
           "seq": 6,
           "origin": "external",
-          "recorded_at": 1789709597412,
+          "recorded_at": 1789783555827,
+          "body": {
+            "event": "scope.released",
+            "invocation": 0,
+            "lease": 0,
+            "scope": {
+              "declared": 0
+            },
+            "workspace": "invocation-0-scope-0",
+            "provider": "host",
+            "instance": "host-g18d696a89e0c30b0-691-0",
+            "outcome": "succeeded",
+            "retained": true
+          }
+        }
+      }
+    },
+    {
+      "run_id": "01M2VPKCKJ26JE3FNEJRZJCZK0",
+      "stream_seq": 74,
+      "kind": "petri",
+      "id": "coordinator/7/0",
+      "recorded_at": 1789783555828,
+      "item": {
+        "id": {
+          "log": "coordinator",
+          "seq": 7,
+          "index": 0
+        },
+        "origin": "external",
+        "context": {},
+        "recorded_at": 1789783555828,
+        "record": {
+          "seq": 7,
+          "origin": "external",
+          "recorded_at": 1789783555828,
           "body": {
             "event": "run.finished",
             "status": "success"
@@ -4794,14 +5076,14 @@
       }
     },
     {
-      "run_id": "01M2SG2E0BEBVXSJCT8MZE19FT",
-      "stream_seq": 70,
+      "run_id": "01M2VPKCKJ26JE3FNEJRZJCZK0",
+      "stream_seq": 75,
       "kind": "platform",
-      "id": "12",
-      "recorded_at": 1789709597416,
+      "id": "15",
+      "recorded_at": 1789783555840,
       "item": {
-        "seq": 12,
-        "recorded_at": 1789709597416,
+        "seq": 15,
+        "recorded_at": 1789783555840,
         "record": {
           "kind": "run.lifecycle",
           "transition": "succeeded",

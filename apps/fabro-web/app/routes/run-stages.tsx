@@ -83,6 +83,7 @@ import {
   agentEnvelopesOf,
   commandOutcomeOf,
   commandScriptOf,
+  outputLossNote,
   debugRowSearchText,
   debugRowsFromStream,
   extractPetriStageContext,
@@ -91,6 +92,7 @@ import {
   parallelOverviewFromProjection,
   parsePetriInterviewPairs,
   reducerTranscriptFromProjection,
+  type CommandOutputLoss,
   type DebugRow,
 } from "../lib/petri-stream";
 import {
@@ -156,6 +158,8 @@ type TurnType =
       exitCode: number | null;
       durationMs: number;
       outputBytes: number;
+      /** What the capture did not keep, or null when the output is whole. */
+      outputLoss: CommandOutputLoss | null;
     };
 
 type CommandTurn = Extract<TurnType, { kind: "command" }>;
@@ -353,6 +357,7 @@ export function buildPetriStageActivity(
         exitCode: outcome.exitCode,
         durationMs: outcome.durationMs || (stage?.timing?.wall_time_ms ?? 0),
         outputBytes: stage?.output_bytes ?? 0,
+        outputLoss: outcome.outputLoss,
       });
     }
     return { turns, pendingTools: [] };
@@ -1510,6 +1515,14 @@ function CommandLogs({
         byteCount={turn.outputBytes}
         enabled={!turn.running}
       />
+      {outputLossNote(turn.outputLoss) && (
+        <p
+          data-testid="command-output-loss"
+          className="text-xs text-amber"
+        >
+          {outputLossNote(turn.outputLoss)}
+        </p>
+      )}
     </div>
   );
 }

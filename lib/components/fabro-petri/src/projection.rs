@@ -36,12 +36,13 @@ use fabro_types::{
     BlockedReason, CheckpointRecord as ViewCheckpoint, CodingAgentEvent, CodingEvent, Conclusion,
     FailureCategory, FailureDetail, FailureReason, InterviewOption, InterviewQuestionRecord,
     ModelRef, ModelUsage, ParallelBranchId, ParallelBranchResult, PendingInterviewRecord,
-    PullRequestCreation, PullRequestCreationStatus, PullRequestLink, RunApproval, RunApprovalState,
-    RunArtifact, RunControlAction, RunDiff, RunFailure, RunId, RunProjection, RunSandbox,
-    RunSandboxFailure, RunSandboxInstance, RunSandboxPlan, RunSandboxRuntime, RunStatus, RunTiming,
-    SandboxProviderKind, StageCompletion, StageHandler, StageId, StageInferenceProjection,
-    StageModelUsage, StageOutcome, StageProjection, StageState, StageTiming, StartRecord,
-    SuccessReason, first_event_seq, format_blob_ref, parse_blob_ref, timing, usage_rollup,
+    PullRequestCreation, PullRequestCreationStatus, PullRequestLink, ReviewTarget,
+    ReviewTargetKind, RunApproval, RunApprovalState, RunArtifact, RunControlAction, RunDiff,
+    RunFailure, RunId, RunProjection, RunSandbox, RunSandboxFailure, RunSandboxInstance,
+    RunSandboxPlan, RunSandboxRuntime, RunStatus, RunTiming, SandboxProviderKind, StageCompletion,
+    StageHandler, StageId, StageInferenceProjection, StageModelUsage, StageOutcome,
+    StageProjection, StageState, StageTiming, StartRecord, SuccessReason, ToolCategory, ToolSource,
+    ToolSummary, first_event_seq, format_blob_ref, parse_blob_ref, timing, usage_rollup,
 };
 use lithos_llm::catalog::{ModelId, ProviderId};
 use lithos_llm::types::Usage;
@@ -49,6 +50,7 @@ use petri_execution::events::{Derived, NodeRef, Parsed, RunEvent, Subject, ViewE
 use petri_execution::{CoordinatorEvent, ExecutionId, InvocationId};
 use petri_runtime::engine::{Admission, Event};
 use petri_runtime::ir::{Metrics, SandboxInstance, Status, StepEvent};
+use petri_runtime::steps::QuestionReference;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tracing::debug;
@@ -848,6 +850,27 @@ impl RunView {
                             }
                         }
                     }
+                    // The tools a native session was offered, once per
+                    // session (VIEWS.md "Agent activity", tools available):
+                    // the stage's list is the union over its sessions, by
+                    // name, in the order the sessions listed them.
+                    "attractor.tools" => {
+                        if let Some(stage) = self.stage_of(execution, event.subject.as_ref()) {
+                            let tools = payload.get("tools").and_then(Value::as_array);
+                            for tool in tools.into_iter().flatten() {
+                                let Some(summary) = tool_summary(tool) else {
+                                    continue;
+                                };
+                                if !stage
+                                    .agent_tools
+                                    .iter()
+                                    .any(|known| known.name == summary.name)
+                                {
+                                    stage.agent_tools.push(summary);
+                                }
+                            }
+                        }
+                    }
                     "attractor.parallel.branch.started" => {
                         let invocation = payload.get("invocation").and_then(Value::as_u64);
                         let index = payload
@@ -916,16 +939,16 @@ impl RunView {
                                 .map(|option| InterviewOption {
                                     key:         option.key.clone(),
                                     label:       option.label.clone(),
-                                    description: None,
-                                    preview:     None,
+                                    description: option.description.clone(),
+                                    preview:     option.preview.clone(),
                                 })
                                 .collect(),
                             allow_freeform:  question.freeform,
                             timeout_seconds: question
                                 .timeout_ms
                                 .map(|timeout| timeout as f64 / 1000.0),
-                            context_display: None,
-                            review_target:   None,
+                            context_display: question.context.clone(),
+                            review_target:   question.reference.as_ref().and_then(review_target),
                         },
                         started_at: at,
                     });
@@ -1003,6 +1026,16 @@ impl RunView {
         agent.apply(&envelope);
         if stage.completion.is_none() {
             stage.usage = agent.usage.saturating_add(agent.descendant_usage());
+        }
+        // A tool the stage's list names was called, by any of its sessions.
+        if let CodingEvent::ToolCallStarted { tool_name, .. } = &envelope.event {
+            if let Some(tool) = stage
+                .agent_tools
+                .iter_mut()
+                .find(|tool| tool.name == *tool_name)
+            {
+                tool.invoked = true;
+            }
         }
         let is_root = envelope.parent_session_id.is_none();
         #[expect(
@@ -1589,6 +1622,48 @@ fn failure_message(status: &Status) -> Option<String> {
 
 /// The finished attempt's metrics onto its stage: the timing and the usage
 /// the backend reported.
+/// One tool of an `attractor.tools` payload as the stage's list carries
+/// it: the name and description as recorded, Pebble's `source` as it is,
+/// and Pebble's behavioural category where Petri's says which (a
+/// sub-agent tool); every other tool is `other`, because the payload
+/// carries Petri's origin category (`builtin`, `mcp`, `host`, `question`),
+/// not Pebble's permission class. `invoked` starts false and flips on the
+/// session's `ToolCallStarted`.
+fn tool_summary(tool: &Value) -> Option<ToolSummary> {
+    let name = tool.get("name").and_then(Value::as_str)?;
+    let description = tool
+        .get("description")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let source = tool
+        .get("source")
+        .cloned()
+        .and_then(|source| serde_json::from_value::<ToolSource>(source).ok())
+        .unwrap_or_default();
+    let category = match tool.get("category").and_then(Value::as_str) {
+        Some("subagent") => ToolCategory::Subagent,
+        _ => ToolCategory::Other,
+    };
+    Some(ToolSummary {
+        name: name.to_string(),
+        description: description.to_string(),
+        source,
+        category,
+        invoked: false,
+    })
+}
+
+/// The question's `reference` as Fabro's review target, when it is one
+/// Fabro's validation admits (a `document`, or a reference without a kind,
+/// with a label and an absolute HTTP URL within Fabro's limits).
+fn review_target(reference: &QuestionReference) -> Option<ReviewTarget> {
+    let kind = match reference.kind.as_deref() {
+        Some("document") | None => ReviewTargetKind::Document,
+        Some(_) => return None,
+    };
+    ReviewTarget::new(reference.label.clone(), reference.url.clone(), kind).ok()
+}
+
 fn apply_metrics(stage: &mut StageProjection, metrics: &Metrics) {
     let custom = &metrics.custom;
     let inference = custom

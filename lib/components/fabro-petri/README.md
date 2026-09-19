@@ -122,14 +122,30 @@ prompt or agent stage carries the stub's text as its `response`.
 `VIEWS.md` rows with no source yet, or whose source this crate does not read
 yet, keep their default value in the projection: `Checkpoint`'s
 engine-derived maps (`completed_nodes`, `node_retries`, `context_values`,
-`node_outcomes`, `next_node_id`), `agent_tools`, `permission_level`,
-`script_invocation` and `script_timing`, a stage's `notes`,
-`StageCompletion` details for a `parsed.note`, the sandbox instance's
-clone fields and workspace roots (Petri's checkout is a copy of the bound
-repository, not a clone; the roots are the provider's, read live),
-`Run.ask_fabro`, an interview option's `description` and
-`preview`, the pull request `creation` state, and the run's notices,
-notifications and pairings (recorded, not shown).
+`node_outcomes`, `next_node_id`), `permission_level`,
+`script_invocation` and `script_timing` (a command's script is on the
+stream, as `subject.node.meta.script`, and the web's command view reads it
+there), a stage's `notes`, `StageCompletion` details for a `parsed.note`,
+the sandbox instance's clone fields and workspace roots (Petri's checkout
+is a copy of the bound repository, not a clone; the roots are the
+provider's, read live), `Run.ask_fabro`, the pull request `creation`
+state, and the run's notices, notifications and pairings (recorded, not
+shown).
+
+Three facts the views once lacked a source for are read now. A stage's
+`agent_tools` is the union, by name, of the `attractor.tools` payloads its
+native sessions record (the node's own session, then each child session),
+with `invoked` flipped by the envelope's `ToolCallStarted`; the payload
+carries Petri's origin category, so Pebble's `category` is `subagent` for
+a sub-agent tool and `other` for the rest. A pending question carries each
+option's `description` and `preview` and the question's `context` as
+`context_display`, and its `reference` as `review_target` when Fabro's
+validation admits it. A decision's matched condition and a command's
+script ride on the node's `meta` (`edges[edge].condition`, `script`), which
+the CLI's `run events --pretty` and the web's stage renderers read off
+the stream, beside the command's output loss counters
+(`output.dropped_bytes`, `output.truncated_lines`, `output.incomplete`) on
+its final `step.finished`.
 
 ### Retention
 

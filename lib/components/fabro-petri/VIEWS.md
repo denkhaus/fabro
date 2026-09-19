@@ -140,10 +140,11 @@ stages live in the child invocation and list under the fork (see Parallel).
 | provider and model | `RunStage.provider_used`, `StageProjection.provider_used`, `model`, `permission_level` | `custom attractor.fallback.plan {requested, routes}` then envelope `SessionStarted {provider, model}`; `custom attractor.prompt {model}`; the node's config in the registered graph (`graph.registered`, blob by digest) for `reasoning_effort`, `speed`, `permission_level` and an ACP node's settings | attempt |
 | prompt | `StageProjection.prompt`, the chat tab's `stage.prompt` | `custom attractor.prompt {prompt, sources}`; envelope `SessionStarted` and the first user message on the stream for an agent | attempt |
 | response | `StageProjection.response`, `prompt.completed` | `custom attractor.prompt.completed {response, calls, repairs, usage, duration_ms}`; the final `step.finished` `outcome.output` for an agent | attempt |
-| output, output bytes, streaming, termination | `StageProjection.output`, `output_bytes`, `live_streaming`, `termination`, `command.started` `script`, `command.completed` `exit_code`, the command log endpoint | `step.started`; `step.progress.recorded` `log {stream, line}` (the live log); `step.finished` `outcome.output`, `metrics.exit_code`, `metrics.duration_ms`; `timed_out` and `cancelled` statuses for `termination`; a `blob://` output through `get_blob`; the script from the node config | attempt |
+| output, output bytes, streaming, termination | `StageProjection.output`, `output_bytes`, `live_streaming`, `termination`, `command.started` `script`, `command.completed` `exit_code`, the command log endpoint | `step.started`; `step.progress.recorded` `log {stream, line}` (the live log); `step.finished` `outcome.output`, `metrics.exit_code`, `metrics.duration_ms`; `timed_out` and `cancelled` statuses for `termination`; a `blob://` output through `get_blob`; the script is `subject.node.meta.script` on every event of the stage (the web's command view reads it off the stream) | attempt |
+| output loss | the command view's "output truncated" note | the final `step.finished` `metrics.custom` `output.dropped_bytes`, `output.truncated_lines` (what the caps cut) and `output.incomplete` (the capture ended on silence); absent when the output is whole | attempt |
 | script invocation and timing | `script_invocation`, `script_timing` | the node config; `metrics.duration_ms` | attempt |
 | context updates, routing directive | `stage.completed` `context_updates`, `preferred_label`, `suggested_next_ids`, `jump_to_node` | `step.finished` `outcome.context_updates`; `routing.resolved` (per group the decision, overrides, jumps, blocks, the weighted draw; `derived.groups[].target`) | attempt |
-| edge selected, loop restart | `edge.selected`, `loop.restart` | `route.applied` (`derived.target`, `transition`, `back`); a restart is `execution.finished {restart}` then `execution.declared {predecessor}` | stage, execution |
+| edge selected, loop restart, the condition that matched | `edge.selected`, `loop.restart`, the decision renderer's `condition`, the `run events --pretty` transition line | `route.applied` (`derived.target`, `transition`, `back`); its `edge` keys `subject.node.meta.edges`, whose entry carries the edge's `condition` as written (absent on an unconditional edge); a restart is `execution.finished {restart}` then `execution.declared {predecessor}` | stage, execution |
 | notes | `StageCompletion.notes` | `step.finished` `outcome` notes; `parsed.note {result_prepared, transition}` | attempt |
 | files touched | `stage.completed` `files_touched` | Pebble's fold of envelope `ToolCallCompleted` (see Agent activity) | session |
 | stage diff | `StageProjection.diff` | platform record `checkpoint {execution, firing, patch_blob}` | stage |
@@ -178,9 +179,9 @@ interviews.
 
 | Fabro fact | Fields | Source | Keyed on |
 | --- | --- | --- | --- |
-| pending | `pending_interviews[id] {question, started_at}`, `current_question`, `interview.started` | `step.progress.recorded` with `parsed.question` (`id`, `text`, `options[] {key, label}`, `default`, `freeform`, `sensitive`, `kind`, `reference {label, url, kind}`, `timeout_ms`); `wait.state.changed {awaiting_answer}`; pending until a closing row below | question |
+| pending | `pending_interviews[id] {question, started_at}`, `current_question`, `interview.started` | `step.progress.recorded` with `parsed.question` (`id`, `text`, `options[] {key, label, description, preview}`, `default`, `freeform`, `sensitive`, `kind`, `reference {label, url, kind}`, `timeout_ms`, `context`); `wait.state.changed {awaiting_answer}`; pending until a closing row below | question |
 | question fields | `InterviewQuestionRecord.id`, `text`, `stage`, `question_type`, `options`, `allow_freeform`, `timeout_seconds`, `review_target` | `parsed.question`: `kind` is `question_type`, `freeform` is `allow_freeform`, `reference` is `review_target`, `timeout_ms` is `timeout_seconds`; `stage` is the subject's label | question |
-| option description and preview, context display | `InterviewOption.description`, `preview`, `context_display` | gap | question |
+| option description and preview, context display | `InterviewOption.description`, `preview`, `context_display` | `parsed.question`: each option's `description` and `preview`, the question's `context` (a human gate reads them from its edges' `human.description` and `human.preview` and from the previous stage's response; a native agent's question carries Pebble's); `reference` is `review_target` when Fabro's validation admits it | question |
 | answered | `interview.completed {answer, duration_ms}`, the `actor` | `control.requested` with `derived.answer` and `derived.deliverable = true`; a sensitive answer stays `{"$secret": "answer:<id>"}`; `wait.state.changed {running}` follows; duration is `control.requested` minus the question's `recorded_at`; the actor is platform record `interview.answered {question, principal}` | question |
 | late answer | none today | `control.requested` with `derived.deliverable = false` | question |
 | expired | `interview.timeout` | `parsed.question_expired {question, waited_ms, default}`; the gate's `step.finished` follows (success with the default, else class `retry_requested`) | question |
@@ -237,7 +238,7 @@ keeps its shape.
 | route and failover | `route`, `failovers[]`, `failover_stopped`, `prompt.failover` | `custom attractor.fallback.plan {requested, routes, notices}`; envelope `RouteFailover {from, to, attempt, usage, error, continuation}`, `RouteFailoverStopped {route, reason, error}`; `crates/petri/lib/tests/fallback_events.rs` is the rebuild | attempt, session |
 | messages, tokens, cost | `messages`, `usage`, `agent.message {text, usage, tool_call_count}`, `prompts` | envelope `AssistantMessage {usage, tool_call_count, …}`; sum per session; the stage total is `pebble.usage` | session |
 | tool calls | `tools{name: {calls, errors, open}}`, `agent.tool.started`, `agent.tool.completed`, `files_touched`, `last_file_touched`, `pending_writes` | envelope `ToolCallStarted {tool_name, tool_call_id, arguments}`, `ToolCallCompleted {tool_call_id, is_error, error_kind}`; Fabro's own run tools appear the same way (the `HostTools` capability) | tool call |
-| tools available | `agent_tools` (`ToolSummary {name, description, source, category, invoked}`), `agent.tools.available` | gap for the list; `invoked` derives from `ToolCallStarted` | session |
+| tools available | `agent_tools` (`ToolSummary {name, description, source, category, invoked}`), `agent.tools.available`, the `run events --pretty` tool count line | `custom attractor.tools {session, tools[] {name, description, source, category}}`, once per native session (the node's own, then each child session); the stage's list is the union by name; `source` is Pebble's as recorded; `category` is Pebble's class only for a `subagent` tool, `other` for the rest (the payload carries Petri's origin category, not Pebble's permission class); `invoked` derives from envelope `ToolCallStarted` | session |
 | MCP servers | `mcp_servers{}`, `agent.mcp.*` | envelope `McpServerReady {server, tools, startup_ms}`, `McpServerFailed`, `McpServerDisconnected`; `custom attractor.mcp.unavailable {server, error}` | session |
 | skills | `skills.available`, `skills.activated` | `custom attractor.skills` (directories and sources), `attractor.skills.warning`; envelope `SkillsDiscovered`, `SkillActivated` | session |
 | sub-agents | `subagents[]`, `subagent_counts`, `descendants` | envelope `SubAgentSpawned {agent_id, depth, task}`, `SubAgentTurnStarted`, `SubAgentCompleted`, `SubAgentFailed`, `SubAgentClosed` under the parent session; the child's events under its own session with `parent_session_id`; `pebble.subagents` on `step.finished` | session |
@@ -339,7 +340,7 @@ where it belongs to a stage. The proposed `record_json` fields follow.
 | `live_inference_ms`, `live_tool_ms`, `tool_batch`, `inference`, `acp_started_at` | envelope brackets (Agent activity); `step.started` for ACP |
 | `usage`, `usage_by_model`, `model` | `pebble.usage`, `prompt.usage`, `pebble.subagents.sessions`, envelope `AssistantMessage` per session |
 | `permission_level` | the node config |
-| `agent_tools` | gap |
+| `agent_tools` | `custom attractor.tools` per session; `invoked` from envelope `ToolCallStarted` |
 | `agent` | Pebble's fold over the stage's envelopes, unchanged |
 | `state` | the Stages state rows |
 
@@ -370,7 +371,7 @@ and served on the events stream, and no view row reads them.
 | `cancel.requested`, `kill.requested` | Run summary: cancel reason; Questions: interrupted; Parallel: cancelled fork |
 | `control.requested`, `derived.deliverable`, `derived.answer` | Questions: answered, late, interrupted, steer, interrupt; Agent activity: pair |
 | `token.emitted` | not shown: the engine's token flow; `visit.started` carries the join's inputs |
-| `route.applied` | Stages: edge selected; Run summary: current stage |
+| `route.applied` | Stages: edge selected and the condition that matched; Run summary: current stage |
 | `node.expanded` | Parallel: fork started (`for_each`) |
 | `visit.started`, `visit.completed` | Stages: list, state, timing, retries; Run summary: current stage |
 | `wait.state.changed` | Stages: state; Questions: pending; Run summary: blocked |
@@ -381,6 +382,7 @@ and served on the events stream, and no view row reads them.
 | `parsed.note` `hook`, `hook.activity`, `parsed.hook_activity` | Stages: hook decisions; Agent activity: hook agents |
 | `custom attractor.prompt`, `attractor.prompt.completed` | Stages: prompt, response; Parallel: fan-in prompt |
 | `custom attractor.thread` | Agent activity: sessions |
+| `custom attractor.tools` | Agent activity: tools available |
 | `custom attractor.fallback.plan` | Agent activity: route; Stages: provider and model; Run summary: models |
 | `custom attractor.mcp.unavailable` | Agent activity: MCP servers |
 | `custom attractor.skills`, `attractor.skills.warning` | Agent activity: skills |
@@ -425,8 +427,6 @@ record where Fabro does.
 
 | Fact | Views | Smallest source |
 | --- | --- | --- |
-| tools available to an agent | `agent_tools`, the insights sidebar's tool list | a `custom attractor.tools {node, firing, attempt, session, tools[] {name, description, source, category}}` from the native backend once per session, where it calls the `HostTools` builders; Pebble's `SessionStarted` carries only the provider and model |
-| question option `description` and `preview`, `context_display` | the interview dock, the human Q&A renderer | optional fields on Petri's `QuestionOption` (`description`, `preview`) and `Question` (`context`), set by the human gate from the edge attributes Fabro's lowering already reads |
 | who answered | `interview.completed` `actor`, Slack attribution | platform record `interview.answered {question, principal, channel}` written by Fabro's interviewer beside its `InterviewReply` |
 | run branch and base sha | `StartRecord`, `run diff`, the commits picker | platform record `run.branch {run_branch, base_sha}` written when Fabro creates the run branch, at that checkpoint's stage position |
 | Git identity | `git_identity` | platform record `git.identity {name, email, source}` |

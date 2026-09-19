@@ -161,6 +161,17 @@ impl<'a> PetriItem<'a> {
     pub(crate) fn str_at(self, pointer: &str) -> Option<&'a str> {
         self.value().pointer(pointer)?.as_str()
     }
+
+    /// The condition the applied route matched, as written: the edge a
+    /// `route.applied` record names is a key into the subject node's
+    /// `meta.edges`, whose entry carries the edge's `condition` when it
+    /// has one.
+    pub(crate) fn matched_condition(self) -> Option<&'a str> {
+        let edge = self.body()?.get("edge")?.as_u64()?;
+        self.node()?
+            .pointer(&format!("/meta/edges/{edge}/condition"))?
+            .as_str()
+    }
 }
 
 /// Whether the item is the platform record of the run's terminal lifecycle
@@ -393,15 +404,20 @@ pub(crate) fn format_pretty(
                 .and_then(Value::as_bool)
                 .unwrap_or(false);
             let detail = if back { " (loop)" } else { "" };
+            // The condition the edge matched, when it has one.
+            let condition = view
+                .matched_condition()
+                .map_or_else(String::new, |condition| format!(" when {condition}"));
             // Petri records the route after the next visit started, so the
             // line names both ends of the edge.
             Some(format!(
-                "{ts}    {} {} {} {}{}",
+                "{ts}    {} {} {} {}{}{}",
                 styles.dim.apply_to(view.node_name().unwrap_or("?")),
                 styles.dim.apply_to("\u{2192}"),
                 target,
                 styles.dim.apply_to(&transition),
                 styles.dim.apply_to(detail),
+                styles.dim.apply_to(&condition),
             ))
         }
         "fork.started" => {
@@ -591,6 +607,19 @@ fn format_progress(ts: &str, view: PetriItem<'_>, label: &str, styles: &Styles) 
             let header = format!("{ts} {} {}", "\u{1f4ac}", styles.bold.apply_to(label));
             let body = indented(styles, response, "            ");
             Some(format!("{header}\n{body}\n"))
+        }
+        "attractor.tools" => {
+            // The tools one native session was offered, once per session.
+            let count = custom
+                .get("tools")
+                .and_then(Value::as_array)
+                .map_or(0, Vec::len);
+            let noun = if count == 1 { "tool" } else { "tools" };
+            Some(format!(
+                "{ts}    {} {}",
+                styles.dim.apply_to("\u{2699}"),
+                styles.dim.apply_to(format!("{count} {noun} available")),
+            ))
         }
         "attractor.checkout" => {
             let repository = custom
@@ -1104,6 +1133,59 @@ mod tests {
         assert!(resolves_question(&who, "gate#2"));
         let line = format_pretty(&who, &styles, &mut state).expect("an answered-by line");
         assert!(line.contains("answered by dev"), "{line}");
+    }
+
+    #[test]
+    fn a_route_line_names_the_condition_the_edge_matched() {
+        let styles = Styles::new(false);
+        let mut state = PrettyState::default();
+        let mut subject = subject("build", "command");
+        subject["node"]["meta"]["edges"] = json!({
+            "0": {"to": "ok", "label": null, "condition": "outcome=succeeded"},
+            "1": {"to": "bad", "label": null}
+        });
+        let applied = |edge: u64| {
+            petri(
+                7,
+                json!({
+                    "origin": "core",
+                    "context": {"invocation": 0, "execution": 0},
+                    "subject": subject,
+                    "record": {"seq": 9, "body": {"event": "route.applied", "kind": "edge",
+                        "firing": 2, "group": 0, "edge": edge}},
+                    "derived": {"target": {"name": if edge == 0 { "ok" } else { "bad" }},
+                        "transition": "Continue", "back": false}
+                }),
+            )
+        };
+        let line = format_pretty(&applied(0), &styles, &mut state).expect("a route line");
+        assert!(
+            line.contains("build \u{2192} ok continue when outcome=succeeded"),
+            "{line}"
+        );
+        let line = format_pretty(&applied(1), &styles, &mut state).expect("a route line");
+        assert!(line.ends_with("build \u{2192} bad continue"), "{line}");
+    }
+
+    #[test]
+    fn a_sessions_tool_list_renders_as_its_count() {
+        let styles = Styles::new(false);
+        let mut state = PrettyState::default();
+        let listed = petri(
+            8,
+            json!({
+                "origin": "external",
+                "context": {"invocation": 0, "execution": 0},
+                "subject": subject("work", "agent"),
+                "record": {"seq": 10, "body": {"event": "step.progress.recorded", "firing": 2,
+                    "ev": {"custom": {"kind": "attractor.tools", "session": "ses_1", "tools": [
+                        {"name": "shell", "description": "Run a command", "source": {"kind": "native"}, "category": "builtin"},
+                        {"name": "fabro_run_create", "description": "Create a run", "source": {"kind": "application"}, "category": "host"}
+                    ]}}}}
+            }),
+        );
+        let line = format_pretty(&listed, &styles, &mut state).expect("a tools line");
+        assert!(line.contains("2 tools available"), "{line}");
     }
 
     #[test]

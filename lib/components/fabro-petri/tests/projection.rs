@@ -104,6 +104,29 @@ fn gate_workflow(markers: &Path, gate_attrs: &str) -> String {
     )
 }
 
+/// A gate after a stage with a response, whose affirmative edge says what
+/// choosing it means and shows a sample: the facts the interview dock
+/// shows beside the choices.
+fn described_gate_workflow(markers: &Path) -> String {
+    format!(
+        r#"digraph Gate {{
+    graph [goal="Ask with context"]
+    start [shape=Mdiamond]
+    exit [shape=Msquare]
+    plan [shape=parallelogram, output_schema="routing", script="echo '{{\"outcome\": \"succeeded\", \"context_updates\": {{\"last_stage\": \"plan\", \"response.plan\": \"Ship the fix in one commit.\"}}}}'"]
+    gate [shape=hexagon, label="Deploy?", timeout="1500ms", human.default_choice="no"]
+    yes [shape=parallelogram, script="touch {dir}/yes"]
+    no [shape=parallelogram, script="touch {dir}/no"]
+    start -> plan -> gate
+    gate -> yes [label="[Y] Yes", "human.description"="Merge and deploy to production", "human.preview"="deploy --prod"]
+    gate -> no [label="[N] No"]
+    yes -> exit
+    no -> exit
+}}"#,
+        dir = markers.display()
+    )
+}
+
 fn host_plugin() -> Option<PathBuf> {
     let found = env::var_os(HOST_PLUGIN_OVERRIDE)
         .map(PathBuf::from)
@@ -1156,12 +1179,16 @@ struct GateRun {
 }
 
 async fn gate_run(gate_attrs: &str) -> GateRun {
+    gate_run_of(|markers| gate_workflow(markers, gate_attrs)).await
+}
+
+async fn gate_run_of(workflow: impl FnOnce(&Path) -> String) -> GateRun {
     let root = tempfile::tempdir().expect("a marker dir");
     let markers = root.path().join("markers");
     fs::create_dir_all(&markers)
         .await
         .expect("the marker dir creates");
-    let workflow = gate_workflow(&markers, gate_attrs);
+    let workflow = workflow(&markers);
     let scenario = scenario(
         "gate",
         &[("workflow.fabro", &workflow), ("workflow.toml", SETTINGS)],
@@ -1207,6 +1234,24 @@ impl GateRun {
         let outcome = engine::run(request).await.expect("the run ends");
         assert_eq!(outcome.status, EngineRunStatus::Success, "{outcome:?}");
         self.projector.settle(self.scenario.run_id).await;
+    }
+
+    /// The stored projection once a question is pending in it.
+    async fn pending(&self) -> fabro_types::RunProjection {
+        let deadline = Instant::now() + Duration::from_secs(30);
+        loop {
+            let stored = projector::stored_projection(&self.scenario.pool, self.scenario.run_id)
+                .await
+                .expect("the stored projection reads");
+            if let Some(stored) = stored.filter(|stored| !stored.pending_interviews.is_empty()) {
+                return stored;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "the question never showed as pending"
+            );
+            sleep(Duration::from_millis(10)).await;
+        }
     }
 
     async fn stored(&self) -> fabro_types::RunProjection {
@@ -1296,6 +1341,55 @@ async fn an_expired_question_is_pending_while_the_gate_waits_and_closes_on_the_e
         .stage(&StageId::new("gate", 1))
         .expect("the gate is a stage");
     assert_eq!(gate_stage.state, StageState::Succeeded);
+    assert_view_equals_rebuild(&gate.scenario.pool, gate.scenario.run_id).await;
+}
+
+/// A gate's choices carry what choosing them means and a sample of what
+/// they would do, and the question carries the previous stage's response
+/// as its context: the pending question in the projection shows all
+/// three, as Petri's question record carries them, and leaves them absent
+/// on a choice that has none.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_pending_question_carries_its_choice_descriptions_previews_and_context() {
+    if host_plugin().is_none() {
+        return;
+    }
+    let gate = Arc::new(gate_run_of(described_gate_workflow).await);
+    let running = {
+        let gate = Arc::clone(&gate);
+        tokio::spawn(async move { gate.run(Approval::Prompt).await })
+    };
+    let pending = gate.pending().await;
+    let (_, record) = pending
+        .pending_interviews
+        .iter()
+        .next()
+        .expect("one pending question");
+    let question = &record.question;
+    assert_eq!(question.stage, "gate@1");
+    assert_eq!(question.text, "Deploy?");
+    assert_eq!(
+        question.context_display.as_deref(),
+        Some("Ship the fix in one commit."),
+        "the context is the previous stage's response"
+    );
+    assert_eq!(question.options.len(), 2, "{:?}", question.options);
+    assert_eq!(question.options[0].key, "Y");
+    assert_eq!(
+        question.options[0].description.as_deref(),
+        Some("Merge and deploy to production")
+    );
+    assert_eq!(
+        question.options[0].preview.as_deref(),
+        Some("deploy --prod")
+    );
+    assert_eq!(question.options[1].key, "N");
+    assert_eq!(question.options[1].description, None);
+    assert_eq!(question.options[1].preview, None);
+    assert!(question.review_target.is_none());
+
+    running.await.expect("the run task ends");
+    assert!(gate.markers.join("no").exists(), "the default ran");
     assert_view_equals_rebuild(&gate.scenario.pool, gate.scenario.run_id).await;
 }
 

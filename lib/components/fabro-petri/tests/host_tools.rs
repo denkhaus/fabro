@@ -23,9 +23,14 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use fabro_petri::host_tools::recorded::{self, ExecutionId, InvocationId};
+use fabro_petri::projection::{Item, RunView};
 use fabro_petri::runtime::RuntimeSpec;
+use fabro_store::platform_records::{PlatformRecord, RunCreatedRecord, StoredPlatformRecord};
 use fabro_tool::fabro_client::ClientBackend;
-use fabro_types::{BlobHash, RunId, WorkflowVersionId};
+use fabro_types::{
+    BlobHash, RunId, StageId, ToolCategory, ToolSource, WorkflowVersionId,
+    test_support as types_support,
+};
 use fabro_workflow::run_tools::register_fabro_run_tools;
 use fabro_workflow::services::FabroRunToolServices;
 use httpmock::{Method, MockServer};
@@ -33,12 +38,13 @@ use lithos_llm::types::Request;
 use pebble_coding_agent::test_support::{
     ScriptedCall, ScriptedProvider, scripted_client, text_response, tool_call_response,
 };
+use petri_execution::events::replay_run;
 use petri_execution::host::{self, HostRun};
 use petri_runtime::executor::Retention;
 use petri_runtime::frontend::CompileInputs;
 use petri_runtime::ir::RunStatus;
 use petri_runtime::{RunOptions, Runtime};
-use petri_store::{MemoryRunStore, RunKey, RunStore};
+use petri_store::{Access, MemoryRunStore, RunKey, RunStore};
 use serde_json::json;
 use tokio::fs;
 
@@ -256,6 +262,112 @@ async fn a_petri_stage_calls_a_run_tool_bound_to_the_run() {
     assert_eq!(calls[0].execution, Some(ExecutionId::new(0)));
     assert!(calls[0].parent_session.is_none());
     assert_eq!(calls[0].payload["is_error"], true, "{:?}", calls[0].payload);
+}
+
+/// The stage's projection lists the tools its session was offered, host
+/// tools included, as the `attractor.tools` payload records them: the
+/// same names the model was advertised, each with its description and
+/// Pebble's source, the sub-agent tools under Pebble's category, and the
+/// one tool the model called marked invoked.
+#[tokio::test]
+async fn the_projection_lists_the_stages_tools_and_marks_the_one_called() {
+    if host_plugin().is_none() {
+        return;
+    }
+    let root = tempfile::tempdir().expect("a temp dir");
+    let workflow = install_bundle(root.path()).await;
+    let run_id = RunId::new();
+    let version_id: WorkflowVersionId = BlobHash::new(b"child workflow").into();
+    let server = MockServer::start_async().await;
+    server
+        .mock_async(|when, then| {
+            when.method(Method::POST).path("/api/v1/runs");
+            then.status(422).body("native admission rejection");
+        })
+        .await;
+    let (client, provider) = scripted_model(&version_id.to_string());
+    let store = Arc::new(MemoryRunStore::new());
+    let rt = runtime(
+        &root.path().join("run"),
+        &run_id.to_string(),
+        client,
+        Some(services(&server, run_id)),
+        &store,
+    );
+
+    run(&rt, &workflow).await;
+
+    // The run's events, folded as the projector folds them: the run's
+    // `run.created` record first, then Petri's events in record order.
+    let logs = store
+        .open(&RunKey::new(run_id.to_string()), Access::Read)
+        .await
+        .expect("the run opens");
+    let events = replay_run(&*logs).await.expect("the record replays");
+    let mut spec = types_support::test_run_spec();
+    spec.run_id = run_id;
+    let created = StoredPlatformRecord {
+        seq:         1,
+        recorded_at: 0,
+        record:      PlatformRecord::RunCreated(RunCreatedRecord {
+            spec,
+            title: Some("Start a child run".to_string()),
+            parent_id: None,
+            retried_from: None,
+            web_url: None,
+        }),
+        position:    None,
+    };
+    let mut view = RunView::new();
+    view.fold(&Item::Platform(&created), 1);
+    for (index, event) in events.iter().enumerate() {
+        view.fold(&Item::Petri(event), index as u64 + 2);
+    }
+    let projection = view.projection().expect("the run has a projection");
+    let stage = projection
+        .stage(&StageId::new("work", 1))
+        .expect("the agent stage is projected");
+
+    let mut listed: Vec<(String, String)> = stage
+        .agent_tools
+        .iter()
+        .map(|tool| (tool.name.clone(), tool.description.clone()))
+        .collect();
+    listed.sort();
+    let requests = provider.requests();
+    let mut offered = advertised(&requests[0]);
+    offered.sort();
+    assert_eq!(
+        listed, offered,
+        "the list is what the model was offered, by name and description"
+    );
+    let create = stage
+        .agent_tools
+        .iter()
+        .find(|tool| tool.name == "fabro_run_create")
+        .expect("the host tool is listed");
+    assert!(create.invoked, "the model called it");
+    assert_eq!(create.source, ToolSource::Application);
+    assert_eq!(create.category, ToolCategory::Other);
+    let shell = stage
+        .agent_tools
+        .iter()
+        .find(|tool| tool.name == "shell")
+        .expect("Pebble's own tool is listed");
+    assert!(!shell.invoked, "the model never called it");
+    assert_eq!(shell.source, ToolSource::Native);
+    assert!(
+        stage
+            .agent_tools
+            .iter()
+            .any(|tool| tool.category == ToolCategory::Subagent),
+        "Pebble's sub-agent tools keep their category: {:?}",
+        stage
+            .agent_tools
+            .iter()
+            .map(|tool| (&tool.name, tool.category))
+            .collect::<Vec<_>>()
+    );
 }
 
 /// Services bound to another run give the stage no run tools: the model

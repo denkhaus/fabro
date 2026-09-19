@@ -1,9 +1,12 @@
 import { describe, expect, test } from "bun:test";
 
 import { loadPetriFixture } from "./petri-fixtures";
+import type { RunStreamItem } from "@qltysh/fabro-api-client";
+
 import {
   agentEnvelopesOf,
   commandOutcomeOf,
+  commandScriptOf,
   debugRowsFromStream,
   deriveRunPhasesFromStream,
   extractPetriStageContext,
@@ -12,6 +15,8 @@ import {
   isTerminalLifecycleItem,
   itemsForStage,
   parallelOverviewFromProjection,
+  matchedCondition,
+  outputLossNote,
   parsePetriInterviewPairs,
   petriEventName,
   petriStageLabel,
@@ -201,7 +206,111 @@ describe("stage renderers", () => {
   test("a command stage's outcome is read from its final step.finished", () => {
     const say = itemsForStage(command.stream, "say@1");
     expect(commandOutcomeOf(say).exitCode).toBe(0);
+    expect(commandOutcomeOf(say).outputLoss).toBeNull();
     expect(extractPetriStageContext(say)).toBeNull();
+  });
+
+  test("an agent stage's projection lists the tools its session was offered", () => {
+    const names = (hello.projection.stages["greet@1"]?.agent_tools ?? []).map((tool) => tool.name);
+    expect(names).toContain("read_file");
+    expect(names).toContain("shell");
+    expect(names).toContain("request_user_input");
+    expect(hello.projection.stages["start@1"]?.agent_tools ?? []).toEqual([]);
+  });
+
+  test("a command stage's script rides on its node's meta", () => {
+    const say = itemsForStage(command.stream, "say@1");
+    expect(commandScriptOf(say)).toBe("echo hello from petri");
+    expect(commandScriptOf(itemsForStage(command.stream, "start@1"))).toBeNull();
+  });
+
+  test("the condition an edge matched is read from the node's edge table", () => {
+    const applied = (edge: number): RunStreamItem => ({
+      run_id: "run",
+      stream_seq: 9,
+      kind: "petri",
+      id: "9",
+      recorded_at: 1_789_706_579_000,
+      item: {
+        id: { log: "execution", execution: 0, seq: 9, index: 0 },
+        origin: "core",
+        context: { invocation: 0, execution: 0 },
+        subject: {
+          node: {
+            id: 2,
+            name: "build",
+            kind: "attractor/command",
+            meta: {
+              kind: "command",
+              edges: {
+                "0": { to: "ok", label: null, condition: "outcome=succeeded" },
+                "1": { to: "bad", label: null },
+              },
+            },
+          },
+          firing: 2,
+          visit: 1,
+          attempt: 1,
+          generation: 0,
+          branch: { role: "none" },
+        },
+        record: {
+          seq: 9,
+          body: { event: "route.applied", kind: "edge", firing: 2, group: 0, edge },
+        },
+        derived: { target: { name: edge === 0 ? "ok" : "bad" }, transition: "Continue", back: false },
+      },
+    });
+    expect(matchedCondition(applied(0))).toBe("outcome=succeeded");
+    expect(matchedCondition(applied(1))).toBeUndefined();
+    expect(findPetriEdgeForStage([applied(0)], "build@1")).toEqual({
+      fromNode: "build",
+      toNode: "ok",
+      reason: "condition",
+      condition: "outcome=succeeded",
+      isJump: false,
+    });
+  });
+
+  test("a command's output loss is read from its metrics and worded for the view", () => {
+    const finished = (custom: Record<string, unknown>): RunStreamItem => ({
+      run_id: "run",
+      stream_seq: 5,
+      kind: "petri",
+      id: "5",
+      recorded_at: 1_789_706_579_000,
+      item: {
+        id: { log: "execution", execution: 0, seq: 5, index: 0 },
+        origin: "external",
+        context: { invocation: 0, execution: 0 },
+        subject: { node: { id: 2, name: "say", kind: "attractor/command", meta: { kind: "command" } }, firing: 2, visit: 1, attempt: 1, generation: 0, branch: { role: "none" } },
+        record: {
+          seq: 5,
+          body: {
+            event: "step.finished",
+            firing: 2,
+            attempt: 1,
+            outcome: {
+              status: "success",
+              output: { stdout: "x", exit_status: 0 },
+              metrics: { duration_ms: 3, exit_code: 0, custom },
+            },
+          },
+        },
+        derived: { final: true, exhausted: false },
+      },
+    });
+    expect(commandOutcomeOf([finished({})]).outputLoss).toBeNull();
+    const cut = commandOutcomeOf([
+      finished({ "output.dropped_bytes": 2048, "output.truncated_lines": 1 }),
+    ]).outputLoss;
+    expect(cut).toEqual({ droppedBytes: 2048, truncatedLines: 1, incomplete: false });
+    expect(outputLossNote(cut)).toBe("Output truncated: 2,048 bytes dropped, 1 line cut");
+    const silent = commandOutcomeOf([finished({ "output.incomplete": true })]).outputLoss;
+    expect(outputLossNote(silent)).toBe(
+      "Output may be incomplete: the capture ended on silence, so the tail may be missing",
+    );
+    expect(outputLossNote(null)).toBeNull();
   });
 
   test("an agent stage's Pebble envelopes are read with their variant and session", () => {

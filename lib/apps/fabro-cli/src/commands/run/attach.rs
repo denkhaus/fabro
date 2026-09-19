@@ -472,6 +472,17 @@ async fn ask_attach_question(question: Question, styles: &'static Styles) -> Ans
                     opt.key,
                     opt.label,
                 );
+                // What choosing the option means, and a sample of what it
+                // would do, when the asking stage said.
+                for detail in [opt.description.as_deref(), opt.preview.as_deref()]
+                    .into_iter()
+                    .flatten()
+                    .filter(|detail| !detail.trim().is_empty())
+                {
+                    for line in detail.lines() {
+                        eprintln!("       {}", styles.dim.apply_to(line));
+                    }
+                }
             }
             if question.allow_freeform {
                 eprintln!("  Or type a free-text response");
