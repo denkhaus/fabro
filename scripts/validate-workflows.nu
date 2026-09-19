@@ -76,6 +76,92 @@ def main [target: string = ""] {
         print -e $plint.stderr
         exit $plint.exit_code
     }
+    # Conductor develop-output schema probe (fabro-3196) — deterministic
+    # pin of the pass-continuity teeth.
+    conductor_develop_schema_probe
+}
+
+# Conductor develop-output schema probe (fabro-3196): the conductor
+# develop node routes into the revise leg via a file schema
+# (`.fabro/workflows/conductor/schemas/develop-output.schema.json`,
+# the fabro-017f teeth pattern) whose if/then REJECTS a
+# 'Develop integrated' or 'Gate stuck — revise anyway' routing unless
+# context_updates.child_run_id is a non-empty string. Basis: run
+# 01M2X6AT3V4CPSJC08SMCVB172 dropped the id, the revise leg failed
+# pass continuity, and run 01M2X6EC95G76YFNF1YTCJZG7P went unreviewed.
+# Nushell has no built-in JSON Schema validator, so this probe pins the
+# contract structurally: schema shape (enum + if/then keys) and a
+# simulation of the if/then semantics on the arm payloads.
+def conductor_develop_schema_probe [] {
+    let schema_path = '.fabro/workflows/conductor/schemas/develop-output.schema.json'
+    let schema = (open $schema_path)
+
+    # Wiring: the conductor develop node must reference the file schema.
+    let graph = (open --raw .fabro/workflows/conductor/workflow.fabro)
+    if not ($graph | str contains 'output_schema="@schemas/develop-output.schema.json"') {
+        print -e $"validate-workflows: conductor develop node lost its file-schema wiring \(($schema_path)\)"
+        exit 1
+    }
+
+    # Routing contract: the enum covers exactly the develop node's four
+    # LLM-routable outgoing labels (the 'Unrouted develop outcome' soft
+    # exit is engine-side and deliberately excluded).
+    let expected_labels = ["Develop integrated", "Gate stuck — revise anyway", "Tracker empty", "Develop child failed"]
+    let labels = ($schema | get -o properties | get -o preferred_next_label | get -o enum | default [])
+    if ($labels != $expected_labels) {
+        print -e $"validate-workflows: conductor develop schema enum drifted: ($labels | to json -r)"
+        exit 1
+    }
+
+    # Teeth: the allOf if/then arm must require a non-empty
+    # context_updates.child_run_id on the two revise-handoff labels.
+    let handoff = ["Develop integrated", "Gate stuck — revise anyway"]
+    let arm = ($schema | get -o allOf | default [] | where {|a|
+        let if_labels = ($a | get -o if | get -o properties | get -o preferred_next_label | get -o enum | default [])
+        ($if_labels | any {|l| $l in $handoff })
+    })
+    if ($arm | length) != 1 {
+        print -e "validate-workflows: conductor develop schema lost its if/then pass-continuity arm"
+        exit 1
+    }
+    let then = ($arm | first | get then)
+    let cu_required = ($then | get -o required | default [])
+    let cu = ($then | get -o properties | get -o context_updates | default {})
+    let child_required = ($cu | get -o required | default [])
+    let child = ($cu | get -o properties | get -o child_run_id | default {})
+    if ("context_updates" not-in $cu_required) or ("child_run_id" not-in $child_required) or (($child | get -o minLength | default 0) < 1) or (($child | get -o type | default "") != "string") {
+        print -e "validate-workflows: conductor develop schema if/then arm no longer requires a non-empty child_run_id"
+        exit 1
+    }
+
+    # Simulate the if/then semantics on the arm payloads (rejection
+    # predicate mirrors the schema exactly: handoff label AND missing
+    # context_updates OR missing/zero-length child_run_id).
+    def rejected [payload: record, handoff: list] {
+        let label = ($payload | get -o preferred_next_label | default "")
+        if ($label not-in $handoff) { false } else {
+            let cu = ($payload | get -o context_updates)
+            if ($cu == null) { true } else {
+                (($cu | get -o child_run_id | default "") | str length) == 0
+            }
+        }
+    }
+    let cases = [
+        {name: "gate-stuck WITHOUT child_run_id rejected", payload: {outcome: "succeeded", preferred_next_label: "Gate stuck — revise anyway", context_updates: {journal: {}}}, want: true}
+        {name: "gate-stuck WITH child_run_id accepted", payload: {outcome: "succeeded", preferred_next_label: "Gate stuck — revise anyway", context_updates: {child_run_id: "01M2X6EC95G76YFNF1YTCJZG7P", journal: {}}}, want: false}
+        {name: "merged-path WITH child_run_id accepted", payload: {outcome: "succeeded", preferred_next_label: "Develop integrated", context_updates: {child_run_id: "01M2X6EC95G76YFNF1YTCJZG7P"}}, want: false}
+        {name: "merged-path WITHOUT child_run_id rejected", payload: {outcome: "succeeded", preferred_next_label: "Develop integrated"}, want: true}
+        {name: "empty child_run_id rejected (minLength)", payload: {outcome: "succeeded", preferred_next_label: "Gate stuck — revise anyway", context_updates: {child_run_id: ""}}, want: true}
+        {name: "tracker-empty needs NO child_run_id", payload: {outcome: "succeeded", preferred_next_label: "Tracker empty"}, want: false}
+    ]
+    for $case in $cases {
+        let got = (rejected $case.payload $handoff)
+        if $got != $case.want {
+            print -e $"validate-workflows: conductor develop schema probe FAILED: ($case.name) \(got rejected=($got), want=($case.want))"
+            exit 1
+        }
+    }
+    print $"validate-workflows: conductor develop schema probe ok \(($cases | length) cases\)"
 }
 
 # Class-level inspects-coverage lint (fabro-e907): every workflow whose
