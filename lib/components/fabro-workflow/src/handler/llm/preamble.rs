@@ -2,15 +2,60 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 
 use fabro_graphviz::graph::{Graph, Node, is_llm_handler_type};
+use fabro_types::graph::DEFAULT_PREAMBLE_OUTPUT_MAX_LINES;
 
 use crate::artifact::{self, PromptLargeValue};
 use crate::context::{Context, WorkflowContext, keys};
 use crate::outcome::{Outcome, OutcomeExt};
 
 const COMPACT_OUTPUT_MAX_LINES: usize = 25;
-const SUMMARY_HIGH_OUTPUT_MAX_LINES: usize = 50;
+const SUMMARY_HIGH_OUTPUT_MAX_LINES: usize = DEFAULT_PREAMBLE_OUTPUT_MAX_LINES;
+
+/// Resolve the line cap one node's summary:high command-output stage
+/// sections render to: node override, graph ceiling, engine default — the
+/// same precedence `preamble_inline_max_kb` resolves with. The consumer
+/// node (the node about to receive the preamble) supplies the override, so
+/// a read-only reviewer can raise the cap for the evidence it renders
+/// (fabro-meta-c9f2).
+#[must_use]
+pub(crate) fn resolve_output_max_lines(node: Option<&Node>, graph: &Graph) -> usize {
+    node.and_then(Node::preamble_output_max_lines)
+        .or_else(|| graph.preamble_output_max_lines())
+        .unwrap_or(SUMMARY_HIGH_OUTPUT_MAX_LINES)
+}
+
+/// Render `text` capped at `max_lines` lines, preserving the HEAD: the
+/// first `max_lines` lines render in full and, when lines remain, an
+/// explicit `({omitted} lines omitted)` marker closes the block. Command
+/// captures front-load their evidence (integrity headers, diffs), so the
+/// head — not the tail — is what the reader needs (fabro-meta-c9f2).
+fn cap_lines(text: &str, max_lines: usize, indent: &str) -> String {
+    let total = text.lines().count();
+    let omitted = total.saturating_sub(max_lines);
+
+    let mut out = String::new();
+    for (index, line) in text.lines().take(max_lines).enumerate() {
+        if index > 0 {
+            out.push('\n');
+        }
+        out.push_str(indent);
+        out.push_str(line);
+    }
+    if omitted > 0 {
+        if !out.is_empty() {
+            out.push('\n');
+        }
+        let _ = write!(out, "{indent}({omitted} lines omitted)");
+    }
+    out
+}
 
 /// Build a fidelity-appropriate preamble string for non-full context modes.
+///
+/// `output_max_lines` caps command-stage output lines rendered in
+/// summary:high stage sections (head preserved, remainder replaced with an
+/// omission marker); resolve it with [`resolve_output_max_lines`] from the
+/// consuming node and graph.
 ///
 /// The preamble provides prior conversation context to the next LLM session,
 /// tailored by the fidelity mode:
@@ -27,6 +72,7 @@ pub fn build_preamble(
     graph: &Graph,
     completed_nodes: &[String],
     node_outcomes: &HashMap<String, Outcome>,
+    output_max_lines: usize,
 ) -> String {
     use keys::Fidelity;
 
@@ -49,6 +95,7 @@ pub fn build_preamble(
             context,
             graph,
             SummaryDetail::Low,
+            output_max_lines,
         ),
         Fidelity::SummaryMedium => build_summary_preamble(
             goal,
@@ -58,6 +105,7 @@ pub fn build_preamble(
             context,
             graph,
             SummaryDetail::Medium,
+            output_max_lines,
         ),
         Fidelity::SummaryHigh => build_summary_preamble(
             goal,
@@ -67,6 +115,7 @@ pub fn build_preamble(
             context,
             graph,
             SummaryDetail::High,
+            output_max_lines,
         ),
     };
 
@@ -141,26 +190,6 @@ fn format_large_value_table_cell(large: PromptLargeValue<'_>) -> String {
     format!("{summary}; Preview: {preview}…")
 }
 
-fn tail_lines(text: &str, max_lines: usize, indent: &str) -> String {
-    use std::fmt::Write;
-
-    let total = text.lines().count();
-    let omitted = total.saturating_sub(max_lines);
-
-    let mut out = String::new();
-    if omitted > 0 {
-        let _ = write!(out, "{indent}({omitted} lines omitted)");
-    }
-    for line in text.lines().skip(omitted) {
-        if !out.is_empty() {
-            out.push('\n');
-        }
-        out.push_str(indent);
-        out.push_str(line);
-    }
-    out
-}
-
 /// Returns the set of context keys that are rendered inline under a stage's
 /// handler-specific details, so they can be skipped in the trailing context
 /// section.
@@ -200,7 +229,7 @@ fn render_compact_stage_details(
                     } else {
                         lines.push("  - Output:".to_string());
                         lines.push("    ```".to_string());
-                        lines.push(tail_lines(output.trim(), COMPACT_OUTPUT_MAX_LINES, "    "));
+                        lines.push(cap_lines(output.trim(), COMPACT_OUTPUT_MAX_LINES, "    "));
                         lines.push("    ```".to_string());
                     }
                 }
@@ -226,6 +255,7 @@ fn render_summary_high_stage_section(
     node_id: &str,
     node: Option<&Node>,
     outcome: &Outcome,
+    output_max_lines: usize,
 ) -> Vec<String> {
     let handler = node.and_then(|n| n.handler_type());
     let mut lines = Vec::new();
@@ -256,11 +286,7 @@ fn render_summary_high_stage_section(
                     } else {
                         lines.push("- Output:".to_string());
                         lines.push("  ```".to_string());
-                        lines.push(tail_lines(
-                            output.trim(),
-                            SUMMARY_HIGH_OUTPUT_MAX_LINES,
-                            "  ",
-                        ));
+                        lines.push(cap_lines(output.trim(), output_max_lines, "  "));
                         lines.push("  ```".to_string());
                     }
                 }
@@ -451,6 +477,7 @@ fn build_summary_preamble(
     context: &Context,
     graph: &Graph,
     detail: SummaryDetail,
+    output_max_lines: usize,
 ) -> String {
     let mut parts = Vec::new();
     parts.push(format!("Goal: {goal}"));
@@ -480,7 +507,8 @@ fn build_summary_preamble(
                 }
                 let node = graph.nodes.get(node_id);
                 if let Some(outcome) = node_outcomes.get(node_id) {
-                    let section = render_summary_high_stage_section(node_id, node, outcome);
+                    let section =
+                        render_summary_high_stage_section(node_id, node, outcome, output_max_lines);
                     parts.extend(section);
                     all_rendered_keys.extend(stage_rendered_keys(node_id, outcome));
                 } else {
@@ -654,6 +682,7 @@ mod tests {
             &graph,
             &completed_nodes,
             &node_outcomes,
+            SUMMARY_HIGH_OUTPUT_MAX_LINES,
         );
 
         assert!(
@@ -686,6 +715,7 @@ mod tests {
             &graph,
             &completed_nodes,
             &node_outcomes,
+            SUMMARY_HIGH_OUTPUT_MAX_LINES,
         );
 
         assert!(
@@ -723,6 +753,7 @@ mod tests {
             &graph,
             &completed_nodes,
             &node_outcomes,
+            SUMMARY_HIGH_OUTPUT_MAX_LINES,
         );
 
         assert!(preamble.contains("Deploy app"), "should contain the goal");
@@ -763,6 +794,7 @@ mod tests {
             &graph,
             &completed_nodes,
             &node_outcomes,
+            SUMMARY_HIGH_OUTPUT_MAX_LINES,
         );
 
         assert!(
@@ -821,6 +853,7 @@ mod tests {
             &graph,
             &completed_nodes,
             &node_outcomes,
+            SUMMARY_HIGH_OUTPUT_MAX_LINES,
         );
 
         assert_eq!(
@@ -873,6 +906,7 @@ mod tests {
             &graph,
             &completed_nodes,
             &node_outcomes,
+            SUMMARY_HIGH_OUTPUT_MAX_LINES,
         );
 
         assert!(
@@ -935,6 +969,7 @@ mod tests {
             &graph,
             &completed_nodes,
             &node_outcomes,
+            SUMMARY_HIGH_OUTPUT_MAX_LINES,
         );
 
         // Compact uses bold node IDs and handler-specific details now
@@ -977,6 +1012,7 @@ mod tests {
             &graph,
             &completed_nodes,
             &node_outcomes,
+            SUMMARY_HIGH_OUTPUT_MAX_LINES,
         );
 
         assert!(
@@ -1014,6 +1050,7 @@ mod tests {
             &graph,
             &completed_nodes,
             &node_outcomes,
+            SUMMARY_HIGH_OUTPUT_MAX_LINES,
         );
 
         assert!(
@@ -1055,6 +1092,7 @@ mod tests {
             &graph,
             &completed_nodes,
             &node_outcomes,
+            SUMMARY_HIGH_OUTPUT_MAX_LINES,
         );
 
         assert!(
@@ -1111,6 +1149,7 @@ mod tests {
             &graph,
             &completed_nodes,
             &node_outcomes,
+            SUMMARY_HIGH_OUTPUT_MAX_LINES,
         );
 
         // command.output should NOT appear in the Context section
@@ -1144,6 +1183,7 @@ mod tests {
             &graph,
             &completed_nodes,
             &node_outcomes,
+            SUMMARY_HIGH_OUTPUT_MAX_LINES,
         );
 
         assert!(preamble.contains("Run tests"), "should contain the goal");
@@ -1182,6 +1222,7 @@ mod tests {
             &graph,
             &completed_nodes,
             &node_outcomes,
+            SUMMARY_HIGH_OUTPUT_MAX_LINES,
         );
 
         // summary:low shows only 2 recent stages
@@ -1230,6 +1271,7 @@ mod tests {
             &graph,
             &completed_nodes,
             &node_outcomes,
+            SUMMARY_HIGH_OUTPUT_MAX_LINES,
         );
 
         assert!(
@@ -1269,6 +1311,7 @@ mod tests {
             &graph,
             &completed_nodes,
             &node_outcomes,
+            SUMMARY_HIGH_OUTPUT_MAX_LINES,
         );
 
         assert!(
@@ -1295,6 +1338,7 @@ mod tests {
             &graph,
             &completed_nodes,
             &node_outcomes,
+            SUMMARY_HIGH_OUTPUT_MAX_LINES,
         );
 
         assert!(
@@ -1333,6 +1377,7 @@ mod tests {
             &graph,
             &completed_nodes,
             &node_outcomes,
+            SUMMARY_HIGH_OUTPUT_MAX_LINES,
         );
 
         // summary:medium shows 5 recent stages
@@ -1360,6 +1405,7 @@ mod tests {
             &graph,
             &completed_nodes,
             &node_outcomes,
+            SUMMARY_HIGH_OUTPUT_MAX_LINES,
         );
 
         assert!(
@@ -1399,6 +1445,7 @@ mod tests {
             &graph,
             &completed_nodes,
             &node_outcomes,
+            SUMMARY_HIGH_OUTPUT_MAX_LINES,
         );
 
         assert!(
@@ -1438,6 +1485,7 @@ mod tests {
             &graph,
             &completed_nodes,
             &node_outcomes,
+            SUMMARY_HIGH_OUTPUT_MAX_LINES,
         );
 
         assert!(
@@ -1475,6 +1523,7 @@ mod tests {
             &graph,
             &completed_nodes,
             &node_outcomes,
+            SUMMARY_HIGH_OUTPUT_MAX_LINES,
         );
 
         // summary:high shows ALL stages as ## Stage: headings
@@ -1506,6 +1555,7 @@ mod tests {
             &graph,
             &completed_nodes,
             &node_outcomes,
+            SUMMARY_HIGH_OUTPUT_MAX_LINES,
         );
 
         assert!(
@@ -1529,6 +1579,7 @@ mod tests {
             &graph,
             &completed_nodes,
             &node_outcomes,
+            SUMMARY_HIGH_OUTPUT_MAX_LINES,
         );
 
         assert!(
@@ -1559,6 +1610,7 @@ mod tests {
             &graph,
             &completed_nodes,
             &node_outcomes,
+            SUMMARY_HIGH_OUTPUT_MAX_LINES,
         );
 
         assert!(
@@ -1601,6 +1653,7 @@ mod tests {
             &graph,
             &completed_nodes,
             &node_outcomes,
+            SUMMARY_HIGH_OUTPUT_MAX_LINES,
         );
 
         assert!(
@@ -1649,6 +1702,7 @@ mod tests {
             &graph,
             &completed_nodes,
             &node_outcomes,
+            SUMMARY_HIGH_OUTPUT_MAX_LINES,
         );
 
         assert!(
@@ -1690,6 +1744,7 @@ mod tests {
             &graph,
             &completed_nodes,
             &node_outcomes,
+            SUMMARY_HIGH_OUTPUT_MAX_LINES,
         );
 
         assert!(
@@ -1728,6 +1783,7 @@ mod tests {
             &graph,
             &[],
             &HashMap::new(),
+            SUMMARY_HIGH_OUTPUT_MAX_LINES,
         );
 
         let (_, section) = preamble
@@ -1777,6 +1833,7 @@ mod tests {
             &graph,
             &[],
             &HashMap::new(),
+            SUMMARY_HIGH_OUTPUT_MAX_LINES,
         );
 
         assert!(preamble.contains(concat!(
@@ -1812,6 +1869,7 @@ mod tests {
             &graph,
             &completed_nodes,
             &node_outcomes,
+            SUMMARY_HIGH_OUTPUT_MAX_LINES,
         );
 
         assert!(
@@ -1842,6 +1900,7 @@ mod tests {
             &graph,
             &completed_nodes,
             &node_outcomes,
+            SUMMARY_HIGH_OUTPUT_MAX_LINES,
         );
 
         assert!(
@@ -1901,6 +1960,7 @@ mod tests {
             &graph,
             &completed_nodes,
             &node_outcomes,
+            SUMMARY_HIGH_OUTPUT_MAX_LINES,
         );
 
         assert!(
@@ -1934,6 +1994,7 @@ mod tests {
             &graph,
             &completed_nodes,
             &node_outcomes,
+            SUMMARY_HIGH_OUTPUT_MAX_LINES,
         );
 
         assert!(
@@ -1978,6 +2039,7 @@ mod tests {
             &graph,
             &completed_nodes,
             &node_outcomes,
+            SUMMARY_HIGH_OUTPUT_MAX_LINES,
         );
 
         assert!(
@@ -2010,6 +2072,7 @@ mod tests {
             &graph,
             &completed_nodes,
             &node_outcomes,
+            SUMMARY_HIGH_OUTPUT_MAX_LINES,
         );
 
         assert!(
@@ -2043,6 +2106,7 @@ mod tests {
             &graph,
             &completed_nodes,
             &node_outcomes,
+            SUMMARY_HIGH_OUTPUT_MAX_LINES,
         );
 
         assert!(
@@ -2073,6 +2137,7 @@ mod tests {
             &graph,
             &completed_nodes,
             &node_outcomes,
+            SUMMARY_HIGH_OUTPUT_MAX_LINES,
         );
 
         assert!(
@@ -2102,6 +2167,7 @@ mod tests {
             &graph,
             &completed_nodes,
             &node_outcomes,
+            SUMMARY_HIGH_OUTPUT_MAX_LINES,
         );
 
         assert!(
@@ -2131,6 +2197,7 @@ mod tests {
             &graph,
             &completed_nodes,
             &node_outcomes,
+            SUMMARY_HIGH_OUTPUT_MAX_LINES,
         );
 
         assert!(
@@ -2157,6 +2224,7 @@ mod tests {
             &graph,
             &completed_nodes,
             &node_outcomes,
+            SUMMARY_HIGH_OUTPUT_MAX_LINES,
         );
 
         assert!(
@@ -2188,6 +2256,7 @@ mod tests {
             &graph,
             &completed_nodes,
             &node_outcomes,
+            SUMMARY_HIGH_OUTPUT_MAX_LINES,
         );
 
         assert!(
@@ -2215,6 +2284,7 @@ mod tests {
             &graph,
             &completed_nodes,
             &node_outcomes,
+            SUMMARY_HIGH_OUTPUT_MAX_LINES,
         );
 
         assert!(
@@ -2240,6 +2310,7 @@ mod tests {
             &graph,
             &completed_nodes,
             &node_outcomes,
+            SUMMARY_HIGH_OUTPUT_MAX_LINES,
         );
 
         assert!(
@@ -2256,42 +2327,68 @@ mod tests {
         );
     }
 
-    // --- tail_lines ---
+    // --- cap_lines (head-preserving line cap, fabro-meta-c9f2) ---
 
     #[test]
-    fn tail_lines_returns_full_text_when_under_limit() {
+    fn cap_lines_returns_full_text_when_under_limit() {
         let text = "line1\nline2\nline3";
-        let result = tail_lines(text, 5, "");
+        let result = cap_lines(text, 5, "");
         assert_eq!(result, text);
     }
 
     #[test]
-    fn tail_lines_returns_full_text_at_exact_limit() {
+    fn cap_lines_returns_full_text_at_exact_limit() {
         let text = "line1\nline2\nline3";
-        let result = tail_lines(text, 3, "");
+        let result = cap_lines(text, 3, "");
         assert_eq!(result, text);
+        assert!(!result.contains("omitted"));
     }
 
     #[test]
-    fn tail_lines_truncates_and_shows_omission() {
+    fn cap_lines_truncates_head_preserving_with_omission_marker() {
         let text = "line1\nline2\nline3\nline4\nline5";
-        let result = tail_lines(text, 2, "");
-        assert_eq!(result, "(3 lines omitted)\nline4\nline5");
-        assert!(!result.contains("line1"));
-        assert!(!result.contains("line2"));
+        let result = cap_lines(text, 2, "");
+        assert_eq!(result, "line1\nline2\n(3 lines omitted)");
+        assert!(result.contains("line1"));
+        assert!(result.contains("line2"));
         assert!(!result.contains("line3"));
+        assert!(!result.contains("line4"));
+        assert!(!result.contains("line5"));
     }
 
     #[test]
-    fn tail_lines_applies_indent_to_each_line() {
-        let result = tail_lines("a\nb\nc", 5, "  ");
+    fn cap_lines_applies_indent_to_each_line() {
+        let result = cap_lines("a\nb\nc", 5, "  ");
         assert_eq!(result, "  a\n  b\n  c");
     }
 
     #[test]
-    fn tail_lines_truncates_with_indent() {
-        let result = tail_lines("a\nb\nc\nd\ne", 2, ">> ");
-        assert_eq!(result, ">> (3 lines omitted)\n>> d\n>> e");
+    fn cap_lines_truncates_with_indent() {
+        let result = cap_lines("a\nb\nc\nd\ne", 2, ">> ");
+        assert_eq!(result, ">> a\n>> b\n>> (3 lines omitted)");
+    }
+
+    #[test]
+    fn resolve_output_max_lines_prefers_node_over_graph_over_default() {
+        let graph = Graph::new("t");
+        assert_eq!(
+            resolve_output_max_lines(None, &graph),
+            SUMMARY_HIGH_OUTPUT_MAX_LINES
+        );
+
+        let mut graph = Graph::new("t");
+        graph.attrs.insert(
+            "preamble_output_max_lines".to_string(),
+            AttrValue::Integer(120),
+        );
+        assert_eq!(resolve_output_max_lines(None, &graph), 120);
+
+        let mut node = Node::new("reviewer");
+        node.attrs.insert(
+            "preamble_output_max_lines".to_string(),
+            AttrValue::Integer(200),
+        );
+        assert_eq!(resolve_output_max_lines(Some(&node), &graph), 200);
     }
 
     #[test]
@@ -2329,6 +2426,7 @@ mod tests {
             &graph,
             &completed_nodes,
             &node_outcomes,
+            SUMMARY_HIGH_OUTPUT_MAX_LINES,
         );
 
         assert!(
@@ -2336,12 +2434,12 @@ mod tests {
             "should show omission indicator for long output, got:\n{preamble}"
         );
         assert!(
-            preamble.contains("output line 30"),
-            "should keep last lines"
+            preamble.contains("output line 1\n"),
+            "should keep the head lines"
         );
         assert!(
-            !preamble.contains("output line 1\n"),
-            "should drop early lines"
+            !preamble.contains("output line 30"),
+            "should drop the tail lines beyond the cap"
         );
     }
 
@@ -2382,6 +2480,7 @@ mod tests {
             &graph,
             &completed_nodes,
             &node_outcomes,
+            SUMMARY_HIGH_OUTPUT_MAX_LINES,
         );
 
         assert!(
@@ -2433,6 +2532,7 @@ mod tests {
             &graph,
             &completed_nodes,
             &node_outcomes,
+            SUMMARY_HIGH_OUTPUT_MAX_LINES,
         );
 
         assert!(
@@ -2440,13 +2540,105 @@ mod tests {
             "should show omission indicator for long output, got:\n{preamble}"
         );
         assert!(
-            preamble.contains("output line 60"),
-            "should keep last lines"
+            preamble.contains("output line 1\n"),
+            "should keep the head lines"
         );
         assert!(
-            !preamble.contains("output line 1\n"),
-            "should drop early lines"
+            !preamble.contains("output line 60"),
+            "should drop the tail lines beyond the cap"
         );
+    }
+
+    #[test]
+    fn summary_high_command_stage_renders_within_ceiling_output_fully() {
+        let mut graph = Graph::new("test");
+        let mut build = Node::new("build");
+        build.attrs.insert(
+            "shape".to_string(),
+            AttrValue::String("parallelogram".to_string()),
+        );
+        build.attrs.insert(
+            "script".to_string(),
+            AttrValue::String("cargo check".to_string()),
+        );
+        graph.nodes.insert("build".to_string(), build);
+
+        let context = Context::new();
+        let completed_nodes = vec!["build".to_string()];
+        let mut node_outcomes: HashMap<String, Outcome> = HashMap::new();
+        let mut outcome = Outcome::success();
+        // Exactly at the 50-line ceiling: renders whole, no marker.
+        let output: String = (1..=50)
+            .map(|i| format!("output line {i}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        outcome
+            .context_updates
+            .insert(keys::COMMAND_OUTPUT.to_string(), serde_json::json!(output));
+        node_outcomes.insert("build".to_string(), outcome);
+
+        let preamble = build_preamble(
+            keys::Fidelity::SummaryHigh,
+            &context,
+            &graph,
+            &completed_nodes,
+            &node_outcomes,
+            SUMMARY_HIGH_OUTPUT_MAX_LINES,
+        );
+
+        assert!(
+            !preamble.contains("lines omitted"),
+            "within-ceiling output must render in full, got:\n{preamble}"
+        );
+        assert!(preamble.contains("output line 1\n"));
+        assert!(preamble.contains("output line 50"));
+    }
+
+    #[test]
+    fn summary_high_output_max_lines_override_keeps_long_capture_whole() {
+        // fabro-meta-c9f2: a reviewer node raising the cap (here: passed as
+        // 200, as resolve_output_max_lines would from its node attribute)
+        // receives a ~120-line evidence capture with zero lines omitted.
+        let mut graph = Graph::new("test");
+        let mut evidence = Node::new("evidence");
+        evidence.attrs.insert(
+            "shape".to_string(),
+            AttrValue::String("parallelogram".to_string()),
+        );
+        evidence.attrs.insert(
+            "script".to_string(),
+            AttrValue::String("nu scripts/evidence.nu".to_string()),
+        );
+        graph.nodes.insert("evidence".to_string(), evidence);
+
+        let context = Context::new();
+        let completed_nodes = vec!["evidence".to_string()];
+        let mut node_outcomes: HashMap<String, Outcome> = HashMap::new();
+        let mut outcome = Outcome::success();
+        let output: String = (1..=120)
+            .map(|i| format!("diff line {i}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        outcome
+            .context_updates
+            .insert(keys::COMMAND_OUTPUT.to_string(), serde_json::json!(output));
+        node_outcomes.insert("evidence".to_string(), outcome);
+
+        let preamble = build_preamble(
+            keys::Fidelity::SummaryHigh,
+            &context,
+            &graph,
+            &completed_nodes,
+            &node_outcomes,
+            200,
+        );
+
+        assert!(
+            !preamble.contains("lines omitted"),
+            "raised cap must keep the capture whole, got:\n{preamble}"
+        );
+        assert!(preamble.contains("diff line 1\n"));
+        assert!(preamble.contains("diff line 120"));
     }
 
     #[test]
@@ -2476,6 +2668,7 @@ mod tests {
             &graph,
             &completed_nodes,
             &node_outcomes,
+            SUMMARY_HIGH_OUTPUT_MAX_LINES,
         );
 
         assert!(
@@ -2501,6 +2694,7 @@ mod tests {
             &graph,
             &completed_nodes,
             &node_outcomes,
+            SUMMARY_HIGH_OUTPUT_MAX_LINES,
         );
 
         assert!(

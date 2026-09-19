@@ -15,7 +15,7 @@ use tracing::warn;
 use crate::artifact;
 use crate::context::{Context, ParallelBranchPreamble, keys};
 use crate::graph::{WorkflowGraph, WorkflowNode};
-use crate::handler::llm::preamble::build_preamble;
+use crate::handler::llm::preamble::{build_preamble, resolve_output_max_lines};
 use crate::outcome::{ModelUsage, Outcome};
 use crate::runtime_store::RunStoreHandle;
 
@@ -112,6 +112,9 @@ impl FidelityLifecycle {
                     &self.graph,
                     completed_nodes,
                     resolved_outcomes,
+                    // Branch consumers are unknown at fan-out time, so the
+                    // branch preambles inherit the graph-level line cap.
+                    resolve_output_max_lines(None, &self.graph),
                 ),
             };
             rendered.insert(branch_fidelity, preambles.len());
@@ -299,6 +302,7 @@ impl RunLifecycle<WorkflowGraph> for FidelityLifecycle {
             &self.graph,
             completed_nodes,
             node_outcomes,
+            resolve_output_max_lines(Some(gv_node), &self.graph),
         );
         state
             .context

@@ -50,6 +50,12 @@ pub const DEFAULT_PREAMBLE_INLINE_MAX_KB: usize = 8;
 /// the fattest values largest-first.
 pub const DEFAULT_PREAMBLE_BUDGET_KB: usize = 12;
 
+/// Default line cap for command-stage output rendered inline in a
+/// summary:high preamble stage section. Lines beyond the cap are replaced
+/// with an explicit omission marker while the head renders in full.
+/// Nodes and graphs raise it via `preamble_output_max_lines`.
+pub const DEFAULT_PREAMBLE_OUTPUT_MAX_LINES: usize = 50;
+
 impl OnFailure {
     #[must_use]
     pub fn expected_values() -> String {
@@ -543,6 +549,19 @@ impl Node {
             .and_then(|kb| usize::try_from(kb).ok().filter(|kb| *kb >= 1))
     }
 
+    /// Node-level `preamble_output_max_lines`: raises this node's line cap
+    /// for command-stage output rendered in summary:high preamble sections
+    /// above the graph default
+    /// ([`Graph::preamble_output_max_lines`]). A node whose preamble must
+    /// carry a long command capture whole (e.g. an evidence diff) uses this
+    /// instead of relying on the default head cap. Values below 1 are
+    /// ignored.
+    #[must_use]
+    pub fn preamble_output_max_lines(&self) -> Option<usize> {
+        self.int_attr("preamble_output_max_lines")
+            .and_then(|lines| usize::try_from(lines).ok().filter(|lines| *lines >= 1))
+    }
+
     #[must_use]
     pub fn thread_id(&self) -> Option<&str> {
         self.str_attr("thread_id")
@@ -974,6 +993,29 @@ impl Graph {
             .and_then(|kb| usize::try_from(kb).ok().filter(|kb| *kb >= 1))
     }
 
+    /// Graph-level `preamble_output_max_lines`: the default line cap every
+    /// summary:high command-output stage section of this graph renders to
+    /// before the remainder is replaced with an omission marker (the head
+    /// always renders in full). Nodes override it with the same attribute
+    /// (see [`Node::preamble_output_max_lines`]). Defaults to
+    /// [`DEFAULT_PREAMBLE_OUTPUT_MAX_LINES`]. Values below 1 are ignored
+    /// (the default applies).
+    ///
+    /// An integer attribute:
+    ///
+    /// ```text
+    /// digraph {
+    ///   graph [preamble_output_max_lines=200]
+    /// }
+    /// ```
+    #[must_use]
+    pub fn preamble_output_max_lines(&self) -> Option<usize> {
+        self.attrs
+            .get("preamble_output_max_lines")
+            .and_then(AttrValue::as_i64)
+            .and_then(|lines| usize::try_from(lines).ok().filter(|lines| *lines >= 1))
+    }
+
     /// Graph-level `loop_restart_signature_limit` (default 3).
     /// When the same failure signature repeats this many times, the pipeline
     /// aborts.
@@ -1240,6 +1282,35 @@ mod tests {
         node.attrs
             .insert("preamble_inline_max_kb".to_string(), AttrValue::Integer(-4));
         assert_eq!(node.preamble_inline_max_kb(), None);
+    }
+
+    #[test]
+    fn preamble_output_max_lines_parses_graph_and_node() {
+        let mut graph = Graph::new("t");
+        graph.attrs.insert(
+            "preamble_output_max_lines".to_string(),
+            AttrValue::Integer(120),
+        );
+        assert_eq!(graph.preamble_output_max_lines(), Some(120));
+
+        let mut node = Node::new("work");
+        node.attrs.insert(
+            "preamble_output_max_lines".to_string(),
+            AttrValue::Integer(200),
+        );
+        assert_eq!(node.preamble_output_max_lines(), Some(200));
+
+        // Values below 1 are ignored (default applies).
+        graph.attrs.insert(
+            "preamble_output_max_lines".to_string(),
+            AttrValue::Integer(0),
+        );
+        assert_eq!(graph.preamble_output_max_lines(), None);
+        node.attrs.insert(
+            "preamble_output_max_lines".to_string(),
+            AttrValue::Integer(-4),
+        );
+        assert_eq!(node.preamble_output_max_lines(), None);
     }
 
     #[test]
