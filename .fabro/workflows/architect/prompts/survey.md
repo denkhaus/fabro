@@ -41,11 +41,11 @@ Set `arch_review_date` to today as YYYY-MM-DD. Then derive:
        rg -o '^\s+[a-z_-]+ \[' .fabro/workflows/conductor/workflow.fabro .fabro/workflows/develop/workflow.fabro .fabro/workflows/revisor/workflow.fabro .fabro/workflows/architect/workflow.fabro .fabro/workflows/merge-upstream/workflow.fabro
 
    One line per loop workflow with its node names goes into `arch_facts_files` alongside the ADR/strategy lists (analyze walks this map for the INTERPLAY view).
-3. Churn hot spots: `git log --format= --name-only -n 1000 | grep -v '^$' | sort | uniq -c | sort -rn | head -15` — the top-15 most-touched files with counts, one per line, truncated to the top 5 for the context key. Classify each top-5 entry `upstream-owned` or `fork-owned` (`git ls-tree upstream/main -- <path>` — empty output = fork-owned); for upstream-owned entries also give the file's upstream churn (last 12 weeks: `git log --since=12.weeks --format= upstream/main -- <path> | grep -c .`). The upstream-owned share of our churn is itself a finding signal (fork additions living inside upstream hot files — the fabro-ab8e class).
-4. Open-seed digest: `sd list --format compact --limit 200`, then summarize in <= 10 lines: counts by status, the biggest open clusters (same-area titles), the stalest in_progress claim.
+3. Churn hot spots — counts PLUS RATIOS, two windows: (a) file window: `git log --format= --name-only -n 1000 | grep -v '^$' | sort | uniq -c | sort -rn | head -15`, and alongside each count its churn RATIO — file touches divided by total touches in the same window (get the total once with `git log --format= --name-only -n 1000 | grep -vc '^$'`), two decimals, e.g. `0.043`; (b) wider directory window: `git log --since=30d --format= --name-only | grep -v '^$' | xargs -n1 dirname | sort | uniq -c | sort -rn | head -10` — top directories with the same ratio treatment (directory touches / total touches in the 30d window). Truncate to the top-5 FILES with counts AND ratios for the context key; the per-directory view informs the summary but stays out of the key unless it changes the story. Classify each top-5 entry `upstream-owned` or `fork-owned` (`git ls-tree upstream/main -- <path>` — empty output = fork-owned); for upstream-owned entries also give the file's upstream churn (last 12 weeks: `git log --since=12.weeks --format= upstream/main -- <path> | grep -c .`). The upstream-owned share of our churn is itself a finding signal (fork additions living inside upstream hot files — the fabro-ab8e class).
+4. Open-seed digest — built ONLY from tracker JSON, never reconstructed ids: run `sd list --format json --assignee fabro --limit 200` and build the digest DIRECTLY from that JSON output's fields — every seed id you cite must be a verbatim `id` from that output, never typed from memory or guessed from titles (fabro-60a0: a reconstructed id once cited nonexistent fabro-f751 instead of real fabro-f759). If an id from any other source must appear, validate it first with `sd show <id> --format json` and judge the JSON `success` field (NOT the shell exit code); drop or explicitly flag unknown/unresolvable ids BEFORE emitting `arch_seed_digest`. Then summarize in <= 10 lines: counts by status, the biggest open clusters (same-area titles, with 2-3 representative verbatim ids), the stalest in_progress claim (its verbatim id and date).
 5. ADR/facts file list: `ls docs/lab/adr/` and `ls docs/internal/` — filenames only, one list each (these ground the analyze axes in the recorded decisions).
 
-Keep each context value compact (the whole base must fit a bounded preamble): churn top-5 with counts, digest <= 10 lines, file lists as-is.
+Keep each context value compact (the whole base must fit a bounded preamble): churn top-5 with counts and ratios, digest <= 10 lines, file lists as-is.
 
 ## Hygiene — hard rules
 
@@ -74,8 +74,8 @@ Architecture due:
   "context_updates": {
     "arch_loop_digest": "<<= 12-line loop painpoint summary>",
     "arch_score_json": "<the friction-score JSON object, verbatim>",
-    "arch_churn_hotspots": "<top-5 churn files with counts, one per line>",
-    "arch_seed_digest": "<<= 10-line open-seed summary>",
+    "arch_churn_hotspots": "<top-5 churn files with counts and ratios, one per line>",
+    "arch_seed_digest": "<<= 10-line open-seed summary, every cited id verbatim from sd list JSON or sd-show-validated>",
     "arch_facts_files": "<ADR filenames + strategy-doc filenames>",
     "arch_review_date": "<YYYY-MM-DD>",
     "journal": {"painpoints": [], "observations": ["none"]}
