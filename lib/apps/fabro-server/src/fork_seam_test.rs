@@ -104,7 +104,7 @@ fn config() -> SandboxGcConfig {
 
 /// Two distinct, well-formed workflow version ids (64 hex characters).
 const VERSION_NEW: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
-const VERSION_OLD: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+const VERSION_OLD: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 
 fn run(
     run_id: &str,
@@ -321,7 +321,7 @@ fn gc_leaves_sandboxes_without_a_terminal_run_alone() {
         },
         GcSandbox {
             sandbox_id: "unknown-run".to_string(),
-            run_id:     Some("01HZZ0000000000000000000009".parse().unwrap()),
+            run_id:     Some("01HZZ000000000000000000009".parse().unwrap()),
             image:      None,
         },
     ];
@@ -475,7 +475,7 @@ async fn sweep_deletes_non_revisable_sandboxes_and_stale_tags_with_a_summary() {
         .expect("sweep completes");
 
     // The aged-out run 0 is deleted; runs 1 and 2 sit inside the
-    // carve-out. The old toolchain tag is untagged, its bytes freed.
+    // carve-out and BOTH remain listed as managed sandboxes. The old toolchain tag is untagged, its bytes freed.
     assert_eq!(report.sandboxes_removed, 1);
     assert_eq!(report.image_tags_removed, 1);
     assert_eq!(report.freed_bytes, 7_000_000_000);
@@ -488,7 +488,10 @@ async fn sweep_deletes_non_revisable_sandboxes_and_stale_tags_with_a_summary() {
         .iter()
         .map(|info| info.status.id.as_str())
         .collect();
-    assert_eq!(ids, ["fabro-run-01HY0000000000000000000002"]);
+    assert_eq!(ids, [
+        "fabro-run-01HY0000000000000000000001",
+        "fabro-run-01HY0000000000000000000002"
+    ]);
     // The surviving sandbox was never touched.
     assert_eq!(kept.current_state(), SandboxState::Running);
 }
