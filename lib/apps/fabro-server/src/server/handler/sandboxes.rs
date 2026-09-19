@@ -121,7 +121,7 @@ mod tests {
             .insert(kind.clone(), ServerSandboxProviderSettings {
                 enabled: true,
                 plugin:  Some(SandboxPluginSettings {
-                    path: Some(format!("/nonexistent/fabro-sandbox-{name}")),
+                    path: Some(format!("/nonexistent/sandbox-driver-{name}")),
                     dev: true,
                     ..SandboxPluginSettings::default()
                 }),

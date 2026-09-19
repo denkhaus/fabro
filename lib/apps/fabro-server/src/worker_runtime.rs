@@ -54,6 +54,10 @@ pub(crate) struct WorkerLaunchSpec {
     /// The Fabro home the server resolved, so a Petri run's skills step
     /// reads the same home whatever the worker's environment says.
     pub(crate) fabro_home:             PathBuf,
+    /// The sandbox-driver plugin variables the server's provider settings
+    /// derive (`spawn_env::sandbox_plugin_env`), so Petri in the worker
+    /// launches the plugin the settings name for every configured kind.
+    pub(crate) sandbox_plugin_env:     Vec<(String, String)>,
 }
 
 pub(crate) struct StartedWorker {
@@ -101,7 +105,7 @@ impl LocalWorkerRuntime {
             .stdout(worker_stdout)
             .stderr(Stdio::piped());
 
-        apply_worker_env(&mut cmd);
+        apply_worker_env(&mut cmd, &spec.sandbox_plugin_env);
         if let Some(level) = spec.fabro_log.as_deref() {
             cmd.env(EnvVars::FABRO_LOG, level);
         }

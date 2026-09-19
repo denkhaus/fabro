@@ -150,7 +150,7 @@ use crate::sandbox_access::{
     SandboxInventory,
 };
 use crate::server_secrets::ServerSecrets;
-use crate::spawn_env::apply_render_graph_env;
+use crate::spawn_env::{self, apply_render_graph_env};
 use crate::worker_control::{
     LocalWorkerControlBus, WORKER_CONTROL_ACK_WAIT, WorkerControlAcks, WorkerControlBus,
     WorkerControlBusError,
@@ -3673,6 +3673,9 @@ fn worker_launch_spec(
         github_app_private_key,
         daytona_api_key,
         fabro_home: fabro_config::Home::from_env().root().to_path_buf(),
+        sandbox_plugin_env: spawn_env::sandbox_plugin_env(
+            &state.server_settings().server.sandbox.providers,
+        ),
     })
 }
 

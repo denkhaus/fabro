@@ -54,9 +54,10 @@ use tokio::time;
 pub(crate) const PETRI_RUN_LABEL: &str = "petri.run";
 
 /// Binary naming prefix for a plugin provider's executable: a plugin for
-/// kind `e2b` is `fabro-sandbox-e2b` on `PATH` unless the settings name a
-/// path.
-const PLUGIN_BINARY_PREFIX: &str = "fabro-sandbox";
+/// kind `e2b` is `sandbox-driver-e2b` on `PATH` unless the settings name a
+/// path. The same executable serves Petri's run in the worker, which looks
+/// it up under the same name.
+const PLUGIN_BINARY_PREFIX: &str = "sandbox-driver";
 
 /// `User-Agent` Fabro presents to remote sandbox control planes.
 const USER_AGENT: &str = concat!("fabro-server/", env!("CARGO_PKG_VERSION"));
@@ -839,7 +840,7 @@ mod tests {
             .insert(kind(name), ServerSandboxProviderSettings {
                 enabled: true,
                 plugin:  Some(SandboxPluginSettings {
-                    path: Some(format!("/nonexistent/fabro-sandbox-{name}")),
+                    path: Some(format!("/nonexistent/sandbox-driver-{name}")),
                     dev: true,
                     ..SandboxPluginSettings::default()
                 }),

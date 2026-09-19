@@ -2319,6 +2319,49 @@ fn worker_command_forwards_daytona_api_key_from_vault() {
     );
 }
 
+/// A plugin configured under `[server.sandbox.providers.<kind>]` reaches
+/// the worker under the names Petri reads, so a run on that kind finds its
+/// plugin without a second configuration.
+#[cfg(unix)]
+#[test]
+fn worker_command_forwards_configured_sandbox_plugins() {
+    let storage_dir = tempfile::tempdir().unwrap();
+    let state = worker_command_test_state_with_extra_config(
+        storage_dir.path(),
+        &["dev-token"],
+        Some(TEST_DEV_TOKEN),
+        r#"
+[server.sandbox.providers.e2b]
+path = "/opt/fabro/plugins/sandbox-driver-e2b"
+sha256 = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+dev = true
+"#,
+    );
+    let cmd = worker_command(
+        state.as_ref(),
+        RunId::new(),
+        RunExecutionMode::Start,
+        storage_dir.path(),
+        false,
+    )
+    .unwrap();
+
+    assert_eq!(
+        command_env_value(&cmd, "PETRI_SANDBOX_E2B_PLUGIN"),
+        EnvOverride::Set("/opt/fabro/plugins/sandbox-driver-e2b".to_string())
+    );
+    assert_eq!(
+        command_env_value(&cmd, "PETRI_SANDBOX_E2B_SHA256"),
+        EnvOverride::Set(
+            "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef".to_string()
+        )
+    );
+    assert_eq!(
+        command_env_value(&cmd, EnvVars::PETRI_SANDBOX_PLUGIN_DEV),
+        EnvOverride::Set("1".to_string())
+    );
+}
+
 #[cfg(unix)]
 #[test]
 fn worker_command_omits_github_app_private_key_when_unset() {

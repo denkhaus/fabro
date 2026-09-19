@@ -187,8 +187,8 @@ impl Default for ServerSandboxProviderSettings {
 /// named in `inherit_env` reach it.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SandboxPluginSettings {
-    /// Executable path. When absent the server searches `PATH` for
-    /// `fabro-sandbox-<kind>`.
+    /// Executable path. When absent the server, and Petri in the run's
+    /// worker, search `PATH` for `sandbox-driver-<kind>`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub path:        Option<String>,
     /// Pinned SHA-256 of the executable, hex.

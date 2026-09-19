@@ -19,7 +19,7 @@
  */
 export interface SandboxPluginSettings {
     /**
-     * Executable path. Absent means `fabro-sandbox-<kind>` on `PATH`.
+     * Executable path. Absent means `sandbox-driver-<kind>` on `PATH`.
      */
     'path'?: string;
     /**

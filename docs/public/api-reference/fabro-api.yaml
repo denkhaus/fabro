@@ -15447,7 +15447,7 @@ components:
       properties:
         path:
           type: string
-          description: Executable path. Absent means `fabro-sandbox-<kind>` on `PATH`.
+          description: Executable path. Absent means `sandbox-driver-<kind>` on `PATH`.
         sha256:
           type: string
           description: Pinned SHA-256 of the executable, hex.
