@@ -47,6 +47,11 @@ pub struct RunProjection {
     pub superseded_by:         Option<RunId>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub retried_from:          Option<RunId>,
+    /// Where the run's records came from when it is a fork: the source run
+    /// and the position its records were kept up to, as Petri's own run
+    /// declaration names them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub forked_from:           Option<ForkOrigin>,
     /// The Git author/committer identity the run resolved for its commits.
     /// Absent until the run's first initialization resolves it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -78,6 +83,17 @@ pub struct RunArtifact {
 pub struct PendingInterviewRecord {
     pub question:   InterviewQuestionRecord,
     pub started_at: DateTime<Utc>,
+}
+
+/// The source of a forked run: the run whose records were copied, the
+/// position (a firing of one of its root executions) they were kept up to,
+/// and whether that firing runs again in the fork.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ForkOrigin {
+    pub source_run_id: RunId,
+    pub execution:     u64,
+    pub firing:        u64,
+    pub rerun_last:    bool,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -712,6 +728,7 @@ impl RunProjection {
             pull_request_creation: None,
             superseded_by: None,
             retried_from: None,
+            forked_from: None,
             git_identity: None,
             pending_interviews: BTreeMap::new(),
             artifacts: Vec::new(),

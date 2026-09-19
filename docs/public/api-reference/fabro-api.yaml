@@ -2327,6 +2327,197 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /api/v1/runs/{id}/retry:
+    post:
+      operationId: retryRun
+      tags: [Runs]
+      summary: Retry Run
+      description: >
+        Creates a new run from the terminal source run's last checkpoint and
+        starts it. When the source failed on a stage, that stage runs again on
+        the files of the stage before it; otherwise the new run continues from
+        the last checkpoint as it stands. The new run records `retried_from`
+        and `fork_source_ref`; the source run is left unchanged. Active and
+        archived runs are not retryable.
+      parameters:
+        - $ref: "#/components/parameters/RunId"
+      responses:
+        "201":
+          description: New retry run created and started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Run"
+        "400":
+          description: The source has no checkpoint to retry from
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Run not found
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Source run is not retryable
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/runs/{id}/rewind:
+    post:
+      operationId: rewindRun
+      tags: [Runs]
+      summary: Rewind Run
+      description: >
+        Creates a new run from a checkpoint of a terminal source run and
+        starts it, then archives the source run and records
+        `run.superseded_by` on it. Returns 207 when the new run was created
+        but the source archive step failed.
+      parameters:
+        - $ref: "#/components/parameters/RunId"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RewindRequest"
+      responses:
+        "200":
+          description: Source archived and new run created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RewindResponse"
+        "207":
+          description: New run created but source archive failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RewindResponse"
+        "400":
+          description: Invalid rewind target
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Run not found
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Source run is archived or is not terminal
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/runs/{id}/fork:
+    post:
+      operationId: forkRun
+      tags: [Runs]
+      summary: Fork Run
+      description: >
+        Creates a new run from a checkpoint of the source run and starts it.
+        The new run holds the source's records up to the checkpoint's
+        position and continues from there in a fresh workspace restored to
+        the checkpoint's commit. The source run is left untouched. A
+        checkpoint inside a parallel branch cannot be forked at; fork at the
+        parallel stage instead.
+      parameters:
+        - $ref: "#/components/parameters/RunId"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ForkRequest"
+      responses:
+        "200":
+          description: New run created and started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ForkResponse"
+        "400":
+          description: Invalid fork target
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Run not found
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Source run is archived
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/runs/{id}/timeline:
+    get:
+      operationId: getRunTimeline
+      tags: [Runs]
+      summary: Get Run Timeline
+      description: >
+        Returns the run's checkpoints in the order they were recorded, each
+        at its Petri position with the commit it made and the stage it
+        belongs to, and where the run was forked from when it is a fork.
+      parameters:
+        - $ref: "#/components/parameters/RunId"
+      responses:
+        "200":
+          description: Run checkpoint timeline
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunTimelineResponse"
+        "404":
+          description: Run not found
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /api/v1/runs/{id}/unarchive:
     post:
       operationId: unarchiveRun
@@ -12778,6 +12969,11 @@ components:
         retried_from:
           type: ["string", "null"]
           description: Source run ID when this run was created by manual retry.
+        forked_from:
+          oneOf:
+            - $ref: "#/components/schemas/ForkOrigin"
+            - type: "null"
+          description: Where the run's records came from when it is a fork.
         git_identity:
           oneOf:
             - $ref: "#/components/schemas/GitIdentity"
@@ -13127,6 +13323,176 @@ components:
         web:
           type: ["string", "null"]
           format: uri
+
+    ForkOrigin:
+      description: >-
+        Where a forked run came from: the source run, the position (an
+        execution and a firing of its root invocation) the source's records
+        were kept up to, and whether that firing runs again in the fork.
+      type: object
+      required:
+        - source_run_id
+        - execution
+        - firing
+        - rerun_last
+      properties:
+        source_run_id:
+          type: string
+        execution:
+          type: integer
+          format: uint64
+        firing:
+          type: integer
+          format: uint64
+        rerun_last:
+          type: boolean
+
+    ForkRequest:
+      description: Request body for creating a new run from a source run checkpoint.
+      type: object
+      properties:
+        target:
+          type: ["string", "null"]
+          description: Optional checkpoint target such as `@2`, `build`, or `build@1`. Defaults to the latest checkpoint.
+
+    ForkResponse:
+      description: Response returned after creating and starting a forked run.
+      type: object
+      required:
+        - source_run_id
+        - new_run_id
+        - target
+        - checkpoint_sha
+        - execution
+        - firing
+        - rerun_last
+      properties:
+        source_run_id:
+          type: string
+        new_run_id:
+          type: string
+        target:
+          type: string
+          description: The checkpoint the fork was resolved to, as `@ordinal`.
+        checkpoint_sha:
+          type: string
+          description: The commit the new run's workspace starts on.
+        execution:
+          type: integer
+          format: uint64
+          description: The Petri execution of the fork position.
+        firing:
+          type: integer
+          format: uint64
+          description: The Petri firing of the fork position.
+        rerun_last:
+          type: boolean
+          description: Whether the position's stage runs again in the new run.
+
+    RewindRequest:
+      description: Request body for creating a replacement run from a source run checkpoint.
+      type: object
+      properties:
+        target:
+          type: ["string", "null"]
+          description: Optional checkpoint target such as `@2`, `build`, or `build@1`. Defaults to the latest checkpoint.
+
+    RewindResponse:
+      description: Response returned after rewind creates and starts a new run.
+      type: object
+      required:
+        - source_run_id
+        - new_run_id
+        - target
+        - checkpoint_sha
+        - execution
+        - firing
+        - archived
+      properties:
+        source_run_id:
+          type: string
+        new_run_id:
+          type: string
+        target:
+          type: string
+          description: The checkpoint the rewind was resolved to, as `@ordinal`.
+        checkpoint_sha:
+          type: string
+        execution:
+          type: integer
+          format: uint64
+        firing:
+          type: integer
+          format: uint64
+        archived:
+          type: boolean
+        archive_error:
+          type: ["string", "null"]
+
+    RunTimelineResponse:
+      description: The run's checkpoints in order, and its fork origin when it is a fork.
+      type: object
+      required:
+        - entries
+      properties:
+        entries:
+          type: array
+          items:
+            $ref: "#/components/schemas/TimelineEntryResponse"
+        forked_from:
+          oneOf:
+            - $ref: "#/components/schemas/ForkOrigin"
+            - type: "null"
+
+    TimelineEntryResponse:
+      description: One checkpoint of a run.
+      type: object
+      required:
+        - ordinal
+        - checkpoint_seq
+        - execution
+        - firing
+        - attempt
+        - node_name
+        - visit
+      properties:
+        ordinal:
+          type: integer
+          format: uint64
+          description: 1-based, in the order the checkpoints were recorded; the `@ordinal` a fork target names.
+        checkpoint_seq:
+          type: integer
+          format: uint64
+          description: The checkpoint record's position among the run's platform records.
+        execution:
+          type: integer
+          format: uint64
+          description: The Petri execution the checkpoint belongs to.
+        firing:
+          type: integer
+          format: uint64
+          description: The Petri firing the checkpoint belongs to.
+        attempt:
+          type: integer
+          format: uint32
+          description: The attempt of the firing whose files the commit holds, from 1.
+        stage:
+          type: ["string", "null"]
+          description: The stage id (`node@visit`) when the projection shows the stage.
+        node_name:
+          type: string
+        visit:
+          type: integer
+          format: uint32
+        workspace:
+          type: ["string", "null"]
+          description: The Petri workspace id the commit was made in.
+        run_commit_sha:
+          type: ["string", "null"]
+        diff_summary:
+          oneOf:
+            - $ref: "#/components/schemas/DiffSummary"
+            - type: "null"
 
     BoardColumn:
       description: |

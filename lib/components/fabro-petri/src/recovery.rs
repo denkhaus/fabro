@@ -14,8 +14,8 @@
 //!   when the record was lost to the crash, the commit found by its key in the
 //!   workspace's snapshot repository or history, which is then recorded again;
 //! - a workspace that survives is verified to sit on that commit, unchanged, or
-//!   reset to it; a workspace that is gone is restored from the run's snapshot
-//!   repository into a fresh directory;
+//!   reset to it; a workspace that is gone, or a fresh one with no history (a
+//!   fork's first acquisition), is restored from the run's snapshot repository;
 //! - a durable finish with no snapshot fails the run with a named error rather
 //!   than resume it on stale files.
 //!
@@ -321,7 +321,7 @@ pub async fn recover(request: RecoveryRequest) -> Result<Recovery, RecoveryError
     let mut recovered = Vec::new();
     for (workspace, target) in targets {
         let action = if request.host_workspaces {
-            bring_to(&workspaces, &workspace, &target).await?
+            bring_host_to(&workspaces, &workspace, &target).await?
         } else {
             WorkspaceAction::Deferred
         };
@@ -470,8 +470,11 @@ async fn newest(
     Ok(chosen.clone())
 }
 
-/// Verify, reset or restore the host workspace onto its target.
-async fn bring_to(
+/// Verify, reset or restore the host workspace onto its target: a
+/// workspace that still holds the commit is verified or reset in place; a
+/// gone one, or a fresh directory with no history (a fork's first
+/// acquisition), is restored from the snapshot repository.
+pub async fn bring_host_to(
     workspaces: &RunWorkspaces,
     workspace: &str,
     target: &RestoreTarget,
@@ -480,7 +483,11 @@ async fn bring_to(
         workspace: workspace.to_string(),
         source,
     };
-    if workspaces.workspace_exists(workspace).await {
+    if workspaces
+        .has_commit(workspace, &target.sha)
+        .await
+        .map_err(failed)?
+    {
         if workspaces
             .matches(workspace, &target.sha)
             .await

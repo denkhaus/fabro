@@ -78,6 +78,13 @@ pub struct SessionEventStream {
     buffered_events: VecDeque<SessionEvent>,
 }
 
+/// What a rewind returned: the response, and the status that says whether
+/// the source was archived.
+pub struct RewindRunResult {
+    pub status:   u16,
+    pub response: types::RewindResponse,
+}
+
 #[derive(Default)]
 struct ListStoreRunsOptions {
     parent_id: Option<RunId>,
@@ -1419,6 +1426,74 @@ impl Client {
         let response = self
             .send_api(
                 |client| async move { client.retrieve_run().id(run_id.to_string()).send().await },
+            )
+            .await?;
+        convert_type(response.into_inner())
+    }
+
+    /// The run's checkpoint timeline, and where it was forked from.
+    pub async fn run_timeline(&self, run_id: &RunId) -> Result<types::RunTimelineResponse> {
+        let response = self
+            .send_api(|client| async move {
+                client
+                    .get_run_timeline()
+                    .id(run_id.to_string())
+                    .send()
+                    .await
+            })
+            .await?;
+        Ok(response.into_inner())
+    }
+
+    /// Fork the run at a checkpoint into a new run, started in resume mode.
+    pub async fn fork_run(
+        &self,
+        run_id: &RunId,
+        request: types::ForkRequest,
+    ) -> Result<types::ForkResponse> {
+        let response = self
+            .send_api(|client| async move {
+                client
+                    .fork_run()
+                    .id(run_id.to_string())
+                    .body(request)
+                    .send()
+                    .await
+            })
+            .await?;
+        Ok(response.into_inner())
+    }
+
+    /// Rewind the run to a checkpoint: a fork that archives and supersedes
+    /// the source. The status says whether the archive succeeded (200) or
+    /// the new run was made without it (207).
+    pub async fn rewind_run(
+        &self,
+        run_id: &RunId,
+        request: types::RewindRequest,
+    ) -> Result<RewindRunResult> {
+        let response = self
+            .send_api(|client| async move {
+                client
+                    .rewind_run()
+                    .id(run_id.to_string())
+                    .body(request)
+                    .send()
+                    .await
+            })
+            .await?;
+        let status = response.status().as_u16();
+        Ok(RewindRunResult {
+            status,
+            response: response.into_inner(),
+        })
+    }
+
+    /// Retry a terminal run from its last checkpoint: the new run.
+    pub async fn retry_run(&self, run_id: &RunId) -> Result<Run> {
+        let response = self
+            .send_api(
+                |client| async move { client.retry_run().id(run_id.to_string()).send().await },
             )
             .await?;
         convert_type(response.into_inner())

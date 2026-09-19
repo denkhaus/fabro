@@ -10,11 +10,13 @@ use crate::sleep_inhibitor;
 
 pub(crate) mod ask;
 pub(crate) mod attach;
+pub(crate) mod checkpoints;
 pub(crate) mod command;
 pub(crate) mod cp;
 pub(crate) mod create;
 pub(crate) mod diff;
 pub(crate) mod events;
+pub(crate) mod fork;
 pub(crate) mod logs;
 pub(crate) mod output;
 pub(crate) mod overrides;
@@ -24,6 +26,8 @@ pub(crate) mod preview;
 mod remote_workflow;
 mod resolution;
 pub(crate) mod resume;
+pub(crate) mod retry;
+pub(crate) mod rewind;
 pub(crate) mod run_progress;
 pub(crate) mod runner;
 mod selection;
@@ -32,6 +36,7 @@ pub(crate) mod start;
 pub(crate) mod steer;
 #[cfg(test)]
 pub(crate) mod test_support;
+pub(crate) mod timeline;
 pub(crate) mod wait;
 
 pub(crate) async fn dispatch(
@@ -135,6 +140,19 @@ pub(crate) async fn dispatch(
                 sleep_inhibitor::guard(ctx.user_settings().cli.exec.prevent_idle_sleep)
             };
             Box::pin(resume::resume_command(args, styles, base_ctx)).await
+        }
+        RunCommands::Retry(args) => retry::run(&args, base_ctx).await,
+        RunCommands::Fork(args) => {
+            let styles = Styles::detect_stderr();
+            Box::pin(fork::run(&args, &styles, base_ctx)).await
+        }
+        RunCommands::Rewind(args) => {
+            let styles = Styles::detect_stderr();
+            Box::pin(rewind::run(&args, &styles, base_ctx)).await
+        }
+        RunCommands::Timeline(args) => {
+            let styles = Styles::detect_stderr();
+            timeline::run(&args, &styles, base_ctx).await
         }
         RunCommands::Wait(args) => {
             let styles = Styles::detect_stderr();

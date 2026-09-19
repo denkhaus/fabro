@@ -62,12 +62,14 @@
 //! `git` inside the scope through it, and move the commit out as a bundle
 //! into the same snapshot repository the host path pushes to. Artifacts are
 //! read out through the same environment on every provider. The same
-//! point is where a resumed run brings a sandbox workspace to the snapshot
-//! its durable state names, before the first attempt runs in it: verified,
+//! point is where a resumed run brings a workspace to the snapshot its
+//! durable state names, before the first attempt runs in it: verified,
 //! reset, or, in a fresh sandbox (Petri replaces a lost one on Fabro's
 //! request), restored from a bundle of the checkpoint. The plan is
 //! [`recovery::plan`], the one the server applied to host workspaces before
-//! it relaunched the worker.
+//! it relaunched the worker; a host workspace is verified here, unless the
+//! run is a fork whose fresh workspace nothing restored yet
+//! ([`crate::fork`]), which is restored from the seeded snapshot repository.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -657,6 +659,37 @@ impl FabroHooks {
                 }
             })
             .await
+    }
+
+    /// Bring a host workspace to the snapshot the resumed run's durable
+    /// state names, once, at its first acquisition. After a restart the
+    /// server already brought it there, so this verifies; a fork's fresh
+    /// workspace is restored here from the snapshot repository the fork
+    /// seeded.
+    async fn restore_host(&self, workspace: &str) -> Result<(), ScopeAcquiredError> {
+        let targets = self.restore_targets().await?;
+        let target = lock(targets).remove(workspace);
+        let Some(target) = target else {
+            return Ok(());
+        };
+        let serialized = self.workspace_lock(workspace);
+        let _held = serialized.lock().await;
+        let action = recovery::bring_host_to(&self.workspaces, workspace, &target)
+            .await
+            .map_err(|error| {
+                ScopeAcquiredError::new(format!(
+                    "the host workspace `{workspace}` could not be brought to its snapshot: {}",
+                    collect_chain(&error).join(": ")
+                ))
+            })?;
+        info!(
+            run_id = %self.run_id,
+            workspace,
+            sha = target.sha,
+            action = ?action,
+            "host workspace brought to its durable snapshot"
+        );
+        Ok(())
     }
 
     /// Bring a sandbox workspace to the snapshot the resumed run's durable
@@ -1279,10 +1312,14 @@ impl ExecutionHooks for FabroHooks {
             (context.execution, acquired.scope),
             (workspace.clone(), Arc::clone(&acquired.env)),
         );
-        if self.host_workspaces || !self.resumed {
+        if !self.resumed {
             return Ok(());
         }
-        self.restore_sandbox(&workspace, &acquired.env).await
+        if self.host_workspaces {
+            self.restore_host(&workspace).await
+        } else {
+            self.restore_sandbox(&workspace, &acquired.env).await
+        }
     }
 }
 

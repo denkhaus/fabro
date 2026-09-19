@@ -48,7 +48,11 @@
 //! - [`host_tools`]: Fabro's run tools on every native agent session of a run,
 //!   through Petri's `HostTools` capability;
 //! - [`controls`]: the controls Fabro drives on a live run (pause, unpause,
-//!   steer, cancel), over Petri's control service.
+//!   steer, cancel), over Petri's control service;
+//! - [`fork`]: a run seeded from another's records up to a checkpoint's
+//!   position, over Petri's `host::fork_from`, with the kept checkpoints, their
+//!   snapshots and the run branch carried over: what rewind, fork and retry are
+//!   built on.
 //!
 //! The Petri packages are pinned by revision in the workspace `Cargo.toml`
 //! under `petri_*` keys.
@@ -59,6 +63,7 @@ pub mod check;
 pub mod checkpoint;
 pub mod controls;
 pub mod engine;
+pub mod fork;
 pub mod hooks;
 pub mod host_tools;
 pub mod http_store;
