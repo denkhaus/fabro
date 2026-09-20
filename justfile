@@ -41,6 +41,18 @@ default:
 # referenced asset, SPA deep route, CLI API roundtrip). Smoke failure aborts
 # with an ALARM block instead of shipping a broken instance.
 #
+# Install-mode detection (fabro-b03f): a routine image refresh can boot
+# the local server UNCONFIGURED — /health answers 200 but reports
+# mode=install and every /api/v1/* route 404s. Root cause: the compose
+# volume's physical name is <project>_fabro-storage and the compose
+# project name derives from the checkout dir basename, so `just up` from
+# a different checkout dir (or with a changed COMPOSE_PROJECT_NAME)
+# creates a fresh empty volume instead of reusing the configured one.
+# The smoke step detects the install-mode marker and prints the exact
+# re-install step (docker compose logs fabro 2>&1 | grep -A14 'install
+# mode' → open the printed install URL, finish setup). Production
+# compose behavior is unchanged.
+#
 # LOCK (fabro-332e, partial): two overlapping `just up` runs raced the SPA
 # dist mirror on 2026-08-25 and shipped an instance whose UI 404'd every
 # asset while health stayed green. The lock file (tmp/just-up.lock, held by

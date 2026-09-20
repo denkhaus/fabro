@@ -6,6 +6,8 @@
 # the routes a user actually hits:
 #
 #   1. /health            — server up
+#   1b. /health body      — install-mode marker (mode=install) aborts
+#                            with the exact re-install step (fabro-b03f)
 #   2. /                  — SPA index serves AND references >= 1 asset
 #   3. every referenced   — each assets/*.js / *.css the index names
 #      asset                answers 200 (the exact index/asset mismatch
@@ -43,6 +45,32 @@ def main [port: string = "32276", cli: string = "~/.fabro/bin/fabro"]: nothing -
 
     # 1. health
     $results = ($results | append (probe "health endpoint" $"($base)/health"))
+
+    # 1b. install-mode detection (fabro-b03f): /health answers 200 in BOTH
+    # modes, but an unconfigured server reports {"status":"ok",
+    # "mode":"install"} and 404s every /api/v1/* route. A routine `just up`
+    # image refresh hits this when the compose volume comes up empty: the
+    # physical volume is <project>_fabro-storage and the compose project
+    # name derives from the checkout dir basename, so refreshing from a
+    # different checkout dir (or with a changed COMPOSE_PROJECT_NAME)
+    # creates a fresh empty volume instead of reusing the configured one.
+    # Short-circuit with the exact re-install step instead of letting every
+    # downstream probe fail confusingly.
+    let health_body = (do { ^curl -sS -m 5 $"($base)/health" } | complete)
+    let health_json = ($health_body.stdout | str replace --all " " "")
+    if (($health_json | str contains '"mode"') and ($health_json | str contains "install")) {
+        print -e ""
+        print -e "╔══ ALARM: server booted UNCONFIGURED — install mode active ══╗"
+        print -e "║ /health reports mode=install: every /api/v1/* route 404s.    ║"
+        print -e "║ The compose volume has no configured state (see fabro-b03f).  ║"
+        print -e "║ Re-install:                                                   ║"
+        print -e "║   1. docker compose logs fabro 2>&1 | grep -A14 'install mode'║"
+        print -e "║      → copy the install URL (it embeds the install token)     ║"
+        print -e "║   2. open that URL in a browser and finish setup              ║"
+        print -e "║   3. the server restarts configured; re-run: just smoke       ║"
+        print -e "╚══════════════════════════════════════════════════════════════╝"
+        exit 1
+    }
 
     # 2. SPA index + asset references
     let index = (do { ^curl -sS -m 5 $base } | complete)
