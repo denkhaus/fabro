@@ -109,6 +109,7 @@ permissions = "read-write""#,
             r#"[run.model]
 provider = "anthropic"
 name = "claude-sonnet-4-5"
+first_token_timeout_secs = 45
 
 [run.model.fallbacks]
 "claude-sonnet-4-5" = ["openrouter:kimi-k3", "gpt-terra"]"#,

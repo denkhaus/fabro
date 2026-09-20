@@ -348,6 +348,7 @@ fabro create [OPTIONS] <WORKFLOW>
 
 | Option | Description |
 | --- | --- |
+| `--agent-session <session_id>` | Declare that this run is created from an agent session; the server records the run's created_by as kind=agent with this session id (attribution-only marker, no extra privilege) |
 | `--auto-approve` | Auto-approve all human gates |
 | `-d, --detach` | Run the workflow in the background and print the run ID |
 | `--dry-run` | Simulate execution; workflow source may still be fetched and uploaded |
@@ -1083,6 +1084,7 @@ fabro run [OPTIONS] <WORKFLOW>
 
 | Option | Description |
 | --- | --- |
+| `--agent-session <session_id>` | Declare that this run is created from an agent session; the server records the run's created_by as kind=agent with this session id (attribution-only marker, no extra privilege) |
 | `--auto-approve` | Auto-approve all human gates |
 | `-d, --detach` | Run the workflow in the background and print the run ID |
 | `--dry-run` | Simulate execution; workflow source may still be fetched and uploaded |

@@ -595,10 +595,11 @@ command = ["demo-mcp"]
             .run_overrides(RunLayer {
                 metadata: ReplaceMap::from(HashMap::from([("env".to_string(), "cli".to_string())])),
                 model: Some(RunModelLayer {
-                    provider:  Some("openai".to_string()),
-                    name:      Some("gpt-5".to_string()),
-                    fallbacks: crate::MergeMap::default(),
-                    controls:  None,
+                    provider:                 Some("openai".to_string()),
+                    name:                     Some("gpt-5".to_string()),
+                    fallbacks:                crate::MergeMap::default(),
+                    controls:                 None,
+                    first_token_timeout_secs: None,
                 }),
                 execution: Some(RunExecutionLayer {
                     mode: Some(RunMode::DryRun),

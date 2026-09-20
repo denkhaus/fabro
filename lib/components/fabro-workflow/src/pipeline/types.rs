@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::Duration;
 
 use fabro_auth::EnvLookup;
 use fabro_graphviz::graph::Graph;
@@ -241,12 +242,15 @@ impl Persisted {
 
 #[derive(Clone)]
 pub struct LlmSpec {
-    pub model:          String,
-    pub provider_id:    ProviderId,
-    pub fallbacks:      ModelFallbackPolicy,
-    pub mcp_servers:    Vec<McpServerSettings>,
-    pub model_controls: RunModelControls,
-    pub dry_run:        bool,
+    pub model:               String,
+    pub provider_id:         ProviderId,
+    pub fallbacks:           ModelFallbackPolicy,
+    pub mcp_servers:         Vec<McpServerSettings>,
+    pub model_controls:      RunModelControls,
+    /// Per-call first-token timeout for streaming stage LLM calls
+    /// (run.model.first_token_timeout_secs, engine default when unset).
+    pub first_token_timeout: Duration,
+    pub dry_run:             bool,
 }
 
 #[derive(Clone)]
