@@ -31,7 +31,7 @@
 //! the worker's run reaches, so its target is deferred, and the worker's
 //! hooks read the same plan and apply it through the scope's environment
 //! at `scope_acquired`, before the first attempt runs there
-//! ([`bring_sandbox_to`]).
+//! ([`bring_to`]).
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -45,11 +45,12 @@ use fabro_types::{RunId, SandboxProviderKind};
 use petri_execution::host::{self, HostError};
 use petri_execution::inspect::{self, ExecutionInspection, InspectError};
 use petri_execution::{Access, InvocationId, RunKey, RunStore};
-use petri_runtime::executor::ExecEnv;
 use petri_store::StoreError;
 use tracing::info;
 
-use crate::checkpoint::{CHECKPOINT_FAILED_CLASS, CheckpointError, CheckpointKey, RunWorkspaces};
+use crate::checkpoint::{
+    CHECKPOINT_FAILED_CLASS, CheckpointError, CheckpointKey, RunWorkspaces, Site,
+};
 use crate::platform_records::{PlatformRecordError, PlatformRecords};
 use crate::workspace::{WorkspaceLookup, WorkspaceLookupError};
 
@@ -321,7 +322,13 @@ pub async fn recover(request: RecoveryRequest) -> Result<Recovery, RecoveryError
     let mut recovered = Vec::new();
     for (workspace, target) in targets {
         let action = if request.host_workspaces {
-            bring_host_to(&workspaces, &workspace, &target).await?
+            bring_to(
+                &workspaces,
+                &workspaces.host(&workspace),
+                &workspace,
+                &target,
+            )
+            .await?
         } else {
             WorkspaceAction::Deferred
         };
@@ -470,12 +477,14 @@ async fn newest(
     Ok(chosen.clone())
 }
 
-/// Verify, reset or restore the host workspace onto its target: a
+/// Verify, reset or restore the workspace at `site` onto its target: a
 /// workspace that still holds the commit is verified or reset in place; a
-/// gone one, or a fresh directory with no history (a fork's first
-/// acquisition), is restored from the snapshot repository.
-pub async fn bring_host_to(
+/// gone one, a fresh directory with no history (a fork's first
+/// acquisition), or a sandbox whose repository lost the commit, is restored
+/// from the snapshot repository (a bundle of the snapshot, into a sandbox).
+pub async fn bring_to(
     workspaces: &RunWorkspaces,
+    site: &Site,
     workspace: &str,
     target: &RestoreTarget,
 ) -> Result<WorkspaceAction, RecoveryError> {
@@ -484,64 +493,22 @@ pub async fn bring_host_to(
         source,
     };
     if workspaces
-        .has_commit(workspace, &target.sha)
+        .has_commit(site, &target.sha)
         .await
         .map_err(failed)?
     {
         if workspaces
-            .matches(workspace, &target.sha)
+            .matches(site, &target.sha)
             .await
             .map_err(failed)?
         {
             return Ok(WorkspaceAction::Verified);
         }
-        workspaces
-            .reset(workspace, &target.sha)
-            .await
-            .map_err(failed)?;
+        workspaces.reset(site, &target.sha).await.map_err(failed)?;
         return Ok(WorkspaceAction::Reset);
     }
     workspaces
-        .restore(workspace, target.key, &target.sha)
-        .await
-        .map_err(failed)?;
-    Ok(WorkspaceAction::Restored)
-}
-
-/// Verify, reset or restore a sandbox workspace onto its target, through
-/// the scope's environment: a retained sandbox that still holds the commit
-/// is verified or reset in place; a fresh one, or one whose repository
-/// lost the commit, is restored from a bundle of the snapshot.
-pub async fn bring_sandbox_to(
-    workspaces: &RunWorkspaces,
-    env: &Arc<dyn ExecEnv>,
-    workspace: &str,
-    target: &RestoreTarget,
-) -> Result<WorkspaceAction, RecoveryError> {
-    let failed = |source| RecoveryError::Workspace {
-        workspace: workspace.to_string(),
-        source,
-    };
-    if workspaces
-        .has_commit_in(env, &target.sha)
-        .await
-        .map_err(failed)?
-    {
-        if workspaces
-            .matches_in(env, &target.sha)
-            .await
-            .map_err(failed)?
-        {
-            return Ok(WorkspaceAction::Verified);
-        }
-        workspaces
-            .reset_in(env, &target.sha)
-            .await
-            .map_err(failed)?;
-        return Ok(WorkspaceAction::Reset);
-    }
-    workspaces
-        .restore_in(env, workspace, target.key, &target.sha)
+        .restore(site, workspace, target.key, &target.sha)
         .await
         .map_err(failed)?;
     Ok(WorkspaceAction::Restored)

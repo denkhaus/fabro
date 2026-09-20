@@ -103,7 +103,8 @@ use tracing::{debug, info, warn};
 
 use crate::blobs::Blobs;
 use crate::checkpoint::{
-    CHECKPOINT_FAILED_CLASS, CheckpointKey, EXCLUDE_DIRS, RunWorkspaces, Snapshot, WorkspaceDiff,
+    CHECKPOINT_FAILED_CLASS, CheckpointKey, EXCLUDE_DIRS, RunWorkspaces, Site, Snapshot,
+    WorkspaceDiff,
 };
 use crate::platform_records::PlatformRecords;
 use crate::recovery::{self, Plan, RestoreTarget};
@@ -390,6 +391,28 @@ impl FabroHooks {
             .cloned()
     }
 
+    /// Where `scope`'s workspace is and what to call it: on this host, the
+    /// directory the records name (`None` when it does not exist yet); in
+    /// a sandbox, the environment kept at `scope_acquired` (`None` before
+    /// the scope was acquired).
+    async fn site_of(
+        &self,
+        context: &HookContext,
+        scope: ScopeId,
+    ) -> Result<Option<(String, Site)>, String> {
+        if !self.host_workspaces {
+            return Ok(self
+                .env_of(context, scope)
+                .map(|(workspace, env)| (workspace, Site::Sandbox(env))));
+        }
+        let workspace = self.workspace_of(context, scope).await?;
+        if !self.workspaces.workspace_exists(&workspace).await {
+            return Ok(None);
+        }
+        let site = self.workspaces.host(&workspace);
+        Ok(Some((workspace, site)))
+    }
+
     /// The checkpoint commit for one attempt's result. `Ok(Some)` is the
     /// note to record, `Ok(None)` nothing to record, `Err` the fatal
     /// failure message.
@@ -402,15 +425,9 @@ impl FabroHooks {
         status: &Status,
         origin: ResultOrigin,
     ) -> Result<Option<Note>, String> {
-        if !self.host_workspaces {
-            return self
-                .snapshot_in_sandbox(context, scope, key, node, status, origin)
-                .await;
-        }
-        let workspace = self.workspace_of(context, scope).await?;
-        if !self.workspaces.workspace_exists(&workspace).await {
+        let Some((workspace, site)) = self.site_of(context, scope).await? else {
             // A skipped node or a driver-made outcome may precede the scope's
-            // environment; nothing of the stage's is on disk to snapshot.
+            // environment; nothing of the stage's exists to snapshot.
             if origin == ResultOrigin::Driver || matches!(status, Status::Skipped) {
                 return Ok(Some(Note::new(
                     CHECKPOINT_NOTE,
@@ -418,22 +435,21 @@ impl FabroHooks {
                         "execution": key.execution,
                         "firing": key.firing,
                         "attempt": key.attempt,
-                        "workspace": workspace,
-                        "skipped": "the workspace does not exist yet",
+                        "skipped": "the scope has no workspace yet",
                     }),
                 )));
             }
             return Err(format!(
-                "the workspace `{workspace}` of scope {scope} does not exist at {}",
-                self.workspaces.workspace_path(&workspace).display()
+                "scope {scope} of execution {} has no workspace to snapshot",
+                context.execution
             ));
-        }
+        };
         self.gate("commit", node).await;
         let serialized = self.workspace_lock(&workspace);
         let _held = serialized.lock().await;
         match self
             .workspaces
-            .commit(&workspace, key, node, status.tag())
+            .commit(&site, &workspace, key, node, status.tag())
             .await
         {
             Ok(snapshot) => {
@@ -444,6 +460,7 @@ impl FabroHooks {
                     firing = key.firing,
                     attempt = key.attempt,
                     reused = snapshot.reused,
+                    site = ?site,
                     "checkpoint committed"
                 );
                 self.committed(key, &workspace, &snapshot).await;
@@ -461,74 +478,6 @@ impl FabroHooks {
             }
             Err(error) => Err(format!(
                 "the checkpoint commit of `{node}` failed: {}",
-                collect_chain(&error).join(": ")
-            )),
-        }
-    }
-
-    /// [`snapshot`](Self::snapshot) for a workspace inside the scope's
-    /// sandbox, through the environment kept at `scope_acquired`.
-    async fn snapshot_in_sandbox(
-        &self,
-        context: &HookContext,
-        scope: ScopeId,
-        key: CheckpointKey,
-        node: &str,
-        status: &Status,
-        origin: ResultOrigin,
-    ) -> Result<Option<Note>, String> {
-        let Some((workspace, env)) = self.env_of(context, scope) else {
-            // A skipped node or a driver-made outcome may precede the scope's
-            // environment; nothing of the stage's exists to snapshot.
-            if origin == ResultOrigin::Driver || matches!(status, Status::Skipped) {
-                return Ok(Some(Note::new(
-                    CHECKPOINT_NOTE,
-                    json!({
-                        "execution": key.execution,
-                        "firing": key.firing,
-                        "attempt": key.attempt,
-                        "skipped": "the scope has no environment yet",
-                    }),
-                )));
-            }
-            return Err(format!(
-                "scope {scope} of execution {} has no sandbox environment to snapshot in",
-                context.execution
-            ));
-        };
-        self.gate("commit", node).await;
-        let serialized = self.workspace_lock(&workspace);
-        let _held = serialized.lock().await;
-        match self
-            .workspaces
-            .commit_in(&env, &workspace, key, node, status.tag())
-            .await
-        {
-            Ok(snapshot) => {
-                debug!(
-                    run_id = %self.run_id,
-                    node,
-                    execution = key.execution,
-                    firing = key.firing,
-                    attempt = key.attempt,
-                    reused = snapshot.reused,
-                    "checkpoint committed in the sandbox"
-                );
-                self.committed(key, &workspace, &snapshot).await;
-                Ok(Some(Note::new(
-                    CHECKPOINT_NOTE,
-                    json!({
-                        "execution": key.execution,
-                        "firing": key.firing,
-                        "attempt": key.attempt,
-                        "workspace": workspace,
-                        "git_commit_sha": snapshot.sha,
-                        "reused": snapshot.reused,
-                    }),
-                )))
-            }
-            Err(error) => Err(format!(
-                "the checkpoint commit of `{node}` in the sandbox failed: {}",
                 collect_chain(&error).join(": ")
             )),
         }
@@ -666,12 +615,12 @@ impl FabroHooks {
             .await
     }
 
-    /// Bring a host workspace to the snapshot the resumed run's durable
-    /// state names, once, at its first acquisition. After a restart the
-    /// server already brought it there, so this verifies; a fork's fresh
-    /// workspace is restored here from the snapshot repository the fork
-    /// seeded.
-    async fn restore_host(&self, workspace: &str) -> Result<(), ScopeAcquiredError> {
+    /// Bring a workspace to the snapshot the resumed run's durable state
+    /// names, once, at its first acquisition. After a restart the server
+    /// already brought a host workspace there, so this verifies; a fork's
+    /// fresh workspace is restored here from the snapshot repository the
+    /// fork seeded; a sandbox workspace is only reachable here.
+    async fn restore(&self, workspace: &str, site: &Site) -> Result<(), ScopeAcquiredError> {
         let targets = self.restore_targets().await?;
         let target = sync::lock(targets).remove(workspace);
         let Some(target) = target else {
@@ -679,11 +628,11 @@ impl FabroHooks {
         };
         let serialized = self.workspace_lock(workspace);
         let _held = serialized.lock().await;
-        let action = recovery::bring_host_to(&self.workspaces, workspace, &target)
+        let action = recovery::bring_to(&self.workspaces, site, workspace, &target)
             .await
             .map_err(|error| {
                 ScopeAcquiredError::new(format!(
-                    "the host workspace `{workspace}` could not be brought to its snapshot: {}",
+                    "the workspace `{workspace}` could not be brought to its snapshot: {}",
                     collect_chain(&error).join(": ")
                 ))
             })?;
@@ -692,39 +641,8 @@ impl FabroHooks {
             workspace,
             sha = target.sha,
             action = ?action,
-            "host workspace brought to its durable snapshot"
-        );
-        Ok(())
-    }
-
-    /// Bring a sandbox workspace to the snapshot the resumed run's durable
-    /// state names, once, at its first acquisition.
-    async fn restore_sandbox(
-        &self,
-        workspace: &str,
-        env: &Arc<dyn ExecEnv>,
-    ) -> Result<(), ScopeAcquiredError> {
-        let targets = self.restore_targets().await?;
-        let target = sync::lock(targets).remove(workspace);
-        let Some(target) = target else {
-            return Ok(());
-        };
-        let serialized = self.workspace_lock(workspace);
-        let _held = serialized.lock().await;
-        let action = recovery::bring_sandbox_to(&self.workspaces, env, workspace, &target)
-            .await
-            .map_err(|error| {
-                ScopeAcquiredError::new(format!(
-                    "the sandbox workspace `{workspace}` could not be brought to its snapshot: {}",
-                    collect_chain(&error).join(": ")
-                ))
-            })?;
-        info!(
-            run_id = %self.run_id,
-            workspace,
-            sha = target.sha,
-            action = ?action,
-            "sandbox workspace brought to its durable snapshot"
+            site = ?site,
+            "workspace brought to its durable snapshot"
         );
         Ok(())
     }
@@ -1316,11 +1234,12 @@ impl ExecutionHooks for FabroHooks {
         if !self.resumed {
             return Ok(());
         }
-        if self.host_workspaces {
-            self.restore_host(&workspace).await
+        let site = if self.host_workspaces {
+            self.workspaces.host(&workspace)
         } else {
-            self.restore_sandbox(&workspace, &acquired.env).await
-        }
+            Site::Sandbox(Arc::clone(&acquired.env))
+        };
+        self.restore(&workspace, &site).await
     }
 }
 
