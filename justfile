@@ -42,6 +42,7 @@ image := "ghcr.io/fabro-sh/fabro:local"
 port := env("FABRO_PORT", "32276")
 staged := "tmp/docker-context/" + arch + "/fabro"
 cli_bin := env("HOME") + "/.fabro/bin/fabro"
+skip_cli := env("JUST_SKIP_CLI_INSTALL", "false")
 
 # List available recipes
 default:
@@ -99,9 +100,19 @@ build-image: web-deps
 # toolchain image refresh together — the toolchain bakes a fabro-validate
 # binary (af97, validate-only scope) that must stay in sync with each
 # release; `just up` is no longer the intensive path.
+# Also installs the freshly staged binary as the local CLI (fabro-9114):
+# the local workflow targets https://mirtuell.net, `just up` (and its
+# install-cli step) is no longer used, so THIS recipe keeps local CLI and
+# released server at the same version. Escape hatch for pure-CI runs:
+# JUST_SKIP_CLI_INSTALL=true just image-release
 image-release: web-deps
     nu scripts/image-release.nu "{{ arch }}"
     nu scripts/run-images.nu --push
+    @if [ "{{ skip_cli }}" = "true" ]; then \
+        echo "image-release: skipping CLI install (JUST_SKIP_CLI_INSTALL=true)"; \
+    else \
+        just install-cli; \
+    fi
     just dev-prune
 
 # Build the run images the lab environments reference (toolchain/mise),
