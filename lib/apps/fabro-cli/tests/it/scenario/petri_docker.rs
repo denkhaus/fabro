@@ -281,7 +281,7 @@ fn futures_lite_block_on<T>(future: impl std::future::Future<Output = T>) -> T {
 fn restore_actions(server: &RunningServer, run_id: &str) -> Vec<String> {
     let log = std::fs::read_to_string(server.worker_log(run_id)).unwrap_or_default();
     log.lines()
-        .filter(|line| line.contains("sandbox workspace brought to its durable snapshot"))
+        .filter(|line| line.contains("workspace brought to its durable snapshot"))
         .filter_map(|line| {
             line.split_whitespace()
                 .find_map(|word| word.strip_prefix("action=").map(str::to_owned))
