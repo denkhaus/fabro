@@ -24,6 +24,7 @@ pub mod csp;
 )]
 mod demo;
 pub mod diagnostics;
+mod environment_compat;
 pub mod error;
 mod git_checkout;
 pub mod github_webhooks;
