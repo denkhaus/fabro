@@ -1,7 +1,13 @@
 ---
 source: lib/components/fabro-dot/src/tests.rs
+assertion_line: 256
 expression: report
 ---
+.fabro/workflows/architect/workflow.fabro: Architect nodes=6 edges=10
+  goal-inline
+  file:prompt:prompts/survey.md@survey
+  file:prompt:prompts/analyze.md@analyze
+  file:prompt:prompts/file.md@file
 .fabro/workflows/card-game/workflow.fabro: CardGame nodes=20 edges=31
   goal-inline
   inline@expand_spec
@@ -35,11 +41,24 @@ expression: report
   file:prompt:prompts/sweep.md.j2@sweeper
   file:output_schema:schemas/verdict.schema.json@sweep_verifier
   file:prompt:prompts/verify.md.j2@sweep_verifier
+.fabro/workflows/conductor/workflow.fabro: Conductor nodes=5 edges=13
+  goal-inline
+  file:prompt:prompts/survey.md@survey
+  file:output_schema:schemas/develop-output.schema.json@develop
+  file:prompt:prompts/develop-leg.md@develop
+  file:prompt:prompts/revise-leg.md@revise
 .fabro/workflows/context-demo/workflow.fabro: ContextDemo nodes=3 edges=2
   goal-inline
   inline@emit
 .fabro/workflows/daytona-medium/workflow.fabro: DaytonaMedium nodes=3 edges=2
   goal-inline
+.fabro/workflows/develop/workflow.fabro: Develop nodes=12 edges=27
+  goal-inline
+  file:output_schema:schemas/planner-output.schema.json@planner
+  file:prompt:prompts/planner.md@planner
+  file:prompt:prompts/implementer.md@implementer
+  file:output_schema:schemas/gate-known-bug-hits.schema.json@gatebounce
+  file:prompt:prompts/reviewer.md@reviewer
 .fabro/workflows/gh-list/workflow.fabro: GhList nodes=4 edges=3
   goal-inline
 .fabro/workflows/gh-triage/workflow.fabro: GhTriage nodes=3 edges=2
@@ -68,6 +87,10 @@ expression: report
 .fabro/workflows/interview/workflow.fabro: Interview nodes=8 edges=15
   goal-inline
   inline@summarize
+.fabro/workflows/merge-upstream/workflow.fabro: MergeUpstream nodes=4 edges=7
+  goal-inline
+  file:prompt:prompts/merge.md@merge
+  file:prompt:prompts/review.md@reviewer
 .fabro/workflows/patch-cves/workflow.fabro: PatchCves nodes=3 edges=2
   goal-inline
   stylesheet-inline
@@ -75,6 +98,11 @@ expression: report
 .fabro/workflows/pr-simplify/workflow.fabro: PrSimplify nodes=3 edges=2
   goal-inline
   file:prompt:prompts/simplify.md@simplify
+.fabro/workflows/revisor/workflow.fabro: Revisor nodes=5 edges=10
+  goal-inline
+  file:prompt:prompts/select.md@select
+  file:prompt:prompts/analyze.md@analyze
+  file:prompt:prompts/file.md@file
 .fabro/workflows/sleeper/workflow.fabro: Sleeper nodes=3 edges=2
   goal-inline
   inline@nap

@@ -144,3 +144,13 @@ in fabro-api-client).
 waren fehlende dind-Runner-Images (pre-Pull-Flake, upstream-CI-Pattern);
 isoliert danach grün. dogfood-gate.yml um Plugin-Install + Image-Pull
 erweitert, Branch-Filter auf denkhaus-petri.
+
+**W0-Verifikation (getragener Baum)**: 4187/4193 grün; 6 Fehler allesamt
+umgebungsbildet: 3× FABRO_SERVER-Env (unset! siehe unten), 2× fehlendes
+CATALOG_IMAGE (ghcr.io/lithoscomputer/ubuntu-22.04:slim, pre-pull), 1×
+fabro-dot-Snapshot für eingecheckte Workflows — akzeptiert: Petris
+DOT-Parser liest alle 5 Fork-Graphen (develop 12n/27e, conductor 5n/13e,
+architect 6n/10e, merge-upstream 4n/7e, revisor 5n/10e inkl. file-refs).
+Wichtig für lokale Läufe: IMMER `env -u FABRO_SERVER` (Agent-Shell trägt
+FABRO_SERVER=http://127.0.0.1:32276 — macht parse-Tests rot); Docker-
+Tests brauchen slim+dind-Runner + CATALOG_IMAGE lokal gepullt.
