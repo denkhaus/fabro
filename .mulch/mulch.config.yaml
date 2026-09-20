@@ -30,6 +30,7 @@ domains:
   devloop: {}
   architect: {}
   infrastructure: {}
+  llm: {}
 governance:
   max_entries: 100
   warn_entries: 150
