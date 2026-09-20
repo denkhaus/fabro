@@ -29,6 +29,7 @@ domains:
   fork-strategy: {}
   devloop: {}
   architect: {}
+  infrastructure: {}
 governance:
   max_entries: 100
   warn_entries: 150
