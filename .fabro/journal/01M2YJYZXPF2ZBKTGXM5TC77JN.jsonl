@@ -1,0 +1,2 @@
+{"$schema":"fabro-journal-v1","run_id":"01M2YJYZXPF2ZBKTGXM5TC77JN","node":"start","visit":1,"status":"succeeded","ts":"2026-09-20T05:00:12Z","data":{}}
+{"$schema":"fabro-journal-v1","run_id":"01M2YJYZXPF2ZBKTGXM5TC77JN","node":"survey","visit":1,"status":"succeeded","ts":"2026-09-20T05:00:26Z","data":{"painpoints":[],"observations":["gate closed: score verdict grind (0.334 < 0.6) / cooldown 0"]}}
