@@ -234,14 +234,22 @@ def finding-title [finding: string, seed_id: string]: nothing -> string {
     $"Reviewer residual \(non-blocking\) from ($seed_id): ($excerpt)"
 }
 
+# Pure: labels for a residual seed filed by the advisory sweep. Marks
+# machine-filed provenance so the planner pool can tell a residual from
+# user-assigned work (fabro-2ab8); `sd create` takes comma-labels.
+def residual-seed-labels []: nothing -> list<string> {
+    ["residual"]
+}
+
 # Advisory sweep: file each non-blocking reviewer finding as an open
-# seed (type bug, assignee fabro so the develop line can pick it up).
+# seed (type bug, assignee fabro so the develop line can pick it up,
+# labels `residual` so the planner sees the machine-filed provenance).
 # Never raises: caller wraps in `do -i`; internal sd failures print to
 # stderr and continue.
 def sweep-reviewer-findings [seed_id: string, run_id: string, journal_path: string]: nothing -> nothing {
     for finding in (journal-nonblocking $journal_path) {
         let desc = $"Residual defect the reviewer explicitly flagged as non-blocking while approving ($seed_id).\n\nFinding text: \"($finding)\"\n\nOrigin: closed seed ($seed_id), reviewer journal ($journal_path).\nBasis: run ($run_id), closed seed ($seed_id)"
-        let res = (do { sd create --title (finding-title $finding $seed_id) --description $desc --type bug --assignee fabro } | complete)
+        let res = (do { sd create --title (finding-title $finding $seed_id) --description $desc --type bug --assignee fabro --labels (residual-seed-labels | str join ",") } | complete)
         if $res.exit_code != 0 {
             print -e $"closeout: WARNING — could not file reviewer finding as a seed \(non-blocking, from ($seed_id)\): ($res.stderr | str trim)"
         } else {
@@ -280,7 +288,9 @@ def main []: nothing -> nothing {
     }
 
     # Reviewer-journal sweep (fabro-22fa): re-file explicitly non-blocking
-    # reviewer findings as open seeds BEFORE the close. Advisory only —
+    # reviewer findings as open seeds BEFORE the close, labeled `residual`
+    # (fabro-2ab8) so their provenance is machine-visible in the planner
+    # pool. Advisory only —
     # `do -i` plus the complete-wrapped sd calls inside guarantee no
     # failure here can reach the close below. After the PARK gate so a
     # parked (still-open) seed does not double-file on its re-run's
