@@ -133,7 +133,8 @@ fn inspect_resolves_selector_via_server_endpoint() {
                 "controls": {
                   "reasoning_effort": null,
                   "speed": null
-                }
+                },
+                "first_token_timeout_secs": null
               },
               "git": {
                 "author": null

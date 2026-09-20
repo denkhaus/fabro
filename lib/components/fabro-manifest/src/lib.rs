@@ -88,10 +88,11 @@ pub fn build_run_overrides(input: RunOverrideInput<'_>) -> RunLayer {
         .goal
         .map(|goal| RunGoalLayer::Inline(InterpString::parse(goal)));
     let model = (input.model.is_some() || input.provider.is_some()).then(|| RunModelLayer {
-        provider:  input.provider.map(String::from),
-        name:      input.model.map(String::from),
-        fallbacks: MergeMap::default(),
-        controls:  None,
+        provider:                 input.provider.map(String::from),
+        name:                     input.model.map(String::from),
+        fallbacks:                MergeMap::default(),
+        controls:                 None,
+        first_token_timeout_secs: None,
     });
     let environment =
         (input.environment.is_some() || input.preserve_sandbox.is_some()).then(|| {

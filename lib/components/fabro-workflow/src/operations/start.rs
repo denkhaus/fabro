@@ -592,6 +592,9 @@ impl RunSession {
                 fallbacks: llm.fallbacks.policy,
                 mcp_servers,
                 model_controls: resolved.model.controls.clone(),
+                first_token_timeout: Duration::from_secs(
+                    resolved.model.effective_first_token_timeout_secs(),
+                ),
                 dry_run: resolved.execution.mode == RunMode::DryRun,
             },
             fallback_notices: llm.fallbacks.notices,

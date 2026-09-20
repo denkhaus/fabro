@@ -317,6 +317,7 @@ permissions = "read-write"
 [run.model]
 provider = "anthropic"
 name = "claude-sonnet-4-5"
+first_token_timeout_secs = 45
 
 [run.model.fallbacks]
 "claude-sonnet-4-5" = ["openrouter:kimi-k3", "gpt-terra"]
@@ -325,6 +326,7 @@ name = "claude-sonnet-4-5"
 | Key | Type / values | Default | Description |
 |---|---|---|---|
 | `fallbacks` | table<string, array<string>> | {} | Model-keyed fallback chains. Each value is an ordered list of bare<br />providers, bare model IDs or aliases, or provider-qualified<br />`provider:selector` values. A qualified selector may be a model ID,<br />alias, or provider API ID. Legacy `provider/model` values remain<br />accepted. Each list supports the `...` splice marker at layering time.<br />Fabro selects one chain from the original requested model. A fallback<br />target never activates another model's chain.<br /><br />Model keys stay unresolved in this sparse layer because `fabro<br />validate` is offline and has no server model catalog. |
+| `first_token_timeout_secs` | seconds (integer) | 45 | How long a streaming stage LLM call may wait for its first token<br />before it errors and rides the normal retry/fallback path, in<br />seconds. Bounds stage latency against providers that hold a stream<br />open without ever producing output. Applies only to streaming<br />calls; a non-streaming completion has no first-token seam. |
 | `name` | string | None | Model name for workflow runs. |
 | `provider` | string | None | Provider name for workflow model selection. |
 

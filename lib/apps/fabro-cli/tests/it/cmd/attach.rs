@@ -982,6 +982,7 @@ fn attach_json_errors_without_prompting_for_human_input() {
                   "speed": null
                 },
                 "fallbacks": {},
+                "first_token_timeout_secs": null,
                 "name": "[DEFAULT_MODEL]",
                 "provider": "openai"
               },

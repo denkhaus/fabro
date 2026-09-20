@@ -223,9 +223,9 @@ fn resolve_model(model: Option<&RunModelLayer>) -> RunModelSettings {
     super::warn_if_demoted_template("run.model.name", model.name.as_deref());
 
     RunModelSettings {
-        provider:  model.provider.clone(),
-        name:      model.name.clone(),
-        fallbacks: model
+        provider:                 model.provider.clone(),
+        name:                     model.name.clone(),
+        fallbacks:                model
             .fallbacks
             .iter()
             .map(|(requested_model, chain)| {
@@ -239,7 +239,7 @@ fn resolve_model(model: Option<&RunModelLayer>) -> RunModelSettings {
                 (requested_model.clone(), chain)
             })
             .collect::<BTreeMap<_, _>>(),
-        controls:  model
+        controls:                 model
             .controls
             .as_ref()
             .map(|c| RunModelControls {
@@ -247,6 +247,7 @@ fn resolve_model(model: Option<&RunModelLayer>) -> RunModelSettings {
                 speed:            c.speed.clone(),
             })
             .unwrap_or_default(),
+        first_token_timeout_secs: model.first_token_timeout_secs,
     }
 }
 

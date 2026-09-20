@@ -94,6 +94,9 @@ pub struct PebbleBackend {
     search_secrets:       SearchSecrets,
     skill_dirs:           Option<Vec<String>>,
     run_model_controls:   RunModelControls,
+    /// Per-call first-token timeout for streaming stage LLM calls
+    /// (`run.model.first_token_timeout_secs`; engine default when unset).
+    first_token_timeout:  Duration,
     source:               Arc<dyn CredentialProvider>,
     steering_hub:         Arc<SteeringHub>,
     catalog:              Arc<Catalog>,
@@ -449,6 +452,7 @@ impl PebbleBackend {
             search_secrets: SearchSecrets::default(),
             skill_dirs: None,
             run_model_controls: RunModelControls::default(),
+            first_token_timeout: fabro_llm::DEFAULT_FIRST_TOKEN_TIMEOUT,
             source,
             steering_hub,
             catalog,
@@ -486,6 +490,13 @@ impl PebbleBackend {
     #[must_use]
     pub fn with_run_model_controls(mut self, controls: RunModelControls) -> Self {
         self.run_model_controls = controls;
+        self
+    }
+
+    /// Sets the per-call first-token timeout for streaming stage LLM calls.
+    #[must_use]
+    pub fn with_first_token_timeout(mut self, timeout: Duration) -> Self {
+        self.first_token_timeout = timeout;
         self
     }
 
@@ -549,7 +560,12 @@ impl PebbleBackend {
     }
 
     async fn build_llm_client(&self) -> Result<Client, Error> {
-        build_llm_client(&self.catalog, Arc::clone(&self.source)).await
+        build_llm_client(
+            &self.catalog,
+            Arc::clone(&self.source),
+            self.first_token_timeout,
+        )
+        .await
     }
 
     /// Where a stage's skills come from: the directories the backend was
@@ -974,15 +990,24 @@ struct OneShotCompletion {
     model:    ModelRef,
 }
 
-/// Build the LLM client a stage session dispatches through.
+/// Build the LLM client a stage session dispatches through. The
+/// first-token timeout middleware rides inside the retry layer, so a
+/// stalled stream times out as a retryable, failover-eligible error and
+/// takes the same retry/fallback path as any provider failure.
 async fn build_llm_client(
     catalog: &Arc<Catalog>,
     source: Arc<dyn CredentialProvider>,
+    first_token_timeout: Duration,
 ) -> Result<Client, Error> {
-    fabro_llm::build_client(Catalog::clone(catalog), source, ClientOptions::standard())
-        .await
-        .map(|built| built.client)
-        .map_err(|e| Error::handler_with_source("Failed to create LLM client", e))
+    fabro_llm::build_client(
+        Catalog::clone(catalog),
+        source,
+        ClientOptions::standard()
+            .with_middleware(fabro_llm::first_token_timeout(first_token_timeout)),
+    )
+    .await
+    .map(|built| built.client)
+    .map_err(|e| Error::handler_with_source("Failed to create LLM client", e))
 }
 
 #[async_trait]

@@ -268,6 +268,7 @@ async fn build_registry(
         let fallbacks = spec.fallbacks.clone();
         let mcp_servers = spec.mcp_servers.clone();
         let model_controls = spec.model_controls.clone();
+        let first_token_timeout = spec.first_token_timeout;
         let search_secrets_for_api = search_secrets.clone();
         let llm_source_for_api = Arc::clone(&llm_source);
         let catalog_for_api = Arc::clone(&catalog);
@@ -285,6 +286,7 @@ async fn build_registry(
                 Arc::clone(&catalog_for_api),
             )
             .with_run_model_controls(model_controls.clone())
+            .with_first_token_timeout(first_token_timeout)
             .with_tool_env_provider(tool_env_provider.clone())
             .with_search_secrets(search_secrets_for_api.clone())
             .with_mcp_servers(mcp_servers.clone());
@@ -946,12 +948,13 @@ mod tests {
             emitter: Arc::clone(&emitter),
             sandbox: SandboxSpec::local(working_directory, ProviderAccess::default()),
             llm: LlmSpec {
-                model:          "test-model".to_string(),
-                provider_id:    lithos_llm::catalog::builtin::anthropic(),
-                fallbacks:      ModelFallbackPolicy::default(),
-                mcp_servers:    Vec::new(),
-                model_controls: RunModelControls::default(),
-                dry_run:        true,
+                model:               "test-model".to_string(),
+                provider_id:         lithos_llm::catalog::builtin::anthropic(),
+                fallbacks:           ModelFallbackPolicy::default(),
+                mcp_servers:         Vec::new(),
+                model_controls:      RunModelControls::default(),
+                first_token_timeout: fabro_llm::DEFAULT_FIRST_TOKEN_TIMEOUT,
+                dry_run:             true,
             },
             interviewer: Arc::new(AutoApproveInterviewer::engine()),
             steering_hub: Arc::new(crate::steering_hub::SteeringHub::new(emitter)),
@@ -1466,12 +1469,13 @@ mod tests {
         });
         let (_registry, effective_dry_run) = build_registry(
             &LlmSpec {
-                model:          "claude-opus-4-6".to_string(),
-                provider_id:    lithos_llm::catalog::builtin::anthropic(),
-                fallbacks:      ModelFallbackPolicy::default(),
-                mcp_servers:    Vec::new(),
-                model_controls: RunModelControls::default(),
-                dry_run:        false,
+                model:               "claude-opus-4-6".to_string(),
+                provider_id:         lithos_llm::catalog::builtin::anthropic(),
+                fallbacks:           ModelFallbackPolicy::default(),
+                mcp_servers:         Vec::new(),
+                model_controls:      RunModelControls::default(),
+                first_token_timeout: fabro_llm::DEFAULT_FIRST_TOKEN_TIMEOUT,
+                dry_run:             false,
             },
             Arc::new(AutoApproveInterviewer::engine()),
             Arc::new(crate::steering_hub::SteeringHub::new(test_emitter)),
@@ -1591,12 +1595,13 @@ mod tests {
             emitter: emitter.clone(),
             sandbox: SandboxSpec::local(temp.path(), ProviderAccess::default()),
             llm: LlmSpec {
-                model:          "fake-acp".to_string(),
-                provider_id:    lithos_llm::catalog::builtin::openai(),
-                fallbacks:      ModelFallbackPolicy::default(),
-                mcp_servers:    Vec::new(),
-                model_controls: RunModelControls::default(),
-                dry_run:        false,
+                model:               "fake-acp".to_string(),
+                provider_id:         lithos_llm::catalog::builtin::openai(),
+                fallbacks:           ModelFallbackPolicy::default(),
+                mcp_servers:         Vec::new(),
+                model_controls:      RunModelControls::default(),
+                first_token_timeout: fabro_llm::DEFAULT_FIRST_TOKEN_TIMEOUT,
+                dry_run:             false,
             },
             interviewer: Arc::new(AutoApproveInterviewer::engine()),
             steering_hub: Arc::new(crate::steering_hub::SteeringHub::new(emitter)),
@@ -1699,12 +1704,13 @@ mod tests {
                 ProviderAccess::default(),
             ),
             llm:               LlmSpec {
-                model:          "test-model".to_string(),
-                provider_id:    lithos_llm::catalog::builtin::anthropic(),
-                fallbacks:      ModelFallbackPolicy::default(),
-                mcp_servers:    Vec::new(),
-                model_controls: RunModelControls::default(),
-                dry_run:        true,
+                model:               "test-model".to_string(),
+                provider_id:         lithos_llm::catalog::builtin::anthropic(),
+                fallbacks:           ModelFallbackPolicy::default(),
+                mcp_servers:         Vec::new(),
+                model_controls:      RunModelControls::default(),
+                first_token_timeout: fabro_llm::DEFAULT_FIRST_TOKEN_TIMEOUT,
+                dry_run:             true,
             },
             interviewer:       Arc::new(AutoApproveInterviewer::engine()),
             steering_hub:      Arc::new(crate::steering_hub::SteeringHub::new(emitter.clone())),
@@ -1845,12 +1851,13 @@ mod tests {
                 ProviderAccess::default(),
             ),
             llm: LlmSpec {
-                model:          "test-model".to_string(),
-                provider_id:    lithos_llm::catalog::builtin::anthropic(),
-                fallbacks:      ModelFallbackPolicy::default(),
-                mcp_servers:    Vec::new(),
-                model_controls: RunModelControls::default(),
-                dry_run:        true,
+                model:               "test-model".to_string(),
+                provider_id:         lithos_llm::catalog::builtin::anthropic(),
+                fallbacks:           ModelFallbackPolicy::default(),
+                mcp_servers:         Vec::new(),
+                model_controls:      RunModelControls::default(),
+                first_token_timeout: fabro_llm::DEFAULT_FIRST_TOKEN_TIMEOUT,
+                dry_run:             true,
             },
             interviewer: Arc::new(AutoApproveInterviewer::engine()),
             steering_hub: Arc::new(crate::steering_hub::SteeringHub::new(emitter.clone())),

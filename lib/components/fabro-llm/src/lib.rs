@@ -9,6 +9,8 @@
 //!   ([`selection`]); at request time the lithos resolver enforces `enabled`
 //!   and `stands_in_for` itself;
 //! - constructing a client from a Fabro credential store ([`client`]);
+//! - bounding how long a streaming call may wait for its first token
+//!   ([`ttft`]);
 //! - model and provider probes ([`probe`]), and the API views of the catalog
 //!   ([`api`]);
 //! - the `fabro exec` gateway adapter that speaks to a Fabro server
@@ -28,6 +30,7 @@ pub mod probe;
 pub mod selection;
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_support;
+pub mod ttft;
 
 pub use catalog::{build_catalog, default_catalog};
 pub use client::{
@@ -49,3 +52,4 @@ pub use lithos_llm::{
     adapter, catalog as lithos_catalog, credentials, estimate, middleware, types,
 };
 pub use selection::{FallbackTarget, ModelSelectionError, SelectedModel};
+pub use ttft::{DEFAULT_FIRST_TOKEN_TIMEOUT, FirstTokenTimeout, first_token_timeout};
