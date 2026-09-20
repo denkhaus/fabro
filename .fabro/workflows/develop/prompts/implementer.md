@@ -135,9 +135,8 @@ lines because answering was optional. Always emit BOTH keys:
   files exactly those marker observations as open seeds BEFORE closing
   the seed; an action disclosed only in `implementation_summary` dies
   with the seed (the observed failure mode this channel exists for).
-  Marker at the START of
-  the observation — mid-sentence mentions never match. No deferred
-  actions -> no marker observations.
+  Marker at the START of the observation — mid-sentence mentions never match.
+  No deferred actions -> no marker observations.
 The engine records it durably per stage (no restating, no rewriting);
 nobody re-reads your prose, only the JSON survives.
 
