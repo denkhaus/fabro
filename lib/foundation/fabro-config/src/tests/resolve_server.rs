@@ -89,21 +89,6 @@ fn resolves_server_defaults_from_empty_settings() {
         ObjectStoreSettings::S3 { .. } => panic!("expected local artifact store by default"),
     }
     assert_eq!(settings.artifacts.prefix, "");
-
-    match settings.slatedb.store {
-        ObjectStoreSettings::Local { root } => {
-            assert_eq!(
-                root,
-                default_storage_dir()
-                    .join("objects")
-                    .join("slatedb")
-                    .to_string_lossy()
-            );
-        }
-        ObjectStoreSettings::S3 { .. } => panic!("expected local slatedb store by default"),
-    }
-
-    assert!(!settings.slatedb.disk_cache);
 }
 
 #[test]
@@ -250,7 +235,7 @@ _version = 1
 methods = ["dev-token"]
 
 [server.sandbox.providers.e2b]
-path = "/opt/fabro/plugins/fabro-sandbox-e2b"
+path = "/opt/fabro/plugins/sandbox-driver-e2b"
 sha256 = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 args = ["--region", "us"]
 inherit_env = ["PATH"]
@@ -270,7 +255,7 @@ E2B_API_URL = "https://api.e2b.example"
         .expect("plugin kinds carry launch settings");
     assert_eq!(
         plugin.path.as_deref(),
-        Some("/opt/fabro/plugins/fabro-sandbox-e2b")
+        Some("/opt/fabro/plugins/sandbox-driver-e2b")
     );
     assert_eq!(plugin.args, vec!["--region", "us"]);
     assert_eq!(plugin.inherit_env, vec!["PATH"]);
@@ -294,7 +279,7 @@ _version = 1
 methods = ["dev-token"]
 
 [server.sandbox.providers.docker]
-path = "/usr/local/bin/fabro-sandbox-docker"
+path = "/usr/local/bin/sandbox-driver-docker"
 "#,
     )
     .expect_err("bundled providers take no plugin settings");
@@ -540,22 +525,6 @@ enabled = true
         settings.integrations.github.strategy,
         GithubIntegrationStrategy::Token
     );
-}
-
-#[test]
-fn resolves_disk_cache_true_from_settings() {
-    let file = parse(
-        r"
-_version = 1
-
-[server.slatedb]
-disk_cache = true
-",
-    );
-
-    let settings = resolve_server(&file);
-
-    assert!(settings.slatedb.disk_cache);
 }
 
 #[test]

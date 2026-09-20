@@ -22,12 +22,10 @@ use fabro_llm::gateway::{GatewayAdapter, GatewayError, GatewayTransport};
 use fabro_llm::lithos_catalog::{Catalog, CatalogProvider};
 use fabro_llm::middleware::{Call, Middleware, Next, Output};
 use fabro_llm::{Client, ClientOptions, Error as LlmError, ErrorKind};
-use fabro_mcp::config::McpServerSettings;
-use fabro_mcp::pebble::pebble_servers;
-use fabro_sandbox::{RunSandbox, SecretRedactor, local_sandbox};
+use fabro_pebble_sandbox::{PebbleSandbox, SecretRedactor};
 use fabro_static::EnvVars;
 use fabro_types::settings::cli::OutputFormat as SettingsOutputFormat;
-use fabro_types::settings::run::ResolvedMcpEntry;
+use fabro_types::settings::run::{McpServerSettings, ResolvedMcpEntry};
 use fabro_util::exit::{self, ErrorExt, ExitClass};
 use fabro_util::home::Home;
 use fabro_util::terminal::Styles;
@@ -40,11 +38,14 @@ use pebble_coding_agent::environment::Environment;
 use pebble_coding_agent::subagents::SubagentOptions;
 use pebble_coding_agent::tools::{PermissionLevelPolicy, PermissionMiddleware};
 use pebble_coding_agent::{CodingAgent, CodingAgentOptions, MemoryDiscovery, SkillDiscovery};
+use sandbox_driver::{SandboxProvider as _, SandboxSource, SandboxSpec, WaitOptions};
+use sandbox_driver_host::HostProvider;
 use tokio::signal;
 use tokio_util::sync::CancellationToken;
 
 use crate::args::{AgentArgs, ExecArgs, ExecOutputFormat};
 use crate::command_context::CommandContext;
+use crate::mcp_servers::pebble_servers;
 #[cfg(feature = "sleep_inhibitor")]
 use crate::sleep_inhibitor;
 use crate::{server_client, user_config};
@@ -429,11 +430,11 @@ async fn run_session(
     eprintln!("{}", styles.dim.apply_to(format!("Using model: {model}")));
 
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-    let sandbox: Arc<RunSandbox> = Arc::new(
-        local_sandbox(cwd)
-            .await
-            .context("failed to create the local sandbox")?,
-    );
+    // The provider stays alive beside the sandbox: the session's processes
+    // are its process groups.
+    let (_provider, sandbox) = host_sandbox(cwd)
+        .await
+        .context("failed to create the local sandbox")?;
 
     let permissions = args.permission_level();
     #[expect(
@@ -516,6 +517,31 @@ async fn run_session(
         .map_err(|error| anyhow::Error::new(SessionError::from(error)))
 }
 
+/// The host directory `working_directory` as the sandbox the session runs
+/// in, over the sandbox driver's Host provider: designated in place, never
+/// removed, brought to `Running` with its Bash verified. The provider is
+/// returned beside the sandbox because the session's processes are the
+/// provider's process groups; it must outlive the session.
+async fn host_sandbox(working_directory: PathBuf) -> AnyResult<(HostProvider, Arc<PebbleSandbox>)> {
+    let provider = HostProvider::new();
+    let handle = provider
+        .create(
+            &SandboxSpec::new(SandboxSource::HostDirectory)
+                .working_directory(working_directory.display().to_string()),
+            None,
+        )
+        .await
+        .with_context(|| format!("failed to designate {}", working_directory.display()))?;
+    sandbox_driver::activate(handle.as_ref(), &WaitOptions::default())
+        .await
+        .context("failed to start the local sandbox")?;
+    let working_directory = handle.working_directory().to_string();
+    let sandbox = PebbleSandbox::attach(handle, working_directory)
+        .await
+        .context("failed to read the local sandbox's platform")?;
+    Ok((provider, Arc::new(sandbox)))
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
@@ -523,6 +549,7 @@ mod tests {
     use fabro_llm::test_support::{test_catalog, test_catalog_with_overlay};
     use fabro_types::settings::run::{McpServerRef, McpServerSettings, ResolvedMcpEntry};
     use lithos_llm::catalog::builtin;
+    use pebble_coding_agent::environment::{Environment, ExecRequest};
 
     use super::{AgentArgs, resolve_provider_id, run_mcp_servers_for_exec, summarizer_model};
     use crate::args::{ExecOutputFormat, PermissionsArg};
@@ -602,5 +629,55 @@ mod tests {
 
         assert!(selector.starts_with("anthropic/"), "{selector}");
         assert_ne!(selector, "anthropic/claude-opus-4-6");
+    }
+
+    #[tokio::test]
+    async fn the_session_sandbox_designates_the_directory_on_the_host_provider() {
+        let directory = tempfile::tempdir().expect("a temporary directory");
+        let (_provider, sandbox) = super::host_sandbox(directory.path().to_path_buf())
+            .await
+            .expect("a host sandbox over the directory");
+
+        assert_eq!(
+            std::path::Path::new(Environment::working_directory(&*sandbox)),
+            directory.path().canonicalize().expect("canonical path")
+        );
+        assert_ne!(Environment::platform(&*sandbox), "unknown");
+        let outcome = Environment::exec(&*sandbox, ExecRequest {
+            command:          "pwd",
+            timeout_ms:       Some(10_000),
+            working_dir:      None,
+            env_vars:         None,
+            cancel_token:     None,
+            output_bytes_cap: None,
+            output_sink:      None,
+        })
+        .await
+        .expect("a command runs in the sandbox");
+        assert_eq!(outcome.result.exit_code, Some(0));
+        assert_eq!(
+            std::path::Path::new(outcome.result.stdout.trim())
+                .canonicalize()
+                .expect("the reported directory exists"),
+            directory.path().canonicalize().expect("canonical path")
+        );
+        assert!(
+            directory.path().is_dir(),
+            "a designated directory is never removed"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_missing_directory_is_refused_before_the_session_starts() {
+        let directory = tempfile::tempdir().expect("a temporary directory");
+        let missing = directory.path().join("absent");
+        let error = super::host_sandbox(missing)
+            .await
+            .err()
+            .expect("a directory that does not exist cannot be designated");
+        assert!(
+            error.to_string().contains("failed to designate"),
+            "{error:#}"
+        );
     }
 }

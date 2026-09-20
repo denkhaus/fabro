@@ -60,10 +60,12 @@ pub(crate) struct RequiredRunManagementActor(pub(crate) Principal);
 pub(crate) struct RequiredRunToolActor(pub(crate) Principal);
 pub(crate) struct RequireRunScoped(pub(crate) RunId);
 pub(crate) struct RequireWorkerRunScoped(pub(crate) RunId);
+/// A worker-scoped route with one more path segment after the run id, handed
+/// back as its text for the handler to parse.
+pub(crate) struct RequireWorkerRunSegment(pub(crate) RunId, pub(crate) String);
 pub(crate) struct RequireRunManagementTarget(pub(crate) RunId, pub(crate) Principal);
 pub(crate) struct RequireRunBlob(pub(crate) RunId, pub(crate) BlobHash);
 pub(crate) struct RequireRunStageScoped(pub(crate) RunId, pub(crate) String);
-pub(crate) struct RequireStageArtifact(pub(crate) RunId, pub(crate) StageId);
 pub(crate) struct RequireCommandLog(pub(crate) RunId, pub(crate) StageId);
 
 #[derive(Clone, Debug)]
@@ -265,6 +267,23 @@ impl FromRequestParts<Arc<AppState>> for RequireWorkerRunScoped {
     }
 }
 
+impl FromRequestParts<Arc<AppState>> for RequireWorkerRunSegment {
+    type Rejection = Response;
+
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &Arc<AppState>,
+    ) -> Result<Self, Self::Rejection> {
+        let Path((id, segment)): Path<(String, String)> = Path::from_request_parts(parts, state)
+            .await
+            .map_err(IntoResponse::into_response)?;
+        let run_id = parse_run_id_path(&id)?;
+        require_worker_for_run(&auth_slot_from_parts(parts), &run_id)
+            .map_err(IntoResponse::into_response)?;
+        Ok(Self(run_id, segment))
+    }
+}
+
 impl FromRequestParts<Arc<AppState>> for RequireRunManagementTarget {
     type Rejection = Response;
 
@@ -317,24 +336,6 @@ impl FromRequestParts<Arc<AppState>> for RequireRunStageScoped {
             .await
             .map_err(IntoResponse::into_response)?;
         let run_id = parse_run_id_path(&id)?;
-        require_worker_or_user_for_run(&auth_slot_from_parts(parts), &run_id)
-            .map_err(IntoResponse::into_response)?;
-        Ok(Self(run_id, stage_id))
-    }
-}
-
-impl FromRequestParts<Arc<AppState>> for RequireStageArtifact {
-    type Rejection = Response;
-
-    async fn from_request_parts(
-        parts: &mut Parts,
-        state: &Arc<AppState>,
-    ) -> Result<Self, Self::Rejection> {
-        let Path((id, stage_id)): Path<(String, String)> = Path::from_request_parts(parts, state)
-            .await
-            .map_err(IntoResponse::into_response)?;
-        let run_id = parse_run_id_path(&id)?;
-        let stage_id = parse_stage_id_path(&stage_id)?;
         require_worker_or_user_for_run(&auth_slot_from_parts(parts), &run_id)
             .map_err(IntoResponse::into_response)?;
         Ok(Self(run_id, stage_id))

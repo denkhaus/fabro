@@ -1,9 +1,33 @@
 use std::collections::HashMap;
 
+use lithos_llm::catalog::{ModelId, builtin};
+use lithos_llm::types::{Cost, CostSource, TokenCounts, Usage};
+
 use crate::{
-    AuthMethod, BlobHash, Graph, IdpIdentity, Principal, RunProvenance, RunSpec, WorkflowSettings,
-    WorkflowVersionId, fixtures,
+    AuthMethod, BlobHash, IdpIdentity, ModelRef, ModelUsage, PetriAdmission, PetriGraphRef,
+    Principal, RunGraph, RunProvenance, RunSpec, WorkflowSettings, WorkflowVersionId, fixtures,
 };
+
+/// A fully populated `ModelUsage` for tests: `input_tokens` and
+/// `output_tokens` on an OpenAI model, priced from the catalog at one micro
+/// per token.
+#[must_use]
+pub fn test_usage(model_id: &str, input_tokens: u64, output_tokens: u64) -> ModelUsage {
+    ModelUsage::new(
+        ModelRef::new(builtin::openai(), ModelId::new(model_id)),
+        Usage {
+            tokens: TokenCounts {
+                input: input_tokens,
+                output: output_tokens,
+                ..TokenCounts::default()
+            },
+            cost:   Some(Cost {
+                usd_micros: input_tokens.saturating_add(output_tokens),
+                source:     CostSource::Catalog,
+            }),
+        },
+    )
+}
 
 #[must_use]
 pub fn test_principal() -> Principal {
@@ -41,7 +65,7 @@ pub fn test_run_spec() -> RunSpec {
     RunSpec {
         run_id:              fixtures::RUN_1,
         settings:            WorkflowSettings::default(),
-        graph:               Graph::new("test"),
+        graph:               RunGraph::new("test"),
         graph_source:        None,
         workflow_slug:       None,
         workflow_version_id: None,
@@ -54,6 +78,27 @@ pub fn test_run_spec() -> RunSpec {
         spec_blob:           None,
         git:                 None,
         fork_source_ref:     None,
+        admission:           test_admission(),
+    }
+}
+
+/// An admission whose graph blob names nothing a store holds: enough for a
+/// spec that is never executed. It is also the `Default` a test fixture
+/// takes for the field.
+#[must_use]
+pub fn test_admission() -> PetriAdmission {
+    PetriAdmission {
+        graph:    PetriGraphRef {
+            blob:   BlobHash::new(b"test-admission"),
+            digest: "sha256:test-admission".to_string(),
+        },
+        children: Vec::new(),
+    }
+}
+
+impl Default for PetriAdmission {
+    fn default() -> Self {
+        test_admission()
     }
 }
 

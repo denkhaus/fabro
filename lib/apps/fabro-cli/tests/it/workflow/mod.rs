@@ -3,25 +3,23 @@
     reason = "This test module prefers explicit type paths over extra imports."
 )]
 
-mod acp;
 mod agent_linear;
 mod artifacts;
 mod command_agent_mixed;
 mod command_pipeline;
 mod command_routing;
 mod conditional_branching;
+pub(super) mod docker;
 mod dry_run_examples;
 mod full_stack;
-mod git_identity;
 mod hooks;
 mod human_gate;
-pub(super) mod plugin;
 
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use fabro_store::EventEnvelope;
 use fabro_test::{TestContext, expect_reqwest_status};
+use fabro_types::RunStreamItem;
 use serde_json::Value;
 
 use crate::cmd::support::{RunProjection, server_endpoint};
@@ -45,18 +43,22 @@ pub(super) fn read_run_spec(run_dir: &Path) -> Value {
     serde_json::to_value(run_state(run_dir).spec).expect("run spec should serialize")
 }
 
+/// The nodes whose stages succeeded, in the order they first ran.
 pub(super) fn completed_nodes(run_dir: &Path) -> Vec<String> {
     let state = run_state(run_dir);
-    let cp = state
-        .current_checkpoint()
-        .expect("run store checkpoint should exist");
-    cp.completed_nodes.clone()
+    let mut nodes = state
+        .iter_stages()
+        .filter(|(_, stage)| stage.state == fabro_types::StageState::Succeeded)
+        .map(|(stage_id, _)| stage_id.node_id().to_string())
+        .collect::<Vec<_>>();
+    nodes.dedup();
+    nodes
 }
 
 pub(super) fn has_event(run_dir: &Path, event_name: &str) -> bool {
-    run_events(run_dir)
+    run_stream_items(run_dir)
         .into_iter()
-        .any(|event| event.event.event_name() == event_name)
+        .any(|item| item.name() == Some(event_name))
 }
 
 pub(super) fn dump_export(context: &TestContext, run_id: &str) -> PathBuf {
@@ -158,28 +160,27 @@ fn run_state(run_dir: &Path) -> RunProjection {
     ))
 }
 
-fn run_events(run_dir: &Path) -> Vec<EventEnvelope> {
+fn run_stream_items(run_dir: &Path) -> Vec<RunStreamItem> {
     let run_id = infer_run_id(run_dir);
     let runs_dir = run_dir.parent().expect("run dir should have parent");
     let storage_dir = runs_dir.parent().expect("runs dir should have parent");
     let response: serde_json::Value = block_on(get_server_json_for_storage(
         storage_dir,
-        &format!("/api/v1/runs/{run_id}/events"),
+        &format!("/api/v1/runs/{run_id}/events?after=0&limit=1000"),
     ));
-    crate::support::parse_event_envelopes(&response)
+    crate::support::parse_stream_items(&response)
 }
 
 /// Runs a scenario against every sandbox provider fabro supports:
 ///
-/// - `local`: the bundled Host provider in-process.
-/// - `daytona`: the bundled Daytona provider, live credentials required.
-/// - `host-plugin`: the driver's Host executable over stdio under the
-///   non-bundled `host` kind, a clone-based managed workspace.
-/// - `docker-plugin`: the driver's Docker executable over stdio under the
-///   non-bundled `docker-plugin` kind.
+/// - `local`: the host provider, the session server's own `local` environment.
+/// - `daytona`: the Daytona provider, live credentials required.
+/// - `docker`: the Docker provider, an environment on `buildpack-deps:noble`
+///   created on an isolated server.
 ///
-/// The plugin variants need the executables `cargo` builds for
-/// `fabro-sandbox`; without them (or without a Docker daemon) they skip,
+/// Petri serves each provider through the matching sandbox-driver plugin
+/// executable on `PATH`. The `docker` variant skips without
+/// `sandbox-driver-docker` or without a Docker daemon that has the image,
 /// unless `FABRO_REQUIRE_SANDBOX_PLUGINS` is set, as CI sets it.
 macro_rules! sandbox_tests {
     ($name:ident) => {
@@ -198,24 +199,10 @@ macro_rules! sandbox_tests {
             }
 
             #[fabro_macros::e2e_test($(live($key)),*)]
-            fn [<host_plugin_ $name>]() {
+            fn [<docker_ $name>]() {
                 let mut context = fabro_test::test_context!();
-                if let Some(environment) =
-                    $crate::workflow::plugin::configure(&mut context, $crate::workflow::plugin::Plugin::Host)
-                {
-                    $crate::workflow::plugin::run_with_server_log(&context, || {
-                        [<scenario_ $name>](&context, environment);
-                    });
-                }
-            }
-
-            #[fabro_macros::e2e_test($(live($key)),*)]
-            fn [<docker_plugin_ $name>]() {
-                let mut context = fabro_test::test_context!();
-                if let Some(environment) =
-                    $crate::workflow::plugin::configure(&mut context, $crate::workflow::plugin::Plugin::Docker)
-                {
-                    $crate::workflow::plugin::run_with_server_log(&context, || {
+                if let Some(environment) = $crate::workflow::docker::configure(&mut context) {
+                    $crate::workflow::docker::run_with_server_log(&context, || {
                         [<scenario_ $name>](&context, environment);
                     });
                 }
@@ -228,7 +215,7 @@ pub(super) use sandbox_tests;
 pub(super) fn timeout_for(sandbox: &str) -> Duration {
     match sandbox {
         "daytona" => Duration::from_mins(10),
-        "docker-plugin" => Duration::from_mins(5),
+        docker::ENVIRONMENT => Duration::from_mins(5),
         _ => Duration::from_mins(3),
     }
 }

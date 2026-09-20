@@ -24,6 +24,12 @@ import type { ForkSourceRef } from './fork-source-ref';
 import type { GitContext } from './git-context';
 // May contain unused imports in some cases
 // @ts-ignore
+import type { PetriAdmission } from './petri-admission';
+// May contain unused imports in some cases
+// @ts-ignore
+import type { RunGraph } from './run-graph';
+// May contain unused imports in some cases
+// @ts-ignore
 import type { RunProvenance } from './run-provenance';
 // May contain unused imports in some cases
 // @ts-ignore
@@ -38,7 +44,13 @@ import type { WorkflowSettings } from './workflow-settings';
 export interface RunSpec {
     'run_id': string;
     'settings': WorkflowSettings;
-    'graph': { [key: string]: any; };
+    /**
+     * The display graph: the workflow Petri admitted, reduced to what the read side names. The DOT it was written in is `graph_source`.
+     */
+    'graph': RunGraph;
+    /**
+     * The entrypoint workflow\'s DOT as written.
+     */
     'graph_source'?: string | null;
     'workflow_slug'?: string | null;
     /**
@@ -54,4 +66,8 @@ export interface RunSpec {
     'spec_blob'?: string | null;
     'git'?: GitContext | null;
     'fork_source_ref'?: ForkSourceRef | null;
+    /**
+     * What Petri admitted for the run at create time: the graphs it executes and resumes from.
+     */
+    'admission': PetriAdmission;
 }

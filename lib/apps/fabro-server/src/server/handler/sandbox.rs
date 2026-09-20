@@ -3,23 +3,23 @@ use std::num::NonZeroU64;
 use std::sync::Arc;
 use std::time::Duration;
 
+use anyhow::Context as _;
 use axum::extract::ws::{Message as WsMessage, WebSocket, WebSocketUpgrade};
-use fabro_sandbox::{
-    FileKind, ProviderAccess, PtySize, RunSandbox, open_terminal_for_run, reconnect_for_run,
-};
+use fabro_pebble_sandbox::{display_for_log, resolve_path};
 use fabro_types::{RunSandboxInstance, SandboxProviderKind};
 use futures_util::FutureExt;
 use futures_util::future::BoxFuture;
-use sandbox_driver::{ListeningPort, Services as _};
+use sandbox_driver::{FileKind, ListeningPort, PtyOptions, PtySize, Sandbox, Services as _};
 
 use super::super::{
     ApiError, AppState, Bytes, HeaderMap, IntoResponse, Json, NamedTempFile, Path,
     PreviewUrlRequest, PreviewUrlResponse, Query, RequiredUser, Response, Router, RunId,
     SandboxDetails, SandboxFileEntry, SandboxFileListResponse, SandboxService,
     SandboxServiceListResponse, SshAccessRequest, SshAccessResponse, State, StatusCode,
-    VncPreviewResponse, collect_causes, fs, get, octet_stream_response, parse_run_id_path, post,
-    reject_if_archived, render_with_causes, sandbox_details,
+    VncPreviewResponse, fs, get, octet_stream_response, parse_run_id_path, post,
+    reject_if_archived,
 };
+use crate::sandbox_access::{self, ProviderAccess};
 
 const MAX_TERMINAL_CONTROL_BYTES: usize = 4096;
 const DEFAULT_VNC_NO_VNC_PORT: u16 = 6080;
@@ -39,19 +39,19 @@ const VNC_VIEWER_RESIZE: (&str, &str) = ("resize", "scale");
 trait VncSandbox {
     /// Starts the desktop and returns the signed viewer URL the provider
     /// hands out for it.
-    fn vnc_viewer_url(&self) -> BoxFuture<'_, fabro_sandbox::Result<String>>;
+    fn vnc_viewer_url(&self) -> BoxFuture<'_, anyhow::Result<String>>;
 }
 
-impl VncSandbox for RunSandbox {
-    fn vnc_viewer_url(&self) -> BoxFuture<'_, fabro_sandbox::Result<String>> {
+impl VncSandbox for Arc<dyn Sandbox> {
+    fn vnc_viewer_url(&self) -> BoxFuture<'_, anyhow::Result<String>> {
         async move {
-            let vnc = self.handle()?.vnc().ok_or_else(|| {
-                fabro_sandbox::Error::message("Sandbox provider does not support VNC previews.")
+            let vnc = self.vnc().ok_or_else(|| {
+                anyhow::anyhow!("Sandbox provider does not support VNC previews.")
             })?;
             vnc.vnc_connection()
                 .await
                 .map(|connection| connection.url)
-                .map_err(|err| fabro_sandbox::Error::context("Failed to open a VNC preview", err))
+                .context("Failed to open a VNC preview")
         }
         .boxed()
     }
@@ -89,17 +89,25 @@ async fn retrieve_run_sandbox(
         Ok(value) => value,
         Err(response) => return response,
     };
-    match sandbox_details(&record, &access, Some(id)).await {
+    // The record and the status the driver reports for it, in whatever
+    // state the sandbox is: a stopped sandbox is described, not started.
+    let details = async {
+        let sandbox = sandbox_access::attach_run_sandbox(&access, &record, id).await?;
+        let status = sandbox.describe().await.with_context(|| {
+            format!(
+                "Failed to describe {} sandbox '{}'",
+                record.provider, record.runtime.id
+            )
+        })?;
+        anyhow::Ok(SandboxDetails {
+            sandbox: record.clone(),
+            status,
+        })
+    }
+    .await;
+    match details {
         Ok(details) => Json::<SandboxDetails>(details).into_response(),
-        Err(err) => {
-            let detail = format!("{err:#}");
-            let status = if detail.contains("has no details implementation") {
-                StatusCode::NOT_IMPLEMENTED
-            } else {
-                StatusCode::CONFLICT
-            };
-            ApiError::new(status, detail).into_response()
-        }
+        Err(err) => ApiError::new(StatusCode::CONFLICT, format!("{err:#}")).into_response(),
     }
 }
 
@@ -219,15 +227,27 @@ async fn terminal_websocket(mut socket: WebSocket, state: Arc<AppState>, id: Run
             return;
         }
     };
-    let session = match open_terminal_for_run(&record, &access, Some(id), PtySize::default()).await
-    {
+    // An interactive shell in the run's working directory over the
+    // driver's Pty facet, on the sandbox brought back to running. The
+    // session is the driver's own; it is closed below.
+    let session = async {
+        let sandbox = sandbox_access::attach_running_run_sandbox(&access, &record, id).await?;
+        let pty = sandbox
+            .pty()
+            .ok_or_else(|| anyhow::anyhow!("Sandbox provider does not support terminals."))?;
+        let mut options = PtyOptions::default();
+        options.size = PtySize::default();
+        options.working_dir = Some(record.runtime.working_directory.clone());
+        pty.open(&options)
+            .await
+            .context("Failed to open sandbox terminal")
+    }
+    .await;
+    let session = match session {
         Ok(session) => session,
         Err(err) => {
             let _ = socket
-                .send(terminal_server_text(
-                    "error",
-                    Some(&err.display_with_causes()),
-                ))
+                .send(terminal_server_text("error", Some(&format!("{err:#}"))))
                 .await;
             return;
         }
@@ -252,7 +272,7 @@ async fn terminal_websocket(mut socket: WebSocket, state: Arc<AppState>, id: Run
                     Ok(WsMessage::Binary(bytes)) => {
                         if let Err(err) = session.write_input(&bytes).await {
                             let _ = socket
-                                .send(terminal_server_text("error", Some(&fabro_sandbox::display_for_log(&err))))
+                                .send(terminal_server_text("error", Some(&display_for_log(&err))))
                                 .await;
                             break;
                         }
@@ -262,7 +282,7 @@ async fn terminal_websocket(mut socket: WebSocket, state: Arc<AppState>, id: Run
                             Ok(TerminalClientMessage::Resize(size)) => {
                                 if let Err(err) = session.resize(size).await {
                                     let _ = socket
-                                        .send(terminal_server_text("error", Some(&fabro_sandbox::display_for_log(&err))))
+                                        .send(terminal_server_text("error", Some(&display_for_log(&err))))
                                         .await;
                                     break;
                                 }
@@ -297,7 +317,7 @@ async fn terminal_websocket(mut socket: WebSocket, state: Arc<AppState>, id: Run
                     }
                     Err(err) => {
                         let _ = socket
-                            .send(terminal_server_text("error", Some(&fabro_sandbox::display_for_log(&err))))
+                            .send(terminal_server_text("error", Some(&display_for_log(&err))))
                             .await;
                         break;
                     }
@@ -306,7 +326,7 @@ async fn terminal_websocket(mut socket: WebSocket, state: Arc<AppState>, id: Run
         }
     }
     if let Err(err) = session.close().await {
-        tracing::warn!(error = %fabro_sandbox::display_for_log(&err), run_id = %id, "failed to close run terminal session");
+        tracing::warn!(error = %display_for_log(&err), run_id = %id, "failed to close run terminal session");
     }
 }
 
@@ -342,13 +362,7 @@ async fn generate_preview_url(
         Ok(sandbox) => sandbox,
         Err(response) => return response,
     };
-    let handle = match sandbox.handle() {
-        Ok(handle) => handle,
-        Err(err) => {
-            return ApiError::new(StatusCode::CONFLICT, err.display_with_causes()).into_response();
-        }
-    };
-    let Some(previews) = handle.preview_urls() else {
+    let Some(previews) = sandbox.preview_urls() else {
         return ApiError::new(
             StatusCode::CONFLICT,
             "Sandbox provider does not support preview URLs.",
@@ -410,21 +424,20 @@ async fn create_ssh_access(
         Ok(sandbox) => sandbox,
         Err(response) => return response,
     };
-    let handle = match sandbox.handle() {
-        Ok(handle) => handle,
-        Err(err) => {
-            return ApiError::new(StatusCode::CONFLICT, err.display_with_causes()).into_response();
-        }
-    };
     // Providers with a leased SSH gateway honor the requested lifetime;
     // providers with a fixed local command return it as is.
-    let result = match handle.ssh() {
-        Some(ssh) => ssh
+    let result = match (sandbox.ssh(), sandbox.shell_command()) {
+        (Some(ssh), _) => ssh
             .ssh_access(Some(Duration::from_secs_f64(request.ttl_minutes * 60.0)))
             .await
             .map(|access| Some(access.command))
-            .map_err(|err| fabro_sandbox::Error::context("Failed to create SSH access", err)),
-        None => sandbox.ssh_access_command().await,
+            .context("Failed to create SSH access"),
+        (None, Some(shell)) => shell
+            .shell_command()
+            .await
+            .map(Some)
+            .context("Failed to build sandbox shell command"),
+        (None, None) => Ok(None),
     };
     match result {
         Ok(Some(command)) => {
@@ -435,7 +448,7 @@ async fn create_ssh_access(
             "Sandbox provider does not support access commands.",
         )
         .into_response(),
-        Err(err) => ApiError::new(StatusCode::CONFLICT, err.display_with_causes()).into_response(),
+        Err(err) => ApiError::new(StatusCode::CONFLICT, format!("{err:#}")).into_response(),
     }
 }
 
@@ -473,12 +486,12 @@ async fn build_vnc_preview_response(
     provider: &SandboxProviderKind,
     sandbox: &impl VncSandbox,
 ) -> Result<VncPreviewResponse, Response> {
-    let url = sandbox.vnc_viewer_url().await.map_err(|err| {
-        ApiError::new(StatusCode::CONFLICT, err.display_with_causes()).into_response()
-    })?;
-    let url = vnc_viewer_url(&url).map_err(|err| {
-        ApiError::new(StatusCode::CONFLICT, err.display_with_causes()).into_response()
-    })?;
+    let url = sandbox
+        .vnc_viewer_url()
+        .await
+        .map_err(|err| ApiError::new(StatusCode::CONFLICT, format!("{err:#}")).into_response())?;
+    let url = vnc_viewer_url(&url)
+        .map_err(|err| ApiError::new(StatusCode::CONFLICT, format!("{err:#}")).into_response())?;
     Ok(VncPreviewResponse {
         expires_in_secs: NonZeroU64::new(
             u64::try_from(DEFAULT_VNC_TTL_SECS).expect("default VNC TTL should fit in u64"),
@@ -494,7 +507,7 @@ async fn build_vnc_preview_response(
 /// Pins the viewer URL to the noVNC page with autoconnect and scaling. The
 /// provider already points at the viewer; this makes the query idempotent
 /// so a URL that already carries the viewer parameters is not duplicated.
-fn vnc_viewer_url(signed_url: &str) -> fabro_sandbox::Result<String> {
+fn vnc_viewer_url(signed_url: &str) -> anyhow::Result<String> {
     // Internal URL manipulation, not logging — `DisplaySafeUrl` is for
     // logging/error boundaries. The signed URL may carry a credential, so
     // the parse-failure message intentionally omits it.
@@ -502,8 +515,7 @@ fn vnc_viewer_url(signed_url: &str) -> fabro_sandbox::Result<String> {
         clippy::disallowed_types,
         reason = "internal url manipulation; redaction handled by omitting the URL from error messages"
     )]
-    let mut url = url::Url::parse(signed_url)
-        .map_err(|err| fabro_sandbox::Error::context("Failed to parse signed VNC URL", err))?;
+    let mut url = url::Url::parse(signed_url).context("Failed to parse signed VNC URL")?;
     let preserved: Vec<(String, String)> = url
         .query_pairs()
         .filter(|(key, _)| key != VNC_VIEWER_AUTOCONNECT.0 && key != VNC_VIEWER_RESIZE.0)
@@ -533,23 +545,36 @@ async fn list_sandbox_files(
         Ok(id) => id,
         Err(response) => return response,
     };
-    let sandbox = match reconnect_run_sandbox(&state, &id).await {
+    let (record, sandbox) = match reconnect_run_sandbox(&state, &id).await {
         Ok(sandbox) => sandbox,
         Err(response) => return response,
     };
-    match sandbox.list_directory(&params.path, params.depth).await {
-        Ok(entries) => Json(SandboxFileListResponse {
-            data: entries
-                .into_iter()
-                .map(|entry| SandboxFileEntry {
-                    is_dir: entry.kind == FileKind::Directory,
-                    name:   entry.path,
-                    size:   entry.size.map(u64::cast_signed),
-                })
-                .collect(),
-        })
-        .into_response(),
-        Err(err) => ApiError::new(StatusCode::NOT_FOUND, err.display_with_causes()).into_response(),
+    // To `depth` (the immediate children by default), sorted by path, with
+    // sizes for files only.
+    let path = resolve_path(&params.path, &record.runtime.working_directory);
+    match sandbox
+        .fs()
+        .list_dir(&path, params.depth.unwrap_or(1))
+        .await
+    {
+        Ok(mut entries) => {
+            entries.sort_by(|left, right| left.path.cmp(&right.path));
+            Json(SandboxFileListResponse {
+                data: entries
+                    .into_iter()
+                    .map(|entry| SandboxFileEntry {
+                        is_dir: entry.kind == FileKind::Directory,
+                        size:   (entry.kind == FileKind::File)
+                            .then_some(entry.size)
+                            .flatten()
+                            .map(u64::cast_signed),
+                        name:   entry.path,
+                    })
+                    .collect(),
+            })
+            .into_response()
+        }
+        Err(err) => ApiError::new(StatusCode::NOT_FOUND, display_for_log(&err)).into_response(),
     }
 }
 
@@ -571,12 +596,12 @@ async fn list_sandbox_services(
         Ok(sandbox) => sandbox,
         Err(response) => return response,
     };
-    let services = match sandbox.services() {
-        Ok(services) => services,
-        Err(err) => {
-            return ApiError::new(StatusCode::NOT_IMPLEMENTED, err.display_with_causes())
-                .into_response();
-        }
+    let Some(services) = sandbox.services() else {
+        return ApiError::new(
+            StatusCode::NOT_IMPLEMENTED,
+            format!("sandbox provider `{provider}` does not support background services"),
+        )
+        .into_response();
     };
     let ports = match services.listening_ports().await {
         Ok(ports) => ports,
@@ -657,7 +682,7 @@ async fn get_sandbox_file(
         Ok(id) => id,
         Err(response) => return response,
     };
-    let sandbox = match reconnect_run_sandbox(&state, &id).await {
+    let (record, sandbox) = match reconnect_run_sandbox(&state, &id).await {
         Ok(sandbox) => sandbox,
         Err(response) => return response,
     };
@@ -668,11 +693,9 @@ async fn get_sandbox_file(
                 .into_response();
         }
     };
-    if let Err(err) = sandbox
-        .download_file_to_local(&params.path, temp.path())
-        .await
-    {
-        return ApiError::new(StatusCode::NOT_FOUND, err.display_with_causes()).into_response();
+    let path = resolve_path(&params.path, &record.runtime.working_directory);
+    if let Err(err) = sandbox.fs().download(&path, temp.path()).await {
+        return ApiError::new(StatusCode::NOT_FOUND, display_for_log(&err)).into_response();
     }
     match fs::read(temp.path()).await {
         Ok(bytes) => octet_stream_response(bytes.into()),
@@ -696,7 +719,7 @@ async fn put_sandbox_file(
     if let Some(response) = reject_if_archived(state.as_ref(), &id).await {
         return response;
     }
-    let sandbox = match reconnect_run_sandbox(&state, &id).await {
+    let (record, sandbox) = match reconnect_run_sandbox(&state, &id).await {
         Ok(sandbox) => sandbox,
         Err(response) => return response,
     };
@@ -710,22 +733,23 @@ async fn put_sandbox_file(
     if let Err(err) = fs::write(temp.path(), &body).await {
         return ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string()).into_response();
     }
-    match sandbox
-        .upload_file_from_local(temp.path(), &params.path)
-        .await
-    {
+    let path = resolve_path(&params.path, &record.runtime.working_directory);
+    match sandbox.fs().upload(temp.path(), &path).await {
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
-        Err(err) => ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.display_with_causes())
-            .into_response(),
+        Err(err) => {
+            ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, display_for_log(&err)).into_response()
+        }
     }
 }
 
+/// The run's sandbox record and its handle, attached and running.
 async fn reconnect_run_sandbox(
     state: &Arc<AppState>,
     run_id: &RunId,
-) -> Result<RunSandbox, Response> {
+) -> Result<(RunSandboxInstance, Arc<dyn Sandbox>), Response> {
     let record = load_run_sandbox_instance(state, run_id).await?;
-    reconnect_run_sandbox_instance(state, run_id, &record).await
+    let sandbox = reconnect_run_sandbox_instance(state, run_id, &record).await?;
+    Ok((record, sandbox))
 }
 
 /// Reconnects a run's sandbox and brings it to running.
@@ -733,18 +757,11 @@ async fn reconnect_run_sandbox_instance(
     state: &Arc<AppState>,
     run_id: &RunId,
     record: &RunSandboxInstance,
-) -> Result<RunSandbox, Response> {
+) -> Result<Arc<dyn Sandbox>, Response> {
     let access = load_provider_access(state).await?;
-    let sandbox = reconnect_for_run(record, &access, Some(*run_id), None)
+    sandbox_access::attach_running_run_sandbox(&access, record, *run_id)
         .await
-        .map_err(|err| {
-            let detail = render_with_causes(&err.to_string(), &collect_causes(err.as_ref()));
-            ApiError::new(StatusCode::CONFLICT, detail).into_response()
-        })?;
-    sandbox.activate().await.map_err(|err| {
-        ApiError::new(StatusCode::CONFLICT, err.display_with_causes()).into_response()
-    })?;
-    Ok(sandbox)
+        .map_err(|err| ApiError::new(StatusCode::CONFLICT, format!("{err:#}")).into_response())
 }
 
 async fn load_provider_access(state: &AppState) -> Result<ProviderAccess, Response> {
@@ -918,12 +935,10 @@ mod tests {
     }
 
     impl VncSandbox for FakeVncSandbox {
-        fn vnc_viewer_url(
-            &self,
-        ) -> futures_util::future::BoxFuture<'_, fabro_sandbox::Result<String>> {
+        fn vnc_viewer_url(&self) -> futures_util::future::BoxFuture<'_, anyhow::Result<String>> {
             async move {
                 match self.error {
-                    Some(message) => Err(fabro_sandbox::Error::message(message)),
+                    Some(message) => Err(anyhow::anyhow!("{message}")),
                     None => Ok(self.viewer_url.to_string()),
                 }
             }
@@ -1009,14 +1024,23 @@ mod tests {
 
 #[cfg(test)]
 mod retrieve_sandbox_tests {
+    use std::collections::BTreeMap;
+
+    use axum::Router;
     use axum::body::{Body, to_bytes};
     use axum::http::{Request, StatusCode};
-    use fabro_sandbox::test_support::local_sandbox_id;
-    use fabro_types::{Graph, RunId, WorkflowSettings, test_support};
+    use fabro_types::{RunId, WorkflowPath, WorkflowVersion};
     use serde_json::{Value, json};
     use tower::ServiceExt;
 
-    use crate::test_support::{build_test_router, test_app_state};
+    use crate::test_support::{build_test_router, test_app_state, test_register_workflow_version};
+
+    const MINIMAL_DOT: &str = r#"digraph Test {
+    graph [goal="Test"]
+    start [shape=Mdiamond]
+    exit  [shape=Msquare]
+    start -> exit
+}"#;
 
     fn req_get(uri: &str) -> Request<Body> {
         Request::builder()
@@ -1026,14 +1050,6 @@ mod retrieve_sandbox_tests {
             .expect("sandbox details GET request should build")
     }
 
-    fn req_post(uri: &str) -> Request<Body> {
-        Request::builder()
-            .method("POST")
-            .uri(uri)
-            .body(Body::empty())
-            .expect("sandbox POST request should build")
-    }
-
     async fn body_json(response: axum::response::Response) -> Value {
         let bytes = to_bytes(response.into_body(), usize::MAX)
             .await
@@ -1041,86 +1057,38 @@ mod retrieve_sandbox_tests {
         serde_json::from_slice(&bytes).expect("response body should be valid JSON")
     }
 
-    async fn append_run_created(run_store: &fabro_store::RunDatabase, run_id: &RunId) {
-        let payload = fabro_store::EventPayload::new(
-            json!({
-                "id": "evt-run-created",
-                "ts": "2026-05-09T11:59:00Z",
-                "run_id": run_id,
-                "event": "run.created",
-                "properties": {
-                    "settings": WorkflowSettings::default(),
-                    "graph": Graph::new("test"),
-                    "provenance": test_support::test_run_provenance(),
-                },
-            }),
-            run_id,
-        )
-        .expect("run.created payload should validate");
-        run_store.append_event(&payload).await.unwrap();
-    }
-
-    async fn append_sandbox_initialized(
-        run_store: &fabro_store::RunDatabase,
-        run_id: &RunId,
-        provider: &str,
-    ) {
-        append_sandbox_initialized_in(
-            run_store,
-            run_id,
-            provider,
-            &format!("{provider}:sandbox-id"),
-            "/workspace",
-        )
-        .await;
-    }
-
-    /// A local sandbox reconnects by the id the Host provider derives from
-    /// its working directory, so a test that reaches one records an
-    /// existing directory under the id fabro would have written for it.
-    async fn append_sandbox_initialized_in(
-        run_store: &fabro_store::RunDatabase,
-        run_id: &RunId,
-        provider: &str,
-        id: &str,
-        working_directory: &str,
-    ) {
-        let payload = fabro_store::EventPayload::new(
-            json!({
-                "id": "evt-sandbox-init",
-                "ts": "2026-05-09T12:00:00Z",
-                "run_id": run_id,
-                "event": "sandbox.initialized",
-                "properties": {
-                    "provider": provider,
-                    "id": id,
-                    "working_directory": working_directory,
-                },
-            }),
-            run_id,
-        )
-        .expect("sandbox.initialized payload should validate");
-        run_store.append_event(&payload).await.unwrap();
-    }
-
-    async fn append_sandbox_failed(run_store: &fabro_store::RunDatabase, run_id: &RunId) {
-        let payload = fabro_store::EventPayload::new(
-            json!({
-                "id": "evt-sandbox-failed",
-                "ts": "2026-05-09T12:00:00Z",
-                "run_id": run_id,
-                "event": "sandbox.failed",
-                "properties": {
-                    "provider": "docker",
-                    "error": "Docker daemon unavailable",
-                    "causes": ["connection refused"],
-                    "duration_ms": 42,
-                },
-            }),
-            run_id,
-        )
-        .expect("sandbox.failed payload should validate");
-        run_store.append_event(&payload).await.unwrap();
+    /// Create a run through the API. A run that has not started has a
+    /// planned sandbox and nothing else.
+    async fn create_run(app: &Router) -> RunId {
+        let entrypoint = WorkflowPath::new("workflow.fabro").expect("entrypoint should parse");
+        let files = BTreeMap::from([(entrypoint.clone(), MINIMAL_DOT.to_string())]);
+        let version = WorkflowVersion::new(entrypoint, files, BTreeMap::new())
+            .expect("workflow version should build");
+        let workflow_version_id = test_register_workflow_version(app, &version, None).await;
+        let intent = json!({
+            "workflow_version_id": workflow_version_id,
+            "target": { "kind": "none" },
+            "args": {}
+        });
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/v1/runs")
+                    .header("content-type", "application/json")
+                    .body(Body::from(intent.to_string()))
+                    .expect("run creation request should build"),
+            )
+            .await
+            .expect("run creation should route");
+        assert_eq!(response.status(), StatusCode::CREATED);
+        let body = body_json(response).await;
+        body["id"]
+            .as_str()
+            .expect("run creation response should carry the run id")
+            .parse()
+            .expect("run id should parse")
     }
 
     async fn assert_sandbox_not_created_response(response: axum::response::Response) {
@@ -1156,15 +1124,8 @@ mod retrieve_sandbox_tests {
 
     #[tokio::test]
     async fn planned_sandbox_returns_404_from_details_endpoint() {
-        let state = test_app_state();
-        let app = build_test_router(state.clone());
-        let run_id = RunId::new();
-        let run_store = state
-            .store_ref()
-            .create_run(&run_id)
-            .await
-            .expect("test run should be creatable");
-        append_run_created(&run_store, &run_id).await;
+        let app = build_test_router(test_app_state());
+        let run_id = create_run(&app).await;
         let response = app
             .oneshot(req_get(&format!("/api/v1/runs/{run_id}/sandbox")))
             .await
@@ -1174,15 +1135,8 @@ mod retrieve_sandbox_tests {
 
     #[tokio::test]
     async fn planned_sandbox_rejects_live_operations() {
-        let state = test_app_state();
-        let app = build_test_router(state.clone());
-        let run_id = RunId::new();
-        let run_store = state
-            .store_ref()
-            .create_run(&run_id)
-            .await
-            .expect("test run should be creatable");
-        append_run_created(&run_store, &run_id).await;
+        let app = build_test_router(test_app_state());
+        let run_id = create_run(&app).await;
 
         for uri in [
             format!("/api/v1/runs/{run_id}/sandbox/services"),
@@ -1192,119 +1146,5 @@ mod retrieve_sandbox_tests {
             let response = app.clone().oneshot(req_get(&uri)).await.unwrap();
             assert_sandbox_not_created_response(response).await;
         }
-    }
-
-    #[tokio::test]
-    async fn failed_sandbox_rejects_live_operations() {
-        let state = test_app_state();
-        let app = build_test_router(state.clone());
-        let run_id = RunId::new();
-        let run_store = state
-            .store_ref()
-            .create_run(&run_id)
-            .await
-            .expect("test run should be creatable");
-        append_run_created(&run_store, &run_id).await;
-        append_sandbox_failed(&run_store, &run_id).await;
-
-        for uri in [
-            format!("/api/v1/runs/{run_id}/sandbox/services"),
-            format!("/api/v1/runs/{run_id}/sandbox/files?path=/workspace"),
-            format!("/api/v1/runs/{run_id}/sandbox/file?path=/workspace/README.md"),
-        ] {
-            let response = app.clone().oneshot(req_get(&uri)).await.unwrap();
-            assert_sandbox_not_created_response(response).await;
-        }
-    }
-
-    #[tokio::test]
-    async fn local_sandbox_returns_provider_neutral_details() {
-        let state = test_app_state();
-        let app = build_test_router(state.clone());
-        let run_id = RunId::new();
-        let run_store = state
-            .store_ref()
-            .create_run(&run_id)
-            .await
-            .expect("test run should be creatable");
-        append_run_created(&run_store, &run_id).await;
-        let workspace = tempfile::tempdir().expect("scratch directory");
-        let working_directory = workspace.path().to_str().expect("utf-8").to_owned();
-        let id = local_sandbox_id(workspace.path()).await;
-        append_sandbox_initialized_in(&run_store, &run_id, "local", &id, &working_directory).await;
-
-        let response = app
-            .oneshot(req_get(&format!("/api/v1/runs/{run_id}/sandbox")))
-            .await
-            .unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
-        let body = body_json(response).await;
-        assert_eq!(body["sandbox"]["provider"], "local");
-        assert_eq!(body["sandbox"]["runtime"]["id"], id);
-        assert_eq!(
-            body["sandbox"]["runtime"]["working_directory"],
-            working_directory
-        );
-        assert_eq!(body["status"]["state"], "running");
-        assert_eq!(body["status"]["workspace_ownership"], "designated");
-        assert!(
-            body["status"]["id"]
-                .as_str()
-                .is_some_and(|id| id.starts_with("host-dir-")),
-            "{}",
-            body["status"]["id"]
-        );
-        assert!(body.get("state").is_none(), "the status is not flattened");
-        assert!(body.get("identifier").is_none());
-    }
-
-    #[tokio::test]
-    async fn local_sandbox_vnc_returns_501() {
-        let state = test_app_state();
-        let app = build_test_router(state.clone());
-        let run_id = RunId::new();
-        let run_store = state
-            .store_ref()
-            .create_run(&run_id)
-            .await
-            .expect("test run should be creatable");
-        append_run_created(&run_store, &run_id).await;
-        let workspace = tempfile::tempdir().expect("scratch directory");
-        append_sandbox_initialized_in(
-            &run_store,
-            &run_id,
-            "local",
-            &local_sandbox_id(workspace.path()).await,
-            workspace.path().to_str().expect("utf-8"),
-        )
-        .await;
-
-        let response = app
-            .oneshot(req_post(&format!("/api/v1/runs/{run_id}/sandbox/vnc")))
-            .await
-            .unwrap();
-
-        assert_eq!(response.status(), StatusCode::NOT_IMPLEMENTED);
-    }
-
-    #[tokio::test]
-    async fn docker_sandbox_vnc_returns_501_without_reconnect() {
-        let state = test_app_state();
-        let app = build_test_router(state.clone());
-        let run_id = RunId::new();
-        let run_store = state
-            .store_ref()
-            .create_run(&run_id)
-            .await
-            .expect("test run should be creatable");
-        append_run_created(&run_store, &run_id).await;
-        append_sandbox_initialized(&run_store, &run_id, "docker").await;
-
-        let response = app
-            .oneshot(req_post(&format!("/api/v1/runs/{run_id}/sandbox/vnc")))
-            .await
-            .unwrap();
-
-        assert_eq!(response.status(), StatusCode::NOT_IMPLEMENTED);
     }
 }

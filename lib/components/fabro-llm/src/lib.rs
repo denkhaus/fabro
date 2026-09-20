@@ -12,8 +12,7 @@
 //! - model and provider probes ([`probe`]), and the API views of the catalog
 //!   ([`api`]);
 //! - the `fabro exec` gateway adapter that speaks to a Fabro server
-//!   ([`gateway`]);
-//! - the failure signature loop detection reads ([`error`]).
+//!   ([`gateway`]).
 //!
 //! Local-file inlining, structured output, readable-reasoning normalization,
 //! and the retry, auth, and failover predicates are lithos-llm's own.
@@ -21,7 +20,6 @@
 pub mod api;
 pub mod catalog;
 pub mod client;
-pub mod error;
 pub mod gateway;
 pub mod probe;
 pub mod selection;
@@ -33,7 +31,6 @@ pub use client::{
     ClientOptions, FabroClient, LlmSetupError, RetryListener, RetryNotice, build_client,
     build_offline_client, configured_providers,
 };
-pub use error::failure_signature_hint;
 pub use lithos_llm::client::{Client, ClientBuild};
 pub use lithos_llm::middleware::{CallContext, CancellationToken, RetryPolicy, RetryStage};
 pub use lithos_llm::resolver::ModelSelectionError as RouteSelectionError;

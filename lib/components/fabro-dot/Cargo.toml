@@ -1,0 +1,23 @@
+[package]
+name = "fabro-dot"
+edition.workspace = true
+version.workspace = true
+publish = false
+license.workspace = true
+description = "The workflow graph as written, read through Petri's DOT parser: its shape and the files it references"
+
+[lib]
+doctest = false
+
+[lints]
+workspace = true
+
+[dependencies]
+fabro-template = { path = "../../foundation/fabro-template" }
+fabro-types = { path = "../../foundation/fabro-types" }
+petri_frontend_attractor.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+insta.workspace = true
+walkdir.workspace = true

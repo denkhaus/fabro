@@ -4,9 +4,9 @@ use anyhow::Result;
 use chrono::Utc;
 use cli_table::format::{Border, Separator};
 use cli_table::{Cell, CellStruct, Color, Style, Table};
+use fabro_types::RunStatus;
 use fabro_util::terminal::Styles;
 use fabro_util::text::strip_goal_decoration;
-use fabro_workflow::run_status::RunStatus;
 
 use super::short_run_id;
 use crate::args::RunsListArgs;

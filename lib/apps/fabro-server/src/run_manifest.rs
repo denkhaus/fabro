@@ -1,63 +1,60 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::future::Future;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
-use std::time::Duration;
+use std::sync::{Arc, Mutex, PoisonError};
+use std::time::{Duration, SystemTime};
 
 use anyhow::{Context as _, Result, anyhow, bail};
 use fabro_api::types;
 use fabro_config::parse::SettingsSource;
+use fabro_config::run::resolve_run_goal_from_namespace;
 use fabro_config::{
     CliLayer, CliOutputLayer, EnvironmentLayer, MergeMap, RunLayer, SettingsLayer,
     WorkflowSettingsBuilder, parse_input_overrides, parse_labels, project,
 };
+use fabro_dot::WorkflowGraph;
 use fabro_github::token_source::{InstallationTokenSource, ResolvedToken, TokenSnapshot};
-use fabro_graphviz::graph::{Graph, is_llm_handler_type};
 use fabro_graphviz::render::apply_direction;
-use fabro_llm::FabroClient;
-use fabro_llm::lithos_catalog::Catalog;
-use fabro_llm::probe::{self, ModelTestStatus};
+use fabro_petri::check::Launch;
+use fabro_petri::run_graph;
+use fabro_petri::runtime::RuntimeSpec;
 use fabro_proc::ProcessError;
-use fabro_sandbox::{
-    CloneRequest, ProviderAccess, RunSandbox, SandboxSpec, sandbox_spec_for_environment,
-};
 use fabro_static::EnvVars;
-use fabro_types::settings::ModelRef;
+use fabro_types::diagnostic::{Diagnostic, Severity};
 use fabro_types::settings::cli::OutputVerbosity;
 use fabro_types::settings::interp::InterpString;
-use fabro_types::settings::run::{McpServerSettings, RunGoal, RunNamespace};
+use fabro_types::settings::run::{McpServerSettings, RunGoal, RunMode, RunNamespace};
 use fabro_types::{
-    BundledProvider, ManifestPath, RunId, RunNoticeLevel, SandboxProviderKind, ServerSettings,
+    BundledProvider, ManifestPath, RunGraph, RunId, SandboxProviderKind, ServerSettings,
     WorkflowSettings,
 };
 use fabro_util::check_report::{CheckDetail, CheckReport, CheckResult, CheckSection, CheckStatus};
-use fabro_validate::Severity;
 use fabro_workflow::Error as WorkflowError;
-use fabro_workflow::model_fallback::resolve_model_fallbacks;
-use fabro_workflow::operations::{
-    ValidateInput, WorkflowInput, validate, validate_with_catalog, validate_with_ready_providers,
-};
-use fabro_workflow::pipeline::Validated;
-use fabro_workflow::run_materialization::materialize_run_with_ready_providers;
 use fabro_workflow::workflow_bundle::{BundledWorkflow, ParsedWorkflowConfig, WorkflowBundle};
 use futures_util::stream::{self, StreamExt};
 use lithos_llm::catalog::ProviderId;
+use sandbox_driver::{
+    GitBackoff, GitCredentials, GitFailure, GitFailureKind, GitRetryPolicy, HealthStatus,
+    ProviderHealth,
+};
 use tokio::process::Command;
+use tokio::task;
 #[cfg(test)]
 use tokio::time;
 use tokio_util::sync::CancellationToken;
 
-use crate::run_compiler;
-use crate::server::AppState;
+use crate::sandbox_access::{self, ProviderAccess};
+use crate::server::{AppState, petri_runs};
+use crate::{petri_check, run_compiler};
 
 #[derive(Clone)]
 pub(crate) struct PreparedManifest {
-    pub cwd:              PathBuf,
     pub git:              Option<types::GitContext>,
+    /// The entrypoint's DOT as written: what the render endpoint draws.
     pub root_source:      String,
     pub settings:         WorkflowSettings,
     pub target_path:      ManifestPath,
-    pub workflow_input:   BundledWorkflow,
+    pub workflow_bundle:  WorkflowBundle,
     pub source_directory: PathBuf,
 }
 
@@ -166,90 +163,112 @@ pub(crate) fn prepare_manifest_with_environment_defaults(
 
     let source_directory = project::resolve_working_directory_from_run(&settings.run, &cwd);
     Ok(PreparedManifest {
-        cwd,
         git: manifest.git.clone(),
         root_source,
         settings,
         target_path,
-        workflow_input,
+        workflow_bundle,
         source_directory,
     })
 }
 
+/// What Petri said about a prepared manifest: the display graph when it
+/// admitted the workflow, and every diagnostic, Petri's and Fabro's.
+pub(crate) struct ManifestCheck {
+    pub(crate) graph:       Option<RunGraph>,
+    pub(crate) diagnostics: Vec<Diagnostic>,
+}
+
+impl ManifestCheck {
+    pub(crate) fn has_errors(&self) -> bool {
+        self.diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.severity == Severity::Error)
+    }
+}
+
+/// Petri's check of the whole bundle under `launch` and `runtime`.
+/// `has_ready_provider` false adds Fabro's refusal of a model node no
+/// provider can run; `unbound_is_warning` keeps an input nothing binds a
+/// warning, for a validation before the run's inputs exist. Blocking: Petri
+/// lowers the graph synchronously.
 pub(crate) fn validate_prepared_manifest(
     prepared: &PreparedManifest,
-    catalog: Arc<Catalog>,
-) -> Result<Validated, WorkflowError> {
-    validate_prepared_manifest_with_vars(prepared, catalog, HashMap::new())
+    vars: &HashMap<String, String>,
+    launch: Launch,
+    runtime: RuntimeSpec,
+    has_ready_provider: bool,
+    unbound_is_warning: bool,
+) -> Result<ManifestCheck, WorkflowError> {
+    let request = petri_check::check_request(
+        &prepared.workflow_bundle,
+        &prepared.target_path,
+        &prepared.settings,
+        vars,
+        launch,
+        runtime,
+        unbound_is_warning,
+    )?;
+    let checked = petri_check::check(&request, has_ready_provider)?;
+    Ok(ManifestCheck {
+        graph:       checked.admitted.as_ref().map(run_graph::run_graph),
+        diagnostics: checked.diagnostics,
+    })
 }
 
-pub(crate) fn validate_prepared_manifest_structural(
+/// Check a prepared manifest as a run would be admitted: Petri's check with
+/// the server's runtime and the model client over the ready providers, on
+/// the blocking pool.
+pub(crate) async fn check_prepared_manifest(
+    state: &Arc<AppState>,
     prepared: &PreparedManifest,
-) -> Result<Validated, WorkflowError> {
-    validate(manifest_validate_input(prepared, HashMap::new()))
-}
-
-pub(crate) fn validate_prepared_manifest_with_vars(
-    prepared: &PreparedManifest,
-    catalog: Arc<Catalog>,
-    vars: HashMap<String, String>,
-) -> Result<Validated, WorkflowError> {
-    validate_with_catalog(manifest_validate_input(prepared, vars), catalog)
-}
-
-pub(crate) fn validate_prepared_manifest_for_preflight(
-    prepared: &PreparedManifest,
-    catalog: Arc<Catalog>,
     vars: HashMap<String, String>,
     ready_providers: &[ProviderId],
-) -> Result<Validated, WorkflowError> {
-    validate_with_ready_providers(
-        manifest_validate_input(prepared, vars),
-        catalog,
+) -> Result<ManifestCheck, WorkflowError> {
+    let launch = petri_check::launch(
+        &state.catalog(),
+        &prepared.settings,
         ready_providers,
-    )
-}
-
-fn manifest_validate_input(
-    prepared: &PreparedManifest,
-    vars: HashMap<String, String>,
-) -> ValidateInput {
-    ValidateInput {
-        workflow: WorkflowInput::Bundled(prepared.workflow_input.clone()),
-        settings: prepared.settings.clone(),
-        vars,
-        cwd: prepared.cwd.clone(),
-        custom_transforms: Vec::new(),
-    }
+        None,
+        None,
+    );
+    let dry_run = prepared.settings.run.execution.mode == RunMode::DryRun;
+    let runtime = petri_runs::runtime_spec(state, ready_providers, dry_run);
+    let has_ready_provider = !ready_providers.is_empty();
+    let prepared = prepared.clone();
+    task::spawn_blocking(move || {
+        validate_prepared_manifest(&prepared, &vars, launch, runtime, has_ready_provider, false)
+    })
+    .await
+    .map_err(|source| WorkflowError::engine_with_source("manifest check task failed", source))?
 }
 
 pub(crate) async fn run_preflight(
     state: &AppState,
     prepared: &PreparedManifest,
-    validated: &Validated,
-    llm_result: Result<FabroClient>,
+    check: &ManifestCheck,
 ) -> Result<(types::PreflightResponse, bool)> {
-    let (report, checks_ok) =
-        build_preflight_report(state, prepared, validated, llm_result).await?;
-    let preflight_ok = !validated.has_errors() && checks_ok;
+    let shape = workflow_shape(check, prepared);
+    let (report, checks_ok) = build_preflight_report(state, prepared, check, &shape).await?;
+    let preflight_ok = !check.has_errors() && checks_ok;
     Ok((
-        preflight_response(
-            validated,
-            prepared.target_path.as_path(),
-            &report,
-            preflight_ok,
-        ),
+        types::PreflightResponse {
+            ok:       preflight_ok,
+            checks:   report_to_api(&report),
+            workflow: workflow_summary(check, &shape, prepared.target_path.as_path()),
+        },
         preflight_ok,
     ))
 }
 
 pub(crate) fn validate_response(
     prepared: &PreparedManifest,
-    validated: &Validated,
+    check: &ManifestCheck,
 ) -> types::ValidateResponse {
+    let shape = workflow_shape(check, prepared);
     types::ValidateResponse {
-        ok:       !validated.has_errors(),
-        workflow: workflow_summary(validated, prepared.target_path.as_path()),
+        ok:       !check.has_errors(),
+        workflow: workflow_summary(check, &shape, prepared.target_path.as_path()),
     }
 }
 
@@ -400,12 +419,11 @@ fn manifest_project_config_path(
 async fn build_preflight_report(
     state: &AppState,
     prepared: &PreparedManifest,
-    validated: &Validated,
-    llm_result: Result<FabroClient>,
+    check: &ManifestCheck,
+    shape: &WorkflowShape,
 ) -> Result<(CheckReport, bool)> {
-    let graph = validated.graph();
-    let mut checks = base_preflight_checks(prepared, graph);
-    if validated.has_errors() {
+    let mut checks = base_preflight_checks(prepared, shape);
+    if check.has_errors() {
         return Ok((
             CheckReport {
                 title:    "Run Preflight".into(),
@@ -418,24 +436,7 @@ async fn build_preflight_report(
         ));
     }
 
-    let catalog = state.catalog();
-    let ready_providers = llm_result
-        .as_ref()
-        .map(FabroClient::provider_ids)
-        .unwrap_or_default();
-    let materialized = materialize_run_with_ready_providers(
-        prepared.settings.clone(),
-        graph,
-        catalog.as_ref(),
-        &ready_providers,
-    )?;
-    let resolved_run = materialized.run;
-    let (Some(run_model), Some(run_provider)) = (
-        resolved_run.model.name.as_deref(),
-        resolved_run.model.provider.as_deref(),
-    ) else {
-        bail!("materialized run is missing a resolved model or provider");
-    };
+    let resolved_run = prepared.settings.run.clone();
     let server_settings = state.server_settings();
     let github_integration = &server_settings.server.integrations.github;
     let sandbox_provider = effective_sandbox_provider(&resolved_run);
@@ -459,12 +460,6 @@ async fn build_preflight_report(
         ));
     }
     run_environment_capability_check(&mut checks, &resolved_run);
-    let model_fallbacks_ok = run_model_fallback_check(
-        &mut checks,
-        catalog.as_ref(),
-        &ready_providers,
-        &resolved_run.model.fallbacks,
-    );
     let needs_github_credentials = sandbox_provider.clones_workspace()
         || resolved_run.integrations.github.is_token_requested();
     let github_app = if needs_github_credentials {
@@ -489,7 +484,6 @@ async fn build_preflight_report(
         &sandbox_provider,
         prepared,
         &resolved_run,
-        github_app.clone(),
         &access,
     )
     .await;
@@ -501,20 +495,10 @@ async fn build_preflight_report(
         github_app.clone(),
     )
     .await;
-    let llm_ok = run_llm_check(
-        &mut checks,
-        graph,
-        run_model,
-        run_provider,
-        catalog.as_ref(),
-        llm_result,
-    )
-    .await;
     let github_token_ok =
         run_github_token_check(&mut checks, prepared, &resolved_run, github_app).await;
 
-    let checks_ok =
-        model_fallbacks_ok && sandbox_ok && repository_access_ok && llm_ok && github_token_ok;
+    let checks_ok = sandbox_ok && repository_access_ok && github_token_ok;
 
     Ok((
         CheckReport {
@@ -528,73 +512,7 @@ async fn build_preflight_report(
     ))
 }
 
-fn run_model_fallback_check(
-    checks: &mut Vec<CheckResult>,
-    catalog: &Catalog,
-    ready_providers: &[ProviderId],
-    configured: &BTreeMap<String, Vec<ModelRef>>,
-) -> bool {
-    if configured.is_empty() {
-        return true;
-    }
-
-    let resolved = match resolve_model_fallbacks(catalog, ready_providers, configured) {
-        Ok(resolved) => resolved,
-        Err(error) => {
-            checks.push(CheckResult {
-                name:        "Model Fallbacks".into(),
-                status:      CheckStatus::Error,
-                summary:     "invalid".into(),
-                details:     configured
-                    .keys()
-                    .map(|model| CheckDetail::new(format!("Requested model: {model}")))
-                    .collect(),
-                remediation: Some(error.to_string()),
-            });
-            return false;
-        }
-    };
-
-    let has_warning = resolved
-        .notices
-        .iter()
-        .any(|notice| notice.level() != RunNoticeLevel::Info);
-    let mut details = resolved
-        .policy
-        .iter()
-        .map(|(model, targets)| {
-            let chain = if targets.is_empty() {
-                "(none)".to_string()
-            } else {
-                targets
-                    .iter()
-                    .map(ToString::to_string)
-                    .collect::<Vec<_>>()
-                    .join(" -> ")
-            };
-            CheckDetail::new(format!("{model}: {chain}"))
-        })
-        .collect::<Vec<_>>();
-    details.extend(resolved.notices.iter().map(|notice| CheckDetail {
-        text: notice.message(),
-        warn: notice.level() != RunNoticeLevel::Info,
-    }));
-
-    checks.push(CheckResult {
-        name: "Model Fallbacks".into(),
-        status: if has_warning {
-            CheckStatus::Warning
-        } else {
-            CheckStatus::Pass
-        },
-        summary: format!("{} requested model chain(s)", resolved.policy.len()),
-        details,
-        remediation: None,
-    });
-    true
-}
-
-fn base_preflight_checks(prepared: &PreparedManifest, graph: &Graph) -> Vec<CheckResult> {
+fn base_preflight_checks(prepared: &PreparedManifest, shape: &WorkflowShape) -> Vec<CheckResult> {
     let setup_command_count = prepared.settings.run.prepare.steps.len();
     let repo_summary = prepared.git.as_ref().map_or_else(
         || "unknown".to_string(),
@@ -637,11 +555,11 @@ fn base_preflight_checks(prepared: &PreparedManifest, graph: &Graph) -> Vec<Chec
         CheckResult {
             name:        "Workflow".into(),
             status:      CheckStatus::Pass,
-            summary:     graph.name.clone(),
+            summary:     shape.name.clone(),
             details:     vec![
-                CheckDetail::new(format!("Nodes: {}", graph.nodes.len())),
-                CheckDetail::new(format!("Edges: {}", graph.edges.len())),
-                CheckDetail::new(format!("Goal: {}", graph.goal())),
+                CheckDetail::new(format!("Nodes: {}", shape.nodes)),
+                CheckDetail::new(format!("Edges: {}", shape.edges)),
+                CheckDetail::new(format!("Goal: {}", shape.goal)),
             ],
             remediation: None,
         },
@@ -914,305 +832,91 @@ async fn run_ls_remote(mut command: Command) -> std::result::Result<(), String> 
     })
 }
 
-fn preflight_sandbox_spec(
-    sandbox_provider: &SandboxProviderKind,
-    prepared: &PreparedManifest,
-    resolved_run: &RunNamespace,
-    github_app: Option<fabro_github::GitHubCredentials>,
-    access: &ProviderAccess,
-) -> std::result::Result<SandboxSpec, fabro_sandbox::Error> {
-    let clone_origin_url = prepared
-        .git
-        .as_ref()
-        .map(|git| fabro_github::normalize_repo_origin_url(&git.origin_url));
-    let clone_branch = prepared.git.as_ref().map(|git| git.branch.clone());
-
-    if sandbox_provider.bundled() == Some(BundledProvider::Local) {
-        let working_directory = resolved_run
-            .environment
-            .local_working_directory(Some(&prepared.source_directory))
-            .map_err(|err| {
-                fabro_sandbox::Error::context(
-                    "Failed to resolve local environment working directory",
-                    err,
-                )
-            })?;
-        return Ok(SandboxSpec::local(working_directory, access.clone()));
-    }
-    // No vault is available on this path, so a `{{ secrets.* }}` value keeps
-    // its source form. Preflight never clones.
-    let spec = sandbox_spec_for_environment(
-        &resolved_run.environment,
-        resolved_run.environment.unresolved_env(),
-    )?;
-    let clone = CloneRequest {
-        origin_url: clone_origin_url,
-        branch: clone_branch,
-        ..CloneRequest::none()
-    };
-    Ok(SandboxSpec {
-        kind: sandbox_provider.clone(),
-        access: access.clone(),
-        spec,
-        clone,
-        github_app,
-        run_id: None,
-    })
-}
-
+/// The sandbox check of preflight: the run's provider is reachable and its
+/// credential accepted, as the provider's own health check reports. No
+/// sandbox is created: Petri creates the run's, in the run's own shape,
+/// when the run starts. A `local` environment must also resolve the
+/// directory the run would work in.
 async fn run_sandbox_check(
     checks: &mut Vec<CheckResult>,
     sandbox_provider: &SandboxProviderKind,
     prepared: &PreparedManifest,
     resolved_run: &RunNamespace,
-    github_app: Option<fabro_github::GitHubCredentials>,
     access: &ProviderAccess,
 ) -> bool {
-    let spec = match preflight_sandbox_spec(
-        sandbox_provider,
-        prepared,
-        resolved_run,
-        github_app.clone(),
-        access,
-    ) {
-        Ok(spec) => spec,
-        Err(err) => {
+    if sandbox_provider.bundled() == Some(BundledProvider::Local) {
+        if let Err(err) = resolved_run
+            .environment
+            .local_working_directory(Some(&prepared.source_directory))
+        {
             checks.push(CheckResult {
                 name:        "Sandbox".into(),
                 status:      CheckStatus::Error,
                 summary:     "failed".into(),
                 details:     vec![CheckDetail::new(format!("Provider: {sandbox_provider}"))],
-                remediation: Some(err.to_string()),
+                remediation: Some(format!(
+                    "Failed to resolve local environment working directory: {err}"
+                )),
             });
             return false;
         }
+    }
+    let health = sandbox_access::provider_health(sandbox_provider, access)
+        .await
+        .map_err(|err| format!("{err:#}"));
+    let check = sandbox_health_check(sandbox_provider, health);
+    let passed = check.status == CheckStatus::Pass;
+    checks.push(check);
+    passed
+}
+
+/// The preflight check for a provider's health report: a connection
+/// failure and an unreachable or rejected backend fail with the reason; a
+/// healthy backend, or one whose provider has no health check, passes.
+fn sandbox_health_check(
+    sandbox_provider: &SandboxProviderKind,
+    health: std::result::Result<ProviderHealth, String>,
+) -> CheckResult {
+    let details = vec![CheckDetail::new(format!("Provider: {sandbox_provider}"))];
+    let failure = |remediation: String| CheckResult {
+        name:        "Sandbox".into(),
+        status:      CheckStatus::Error,
+        summary:     "failed".into(),
+        details:     details.clone(),
+        remediation: Some(remediation),
     };
-    let sandbox_result: Result<Arc<RunSandbox>, String> = spec.build(None).await.map_err(|err| {
-        if *sandbox_provider == SandboxProviderKind::DAYTONA {
-            format!("Daytona sandbox creation failed: {err}")
-        } else {
-            err.to_string()
-        }
-    });
-
-    match sandbox_result {
-        Ok(sandbox) => match sandbox.initialize().await {
-            Ok(()) => {
-                let mut details = vec![CheckDetail::new(format!("Provider: {sandbox_provider}"))];
-                if sandbox_provider.clones_workspace()
-                    && prepared.git.is_none()
-                    && !clone_disabled_for_provider(sandbox_provider, resolved_run)
-                {
-                    details.push(CheckDetail {
-                        text: "No clone source present; sandbox workspace will be empty".into(),
-                        warn: true,
-                    });
-                }
-                if let Err(err) = sandbox.delete().await {
-                    checks.push(CheckResult {
-                        name: "Sandbox".into(),
-                        status: CheckStatus::Error,
-                        summary: "cleanup failed".into(),
-                        details,
-                        remediation: Some(format!("Sandbox cleanup failed: {err}")),
-                    });
-                    return false;
-                }
-                checks.push(CheckResult {
-                    name: "Sandbox".into(),
-                    status: CheckStatus::Pass,
-                    summary: sandbox_provider.to_string(),
-                    details,
-                    remediation: None,
-                });
-                true
-            }
-            Err(err) => {
-                let cleanup_error = sandbox.delete().await.err();
-                checks.push(CheckResult {
-                    name:        "Sandbox".into(),
-                    status:      CheckStatus::Error,
-                    summary:     "failed".into(),
-                    details:     vec![CheckDetail::new(format!("Provider: {sandbox_provider}"))],
-                    remediation: Some(cleanup_error.map_or_else(
-                        || format!("Sandbox init failed: {err}"),
-                        |cleanup| {
-                            format!("Sandbox init failed: {err}; cleanup also failed: {cleanup}")
-                        },
-                    )),
-                });
-                false
-            }
+    let health = match health {
+        Ok(health) => health,
+        Err(err) => return failure(err),
+    };
+    match health.status {
+        HealthStatus::Ok | HealthStatus::Unknown => CheckResult {
+            name: "Sandbox".into(),
+            status: CheckStatus::Pass,
+            summary: sandbox_provider.to_string(),
+            details,
+            remediation: None,
         },
-        Err(err) => {
-            checks.push(CheckResult {
-                name:        "Sandbox".into(),
-                status:      CheckStatus::Error,
-                summary:     "failed".into(),
-                details:     vec![CheckDetail::new(format!("Provider: {sandbox_provider}"))],
-                remediation: Some(err),
-            });
-            false
-        }
+        HealthStatus::Unreachable => failure(format!(
+            "{sandbox_provider} backend is unreachable: {}",
+            health
+                .message
+                .unwrap_or_else(|| "the backend did not answer".to_string())
+        )),
+        HealthStatus::Unauthorized if !health.missing_permissions.is_empty() => failure(format!(
+            "{sandbox_provider} credential is missing required permissions: {}",
+            health.missing_permissions.join(", ")
+        )),
+        HealthStatus::Unauthorized => failure(format!(
+            "{sandbox_provider} rejected the credential: {}",
+            health
+                .message
+                .unwrap_or_else(|| "the credential was rejected".to_string())
+        )),
+        _ => failure(format!(
+            "{sandbox_provider} reported an unknown health state"
+        )),
     }
-}
-
-const MODEL_PREFLIGHT_PROBE_CONCURRENCY: usize = 4;
-
-struct PendingModelProbe {
-    index:         usize,
-    model_id:      String,
-    provider_name: String,
-}
-
-async fn run_llm_check(
-    checks: &mut Vec<CheckResult>,
-    graph: &Graph,
-    model: &str,
-    default_provider: &str,
-    catalog: &Catalog,
-    llm_result: Result<FabroClient>,
-) -> bool {
-    let mut model_providers = std::collections::BTreeSet::new();
-    let mut has_llm_nodes = false;
-
-    for node in graph.nodes.values() {
-        if !is_llm_handler_type(node.handler_type()) {
-            continue;
-        }
-        has_llm_nodes = true;
-        let node_model = node.model().unwrap_or(model);
-        let node_provider = node.provider().unwrap_or(default_provider);
-        model_providers.insert((node_model.to_string(), node_provider.to_string()));
-    }
-
-    if !has_llm_nodes {
-        return true;
-    }
-
-    match llm_result {
-        Ok(result) => {
-            let auth_issues = result.auth_issues;
-            let registration_issues = result.build_issues;
-            let client = Arc::new(result.client);
-
-            let mut all_ok = true;
-            let mut completed_checks: Vec<(usize, CheckResult)> = Vec::new();
-            let mut pending_probes = Vec::new();
-            for (index, (model_id, provider_name)) in model_providers.iter().enumerate() {
-                let provider_id = canonical_provider_id(catalog, provider_name);
-                if let Some((_, issue)) = auth_issues
-                    .iter()
-                    .find(|(candidate, _)| candidate == &provider_id)
-                {
-                    all_ok = false;
-                    completed_checks.push((index, CheckResult {
-                        name:        "LLM".into(),
-                        status:      CheckStatus::Warning,
-                        summary:     model_id.clone(),
-                        details:     vec![CheckDetail::new(format!("Provider: {provider_name}"))],
-                        remediation: Some(issue.to_string()),
-                    }));
-                } else if let Some(issue) = registration_issues
-                    .iter()
-                    .find(|issue| issue.provider == provider_id)
-                {
-                    all_ok = false;
-                    completed_checks.push((index, CheckResult {
-                        name:        "LLM".into(),
-                        status:      CheckStatus::Warning,
-                        summary:     model_id.clone(),
-                        details:     vec![CheckDetail::new(format!("Provider: {provider_name}"))],
-                        remediation: Some(issue.cause.to_string()),
-                    }));
-                } else if !client.available_providers().contains(&provider_id) {
-                    all_ok = false;
-                    completed_checks.push((index, CheckResult {
-                        name:        "LLM".into(),
-                        status:      CheckStatus::Warning,
-                        summary:     model_id.clone(),
-                        details:     vec![CheckDetail::new(format!("Provider: {provider_name}"))],
-                        remediation: Some(format!(
-                            "Provider \"{provider_name}\" is not configured"
-                        )),
-                    }));
-                } else {
-                    pending_probes.push(PendingModelProbe {
-                        index,
-                        model_id: model_id.clone(),
-                        provider_name: provider_name.clone(),
-                    });
-                }
-            }
-
-            let mut probe_checks = stream::iter(pending_probes)
-                .map(|probe| {
-                    let client = Arc::clone(&client);
-                    async move {
-                        let outcome = probe::run_basic_probe(
-                            &client,
-                            &format!("{}/{}", probe.provider_name, probe.model_id),
-                            Duration::from_secs(fabro_types::ModelTestMode::Basic.timeout_secs()),
-                        )
-                        .await;
-                        let (status, remediation) = if outcome.status == ModelTestStatus::Ok {
-                            (CheckStatus::Pass, None)
-                        } else {
-                            (
-                                CheckStatus::Error,
-                                Some(format!(
-                                    "Model availability probe failed: {}",
-                                    outcome
-                                        .error_message
-                                        .unwrap_or_else(|| "unknown error".to_string())
-                                )),
-                            )
-                        };
-                        (probe.index, CheckResult {
-                            name: "LLM".into(),
-                            status,
-                            summary: probe.model_id,
-                            details: vec![
-                                CheckDetail::new(format!("Provider: {}", probe.provider_name)),
-                                CheckDetail::new("Probe: basic generation".to_string()),
-                            ],
-                            remediation,
-                        })
-                    }
-                })
-                .buffer_unordered(MODEL_PREFLIGHT_PROBE_CONCURRENCY)
-                .collect::<Vec<_>>()
-                .await;
-
-            if probe_checks
-                .iter()
-                .any(|(_, check)| check.status != CheckStatus::Pass)
-            {
-                all_ok = false;
-            }
-            completed_checks.append(&mut probe_checks);
-            completed_checks.sort_by_key(|(index, _)| *index);
-            checks.extend(completed_checks.into_iter().map(|(_, check)| check));
-            all_ok
-        }
-        Err(err) => {
-            checks.push(CheckResult {
-                name:        "LLM".into(),
-                status:      CheckStatus::Error,
-                summary:     "initialization failed".into(),
-                details:     vec![],
-                remediation: Some(format!("LLM client init failed: {err}")),
-            });
-            false
-        }
-    }
-}
-
-fn canonical_provider_id(catalog: &Catalog, provider_name: &str) -> ProviderId {
-    catalog.enabled_provider(provider_name).map_or_else(
-        || ProviderId::new(provider_name),
-        |provider| provider.id().clone(),
-    )
 }
 
 async fn run_github_token_check(
@@ -1519,13 +1223,112 @@ where
     F: FnMut() -> Fut,
     Fut: Future<Output = std::result::Result<(), String>>,
 {
-    fabro_sandbox::retry_git_messages(
-        &fabro_sandbox::repository_probe_policy(),
+    retry_git_messages(
+        &repository_probe_policy(),
         Some(&snapshot),
         "repository probe",
         run,
     )
     .await
+}
+
+// ── Fabro's retry budget for git operations against GitHub ─────────────────
+//
+// The driver owns the retry loop and the decision
+// (`sandbox_driver::retry_git`): a remote that cannot be reached is retried,
+// a rejected credential is retried only while the token is fresh enough to
+// still be replicating to GitHub's git endpoints, a static credential fails
+// fast, and a command whose outcome is unknown is never replayed. Fabro
+// keeps what is policy: how many attempts the host-side repository probe
+// gets, how it paces them, and when the credential it runs with was minted.
+//
+// Retries reuse the same token on purpose. Replication of a given token
+// only makes progress, so each attempt strictly improves the odds, while
+// re-minting would restart the replication clock.
+
+/// The username GitHub expects with an installation token or PAT.
+const GITHUB_TOKEN_USERNAME: &str = "x-access-token";
+
+/// Backoff between attempts: 3s, then 9s.
+///
+/// GitHub's guidance for token replication is to wait a few seconds and
+/// retry with the same token. Sub-second delays land inside the same
+/// replication window and spend an attempt for nothing.
+fn replication_backoff() -> GitBackoff {
+    GitBackoff::new(Duration::from_secs(3), 3.0, Duration::from_secs(10))
+}
+
+/// Host-side repository probes get 3 attempts at replication pacing, with
+/// no deadline of their own.
+fn repository_probe_policy() -> GitRetryPolicy {
+    GitRetryPolicy::new(3, replication_backoff())
+}
+
+/// Credentials carrying only the token's mint time, which is all the
+/// driver's decision reads for git that ran outside a sandbox. The token
+/// itself never leaves its snapshot.
+fn credential_age(snapshot: Option<&TokenSnapshot>) -> Option<GitCredentials> {
+    let snapshot = snapshot?;
+    let credentials = GitCredentials::new(GITHUB_TOKEN_USERNAME, "");
+    Some(match snapshot.minted_at() {
+        Some(minted_at) => credentials.minted_at(SystemTime::from(minted_at)),
+        None => credentials,
+    })
+}
+
+/// The driver's failure for a rendered git message, so git that ran
+/// outside a sandbox (the host-side repository probe) is classified the
+/// same way as git the driver ran.
+fn classified_git_failure(operation: &str, message: &str) -> sandbox_driver::Error {
+    sandbox_driver::Error::Git(GitFailure::classified(
+        operation,
+        GitFailureKind::from_message(message),
+        None,
+    ))
+}
+
+/// Runs a host-side git operation that reports failures as rendered
+/// messages under `policy`, retrying while the driver's decision says the
+/// message is transient for the token behind `snapshot`. The final failure
+/// comes back as the operation's own message.
+async fn retry_git_messages<F, Fut>(
+    policy: &GitRetryPolicy,
+    snapshot: Option<&TokenSnapshot>,
+    operation: &str,
+    mut run: F,
+) -> std::result::Result<(), String>
+where
+    F: FnMut() -> Fut,
+    Fut: Future<Output = std::result::Result<(), String>>,
+{
+    let credentials = credential_age(snapshot);
+    // The operation's own message is kept beside the classified failure the
+    // driver decides on, so the caller reads the message it knows.
+    let last_message = Mutex::new(None);
+    let result = sandbox_driver::retry_git(
+        policy,
+        credentials.as_ref(),
+        operation,
+        |_attempt, _timeout| {
+            let attempt = run();
+            let last_message = &last_message;
+            async move {
+                attempt.await.map_err(|message| {
+                    let error = classified_git_failure(operation, &message);
+                    *last_message.lock().unwrap_or_else(PoisonError::into_inner) = Some(message);
+                    error
+                })
+            }
+        },
+    )
+    .await;
+    match result {
+        Ok(_) => Ok(()),
+        Err(failure) => Err(last_message
+            .into_inner()
+            .unwrap_or_else(PoisonError::into_inner)
+            .unwrap_or_else(|| failure.error.to_string())),
+    }
 }
 
 async fn run_probe_ls_remote(url: &str, token: &ResolvedToken) -> std::result::Result<(), String> {
@@ -1555,38 +1358,82 @@ async fn mint_github_token(
         .await
 }
 
-fn preflight_response(
-    validated: &Validated,
-    target_path: &Path,
-    report: &CheckReport,
-    ok: bool,
-) -> types::PreflightResponse {
-    types::PreflightResponse {
-        ok,
-        checks: report_to_api(report),
-        workflow: workflow_summary(validated, target_path),
+/// The workflow as the validate and preflight responses describe it: its
+/// name, its size and its goal. From the graph Petri admitted when it did;
+/// for a refused workflow, from the DOT as written, so the response still
+/// names what was checked. The goal is the run's effective goal, as create
+/// materializes it: the settings' `run.goal` when the run has one, else the
+/// workflow's own.
+pub(crate) struct WorkflowShape {
+    name:  String,
+    nodes: usize,
+    edges: usize,
+    goal:  String,
+}
+
+pub(crate) fn workflow_shape(check: &ManifestCheck, prepared: &PreparedManifest) -> WorkflowShape {
+    workflow_shape_of(
+        check,
+        &prepared.target_path,
+        &prepared.root_source,
+        &prepared.settings,
+        &prepared.source_directory,
+    )
+}
+
+pub(crate) fn workflow_shape_of(
+    check: &ManifestCheck,
+    graph_path: &ManifestPath,
+    root_source: &str,
+    settings: &WorkflowSettings,
+    working_directory: &Path,
+) -> WorkflowShape {
+    let mut shape = check.graph.as_ref().map_or_else(
+        || {
+            WorkflowGraph::parse(&graph_path.to_string(), root_source).map_or_else(
+                |_| WorkflowShape {
+                    name:  String::new(),
+                    nodes: 0,
+                    edges: 0,
+                    goal:  String::new(),
+                },
+                |graph| WorkflowShape {
+                    goal:  graph.goal().unwrap_or_default().to_string(),
+                    nodes: graph.node_count(),
+                    edges: graph.edge_count(),
+                    name:  graph.name().to_string(),
+                },
+            )
+        },
+        |graph| WorkflowShape {
+            name:  graph.name.clone(),
+            nodes: graph.nodes.len(),
+            edges: graph.edges.len(),
+            goal:  graph.goal().to_string(),
+        },
+    );
+    if let Ok(Some(resolved)) = resolve_run_goal_from_namespace(&settings.run, working_directory) {
+        shape.goal = resolved.text;
     }
+    shape
 }
 
 pub(crate) fn workflow_summary(
-    validated: &Validated,
+    check: &ManifestCheck,
+    shape: &WorkflowShape,
     target_path: &Path,
 ) -> types::PreflightWorkflowSummary {
     types::PreflightWorkflowSummary {
-        diagnostics: diagnostics_to_api(validated.diagnostics()),
-        edges:       i64::try_from(validated.graph().edges.len())
-            .expect("graph edge count should fit in i64"),
-        goal:        validated.graph().goal().to_string(),
+        diagnostics: diagnostics_to_api(&check.diagnostics),
+        edges:       i64::try_from(shape.edges).expect("graph edge count should fit in i64"),
+        goal:        shape.goal.clone(),
         graph_path:  Some(target_path.display().to_string()),
-        name:        validated.graph().name.clone(),
-        nodes:       i64::try_from(validated.graph().nodes.len())
-            .expect("graph node count should fit in i64"),
+        name:        shape.name.clone(),
+        nodes:       i64::try_from(shape.nodes).expect("graph node count should fit in i64"),
     }
 }
 
-fn diagnostics_to_api(
-    diagnostics: &[fabro_validate::Diagnostic],
-) -> Vec<types::WorkflowDiagnostic> {
+fn diagnostics_to_api(diagnostics: &[Diagnostic]) -> Vec<types::WorkflowDiagnostic> {
     diagnostics
         .iter()
         .map(|diagnostic| types::WorkflowDiagnostic {
@@ -1665,10 +1512,48 @@ fn report_to_api(report: &CheckReport) -> types::PreflightCheckReport {
 
 #[cfg(test)]
 mod tests {
-    use fabro_workflow::run_materialization::materialize_run;
     use lithos_llm::catalog::ProviderId;
 
     use super::*;
+
+    /// Validate as the endpoints do: Petri's check with the state's model
+    /// client over `ready_providers`.
+    fn validate_for_test(
+        state: &AppState,
+        prepared: &PreparedManifest,
+        ready_providers: &[ProviderId],
+    ) -> Result<ManifestCheck, WorkflowError> {
+        let launch = petri_check::launch(
+            &state.catalog(),
+            &prepared.settings,
+            ready_providers,
+            None,
+            None,
+        );
+        let runtime = crate::server::petri_runs::runtime_spec(state, ready_providers, false);
+        validate_prepared_manifest(
+            prepared,
+            &HashMap::new(),
+            launch,
+            runtime,
+            !ready_providers.is_empty(),
+            false,
+        )
+    }
+
+    /// Validate with every provider of the state's catalog eligible, as the
+    /// legacy catalog validation judged a manifest.
+    fn validate_with_catalog(
+        state: &AppState,
+        prepared: &PreparedManifest,
+    ) -> Result<ManifestCheck, WorkflowError> {
+        let providers = state
+            .catalog()
+            .enabled_provider_ids()
+            .into_iter()
+            .collect::<Vec<_>>();
+        validate_for_test(state, prepared, &providers)
+    }
 
     #[tokio::test]
     async fn ls_remote_capture_keeps_diagnostic_precedence_and_unlimited_output() {
@@ -1782,119 +1667,6 @@ mod tests {
         )
     }
 
-    fn test_catalog() -> Arc<Catalog> {
-        Arc::new(fabro_llm::test_support::test_catalog())
-    }
-
-    fn openrouter_catalog() -> Catalog {
-        fabro_llm::test_support::test_catalog_with_overlay(
-            "[providers.openrouter]\nenabled = true\n",
-        )
-    }
-
-    fn model_refs(values: &[&str]) -> Vec<fabro_types::settings::ModelRef> {
-        values
-            .iter()
-            .map(|value| value.parse().expect("fallback reference should parse"))
-            .collect()
-    }
-
-    #[test]
-    fn model_fallback_preflight_resolves_each_requested_model_chain() {
-        let mut checks = Vec::new();
-        let configured = std::collections::BTreeMap::from([
-            ("gpt-sol".to_string(), model_refs(&["claude-opus"])),
-            (
-                "claude-fable".to_string(),
-                model_refs(&["gpt-sol", "claude-opus"]),
-            ),
-        ]);
-
-        assert!(run_model_fallback_check(
-            &mut checks,
-            &openrouter_catalog(),
-            &[ProviderId::new("openrouter")],
-            &configured,
-        ));
-
-        let check = checks.last().expect("fallback check should be present");
-        assert_eq!(check.status, CheckStatus::Pass);
-        assert!(
-            check
-                .details
-                .iter()
-                .any(|detail| detail.text == "gpt-5.6-sol: openrouter:claude-opus-5")
-        );
-        assert!(check.details.iter().any(|detail| {
-            detail.text == "claude-fable-5: openrouter:gpt-5.6-sol -> openrouter:claude-opus-5"
-        }));
-    }
-
-    #[test]
-    fn model_fallback_preflight_warns_when_a_provider_is_not_ready() {
-        let mut checks = Vec::new();
-        let configured = std::collections::BTreeMap::from([(
-            "kimi-k3".to_string(),
-            model_refs(&["moonshot:kimi-k3", "openrouter:kimi-k3"]),
-        )]);
-
-        assert!(run_model_fallback_check(
-            &mut checks,
-            &openrouter_catalog(),
-            &[ProviderId::new("openrouter")],
-            &configured,
-        ));
-
-        let check = checks.last().expect("fallback check should be present");
-        assert_eq!(check.status, CheckStatus::Warning);
-        assert!(check.details.iter().any(|detail| {
-            detail.warn
-                && detail
-                    .text
-                    .contains("provider `moonshot` is not configured")
-        }));
-    }
-
-    #[test]
-    fn model_fallback_preflight_rejects_duplicate_canonical_keys() {
-        let mut checks = Vec::new();
-        let configured = std::collections::BTreeMap::from([
-            ("gpt-sol".to_string(), model_refs(&["claude-opus"])),
-            ("gpt-5.6-sol".to_string(), model_refs(&["claude-fable"])),
-        ]);
-
-        assert!(!run_model_fallback_check(
-            &mut checks,
-            &openrouter_catalog(),
-            &[ProviderId::new("openrouter")],
-            &configured,
-        ));
-
-        let check = checks.last().expect("fallback check should be present");
-        assert_eq!(check.status, CheckStatus::Error);
-        assert!(
-            check
-                .remediation
-                .as_deref()
-                .is_some_and(|message| message.contains("both resolve to requested model"))
-        );
-    }
-
-    fn openai_compatible_completion(model: &str) -> serde_json::Value {
-        serde_json::json!({
-            "id": "chatcmpl_preflight",
-            "object": "chat.completion",
-            "created": 1_700_000_000,
-            "model": model,
-            "choices": [{
-                "index": 0,
-                "message": {"role": "assistant", "content": "OK"},
-                "finish_reason": "stop"
-            }],
-            "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2}
-        })
-    }
-
     fn ready_moonshot_and_openrouter_state(
         server: &httpmock::MockServer,
     ) -> Arc<crate::server::AppState> {
@@ -1919,21 +1691,12 @@ enabled = true
             .build()
     }
 
-    async fn preflight_for_model(
+    /// Preflight for a workflow naming `model`, which Petri refuses.
+    async fn preflight_for_refused_model(
         state: &Arc<crate::server::AppState>,
         model: &str,
     ) -> (types::PreflightResponse, bool) {
-        let llm_result = state.resolve_llm_client().await;
-        let mut ready_providers = llm_result
-            .as_ref()
-            .map(FabroClient::provider_ids)
-            .unwrap_or_default();
-        ready_providers.sort();
-        assert_eq!(ready_providers, vec![
-            ProviderId::new("moonshot"),
-            ProviderId::new("openrouter")
-        ]);
-
+        let (_, ready_providers) = state.resolve_llm_client_with_ready_ids().await;
         let mut manifest = minimal_manifest();
         manifest.workflows.get_mut("workflow.fabro").unwrap().source = format!(
             r#"
@@ -1950,15 +1713,10 @@ digraph Demo {{
             &manifest,
         )
         .unwrap();
-        let validated = validate_prepared_manifest_for_preflight(
-            &prepared,
-            state.catalog(),
-            HashMap::new(),
-            &ready_providers,
-        )
-        .unwrap();
+        let validated = validate_for_test(state, &prepared, &ready_providers).unwrap();
+        assert!(validated.has_errors(), "{:?}", validated.diagnostics);
 
-        run_preflight(state.as_ref(), &prepared, &validated, llm_result)
+        run_preflight(state.as_ref(), &prepared, &validated)
             .await
             .unwrap()
     }
@@ -1966,10 +1724,9 @@ digraph Demo {{
     async fn resolve_and_run_preflight(
         state: &AppState,
         prepared: &PreparedManifest,
-        validated: &Validated,
+        check: &ManifestCheck,
     ) -> Result<(types::PreflightResponse, bool)> {
-        let llm_result = state.resolve_llm_client().await;
-        run_preflight(state, prepared, validated, llm_result).await
+        run_preflight(state, prepared, check).await
     }
 
     fn manifest_workflow() -> types::ManifestWorkflow {
@@ -2036,15 +1793,7 @@ enabled = {clone_enabled}
             &manifest,
         )
         .unwrap();
-        let validated = validate_prepared_manifest(&prepared, test_catalog()).unwrap();
-        let resolved = materialize_run(
-            prepared.settings.clone(),
-            validated.graph(),
-            test_catalog().as_ref(),
-            &[lithos_llm::catalog::builtin::anthropic()],
-        )
-        .unwrap()
-        .run;
+        let resolved = prepared.settings.run.clone();
 
         (prepared, resolved)
     }
@@ -2238,30 +1987,181 @@ provider = "local"
         );
     }
 
+    fn health(status: HealthStatus, message: Option<&str>) -> ProviderHealth {
+        let mut health = ProviderHealth::new(status);
+        health.message = message.map(str::to_string);
+        health
+    }
+
     #[test]
-    fn preflight_sandbox_spec_disables_docker_clone_but_preserves_clone_metadata() {
-        let (prepared, resolved) = prepared_and_resolved_for_sandbox(
+    fn a_healthy_or_uncheckable_provider_passes_the_sandbox_check() {
+        for status in [HealthStatus::Ok, HealthStatus::Unknown] {
+            let check =
+                sandbox_health_check(&SandboxProviderKind::DOCKER, Ok(health(status, None)));
+            assert_eq!(check.status, CheckStatus::Pass, "{status:?}");
+            assert_eq!(check.summary, "docker");
+            assert_eq!(check.details[0].text, "Provider: docker");
+            assert!(check.remediation.is_none());
+        }
+    }
+
+    #[test]
+    fn an_unreachable_backend_fails_the_sandbox_check_with_its_reason() {
+        let check = sandbox_health_check(
             &SandboxProviderKind::DOCKER,
-            true,
-            Some(git_context("https://github.com/acme/widgets", "main")),
+            Ok(health(
+                HealthStatus::Unreachable,
+                Some("connection refused on /var/run/docker.sock"),
+            )),
+        );
+        assert_eq!(check.status, CheckStatus::Error);
+        assert_eq!(check.summary, "failed");
+        assert_eq!(
+            check.remediation.as_deref(),
+            Some("docker backend is unreachable: connection refused on /var/run/docker.sock")
+        );
+    }
+
+    #[test]
+    fn a_rejected_credential_fails_the_sandbox_check_naming_the_missing_scopes() {
+        let mut unauthorized = health(HealthStatus::Unauthorized, Some("forbidden"));
+        unauthorized.missing_permissions = vec!["write:sandboxes".to_string()];
+        let check = sandbox_health_check(&SandboxProviderKind::DAYTONA, Ok(unauthorized));
+        assert_eq!(check.status, CheckStatus::Error);
+        assert_eq!(
+            check.remediation.as_deref(),
+            Some("daytona credential is missing required permissions: write:sandboxes")
         );
 
-        let spec = preflight_sandbox_spec(
-            &SandboxProviderKind::DOCKER,
+        let check = sandbox_health_check(
+            &SandboxProviderKind::DAYTONA,
+            Ok(health(HealthStatus::Unauthorized, Some("bad key"))),
+        );
+        assert_eq!(
+            check.remediation.as_deref(),
+            Some("daytona rejected the credential: bad key")
+        );
+    }
+
+    #[test]
+    fn a_provider_that_cannot_connect_fails_the_sandbox_check_with_the_connect_error() {
+        let check = sandbox_health_check(
+            &SandboxProviderKind::DAYTONA,
+            Err("Daytona sandboxes require DAYTONA_API_KEY in the vault".to_string()),
+        );
+        assert_eq!(check.status, CheckStatus::Error);
+        assert_eq!(
+            check.remediation.as_deref(),
+            Some("Daytona sandboxes require DAYTONA_API_KEY in the vault")
+        );
+    }
+
+    #[tokio::test]
+    async fn the_local_sandbox_check_passes_through_the_host_providers_health() {
+        let (mut prepared, resolved) =
+            prepared_and_resolved_for_sandbox(&SandboxProviderKind::LOCAL, false, None);
+        // The local check resolves the run's working directory from the
+        // manifest's source directory, which must exist on this server.
+        let source = tempfile::tempdir().expect("a source directory");
+        prepared.source_directory = source.path().to_path_buf();
+        let mut checks = Vec::new();
+        let passed = run_sandbox_check(
+            &mut checks,
+            &SandboxProviderKind::LOCAL,
             &prepared,
             &resolved,
-            None,
             &ProviderAccess::default(),
-        );
+        )
+        .await;
+        assert!(passed, "{checks:?}");
+        assert_eq!(checks[0].name, "Sandbox");
+        assert_eq!(checks[0].status, CheckStatus::Pass);
+    }
 
-        let spec = spec.expect("Docker preflight sandbox spec");
-        assert_eq!(spec.kind, SandboxProviderKind::DOCKER);
-        assert!(spec.clone.skip);
-        assert_eq!(
-            spec.clone.origin_url.as_deref(),
-            Some("https://github.com/acme/widgets")
+    #[tokio::test]
+    async fn the_daytona_sandbox_check_fails_without_a_vault_key() {
+        let (prepared, resolved) =
+            prepared_and_resolved_for_sandbox(&SandboxProviderKind::DAYTONA, false, None);
+        let mut checks = Vec::new();
+        let passed = run_sandbox_check(
+            &mut checks,
+            &SandboxProviderKind::DAYTONA,
+            &prepared,
+            &resolved,
+            &ProviderAccess::default(),
+        )
+        .await;
+        assert!(!passed);
+        assert_eq!(checks[0].status, CheckStatus::Error);
+        assert!(
+            checks[0]
+                .remediation
+                .as_deref()
+                .unwrap_or_default()
+                .contains("DAYTONA_API_KEY"),
+            "{checks:?}"
         );
-        assert_eq!(spec.clone.branch.as_deref(), Some("main"));
+    }
+
+    fn snapshot(age: Duration) -> TokenSnapshot {
+        let now = chrono::Utc::now();
+        TokenSnapshot {
+            generation: 1,
+            provenance: fabro_github::token_source::TokenProvenance::Minted {
+                minted_at:  now - chrono::Duration::from_std(age).unwrap(),
+                expires_at: now + chrono::Duration::hours(1),
+            },
+        }
+    }
+
+    fn static_snapshot() -> TokenSnapshot {
+        TokenSnapshot {
+            generation: 0,
+            provenance: fabro_github::token_source::TokenProvenance::Static,
+        }
+    }
+
+    #[test]
+    fn probe_backoff_paces_at_replication_intervals() {
+        let backoff = repository_probe_policy().backoff;
+        assert_eq!(backoff.delay_after(1), Duration::from_secs(3));
+        assert_eq!(backoff.delay_after(2), Duration::from_secs(9));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn host_side_retries_keep_the_operations_own_message() {
+        let calls = Mutex::new(0_u32);
+        let result = retry_git_messages(
+            &repository_probe_policy(),
+            Some(&snapshot(Duration::from_secs(1))),
+            "repository probe",
+            || {
+                let attempt = {
+                    let mut calls = calls.lock().unwrap();
+                    *calls += 1;
+                    *calls
+                };
+                async move {
+                    if attempt < 3 {
+                        Err(format!("remote: Repository not found. (attempt {attempt})"))
+                    } else {
+                        Ok(())
+                    }
+                }
+            },
+        )
+        .await;
+        assert_eq!(result, Ok(()));
+        assert_eq!(*calls.lock().unwrap(), 3);
+
+        let permanent = retry_git_messages(
+            &repository_probe_policy(),
+            Some(&static_snapshot()),
+            "repository probe",
+            || async { Err("remote: Repository not found.".to_owned()) },
+        )
+        .await;
+        assert_eq!(permanent, Err("remote: Repository not found.".to_owned()));
     }
 
     #[test]
@@ -2585,7 +2485,7 @@ name = "Control Plane"
             &invalid_manifest(),
         )
         .unwrap();
-        let validated = validate_prepared_manifest(&prepared, test_catalog()).unwrap();
+        let validated = validate_with_catalog(&state, &prepared).unwrap();
 
         assert!(validated.has_errors());
 
@@ -2630,8 +2530,8 @@ issues = "read"
             &manifest,
         )
         .unwrap();
-        let validated = validate_prepared_manifest(&prepared, test_catalog()).unwrap();
-        assert!(!validated.has_errors());
+        let validated = validate_with_catalog(&state, &prepared).unwrap();
+        assert!(!validated.has_errors(), "{:?}", validated.diagnostics);
 
         let (response, _ok) = resolve_and_run_preflight(state.as_ref(), &prepared, &validated)
             .await
@@ -2675,8 +2575,8 @@ issues = "{{ env.GITHUB_ISSUES_PERMISSION }}"
             &manifest,
         )
         .unwrap();
-        let validated = validate_prepared_manifest(&prepared, test_catalog()).unwrap();
-        assert!(!validated.has_errors());
+        let validated = validate_with_catalog(&state, &prepared).unwrap();
+        assert!(!validated.has_errors(), "{:?}", validated.diagnostics);
 
         let (response, ok) = resolve_and_run_preflight(state.as_ref(), &prepared, &validated)
             .await
@@ -2729,9 +2629,9 @@ id = "local"
             &manifest,
         )
         .unwrap();
-        let validated = validate_prepared_manifest(&prepared, test_catalog()).unwrap();
+        let validated = validate_with_catalog(&state, &prepared).unwrap();
 
-        assert!(!validated.has_errors());
+        assert!(!validated.has_errors(), "{:?}", validated.diagnostics);
 
         let (response, ok) = resolve_and_run_preflight(state.as_ref(), &prepared, &validated)
             .await
@@ -2838,7 +2738,7 @@ id = "daytona"
             &manifest,
         )
         .unwrap();
-        let validated = validate_prepared_manifest(&prepared, test_catalog()).unwrap();
+        let validated = validate_with_catalog(&state, &prepared).unwrap();
 
         let (response, _ok) = resolve_and_run_preflight(state.as_ref(), &prepared, &validated)
             .await
@@ -2854,157 +2754,38 @@ id = "daytona"
     }
 
     #[tokio::test]
-    async fn preflight_probes_configured_llm_model_availability() {
+    async fn preflight_refuses_an_unknown_unqualified_model_before_any_check() {
         let server = httpmock::MockServer::start_async().await;
-        let response_mock = server
+        let any_provider_call = server
             .mock_async(|when, then| {
-                when.method(httpmock::Method::POST)
-                    .path("/v1/responses")
-                    .header("authorization", "Bearer test-openai-key");
-                then.status(429)
-                    .header("content-type", "application/json")
-                    .json_body(serde_json::json!({
-                        "error": {
-                            "message": "quota limited",
-                            "type": "rate_limit_error"
-                        }
-                    }));
+                when.any_request();
+                then.status(500);
             })
             .await;
-        let state = crate::test_support::TestAppStateBuilder::new()
-            .runtime_settings(
-                crate::test_support::default_test_server_settings(),
-                RunLayer::default(),
-            )
-            .max_concurrent_runs(5)
-            .provider_base_url("openai", server.url("/v1"))
-            .build();
-        state
-            .stores
-            .vault
-            .set(
-                "OPENAI_API_KEY",
-                "test-openai-key",
-                fabro_vault::SecretType::Token,
-                None,
-            )
-            .await
-            .unwrap();
+        let state = ready_moonshot_and_openrouter_state(&server);
 
-        let mut manifest = minimal_manifest();
-        manifest.workflows.get_mut("workflow.fabro").unwrap().source = r#"
-digraph Demo {
-    start [shape=Mdiamond]
-    exit  [shape=Msquare]
-    work  [prompt="Do work", model="gpt-54"]
-    start -> work -> exit
-}
-"#
-        .to_string();
-        let prepared = prepare_manifest(
-            &manifest_run_defaults(Some(&default_settings_fixture())),
-            &manifest,
-        )
-        .unwrap();
-        let validated = validate_prepared_manifest(&prepared, test_catalog()).unwrap();
-
-        let (response, ok) = resolve_and_run_preflight(state.as_ref(), &prepared, &validated)
-            .await
-            .unwrap();
+        // Petri admits no model its catalog lacks, so the workflow is refused
+        // at its check: no passthrough of an unknown model to a provider.
+        let (response, ok) = preflight_for_refused_model(&state, "provider-private-preview").await;
 
         assert!(!ok);
-        let llm_check = response.checks.sections[0]
-            .checks
-            .iter()
-            .find(|check| check.name == "LLM" && check.summary == "gpt-5.4")
-            .expect("preflight should include the configured LLM model");
-        assert_eq!(llm_check.status, types::PreflightCheckResultStatus::Error);
-        assert!(
-            llm_check
-                .remediation
-                .as_deref()
-                .unwrap_or_default()
-                .contains("quota limited")
-        );
-        assert!(response_mock.calls_async().await >= 1);
-    }
-
-    #[tokio::test]
-    async fn preflight_uses_ready_providers_for_known_shared_alias() {
-        let server = httpmock::MockServer::start_async().await;
-        let openrouter_probe = server
-            .mock_async(|when, then| {
-                when.method(httpmock::Method::POST)
-                    .path("/openrouter/v1/chat/completions")
-                    .header("authorization", "Bearer test-openrouter-key")
-                    .json_body_includes(r#"{"model":"anthropic/claude-fable-5"}"#);
-                then.status(200)
-                    .header("content-type", "application/json")
-                    .json_body(openai_compatible_completion("anthropic/claude-fable-5"));
-            })
-            .await;
-        let state = ready_moonshot_and_openrouter_state(&server);
-
-        let (response, _ok) = preflight_for_model(&state, "claude-fable").await;
-
-        let llm_check = response.checks.sections[0]
-            .checks
-            .iter()
-            .find(|check| check.name == "LLM" && check.summary == "claude-fable-5")
-            .expect("preflight should include Claude Fable");
-        assert_eq!(
-            llm_check
-                .details
-                .iter()
-                .map(|detail| detail.text.as_str())
-                .find(|detail| detail.starts_with("Provider: ")),
-            Some("Provider: openrouter")
-        );
-        assert_eq!(llm_check.status, types::PreflightCheckResultStatus::Pass);
-        openrouter_probe.assert_async().await;
-    }
-
-    #[tokio::test]
-    async fn preflight_uses_ready_providers_for_unknown_unqualified_model() {
-        let server = httpmock::MockServer::start_async().await;
-        let moonshot_probe = server
-            .mock_async(|when, then| {
-                when.method(httpmock::Method::POST)
-                    .path("/moonshot/v1/chat/completions")
-                    .header("authorization", "Bearer test-moonshot-key")
-                    .json_body_includes(r#"{"model":"provider-private-preview"}"#);
-                then.status(200)
-                    .header("content-type", "application/json")
-                    .json_body(openai_compatible_completion("provider-private-preview"));
-            })
-            .await;
-        let state = ready_moonshot_and_openrouter_state(&server);
-
-        let (response, _ok) = preflight_for_model(&state, "provider-private-preview").await;
-
         assert!(response.workflow.diagnostics.iter().any(|diagnostic| {
-            diagnostic.rule == "node_model_known"
+            diagnostic.rule == "attractor.model.unknown"
                 && diagnostic.message.contains("provider-private-preview")
         }));
-        let llm_check = response.checks.sections[0]
-            .checks
-            .iter()
-            .find(|check| check.name == "LLM" && check.summary == "provider-private-preview")
-            .expect("preflight should include the unknown passthrough model");
-        assert_eq!(
-            llm_check
-                .details
+        assert!(
+            response.checks.sections[0]
+                .checks
                 .iter()
-                .map(|detail| detail.text.as_str())
-                .find(|detail| detail.starts_with("Provider: ")),
-            Some("Provider: moonshot")
+                .all(|check| check.name != "LLM"),
+            "no LLM check runs on a refused workflow"
         );
-        assert_eq!(llm_check.status, types::PreflightCheckResultStatus::Pass);
-        moonshot_probe.assert_async().await;
+        assert_eq!(any_provider_call.calls_async().await, 0);
     }
 
     #[test]
     fn static_validation_rejects_unknown_llm_provider() {
+        let state = crate::test_support::test_app_state();
         let mut manifest = minimal_manifest();
         manifest.workflows.get_mut("workflow.fabro").unwrap().source = r#"
 digraph Demo {
@@ -3020,16 +2801,16 @@ digraph Demo {
             &manifest,
         )
         .unwrap();
-        let Err(error) = validate_prepared_manifest(&prepared, test_catalog()) else {
-            panic!("unknown provider should fail static validation");
-        };
+        let validated = validate_with_catalog(&state, &prepared).unwrap();
 
-        assert!(matches!(
-            error,
-            WorkflowError::ModelSelection(fabro_llm::ModelSelectionError::UnknownProvider {
-                provider
-            }) if provider.as_str() == "missing-provider"
-        ));
+        // Petri refuses the model node: the provider is not in the catalog.
+        let refusal = validated
+            .diagnostics
+            .iter()
+            .find(|diagnostic| diagnostic.severity == Severity::Error)
+            .expect("unknown provider should fail static validation");
+        assert_eq!(refusal.rule, "attractor.model.unknown", "{refusal:?}");
+        assert!(refusal.message.contains("missing-provider"), "{refusal:?}");
     }
 
     #[tokio::test]
@@ -3070,40 +2851,35 @@ digraph Demo {
             &manifest,
         )
         .unwrap();
-        let llm_result = state.resolve_llm_client().await;
-        let ready_providers = llm_result
-            .as_ref()
-            .map(FabroClient::provider_ids)
-            .unwrap_or_default();
+        let (_, ready_providers) = state.resolve_llm_client_with_ready_ids().await;
         assert!(ready_providers.is_empty());
-        let validated = validate_prepared_manifest_for_preflight(
-            &prepared,
-            state.catalog(),
-            HashMap::new(),
-            &ready_providers,
-        )
-        .unwrap();
 
-        let (response, ok) = run_preflight(state.as_ref(), &prepared, &validated, llm_result)
+        // With no provider ready there is no model client to resolve the
+        // alias against, so Fabro refuses the model node before any check
+        // runs: the run could not pick a model at create either.
+        let validated = validate_for_test(&state, &prepared, &ready_providers).unwrap();
+        assert!(validated.has_errors());
+        assert!(
+            validated
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.rule == petri_check::NO_READY_PROVIDER_RULE),
+            "{:?}",
+            validated.diagnostics
+        );
+
+        let (response, ok) = run_preflight(state.as_ref(), &prepared, &validated)
             .await
             .unwrap();
-
         assert!(!ok);
-        let llm_check = response.checks.sections[0]
-            .checks
-            .iter()
-            .find(|check| check.name == "LLM" && check.summary == "acme-large")
-            .expect("preflight should resolve the catalog alias");
-        assert_eq!(llm_check.status, types::PreflightCheckResultStatus::Warning);
-        assert_eq!(
-            llm_check.remediation.as_deref(),
-            Some("Provider \"acme\" is not configured")
-        );
         assert!(
-            llm_check
-                .details
+            response
+                .checks
+                .sections
                 .iter()
-                .any(|detail| detail.text == "Provider: acme")
+                .flat_map(|section| section.checks.iter())
+                .all(|check| check.name != "LLM"),
+            "no LLM check runs on a refused workflow"
         );
     }
 

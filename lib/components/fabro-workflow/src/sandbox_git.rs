@@ -5,30 +5,26 @@
 //! refuse the file transport and external diff drivers) and returns typed
 //! results. Fabro decides what to stage, what to say in a checkpoint
 //! commit, and which ranges the Run Files endpoint reads.
+//!
+//! Every operation takes the driver handle of the run's sandbox and the
+//! directory the run's repository is checked out in, as the run record
+//! carries it.
 
 use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 
-use fabro_checkpoint::trailer as trailerlink;
-use fabro_checkpoint::trailer::Trailer;
-use fabro_sandbox::RunSandbox;
-use fabro_types::settings::run::RunCheckpointSettings;
-use fabro_util::error::SharedError;
+use fabro_pebble_sandbox::display_for_log;
 use sandbox_driver::{
-    Git as _, GitChange, GitCommitOptions, GitDiffEntry, GitDiffOptions, GitFacet, GitFailureKind,
-    GitRevisionRange,
+    Git as _, GitChange, GitDiffEntry, GitDiffOptions, GitFacet, GitFailureKind, GitRevisionRange,
+    Sandbox,
 };
-
-use crate::artifact_snapshot;
-use crate::git::GitAuthor;
-use crate::sandbox_git_runtime::SandboxGitRuntime;
 
 #[derive(Debug, thiserror::Error)]
 #[error("{message}")]
 pub struct GitCommandError {
     pub message: String,
     #[source]
-    pub source:  fabro_sandbox::Error,
+    pub source:  sandbox_driver::Error,
 }
 
 /// Rename detection threshold for the diffs the Run Files endpoint and the
@@ -37,136 +33,6 @@ const FIND_RENAMES_PERCENT: u8 = 50;
 
 /// Budget for the machine-readable diffs behind the Run Files endpoint.
 const RUN_FILES_TIMEOUT: Duration = Duration::from_secs(10);
-
-/// The sandbox's git facet, or the error a git operation reports when the
-/// provider has none.
-fn facet<'a>(sandbox: &'a RunSandbox, label: &str) -> Result<GitFacet<'a>, GitCommandError> {
-    sandbox.git().map_err(|source| GitCommandError {
-        message: format!("{label} failed"),
-        source,
-    })
-}
-
-fn git_error(label: &str, error: sandbox_driver::Error) -> GitCommandError {
-    GitCommandError {
-        message: format!("{label} failed"),
-        source:  fabro_sandbox::Error::from(error),
-    }
-}
-
-/// Commit the run's checkpoint: everything under the working directory
-/// except the built-in and configured excludes, as an allow-empty commit
-/// carrying fabro's trailers. Repository hooks never run: the driver
-/// disables them on every command it issues.
-pub async fn git_checkpoint(
-    sandbox: &RunSandbox,
-    run_id: &str,
-    node_id: &str,
-    status: &str,
-    completed_count: usize,
-    checkpoint: &RunCheckpointSettings,
-    author: &GitAuthor,
-) -> std::result::Result<String, GitCommandError> {
-    let git = facet(sandbox, "git add")?;
-    let repo = sandbox.working_directory();
-
-    let mut pathspecs = vec![".".to_owned()];
-    pathspecs.extend(
-        artifact_snapshot::EXCLUDE_DIRS
-            .iter()
-            .map(|dir| format!(":(glob,exclude)**/{dir}/**")),
-    );
-    pathspecs.extend(
-        checkpoint
-            .exclude_globs
-            .iter()
-            .map(|glob| format!(":(glob,exclude){glob}")),
-    );
-    git.add_all(repo, &pathspecs)
-        .await
-        .map_err(|error| git_error("git add", error))?;
-
-    let subject = format!("fabro({run_id}): {node_id} ({status})");
-    let completed_str = completed_count.to_string();
-    let trailers = vec![
-        Trailer {
-            key:   "Fabro-Run",
-            value: run_id,
-        },
-        Trailer {
-            key:   "Fabro-Completed",
-            value: &completed_str,
-        },
-    ];
-    let mut message = trailerlink::format_message(&subject, "", &trailers);
-    author.append_footer(&mut message);
-
-    let mut options = GitCommitOptions::new(message, &author.name, &author.email);
-    options.allow_empty = true;
-    git.commit(repo, &options)
-        .await
-        .map_err(|error| git_error("git commit", error))
-}
-
-/// Run a git checkpoint after the per-run sandbox git capability probe.
-#[allow(
-    clippy::too_many_arguments,
-    reason = "Checkpointing needs explicit run metadata, checkpoint settings, and author inputs."
-)]
-#[tracing::instrument(name = "git_op", skip_all, fields(op = "checkpoint-commit"))]
-pub(crate) async fn checked_git_checkpoint(
-    runtime: &SandboxGitRuntime,
-    sandbox: &RunSandbox,
-    run_id: &str,
-    node_id: &str,
-    status: &str,
-    completed_count: usize,
-    checkpoint: &RunCheckpointSettings,
-    author: &GitAuthor,
-) -> std::result::Result<String, SharedError> {
-    runtime.ensure_git_available(sandbox).await.map_err(|err| {
-        SharedError::new(anyhow::Error::new(err).context("sandbox git unavailable"))
-    })?;
-    git_checkpoint(
-        sandbox,
-        run_id,
-        node_id,
-        status,
-        completed_count,
-        checkpoint,
-        author,
-    )
-    .await
-    .map_err(|err| SharedError::new(anyhow::Error::new(err)))
-}
-
-/// The unified diff from `base` to `HEAD` (30 s default timeout).
-pub(crate) async fn git_diff(
-    sandbox: &RunSandbox,
-    base: &str,
-) -> std::result::Result<String, GitCommandError> {
-    git_diff_with_timeout(sandbox, base, 30_000).await
-}
-
-/// The unified diff from `base` to `HEAD` under a caller-supplied timeout
-/// in milliseconds.
-///
-/// Failure-path capture uses a shorter timeout than the checkpoint path so a
-/// pathological workspace (FS locks, corrupted index) doesn't stall terminal
-/// event emission downstream (Slack notifier, SSE, CI hooks). Paths come
-/// back unquoted, which the Run Files denylist parser relies on.
-pub(crate) async fn git_diff_with_timeout(
-    sandbox: &RunSandbox,
-    base: &str,
-    timeout_ms: u64,
-) -> std::result::Result<String, GitCommandError> {
-    let git = facet(sandbox, "git diff")?;
-    let options = GitDiffOptions::new(GitRevisionRange::new(base).to("HEAD"))
-        .timeout(Duration::from_millis(timeout_ms));
-    git.diff_patch(sandbox.working_directory(), &options)
-        .await
-        .map_err(|error| git_error("git diff", error))
-}
 
 // ── Machine-readable diff enumeration (Run Files endpoint) ─────────────────
 
@@ -259,7 +125,8 @@ pub struct BlobMeta {
 /// the SHAs, not the paths. The `--numstat` companion classifies text vs
 /// binary so callers can skip binary contents without ever fetching them.
 pub async fn list_changed_files_raw(
-    sandbox: &RunSandbox,
+    sandbox: &dyn Sandbox,
+    working_directory: &str,
     base_sha: &str,
     to_sha: &str,
 ) -> std::result::Result<Vec<RawDiffEntry>, DiffError> {
@@ -268,7 +135,7 @@ pub async fn list_changed_files_raw(
         .find_renames(FIND_RENAMES_PERCENT)
         .timeout(RUN_FILES_TIMEOUT);
     let entries = git
-        .diff_entries(sandbox.working_directory(), &options)
+        .diff_entries(working_directory, &options)
         .await
         .map_err(|error| diff_error(&error))?;
     entries
@@ -278,9 +145,11 @@ pub async fn list_changed_files_raw(
         .map_err(|message| DiffError::Permanent { message })
 }
 
-fn diff_facet(sandbox: &RunSandbox) -> std::result::Result<GitFacet<'_>, DiffError> {
-    sandbox.git().map_err(|error| DiffError::Permanent {
-        message: fabro_sandbox::display_for_log(&error),
+/// The sandbox's git facet; a provider without git cannot serve files, and
+/// a retry would not change that.
+fn diff_facet(sandbox: &dyn Sandbox) -> std::result::Result<GitFacet<'_>, DiffError> {
+    sandbox.git().ok_or_else(|| DiffError::Permanent {
+        message: "sandbox provider does not support git".to_string(),
     })
 }
 
@@ -290,7 +159,7 @@ fn diff_facet(sandbox: &RunSandbox) -> std::result::Result<GitFacet<'_>, DiffErr
 /// retry reads the same object; a timeout, a transport failure, or anything
 /// else is transient and surfaces as a 503 for the client to retry.
 fn diff_error(error: &sandbox_driver::Error) -> DiffError {
-    let message = fabro_sandbox::display_for_log(error);
+    let message = display_for_log(error);
     match error {
         sandbox_driver::Error::Io { .. } => DiffError::Permanent { message },
         sandbox_driver::Error::Git(failure) => {
@@ -429,7 +298,8 @@ pub fn summarize_diff_numstat(numstat: &DiffNumstat) -> DiffSummary {
 /// The numstat of `base_sha..to_sha`: the set of binary paths and the
 /// text-file `+/-` totals, from one driver call.
 pub async fn list_diff_numstat(
-    sandbox: &RunSandbox,
+    sandbox: &dyn Sandbox,
+    working_directory: &str,
     base_sha: &str,
     to_sha: &str,
 ) -> std::result::Result<DiffNumstat, DiffError> {
@@ -438,7 +308,7 @@ pub async fn list_diff_numstat(
         .find_renames(FIND_RENAMES_PERCENT)
         .timeout(RUN_FILES_TIMEOUT);
     let rows = git
-        .diff_numstat(sandbox.working_directory(), &options)
+        .diff_numstat(working_directory, &options)
         .await
         .map_err(|error| diff_error(&error))?;
 
@@ -462,7 +332,8 @@ pub async fn list_diff_numstat(
 /// Blob sizes for many SHAs in one driver call, in the order of `shas`.
 /// A blob git does not have yields `BlobMeta { size: None, .. }`.
 pub async fn stream_blob_metadata(
-    sandbox: &RunSandbox,
+    sandbox: &dyn Sandbox,
+    working_directory: &str,
     shas: &[String],
 ) -> std::result::Result<Vec<BlobMeta>, DiffError> {
     if shas.is_empty() {
@@ -470,7 +341,7 @@ pub async fn stream_blob_metadata(
     }
     let git = diff_facet(sandbox)?;
     let sizes = git
-        .blob_sizes(sandbox.working_directory(), shas)
+        .blob_sizes(working_directory, shas)
         .await
         .map_err(|error| diff_error(&error))?;
     Ok(shas
@@ -490,7 +361,8 @@ pub async fn stream_blob_metadata(
 /// as does a blob git does not have or one that is not UTF-8. Callers are
 /// expected to have pre-filtered binary blobs via [`list_diff_numstat`].
 pub async fn stream_blobs(
-    sandbox: &RunSandbox,
+    sandbox: &dyn Sandbox,
+    working_directory: &str,
     shas: &[String],
     size_cap_bytes: u64,
 ) -> std::result::Result<Vec<Option<String>>, DiffError> {
@@ -499,7 +371,7 @@ pub async fn stream_blobs(
     }
     let git = diff_facet(sandbox)?;
     let blobs = git
-        .blobs(sandbox.working_directory(), shas, size_cap_bytes)
+        .blobs(working_directory, shas, size_cap_bytes)
         .await
         .map_err(|error| diff_error(&error))?;
     Ok(blobs
@@ -515,312 +387,27 @@ mod tests {
         reason = "These unit tests use the real git CLI to construct sandbox-git fixture repositories and sync-write fixtures to disk."
     )]
 
-    use fabro_sandbox::test_support::{MockSandbox, exec_result};
-    use fabro_sandbox::{ExecResult, Termination};
+    use std::sync::Arc;
+
+    use sandbox_driver::{SandboxProvider as _, SandboxSource, SandboxSpec};
+    use sandbox_driver_host::HostProvider;
 
     use super::*;
 
-    /// A sandbox answering commands from `exec_results`, in order.
-    fn scripted(exec_results: &[ExecResult]) -> MockSandbox {
-        let sandbox = MockSandbox::default();
-        for result in exec_results {
-            sandbox.driver().scripted_exec().push_result(result.clone());
-        }
-        sandbox
-    }
-
-    fn exec_ok() -> ExecResult {
-        exec_result("", "", Some(0), Termination::Exited, 1)
-    }
-
-    fn exec_timed_out(duration_ms: u64) -> ExecResult {
-        exec_result("", "", None, Termination::TimedOut, duration_ms)
-    }
-
-    fn exec_failed(exit_code: i32, stdout: &str, stderr: &str) -> ExecResult {
-        exec_result(stdout, stderr, Some(exit_code), Termination::Exited, 1)
-    }
-
-    #[tokio::test]
-    async fn git_checkpoint_reports_add_timeout() {
-        let sandbox = scripted(&[exec_timed_out(77)]);
-        let err = git_checkpoint(
-            &sandbox.sandbox(),
-            "run1",
-            "work",
-            "success",
-            1,
-            &RunCheckpointSettings::default(),
-            &crate::git::GitAuthor::default(),
-        )
-        .await
-        .unwrap_err();
-
-        assert_eq!(err.to_string(), "git add failed");
-        let timed_out = matches!(
-            err.source.driver(),
-            Some(sandbox_driver::Error::Git(failure))
-                if failure.output().is_some_and(|output| output.termination() == Termination::TimedOut)
-        );
-        assert!(timed_out, "{}", fabro_sandbox::display_for_log(&err));
-        assert!(
-            fabro_sandbox::default_redacted_output_tail(&err).is_none(),
-            "empty exec streams should not produce a tail"
-        );
-    }
-
-    #[tokio::test]
-    async fn checked_git_checkpoint_fails_before_checkpoint_when_probe_fails() {
-        let sandbox = scripted(&[exec_failed(127, "", "git missing\n")]);
-        let runtime = crate::sandbox_git_runtime::SandboxGitRuntime::new();
-
-        let err = checked_git_checkpoint(
-            &runtime,
-            &sandbox.sandbox(),
-            "run1",
-            "work",
-            "success",
-            1,
-            &RunCheckpointSettings::default(),
-            &crate::git::GitAuthor::default(),
-        )
-        .await
-        .unwrap_err();
-
-        let chain = anyhow::Error::new(err.clone())
-            .chain()
-            .map(ToString::to_string)
-            .collect::<Vec<_>>();
-        assert!(
-            chain.iter().any(|cause| cause == "sandbox git unavailable"),
-            "expected sandbox git context, got {chain:#?}"
-        );
-        assert!(
-            fabro_sandbox::default_redacted_output_tail(&err).is_some(),
-            "expected probe exec output tail to survive SharedError wrapping"
-        );
-    }
-
-    #[tokio::test]
-    async fn git_checkpoint_reports_commit_timeout() {
-        let sandbox = scripted(&[exec_ok(), exec_timed_out(88)]);
-        let err = git_checkpoint(
-            &sandbox.sandbox(),
-            "run1",
-            "work",
-            "success",
-            1,
-            &RunCheckpointSettings::default(),
-            &crate::git::GitAuthor::default(),
-        )
-        .await
-        .unwrap_err();
-
-        assert_eq!(err.to_string(), "git commit failed");
-    }
-
-    #[tokio::test]
-    async fn git_checkpoint_reports_a_failed_sha_read_as_the_commit_failing() {
-        // add, commit, then the driver's own rev-parse of the new HEAD.
-        let sandbox = scripted(&[exec_ok(), exec_ok(), exec_failed(-1, "", "")]);
-        let err = git_checkpoint(
-            &sandbox.sandbox(),
-            "run1",
-            "work",
-            "success",
-            1,
-            &RunCheckpointSettings::default(),
-            &crate::git::GitAuthor::default(),
-        )
-        .await
-        .unwrap_err();
-
-        assert_eq!(err.to_string(), "git commit failed");
-    }
-
-    /// The commit message and author travel in the driver's own commit
-    /// command, and repository hooks never run: the driver disables them
-    /// whatever the checkpoint settings say.
-    #[tokio::test]
-    async fn git_checkpoint_commits_through_the_hardened_driver_command() {
-        let mut sha = exec_ok();
-        sha.stdout = b"abc123\n".to_vec();
-        let sandbox = scripted(&[exec_ok(), exec_ok(), sha]);
-        let checkpoint = RunCheckpointSettings {
-            skip_git_hooks: false,
-            ..RunCheckpointSettings::default()
-        };
-        let author = crate::git::GitAuthor::default();
-
-        let sha = git_checkpoint(
-            &sandbox.sandbox(),
-            "run1",
-            "work",
-            "success",
-            1,
-            &checkpoint,
-            &author,
-        )
-        .await
-        .expect("checkpoint succeeds");
-        assert_eq!(sha, "abc123");
-
-        let commands = sandbox.driver().scripted_exec().commands();
-        let add = commands
-            .iter()
-            .find(|command| command.contains("'add' '-A'"))
-            .expect("the add ran");
-        assert!(
-            add.contains(":(glob,exclude)**/node_modules/**"),
-            "built-in excludes are pathspecs: {add}"
-        );
-        let commit = commands
-            .iter()
-            .find(|command| command.contains("'commit'"))
-            .expect("the commit ran");
-        assert!(commit.contains("core.hooksPath=/dev/null"), "{commit}");
-        assert!(commit.contains("commit.gpgsign=false"), "{commit}");
-        assert!(commit.contains("'--allow-empty'"), "{commit}");
-        assert!(
-            commit.contains("fabro(run1): work (success)")
-                && commit.contains("Fabro-Run: run1")
-                && !commit.contains("Fabro-Checkpoint"),
-            "{commit}"
-        );
-        assert!(
-            commit.contains(&format!("user.name={}", author.name)),
-            "{commit}"
-        );
-        assert!(
-            sandbox.written_files().is_empty(),
-            "no message file is written"
-        );
-    }
-
-    #[tokio::test]
-    async fn git_diff_reports_timeout() {
-        let sandbox = scripted(&[exec_timed_out(99)]);
-        let err = git_diff_with_timeout(&sandbox.sandbox(), "HEAD~1", 99)
-            .await
-            .unwrap_err();
-
-        assert_eq!(err.to_string(), "git diff failed");
-        let timed_out = matches!(
-            err.source.driver(),
-            Some(sandbox_driver::Error::Git(failure))
-                if failure.output().is_some_and(|output| output.termination() == Termination::TimedOut)
-        );
-        assert!(timed_out, "{}", fabro_sandbox::display_for_log(&err));
-    }
-
-    #[tokio::test]
-    async fn git_diff_reports_failure_detail() {
-        let sandbox = scripted(&[exec_failed(128, "", "fatal: bad revision\n")]);
-        let err = git_diff_with_timeout(&sandbox.sandbox(), "bad-base", 100)
-            .await
-            .unwrap_err();
-
-        assert_eq!(err.to_string(), "git diff failed");
-        assert!(!err.to_string().contains("fatal: bad revision"));
-
-        let tail = fabro_sandbox::default_redacted_output_tail(&err).expect("tail present");
-        assert_eq!(tail.stderr.as_deref(), Some("fatal: bad revision\n"));
-    }
-
-    #[tokio::test]
-    async fn git_diff_passes_the_range_and_timeout_to_the_driver() {
-        let mut patch = exec_ok();
-        patch.stdout = b"diff --git a/x b/x\n".to_vec();
-        let sandbox = scripted(&[patch]);
-        let diff = git_diff_with_timeout(&sandbox.sandbox(), "base-sha", 5_000)
-            .await
-            .expect("diff succeeds");
-        assert_eq!(diff, "diff --git a/x b/x\n");
-        let commands = sandbox.driver().scripted_exec().commands();
-        assert!(
-            commands[0].contains("'diff'") && commands[0].contains("'base-sha..HEAD'"),
-            "{}",
-            commands[0]
-        );
-        assert_eq!(sandbox.captured_timeouts(), vec![5_000]);
-    }
-
-    #[tokio::test]
-    async fn git_checkpoint_includes_builtin_excludes() {
-        // Set up a real git repo
-        let repo_dir = tempfile::tempdir().unwrap();
-        let repo = repo_dir.path();
-        std::process::Command::new("git")
-            .args(["init"])
-            .current_dir(repo)
-            .output()
-            .unwrap();
-        std::process::Command::new("git")
-            .args([
-                "-c",
-                "user.name=Test",
-                "-c",
-                "user.email=test@test.com",
-                "commit",
-                "--allow-empty",
-                "-m",
-                "initial",
-            ])
-            .current_dir(repo)
-            .output()
-            .unwrap();
-
-        // Create files in both tracked and excluded directories
-        std::fs::write(repo.join("hello.txt"), "hello").unwrap();
-        std::fs::create_dir_all(repo.join("node_modules/pkg")).unwrap();
-        std::fs::write(repo.join("node_modules/pkg/index.js"), "module").unwrap();
-        std::fs::create_dir_all(repo.join(".venv/lib")).unwrap();
-        std::fs::write(repo.join(".venv/lib/site.py"), "venv").unwrap();
-
-        let sandbox = fabro_sandbox::local_sandbox(repo.to_path_buf())
-            .await
-            .unwrap();
-        let author = crate::git::GitAuthor::default();
-
-        // Call git_checkpoint with empty user excludes — built-in excludes should still
-        // apply
-        let result = git_checkpoint(
-            &sandbox,
-            "run1",
-            "work",
-            "success",
-            1,
-            &RunCheckpointSettings::default(),
-            &author,
-        )
-        .await;
-        assert!(result.is_ok(), "git_checkpoint failed: {:?}", result.err());
-
-        // Verify that excluded directories were NOT staged
-        let status = sandbox
-            .exec_command(
-                "git diff --cached --name-only HEAD~1",
-                10_000,
-                None,
-                None,
+    /// The repository at `repo` as a host sandbox, with the provider it
+    /// lives on and the directory the operations take.
+    async fn host_sandbox(repo: &std::path::Path) -> (HostProvider, Arc<dyn Sandbox>, String) {
+        let provider = HostProvider::new();
+        let sandbox = provider
+            .create(
+                &SandboxSpec::new(SandboxSource::HostDirectory)
+                    .working_directory(repo.display().to_string()),
                 None,
             )
             .await
-            .unwrap();
-        let status_stdout = status.stdout_lossy();
-        let staged_files: Vec<&str> = status_stdout.lines().collect();
-        assert!(
-            staged_files.contains(&"hello.txt"),
-            "expected hello.txt to be staged, got: {staged_files:?}"
-        );
-        assert!(
-            !staged_files.iter().any(|f| f.contains("node_modules")),
-            "node_modules should be excluded from checkpoint, got: {staged_files:?}"
-        );
-        assert!(
-            !staged_files.iter().any(|f| f.contains(".venv")),
-            ".venv should be excluded from checkpoint, got: {staged_files:?}"
-        );
+            .expect("a host sandbox over the repository");
+        let working_directory = sandbox.working_directory().to_string();
+        (provider, sandbox, working_directory)
     }
 
     // Test helpers for machine-readable diff enumeration. The repo is seeded
@@ -878,10 +465,8 @@ mod tests {
         std::fs::remove_file(repo.join("drop.txt")).unwrap();
         let head = git_commit_all(repo, "change");
 
-        let sandbox = fabro_sandbox::local_sandbox(repo.to_path_buf())
-            .await
-            .unwrap();
-        let entries = list_changed_files_raw(&sandbox, &base, &head)
+        let (_provider, sandbox, working_directory) = host_sandbox(repo).await;
+        let entries = list_changed_files_raw(sandbox.as_ref(), &working_directory, &base, &head)
             .await
             .unwrap();
 
@@ -919,10 +504,8 @@ mod tests {
         std::fs::write(repo.join("new.txt"), &content).unwrap();
         let head = git_commit_all(repo, "rename");
 
-        let sandbox = fabro_sandbox::local_sandbox(repo.to_path_buf())
-            .await
-            .unwrap();
-        let entries = list_changed_files_raw(&sandbox, &base, &head)
+        let (_provider, sandbox, working_directory) = host_sandbox(repo).await;
+        let entries = list_changed_files_raw(sandbox.as_ref(), &working_directory, &base, &head)
             .await
             .unwrap();
 
@@ -965,10 +548,10 @@ mod tests {
         std::fs::write(repo.join("logo.png"), png).unwrap();
         let head = git_commit_all(repo, "change");
 
-        let sandbox = fabro_sandbox::local_sandbox(repo.to_path_buf())
+        let (_provider, sandbox, working_directory) = host_sandbox(repo).await;
+        let stats = list_diff_numstat(sandbox.as_ref(), &working_directory, &base, &head)
             .await
             .unwrap();
-        let stats = list_diff_numstat(&sandbox, &base, &head).await.unwrap();
 
         assert!(
             stats.binary_paths.contains("logo.png"),
@@ -1011,11 +594,11 @@ mod tests {
             sha_by_name.insert(path.to_string(), sha.to_string());
         }
 
-        let sandbox = fabro_sandbox::local_sandbox(repo.to_path_buf())
+        let (_provider, sandbox, working_directory) = host_sandbox(repo).await;
+        let shas = vec![sha_by_name["a.txt"].clone(), sha_by_name["b.txt"].clone()];
+        let metas = stream_blob_metadata(sandbox.as_ref(), &working_directory, &shas)
             .await
             .unwrap();
-        let shas = vec![sha_by_name["a.txt"].clone(), sha_by_name["b.txt"].clone()];
-        let metas = stream_blob_metadata(&sandbox, &shas).await.unwrap();
         assert_eq!(metas.len(), 2);
         assert_eq!(metas[0].sha, shas[0]);
         assert_eq!(metas[0].size, Some(4));
@@ -1049,13 +632,13 @@ mod tests {
             sha_by_name.insert(path.to_string(), sha.to_string());
         }
 
-        let sandbox = fabro_sandbox::local_sandbox(repo.to_path_buf())
-            .await
-            .unwrap();
+        let (_provider, sandbox, working_directory) = host_sandbox(repo).await;
         let shas = vec![sha_by_name["a.txt"].clone(), sha_by_name["big.txt"].clone()];
 
         // size_cap = 100 bytes — "hello\n" (6) stays, 200-byte blob truncates.
-        let contents = stream_blobs(&sandbox, &shas, 100).await.unwrap();
+        let contents = stream_blobs(sandbox.as_ref(), &working_directory, &shas, 100)
+            .await
+            .unwrap();
         assert_eq!(contents.len(), 2);
         assert_eq!(contents[0].as_deref(), Some("hello\n"));
         assert!(contents[1].is_none(), "oversize blob should be None");
@@ -1069,13 +652,15 @@ mod tests {
         std::fs::write(repo.join("x"), "x").unwrap();
         git_commit_all(repo, "seed");
 
-        let sandbox = fabro_sandbox::local_sandbox(repo.to_path_buf())
-            .await
-            .unwrap();
-        let err =
-            list_changed_files_raw(&sandbox, "0000000000000000000000000000000000000000", "HEAD")
-                .await
-                .expect_err("expected error for unknown base sha");
+        let (_provider, sandbox, working_directory) = host_sandbox(repo).await;
+        let err = list_changed_files_raw(
+            sandbox.as_ref(),
+            &working_directory,
+            "0000000000000000000000000000000000000000",
+            "HEAD",
+        )
+        .await
+        .expect_err("expected error for unknown base sha");
         assert!(matches!(err, DiffError::Permanent { .. }), "err: {err:?}");
     }
 }

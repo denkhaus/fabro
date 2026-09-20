@@ -275,10 +275,8 @@ mod tests {
             .with_writer(move || writer.clone())
             .finish();
         let inputs = [
-            source("workflow", &[(
-                "workflow",
-                "PRIVATE_CONTENT invalid source",
-            )]),
+            // Petri's parse error quotes the token it stopped at.
+            source("workflow", &[("workflow", "digraph W {} PRIVATE_CONTENT")]),
             source("workflow.toml", &[(
                 "workflow.toml",
                 "_version = 1\nPRIVATE_CONTENT = [unterminated",

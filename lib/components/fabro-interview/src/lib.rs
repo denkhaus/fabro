@@ -1,18 +1,12 @@
 mod auto_approve;
-mod callback;
-mod console;
 mod control;
 mod control_protocol;
-mod queue;
-mod recording;
-mod replay;
 
 use std::collections::HashMap;
 
 use async_trait::async_trait;
 use fabro_types::{InterviewOption, Principal, QuestionType, ReviewTarget, SystemActorKind};
 use serde::{Deserialize, Serialize};
-use tokio::time;
 
 /// A question presented to the user.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -177,28 +171,14 @@ impl AnswerSubmission {
     }
 }
 
-/// Apply timeout enforcement to an interviewer ask call.
-/// Per spec 6.5: if `timeout_seconds` is set, returns default answer or
-/// `Answer::timeout()`.
-pub async fn ask_with_timeout(
-    interviewer: &dyn Interviewer,
-    question: Question,
-) -> AnswerSubmission {
-    let timeout_secs = question.timeout_seconds;
-    let default_answer = question.default.clone();
-
-    if let Some(secs) = timeout_secs {
-        let duration = std::time::Duration::from_secs_f64(secs);
-        match time::timeout(duration, interviewer.ask(question)).await {
-            Ok(answer) => answer,
-            Err(_elapsed) => AnswerSubmission::system(
-                default_answer.unwrap_or_else(Answer::timeout),
-                SystemActorKind::Timeout,
-            ),
-        }
-    } else {
-        interviewer.ask(question).await
-    }
+/// The line that points a reviewer at the question's review target, when it
+/// has one.
+#[must_use]
+pub fn review_target_line(question: &Question) -> Option<String> {
+    question
+        .review_target
+        .as_ref()
+        .map(|target| format!("Review link: {}", target.url()))
 }
 
 /// The interviewer trait for human-in-the-loop interactions.
@@ -221,18 +201,13 @@ pub trait Interviewer: Send + Sync {
 
 // Re-export all implementors at the crate root
 pub use auto_approve::AutoApproveInterviewer;
-pub use callback::CallbackInterviewer;
-pub use console::{ConsoleInterviewer, review_target_line};
 pub use control::{ControlInterviewer, SubmitError};
 pub use control_protocol::{
     WORKER_CONTROL_INVALID_CURSOR_REASON, WORKER_CONTROL_PONG_TIMEOUT_REASON,
     WORKER_CONTROL_PROTOCOL_VERSION, WORKER_CONTROL_WS_LIVENESS_TIMEOUT,
-    WORKER_CONTROL_WS_PING_INTERVAL, WorkerControlAnswer, WorkerControlDeliveryFrame,
-    WorkerControlEnvelope, WorkerControlMessage,
+    WORKER_CONTROL_WS_PING_INTERVAL, WorkerControlAck, WorkerControlAnswer,
+    WorkerControlDeliveryFrame, WorkerControlEnvelope, WorkerControlMessage, WorkerControlOutcome,
 };
-pub use queue::QueueInterviewer;
-pub use recording::RecordingInterviewer;
-pub use replay::ReplayInterviewer;
 
 #[cfg(test)]
 mod tests {
@@ -361,47 +336,6 @@ mod tests {
     fn question_type_multi_select_exists() {
         let q = Question::new("Pick many:", QuestionType::MultiSelect);
         assert_eq!(q.question_type, QuestionType::MultiSelect);
-    }
-
-    /// A slow interviewer that waits before answering -- for testing timeouts.
-    struct SlowInterviewer;
-
-    #[async_trait]
-    impl Interviewer for SlowInterviewer {
-        async fn ask(&self, _question: Question) -> AnswerSubmission {
-            time::sleep(std::time::Duration::from_mins(1)).await;
-            AnswerSubmission::system(Answer::yes(), SystemActorKind::Engine)
-        }
-    }
-
-    #[tokio::test]
-    async fn ask_with_timeout_returns_timeout_when_expired() {
-        let interviewer = SlowInterviewer;
-        let mut q = Question::new("approve?", QuestionType::YesNo);
-        q.timeout_seconds = Some(0.01);
-
-        let answer = ask_with_timeout(&interviewer, q).await.answer;
-        assert_eq!(answer.value, AnswerValue::Timeout);
-    }
-
-    #[tokio::test]
-    async fn ask_with_timeout_returns_default_when_set() {
-        let interviewer = SlowInterviewer;
-        let mut q = Question::new("approve?", QuestionType::YesNo);
-        q.timeout_seconds = Some(0.01);
-        q.default = Some(Answer::no());
-
-        let answer = ask_with_timeout(&interviewer, q).await.answer;
-        assert_eq!(answer.value, AnswerValue::No);
-    }
-
-    #[tokio::test]
-    async fn ask_with_timeout_no_timeout_returns_normally() {
-        let interviewer = AutoApproveInterviewer::engine();
-        let q = Question::new("approve?", QuestionType::YesNo);
-
-        let answer = ask_with_timeout(&interviewer, q).await.answer;
-        assert_eq!(answer.value, AnswerValue::Yes);
     }
 
     #[tokio::test]

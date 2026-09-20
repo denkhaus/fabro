@@ -1,6 +1,6 @@
 extern crate self as fabro_types;
 
-pub mod artifact;
+pub mod agent_props;
 pub mod auth;
 pub mod blob_hash;
 pub mod blob_ref;
@@ -9,11 +9,11 @@ pub mod checkpoint;
 pub mod command_output;
 pub mod conclusion;
 pub mod dense;
+pub mod diagnostic;
 pub mod diff;
-pub mod event_envelope;
+pub mod engine;
 pub mod failure_signature;
 pub mod git_identity;
-pub mod graph;
 mod id;
 mod input_scalar;
 pub mod interview;
@@ -21,19 +21,22 @@ pub mod llm_backend;
 pub mod manifest_path;
 pub mod mcp_store;
 pub mod model_test;
+pub mod notice;
 pub mod outcome;
 pub mod pair;
 pub mod parallel;
 pub mod principal;
 pub mod pull_request;
+pub mod reference;
 pub mod repository;
 pub mod run;
-pub mod run_event;
 pub mod run_failure;
+pub mod run_graph;
 pub mod run_id;
 pub mod run_intent;
 pub mod run_projection;
 pub mod run_sandbox;
+pub mod run_stream;
 pub mod run_summary;
 pub mod run_title;
 pub mod sandbox_details;
@@ -42,6 +45,7 @@ pub mod sandbox_provider;
 pub mod sandbox_services;
 pub mod secret;
 pub mod session;
+pub mod session_event;
 pub mod settings;
 pub mod stage_completion;
 pub mod stage_handler;
@@ -61,29 +65,32 @@ pub mod workflow_path;
 pub mod workflow_version;
 pub mod workflow_version_id;
 
-pub use artifact::ArtifactUpload;
+pub use agent_props::{
+    AgentEventProps, AgentSessionActivatedProps, AgentToolsAvailableProps, CODING_EVENT_NAMES,
+    SessionCapability, StagePromptProps, coding_event_name, is_coding_event_name,
+};
 pub use auth::{IdpIdentity, IdpIdentityError};
 pub use blob_hash::BlobHash;
-pub use blob_ref::{format_blob_ref, parse_blob_ref, parse_managed_blob_file_ref};
+pub use blob_ref::{
+    BlobRefEncoding, format_blob_ref, parse_blob_ref, parse_blob_ref_encoded,
+    parse_managed_blob_file_ref,
+};
 pub use catalog_api::{Model, ModelControls, ModelCosts, ModelFeatures, ModelLimits, Provider};
 pub use checkpoint::Checkpoint;
 pub use command_output::{CommandOutputStream, CommandTermination};
 pub use conclusion::{Conclusion, StageSummary};
 pub use dense::{ServerSettings, UserSettings, WorkflowSettings};
 pub use diff::{DiffStats, DiffSummary, RunDiff};
-pub use event_envelope::EventEnvelope;
+pub use engine::{PetriAdmission, PetriGraphRef};
 pub use failure_signature::FailureSignature;
 pub use git_identity::{GitIdentity, GitIdentitySource};
-pub use graph::{
-    AttrValue, AttributeScope, ContextKeyAttr, Edge, Graph, KNOWN_HANDLER_TYPES, Node, OnFailure,
-    ResolvedOnFailure, is_known_handler_type, is_llm_handler_type, shape_to_handler_type,
-};
 pub use input_scalar::{
     JsonScalarToTomlError, TomlScalarToJsonError, json_scalar_to_toml_value,
     toml_scalar_to_json_value,
 };
 pub use interview::{
-    InterviewQuestionRecord, QuestionType, ReviewTarget, ReviewTargetError, ReviewTargetKind,
+    InterviewOption, InterviewQuestionRecord, QuestionType, ReviewTarget, ReviewTargetError,
+    ReviewTargetKind,
 };
 pub use llm_backend::AgentBackend;
 pub use manifest_path::{ManifestPath, ManifestPathParseError};
@@ -93,6 +100,7 @@ pub use mcp_store::{
     validate_mcp_server_fields,
 };
 pub use model_test::ModelTestMode;
+pub use notice::{RunNoticeCode, RunNoticeLevel};
 pub use outcome::{
     FailureCategory, FailureDetail, NodeResult, Outcome, OutcomeMeta, StageOutcome, StageState,
 };
@@ -102,8 +110,7 @@ pub use pair::{
     PairTranscriptAssistantMessage, PairTranscriptDetailRef, PairTranscriptEntry,
     PairTranscriptError, PairTranscriptMeta, PairTranscriptResponse, PairTranscriptSystemMessage,
     PairTranscriptToolCall, PairTranscriptToolStatus, PairTranscriptUserMessage,
-    PairTranscriptWarning, RunEventDetailContent, RunEventDetailContentKind,
-    RunEventDetailEnvelope, RunEventDetailResponse, RunPairStatusResponse,
+    PairTranscriptWarning, RunPairStatusResponse,
 };
 pub use parallel::ParallelBranchResult;
 pub use pebble_coding_agent::events::{
@@ -121,6 +128,7 @@ pub use pull_request::{
     PullRequestDetailsUnavailableReason, PullRequestGithubDetail, PullRequestLink, PullRequestMeta,
     PullRequestRef, PullRequestResponse, PullRequestTimestamps, PullRequestUser,
 };
+pub use reference::ReferenceKind;
 pub use repository::{
     GitHubRepositorySlug, GitHubRepositorySlugError, RepositoryProvider, RepositoryRef,
     is_valid_git_branch_name, is_valid_git_tag_name, normalize_git_commit_sha,
@@ -129,27 +137,23 @@ pub use run::{
     DirtyStatus, ForkSourceRef, GitContext, RunClientProvenance, RunProvenance,
     RunServerProvenance, RunSpec,
 };
-pub use run_event::{
-    AgentEventProps, AgentToolsAvailableProps, CODING_EVENT_NAMES, EventBody, FailoverProps,
-    InterviewOption, MetadataSnapshotFailureKind, MetadataSnapshotPhase, RunEvent, RunNoticeCode,
-    RunNoticeLevel, RunPairEndedReason, RunPairFailedReason, RunRunnableSource, SessionCapability,
-    coding_event_name, is_coding_event_name, sandbox_driver_event_name,
-};
 pub use run_failure::RunFailure;
+pub use run_graph::{RunGraph, RunGraphEdge, RunGraphNode};
 pub use run_id::{RunId, fixtures};
 pub use run_intent::{
     GitCoordinateValidationError, GitRunTarget, RunIntent, RunIntentArgs, RunTarget,
     TargetValidationError, ValidatedGitRunTarget, ValidatedRunTarget,
 };
 pub use run_projection::{
-    CheckpointRecord, PendingInterviewRecord, RunProjection, StageContextWindow,
-    StageContextWindowUnavailableReason, StageInferenceProjection, StageModelUsage,
-    StageProjection, StageToolBatchProjection, first_event_seq,
+    CheckpointRecord, ForkOrigin, PendingInterviewRecord, RunArtifact, RunProjection,
+    StageContextWindow, StageContextWindowUnavailableReason, StageInferenceProjection,
+    StageModelUsage, StageProjection, StageToolBatchProjection, first_event_seq,
 };
 pub use run_sandbox::{
     RunSandbox, RunSandboxFailure, RunSandboxInstance, RunSandboxKind, RunSandboxPlan,
     RunSandboxRuntime,
 };
+pub use run_stream::{RunStreamItem, RunStreamItemKind, petri_event_name};
 pub use run_summary::{
     AskFabro, AskFabroUnavailableReason, AutomationRef, ResolvedAutomationGitWorkflowSource, Run,
     RunApproval, RunApprovalState, RunError, RunLifecycle, RunLinks, RunModel, RunOrigin,
@@ -171,13 +175,14 @@ pub use session::{
     RunSessionMetadata, SessionDetail, SessionId, SessionStatus, SessionSummary, SessionTurn,
     TurnId,
 };
+pub use session_event::{SessionEvent, SessionEventBody};
 pub use stage_completion::StageCompletion;
 pub use stage_handler::StageHandler;
 pub use stage_id::{InvalidStageVisit, ParallelBranchId, StageId};
 pub use start::StartRecord;
 pub use status::{
-    BlockedReason, FailureReason, InvalidTransition, PendingReason, RunControlAction, RunStatus,
-    RunStatusKind, SuccessReason, TerminalStatus,
+    BlockedReason, FailureReason, InvalidTransition, PendingReason, RunControlAction,
+    RunRunnableSource, RunStatus, RunStatusKind, SuccessReason, TerminalStatus,
 };
 pub use steering::SteeringMessage;
 pub use system_integrations::{
@@ -189,7 +194,7 @@ pub use transcript::{
     MessageId, MessageKind, MessageSource, PairMessageRef, TranscriptMessage, text_of,
     tool_call_arguments, tool_result_from_json, tool_result_to_json,
 };
-pub use usage::{ModelRef, ModelUsage, sum_usage, usage_is_empty};
+pub use usage::{ModelRef, ModelUsage, format_cost, sum_usage, usage_is_empty};
 pub use variable::{
     CreateVariableRequest, UpdateVariableRequest, Variable, VariableListResponse, is_env_style_name,
 };

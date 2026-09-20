@@ -26,8 +26,6 @@ use fabro_install::{
 };
 use fabro_llm::lithos_catalog::{Catalog, CatalogProvider};
 use fabro_llm::probe::{self, ApiKeyProbeError, ModelTestStatus};
-use fabro_sandbox::daytona;
-use fabro_sandbox::driver::DaytonaCredentials;
 use fabro_static::EnvVars;
 use fabro_store::ArtifactStore;
 use fabro_types::settings::server::ObjectStoreSettings;
@@ -49,6 +47,9 @@ use tracing::{error, info, warn};
 use zeroize::Zeroizing;
 
 use crate::error::ApiError;
+use crate::sandbox_access::{
+    DAYTONA_CREDENTIAL_PROBE_TIMEOUT, DaytonaCredentials, DaytonaKeyCheck, check_daytona_api_key,
+};
 use crate::serve::{self, DEFAULT_TCP_PORT};
 use crate::server_secrets::{ServerSecrets, process_env_snapshot};
 use crate::{security_headers, server, static_files};
@@ -1004,14 +1005,14 @@ async fn post_install_sandbox_test(
 async fn check_install_daytona_api_key(
     state: &InstallAppState,
     api_key: String,
-) -> anyhow::Result<daytona::DaytonaKeyCheck> {
+) -> anyhow::Result<DaytonaKeyCheck> {
     let credentials = DaytonaCredentials::new(api_key)
         .with_api_url(state.upstreams.daytona_api_base_url.clone())
         .with_organization_id(state.upstreams.daytona_organization_id.clone())
         .with_http_client(Some(
             fabro_http::http_client().context("failed to build HTTP client")?,
         ));
-    daytona::check_daytona_api_key(&credentials, daytona::DAYTONA_CREDENTIAL_PROBE_TIMEOUT).await
+    check_daytona_api_key(&credentials, DAYTONA_CREDENTIAL_PROBE_TIMEOUT).await
 }
 
 async fn put_install_sandbox(
@@ -1270,32 +1271,26 @@ async fn validate_install_object_store_selection(
         Some(&build_options),
     )?;
 
-    let probe_prefix = |index: usize, prefix: &'static str| {
-        let object_store = &object_store;
-        async move {
-            let path = ObjectStorePath::from(prefix);
-            object_store
-                .list_with_delimiter(Some(&path))
-                .await
-                .map(|_| ())
-                .map_err(|err| (index, err))
-        }
-    };
+    // The bucket answers for the one prefix Fabro keeps objects under.
     let probe = async {
-        tokio::try_join!(probe_prefix(0, "artifacts"), probe_prefix(1, "slatedb")).map(|_| ())
+        let path = ObjectStorePath::from("artifacts");
+        object_store
+            .list_with_delimiter(Some(&path))
+            .await
+            .map(|_| ())
     };
 
     match timeout(VALIDATION_TIMEOUT, probe).await {
         Ok(Ok(())) => Ok(()),
         Err(_) => bail!(VALIDATION_TIMEOUT_MSG),
-        Ok(Err((index, err))) => bail!(
+        Ok(Err(err)) => bail!(
             "{}",
-            classify_object_store_validation_error(bucket, region, index, &err)
+            classify_object_store_validation_error(bucket, region, &err)
         ),
     }
 }
 
-const PREFIX_ACCESS_ERROR_MSG: &str = "Fabro reached the bucket but could not verify access to slatedb/ and artifacts/. Validation requires bucket list access plus object access under both prefixes.";
+const PREFIX_ACCESS_ERROR_MSG: &str = "Fabro reached the bucket but could not verify access to artifacts/. Validation requires bucket list access plus object access under that prefix.";
 const VALIDATION_TIMEOUT_MSG: &str = "Timed out while checking S3 access. Verify the bucket, region, and network path, then try again.";
 
 fn bucket_credentials_error(bucket: &str, region: &str) -> String {
@@ -1305,16 +1300,9 @@ fn bucket_credentials_error(bucket: &str, region: &str) -> String {
 fn classify_object_store_validation_error(
     bucket: &str,
     region: &str,
-    prefix_index: usize,
     err: &object_store::Error,
 ) -> String {
-    let credentials_or_prefix_error = || {
-        if prefix_index == 0 {
-            bucket_credentials_error(bucket, region)
-        } else {
-            PREFIX_ACCESS_ERROR_MSG.to_string()
-        }
-    };
+    let credentials_or_prefix_error = || bucket_credentials_error(bucket, region);
     match err {
         object_store::Error::PermissionDenied { .. }
         | object_store::Error::Unauthenticated { .. } => credentials_or_prefix_error(),
@@ -2745,7 +2733,7 @@ AWS_WEB_IDENTITY_TOKEN_FILE=/tmp/fabro-web-identity-token\n",
         };
 
         assert_eq!(
-            classify_object_store_validation_error("fabro-data", "us-east-1", 0, &err),
+            classify_object_store_validation_error("fabro-data", "us-east-1", &err),
             "Bucket fabro-data is not reachable in region us-east-1. Verify the AWS region and try again."
         );
     }

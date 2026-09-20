@@ -9,7 +9,6 @@ use fabro_llm::Client;
 use fabro_llm::lithos_catalog::{Catalog, CatalogProvider};
 use fabro_llm::probe::{self, ModelTestStatus};
 use fabro_redact::redact_string;
-use fabro_sandbox::daytona;
 use fabro_static::EnvVars;
 use fabro_types::SandboxProviderKind;
 use fabro_types::settings::ServerAuthMethod;
@@ -24,6 +23,7 @@ use serde::Serialize;
 use tokio::time::error::Elapsed;
 use tokio::time::timeout;
 
+use crate::sandbox_access::{self, DaytonaCredentialProbeTimeout, DaytonaKeyCheck};
 use crate::server::AppState;
 
 const EXTERNAL_SERVICE_PROBE_TIMEOUT: Duration = Duration::from_secs(15);
@@ -586,9 +586,9 @@ async fn check_docker_sandbox(state: &AppState) -> CheckResult {
             .providers
             .is_enabled(&SandboxProviderKind::DOCKER),
         || async {
-            fabro_sandbox::check_docker_daemon()
+            sandbox_access::check_docker_daemon()
                 .await
-                .map_err(|err| err.display_with_causes())
+                .map_err(|err| format!("{err:#}"))
         },
         DOCKER_PROBE_TIMEOUT,
     )
@@ -671,7 +671,7 @@ async fn check_cloud_sandbox(state: &AppState) -> CheckResult {
     cloud_sandbox_probe_check(probe)
 }
 
-fn cloud_sandbox_probe_check(probe: anyhow::Result<daytona::DaytonaKeyCheck>) -> CheckResult {
+fn cloud_sandbox_probe_check(probe: anyhow::Result<DaytonaKeyCheck>) -> CheckResult {
     match probe {
         Ok(check) if check.ok() => CheckResult {
             name:        "Cloud Sandbox".to_string(),
@@ -695,7 +695,7 @@ fn cloud_sandbox_probe_check(probe: anyhow::Result<daytona::DaytonaKeyCheck>) ->
             )),
         },
         Err(err) => {
-            if let Some(timeout) = err.downcast_ref::<daytona::DaytonaCredentialProbeTimeout>() {
+            if let Some(timeout) = err.downcast_ref::<DaytonaCredentialProbeTimeout>() {
                 return CheckResult {
                     name:        "Cloud Sandbox".to_string(),
                     status:      CheckStatus::Error,
@@ -1240,7 +1240,7 @@ enabled = false
     #[test]
     fn check_cloud_sandbox_reports_timeout() {
         let result = cloud_sandbox_probe_check(Err(anyhow::Error::new(
-            daytona::DaytonaCredentialProbeTimeout::new(Duration::from_millis(1)),
+            DaytonaCredentialProbeTimeout::new(Duration::from_millis(1)),
         )));
 
         assert_eq!(result.name, "Cloud Sandbox");

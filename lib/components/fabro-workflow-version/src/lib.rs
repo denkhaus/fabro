@@ -12,15 +12,15 @@ use fabro_config::parse::{SettingsSource, validate_settings_source};
 use fabro_config::{
     EnvironmentDockerfileLayer, EnvironmentImageLayer, RunGoalLayer, SettingsLayer,
 };
-use fabro_graphviz::parser;
+use fabro_dot::{GraphPosition, GraphReferenceKind, WorkflowGraph};
 use fabro_template::{
-    BundleTemplateStore, GraphPosition, GraphReference, GraphReferenceError, StaticReferenceError,
-    TemplateDiscoveryError, TemplateSource, discover_static_dependency_closure,
-    validate_static_reference, visit_graph_references,
+    BundleTemplateStore, StaticReferenceError, TemplateDiscoveryError, TemplateSource,
+    discover_static_dependency_closure, validate_static_reference,
 };
-use fabro_types::graph::ReferenceKind;
 use fabro_types::settings::InterpString;
-use fabro_types::{ManifestPath, WorkflowPath, WorkflowPathParseError, WorkflowVersion};
+use fabro_types::{
+    ManifestPath, ReferenceKind, WorkflowPath, WorkflowPathParseError, WorkflowVersion,
+};
 use thiserror::Error;
 
 mod closure;
@@ -34,7 +34,7 @@ pub enum WorkflowVersionError {
     GraphParse {
         path:   WorkflowPath,
         #[source]
-        source: fabro_graphviz::Error,
+        source: Box<fabro_dot::ParseError>,
     },
     #[error("invalid {kind} in `{path}`: `{reference}`")]
     InvalidReference {
@@ -273,58 +273,57 @@ fn validate_graph_closure(
                     kind:   ReferenceKind::Import,
                     target: path.clone(),
                 })?;
-        let graph = parser::parse(source).map_err(|source| WorkflowVersionError::GraphParse {
-            path: path.clone(),
-            source,
+        let graph = WorkflowGraph::parse(path.as_str(), source).map_err(|source| {
+            WorkflowVersionError::GraphParse {
+                path:   path.clone(),
+                source: Box::new(source),
+            }
         })?;
         let position = if &path == version.entrypoint() {
             GraphPosition::Entrypoint
         } else {
             GraphPosition::Imported
         };
+        let references =
+            graph
+                .references(position)
+                .map_err(|source| WorkflowVersionError::StaticReference {
+                    path: path.clone(),
+                    source,
+                })?;
 
-        visit_graph_references(&graph, position, |reference| match reference {
-            GraphReference::GoalFile { reference } => {
-                let target = resolve_reference(&path, ReferenceKind::GraphGoalFile, reference)?;
-                let content =
-                    require_file(version, &path, ReferenceKind::GraphGoalFile, target.clone())?;
-                template_roots.push(&target, content);
-                Ok(())
-            }
-            GraphReference::GoalInline { content }
-            | GraphReference::InlinePrompt { content }
-            | GraphReference::ModelStylesheetInline { content } => {
-                template_roots.push(&path, content);
-                Ok(())
-            }
-            GraphReference::Import { reference } => {
-                let target = resolve_reference(&path, ReferenceKind::Import, reference)?;
-                require_file(version, &path, ReferenceKind::Import, target.clone())?;
-                queue.push_back(target);
-                Ok(())
-            }
-            GraphReference::ChildWorkflow { reference } => {
-                let target = resolve_reference(&path, ReferenceKind::ChildWorkflow, reference)?;
-                child_workflows.insert(target);
-                Ok(())
-            }
-            GraphReference::FileInline { key, reference } => {
-                let target = resolve_reference(&path, ReferenceKind::FileInline, reference)?;
-                let content =
-                    require_file(version, &path, ReferenceKind::FileInline, target.clone())?;
-                if key == "prompt" {
+        for reference in references {
+            match reference.kind {
+                GraphReferenceKind::GoalFile { reference } => {
+                    let target = resolve_reference(&path, ReferenceKind::GraphGoalFile, reference)?;
+                    let content =
+                        require_file(version, &path, ReferenceKind::GraphGoalFile, target.clone())?;
                     template_roots.push(&target, content);
                 }
-                Ok(())
+                GraphReferenceKind::GoalInline { content }
+                | GraphReferenceKind::InlinePrompt { content }
+                | GraphReferenceKind::ModelStylesheetInline { content } => {
+                    template_roots.push(&path, content);
+                }
+                GraphReferenceKind::Import { reference } => {
+                    let target = resolve_reference(&path, ReferenceKind::Import, reference)?;
+                    require_file(version, &path, ReferenceKind::Import, target.clone())?;
+                    queue.push_back(target);
+                }
+                GraphReferenceKind::ChildWorkflow { reference } => {
+                    let target = resolve_reference(&path, ReferenceKind::ChildWorkflow, reference)?;
+                    child_workflows.insert(target);
+                }
+                GraphReferenceKind::FileInline { key, reference } => {
+                    let target = resolve_reference(&path, ReferenceKind::FileInline, reference)?;
+                    let content =
+                        require_file(version, &path, ReferenceKind::FileInline, target.clone())?;
+                    if key == "prompt" {
+                        template_roots.push(&target, content);
+                    }
+                }
             }
-        })
-        .map_err(|error| match error {
-            GraphReferenceError::StaticReference(source) => WorkflowVersionError::StaticReference {
-                path: path.clone(),
-                source,
-            },
-            GraphReferenceError::Visit(error) => error,
-        })?;
+        }
     }
 
     let configured = version
@@ -410,8 +409,7 @@ mod tests {
     use std::collections::BTreeMap;
 
     use fabro_template::{TemplateDiscoveryError, TemplateLoadError};
-    use fabro_types::graph::ReferenceKind;
-    use fabro_types::{BlobHash, WorkflowPath, WorkflowVersion, WorkflowVersionId};
+    use fabro_types::{BlobHash, ReferenceKind, WorkflowPath, WorkflowVersion, WorkflowVersionId};
 
     use super::{ValidatedWorkflowVersion, WorkflowVersionError};
 

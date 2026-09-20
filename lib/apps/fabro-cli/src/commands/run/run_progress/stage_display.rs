@@ -3,8 +3,7 @@ use std::convert::TryFrom;
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
-use fabro_types::{INITIAL_SUBAGENT_GENERATION, LlmOutputKind};
-use fabro_workflow::outcome::{StageOutcome, format_cost};
+use fabro_types::{INITIAL_SUBAGENT_GENERATION, LlmOutputKind, StageOutcome, format_cost};
 use indicatif::ProgressBar;
 
 use super::event::ProgressUsage;
@@ -70,10 +69,6 @@ impl StageDisplay {
             any_stage_started: false,
             working_directory: None,
         }
-    }
-
-    pub(super) fn set_working_directory(&mut self, dir: String) {
-        self.working_directory = Some(dir);
     }
 
     pub(super) fn finish(&mut self) {
@@ -818,25 +813,4 @@ fn set_duration_prefix(bar: &ProgressBar, duration_ms: Option<u64>) {
         |duration_ms| styles::format_duration_short(Duration::from_millis(duration_ms)),
     );
     bar.set_prefix(prefix);
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::commands::run::run_progress::renderer::ProgressRenderer;
-
-    #[test]
-    fn tool_display_name_shortens_paths_relative_to_working_directory() {
-        let renderer = ProgressRenderer::new_plain(Box::new(std::io::sink()), false);
-        let mut stage = StageDisplay::new(false);
-        stage.set_working_directory("/workspace".into());
-
-        let display_name = stage.tool_display_name(
-            &renderer,
-            "read_file",
-            &serde_json::json!({"file_path": "/workspace/src/main.rs"}),
-        );
-
-        assert_eq!(display_name, "read_file(src/main.rs)");
-    }
 }

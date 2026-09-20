@@ -14,7 +14,7 @@ workspace = true
 
 [dependencies]
 fabro-config = { path = "../../foundation/fabro-config" }
-fabro-graphviz = { path = "../fabro-graphviz" }
+fabro-dot = { path = "../fabro-dot" }
 fabro-store = { path = "../fabro-store" }
 fabro-template = { path = "../../foundation/fabro-template" }
 fabro-types = { path = "../../foundation/fabro-types" }

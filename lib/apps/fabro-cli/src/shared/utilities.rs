@@ -11,12 +11,11 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use anyhow::Context as _;
 use cli_table::Color;
 use fabro_types::RunStatus;
+use fabro_types::diagnostic::{Diagnostic, Severity};
 use fabro_util::printer::Printer;
 use fabro_util::terminal::Styles;
-use fabro_validate::{Diagnostic, Severity};
 use indicatif::{ProgressBar, ProgressStyle};
 use serde::Serialize;
 
@@ -30,10 +29,6 @@ pub(crate) fn cyan_spinner(message: impl Into<std::borrow::Cow<'static, str>>) -
     spinner.set_message(message);
     spinner.enable_steady_tick(Duration::from_millis(80));
     spinner
-}
-
-pub(crate) fn read_workflow_file(path: &Path) -> anyhow::Result<String> {
-    std::fs::read_to_string(path).with_context(|| format!("Failed to read {}", path.display()))
 }
 
 pub(crate) fn print_json_pretty<T>(value: &T) -> anyhow::Result<()>

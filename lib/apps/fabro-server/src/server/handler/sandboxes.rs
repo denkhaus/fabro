@@ -4,12 +4,12 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::routing::get;
 use axum::{Json, Router};
-use fabro_sandbox::SandboxLookupError;
 use fabro_types::{SandboxInfo, SandboxListResponse, SandboxProviderKind};
 
 use super::super::AppState;
 use crate::error::ApiError;
 use crate::principal_middleware::RequiredRunManagementActor;
+use crate::sandbox_access::SandboxLookupError;
 
 pub(super) fn routes() -> Router<Arc<AppState>> {
     Router::new()
@@ -77,16 +77,20 @@ fn provider_list(providers: &[SandboxProviderKind]) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use axum::body::{Body, to_bytes};
     use axum::http::{Request, StatusCode};
-    use fabro_sandbox::SandboxInventory;
-    use fabro_sandbox::driver::{ConnectedProvider, ProviderConnectOptions};
-    use fabro_sandbox::test_support::{managed_scripted_sandbox, scripted_inventory_provider};
     use fabro_types::SandboxProviderKind;
-    use fabro_types::settings::server::{SandboxPluginSettings, ServerSandboxProviderSettings};
+    use fabro_types::settings::server::{
+        SandboxPluginSettings, ServerSandboxProviderSettings, ServerSandboxProvidersSettings,
+    };
+    use sandbox_driver::SandboxProvider;
     use serde_json::{Value, json};
     use tower::ServiceExt;
 
+    use crate::sandbox_access::test_support::{petri_scripted_sandbox, scripted_provider};
+    use crate::sandbox_access::{ProviderAccess, SandboxInventory};
     use crate::test_support::{TestAppStateBuilder, build_test_router};
 
     fn app_with_inventory(inventory: SandboxInventory) -> axum::Router {
@@ -96,30 +100,36 @@ mod tests {
         build_test_router(state)
     }
 
-    /// A connected provider of `kind` holding fabro-managed sandboxes `ids`.
-    fn provider(kind: SandboxProviderKind, ids: &[&str]) -> ConnectedProvider {
-        scripted_inventory_provider(
-            kind,
-            ids.iter().map(|id| managed_scripted_sandbox(id)).collect(),
+    /// A provider of `kind` holding the sandboxes Petri created for a run,
+    /// `ids`.
+    fn provider(kind: &SandboxProviderKind, ids: &[&str]) -> Arc<dyn SandboxProvider> {
+        scripted_provider(
+            kind.as_str(),
+            ids.iter()
+                .map(|id| petri_scripted_sandbox(id, "01HY0000000000000000000000"))
+                .collect(),
         )
     }
 
     /// A plugin kind whose executable does not exist, so every lookup fails
     /// to connect.
     fn with_unreachable_plugin(inventory: SandboxInventory, name: &str) -> SandboxInventory {
-        let settings = ServerSandboxProviderSettings {
-            enabled: true,
-            plugin:  Some(SandboxPluginSettings {
-                path: Some(format!("/nonexistent/fabro-sandbox-{name}")),
-                dev: true,
-                ..SandboxPluginSettings::default()
-            }),
-        };
-        inventory.with_lazy(
-            SandboxProviderKind::try_new(name).expect("valid kind"),
-            settings,
-            ProviderConnectOptions::default(),
-        )
+        let kind = SandboxProviderKind::try_new(name).expect("valid kind");
+        let mut providers = ServerSandboxProvidersSettings::default();
+        providers
+            .entries
+            .insert(kind.clone(), ServerSandboxProviderSettings {
+                enabled: true,
+                plugin:  Some(SandboxPluginSettings {
+                    path: Some(format!("/nonexistent/sandbox-driver-{name}")),
+                    dev: true,
+                    ..SandboxPluginSettings::default()
+                }),
+            });
+        inventory.with_lazy(kind, ProviderAccess {
+            providers,
+            daytona: None,
+        })
     }
 
     fn req_get(uri: &str) -> Request<Body> {
@@ -139,10 +149,10 @@ mod tests {
 
     #[tokio::test]
     async fn list_returns_provider_backed_data_without_run_projection_state() {
-        let app = app_with_inventory(
-            SandboxInventory::empty()
-                .with_connected(provider(SandboxProviderKind::DOCKER, &["docker-native-id"])),
-        );
+        let app = app_with_inventory(SandboxInventory::empty().with_connected(
+            SandboxProviderKind::DOCKER,
+            provider(&SandboxProviderKind::DOCKER, &["docker-native-id"]),
+        ));
 
         let response = app.oneshot(req_get("/api/v1/sandboxes")).await.unwrap();
 
@@ -158,8 +168,14 @@ mod tests {
     async fn retrieve_searches_all_configured_providers() {
         let app = app_with_inventory(
             SandboxInventory::empty()
-                .with_connected(provider(SandboxProviderKind::DOCKER, &[]))
-                .with_connected(provider(SandboxProviderKind::DAYTONA, &["native-id"])),
+                .with_connected(
+                    SandboxProviderKind::DOCKER,
+                    provider(&SandboxProviderKind::DOCKER, &[]),
+                )
+                .with_connected(
+                    SandboxProviderKind::DAYTONA,
+                    provider(&SandboxProviderKind::DAYTONA, &["native-id"]),
+                ),
         );
 
         let response = app
@@ -177,8 +193,14 @@ mod tests {
     async fn no_matching_sandbox_returns_404() {
         let app = app_with_inventory(
             SandboxInventory::empty()
-                .with_connected(provider(SandboxProviderKind::DOCKER, &[]))
-                .with_connected(provider(SandboxProviderKind::DAYTONA, &[])),
+                .with_connected(
+                    SandboxProviderKind::DOCKER,
+                    provider(&SandboxProviderKind::DOCKER, &[]),
+                )
+                .with_connected(
+                    SandboxProviderKind::DAYTONA,
+                    provider(&SandboxProviderKind::DAYTONA, &[]),
+                ),
         );
 
         let response = app
@@ -193,8 +215,14 @@ mod tests {
     async fn duplicate_native_ids_return_409() {
         let app = app_with_inventory(
             SandboxInventory::empty()
-                .with_connected(provider(SandboxProviderKind::DOCKER, &["same-id"]))
-                .with_connected(provider(SandboxProviderKind::DAYTONA, &["same-id"])),
+                .with_connected(
+                    SandboxProviderKind::DOCKER,
+                    provider(&SandboxProviderKind::DOCKER, &["same-id"]),
+                )
+                .with_connected(
+                    SandboxProviderKind::DAYTONA,
+                    provider(&SandboxProviderKind::DAYTONA, &["same-id"]),
+                ),
         );
 
         let response = app
@@ -215,7 +243,10 @@ mod tests {
     #[tokio::test]
     async fn provider_lookup_uncertainty_returns_502() {
         let app = app_with_inventory(with_unreachable_plugin(
-            SandboxInventory::empty().with_connected(provider(SandboxProviderKind::DOCKER, &[])),
+            SandboxInventory::empty().with_connected(
+                SandboxProviderKind::DOCKER,
+                provider(&SandboxProviderKind::DOCKER, &[]),
+            ),
             "e2b",
         ));
 

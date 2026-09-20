@@ -128,6 +128,12 @@ pub fn usage_is_empty(usage: &Usage) -> bool {
     *usage == Usage::default()
 }
 
+/// Format a USD cost for display, to the cent.
+#[must_use]
+pub fn format_cost(cost: f64) -> String {
+    format!("${cost:.2}")
+}
+
 #[cfg(test)]
 mod tests {
     use lithos_llm::types::{Cost, CostSource, TokenCounts};

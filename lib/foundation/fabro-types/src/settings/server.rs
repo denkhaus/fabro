@@ -1,18 +1,16 @@
 //! Server domain.
 //!
 //! `[server]` is a namespace container; actual settings live in named
-//! subdomains (listen, api, web, auth, storage, artifacts, slatedb,
-//! scheduler, logging, integrations). Same-host and split-host deployments
-//! use the same schema.
+//! subdomains (listen, api, web, auth, storage, artifacts, scheduler,
+//! logging, integrations). Same-host and split-host
+//! deployments use the same schema.
 
 use std::collections::BTreeMap;
 use std::net::SocketAddr;
-use std::time::Duration as StdDuration;
 
 use serde::de::Error as _;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use super::duration::Duration;
 use crate::SandboxProviderKind;
 
 /// A structurally resolved `[server]` view for consumers.
@@ -31,7 +29,6 @@ pub struct ServerNamespace {
     pub sandbox:      ServerSandboxSettings,
     pub storage:      ServerStorageSettings,
     pub artifacts:    ServerArtifactsSettings,
-    pub slatedb:      ServerSlateDbSettings,
     pub scheduler:    ServerSchedulerSettings,
     pub logging:      ServerLoggingSettings,
     pub integrations: ServerIntegrationsSettings,
@@ -52,7 +49,6 @@ impl ServerNamespace {
             sandbox:      ServerSandboxSettings::default(),
             storage:      ServerStorageSettings::default(),
             artifacts:    ServerArtifactsSettings::default(),
-            slatedb:      ServerSlateDbSettings::default(),
             scheduler:    ServerSchedulerSettings::default(),
             logging:      ServerLoggingSettings::default(),
             integrations: ServerIntegrationsSettings::default(),
@@ -191,8 +187,8 @@ impl Default for ServerSandboxProviderSettings {
 /// named in `inherit_env` reach it.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SandboxPluginSettings {
-    /// Executable path. When absent the server searches `PATH` for
-    /// `fabro-sandbox-<kind>`.
+    /// Executable path. When absent the server, and Petri in the run's
+    /// worker, search `PATH` for `sandbox-driver-<kind>`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub path:        Option<String>,
     /// Pinned SHA-256 of the executable, hex.
@@ -218,29 +214,6 @@ pub struct ServerStorageSettings {
 pub struct ServerArtifactsSettings {
     pub prefix: String,
     pub store:  ObjectStoreSettings,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ServerSlateDbSettings {
-    pub prefix:         String,
-    pub store:          ObjectStoreSettings,
-    #[serde(
-        serialize_with = "serialize_std_duration",
-        deserialize_with = "deserialize_std_duration"
-    )]
-    pub flush_interval: StdDuration,
-    pub disk_cache:     bool,
-}
-
-impl Default for ServerSlateDbSettings {
-    fn default() -> Self {
-        Self {
-            prefix:         String::new(),
-            store:          ObjectStoreSettings::default(),
-            flush_interval: StdDuration::ZERO,
-            disk_cache:     false,
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -346,20 +319,6 @@ where
 {
     let value = String::deserialize(deserializer)?;
     value.parse().map_err(D::Error::custom)
-}
-
-fn serialize_std_duration<S>(value: &StdDuration, serializer: S) -> Result<S::Ok, S::Error>
-where
-    S: Serializer,
-{
-    serializer.serialize_str(&Duration::from_std(*value).to_string())
-}
-
-fn deserialize_std_duration<'de, D>(deserializer: D) -> Result<StdDuration, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    Ok(Duration::deserialize(deserializer)?.as_std())
 }
 
 /// Closed enum of object-store providers. Unknown providers hard-fail

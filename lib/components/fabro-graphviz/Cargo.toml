@@ -4,7 +4,7 @@ edition.workspace = true
 version.workspace = true
 publish = false
 license.workspace = true
-description = "Graphviz DOT parser and typed graph data model"
+description = "SVG rendering of workflow graphs through the vendored Graphviz"
 
 [lib]
 doctest = false
@@ -14,13 +14,6 @@ workspace = true
 
 [dependencies]
 anyhow.workspace = true
+fabro-dot = { path = "../fabro-dot" }
 graphviz-sys.workspace = true
-fabro-types = { path = "../../foundation/fabro-types" }
-nom = "7"
 regex = { workspace = true }
-serde = { workspace = true }
-strum.workspace = true
-thiserror = { workspace = true }
-
-[dev-dependencies]
-serde_json = { workspace = true }

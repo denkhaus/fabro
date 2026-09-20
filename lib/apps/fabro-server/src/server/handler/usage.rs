@@ -2,8 +2,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
+use fabro_types::usage_rollup::usage_rollup_from_projection;
 use fabro_types::{
-    Graph, RunProjection, StageHandler, StageId, StageProjection, StageState, StageTiming,
+    RunGraph, RunProjection, StageHandler, StageId, StageProjection, StageState, StageTiming,
     usage_is_empty,
 };
 
@@ -22,16 +23,13 @@ pub(super) fn routes() -> Router<Arc<AppState>> {
 fn run_stage_from_projection(
     stage_id: &StageId,
     stage: &StageProjection,
-    graph: &Graph,
+    graph: &RunGraph,
     now: DateTime<Utc>,
 ) -> RunStage {
     let handler = stage.handler.unwrap_or_else(|| {
-        StageHandler::from_handler_type(
-            graph
-                .nodes
-                .get(stage_id.node_id())
-                .and_then(|node| node.handler_type()),
-        )
+        graph
+            .node(stage_id.node_id())
+            .map_or(StageHandler::Agent, |node| node.kind)
     });
     let (parallel_group_id, parallel_branch_index) = stage
         .parallel_branch_id
@@ -93,7 +91,7 @@ async fn get_run_usage(
         Err(err) => return err.into_response(),
     };
 
-    let rollup = fabro_workflow::usage_rollup_from_projection(&projection);
+    let rollup = usage_rollup_from_projection(&projection);
     let by_model = rollup
         .by_model
         .iter()

@@ -8,14 +8,12 @@ use fabro_config::project::WorkflowLocation;
 use fabro_config::{
     EnvironmentDockerfileLayer, EnvironmentImageLayer, RunGoalLayer, SettingsLayer,
 };
-use fabro_graphviz::parser;
+use fabro_dot::{GraphPosition, GraphReferenceKind, WorkflowGraph};
 use fabro_template::{
-    BundleTemplateStore, FilesystemTemplateStore, GraphPosition, GraphReference,
-    GraphReferenceError, RecordingTemplateStore, TemplateContext, TemplateDependencyClosure,
-    TemplateRenderMode, TemplateSource, validate_static_reference, visit_graph_references,
+    BundleTemplateStore, FilesystemTemplateStore, RecordingTemplateStore, TemplateContext,
+    TemplateDependencyClosure, TemplateRenderMode, TemplateSource, validate_static_reference,
 };
-use fabro_types::ManifestPath;
-use fabro_types::graph::ReferenceKind;
+use fabro_types::{ManifestPath, ReferenceKind};
 
 use crate::{
     WorkflowVersionCollectError, manifest_path_from_absolute, normalize_absolute_path,
@@ -222,7 +220,7 @@ impl<'a> WorkflowBundler<'a> {
                 &workflow.dot_path.to_string(),
             )?;
         }
-        let graph = parser::parse(&workflow.source)
+        let graph = WorkflowGraph::parse(&workflow.dot_path.to_string(), &workflow.source)
             .with_context(|| format!("Failed to parse {}", workflow.absolute_dot_path.display()))?;
         let workflow_base_dir = workflow
             .absolute_dot_path
@@ -234,14 +232,14 @@ impl<'a> WorkflowBundler<'a> {
             manifest_parent_or_dot(&workflow.dot_path)?
         };
 
-        // Imports and child workflows require a mutable borrow of self, so
-        // collect them during the walk and recurse after the visitor returns.
+        // Imports and child workflows recurse, so collect them during the
+        // walk and follow them after every reference of this graph is read.
         let mut imports = Vec::new();
         let mut children = Vec::new();
 
-        visit_graph_references(&graph, position, |reference| -> Result<()> {
-            match reference {
-                GraphReference::GoalFile { reference } => {
+        for reference in graph.references(position)? {
+            match reference.kind {
+                GraphReferenceKind::GoalFile { reference } => {
                     let bundled = self.collect_bundled_file(
                         files,
                         workflow_base_dir,
@@ -250,12 +248,16 @@ impl<'a> WorkflowBundler<'a> {
                         ReferenceKind::GraphGoalFile,
                         Some(workflow.dot_path.clone()),
                     )?;
-                    self.collect_bundled_template_includes(files, &bundled, &workflow_template_root)
+                    self.collect_bundled_template_includes(
+                        files,
+                        &bundled,
+                        &workflow_template_root,
+                    )?;
                 }
-                GraphReference::GoalInline { content }
-                | GraphReference::InlinePrompt { content }
-                | GraphReference::ModelStylesheetInline { content } => self
-                    .collect_template_include_files(
+                GraphReferenceKind::GoalInline { content }
+                | GraphReferenceKind::InlinePrompt { content }
+                | GraphReferenceKind::ModelStylesheetInline { content } => {
+                    self.collect_template_include_files(
                         files,
                         TemplateSource::new(
                             workflow.dot_path.clone(),
@@ -263,8 +265,9 @@ impl<'a> WorkflowBundler<'a> {
                             content.to_owned(),
                         ),
                         Some(&workflow.dot_path),
-                    ),
-                GraphReference::FileInline { key, reference } => {
+                    )?;
+                }
+                GraphReferenceKind::FileInline { key, reference } => {
                     let bundled = self.collect_bundled_file(
                         files,
                         workflow_base_dir,
@@ -280,9 +283,8 @@ impl<'a> WorkflowBundler<'a> {
                             &workflow_template_root,
                         )?;
                     }
-                    Ok(())
                 }
-                GraphReference::Import { reference } => {
+                GraphReferenceKind::Import { reference } => {
                     let imported = self.collect_bundled_file(
                         files,
                         workflow_base_dir,
@@ -292,18 +294,10 @@ impl<'a> WorkflowBundler<'a> {
                         Some(workflow.dot_path.clone()),
                     )?;
                     imports.push(imported);
-                    Ok(())
                 }
-                GraphReference::ChildWorkflow { reference } => {
-                    children.push(reference);
-                    Ok(())
-                }
+                GraphReferenceKind::ChildWorkflow { reference } => children.push(reference),
             }
-        })
-        .map_err(|error| match error {
-            GraphReferenceError::StaticReference(source) => anyhow::Error::new(source),
-            GraphReferenceError::Visit(error) => error,
-        })?;
+        }
 
         for imported in imports {
             if visited_imports.insert(imported.path.to_string()) {
@@ -434,9 +428,9 @@ impl<'a> WorkflowBundler<'a> {
         for image in layer.environment_images() {
             self.collect_environment_dockerfile(files, base_dir, config_path, image)?;
         }
-        if self.workflow_version_projection {
-            self.collect_config_goal_files(files, base_dir, config_path, entrypoint, &layer)?;
-        }
+        // The goal file rides with the manifest: Petri reads `[run.goal]
+        // file` from the bundle at check, as it does for a version.
+        self.collect_config_goal_files(files, base_dir, config_path, entrypoint, &layer)?;
         Ok(())
     }
 
@@ -756,19 +750,19 @@ mod tests {
     }
 
     #[test]
-    fn parse_errors_keep_the_graphviz_error_in_the_source_chain() {
+    fn parse_errors_keep_petris_error_in_the_source_chain() {
         let temp = tempfile::tempdir().expect("temp directory should be created");
         let graph = temp.path().join("workflow.fabro");
         write_file(&graph, "not a graph");
 
         let error = bundle_graph(temp.path(), &graph).expect_err("invalid graph should fail");
 
-        assert!(
-            error
-                .chain()
-                .any(|cause| cause.downcast_ref::<fabro_graphviz::Error>().is_some()),
-            "unexpected error chain: {error:#}"
-        );
+        let parse_error = error
+            .chain()
+            .find_map(|cause| cause.downcast_ref::<fabro_dot::ParseError>())
+            .unwrap_or_else(|| panic!("unexpected error chain: {error:#}"));
+        assert_eq!(parse_error.file, "workflow.fabro");
+        assert_eq!(parse_error.code, "dot.syntax");
     }
 
     #[test]

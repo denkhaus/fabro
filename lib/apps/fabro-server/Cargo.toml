@@ -27,21 +27,25 @@ fabro-install = { path = "../../components/fabro-install" }
 fabro-spa = { path = "../fabro-spa" }
 fabro-config = { path = "../../foundation/fabro-config" }
 fabro-environment.workspace = true
+fabro-dot = { path = "../../components/fabro-dot" }
 fabro-graphviz = { path = "../../components/fabro-graphviz" }
-fabro-hooks = { path = "../../components/fabro-hooks" }
 fabro-interview = { path = "../../components/fabro-interview" }
 fabro-slack = { path = "../../components/fabro-slack" }
 fabro-workflow = { path = "../../components/fabro-workflow" }
 fabro-workflow-version = { path = "../../components/fabro-workflow-version" }
-fabro-validate = { path = "../../components/fabro-validate" }
-fabro-sandbox = { path = "../../components/fabro-sandbox" }
+fabro-pebble-sandbox = { path = "../../components/fabro-pebble-sandbox" }
 sandbox-driver.workspace = true
+sandbox-driver-host.workspace = true
+sandbox-driver-docker.workspace = true
+sandbox-driver-daytona.workspace = true
+sandbox-driver-protocol.workspace = true
 fabro-github = { path = "../../components/fabro-github" }
 pebble-agent.workspace = true
 pebble-coding-agent.workspace = true
 fabro-llm = { path = "../../components/fabro-llm" }
 fabro-manifest = { path = "../../components/fabro-manifest" }
 fabro-mcp-store = { path = "../../components/fabro-mcp-store" }
+fabro-petri = { path = "../../components/fabro-petri" }
 fabro-proc = { path = "../../foundation/fabro-proc" }
 fabro-template = { path = "../../foundation/fabro-template" }
 fabro-tool = { path = "../../components/fabro-tool" }
@@ -63,7 +67,6 @@ futures-util.workspace = true
 axum = { workspace = true, features = ["ws"] }
 axum-extra.workspace = true
 cookie.workspace = true
-dirs.workspace = true
 globset.workspace = true
 tower = "0.5"
 tower-http = { version = "0.6", features = ["trace", "compression-br", "compression-gzip"] }
@@ -82,7 +85,6 @@ async-trait.workspace = true
 async_zip.workspace = true
 clap.workspace = true
 toml.workspace = true
-toml_edit.workspace = true
 tracing.workspace = true
 ulid.workspace = true
 uuid.workspace = true
@@ -98,10 +100,7 @@ object_store.workspace = true
 # talks to HTTP via fabro-http (reqwest 0.13).
 object_store_reqwest = { package = "reqwest", version = "0.12", default-features = false, features = ["rustls-tls-native-roots"] }
 mime_guess.workspace = true
-regex.workspace = true
-semver.workspace = true
 walkdir.workspace = true
-multer = "3"
 thiserror.workspace = true
 percent-encoding.workspace = true
 url = "2"
@@ -115,6 +114,7 @@ chrono = { workspace = true }
 
 [dev-dependencies]
 fabro-auth = { path = "../../foundation/fabro-auth", features = ["test-support"] }
+fabro-petri = { path = "../../components/fabro-petri", features = ["test-support"] }
 fabro-llm = { path = "../../components/fabro-llm", features = ["test-support"] }
 git2.workspace = true
 tokio = { workspace = true, features = ["test-util", "macros"] }
@@ -126,7 +126,8 @@ tracing-subscriber.workspace = true
 tokio-util.workspace = true
 tokio-tungstenite.workspace = true
 fabro-macros = { path = "../../foundation/fabro-macros" }
-fabro-sandbox = { path = "../../components/fabro-sandbox", features = ["test-support"] }
+fabro-pebble-sandbox = { path = "../../components/fabro-pebble-sandbox", features = ["test-support"] }
+sandbox-driver-testing.workspace = true
 fabro-store = { path = "../../components/fabro-store", features = ["test-support"] }
 fabro-test = { workspace = true }
 fabro-types = { path = "../../foundation/fabro-types", features = ["test-support"] }
