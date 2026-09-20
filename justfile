@@ -20,6 +20,17 @@
 #
 # Requires: mise toolchain (.mise.toml), docker, and docker compose.
 #
+# Config persistence across image refreshes (fabro-b03f): the server's
+# settings live in the `fabro_fabro-storage` compose volume
+# (/storage/.home/settings.toml inside the container). Both compose files
+# pin `name: fabro`, so the volume identity is stable no matter which
+# directory the stack is brought up from — a routine `just up` refresh
+# reuses the configured storage. If the stack ever comes up UNCONFIGURED
+# anyway (genuinely fresh volume / first boot / `docker compose down -v`),
+# `just smoke` fails with an install-mode alarm; recover with
+# `just install-url`, finish the browser wizard, and the container's
+# restart policy reboots it configured.
+#
 # Headless shells (no logind session): /run/user/$UID may not exist,
 # which breaks just's runtime dir. Export a writable one:
 #   export XDG_RUNTIME_DIR="$HOME/.cache/just-run"
@@ -111,9 +122,27 @@ web-deps:
 install-cli:
     nu scripts/install-cli.nu "{{ staged }}" "{{ cli_bin }}"
 
-# Start the compose stack (recreates the container when the image changed)
+# Start the compose stack (recreates the container when the image changed).
+# Both compose files pin `name: fabro` (fabro-b03f), so the storage volume
+# holding /storage/.home/settings.toml is reused across refreshes.
 compose-up:
     docker compose up -d
+
+# One-command install-mode recovery: print the install URL + token from
+# the running container's logs (the server logs the full URL on boot in
+# install mode, before /api/v1/* exists). Open it, finish the wizard; the
+# container exits and its restart policy reboots it configured, then
+# `just smoke` goes green.
+install-url:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    url="$(docker compose logs --no-color fabro 2>/dev/null | grep -oE 'https?://[^ ]+/install[?]token=[A-Za-z0-9_-]+' | tail -1 || true)"
+    if [ -z "$url" ]; then
+        echo "No install URL found in container logs — the server may already be" >&2
+        echo "configured, or it is not running. Check: docker compose ps; just logs" >&2
+        exit 1
+    fi
+    echo "$url"
 
 # Stop the compose stack
 compose-down:
