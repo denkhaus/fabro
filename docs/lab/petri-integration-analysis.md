@@ -1,0 +1,120 @@
+# Petri-Integration: Analyse & Migrationsplan (2026-09-20)
+
+Status: beschlossen (Option B). Epic: **fabro-9930**, Kinder W0–W5.
+Basis: `denkhaus-petri` = `upstream/main` @ `40419cbd2` (167 Commits über
+Merge-Base `4b1f440b6`). `denkhaus` bleibt deploybar, Linie läuft weiter
+(Merge-Leg seit 2026-09-13 deaktiviert). Run-History wird NICHT archiviert
+(`run_events` wird bei Cutover gedroppt, `runs`-Summaries überleben).
+
+## Warum kein Merge auf denkhaus
+
+| Kennzahl | Wert |
+|---|---|
+| Upstream-Commits | 167 |
+| Fork-Commits über Merge-Base | 1259 |
+| upstream-gelöscht UND fork-modifiziert | 84 (Delete/Modify) |
+| Shared-Files beide modifiziert | 180 |
+| Fork-only unter lib/ | 380 (inkl. ganzer fabro-core) |
+
+Upstream löschte: fabro-core, fabro-sandbox, fabro-hooks, fabro-validate,
+fabro-acp; fabro-workflow 131 → 17 src-Dateien. Jeder Run ist ein Petri-Run
+(kein Flag). Die Engine unserer Features existiert nicht mehr — ein Merge
+wäre eine Re-Architektur in der Konfliktbehandlung.
+
+## Petri-Kernkonzepte (Schnellreferenz)
+
+- Sans-IO-Kern: `apply(state, event) -> (state, commands)`; deterministisch,
+  replay-geprüft. Frontends: Attractor (.fabro-DOT) + GitHub Actions → IR.
+- Records statt Event-Log: `petri_records` + `platform_records` (SQLite),
+  Projection-Fold → View-Tabellen + Run-Stream (`stream_seq`).
+  Migration 2026091803 droppt `run_events` („greenfield").
+- Sandboxes: Petri besitzt sie (sandbox-driver, Lease-Ledger, Retention,
+  prune); Server attached nur (fabro-pebble-sandbox = Driver-Handle als
+  Pebble-Environment).
+- Checkpoints nativ: fork/rewind/retry/timeline (CLI + API + Worker-Recovery).
+- Routing AND-of-XOR; Failure-Tiers, RetryPolicy/Backoff, Firing-Budgets,
+  Goal-Gates, Wait-Steps, Manager-Step (reattach), Run-Context (kv.*),
+  Host-Tool-Capability für Fabro-Run-Tools.
+
+## Feature-Migrationsmatrix
+
+Score = Wiederherstellbarkeit: 🟢 8–10 leicht (Seam überlebt) ·
+🟡 4–7 substanzieller Port · 🔴 1–3 Redesign auf Petri-Konzepten ·
+⚫ O superseded. Seed = Kind unter fabro-9930.
+
+| Feature | Score | Kind-Seed | Kern des Ports |
+|---|---|---|---|
+| Dev-Loop-Assets (justfile/scripts/mise/gate) | 🟢 10 | fabro-fef5 (W0) | Übernahme + Build-Grün + Inventur |
+| Stall-Budget (0e11, stall_timeout) | 🟢 9 | fabro-96c6 (W3-5) | Attribut überlebt; Pin auf fabro-dot |
+| PR-create-retry (67e5) | 🟢 8 | fabro-b5a9 (W2-3) | fabro-github unverändert |
+| Fork-Catalog-Overlay (cd27) | 🟢 8 | fabro-6945 (W2-4) | Seam an codecs-neue catalog.rs |
+| spa_refresh (332e) | 🟢 8 | fabro-d0dd (W4-5) | fork-owned fabro-dev |
+| PR-model-plumbing (890b) | 🟢 7 | fabro-b5a9 (W2-3) | → operations/create.rs |
+| Duplicate-Child-Guard (8ee1) | 🟢 7 | fabro-a875 (W2-1) | create.rs-Seam überlebt |
+| Automations-CLI (fabro auto) | 🟢 7 | fabro-6c16 (W1-1) | Client-Regen + Drift |
+| ask-Duplikat (bd6c) / attach-Replay (204e) | 🟢 7 | fabro-d0dd (W4-5) | erst verifizieren (Stream-Rewrite) |
+| Run-Tools-Parität (06e0 u.a.) | 🟢 7 | fabro-96c6 (W3-5) | upstream-nativ; inspects-Scoping prüfen |
+| fs_hide/fs_write (ba96) | 🟢 7 | fabro-d0dd (W4-5) | Pebble-ToolContext + Exec-Policy |
+| Wait-Endpoint (571e) | 🟡 ~6 | fabro-8795 (W4-4) | Parität prüfen, sonst Stream-Cursor |
+| Publish-blocked + Boundary (67e5/08b4) | 🟡 6 | fabro-6655 (W1-3) | Projection-Fold + Slack + Web |
+| Diff-based Publish-Schutz (4ebd) | 🟡 6 | fabro-2889 (W2-2) | supervisor + platform_records |
+| Provider-Gate + Breaker (986b Serverhälfte) | 🟡 6 | fabro-a52f (W1-2) | scheduler-Loop überlebt |
+| Availability-Probe (8d30a) | 🟡 5 | fabro-afab (W4-2) | Scope-Records statt Inventory |
+| Approval-TTL (54f0) | 🟡 5 | fabro-fdd8 (W4-3) | Interview-Records |
+| Lifecycle-Guards (Inspection/TurnScoped) | 🟡 5 | fabro-afab (W4-2) | Driver-Attach-Pfade |
+| Web-Re-Ports (resumeRun, Popover, Phases) | 🟡 5 | fabro-71a8 (W4-1) | Petri-Views (subsumiert 3a5e, ea68) |
+| capability_gate (ADR-0019) / environment_compat (94f6) / Staleness-Supervisor | 🟡 5 | fabro-fdd8 (W4-3) | neue Agent-/Env-Surfaces |
+| Preamble-Budget (a85b) | 🔴 4 | fabro-788b (W3-3) | Attractor-Compaction oder Frontend-Attr |
+| seed_cycles (45d0) | 🔴 4 | fabro-fa0a (W3-4) | Run-Context/kv.* |
+| Stage-Envelope (ADR-0009: stage_policy, context_read e804) | 🔴 4 | fabro-aa5f (W3-6) | Host-Tool-Capability |
+| Exit-Kinds deadlock/soft (b907, ADR-0010) | 🔴 3 | fabro-288d (W3-2) | Tiers + Goal-Gates (ADR-0010 rev) |
+| Quota-Park Engine-Hälfte (986b, ADR-0021) | 🔴 3 | fabro-2e7b (W3-1) | Tier-Routing + Wait-Node (ADR-0021 rev 2) |
+| Resume-from-Failure (7627, closed) | ⚫ O | fabro-d420 (W4-6) | rewind/retry nativ; Web-Mapping in W4-1 |
+| Terminal-Run-Provisioning (8d30b, closed) | ⚫ O | fabro-d420 (W4-6) | Petri-Retention; Fenster beweisen |
+| Sandbox-GC (44d8, closed) | ⚫ O | fabro-d420 (W4-6) | lease ledger + prune; Knobs offeren |
+| Legacy-Catalog-Fix (b7c4, closed) | ⚫ O | — | Offer-Branch separat; post-cutover irrelevant |
+| Presence-Pin-System (Meta) | 🔴 — | fabro-fcb2 (W1-4) | Pins je Port neu (Zwei-Pin-Regel) |
+
+## Attribut-/Asset-Matrix (develop/conductor/merge-upstream)
+
+Überleben im Attractor-Frontend: `stall_timeout`, `max_node_visits`,
+`inspects`, `retry_policy`, `output_schema`, `output_retries`,
+`reasoning_effort`, `skills="discover"`, `fs_write`, `fabro_tools`,
+`preamble_stages_ignore` (verifizieren), workflow.toml-Settings-Layer,
+hooks/MCP, Manager-Loops, nested workflows, goal gates.
+
+Sterben (W3-5 fabro-96c6 ersetzt): `exit_kind`-Kanten (→ Tier-Routing),
+`cycle_counter_reset_key` + seed_cycles-Reads (→ Run-Context, W3-4),
+`preamble_budget_kb` (→ Compaction/Attr, W3-3), Quota-Park-Kanten
+(→ Wait-Node, W3-1), `FailureReason::Deadlock` (→ Tiers, W3-2).
+
+## Prod-/Daten-Hinweise (Cutover = fabro-d659)
+
+- Era-Check gegen Prod-Snapshot Pflicht (fabro-eec6, 3. Vorfall):
+  `PRAGMA wal_checkpoint(TRUNCATE)` VOR cp; isolierter Container
+  (`--network none`, dummy SESSION_SECRET, prod settings.toml); Startup
+  muss die petri_records/platform_records-Migrationen sauber durchlaufen.
+- Kein Run-History-Archiv (Entscheidung 2026-09-20): Detail-Ansichten
+  alter Runs entfallen; `runs`-Summaries überleben die Tabellen-Rebuild-
+  Migration.
+- Deploy-Fenster: kein Conductor-Pass aktiv; 404 bei `fabro ps` heißt
+  „kein Container registriert" — Host via SSH prüfen.
+- Toolchain-Env-PUT + host `docker pull` bleiben EIN Schritt (0e9c).
+- Bootstrap-Lücke: die Linie kann Port-Seeds erst nach Petri-Deploy
+  verarbeiten; W0–W2 agent-seitig, Staging-Instanz früh erwägen (W3-5
+  Conductor-Szenario braucht sie).
+
+## Wellen → Seeds
+
+- **W0** fabro-fef5 — Baseline, Assets, Inventur-Reconciliation
+- **W1** fabro-6c16 (auto-CLI) · fabro-a52f (Gate/Breaker) ·
+  fabro-6655 (Taxonomie-Fold) · fabro-fcb2 (Pin-System v2)
+- **W2** fabro-a875 (Dup-Guard) · fabro-2889 (Publish-Schutz) ·
+  fabro-b5a9 (PR retry+model) · fabro-6945 (Catalog-Overlay)
+- **W3** fabro-2e7b (Quota-Park) · fabro-288d (Exit-Kinds) ·
+  fabro-788b (Preamble) · fabro-fa0a (seed_cycles) ·
+  fabro-96c6 (Asset-Umbau, nach W3-1..4) · fabro-aa5f (Stage-Envelope)
+- **W4** fabro-71a8 (Web) · fabro-afab (Probe+Guards) ·
+  fabro-fdd8 (Server-Betrieb) · fabro-8795 (Wait-Endpoint) ·
+  fabro-d0dd (kleine CLI) · fabro-d420 (Superseded-Beweise)
+- **W5** fabro-d659 — Cutover-Runbook + denkhaus-Archiv
