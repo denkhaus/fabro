@@ -25,4 +25,8 @@ export interface RunModelSettings {
      */
     'fallbacks': { [key: string]: Array<string>; };
     'controls'?: RunModelControls;
+    /**
+     * How long a streaming stage LLM call may wait for its first token before it errors and rides the normal retry/fallback path, in seconds. Null means the engine default (45 s). Applies only to streaming calls; a non-streaming completion has no first-token seam.
+     */
+    'first_token_timeout_secs': number | null;
 }
