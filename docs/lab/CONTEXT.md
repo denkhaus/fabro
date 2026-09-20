@@ -22,3 +22,16 @@ prompts, and ADRs; avoid the listed synonyms.
 - **revision pass** — one select -> analyze -> file cycle within a
   revisor invocation. Bounded per invocation by `revisions_per_pass`
   (ADR-0015); one revisor run performs at most that many passes.
+
+- **seed browser** — the read-only fabro-web view over a repository's seeds:
+  list, detail, dependency graph. The CLI surface is the `fabro seeds`
+  subcommand; a *seed* (singular) stays one work record (`fabro-xxxx`).
+  Synonyms to avoid: "seed explorer", "tracker UI".
+- **additive field** — a record key unknown to the reference CLI that both
+  the old and the new writer preserve on every write; the only sanctioned
+  extension mechanism of the frozen seeds/mulch formats (ADR-0023).
+  Synonyms to avoid: "custom field", "extra field".
+- **canonical domain** — the single normalized mulch domain an
+  implementation writes after alias resolution, collapsing near-duplicate
+  domains (dev-loop/develop-loop/devloop/...). Deferred to the mulch phase.
+  Synonyms to avoid: "domain alias".
