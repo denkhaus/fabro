@@ -148,7 +148,77 @@ if ((journal-nonblocking "/nonexistent/.fabro/journal/none2.jsonl") | is-not-emp
     fail "null-path journal degradation drifted"
 }
 
-print "closeout-smoke: ok — reviewer-journal sweep logic verified"
+# --- Deferred-action sweep (fabro-7aac) --------------------------------
+# Marker matching: `deferred-action:` at the START, case-insensitive,
+# whitespace-tolerant; mid-sentence mentions and plain observations
+# never match.
+if not (is-deferred-action "deferred-action: regen the TS client locally (openapi-generator absent in sandbox)") {
+    fail "is-deferred-action dropped the start marker"
+}
+if not (is-deferred-action "  Deferred-Action: confirm bun build with user") {
+    fail "is-deferred-action is case/whitespace sensitive"
+}
+if (is-deferred-action "we noted a deferred-action: mid-sentence mention") {
+    fail "is-deferred-action matched a mid-sentence marker mention"
+}
+if (is-deferred-action "ordinary observation, no marker") {
+    fail "is-deferred-action matched a plain observation"
+}
+
+# Marker strip: deferred-text yields the action text after the marker;
+# non-matching input passes through (defensive path).
+if (deferred-text "deferred-action: run bun generate locally") != "run bun generate locally" {
+    fail $"deferred-text strip wrong: (deferred-text 'deferred-action: run bun generate locally')"
+}
+if (deferred-text "plain text") != "plain text" {
+    fail "deferred-text passthrough broken"
+}
+
+# Journal parsing: implementer-node observations only; reviewer-node
+# marker observations and non-matching implementer observations never
+# file; unparsable lines degrade away.
+let dj = (
+    deferred-from-journal (
+        [
+            '{"node":"reviewer","data":{"observations":["deferred-action: reviewer is not the sweep source"]}}'
+            '{"node":"implementer","data":{"observations":["wrote the sweep, nothing deferred"]}}'
+            '{"node":"implementer","data":{"observations":["deferred-action: regen fabro-api-client via bun run generate (sandbox lacks java/openapi-generator)"]}}'
+            '{"node":"tester","data":{}}'
+            'not json at all'
+        ] | str join "\n"
+    )
+)
+if ($dj | length) != 1 {
+    fail $"deferred-from-journal wrong count: ($dj | to json -r)"
+}
+if not ($dj.0 | str contains "bun run generate") {
+    fail "deferred-from-journal dropped the action text"
+}
+
+# Null path, fixture journal (tmp file): a real implementer record with
+# NO marker observations must yield an empty list — and an empty list
+# means zero sd create calls in the sweep loop. Also proves the
+# missing-journal path degrades to empty.
+let dtmp = (mktemp -t closeout-deferred-null.XXXXXX.jsonl)
+'{"node":"implementer","data":{"painpoints":[],"observations":["Clean pass: sweep added, smoke green, nothing deferred."]}}' | save -f $dtmp
+if ((journal-deferred $dtmp) | is-not-empty) {
+    fail "deferred null-path fixture journal produced actions (would file seeds)"
+}
+rm -f $dtmp
+if ((journal-deferred "/nonexistent/.fabro/journal/none3.jsonl") | is-not-empty) {
+    fail "deferred missing journal did not degrade to empty"
+}
+
+# Filed-seed title: excerpt + provenance, bounded length.
+let dft = (deferred-title "regen the generated TS client locally with the pinned generator" "fabro-7aac")
+if not ($dft | str starts-with "Deferred follow-up from fabro-7aac:") {
+    fail $"deferred-title missing prefix: ($dft)"
+}
+if ($dft | str length) > 140 {
+    fail "deferred-title unbounded excerpt"
+}
+
+print "closeout-smoke: ok — reviewer-journal and deferred-action sweep logic verified"
 
 
 # Sourcing closeout.nu imports its `def main`; nu auto-invokes it after
