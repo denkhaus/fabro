@@ -94,7 +94,7 @@ use petri_runtime::driver::lifecycle::{
     Prepared, Recorded, ResultOrigin, RunFinished, ScopeAcquired, ScopeAcquiredError,
     ScopeReleased, Transition, TransitionError, TransitionReport,
 };
-use petri_runtime::executor::ExecEnv;
+use petri_runtime::executor::{EnvError, ExecEnv};
 use petri_runtime::ir::{ExecutionId, FailureInfo, ScopeId, Status};
 use serde_json::json;
 use tokio::sync::{Mutex as AsyncMutex, OnceCell};
@@ -103,12 +103,12 @@ use tracing::{debug, info, warn};
 
 use crate::blobs::Blobs;
 use crate::checkpoint::{
-    CHECKPOINT_FAILED_CLASS, CheckpointKey, EXCLUDE_DIRS, RunWorkspaces, Site, Snapshot,
-    WorkspaceDiff,
+    CHECKPOINT_FAILED_CLASS, CheckpointError, CheckpointKey, EXCLUDE_DIRS, RunWorkspaces, Site,
+    Snapshot, WorkspaceDiff,
 };
-use crate::platform_records::PlatformRecords;
-use crate::recovery::{self, Plan, RestoreTarget};
-use crate::workspace::{self, WorkspaceLookup};
+use crate::platform_records::{PlatformRecordError, PlatformRecords};
+use crate::recovery::{self, Plan, RecoveryError, RestoreTarget};
+use crate::workspace::{self, WorkspaceLookup, WorkspaceLookupError};
 
 /// The note kind the hooks record on a firing about its checkpoint.
 pub const CHECKPOINT_NOTE: &str = "fabro.checkpoint";
@@ -129,6 +129,88 @@ const ARTIFACT_MAX_FILE_BYTES: u64 = 10 * 1024 * 1024;
 const ARTIFACT_MAX_TOTAL_BYTES: u64 = 50 * 1024 * 1024;
 /// How deep a traversal root is listed.
 const ARTIFACT_LIST_DEPTH: usize = 64;
+
+/// Why the hooks' own work at a point failed. Each variant keeps its
+/// source, and the chain is rendered once, by [`HookError::render`], at the
+/// Petri boundaries that carry text: the adjusted outcome of a failed
+/// checkpoint, a transition's problems, a scope acquisition's error, and
+/// the log.
+#[derive(Debug, thiserror::Error)]
+pub enum HookError {
+    #[error("the workspace of scope {scope} in invocation {invocation} could not be found")]
+    Lookup {
+        scope:      ScopeId,
+        invocation: InvocationId,
+        #[source]
+        source:     WorkspaceLookupError,
+    },
+    #[error("scope {scope} of execution {execution} has no workspace to snapshot")]
+    NoWorkspace {
+        scope:     ScopeId,
+        execution: ExecutionId,
+    },
+    #[error("the checkpoint commit of `{node}` failed")]
+    Commit {
+        node:   String,
+        #[source]
+        source: CheckpointError,
+    },
+    #[error("the checkpoint commit could not be looked up")]
+    Find(#[source] CheckpointError),
+    #[error("no checkpoint commit exists for {key}")]
+    NoCommit { key: CheckpointKey },
+    #[error("the {what} could not be computed")]
+    Diff {
+        /// `stage's diff` or `run's diff`.
+        what:   &'static str,
+        #[source]
+        source: CheckpointError,
+    },
+    #[error("the {what} could not be stored")]
+    Blob {
+        /// `patch`, or `artifact \`<path>\``.
+        what:   String,
+        #[source]
+        source: anyhow::Error,
+    },
+    #[error("the {kind} record could not be written")]
+    Write {
+        kind:   &'static str,
+        #[source]
+        source: PlatformRecordError,
+    },
+    #[error("the run's {kind} records could not be read")]
+    Read {
+        kind:   &'static str,
+        #[source]
+        source: PlatformRecordError,
+    },
+    #[error("invalid run.artifacts.include pattern")]
+    Globs(#[source] Arc<WorkspaceGlobError>),
+    #[error("the run has no blob table to collect artifacts into")]
+    NoBlobs,
+    #[error("the workspace could not be listed below `{root}`")]
+    List {
+        root:   String,
+        #[source]
+        source: EnvError,
+    },
+    #[error("the run's restore plan could not be read")]
+    Plan(#[source] RecoveryError),
+    #[error("{reason}")]
+    Unresumable { reason: String },
+    #[error(transparent)]
+    Restore(RecoveryError),
+}
+
+impl HookError {
+    /// The error and its causes on one line, for the boundaries that carry
+    /// text.
+    #[must_use]
+    pub fn render(&self) -> String {
+        collect_chain(self).join(": ")
+    }
+}
 
 /// What Fabro's hooks need beside the run: where the platform records go,
 /// who authors the commits, the checkpoint settings, and which files are
@@ -246,7 +328,7 @@ impl CheckpointLedger {
 /// and which were collected already.
 struct ArtifactLedger {
     /// The `[run.artifacts] include` patterns, or why they do not parse.
-    globs:     Result<WorkspaceGlobSet, WorkspaceGlobError>,
+    globs:     Result<WorkspaceGlobSet, Arc<WorkspaceGlobError>>,
     /// Every artifact collected so far, by path and digest: read from the
     /// store once, then kept current with every append.
     collected: OnceCell<Mutex<HashSet<ArtifactIdentity>>>,
@@ -369,7 +451,7 @@ impl FabroHooks {
             handle: OnceLock::new(),
             checkpoints: CheckpointLedger::default(),
             artifacts: ArtifactLedger {
-                globs:     WorkspaceGlobSet::try_new(&spec.artifacts),
+                globs:     WorkspaceGlobSet::try_new(&spec.artifacts).map_err(Arc::new),
                 collected: OnceCell::new(),
             },
             scopes: ScopeEnvs::default(),
@@ -421,7 +503,11 @@ impl FabroHooks {
     /// The workspace id of `scope` in the context's invocation: the
     /// isolated name when its workspace exists, else the inherited one the
     /// records name, else the isolated name for the caller to report.
-    async fn workspace_of(&self, context: &HookContext, scope: ScopeId) -> Result<String, String> {
+    async fn workspace_of(
+        &self,
+        context: &HookContext,
+        scope: ScopeId,
+    ) -> Result<String, HookError> {
         let isolated = workspace::isolated_workspace(context.invocation, scope);
         if self.workspaces.workspace_exists(&isolated).await {
             return Ok(isolated);
@@ -433,12 +519,10 @@ impl FabroHooks {
                 .lookup
                 .inherited(context.invocation)
                 .await
-                .map_err(|error| {
-                    format!(
-                        "the workspace of scope {scope} in invocation {} could not be found: {}",
-                        context.invocation,
-                        collect_chain(&error).join(": ")
-                    )
+                .map_err(|source| HookError::Lookup {
+                    scope,
+                    invocation: context.invocation,
+                    source,
                 })?;
             self.scopes
                 .remember_inherited(context.invocation, inherited.clone());
@@ -461,7 +545,7 @@ impl FabroHooks {
         &self,
         context: &HookContext,
         scope: ScopeId,
-    ) -> Result<Option<(String, Site)>, String> {
+    ) -> Result<Option<(String, Site)>, HookError> {
         if !self.host_workspaces {
             return Ok(self
                 .env_of(context, scope)
@@ -477,7 +561,7 @@ impl FabroHooks {
 
     /// The checkpoint commit for one attempt's result. `Ok(Some)` is the
     /// note to record, `Ok(None)` nothing to record, `Err` the fatal
-    /// failure message.
+    /// failure.
     async fn snapshot(
         &self,
         context: &HookContext,
@@ -486,7 +570,7 @@ impl FabroHooks {
         node: &str,
         status: &Status,
         origin: ResultOrigin,
-    ) -> Result<Option<Note>, String> {
+    ) -> Result<Option<Note>, HookError> {
         let Some((workspace, site)) = self.site_of(context, scope).await? else {
             // A skipped node or a driver-made outcome may precede the scope's
             // environment; nothing of the stage's exists to snapshot.
@@ -501,10 +585,10 @@ impl FabroHooks {
                     }),
                 )));
             }
-            return Err(format!(
-                "scope {scope} of execution {} has no workspace to snapshot",
-                context.execution
-            ));
+            return Err(HookError::NoWorkspace {
+                scope,
+                execution: context.execution,
+            });
         };
         self.gate("commit", node).await;
         let serialized = self.scopes.lock_for(&workspace);
@@ -538,10 +622,10 @@ impl FabroHooks {
                     }),
                 )))
             }
-            Err(error) => Err(format!(
-                "the checkpoint commit of `{node}` failed: {}",
-                collect_chain(&error).join(": ")
-            )),
+            Err(source) => Err(HookError::Commit {
+                node: node.to_string(),
+                source,
+            }),
         }
     }
 
@@ -560,7 +644,7 @@ impl FabroHooks {
             .clone()
             .unwrap_or_else(|| snapshot.sha.clone());
         if let Err(error) = self.record_branch(key, workspace, base_sha).await {
-            warn!(run_id = %self.run_id, error = %error, "the run branch was not recorded");
+            warn!(run_id = %self.run_id, error = %error.render(), "the run branch was not recorded");
         }
     }
 
@@ -577,7 +661,7 @@ impl FabroHooks {
         key: CheckpointKey,
         workspace: &str,
         base_sha: String,
-    ) -> Result<(), String> {
+    ) -> Result<(), HookError> {
         let position = StagePosition {
             execution: key.execution,
             firing:    key.firing,
@@ -587,7 +671,7 @@ impl FabroHooks {
             .branch
             .get_or_try_init(|| async {
                 if let Some(stored) = self.stored_branch().await? {
-                    return Ok::<_, String>(stored);
+                    return Ok::<_, HookError>(stored);
                 }
                 let record = RunBranchRecord {
                     run_branch: Some(self.workspaces.run_branch()),
@@ -601,11 +685,9 @@ impl FabroHooks {
                         Some(position),
                     )
                     .await
-                    .map_err(|error| {
-                        format!(
-                            "the run branch record could not be written: {}",
-                            collect_chain(&error).join(": ")
-                        )
+                    .map_err(|source| HookError::Write {
+                        kind: "run branch",
+                        source,
                     })?;
                 let identity = PlatformRecord::GitIdentity(GitIdentityRecord {
                     identity: self.identity.clone(),
@@ -613,11 +695,9 @@ impl FabroHooks {
                 self.records
                     .append(&self.run_id, &identity, Some(position))
                     .await
-                    .map_err(|error| {
-                        format!(
-                            "the git identity record could not be written: {}",
-                            collect_chain(&error).join(": ")
-                        )
+                    .map_err(|source| HookError::Write {
+                        kind: "git identity",
+                        source,
                     })?;
                 info!(
                     run_id = %self.run_id,
@@ -633,16 +713,14 @@ impl FabroHooks {
     }
 
     /// The run branch the store already holds, when a record exists.
-    async fn stored_branch(&self) -> Result<Option<RunBranchRecord>, String> {
+    async fn stored_branch(&self) -> Result<Option<RunBranchRecord>, HookError> {
         let stored = self
             .records
             .read_kind(&self.run_id, PlatformRecordKind::RunBranch)
             .await
-            .map_err(|error| {
-                format!(
-                    "the run's branch record could not be read: {}",
-                    collect_chain(&error).join(": ")
-                )
+            .map_err(|source| HookError::Read {
+                kind: "branch",
+                source,
             })?;
         Ok(stored.into_iter().find_map(|stored| match stored.record {
             PlatformRecord::RunBranch(record) => Some(record),
@@ -652,9 +730,7 @@ impl FabroHooks {
 
     /// The restore plan of a resumed run, read once: what every live
     /// sandbox workspace must be brought to at its first acquisition.
-    async fn restore_targets(
-        &self,
-    ) -> Result<&Mutex<BTreeMap<String, RestoreTarget>>, ScopeAcquiredError> {
+    async fn restore_targets(&self) -> Result<&Mutex<BTreeMap<String, RestoreTarget>>, HookError> {
         self.restore
             .get_or_try_init(|| async {
                 let plan = recovery::plan(
@@ -664,16 +740,11 @@ impl FabroHooks {
                     &self.workspaces,
                 )
                 .await
-                .map_err(|error| {
-                    ScopeAcquiredError::new(format!(
-                        "the run's restore plan could not be read: {}",
-                        collect_chain(&error).join(": ")
-                    ))
-                })?;
+                .map_err(HookError::Plan)?;
                 match plan {
                     Plan::Resume { targets } => Ok(Mutex::new(targets)),
                     Plan::Start => Ok(Mutex::default()),
-                    Plan::Failed { reason } => Err(ScopeAcquiredError::new(reason)),
+                    Plan::Failed { reason } => Err(HookError::Unresumable { reason }),
                 }
             })
             .await
@@ -684,7 +755,7 @@ impl FabroHooks {
     /// already brought a host workspace there, so this verifies; a fork's
     /// fresh workspace is restored here from the snapshot repository the
     /// fork seeded; a sandbox workspace is only reachable here.
-    async fn restore(&self, workspace: &str, site: &Site) -> Result<(), ScopeAcquiredError> {
+    async fn restore(&self, workspace: &str, site: &Site) -> Result<(), HookError> {
         let targets = self.restore_targets().await?;
         let target = sync::lock(targets).remove(workspace);
         let Some(target) = target else {
@@ -694,12 +765,7 @@ impl FabroHooks {
         let _held = serialized.lock().await;
         let action = recovery::bring_to(&self.workspaces, site, workspace, &target)
             .await
-            .map_err(|error| {
-                ScopeAcquiredError::new(format!(
-                    "the workspace `{workspace}` could not be brought to its snapshot: {}",
-                    collect_chain(&error).join(": ")
-                ))
-            })?;
+            .map_err(HookError::Restore)?;
         info!(
             run_id = %self.run_id,
             workspace,
@@ -718,7 +784,7 @@ impl FabroHooks {
         context: &HookContext,
         scope: ScopeId,
         key: CheckpointKey,
-    ) -> Result<(), String> {
+    ) -> Result<(), HookError> {
         let recorded = self.recorded_checkpoints().await?;
         if sync::lock(recorded).contains(&key) {
             return Ok(());
@@ -736,18 +802,8 @@ impl FabroHooks {
             let found = self.workspaces.find(&workspace, key).await;
             drop(held);
             let sha = found
-                .map_err(|error| {
-                    format!(
-                        "the checkpoint commit could not be looked up: {}",
-                        collect_chain(&error).join(": ")
-                    )
-                })?
-                .ok_or_else(|| {
-                    format!(
-                        "no checkpoint commit exists for execution {} firing {} attempt {}",
-                        key.execution, key.firing, key.attempt
-                    )
-                })?;
+                .map_err(HookError::Find)?
+                .ok_or(HookError::NoCommit { key })?;
             (workspace, sha)
         };
         let (diff_summary, patch_blob) = match self.stage_diff(&workspace, &sha).await {
@@ -758,7 +814,7 @@ impl FabroHooks {
                     run_id = %self.run_id,
                     workspace,
                     sha,
-                    error = %error,
+                    error = %error.render(),
                     "the checkpoint's diff was not computed"
                 );
                 (None, None)
@@ -784,11 +840,9 @@ impl FabroHooks {
                 }),
             )
             .await
-            .map_err(|error| {
-                format!(
-                    "the checkpoint record could not be written: {}",
-                    collect_chain(&error).join(": ")
-                )
+            .map_err(|source| HookError::Write {
+                kind: "checkpoint",
+                source,
             })?;
         sync::lock(recorded).insert(key);
         self.checkpoints.set_last((workspace, sha));
@@ -803,12 +857,16 @@ impl FabroHooks {
         &self,
         workspace: &str,
         sha: &str,
-    ) -> Result<(Option<DiffSummary>, Option<BlobHash>), String> {
+    ) -> Result<(Option<DiffSummary>, Option<BlobHash>), HookError> {
+        let failed = |source| HookError::Diff {
+            what: "stage's diff",
+            source,
+        };
         let parent = self
             .workspaces
             .commit_parent(workspace, sha)
             .await
-            .map_err(|error| collect_chain(&error).join(": "))?;
+            .map_err(failed)?;
         let Some(parent) = parent else {
             return Ok((None, None));
         };
@@ -816,14 +874,14 @@ impl FabroHooks {
             .workspaces
             .diff(workspace, Some(&parent), sha)
             .await
-            .map_err(|error| collect_chain(&error).join(": "))?;
+            .map_err(failed)?;
         let patch_blob = self.patch_blob(&diff).await?;
         Ok((Some(diff.summary), patch_blob))
     }
 
     /// The patch of a diff in the blob table, when the diff is not empty
     /// and the run has a blob table.
-    async fn patch_blob(&self, diff: &WorkspaceDiff) -> Result<Option<BlobHash>, String> {
+    async fn patch_blob(&self, diff: &WorkspaceDiff) -> Result<Option<BlobHash>, HookError> {
         if diff.is_empty() {
             return Ok(None);
         }
@@ -834,14 +892,17 @@ impl FabroHooks {
             .write(diff.patch.as_bytes())
             .await
             .map(Some)
-            .map_err(|error| format!("the patch could not be stored: {error:#}"))
+            .map_err(|source| HookError::Blob {
+                what: "patch".to_string(),
+                source,
+            })
     }
 
     /// The checkpoints already recorded for the run, read once: what a
     /// resume's reissued routing decisions must not record again, and
     /// where the run's diff is measured to when this process made no
     /// checkpoint yet.
-    async fn recorded_checkpoints(&self) -> Result<&Mutex<HashSet<CheckpointKey>>, String> {
+    async fn recorded_checkpoints(&self) -> Result<&Mutex<HashSet<CheckpointKey>>, HookError> {
         self.checkpoints
             .recorded
             .get_or_try_init(|| async {
@@ -849,11 +910,9 @@ impl FabroHooks {
                     .records
                     .read_kind(&self.run_id, PlatformRecordKind::Checkpoint)
                     .await
-                    .map_err(|error| {
-                        format!(
-                            "the run's checkpoint records could not be read: {}",
-                            collect_chain(&error).join(": ")
-                        )
+                    .map_err(|source| HookError::Read {
+                        kind: "checkpoint",
+                        source,
                     })?;
                 let mut recorded = HashSet::new();
                 let mut last = None;
@@ -889,10 +948,10 @@ impl FabroHooks {
         context: &HookContext,
         scope: ScopeId,
         key: CheckpointKey,
-    ) -> Result<usize, String> {
+    ) -> Result<usize, HookError> {
         let globs = match &self.artifacts.globs {
             Ok(globs) => globs,
-            Err(error) => return Err(format!("invalid run.artifacts.include pattern: {error}")),
+            Err(error) => return Err(HookError::Globs(Arc::clone(error))),
         };
         if globs.is_empty() {
             return Ok(0);
@@ -903,7 +962,7 @@ impl FabroHooks {
             return Ok(0);
         };
         let Some(blobs) = &self.blobs else {
-            return Err("the run has no blob table to collect artifacts into".to_string());
+            return Err(HookError::NoBlobs);
         };
         let already = self.collected_artifacts().await?;
         let candidates = list_artifacts(env.as_ref(), globs).await?;
@@ -930,7 +989,10 @@ impl FabroHooks {
             let blob = blobs
                 .write(&bytes)
                 .await
-                .map_err(|error| format!("the artifact `{path}` could not be stored: {error:#}"))?;
+                .map_err(|source| HookError::Blob {
+                    what: format!("artifact `{path}`"),
+                    source,
+                })?;
             let record = PlatformRecord::ArtifactCollected(ArtifactCollectedRecord {
                 execution: key.execution,
                 firing: key.firing,
@@ -951,11 +1013,9 @@ impl FabroHooks {
                     }),
                 )
                 .await
-                .map_err(|error| {
-                    format!(
-                        "the artifact record for `{path}` could not be written: {}",
-                        collect_chain(&error).join(": ")
-                    )
+                .map_err(|source| HookError::Write {
+                    kind: "artifact",
+                    source,
                 })?;
             sync::lock(already).insert(identity);
             total_bytes = total_bytes.saturating_add(size);
@@ -966,7 +1026,7 @@ impl FabroHooks {
 
     /// The artifacts already collected for the run, read once: a file that
     /// is unchanged since it was collected is not collected again.
-    async fn collected_artifacts(&self) -> Result<&Mutex<HashSet<ArtifactIdentity>>, String> {
+    async fn collected_artifacts(&self) -> Result<&Mutex<HashSet<ArtifactIdentity>>, HookError> {
         self.artifacts
             .collected
             .get_or_try_init(|| async {
@@ -974,11 +1034,9 @@ impl FabroHooks {
                     .records
                     .read_kind(&self.run_id, PlatformRecordKind::ArtifactCollected)
                     .await
-                    .map_err(|error| {
-                        format!(
-                            "the run's artifact records could not be read: {}",
-                            collect_chain(&error).join(": ")
-                        )
+                    .map_err(|source| HookError::Read {
+                        kind: "artifact",
+                        source,
                     })?;
                 let collected = stored
                     .into_iter()
@@ -998,7 +1056,7 @@ impl FabroHooks {
     /// the branch started from, in the snapshot repository on this host.
     /// Nothing is recorded for a run that never created its branch or
     /// never checkpointed.
-    async fn record_run_diff(&self) -> Result<(), String> {
+    async fn record_run_diff(&self) -> Result<(), HookError> {
         self.recorded_checkpoints().await?;
         let branch = match self.checkpoints.branch.get() {
             Some(branch) => Some(branch.clone()),
@@ -1023,11 +1081,9 @@ impl FabroHooks {
             .workspaces
             .diff(&workspace, Some(&base_sha), &head_sha)
             .await
-            .map_err(|error| {
-                format!(
-                    "the run's diff could not be computed: {}",
-                    collect_chain(&error).join(": ")
-                )
+            .map_err(|source| HookError::Diff {
+                what: "run's diff",
+                source,
             })?;
         let patch_blob = self.patch_blob(&diff).await?;
         let record = PlatformRecord::RunDiff(RunDiffRecord {
@@ -1039,11 +1095,9 @@ impl FabroHooks {
         self.records
             .append(&self.run_id, &record, None)
             .await
-            .map_err(|error| {
-                format!(
-                    "the run diff record could not be written: {}",
-                    collect_chain(&error).join(": ")
-                )
+            .map_err(|source| HookError::Write {
+                kind: "run diff",
+                source,
             })?;
         info!(
             run_id = %self.run_id,
@@ -1079,7 +1133,7 @@ impl FabroHooks {
 async fn list_artifacts(
     env: &dyn ExecEnv,
     globs: &WorkspaceGlobSet,
-) -> Result<Vec<(String, u64)>, String> {
+) -> Result<Vec<(String, u64)>, HookError> {
     let mut files = Vec::new();
     for root in globs.traversal_roots() {
         let listed = env
@@ -1088,8 +1142,9 @@ async fn list_artifacts(
                 ARTIFACT_LIST_DEPTH,
             )
             .await
-            .map_err(|error| {
-                format!("the workspace could not be listed below `{root}`: {error}")
+            .map_err(|source| HookError::List {
+                root: root.to_string(),
+                source,
             })?;
         for entry in listed {
             if entry.is_dir {
@@ -1176,7 +1231,8 @@ impl ExecutionHooks for FabroHooks {
         {
             Ok(Some(note)) => prepared.notes.push(note),
             Ok(None) => {}
-            Err(message) => {
+            Err(error) => {
+                let message = error.render();
                 warn!(
                     run_id = %self.run_id,
                     node,
@@ -1228,7 +1284,7 @@ impl ExecutionHooks for FabroHooks {
                 error = %problem,
                 "the checkpoint record was not written"
             );
-            problems.push(problem);
+            problems.push(problem.render());
         }
         match self.collect_artifacts(context, scope, key).await {
             Ok(0) => {}
@@ -1251,7 +1307,7 @@ impl ExecutionHooks for FabroHooks {
                     error = %problem,
                     "artifact collection failed"
                 );
-                problems.push(format!("artifact collection failed: {problem}"));
+                problems.push(format!("artifact collection failed: {}", problem.render()));
             }
         }
         let mut report = self.inner.transition(context, transition).await?;
@@ -1267,7 +1323,7 @@ impl ExecutionHooks for FabroHooks {
             "Petri run finished; recording the run's diff and running the run-end hooks"
         );
         if let Err(error) = self.record_run_diff().await {
-            warn!(run_id = %self.run_id, error = %error, "the run's diff was not recorded");
+            warn!(run_id = %self.run_id, error = %error.render(), "the run's diff was not recorded");
         }
         self.inner.run_finished(context, finished).await
     }
@@ -1305,7 +1361,9 @@ impl ExecutionHooks for FabroHooks {
         } else {
             Site::Sandbox(Arc::clone(&acquired.env))
         };
-        self.restore(&workspace, &site).await
+        self.restore(&workspace, &site)
+            .await
+            .map_err(|error| ScopeAcquiredError::new(error.render()))
     }
 }
 

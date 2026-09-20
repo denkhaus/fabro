@@ -178,6 +178,16 @@ impl CheckpointKey {
     }
 }
 
+impl std::fmt::Display for CheckpointKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "execution {} firing {} attempt {}",
+            self.execution, self.firing, self.attempt
+        )
+    }
+}
+
 /// Why a snapshot could not be taken, found or restored.
 #[derive(Debug, thiserror::Error)]
 pub enum CheckpointError {
