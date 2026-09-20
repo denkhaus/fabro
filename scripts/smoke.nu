@@ -39,6 +39,28 @@ def probe [name: string, url: string, --html]: nothing -> record {
 
 def main [port: string = "32276", cli: string = "~/.fabro/bin/fabro"]: nothing -> nothing {
     let base = $"http://127.0.0.1:($port)"
+
+    # Install-mode detection (fabro-b03f): an unconfigured server mounts
+    # only the install router — /install/session answers 401 without a
+    # token, while a configured server has no /install/* routes (404,
+    # removed_web_route in server.rs). Fail with the documented recovery
+    # instead of a wall of API 404s.
+    let probe_install = (do {
+        ^curl -sS -m 5 -o /dev/null -w "%{http_code}" $"($base)/install/session"
+    } | complete)
+    if ($probe_install.exit_code == 0 and ($probe_install.stdout | str trim) == "401") {
+        print -e ""
+        print -e "╔══ SMOKE: server is UNCONFIGURED — install mode active ════════╗"
+        print -e "║ /health answers but /api/v1/* is absent: the fabro-storage  ║"
+        print -e "║ volume has no settings.toml (fresh volume or first boot).    ║"
+        print -e "║ Recovery is one command — print the install URL + token:     ║"
+        print -e "║     just install-url                                          ║"
+        print -e "║ Open the URL, finish the wizard; the container exits and its  ║"
+        print -e "║ restart policy reboots it configured, then re-run just smoke. ║"
+        print -e "╚══════════════════════════════════════════════════════════════╝"
+        exit 1
+    }
+
     mut results = []
 
     # 1. health

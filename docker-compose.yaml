@@ -1,3 +1,13 @@
+# Pinned compose project name (fabro-b03f): without it the project — and
+# with it the derived storage volume `fabro_fabro-storage` — is named after
+# the directory `docker compose` runs from. Bringing the stack up from a
+# different clone/worktree path minted a fresh, empty fabro-storage volume
+# and the refreshed container booted unconfigured (install mode, /api/v1/*
+# 404). Pinning the name makes every invocation path resolve the same
+# project, so a routine `just up` image refresh reuses the configured
+# storage volume (server config: /storage/.home/settings.toml).
+name: fabro
+
 services:
   fabro:
     # Default `local`: the image `just build-image` produces. The previous
