@@ -47,6 +47,16 @@ reality: the direct TypeSafe API is waitlist-only; OpenRouter's
 10. Tests run against a scripted twin (twin_openai pattern); the
     quality gate never needs live OpenRouter or credentials in a
     sandbox. Live validation is the shadow phase itself.
+11. Session-side vehicle: ONE shared repo script
+    `.fabro/scripts/judgment.nu` (Nushell, fail-open by contract,
+    fabro-judgment-v1 log lines, key from env only, version-pinned
+    model) serves the local session skills (iterate / integrate /
+    merge-upstream — the 2026-09-16 skill boundary keeps it out of
+    workflow prompts); the engine hook (fabro-8e13) may reuse it
+    instead of adding its own HTTP path. Session judgments log to a
+    caller-supplied --log-file OUTSIDE the repo, so the engine stream
+    (.fabro/judgments/) and session streams stay separable and the
+    same evaluation tooling can read both.
 
 ## Consequences
 

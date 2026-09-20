@@ -91,6 +91,16 @@ Categorize every incoming commit before deep-diving:
 Build the ledger first: commits x seeds-closed x seeds-created, so
 nothing is reviewed twice and nothing skips review.
 
+Optional judgment pre-screen (ADR-0022): pipe the ledger through
+`nu .fabro/scripts/judgment.nu` to pre-classify ambiguous commits
+(choice: implementation_pr / revisor_pass / process_edit / seeds_sync)
+and flag out-of-scope files per PR (noul) in ONE fan-out call.
+Advisory only — mechanical markers stay grep-first, categories are
+re-verified during review, and the script is fail-open by contract
+(degraded output never blocks). Log outside the repo
+(`~/.local/state/fabro-judgments/<date>.jsonl`) with --skill
+integrate --phase commit-triage --subject <sha>.
+
 ## Phase 2 - Six review axes for every implementation commit
 
 Run all six on every implementation PR. Findings land in the report
@@ -203,6 +213,13 @@ Every landed feature answers: does the source of truth know about it?
 - Missing docs = gap finding, seed-worthy, not a chat note.
 
 ## Phase 3 - Tracker reconciliation
+
+Optional judgment pre-screen (ADR-0022): before deep-diving closures,
+run per-closed-seed Nouls ("is this demand visible in the merged
+diff?") and let flagged seeds take the Phase-3.1 deep check first;
+use it to rerank `sd search` candidates toward "extend that one"
+before filing a sibling. Advisory only, fail-open
+(`.fabro/scripts/judgment.nu`).
 
 1. **Closure verification (fabro-9967/a0e3 lessons):** every seed that
    flipped to closed must show its demand in a merged diff. If not:

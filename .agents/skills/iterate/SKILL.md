@@ -559,6 +559,12 @@ decision, not an accident - it needs the user plus an ADR.
 
 ## Standing rules
 
+- Judgment pre-screens (ADR-0022, optional, lowest priority of the
+  three session skills): composite-score `sd ready` candidates in
+  Phase 1 and per-hunk risk pre-screens in Phase 3 via
+  `.fabro/scripts/judgment.nu` — advisory only, fail-open, thresholds
+  only after the fabro-d4c6 evaluation report exists.
+
 - Security-hole closures are DIRECT agent work (user directive
   2026-09-08): seeds that CLOSE security holes (capability gating,
   credential removal, sandbox hardening) are assigned to `agent`,

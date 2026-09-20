@@ -91,6 +91,16 @@ release build cache lives in the `fabro-docker-cargo-target-<arch>` volume
 
 ## Merge phase
 
+Optional judgment pre-screens (ADR-0022): for diagnosis point 1, one
+fan-out call over both-touched files can rank clean / adjacent-risk /
+real-conflict per file (choice; state = both hunks); for the semantic
+drift scan it is the second net for the non-greppable case ("does the
+stricter loader/schema make this fork file semantically invalid?",
+noul); for smart adaptation, per fork feature obsolescence (noul).
+Grep stays primary (full-tree, untruncated). Advisory only, fail-open
+(`.fabro/scripts/judgment.nu`), log outside the repo with --skill
+merge-upstream.
+
 Run `git merge upstream/main --no-commit` (a background watcher on this
 host auto-pushes new commits within ~30s; `--no-commit` prevents it from
 publishing a default-message merge before adaptations and the real
