@@ -76,15 +76,12 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
-use fabro_checkpoint::author::GitAuthor;
 use fabro_store::platform_records::{
     ArtifactCollectedRecord, CheckpointRecord, GitIdentityRecord, RunBranchRecord, RunDiffRecord,
 };
 use fabro_store::{PlatformRecord, PlatformRecordKind, StagePosition};
-use fabro_types::settings::run::{RunCheckpointSettings, RunNamespace};
-use fabro_types::{
-    BlobHash, DiffSummary, GitIdentity, GitIdentitySource, RunId, SandboxProviderKind,
-};
+use fabro_types::settings::run::RunNamespace;
+use fabro_types::{BlobHash, DiffSummary, GitIdentity, RunId};
 use fabro_util::error::collect_chain;
 use fabro_util::sync;
 use fabro_util::workspace_glob::{WorkspaceGlobError, WorkspaceGlobSet};
@@ -103,8 +100,8 @@ use tracing::{debug, info, warn};
 
 use crate::blobs::Blobs;
 use crate::checkpoint::{
-    CHECKPOINT_FAILED_CLASS, CheckpointError, CheckpointKey, EXCLUDE_DIRS, RunWorkspaces, Site,
-    Snapshot, WorkspaceDiff,
+    CHECKPOINT_FAILED_CLASS, CheckpointError, CheckpointKey, EXCLUDE_DIRS, RunGitSettings,
+    RunWorkspaces, Site, Snapshot, WorkspaceDiff,
 };
 use crate::platform_records::{PlatformRecordError, PlatformRecords};
 use crate::recovery::{self, Plan, RecoveryError, RestoreTarget};
@@ -213,50 +210,27 @@ impl HookError {
 }
 
 /// What Fabro's hooks need beside the run: where the platform records go,
-/// who authors the commits, the checkpoint settings, and which files are
-/// the run's artifacts.
+/// the run's Git settings, and which files are the run's artifacts.
 pub struct HooksSpec {
-    pub records:         Arc<dyn PlatformRecords>,
-    pub author:          GitAuthor,
-    /// Where the author identity came from: the run's settings, or Fabro's
-    /// default.
-    pub identity_source: GitIdentitySource,
-    pub checkpoint:      RunCheckpointSettings,
+    pub records:    Arc<dyn PlatformRecords>,
+    pub git:        RunGitSettings,
     /// The `[run.artifacts] include` patterns: which files of a stage's
     /// workspace are collected after the stage.
-    pub artifacts:       Vec<String>,
-    /// Whether the run's workspaces are on this host (the local sandbox
-    /// provider). A run elsewhere snapshots inside its sandboxes.
-    pub host_workspaces: bool,
+    pub artifacts:  Vec<String>,
     /// A test's gate directory: a checkpoint point named by a `.hold` file
     /// there waits for its `.release` file. `None` outside tests.
-    pub test_gates:      Option<PathBuf>,
+    pub test_gates: Option<PathBuf>,
 }
 
 impl HooksSpec {
-    /// The spec a run's settings give: its Git author, its checkpoint
-    /// settings, its artifact patterns, and whether its sandbox provider
-    /// keeps workspaces on this host.
+    /// The spec a run's settings give: its Git settings and its artifact
+    /// patterns.
     #[must_use]
     pub fn for_run(records: Arc<dyn PlatformRecords>, settings: &RunNamespace) -> Self {
-        let author = settings
-            .git
-            .author
-            .as_ref()
-            .map(GitAuthor::from)
-            .unwrap_or_default();
-        let identity_source = if author.is_default() {
-            GitIdentitySource::Default
-        } else {
-            GitIdentitySource::Explicit
-        };
         Self {
             records,
-            author,
-            identity_source,
-            checkpoint: settings.checkpoint.clone(),
+            git: RunGitSettings::from(settings),
             artifacts: settings.artifacts.include.clone(),
-            host_workspaces: settings.environment.provider == SandboxProviderKind::LOCAL,
             test_gates: None,
         }
     }
@@ -432,12 +406,16 @@ impl FabroHooks {
         blobs: Option<Arc<dyn Blobs>>,
     ) -> Self {
         let identity = GitIdentity {
-            name:   spec.author.name.clone(),
-            email:  spec.author.email.clone(),
-            source: spec.identity_source,
+            name:   spec.git.author.name.clone(),
+            email:  spec.git.author.email.clone(),
+            source: spec.git.identity_source,
         };
-        let workspaces =
-            RunWorkspaces::new(run_dir, run_id.to_string(), spec.author, &spec.checkpoint);
+        let workspaces = RunWorkspaces::new(
+            run_dir,
+            run_id.to_string(),
+            spec.git.author,
+            &spec.git.checkpoint,
+        );
         Self {
             inner,
             run_id,
@@ -446,7 +424,7 @@ impl FabroHooks {
             workspaces,
             lookup: WorkspaceLookup::new(Arc::clone(&store), run_key),
             identity,
-            host_workspaces: spec.host_workspaces,
+            host_workspaces: spec.git.host_workspaces,
             test_gates: spec.test_gates,
             handle: OnceLock::new(),
             checkpoints: CheckpointLedger::default(),

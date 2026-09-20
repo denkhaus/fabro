@@ -43,8 +43,8 @@ use std::time::Duration;
 use fabro_checkpoint::author::GitAuthor;
 use fabro_checkpoint::trailer::{self, Trailer};
 use fabro_store::platform_records::{DecisionRef, OperationKey};
-use fabro_types::DiffSummary;
-use fabro_types::settings::run::RunCheckpointSettings;
+use fabro_types::settings::run::{RunCheckpointSettings, RunNamespace};
+use fabro_types::{DiffSummary, GitIdentitySource, SandboxProviderKind};
 use petri_runtime::executor::{EnvError, ExecEnv, OutputMode, ProcessSpec, Sig};
 use petri_runtime::ir::LogStream;
 use tokio::process::Command;
@@ -91,6 +91,54 @@ pub const EXCLUDE_DIRS: &[&str] = &[
     ".tox",
     ".pytest_cache",
 ];
+
+/// The settings a run's Git work runs under, as its namespace gives them:
+/// who authors the checkpoint commits and where that identity came from,
+/// the checkpoint settings, and whether the sandbox provider keeps the
+/// workspaces on this host. The hooks and recovery both start from it.
+#[derive(Clone, Debug)]
+pub struct RunGitSettings {
+    pub author:          GitAuthor,
+    pub identity_source: GitIdentitySource,
+    pub checkpoint:      RunCheckpointSettings,
+    /// Whether the run's workspaces are on this host (the local sandbox
+    /// provider). A run elsewhere snapshots inside its sandboxes.
+    pub host_workspaces: bool,
+}
+
+impl From<&RunNamespace> for RunGitSettings {
+    fn from(settings: &RunNamespace) -> Self {
+        let author = settings
+            .git
+            .author
+            .as_ref()
+            .map(GitAuthor::from)
+            .unwrap_or_default();
+        let identity_source = if author.is_default() {
+            GitIdentitySource::Default
+        } else {
+            GitIdentitySource::Explicit
+        };
+        Self {
+            author,
+            identity_source,
+            checkpoint: settings.checkpoint.clone(),
+            host_workspaces: settings.environment.provider == SandboxProviderKind::LOCAL,
+        }
+    }
+}
+
+impl Default for RunGitSettings {
+    /// Fabro's default author and checkpoint settings, on this host.
+    fn default() -> Self {
+        Self {
+            author:          GitAuthor::default(),
+            identity_source: GitIdentitySource::Default,
+            checkpoint:      RunCheckpointSettings::default(),
+            host_workspaces: true,
+        }
+    }
+}
 
 /// The identity of one snapshot: the attempt whose files it holds.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
