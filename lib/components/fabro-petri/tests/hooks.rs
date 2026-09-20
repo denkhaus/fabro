@@ -24,7 +24,9 @@ use fabro_checkpoint::author::GitAuthor;
 use fabro_petri::admission::AdmittedGraphs;
 use fabro_petri::blobs::Blobs;
 use fabro_petri::check::{self, Bundle, CheckRequest, Launch};
-use fabro_petri::checkpoint::{CHECKPOINT_FAILED_CLASS, CheckpointKey, RunWorkspaces};
+use fabro_petri::checkpoint::{
+    CHECKPOINT_FAILED_CLASS, CheckpointKey, RunGitSettings, RunWorkspaces,
+};
 use fabro_petri::controls::RunControls;
 use fabro_petri::engine::{self, Execution, RunRequest, RunStatus};
 use fabro_petri::hooks::HooksSpec;
@@ -166,13 +168,13 @@ impl Harness {
 
     fn hooks(&self, provider: &SandboxProviderKind) -> HooksSpec {
         HooksSpec {
-            records:         Arc::clone(&self.records) as Arc<dyn PlatformRecords>,
-            author:          GitAuthor::default(),
-            identity_source: GitIdentitySource::Default,
-            checkpoint:      RunCheckpointSettings::default(),
-            artifacts:       self.artifacts.clone(),
-            host_workspaces: *provider == SandboxProviderKind::LOCAL,
-            test_gates:      None,
+            records:    Arc::clone(&self.records) as Arc<dyn PlatformRecords>,
+            git:        RunGitSettings {
+                host_workspaces: *provider == SandboxProviderKind::LOCAL,
+                ..RunGitSettings::default()
+            },
+            artifacts:  self.artifacts.clone(),
+            test_gates: None,
         }
     }
 
@@ -285,13 +287,11 @@ impl Harness {
 
     async fn recover(&self) -> Recovery {
         recovery::recover(RecoveryRequest {
-            run_id:          self.run_id,
-            run_dir:         self.run_dir.clone(),
-            store:           Arc::clone(&self.store) as Arc<dyn petri_store::RunStore>,
-            records:         Arc::clone(&self.records) as Arc<dyn PlatformRecords>,
-            author:          GitAuthor::default(),
-            checkpoint:      RunCheckpointSettings::default(),
-            host_workspaces: true,
+            run_id:  self.run_id,
+            run_dir: self.run_dir.clone(),
+            store:   Arc::clone(&self.store) as Arc<dyn petri_store::RunStore>,
+            records: Arc::clone(&self.records) as Arc<dyn PlatformRecords>,
+            git:     RunGitSettings::default(),
         })
         .await
         .expect("recovery decides")

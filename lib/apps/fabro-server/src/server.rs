@@ -1201,6 +1201,19 @@ impl AppState {
         &self.petri_projector
     }
 
+    /// The status the server holds for a managed run, so a test can wait
+    /// for the run to settle in the server's own map (what the delete
+    /// precheck reads) and not only in the stored view, which can report
+    /// the run ended first.
+    #[cfg(any(test, feature = "test-support"))]
+    #[must_use]
+    pub fn test_managed_run_status(&self, run_id: &RunId) -> Option<RunStatus> {
+        self.runs
+            .lock()
+            .ok()
+            .and_then(|runs| runs.get(run_id).map(|managed_run| managed_run.status))
+    }
+
     /// The pool the Petri view tables live in, so a test can read them.
     #[cfg(any(test, feature = "test-support"))]
     pub fn test_petri_view_pool(&self) -> DbPool {

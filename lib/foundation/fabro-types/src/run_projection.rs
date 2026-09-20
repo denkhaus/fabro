@@ -122,6 +122,19 @@ impl StageModelUsage {
     pub const MODE_AGENT: &'static str = "agent";
     pub const MODE_ACP: &'static str = "acp";
 
+    /// The usage record of a stage that named its provider and model, with
+    /// no request controls.
+    #[must_use]
+    pub fn new(mode: &str, provider: Option<String>, model: Option<String>) -> Self {
+        Self {
+            mode: mode.to_string(),
+            provider,
+            model,
+            reasoning_effort: None,
+            speed: None,
+        }
+    }
+
     /// Build the usage record from a `stage.prompt` event, returning `None`
     /// when the event carried no model metadata.
     #[must_use]

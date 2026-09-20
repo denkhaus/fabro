@@ -73,19 +73,17 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, MutexGuard, OnceLock, PoisonError};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
-use fabro_checkpoint::author::GitAuthor;
 use fabro_store::platform_records::{
     ArtifactCollectedRecord, CheckpointRecord, GitIdentityRecord, RunBranchRecord, RunDiffRecord,
 };
 use fabro_store::{PlatformRecord, PlatformRecordKind, StagePosition};
-use fabro_types::settings::run::{RunCheckpointSettings, RunNamespace};
-use fabro_types::{
-    BlobHash, DiffSummary, GitIdentity, GitIdentitySource, RunId, SandboxProviderKind,
-};
+use fabro_types::settings::run::RunNamespace;
+use fabro_types::{BlobHash, DiffSummary, GitIdentity, RunId};
 use fabro_util::error::collect_chain;
+use fabro_util::sync;
 use fabro_util::workspace_glob::{WorkspaceGlobError, WorkspaceGlobSet};
 use petri_execution::{CancelReason, CoordinatorHandle, InvocationId, RunKey, RunStore};
 use petri_runtime::driver::lifecycle::{
@@ -93,7 +91,7 @@ use petri_runtime::driver::lifecycle::{
     Prepared, Recorded, ResultOrigin, RunFinished, ScopeAcquired, ScopeAcquiredError,
     ScopeReleased, Transition, TransitionError, TransitionReport,
 };
-use petri_runtime::executor::ExecEnv;
+use petri_runtime::executor::{EnvError, ExecEnv};
 use petri_runtime::ir::{ExecutionId, FailureInfo, ScopeId, Status};
 use serde_json::json;
 use tokio::sync::{Mutex as AsyncMutex, OnceCell};
@@ -102,11 +100,12 @@ use tracing::{debug, info, warn};
 
 use crate::blobs::Blobs;
 use crate::checkpoint::{
-    CHECKPOINT_FAILED_CLASS, CheckpointKey, EXCLUDE_DIRS, RunWorkspaces, Snapshot, WorkspaceDiff,
+    CHECKPOINT_FAILED_CLASS, CheckpointError, CheckpointKey, EXCLUDE_DIRS, RunGitSettings,
+    RunWorkspaces, Site, Snapshot, WorkspaceDiff,
 };
-use crate::platform_records::PlatformRecords;
-use crate::recovery::{self, Plan, RestoreTarget};
-use crate::workspace::{self, WorkspaceLookup};
+use crate::platform_records::{PlatformRecordError, PlatformRecords};
+use crate::recovery::{self, Plan, RecoveryError, RestoreTarget};
+use crate::workspace::{self, WorkspaceLookup, WorkspaceLookupError};
 
 /// The note kind the hooks record on a firing about its checkpoint.
 pub const CHECKPOINT_NOTE: &str = "fabro.checkpoint";
@@ -128,51 +127,110 @@ const ARTIFACT_MAX_TOTAL_BYTES: u64 = 50 * 1024 * 1024;
 /// How deep a traversal root is listed.
 const ARTIFACT_LIST_DEPTH: usize = 64;
 
+/// Why the hooks' own work at a point failed. Each variant keeps its
+/// source, and the chain is rendered once, by [`HookError::render`], at the
+/// Petri boundaries that carry text: the adjusted outcome of a failed
+/// checkpoint, a transition's problems, a scope acquisition's error, and
+/// the log.
+#[derive(Debug, thiserror::Error)]
+pub enum HookError {
+    #[error("the workspace of scope {scope} in invocation {invocation} could not be found")]
+    Lookup {
+        scope:      ScopeId,
+        invocation: InvocationId,
+        #[source]
+        source:     WorkspaceLookupError,
+    },
+    #[error("scope {scope} of execution {execution} has no workspace to snapshot")]
+    NoWorkspace {
+        scope:     ScopeId,
+        execution: ExecutionId,
+    },
+    #[error("the checkpoint commit of `{node}` failed")]
+    Commit {
+        node:   String,
+        #[source]
+        source: CheckpointError,
+    },
+    #[error("the checkpoint commit could not be looked up")]
+    Find(#[source] CheckpointError),
+    #[error("no checkpoint commit exists for {key}")]
+    NoCommit { key: CheckpointKey },
+    #[error("the {what} could not be computed")]
+    Diff {
+        /// `stage's diff` or `run's diff`.
+        what:   &'static str,
+        #[source]
+        source: CheckpointError,
+    },
+    #[error("the {what} could not be stored")]
+    Blob {
+        /// `patch`, or the artifact by its path.
+        what:   String,
+        #[source]
+        source: anyhow::Error,
+    },
+    #[error("the {kind} record could not be written")]
+    Write {
+        kind:   &'static str,
+        #[source]
+        source: PlatformRecordError,
+    },
+    #[error("the run's {kind} records could not be read")]
+    Read {
+        kind:   &'static str,
+        #[source]
+        source: PlatformRecordError,
+    },
+    #[error("invalid run.artifacts.include pattern")]
+    Globs(#[source] Arc<WorkspaceGlobError>),
+    #[error("the run has no blob table to collect artifacts into")]
+    NoBlobs,
+    #[error("the workspace could not be listed below `{root}`")]
+    List {
+        root:   String,
+        #[source]
+        source: EnvError,
+    },
+    #[error("the run's restore plan could not be read")]
+    Plan(#[source] RecoveryError),
+    #[error("{reason}")]
+    Unresumable { reason: String },
+    #[error(transparent)]
+    Restore(RecoveryError),
+}
+
+impl HookError {
+    /// The error and its causes on one line, for the boundaries that carry
+    /// text.
+    #[must_use]
+    pub fn render(&self) -> String {
+        collect_chain(self).join(": ")
+    }
+}
+
 /// What Fabro's hooks need beside the run: where the platform records go,
-/// who authors the commits, the checkpoint settings, and which files are
-/// the run's artifacts.
+/// the run's Git settings, and which files are the run's artifacts.
 pub struct HooksSpec {
-    pub records:         Arc<dyn PlatformRecords>,
-    pub author:          GitAuthor,
-    /// Where the author identity came from: the run's settings, or Fabro's
-    /// default.
-    pub identity_source: GitIdentitySource,
-    pub checkpoint:      RunCheckpointSettings,
+    pub records:    Arc<dyn PlatformRecords>,
+    pub git:        RunGitSettings,
     /// The `[run.artifacts] include` patterns: which files of a stage's
     /// workspace are collected after the stage.
-    pub artifacts:       Vec<String>,
-    /// Whether the run's workspaces are on this host (the local sandbox
-    /// provider). A run elsewhere snapshots inside its sandboxes.
-    pub host_workspaces: bool,
+    pub artifacts:  Vec<String>,
     /// A test's gate directory: a checkpoint point named by a `.hold` file
     /// there waits for its `.release` file. `None` outside tests.
-    pub test_gates:      Option<PathBuf>,
+    pub test_gates: Option<PathBuf>,
 }
 
 impl HooksSpec {
-    /// The spec a run's settings give: its Git author, its checkpoint
-    /// settings, its artifact patterns, and whether its sandbox provider
-    /// keeps workspaces on this host.
+    /// The spec a run's settings give: its Git settings and its artifact
+    /// patterns.
     #[must_use]
     pub fn for_run(records: Arc<dyn PlatformRecords>, settings: &RunNamespace) -> Self {
-        let author = settings
-            .git
-            .author
-            .as_ref()
-            .map(GitAuthor::from)
-            .unwrap_or_default();
-        let identity_source = if author.is_default() {
-            GitIdentitySource::Default
-        } else {
-            GitIdentitySource::Explicit
-        };
         Self {
             records,
-            author,
-            identity_source,
-            checkpoint: settings.checkpoint.clone(),
+            git: RunGitSettings::from(settings),
             artifacts: settings.artifacts.include.clone(),
-            host_workspaces: settings.environment.provider == SandboxProviderKind::LOCAL,
             test_gates: None,
         }
     }
@@ -192,61 +250,145 @@ type AcquiredEnv = (String, Arc<dyn ExecEnv>);
 /// The identity of a collected file: its path and content digest.
 type ArtifactIdentity = (String, String);
 
-/// The last checkpoint recorded: its workspace and commit.
-type LastCheckpoint = (String, String);
+/// A checkpoint's workspace and commit.
+type WorkspaceCommit = (String, String);
 
-/// Fabro's `ExecutionHooks`, around the hooks the runtime installed.
-pub struct FabroHooks {
-    inner:            Arc<dyn ExecutionHooks>,
-    run_id:           RunId,
-    records:          Arc<dyn PlatformRecords>,
-    /// Where an artifact's bytes and a diff's patch go; `None` records
-    /// summaries alone.
-    blobs:            Option<Arc<dyn Blobs>>,
-    workspaces:       RunWorkspaces,
-    lookup:           WorkspaceLookup,
-    identity:         GitIdentity,
-    artifact_globs:   Result<WorkspaceGlobSet, WorkspaceGlobError>,
-    host_workspaces:  bool,
-    test_gates:       Option<PathBuf>,
-    handle:           OnceLock<CoordinatorHandle>,
+/// The run's checkpoints as the hooks track them: what this process
+/// committed, what has its platform record, which was recorded last, and
+/// the run branch.
+#[derive(Default)]
+struct CheckpointLedger {
     /// The workspace and commit of every checkpoint this process made.
-    committed:        Mutex<HashMap<CheckpointKey, (String, String)>>,
-    /// Which checkpoints have their platform record, loaded from the store
-    /// once and kept up to date with every append.
-    recorded:         Mutex<HashSet<CheckpointKey>>,
-    recorded_loaded:  OnceCell<()>,
+    committed: Mutex<HashMap<CheckpointKey, WorkspaceCommit>>,
+    /// Which checkpoints have their platform record: read from the store
+    /// once, then kept current with every append.
+    recorded:  OnceCell<Mutex<HashSet<CheckpointKey>>>,
     /// The workspace and commit of the checkpoint recorded last: the head
     /// the run's diff is measured to.
-    last_checkpoint:  Mutex<Option<LastCheckpoint>>,
+    last:      Mutex<Option<WorkspaceCommit>>,
     /// The run branch as recorded, once: read from the store, or written
     /// by the commit that created the branch.
-    branch:           OnceCell<RunBranchRecord>,
-    /// Every artifact collected so far, by path and digest, loaded from the
-    /// store once and kept up to date with every append.
-    collected:        Mutex<HashSet<ArtifactIdentity>>,
-    collected_loaded: OnceCell<()>,
-    /// Inherited workspaces resolved through the run's records.
-    inherited:        Mutex<HashMap<InvocationId, Option<String>>>,
-    /// One lock per workspace: the branches of a parallel node and a nested
-    /// invocation share their caller's workspace, and Git allows one index
-    /// operation at a time in it.
-    workspace_locks:  Mutex<HashMap<String, Arc<AsyncMutex<()>>>>,
-    /// The checkpoint failure that ended the run, when one did.
-    failure:          Mutex<Option<String>>,
+    branch:    OnceCell<RunBranchRecord>,
+}
+
+impl CheckpointLedger {
+    fn remember_commit(&self, key: CheckpointKey, workspace: &str, sha: &str) {
+        sync::lock(&self.committed).insert(key, (workspace.to_string(), sha.to_string()));
+    }
+
+    fn commit_of(&self, key: CheckpointKey) -> Option<WorkspaceCommit> {
+        sync::lock(&self.committed).get(&key).cloned()
+    }
+
+    fn last(&self) -> Option<WorkspaceCommit> {
+        sync::lock(&self.last).clone()
+    }
+
+    fn set_last(&self, last: WorkspaceCommit) {
+        *sync::lock(&self.last) = Some(last);
+    }
+
+    /// The last checkpoint the store named, kept only when this process
+    /// has not recorded one yet.
+    fn set_last_if_unset(&self, last: Option<WorkspaceCommit>) {
+        let mut current = sync::lock(&self.last);
+        if current.is_none() {
+            *current = last;
+        }
+    }
+}
+
+/// The run's artifacts as the hooks track them: which files are collected,
+/// and which were collected already.
+struct ArtifactLedger {
+    /// The `[run.artifacts] include` patterns, or why they do not parse.
+    globs:     Result<WorkspaceGlobSet, Arc<WorkspaceGlobError>>,
+    /// Every artifact collected so far, by path and digest: read from the
+    /// store once, then kept current with every append.
+    collected: OnceCell<Mutex<HashSet<ArtifactIdentity>>>,
+}
+
+/// Where each acquired scope's workspace is, and the locks that serialize
+/// Git work in it.
+#[derive(Default)]
+struct ScopeEnvs {
     /// The environment of every acquired scope, by execution and scope,
     /// with the workspace id the executor named: where `git` runs when the
     /// workspaces are not on this host, and where artifacts are read from
     /// on every provider. Dropped at release.
-    envs:             Mutex<HashMap<(ExecutionId, ScopeId), AcquiredEnv>>,
+    acquired:  Mutex<HashMap<(ExecutionId, ScopeId), AcquiredEnv>>,
+    /// Inherited workspaces resolved through the run's records.
+    inherited: Mutex<HashMap<InvocationId, Option<String>>>,
+    /// One lock per workspace: the branches of a parallel node and a nested
+    /// invocation share their caller's workspace, and Git allows one index
+    /// operation at a time in it.
+    locks:     Mutex<HashMap<String, Arc<AsyncMutex<()>>>>,
+}
+
+impl ScopeEnvs {
+    fn insert(&self, execution: ExecutionId, scope: ScopeId, env: AcquiredEnv) {
+        sync::lock(&self.acquired).insert((execution, scope), env);
+    }
+
+    fn remove(&self, execution: ExecutionId, scope: ScopeId) {
+        sync::lock(&self.acquired).remove(&(execution, scope));
+    }
+
+    fn get(&self, execution: ExecutionId, scope: ScopeId) -> Option<AcquiredEnv> {
+        sync::lock(&self.acquired).get(&(execution, scope)).cloned()
+    }
+
+    /// The inherited workspace of an invocation, once resolved: `None`
+    /// when not resolved yet, `Some(None)` when it inherits none.
+    #[expect(
+        clippy::option_option,
+        reason = "the outer option is the cache miss; the inner is an invocation that inherits no workspace"
+    )]
+    fn inherited(&self, invocation: InvocationId) -> Option<Option<String>> {
+        sync::lock(&self.inherited).get(&invocation).cloned()
+    }
+
+    fn remember_inherited(&self, invocation: InvocationId, inherited: Option<String>) {
+        sync::lock(&self.inherited).insert(invocation, inherited);
+    }
+
+    /// The lock that serializes Git work in one workspace.
+    fn lock_for(&self, workspace: &str) -> Arc<AsyncMutex<()>> {
+        Arc::clone(
+            sync::lock(&self.locks)
+                .entry(workspace.to_string())
+                .or_default(),
+        )
+    }
+}
+
+/// Fabro's `ExecutionHooks`, around the hooks the runtime installed.
+pub struct FabroHooks {
+    inner:           Arc<dyn ExecutionHooks>,
+    run_id:          RunId,
+    records:         Arc<dyn PlatformRecords>,
+    /// Where an artifact's bytes and a diff's patch go; `None` records
+    /// summaries alone.
+    blobs:           Option<Arc<dyn Blobs>>,
+    workspaces:      RunWorkspaces,
+    lookup:          WorkspaceLookup,
+    identity:        GitIdentity,
+    host_workspaces: bool,
+    test_gates:      Option<PathBuf>,
+    handle:          OnceLock<CoordinatorHandle>,
+    checkpoints:     CheckpointLedger,
+    artifacts:       ArtifactLedger,
+    scopes:          ScopeEnvs,
+    /// The checkpoint failure that ended the run, when one did.
+    failure:         Mutex<Option<String>>,
     /// Whether the run continues from its records: a sandbox workspace is
     /// then brought to its snapshot when its scope is first acquired.
-    resumed:          bool,
+    resumed:         bool,
     /// The snapshot every live sandbox workspace must sit on before work
     /// resumes in it, read once from the records; an entry leaves when it
     /// is applied.
-    restore:          OnceCell<Mutex<BTreeMap<String, RestoreTarget>>>,
-    store:            Arc<dyn RunStore>,
+    restore:         OnceCell<Mutex<BTreeMap<String, RestoreTarget>>>,
+    store:           Arc<dyn RunStore>,
 }
 
 impl FabroHooks {
@@ -268,12 +410,16 @@ impl FabroHooks {
         blobs: Option<Arc<dyn Blobs>>,
     ) -> Self {
         let identity = GitIdentity {
-            name:   spec.author.name.clone(),
-            email:  spec.author.email.clone(),
-            source: spec.identity_source,
+            name:   spec.git.author.name.clone(),
+            email:  spec.git.author.email.clone(),
+            source: spec.git.identity_source,
         };
-        let workspaces =
-            RunWorkspaces::new(run_dir, run_id.to_string(), spec.author, &spec.checkpoint);
+        let workspaces = RunWorkspaces::new(
+            run_dir,
+            run_id.to_string(),
+            spec.git.author,
+            &spec.git.checkpoint,
+        );
         Self {
             inner,
             run_id,
@@ -282,21 +428,16 @@ impl FabroHooks {
             workspaces,
             lookup: WorkspaceLookup::new(Arc::clone(&store), run_key),
             identity,
-            artifact_globs: WorkspaceGlobSet::try_new(&spec.artifacts),
-            host_workspaces: spec.host_workspaces,
+            host_workspaces: spec.git.host_workspaces,
             test_gates: spec.test_gates,
             handle: OnceLock::new(),
-            committed: Mutex::default(),
-            recorded: Mutex::default(),
-            recorded_loaded: OnceCell::new(),
-            last_checkpoint: Mutex::default(),
-            branch: OnceCell::new(),
-            collected: Mutex::default(),
-            collected_loaded: OnceCell::new(),
-            inherited: Mutex::default(),
-            workspace_locks: Mutex::default(),
+            checkpoints: CheckpointLedger::default(),
+            artifacts: ArtifactLedger {
+                globs:     WorkspaceGlobSet::try_new(&spec.artifacts).map_err(Arc::new),
+                collected: OnceCell::new(),
+            },
+            scopes: ScopeEnvs::default(),
             failure: Mutex::default(),
-            envs: Mutex::default(),
             resumed,
             restore: OnceCell::new(),
             store,
@@ -315,7 +456,7 @@ impl FabroHooks {
     /// engine reports the run failed with.
     #[must_use]
     pub fn checkpoint_failure(&self) -> Option<String> {
-        lock(&self.failure).clone()
+        sync::lock(&self.failure).clone()
     }
 
     /// The run's workspaces on this host, as the hooks reach them.
@@ -324,17 +465,8 @@ impl FabroHooks {
         &self.workspaces
     }
 
-    /// The lock that serializes Git work in one workspace.
-    fn workspace_lock(&self, workspace: &str) -> Arc<AsyncMutex<()>> {
-        Arc::clone(
-            lock(&self.workspace_locks)
-                .entry(workspace.to_string())
-                .or_default(),
-        )
-    }
-
     fn fail_run(&self, message: &str) {
-        let mut failure = lock(&self.failure);
+        let mut failure = sync::lock(&self.failure);
         if failure.is_none() {
             *failure = Some(message.to_string());
         }
@@ -353,27 +485,29 @@ impl FabroHooks {
     /// The workspace id of `scope` in the context's invocation: the
     /// isolated name when its workspace exists, else the inherited one the
     /// records name, else the isolated name for the caller to report.
-    async fn workspace_of(&self, context: &HookContext, scope: ScopeId) -> Result<String, String> {
+    async fn workspace_of(
+        &self,
+        context: &HookContext,
+        scope: ScopeId,
+    ) -> Result<String, HookError> {
         let isolated = workspace::isolated_workspace(context.invocation, scope);
         if self.workspaces.workspace_exists(&isolated).await {
             return Ok(isolated);
         }
-        let cached = lock(&self.inherited).get(&context.invocation).cloned();
-        let inherited = if let Some(inherited) = cached {
+        let inherited = if let Some(inherited) = self.scopes.inherited(context.invocation) {
             inherited
         } else {
             let inherited = self
                 .lookup
                 .inherited(context.invocation)
                 .await
-                .map_err(|error| {
-                    format!(
-                        "the workspace of scope {scope} in invocation {} could not be found: {}",
-                        context.invocation,
-                        collect_chain(&error).join(": ")
-                    )
+                .map_err(|source| HookError::Lookup {
+                    scope,
+                    invocation: context.invocation,
+                    source,
                 })?;
-            lock(&self.inherited).insert(context.invocation, inherited.clone());
+            self.scopes
+                .remember_inherited(context.invocation, inherited.clone());
             inherited
         };
         Ok(inherited.unwrap_or(isolated))
@@ -382,12 +516,34 @@ impl FabroHooks {
     /// The environment of `scope` in the context's execution, as
     /// `scope_acquired` kept it, with the workspace id the executor named.
     fn env_of(&self, context: &HookContext, scope: ScopeId) -> Option<AcquiredEnv> {
-        lock(&self.envs).get(&(context.execution, scope)).cloned()
+        self.scopes.get(context.execution, scope)
+    }
+
+    /// Where `scope`'s workspace is and what to call it: on this host, the
+    /// directory the records name (`None` when it does not exist yet); in
+    /// a sandbox, the environment kept at `scope_acquired` (`None` before
+    /// the scope was acquired).
+    async fn site_of(
+        &self,
+        context: &HookContext,
+        scope: ScopeId,
+    ) -> Result<Option<(String, Site)>, HookError> {
+        if !self.host_workspaces {
+            return Ok(self
+                .env_of(context, scope)
+                .map(|(workspace, env)| (workspace, Site::Sandbox(env))));
+        }
+        let workspace = self.workspace_of(context, scope).await?;
+        if !self.workspaces.workspace_exists(&workspace).await {
+            return Ok(None);
+        }
+        let site = self.workspaces.host(&workspace);
+        Ok(Some((workspace, site)))
     }
 
     /// The checkpoint commit for one attempt's result. `Ok(Some)` is the
     /// note to record, `Ok(None)` nothing to record, `Err` the fatal
-    /// failure message.
+    /// failure.
     async fn snapshot(
         &self,
         context: &HookContext,
@@ -396,16 +552,10 @@ impl FabroHooks {
         node: &str,
         status: &Status,
         origin: ResultOrigin,
-    ) -> Result<Option<Note>, String> {
-        if !self.host_workspaces {
-            return self
-                .snapshot_in_sandbox(context, scope, key, node, status, origin)
-                .await;
-        }
-        let workspace = self.workspace_of(context, scope).await?;
-        if !self.workspaces.workspace_exists(&workspace).await {
+    ) -> Result<Option<Note>, HookError> {
+        let Some((workspace, site)) = self.site_of(context, scope).await? else {
             // A skipped node or a driver-made outcome may precede the scope's
-            // environment; nothing of the stage's is on disk to snapshot.
+            // environment; nothing of the stage's exists to snapshot.
             if origin == ResultOrigin::Driver || matches!(status, Status::Skipped) {
                 return Ok(Some(Note::new(
                     CHECKPOINT_NOTE,
@@ -413,22 +563,21 @@ impl FabroHooks {
                         "execution": key.execution,
                         "firing": key.firing,
                         "attempt": key.attempt,
-                        "workspace": workspace,
-                        "skipped": "the workspace does not exist yet",
+                        "skipped": "the scope has no workspace yet",
                     }),
                 )));
             }
-            return Err(format!(
-                "the workspace `{workspace}` of scope {scope} does not exist at {}",
-                self.workspaces.workspace_path(&workspace).display()
-            ));
-        }
+            return Err(HookError::NoWorkspace {
+                scope,
+                execution: context.execution,
+            });
+        };
         self.gate("commit", node).await;
-        let serialized = self.workspace_lock(&workspace);
+        let serialized = self.scopes.lock_for(&workspace);
         let _held = serialized.lock().await;
         match self
             .workspaces
-            .commit(&workspace, key, node, status.tag())
+            .commit(&site, &workspace, key, node, status.tag())
             .await
         {
             Ok(snapshot) => {
@@ -439,6 +588,7 @@ impl FabroHooks {
                     firing = key.firing,
                     attempt = key.attempt,
                     reused = snapshot.reused,
+                    site = ?site,
                     "checkpoint committed"
                 );
                 self.committed(key, &workspace, &snapshot).await;
@@ -454,85 +604,18 @@ impl FabroHooks {
                     }),
                 )))
             }
-            Err(error) => Err(format!(
-                "the checkpoint commit of `{node}` failed: {}",
-                collect_chain(&error).join(": ")
-            )),
-        }
-    }
-
-    /// [`snapshot`](Self::snapshot) for a workspace inside the scope's
-    /// sandbox, through the environment kept at `scope_acquired`.
-    async fn snapshot_in_sandbox(
-        &self,
-        context: &HookContext,
-        scope: ScopeId,
-        key: CheckpointKey,
-        node: &str,
-        status: &Status,
-        origin: ResultOrigin,
-    ) -> Result<Option<Note>, String> {
-        let Some((workspace, env)) = self.env_of(context, scope) else {
-            // A skipped node or a driver-made outcome may precede the scope's
-            // environment; nothing of the stage's exists to snapshot.
-            if origin == ResultOrigin::Driver || matches!(status, Status::Skipped) {
-                return Ok(Some(Note::new(
-                    CHECKPOINT_NOTE,
-                    json!({
-                        "execution": key.execution,
-                        "firing": key.firing,
-                        "attempt": key.attempt,
-                        "skipped": "the scope has no environment yet",
-                    }),
-                )));
-            }
-            return Err(format!(
-                "scope {scope} of execution {} has no sandbox environment to snapshot in",
-                context.execution
-            ));
-        };
-        self.gate("commit", node).await;
-        let serialized = self.workspace_lock(&workspace);
-        let _held = serialized.lock().await;
-        match self
-            .workspaces
-            .commit_in(&env, &workspace, key, node, status.tag())
-            .await
-        {
-            Ok(snapshot) => {
-                debug!(
-                    run_id = %self.run_id,
-                    node,
-                    execution = key.execution,
-                    firing = key.firing,
-                    attempt = key.attempt,
-                    reused = snapshot.reused,
-                    "checkpoint committed in the sandbox"
-                );
-                self.committed(key, &workspace, &snapshot).await;
-                Ok(Some(Note::new(
-                    CHECKPOINT_NOTE,
-                    json!({
-                        "execution": key.execution,
-                        "firing": key.firing,
-                        "attempt": key.attempt,
-                        "workspace": workspace,
-                        "git_commit_sha": snapshot.sha,
-                        "reused": snapshot.reused,
-                    }),
-                )))
-            }
-            Err(error) => Err(format!(
-                "the checkpoint commit of `{node}` in the sandbox failed: {}",
-                collect_chain(&error).join(": ")
-            )),
+            Err(source) => Err(HookError::Commit {
+                node: node.to_string(),
+                source,
+            }),
         }
     }
 
     /// Remember a commit this process made, and record the run branch when
     /// this commit created it.
     async fn committed(&self, key: CheckpointKey, workspace: &str, snapshot: &Snapshot) {
-        lock(&self.committed).insert(key, (workspace.to_string(), snapshot.sha.clone()));
+        self.checkpoints
+            .remember_commit(key, workspace, &snapshot.sha);
         let Some(branched) = &snapshot.branched else {
             return;
         };
@@ -543,7 +626,7 @@ impl FabroHooks {
             .clone()
             .unwrap_or_else(|| snapshot.sha.clone());
         if let Err(error) = self.record_branch(key, workspace, base_sha).await {
-            warn!(run_id = %self.run_id, error = %error, "the run branch was not recorded");
+            warn!(run_id = %self.run_id, error = %error.render(), "the run branch was not recorded");
         }
     }
 
@@ -560,16 +643,17 @@ impl FabroHooks {
         key: CheckpointKey,
         workspace: &str,
         base_sha: String,
-    ) -> Result<(), String> {
+    ) -> Result<(), HookError> {
         let position = StagePosition {
             execution: key.execution,
             firing:    key.firing,
         };
         let branch = self
+            .checkpoints
             .branch
             .get_or_try_init(|| async {
                 if let Some(stored) = self.stored_branch().await? {
-                    return Ok::<_, String>(stored);
+                    return Ok::<_, HookError>(stored);
                 }
                 let record = RunBranchRecord {
                     run_branch: Some(self.workspaces.run_branch()),
@@ -583,11 +667,9 @@ impl FabroHooks {
                         Some(position),
                     )
                     .await
-                    .map_err(|error| {
-                        format!(
-                            "the run branch record could not be written: {}",
-                            collect_chain(&error).join(": ")
-                        )
+                    .map_err(|source| HookError::Write {
+                        kind: "run branch",
+                        source,
                     })?;
                 let identity = PlatformRecord::GitIdentity(GitIdentityRecord {
                     identity: self.identity.clone(),
@@ -595,11 +677,9 @@ impl FabroHooks {
                 self.records
                     .append(&self.run_id, &identity, Some(position))
                     .await
-                    .map_err(|error| {
-                        format!(
-                            "the git identity record could not be written: {}",
-                            collect_chain(&error).join(": ")
-                        )
+                    .map_err(|source| HookError::Write {
+                        kind: "git identity",
+                        source,
                     })?;
                 info!(
                     run_id = %self.run_id,
@@ -615,16 +695,14 @@ impl FabroHooks {
     }
 
     /// The run branch the store already holds, when a record exists.
-    async fn stored_branch(&self) -> Result<Option<RunBranchRecord>, String> {
+    async fn stored_branch(&self) -> Result<Option<RunBranchRecord>, HookError> {
         let stored = self
             .records
             .read_kind(&self.run_id, PlatformRecordKind::RunBranch)
             .await
-            .map_err(|error| {
-                format!(
-                    "the run's branch record could not be read: {}",
-                    collect_chain(&error).join(": ")
-                )
+            .map_err(|source| HookError::Read {
+                kind: "branch",
+                source,
             })?;
         Ok(stored.into_iter().find_map(|stored| match stored.record {
             PlatformRecord::RunBranch(record) => Some(record),
@@ -634,9 +712,7 @@ impl FabroHooks {
 
     /// The restore plan of a resumed run, read once: what every live
     /// sandbox workspace must be brought to at its first acquisition.
-    async fn restore_targets(
-        &self,
-    ) -> Result<&Mutex<BTreeMap<String, RestoreTarget>>, ScopeAcquiredError> {
+    async fn restore_targets(&self) -> Result<&Mutex<BTreeMap<String, RestoreTarget>>, HookError> {
         self.restore
             .get_or_try_init(|| async {
                 let plan = recovery::plan(
@@ -646,80 +722,39 @@ impl FabroHooks {
                     &self.workspaces,
                 )
                 .await
-                .map_err(|error| {
-                    ScopeAcquiredError::new(format!(
-                        "the run's restore plan could not be read: {}",
-                        collect_chain(&error).join(": ")
-                    ))
-                })?;
+                .map_err(HookError::Plan)?;
                 match plan {
                     Plan::Resume { targets } => Ok(Mutex::new(targets)),
                     Plan::Start => Ok(Mutex::default()),
-                    Plan::Failed { reason } => Err(ScopeAcquiredError::new(reason)),
+                    Plan::Failed { reason } => Err(HookError::Unresumable { reason }),
                 }
             })
             .await
     }
 
-    /// Bring a host workspace to the snapshot the resumed run's durable
-    /// state names, once, at its first acquisition. After a restart the
-    /// server already brought it there, so this verifies; a fork's fresh
-    /// workspace is restored here from the snapshot repository the fork
-    /// seeded.
-    async fn restore_host(&self, workspace: &str) -> Result<(), ScopeAcquiredError> {
+    /// Bring a workspace to the snapshot the resumed run's durable state
+    /// names, once, at its first acquisition. After a restart the server
+    /// already brought a host workspace there, so this verifies; a fork's
+    /// fresh workspace is restored here from the snapshot repository the
+    /// fork seeded; a sandbox workspace is only reachable here.
+    async fn restore(&self, workspace: &str, site: &Site) -> Result<(), HookError> {
         let targets = self.restore_targets().await?;
-        let target = lock(targets).remove(workspace);
+        let target = sync::lock(targets).remove(workspace);
         let Some(target) = target else {
             return Ok(());
         };
-        let serialized = self.workspace_lock(workspace);
+        let serialized = self.scopes.lock_for(workspace);
         let _held = serialized.lock().await;
-        let action = recovery::bring_host_to(&self.workspaces, workspace, &target)
+        let action = recovery::bring_to(&self.workspaces, site, workspace, &target)
             .await
-            .map_err(|error| {
-                ScopeAcquiredError::new(format!(
-                    "the host workspace `{workspace}` could not be brought to its snapshot: {}",
-                    collect_chain(&error).join(": ")
-                ))
-            })?;
+            .map_err(HookError::Restore)?;
         info!(
             run_id = %self.run_id,
             workspace,
             sha = target.sha,
             action = ?action,
-            "host workspace brought to its durable snapshot"
-        );
-        Ok(())
-    }
-
-    /// Bring a sandbox workspace to the snapshot the resumed run's durable
-    /// state names, once, at its first acquisition.
-    async fn restore_sandbox(
-        &self,
-        workspace: &str,
-        env: &Arc<dyn ExecEnv>,
-    ) -> Result<(), ScopeAcquiredError> {
-        let targets = self.restore_targets().await?;
-        let target = lock(targets).remove(workspace);
-        let Some(target) = target else {
-            return Ok(());
-        };
-        let serialized = self.workspace_lock(workspace);
-        let _held = serialized.lock().await;
-        let action = recovery::bring_sandbox_to(&self.workspaces, env, workspace, &target)
-            .await
-            .map_err(|error| {
-                ScopeAcquiredError::new(format!(
-                    "the sandbox workspace `{workspace}` could not be brought to its snapshot: {}",
-                    collect_chain(&error).join(": ")
-                ))
-            })?;
-        info!(
-            run_id = %self.run_id,
-            workspace,
-            sha = target.sha,
-            action = ?action,
-            "sandbox workspace brought to its durable snapshot"
+            site = ?site,
+            "workspace brought to its durable snapshot"
         );
         Ok(())
     }
@@ -731,15 +766,12 @@ impl FabroHooks {
         context: &HookContext,
         scope: ScopeId,
         key: CheckpointKey,
-    ) -> Result<(), String> {
-        self.recorded_loaded
-            .get_or_try_init(|| self.load_recorded())
-            .await?;
-        if lock(&self.recorded).contains(&key) {
+    ) -> Result<(), HookError> {
+        let recorded = self.recorded_checkpoints().await?;
+        if sync::lock(recorded).contains(&key) {
             return Ok(());
         }
-        let committed = lock(&self.committed).get(&key).cloned();
-        let (workspace, sha) = if let Some(committed) = committed {
+        let (workspace, sha) = if let Some(committed) = self.checkpoints.commit_of(key) {
             committed
         } else {
             let acquired = self.env_of(context, scope).map(|(workspace, _)| workspace);
@@ -747,23 +779,13 @@ impl FabroHooks {
                 Some(workspace) => workspace,
                 None => self.workspace_of(context, scope).await?,
             };
-            let serialized = self.workspace_lock(&workspace);
+            let serialized = self.scopes.lock_for(&workspace);
             let held = serialized.lock().await;
             let found = self.workspaces.find(&workspace, key).await;
             drop(held);
             let sha = found
-                .map_err(|error| {
-                    format!(
-                        "the checkpoint commit could not be looked up: {}",
-                        collect_chain(&error).join(": ")
-                    )
-                })?
-                .ok_or_else(|| {
-                    format!(
-                        "no checkpoint commit exists for execution {} firing {} attempt {}",
-                        key.execution, key.firing, key.attempt
-                    )
-                })?;
+                .map_err(HookError::Find)?
+                .ok_or(HookError::NoCommit { key })?;
             (workspace, sha)
         };
         let (diff_summary, patch_blob) = match self.stage_diff(&workspace, &sha).await {
@@ -774,7 +796,7 @@ impl FabroHooks {
                     run_id = %self.run_id,
                     workspace,
                     sha,
-                    error = %error,
+                    error = %error.render(),
                     "the checkpoint's diff was not computed"
                 );
                 (None, None)
@@ -800,14 +822,12 @@ impl FabroHooks {
                 }),
             )
             .await
-            .map_err(|error| {
-                format!(
-                    "the checkpoint record could not be written: {}",
-                    collect_chain(&error).join(": ")
-                )
+            .map_err(|source| HookError::Write {
+                kind: "checkpoint",
+                source,
             })?;
-        lock(&self.recorded).insert(key);
-        *lock(&self.last_checkpoint) = Some((workspace, sha));
+        sync::lock(recorded).insert(key);
+        self.checkpoints.set_last((workspace, sha));
         Ok(())
     }
 
@@ -819,12 +839,16 @@ impl FabroHooks {
         &self,
         workspace: &str,
         sha: &str,
-    ) -> Result<(Option<DiffSummary>, Option<BlobHash>), String> {
+    ) -> Result<(Option<DiffSummary>, Option<BlobHash>), HookError> {
+        let failed = |source| HookError::Diff {
+            what: "stage's diff",
+            source,
+        };
         let parent = self
             .workspaces
             .commit_parent(workspace, sha)
             .await
-            .map_err(|error| collect_chain(&error).join(": "))?;
+            .map_err(failed)?;
         let Some(parent) = parent else {
             return Ok((None, None));
         };
@@ -832,14 +856,14 @@ impl FabroHooks {
             .workspaces
             .diff(workspace, Some(&parent), sha)
             .await
-            .map_err(|error| collect_chain(&error).join(": "))?;
+            .map_err(failed)?;
         let patch_blob = self.patch_blob(&diff).await?;
         Ok((Some(diff.summary), patch_blob))
     }
 
     /// The patch of a diff in the blob table, when the diff is not empty
     /// and the run has a blob table.
-    async fn patch_blob(&self, diff: &WorkspaceDiff) -> Result<Option<BlobHash>, String> {
+    async fn patch_blob(&self, diff: &WorkspaceDiff) -> Result<Option<BlobHash>, HookError> {
         if diff.is_empty() {
             return Ok(None);
         }
@@ -850,49 +874,51 @@ impl FabroHooks {
             .write(diff.patch.as_bytes())
             .await
             .map(Some)
-            .map_err(|error| format!("the patch could not be stored: {error:#}"))
+            .map_err(|source| HookError::Blob {
+                what: "patch".to_string(),
+                source,
+            })
     }
 
     /// The checkpoints already recorded for the run, read once: what a
     /// resume's reissued routing decisions must not record again, and
     /// where the run's diff is measured to when this process made no
     /// checkpoint yet.
-    async fn load_recorded(&self) -> Result<(), String> {
-        let stored = self
-            .records
-            .read_kind(&self.run_id, PlatformRecordKind::Checkpoint)
+    async fn recorded_checkpoints(&self) -> Result<&Mutex<HashSet<CheckpointKey>>, HookError> {
+        self.checkpoints
+            .recorded
+            .get_or_try_init(|| async {
+                let stored = self
+                    .records
+                    .read_kind(&self.run_id, PlatformRecordKind::Checkpoint)
+                    .await
+                    .map_err(|source| HookError::Read {
+                        kind: "checkpoint",
+                        source,
+                    })?;
+                let mut recorded = HashSet::new();
+                let mut last = None;
+                for record in stored {
+                    let PlatformRecord::Checkpoint(checkpoint) = &record.record else {
+                        continue;
+                    };
+                    if let Some(key) = checkpoint
+                        .operation
+                        .as_ref()
+                        .and_then(CheckpointKey::from_operation)
+                    {
+                        recorded.insert(key);
+                    }
+                    if let (Some(workspace), Some(sha)) =
+                        (&checkpoint.workspace, &checkpoint.git_commit_sha)
+                    {
+                        last = Some((workspace.clone(), sha.clone()));
+                    }
+                }
+                self.checkpoints.set_last_if_unset(last);
+                Ok(Mutex::new(recorded))
+            })
             .await
-            .map_err(|error| {
-                format!(
-                    "the run's checkpoint records could not be read: {}",
-                    collect_chain(&error).join(": ")
-                )
-            })?;
-        let mut recorded = lock(&self.recorded);
-        let mut last = None;
-        for record in stored {
-            let PlatformRecord::Checkpoint(checkpoint) = &record.record else {
-                continue;
-            };
-            if let Some(key) = checkpoint
-                .operation
-                .as_ref()
-                .and_then(CheckpointKey::from_operation)
-            {
-                recorded.insert(key);
-            }
-            if let (Some(workspace), Some(sha)) =
-                (&checkpoint.workspace, &checkpoint.git_commit_sha)
-            {
-                last = Some((workspace.clone(), sha.clone()));
-            }
-        }
-        drop(recorded);
-        let mut last_checkpoint = lock(&self.last_checkpoint);
-        if last_checkpoint.is_none() {
-            *last_checkpoint = last;
-        }
-        Ok(())
     }
 
     /// The artifacts of a finished attempt: every file of its workspace
@@ -904,10 +930,10 @@ impl FabroHooks {
         context: &HookContext,
         scope: ScopeId,
         key: CheckpointKey,
-    ) -> Result<usize, String> {
-        let globs = match &self.artifact_globs {
+    ) -> Result<usize, HookError> {
+        let globs = match &self.artifacts.globs {
             Ok(globs) => globs,
-            Err(error) => return Err(format!("invalid run.artifacts.include pattern: {error}")),
+            Err(error) => return Err(HookError::Globs(Arc::clone(error))),
         };
         if globs.is_empty() {
             return Ok(0);
@@ -918,11 +944,9 @@ impl FabroHooks {
             return Ok(0);
         };
         let Some(blobs) = &self.blobs else {
-            return Err("the run has no blob table to collect artifacts into".to_string());
+            return Err(HookError::NoBlobs);
         };
-        self.collected_loaded
-            .get_or_try_init(|| self.load_collected())
-            .await?;
+        let already = self.collected_artifacts().await?;
         let candidates = list_artifacts(env.as_ref(), globs).await?;
         let limit = usize::try_from(ARTIFACT_MAX_FILE_BYTES).unwrap_or(usize::MAX);
         let mut collected = 0;
@@ -941,13 +965,16 @@ impl FabroHooks {
             };
             let digest = BlobHash::new(&bytes);
             let identity = (path.clone(), digest.to_string());
-            if lock(&self.collected).contains(&identity) {
+            if sync::lock(already).contains(&identity) {
                 continue;
             }
             let blob = blobs
                 .write(&bytes)
                 .await
-                .map_err(|error| format!("the artifact `{path}` could not be stored: {error:#}"))?;
+                .map_err(|source| HookError::Blob {
+                    what: format!("artifact `{path}`"),
+                    source,
+                })?;
             let record = PlatformRecord::ArtifactCollected(ArtifactCollectedRecord {
                 execution: key.execution,
                 firing: key.firing,
@@ -968,13 +995,11 @@ impl FabroHooks {
                     }),
                 )
                 .await
-                .map_err(|error| {
-                    format!(
-                        "the artifact record for `{path}` could not be written: {}",
-                        collect_chain(&error).join(": ")
-                    )
+                .map_err(|source| HookError::Write {
+                    kind: "artifact",
+                    source,
                 })?;
-            lock(&self.collected).insert(identity);
+            sync::lock(already).insert(identity);
             total_bytes = total_bytes.saturating_add(size);
             collected += 1;
         }
@@ -983,35 +1008,39 @@ impl FabroHooks {
 
     /// The artifacts already collected for the run, read once: a file that
     /// is unchanged since it was collected is not collected again.
-    async fn load_collected(&self) -> Result<(), String> {
-        let stored = self
-            .records
-            .read_kind(&self.run_id, PlatformRecordKind::ArtifactCollected)
+    async fn collected_artifacts(&self) -> Result<&Mutex<HashSet<ArtifactIdentity>>, HookError> {
+        self.artifacts
+            .collected
+            .get_or_try_init(|| async {
+                let stored = self
+                    .records
+                    .read_kind(&self.run_id, PlatformRecordKind::ArtifactCollected)
+                    .await
+                    .map_err(|source| HookError::Read {
+                        kind: "artifact",
+                        source,
+                    })?;
+                let collected = stored
+                    .into_iter()
+                    .filter_map(|record| match record.record {
+                        PlatformRecord::ArtifactCollected(artifact) => {
+                            Some((artifact.path, artifact.digest))
+                        }
+                        _ => None,
+                    })
+                    .collect();
+                Ok(Mutex::new(collected))
+            })
             .await
-            .map_err(|error| {
-                format!(
-                    "the run's artifact records could not be read: {}",
-                    collect_chain(&error).join(": ")
-                )
-            })?;
-        let mut collected = lock(&self.collected);
-        for record in stored {
-            if let PlatformRecord::ArtifactCollected(artifact) = record.record {
-                collected.insert((artifact.path, artifact.digest));
-            }
-        }
-        Ok(())
     }
 
     /// The run's diff: the run branch's last checkpoint against the base
     /// the branch started from, in the snapshot repository on this host.
     /// Nothing is recorded for a run that never created its branch or
     /// never checkpointed.
-    async fn record_run_diff(&self) -> Result<(), String> {
-        self.recorded_loaded
-            .get_or_try_init(|| self.load_recorded())
-            .await?;
-        let branch = match self.branch.get() {
+    async fn record_run_diff(&self) -> Result<(), HookError> {
+        self.recorded_checkpoints().await?;
+        let branch = match self.checkpoints.branch.get() {
             Some(branch) => Some(branch.clone()),
             None => self.stored_branch().await?,
         };
@@ -1022,8 +1051,7 @@ impl FabroHooks {
         let Some(base_sha) = branch.base_sha.clone() else {
             return Ok(());
         };
-        let last = lock(&self.last_checkpoint).clone();
-        let Some((workspace, head_sha)) = last else {
+        let Some((workspace, head_sha)) = self.checkpoints.last() else {
             debug!(run_id = %self.run_id, "no checkpoint is recorded; no run diff");
             return Ok(());
         };
@@ -1035,11 +1063,9 @@ impl FabroHooks {
             .workspaces
             .diff(&workspace, Some(&base_sha), &head_sha)
             .await
-            .map_err(|error| {
-                format!(
-                    "the run's diff could not be computed: {}",
-                    collect_chain(&error).join(": ")
-                )
+            .map_err(|source| HookError::Diff {
+                what: "run's diff",
+                source,
             })?;
         let patch_blob = self.patch_blob(&diff).await?;
         let record = PlatformRecord::RunDiff(RunDiffRecord {
@@ -1051,11 +1077,9 @@ impl FabroHooks {
         self.records
             .append(&self.run_id, &record, None)
             .await
-            .map_err(|error| {
-                format!(
-                    "the run diff record could not be written: {}",
-                    collect_chain(&error).join(": ")
-                )
+            .map_err(|source| HookError::Write {
+                kind: "run diff",
+                source,
             })?;
         info!(
             run_id = %self.run_id,
@@ -1091,7 +1115,7 @@ impl FabroHooks {
 async fn list_artifacts(
     env: &dyn ExecEnv,
     globs: &WorkspaceGlobSet,
-) -> Result<Vec<(String, u64)>, String> {
+) -> Result<Vec<(String, u64)>, HookError> {
     let mut files = Vec::new();
     for root in globs.traversal_roots() {
         let listed = env
@@ -1100,8 +1124,9 @@ async fn list_artifacts(
                 ARTIFACT_LIST_DEPTH,
             )
             .await
-            .map_err(|error| {
-                format!("the workspace could not be listed below `{root}`: {error}")
+            .map_err(|source| HookError::List {
+                root: root.to_string(),
+                source,
             })?;
         for entry in listed {
             if entry.is_dir {
@@ -1149,10 +1174,6 @@ fn select_artifacts(mut candidates: Vec<(String, u64)>) -> Vec<(String, u64)> {
     selected
 }
 
-fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
-    mutex.lock().unwrap_or_else(PoisonError::into_inner)
-}
-
 fn is_checkpoint_failure(status: &Status) -> bool {
     matches!(status, Status::Failure(info) if info.class.as_str() == CHECKPOINT_FAILED_CLASS)
 }
@@ -1192,7 +1213,8 @@ impl ExecutionHooks for FabroHooks {
         {
             Ok(Some(note)) => prepared.notes.push(note),
             Ok(None) => {}
-            Err(message) => {
+            Err(error) => {
+                let message = error.render();
                 warn!(
                     run_id = %self.run_id,
                     node,
@@ -1244,7 +1266,7 @@ impl ExecutionHooks for FabroHooks {
                 error = %problem,
                 "the checkpoint record was not written"
             );
-            problems.push(problem);
+            problems.push(problem.render());
         }
         match self.collect_artifacts(context, scope, key).await {
             Ok(0) => {}
@@ -1267,7 +1289,7 @@ impl ExecutionHooks for FabroHooks {
                     error = %problem,
                     "artifact collection failed"
                 );
-                problems.push(format!("artifact collection failed: {problem}"));
+                problems.push(format!("artifact collection failed: {}", problem.render()));
             }
         }
         let mut report = self.inner.transition(context, transition).await?;
@@ -1283,7 +1305,7 @@ impl ExecutionHooks for FabroHooks {
             "Petri run finished; recording the run's diff and running the run-end hooks"
         );
         if let Err(error) = self.record_run_diff().await {
-            warn!(run_id = %self.run_id, error = %error, "the run's diff was not recorded");
+            warn!(run_id = %self.run_id, error = %error.render(), "the run's diff was not recorded");
         }
         self.inner.run_finished(context, finished).await
     }
@@ -1297,7 +1319,7 @@ impl ExecutionHooks for FabroHooks {
         );
         let scope = released.scope;
         let notes = self.inner.scope_released(context, released).await;
-        lock(&self.envs).remove(&(context.execution, scope));
+        self.scopes.remove(context.execution, scope);
         notes
     }
 
@@ -1308,18 +1330,22 @@ impl ExecutionHooks for FabroHooks {
     ) -> Result<(), ScopeAcquiredError> {
         self.inner.scope_acquired(context, acquired.clone()).await?;
         let workspace = acquired.workspace.as_str().to_owned();
-        lock(&self.envs).insert(
-            (context.execution, acquired.scope),
+        self.scopes.insert(
+            context.execution,
+            acquired.scope,
             (workspace.clone(), Arc::clone(&acquired.env)),
         );
         if !self.resumed {
             return Ok(());
         }
-        if self.host_workspaces {
-            self.restore_host(&workspace).await
+        let site = if self.host_workspaces {
+            self.workspaces.host(&workspace)
         } else {
-            self.restore_sandbox(&workspace, &acquired.env).await
-        }
+            Site::Sandbox(Arc::clone(&acquired.env))
+        };
+        self.restore(&workspace, &site)
+            .await
+            .map_err(|error| ScopeAcquiredError::new(error.render()))
     }
 }
 

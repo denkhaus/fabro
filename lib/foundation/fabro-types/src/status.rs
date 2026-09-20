@@ -120,6 +120,27 @@ impl RunStatus {
         }
     }
 
+    /// The status a pause takes the run to: paused, remembering the block
+    /// the run was under so the unpause can restore it.
+    #[must_use]
+    pub fn paused(self) -> Self {
+        Self::Paused {
+            prior_block: self.blocked_reason(),
+        }
+    }
+
+    /// The status an unpause takes the run to: back to the block the pause
+    /// remembered, else running.
+    #[must_use]
+    pub fn unpaused(self) -> Self {
+        match self {
+            Self::Paused {
+                prior_block: Some(blocked_reason),
+            } => Self::Blocked { blocked_reason },
+            _ => Self::Running,
+        }
+    }
+
     pub fn terminal_status(self) -> Option<TerminalStatus> {
         match self {
             Self::Succeeded { reason } => Some(TerminalStatus::Succeeded { reason }),

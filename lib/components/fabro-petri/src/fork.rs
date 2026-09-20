@@ -509,16 +509,12 @@ pub async fn stage_labels(views: &DbPool, run_id: RunId) -> Result<StageLabels, 
     Ok(state
         .stages
         .iter()
-        .filter_map(|(key, stage)| {
-            let (execution, firing) = key.split_once(':')?;
-            Some((
-                (execution.parse().ok()?, firing.parse().ok()?),
-                StageLabel {
-                    stage_id:  stage.shown.then(|| stage.stage_id.to_string()),
-                    node_name: stage.node_name.clone(),
-                    visit:     stage.visit,
-                },
-            ))
+        .map(|(key, stage)| {
+            ((key.execution, key.firing), StageLabel {
+                stage_id:  stage.shown.then(|| stage.stage_id.to_string()),
+                node_name: stage.node_name.clone(),
+                visit:     stage.visit,
+            })
         })
         .collect())
 }

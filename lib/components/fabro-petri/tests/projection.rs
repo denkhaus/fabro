@@ -418,15 +418,15 @@ fn json<T: serde::Serialize>(value: &T) -> serde_json::Value {
 /// The stored view equals the view rebuilt from the records alone: the
 /// projection, the positions and the delivery sequence.
 async fn assert_view_equals_rebuild(pool: &DbPool, run_id: RunId) {
-    let stored = projector::stored_projection(pool, run_id)
+    let stored = petri_support::stored_projection(pool, run_id)
         .await
         .expect("the stored projection reads")
         .expect("the run has a stored projection");
-    let (stored_positions, stored_stream_seq) = projector::stored_positions(pool, run_id)
+    let (stored_positions, stored_stream_seq) = petri_support::stored_positions(pool, run_id)
         .await
         .expect("the positions read")
         .expect("the run has positions");
-    let (rebuilt, positions, stream_seq) = projector::rebuild(pool, pool, run_id)
+    let (rebuilt, positions, stream_seq) = petri_support::rebuild(pool, pool, run_id)
         .await
         .expect("the run rebuilds");
     let rebuilt = rebuilt.expect("the rebuild has a projection");
@@ -442,7 +442,7 @@ async fn assert_view_equals_rebuild(pool: &DbPool, run_id: RunId) {
     positions.petri.sort();
     assert_eq!(stored_positions, positions);
     assert_eq!(stored_stream_seq, stream_seq);
-    let stream = projector::stored_stream(pool, run_id)
+    let stream = petri_support::stored_stream(pool, run_id)
         .await
         .expect("the stream reads");
     let seqs: Vec<u64> = stream.iter().map(|(seq, _, _)| *seq).collect();
@@ -454,7 +454,7 @@ async fn assert_view_equals_rebuild(pool: &DbPool, run_id: RunId) {
 }
 
 async fn stage_states(pool: &DbPool, run_id: RunId) -> Vec<(String, StageState)> {
-    let stored = projector::stored_projection(pool, run_id)
+    let stored = petri_support::stored_projection(pool, run_id)
         .await
         .expect("the stored projection reads")
         .expect("the run has a stored projection");
@@ -472,7 +472,7 @@ async fn the_hello_bundle_projects_live_as_it_rebuilds() {
     let scenario = hello_scenario().await;
     run_live(&scenario).await;
     assert_view_equals_rebuild(&scenario.pool, scenario.run_id).await;
-    let stored = projector::stored_projection(&scenario.pool, scenario.run_id)
+    let stored = petri_support::stored_projection(&scenario.pool, scenario.run_id)
         .await
         .expect("reads")
         .expect("stored");
@@ -501,7 +501,7 @@ async fn a_large_output_projects_as_its_blob_reference() {
     let scenario = large_output_scenario().await;
     run_live(&scenario).await;
     assert_view_equals_rebuild(&scenario.pool, scenario.run_id).await;
-    let stored = projector::stored_projection(&scenario.pool, scenario.run_id)
+    let stored = petri_support::stored_projection(&scenario.pool, scenario.run_id)
         .await
         .expect("reads")
         .expect("stored");
@@ -525,7 +525,7 @@ async fn a_command_workflow_projects_live_as_it_rebuilds() {
     let scenario = command_scenario().await;
     run_live(&scenario).await;
     assert_view_equals_rebuild(&scenario.pool, scenario.run_id).await;
-    let stored = projector::stored_projection(&scenario.pool, scenario.run_id)
+    let stored = petri_support::stored_projection(&scenario.pool, scenario.run_id)
         .await
         .expect("reads")
         .expect("stored");
@@ -554,7 +554,7 @@ async fn a_parallel_workflow_projects_its_branches_as_child_executions() {
     let scenario = parallel_scenario().await;
     run_live(&scenario).await;
     assert_view_equals_rebuild(&scenario.pool, scenario.run_id).await;
-    let stored = projector::stored_projection(&scenario.pool, scenario.run_id)
+    let stored = petri_support::stored_projection(&scenario.pool, scenario.run_id)
         .await
         .expect("reads")
         .expect("stored");
@@ -593,7 +593,7 @@ async fn dropped_wake_ups_are_caught_up_by_the_next_signal() {
     let scenario = command_scenario().await;
     run_unobserved(&scenario).await;
     assert!(
-        projector::stored_projection(&scenario.pool, scenario.run_id)
+        petri_support::stored_projection(&scenario.pool, scenario.run_id)
             .await
             .expect("reads")
             .is_none(),
@@ -780,12 +780,13 @@ async fn a_crash_between_the_record_commit_and_the_view_applies_only_the_suffix(
         .expect("the first pass commits");
     assert!(!pass.skipped);
     assert!(!pass.health.complete, "the run has not finished");
-    let (positions_before, stream_before) = projector::stored_positions(&replayed, scenario.run_id)
-        .await
-        .expect("reads")
-        .expect("positions");
+    let (positions_before, stream_before) =
+        petri_support::stored_positions(&replayed, scenario.run_id)
+            .await
+            .expect("reads")
+            .expect("positions");
     assert_eq!(pass.stream_seq, stream_before);
-    let stream_rows_before = projector::stored_stream(&replayed, scenario.run_id)
+    let stream_rows_before = petri_support::stored_stream(&replayed, scenario.run_id)
         .await
         .expect("reads")
         .len();
@@ -801,7 +802,7 @@ async fn a_crash_between_the_record_commit_and_the_view_applies_only_the_suffix(
         "{crashed:?}"
     );
     assert_eq!(
-        projector::stored_positions(&replayed, scenario.run_id)
+        petri_support::stored_positions(&replayed, scenario.run_id)
             .await
             .expect("reads")
             .expect("positions"),
@@ -813,11 +814,12 @@ async fn a_crash_between_the_record_commit_and_the_view_applies_only_the_suffix(
     let after = Projector::new(replayed.clone(), replayed.clone());
     let report = after.startup_pass().await.expect("the restart catches up");
     assert_eq!((report.runs, report.projected), (1, 1));
-    let (positions_after, stream_after) = projector::stored_positions(&replayed, scenario.run_id)
-        .await
-        .expect("reads")
-        .expect("positions");
-    let stream_rows_after = projector::stored_stream(&replayed, scenario.run_id)
+    let (positions_after, stream_after) =
+        petri_support::stored_positions(&replayed, scenario.run_id)
+            .await
+            .expect("reads")
+            .expect("positions");
+    let stream_rows_after = petri_support::stored_stream(&replayed, scenario.run_id)
         .await
         .expect("reads");
     // Only the suffix was applied: the stream grew by the suffix's events,
@@ -845,11 +847,11 @@ async fn a_crash_between_the_record_commit_and_the_view_applies_only_the_suffix(
     // And the copy agrees with the run projected in one go over the source.
     let source = Projector::new(scenario.pool.clone(), scenario.pool.clone());
     source.startup_pass().await.expect("the source projects");
-    let whole = projector::stored_projection(&scenario.pool, scenario.run_id)
+    let whole = petri_support::stored_projection(&scenario.pool, scenario.run_id)
         .await
         .expect("reads")
         .expect("stored");
-    let pieced = projector::stored_projection(&replayed, scenario.run_id)
+    let pieced = petri_support::stored_projection(&replayed, scenario.run_id)
         .await
         .expect("reads")
         .expect("stored");
@@ -904,11 +906,11 @@ async fn a_restarted_projector_agrees_over_nested_child_executions() {
 
     let whole = Projector::new(scenario.pool.clone(), scenario.pool.clone());
     whole.startup_pass().await.expect("the source projects");
-    let one_go = projector::stored_projection(&scenario.pool, scenario.run_id)
+    let one_go = petri_support::stored_projection(&scenario.pool, scenario.run_id)
         .await
         .expect("reads")
         .expect("stored");
-    let restarted = projector::stored_projection(&staged, scenario.run_id)
+    let restarted = petri_support::stored_projection(&staged, scenario.run_id)
         .await
         .expect("reads")
         .expect("stored");
@@ -937,11 +939,11 @@ async fn a_torn_tail_holds_the_view_and_reports_the_run_incomplete() {
         .await
         .expect("the clean pass commits");
     assert!(clean.health.complete, "{:?}", clean.health.incomplete);
-    let (positions, stream_seq) = projector::stored_positions(&scenario.pool, scenario.run_id)
+    let (positions, stream_seq) = petri_support::stored_positions(&scenario.pool, scenario.run_id)
         .await
         .expect("reads")
         .expect("positions");
-    let before = projector::stored_projection(&scenario.pool, scenario.run_id)
+    let before = petri_support::stored_projection(&scenario.pool, scenario.run_id)
         .await
         .expect("reads")
         .expect("stored");
@@ -973,7 +975,7 @@ async fn a_torn_tail_holds_the_view_and_reports_the_run_incomplete() {
         held.health
     );
     let (positions_after, stream_after) =
-        projector::stored_positions(&scenario.pool, scenario.run_id)
+        petri_support::stored_positions(&scenario.pool, scenario.run_id)
             .await
             .expect("reads")
             .expect("positions");
@@ -982,7 +984,7 @@ async fn a_torn_tail_holds_the_view_and_reports_the_run_incomplete() {
         "the view did not advance past the tear"
     );
     assert_eq!(stream_after, stream_seq);
-    let after = projector::stored_projection(&scenario.pool, scenario.run_id)
+    let after = petri_support::stored_projection(&scenario.pool, scenario.run_id)
         .await
         .expect("reads")
         .expect("stored");
@@ -1240,9 +1242,10 @@ impl GateRun {
     async fn pending(&self) -> fabro_types::RunProjection {
         let deadline = Instant::now() + Duration::from_secs(30);
         loop {
-            let stored = projector::stored_projection(&self.scenario.pool, self.scenario.run_id)
-                .await
-                .expect("the stored projection reads");
+            let stored =
+                petri_support::stored_projection(&self.scenario.pool, self.scenario.run_id)
+                    .await
+                    .expect("the stored projection reads");
             if let Some(stored) = stored.filter(|stored| !stored.pending_interviews.is_empty()) {
                 return stored;
             }
@@ -1255,7 +1258,7 @@ impl GateRun {
     }
 
     async fn stored(&self) -> fabro_types::RunProjection {
-        projector::stored_projection(&self.scenario.pool, self.scenario.run_id)
+        petri_support::stored_projection(&self.scenario.pool, self.scenario.run_id)
             .await
             .expect("the stored projection reads")
             .expect("the run has a stored projection")
@@ -1282,7 +1285,7 @@ async fn an_expired_question_is_pending_while_the_gate_waits_and_closes_on_the_e
         let run_id = gate.scenario.run_id;
         let deadline = Instant::now() + Duration::from_secs(30);
         loop {
-            let stored = projector::stored_projection(&pool, run_id)
+            let stored = petri_support::stored_projection(&pool, run_id)
                 .await
                 .expect("the stored projection reads");
             if let Some(stored) = stored.filter(|stored| !stored.pending_interviews.is_empty()) {
