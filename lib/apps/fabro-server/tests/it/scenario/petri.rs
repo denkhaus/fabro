@@ -802,6 +802,9 @@ async fn deleting_a_run_prunes_its_host_workspace_through_petri() {
     let store = state.test_petri_run_store();
     let key = RunKey::new(run_id.clone());
     wait_for_free_lease(store, &key).await;
+    // The view reports the run ended from Petri's own finish, before the
+    // server settles the managed run the delete precheck reads.
+    wait_for_managed_settle(&state, &run_id).await;
 
     // A live handle on the run, as its worker holds one, refuses the
     // delete: Petri will not prune under a lease someone holds.
@@ -858,6 +861,21 @@ async fn deleting_a_run_prunes_its_host_workspace_through_petri() {
 }
 
 /// Wait until no owner holds the run's lease.
+/// Wait until the server's own map holds the run as ended.
+async fn wait_for_managed_settle(state: &AppState, run_id: &str) {
+    let run_id: RunId = run_id.parse().expect("a run id");
+    for _ in 0..500 {
+        if state
+            .test_managed_run_status(&run_id)
+            .is_none_or(|status| status.is_terminal())
+        {
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+    panic!("the managed run did not settle");
+}
+
 async fn wait_for_free_lease(store: &SqliteRunStore, key: &RunKey) {
     for _ in 0..500 {
         if store.owner(key).await.expect("reads the lease").is_none() {
