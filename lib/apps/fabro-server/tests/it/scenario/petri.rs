@@ -28,7 +28,7 @@ use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use fabro_petri::engine::{self, RunStatus};
 use fabro_petri::petri::{Access, OwnerId, RunKey, RunStore as _};
-use fabro_petri::{SqliteRunStore, projector};
+use fabro_petri::{SqliteRunStore, test_support};
 use fabro_server::server::AppState;
 use fabro_server::test_support::{
     TestAppStateBuilder, llm_overlay_with_provider_base_url, test_app_db_pool,
@@ -237,7 +237,7 @@ pub(super) async fn settled_state(
 /// How many items the run's projected stream holds.
 async fn petri_stream_len(state: &AppState, run_id: &str) -> usize {
     let id: RunId = run_id.parse().expect("the run id parses");
-    projector::stored_stream(&state.test_petri_view_pool(), id)
+    test_support::stored_stream(&state.test_petri_view_pool(), id)
         .await
         .expect("the stream reads")
         .len()

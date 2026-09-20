@@ -54,21 +54,24 @@
 //! completeness once the run has recorded its finish.
 
 mod cache;
+pub(crate) mod order;
+mod signalling;
+pub(crate) mod stream;
 
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, HashMap};
+#[cfg(any(test, feature = "test-support"))]
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use fabro_db::DbPool;
-use fabro_store::platform_records::{PlatformRecordStore, StoredPlatformRecord, now_ms};
+use fabro_store::platform_records::{PlatformRecordStore, now_ms};
 use fabro_store::{RunProjection, RunSummaryStore};
-use fabro_types::{RunId, RunStreamItem, RunStreamItemKind};
+use fabro_types::{RunId, RunStreamItem};
 use fabro_util::error::collect_chain;
 use fabro_util::sync;
-use petri_execution::events::{self, EventId, EventSource, RunEvent};
+use petri_execution::events::{EventId, EventSource, RunEvent};
 use petri_execution::{Access, CoordinatorEvent, RunKey, RunStore as _, inspect};
-use petri_runtime::engine::Event;
 use petri_store::StoreError;
 use serde::{Deserialize, Serialize};
 use tokio::sync::broadcast;
@@ -76,8 +79,9 @@ use tokio::time;
 use tracing::{debug, info, warn};
 
 use self::cache::{Caches, IDLE, RunCache};
+use self::stream::StreamRow;
 use crate::SqliteRunStore;
-use crate::projection::{self, FiringKey, FoldState, Item, RecordHealth, RunView};
+use crate::projection::{self, FoldState, RecordHealth, RunView};
 
 /// The positions a view committed: the last event consumed per Petri log,
 /// and the last platform record consumed.
@@ -126,6 +130,48 @@ pub struct PassReport {
     pub stream_seq:       u64,
     pub positions:        Positions,
     pub health:           RecordHealth,
+}
+
+impl PassReport {
+    /// A pass that found the view at the head of every log and wrote
+    /// nothing.
+    fn skipped(run_id: RunId, stored: &StoredView) -> Self {
+        Self {
+            run_id,
+            skipped: true,
+            contended: false,
+            petri_events: 0,
+            platform_records: 0,
+            replayed_records: 0,
+            stream_seq: stored.stream_seq,
+            positions: stored.positions.clone(),
+            health: stored.view.state.health.clone(),
+        }
+    }
+
+    /// A pass that left the view alone because a platform record landed
+    /// under it; the projector runs it again.
+    fn contended(run_id: RunId, replayed_records: usize) -> Self {
+        Self {
+            run_id,
+            skipped: false,
+            contended: true,
+            petri_events: 0,
+            platform_records: 0,
+            replayed_records,
+            stream_seq: 0,
+            positions: Positions::default(),
+            health: RecordHealth::default(),
+        }
+    }
+}
+
+/// What a pass read past its cache: the events new to the view, the
+/// replay failure that held it, and how many records the replay cost.
+struct NewEvents {
+    events:           Vec<RunEvent>,
+    replay_failure:   Option<String>,
+    replayed_records: usize,
 }
 
 /// What the startup pass did.
@@ -182,8 +228,9 @@ pub struct Projector {
     /// over the same run never interleave their reads and writes), and the
     /// cache each live run's passes continue from.
     pub(crate) caches: Caches,
-    /// Test-only: stop the next pass after its reads, before its view
-    /// transaction, as a crash there would.
+    /// A test's fault: stop the next pass after its reads, before its
+    /// view transaction, as a crash there would.
+    #[cfg(any(test, feature = "test-support"))]
     fault:             AtomicBool,
     /// Sent after each committed pass that wrote stream rows: the run whose
     /// stream grew. A wake-up for the stream's readers, never a source of
@@ -210,6 +257,7 @@ impl Projector {
             pool: views,
             slots: Mutex::default(),
             caches: Caches::default(),
+            #[cfg(any(test, feature = "test-support"))]
             fault: AtomicBool::new(false),
             committed: broadcast::channel(COMMIT_SIGNAL_CAPACITY).0,
         })
@@ -232,7 +280,7 @@ impl Projector {
         after: u64,
         limit: usize,
     ) -> Result<Vec<RunStreamItem>, ProjectError> {
-        stream_after(&self.pool, run_id, after, limit).await
+        stream::stream_after(&self.pool, run_id, after, limit).await
     }
 
     /// Delete everything the store and the view tables hold for the run:
@@ -344,8 +392,22 @@ impl Projector {
 
     /// Stop the next pass after its reads and before its view transaction,
     /// as a crash there would, once.
+    #[cfg(any(test, feature = "test-support"))]
     pub fn fail_before_view(&self) {
         self.fault.store(true, Ordering::SeqCst);
+    }
+
+    /// Whether a test asked this pass to stop before its view transaction;
+    /// never outside tests.
+    fn take_fault(&self) -> bool {
+        #[cfg(any(test, feature = "test-support"))]
+        {
+            self.fault.swap(false, Ordering::SeqCst)
+        }
+        #[cfg(not(any(test, feature = "test-support")))]
+        {
+            false
+        }
     }
 
     /// One pass over every Petri run the database holds: the runs with a
@@ -430,67 +492,20 @@ impl Projector {
     /// positions the cache's view holds, fold it, and write the view.
     async fn pass(&self, run_id: RunId, run: &mut RunCache) -> Result<PassReport, ProjectError> {
         let key = RunKey::new(run_id.to_string());
-        let platform_head = self
-            .platform
-            .head(&run_id)
-            .await
-            .map_err(ProjectError::Store)?
-            .unwrap_or(0);
-        let petri_heads = self.petri_heads(&run_id).await?;
-        let stored = &run.view;
-        let at_head = platform_head == stored.positions.platform_seq
-            && petri_heads.iter().all(|(log, head)| {
-                stored
-                    .positions
-                    .petri
-                    .iter()
-                    .any(|held| log_text(&held.source) == *log && held.seq == *head)
-            });
-        if at_head && stored.view.projection.is_some() {
-            return Ok(PassReport {
-                run_id,
-                skipped: true,
-                contended: false,
-                petri_events: 0,
-                platform_records: 0,
-                replayed_records: 0,
-                stream_seq: stored.stream_seq,
-                positions: stored.positions.clone(),
-                health: stored.view.state.health.clone(),
-            });
+        if self.at_head(run_id, &run.view).await? {
+            return Ok(PassReport::skipped(run_id, &run.view));
         }
 
         let platform_records = self
             .platform
-            .read_after(&run_id, stored.positions.platform_seq)
+            .read_after(&run_id, run.view.positions.platform_seq)
             .await
             .map_err(ProjectError::Store)?;
-        let mut replayed_records = 0;
-        let (events, replay_failure) = match self.store.open(&key, Access::Read).await {
-            Ok(logs) => match run.replay.advance(&*logs).await {
-                Ok(new) => {
-                    replayed_records = new.iter().filter(|event| event.id.index == 0).count();
-                    // A rebuilt replay derives the run whole: only the events
-                    // past the view's positions are new to it.
-                    let held = run.view.positions.held();
-                    let mut events = std::mem::take(&mut run.pending);
-                    events.extend(new.into_iter().filter(|event| {
-                        held.get(&event.id.source)
-                            .is_none_or(|last| event.id > *last)
-                    }));
-                    (events, None)
-                }
-                // The replay stood still and is retried by the next pass;
-                // what it derived before stays pending.
-                Err(error) => {
-                    let chain = collect_chain(&error).join(": ");
-                    warn!(run_id = %run_id, error = %chain, "Petri run does not replay; the view holds");
-                    (Vec::new(), Some(chain))
-                }
-            },
-            Err(StoreError::NotFound { .. }) => (Vec::new(), None),
-            Err(error) => return Err(ProjectError::Open(error)),
-        };
+        let NewEvents {
+            events,
+            replay_failure,
+            replayed_records,
+        } = self.read_new_events(run_id, &key, run).await?;
 
         let mut view = run.view.view.clone();
         let mut positions = run.view.positions.clone();
@@ -505,7 +520,7 @@ impl Projector {
         let platform_head_seen = platform_records
             .last()
             .map_or(positions.platform_seq, |record| record.seq);
-        let (items, held) = order_items(
+        let (items, held) = order::order_items(
             &events,
             &platform_records,
             &view.state.finished_firings,
@@ -518,37 +533,11 @@ impl Projector {
                 "platform records held back until their firing's finish is in the stream"
             );
         }
-
-        let mut rows: Vec<StreamRow> = Vec::with_capacity(items.len());
-        for item in &items {
-            stream_seq += 1;
-            view.fold(item, stream_seq);
-            let row = match item {
-                Item::Petri(event) => {
-                    positions.advance(event.id);
-                    StreamRow {
-                        stream_seq,
-                        item_kind: "petri",
-                        item_id: event_id_text(&event.id),
-                        event_json: serde_json::to_string(event).map_err(ProjectError::Encode)?,
-                    }
-                }
-                Item::Platform(record) => {
-                    positions.platform_seq = record.seq;
-                    StreamRow {
-                        stream_seq,
-                        item_kind: "platform",
-                        item_id: record.seq.to_string(),
-                        event_json: serde_json::to_string(record).map_err(ProjectError::Encode)?,
-                    }
-                }
-            };
-            rows.push(row);
-        }
+        let rows = stream::stream_rows(&items, &mut view, &mut positions, &mut stream_seq)?;
         drop(items);
         view.state.health = self.health(&key, &view.state, replay_failure).await?;
 
-        if self.fault.swap(false, Ordering::SeqCst) {
+        if self.take_fault() {
             run.pending = events;
             return Err(ProjectError::Injected);
         }
@@ -567,17 +556,7 @@ impl Projector {
             Ok(false) => {
                 debug!(run_id = %run_id, "platform records landed during the pass; running it again");
                 run.pending = events;
-                return Ok(PassReport {
-                    run_id,
-                    skipped: false,
-                    contended: true,
-                    petri_events: 0,
-                    platform_records: 0,
-                    replayed_records,
-                    stream_seq: 0,
-                    positions: Positions::default(),
-                    health: RecordHealth::default(),
-                });
+                return Ok(PassReport::contended(run_id, replayed_records));
             }
             Err(error) => {
                 run.pending = events;
@@ -610,6 +589,77 @@ impl Projector {
             positions,
             health,
         })
+    }
+
+    /// Whether the stored view already covers every committed record: the
+    /// platform head and every Petri log's head are the positions it holds,
+    /// and it has a projection to serve.
+    async fn at_head(&self, run_id: RunId, stored: &StoredView) -> Result<bool, ProjectError> {
+        let platform_head = self
+            .platform
+            .head(&run_id)
+            .await
+            .map_err(ProjectError::Store)?
+            .unwrap_or(0);
+        let petri_heads = self.petri_heads(&run_id).await?;
+        Ok(platform_head == stored.positions.platform_seq
+            && petri_heads.iter().all(|(log, head)| {
+                stored
+                    .positions
+                    .petri
+                    .iter()
+                    .any(|held| stream::log_text(&held.source) == *log && held.seq == *head)
+            })
+            && stored.view.projection.is_some())
+    }
+
+    /// The events past the view's positions: the cache's replay advanced
+    /// over the records committed since, led by the events an earlier pass
+    /// derived and did not commit. A rebuilt replay derives the run whole,
+    /// so only the events past the view's positions are new to it. A
+    /// replay that fails (a torn tail) stands still, yields nothing, and
+    /// names its reason; what it derived before stays pending for the next
+    /// pass.
+    async fn read_new_events(
+        &self,
+        run_id: RunId,
+        key: &RunKey,
+        run: &mut RunCache,
+    ) -> Result<NewEvents, ProjectError> {
+        let nothing = NewEvents {
+            events:           Vec::new(),
+            replay_failure:   None,
+            replayed_records: 0,
+        };
+        let logs = match self.store.open(key, Access::Read).await {
+            Ok(logs) => logs,
+            Err(StoreError::NotFound { .. }) => return Ok(nothing),
+            Err(error) => return Err(ProjectError::Open(error)),
+        };
+        match run.replay.advance(&*logs).await {
+            Ok(new) => {
+                let replayed_records = new.iter().filter(|event| event.id.index == 0).count();
+                let held = run.view.positions.held();
+                let mut events = std::mem::take(&mut run.pending);
+                events.extend(new.into_iter().filter(|event| {
+                    held.get(&event.id.source)
+                        .is_none_or(|last| event.id > *last)
+                }));
+                Ok(NewEvents {
+                    events,
+                    replay_failure: None,
+                    replayed_records,
+                })
+            }
+            Err(error) => {
+                let chain = collect_chain(&error).join(": ");
+                warn!(run_id = %run_id, error = %chain, "Petri run does not replay; the view holds");
+                Ok(NewEvents {
+                    replay_failure: Some(chain),
+                    ..nothing
+                })
+            }
+        }
     }
 
     /// The view transaction: the projection row, the stream rows and the
@@ -655,8 +705,8 @@ impl Projector {
         .bind(projection_json)
         .bind(fold_json)
         .bind(positions_json)
-        .bind(column(stream_seq))
-        .bind(column(now_ms()))
+        .bind(stream::column(stream_seq))
+        .bind(stream::column(now_ms()))
         .execute(&mut *tx)
         .await
         .map_err(ProjectError::Database)?;
@@ -666,7 +716,7 @@ impl Projector {
                  VALUES (?, ?, ?, ?, ?)",
             )
             .bind(run_id.to_string())
-            .bind(column(row.stream_seq))
+            .bind(stream::column(row.stream_seq))
             .bind(row.item_kind)
             .bind(&row.item_id)
             .bind(&row.event_json)
@@ -772,335 +822,13 @@ impl Projector {
     }
 }
 
-impl Projector {
-    /// A run store whose appends signal this projector: for a run that
-    /// executes in the same process as the projector, over the SQLite store
-    /// directly, where no append endpoint is there to signal. The signal is
-    /// sent after the store's append returned, so the records it covers are
-    /// durable before the view sees them.
-    pub fn observe_store(
-        self: &Arc<Self>,
-        inner: Arc<dyn petri_execution::RunStore>,
-    ) -> Arc<dyn petri_execution::RunStore> {
-        Arc::new(SignallingStore {
-            inner,
-            projector: Arc::clone(self),
-        })
-    }
-}
-
-/// A run store that signals a projector after each append.
-struct SignallingStore {
-    inner:     Arc<dyn petri_execution::RunStore>,
-    projector: Arc<Projector>,
-}
-
-#[async_trait::async_trait]
-impl petri_execution::RunStore for SignallingStore {
-    async fn open(
-        &self,
-        key: &RunKey,
-        access: Access,
-    ) -> Result<Arc<dyn petri_execution::RunLogs>, StoreError> {
-        let logs = self.inner.open(key, access).await?;
-        Ok(Arc::new(SignallingLogs {
-            inner:     logs,
-            run_id:    projection::run_id_of(key.as_str()),
-            projector: Arc::clone(&self.projector),
-        }))
-    }
-}
-
-struct SignallingLogs {
-    inner:     Arc<dyn petri_execution::RunLogs>,
-    run_id:    Option<RunId>,
-    projector: Arc<Projector>,
-}
-
-#[async_trait::async_trait]
-impl petri_execution::RunLogs for SignallingLogs {
-    fn locator(&self) -> String {
-        self.inner.locator()
-    }
-
-    async fn append(
-        &self,
-        log: &petri_execution::LogId,
-        records: &[petri_execution::Record],
-    ) -> Result<(), StoreError> {
-        self.inner.append(log, records).await?;
-        if let Some(run_id) = self.run_id {
-            self.projector.signal(run_id);
-        }
-        Ok(())
-    }
-
-    async fn read(
-        &self,
-        log: &petri_execution::LogId,
-    ) -> Result<Vec<petri_execution::Record>, StoreError> {
-        self.inner.read(log).await
-    }
-
-    async fn read_from(
-        &self,
-        log: &petri_execution::LogId,
-        seq: u64,
-    ) -> Result<Vec<petri_execution::Record>, StoreError> {
-        self.inner.read_from(log, seq).await
-    }
-
-    async fn put_blob(&self, bytes: &[u8]) -> Result<petri_store::Digest, StoreError> {
-        self.inner.put_blob(bytes).await
-    }
-
-    async fn get_blob(&self, digest: petri_store::Digest) -> Result<Option<Vec<u8>>, StoreError> {
-        self.inner.get_blob(digest).await
-    }
-}
-
-/// The order one pass streams its new items in, and how many platform
-/// records it holds back for a later pass.
-///
-/// Every item is first ordered by `recorded_at` (stable: the coordinator
-/// log before an execution log before a platform record on a tie, and each
-/// log's own order kept). A platform record that carries a Petri position
-/// (a checkpoint, keyed on `(execution, firing)`) is then placed by that
-/// position, not by its clock, because the server stamps the record and the
-/// worker stamps Petri's records and the two clocks can tie or invert:
-///
-/// - before the firing's first `routing.resolved` event in the pass, which is
-///   right after the firing's finish (its `step.finished` and the
-///   `visit.completed` attached to it) and before the next firing's
-///   `visit.started`, which is attached to that routing record;
-/// - else after the last event of the firing in the pass;
-/// - else, when the firing finished in an earlier pass, before the first event
-///   of a later firing (a larger firing id) in the same execution, or where its
-///   `recorded_at` put it;
-/// - else the record is held back, with every platform record after it, and the
-///   pass consumes platform records only up to it. The hook that writes a
-///   checkpoint record runs after the driver appended the attempt's finish, but
-///   the driver's store writer flushes that record on its own schedule, so the
-///   platform record can be committed before its firing's `step.finished`;
-///   holding it keeps the stream's order the same live and on a rebuild.
-///   Nothing is held once the run has recorded its finish.
-///
-/// The rule reads only the pass's own items and the firings already
-/// finished, so a record is never streamed before its firing's finish and
-/// never after the firing's routes.
-fn order_items<'a>(
-    events: &'a [RunEvent],
-    platform_records: &'a [StoredPlatformRecord],
-    finished_before: &BTreeSet<FiringKey>,
-    run_finished: bool,
-) -> (Vec<Item<'a>>, usize) {
-    let finished_in_pass = |at: FiringKey| {
-        events.iter().any(|event| {
-            FiringKey::of_event(event) == Some(at)
-                && matches!(event.engine(), Some(Event::StepFinished { .. }))
-        })
-    };
-    let finished = |at: FiringKey| finished_in_pass(at) || finished_before.contains(&at);
-    // Platform records are consumed in seq order: the first one whose firing
-    // has not finished holds itself and everything after it.
-    let consumed = if run_finished {
-        platform_records.len()
-    } else {
-        platform_records
-            .iter()
-            .position(|record| {
-                record
-                    .position
-                    .is_some_and(|position| !finished(FiringKey::from(position)))
-            })
-            .unwrap_or(platform_records.len())
-    };
-    let held = platform_records.len() - consumed;
-    let platform_records = &platform_records[..consumed];
-
-    let mut items: Vec<(u64, u8, Item<'a>)> =
-        Vec::with_capacity(events.len() + platform_records.len());
-    for event in events {
-        let rank = match event.id.source {
-            EventSource::Coordinator => 0,
-            EventSource::Execution { .. } => 1,
-        };
-        items.push((event.recorded_at, rank, Item::Petri(event)));
-    }
-    for record in platform_records {
-        items.push((record.recorded_at, 2, Item::Platform(record)));
-    }
-    items.sort_by_key(|(recorded_at, rank, _)| (*recorded_at, *rank));
-
-    let item_firing = |item: &Item<'a>| match item {
-        Item::Petri(event) => FiringKey::of_event(event),
-        Item::Platform(_) => None,
-    };
-    let is_routing = |item: &Item<'a>| {
-        matches!(
-            item,
-            Item::Petri(event) if matches!(event.engine(), Some(Event::RoutingResolved { .. }))
-        )
-    };
-    // The key of each item: its index in clock order, and whether it sits
-    // before (0), at (1) or after (2) that index.
-    let mut keys: Vec<(usize, u8)> = (0..items.len()).map(|index| (index, 1)).collect();
-    for (index, (_, _, item)) in items.iter().enumerate() {
-        let Item::Platform(record) = item else {
-            continue;
-        };
-        let Some(position) = record.position else {
-            continue;
-        };
-        let at = FiringKey::from(position);
-        let first_routing = items
-            .iter()
-            .position(|(_, _, other)| item_firing(other) == Some(at) && is_routing(other));
-        let last_of_firing = items
-            .iter()
-            .rposition(|(_, _, other)| item_firing(other) == Some(at));
-        let first_later = items.iter().position(|(_, _, other)| {
-            item_firing(other)
-                .is_some_and(|key| key.execution == at.execution && key.firing > at.firing)
-        });
-        keys[index] = if let Some(before) = first_routing {
-            (before, 0)
-        } else if let Some(after) = last_of_firing {
-            (after, 2)
-        } else if let Some(before) = first_later {
-            (before, 0)
-        } else {
-            (index, 1)
-        };
-    }
-    let mut order: Vec<usize> = (0..items.len()).collect();
-    order.sort_by_key(|index| keys[*index]);
-    let mut ordered: Vec<Option<Item<'a>>> =
-        items.into_iter().map(|(_, _, item)| Some(item)).collect();
-    let items = order
-        .into_iter()
-        .map(|index| ordered[index].take().expect("each item is placed once"))
-        .collect();
-    (items, held)
-}
-
-struct StreamRow {
-    stream_seq: u64,
-    item_kind:  &'static str,
-    item_id:    String,
-    event_json: String,
-}
-
 /// How many commit signals a slow reader may fall behind before it is told
 /// it lagged and re-reads from its cursor.
 const COMMIT_SIGNAL_CAPACITY: usize = 1024;
 
-/// The run's stream past the cursor, read from the view tables: up to
-/// `limit` rows with `stream_seq > after`, in order, in Fabro's envelope.
-pub async fn stream_after(
-    views: &DbPool,
-    run_id: RunId,
-    after: u64,
-    limit: usize,
-) -> Result<Vec<RunStreamItem>, ProjectError> {
-    let rows: Vec<(i64, String, String, String)> = sqlx::query_as(
-        "SELECT stream_seq, item_kind, item_id, event_json FROM petri_stream WHERE run_id = ? AND \
-         stream_seq > ? ORDER BY stream_seq LIMIT ?",
-    )
-    .bind(run_id.to_string())
-    .bind(column(after))
-    .bind(i64::try_from(limit).unwrap_or(i64::MAX))
-    .fetch_all(views)
-    .await
-    .map_err(ProjectError::Database)?;
-    rows.into_iter()
-        .map(|(stream_seq, item_kind, item_id, event_json)| {
-            let item: serde_json::Value =
-                serde_json::from_str(&event_json).map_err(ProjectError::Encode)?;
-            let kind = match item_kind.as_str() {
-                "platform" => RunStreamItemKind::Platform,
-                _ => RunStreamItemKind::Petri,
-            };
-            let recorded_at = item
-                .get("recorded_at")
-                .and_then(serde_json::Value::as_u64)
-                .unwrap_or(0);
-            Ok(RunStreamItem {
-                run_id,
-                stream_seq: u64::try_from(stream_seq).unwrap_or(0),
-                kind,
-                id: item_id,
-                recorded_at,
-                item,
-            })
-        })
-        .collect()
-}
-
-/// A Petri event id as the stream names it: `<log>/<seq>/<index>`.
-#[must_use]
-pub fn event_id_text(id: &EventId) -> String {
-    format!("{}/{}/{}", log_text(&id.source), id.seq, id.index)
-}
-
-fn log_text(source: &EventSource) -> String {
-    match source {
-        EventSource::Coordinator => "coordinator".to_string(),
-        EventSource::Execution { execution } => format!("execution {execution}"),
-    }
-}
-
-fn column(value: u64) -> i64 {
-    i64::try_from(value).unwrap_or(i64::MAX)
-}
-
-/// The run's projection rebuilt from its records alone, with nothing
-/// stored: what a fresh projector would commit over the same records. A test
-/// compares it with the live view. `records` and `views` are the two pools
-/// [`Projector::new`] takes.
-pub async fn rebuild(
-    records: &DbPool,
-    views: &DbPool,
-    run_id: RunId,
-) -> Result<(Option<RunProjection>, Positions, u64), ProjectError> {
-    let store = SqliteRunStore::new(records.clone());
-    let platform = PlatformRecordStore::new(views.clone());
-    let key = RunKey::new(run_id.to_string());
-    let platform_records = platform.read(&run_id).await.map_err(ProjectError::Store)?;
-    let events = match store.open(&key, Access::Read).await {
-        Ok(logs) => events::replay_run(&*logs)
-            .await
-            .inspect_err(|error| {
-                warn!(error = %collect_chain(error).join(": "), "rebuild: the run does not replay");
-            })
-            .unwrap_or_default(),
-        Err(StoreError::NotFound { .. }) => Vec::new(),
-        Err(error) => return Err(ProjectError::Open(error)),
-    };
-    let run_finished = events.iter().any(|event| {
-        matches!(
-            event.coordinator(),
-            Some(CoordinatorEvent::RunFinished { .. })
-        )
-    });
-    let (items, _held) = order_items(&events, &platform_records, &BTreeSet::new(), run_finished);
-    let mut view = RunView::new();
-    let mut positions = Positions::default();
-    let mut stream_seq = 0;
-    for item in &items {
-        stream_seq += 1;
-        view.fold(item, stream_seq);
-        match item {
-            Item::Petri(event) => positions.advance(event.id),
-            Item::Platform(record) => positions.platform_seq = record.seq,
-        }
-    }
-    Ok((view.projection, positions, stream_seq))
-}
-
-/// The stored view's positions and stream sequence, for a test; `views` is
-/// the pool the view tables live in.
-pub async fn stored_positions(
+/// The stored view's positions and stream sequence; `views` is the pool the
+/// view tables live in.
+pub(crate) async fn stored_positions(
     views: &DbPool,
     run_id: RunId,
 ) -> Result<Option<(Positions, u64)>, ProjectError> {
@@ -1117,262 +845,4 @@ pub async fn stored_positions(
         ))
     })
     .transpose()
-}
-
-/// The stored view's projection, for a test or a reader outside the store.
-pub async fn stored_projection(
-    views: &DbPool,
-    run_id: RunId,
-) -> Result<Option<RunProjection>, ProjectError> {
-    let json: Option<String> =
-        sqlx::query_scalar("SELECT projection_json FROM petri_projection WHERE run_id = ?")
-            .bind(run_id.to_string())
-            .fetch_optional(views)
-            .await
-            .map_err(ProjectError::Database)?;
-    json.map(|json| serde_json::from_str(&json).map_err(ProjectError::Encode))
-        .transpose()
-}
-
-/// The stream rows of a run: `(stream_seq, item_kind, item_id)`, in order.
-pub async fn stored_stream(
-    views: &DbPool,
-    run_id: RunId,
-) -> Result<Vec<(u64, String, String)>, ProjectError> {
-    let rows: Vec<(i64, String, String)> = sqlx::query_as(
-        "SELECT stream_seq, item_kind, item_id FROM petri_stream WHERE run_id = ? ORDER BY stream_seq",
-    )
-    .bind(run_id.to_string())
-    .fetch_all(views)
-    .await
-    .map_err(ProjectError::Database)?;
-    Ok(rows
-        .into_iter()
-        .map(|(seq, kind, id)| (u64::try_from(seq).unwrap_or(0), kind, id))
-        .collect())
-}
-
-/// Every stored platform record of a run, for a reader outside the store.
-pub async fn stored_platform_records(
-    views: &DbPool,
-    run_id: RunId,
-) -> Result<Vec<StoredPlatformRecord>, ProjectError> {
-    PlatformRecordStore::new(views.clone())
-        .read(&run_id)
-        .await
-        .map_err(ProjectError::Store)
-}
-
-/// A recorded event's projection is what `RunEvent` serializes to.
-#[must_use]
-pub fn event_json(event: &RunEvent) -> serde_json::Value {
-    serde_json::to_value(event).unwrap_or_default()
-}
-
-#[cfg(test)]
-mod tests {
-    use fabro_store::PlatformRecord;
-    use fabro_store::platform_records::{CheckpointRecord, StagePosition};
-    use petri_execution::events::{Context, NodeRef, Record, RecordOrigin, Subject};
-    use petri_execution::{ExecutionId, StoredEngineRecord};
-    use petri_runtime::driver::BranchRole;
-    use petri_runtime::engine::{DecisionId, EventOrigin, RouteApplied};
-    use petri_runtime::ir::{Attempt, FiringId, NodeId, Outcome, Status};
-
-    use super::*;
-
-    /// A firing's engine event at `seq`, recorded at `at`.
-    fn engine_event(seq: u64, firing: u64, at: u64, body: Event) -> RunEvent {
-        RunEvent {
-            id:          EventId {
-                source: EventSource::Execution {
-                    execution: ExecutionId::new(0),
-                },
-                seq,
-                index: 0,
-            },
-            origin:      RecordOrigin::External,
-            context:     Context {
-                invocation: None,
-                execution:  Some(ExecutionId::new(0)),
-                parent:     None,
-            },
-            subject:     Some(Subject {
-                node:       NodeRef {
-                    id:   NodeId::new(1),
-                    name: format!("n{firing}").into(),
-                    kind: "attractor/command".into(),
-                    meta: serde_json::Value::Null,
-                },
-                firing:     Some(FiringId::new(firing)),
-                visit:      Some(1),
-                attempt:    Some(Attempt::FIRST),
-                generation: None,
-                branch:     BranchRole::None,
-            }),
-            observed_at: None,
-            recorded_at: at,
-            record:      Some(Record::Engine(StoredEngineRecord {
-                seq,
-                origin: EventOrigin::External,
-                recorded_at: at,
-                body,
-            })),
-            derived:     None,
-        }
-    }
-
-    fn finished(seq: u64, firing: u64, at: u64) -> RunEvent {
-        engine_event(seq, firing, at, Event::StepFinished {
-            firing:  FiringId::new(firing),
-            attempt: Attempt::FIRST,
-            outcome: Outcome::new(Status::Success, serde_json::Value::Null),
-        })
-    }
-
-    fn routing(seq: u64, firing: u64, at: u64) -> RunEvent {
-        engine_event(seq, firing, at, Event::RoutingResolved {
-            decision_id: DecisionId::route(FiringId::new(firing), Attempt::FIRST),
-            groups:      Vec::new(),
-        })
-    }
-
-    fn applied(seq: u64, firing: u64, at: u64) -> RunEvent {
-        engine_event(seq, firing, at, Event::RouteApplied {
-            applied: RouteApplied::None {
-                firing: FiringId::new(firing),
-                group:  0,
-            },
-        })
-    }
-
-    fn started(seq: u64, firing: u64, at: u64) -> RunEvent {
-        engine_event(seq, firing, at, Event::StepStarted {
-            firing:  FiringId::new(firing),
-            attempt: Attempt::FIRST,
-        })
-    }
-
-    fn checkpoint(seq: u64, firing: u64, at: u64) -> StoredPlatformRecord {
-        StoredPlatformRecord {
-            seq,
-            recorded_at: at,
-            record: PlatformRecord::Checkpoint(CheckpointRecord {
-                execution: 0,
-                firing,
-                attempt: Some(1),
-                workspace: None,
-                git_commit_sha: Some("abc".to_string()),
-                diff_summary: None,
-                patch_blob: None,
-                operation: None,
-            }),
-            position: Some(StagePosition {
-                execution: 0,
-                firing,
-            }),
-        }
-    }
-
-    fn names(items: &[Item<'_>]) -> Vec<String> {
-        items
-            .iter()
-            .map(|item| match item {
-                Item::Petri(event) => event_id_text(&event.id),
-                Item::Platform(record) => format!("platform {}", record.seq),
-            })
-            .collect()
-    }
-
-    /// A firing's events, then a later firing's events, then a checkpoint
-    /// for the first firing stamped later than all of them: the stream puts
-    /// the checkpoint right after the first firing's finish, before its
-    /// routes and before the later firing.
-    #[test]
-    fn a_positioned_record_follows_its_firings_finish_whatever_its_clock_says() {
-        let events = vec![
-            finished(10, 1, 100),
-            routing(11, 1, 101),
-            applied(12, 1, 102),
-            started(13, 2, 103),
-            finished(14, 2, 104),
-        ];
-        let records = vec![checkpoint(1, 1, 250)];
-        let (items, held) = order_items(&events, &records, &BTreeSet::new(), false);
-        assert_eq!(held, 0);
-        assert_eq!(names(&items), vec![
-            "execution 0/10/0",
-            "platform 1",
-            "execution 0/11/0",
-            "execution 0/12/0",
-            "execution 0/13/0",
-            "execution 0/14/0",
-        ]);
-    }
-
-    /// With the firing finished in an earlier pass, the record goes before
-    /// the first event of a later firing; a record with no position keeps
-    /// its clock order.
-    #[test]
-    fn a_positioned_record_precedes_later_firings_and_an_unpositioned_one_keeps_its_clock() {
-        let events = vec![started(13, 2, 103), finished(14, 2, 104)];
-        let records = vec![checkpoint(1, 1, 250)];
-        let finished_before: BTreeSet<FiringKey> = [FiringKey::new(0, 1)].into_iter().collect();
-        let (items, held) = order_items(&events, &records, &finished_before, false);
-        assert_eq!(held, 0);
-        assert_eq!(names(&items), vec![
-            "platform 1",
-            "execution 0/13/0",
-            "execution 0/14/0",
-        ]);
-
-        let unpositioned = StoredPlatformRecord {
-            position: None,
-            ..checkpoint(2, 1, 250)
-        };
-        let unpositioned = [unpositioned];
-        let (items, held) = order_items(&events, &unpositioned, &BTreeSet::new(), false);
-        assert_eq!(held, 0);
-        assert_eq!(names(&items), vec![
-            "execution 0/13/0",
-            "execution 0/14/0",
-            "platform 2",
-        ]);
-    }
-
-    /// A record whose firing has no finish yet, in the stream or in the pass,
-    /// is held back with everything after it until the finish arrives, or
-    /// until the run has finished.
-    #[test]
-    fn a_positioned_record_is_held_until_its_firings_finish_is_in_the_stream() {
-        let events = vec![started(13, 2, 103), finished(14, 2, 104)];
-        let records = vec![
-            checkpoint(1, 2, 50),
-            checkpoint(2, 3, 60),
-            checkpoint(3, 2, 70),
-        ];
-        let (items, held) = order_items(&events, &records, &BTreeSet::new(), false);
-        assert_eq!(
-            held, 2,
-            "the record for firing 3 holds itself and the one after it"
-        );
-        assert_eq!(names(&items), vec![
-            "execution 0/13/0",
-            "execution 0/14/0",
-            "platform 1",
-        ]);
-
-        // Once the run finished, a record for a firing that never finished
-        // keeps its clock order; the firing's own records still follow its
-        // finish, in their seq order.
-        let (items, held) = order_items(&events, &records, &BTreeSet::new(), true);
-        assert_eq!(held, 0, "nothing is held once the run finished");
-        assert_eq!(names(&items), vec![
-            "platform 2",
-            "execution 0/13/0",
-            "execution 0/14/0",
-            "platform 1",
-            "platform 3",
-        ]);
-    }
 }

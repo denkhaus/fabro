@@ -121,6 +121,7 @@ impl Caches {
     }
 
     /// Whether a cache is kept for the run: a test's view of the cache.
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn holds(&self, run_id: RunId) -> bool {
         let runs = sync::lock(&self.runs);
         runs.get(&run_id)
