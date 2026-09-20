@@ -4,6 +4,7 @@ import {
   EMPTY_ENVIRONMENT_FORM,
   createRequestFromForm,
   isEnvironmentFormValid,
+  replaceRequestFromForm,
   type EnvironmentFormValues,
 } from "./environment-form";
 
@@ -46,5 +47,29 @@ describe("environment image source", () => {
     );
     expect(request.image.docker).toBeNull();
     expect(request.image.dockerfile?.value).toBe("FROM ubuntu");
+  });
+});
+
+describe("environment resources by provider", () => {
+  test("docker environments never offer or submit a disk limit", () => {
+    const request = createRequestFromForm(
+      form({ provider: "docker", disk: 16, dockerRef: "ubuntu:24.04" }),
+    );
+    expect(request.resources.disk).toBeNull();
+    expect(request.resources.memory).toBe("8GB");
+  });
+
+  test("editing a docker environment sends no disk limit on replace", () => {
+    const request = replaceRequestFromForm(
+      form({ id: "toolchain", provider: "docker", dockerRef: "fabro-toolchain:v2" }),
+    );
+    expect(request.resources.disk).toBeNull();
+  });
+
+  test("providers that enforce disk still submit the slider value", () => {
+    const request = createRequestFromForm(
+      form({ provider: "daytona", disk: 20, dockerRef: "fabro-snapshot" }),
+    );
+    expect(request.resources.disk).toBe("20GB");
   });
 });

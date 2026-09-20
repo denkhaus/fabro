@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use axum::http::HeaderMap;
 use fabro_environment::{Environment, EnvironmentDraft, EnvironmentId, EnvironmentStoreError};
+use fabro_sandbox::environment::unsupported_resource_fields;
 use fabro_types::SandboxProviderKind;
 use fabro_types::settings::InterpString;
 use fabro_types::settings::run::{
@@ -167,6 +168,7 @@ async fn create_environment(
     State(state): State<Arc<AppState>>,
     Json(request): Json<CreateEnvironmentRequest>,
 ) -> Result<Response, ApiError> {
+    validate_provider_resources(&request.provider, &request.resources)?;
     let environment = state
         .environment_store()
         .create(request.into_draft()?)
@@ -196,6 +198,7 @@ async fn replace_environment(
 ) -> Result<Response, ApiError> {
     let id = parse_path_id(id)?;
     let expected = parse_required_if_match(&headers, "environment", &id)?;
+    validate_provider_resources(&request.provider, &request.resources)?;
     let environment = state
         .environment_store()
         .replace(&id, &expected, request.into_settings()?)
@@ -231,6 +234,21 @@ async fn delete_environment(
 fn parse_path_id(id: String) -> Result<EnvironmentId, ApiError> {
     EnvironmentId::new(id)
         .map_err(|err| ApiError::bad_request(format!("invalid environment id: {err}")))
+}
+
+/// Rejects resource fields the target provider does not enforce at write
+/// time, so an incompatible value can never reach the store and kill runs
+/// at sandbox creation (fabro-94f6).
+fn validate_provider_resources(
+    provider: &SandboxProviderKind,
+    resources: &EnvironmentResourcesSettings,
+) -> Result<(), ApiError> {
+    let unsupported = unsupported_resource_fields(provider, resources);
+    if unsupported.is_empty() {
+        Ok(())
+    } else {
+        Err(ApiError::bad_request(unsupported.join("; ")))
+    }
 }
 
 fn environment_with_etag_response(status: StatusCode, environment: Environment) -> Response {

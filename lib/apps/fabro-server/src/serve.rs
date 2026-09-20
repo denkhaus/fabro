@@ -42,7 +42,7 @@ use crate::server::{
 };
 use crate::server_secrets::{ServerSecrets, process_env_snapshot};
 use crate::startup::{resolve_startup, validate_startup_configuration};
-use crate::{migrations, sandbox_gc, static_files};
+use crate::{environment_compat, migrations, sandbox_gc, static_files};
 
 pub const DEFAULT_TCP_PORT: u16 = 32276;
 type EnvLookup = Arc<dyn Fn(&str) -> Option<String> + Send + Sync>;
@@ -812,6 +812,7 @@ where
         #[cfg(any(test, feature = "test-support"))]
         automation_breaker_notifier_override: None,
     })?;
+    environment_compat::warn_on_incompatible_environments(&state);
     let reconciled = reconcile_incomplete_runs_on_startup(&state).await?;
     if reconciled > 0 {
         info!(

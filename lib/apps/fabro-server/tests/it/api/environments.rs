@@ -787,3 +787,96 @@ async fn create_environment_refreshes_cached_manifest_run_settings() {
     let after = system_info(&app).await;
     assert_eq!(after["sandbox_provider"], "daytona");
 }
+
+#[tokio::test]
+async fn environment_resources_disk_is_rejected_for_docker_at_write_time() {
+    let (app, _temp_dir, _environment_dir) = environment_app();
+
+    // Create with a disk limit on a docker-provider environment: 400 naming
+    // the field, never a stored value that kills runs at sandbox creation.
+    let mut create_body = environment_body("disk-env", "docker");
+    create_body["resources"]["disk"] = json!("16GB");
+    let response = app
+        .clone()
+        .oneshot(json_request(Method::POST, "/environments", &create_body))
+        .await
+        .expect("create with docker disk should respond");
+    let error = response_json(
+        response,
+        StatusCode::BAD_REQUEST,
+        "POST /api/v1/environments with docker disk",
+    )
+    .await;
+    let detail = error["errors"][0]["detail"]
+        .as_str()
+        .expect("error body should carry a detail");
+    assert!(
+        detail.contains("resources.disk"),
+        "the rejection must name the field: {detail}"
+    );
+
+    // The environment exists only once, created without the disk limit.
+    let created = create_environment(&app, "disk-env", "docker").await;
+    let revision = revision_from(&created);
+
+    // Replace smuggling the disk limit back in: same 400.
+    let mut replacement = environment_settings("docker");
+    replacement["resources"]["disk"] = json!("16GB");
+    let response = app
+        .clone()
+        .oneshot(request_with_if_match(
+            Method::PUT,
+            "/environments/disk-env",
+            revision,
+            Some(replacement),
+        ))
+        .await
+        .expect("replace with docker disk should respond");
+    let error = response_json(
+        response,
+        StatusCode::BAD_REQUEST,
+        "PUT /api/v1/environments/disk-env with docker disk",
+    )
+    .await;
+    assert!(
+        error["errors"][0]["detail"]
+            .as_str()
+            .expect("error body should carry a detail")
+            .contains("resources.disk")
+    );
+
+    // Replace leaving disk null on docker still succeeds.
+    let mut clean = environment_settings("docker");
+    clean["resources"]["disk"] = Value::Null;
+    let response = app
+        .clone()
+        .oneshot(request_with_if_match(
+            Method::PUT,
+            "/environments/disk-env",
+            revision,
+            Some(clean),
+        ))
+        .await
+        .expect("replace without docker disk should respond");
+    response_status(
+        response,
+        StatusCode::OK,
+        "PUT /api/v1/environments/disk-env without docker disk",
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn environment_resources_disk_is_accepted_for_a_provider_that_enforces_it() {
+    let (app, _temp_dir, _environment_dir) = environment_app();
+
+    let mut create_body = environment_body("daytona-disk-env", "daytona");
+    create_body["resources"]["disk"] = json!("16GB");
+    create_body["image"]["docker"] = json!("ubuntu:24.04");
+    let created = create_environment_with_body(&app, &create_body).await;
+    assert!(
+        created["resources"]["disk"].is_string(),
+        "a provider that enforces disk keeps the stored value: {}",
+        created["resources"]["disk"]
+    );
+}
