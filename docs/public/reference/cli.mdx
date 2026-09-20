@@ -76,6 +76,7 @@ fabro [OPTIONS] [COMMAND]
 | `fabro docs` | Open the docs website in the browser |
 | `fabro doctor` | Check environment and integration health |
 | `fabro dump` | Export a run's durable state to a directory |
+| `fabro env` | Manage server environments |
 | `fabro events` | View the event log of a workflow run |
 | `fabro fork` | Fork a workflow run from an earlier checkpoint into a new run |
 | `fabro graph` | Render a workflow graph as SVG |
@@ -442,6 +443,95 @@ fabro dump [OPTIONS] --output <OUTPUT> <RUN>
 | --- | --- |
 | `-o, --output <output>` | Output directory (must not exist or be empty) |
 | `--server <server>` | Fabro server target: http(s) URL or absolute Unix socket path |
+
+### `fabro env`
+
+Manage server environments
+
+```bash
+fabro env [OPTIONS] <COMMAND>
+```
+
+#### Options
+
+| Option | Description |
+| --- | --- |
+| `--server <server>` | Fabro server target: http(s) URL or absolute Unix socket path |
+
+#### Subcommands
+
+| Command | Description |
+| --- | --- |
+| `fabro env list` | List server environments |
+| `fabro env pin-toolchain` | Pin the toolchain environment to the just-pushed image |
+| `fabro env show` | Show one server environment |
+| `fabro env update` | Update a server environment |
+
+#### `fabro env list`
+
+List server environments
+
+```bash
+fabro env list [OPTIONS]
+```
+
+#### `fabro env pin-toolchain`
+
+Pin the toolchain environment to the just-pushed image
+
+```bash
+fabro env pin-toolchain [OPTIONS] <--tag <TAG>|--from-run-images>
+```
+
+#### Options
+
+| Option | Description |
+| --- | --- |
+| `--from-run-images` | Derive the tag from the current git HEAD sha12 (same logic as scripts/run-images.nu --push) |
+| `--tag <tag>` | Pin this 12-hex git sha tag (e.g. from scripts/run-images.nu --push) |
+
+#### `fabro env show`
+
+Show one server environment
+
+```bash
+fabro env show [OPTIONS] <ID>
+```
+
+#### Arguments
+
+| Name | Description |
+| --- | --- |
+| `ID` | Environment id |
+
+#### `fabro env update`
+
+Update a server environment
+
+```bash
+fabro env update [OPTIONS] <ID>
+```
+
+#### Arguments
+
+| Name | Description |
+| --- | --- |
+| `ID` | Environment id |
+
+#### Options
+
+| Option | Description |
+| --- | --- |
+| `--auto-stop <auto_stop>` | Auto-stop idle sandboxes after this duration (e.g. 30m) |
+| `--cpu <cpu>` | CPU count (provider-dependent) |
+| `--disk <disk>` | Disk size (e.g. 20g) |
+| `--image <image>` | Docker image reference for the environment |
+| `--memory <memory>` | Memory size (e.g. 4g) |
+| `--no-auto-stop` | Clear the auto-stop idle duration |
+| `--no-preserve` | Do not preserve sandbox instances after runs |
+| `--no-stop-on-terminal` | Do not stop sandboxes on terminal run states |
+| `--preserve` | Preserve sandbox instances after runs |
+| `--stop-on-terminal` | Stop sandboxes when a run reaches a terminal state |
 
 ### `fabro events`
 

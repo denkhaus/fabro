@@ -121,6 +121,14 @@ image-release: web-deps
 run-images:
     nu scripts/run-images.nu
 
+# Pin the server-managed toolchain environment to the just-pushed
+# ghcr.io/denkhaus/fabro-toolchain:<sha12> tag (thin wrapper over
+# `fabro env pin-toolchain --from-run-images`; fabro-4f44). Ordering rule:
+# run ONLY after the matching server deploy — the command verifies
+# deployed-server/tag parity fail-closed and aborts on mismatch.
+pin-toolchain:
+    fabro env pin-toolchain --from-run-images
+
 # Build only the release binary and stage it (no docker image build)
 build-binary: web-deps
     cargo --locked dev docker-build --arch {{ arch }} --compile-only
