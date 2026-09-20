@@ -19,7 +19,7 @@ use tracing::debug;
 
 use super::model::{model_ref, usage_of};
 use super::sandbox::{provider_kind, sandbox_instance, sandbox_plan_of};
-use super::{RunView, StageRef, is_shown, node_meta_kind, stage_key, stage_label, visit_of};
+use super::{FiringKey, RunView, StageRef, is_shown, node_meta_kind, stage_label, visit_of};
 
 impl RunView {
     pub(super) fn fold_engine(&mut self, engine: &Event, event: &RunEvent, at: DateTime<Utc>) {
@@ -59,7 +59,7 @@ impl RunView {
             } => {
                 self.state
                     .finished_firings
-                    .insert(stage_key(execution.raw(), firing.raw()));
+                    .insert(FiringKey::new(execution.raw(), firing.raw()));
                 let is_final = matches!(
                     event.derived,
                     Some(Derived::StepFinished { is_final: true, .. })
@@ -139,12 +139,11 @@ impl RunView {
                     answer: Some(answer),
                 }) = &event.derived
                 {
-                    let firing_key = event.subject.as_ref().and_then(|subject| {
-                        subject
-                            .firing
-                            .map(|firing| stage_key(execution.raw(), firing.raw()))
-                    });
-                    self.close_questions(answer.question.as_deref(), firing_key.as_deref(), at);
+                    self.close_questions(
+                        answer.question.as_deref(),
+                        FiringKey::of_event(event),
+                        at,
+                    );
                 }
             }
             // ── Sandbox: the instance (VIEWS.md "Sandbox") ──────────────────
@@ -271,7 +270,7 @@ impl RunView {
                 results,
                 ..
             } => {
-                let key = stage_key(occurrence.execution.raw(), occurrence.firing.raw());
+                let key = FiringKey::new(occurrence.execution.raw(), occurrence.firing.raw());
                 let Some(stage_id) = self
                     .state
                     .stages
@@ -317,7 +316,7 @@ impl RunView {
         let Some(firing) = subject.firing else {
             return;
         };
-        let key = stage_key(execution.raw(), firing.raw());
+        let key = FiringKey::new(execution.raw(), firing.raw());
         if self.state.stages.contains_key(&key) {
             return;
         }

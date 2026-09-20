@@ -33,15 +33,18 @@ mod progress;
 mod sandbox;
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::fmt;
+use std::str::FromStr;
 
 use chrono::{DateTime, TimeZone as _, Utc};
+use fabro_store::StagePosition;
 use fabro_store::platform_records::StoredPlatformRecord;
 use fabro_types::{
     RunControlAction, RunDiff, RunId, RunProjection, RunStatus, StageId, StageProjection,
 };
 use petri_execution::ExecutionId;
 use petri_execution::events::{NodeRef, RunEvent, Subject};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
 use serde_json::Value;
 use tracing::debug;
 
@@ -91,9 +94,9 @@ pub struct RecordHealth {
 /// The fold's bookkeeping between items.
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct FoldState {
-    /// Stages by `"<execution>:<firing>"`.
+    /// Stages by firing.
     #[serde(default)]
-    pub stages:           BTreeMap<String, StageRef>,
+    pub stages:           BTreeMap<FiringKey, StageRef>,
     /// Labels taken, so a second firing with the same name and visit gets
     /// its own.
     #[serde(default)]
@@ -103,9 +106,9 @@ pub struct FoldState {
     /// Which invocation each execution belongs to.
     #[serde(default)]
     pub executions:       BTreeMap<u64, u64>,
-    /// Open questions by id: the stage that asked.
+    /// Open questions by id: the firing that asked.
     #[serde(default)]
-    pub questions:        BTreeMap<String, String>,
+    pub questions:        BTreeMap<String, FiringKey>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub root:             Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -126,11 +129,10 @@ pub struct FoldState {
     pub run_diff:         Option<RunDiff>,
     #[serde(default)]
     pub health:           RecordHealth,
-    /// Firings (`"<execution>:<firing>"`) whose attempt has recorded a
-    /// finish: what a position-keyed platform record may be streamed
-    /// behind.
+    /// Firings whose attempt has recorded a finish: what a position-keyed
+    /// platform record may be streamed behind.
     #[serde(default)]
-    pub finished_firings: BTreeSet<String>,
+    pub finished_firings: BTreeSet<FiringKey>,
     /// Whether the run's sandbox still exists after its release
     /// (`scope.released` `retained`): kept stopped, or deleted. Absent until
     /// the root invocation's lease was released. The view carries the same
@@ -201,7 +203,7 @@ impl RunView {
         let stage = self
             .state
             .stages
-            .get(&stage_key(execution.raw(), firing.raw()))?;
+            .get(&FiringKey::new(execution.raw(), firing.raw()))?;
         if !stage.shown {
             return None;
         }
@@ -240,10 +242,74 @@ fn settle_control(projection: &mut RunProjection, action: RunControlAction) {
     }
 }
 
-/// The key of a stage: its execution and firing.
-#[must_use]
-pub fn stage_key(execution: u64, firing: u64) -> String {
-    format!("{execution}:{firing}")
+/// The key of a stage: the execution and firing of the visit it shows. The
+/// same fact a positioned platform record carries as its `StagePosition`.
+/// It is written `<execution>:<firing>`, which is how the stored fold
+/// state keys its maps.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct FiringKey {
+    pub execution: u64,
+    pub firing:    u64,
+}
+
+impl FiringKey {
+    #[must_use]
+    pub fn new(execution: u64, firing: u64) -> Self {
+        Self { execution, firing }
+    }
+
+    /// The firing an event belongs to: its context's execution and its
+    /// subject's firing, when it has both.
+    #[must_use]
+    pub fn of_event(event: &RunEvent) -> Option<Self> {
+        let execution = event.context.execution?;
+        let firing = event.subject.as_ref()?.firing?;
+        Some(Self::new(execution.raw(), firing.raw()))
+    }
+}
+
+impl From<StagePosition> for FiringKey {
+    fn from(position: StagePosition) -> Self {
+        Self::new(position.execution, position.firing)
+    }
+}
+
+impl fmt::Display for FiringKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}:{}", self.execution, self.firing)
+    }
+}
+
+/// A firing key that is not `<execution>:<firing>`.
+#[derive(Debug, thiserror::Error)]
+#[error("a firing key is `<execution>:<firing>`, not {0:?}")]
+pub struct ParseFiringKeyError(String);
+
+impl FromStr for FiringKey {
+    type Err = ParseFiringKeyError;
+
+    fn from_str(text: &str) -> Result<Self, Self::Err> {
+        let invalid = || ParseFiringKeyError(text.to_string());
+        let (execution, firing) = text.split_once(':').ok_or_else(invalid)?;
+        Ok(Self::new(
+            execution.parse().map_err(|_| invalid())?,
+            firing.parse().map_err(|_| invalid())?,
+        ))
+    }
+}
+
+impl Serialize for FiringKey {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.collect_str(self)
+    }
+}
+
+impl<'de> Deserialize<'de> for FiringKey {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        String::deserialize(deserializer)?
+            .parse()
+            .map_err(de::Error::custom)
+    }
 }
 
 /// Which firing of its node a subject is, 1-based.
@@ -350,5 +416,23 @@ mod tests {
             .collect();
         assert_eq!(labels, vec!["build@1", "build/e2@1"]);
         assert_eq!(view.state.stages.len(), 2);
+    }
+
+    #[test]
+    fn a_firing_key_is_stored_as_execution_colon_firing() {
+        let mut stages: BTreeMap<FiringKey, u32> = BTreeMap::new();
+        stages.insert(FiringKey::new(3, 7), 1);
+        let json = serde_json::to_string(&stages).expect("the map encodes");
+        assert_eq!(json, r#"{"3:7":1}"#);
+        let back: BTreeMap<FiringKey, u32> = serde_json::from_str(&json).expect("the map decodes");
+        assert_eq!(back, stages);
+        assert!("3-7".parse::<FiringKey>().is_err());
+        assert_eq!(
+            FiringKey::from(StagePosition {
+                execution: 3,
+                firing:    7,
+            }),
+            FiringKey::new(3, 7)
+        );
     }
 }

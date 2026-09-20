@@ -77,7 +77,7 @@ use tracing::{debug, info, warn};
 
 use self::cache::{Caches, IDLE, RunCache};
 use crate::SqliteRunStore;
-use crate::projection::{self, FoldState, Item, RecordHealth, RunView};
+use crate::projection::{self, FiringKey, FoldState, Item, RecordHealth, RunView};
 
 /// The positions a view committed: the last event consumed per Petri log,
 /// and the last platform record consumed.
@@ -891,23 +891,16 @@ impl petri_execution::RunLogs for SignallingLogs {
 fn order_items<'a>(
     events: &'a [RunEvent],
     platform_records: &'a [StoredPlatformRecord],
-    finished_before: &BTreeSet<String>,
+    finished_before: &BTreeSet<FiringKey>,
     run_finished: bool,
 ) -> (Vec<Item<'a>>, usize) {
-    let firing_of = |event: &RunEvent| -> Option<(u64, u64)> {
-        let execution = event.context.execution?;
-        let firing = event.subject.as_ref()?.firing?;
-        Some((execution.raw(), firing.raw()))
-    };
-    let finished_in_pass = |at: (u64, u64)| {
+    let finished_in_pass = |at: FiringKey| {
         events.iter().any(|event| {
-            firing_of(event) == Some(at)
+            FiringKey::of_event(event) == Some(at)
                 && matches!(event.engine(), Some(Event::StepFinished { .. }))
         })
     };
-    let finished = |at: (u64, u64)| {
-        finished_in_pass(at) || finished_before.contains(&projection::stage_key(at.0, at.1))
-    };
+    let finished = |at: FiringKey| finished_in_pass(at) || finished_before.contains(&at);
     // Platform records are consumed in seq order: the first one whose firing
     // has not finished holds itself and everything after it.
     let consumed = if run_finished {
@@ -918,7 +911,7 @@ fn order_items<'a>(
             .position(|record| {
                 record
                     .position
-                    .is_some_and(|position| !finished((position.execution, position.firing)))
+                    .is_some_and(|position| !finished(FiringKey::from(position)))
             })
             .unwrap_or(platform_records.len())
     };
@@ -940,7 +933,7 @@ fn order_items<'a>(
     items.sort_by_key(|(recorded_at, rank, _)| (*recorded_at, *rank));
 
     let item_firing = |item: &Item<'a>| match item {
-        Item::Petri(event) => firing_of(event),
+        Item::Petri(event) => FiringKey::of_event(event),
         Item::Platform(_) => None,
     };
     let is_routing = |item: &Item<'a>| {
@@ -959,7 +952,7 @@ fn order_items<'a>(
         let Some(position) = record.position else {
             continue;
         };
-        let at = (position.execution, position.firing);
+        let at = FiringKey::from(position);
         let first_routing = items
             .iter()
             .position(|(_, _, other)| item_firing(other) == Some(at) && is_routing(other));
@@ -967,7 +960,8 @@ fn order_items<'a>(
             .iter()
             .rposition(|(_, _, other)| item_firing(other) == Some(at));
         let first_later = items.iter().position(|(_, _, other)| {
-            item_firing(other).is_some_and(|(execution, firing)| execution == at.0 && firing > at.1)
+            item_firing(other)
+                .is_some_and(|key| key.execution == at.execution && key.firing > at.firing)
         });
         keys[index] = if let Some(before) = first_routing {
             (before, 0)
@@ -1323,7 +1317,7 @@ mod tests {
     fn a_positioned_record_precedes_later_firings_and_an_unpositioned_one_keeps_its_clock() {
         let events = vec![started(13, 2, 103), finished(14, 2, 104)];
         let records = vec![checkpoint(1, 1, 250)];
-        let finished_before: BTreeSet<String> = [projection::stage_key(0, 1)].into_iter().collect();
+        let finished_before: BTreeSet<FiringKey> = [FiringKey::new(0, 1)].into_iter().collect();
         let (items, held) = order_items(&events, &records, &finished_before, false);
         assert_eq!(held, 0);
         assert_eq!(names(&items), vec![

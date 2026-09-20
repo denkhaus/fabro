@@ -17,7 +17,7 @@ use fabro_types::{
 use tracing::debug;
 
 use super::sandbox::sandbox_plan;
-use super::{RunView, apply_status, millis, settle_control, stage_key, touch};
+use super::{FiringKey, RunView, apply_status, millis, settle_control, touch};
 
 impl RunView {
     pub(super) fn fold_platform(&mut self, stored: &StoredPlatformRecord, stream_seq: u64) {
@@ -76,7 +76,7 @@ impl RunView {
                 let stage = self
                     .state
                     .stages
-                    .get(&stage_key(record.execution, record.firing));
+                    .get(&FiringKey::new(record.execution, record.firing));
                 let current_node = stage.map_or_else(String::new, |stage| stage.node_name.clone());
                 let stage_id = stage
                     .filter(|stage| stage.shown)
@@ -107,7 +107,7 @@ impl RunView {
                 let stage = self
                     .state
                     .stages
-                    .get(&stage_key(record.execution, record.firing));
+                    .get(&FiringKey::new(record.execution, record.firing));
                 let Some(stage_id) = stage.map(|stage| stage.stage_id.clone()) else {
                     debug!(
                         seq = stored.seq,

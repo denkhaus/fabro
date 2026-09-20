@@ -20,7 +20,7 @@ use serde_json::Value;
 use tracing::debug;
 
 use super::model::{model_ref, split_model};
-use super::{RunView, apply_status, stage_key};
+use super::{FiringKey, RunView, apply_status};
 use crate::interview::question_type;
 
 impl RunView {
@@ -115,7 +115,7 @@ impl RunView {
                         let group = self
                             .state
                             .stages
-                            .get(&stage_key(execution.raw(), occurrence.firing))
+                            .get(&FiringKey::new(execution.raw(), occurrence.firing))
                             .map(|stage| stage.stage_id.clone());
                         if let Some(group) = group {
                             self.state.invocations.entry(invocation).or_default().branch =
@@ -143,7 +143,7 @@ impl RunView {
                 let Some(firing) = subject.firing else {
                     return;
                 };
-                let key = stage_key(execution.raw(), firing.raw());
+                let key = FiringKey::new(execution.raw(), firing.raw());
                 let label = self.state.stages.get(&key).map_or_else(
                     || subject.node.name.to_string(),
                     |stage| stage.stage_id.to_string(),
@@ -201,16 +201,16 @@ impl RunView {
     pub(super) fn close_questions(
         &mut self,
         question: Option<&str>,
-        firing_key: Option<&str>,
+        firing: Option<FiringKey>,
         at: DateTime<Utc>,
     ) {
-        let closed: Vec<String> = match (question, firing_key) {
+        let closed: Vec<String> = match (question, firing) {
             (Some(question), _) => vec![question.to_string()],
-            (None, Some(key)) => self
+            (None, Some(firing)) => self
                 .state
                 .questions
                 .iter()
-                .filter(|(_, asked_by)| asked_by.as_str() == key)
+                .filter(|(_, asked_by)| **asked_by == firing)
                 .map(|(id, _)| id.clone())
                 .collect(),
             (None, None) => Vec::new(),

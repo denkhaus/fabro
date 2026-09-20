@@ -10,7 +10,7 @@ use fabro_types::{
 use petri_execution::CoordinatorEvent;
 use petri_execution::events::RunEvent;
 
-use super::{InvocationRef, RunView, apply_status, settle_control, stage_key};
+use super::{FiringKey, InvocationRef, RunView, apply_status, settle_control};
 
 impl RunView {
     pub(super) fn fold_coordinator(
@@ -58,7 +58,7 @@ impl RunView {
                         let group = self
                             .state
                             .stages
-                            .get(&stage_key(parent.execution.raw(), fork_firing))
+                            .get(&FiringKey::new(parent.execution.raw(), fork_firing))
                             .map(|stage| stage.stage_id.clone());
                         if let Some(group) = group {
                             info.branch = Some((group, index));
