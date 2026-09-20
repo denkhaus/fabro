@@ -15726,7 +15726,7 @@ components:
 
     RunModelSettings:
       type: object
-      required: [provider, name, fallbacks]
+      required: [provider, name, fallbacks, first_token_timeout_secs]
       properties:
         provider:
           type: ["string", "null"]
@@ -15744,6 +15744,15 @@ components:
               $ref: "#/components/schemas/ModelRef"
         controls:
           $ref: "#/components/schemas/RunModelControls"
+        first_token_timeout_secs:
+          type: ["integer", "null"]
+          format: int64
+          description: >
+            How long a streaming stage LLM call may wait for its first token
+            before it errors and rides the normal retry/fallback path, in
+            seconds. Null means the engine default (45 s). Applies only to
+            streaming calls; a non-streaming completion has no first-token
+            seam.
 
     RunModelControls:
       type: object

@@ -792,19 +792,39 @@ pub enum RunGoal {
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
 pub struct RunModelSettings {
-    pub provider:  Option<String>,
-    pub name:      Option<String>,
+    pub provider:                 Option<String>,
+    pub name:                     Option<String>,
     /// Ordered fallback references keyed by the originally requested model.
     ///
     /// Keys remain raw selectors during offline configuration resolution.
     /// The server canonicalizes them against its model catalog before a run
     /// starts.
-    pub fallbacks: BTreeMap<String, Vec<ModelRef>>,
+    pub fallbacks:                BTreeMap<String, Vec<ModelRef>>,
     /// Run-level default values for typed model controls
     /// (`reasoning_effort`, `speed`). Node and style attributes still win
     /// over these defaults.
     #[serde(default)]
-    pub controls:  RunModelControls,
+    pub controls:                 RunModelControls,
+    /// How long a streaming stage LLM call may wait for its first token
+    /// before it errors and rides the normal retry/fallback path, in
+    /// seconds. `None` means the engine default (45 s).
+    #[serde(default)]
+    pub first_token_timeout_secs: Option<u64>,
+}
+
+/// The engine default for [`RunModelSettings::first_token_timeout_secs`]:
+/// tens of seconds, so a stalled stream fails while the stage can still
+/// retry. The single source of truth; `fabro-llm` re-exports it as a
+/// `Duration`.
+pub const DEFAULT_FIRST_TOKEN_TIMEOUT_SECS: u64 = 45;
+
+impl RunModelSettings {
+    /// The configured first-token timeout, or the engine default.
+    #[must_use]
+    pub fn effective_first_token_timeout_secs(&self) -> u64 {
+        self.first_token_timeout_secs
+            .unwrap_or(DEFAULT_FIRST_TOKEN_TIMEOUT_SECS)
+    }
 }
 
 /// Temporary compatibility deserializer: releases before model-keyed
@@ -822,11 +842,13 @@ impl<'de> serde::Deserialize<'de> for RunModelSettings {
     {
         #[derive(Deserialize)]
         struct Shadow {
-            provider:  Option<String>,
-            name:      Option<String>,
-            fallbacks: FallbacksCompat,
+            provider:                 Option<String>,
+            name:                     Option<String>,
+            fallbacks:                FallbacksCompat,
             #[serde(default)]
-            controls:  RunModelControls,
+            controls:                 RunModelControls,
+            #[serde(default)]
+            first_token_timeout_secs: Option<u64>,
         }
 
         #[derive(Deserialize)]
@@ -849,6 +871,7 @@ impl<'de> serde::Deserialize<'de> for RunModelSettings {
             name: shadow.name,
             fallbacks,
             controls: shadow.controls,
+            first_token_timeout_secs: shadow.first_token_timeout_secs,
         })
     }
 }
@@ -892,6 +915,36 @@ mod run_model_settings_compat_tests {
         }))
         .unwrap();
         assert!(settings.fallbacks.is_empty());
+    }
+
+    #[test]
+    fn first_token_timeout_defaults_and_round_trips() {
+        let unset: RunModelSettings = serde_json::from_value(serde_json::json!({
+            "provider": null,
+            "name": null,
+            "fallbacks": {}
+        }))
+        .unwrap();
+        assert_eq!(unset.first_token_timeout_secs, None);
+        assert_eq!(
+            unset.effective_first_token_timeout_secs(),
+            super::DEFAULT_FIRST_TOKEN_TIMEOUT_SECS
+        );
+
+        let set: RunModelSettings = serde_json::from_value(serde_json::json!({
+            "provider": null,
+            "name": null,
+            "fallbacks": {},
+            "first_token_timeout_secs": 120
+        }))
+        .unwrap();
+        assert_eq!(set.first_token_timeout_secs, Some(120));
+        assert_eq!(set.effective_first_token_timeout_secs(), 120);
+
+        let json = serde_json::to_value(&set).unwrap();
+        assert_eq!(json["first_token_timeout_secs"], 120);
+        let back: RunModelSettings = serde_json::from_value(json).unwrap();
+        assert_eq!(back, set);
     }
 }
 

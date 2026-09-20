@@ -153,11 +153,11 @@ pub struct RunModelLayer {
     /// Provider name for workflow model selection.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[option(value_type = "string")]
-    pub provider:  Option<String>,
+    pub provider:                 Option<String>,
     /// Model name for workflow runs.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[option(value_type = "string")]
-    pub name:      Option<String>,
+    pub name:                     Option<String>,
     /// Model-keyed fallback chains. Each value is an ordered list of bare
     /// providers, bare model IDs or aliases, or provider-qualified
     /// `provider:selector` values. A qualified selector may be a model ID,
@@ -170,11 +170,19 @@ pub struct RunModelLayer {
     /// validate` is offline and has no server model catalog.
     #[serde(default, skip_serializing_if = "MergeMap::is_empty")]
     #[option(default = "{}", value_type = "table<string, array<string>>")]
-    pub fallbacks: MergeMap<Vec<ModelRefOrSplice>>,
+    pub fallbacks:                MergeMap<Vec<ModelRefOrSplice>>,
     /// Run-level default values for typed model controls. Node attributes
     /// and style-applied attributes still win over these defaults.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub controls:  Option<RunModelControlsLayer>,
+    pub controls:                 Option<RunModelControlsLayer>,
+    /// How long a streaming stage LLM call may wait for its first token
+    /// before it errors and rides the normal retry/fallback path, in
+    /// seconds. Bounds stage latency against providers that hold a stream
+    /// open without ever producing output. Applies only to streaming
+    /// calls; a non-streaming completion has no first-token seam.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[option(default = "45", value_type = "seconds (integer)")]
+    pub first_token_timeout_secs: Option<u64>,
 }
 
 /// `[run.model.controls]` — run-level default control values.

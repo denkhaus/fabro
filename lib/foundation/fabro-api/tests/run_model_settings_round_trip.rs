@@ -15,18 +15,19 @@ fn run_model_settings_reuses_domain_types() {
 #[test]
 fn run_model_settings_json_matches_openapi_shape() {
     let settings = RunModelSettings {
-        provider:  Some("openrouter".to_string()),
-        name:      Some("claude-fable".to_string()),
-        fallbacks: BTreeMap::from([("claude-fable".to_string(), vec![
+        provider:                 Some("openrouter".to_string()),
+        name:                     Some("claude-fable".to_string()),
+        fallbacks:                BTreeMap::from([("claude-fable".to_string(), vec![
             "gpt-sol".parse().expect("fixture reference should parse"),
             "openrouter:claude-opus"
                 .parse()
                 .expect("fixture reference should parse"),
         ])]),
-        controls:  RunModelControls {
+        controls:                 RunModelControls {
             reasoning_effort: Some("high".to_string()),
             speed:            None,
         },
+        first_token_timeout_secs: None,
     };
 
     let json = serde_json::to_value(&settings).expect("run model settings should serialize");
