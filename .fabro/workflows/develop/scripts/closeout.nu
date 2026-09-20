@@ -173,6 +173,83 @@ def seed-demand-visible [seed_id: string]: nothing -> bool {
     demand-visible $tokens $diff_res.stdout
 }
 
+# ---------------------------------------------------------------------------
+# Reviewer-journal non-blocking sweep (fabro-22fa)
+#
+# WHY: a reviewer that approves with residual defects notes them in its
+# journal observations with explicit non-blocking wording ("non-blocking",
+# "noted but not blocking", "not blocking"). Before fabro-22fa those
+# findings lived only in `.fabro/journal/<run_id>.jsonl` — when closeout
+# ran `sd close`, the finding died with the closed seed: no open brief
+# existed to fold the follow-up into. This sweep re-files each explicitly
+# non-blocking reviewer observation as a NEW open seed BEFORE the close,
+# with provenance (finding text, closed seed id, source run id) in the
+# body so the finding survives closure traceably.
+#
+# ADVISORY ONLY: every failure (journal missing, JSON unparsable, sd
+# create error) logs to stderr and NEVER blocks the close — same
+# degrade-to-silence philosophy as warn-dockerfile-diff (`do -i` +
+# `do { ... } | complete` wrappers). Null path: a journal with no
+# non-blocking reviewer findings yields an empty list and ZERO sd create
+# calls — byte-identical close semantics.
+# ---------------------------------------------------------------------------
+
+# Pure: does a reviewer observation carry an explicit non-blocking
+# marker? Case-insensitive; "not blocking" also covers the "noted but
+# not blocking" phrasing. An observation merely mentioning a blocking
+# defect ("this is blocking") does NOT match.
+def is-nonblocking [obs: string]: nothing -> bool {
+    let low = ($obs | str lowercase)
+    ($low | str contains "non-blocking") or ($low | str contains "not blocking")
+}
+
+# Pure: non-blocking findings from journal JSONL text — reviewer-node
+# records only, their observations, filtered by is-nonblocking.
+def nonblocking-from-journal [text: string]: nothing -> list<string> {
+    let obs = (
+        $text | lines | compact
+        | each {|l| do -i { $l | from json } }
+        | where {|r| ($r | describe | str starts-with "record") and (($r | get -o node | default '') == "reviewer")}
+        | get -o data
+        | where {|d| $d != null}
+        | each {|d| $d | get -o observations | default []}
+        | flatten
+    )
+    $obs | where {|o| is-nonblocking $o}
+}
+
+# Best-effort file-level read: missing/unreadable journal -> empty list.
+def journal-nonblocking [journal_path: string]: nothing -> list<string> {
+    do -i { nonblocking-from-journal (open --raw $journal_path) } | default []
+}
+
+# Pure: run id from the run branch (`fabro/run/<run_id>`), '' off-run.
+def current-run-id []: nothing -> string {
+    current-branch | parse --regex 'fabro/run/(?P<id>[^/]+)$' | get -o id.0 | default ''
+}
+
+# Pure: filed-seed title — short finding excerpt plus provenance.
+def finding-title [finding: string, seed_id: string]: nothing -> string {
+    let excerpt = (if ($finding | str length) > 70 { $finding | str substring 0..69 } else { $finding })
+    $"Reviewer residual \(non-blocking\) from ($seed_id): ($excerpt)"
+}
+
+# Advisory sweep: file each non-blocking reviewer finding as an open
+# seed (type bug, assignee fabro so the develop line can pick it up).
+# Never raises: caller wraps in `do -i`; internal sd failures print to
+# stderr and continue.
+def sweep-reviewer-findings [seed_id: string, run_id: string, journal_path: string]: nothing -> nothing {
+    for finding in (journal-nonblocking $journal_path) {
+        let desc = $"Residual defect the reviewer explicitly flagged as non-blocking while approving ($seed_id).\n\nFinding text: \"($finding)\"\n\nOrigin: closed seed ($seed_id), reviewer journal ($journal_path).\nBasis: run ($run_id), closed seed ($seed_id)"
+        let res = (do { sd create --title (finding-title $finding $seed_id) --description $desc --type bug --assignee fabro } | complete)
+        if $res.exit_code != 0 {
+            print -e $"closeout: WARNING — could not file reviewer finding as a seed \(non-blocking, from ($seed_id)\): ($res.stderr | str trim)"
+        } else {
+            print $"closeout: filed reviewer finding \(non-blocking\) as open seed: ($res.stdout | str trim)"
+        }
+    }
+}
+
 def main []: nothing -> nothing {
     # Non-tty stdin: nu 0.115's `input` only works on a tty and raises an
     # I/O error on pipes (run 01M1PVMS7B6N39MG0041C5F7P6) — the engine pipes
@@ -201,6 +278,15 @@ def main []: nothing -> nothing {
         print $park
         exit 0
     }
+
+    # Reviewer-journal sweep (fabro-22fa): re-file explicitly non-blocking
+    # reviewer findings as open seeds BEFORE the close. Advisory only —
+    # `do -i` plus the complete-wrapped sd calls inside guarantee no
+    # failure here can reach the close below. After the PARK gate so a
+    # parked (still-open) seed does not double-file on its re-run's
+    # close. Null path: no findings -> zero sd create calls.
+    let run_id = (do -i { current-run-id } | default '')
+    do -i { sweep-reviewer-findings $seed_id $run_id $".fabro/journal/($run_id).jsonl" } | ignore
 
     let res = (do { sd close $seed_id } | complete)
     if $res.exit_code != 0 {

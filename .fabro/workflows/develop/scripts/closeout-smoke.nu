@@ -72,7 +72,65 @@ if (demand-visible ["closeout"] "") { fail "empty patch (with tokens) reported v
 # Degrade: no distinctive tokens + non-empty patch -> visible.
 if not (demand-visible [] "+some change") { fail "token-less non-empty patch not visible (degrade broken)" }
 
-print "closeout-smoke: ok — dockerfile-hits + closure-discipline logic verified"
+# --- Reviewer-journal non-blocking sweep (fabro-22fa) ------------------
+# Marker matching: explicit non-blocking wording (both phrasings,
+# case-insensitive); a blocking statement stays out.
+if not (is-nonblocking "Non-blocking: octal escapes mis-decode, harmless today") {
+    fail "is-nonblocking dropped the 'Non-blocking:' marker"
+}
+if not (is-nonblocking "Noted but not blocking: retry count is per-process") {
+    fail "is-nonblocking dropped the 'noted but not blocking' phrasing"
+}
+if (is-nonblocking "this defect is blocking, do not approve") {
+    fail "is-nonblocking matched a blocking statement"
+}
+
+# Journal parsing: reviewer-node observations only; other nodes and
+# non-matching observations never file.
+let jl = (
+    nonblocking-from-journal (
+        [
+            '{"node":"implementer","data":{"observations":["non-blocking mention in the wrong stage"]}}'
+            '{"node":"reviewer","data":{"observations":["Verified the diff hunk-by-hunk."]}}'
+            '{"node":"reviewer","data":{"observations":["Non-blocking: Latin-1 mis-decode of quoted paths, harmless for the sole consumer."]}}'
+            '{"node":"tester","data":{}}'
+            'not json at all'
+        ] | str join "\n"
+    )
+)
+if ($jl | length) != 1 {
+    fail $"nonblocking-from-journal wrong count: ($jl | to json -r)"
+}
+if not ($jl.0 | str contains "Latin-1") {
+    fail "nonblocking-from-journal dropped the finding text"
+}
+
+# Null path, fixture journal (tmp file): a real reviewer record with NO
+# non-blocking findings must yield an empty list — and an empty list
+# means zero sd create calls in the sweep loop. Also proves the
+# missing-journal path degrades to empty.
+let tmp = (mktemp -t closeout-null.XXXXXX.jsonl)
+'{"node":"reviewer","data":{"painpoints":[],"observations":["Clean approve: diff verified against spec, nothing residual."]}}' | save -f $tmp
+if ((journal-nonblocking $tmp) | is-not-empty) {
+    fail "null-path fixture journal produced findings (would file seeds)"
+}
+rm -f $tmp
+if ((journal-nonblocking "/nonexistent/.fabro/journal/none.jsonl") | is-not-empty) {
+    fail "missing journal did not degrade to empty"
+}
+
+# Filed-seed title: excerpt + provenance, bounded length.
+let xs = (1..200 | each {"x"} | str join)
+let ft = (finding-title $xs "fabro-22fa")
+if not ($ft | str starts-with "Reviewer residual (non-blocking) from fabro-22fa:") {
+    fail $"finding-title missing prefix: ($ft)"
+}
+if ($ft | str length) > 140 {
+    fail "finding-title unbounded excerpt"
+}
+
+print "closeout-smoke: ok — reviewer-journal sweep logic verified"
+
 
 # Sourcing closeout.nu imports its `def main`; nu auto-invokes it after
 # the top level runs — exit explicitly so the smoke never reaches it.
