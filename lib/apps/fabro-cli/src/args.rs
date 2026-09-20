@@ -1451,6 +1451,9 @@ pub(crate) enum Commands {
     Secret(SecretNamespace),
     /// Manage server environments
     Env(EnvNamespace),
+    /// Manage server automations (alias: auto)
+    #[command(alias = "auto")]
+    Automations(AutomationsNamespace),
     /// Manage server-owned variables
     Variable(VariableNamespace),
     /// Inspect effective settings
@@ -1573,6 +1576,19 @@ impl Commands {
                 EnvCommand::Show(_) => "env show",
                 EnvCommand::Update(_) => "env update",
                 EnvCommand::PinToolchain(_) => "env pin-toolchain",
+            },
+            Self::Automations(ns) => match &ns.command {
+                AutomationsCommand::List(_) => "automations list",
+                AutomationsCommand::Show(_) => "automations show",
+                AutomationsCommand::Runs(_) => "automations runs",
+                AutomationsCommand::SetSchedule(_) => "automations set-schedule",
+                AutomationsCommand::Pause(_) => "automations pause",
+                AutomationsCommand::Unpause(_) => "automations unpause",
+                AutomationsCommand::Breaker(ns) => match &ns.command {
+                    AutomationsBreakerCommand::Reset(_) => "automations breaker reset",
+                },
+                AutomationsCommand::Fire(_) => "automations fire",
+                AutomationsCommand::Status(_) => "automations status",
             },
             Self::Variable(ns) => match &ns.command {
                 VariableCommand::List(_) => "variable list",
@@ -1771,6 +1787,104 @@ pub(crate) struct EnvPinToolchainArgs {
     /// scripts/run-images.nu --push)
     #[arg(long = "from-run-images")]
     pub(crate) from_run_images: bool,
+}
+
+#[derive(Args)]
+pub(crate) struct AutomationsNamespace {
+    #[command(flatten)]
+    pub(crate) target: ServerTargetArgs,
+
+    #[command(subcommand)]
+    pub(crate) command: AutomationsCommand,
+}
+
+#[derive(Subcommand)]
+pub(crate) enum AutomationsCommand {
+    /// List server automations
+    #[command(alias = "ls")]
+    List(AutomationsListArgs),
+    /// Show one server automation
+    Show(AutomationsShowArgs),
+    /// List the runs an automation created
+    Runs(AutomationsRunsArgs),
+    /// Change an automation's cron schedule
+    SetSchedule(AutomationsSetScheduleArgs),
+    /// Pause an automation's schedule trigger
+    Pause(AutomationsPauseArgs),
+    /// Re-enable an automation's schedule trigger
+    Unpause(AutomationsPauseArgs),
+    /// Circuit-breaker control
+    Breaker(AutomationsBreakerNamespace),
+    /// Fire an automation through its API trigger
+    Fire(AutomationsFireArgs),
+    /// Monitor automations for fire drift
+    Status(AutomationsStatusArgs),
+}
+
+#[derive(Args)]
+pub(crate) struct AutomationsBreakerNamespace {
+    #[command(subcommand)]
+    pub(crate) command: AutomationsBreakerCommand,
+}
+
+#[derive(Subcommand)]
+pub(crate) enum AutomationsBreakerCommand {
+    /// Unlatch a tripped breaker (no-op when clean)
+    Reset(AutomationsBreakerResetArgs),
+}
+
+#[derive(Args)]
+pub(crate) struct AutomationsListArgs;
+
+#[derive(Args)]
+pub(crate) struct AutomationsShowArgs {
+    /// Automation id
+    pub(crate) id: String,
+}
+
+#[derive(Args)]
+pub(crate) struct AutomationsRunsArgs {
+    /// Automation id
+    pub(crate) id: String,
+}
+
+#[derive(Args)]
+pub(crate) struct AutomationsSetScheduleArgs {
+    /// Automation id
+    pub(crate) id: String,
+
+    /// Five-field UTC cron expression
+    #[arg(long = "cron")]
+    pub(crate) cron: String,
+
+    /// Schedule trigger id, required when the automation has several
+    #[arg(long = "trigger")]
+    pub(crate) trigger: Option<String>,
+}
+
+#[derive(Args)]
+pub(crate) struct AutomationsPauseArgs {
+    /// Automation id
+    pub(crate) id: String,
+}
+
+#[derive(Args)]
+pub(crate) struct AutomationsBreakerResetArgs {
+    /// Automation id
+    pub(crate) id: String,
+}
+
+#[derive(Args)]
+pub(crate) struct AutomationsFireArgs {
+    /// Automation id
+    pub(crate) id: String,
+}
+
+#[derive(Args)]
+pub(crate) struct AutomationsStatusArgs {
+    /// Re-check every 30 seconds until interrupted
+    #[arg(long = "watch")]
+    pub(crate) watch: bool,
 }
 
 #[derive(Args)]

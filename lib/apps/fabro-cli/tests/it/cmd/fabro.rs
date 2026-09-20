@@ -12,53 +12,54 @@ fn help() {
     Usage: fabro [OPTIONS] [COMMAND]
 
     Commands:
-      run         Register a workflow version, create a run, and start it
-      create      Register a workflow version and create a submitted run
-      start       Start a created workflow run on the server
-      attach      Attach to a running or finished workflow run
-      events      View the event log of a workflow run
-      logs        View the raw worker tracing log of a workflow run
-      resume      Resume an interrupted workflow run
-      rewind      Rewind a workflow run to an earlier checkpoint
-      fork        Fork a workflow run from an earlier checkpoint into a new run
-      wait        Block until a workflow run completes
-      steer       Steer a running agent mid-execution
-      ask         Ask Fabro a read-only question about a run
-      preflight   Validate run configuration without executing
-      validate    Validate a workflow
-      graph       Render a workflow graph as SVG
-      artifact    Inspect and copy run artifacts (screenshots, reports, traces)
-      dump        Export a run's durable state to a directory
-      rm          Remove one or more workflow runs
-      inspect     Show detailed information about a workflow run
-      approve     Approve a pending run for execution
-      deny        Deny execution of a pending run
-      archive     Mark terminal runs as archived (reviewed, no further action needed). Archived runs are hidden from default listings
-      unarchive   Restore archived runs to their prior terminal status
-      model       List and test LLM models
-      mcp         Model Context Protocol server
-      server      Server operations
-      doctor      Check environment and integration health
-      version     Show client and server version information
-      install     Set up the Fabro environment (LLMs, certs, GitHub)
-      uninstall   Uninstall Fabro from this machine
-      auth        Manage CLI authentication state
-      pr          Pull request operations
-      parent      Manage run parent links
-      secret      Manage server-owned secrets
-      env         Manage server environments
-      variable    Manage server-owned variables
-      settings    Inspect effective settings
-      workflow    Workflow operations
-      discord     Open the Discord community in the browser
-      docs        Open the docs website in the browser
-      upgrade     Upgrade fabro to the latest version
-      repo        Repository commands
-      provider    Provider operations
-      sandbox     Sandbox operations (cp, ssh, preview)
-      completion  Generate shell completions
-      system      System maintenance commands
-      help        Print this message or the help of the given subcommand(s)
+      run          Register a workflow version, create a run, and start it
+      create       Register a workflow version and create a submitted run
+      start        Start a created workflow run on the server
+      attach       Attach to a running or finished workflow run
+      events       View the event log of a workflow run
+      logs         View the raw worker tracing log of a workflow run
+      resume       Resume an interrupted workflow run
+      rewind       Rewind a workflow run to an earlier checkpoint
+      fork         Fork a workflow run from an earlier checkpoint into a new run
+      wait         Block until a workflow run completes
+      steer        Steer a running agent mid-execution
+      ask          Ask Fabro a read-only question about a run
+      preflight    Validate run configuration without executing
+      validate     Validate a workflow
+      graph        Render a workflow graph as SVG
+      artifact     Inspect and copy run artifacts (screenshots, reports, traces)
+      dump         Export a run's durable state to a directory
+      rm           Remove one or more workflow runs
+      inspect      Show detailed information about a workflow run
+      approve      Approve a pending run for execution
+      deny         Deny execution of a pending run
+      archive      Mark terminal runs as archived (reviewed, no further action needed). Archived runs are hidden from default listings
+      unarchive    Restore archived runs to their prior terminal status
+      model        List and test LLM models
+      mcp          Model Context Protocol server
+      server       Server operations
+      doctor       Check environment and integration health
+      version      Show client and server version information
+      install      Set up the Fabro environment (LLMs, certs, GitHub)
+      uninstall    Uninstall Fabro from this machine
+      auth         Manage CLI authentication state
+      pr           Pull request operations
+      parent       Manage run parent links
+      secret       Manage server-owned secrets
+      env          Manage server environments
+      automations  Manage server automations (alias: auto)
+      variable     Manage server-owned variables
+      settings     Inspect effective settings
+      workflow     Workflow operations
+      discord      Open the Discord community in the browser
+      docs         Open the docs website in the browser
+      upgrade      Upgrade fabro to the latest version
+      repo         Repository commands
+      provider     Provider operations
+      sandbox      Sandbox operations (cp, ssh, preview)
+      completion   Generate shell completions
+      system       System maintenance commands
+      help         Print this message or the help of the given subcommand(s)
 
     Options:
           --json              Output as JSON [env: FABRO_JSON=]
