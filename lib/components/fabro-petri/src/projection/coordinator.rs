@@ -10,7 +10,7 @@ use fabro_types::{
 use petri_execution::CoordinatorEvent;
 use petri_execution::events::RunEvent;
 
-use super::{InvocationRef, RunView, apply_status, stage_key};
+use super::{InvocationRef, RunView, apply_status, settle_control, stage_key};
 
 impl RunView {
     pub(super) fn fold_coordinator(
@@ -86,28 +86,14 @@ impl RunView {
             }
             CoordinatorEvent::RunPaused => {
                 if let Some(projection) = self.projection.as_mut() {
-                    let prior_block = match projection.status {
-                        RunStatus::Blocked { blocked_reason } => Some(blocked_reason),
-                        _ => None,
-                    };
-                    apply_status(projection, RunStatus::Paused { prior_block }, at);
-                    if projection.pending_control == Some(RunControlAction::Pause) {
-                        projection.pending_control = None;
-                    }
+                    apply_status(projection, projection.status.paused(), at);
+                    settle_control(projection, RunControlAction::Pause);
                 }
             }
             CoordinatorEvent::RunUnpaused => {
                 if let Some(projection) = self.projection.as_mut() {
-                    let next = match projection.status {
-                        RunStatus::Paused {
-                            prior_block: Some(blocked_reason),
-                        } => RunStatus::Blocked { blocked_reason },
-                        _ => RunStatus::Running,
-                    };
-                    apply_status(projection, next, at);
-                    if projection.pending_control == Some(RunControlAction::Unpause) {
-                        projection.pending_control = None;
-                    }
+                    apply_status(projection, projection.status.unpaused(), at);
+                    settle_control(projection, RunControlAction::Unpause);
                 }
             }
             CoordinatorEvent::RunFinished { status } => {

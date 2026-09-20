@@ -36,7 +36,9 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use chrono::{DateTime, TimeZone as _, Utc};
 use fabro_store::platform_records::StoredPlatformRecord;
-use fabro_types::{RunDiff, RunId, RunProjection, RunStatus, StageId, StageProjection};
+use fabro_types::{
+    RunControlAction, RunDiff, RunId, RunProjection, RunStatus, StageId, StageProjection,
+};
 use petri_execution::ExecutionId;
 use petri_execution::events::{NodeRef, RunEvent, Subject};
 use serde::{Deserialize, Serialize};
@@ -227,6 +229,14 @@ fn apply_status(projection: &mut RunProjection, status: RunStatus, at: DateTime<
 fn touch(projection: &mut RunProjection, at: DateTime<Utc>) {
     if at > projection.last_event_at {
         projection.last_event_at = at;
+    }
+}
+
+/// A control the run acknowledged: the pending control is cleared when it
+/// is the one that landed.
+fn settle_control(projection: &mut RunProjection, action: RunControlAction) {
+    if projection.pending_control == Some(action) {
+        projection.pending_control = None;
     }
 }
 

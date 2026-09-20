@@ -40,3 +40,27 @@ pub struct Conclusion {
     #[serde(default)]
     pub diff:                 RunDiff,
 }
+
+impl Conclusion {
+    /// A conclusion that records only how the run ended: no timing, stages,
+    /// usage or diff. What a terminal lifecycle record gives when the
+    /// engine recorded no finish of its own.
+    #[must_use]
+    pub fn outcome_only(
+        timestamp: DateTime<Utc>,
+        status: StageOutcome,
+        failure: Option<RunFailure>,
+    ) -> Self {
+        Self {
+            timestamp,
+            status,
+            timing: RunTiming::default(),
+            failure,
+            final_git_commit_sha: None,
+            stages: Vec::new(),
+            usage: None,
+            total_retries: 0,
+            diff: RunDiff::default(),
+        }
+    }
+}

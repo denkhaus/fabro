@@ -57,13 +57,11 @@ impl RunView {
                             let model = payload.get("model").and_then(Value::as_str);
                             if let Some(model) = model {
                                 let (provider, model_id) = split_model(model);
-                                stage.provider_used = Some(StageModelUsage {
-                                    mode:             StageModelUsage::MODE_PROMPT.to_string(),
-                                    provider:         provider.map(str::to_string),
-                                    model:            Some(model_id.to_string()),
-                                    reasoning_effort: None,
-                                    speed:            None,
-                                });
+                                stage.provider_used = Some(StageModelUsage::new(
+                                    StageModelUsage::MODE_PROMPT,
+                                    provider.map(str::to_string),
+                                    Some(model_id.to_string()),
+                                ));
                                 stage.model = model_ref(provider, model_id);
                             }
                         }
@@ -88,13 +86,11 @@ impl RunView {
                             if let Some(route) = route {
                                 let provider = route.get("provider").and_then(Value::as_str);
                                 let model = route.get("model").and_then(Value::as_str);
-                                stage.provider_used = Some(StageModelUsage {
-                                    mode:             StageModelUsage::MODE_AGENT.to_string(),
-                                    provider:         provider.map(str::to_string),
-                                    model:            model.map(str::to_string),
-                                    reasoning_effort: None,
-                                    speed:            None,
-                                });
+                                stage.provider_used = Some(StageModelUsage::new(
+                                    StageModelUsage::MODE_AGENT,
+                                    provider.map(str::to_string),
+                                    model.map(str::to_string),
+                                ));
                                 if let Some(model) = model {
                                     stage.model = model_ref(provider, model);
                                 }
@@ -299,13 +295,11 @@ impl RunView {
             CodingEvent::SessionStarted {
                 provider, model, ..
             } if is_root => {
-                stage.provider_used = Some(StageModelUsage {
-                    mode:             StageModelUsage::MODE_AGENT.to_string(),
-                    provider:         provider.clone(),
-                    model:            model.clone(),
-                    reasoning_effort: None,
-                    speed:            None,
-                });
+                stage.provider_used = Some(StageModelUsage::new(
+                    StageModelUsage::MODE_AGENT,
+                    provider.clone(),
+                    model.clone(),
+                ));
                 if let Some(model) = model.as_deref() {
                     stage.model = model_ref(provider.as_deref(), model);
                 }

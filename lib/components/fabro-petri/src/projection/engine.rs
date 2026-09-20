@@ -32,10 +32,8 @@ impl RunView {
                     if let Some(stage) = self.stage_of(execution, event.subject.as_ref()) {
                         stage.state = StageState::Skipped;
                         stage.completion = Some(StageCompletion {
-                            outcome:        StageOutcome::Skipped,
-                            notes:          None,
-                            failure_reason: failure_message(&outcome.status),
-                            timestamp:      at,
+                            outcome: StageOutcome::Skipped,
+                            ..completion(&outcome.status, at)
                         });
                     }
                 }
@@ -120,12 +118,7 @@ impl RunView {
                     stage.live_streaming = Some(false);
                     apply_metrics(stage, &outcome.metrics);
                     if is_final {
-                        stage.completion = Some(StageCompletion {
-                            outcome:        stage_outcome(&outcome.status),
-                            notes:          None,
-                            failure_reason: failure_message(&outcome.status),
-                            timestamp:      at,
-                        });
+                        stage.completion = Some(completion(&outcome.status, at));
                         stage.termination = Some(match outcome.status {
                             Status::TimedOut => fabro_types::CommandTermination::TimedOut,
                             Status::Cancelled => fabro_types::CommandTermination::Cancelled,
@@ -263,12 +256,7 @@ impl RunView {
                     Status::Cancelled => StageState::Cancelled,
                 };
                 if stage.completion.is_none() || !*executed {
-                    stage.completion = Some(StageCompletion {
-                        outcome:        stage_outcome(&outcome.status),
-                        notes:          None,
-                        failure_reason: failure_message(&outcome.status),
-                        timestamp:      at,
-                    });
+                    stage.completion = Some(completion(&outcome.status, at));
                 }
                 if stage.timing.is_none() {
                     let wall = stage
@@ -402,6 +390,17 @@ pub(super) fn failure_message(status: &Status) -> Option<String> {
         Status::TimedOut => Some("the step timed out".to_string()),
         Status::Cancelled => Some("the step was cancelled".to_string()),
         Status::Success | Status::PartialSuccess { underlying: None } | Status::Skipped => None,
+    }
+}
+
+/// A stage's completion from an attempt's status: its outcome and, for a
+/// failure, the message.
+fn completion(status: &Status, at: DateTime<Utc>) -> StageCompletion {
+    StageCompletion {
+        outcome:        stage_outcome(status),
+        notes:          None,
+        failure_reason: failure_message(status),
+        timestamp:      at,
     }
 }
 
