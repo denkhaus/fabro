@@ -117,6 +117,10 @@ struct ListRunsParams {
     /// workflows.
     #[serde(default)]
     workflow:         Option<String>,
+    /// Exact repository-label filter (`owner/repository`); filters before
+    /// pagination in SQL so page windows stay consistent.
+    #[serde(default)]
+    repository:       Option<String>,
     /// Inclusive lower bound on `created_at` (RFC 3339).
     #[serde(default)]
     created_since:    Option<chrono::DateTime<chrono::Utc>>,
@@ -136,6 +140,7 @@ impl ListRunsParams {
             sort: self.sort,
             direction: self.direction,
             workflow_slug: self.workflow.clone(),
+            repository: self.repository.clone(),
             created_since: self.created_since,
             limit: clamp_page_limit(self.limit),
             offset: clamp_page_offset(self.offset),

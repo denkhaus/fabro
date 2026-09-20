@@ -107,6 +107,7 @@ pub(crate) async fn execute(
             client.clone_for_reuse(),
             run_id,
             run_spec.settings.run.agent.fabro_tools,
+            run_repository_label(run_spec),
         )
     } else {
         None
@@ -249,11 +250,27 @@ fn worker_scope_has_run_tools(scope_claim: &str) -> bool {
     has_run_worker && has_agent_run_tools
 }
 
+/// The invoking run's repository label (`owner/repository`), derived the
+/// same way the run-summary store derives it. Only a git origin produces a
+/// scoping key; runs without one keep enumeration unscoped rather than
+/// filtering on a directory-basename fallback (fabro-b2e6).
+fn run_repository_label(run_spec: &fabro_types::RunSpec) -> Option<String> {
+    let origin_url = run_spec.repo_origin_url()?;
+    Some(
+        fabro_types::RepositoryRef::from_origin_and_source(
+            Some(origin_url.to_string()),
+            run_spec.source_directory(),
+        )
+        .name,
+    )
+}
+
 fn build_fabro_run_tool_services(
     worker_token: &str,
     client: fabro_client::Client,
     current_run_id: RunId,
     run_wide: bool,
+    scope_repository: Option<String>,
 ) -> Option<FabroRunToolServices> {
     if worker_token.trim().is_empty() {
         return None;
@@ -263,8 +280,11 @@ fn build_fabro_run_tool_services(
     let inspects = worker_token_scope_claim(worker_token)
         .map(|claims| claims.inspects)
         .unwrap_or_default();
-    let backend = ClientBackend::new(Arc::new(client))
+    let mut backend = ClientBackend::new(Arc::new(client))
         .with_workflow_version_packager(Arc::new(SuppliedWorkflowVersionPackager));
+    if let Some(repository) = scope_repository {
+        backend = backend.with_scope_repository(repository);
+    }
     Some(FabroRunToolServices {
         backend: Arc::new(backend),
         current_run_id,

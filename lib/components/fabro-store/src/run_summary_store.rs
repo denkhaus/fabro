@@ -156,6 +156,10 @@ pub struct RunSummaryListQuery {
     pub automation_id: Option<String>,
     /// Exact workflow-slug match; `None` matches every workflow.
     pub workflow_slug: Option<String>,
+    /// Exact repository-label match (`owner/repository` derived from the
+    /// run's git origin); `None` matches every repository. Applied before
+    /// pagination so page windows stay consistent.
+    pub repository:    Option<String>,
     /// Inclusive lower bound on `created_at`.
     pub created_since: Option<DateTime<Utc>>,
     pub visibility:    RunSummaryVisibility,
@@ -171,6 +175,7 @@ impl Default for RunSummaryListQuery {
             parent_id:     None,
             automation_id: None,
             workflow_slug: None,
+            repository:    None,
             created_since: None,
             visibility:    RunSummaryVisibility::default(),
             sort:          RunSummarySort::default(),
@@ -1586,6 +1591,11 @@ fn push_filters(builder: &mut QueryBuilder<Sqlite>, query: &RunSummaryListQuery)
             .push(" AND workflow_slug = ")
             .push_bind(workflow_slug.clone());
     }
+    if let Some(repository) = &query.repository {
+        builder
+            .push(" AND repository_name = ")
+            .push_bind(repository.clone());
+    }
     if let Some(created_since) = query.created_since {
         let since_ms = created_since.timestamp_millis();
         builder.push(" AND created_at_ms >= ").push_bind(since_ms);
@@ -2866,6 +2876,73 @@ mod tests {
         assert_eq!(
             store.active_run_for_automation("conductor").await.unwrap(),
             None
+        );
+    }
+
+    /// Repository scoping (fabro-b2e6): a query carrying the invoking
+    /// run's repository label must exclude foreign-repo runs even when the
+    /// foreign run is newest — the revisor select freshness baseline takes
+    /// the newest run, so an unscoped newest foreign run would poison it.
+    #[tokio::test]
+    async fn list_filters_by_repository_even_when_foreign_run_is_newest() {
+        let (_directory, store) = store().await;
+        let created_at = dt("2026-07-11T12:00:00Z");
+        let later_created_at = created_at + chrono::Duration::hours(1);
+        let own_id = run_id(created_at.timestamp_millis().cast_unsigned(), 1);
+        let foreign_id = run_id(later_created_at.timestamp_millis().cast_unsigned(), 2);
+
+        let mut own = projection(own_id, "own develop", created_at);
+        own.spec.workflow_slug = Some("develop".to_string());
+        own.spec.git = Some(fabro_types::GitContext {
+            origin_url: "https://github.com/denkhaus/seeds.git".to_string(),
+            branch:     "main".to_string(),
+            sha:        None,
+            dirty:      fabro_types::DirtyStatus::Clean,
+        });
+        let mut foreign = projection(foreign_id, "foreign develop", later_created_at);
+        foreign.spec.workflow_slug = Some("develop".to_string());
+        foreign.spec.git = Some(fabro_types::GitContext {
+            origin_url: "https://github.com/denkhaus/fabro.git".to_string(),
+            branch:     "main".to_string(),
+            sha:        None,
+            dirty:      fabro_types::DirtyStatus::Clean,
+        });
+        for projected in [own, foreign] {
+            store.upsert_projection(&entry(projected, 1)).await.unwrap();
+        }
+
+        // Unscoped baseline sees both, newest first — the hazard shape.
+        let page = store
+            .list(
+                &RunSummaryListQuery {
+                    workflow_slug: Some("develop".to_string()),
+                    ..RunSummaryListQuery::default()
+                },
+                later_created_at,
+            )
+            .await
+            .unwrap();
+        assert_eq!(page.total, 2);
+        assert_eq!(page.data[0].title, "foreign develop");
+
+        // Repository scoping must drop the foreign run before pagination,
+        // leaving the own-repo run as the freshness baseline.
+        let page = store
+            .list(
+                &RunSummaryListQuery {
+                    workflow_slug: Some("develop".to_string()),
+                    repository: Some("denkhaus/seeds".to_string()),
+                    ..RunSummaryListQuery::default()
+                },
+                later_created_at,
+            )
+            .await
+            .unwrap();
+        assert_eq!(page.total, 1);
+        assert_eq!(page.data[0].title, "own develop");
+        assert_eq!(
+            page.data[0].repository.as_ref().unwrap().name,
+            "denkhaus/seeds"
         );
     }
 

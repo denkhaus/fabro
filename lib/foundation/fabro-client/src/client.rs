@@ -1578,9 +1578,12 @@ impl Client {
 
     /// Enumerate runs of one workflow slug, newest first, including
     /// archived runs. Used by the ADR-0011 revisor bookkeeping tool.
+    /// `repository` scopes results to one repository label
+    /// (`owner/repository`) server-side, before pagination.
     pub async fn list_runs_of_workflow(
         &self,
         workflow: &str,
+        repository: Option<&str>,
         created_since: Option<chrono::DateTime<chrono::Utc>>,
     ) -> Result<Vec<Run>> {
         let mut all_runs = Vec::new();
@@ -1591,6 +1594,7 @@ impl Client {
             let response = self
                 .send_api(|client| {
                     let workflow = workflow.to_string();
+                    let repository = repository.map(str::to_string);
                     async move {
                         let mut request = client
                             .list_runs()
@@ -1598,6 +1602,9 @@ impl Client {
                             .page_offset(offset)
                             .include_archived(true)
                             .workflow(workflow);
+                        if let Some(repository) = repository {
+                            request = request.repository(repository);
+                        }
                         if let Some(created_since) = created_since {
                             request = request.created_since(created_since);
                         }

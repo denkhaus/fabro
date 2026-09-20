@@ -1162,6 +1162,7 @@ paths:
         - $ref: "#/components/parameters/IncludeArchived"
         - $ref: "#/components/parameters/ParentRunId"
         - $ref: "#/components/parameters/RunsWorkflowSlug"
+        - $ref: "#/components/parameters/RunsRepository"
         - $ref: "#/components/parameters/RunsCreatedSince"
         - $ref: "#/components/parameters/RunStatusFilter"
         - $ref: "#/components/parameters/RunsSort"
@@ -6308,6 +6309,18 @@ components:
       schema:
         type: string
       example: develop
+
+    RunsRepository:
+      name: repository
+      in: query
+      required: false
+      description: >-
+        Return only runs whose repository label (`owner/repository` derived
+        from the run's git origin) matches exactly. Used by worker tool
+        sessions to scope run enumeration to the invoking run's repository.
+      schema:
+        type: string
+      example: denkhaus/fabro
 
     RunsCreatedSince:
       name: created_since
