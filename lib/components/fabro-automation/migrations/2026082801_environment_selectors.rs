@@ -65,6 +65,7 @@ pub async fn backfill_environment_selectors(
                 name:            automation.name.clone(),
                 description:     automation.description.clone(),
                 environment_id:  Some(environment_id.clone()),
+                on_overlap:      automation.on_overlap,
                 target:          automation.target.clone(),
                 workflow:        automation.workflow.clone(),
                 workflow_source: automation.workflow_source.clone(),

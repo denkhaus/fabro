@@ -310,6 +310,9 @@ pub(crate) struct RunArgs {
     #[arg(long, value_name = "RUN")]
     pub(crate) parent: Option<String>,
 
+    /// Declare that this run is created from an agent session; the server
+    /// records the run's created_by as kind=agent with this session id
+
     /// Keep the sandbox alive after the run finishes (for debugging)
     #[arg(long)]
     pub(crate) preserve_sandbox: bool,
@@ -1472,6 +1475,11 @@ pub(crate) enum Commands {
     Parent(ParentNamespace),
     /// Manage server-owned secrets
     Secret(SecretNamespace),
+    /// Manage server environments
+    Env(EnvNamespace),
+    /// Manage server automations (alias: auto)
+    #[command(alias = "auto")]
+    Automations(AutomationsNamespace),
     /// Manage server-owned variables
     Variable(VariableNamespace),
     /// Inspect effective settings
@@ -1588,6 +1596,25 @@ impl Commands {
                 SecretCommand::Rm(_) => "secret rm",
                 SecretCommand::Set(_) => "secret set",
             },
+            Self::Env(ns) => match &ns.command {
+                EnvCommand::List(_) => "env list",
+                EnvCommand::Show(_) => "env show",
+                EnvCommand::Update(_) => "env update",
+                EnvCommand::PinToolchain(_) => "env pin-toolchain",
+            },
+            Self::Automations(ns) => match &ns.command {
+                AutomationsCommand::List(_) => "automations list",
+                AutomationsCommand::Show(_) => "automations show",
+                AutomationsCommand::Runs(_) => "automations runs",
+                AutomationsCommand::SetSchedule(_) => "automations set-schedule",
+                AutomationsCommand::Pause(_) => "automations pause",
+                AutomationsCommand::Unpause(_) => "automations unpause",
+                AutomationsCommand::Breaker(ns) => match &ns.command {
+                    AutomationsBreakerCommand::Reset(_) => "automations breaker reset",
+                },
+                AutomationsCommand::Fire(_) => "automations fire",
+                AutomationsCommand::Status(_) => "automations status",
+            },
             Self::Variable(ns) => match &ns.command {
                 VariableCommand::List(_) => "variable list",
                 VariableCommand::Get(_) => "variable get",
@@ -1695,6 +1722,194 @@ pub(crate) enum SecretCommand {
     Rm(SecretRmArgs),
     /// Set a secret value
     Set(SecretSetArgs),
+}
+
+#[derive(Args)]
+pub(crate) struct EnvNamespace {
+    #[command(flatten)]
+    pub(crate) target: ServerTargetArgs,
+
+    #[command(subcommand)]
+    pub(crate) command: EnvCommand,
+}
+
+#[derive(Subcommand)]
+pub(crate) enum EnvCommand {
+    /// List server environments
+    #[command(alias = "ls")]
+    List(EnvListArgs),
+    /// Show one server environment
+    Show(EnvShowArgs),
+    /// Update a server environment
+    Update(EnvUpdateArgs),
+    /// Pin the toolchain environment to the just-pushed image
+    PinToolchain(EnvPinToolchainArgs),
+}
+
+#[derive(Args)]
+pub(crate) struct EnvListArgs;
+
+#[derive(Args)]
+pub(crate) struct EnvShowArgs {
+    /// Environment id
+    pub(crate) id: String,
+}
+
+#[derive(Args)]
+pub(crate) struct EnvUpdateArgs {
+    /// Environment id
+    pub(crate) id: String,
+
+    /// Docker image reference for the environment
+    #[arg(long)]
+    pub(crate) image: Option<String>,
+
+    /// CPU count (provider-dependent)
+    #[arg(long)]
+    pub(crate) cpu: Option<i32>,
+
+    /// Memory size (e.g. 4g)
+    #[arg(long)]
+    pub(crate) memory: Option<String>,
+
+    /// Disk size (e.g. 20g)
+    #[arg(long)]
+    pub(crate) disk: Option<String>,
+
+    /// Preserve sandbox instances after runs
+    #[arg(long, conflicts_with = "no_preserve")]
+    pub(crate) preserve: bool,
+
+    /// Do not preserve sandbox instances after runs
+    #[arg(long = "no-preserve")]
+    pub(crate) no_preserve: bool,
+
+    /// Stop sandboxes when a run reaches a terminal state
+    #[arg(long, conflicts_with = "no_stop_on_terminal")]
+    pub(crate) stop_on_terminal: bool,
+
+    /// Do not stop sandboxes on terminal run states
+    #[arg(long = "no-stop-on-terminal")]
+    pub(crate) no_stop_on_terminal: bool,
+
+    /// Auto-stop idle sandboxes after this duration (e.g. 30m)
+    #[arg(long, conflicts_with = "no_auto_stop")]
+    pub(crate) auto_stop: Option<String>,
+
+    /// Clear the auto-stop idle duration
+    #[arg(long = "no-auto-stop")]
+    pub(crate) no_auto_stop: bool,
+}
+
+#[derive(Args)]
+#[group(required = true, multiple = false)]
+pub(crate) struct EnvPinToolchainArgs {
+    /// Pin this 12-hex git sha tag (e.g. from scripts/run-images.nu --push)
+    #[arg(long = "tag")]
+    pub(crate) tag: Option<String>,
+
+    /// Derive the tag from the current git HEAD sha12 (same logic as
+    /// scripts/run-images.nu --push)
+    #[arg(long = "from-run-images")]
+    pub(crate) from_run_images: bool,
+}
+
+#[derive(Args)]
+pub(crate) struct AutomationsNamespace {
+    #[command(flatten)]
+    pub(crate) target: ServerTargetArgs,
+
+    #[command(subcommand)]
+    pub(crate) command: AutomationsCommand,
+}
+
+#[derive(Subcommand)]
+pub(crate) enum AutomationsCommand {
+    /// List server automations
+    #[command(alias = "ls")]
+    List(AutomationsListArgs),
+    /// Show one server automation
+    Show(AutomationsShowArgs),
+    /// List the runs an automation created
+    Runs(AutomationsRunsArgs),
+    /// Change an automation's cron schedule
+    SetSchedule(AutomationsSetScheduleArgs),
+    /// Pause an automation's schedule trigger
+    Pause(AutomationsPauseArgs),
+    /// Re-enable an automation's schedule trigger
+    Unpause(AutomationsPauseArgs),
+    /// Circuit-breaker control
+    Breaker(AutomationsBreakerNamespace),
+    /// Fire an automation through its API trigger
+    Fire(AutomationsFireArgs),
+    /// Monitor automations for fire drift
+    Status(AutomationsStatusArgs),
+}
+
+#[derive(Args)]
+pub(crate) struct AutomationsBreakerNamespace {
+    #[command(subcommand)]
+    pub(crate) command: AutomationsBreakerCommand,
+}
+
+#[derive(Subcommand)]
+pub(crate) enum AutomationsBreakerCommand {
+    /// Unlatch a tripped breaker (no-op when clean)
+    Reset(AutomationsBreakerResetArgs),
+}
+
+#[derive(Args)]
+pub(crate) struct AutomationsListArgs;
+
+#[derive(Args)]
+pub(crate) struct AutomationsShowArgs {
+    /// Automation id
+    pub(crate) id: String,
+}
+
+#[derive(Args)]
+pub(crate) struct AutomationsRunsArgs {
+    /// Automation id
+    pub(crate) id: String,
+}
+
+#[derive(Args)]
+pub(crate) struct AutomationsSetScheduleArgs {
+    /// Automation id
+    pub(crate) id: String,
+
+    /// Five-field UTC cron expression
+    #[arg(long = "cron")]
+    pub(crate) cron: String,
+
+    /// Schedule trigger id, required when the automation has several
+    #[arg(long = "trigger")]
+    pub(crate) trigger: Option<String>,
+}
+
+#[derive(Args)]
+pub(crate) struct AutomationsPauseArgs {
+    /// Automation id
+    pub(crate) id: String,
+}
+
+#[derive(Args)]
+pub(crate) struct AutomationsBreakerResetArgs {
+    /// Automation id
+    pub(crate) id: String,
+}
+
+#[derive(Args)]
+pub(crate) struct AutomationsFireArgs {
+    /// Automation id
+    pub(crate) id: String,
+}
+
+#[derive(Args)]
+pub(crate) struct AutomationsStatusArgs {
+    /// Re-check every 30 seconds until interrupted
+    #[arg(long = "watch")]
+    pub(crate) watch: bool,
 }
 
 #[derive(Args)]

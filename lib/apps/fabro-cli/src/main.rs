@@ -2,6 +2,16 @@
     clippy::exit,
     reason = "The CLI exits explicitly with the computed process status."
 )]
+// Release builds link through zig cc (cargo-zigbuild, see fabro-dev
+// docker_build.rs). rustc passes -O1 as a linker arg for opt-level >= 2 and
+// zig 0.13 answers with "ignoring deprecated linker optimization setting '1'"
+// on stderr, which the linker_messages lint relays as a warning. Known
+// false positive: https://github.com/rust-lang/rust/issues/158192 — remove
+// this allow when rustc filters the message or the toolchain moves past it.
+#![allow(
+    linker_messages,
+    reason = "zig cc false-positive on rustc's release -O1 linker arg (rust-lang/rust#158192)"
+)]
 
 mod args;
 mod command_context;
@@ -333,6 +343,12 @@ async fn main_inner(worker_token: Option<String>) -> (String, Result<()>) {
             }
             Commands::Secret(ns) => {
                 commands::secret::dispatch(ns, &base_ctx).await?;
+            }
+            Commands::Env(ns) => {
+                commands::env::dispatch(ns, &base_ctx).await?;
+            }
+            Commands::Automations(ns) => {
+                commands::automations::dispatch(ns, &base_ctx).await?;
             }
             Commands::Variable(ns) => {
                 commands::variable::dispatch(ns, &base_ctx).await?;

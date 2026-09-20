@@ -305,6 +305,9 @@ pub enum PendingReason {
 pub enum SuccessReason {
     Completed,
     PartialSuccess,
+    /// The run reached a graph boundary without the goal's terminal stage
+    /// (fork taxonomy, fabro-08b4): work preserved, classified as success.
+    Boundary,
 }
 
 #[derive(
@@ -327,12 +330,21 @@ pub enum FailureReason {
     PublishFailed,
     Cancelled,
     ApprovalDenied,
+    /// Approval TTL expiry (fork, fabro-54f0): pending approval runs do
+    /// not wait forever.
+    ApprovalTimeout,
     Terminated,
     TransientInfra,
     BudgetExhausted,
     LaunchFailed,
     BootstrapFailed,
     SandboxInitFailed,
+    /// Cycle guard tripped (fork, fabro-b907/ADR-0010): deadlock exits
+    /// preserve work; a human decides.
+    Deadlock,
+    /// Infrastructure hiccup (fork, ADR-0010): soft exits re-enter on the
+    /// next run.
+    SoftStop,
 }
 
 impl FailureReason {
@@ -354,9 +366,14 @@ impl FailureReason {
             | Self::BootstrapFailed => true,
             Self::PublishFailed
             | Self::ApprovalDenied
+            | Self::ApprovalTimeout
             | Self::TransientInfra
             | Self::BudgetExhausted
-            | Self::SandboxInitFailed => false,
+            | Self::SandboxInitFailed
+            // Fork taxonomy (ADR-0010, fabro-54f0): every one of these
+            // classifies a run that already started.
+            | Self::Deadlock
+            | Self::SoftStop => false,
         }
     }
 }

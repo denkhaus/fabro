@@ -36,6 +36,8 @@ fn target() -> RunTarget {
 
 fn schedule(id: &str, expression: &str, enabled: bool) -> AutomationTrigger {
     AutomationTrigger::Schedule(ScheduleTrigger {
+        breaker: None,
+        breaker_threshold: None,
         id: AutomationTriggerId::new(id).unwrap(),
         enabled,
         expression: expression.to_string(),
@@ -57,6 +59,7 @@ fn workflow_source(
 
 fn draft(id: &str, api_enabled: bool) -> AutomationDraft {
     AutomationDraft {
+        on_overlap:      None,
         id:              AutomationId::new(id).unwrap(),
         name:            "Nightly".to_string(),
         description:     Some("Runs every night".to_string()),
@@ -77,6 +80,7 @@ fn draft(id: &str, api_enabled: bool) -> AutomationDraft {
 
 fn replacement(name: &str, expression: &str) -> AutomationReplace {
     AutomationReplace {
+        on_overlap:      None,
         name:            name.to_string(),
         description:     None,
         environment_id:  Some("default".to_string()),
@@ -499,6 +503,7 @@ async fn failed_schedule_insert_rolls_back_parent_replace() {
     .await
     .unwrap();
     let replacement = AutomationReplace {
+        on_overlap:      None,
         name:            "Should roll back".to_string(),
         description:     None,
         environment_id:  Some("default".to_string()),

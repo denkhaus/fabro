@@ -420,6 +420,8 @@ mod tests {
 
     fn schedule_trigger(id: &str, expression: &str, enabled: bool) -> AutomationTrigger {
         AutomationTrigger::Schedule(ScheduleTrigger {
+            breaker: None,
+            breaker_threshold: None,
             id: AutomationTriggerId::new(id).expect("test trigger id should be valid"),
             enabled,
             expression: expression.to_string(),
@@ -428,6 +430,7 @@ mod tests {
 
     fn automation(id: &str, name: &str, triggers: Vec<AutomationTrigger>) -> Automation {
         Automation {
+            on_overlap: None,
             id: AutomationId::new(id).expect("test automation id should be valid"),
             revision: AutomationRevision::from_bytes(format!("{id}:{name}").as_bytes()),
             name: name.to_string(),
@@ -460,6 +463,7 @@ mod tests {
         state
             .automation_store()
             .create(AutomationDraft {
+                on_overlap: None,
                 id: AutomationId::new(id).expect("test automation id should be valid"),
                 name: name.to_string(),
                 description: None,

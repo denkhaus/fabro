@@ -41,6 +41,7 @@ fabro-workflow = { path = "../../components/fabro-workflow" }
 fabro-server = { path = "../fabro-server" }
 fabro-client = { path = "../../foundation/fabro-client" }
 fabro-api = { path = "../../foundation/fabro-api" }
+fabro-automation = { path = "../../components/fabro-automation" }
 fabro-telemetry = { path = "../../foundation/fabro-telemetry" }
 fabro-store = { path = "../../components/fabro-store" }
 fabro-vault = { path = "../../foundation/fabro-vault" }

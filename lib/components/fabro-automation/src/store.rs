@@ -24,6 +24,7 @@ macro_rules! select_automations_sql {
                 a.environment_id,
                 a.last_error,
                 a.api_enabled,
+                a.on_overlap,
                 a.target_repository,
                 a.target_branch,
                 a.target_tag,
@@ -35,7 +36,12 @@ macro_rules! select_automations_sql {
                 a.workflow_source_sha,
                 t.id AS trigger_id,
                 t.enabled AS trigger_enabled,
-                t.expression AS trigger_expression
+                t.expression AS trigger_expression,
+                t.breaker_threshold AS trigger_breaker_threshold,
+                t.breaker_signature AS trigger_breaker_signature,
+                t.breaker_consecutive_count AS trigger_breaker_consecutive_count,
+                t.breaker_last_run_id AS trigger_breaker_last_run_id,
+                t.breaker_paused_at_ms AS trigger_breaker_paused_at_ms
             FROM automations AS a
             LEFT JOIN automation_triggers AS t ON t.automation_id = a.id
             ",
@@ -111,6 +117,62 @@ impl AutomationStore {
         Ok(())
     }
 
+    /// Persist breaker counter facts for one schedule trigger and optionally
+    /// pause it (fabro-3d97). A pause is a compare-and-set on `enabled = 1`,
+    /// so exactly the first caller that trips the breaker disables the
+    /// trigger; the return value reports whether THIS call paused it (use it
+    /// to emit the single aggregated notification).
+    pub async fn apply_schedule_breaker(
+        &self,
+        id: &AutomationId,
+        trigger_id: &AutomationTriggerId,
+        signature: Option<&str>,
+        consecutive_count: u32,
+        last_run_id: &str,
+        pause: bool,
+        paused_at: chrono::DateTime<chrono::Utc>,
+    ) -> Result<bool, AutomationStoreError> {
+        let sql = if pause {
+            r"
+            UPDATE automation_triggers SET
+                breaker_signature = ?,
+                breaker_consecutive_count = ?,
+                breaker_last_run_id = ?,
+                breaker_paused_at_ms = ?,
+                enabled = 0
+            WHERE automation_id = ? AND id = ? AND enabled = 1
+            "
+        } else {
+            r"
+            UPDATE automation_triggers SET
+                breaker_signature = ?,
+                breaker_consecutive_count = ?,
+                breaker_last_run_id = ?,
+                breaker_paused_at_ms = NULL
+            WHERE automation_id = ? AND id = ?
+            "
+        };
+        let mut query = sqlx::query(sql)
+            .bind(signature)
+            .bind(i64::from(consecutive_count))
+            .bind(last_run_id);
+        query = if pause {
+            query
+                .bind(paused_at.timestamp_millis())
+                .bind(id.as_str())
+                .bind(trigger_id.as_str())
+        } else {
+            query.bind(id.as_str()).bind(trigger_id.as_str())
+        };
+        let result = query.execute(&self.pool).await?;
+        if result.rows_affected() == 0 {
+            // Either the trigger row is gone (replaced/deleted) or the pause
+            // raced with another pause; nothing to notify for either.
+            return Ok(false);
+        }
+        Ok(pause)
+    }
+
     pub async fn create(&self, draft: AutomationDraft) -> Result<Automation, AutomationStoreError> {
         let (id, replace) = draft.into();
         let (automation, _) = Automation::from_replace(id.clone(), replace)?;
@@ -149,7 +211,8 @@ impl AutomationStore {
                 workflow_source_repository = ?,
                 workflow_source_branch = ?,
                 workflow_source_tag = ?,
-                workflow_source_sha = ?
+                workflow_source_sha = ?,
+                on_overlap = ?
             WHERE id = ? AND revision = ?
             ",
         )
@@ -167,6 +230,7 @@ impl AutomationStore {
         .bind(workflow_source.map(|source| source.branch.as_str()))
         .bind(workflow_source.and_then(|source| source.tag.as_deref()))
         .bind(workflow_source.and_then(|source| source.sha.as_deref()))
+        .bind(stored_overlap(automation.on_overlap))
         .bind(id.as_str())
         .bind(expected.as_str())
         .execute(&mut *transaction)
@@ -214,6 +278,7 @@ struct StoredAutomation {
     target:            RunTarget,
     workflow:          String,
     workflow_source:   Option<AutomationGitWorkflowSource>,
+    on_overlap:        Option<crate::AutomationOverlapPolicy>,
     schedule_triggers: Vec<ScheduleTrigger>,
 }
 
@@ -247,6 +312,9 @@ impl StoredAutomation {
                 sha:    row.try_get("target_sha")?,
             }),
             workflow: row.try_get("target_workflow")?,
+            on_overlap: stored_overlap_from(
+                row.try_get::<Option<String>, _>("on_overlap")?.as_deref(),
+            ),
             workflow_source,
             schedule_triggers: Vec::new(),
         })
@@ -262,6 +330,18 @@ impl StoredAutomation {
                 source,
             }
         })?;
+        let expression = row
+            .try_get::<Option<String>, _>("trigger_expression")?
+            .ok_or_else(|| AutomationStoreError::StoredTriggerShape {
+                id: self.id.clone(),
+            })?;
+        let breaker_threshold = row
+            .try_get::<Option<i64>, _>("trigger_breaker_threshold")?
+            .map(u32::try_from)
+            .transpose()
+            .map_err(|_| AutomationStoreError::StoredTriggerShape {
+                id: self.id.clone(),
+            })?;
         self.schedule_triggers.push(ScheduleTrigger {
             id,
             enabled: row
@@ -269,20 +349,25 @@ impl StoredAutomation {
                 .ok_or_else(|| AutomationStoreError::StoredTriggerShape {
                     id: self.id.clone(),
                 })?,
-            expression: row
-                .try_get::<Option<String>, _>("trigger_expression")?
-                .ok_or_else(|| AutomationStoreError::StoredTriggerShape {
-                    id: self.id.clone(),
-                })?,
+            expression,
+            breaker_threshold,
+            breaker: stored_breaker_state(row, &self.id)?,
         });
         Ok(())
     }
 
-    fn finish(self) -> Result<Automation, AutomationStoreError> {
+    fn finish(mut self) -> Result<Automation, AutomationStoreError> {
+        // Input normalization strips scheduler-owned breaker facts, so keep
+        // them aside and re-attach after canonicalization (fabro-3d97).
+        let breaker_by_id = self
+            .schedule_triggers
+            .iter()
+            .map(|trigger| (trigger.id.clone(), trigger.breaker.clone()))
+            .collect::<std::collections::HashMap<_, _>>();
         // `from_stored` canonicalizes trigger order and the manual API trigger.
         let mut triggers = self
             .schedule_triggers
-            .into_iter()
+            .drain(..)
             .map(AutomationTrigger::Schedule)
             .collect::<Vec<_>>();
         if self.api_enabled {
@@ -297,10 +382,16 @@ impl StoredAutomation {
                 target: self.target,
                 workflow: self.workflow,
                 workflow_source: self.workflow_source,
+                on_overlap: self.on_overlap,
                 triggers,
             })
             .map_err(|source| AutomationStoreError::StoredValidation { id, source })?;
         automation.last_error = self.last_error;
+        for trigger in &mut automation.triggers {
+            if let AutomationTrigger::Schedule(trigger) = trigger {
+                trigger.breaker = breaker_by_id.get(&trigger.id).cloned().flatten();
+            }
+        }
         Ok(automation)
     }
 }
@@ -360,8 +451,9 @@ pub(crate) async fn insert_automation_ignoring_conflict(
             workflow_source_repository,
             workflow_source_branch,
             workflow_source_tag,
-            workflow_source_sha
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            workflow_source_sha,
+            on_overlap
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO NOTHING
         ",
     )
@@ -380,6 +472,7 @@ pub(crate) async fn insert_automation_ignoring_conflict(
     .bind(workflow_source.map(|source| source.branch.as_str()))
     .bind(workflow_source.and_then(|source| source.tag.as_deref()))
     .bind(workflow_source.and_then(|source| source.sha.as_deref()))
+    .bind(stored_overlap(automation.on_overlap))
     .execute(&mut **transaction)
     .await?;
     if result.rows_affected() == 0 {
@@ -409,6 +502,53 @@ fn stored_workflow_source(
     }
 }
 
+/// SQL round-trip for the overlap policy: the canonical lowercase string,
+/// NULL for the `Fire` default.
+fn stored_overlap(policy: Option<crate::AutomationOverlapPolicy>) -> Option<&'static str> {
+    policy.map(std::convert::Into::into)
+}
+
+fn stored_overlap_from(value: Option<&str>) -> Option<crate::AutomationOverlapPolicy> {
+    value.and_then(|value| value.parse().ok())
+}
+
+/// Breaker facts loaded from a trigger row. Facts exist only with both a
+/// signature and a processed-run high-water mark; a NULL signature means the
+/// counter is clean even if the count column still holds a stale zero.
+fn stored_breaker_state(
+    row: &SqliteRow,
+    id: &AutomationId,
+) -> Result<Option<crate::ScheduleBreakerState>, AutomationStoreError> {
+    let signature = row.try_get::<Option<String>, _>("trigger_breaker_signature")?;
+    let last_run_id = row.try_get::<Option<String>, _>("trigger_breaker_last_run_id")?;
+    // Facts exist once a high-water mark exists; a NULL signature is a clean
+    // counter (the scheduler persists an empty signature for count 0).
+    let state = match last_run_id {
+        None => None,
+        Some(last_run_id) => {
+            let consecutive_count = row
+                .try_get::<Option<i64>, _>("trigger_breaker_consecutive_count")?
+                .unwrap_or(0);
+            let consecutive_count = u32::try_from(consecutive_count)
+                .map_err(|_| AutomationStoreError::StoredTriggerShape { id: id.clone() })?;
+            let paused_at = row
+                .try_get::<Option<i64>, _>("trigger_breaker_paused_at_ms")?
+                .map(|paused_at_ms| {
+                    chrono::DateTime::from_timestamp_millis(paused_at_ms)
+                        .ok_or_else(|| AutomationStoreError::StoredTriggerShape { id: id.clone() })
+                })
+                .transpose()?;
+            Some(crate::ScheduleBreakerState {
+                signature: signature.unwrap_or_default(),
+                consecutive_count,
+                last_run_id,
+                paused_at,
+            })
+        }
+    };
+    Ok(state)
+}
+
 fn stored_git_target(automation: &Automation) -> &GitRunTarget {
     automation
         .git_target()
@@ -422,14 +562,17 @@ async fn insert_schedule_triggers(
     for trigger in automation.schedule_triggers() {
         sqlx::query(
             r"
-            INSERT INTO automation_triggers (automation_id, id, enabled, expression)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO automation_triggers (
+                automation_id, id, enabled, expression, breaker_threshold
+            )
+            VALUES (?, ?, ?, ?, ?)
             ",
         )
         .bind(automation.id.as_str())
         .bind(trigger.id.as_str())
         .bind(trigger.enabled)
         .bind(&trigger.expression)
+        .bind(trigger.breaker_threshold.map(i64::from))
         .execute(&mut **transaction)
         .await?;
     }
