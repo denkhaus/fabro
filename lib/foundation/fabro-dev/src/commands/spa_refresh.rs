@@ -718,22 +718,23 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn publish_failure_before_flip_leaves_old_bundle_consistent() {
-        use std::os::unix::fs::PermissionsExt;
-
         let fixture = tempfile::tempdir().expect("creating fixture");
         // Staging snapshot of a NEW build, with one unreadable source file
         // that sorts before index.html: the additive copy phase must abort
-        // before the index flip.
+        // before the index flip. A dangling symlink is the failure injector:
+        // it stays unreadable even under root (chmod 0o000 is not), so the
+        // test behaves the same in root containers and on developer hosts.
         write_file(
             fixture.path(),
             "staging/index.html",
             br#"<html><script src="/assets/entry-new.js"></script></html>"#,
         );
-        write_file(fixture.path(), "staging/assets/aaa-blocked.js", b"blocked");
         write_file(fixture.path(), "staging/assets/entry-new.js", b"new");
-        let blocked = fixture.path().join("staging/assets/aaa-blocked.js");
-        std::fs::set_permissions(&blocked, std::fs::Permissions::from_mode(0o000))
-            .expect("revoking read permission");
+        std::os::unix::fs::symlink(
+            "nonexistent-target.js",
+            fixture.path().join("staging/assets/aaa-blocked.js"),
+        )
+        .expect("planting unreadable symlink");
 
         // Embedded OLD bundle.
         write_file(
