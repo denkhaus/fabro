@@ -149,7 +149,8 @@ pub(super) fn next_fire_after(
     after: DateTime<Utc>,
 ) -> Result<Option<DateTime<Utc>>> {
     let cron = parse_schedule_expression(expression)
-        .map_err(|err| anyhow::anyhow!("invalid cron expression {expression:?}: {err}"))?;
+        .map_err(anyhow::Error::from)
+        .with_context(|| format!("invalid cron expression {expression:?}"))?;
     Ok(cron.find_next_occurrence(&after, false).ok())
 }
 
