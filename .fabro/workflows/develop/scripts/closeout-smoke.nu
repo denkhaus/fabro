@@ -135,3 +135,22 @@ print "closeout-smoke: ok — reviewer-journal sweep logic verified"
 # Sourcing closeout.nu imports its `def main`; nu auto-invokes it after
 # the top level runs — exit explicitly so the smoke never reaches it.
 exit 0
+
+# Residual label (fabro-2ab8): the sweep's sd create args carry the
+# `residual` label so machine-filed provenance is visible in the pool.
+if (residual-seed-labels) != ["residual"] {
+    fail $"residual-seed-labels wrong: (residual-seed-labels | to json -r)"
+}
+
+# Regression guard (fabro-22fa): finding-title and the null path stay
+# unchanged next to the new label helper.
+if (finding-title "Short finding" "fabro-9abc") != "Reviewer residual \(non-blocking\) from fabro-9abc: Short finding" {
+    fail "finding-title shape drifted"
+}
+let long = (0..79 | each { "x" } | str join)
+if ((finding-title $long "fabro-9abc" | str length) != 70 + ("Reviewer residual \(non-blocking\) from fabro-9abc: " | str length)) {
+    fail "finding-title truncation drifted"
+}
+if ((journal-nonblocking "/nonexistent/.fabro/journal/none2.jsonl") | is-not-empty) {
+    fail "null-path journal degradation drifted"
+}
