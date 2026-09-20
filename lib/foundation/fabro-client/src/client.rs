@@ -786,6 +786,99 @@ impl Client {
         Ok(response.into_inner())
     }
 
+    /// Lists all configured automation definitions.
+    pub async fn list_automations(&self) -> Result<Vec<types::Automation>> {
+        let response = self
+            .send_api(|client| async move { client.list_automations().send().await })
+            .await?;
+        Ok(response.into_inner().data)
+    }
+
+    /// Retrieves one automation definition by id.
+    pub async fn retrieve_automation(&self, id: &str) -> Result<types::Automation> {
+        let response = self
+            .send_api(|client| {
+                let id = id.to_string();
+                async move { client.retrieve_automation().id(id).send().await }
+            })
+            .await?;
+        Ok(response.into_inner())
+    }
+
+    /// Replaces an automation definition when `revision` matches the
+    /// server's current revision (optimistic concurrency via `If-Match`).
+    /// On success, returns the replaced automation with its new revision.
+    pub async fn replace_automation(
+        &self,
+        id: &str,
+        revision: &str,
+        request: types::ReplaceAutomationRequest,
+    ) -> Result<types::Automation> {
+        let response = self
+            .send_api(|client| {
+                let id = id.to_string();
+                let revision = revision.to_string();
+                let request = request.clone();
+                async move {
+                    client
+                        .replace_automation()
+                        .id(id)
+                        .if_match(revision)
+                        .body(request)
+                        .send()
+                        .await
+                }
+            })
+            .await?;
+        Ok(response.into_inner())
+    }
+
+    /// Lists the durable runs one automation created, walking all pages
+    /// newest-first as the server orders them.
+    pub async fn list_automation_runs(&self, id: &str) -> Result<Vec<Run>> {
+        let mut all_runs = Vec::new();
+        let mut offset = 0_u64;
+        let limit = 100_u64;
+
+        loop {
+            let response = self
+                .send_api(|client| {
+                    let id = id.to_string();
+                    async move {
+                        client
+                            .list_automation_runs()
+                            .id(id)
+                            .page_limit(limit)
+                            .page_offset(offset)
+                            .send()
+                            .await
+                    }
+                })
+                .await?;
+            let parsed = response.into_inner();
+            let batch_len = parsed.data.len() as u64;
+            all_runs.extend(parsed.data);
+
+            if !parsed.meta.has_more || batch_len == 0 {
+                break;
+            }
+            offset += batch_len;
+        }
+
+        Ok(all_runs)
+    }
+
+    /// Fires an automation's enabled API trigger, creating a new run.
+    pub async fn create_automation_run(&self, id: &str) -> Result<Run> {
+        let response = self
+            .send_api(|client| {
+                let id = id.to_string();
+                async move { client.create_automation_run().id(id).send().await }
+            })
+            .await?;
+        Ok(response.into_inner())
+    }
+
     /// Registers one workflow version and verifies the server assigned the
     /// content-derived id, so a mismatched response fails loudly here rather
     /// than being trusted downstream.
@@ -2743,6 +2836,156 @@ mod tests {
         mock.assert_async().await;
         assert_eq!(environment.id.as_str(), "toolchain");
         assert_eq!(environment.settings.provider, SandboxProviderKind::DOCKER);
+    }
+
+    fn automation_json(id: &str, revision: &str) -> serde_json::Value {
+        json!({
+            "id": id,
+            "revision": revision,
+            "name": "Nightly dependency update",
+            "description": null,
+            "environment_id": "toolchain",
+            "last_error": null,
+            "target": { "kind": "git", "repo": "fabro-sh/fabro", "branch": "main" },
+            "workflow": "dependency-update",
+            "on_overlap": "skip",
+            "triggers": [
+                { "id": "manual", "type": "api", "enabled": true },
+                {
+                    "id": "nightly",
+                    "type": "schedule",
+                    "enabled": true,
+                    "expression": "0 3 * * *"
+                }
+            ]
+        })
+    }
+
+    #[tokio::test]
+    async fn list_automations_returns_the_definitions() {
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(GET).path("/api/v1/automations");
+                then.status(200)
+                    .header("content-type", "application/json")
+                    .json_body(json!({
+                        "data": [automation_json(
+                            "nightly-deps",
+                            "1111111111111111111111111111111111111111111111111111111111111111"
+                        )],
+                        "meta": { "total": 1 }
+                    }));
+            })
+            .await;
+        let client = Client::new_no_proxy(&server.url("")).unwrap();
+
+        let automations = client.list_automations().await.unwrap();
+
+        mock.assert_async().await;
+        assert_eq!(automations.len(), 1);
+        assert_eq!(automations[0].id.as_str(), "nightly-deps");
+        assert_eq!(automations[0].triggers.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn replace_automation_sends_if_match_and_returns_the_replacement() {
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(PUT)
+                    .path("/api/v1/automations/nightly-deps")
+                    .header("if-match", "revision-1")
+                    .json_body(json!({
+                        "name": "Nightly dependency update",
+                        "environment_id": "toolchain",
+                        "target": { "kind": "git", "repo": "fabro-sh/fabro", "branch": "main" },
+                        "workflow": "dependency-update",
+                        "on_overlap": "skip",
+                        "triggers": [
+                            { "id": "manual", "type": "api", "enabled": true },
+                            {
+                                "id": "nightly",
+                                "type": "schedule",
+                                "enabled": false,
+                                "expression": "0 3 * * *"
+                            }
+                        ]
+                    }));
+                then.status(200)
+                    .header("content-type", "application/json")
+                    .json_body(automation_json(
+                        "nightly-deps",
+                        "2222222222222222222222222222222222222222222222222222222222222222",
+                    ));
+            })
+            .await;
+        let client = Client::new_no_proxy(&server.url("")).unwrap();
+
+        let request = serde_json::from_value(json!({
+            "name": "Nightly dependency update",
+            "description": null,
+            "environment_id": "toolchain",
+            "target": { "kind": "git", "repo": "fabro-sh/fabro", "branch": "main" },
+            "workflow": "dependency-update",
+            "on_overlap": "skip",
+            "triggers": [
+                { "id": "manual", "type": "api", "enabled": true },
+                {
+                    "id": "nightly",
+                    "type": "schedule",
+                    "enabled": false,
+                    "expression": "0 3 * * *"
+                }
+            ]
+        }))
+        .unwrap();
+
+        let automation = client
+            .replace_automation("nightly-deps", "revision-1", request)
+            .await
+            .unwrap();
+
+        mock.assert_async().await;
+        assert_eq!(automation.id.as_str(), "nightly-deps");
+    }
+
+    #[tokio::test]
+    async fn create_automation_run_fires_the_api_trigger() {
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path("/api/v1/automations/nightly-deps/runs");
+                then.status(201)
+                    .header("content-type", "application/json")
+                    .json_body(json!({
+                        "id": "01M2ZSYQR4ZM8N6HD67TT3AT3X",
+                        "title": "manual fire",
+                        "goal": "manual fire",
+                        "workflow": { "slug": "dependency-update" },
+                        "created_by": { "kind": "user", "identity": {
+                            "issuer": "https://github.com", "subject": "123"
+                        }, "login": "octocat", "auth_method": "github" },
+                        "origin": { "kind": "api" },
+                        "labels": {},
+                        "lifecycle": {
+                            "status": { "kind": "pending", "reason": "approval_required" },
+                            "error": null,
+                            "archived": false
+                        },
+                        "models": [],
+                        "timestamps": { "created_at": "2026-09-20T12:00:00Z" },
+                        "links": { "web": null }
+                    }));
+            })
+            .await;
+        let client = Client::new_no_proxy(&server.url("")).unwrap();
+
+        let run = client.create_automation_run("nightly-deps").await.unwrap();
+
+        mock.assert_async().await;
+        assert_eq!(run.id.to_string(), "01M2ZSYQR4ZM8N6HD67TT3AT3X");
     }
 
     #[tokio::test]

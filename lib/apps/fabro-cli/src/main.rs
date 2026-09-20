@@ -380,6 +380,9 @@ async fn main_inner(worker_token: Option<String>) -> (String, Result<()>) {
             Commands::Env(ns) => {
                 commands::env::dispatch(ns, &base_ctx).await?;
             }
+            Commands::Automations(ns) => {
+                commands::automations::dispatch(ns, &base_ctx).await?;
+            }
             Commands::Variable(ns) => {
                 commands::variable::dispatch(ns, &base_ctx).await?;
             }
