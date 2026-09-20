@@ -10,14 +10,16 @@ use fabro_types::{
     PendingInterviewRecord, ReviewTarget, ReviewTargetKind, RunStatus, StageInferenceProjection,
     StageModelUsage, StageProjection, ToolCategory, ToolSource, ToolSummary, timing,
 };
+use lithos_llm::types::{ReasoningEffort, Speed, Usage};
 use petri_execution::ExecutionId;
 use petri_execution::events::{Parsed, RunEvent};
 use petri_runtime::ir::StepEvent;
 use petri_runtime::steps::QuestionReference;
+use serde::Deserialize;
 use serde_json::Value;
 use tracing::debug;
 
-use super::model::{model_ref, split_model, usage_of};
+use super::model::{model_ref, split_model};
 use super::{RunView, apply_status, stage_key};
 use crate::interview::question_type;
 
@@ -45,17 +47,21 @@ impl RunView {
                     self.fold_parsed(execution, event, parsed, at);
                     return;
                 }
-                let kind = payload.get("kind").and_then(Value::as_str).unwrap_or("");
-                match kind {
-                    "pebble" => self.fold_pebble(execution, event, payload, at),
-                    "attractor.prompt" => {
+                let progress = match Progress::deserialize(payload) {
+                    Ok(progress) => progress,
+                    Err(error) => {
+                        debug!(error = %error, "a progress payload did not decode; skipped");
+                        return;
+                    }
+                };
+                match progress {
+                    Progress::Pebble { event: envelope } => {
+                        self.fold_pebble(execution, event, envelope, at);
+                    }
+                    Progress::Prompt { prompt, model } => {
                         if let Some(stage) = self.stage_of(execution, event.subject.as_ref()) {
-                            stage.prompt = payload
-                                .get("prompt")
-                                .and_then(Value::as_str)
-                                .map(str::to_string);
-                            let model = payload.get("model").and_then(Value::as_str);
-                            if let Some(model) = model {
+                            stage.prompt = prompt;
+                            if let Some(model) = model.as_deref() {
                                 let (provider, model_id) = split_model(model);
                                 stage.provider_used = Some(StageModelUsage::new(
                                     StageModelUsage::MODE_PROMPT,
@@ -66,34 +72,21 @@ impl RunView {
                             }
                         }
                     }
-                    "attractor.prompt.completed" => {
+                    Progress::PromptCompleted { response, usage } => {
                         if let Some(stage) = self.stage_of(execution, event.subject.as_ref()) {
-                            stage.response = payload
-                                .get("response")
-                                .and_then(Value::as_str)
-                                .map(str::to_string);
-                            if let Some(usage) = usage_of(payload.get("usage")) {
+                            stage.response = response;
+                            if let Some(usage) = usage {
                                 stage.usage = usage;
                             }
                         }
                     }
-                    "attractor.fallback.plan" => {
+                    // `routes[0]` is the original route: what the stage was
+                    // asked to run on, with its request controls.
+                    Progress::FallbackPlan { routes } => {
                         if let Some(stage) = self.stage_of(execution, event.subject.as_ref()) {
-                            let route = payload
-                                .get("routes")
-                                .and_then(Value::as_array)
-                                .and_then(|routes| routes.first());
-                            if let Some(route) = route {
-                                let provider = route.get("provider").and_then(Value::as_str);
-                                let model = route.get("model").and_then(Value::as_str);
-                                stage.provider_used = Some(StageModelUsage::new(
-                                    StageModelUsage::MODE_AGENT,
-                                    provider.map(str::to_string),
-                                    model.map(str::to_string),
-                                ));
-                                if let Some(model) = model {
-                                    stage.model = model_ref(provider, model);
-                                }
+                            if let Some(route) = routes.into_iter().next() {
+                                stage.model = model_ref(Some(&route.provider), &route.model);
+                                stage.provider_used = Some(route.usage());
                             }
                         }
                     }
@@ -101,48 +94,35 @@ impl RunView {
                     // session (VIEWS.md "Agent activity", tools available):
                     // the stage's list is the union over its sessions, by
                     // name, in the order the sessions listed them.
-                    "attractor.tools" => {
+                    Progress::Tools { tools } => {
                         if let Some(stage) = self.stage_of(execution, event.subject.as_ref()) {
-                            let tools = payload.get("tools").and_then(Value::as_array);
-                            for tool in tools.into_iter().flatten() {
-                                let Some(summary) = tool_summary(tool) else {
-                                    continue;
-                                };
+                            for tool in tools {
                                 if !stage
                                     .agent_tools
                                     .iter()
-                                    .any(|known| known.name == summary.name)
+                                    .any(|known| known.name == tool.name)
                                 {
-                                    stage.agent_tools.push(summary);
+                                    stage.agent_tools.push(tool.summary());
                                 }
                             }
                         }
                     }
-                    "attractor.parallel.branch.started" => {
-                        let invocation = payload.get("invocation").and_then(Value::as_u64);
-                        let index = payload
-                            .get("index")
-                            .and_then(Value::as_u64)
-                            .and_then(|index| u32::try_from(index).ok());
-                        let fork_firing = payload
-                            .get("occurrence")
-                            .and_then(|occurrence| occurrence.get("firing"))
-                            .and_then(Value::as_u64);
-                        if let (Some(invocation), Some(index), Some(fork_firing)) =
-                            (invocation, index, fork_firing)
-                        {
-                            let group = self
-                                .state
-                                .stages
-                                .get(&stage_key(execution.raw(), fork_firing))
-                                .map(|stage| stage.stage_id.clone());
-                            if let Some(group) = group {
-                                self.state.invocations.entry(invocation).or_default().branch =
-                                    Some((group, index));
-                            }
+                    Progress::BranchStarted {
+                        invocation,
+                        index,
+                        occurrence,
+                    } => {
+                        let group = self
+                            .state
+                            .stages
+                            .get(&stage_key(execution.raw(), occurrence.firing))
+                            .map(|stage| stage.stage_id.clone());
+                        if let Some(group) = group {
+                            self.state.invocations.entry(invocation).or_default().branch =
+                                Some((group, index));
                         }
                     }
-                    _ => {}
+                    Progress::Other => {}
                 }
             }
         }
@@ -255,19 +235,9 @@ impl RunView {
         &mut self,
         execution: ExecutionId,
         event: &RunEvent,
-        payload: &Value,
+        envelope: CodingAgentEvent,
         at: DateTime<Utc>,
     ) {
-        let Some(envelope) = payload.get("event") else {
-            return;
-        };
-        let envelope: CodingAgentEvent = match serde_json::from_value(envelope.clone()) {
-            Ok(envelope) => envelope,
-            Err(error) => {
-                debug!(error = %error, "a pebble envelope did not decode; skipped");
-                return;
-            }
-        };
         let Some(stage) = self.stage_of(execution, event.subject.as_ref()) else {
             return;
         };
@@ -361,35 +331,129 @@ impl RunView {
     }
 }
 
-/// One tool of an `attractor.tools` payload as the stage's list carries
-/// it: the name and description as recorded, Pebble's `source` as it is,
-/// and Pebble's behavioural category where Petri's says which (a
-/// sub-agent tool); every other tool is `other`, because the payload
-/// carries Petri's origin category (`builtin`, `mcp`, `host`, `question`),
-/// not Pebble's permission class. `invoked` starts false and flips on the
-/// session's `ToolCallStarted`.
-fn tool_summary(tool: &Value) -> Option<ToolSummary> {
-    let name = tool.get("name").and_then(Value::as_str)?;
-    let description = tool
-        .get("description")
-        .and_then(Value::as_str)
-        .unwrap_or_default();
-    let source = tool
-        .get("source")
-        .cloned()
-        .and_then(|source| serde_json::from_value::<ToolSource>(source).ok())
-        .unwrap_or_default();
-    let category = match tool.get("category").and_then(Value::as_str) {
-        Some("subagent") => ToolCategory::Subagent,
-        _ => ToolCategory::Other,
-    };
-    Some(ToolSummary {
-        name: name.to_string(),
-        description: description.to_string(),
-        source,
-        category,
-        invoked: false,
-    })
+/// The `StepEvent::Custom` payloads the fold reads, by their `kind`. The
+/// kinds are Petri's, and a test holds each literal to the constant the
+/// Attractor steps export, so a rename there fails here rather than
+/// projecting nothing. A payload of another kind, or of no kind, is
+/// `Other`.
+#[derive(Deserialize)]
+#[serde(tag = "kind")]
+enum Progress {
+    /// Pebble's coding-agent envelope, forwarded by the agent step.
+    #[serde(rename = "pebble")]
+    Pebble { event: CodingAgentEvent },
+    /// The prompt step before its first model call: the prompt, and the
+    /// `provider/model` selector it runs on.
+    #[serde(rename = "attractor.prompt")]
+    Prompt {
+        #[serde(default)]
+        prompt: Option<String>,
+        #[serde(default)]
+        model:  Option<String>,
+    },
+    /// The prompt step after its last model call.
+    #[serde(rename = "attractor.prompt.completed")]
+    PromptCompleted {
+        #[serde(default)]
+        response: Option<String>,
+        #[serde(default)]
+        usage:    Option<Usage>,
+    },
+    /// A stage's fallback plan, once per stage: `routes[0]` is the
+    /// original route.
+    #[serde(rename = "attractor.fallback.plan")]
+    FallbackPlan {
+        #[serde(default)]
+        routes: Vec<PlannedRoute>,
+    },
+    /// The tools a native session was offered, once per session.
+    #[serde(rename = "attractor.tools")]
+    Tools {
+        #[serde(default)]
+        tools: Vec<OfferedTool>,
+    },
+    /// A parallel branch's child started: which fork visit it belongs to,
+    /// its index, and the child invocation.
+    #[serde(rename = "attractor.parallel.branch.started")]
+    BranchStarted {
+        invocation: u64,
+        index:      u32,
+        occurrence: ForkOccurrence,
+    },
+    #[serde(other)]
+    Other,
+}
+
+/// One route of a fallback plan: the provider and model, with the request
+/// controls the route carries.
+#[derive(Deserialize)]
+struct PlannedRoute {
+    provider:         String,
+    model:            String,
+    #[serde(default)]
+    reasoning_effort: Option<ReasoningEffort>,
+    #[serde(default)]
+    speed:            Option<Speed>,
+}
+
+impl PlannedRoute {
+    /// The route as the stage's model usage: an agent route with its
+    /// controls.
+    fn usage(self) -> StageModelUsage {
+        StageModelUsage {
+            reasoning_effort: self.reasoning_effort,
+            speed: self.speed,
+            ..StageModelUsage::new(
+                StageModelUsage::MODE_AGENT,
+                Some(self.provider),
+                Some(self.model),
+            )
+        }
+    }
+}
+
+/// The fork visit a branch belongs to: the fork step's firing in the
+/// branch's execution.
+#[derive(Deserialize)]
+struct ForkOccurrence {
+    firing: u64,
+}
+
+/// One tool of an `attractor.tools` payload: the name and description as
+/// recorded, Pebble's `source` as it is, and Petri's origin category
+/// (`builtin`, `mcp`, `host`, `question`, `subagent`).
+#[derive(Deserialize)]
+struct OfferedTool {
+    name:        String,
+    #[serde(default)]
+    description: String,
+    /// Left as recorded: a source Pebble adds later still lists the tool,
+    /// under the default source.
+    #[serde(default)]
+    source:      Value,
+    #[serde(default)]
+    category:    Option<String>,
+}
+
+impl OfferedTool {
+    /// The tool as the stage's list carries it. Pebble's behavioural
+    /// category is kept where Petri's says which (a sub-agent tool); every
+    /// other tool is `other`, because the payload carries Petri's origin
+    /// category, not Pebble's permission class. `invoked` starts false and
+    /// flips on the session's `ToolCallStarted`.
+    fn summary(self) -> ToolSummary {
+        let category = match self.category.as_deref() {
+            Some("subagent") => ToolCategory::Subagent,
+            _ => ToolCategory::Other,
+        };
+        ToolSummary {
+            name: self.name,
+            description: self.description,
+            source: serde_json::from_value::<ToolSource>(self.source).unwrap_or_default(),
+            category,
+            invoked: false,
+        }
+    }
 }
 
 /// The question's `reference` as Fabro's review target, when it is one
@@ -413,5 +477,98 @@ fn close_inference(stage: &mut StageProjection, session_id: &str, at: DateTime<U
     }
     if let Some(inference) = stage.inference.take() {
         stage.accumulate_inference_ms(timing::elapsed_ms(inference.started_at, at));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use petri_attractor_steps::{fallback, parallel, pebble, prompt};
+    use serde_json::json;
+
+    use super::*;
+
+    /// The kinds the fold matches are the ones the Attractor steps emit.
+    #[test]
+    fn the_progress_kinds_are_petris() {
+        let kind_of = |value: Value| -> &'static str {
+            match Progress::deserialize(&value).expect("a known kind decodes") {
+                Progress::Pebble { .. } => "pebble",
+                Progress::Prompt { .. } => "prompt",
+                Progress::PromptCompleted { .. } => "prompt.completed",
+                Progress::FallbackPlan { .. } => "fallback.plan",
+                Progress::Tools { .. } => "tools",
+                Progress::BranchStarted { .. } => "branch.started",
+                Progress::Other => "other",
+            }
+        };
+        assert_eq!(kind_of(json!({ "kind": prompt::PROMPT_EVENT })), "prompt");
+        assert_eq!(
+            kind_of(json!({ "kind": prompt::COMPLETED_EVENT })),
+            "prompt.completed"
+        );
+        assert_eq!(
+            kind_of(json!({ "kind": fallback::PLAN_EVENT })),
+            "fallback.plan"
+        );
+        assert_eq!(kind_of(json!({ "kind": pebble::tools::EVENT })), "tools");
+        assert_eq!(
+            kind_of(json!({
+                "kind": parallel::BRANCH_STARTED_EVENT,
+                "invocation": 3,
+                "index": 1,
+                "occurrence": { "fork": "fan", "firing": 7 },
+            })),
+            "branch.started"
+        );
+        assert_eq!(
+            kind_of(json!({ "kind": parallel::BRANCH_COMPLETED_EVENT })),
+            "other"
+        );
+    }
+
+    /// A plan's original route carries its request controls onto the
+    /// stage's model usage.
+    #[test]
+    fn a_fallback_plan_route_keeps_its_controls() {
+        let progress = Progress::deserialize(&json!({
+            "kind": fallback::PLAN_EVENT,
+            "routes": [
+                { "position": 0, "provider": "openai", "model": "gpt-5.4",
+                  "reasoning_effort": "high", "speed": null },
+                { "position": 1, "provider": "anthropic", "model": "claude" },
+            ],
+        }))
+        .expect("the plan decodes");
+        let Progress::FallbackPlan { routes } = progress else {
+            panic!("not a plan");
+        };
+        let usage = routes.into_iter().next().expect("a route").usage();
+        assert_eq!(usage.mode, StageModelUsage::MODE_AGENT);
+        assert_eq!(usage.provider.as_deref(), Some("openai"));
+        assert_eq!(usage.model.as_deref(), Some("gpt-5.4"));
+        assert_eq!(usage.reasoning_effort, Some(ReasoningEffort::High));
+        assert_eq!(usage.speed, None);
+    }
+
+    /// A tool lists under Petri's category, with its source as recorded.
+    #[test]
+    fn an_offered_tool_maps_to_its_summary() {
+        let progress = Progress::deserialize(&json!({
+            "kind": pebble::tools::EVENT,
+            "tools": [
+                { "name": "spawn_agent", "description": "a child", "source": "native",
+                  "category": "subagent" },
+                { "name": "Read", "category": "builtin" },
+            ],
+        }))
+        .expect("the tools decode");
+        let Progress::Tools { tools } = progress else {
+            panic!("not a tool list");
+        };
+        let summaries: Vec<ToolSummary> = tools.into_iter().map(OfferedTool::summary).collect();
+        assert_eq!(summaries[0].category, ToolCategory::Subagent);
+        assert_eq!(summaries[1].category, ToolCategory::Other);
+        assert_eq!(summaries[1].description, "");
+        assert!(!summaries[0].invoked);
     }
 }
