@@ -125,6 +125,19 @@ lines because answering was optional. Always emit BOTH keys:
 - `observations`: at least one entry. The literal `"none"` is a valid
   answer when the pass was genuinely unremarkable — but the key must be
   present every time.
+- `deferred-action:` marker (fabro-7aac): every deferred human follow-up
+  you disclose in `implementation_summary` (a regen-confirm step you
+  could not run in-sandbox — e.g. a pending TS client regen — a manual
+  confirmation pending on the user, a local-only step) must ALSO be
+  emitted as a journal observation starting with the deterministic
+  marker `deferred-action: ` — one observation per action, the action
+  text self-contained after the marker. Closeout's deferred-action sweep
+  files exactly those marker observations as open seeds BEFORE closing
+  the seed; an action disclosed only in `implementation_summary` dies
+  with the seed (the observed failure mode this channel exists for).
+  Marker at the START of
+  the observation — mid-sentence mentions never match. No deferred
+  actions -> no marker observations.
 The engine records it durably per stage (no restating, no rewriting);
 nobody re-reads your prose, only the JSON survives.
 

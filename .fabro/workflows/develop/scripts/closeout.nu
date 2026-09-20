@@ -258,6 +258,96 @@ def sweep-reviewer-findings [seed_id: string, run_id: string, journal_path: stri
     }
 }
 
+# ---------------------------------------------------------------------------
+# Deferred-action sweep (fabro-7aac)
+#
+# WHY: run 01M2P22VYWQNJM64D15XPHFP2C (seed fabro-3916's bun-generate
+# follow-up) — an implementer discloses a deferred human follow-up (a
+# regen-confirm or local-only step that cannot run in-sandbox) only in
+# `implementation_summary`, which the planner node consumes but the
+# stage journal never carries: when closeout ran `sd close`, the
+# follow-up died with the seed. Channel contract: implementer.md also
+# emits each deferred action as a JOURNAL observation starting with the
+# deterministic marker `deferred-action: ` (fabro-7aac), and this sweep
+# filters implementer-node observations by that marker BEFORE the close.
+#
+# Advisory semantics identical to fabro-22fa above: `do -i` wrapping,
+# complete-wrapped `sd create`, failures print to stderr and never block
+# the close. Placed AFTER the PARK gate so a parked (still-open) seed
+# does not double-file on its re-run's closeout. Null path: a journal
+# with no marker observations yields an empty list and ZERO sd create
+# calls — byte-identical close semantics.
+# ---------------------------------------------------------------------------
+
+# Pure: the deterministic journal marker. Single source of truth for
+# both the filter (is-deferred-action) and the strip (deferred-text).
+def deferred-marker []: nothing -> string {
+    "deferred-action:"
+}
+
+# Pure: does an implementer observation carry the marker AT ITS START?
+# Case-insensitive and whitespace-tolerant; an observation merely
+# MENTIONING the marker mid-sentence does not match (the prompt contract
+# puts the marker at the start, one observation per action).
+def is-deferred-action [obs: string]: nothing -> bool {
+    ($obs | str trim | str lowercase | str starts-with (deferred-marker))
+}
+
+# Pure: the action text after the marker, for the filed seed body.
+# Non-matching input passes through unchanged (defensive; the sweep
+# filter already matched).
+def deferred-text [obs: string]: nothing -> string {
+    let t = ($obs | str trim)
+    let low = ($t | str lowercase)
+    if not ($low | str starts-with (deferred-marker)) { return $t }
+    let mlen = (deferred-marker | str length)
+    $t | str substring ($mlen..) | str trim
+}
+
+# Pure: deferred actions from journal JSONL text — implementer-node
+# records only, their observations, filtered by is-deferred-action.
+def deferred-from-journal [text: string]: nothing -> list<string> {
+    let obs = (
+        $text | lines | compact
+        | each {|l| do -i { $l | from json } }
+        | where {|r| ($r | describe | str starts-with "record") and (($r | get -o node | default '') == "implementer")}
+        | get -o data
+        | where {|d| $d != null}
+        | each {|d| $d | get -o observations | default []}
+        | flatten
+    )
+    $obs | where {|o| is-deferred-action $o}
+}
+
+# Best-effort file-level read: missing/unreadable journal -> empty list.
+def journal-deferred [journal_path: string]: nothing -> list<string> {
+    do -i { deferred-from-journal (open --raw $journal_path) } | default []
+}
+
+# Pure: filed-seed title — bounded action excerpt plus provenance.
+def deferred-title [action: string, seed_id: string]: nothing -> string {
+    let excerpt = (if ($action | str length) > 70 { $action | str substring 0..69 } else { $action })
+    $"Deferred follow-up from ($seed_id): ($excerpt)"
+}
+
+# Advisory sweep: file each deferred human follow-up as an open seed
+# (type task, assignee fabro so the develop line can pick it up, labels
+# `residual` for machine-filed provenance — same pool semantics as
+# sweep-reviewer-findings). Never raises: caller wraps in `do -i`;
+# internal sd failures print to stderr and continue.
+def sweep-deferred-actions [seed_id: string, run_id: string, journal_path: string]: nothing -> nothing {
+    for action in (journal-deferred $journal_path) {
+        let text = (deferred-text $action)
+        let desc = $"Deferred human follow-up the implementer disclosed while implementing ($seed_id)\n\nAction: \"($text)\"\n\nOrigin: closed seed ($seed_id), implementer journal ($journal_path), marker observation.\nBasis: run ($run_id), closed seed ($seed_id)"
+        let res = (do { sd create --title (deferred-title $text $seed_id) --description $desc --type task --assignee fabro --labels (residual-seed-labels | str join ",") } | complete)
+        if $res.exit_code != 0 {
+            print -e $"closeout: WARNING — could not file deferred action as a seed \(from ($seed_id)\): ($res.stderr | str trim)"
+        } else {
+            print $"closeout: filed deferred action as open seed: ($res.stdout | str trim)"
+        }
+    }
+}
+
 def main []: nothing -> nothing {
     # Non-tty stdin: nu 0.115's `input` only works on a tty and raises an
     # I/O error on pipes (run 01M1PVMS7B6N39MG0041C5F7P6) — the engine pipes
@@ -297,6 +387,14 @@ def main []: nothing -> nothing {
     # close. Null path: no findings -> zero sd create calls.
     let run_id = (do -i { current-run-id } | default '')
     do -i { sweep-reviewer-findings $seed_id $run_id $".fabro/journal/($run_id).jsonl" } | ignore
+
+    # Deferred-action sweep (fabro-7aac): re-file deferred human
+    # follow-ups the implementer disclosed as `deferred-action:` journal
+    # observations (marker contract in implementer.md) as open seeds
+    # BEFORE the close. Advisory only — same wrapping discipline as the
+    # reviewer sweep above, also after the PARK gate. Null path: no
+    # marker observations -> zero sd create calls.
+    do -i { sweep-deferred-actions $seed_id $run_id $".fabro/journal/($run_id).jsonl" } | ignore
 
     let res = (do { sd close $seed_id } | complete)
     if $res.exit_code != 0 {
