@@ -1,0 +1,131 @@
+    Checking tokio-util v0.7.19
+    Checking fabro-static v0.355.0-nightly.0 (/home/denkhaus/dev/fabro/lib/foundation/fabro-static)
+    Checking crossterm v0.29.0
+   Compiling fabro-db v0.355.0-nightly.0 (/home/denkhaus/dev/fabro/lib/foundation/fabro-db)
+   Compiling fabro-proc v0.355.0-nightly.0 (/home/denkhaus/dev/fabro/lib/foundation/fabro-proc)
+    Checking fabro-options-metadata v0.355.0-nightly.0 (/home/denkhaus/dev/fabro/lib/foundation/fabro-options-metadata)
+   Compiling fabro-macros v0.355.0-nightly.0 (/home/denkhaus/dev/fabro/lib/foundation/fabro-macros)
+   Compiling fabro-redact v0.355.0-nightly.0 (/home/denkhaus/dev/fabro/lib/foundation/fabro-redact)
+    Checking sandbox-driver-docker-config v0.1.0 (https://github.com/lithoscomputer/sandbox-driver?rev=ddb32e19e763299319ecf6aebc8961298db80c0c#ddb32e19)
+   Compiling fabro-api v0.355.0-nightly.0 (/home/denkhaus/dev/fabro/lib/foundation/fabro-api)
+    Checking foyer-storage v0.18.1
+   Compiling fabro-build-support v0.355.0-nightly.0 (/home/denkhaus/dev/fabro/lib/foundation/build-support)
+    Checking fabro-spa v0.355.0-nightly.0 (/home/denkhaus/dev/fabro/lib/apps/fabro-spa)
+    Checking sandbox-driver-daytona-config v0.1.0 (https://github.com/lithoscomputer/sandbox-driver?rev=ddb32e19e763299319ecf6aebc8961298db80c0c#ddb32e19)
+   Compiling fabro-server v0.355.0-nightly.0 (/home/denkhaus/dev/fabro/lib/apps/fabro-server)
+   Compiling fabro-cli v0.355.0-nightly.0 (/home/denkhaus/dev/fabro/lib/apps/fabro-cli)
+    Checking crokey v1.4.0
+    Checking coolor v1.1.0
+    Checking h2 v0.4.13
+    Checking tower-http v0.6.8
+    Checking tokio-stream v0.1.18
+    Checking sandbox-driver v0.1.0 (https://github.com/lithoscomputer/sandbox-driver?rev=ddb32e19e763299319ecf6aebc8961298db80c0c#ddb32e19)
+    Checking async_zip v0.0.18
+    Checking termimad v0.34.1
+    Checking sqlx-core v0.9.0
+    Checking fabro-util v0.355.0-nightly.0 (/home/denkhaus/dev/fabro/lib/foundation/fabro-util)
+    Checking foyer v0.18.1
+    Checking sqlx-sqlite v0.9.0
+    Checking hyper v1.8.1
+    Checking sqlx v0.9.0
+    Checking hyper-util v0.1.20
+    Checking sandbox-driver-protocol v0.1.0 (https://github.com/lithoscomputer/sandbox-driver?rev=ddb32e19e763299319ecf6aebc8961298db80c0c#ddb32e19)
+    Checking sandbox-driver-testing v0.1.0 (https://github.com/lithoscomputer/sandbox-driver?rev=ddb32e19e763299319ecf6aebc8961298db80c0c#ddb32e19)
+    Checking hyper-rustls v0.27.7
+    Checking hyper-tls v0.6.0
+    Checking axum v0.8.8
+    Checking hyperlocal v0.9.1
+    Checking httpmock v0.8.3
+    Checking reqwest v0.13.4
+    Checking aws-smithy-http-client v1.1.13
+    Checking reqwest v0.12.28
+    Checking bollard v0.18.1
+    Checking aws-smithy-runtime v1.11.3
+    Checking object_store v0.12.5
+    Checking rmcp v1.7.0
+    Checking progenitor-client v0.13.0
+    Checking fabro-http v0.355.0-nightly.0 (/home/denkhaus/dev/fabro/lib/foundation/fabro-http)
+    Checking reqwest-middleware v0.5.1
+    Checking fabro-telemetry v0.355.0-nightly.0 (/home/denkhaus/dev/fabro/lib/foundation/fabro-telemetry)
+    Checking daytona-api-client v0.1.0 (https://github.com/brynary/daytona-sdk-rust?rev=5e86990418e21f4288ce537c9852dfdf78768abc#5e869904)
+    Checking daytona-toolbox-client v0.1.0 (https://github.com/brynary/daytona-sdk-rust?rev=5e86990418e21f4288ce537c9852dfdf78768abc#5e869904)
+    Checking aws-runtime v1.7.4
+    Checking fabro-oauth v0.355.0-nightly.0 (/home/denkhaus/dev/fabro/lib/foundation/fabro-oauth)
+    Checking twin-core v0.1.5 (https://github.com/lithoscomputer/twins?rev=ca45f0e50a6716d716aa2f638ca3cf767e88f613#ca45f0e5)
+    Checking twin-github v0.355.0-nightly.0 (/home/denkhaus/dev/fabro/test/twin/github)
+    Checking axum-extra v0.10.3
+    Checking twin-openai v0.1.5 (https://github.com/lithoscomputer/twins?rev=ca45f0e50a6716d716aa2f638ca3cf767e88f613#ca45f0e5)
+    Checking aws-sdk-sts v1.106.0
+    Checking aws-sdk-ssooidc v1.103.0
+    Checking aws-sdk-sso v1.101.0
+    Checking slatedb-txn-obj v0.11.2
+    Checking sandbox-driver-docker v0.1.0 (https://github.com/lithoscomputer/sandbox-driver?rev=ddb32e19e763299319ecf6aebc8961298db80c0c#ddb32e19)
+    Checking sandbox-driver-host v0.1.0 (https://github.com/lithoscomputer/sandbox-driver?rev=ddb32e19e763299319ecf6aebc8961298db80c0c#ddb32e19)
+    Checking slatedb v0.11.2
+    Checking aws-config v1.8.18
+    Checking lithos-llm v0.1.0 (https://github.com/lithoscomputer/lithos-llm?rev=a1e3fd37b7153870411701327ac117606753fe90#a1e3fd37)
+    Checking agent-client-protocol v0.11.1
+    Checking daytona-sdk v0.1.0 (https://github.com/brynary/daytona-sdk-rust?rev=5e86990418e21f4288ce537c9852dfdf78768abc#5e869904)
+    Checking agent-client-protocol-tokio v0.11.1
+    Checking sandbox-driver-daytona v0.1.0 (https://github.com/lithoscomputer/sandbox-driver?rev=ddb32e19e763299319ecf6aebc8961298db80c0c#ddb32e19)
+    Checking pebble-agent v0.1.0 (https://github.com/lithoscomputer/pebble?rev=69969420c9017ca15ac6c175c820a0cb8090866a#69969420)
+    Checking pebble-coding-agent v0.1.0 (https://github.com/lithoscomputer/pebble?rev=69969420c9017ca15ac6c175c820a0cb8090866a#69969420)
+    Checking fabro-types v0.355.0-nightly.0 (/home/denkhaus/dev/fabro/lib/foundation/fabro-types)
+    Checking pebble-cli-core v0.1.0 (https://github.com/lithoscomputer/pebble?rev=69969420c9017ca15ac6c175c820a0cb8090866a#69969420)
+    Checking fabro-config v0.355.0-nightly.0 (/home/denkhaus/dev/fabro/lib/foundation/fabro-config)
+    Checking fabro-automation v0.355.0-nightly.0 (/home/denkhaus/dev/fabro/lib/components/fabro-automation)
+    Checking fabro-vault v0.355.0-nightly.0 (/home/denkhaus/dev/fabro/lib/foundation/fabro-vault)
+    Checking fabro-github v0.355.0-nightly.0 (/home/denkhaus/dev/fabro/lib/components/fabro-github)
+    Checking fabro-store v0.355.0-nightly.0 (/home/denkhaus/dev/fabro/lib/components/fabro-store)
+    Checking fabro-graphviz v0.355.0-nightly.0 (/home/denkhaus/dev/fabro/lib/components/fabro-graphviz)
+    Checking fabro-template v0.355.0-nightly.0 (/home/denkhaus/dev/fabro/lib/foundation/fabro-template)
+    Checking fabro-interview v0.355.0-nightly.0 (/home/denkhaus/dev/fabro/lib/components/fabro-interview)
+    Checking fabro-core v0.355.0-nightly.0 (/home/denkhaus/dev/fabro/lib/foundation/fabro-core)
+    Checking fabro-mcp v0.355.0-nightly.0 (/home/denkhaus/dev/fabro/lib/components/fabro-mcp)
+    Checking fabro-mcp-store v0.355.0-nightly.0 (/home/denkhaus/dev/fabro/lib/components/fabro-mcp-store)
+    Checking fabro-variable v0.355.0-nightly.0 (/home/denkhaus/dev/fabro/lib/components/fabro-variable)
+    Checking fabro-auth v0.355.0-nightly.0 (/home/denkhaus/dev/fabro/lib/foundation/fabro-auth)
+    Checking fabro-sandbox v0.355.0-nightly.0 (/home/denkhaus/dev/fabro/lib/components/fabro-sandbox)
+    Checking fabro-tracker v0.355.0-nightly.0 (/home/denkhaus/dev/fabro/lib/components/fabro-tracker)
+    Checking fabro-dump v0.355.0-nightly.0 (/home/denkhaus/dev/fabro/lib/components/fabro-dump)
+    Checking fabro-environment v0.355.0-nightly.0 (/home/denkhaus/dev/fabro/lib/components/fabro-environment)
+    Checking fabro-llm v0.355.0-nightly.0 (/home/denkhaus/dev/fabro/lib/components/fabro-llm)
+    Checking fabro-workflow-version v0.355.0-nightly.0 (/home/denkhaus/dev/fabro/lib/components/fabro-workflow-version)
+    Checking fabro-checkpoint v0.355.0-nightly.0 (/home/denkhaus/dev/fabro/lib/components/fabro-checkpoint)
+    Checking fabro-dev v0.355.0-nightly.0 (/home/denkhaus/dev/fabro/lib/foundation/fabro-dev)
+    Checking fabro-acp v0.355.0-nightly.0 (/home/denkhaus/dev/fabro/lib/components/fabro-acp)
+    Checking fabro-hooks v0.355.0-nightly.0 (/home/denkhaus/dev/fabro/lib/components/fabro-hooks)
+    Checking fabro-validate v0.355.0-nightly.0 (/home/denkhaus/dev/fabro/lib/components/fabro-validate)
+    Checking fabro-install v0.355.0-nightly.0 (/home/denkhaus/dev/fabro/lib/components/fabro-install)
+    Checking fabro-test v0.355.0-nightly.0 (/home/denkhaus/dev/fabro/lib/foundation/fabro-test)
+    Checking fabro-client v0.355.0-nightly.0 (/home/denkhaus/dev/fabro/lib/foundation/fabro-client)
+    Checking fabro-tool v0.355.0-nightly.0 (/home/denkhaus/dev/fabro/lib/components/fabro-tool)
+    Checking fabro-workflow v0.355.0-nightly.0 (/home/denkhaus/dev/fabro/lib/components/fabro-workflow)
+    Checking fabro-manifest v0.355.0-nightly.0 (/home/denkhaus/dev/fabro/lib/components/fabro-manifest)
+    Checking fabro-slack v0.355.0-nightly.0 (/home/denkhaus/dev/fabro/lib/components/fabro-slack)
+error: empty line after doc comment
+    --> lib/apps/fabro-server/src/server/tests.rs:8570:1
+     |
+8570 | / /// observation point; the terminal exit node never dispatches a handler.
+8571 | |
+     | |_^
+8572 |   async fn bridge_intent_run(app: &Router, bearer: Option<&str>, config: &str) -> String {
+     |   -------------------------- the comment documents this function
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#empty_line_after_doc_comments
+     = note: `-D clippy::empty-line-after-doc-comments` implied by `-D warnings`
+     = help: to override `-D warnings` add `#[allow(clippy::empty_line_after_doc_comments)]`
+     = help: if the empty line is unintentional, remove it
+
+    Checking fabro-mcp-server v0.355.0-nightly.0 (/home/denkhaus/dev/fabro/lib/apps/fabro-mcp-server)
+error: unused variable: `dot_source`
+   --> lib/apps/fabro-server/src/server/tests.rs:706:71
+    |
+706 | async fn create_run_with_bearer_for_graph(app: &Router, bearer: &str, dot_source: &str) -> RunId {
+    |                                                                       ^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_dot_source`
+    |
+    = note: `-D unused-variables` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(unused_variables)]`
+
+error: could not compile `fabro-server` (lib test) due to 2 previous errors
+warning: build failed, waiting for other jobs to finish...

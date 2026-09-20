@@ -1,0 +1,191 @@
+# Toolchain image for the merged world (fabro-5453): Rust workspace gate
+# plus workspace toolset (just, nu, rg via mise — same pins as the lab
+# runner image .fabro/Dockerfile.mise on denkhaus-lab until the worlds
+# unify).
+#
+# Base is ubuntu:24.04, NOT buildpack-deps:noble: the buildpack image
+# carries 5 critical and 112 high CVEs from its kitchen-sink library set
+# (user directive 2026-09-03 — the lab runner image already made this
+# switch). Only the packages the workspace actually needs get installed.
+#
+# fabro-c643 rebuild (user decision 2026-09-17, ADR-0022 one-change-unit):
+#   ARM 1  cargo-chef staged dependency layers cooked at image build time
+#          from the workspace manifests (context staged by
+#          scripts/run-images.nu into .fabro/cook/) into /opt/target, with
+#          CARGO_TARGET_DIR=/opt/target so every run-container cargo build
+#          (nextest/debug builds, compile checks) hits warm dependency
+#          artifacts instead of a ~10-15 min cold compile. Known residual:
+#          clippy rebuilds dependencies with clippy-driver fingerprints, so
+#          the clippy leg of the gate stays cold — nextest and debug-build
+#          legs are the warmed majority.
+#   ARM 2  cargo-insta baked in (fabro-ea41): `cargo insta accept` works
+#          inside runs.
+#   ARM 3  graphviz baked in (fabro-9bf4): `dot` is available for
+#          workflow-graph validation/rendering.
+#   ARM 4  mold linker anchored via /root/.cargo/config.toml rustflags
+#          (fabro-581b). Wired: this image (the run toolchain image — run
+#          containers build with mold through the baked cargo config, and
+#          the chef cook itself links with it). NOT wired: CI pipelines
+#          and any non-toolchain images stay pipeline-owned and out of
+#          scope. Java/openapi-generator deliberately NOT added
+#          (fabro-3b1b deferred by the same user decision).
+FROM ubuntu:24.04 AS base
+
+ARG RUST_NIGHTLY=nightly-2026-04-14
+
+# Native build dependencies: gcc/make for the linker, pkg-config + perl +
+# cmake + xz for the vendored native crates in Cargo.lock (openssl-sys,
+# libz-sys, libgit2 via cmake), git for checkouts, curl + ca-certificates
+# for toolchain installs, graphviz (fabro-9bf4: workflow-graph rendering)
+# and mold (fabro-581b: fast linker).
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends \
+        bash git ca-certificates curl xz-utils \
+        build-essential pkg-config perl cmake \
+        graphviz mold; \
+    dot -V; \
+    mold --version; \
+    rm -rf /var/lib/apt/lists/*
+
+RUN set -eux; \
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain ${RUST_NIGHTLY}; \
+    export PATH="/root/.cargo/bin:${PATH}"; \
+    rustup toolchain install ${RUST_NIGHTLY} --profile minimal --component clippy,rustfmt; \
+    cargo install cargo-nextest --locked; \
+    cargo install cargo-insta --locked; \
+    cargo install cargo-chef --locked
+
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+# ARM 4 (fabro-581b): anchor mold as the Rust linker for every build that
+# resolves cargo config from /root/.cargo — run containers included, since
+# they run as root with this baked CARGO_HOME. gcc accepts
+# -fuse-ld=mold from gcc 12; ubuntu 24.04 ships gcc 13.
+RUN set -eux; \
+    printf '[target.x86_64-unknown-linux-gnu]\nrustflags = ["-C", "link-arg=-fuse-ld=mold"]\n' \
+        > /root/.cargo/config.toml; \
+    cat /root/.cargo/config.toml
+
+# ARM 1 (fabro-c643): all cargo builds in this image — the chef cook below
+# and every run-container build — share /opt/target, so cooked dependency
+# artifacts are the warm starting point of run builds.
+ENV CARGO_TARGET_DIR=/opt/target
+
+# bun rides the mise toolset (lab exemplar): the bun.sh/install script
+# failed on the ubuntu base ("unzip is required") and mise pins bun@1.4.0
+# the same way the lab runner image does. sd/ml install through the mise
+# bun into BUN_INSTALL, mirroring .fabro/Dockerfile.mise on denkhaus-lab.
+
+# Test workflows run `python3 -m pytest` (e.g. solitaire-*); the agent
+# otherwise fights PEP 668 externally-managed-environment workarounds.
+RUN set -eux; \
+    python3 -m pip --version >/dev/null 2>&1 || apt-get update && apt-get install -y --no-install-recommends python3-pip; \
+    python3 -m pip install --break-system-packages --no-cache-dir pytest; \
+    python3 -m pytest --version
+
+# ─── ARM 1: cargo-chef staged dependency layers ─────────────────────────
+# Planner: cook context is staged by scripts/run-images.nu into
+# .fabro/cook/ (git-tracked workspace manifests + sources + lockfile +
+# the OpenAPI spec). prepare reduces it to a recipe.json.
+FROM base AS chef-plan
+COPY cook /src
+WORKDIR /src
+RUN cargo chef prepare --recipe-path /recipe.json
+
+# Cooker: rebuilds the skeleton from the recipe (manifests + dummy
+# sources only) and compiles every dependency with --all-targets so both
+# normal and dev/test dependency artifacts are warm. fabro-api's build.rs
+# reads docs/public/api-reference/fabro-api.yaml relative to the
+# workspace root — the skeleton does not carry it, so it is staged next
+# to the skeleton or cook dies inside progenitor.
+FROM base AS chef-cook
+COPY --from=chef-plan /recipe.json ./
+COPY --from=chef-plan /src/docs/public/api-reference/fabro-api.yaml docs/public/api-reference/
+RUN cargo chef cook --all-targets --recipe-path /recipe.json
+
+FROM base AS final
+# Warm dependency layers: cooked target dir plus the registry/git caches
+# (pebble-coding-agent is a git-rev dependency) land in the image, and
+# CARGO_TARGET_DIR (set in base) points run-container builds at them.
+COPY --from=chef-cook /opt/target /opt/target
+COPY --from=chef-cook /root/.cargo/registry /root/.cargo/registry
+COPY --from=chef-cook /root/.cargo/git /root/.cargo/git
+
+# Workspace toolset via mise (fabro-5453 world merger): the develop workflow
+# on the merged world invokes `just qualitygate` (tester) and `nu` hook
+# scripts (stage journal), and agents need rg. Mirrors the lab runner image:
+# mise pins the versions, shims resolve them; per-run `mise install` stays a
+# no-op version check. bun/just/nushell/ripgrep pins MUST match the lab
+# image until the worlds are unified.
+ARG MISE_VERSION=v2026.8.10
+# Tool-agnostic layering (ADR-0017, fabro-66db): the engine's clone
+# contract places this repository at /repos/denkhaus/fabro with a
+# /workspace/fabro execution symlink. Trusting that path here keeps
+# mise knowledge in this project artifact; repo configs with settings
+# sections (like [settings.npm]) are not "safe files" and would
+# otherwise fail every shim call until someone runs `mise trust`.
+# Path-based trust is content-independent, unlike a baked `mise trust`
+# hash which would go stale on every .mise.toml change. NOTE (verified
+# in pristine containers, mise 2026.8.10): this setting takes ONE path
+# or directory - no globs, no comma lists. Moving/renaming the repo
+# requires updating this ENV; this image is repo-scoped anyway (it
+# bakes this repo's toolset pins).
+ENV MISE_DATA_DIR=/mise \
+    MISE_TRUSTED_CONFIG_PATHS=/repos/denkhaus/fabro \
+    BUN_INSTALL=/mise/bun-global \
+    PATH=/mise/shims:/mise/bun-global/bin:${PATH}
+
+RUN set -eux; \
+    curl -fsSL "https://github.com/jdx/mise/releases/download/${MISE_VERSION}/mise-${MISE_VERSION}-linux-x64" \
+        -o /usr/local/bin/mise; \
+    chmod +x /usr/local/bin/mise; \
+    mise use -g \
+        bun@1.4.0 \
+        aqua:nushell/nushell@0.115.0 \
+        just@1.58.0 \
+        aqua:BurntSushi/ripgrep@15.2.0 \
+    && bun --version \
+    && nu --version \
+    && just --version \
+    && rg --version
+
+# NO gh in the toolchain image (ADR-0019 capability gate, user decision
+# 2026-09-08): gh was briefly baked in for the planner's in-flight-PR guard
+# (fabro-05d0, PR #53) and REVERTED — an authenticated forge client in agent
+# shells bypasses every engine governance control (gate, revisor, auto-merge;
+# the engine injects GITHUB_TOKEN + a git credential bridge into shell calls,
+# so gh would have been fully write-capable: merge, close, force-push,
+# branch delete). All forge reads/writes are engine-mediated; the guard uses
+# fabro_runs_list data instead (fabro-06e0, Weg A: extend existing tools,
+# no new agent tools).
+
+# Repo agent tooling: AGENTS.md asks agents to run `sd prime` / `ml prime` at
+# session start; without these binaries every run wastes turns on failures.
+# Pinned to the versions used on the host (seeds 0.5.15, mulch 0.10.7).
+# Installed through the mise bun into BUN_INSTALL (lab exemplar).
+RUN mise exec -- bun install -g \
+        @os-eco/seeds-cli@0.5.15 \
+        @os-eco/mulch-cli@0.10.7 \
+    && sd --version \
+    && ml --version
+
+# fabro-validate (fabro-af97, pinned validate-only scope): no HTTP/API
+# client exists in its dependency graph and no token or auth.json rides
+# the image — the binary cannot reach the server. Staged into the build
+# context (.fabro/bin/) by scripts/run-images.nu from the same checkout
+# the image is built from, so run sandboxes validate workflow assets
+# without a cold cargo build (fabro-c643 class; user decision 2026-09-16:
+# the refresh is coupled to `just image-release`).
+COPY bin/fabro-validate /usr/local/bin/fabro-validate
+RUN chmod +x /usr/local/bin/fabro-validate
+ENV FABRO_VALIDATE_PREBUILT=1
+
+# Full fabro CLI (fabro-fe15, user decision 2026-09-16): staged by
+# scripts/run-images.nu in RELEASE profile (debug is ~342 MB; the
+# demand is PATH availability at container start). Unlike
+# fabro-validate this binary carries an HTTP client — run sandboxes
+# hold no server token/auth.json, and the user explicitly accepted
+# this scope. ADR-0019: the bake is a recorded user decision.
+COPY bin/fabro /usr/local/bin/fabro
+RUN chmod +x /usr/local/bin/fabro

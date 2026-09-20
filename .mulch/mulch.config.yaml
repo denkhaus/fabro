@@ -1,0 +1,41 @@
+version: '1'
+domains:
+  cli: {}
+  deployment: {}
+  sandbox: {}
+  workflows: {}
+  git: {}
+  environments: {}
+  testing: {}
+  agent: {}
+  api: {}
+  build: {}
+  server: {}
+  engine: {}
+  platform: {}
+  store: {}
+  lab: {}
+  workflow: {}
+  tooling: {}
+  dev-loop: {}
+  develop-workflow: {}
+  loop: {}
+  develop: {}
+  ops: {}
+  develop-loop: {}
+  loop-assets: {}
+  workflow-engine: {}
+  process: {}
+  fork-strategy: {}
+  devloop: {}
+  architect: {}
+  infrastructure: {}
+  llm: {}
+governance:
+  max_entries: 100
+  warn_entries: 150
+  hard_limit: 200
+classification_defaults:
+  shelf_life:
+    tactical: 14
+    observational: 30

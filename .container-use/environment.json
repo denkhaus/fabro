@@ -1,0 +1,4 @@
+{
+  "workdir": "/workdir",
+  "base_image": "fabro-toolchain:noble"
+}

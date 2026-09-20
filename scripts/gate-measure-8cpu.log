@@ -1,0 +1,7 @@
+=== gate timing, cpus=24, target=/tmp/target-fresh ===
+ELAPSED clone (read-only mount -> /src): 1sec 251ms 572µs 191ns
+ELAPSED build --workspace (kalt): 8min 45sec 986ms 383µs 6ns
+ELAPSED clippy -p fabro-workflow (inkrementell): 2min 32sec 320ms 334µs 329ns
+ELAPSED nextest -p fabro-workflow (inkrementell): 3min 24sec 206ms 627µs 59ns
+ELAPSED fmt --check --all: 7sec 209ms 752µs 173ns
+=== Messung fertig ===

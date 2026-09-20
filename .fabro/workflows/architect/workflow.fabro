@@ -1,0 +1,133 @@
+digraph Architect {
+    graph [
+        goal="Run a self-gated architecture pass: survey gates deterministically on the friction score (verdict architecture-due, no cooldown marker within 48h), builds a system exploration base (loop-wide painpoint digest, workflow interplay map, churn hot spots, seed digest, ADR/facts list), analyze reads the vendored improve-codebase-architecture skill and applies its method directly (headless) to the loop's system-wide interplay, file distills findings into seeds and writes the cooldown marker",
+        rankdir=LR,
+        max_node_visits=5,
+        // Same posture as revisor/develop: bounded preambles. Linear
+        // graph — no cycle counter needed (each node runs once).
+        preamble_budget_kb=24
+    ]
+
+    start [shape=Mdiamond, label="Start"]
+    // Natural exit: score below threshold OR cooldown active is a
+    // healthy no-op, not an error. Soft exits retry next invocation.
+    exit  [shape=Msquare, label="Exit"]
+
+    // Survey: DETERMINISTIC gate first (friction score + cooldown
+    // marker), then an LLM-lite system exploration-base build (the loop
+    // digest aggregates ALL workflows' journals — the architect's subject
+    // is the loop as a system, not any single run). No fabro tools —
+    // everything runs through the shell. Writes are context keys only.
+    survey [
+        label="Survey",
+        prompt="@prompts/survey.md",
+        output_schema="routing",
+        output_retries=2,
+        retry_policy="standard",
+        reasoning_effort="low",
+        project_memory=false,
+        preamble_stages_ignore="survey,analyze,file",
+        fs_hide="lib/**,apps/**,docs/**,.seeds/**",
+        fs_write="",
+        fabro_tools="",
+        // Read window: journal only — every pass re-derives the gate and
+        // the base from live data; stale keys from a previous cycle must
+        // not render.
+        preamble_allow_keys="journal",
+        // context_allow_keys also gates this node's OWN context writes:
+        // without these keys here the exploration base would be dropped.
+        context_allow_keys="arch_loop_digest,arch_score_json,arch_churn_hotspots,arch_seed_digest,arch_facts_files,arch_review_date,journal"
+    ]
+
+    // Rotate (fabro-491b): deterministic pre-analyze rotation. When a
+    // plain-date review file from an earlier same-date pass exists, the
+    // script preserves it verbatim as a `<date>-<HHmm>.md` sibling so
+    // the analyze write never silently overwrites earlier prose. Fail-
+    // open: any internal error exits 0 and never blocks the pass.
+    rotate [
+        label="Rotate prior same-date review",
+        shape=parallelogram,
+        script="nu .fabro/workflows/architect/scripts/rotate-review.nu",
+        output_schema="routing",
+        timeout="1m"
+    ]
+
+    // Analyze: the intellectual core. The stage agent READS the vendored
+    // improve-codebase-architecture skill (explicit path, user directive
+    // 2026-09-17: no fabro_ask indirection — direct classical application)
+    // and applies its method headless: deepening scan, deletion test,
+    // codebase-design vocabulary, exploration of the real code (the node
+    // therefore reads lib/apps/docs; .seeds stays file-hidden, sd runs via
+    // shell). The review is persisted under the reviews tree; findings
+    // distill into a context key for the bookkeeper. No fabro tool grants.
+    analyze [
+        label="Analyze",
+        prompt="@prompts/analyze.md",
+        // fabro-f84f: opt into vendored-skill discovery — the
+        // session loads `.fabro/skills` (rust-style-guide and
+        // friends) through the UseSkill tool.
+        skills="discover",
+        output_schema="routing",
+        output_retries=2,
+        retry_policy="standard",
+        reasoning_effort="high",
+        project_memory=false,
+        preamble_stages_ignore="survey,analyze,file",
+        fs_hide=".seeds/**",
+        fs_write=".fabro/architecture/reviews/**",
+        fabro_tools="",
+        // Read window: the CURRENT survey base + journal. Stale
+        // findings from a previous pass stay out — analyze re-emits.
+        preamble_allow_keys="arch_loop_digest,arch_score_json,arch_churn_hotspots,arch_seed_digest,arch_facts_files,arch_review_date,journal",
+        context_allow_keys="architecture_findings,journal"
+    ]
+
+    // File: deterministic bookkeeping per the revisor file-node pattern.
+    // sd create per finding with Basis lines and labels; cooldown marker
+    // .fabro/architecture/<date>-pass.md; commit exactly the artifact
+    // paths. Self-parks (marker-only, files nothing) on < 2 candidates.
+    file [
+        label="File",
+        prompt="@prompts/file.md",
+        output_schema="routing",
+        output_retries=2,
+        retry_policy="standard",
+        reasoning_effort="low",
+        project_memory=false,
+        preamble_stages_ignore="survey,analyze,file",
+        // .seeds hidden from FILE tools: sd create and the git commit
+        // run via shell (the documented escape hatch).
+        fs_hide="lib/**,apps/**,docs/**,.seeds/**",
+        fs_write=".fabro/architecture/**",
+        fabro_tools="",
+        // Read window: date + score for the report header, findings for
+        // filing. No journal history — bookkeeping needs none.
+        preamble_allow_keys="arch_review_date,arch_score_json,architecture_findings",
+        context_allow_keys="filed_seed_ids,journal"
+    ]
+
+    start -> survey
+
+    // Gate closed: verdict below architecture-due OR cooldown marker
+    // within 48h — natural completion, nothing to do.
+    survey -> exit [label="Nothing to do", condition="preferred_label=\"Nothing to do\""]
+    // Gate/base tooling failure is transient (script or git hiccup):
+    // soft exit, the daily automation retries next invocation.
+    survey -> exit [kind=soft, label="Survey failed (next pass retries)", condition="outcome=failed"]
+    survey -> rotate [label="Architecture due"]
+    // Unconditional success edge: the rotate script is fail-open and
+    // always proceeds to analyze.
+    rotate -> analyze [label="Rotated"]
+
+    analyze -> file [label="Answer ready", condition="outcome=succeeded"]
+    // Analysis hiccup (skill read failure, review write impossible):
+    // soft exit — no marker written, the next invocation retries.
+    analyze -> exit [kind=soft, label="Analyze failed (next pass retries)"]
+
+    file -> exit [kind=soft, label="Bookkeeping failed (nothing merged)", condition="outcome=failed"]
+    file -> exit [label="Pass complete", condition="outcome=succeeded"]
+    // Unconditional safety net (validator rule all_conditional_edges):
+    // an outcome shape none of the edges above matched routes as a soft
+    // exit — nothing merges, the next invocation retries.
+    file -> exit [kind=soft, label="Unrouted outcome (soft retry)"]
+}

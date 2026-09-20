@@ -1,0 +1,67 @@
+_version = 1
+
+[workflow]
+graph = "workflow.fabro"
+
+# merge-upstream (ADR-0013/0015 architecture, 2026-09-05): merges
+# upstream/main into denkhaus per the conflict policy, gates the result,
+# and reports. Started by the conductor workflow (threshold-gated) or
+# manually (`just run merge-upstream`) for hard cases the conductor
+# defers. Deploy is HOST-side by design: the run pushes, the PR
+# auto-merges through the Dogfood Gate, and the host applies it
+# (workstation: agent control function runs `just up` on the report;
+# future 24/7 host: pull-and-rebuild watcher).
+[run.agent]
+fabro_tools = false
+
+[[run.hooks]]
+name = "stage-journal"
+event = "stage_complete"
+script = "nu .fabro/workflows/merge-upstream/scripts/stage-journal.nu"
+blocking = false
+timeout = "10s"
+sandbox = true
+
+[run.model]
+provider = "zai"
+name = "glm-5.3"
+
+# Full-history clone: merge-child runs clone origin/denkhaus fresh at
+# depth 100 by default, and the shallow boundary broke range math in 3
+# consecutive merge runs (01M20E43YS, 01M20N60ZY): git rev-list --count
+# origin/denkhaus..upstream/main over-reported and git merge-base
+# returned nothing until the merger unshallowed mid-pass. depth = 0
+# (full clone) makes the math deterministic. Volume is ~neutral: the
+# unbounded `git fetch upstream` pulled the full shared history into
+# the shallow clone anyway (~150 MB either way). Mirrors conductor fix
+# a4850e681.
+[run.clone]
+depth = 0
+
+[run.run_branch]
+push = true
+
+[run.meta_branch]
+push = true
+
+[run.pull_request]
+enabled = true
+draft = false
+auto_merge = true
+merge_strategy = "squash"
+model = "zai:glm-4.7"
+
+# NO [run.integrations.github.permissions] (ADR-0019, user directive 2026-09-08):
+# the lab-era write token is vestigial - the ENGINE performs all forge
+# operations (branch push, PR create, auto-merge, waits) with its own
+# credentials; agent shells get NO GITHUB_TOKEN (empty permissions =
+# no_token path in initialize.rs). Forge reads go through engine-mediated
+# tools (fabro_runs_list), never raw clients.
+
+[run.notifications.terminal]
+enabled = true
+provider = "slack"
+events = ["run.completed", "run.failed"]
+
+[run.notifications.terminal.slack]
+channel = "#dev-fabro"

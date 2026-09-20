@@ -1,0 +1,28 @@
+# Lean runner image: plain ubuntu:24.04 (same distro family as the toolchain
+# image; scans with zero HIGH/CRITICAL CVEs at build time — buildpack-deps
+# pulls a full build toolchain we do not need) with only what clone-based
+# sandboxes require: bash, git, ca-certificates, curl. Workspace tooling
+# (bun, seeds/mulch CLIs, pytest, ...) is bootstrapped per-branch via
+# .mise.toml and a [run.prepare] step: mise installs prebuilt binaries, so
+# no compilers are needed here.
+FROM ubuntu:24.04
+
+ARG MISE_VERSION=v2026.8.10
+
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends bash git ca-certificates curl xz-utils; \
+    rm -rf /var/lib/apt/lists/*; \
+    curl -fsSL "https://github.com/jdx/mise/releases/download/${MISE_VERSION}/mise-${MISE_VERSION}-linux-x64" \
+        -o /usr/local/bin/mise; \
+    chmod +x /usr/local/bin/mise; \
+    mise --version
+
+# shims dir on PATH: after `mise install`, tools resolve without shell config.
+# Also activate the data dir so caches survive within a container run.
+# BUN_INSTALL pins `bun install -g` output to a dir that is already on PATH,
+# so npm-distributed CLIs installed by a [run.prepare] step are immediately
+# visible to every agent stage (no shell config, no reshim needed).
+ENV MISE_DATA_DIR=/mise
+ENV BUN_INSTALL=/mise/bun-global
+ENV PATH="/usr/local/bin:/mise/shims:/mise/bun-global/bin:${PATH}"

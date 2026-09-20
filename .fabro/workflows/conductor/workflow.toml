@@ -1,0 +1,58 @@
+_version = 1
+
+[workflow]
+graph = "workflow.fabro"
+
+# conductor (ADR-0015 architecture, 2026-09-05): the serialized line as a
+# workflow. ONE cron automation fires it (UI: schedule, environment
+# `toolchain`); each pass runs AT MOST one leg type: an upstream merge
+# (infra pass, develop waits for the next fire) or a develop+revisor
+# cycle. Serialization is structural: child runs are created via
+# fabro_run_create (parent-scoped) only after the previous child's PR
+# auto-merged, and every child run clones origin/denkhaus fresh at
+# creation. 429/budget-exhaustion: LLM retries are exponential with
+# Retry-After (fabro-llm retry.rs); a node that still fails ends this
+# pass, and the CRON is the deterministic reviver — the next fire
+# retries with a reset budget.
+[run.agent]
+fabro_tools = true
+
+[[run.hooks]]
+name = "stage-journal"
+event = "stage_complete"
+script = "nu .fabro/scripts/stage-journal.nu"
+blocking = false
+timeout = "10s"
+sandbox = true
+
+[run.model]
+provider = "zai"
+name = "glm-5.3"
+
+# Orchestration run: no diff, no PR. Its value is the journal + Slack.
+# Full-history clone (fabro-ee5d, 2026-09-08): the survey counts
+# `git rev-list --count origin/denkhaus..upstream/main`, which explodes to
+# ~4900 in a depth-100 shallow clone because the clone boundary cuts below
+# the upstream merge-base (already 550+ commits behind on this busy
+# branch). Every survey then routed "Merge needed" although upstream was
+# fully contained — three no-op merge passes (PRs #64/#65) before an LLM
+# luckily overrode the count. depth = 0 (full clone) makes the count
+# deterministic. Volume is ~neutral: the survey's unbounded
+# `git fetch upstream` already pulled the full shared history into the
+# shallow clone every pass (~150 MB total either way).
+[run.clone]
+depth = 0
+
+[run.run_branch]
+push = true
+
+[run.pull_request]
+enabled = false
+
+[run.notifications.terminal]
+enabled = true
+provider = "slack"
+events = ["run.completed", "run.failed"]
+
+[run.notifications.terminal.slack]
+channel = "#dev-fabro"

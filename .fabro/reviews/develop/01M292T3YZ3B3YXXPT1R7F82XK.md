@@ -1,0 +1,51 @@
+# Improve review — run 01M292T3YZ3B3YXXPT1R7F82XK
+
+- workflow: develop
+- branch integrated: this revisor pass (unmerged until approved)
+- status: succeeded (1.3 min, revisor pass — reason and cost in run detail)
+- generated: 2026-09-11 20:39+0000 by revisor `fabro_ask`
+
+---
+
+All evidence below is from this run's event stream (`fabro_run_events`, seq numbers cited), the run projection, and the worker log. Context: this was a **bookkeeping-only run** — the planner found top seed fabro-7893 already fixed in base (65d17645, PRs #126/#127), superseded-closed it, and exited via "Already landed" without ever running implementer/tester/reviewer. Total: 56 s active wall, 35 s inference, $0.114, 47,396 input / 911 output tokens, diff = 2 loop files (journal + `.seeds/issues.jsonl`), 3 insertions.
+
+What already worked and should be kept: the `planner -> exit [label="Already landed"]` edge plus the superseded-close exception (fabro-d183) saved an entire implement/gate/review cycle here, and the planner batched tool calls in parallel every turn (seq 31–32, 39–40, 48–49). No change needed there.
+
+## Recommendations, by expected impact
+
+**1. Bound the planner's two recon firehoses — `prompts/planner.md` steps 1 and 4**
+- What happened: `sd ready --assignee fabro --limit 200` returned **28,211 bytes / 200 seeds with `stdout_truncated: true`** (seq 33), and `fabro_runs_list` returned **76 full run JSON records** (seq 35). The next LLM turn's input jumped 14,338 → 43,559 tokens (conversation category 5,411 → 32,964) and cost $0.047 — **41% of the entire run's cost in one turn** — to answer two questions that needed ~30 lines ("top few candidates" and "any open PR / non-terminal sibling").
+- Change: in `planner.md`, render `sd ready` through a top-N projection (id, priority, title only; widen only on priority ties), and mandate `fabro_runs_list` with a `created_since` window (the tool already accepts it) plus self-exclusion instead of enumerating all history.
+- Effect: ~40–50% input-token cut per planner pass on every develop run (~$0.05 here), faster first turns. This is live evidence for already-filed seeds fabro-c3b4 and fabro-6b58 — prioritize them.
+
+**2. Fast-path bookkeeping-only runs through publish — engine postlude / `workflow.fabro` exit**
+- What happened: the run's entire product is a 3-line JSONL edit, yet a full PR #128 was opened (seq 75) with `auto_merge=true` under settings that route PRs through the project gate — a gate the tester node's own comment prices at **~15 min worst-case cold at 8 CPU** for a Rust build/clippy/test run that cannot be affected by a `.seeds` line edit.
+- Change: when the run diff intersects only loop-asset paths (`.fabro/`, `.seeds/`), mark the PR `publish-eligible` with a gate-skipping label (or merge immediately without checks). Keep the PR itself — it is the delivery vehicle for the tracker close.
+- Effect: saves up to ~15 min of CI per bookkeeping run and keeps the PR queue clean of no-code entries. Cleanest evidence case yet for filed seed fabro-9f97.
+
+**3. Trim the planner's fixed prompt + memory overhead — `prompts/planner.md` restructure (fabro-a08a), per-node memory scoping (fabro-9588)**
+- What happened: the planner prompt is ~13 KB and was re-sent on all 5 LLM turns (seq 21, 28, 36, 45, 53); AGENTS.md memory added another ~7,000 tokens per turn (breakdown: memory 6,996). Net: **47k input tokens for 911 output tokens**. The memory also injected instructions the planner then silently skipped (turn-1 reasoning planned `sd prime`/`ml prime` per AGENTS.md; neither ran, no journal note).
+- Change: split `planner.md` into a short decision ladder (goal names seed? → ready → in-flight → landed → claim) with the exception catalog (sd flag footguns, fs_hide, journal contract) as branch-triggered sections; scope memory per node so the planner doesn't carry implementer-oriented AGENTS.md content.
+- Effect: fewer tokens per turn and fewer contradictions; bookkeeping passes like this one plausibly drop from 5 turns/35 s inference to 3 turns/~20 s.
+
+**4. Deduplicate prompt storage in the event stream — engine `run_event` emission (fabro-types/fabro-workflow)**
+- What happened: the ~13 KB planner prompt is stored **three times** in this run's canonical events (graph definition inside `run.created` seq 1, `stage.prompt` seq 21, `agent.input` seq 27), and seq 1 additionally embeds the full prompts of nodes that never ran (implementer, reviewer — tens of KB). This is exactly the payload class that produced the 413/replay incidents (fabro-5082, and fabro-7893 itself was about replaying 70,628 stored events).
+- Change: emit prompts by content hash/blob reference in `run.created`/`stage.prompt`, keep one rendered copy per stage.
+- Effect: materially smaller canonical store, faster run-history activation replay, less 413 pressure — directly on the failure mode this repo spent today fighting.
+
+**5. Auto-stamp a painpoint when a tool output arrives truncated — engine tool-execution layer (fabro-7613 pattern)**
+- What happened: `sd ready` came back `stdout_truncated: true` (seq 33) — textbook friction — yet the planner's journal reported `painpoints: []` (seq 62). The improve loop went blind at the exact moment friction occurred; the two relevant seeds (fabro-c3b4, fabro-6b58) had to be discovered by other means.
+- Change: when the engine truncates a tool output observed by an agent stage, auto-append a journal painpoint line (or a run notice) naming the tool and byte count.
+- Effect: the improve workflow gets systematic, non-voluntary friction data instead of depending on the model noticing its own discomfort.
+
+**6. Attack fixed startup overhead — engine sandbox clone cache + snapshot economy (fabro-c2ca, fabro-652d)**
+- What happened: git clone took **42.8 s** (seq 8–9, before `run.started`), and three metadata snapshots cost 2.2 + 1.9 + 1.9 s (seq 15, 68, 77). On a 79 s created→completed run, **~49 s was fixed overhead** against 48 s of active work.
+- Change: reuse a warm mirror of `denkhaus` between back-to-back develop runs (they run ~hourly per the runs list) and skip init/finalize snapshots for runs whose diff is loop-asset-only.
+- Effect: roughly halve end-to-end latency for short runs; the conductor's throughput on trivial passes doubles.
+
+**7. Harden the PR-body generation contract — `pipeline::pull_request` (worker log)**
+- What happened: the only warning in the whole run: `PR content structured generation failed; retrying once without strict JSON output` at 20:35:38 — the PR-title/body model (`zai:glm-4.7`) didn't return JSON on the strict first attempt; the fallback retry rescued it 14 s later.
+- Change: since the retry-without-strict-JSON path already works, make it the default for PR content (it's prose, not routing), or validate-and-degrade in one step instead of a guaranteed-to-fail strict pass first.
+- Effect: removes a guaranteed extra LLM round-trip (~10–15 s and a wasted call) on every run that opens a PR.
+
+One caveat on scope: stages implementer, tester, gatebounce, evidence, reviewer, and closeout never executed in this run, so nothing here measures their behavior — recommendations 1–4 and 6–7 are grounded in the planner stage, event stream, publish path, and timings only.
