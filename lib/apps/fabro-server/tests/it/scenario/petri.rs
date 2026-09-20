@@ -37,7 +37,7 @@ use fabro_server::test_support::{
 use fabro_static::EnvVars;
 use fabro_store::platform_records::{PlatformRecord, PlatformRecordKind, PlatformRecordStore};
 use fabro_test::{TwinScenario, TwinScenarios, twin_openai};
-use fabro_types::{RunId, RunStatus, WorkflowPath, WorkflowVersion};
+use fabro_types::{RunId, WorkflowPath, WorkflowVersion};
 use tower::ServiceExt;
 
 use crate::helpers::{
@@ -867,7 +867,7 @@ async fn wait_for_managed_settle(state: &AppState, run_id: &str) {
     for _ in 0..500 {
         if state
             .test_managed_run_status(&run_id)
-            .is_none_or(RunStatus::is_terminal)
+            .is_none_or(fabro_types::RunStatus::is_terminal)
         {
             return;
         }
