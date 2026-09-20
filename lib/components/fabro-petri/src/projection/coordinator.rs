@@ -127,7 +127,6 @@ impl RunView {
     }
 
     /// The run's conclusion, from its recorded finish and what the stages
-
     /// The run's conclusion, from its recorded finish and what the stages
     /// summed to.
     fn conclude(&mut self, status: &str, at: DateTime<Utc>) {

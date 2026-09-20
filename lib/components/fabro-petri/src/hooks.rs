@@ -340,6 +340,10 @@ impl ScopeEnvs {
 
     /// The inherited workspace of an invocation, once resolved: `None`
     /// when not resolved yet, `Some(None)` when it inherits none.
+    #[expect(
+        clippy::option_option,
+        reason = "the outer option is the cache miss; the inner is an invocation that inherits no workspace"
+    )]
     fn inherited(&self, invocation: InvocationId) -> Option<Option<String>> {
         sync::lock(&self.inherited).get(&invocation).cloned()
     }

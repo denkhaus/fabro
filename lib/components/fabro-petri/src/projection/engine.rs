@@ -197,7 +197,6 @@ impl RunView {
     }
 
     /// The projection, when `event` is a scope record of the root
-
     /// The projection, when `event` is a scope record of the root
     /// invocation: the run's own sandbox, not a child invocation's.
     fn root_scope_projection(&mut self, event: &RunEvent) -> Option<&mut RunProjection> {
@@ -304,7 +303,6 @@ impl RunView {
     }
 
     /// A firing exists: register its stage and, when it is a logical stage,
-
     /// A firing exists: register its stage and, when it is a logical stage,
     /// show it.
     pub(super) fn start_visit(

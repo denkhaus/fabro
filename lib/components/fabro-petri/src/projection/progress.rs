@@ -56,7 +56,7 @@ impl RunView {
                 };
                 match progress {
                     Progress::Pebble { event: envelope } => {
-                        self.fold_pebble(execution, event, envelope, at);
+                        self.fold_pebble(execution, event, &envelope, at);
                     }
                     Progress::Prompt { prompt, model } => {
                         if let Some(stage) = self.stage_of(execution, event.subject.as_ref()) {
@@ -195,7 +195,6 @@ impl RunView {
     }
 
     /// Close one question by id, or every question of a firing, and unblock
-
     /// Close one question by id, or every question of a firing, and unblock
     /// the run when none is left.
     pub(super) fn close_questions(
@@ -235,14 +234,14 @@ impl RunView {
         &mut self,
         execution: ExecutionId,
         event: &RunEvent,
-        envelope: CodingAgentEvent,
+        envelope: &CodingAgentEvent,
         at: DateTime<Utc>,
     ) {
         let Some(stage) = self.stage_of(execution, event.subject.as_ref()) else {
             return;
         };
         let agent = stage.agent.get_or_insert_default();
-        agent.apply(&envelope);
+        agent.apply(envelope);
         if stage.completion.is_none() {
             stage.usage = agent.usage.saturating_add(agent.descendant_usage());
         }
@@ -341,7 +340,7 @@ impl RunView {
 enum Progress {
     /// Pebble's coding-agent envelope, forwarded by the agent step.
     #[serde(rename = "pebble")]
-    Pebble { event: CodingAgentEvent },
+    Pebble { event: Box<CodingAgentEvent> },
     /// The prompt step before its first model call: the prompt, and the
     /// `provider/model` selector it runs on.
     #[serde(rename = "attractor.prompt")]
