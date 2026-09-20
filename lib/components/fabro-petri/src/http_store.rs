@@ -62,13 +62,14 @@
 
 use std::collections::HashMap;
 use std::future::Future;
-use std::sync::{Arc, Mutex, MutexGuard, PoisonError, Weak};
+use std::sync::{Arc, Mutex, Weak};
 use std::time::Duration;
 use std::{fmt, mem, ptr};
 
 use fabro_api::types::{PetriAccess, PetriAppendRequest, PetriOpenRequest, PetriRecord};
 use fabro_client::{Client, api_failure_for};
 use fabro_types::{BlobHash, RunId};
+use fabro_util::sync;
 use petri_store::{Access, Digest, LogId, OwnerId, Record, RunKey, RunLogs, RunStore, StoreError};
 use serde_json::Value;
 use tokio::runtime::Handle;
@@ -148,7 +149,7 @@ impl HttpRunStore {
         owner: OwnerId,
         locator: String,
     ) -> Arc<HttpRunLogs> {
-        let mut live = lock(&self.shared.live);
+        let mut live = sync::lock(&self.shared.live);
         let slot = (key.clone(), owner.clone());
         if let Some(handle) = live.get(&slot).and_then(Weak::upgrade) {
             return handle;
@@ -185,7 +186,7 @@ impl Shared {
     /// Await every release a dropped handle spawned, so what follows sees
     /// the lease as the drops left it.
     async fn drain_releases(&self) {
-        let pending = mem::take(&mut *lock(&self.releases));
+        let pending = mem::take(&mut *sync::lock(&self.releases));
         for release in pending {
             // A release task never panics: it reports its own failure.
             let _ = release.await;
@@ -436,7 +437,7 @@ impl Drop for HttpRunLogs {
             return;
         };
         {
-            let mut live = lock(&self.shared.live);
+            let mut live = sync::lock(&self.shared.live);
             let slot = (self.key.clone(), owner.clone());
             let this: *const Self = self;
             if live
@@ -454,7 +455,7 @@ impl Drop for HttpRunLogs {
                 let release = runtime.spawn(async move {
                     shared.release(&key, run_id, &owner).await;
                 });
-                lock(&self.shared.releases).push(release);
+                sync::lock(&self.shared.releases).push(release);
             }
             Err(_) => {
                 warn!(
@@ -549,10 +550,6 @@ impl RunLogs for HttpRunLogs {
             })?;
         Ok(bytes.map(|bytes| bytes.to_vec()))
     }
-}
-
-fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
-    mutex.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
 #[cfg(test)]

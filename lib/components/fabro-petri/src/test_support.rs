@@ -5,7 +5,7 @@
 //! dev-dependency turns on.
 
 use std::collections::HashMap;
-use std::sync::{Mutex, MutexGuard, PoisonError};
+use std::sync::Mutex;
 use std::time::Duration;
 
 use async_trait::async_trait;
@@ -13,6 +13,7 @@ use bytes::Bytes;
 use fabro_store::platform_records::now_ms;
 use fabro_store::{PlatformRecord, PlatformRecordKind, StagePosition, StoredPlatformRecord};
 use fabro_types::{BlobHash, RunId};
+use fabro_util::sync;
 pub use petri_testkit::run_store;
 
 use crate::blobs::Blobs;
@@ -47,7 +48,7 @@ impl MemoryBlobs {
     /// How many blobs the table holds.
     #[must_use]
     pub fn len(&self) -> usize {
-        lock(&self.rows).len()
+        sync::lock(&self.rows).len()
     }
 
     #[must_use]
@@ -60,12 +61,12 @@ impl MemoryBlobs {
 impl Blobs for MemoryBlobs {
     async fn write(&self, bytes: &[u8]) -> anyhow::Result<BlobHash> {
         let hash = BlobHash::new(bytes);
-        lock(&self.rows).insert(hash, bytes.to_vec());
+        sync::lock(&self.rows).insert(hash, bytes.to_vec());
         Ok(hash)
     }
 
     async fn read(&self, hash: &BlobHash) -> anyhow::Result<Option<Bytes>> {
-        Ok(lock(&self.rows)
+        Ok(sync::lock(&self.rows)
             .get(hash)
             .map(|bytes| Bytes::copy_from_slice(bytes)))
     }
@@ -86,12 +87,11 @@ impl MemoryPlatformRecords {
     /// Every record of the run, in seq order.
     #[must_use]
     pub fn records(&self, run_id: &RunId) -> Vec<StoredPlatformRecord> {
-        lock(&self.runs).get(run_id).cloned().unwrap_or_default()
+        sync::lock(&self.runs)
+            .get(run_id)
+            .cloned()
+            .unwrap_or_default()
     }
-}
-
-fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
-    mutex.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
 #[async_trait]
@@ -102,7 +102,7 @@ impl PlatformRecords for MemoryPlatformRecords {
         record: &PlatformRecord,
         position: Option<StagePosition>,
     ) -> Result<StoredPlatformRecord, PlatformRecordError> {
-        let mut runs = lock(&self.runs);
+        let mut runs = sync::lock(&self.runs);
         let records = runs.entry(*run_id).or_default();
         let stored = StoredPlatformRecord {
             seq: records.len() as u64 + 1,

@@ -73,7 +73,7 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, MutexGuard, OnceLock, PoisonError};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
 use fabro_checkpoint::author::GitAuthor;
@@ -86,6 +86,7 @@ use fabro_types::{
     BlobHash, DiffSummary, GitIdentity, GitIdentitySource, RunId, SandboxProviderKind,
 };
 use fabro_util::error::collect_chain;
+use fabro_util::sync;
 use fabro_util::workspace_glob::{WorkspaceGlobError, WorkspaceGlobSet};
 use petri_execution::{CancelReason, CoordinatorHandle, InvocationId, RunKey, RunStore};
 use petri_runtime::driver::lifecycle::{
@@ -315,7 +316,7 @@ impl FabroHooks {
     /// engine reports the run failed with.
     #[must_use]
     pub fn checkpoint_failure(&self) -> Option<String> {
-        lock(&self.failure).clone()
+        sync::lock(&self.failure).clone()
     }
 
     /// The run's workspaces on this host, as the hooks reach them.
@@ -327,14 +328,14 @@ impl FabroHooks {
     /// The lock that serializes Git work in one workspace.
     fn workspace_lock(&self, workspace: &str) -> Arc<AsyncMutex<()>> {
         Arc::clone(
-            lock(&self.workspace_locks)
+            sync::lock(&self.workspace_locks)
                 .entry(workspace.to_string())
                 .or_default(),
         )
     }
 
     fn fail_run(&self, message: &str) {
-        let mut failure = lock(&self.failure);
+        let mut failure = sync::lock(&self.failure);
         if failure.is_none() {
             *failure = Some(message.to_string());
         }
@@ -358,7 +359,9 @@ impl FabroHooks {
         if self.workspaces.workspace_exists(&isolated).await {
             return Ok(isolated);
         }
-        let cached = lock(&self.inherited).get(&context.invocation).cloned();
+        let cached = sync::lock(&self.inherited)
+            .get(&context.invocation)
+            .cloned();
         let inherited = if let Some(inherited) = cached {
             inherited
         } else {
@@ -373,7 +376,7 @@ impl FabroHooks {
                         collect_chain(&error).join(": ")
                     )
                 })?;
-            lock(&self.inherited).insert(context.invocation, inherited.clone());
+            sync::lock(&self.inherited).insert(context.invocation, inherited.clone());
             inherited
         };
         Ok(inherited.unwrap_or(isolated))
@@ -382,7 +385,9 @@ impl FabroHooks {
     /// The environment of `scope` in the context's execution, as
     /// `scope_acquired` kept it, with the workspace id the executor named.
     fn env_of(&self, context: &HookContext, scope: ScopeId) -> Option<AcquiredEnv> {
-        lock(&self.envs).get(&(context.execution, scope)).cloned()
+        sync::lock(&self.envs)
+            .get(&(context.execution, scope))
+            .cloned()
     }
 
     /// The checkpoint commit for one attempt's result. `Ok(Some)` is the
@@ -532,7 +537,7 @@ impl FabroHooks {
     /// Remember a commit this process made, and record the run branch when
     /// this commit created it.
     async fn committed(&self, key: CheckpointKey, workspace: &str, snapshot: &Snapshot) {
-        lock(&self.committed).insert(key, (workspace.to_string(), snapshot.sha.clone()));
+        sync::lock(&self.committed).insert(key, (workspace.to_string(), snapshot.sha.clone()));
         let Some(branched) = &snapshot.branched else {
             return;
         };
@@ -668,7 +673,7 @@ impl FabroHooks {
     /// seeded.
     async fn restore_host(&self, workspace: &str) -> Result<(), ScopeAcquiredError> {
         let targets = self.restore_targets().await?;
-        let target = lock(targets).remove(workspace);
+        let target = sync::lock(targets).remove(workspace);
         let Some(target) = target else {
             return Ok(());
         };
@@ -700,7 +705,7 @@ impl FabroHooks {
         env: &Arc<dyn ExecEnv>,
     ) -> Result<(), ScopeAcquiredError> {
         let targets = self.restore_targets().await?;
-        let target = lock(targets).remove(workspace);
+        let target = sync::lock(targets).remove(workspace);
         let Some(target) = target else {
             return Ok(());
         };
@@ -735,10 +740,10 @@ impl FabroHooks {
         self.recorded_loaded
             .get_or_try_init(|| self.load_recorded())
             .await?;
-        if lock(&self.recorded).contains(&key) {
+        if sync::lock(&self.recorded).contains(&key) {
             return Ok(());
         }
-        let committed = lock(&self.committed).get(&key).cloned();
+        let committed = sync::lock(&self.committed).get(&key).cloned();
         let (workspace, sha) = if let Some(committed) = committed {
             committed
         } else {
@@ -806,8 +811,8 @@ impl FabroHooks {
                     collect_chain(&error).join(": ")
                 )
             })?;
-        lock(&self.recorded).insert(key);
-        *lock(&self.last_checkpoint) = Some((workspace, sha));
+        sync::lock(&self.recorded).insert(key);
+        *sync::lock(&self.last_checkpoint) = Some((workspace, sha));
         Ok(())
     }
 
@@ -868,7 +873,7 @@ impl FabroHooks {
                     collect_chain(&error).join(": ")
                 )
             })?;
-        let mut recorded = lock(&self.recorded);
+        let mut recorded = sync::lock(&self.recorded);
         let mut last = None;
         for record in stored {
             let PlatformRecord::Checkpoint(checkpoint) = &record.record else {
@@ -888,7 +893,7 @@ impl FabroHooks {
             }
         }
         drop(recorded);
-        let mut last_checkpoint = lock(&self.last_checkpoint);
+        let mut last_checkpoint = sync::lock(&self.last_checkpoint);
         if last_checkpoint.is_none() {
             *last_checkpoint = last;
         }
@@ -941,7 +946,7 @@ impl FabroHooks {
             };
             let digest = BlobHash::new(&bytes);
             let identity = (path.clone(), digest.to_string());
-            if lock(&self.collected).contains(&identity) {
+            if sync::lock(&self.collected).contains(&identity) {
                 continue;
             }
             let blob = blobs
@@ -974,7 +979,7 @@ impl FabroHooks {
                         collect_chain(&error).join(": ")
                     )
                 })?;
-            lock(&self.collected).insert(identity);
+            sync::lock(&self.collected).insert(identity);
             total_bytes = total_bytes.saturating_add(size);
             collected += 1;
         }
@@ -994,7 +999,7 @@ impl FabroHooks {
                     collect_chain(&error).join(": ")
                 )
             })?;
-        let mut collected = lock(&self.collected);
+        let mut collected = sync::lock(&self.collected);
         for record in stored {
             if let PlatformRecord::ArtifactCollected(artifact) = record.record {
                 collected.insert((artifact.path, artifact.digest));
@@ -1022,7 +1027,7 @@ impl FabroHooks {
         let Some(base_sha) = branch.base_sha.clone() else {
             return Ok(());
         };
-        let last = lock(&self.last_checkpoint).clone();
+        let last = sync::lock(&self.last_checkpoint).clone();
         let Some((workspace, head_sha)) = last else {
             debug!(run_id = %self.run_id, "no checkpoint is recorded; no run diff");
             return Ok(());
@@ -1147,10 +1152,6 @@ fn select_artifacts(mut candidates: Vec<(String, u64)>) -> Vec<(String, u64)> {
         selected.push((path, size));
     }
     selected
-}
-
-fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
-    mutex.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
 fn is_checkpoint_failure(status: &Status) -> bool {
@@ -1297,7 +1298,7 @@ impl ExecutionHooks for FabroHooks {
         );
         let scope = released.scope;
         let notes = self.inner.scope_released(context, released).await;
-        lock(&self.envs).remove(&(context.execution, scope));
+        sync::lock(&self.envs).remove(&(context.execution, scope));
         notes
     }
 
@@ -1308,7 +1309,7 @@ impl ExecutionHooks for FabroHooks {
     ) -> Result<(), ScopeAcquiredError> {
         self.inner.scope_acquired(context, acquired.clone()).await?;
         let workspace = acquired.workspace.as_str().to_owned();
-        lock(&self.envs).insert(
+        sync::lock(&self.envs).insert(
             (context.execution, acquired.scope),
             (workspace.clone(), Arc::clone(&acquired.env)),
         );

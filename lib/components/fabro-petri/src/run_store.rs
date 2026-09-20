@@ -55,13 +55,14 @@
 
 use std::collections::HashMap;
 use std::error::Error;
-use std::sync::{Arc, Mutex, MutexGuard, PoisonError, Weak};
+use std::sync::{Arc, Mutex, Weak};
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::{fmt, mem, ptr};
 
 use fabro_db::DbPool;
 use fabro_store::BlobStore;
 use fabro_types::BlobHash;
+use fabro_util::sync;
 use petri_store::{
     Access, Digest, ExecutionId, LogId, OwnerId, Record, RunKey, RunLogs, RunStore, StoreError,
 };
@@ -150,7 +151,7 @@ impl SqliteRunStore {
         if result.rows_affected() == 0 {
             return Err(self.shared.not_found(key));
         }
-        lock(&self.shared.live).remove(key);
+        sync::lock(&self.shared.live).remove(key);
         debug!(run_id = %key, "Petri run lease released from outside");
         Ok(())
     }
@@ -174,7 +175,7 @@ impl SqliteRunStore {
     /// The writer handle for `owner`, once the lease is taken: the live one
     /// when this owner already holds a handle here, else a new one.
     fn writer(&self, key: &RunKey, owner: OwnerId) -> Arc<dyn RunLogs> {
-        let mut live = lock(&self.shared.live);
+        let mut live = sync::lock(&self.shared.live);
         if let Some(handle) = live.get(key).and_then(Weak::upgrade) {
             if handle.owner.as_ref() == Some(&owner) {
                 return handle;
@@ -214,7 +215,7 @@ impl Shared {
     /// Await every release a dropped handle spawned, so what follows sees
     /// the lease as the drops left it.
     async fn drain_releases(&self) {
-        let pending = mem::take(&mut *lock(&self.releases));
+        let pending = mem::take(&mut *sync::lock(&self.releases));
         for release in pending {
             // A release task never panics: it reports its own failure.
             let _ = release.await;
@@ -409,7 +410,7 @@ impl Drop for SqliteRunLogs {
             return;
         };
         {
-            let mut live = lock(&self.shared.live);
+            let mut live = sync::lock(&self.shared.live);
             let this: *const Self = self;
             if live
                 .get(&self.key)
@@ -425,7 +426,7 @@ impl Drop for SqliteRunLogs {
                 let release = runtime.spawn(async move {
                     shared.release_owner(&key, &owner).await;
                 });
-                lock(&self.shared.releases).push(release);
+                sync::lock(&self.shared.releases).push(release);
             }
             Err(_) => {
                 warn!(
@@ -556,10 +557,6 @@ impl RunLogs for SqliteRunLogs {
             .map_err(|cause| self.backend("read a blob", cause))?;
         Ok(bytes.map(|bytes| bytes.to_vec()))
     }
-}
-
-fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
-    mutex.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
 /// Milliseconds since the Unix epoch, as SQLite stores them.

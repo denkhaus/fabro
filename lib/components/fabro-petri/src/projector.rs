@@ -57,7 +57,7 @@ mod cache;
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use fabro_db::DbPool;
@@ -65,6 +65,7 @@ use fabro_store::platform_records::{PlatformRecordStore, StoredPlatformRecord, n
 use fabro_store::{RunProjection, RunSummaryStore};
 use fabro_types::{RunId, RunStreamItem, RunStreamItemKind};
 use fabro_util::error::collect_chain;
+use fabro_util::sync;
 use petri_execution::events::{self, EventId, EventSource, RunEvent};
 use petri_execution::{Access, CoordinatorEvent, RunKey, RunStore as _, inspect};
 use petri_runtime::engine::Event;
@@ -270,7 +271,7 @@ impl Projector {
                 .map_err(ProjectError::Database)?;
         }
         records.commit().await.map_err(ProjectError::Database)?;
-        lock(&self.slots).remove(&run_id);
+        sync::lock(&self.slots).remove(&run_id);
         Ok(())
     }
 
@@ -290,7 +291,7 @@ impl Projector {
     /// more when it ends; any number of signals in between coalesce.
     pub fn signal(self: &Arc<Self>, run_id: RunId) {
         {
-            let mut slots = lock(&self.slots);
+            let mut slots = sync::lock(&self.slots);
             let slot = slots.entry(run_id).or_default();
             if slot.running {
                 slot.pending = true;
@@ -312,7 +313,7 @@ impl Projector {
                         false
                     }
                 };
-                let mut slots = lock(&projector.slots);
+                let mut slots = sync::lock(&projector.slots);
                 let slot = slots.entry(run_id).or_default();
                 if again || slot.pending {
                     slot.pending = false;
@@ -329,7 +330,7 @@ impl Projector {
     pub async fn settle(&self, run_id: RunId) {
         loop {
             let idle = {
-                let slots = lock(&self.slots);
+                let slots = sync::lock(&self.slots);
                 slots
                     .get(&run_id)
                     .is_none_or(|slot| !slot.running && !slot.pending)
@@ -1057,10 +1058,6 @@ fn log_text(source: &EventSource) -> String {
 
 fn column(value: u64) -> i64 {
     i64::try_from(value).unwrap_or(i64::MAX)
-}
-
-fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
-    mutex.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
 /// The run's projection rebuilt from its records alone, with nothing

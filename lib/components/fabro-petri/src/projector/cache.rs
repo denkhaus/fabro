@@ -15,10 +15,11 @@
 //! rows: the rebuild test in `tests/projection.rs` compares the two.
 
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use fabro_types::RunId;
+use fabro_util::sync;
 use petri_execution::events::{RunEvent, RunReplay};
 use tokio::sync::Mutex as AsyncMutex;
 
@@ -86,7 +87,7 @@ impl Caches {
     /// The run's pass lock, holding its cache if one is kept; the run counts
     /// as used now.
     pub(super) fn pass_of(&self, run_id: RunId) -> Arc<AsyncMutex<Option<RunCache>>> {
-        let mut runs = lock(&self.runs);
+        let mut runs = sync::lock(&self.runs);
         let entry = runs.entry(run_id).or_insert_with(|| Entry {
             pass:    Arc::default(),
             touched: Instant::now(),
@@ -99,7 +100,7 @@ impl Caches {
     /// with no cache and no pass under way. A run whose pass is running is
     /// in use and left alone. How many caches were dropped.
     pub(crate) fn sweep(&self, idle: Duration) -> usize {
-        let mut runs = lock(&self.runs);
+        let mut runs = sync::lock(&self.runs);
         let mut dropped = 0;
         runs.retain(|_, entry| {
             if entry.touched.elapsed() < idle {
@@ -121,12 +122,8 @@ impl Caches {
 
     /// Whether a cache is kept for the run: a test's view of the cache.
     pub(crate) fn holds(&self, run_id: RunId) -> bool {
-        let runs = lock(&self.runs);
+        let runs = sync::lock(&self.runs);
         runs.get(&run_id)
             .is_some_and(|entry| entry.pass.try_lock().is_ok_and(|cache| cache.is_some()))
     }
-}
-
-fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
-    mutex.lock().unwrap_or_else(PoisonError::into_inner)
 }

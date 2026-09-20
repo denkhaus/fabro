@@ -14,12 +14,13 @@
 //! `RunOptions::run_key`.
 
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::sync::{Arc, Mutex};
 
 use fabro_db::DbPool;
 use fabro_petri::SqliteRunStore;
 use fabro_petri::petri::{Access, OwnerId, RunKey, RunLogs, RunStore as _, StoreError};
 use fabro_types::RunId;
+use fabro_util::sync;
 use tracing::debug;
 
 pub(crate) struct PetriRuns {
@@ -66,7 +67,7 @@ impl PetriRuns {
     ) -> Result<Arc<dyn RunLogs>, StoreError> {
         let handle = self.store.open(&Self::key(&run_id), access.clone()).await?;
         if let Some(owner) = access.owner() {
-            lock(&self.handles).insert((run_id, owner.clone()), Arc::clone(&handle));
+            sync::lock(&self.handles).insert((run_id, owner.clone()), Arc::clone(&handle));
         }
         Ok(handle)
     }
@@ -80,7 +81,7 @@ impl PetriRuns {
         run_id: RunId,
         owner: &OwnerId,
     ) -> Result<Arc<dyn RunLogs>, StoreError> {
-        if let Some(handle) = lock(&self.handles).get(&(run_id, owner.clone())) {
+        if let Some(handle) = sync::lock(&self.handles).get(&(run_id, owner.clone())) {
             return Ok(Arc::clone(handle));
         }
         let holder = self.store.owner(&Self::key(&run_id)).await?;
@@ -107,7 +108,7 @@ impl PetriRuns {
     /// Drop the handle `owner` holds on the run: the worker's own release.
     /// The store ends the lease when this was the owner's last handle.
     pub(crate) fn release(&self, run_id: RunId, owner: &OwnerId) {
-        let handle = lock(&self.handles).remove(&(run_id, owner.clone()));
+        let handle = sync::lock(&self.handles).remove(&(run_id, owner.clone()));
         debug!(
             run_id = %run_id,
             owner = %owner,
@@ -132,7 +133,7 @@ impl PetriRuns {
     /// releasing does not keep the lease.
     pub(crate) fn worker_exited(&self, run_id: RunId) {
         let dropped = {
-            let mut handles = lock(&self.handles);
+            let mut handles = sync::lock(&self.handles);
             let owners: Vec<_> = handles
                 .keys()
                 .filter(|(held, _)| *held == run_id)
@@ -152,10 +153,6 @@ impl PetriRuns {
         }
         drop(dropped);
     }
-}
-
-fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
-    mutex.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
 #[cfg(test)]
@@ -226,14 +223,14 @@ mod tests {
         }
 
         fn launched_mode(&self) -> Option<&'static str> {
-            *lock(&self.mode)
+            *sync::lock(&self.mode)
         }
     }
 
     #[async_trait::async_trait]
     impl WorkerRuntime for HeldWorkerRuntime {
         async fn start(&self, spec: WorkerLaunchSpec) -> anyhow::Result<StartedWorker> {
-            *lock(&self.mode) = Some(spec.mode);
+            *sync::lock(&self.mode) = Some(spec.mode);
             self.running.store(true, Ordering::SeqCst);
             let exit = Arc::clone(&self.exit);
             let stderr: Pin<Box<dyn AsyncRead + Send + 'static>> = Box::pin(tokio::io::empty());
