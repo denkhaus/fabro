@@ -41,6 +41,16 @@ default:
 # referenced asset, SPA deep route, CLI API roundtrip). Smoke failure aborts
 # with an ALARM block instead of shipping a broken instance.
 #
+# RE-INSTALL AFTER VERSION BUMP (fabro-b03f): a refresh that bumps the
+# image version may boot the stack UNCONFIGURED (install mode): if the
+# previous local image predates the FABRO_HOME=/storage/.home layout,
+# its settings lived outside the /storage volume and nothing adoptable
+# survives, so the new server finds no /storage/.home/settings.toml and
+# serves only /install + the SPA (every /api/v1/* route 404s). That is
+# expected ONCE: `docker compose logs fabro` prints the install URL +
+# token — complete the wizard and the stack restarts configured. The
+# smoke step detects this signature and prints the same guidance.
+#
 # LOCK (fabro-332e, partial): two overlapping `just up` runs raced the SPA
 # dist mirror on 2026-08-25 and shipped an instance whose UI 404'd every
 # asset while health stayed green. The lock file (tmp/just-up.lock, held by

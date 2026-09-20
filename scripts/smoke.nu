@@ -18,6 +18,21 @@
 #
 # ANY red check prints an ALARM block and exits 1, so `just up` aborts
 # instead of shipping a broken instance.
+#
+# INSTALL MODE (fabro-b03f): a `just up` refresh that bumps the image
+# version can boot the server unconfigured. Root cause: pre-2026-04
+# images kept settings OUTSIDE the /storage volume (baked
+# /etc/fabro/settings.toml + FABRO_CONFIG env, config at
+# /var/fabro/.fabro/settings.toml in the container layer — see
+# docs/superpowers/specs/2026-04-18-web-install-design.md, "Container
+# packaging"); the current image looks at /storage/.home/settings.toml
+# (FABRO_HOME=/storage/.home) and finds nothing, so it falls into
+# install mode: /health and the SPA serve, but every /api/v1/* route
+# 404s. No adoptable prior state exists in the volume, so the fix is
+# documentation plus this targeted diagnostic: when the signature
+# (health 200 + SPA serves + CLI API roundtrip 404) matches, the
+# verdict prints an install-mode remediation block instead of the
+# generic ALARM.
 
 # One probe: {name, ok, detail}. curl via complete keeps a 404 a data
 # point, not a script crash (same pattern as wait-healthy). `--html`
@@ -42,14 +57,17 @@ def main [port: string = "32276", cli: string = "~/.fabro/bin/fabro"]: nothing -
     mut results = []
 
     # 1. health
-    $results = ($results | append (probe "health endpoint" $"($base)/health"))
+    let health = (probe "health endpoint" $"($base)/health")
+    let health_ok = ($health.ok)
+    $results = ($results | append $health)
 
     # 2. SPA index + asset references
     let index = (do { ^curl -sS -m 5 $base } | complete)
     let body = ($index.stdout | str trim)
+    let index_ok = (($index.exit_code == 0) and (($body | str length) > 0))
     $results = ($results | append {
         name: "SPA index serves"
-        ok: (($index.exit_code == 0) and (($body | str length) > 0))
+        ok: $index_ok
         detail: $"GET / -> exit ($index.exit_code), ($body | str length) bytes"
     })
     let assets = (if ($body | is-empty) { [] } else {
@@ -71,10 +89,15 @@ def main [port: string = "32276", cli: string = "~/.fabro/bin/fabro"]: nothing -
 
     # 5. CLI API roundtrip
     let ps = (do { ^$cli ps } | complete)
+    let ps_detail = ($ps.stderr | str trim | if ($in | is-empty) { "exit ($ps.exit_code)" } else { $"exit ($ps.exit_code): ($in)" })
+    # Install-mode signature input (fabro-b03f): in install mode the CLI
+    # roundtrip fails with a 404 from the install router (only /install
+    # and static SPA routes serve).
+    let install_mode_hit = ($health_ok and $index_ok and ($ps.exit_code != 0) and ($ps_detail | str lowercase | str contains "404"))
     $results = ($results | append {
         name: "CLI API roundtrip (ps)"
         ok: ($ps.exit_code == 0)
-        detail: ($ps.stderr | str trim | if ($in | is-empty) { "exit ($ps.exit_code)" } else { $"exit ($ps.exit_code): ($in)" })
+        detail: $ps_detail
     })
 
     # 6. Automations API answers (authenticated). Regression born
@@ -124,6 +147,32 @@ def main [port: string = "32276", cli: string = "~/.fabro/bin/fabro"]: nothing -
         } else {
             print -e $"smoke: ✗ ($r.name) — ($r.detail)"
         }
+    }
+    if ($failed | length) > 0 and $install_mode_hit {
+        # Targeted remediation instead of the generic ALARM (fabro-b03f):
+        # the server is up but UNCONFIGURED — install mode is active, so
+        # only /install and the static SPA serve; every /api/v1/* route
+        # 404s. A one-time re-install after a version bump is expected
+        # when the prior image predates the FABRO_HOME=/storage/.home
+        # layout (older images kept settings outside the /storage
+        # volume, so nothing adoptable survives the refresh).
+        print -e ""
+        print -e "╔══ SMOKE: server is in INSTALL MODE (unconfigured) ══╗"
+        print -e "║ health + SPA serve, but the CLI API roundtrip got 404 ║"
+        print -e "║ — every /api/v1/* route is closed until configured.  ║"
+        print -e "║                                                       ║"
+        print -e "║ This is expected ONCE after a version bump refreshed  ║"
+        print -e "║ the stack: prior state is not adoptable (pre-layout   ║"
+        print -e "║ images kept settings outside the /storage volume).    ║"
+        print -e "║                                                       ║"
+        print -e "║ Remediation — run the one-time install:               ║"
+        print -e "║   docker compose logs fabro                           ║"
+        print -e "║     -> 'Fabro server is unconfigured — install mode   ║"
+        print -e "║        active' with the install URL + token           ║"
+        print -e "║   open the URL, complete the wizard, the container    ║"
+        print -e "║   restarts configured; re-run `just smoke`.           ║"
+        print -e "╚═══════════════════════════════════════════════════════╝"
+        exit 1
     }
     if ($failed | length) > 0 {
         print -e ""
