@@ -165,7 +165,7 @@ pub enum HookError {
     },
     #[error("the {what} could not be stored")]
     Blob {
-        /// `patch`, or `artifact \`<path>\``.
+        /// `patch`, or the artifact by its path.
         what:   String,
         #[source]
         source: anyhow::Error,
