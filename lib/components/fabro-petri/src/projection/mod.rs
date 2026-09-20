@@ -1,0 +1,344 @@
+//! The projection of a Petri run: Petri's public events and Fabro's platform
+//! records folded into the view Fabro's read side serves.
+//!
+//! The fold is pure. [`RunView`] holds the [`RunProjection`] the API serves
+//! (`GET /runs/{id}/state`, the run list through its summary) and the
+//! bookkeeping the fold needs between items ([`FoldState`]): which Petri
+//! firing each stage is, which invocation each execution belongs to and
+//! whether it is a parallel branch, which stage asked each open question.
+//! Both halves are stored by the projector and reloaded for the next pass,
+//! so a pass folds only the items past the committed positions.
+//!
+//! The mapping follows `VIEWS.md`, row by row. The stage key is `(execution,
+//! firing)`; Fabro's `StageId` (`node@visit`) is the display label the
+//! `RunProjection` keys stages by, and a label two firings would share (two
+//! child invocations with the same node name and visit) is made unique by
+//! naming the execution. What the matrix leaves default is left default
+//! here and named in the crate's README.
+//!
+//! Every item the fold sees carries the delivery sequence the projector
+//! assigned it (`stream_seq`), which a checkpoint keeps as its `seq`. A
+//! stage's `first_event_seq`, the key the stage list sorts by, is not the
+//! delivery sequence: two logs' records can be committed in an order that
+//! differs from their recording times by a few positions, and the view
+//! built live must equal the view rebuilt from the records alone. It is the
+//! milliseconds from the run's creation to the stage's `visit.started`,
+//! plus one, which is the same however the records were delivered.
+
+mod coordinator;
+mod engine;
+mod model;
+mod platform;
+mod progress;
+mod sandbox;
+
+use std::collections::{BTreeMap, BTreeSet};
+
+use chrono::{DateTime, TimeZone as _, Utc};
+use fabro_store::platform_records::StoredPlatformRecord;
+use fabro_types::{RunDiff, RunId, RunProjection, RunStatus, StageId, StageProjection};
+use petri_execution::ExecutionId;
+use petri_execution::events::{NodeRef, RunEvent, Subject};
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use tracing::debug;
+
+/// One item the projector hands the fold, with its delivery sequence.
+pub enum Item<'a> {
+    Petri(&'a RunEvent),
+    Platform(&'a StoredPlatformRecord),
+}
+
+/// A stage as the fold knows it: its label in the projection, and what it
+/// learned about it.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct StageRef {
+    pub stage_id:  StageId,
+    /// Whether the stage is a logical one the projection shows, or a
+    /// lowering node it keeps off the list.
+    pub shown:     bool,
+    /// The node's instance name and visit, for the collision rule.
+    pub node_name: String,
+    pub visit:     u32,
+}
+
+/// What the fold knows about one invocation.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct InvocationRef {
+    /// The calling execution and firing, for a nested invocation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent:  Option<(u64, u64)>,
+    /// The parallel group and branch index, for a branch child.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub branch:  Option<(StageId, u32)>,
+    /// The result the invocation recorded, for the root.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub failure: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output:  Option<Value>,
+}
+
+/// Whether the run's durable record is whole, as the projector last read it.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RecordHealth {
+    pub complete:   bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub incomplete: Vec<String>,
+}
+
+/// The fold's bookkeeping between items.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct FoldState {
+    /// Stages by `"<execution>:<firing>"`.
+    #[serde(default)]
+    pub stages:           BTreeMap<String, StageRef>,
+    /// Labels taken, so a second firing with the same name and visit gets
+    /// its own.
+    #[serde(default)]
+    pub labels:           BTreeSet<String>,
+    #[serde(default)]
+    pub invocations:      BTreeMap<u64, InvocationRef>,
+    /// Which invocation each execution belongs to.
+    #[serde(default)]
+    pub executions:       BTreeMap<u64, u64>,
+    /// Open questions by id: the stage that asked.
+    #[serde(default)]
+    pub questions:        BTreeMap<String, String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub root:             Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub started_at:       Option<u64>,
+    /// The run's recorded finish, when Petri recorded one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub finished:         Option<String>,
+    /// The run branch and base sha, when they arrive before `run.started`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_branch:       Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base_sha:         Option<String>,
+    #[serde(default)]
+    pub checkpoints:      u32,
+    /// The run's diff as its `run.diff` record gave it, whichever side of
+    /// the run's finish it arrived on.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_diff:         Option<RunDiff>,
+    #[serde(default)]
+    pub health:           RecordHealth,
+    /// Firings (`"<execution>:<firing>"`) whose attempt has recorded a
+    /// finish: what a position-keyed platform record may be streamed
+    /// behind.
+    #[serde(default)]
+    pub finished_firings: BTreeSet<String>,
+    /// Whether the run's sandbox still exists after its release
+    /// (`scope.released` `retained`): kept stopped, or deleted. Absent until
+    /// the root invocation's lease was released. The view carries the same
+    /// fact as `RunSandboxInstance.retained`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sandbox_retained: Option<bool>,
+}
+
+impl FoldState {
+    /// Whether Petri recorded the run's finish.
+    #[must_use]
+    pub fn finished_run(&self) -> bool {
+        self.finished.is_some()
+    }
+}
+
+/// The view of one run: what the API serves and what the fold keeps.
+#[derive(Clone, Debug)]
+pub struct RunView {
+    pub projection: Option<RunProjection>,
+    pub state:      FoldState,
+}
+
+impl RunView {
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            projection: None,
+            state:      FoldState::default(),
+        }
+    }
+
+    /// Fold one item at its delivery sequence.
+    pub fn fold(&mut self, item: &Item<'_>, stream_seq: u64) {
+        match item {
+            Item::Platform(record) => self.fold_platform(record, stream_seq),
+            Item::Petri(event) => self.fold_petri(event),
+        }
+    }
+
+    /// The run's projection, once its `run.created` record was folded.
+    #[must_use]
+    pub fn projection(&self) -> Option<&RunProjection> {
+        self.projection.as_ref()
+    }
+
+    fn fold_petri(&mut self, event: &RunEvent) {
+        let at = millis(event.recorded_at);
+        if let Some(record) = event.coordinator() {
+            self.fold_coordinator(record, event, at);
+        } else if let Some(engine) = event.engine() {
+            self.fold_engine(engine, event, at);
+        } else if let Some(view) = event.view() {
+            self.fold_view(view, event, at);
+        }
+        if let Some(projection) = self.projection.as_mut() {
+            touch(projection, at);
+        }
+    }
+
+    /// The shown stage an event's subject firing belongs to.
+    fn stage_of(
+        &mut self,
+        execution: ExecutionId,
+        subject: Option<&Subject>,
+    ) -> Option<&mut StageProjection> {
+        let firing = subject?.firing?;
+        let stage = self
+            .state
+            .stages
+            .get(&stage_key(execution.raw(), firing.raw()))?;
+        if !stage.shown {
+            return None;
+        }
+        let stage_id = stage.stage_id.clone();
+        self.projection.as_mut()?.stage_mut(&stage_id)
+    }
+}
+
+impl Default for RunView {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// ── Shared by the folds ─────────────────────────────────────────────────
+
+/// Apply a status transition; one the lifecycle refuses is logged and
+/// skipped, since the view never fails the run.
+fn apply_status(projection: &mut RunProjection, status: RunStatus, at: DateTime<Utc>) {
+    if let Err(error) = projection.try_apply_status(status, at) {
+        debug!(error = %error, "status transition not applied to the Petri projection");
+    }
+}
+
+fn touch(projection: &mut RunProjection, at: DateTime<Utc>) {
+    if at > projection.last_event_at {
+        projection.last_event_at = at;
+    }
+}
+
+/// The key of a stage: its execution and firing.
+#[must_use]
+pub fn stage_key(execution: u64, firing: u64) -> String {
+    format!("{execution}:{firing}")
+}
+
+/// Which firing of its node a subject is, 1-based.
+#[must_use]
+pub fn visit_of(subject: &Subject) -> u32 {
+    subject.visit.unwrap_or(1).max(1)
+}
+
+/// The role a frontend gave a node under `meta.kind`, or the empty string.
+fn node_meta_kind(node: &NodeRef) -> &str {
+    node.meta.get("kind").and_then(Value::as_str).unwrap_or("")
+}
+
+/// Whether a node is a logical stage the projection shows, or a lowering
+/// node it keeps off the list: one a frontend marked synthetic, or a
+/// parallel branch's delegate.
+#[must_use]
+pub fn is_shown(node: &NodeRef) -> bool {
+    let synthetic = node
+        .meta
+        .get("synthetic")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    !synthetic && node_meta_kind(node) != "parallel.branch"
+}
+
+/// The label a shown firing takes, which is the stage id the projection
+/// keys it by: `node@visit`, or `node/e<execution>@visit` when another
+/// execution's firing already took that label. `taken` is every label given
+/// so far; the caller adds the one returned. The interview adapter labels a
+/// question's stage through this same rule, so the stage a question names
+/// is the stage the projection shows.
+#[must_use]
+pub fn stage_label(
+    node_name: &str,
+    visit: u32,
+    execution: ExecutionId,
+    taken: &BTreeSet<String>,
+) -> StageId {
+    let stage_id = StageId::new(node_name.to_string(), visit);
+    if taken.contains(&stage_id.to_string()) {
+        return StageId::new(format!("{node_name}/e{}", execution.raw()), visit);
+    }
+    stage_id
+}
+
+fn millis(recorded_at: u64) -> DateTime<Utc> {
+    Utc.timestamp_millis_opt(i64::try_from(recorded_at).unwrap_or(i64::MAX))
+        .single()
+        .unwrap_or_default()
+}
+
+/// The run id a Petri run key names.
+#[must_use]
+pub fn run_id_of(key: &str) -> Option<RunId> {
+    key.parse().ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use fabro_store::platform_records::{PlatformRecord, RunCreatedRecord};
+    use fabro_types::test_support as types_support;
+    use petri_runtime::driver::BranchRole;
+    use petri_runtime::ir::{FiringId, NodeId};
+
+    use super::*;
+
+    #[test]
+    fn a_taken_label_is_made_unique_by_the_execution() {
+        let mut view = RunView::new();
+        let created = StoredPlatformRecord {
+            seq:         1,
+            recorded_at: 1_000,
+            record:      PlatformRecord::RunCreated(RunCreatedRecord {
+                spec:         types_support::test_run_spec(),
+                title:        Some("A run".to_string()),
+                parent_id:    None,
+                retried_from: None,
+                web_url:      None,
+            }),
+            position:    None,
+        };
+        view.fold(&Item::Platform(&created), 1);
+        let subject = |name: &str| Subject {
+            node:       NodeRef {
+                id:   NodeId::new(1),
+                name: name.into(),
+                kind: "attractor/command".into(),
+                meta: serde_json::json!({ "kind": "command" }),
+            },
+            firing:     Some(FiringId::new(4)),
+            visit:      Some(1),
+            attempt:    None,
+            generation: None,
+            branch:     BranchRole::None,
+        };
+        view.start_visit(ExecutionId::new(1), &subject("build"), millis(2_000));
+        view.start_visit(ExecutionId::new(2), &subject("build"), millis(3_000));
+        let labels: Vec<String> = view
+            .projection()
+            .expect("the run was created")
+            .iter_stages()
+            .map(|(id, _)| id.to_string())
+            .collect();
+        assert_eq!(labels, vec!["build@1", "build/e2@1"]);
+        assert_eq!(view.state.stages.len(), 2);
+    }
+}
