@@ -757,6 +757,35 @@ impl Client {
         Ok(response.into_inner().data)
     }
 
+    /// Replaces a server-managed environment definition when `revision`
+    /// matches the server's current revision (optimistic concurrency via
+    /// `If-Match`). On success, returns the replaced environment with its
+    /// new revision.
+    pub async fn replace_environment(
+        &self,
+        id: &str,
+        revision: &str,
+        request: types::ReplaceEnvironmentRequest,
+    ) -> Result<types::Environment> {
+        let response = self
+            .send_api(|client| {
+                let id = id.to_string();
+                let revision = revision.to_string();
+                let request = request.clone();
+                async move {
+                    client
+                        .replace_environment()
+                        .id(id)
+                        .if_match(revision)
+                        .body(request)
+                        .send()
+                        .await
+                }
+            })
+            .await?;
+        Ok(response.into_inner())
+    }
+
     /// Registers one workflow version and verifies the server assigned the
     /// content-derived id, so a mismatched response fails loudly here rather
     /// than being trusted downstream.
@@ -2502,7 +2531,7 @@ mod tests {
     use chrono::Duration as ChronoDuration;
     use fabro_types::{SandboxProviderKind, WorkflowPath};
     use fabro_util::exit;
-    use httpmock::Method::{GET, POST};
+    use httpmock::Method::{GET, POST, PUT};
     use httpmock::{HttpMockResponse, MockServer};
     use serde_json::json;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -2648,6 +2677,65 @@ mod tests {
             environments[0].settings.provider,
             SandboxProviderKind::DAYTONA
         );
+    }
+
+    #[tokio::test]
+    async fn replace_environment_sends_if_match_and_returns_the_replacement() {
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(PUT)
+                    .path("/api/v1/environments/toolchain")
+                    .header("if-match", "revision-1")
+                    .json_body(json!({
+                        "provider": "docker",
+                        "image": {
+                            "docker": "ghcr.io/denkhaus/fabro-toolchain:0000000000aa",
+                            "dockerfile": null
+                        },
+                        "resources": { "cpu": null, "memory": null, "disk": null },
+                        "network": { "mode": "allow_all", "allow": [] },
+                        "lifecycle": {
+                            "preserve": false,
+                            "stop_on_terminal": true,
+                            "auto_stop": null
+                        },
+                        "labels": {},
+                        "env": {}
+                    }));
+                then.status(200)
+                    .header("content-type", "application/json")
+                    .json_body(environment_json("toolchain", "docker"));
+            })
+            .await;
+        let client = Client::new_no_proxy(&server.url("")).unwrap();
+
+        let request = serde_json::from_value(json!({
+            "provider": "docker",
+            "image": {
+                "docker": "ghcr.io/denkhaus/fabro-toolchain:0000000000aa",
+                "dockerfile": null
+            },
+            "resources": { "cpu": null, "memory": null, "disk": null },
+            "network": { "mode": "allow_all", "allow": [] },
+            "lifecycle": {
+                "preserve": false,
+                "stop_on_terminal": true,
+                "auto_stop": null
+            },
+            "labels": {},
+            "env": {}
+        }))
+        .unwrap();
+
+        let environment = client
+            .replace_environment("toolchain", "revision-1", request)
+            .await
+            .unwrap();
+
+        mock.assert_async().await;
+        assert_eq!(environment.id.as_str(), "toolchain");
+        assert_eq!(environment.settings.provider, SandboxProviderKind::DOCKER);
     }
 
     #[tokio::test]

@@ -16,9 +16,9 @@ pub use client::{
 };
 pub use credential::{Credential, CredentialFallback};
 pub use error::{
-    ApiError, ApiFailure, StructuredApiError, classify_api_error, classify_http_response,
-    convert_type, is_not_found_error, map_api_error, parse_error_response_value,
-    raw_response_failure_error,
+    ApiError, ApiFailure, StructuredApiError, api_failure_for, classify_api_error,
+    classify_http_response, convert_type, is_not_found_error, map_api_error,
+    parse_error_response_value, raw_response_failure_error,
 };
 pub use session::OAuthSession;
 pub use target::ServerTarget;

@@ -46,6 +46,7 @@ fn help() {
       pr          Pull request operations
       parent      Manage run parent links
       secret      Manage server-owned secrets
+      env         Manage server environments
       variable    Manage server-owned variables
       settings    Inspect effective settings
       workflow    Workflow operations

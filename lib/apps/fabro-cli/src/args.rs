@@ -1449,6 +1449,8 @@ pub(crate) enum Commands {
     Parent(ParentNamespace),
     /// Manage server-owned secrets
     Secret(SecretNamespace),
+    /// Manage server environments
+    Env(EnvNamespace),
     /// Manage server-owned variables
     Variable(VariableNamespace),
     /// Inspect effective settings
@@ -1566,6 +1568,12 @@ impl Commands {
                 SecretCommand::Rm(_) => "secret rm",
                 SecretCommand::Set(_) => "secret set",
             },
+            Self::Env(ns) => match &ns.command {
+                EnvCommand::List(_) => "env list",
+                EnvCommand::Show(_) => "env show",
+                EnvCommand::Update(_) => "env update",
+                EnvCommand::PinToolchain(_) => "env pin-toolchain",
+            },
             Self::Variable(ns) => match &ns.command {
                 VariableCommand::List(_) => "variable list",
                 VariableCommand::Get(_) => "variable get",
@@ -1673,6 +1681,96 @@ pub(crate) enum SecretCommand {
     Rm(SecretRmArgs),
     /// Set a secret value
     Set(SecretSetArgs),
+}
+
+#[derive(Args)]
+pub(crate) struct EnvNamespace {
+    #[command(flatten)]
+    pub(crate) target: ServerTargetArgs,
+
+    #[command(subcommand)]
+    pub(crate) command: EnvCommand,
+}
+
+#[derive(Subcommand)]
+pub(crate) enum EnvCommand {
+    /// List server environments
+    #[command(alias = "ls")]
+    List(EnvListArgs),
+    /// Show one server environment
+    Show(EnvShowArgs),
+    /// Update a server environment
+    Update(EnvUpdateArgs),
+    /// Pin the toolchain environment to the just-pushed image
+    PinToolchain(EnvPinToolchainArgs),
+}
+
+#[derive(Args)]
+pub(crate) struct EnvListArgs;
+
+#[derive(Args)]
+pub(crate) struct EnvShowArgs {
+    /// Environment id
+    pub(crate) id: String,
+}
+
+#[derive(Args)]
+pub(crate) struct EnvUpdateArgs {
+    /// Environment id
+    pub(crate) id: String,
+
+    /// Docker image reference for the environment
+    #[arg(long)]
+    pub(crate) image: Option<String>,
+
+    /// CPU count (provider-dependent)
+    #[arg(long)]
+    pub(crate) cpu: Option<i32>,
+
+    /// Memory size (e.g. 4g)
+    #[arg(long)]
+    pub(crate) memory: Option<String>,
+
+    /// Disk size (e.g. 20g)
+    #[arg(long)]
+    pub(crate) disk: Option<String>,
+
+    /// Preserve sandbox instances after runs
+    #[arg(long, conflicts_with = "no_preserve")]
+    pub(crate) preserve: bool,
+
+    /// Do not preserve sandbox instances after runs
+    #[arg(long = "no-preserve")]
+    pub(crate) no_preserve: bool,
+
+    /// Stop sandboxes when a run reaches a terminal state
+    #[arg(long, conflicts_with = "no_stop_on_terminal")]
+    pub(crate) stop_on_terminal: bool,
+
+    /// Do not stop sandboxes on terminal run states
+    #[arg(long = "no-stop-on-terminal")]
+    pub(crate) no_stop_on_terminal: bool,
+
+    /// Auto-stop idle sandboxes after this duration (e.g. 30m)
+    #[arg(long, conflicts_with = "no_auto_stop")]
+    pub(crate) auto_stop: Option<String>,
+
+    /// Clear the auto-stop idle duration
+    #[arg(long = "no-auto-stop")]
+    pub(crate) no_auto_stop: bool,
+}
+
+#[derive(Args)]
+#[group(required = true, multiple = false)]
+pub(crate) struct EnvPinToolchainArgs {
+    /// Pin this 12-hex git sha tag (e.g. from scripts/run-images.nu --push)
+    #[arg(long = "tag")]
+    pub(crate) tag: Option<String>,
+
+    /// Derive the tag from the current git HEAD sha12 (same logic as
+    /// scripts/run-images.nu --push)
+    #[arg(long = "from-run-images")]
+    pub(crate) from_run_images: bool,
 }
 
 #[derive(Args)]
