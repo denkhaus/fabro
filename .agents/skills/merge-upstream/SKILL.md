@@ -98,8 +98,9 @@ drift scan it is the second net for the non-greppable case ("does the
 stricter loader/schema make this fork file semantically invalid?",
 noul); for smart adaptation, per fork feature obsolescence (noul).
 Grep stays primary (full-tree, untruncated). Advisory only, fail-open
-(`.fabro/scripts/judgment.nu`), log outside the repo with --skill
-merge-upstream.
+(`.fabro/scripts/judgment.nu`); judgments log automatically to the
+canonical session log `~/.local/state/fabro-judgments/<YYYY-MM-DD>.jsonl` (script default; --log-file only for
+overrides) with --skill merge-upstream.
 
 Run `git merge upstream/main --no-commit` (a background watcher on this
 host auto-pushes new commits within ~30s; `--no-commit` prevents it from

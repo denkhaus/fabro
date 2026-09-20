@@ -54,9 +54,12 @@ reality: the direct TypeSafe API is waitlist-only; OpenRouter's
     merge-upstream — the 2026-09-16 skill boundary keeps it out of
     workflow prompts); the engine hook (fabro-8e13) may reuse it
     instead of adding its own HTTP path. Session judgments log to a
-    caller-supplied --log-file OUTSIDE the repo, so the engine stream
-    (.fabro/judgments/) and session streams stay separable and the
-    same evaluation tooling can read both.
+    canonical default path OUTSIDE the repo
+    (~/.local/state/fabro-judgments/<YYYY-MM-DD>.jsonl — named
+    identically in all three session skills; --log-file is an override
+    for the engine stream .fabro/judgments/<run_id>.jsonl), so the
+    session logs never scatter and the same evaluation tooling reads
+    both streams.
 
 ## Consequences
 

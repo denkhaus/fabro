@@ -97,9 +97,10 @@ Optional judgment pre-screen (ADR-0022): pipe the ledger through
 and flag out-of-scope files per PR (noul) in ONE fan-out call.
 Advisory only — mechanical markers stay grep-first, categories are
 re-verified during review, and the script is fail-open by contract
-(degraded output never blocks). Log outside the repo
-(`~/.local/state/fabro-judgments/<date>.jsonl`) with --skill
-integrate --phase commit-triage --subject <sha>.
+(degraded output never blocks). Judgments log automatically to the
+canonical session log `~/.local/state/fabro-judgments/<YYYY-MM-DD>.jsonl` (script default; --log-file only for
+overrides). Pass --skill integrate --phase commit-triage --subject
+<sha>.
 
 ## Phase 2 - Six review axes for every implementation commit
 
@@ -219,7 +220,8 @@ run per-closed-seed Nouls ("is this demand visible in the merged
 diff?") and let flagged seeds take the Phase-3.1 deep check first;
 use it to rerank `sd search` candidates toward "extend that one"
 before filing a sibling. Advisory only, fail-open
-(`.fabro/scripts/judgment.nu`).
+(`.fabro/scripts/judgment.nu`); logs land automatically in
+`~/.local/state/fabro-judgments/<YYYY-MM-DD>.jsonl` --skill integrate --phase closure-verification.
 
 1. **Closure verification (fabro-9967/a0e3 lessons):** every seed that
    flipped to closed must show its demand in a merged diff. If not:

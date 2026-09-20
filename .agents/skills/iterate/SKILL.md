@@ -563,7 +563,10 @@ decision, not an accident - it needs the user plus an ADR.
   three session skills): composite-score `sd ready` candidates in
   Phase 1 and per-hunk risk pre-screens in Phase 3 via
   `.fabro/scripts/judgment.nu` — advisory only, fail-open, thresholds
-  only after the fabro-d4c6 evaluation report exists.
+  only after the fabro-d4c6 evaluation report exists; judgments log
+  automatically to the canonical session log
+  `~/.local/state/fabro-judgments/<YYYY-MM-DD>.jsonl` (script default; --log-file only for overrides)
+  with --skill iterate.
 
 - Security-hole closures are DIRECT agent work (user directive
   2026-09-08): seeds that CLOSE security holes (capability gating,

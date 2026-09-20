@@ -23,8 +23,13 @@
 # Output (stdout, one JSON record): answers + meta
 #   {answers, model, latency_ms, cost_usd, status, degraded, error?}
 #
-# Log (--log-file): one fabro-judgment-v1 line per call, same fields as
-# the engine stream plus session provenance (skill, phase, subject).
+# Log: one fabro-judgment-v1 line per call, same fields as the engine
+# stream plus session provenance (skill, phase, subject). DEFAULT log
+# path (used when --log-file is omitted) is the canonical session log:
+#   ~/.local/state/fabro-judgments/<YYYY-MM-DD>.jsonl  (one FILE per day)
+# — every caller (iterate/integrate/merge-upstream, ad-hoc) lands in
+# the SAME place; --log-file exists for overrides only (the engine
+# hook passes .fabro/judgments/<run_id>.jsonl).
 #
 # Credentials: OPENROUTER_API_KEY from the environment ONLY. Never
 # logged, never echoed, no fallback file location.
@@ -68,18 +73,30 @@ def main (
     --request: path                                  # JSON file with {state, questions}; omit to read stdin
     --model: string = 'typesafe/jev-1.13'            # version-pinned, never an alias (ADR-0022)
     --endpoint: string = 'https://openrouter.ai/api/alpha/decisions'
-    --log-file: string = ''                          # append one fabro-judgment-v1 line per call
+    --log-file: string = ''                          # override; default: ~/.local/state/fabro-judgments/<date>.jsonl
     --skill: string = ''                             # provenance: calling skill (integrate, iterate, ...)
     --phase: string = ''                             # provenance: phase inside the skill
     --subject: string = ''                           # provenance: judged object (commit sha, file, seed id)
     --max-time: duration = 30sec                     # outbound call budget
 ) {
     let start = (date now)
+    # Canonical session log (ADR-0022 D11): one path for ALL session
+    # callers unless explicitly overridden (engine hook -> run stream).
+    let effective_log = (if ($log_file | is-empty) {
+        # canonical session log: ~/.local/state/fabro-judgments/<YYYY-MM-DD>.jsonl
+        try {
+            ($nu.home-dir | path join '.local' 'state' 'fabro-judgments' $"(date now | format date '%Y-%m-%d').jsonl")
+        } catch {
+            ''    # resolution failed: degrade to no logging, never break the call
+        }
+    } else {
+        $log_file
+    })
     let questions_hash = ''                          # filled once the request parsed
 
     def fail [error: string, latency_ms: float] {
         let line = (judgment-log-line $model $questions_hash $skill $phase $subject null $latency_ms null true $error)
-        judgment-emit {answers: null, model: $model, latency_ms: $latency_ms, cost_usd: null, status: null, degraded: true, error: $error} $log_file $line
+        judgment-emit {answers: null, model: $model, latency_ms: $latency_ms, cost_usd: null, status: null, degraded: true, error: $error} $effective_log $line
     }
 
     # --- credential (checked first: cheapest fail-open path) ----------------
@@ -143,5 +160,5 @@ def main (
 
     let latency_ms = (((date now) - $start) / 1ms)
     let line = (judgment-log-line $model $questions_hash $skill $phase $subject $parsed.answers $latency_ms $parsed.usage?.cost? false '')
-    judgment-emit {answers: $parsed.answers, model: ($parsed.model? | default $model), latency_ms: $latency_ms, cost_usd: $parsed.usage?.cost?, status: 'ok', degraded: false} $log_file $line
+    judgment-emit {answers: $parsed.answers, model: ($parsed.model? | default $model), latency_ms: $latency_ms, cost_usd: $parsed.usage?.cost?, status: 'ok', degraded: false} $effective_log $line
 }
