@@ -81,6 +81,12 @@ The OpenAPI spec at `docs/public/api-reference/fabro-api.yaml` is the source of 
 4. `cargo nextest run -p fabro-server` — conformance test catches spec/router drift
 5. `cd lib/packages/fabro-api-client && bun run generate` — regenerates TypeScript Axios client
 
+CLI-first note for automations: routine automation operations (list/show/runs,
+set-schedule, pause/unpause, breaker reset, fire, status) go through
+`fabro automations` (alias `fabro auto`) — it handles If-Match optimistic
+concurrency internally. Raw API calls against `/api/v1/automations` stay for
+scripts only.
+
 ### API type ownership
 
 - Treat OpenAPI as the source of truth for the wire contract, not as the automatic owner of Rust types.

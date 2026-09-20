@@ -69,6 +69,7 @@ fabro [OPTIONS] [COMMAND]
 | `fabro ask` | Ask Fabro a read-only question about a run |
 | `fabro attach` | Attach to a running or finished workflow run |
 | `fabro auth` | Manage CLI authentication state |
+| `fabro automations` | Manage server automations (alias: auto) |
 | `fabro completion` | Generate shell completions |
 | `fabro create` | Register a workflow version and create a submitted run |
 | `fabro deny` | Deny execution of a pending run |
@@ -316,6 +317,175 @@ fabro auth status [OPTIONS]
 | Option | Description |
 | --- | --- |
 | `--server <server>` | Fabro server target: http(s) URL or absolute Unix socket path |
+
+### `fabro automations`
+
+Manage server automations (alias: auto)
+
+```bash
+fabro automations [OPTIONS] <COMMAND>
+```
+
+#### Options
+
+| Option | Description |
+| --- | --- |
+| `--server <server>` | Fabro server target: http(s) URL or absolute Unix socket path |
+
+#### Subcommands
+
+| Command | Description |
+| --- | --- |
+| `fabro automations breaker` | Circuit-breaker control |
+| `fabro automations fire` | Fire an automation through its API trigger |
+| `fabro automations list` | List server automations |
+| `fabro automations pause` | Pause an automation's schedule trigger |
+| `fabro automations runs` | List the runs an automation created |
+| `fabro automations set-schedule` | Change an automation's cron schedule |
+| `fabro automations show` | Show one server automation |
+| `fabro automations status` | Monitor automations for fire drift |
+| `fabro automations unpause` | Re-enable an automation's schedule trigger |
+
+#### `fabro automations breaker`
+
+Circuit-breaker control
+
+```bash
+fabro automations breaker [OPTIONS] <COMMAND>
+```
+
+#### Subcommands
+
+| Command | Description |
+| --- | --- |
+| `fabro automations breaker reset` | Unlatch a tripped breaker (no-op when clean) |
+
+##### `fabro automations breaker reset`
+
+Unlatch a tripped breaker (no-op when clean)
+
+```bash
+fabro automations breaker reset [OPTIONS] <ID>
+```
+
+#### Arguments
+
+| Name | Description |
+| --- | --- |
+| `ID` | Automation id |
+
+#### `fabro automations fire`
+
+Fire an automation through its API trigger
+
+```bash
+fabro automations fire [OPTIONS] <ID>
+```
+
+#### Arguments
+
+| Name | Description |
+| --- | --- |
+| `ID` | Automation id |
+
+#### `fabro automations list`
+
+List server automations
+
+```bash
+fabro automations list [OPTIONS]
+```
+
+#### `fabro automations pause`
+
+Pause an automation's schedule trigger
+
+```bash
+fabro automations pause [OPTIONS] <ID>
+```
+
+#### Arguments
+
+| Name | Description |
+| --- | --- |
+| `ID` | Automation id |
+
+#### `fabro automations runs`
+
+List the runs an automation created
+
+```bash
+fabro automations runs [OPTIONS] <ID>
+```
+
+#### Arguments
+
+| Name | Description |
+| --- | --- |
+| `ID` | Automation id |
+
+#### `fabro automations set-schedule`
+
+Change an automation's cron schedule
+
+```bash
+fabro automations set-schedule [OPTIONS] --cron <CRON> <ID>
+```
+
+#### Arguments
+
+| Name | Description |
+| --- | --- |
+| `ID` | Automation id |
+
+#### Options
+
+| Option | Description |
+| --- | --- |
+| `--cron <cron>` | Five-field UTC cron expression |
+| `--trigger <trigger>` | Schedule trigger id, required when the automation has several |
+
+#### `fabro automations show`
+
+Show one server automation
+
+```bash
+fabro automations show [OPTIONS] <ID>
+```
+
+#### Arguments
+
+| Name | Description |
+| --- | --- |
+| `ID` | Automation id |
+
+#### `fabro automations status`
+
+Monitor automations for fire drift
+
+```bash
+fabro automations status [OPTIONS]
+```
+
+#### Options
+
+| Option | Description |
+| --- | --- |
+| `--watch` | Re-check every 30 seconds until interrupted |
+
+#### `fabro automations unpause`
+
+Re-enable an automation's schedule trigger
+
+```bash
+fabro automations unpause [OPTIONS] <ID>
+```
+
+#### Arguments
+
+| Name | Description |
+| --- | --- |
+| `ID` | Automation id |
 
 ### `fabro completion`
 

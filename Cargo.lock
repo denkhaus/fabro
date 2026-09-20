@@ -2371,6 +2371,7 @@ dependencies = [
  "fabro-acp",
  "fabro-api",
  "fabro-auth",
+ "fabro-automation",
  "fabro-build-support",
  "fabro-checkpoint",
  "fabro-client",
