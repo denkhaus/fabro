@@ -84,8 +84,14 @@ def main (
     # callers unless explicitly overridden (engine hook -> run stream).
     let effective_log = (if ($log_file | is-empty) {
         # canonical session log: ~/.local/state/fabro-judgments/<YYYY-MM-DD>.jsonl
+        # version-robust home resolution: home-dir (nu >= 0.105ish) with
+        # home-path fallback (alpine 3.23 packages nu 0.104); both optional
+        # accesses return null on the version that lacks the field.
         try {
-            ($nu.home-dir | path join '.local' 'state' 'fabro-judgments' $"(date now | format date '%Y-%m-%d').jsonl")
+            let home = ($nu.home-dir? | default ($nu.home-path? | default ''))
+            if ($home | is-empty) { '' } else {
+                ($home | path join '.local' 'state' 'fabro-judgments' $"(date now | format date '%Y-%m-%d').jsonl")
+            }
         } catch {
             ''    # resolution failed: degrade to no logging, never break the call
         }
