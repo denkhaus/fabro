@@ -1,3 +1,4 @@
 {"$schema":"fabro-journal-v1","run_id":"01M2Z9E3SES31GFWT835QGRGMN","node":"start","visit":1,"status":"succeeded","ts":"2026-09-20T11:32:52Z","data":{}}
 {"$schema":"fabro-journal-v1","run_id":"01M2Z9E3SES31GFWT835QGRGMN","node":"tracker_guard","visit":1,"status":"succeeded","ts":"2026-09-20T11:32:53Z","data":{}}
 {"$schema":"fabro-journal-v1","run_id":"01M2Z9E3SES31GFWT835QGRGMN","node":"preflight","visit":1,"status":"succeeded","ts":"2026-09-20T11:33:06Z","data":{}}
+{"$schema":"fabro-journal-v1","run_id":"01M2Z9E3SES31GFWT835QGRGMN","node":"planner","visit":1,"status":"succeeded","ts":"2026-09-20T11:34:12Z","data":{"painpoints":[],"observations":["fabro-94f6 root cause is confirmed in the seed body itself (UI pin introduced disk; write-path provider validation missing) — the 'legacy pre-upgrade entry' framing in the original filing is superseded; implementer should follow the REFINED DEMANDS section, not the original DEMAND list"]}}
