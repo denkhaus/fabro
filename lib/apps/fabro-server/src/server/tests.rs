@@ -20653,6 +20653,79 @@ async fn list_runs_page_limit_preserves_metadata_for_paged_items() {
 }
 
 #[tokio::test]
+async fn list_runs_repository_filter_scopes_cross_repo_runs() {
+    let state = test_app_state();
+    let app = crate::test_support::build_test_router(Arc::clone(&state));
+
+    // Repo A's develop run (older) and repo B's develop run (newest) —
+    // the revisor-select freshness-baseline hazard shape (fabro-b2e6):
+    // without the repository filter, repo B's run is the newest develop
+    // run and would poison repo A's baseline.
+    let own_id =
+        RunId::with_timestamp("2026-03-06T14:30:00Z".parse().expect("timestamp parses"), 1);
+    let foreign_id =
+        RunId::with_timestamp("2026-03-06T15:30:00Z".parse().expect("timestamp parses"), 2);
+    for (run_id, origin_url) in [
+        (own_id, "https://github.com/denkhaus/seeds.git"),
+        (foreign_id, "https://github.com/denkhaus/fabro.git"),
+    ] {
+        let run_store = state.stores.runs.create_run(&run_id).await.unwrap();
+        workflow_event::append_event(&run_store, &run_id, &workflow_event::Event::RunCreated {
+            run_id,
+            title: None,
+            settings: serde_json::to_value(WorkflowSettings::default()).unwrap(),
+            graph: serde_json::to_value(Graph::new("test")).unwrap(),
+            workflow_source: None,
+            labels: std::collections::BTreeMap::default(),
+            source_directory: None,
+            workflow_slug: Some("develop".to_string()),
+            workflow_version_id: None,
+            target: None,
+            automation: None,
+            provenance: test_support::test_run_provenance(),
+            spec_blob: None,
+            git: Some(fabro_types::GitContext {
+                origin_url: origin_url.to_string(),
+                branch:     "main".to_string(),
+                sha:        None,
+                dirty:      fabro_types::DirtyStatus::Clean,
+            }),
+            fork_source_ref: None,
+            retried_from: None,
+            parent_id: None,
+            web_url: None,
+        })
+        .await
+        .unwrap();
+    }
+
+    // Unscoped listing sees both develop runs, newest first.
+    let req = Request::builder()
+        .method("GET")
+        .uri(api("/runs?workflow=develop"))
+        .body(Body::empty())
+        .unwrap();
+    let response = app.clone().oneshot(req).await.unwrap();
+    let body = response_json!(response, StatusCode::OK).await;
+    let data = body["data"].as_array().expect("data should be array");
+    assert_eq!(data.len(), 2, "unscoped listing sees both repos' runs");
+    assert_eq!(run_json_id(&data[0]), Some(foreign_id.to_string().as_str()));
+
+    // Repository scoping excludes the foreign repo's runs even though it
+    // owns the newest develop run.
+    let req = Request::builder()
+        .method("GET")
+        .uri(api("/runs?workflow=develop&repository=denkhaus/seeds"))
+        .body(Body::empty())
+        .unwrap();
+    let response = app.oneshot(req).await.unwrap();
+    let body = response_json!(response, StatusCode::OK).await;
+    let data = body["data"].as_array().expect("data should be array");
+    assert_eq!(data.len(), 1, "repository filter scopes cross-repo runs");
+    assert_eq!(run_json_id(&data[0]), Some(own_id.to_string().as_str()));
+}
+
+#[tokio::test]
 async fn list_runs_status_filter_accepts_repeated_values() {
     let state = test_app_state();
     let app = crate::test_support::build_test_router(Arc::clone(&state));

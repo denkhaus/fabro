@@ -15,6 +15,12 @@ use crate::{FabroToolBackend, common};
 pub struct ClientBackend {
     client:                    Arc<::fabro_client::Client>,
     run_scope:                 Option<RunId>,
+    /// Repository label (`owner/repository`) the invoking run's worker
+    /// context resolved from the run spec. Set once at backend
+    /// construction; every `list_runs_of_workflow` call passes it
+    /// automatically so run enumeration stays inside the invoking run's
+    /// repository (fabro-b2e6). `None` leaves enumeration unscoped.
+    scope_repository:          Option<String>,
     workflow_version_packager: Option<Arc<dyn crate::WorkflowVersionPackager>>,
 }
 
@@ -24,6 +30,7 @@ impl ClientBackend {
         Self {
             client,
             run_scope: None,
+            scope_repository: None,
             workflow_version_packager: None,
         }
     }
@@ -44,6 +51,16 @@ impl ClientBackend {
     #[must_use]
     pub fn with_run_scope(mut self, run_id: RunId) -> Self {
         self.run_scope = Some(run_id);
+        self
+    }
+
+    /// Scope this backend's run enumeration to one repository label
+    /// (`owner/repository`). The worker resolves the invoking run's
+    /// repository from the run spec and sets it once at construction;
+    /// no tool parameter exposes it (fabro-b2e6).
+    #[must_use]
+    pub fn with_scope_repository(mut self, repository: String) -> Self {
+        self.scope_repository = Some(repository);
         self
     }
 
@@ -211,7 +228,7 @@ impl FabroToolBackend for ClientBackend {
         created_since: Option<DateTime<Utc>>,
     ) -> anyhow::Result<Vec<Run>> {
         self.client
-            .list_runs_of_workflow(workflow, created_since)
+            .list_runs_of_workflow(workflow, self.scope_repository.as_deref(), created_since)
             .await
     }
 
@@ -487,5 +504,52 @@ mod tests {
                 crate::FABRO_WORKFLOW_VERSION_CREATE_TOOL_NAME
             )
         );
+    }
+
+    /// Repo scoping (fabro-b2e6): a backend constructed with the invoking
+    /// run's repository label passes it on every run-enumeration request
+    /// automatically — no tool parameter exists, so the scoping cannot be
+    /// forgotten by a consumer. An unscoped backend omits the parameter.
+    #[tokio::test]
+    async fn scope_repository_rides_every_run_enumeration_request() {
+        let server = httpmock::MockServer::start_async().await;
+        let empty_page = serde_json::json!({
+            "data": [],
+            "meta": {"total": 0, "has_more": false}
+        });
+
+        let scoped_mock = server
+            .mock_async(|when, then| {
+                when.method(httpmock::Method::GET)
+                    .path("/api/v1/runs")
+                    .query_param("workflow", "develop")
+                    .query_param("repository", "denkhaus/seeds");
+                then.status(200).json_body(empty_page.clone());
+            })
+            .await;
+        let client = ::fabro_client::Client::new_no_proxy(&server.url("")).unwrap();
+        let backend = ClientBackend::new(Arc::new(client))
+            .with_scope_repository("denkhaus/seeds".to_string());
+        backend
+            .list_runs_of_workflow("develop", None)
+            .await
+            .unwrap();
+        scoped_mock.assert_calls_async(1).await;
+
+        let unscoped_mock = server
+            .mock_async(|when, then| {
+                when.method(httpmock::Method::GET)
+                    .path("/api/v1/runs")
+                    .query_param_missing("repository");
+                then.status(200).json_body(empty_page);
+            })
+            .await;
+        let client = ::fabro_client::Client::new_no_proxy(&server.url("")).unwrap();
+        let backend = ClientBackend::new(Arc::new(client));
+        backend
+            .list_runs_of_workflow("develop", None)
+            .await
+            .unwrap();
+        unscoped_mock.assert_calls_async(1).await;
     }
 }
