@@ -11,10 +11,11 @@
 
 use std::collections::BTreeMap;
 
-use fabro_types::RunId;
 use fabro_types::settings::run::{
-    DockerfileSource, EnvironmentNetworkMode, RunCloneSettings, RunEnvironmentSettings,
+    DockerfileSource, EnvironmentNetworkMode, EnvironmentResourcesSettings, RunCloneSettings,
+    RunEnvironmentSettings,
 };
+use fabro_types::{RunId, SandboxProviderKind};
 use sandbox_driver::{
     Capabilities, LifecycleTimers, NetworkPolicy, Resources, SandboxSource, SandboxSpec,
 };
@@ -153,6 +154,27 @@ pub(crate) fn supported_network(
             NetworkPolicy::ProviderDefault
         }
         other => other,
+    }
+}
+
+/// Resource fields the named provider does not enforce, as validation
+/// messages naming the field. Unlike network policy and timers, which a
+/// no-capability provider can silently drop, the Docker provider rejects a
+/// writable-layer disk limit outright at sandbox creation — so a stored
+/// `resources.disk` turns every run on that environment into a guaranteed
+/// failure. Callers use this at the write path (create/replace) to reject
+/// the field up front, and at startup to warn about rows that predate the
+/// check. Daytona enforces a disk limit; the host-style `local` provider
+/// runs without one and ignores the field; plugin providers advertise
+/// capabilities only once connected, so fabro does not guess for them.
+pub fn unsupported_resource_fields(
+    provider: &SandboxProviderKind,
+    resources: &EnvironmentResourcesSettings,
+) -> Vec<&'static str> {
+    if provider == &SandboxProviderKind::DOCKER && resources.disk.is_some() {
+        vec!["resources.disk: the docker provider does not enforce a writable-layer disk limit"]
+    } else {
+        Vec::new()
     }
 }
 
@@ -310,5 +332,29 @@ mod tests {
         let mut with_timers = Capabilities::minimal(sandbox_driver::Isolation::Container);
         with_timers.lifecycle.timers = true;
         assert_eq!(supported_timers(requested, &with_timers), requested);
+    }
+
+    #[test]
+    fn a_docker_environment_with_a_disk_limit_names_the_unenforced_field() {
+        let mut settings = environment("docker");
+        settings.resources.disk = Some(Size::from_bytes(16_000_000_000));
+
+        let messages = unsupported_resource_fields(&settings.provider, &settings.resources);
+        assert_eq!(messages.len(), 1);
+        assert!(
+            messages[0].starts_with("resources.disk:"),
+            "the message must name the field: {}",
+            messages[0]
+        );
+    }
+
+    #[test]
+    fn a_docker_environment_without_a_disk_limit_and_an_enforcing_provider_pass() {
+        let docker = environment("docker");
+        assert!(unsupported_resource_fields(&docker.provider, &docker.resources).is_empty());
+
+        let mut daytona = environment("daytona");
+        daytona.resources.disk = Some(Size::from_bytes(16_000_000_000));
+        assert!(unsupported_resource_fields(&daytona.provider, &daytona.resources).is_empty());
     }
 }

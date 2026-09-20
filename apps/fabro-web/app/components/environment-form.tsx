@@ -14,7 +14,11 @@ import type {
   ReplaceEnvironmentRequest,
 } from "@qltysh/fabro-api-client";
 
-import { DOCKER_PROVIDER, isCloneBasedProvider } from "../lib/environment-providers";
+import {
+  DOCKER_PROVIDER,
+  isCloneBasedProvider,
+  providerEnforcesDisk,
+} from "../lib/environment-providers";
 import { Label, Panel, Row } from "./settings-panel";
 import { INPUT_CLASS } from "./ui";
 import {
@@ -168,9 +172,14 @@ function imageFromForm(values: EnvironmentFormValues): EnvironmentApiImageSettin
 
 function resourcesFromForm(values: EnvironmentFormValues): EnvironmentResourcesSettings {
   return {
-    cpu:    values.cpu,
+    cpu: values.cpu,
     memory: `${values.memory}GB`,
-    disk:   `${values.disk}GB`,
+    // A provider that does not enforce a writable-layer disk limit must
+    // never receive one: the server rejects it at write time and the driver
+    // kills runs at sandbox creation (fabro-94f6). The form never offers
+    // the field for such providers, so no slider default can be smuggled in
+    // by a full-object save either.
+    disk: providerEnforcesDisk(values.provider) ? `${values.disk}GB` : null,
   };
 }
 
@@ -336,15 +345,17 @@ export function EnvironmentFormFields({
             format={(n) => `${n} GB`}
           />
         </Row>
-        <Row title="Disk" help="Disk limit for each run.">
-          <ResourceSlider
-            ariaLabel="Disk"
-            range={DISK}
-            value={values.disk}
-            onChange={(disk) => patch({ disk })}
-            format={(n) => `${n} GB`}
-          />
-        </Row>
+        {providerEnforcesDisk(values.provider) ? (
+          <Row title="Disk" help="Disk limit for each run.">
+            <ResourceSlider
+              ariaLabel="Disk"
+              range={DISK}
+              value={values.disk}
+              onChange={(disk) => patch({ disk })}
+              format={(n) => `${n} GB`}
+            />
+          </Row>
+        ) : null}
       </Panel>
 
       <Panel title="Environment variables">

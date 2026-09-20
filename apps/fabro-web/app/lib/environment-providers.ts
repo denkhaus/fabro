@@ -41,6 +41,16 @@ export function compareProviderKinds(left: string, right: string): number {
   return rank(left) - rank(right) || left.localeCompare(right);
 }
 
+// Whether a provider enforces a writable-layer disk limit on its sandboxes.
+// The bundled Docker provider does not — its driver rejects a disk limit at
+// sandbox creation — so the environment editor never offers or submits the
+// field for it, and the server rejects it at write time (fabro-94f6).
+// Plugin providers advertise capabilities only once connected; the editor
+// still offers the field for them and the server-side check is the guard.
+export function providerEnforcesDisk(provider: string): boolean {
+  return provider !== DOCKER_PROVIDER;
+}
+
 export function providerLabel(provider: string): string {
   return provider.charAt(0).toUpperCase() + provider.slice(1);
 }
