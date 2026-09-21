@@ -205,3 +205,18 @@ BONUS aus derselben Recherche: die native Attractor-Attributliste nennt
 on_failure, on_retries_exhausted, allow_partial, goal_gate, retry_target,
 fallback_retry_target — das ist das W3-1/W3-2-Tier-Routing-Vokabular. Die
 Grilling-Vorlagen können direkt darauf aufbauen.
+
+## W3: seed_cycles-Disposition (fabro-fa0a, 2026-09-21)
+
+Stärker als erwartet: Petris attractor steps tragen `context_updates`
+NATIV (outcome.rs — Agent-Outcomes mergen Key/Value in den Run-Context;
+Conditions routen gegen den prospektiven Kontext). Die Fork-Zähler
+(seed_cycles/cycle_counter_reset_key) werden:
+
+1. **Workflow-eigene Zähler**: Implementer/Reviewer schreiben
+   context_updates (visit_count, current_seed_id); Reset-Semantik im
+   Node-Outcome statt engine-Injektion.
+2. **Deterministische Guards**: die 3x-Review=>Blocked-Zyklen werden
+   Edge-CONDITIONS auf den Kontextwerten — keine Prompt-Zählung mehr,
+   besser als der Fork-Stand.
+Graph-Rework gehört zu W3-5-Rest (mit den Tier-Entscheidungen).
