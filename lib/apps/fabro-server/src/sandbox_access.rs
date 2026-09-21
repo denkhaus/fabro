@@ -394,14 +394,14 @@ impl InspectionSandbox {
 
     /// Stop the sandbox again when the inspection reactivated it.
     /// Idempotent: the first call wins, `Drop` is a no-op afterwards.
-    /// Interactive attach sites (terminal/ssh/vnc sessions, ask-fabro
-    /// turns) call this at their session end; `Drop` covers every early
-    /// exit meanwhile.
-    #[expect(
+    /// Interactive attach sites (ask-fabro session eviction, the afab
+    /// remainder) call this at their session end; `Drop` covers every
+    /// early exit meanwhile.
+    #[cfg_attr(not(test), expect(
         dead_code,
-        reason = "called by the interactive attach sites landing with the rest of fabro-afab; \
-                  Drop already covers the read-only inspections"
-    )]
+        reason = "the read-only inspections rely on Drop; the explicit finish belongs to the \
+                  ask-fabro session-eviction site, the remaining afab item"
+    ))]
     pub(crate) async fn finish(&self) {
         if !self.stop_after
             || self
