@@ -13,11 +13,12 @@
 //! The launch binds the compile variables the Fabro frontend reads:
 //! `petri.launch_model` and `petri.launch_provider` as the model default
 //! below every file layer, `petri.launch_environment` as the environment
-//! the run selected over every file layer, and `petri.repository` as the
-//! repository the root `start` stage checks out. A caller with no local
-//! repository binds `null`, and the run starts from an empty workspace. The
-//! server's run variables (`{{ vars.NAME }}`) are bound as compile
-//! variables beside them.
+//! the run selected over every file layer, `petri.launch_goal` as the goal
+//! the run resolved over every file layer and the graph's own, and
+//! `petri.repository` as the repository the root `start` stage checks out. A
+//! caller with no local repository binds `null`, and the run starts from an
+//! empty workspace. The server's run variables (`{{ vars.NAME }}`) are bound as
+//! compile variables beside them.
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -25,8 +26,8 @@ use std::path::PathBuf;
 use petri_frontend_attractor::kinds::{AGENT_KIND, PROMPT_KIND};
 use petri_runtime::LoadError;
 use petri_runtime::frontend::{
-    self, CompileInputs, LAUNCH_ENVIRONMENT_VAR, LAUNCH_MODEL_VAR, LAUNCH_PROVIDER_VAR, MapFiles,
-    REPOSITORY_VAR, Severity,
+    self, CompileInputs, LAUNCH_ENVIRONMENT_VAR, LAUNCH_GOAL_VAR, LAUNCH_MODEL_VAR,
+    LAUNCH_PROVIDER_VAR, MapFiles, REPOSITORY_VAR, Severity,
 };
 use petri_runtime::ir::Graph;
 use serde::{Deserialize, Serialize};
@@ -75,6 +76,11 @@ pub struct Launch {
     /// selection overrides the bundle in Fabro's own resolution; `None`
     /// leaves the layers to select.
     pub environment: Option<String>,
+    /// The goal the run resolved (the intent's override, else the settings'
+    /// `[run] goal` from any layer), over the bundle's `[run] goal` and the
+    /// graph's own `goal`, so the stages execute with the goal the run
+    /// shows; `None` leaves the bundle's layers and the graph to state it.
+    pub goal:        Option<String>,
     /// The local repository the root `start` stage checks out into the
     /// workspace; `None` starts the run from an empty workspace.
     pub repository:  Option<PathBuf>,
@@ -218,6 +224,15 @@ fn compile_inputs(
             LAUNCH_ENVIRONMENT_VAR.into(),
             Value::String(environment.clone()),
         );
+    }
+    if let Some(goal) = launch
+        .goal
+        .as_deref()
+        .filter(|goal| !goal.trim().is_empty())
+    {
+        compile
+            .vars
+            .insert(LAUNCH_GOAL_VAR.into(), Value::String(goal.to_owned()));
     }
     // `Runtime::check_source` uses the inputs as given, so the repository
     // is the host's to bind: the launch's path, or `null` for a run that
