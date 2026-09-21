@@ -450,13 +450,14 @@ async fn reconcile_existing_pull_request(
         return Ok(None);
     };
     info!(pr_url = %existing.html_url, pr_number = existing.number, context, "Existing pull request reconciled");
-    enable_auto_merge_if_requested(
+    enable_auto_merge_within_scope(
         &req.github,
         owner,
         repo,
         &existing.node_id,
         existing.number,
         req.auto_merge.as_ref(),
+        req.diff,
     )
     .await;
     Ok(Some(CreatedPullRequest {
@@ -469,6 +470,91 @@ async fn reconcile_existing_pull_request(
         base_branch: req.base_branch.to_string(),
         head_branch: req.head_branch.to_string(),
     }))
+}
+
+/// Paths the run's own diff touches: both sides of every `diff --git`
+/// header, `/dev/null` excluded. A path the run deleted itself appears on
+/// the `a/` side, so it counts as touched.
+///
+/// Fork surface (fabro-4ebd, petri port W2-2 Phase B): gates auto-merge on
+/// scope — the PR must not delete paths the run never touched.
+fn diff_touched_paths(diff: &str) -> std::collections::HashSet<&str> {
+    let mut paths = std::collections::HashSet::new();
+    for line in diff.lines().filter(|line| line.starts_with("diff --git ")) {
+        for token in line.split(' ').skip(2) {
+            let path = token
+                .strip_prefix("a/")
+                .or_else(|| token.strip_prefix("b/"))
+                .unwrap_or(token);
+            if path != "/dev/null" {
+                paths.insert(path);
+            }
+        }
+    }
+    paths
+}
+
+/// Paths the PR deletes that the run's own diff never touched (fabro-4ebd):
+/// a stale run tree reverting concurrent base work shows up exactly here.
+/// `removed` statuses plus the old side of renames count as deletions.
+fn out_of_scope_deletions<'a>(
+    files: &'a [fabro_github::PullRequestFileStatus],
+    diff_touched: &std::collections::HashSet<&str>,
+) -> Vec<&'a str> {
+    files
+        .iter()
+        .filter(|file| {
+            let removed = file.status == "removed" || file.status == "changed";
+            let renamed_from = file.status == "renamed"
+                && file
+                    .previous_filename
+                    .as_deref()
+                    .is_some_and(|previous| !diff_touched.contains(previous));
+            (removed && !diff_touched.contains(file.filename.as_str()))
+                || (removed && file.status == "renamed" && renamed_from)
+                || (file.status == "renamed"
+                    && file
+                        .previous_filename
+                        .as_deref()
+                        .is_some_and(|previous| !diff_touched.contains(previous)))
+        })
+        .map(|file| file.filename.as_str())
+        .collect()
+}
+
+/// Fork gate (fabro-4ebd, petri port W2-2 Phase B): before auto-merge is
+/// enabled, the PR's deletions must be confined to the run's own change
+/// scope. A stale run tree that reverts concurrent base work would delete
+/// paths the run never touched — merging it silently reverts them.
+/// Out-of-scope deletions skip auto-merge (the PR stays for manual review)
+/// and are logged with the offending paths.
+async fn enable_auto_merge_within_scope(
+    github: &github_app::GitHubContext<'_>,
+    owner: &str,
+    repo: &str,
+    node_id: &str,
+    number: u64,
+    options: Option<&AutoMergeOptions>,
+    run_diff: &str,
+) {
+    let Some(options) = options else {
+        return;
+    };
+    if let Ok(files) =
+        fabro_github::list_pull_request_file_statuses(github, owner, repo, number).await
+    {
+        let touched = diff_touched_paths(run_diff);
+        let out_of_scope = out_of_scope_deletions(&files, &touched);
+        if !out_of_scope.is_empty() {
+            tracing::warn!(
+                pr_number = number,
+                deletion_paths = %out_of_scope.join(", "),
+                "Auto-merge withheld (fabro-4ebd): pull request deletes paths outside the                  run's own change scope — manual review required"
+            );
+            return;
+        }
+    }
+    enable_auto_merge_if_requested(github, owner, repo, node_id, number, Some(options)).await;
 }
 
 async fn enable_auto_merge_if_requested(
@@ -606,13 +692,14 @@ pub async fn open_pull_request(
     };
 
     info!(pr_url = %created.html_url, created.number, "Pull request created");
-    enable_auto_merge_if_requested(
+    enable_auto_merge_within_scope(
         &req.github,
         &owner,
         &repo,
         &created.node_id,
         created.number,
         req.auto_merge.as_ref(),
+        req.diff,
     )
     .await;
 
