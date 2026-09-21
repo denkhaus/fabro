@@ -28,7 +28,7 @@ digraph Revisor {
     // this branch means unrevised. ONE run per pass; the invocation ends
     // after the first filed revision (budget constant on the file edges).
     // Read-only node: fs_write empty, product code and tracker hidden;
-    // fabro_runs_list is the only fabro tool it needs.
+    // fabro_run_search is the only fabro tool it needs.
     select [
         label="Select",
         prompt="@prompts/select.md",
@@ -45,7 +45,7 @@ digraph Revisor {
         x.preamble_stages_ignore="select,analyze,file",
         x.fs_hide="lib/**,apps/**,docs/**,.seeds/**",
         x.fs_write="",
-        x.fabro_tools="fabro_runs_list",
+        x.fabro_tools="fabro_run_search",
         // Read window (e47c pattern): selection re-derives from the run
         // list every pass — stale target keys from the previous cycle
         // must not render. journal is the ONLY input: the prior selector's
@@ -80,7 +80,7 @@ digraph Revisor {
         x.preamble_stages_ignore="select,analyze,file",
         x.fs_hide="lib/**,apps/**,docs/**,.seeds/**",
         x.fs_write=".fabro/reviews/**",
-        x.fabro_tools="fabro_ask",
+        x.fabro_tools="fabro_run_get,fabro_run_events",
         // Read window: the CURRENT target trio (+wall) and journal;
         // revision_findings stays out — a previous cycle's findings are
         // stale, analyze re-emits fresh ones. journal stays: the prior

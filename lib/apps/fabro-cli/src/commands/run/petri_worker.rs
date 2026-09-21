@@ -165,11 +165,22 @@ pub(super) async fn execute(worker: PetriWorker<'_>) -> Result<()> {
     let vault = runner::load_worker_vault(worker.storage_dir).await?;
     let secrets = VaultSecrets::from_vault(&*vault.read().await);
     let run_tools = run_tool_services(&worker);
+    // The run's stage envelopes ride its `graph_source`: the lowering
+    // drops `x.*`, so the checkpoint guard (fabro-aa5f) and the per-node
+    // run-tools allowlist (fabro-96c6) both read them off the original
+    // text, parsed once and shared.
+    let envelopes = worker
+        .run_state
+        .spec
+        .graph_source
+        .clone()
+        .map(|source| Arc::new(StageEnvelopes::parse(&source)));
     let runtime = runtime_spec(
         &vault,
         &worker.run_state,
         worker.fabro_home.clone(),
         run_tools,
+        envelopes.clone(),
     )
     .await?;
     let execution = match worker.mode {
@@ -200,11 +211,8 @@ pub(super) async fn execute(worker: PetriWorker<'_>) -> Result<()> {
 
     let mut hooks = HooksSpec::for_run(Arc::clone(&records), &worker.run_state.spec.settings.run)
         .with_test_gates(test_checkpoint_gates());
-    // The run's stage envelopes ride its `graph_source`: the lowering
-    // drops `x.*`, so the checkpoint guard reads them off the original
-    // text (fabro-aa5f, ADR-0009 rev).
-    if let Some(source) = worker.run_state.spec.graph_source.clone() {
-        hooks = hooks.with_envelopes(Arc::new(StageEnvelopes::parse(&source)));
+    if let Some(envelopes) = &envelopes {
+        hooks = hooks.with_envelopes(Arc::clone(envelopes));
     }
     let request = RunRequest {
         run_id: run_id.to_string(),
@@ -604,6 +612,7 @@ async fn runtime_spec(
     run_state: &RunProjection,
     fabro_home: Option<PathBuf>,
     run_tools: Option<FabroRunToolServices>,
+    envelopes: Option<Arc<StageEnvelopes>>,
 ) -> Result<RuntimeSpec> {
     let catalog =
         command_context::load_cli_catalog().context("failed to build worker LLM catalog")?;
@@ -627,5 +636,6 @@ async fn runtime_spec(
         dry_run: run_state.spec.settings.run.execution.mode == RunMode::DryRun,
         fabro_home,
         run_tools,
+        envelopes,
     })
 }

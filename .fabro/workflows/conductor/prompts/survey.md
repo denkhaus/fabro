@@ -40,7 +40,7 @@ When your decision is "Work":
 
 ## Revisor backfill (best-effort, fabro-1dc9)
 
-Before deciding, one cheap check with `fabro_runs_list`: are there
+Before deciding, one cheap check with `fabro_run_search`: are there
 COMPLETED develop runs with no revisor pass? Signal: a finished develop run
 whose run id has no revisor child run / revisor journal or review artifact
 pointing at it (e.g. develop runs newer than the newest revisor-revised

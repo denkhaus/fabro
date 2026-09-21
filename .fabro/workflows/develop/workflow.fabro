@@ -3,7 +3,7 @@ digraph Develop {
         goal="Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
         // fabro-06e0: credential-less in-flight PR guard — the planner
         // reads run-linked PR state through the inspects-scoped
-        // fabro_runs_list tool (server-side GitHub client), never gh.
+        // fabro_run_search tool (server-side GitHub client), never gh.
         x.inspects="develop",
         rankdir=LR,
         // fabro-0e11: legal blocking fabro_run_wait (60m) and long gate shells
@@ -178,7 +178,7 @@ digraph Develop {
         x.context_allow_keys="current_seed_id,current_seed_title,current_seed_brief,review_verdict,journal",
         // fabro-06e0: in-flight PR check surface — read-only enumeration
         // of develop runs incl. linked PR live state (open/closed/merged).
-        x.fabro_tools="fabro_runs_list"
+        x.fabro_tools="fabro_run_search"
     ]
 
     // Implementer: builds exactly what the claimed seed specifies.

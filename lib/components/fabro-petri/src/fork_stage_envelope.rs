@@ -39,6 +39,11 @@ pub struct NodeEnvelope {
     pub fs_write:               Option<Vec<String>>,
     /// `x.preamble_inline_max_kb` on the node, when set.
     pub preamble_inline_max_kb: Option<u64>,
+    /// `x.fabro_tools`: when present, the run tools the node's sessions
+    /// may register (an empty value: none). Nodes without the attribute
+    /// register none either — the per-node allowlist the legacy engine
+    /// enforced, restored at the host-tools seam (fabro-96c6).
+    pub fabro_tools:            Option<Vec<String>>,
 }
 
 /// The graph block's envelope numbers, as written.
@@ -93,10 +98,12 @@ impl StageEnvelopes {
             let Some(close) = after.find(']') else { break };
             let block = &after[..close];
             rest = &after[close + 1..];
-            // The subject is the tail of the head: `name`, `graph`, or an
-            // edge's `a -> b`. Edges carry their own `x.*` attributes
-            // (exit kinds) and never an envelope.
-            let subject = head
+            // The subject is the tail of the head after the last `{` (a
+            // graph header can share the line with the first statement):
+            // `name`, `graph`, or an edge's `a -> b`. Edges carry their
+            // own `x.*` attributes (exit kinds) and never an envelope.
+            let after_brace = head.rsplit_once('{').map_or(head, |(_, after)| after);
+            let subject = after_brace
                 .lines()
                 .last()
                 .unwrap_or_default()
@@ -118,10 +125,13 @@ impl StageEnvelopes {
                     fs_write:               attribute(block, "x.fs_write")
                         .map(|_| list(block, "x.fs_write")),
                     preamble_inline_max_kb: number(block, "x.preamble_inline_max_kb"),
+                    fabro_tools:            attribute(block, "x.fabro_tools")
+                        .map(|_| list(block, "x.fabro_tools")),
                 };
                 let declares = !envelope.fs_hide.is_empty()
                     || envelope.fs_write.is_some()
-                    || envelope.preamble_inline_max_kb.is_some();
+                    || envelope.preamble_inline_max_kb.is_some()
+                    || envelope.fabro_tools.is_some();
                 if declares {
                     nodes.insert(name.to_string(), envelope);
                 }
@@ -377,6 +387,20 @@ mod tests {
             findings
                 .iter()
                 .any(|lint| lint.code == "fork.fs_scope_consistency")
+        );
+    }
+
+    #[test]
+    fn single_line_digraph_statements_parse() {
+        let envelopes = StageEnvelopes::parse(
+            "digraph W { graph [x.preamble_budget_kb=24] a [x.fabro_tools=\"fabro_run_get\"] }",
+        );
+        assert_eq!(envelopes.graph.preamble_budget_kb, Some(24));
+        assert_eq!(
+            envelopes
+                .envelope("a")
+                .and_then(|envelope| envelope.fabro_tools.clone()),
+            Some(vec!["fabro_run_get".to_string()])
         );
     }
 

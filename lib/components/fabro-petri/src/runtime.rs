@@ -25,6 +25,7 @@ use petri_frontend_fabro::Fabro;
 use petri_runtime::Runtime;
 use tracing::debug;
 
+use crate::fork_stage_envelope::StageEnvelopes;
 use crate::host_tools;
 
 /// What every Petri runtime Fabro builds is configured with.
@@ -56,6 +57,11 @@ pub struct RuntimeSpec {
     /// token's `agent:run_tools` scope); `None` gives the sessions Pebble's
     /// tools alone. See [`crate::host_tools`].
     pub run_tools:        Option<FabroRunToolServices>,
+    /// The run's stage envelopes, parsed off its `graph_source`: what the
+    /// host-tools capability enforces the per-node `x.fabro_tools`
+    /// allowlist against (fabro-96c6). `None` registers the full set on
+    /// every session.
+    pub envelopes:        Option<Arc<StageEnvelopes>>,
 }
 
 impl RuntimeSpec {
@@ -81,7 +87,10 @@ impl RuntimeSpec {
             runtime = runtime.capability(home);
         }
         if let Some(services) = &self.run_tools {
-            runtime = runtime.capability(host_tools::capability(services.clone()));
+            runtime = runtime.capability(host_tools::capability(
+                services.clone(),
+                self.envelopes.clone(),
+            ));
         }
         if for_execution && self.dry_run {
             petri_attractor_steps::register_stubs(runtime)

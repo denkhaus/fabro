@@ -1,8 +1,12 @@
 #!/usr/bin/env nu
 # Push gate for the local iterate/line-watch cycle (user directive
-# 2026-09-17: NEVER push to denkhaus while a pass runs).
+# 2026-09-17: NEVER push to the LINE branch while a pass runs; user
+# correction 2026-09-21: the gate is BRANCH-SCOPED — only pushes to the
+# line branch denkhaus can dirty a running pass's workspace or its run
+# PRs. A push to another branch (denkhaus-petri, the Petri integration
+# branch no run bases on until the W5 cutover) is always OPEN).
 #
-# Two conditions, both must hold for OPEN:
+# Two conditions, both must hold for OPEN on the line branch:
 #   (a) NO active run on the production server (status.kind not in the
 #       terminal set: succeeded/failed/canceled) — conductor, develop,
 #       revisor, architect, anything. NOTE: fabro ps --json carries
@@ -11,13 +15,18 @@
 #   (b) NO open run-PR on the line repo.
 #
 # Exit 0 = GATE OPEN (push allowed). Exit 1 = REFUSED (prints why).
-# Usage: nu .fabro/scripts/push-gate.nu [--server https://mirtuell.net]
-#        [--repo denkhaus/fabro]
+# Usage: nu .fabro/scripts/push-gate.nu [--branch denkhaus]
+#        [--server https://mirtuell.net] [--repo denkhaus/fabro]
 
 def main [
+    --branch: string = 'denkhaus'
     --server: string = 'https://mirtuell.net'
     --repo: string = 'denkhaus/fabro'
 ] {
+    if $branch != 'denkhaus' {
+        print $"GATE OPEN: ($branch) is not the line branch — the run gate is denkhaus-scoped (2026-09-21)"
+        exit 0
+    }
     let terminal = ['succeeded' 'failed' 'canceled' 'cancelled']
     let ps = (do { ^fabro ps --server $server --json } | complete)
     if $ps.exit_code != 0 {

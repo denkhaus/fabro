@@ -83,6 +83,27 @@ fn request(workflow: &str) -> CheckRequest {
 
 /// An invalid envelope glob refuses the workflow at check, under the fork
 /// lint's stable code — Petri itself accepts `x.*` blindly.
+/// The per-node run-tools allowlist parses off the graph source and
+/// reaches the host-tools filter (fabro-96c6).
+#[test]
+fn fabro_tools_allowlist_parses_per_node() {
+    let workflow = workflow(
+        "  work [shape=parallelogram, script=\"echo hi\", \
+         x.fabro_tools=\"fabro_run_search,fabro_run_wait\"]\n  bare \
+         [shape=parallelogram, script=\"echo no\"]\n",
+    );
+    let envelopes = StageEnvelopes::parse(&workflow);
+    let work = envelopes.envelope("work").expect("work declares tools");
+    assert_eq!(
+        work.fabro_tools,
+        Some(vec![
+            "fabro_run_search".to_string(),
+            "fabro_run_wait".to_string()
+        ])
+    );
+    assert!(envelopes.envelope("bare").is_none());
+}
+
 #[test]
 fn invalid_fs_globs_are_refused_at_check() {
     let workflow = workflow(

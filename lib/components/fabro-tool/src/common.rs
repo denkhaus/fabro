@@ -74,6 +74,19 @@ pub trait FabroToolBackend: Send + Sync {
     async fn get_run_state(&self, run_id: &RunId) -> anyhow::Result<fabro_types::RunProjection>;
     /// The run's stream past `after` (the last `stream_seq` seen; `0` from
     /// the start), at most `limit` items when a limit is given.
+    /// Block until `run_id` is terminal or its pull request merged
+    /// (`fabro_run_wait`, fabro-571e/fabro-96c6): one server-side long
+    /// poll, up to the ceiling the API allows. The default answers
+    /// unavailable, so partial backends keep compiling.
+    async fn wait_run(
+        &self,
+        _run_id: &RunId,
+        _until: crate::RunWaitUntil,
+        _timeout_ms: u64,
+    ) -> anyhow::Result<types::RunWaitResult> {
+        Err(ToolError::message(format!("{FABRO_RUN_WAIT_TOOL_NAME} is not available")).into())
+    }
+
     async fn list_run_stream(
         &self,
         run_id: &RunId,
@@ -168,6 +181,7 @@ pub struct ToolDefinition {
 pub const FABRO_WORKFLOW_VERSION_CREATE_TOOL_NAME: &str = "fabro_workflow_version_create";
 pub const FABRO_RUN_CREATE_TOOL_NAME: &str = "fabro_run_create";
 pub const FABRO_RUN_SEARCH_TOOL_NAME: &str = "fabro_run_search";
+pub const FABRO_RUN_WAIT_TOOL_NAME: &str = "fabro_run_wait";
 pub const FABRO_RUN_GET_TOOL_NAME: &str = "fabro_run_get";
 pub const FABRO_RUN_INTERACT_TOOL_NAME: &str = "fabro_run_interact";
 pub const FABRO_RUN_GATHER_TOOL_NAME: &str = "fabro_run_gather";
@@ -207,6 +221,10 @@ static TOOL_DEFINITIONS: LazyLock<Vec<ToolDefinition>> = LazyLock::new(|| {
         tool_definition::<crate::FabroRunEventsParams>(
             FABRO_RUN_EVENTS_TOOL_NAME,
             "List, inspect, or search stored events for a Fabro workflow run.",
+        ),
+        tool_definition::<crate::FabroRunWaitParams>(
+            FABRO_RUN_WAIT_TOOL_NAME,
+            "Block until one run reaches a terminal state or its pull request merges, on one server-side long-poll (up to 3600000 ms). On reached=timeout, call again with the same run id to continue waiting; never sleep-poll.",
         ),
     ]
 });
@@ -332,6 +350,7 @@ mod tests {
             FABRO_RUN_GATHER_TOOL_NAME,
             FABRO_RUN_PAIR_TOOL_NAME,
             FABRO_RUN_EVENTS_TOOL_NAME,
+            FABRO_RUN_WAIT_TOOL_NAME,
         ]);
     }
 

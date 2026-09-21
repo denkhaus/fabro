@@ -36,18 +36,30 @@
 //! logged as an error and the session gets no run tools rather than the
 //! wrong ones.
 
-use fabro_workflow::run_tools::register_fabro_run_tools;
+use std::sync::Arc;
+
+use fabro_workflow::run_tools::{register_fabro_run_tools, register_named_fabro_run_tools};
 use fabro_workflow::services::FabroRunToolServices;
 use pebble_coding_agent::tools::RegisteredTool;
 use petri_attractor_steps::host_tools::{HostToolContext, HostTools};
 use tracing::{debug, error};
 
+use crate::fork_stage_envelope::StageEnvelopes;
+
 /// The `HostTools` capability that gives every native agent session of the
 /// run Fabro's run tools, bound to `services`. Register it on the runtime
 /// the run executes with; `RuntimeSpec::run_tools` does.
+///
+/// With `envelopes` (the run's stage envelopes, parsed off its
+/// `graph_source`) the per-node `x.fabro_tools` allowlist is enforced
+/// (fabro-96c6). `None` registers the full set on every session, as
+/// before.
 #[must_use]
-pub fn capability(services: FabroRunToolServices) -> HostTools {
-    HostTools::new().with(move |context| tools_for_stage(&services, context))
+pub fn capability(
+    services: FabroRunToolServices,
+    envelopes: Option<Arc<StageEnvelopes>>,
+) -> HostTools {
+    HostTools::new().with(move |context| tools_for_stage(&services, &envelopes, context))
 }
 
 /// The run tools for the session `context` names: what
@@ -56,6 +68,7 @@ pub fn capability(services: FabroRunToolServices) -> HostTools {
 #[must_use]
 pub fn tools_for_stage(
     services: &FabroRunToolServices,
+    envelopes: &Option<Arc<StageEnvelopes>>,
     context: &HostToolContext,
 ) -> Vec<RegisteredTool> {
     let run_id = services.current_run_id.to_string();
@@ -68,6 +81,11 @@ pub fn tools_for_stage(
         );
         return Vec::new();
     }
+    let names = declared_tool_names(envelopes.as_ref(), &context.node);
+    let declared = match &names {
+        Some(names) => format!("{} declared tool(s)", names.len()),
+        None => "the full run-tool set".to_string(),
+    };
     debug!(
         run = %context.run,
         invocation = %context.invocation,
@@ -75,9 +93,81 @@ pub fn tools_for_stage(
         firing = %context.firing,
         node = %context.node,
         attempt = ?context.attempt,
+        tools = %declared,
         "registering Fabro's run tools on a Petri agent session"
     );
-    register_fabro_run_tools(services)
+    match names.as_deref() {
+        Some([]) => Vec::new(),
+        Some(names) => register_named_fabro_run_tools(
+            services,
+            &names.iter().map(String::as_str).collect::<Vec<_>>(),
+        ),
+        None => register_fabro_run_tools(services),
+    }
+}
+
+/// The run tools a node's sessions may register, from its envelope
+/// (fabro-96c6): `Some(names)` enforces the per-node `x.fabro_tools`
+/// allowlist — a node that declares no tools registers none, the legacy
+/// engine's posture — and `None` (no envelopes for the run) leaves the
+/// full set. Unknown names are dropped by the named registry, so a typo
+/// costs the tool, never the posture.
+fn declared_tool_names(envelopes: Option<&Arc<StageEnvelopes>>, node: &str) -> Option<Vec<String>> {
+    envelopes.map(|envelopes| {
+        envelopes
+            .envelope(node)
+            .and_then(|envelope| envelope.fabro_tools.clone())
+            .unwrap_or_default()
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn envelopes(source: &str) -> Arc<StageEnvelopes> {
+        Arc::new(StageEnvelopes::parse(source))
+    }
+
+    #[test]
+    fn a_node_without_an_envelope_registers_no_run_tools() {
+        let envelopes =
+            envelopes("digraph W { a [shape=box] b [x.fabro_tools=\"fabro_run_get\"] }");
+        assert_eq!(
+            declared_tool_names(Some(&envelopes), "a"),
+            Some(Vec::new()),
+            "the legacy allowlist posture: undeclared nodes get nothing"
+        );
+    }
+
+    #[test]
+    fn a_node_names_the_tools_its_sessions_register() {
+        let envelopes =
+            envelopes("digraph W { a [x.fabro_tools=\"fabro_run_get,fabro_run_wait\"] }");
+        assert_eq!(
+            declared_tool_names(Some(&envelopes), "a"),
+            Some(vec![
+                "fabro_run_get".to_string(),
+                "fabro_run_wait".to_string()
+            ])
+        );
+    }
+
+    #[test]
+    fn an_empty_list_is_read_only_and_clones_carry_the_base_list() {
+        let envelopes = envelopes("digraph W { a [x.fabro_tools=\"\"] }");
+        assert_eq!(declared_tool_names(Some(&envelopes), "a"), Some(Vec::new()));
+        assert_eq!(
+            declared_tool_names(Some(&envelopes), "a#2"),
+            Some(Vec::new()),
+            "expansion clones inherit the base node's allowlist"
+        );
+    }
+
+    #[test]
+    fn without_envelopes_the_full_set_registers() {
+        assert_eq!(declared_tool_names(None, "a"), None);
+    }
 }
 
 /// What a test reads back from a Petri run's record about the run tools,

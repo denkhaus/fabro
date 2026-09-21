@@ -99,6 +99,7 @@ pub(crate) fn runtime_spec(
         // The in-process test path has no worker client to bind the run
         // tools to; like the legacy in-process path, it runs without them.
         run_tools: None,
+        envelopes: None,
     }
 }
 

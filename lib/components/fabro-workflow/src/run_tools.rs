@@ -129,6 +129,13 @@ pub(crate) async fn execute_fabro_run_tool(
             let summary = fabro_tool::gather_runs_text(&result);
             render_fabro_tool_result(&summary, &result)
         }
+        fabro_tool::FABRO_RUN_WAIT_TOOL_NAME => {
+            let params = parse_fabro_tool_args::<fabro_tool::FabroRunWaitParams>(name, args)?;
+            let result =
+                fabro_tool::run_wait(Arc::clone(&services.backend), params.try_into()?).await?;
+            let summary = fabro_tool::run_wait_text(&result);
+            render_fabro_tool_result(&summary, &result)
+        }
         fabro_tool::FABRO_RUN_EVENTS_TOOL_NAME => {
             let params = parse_fabro_tool_args::<fabro_tool::FabroRunEventsParams>(name, args)?;
             let result = fabro_tool::run_events(
