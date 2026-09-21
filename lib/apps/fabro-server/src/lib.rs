@@ -47,6 +47,7 @@ mod run_tool_create;
 mod sandbox_access;
 pub mod security_headers;
 pub mod serve;
+mod environment_compat;
 pub mod server;
 mod server_secrets;
 mod spawn_env;

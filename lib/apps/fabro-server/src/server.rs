@@ -167,6 +167,7 @@ use crate::{
 pub(crate) mod automation_breaker;
 mod automation_scheduler;
 mod fork_line_recovery;
+pub(crate) mod approval_expiry;
 pub(crate) mod fork_staleness_supervisor;
 #[cfg(test)]
 mod fork_staleness_supervisor_tests;
