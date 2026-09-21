@@ -1752,3 +1752,56 @@ async fn a_failed_checkpoint_fails_the_run_and_a_restart_leaves_it_failed() {
     );
     server.shutdown();
 }
+
+/// A delete issued the moment the run reads as ended is accepted while its
+/// worker is still tearing down: the server settles the run at Petri's own
+/// finish, the record the view ends the run on, not at the worker's exit,
+/// so the delete precheck does not refuse the run as active. The worker's
+/// exit after the delete brings nothing back.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_delete_right_after_the_run_reads_ended_is_accepted() {
+    if host_plugin().is_none() {
+        return;
+    }
+    let context = test_context!();
+    let server = RunningServer::start().await;
+    let workspace = write_petri_workspace(&context, "true");
+    let run_id = run_detached(&context, &server, &workspace);
+    let status = wait_for_status(&server, &run_id, &["succeeded", "failed"]).await;
+    assert_eq!(status, "succeeded");
+
+    let response = fabro_test::test_http_client()
+        .delete(format!("{}/api/v1/runs/{run_id}", server.api_base_url))
+        .bearer_auth(TEST_DEV_TOKEN)
+        .send()
+        .await
+        .expect("the delete sends");
+    let status = response.status();
+    let detail = response.text().await.unwrap_or_default();
+    assert_eq!(
+        status,
+        fabro_http::StatusCode::NO_CONTENT,
+        "the delete was refused: {detail}"
+    );
+
+    let deadline = Instant::now() + RUN_TIMEOUT;
+    while worker_pid(&run_id).is_some() {
+        assert!(
+            Instant::now() < deadline,
+            "the worker of run {run_id} outlived the delete"
+        );
+        tokio::time::sleep(POLL).await;
+    }
+    let response = fabro_test::test_http_client()
+        .get(format!("{}/api/v1/runs/{run_id}", server.api_base_url))
+        .bearer_auth(TEST_DEV_TOKEN)
+        .send()
+        .await
+        .expect("the request sends");
+    assert_eq!(
+        response.status(),
+        fabro_http::StatusCode::NOT_FOUND,
+        "the worker's exit brought the run back"
+    );
+    server.shutdown();
+}

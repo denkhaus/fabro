@@ -138,23 +138,16 @@ impl RunView {
             .root
             .and_then(|root| self.state.invocations.get(&root));
         let failure_message = root.and_then(|root| root.failure.clone());
-        let (run_status, outcome, failure) = match status {
-            "success" => (
-                RunStatus::Succeeded {
-                    reason: SuccessReason::Completed,
-                },
-                StageOutcome::Succeeded,
-                None,
-            ),
-            "cancelled" => (
-                RunStatus::Failed {
-                    reason: FailureReason::Cancelled,
-                },
+        let run_status = finished_status(status);
+        let (outcome, failure) = match run_status {
+            RunStatus::Failed {
+                reason: reason @ FailureReason::Cancelled,
+            } => (
                 StageOutcome::Failed {
                     retry_requested: false,
                 },
                 Some(RunFailure {
-                    reason: FailureReason::Cancelled,
+                    reason,
                     detail: FailureDetail::new(
                         failure_message
                             .clone()
@@ -163,15 +156,12 @@ impl RunView {
                     ),
                 }),
             ),
-            _ => (
-                RunStatus::Failed {
-                    reason: FailureReason::WorkflowError,
-                },
+            RunStatus::Failed { reason } => (
                 StageOutcome::Failed {
                     retry_requested: false,
                 },
                 Some(RunFailure {
-                    reason: FailureReason::WorkflowError,
+                    reason,
                     detail: FailureDetail::new(
                         failure_message
                             .clone()
@@ -180,6 +170,7 @@ impl RunView {
                     ),
                 }),
             ),
+            _ => (StageOutcome::Succeeded, None),
         };
         apply_status(projection, run_status, at);
         projection.pending_control = None;
@@ -214,6 +205,22 @@ impl RunView {
                 .or_else(|| last_checkpoint.map(|checkpoint| checkpoint.diff.clone()))
                 .unwrap_or_default(),
         });
+    }
+}
+
+/// The status Fabro gives a run at Petri's finish, by the status the finish
+/// records (`success`, `cancelled`, or a failure).
+pub(super) fn finished_status(status: &str) -> RunStatus {
+    match status {
+        "success" => RunStatus::Succeeded {
+            reason: SuccessReason::Completed,
+        },
+        "cancelled" => RunStatus::Failed {
+            reason: FailureReason::Cancelled,
+        },
+        _ => RunStatus::Failed {
+            reason: FailureReason::WorkflowError,
+        },
     }
 }
 
