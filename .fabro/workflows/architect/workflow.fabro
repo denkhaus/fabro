@@ -5,7 +5,7 @@ digraph Architect {
         max_node_visits=5,
         // Same posture as revisor/develop: bounded preambles. Linear
         // graph — no cycle counter needed (each node runs once).
-        preamble_budget_kb=24
+        x.preamble_budget_kb=24
     ]
 
     start [shape=Mdiamond, label="Start"]
@@ -26,17 +26,17 @@ digraph Architect {
         retry_policy="standard",
         reasoning_effort="low",
         project_memory=false,
-        preamble_stages_ignore="survey,analyze,file",
-        fs_hide="lib/**,apps/**,docs/**,.seeds/**",
-        fs_write="",
-        fabro_tools="",
+        x.preamble_stages_ignore="survey,analyze,file",
+        x.fs_hide="lib/**,apps/**,docs/**,.seeds/**",
+        x.fs_write="",
+        x.fabro_tools="",
         // Read window: journal only — every pass re-derives the gate and
         // the base from live data; stale keys from a previous cycle must
         // not render.
-        preamble_allow_keys="journal",
+        x.preamble_allow_keys="journal",
         // context_allow_keys also gates this node's OWN context writes:
         // without these keys here the exploration base would be dropped.
-        context_allow_keys="arch_loop_digest,arch_score_json,arch_churn_hotspots,arch_seed_digest,arch_facts_files,arch_review_date,journal"
+        x.context_allow_keys="arch_loop_digest,arch_score_json,arch_churn_hotspots,arch_seed_digest,arch_facts_files,arch_review_date,journal"
     ]
 
     // Rotate (fabro-491b): deterministic pre-analyze rotation. When a
@@ -66,20 +66,20 @@ digraph Architect {
         // fabro-f84f: opt into vendored-skill discovery — the
         // session loads `.fabro/skills` (rust-style-guide and
         // friends) through the UseSkill tool.
-        skills="discover",
+        x.skills="discover",
         output_schema="routing",
         output_retries=2,
         retry_policy="standard",
         reasoning_effort="high",
         project_memory=false,
-        preamble_stages_ignore="survey,analyze,file",
-        fs_hide=".seeds/**",
-        fs_write=".fabro/architecture/reviews/**",
-        fabro_tools="",
+        x.preamble_stages_ignore="survey,analyze,file",
+        x.fs_hide=".seeds/**",
+        x.fs_write=".fabro/architecture/reviews/**",
+        x.fabro_tools="",
         // Read window: the CURRENT survey base + journal. Stale
         // findings from a previous pass stay out — analyze re-emits.
-        preamble_allow_keys="arch_loop_digest,arch_score_json,arch_churn_hotspots,arch_seed_digest,arch_facts_files,arch_review_date,journal",
-        context_allow_keys="architecture_findings,journal"
+        x.preamble_allow_keys="arch_loop_digest,arch_score_json,arch_churn_hotspots,arch_seed_digest,arch_facts_files,arch_review_date,journal",
+        x.context_allow_keys="architecture_findings,journal"
     ]
 
     // File: deterministic bookkeeping per the revisor file-node pattern.
@@ -94,16 +94,16 @@ digraph Architect {
         retry_policy="standard",
         reasoning_effort="low",
         project_memory=false,
-        preamble_stages_ignore="survey,analyze,file",
+        x.preamble_stages_ignore="survey,analyze,file",
         // .seeds hidden from FILE tools: sd create and the git commit
         // run via shell (the documented escape hatch).
-        fs_hide="lib/**,apps/**,docs/**,.seeds/**",
-        fs_write=".fabro/architecture/**",
-        fabro_tools="",
+        x.fs_hide="lib/**,apps/**,docs/**,.seeds/**",
+        x.fs_write=".fabro/architecture/**",
+        x.fabro_tools="",
         // Read window: date + score for the report header, findings for
         // filing. No journal history — bookkeeping needs none.
-        preamble_allow_keys="arch_review_date,arch_score_json,architecture_findings",
-        context_allow_keys="filed_seed_ids,journal"
+        x.preamble_allow_keys="arch_review_date,arch_score_json,architecture_findings",
+        x.context_allow_keys="filed_seed_ids,journal"
     ]
 
     start -> survey
@@ -113,7 +113,7 @@ digraph Architect {
     survey -> exit [label="Nothing to do", condition="preferred_label=\"Nothing to do\""]
     // Gate/base tooling failure is transient (script or git hiccup):
     // soft exit, the daily automation retries next invocation.
-    survey -> exit [kind=soft, label="Survey failed (next pass retries)", condition="outcome=failed"]
+    survey -> exit [x.kind=soft, label="Survey failed (next pass retries)", condition="outcome=failed"]
     survey -> rotate [label="Architecture due"]
     // Unconditional success edge: the rotate script is fail-open and
     // always proceeds to analyze.
@@ -122,12 +122,12 @@ digraph Architect {
     analyze -> file [label="Answer ready", condition="outcome=succeeded"]
     // Analysis hiccup (skill read failure, review write impossible):
     // soft exit — no marker written, the next invocation retries.
-    analyze -> exit [kind=soft, label="Analyze failed (next pass retries)"]
+    analyze -> exit [x.kind=soft, label="Analyze failed (next pass retries)"]
 
-    file -> exit [kind=soft, label="Bookkeeping failed (nothing merged)", condition="outcome=failed"]
+    file -> exit [x.kind=soft, label="Bookkeeping failed (nothing merged)", condition="outcome=failed"]
     file -> exit [label="Pass complete", condition="outcome=succeeded"]
     // Unconditional safety net (validator rule all_conditional_edges):
     // an outcome shape none of the edges above matched routes as a soft
     // exit — nothing merges, the next invocation retries.
-    file -> exit [kind=soft, label="Unrouted outcome (soft retry)"]
+    file -> exit [x.kind=soft, label="Unrouted outcome (soft retry)"]
 }

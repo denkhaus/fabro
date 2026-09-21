@@ -6,8 +6,8 @@ digraph MergeUpstream {
         // must not trip the default 1800s stall watchdog.
         stall_timeout="63m",
         max_node_visits=6,
-        preamble_budget_kb=12,
-        cycle_counter_reset_key="merge_target_sha"
+        x.preamble_budget_kb=12,
+        x.cycle_counter_reset_key="merge_target_sha"
     ]
 
     start [shape=Mdiamond, label="Start"]
@@ -29,12 +29,12 @@ digraph MergeUpstream {
         retry_policy="standard",
         reasoning_effort="high",
         project_memory=false,
-        preamble_stages_ignore="merge",
+        x.preamble_stages_ignore="merge",
         // No fs_write restriction: the merger writes the WHOLE tree
         // (conflict resolution, gate fixes, report). An empty allowlist
         // would block every tool write and force shell-only workarounds
         // (2026-09-05, first autonomous merge run 01M1SR27KEJGNQ).
-        fabro_tools=""
+        x.fabro_tools=""
     ]
 
 
@@ -52,9 +52,9 @@ digraph MergeUpstream {
         retry_policy="standard",
         reasoning_effort="high",
         project_memory=false,
-        preamble_stages_ignore="merge,reviewer",
-        fs_write="",
-        fabro_tools=""
+        x.preamble_stages_ignore="merge,reviewer",
+        x.fs_write="",
+        x.fabro_tools=""
     ]
 
     start -> merge
@@ -64,9 +64,9 @@ digraph MergeUpstream {
     // review_feedback; the reviewer's verdict travels via context like
     // develop's cycle.
     reviewer -> merge [label="Changes requested", condition="preferred_label=\"Changes requested\""]
-    reviewer -> exit [kind="soft", label="Review blocked — manual /merge-upstream takes over", condition="preferred_label=\"Verification blocked\""]
+    reviewer -> exit [x.kind="soft", label="Review blocked — manual /merge-upstream takes over", condition="preferred_label=\"Verification blocked\""]
     // Unconditional safety net: an unrouted review outcome fails softly —
     // nothing merges on an ambiguous verdict.
-    reviewer -> exit [kind="soft", label="Unrouted review outcome"]
-    merge -> exit [kind="soft", label="Merge failed (manual /merge-upstream takes over)"]
+    reviewer -> exit [x.kind="soft", label="Unrouted review outcome"]
+    merge -> exit [x.kind="soft", label="Merge failed (manual /merge-upstream takes over)"]
 }
