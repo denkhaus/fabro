@@ -1,315 +1,48 @@
-# Feature touchpoints to check on every upstream merge
+# Feature touchpoints — PETRI ERA (branch denkhaus-petri)
 
-Our fork features that must not regress. For each: name the seed, the
-code locations, and the fast verification when the touched area overlaps.
+The fork line lives on `denkhaus-petri` (base: upstream/main 40419cbd2,
+created 2026-09-20; epic fabro-9930 owns the port waves; full analysis:
+`docs/lab/petri-integration-analysis.md`). `denkhaus` is the conserved
+pre-petri branch; its old-engine touchpoint rows live in that branch's
+history and in the analysis doc — do not resurrect them here.
 
-Every durable fork feature gets TWO pins, not one: a row in this list
-(LLM-walked, can go stale) AND a presence test in a fork-only test file
-(gate-enforced, a merge can never drop it — files upstream does not
-have, canonically `lib/components/fabro-workflow/src/handler/llm/fork_seam_tests.rs`).
-A row without a presence test is a gap; a presence test without a row
-is invisible to the merge walk. The 00ffd60f6 incident (duplicate-child
-guard + its inline tests silently removed in one merge resolution) is
-the reason both layers exist.
+Merges walk `upstream/main -> denkhaus-petri`. Every durable fork feature
+keeps TWO pins: a row here (LLM-walked) AND a fork-only test a merge can
+never drop. A row without a test is a gap; a test without a row is
+invisible to the merge walk.
 
-| Feature (seed) | Code locations | Fast verification |
+## Landed pins (verify after every upstream merge)
+
+| Feature (seed) | Petri anchor | Pin | Fast verification |
+|---|---|---|---|
+| Automations+env CLI family (fabro-6c16, W1-1) | lib/apps/fabro-cli/src/commands/{automations,env}/; If-Match replace in automations/mod.rs | 12 fork-only it-tests `fabro-cli/tests/it/cmd/{automations_*,env_*}.rs` | `env -u FABRO_SERVER cargo nextest run -p fabro-cli --test it -E 'test(automations) \| test(env_)'` |
+| Breaker + overlap model (fabro-a52f, W1-1/-2) | fabro-automation/src/breaker.rs; migrations 2026090201/2026090601 on the petri chain | inline breaker tests in fabro-automation + server suite | `cargo nextest run -p fabro-automation -p fabro-db` |
+| Provider gate + breaker exemption (fabro-a52f, W1-2) | server/fork_line_recovery.rs (GateState, cron_fire_allowed, is_quota_park); automation_breaker.rs (terminal_failure reads lifecycle.conclusion_failure) | `mod breaker_exemption_pin` INSIDE server/fork_line_recovery.rs (petri-native seeding: seed_run_row + park_run_with_signature) | `env -u FABRO_SERVER cargo nextest run -p fabro-server -E 'test(quota_parks)'` |
+| Publish-blocked taxonomy (fabro-6655, W1-3) | fabro-petri/src/projection/fork_taxonomy.rs; seams in projection/coordinator.rs (success arm) + projection/platform.rs (PullRequestFailed re-classify); SuccessReason::{PublishBlocked,Boundary} in fabro-types | fabro-petri/tests/fork_taxonomy.rs | `cargo nextest run -p fabro-petri --test fork_taxonomy` |
+| Taxonomy vocabulary (W1-1 down-payment) | fabro-types status.rs: SuccessReason::{Boundary,PublishBlocked}, FailureReason::{Deadlock,SoftStop,ApprovalTimeout}, BlockedReason::QuotaRateLimit; run_failure::is_quota_rate_limit_failure; RunLifecycle.conclusion_failure (build_summary maps conclusion.failure) | covered by fork_taxonomy pin + fabro-types suite | `cargo nextest run -p fabro-types` |
+
+## Pending ports (wave seeds own the detail)
+
+| Wave | Seed | Feature |
 |---|---|---|
-| Publish-blocked taxonomy (fabro-67e5, closed) | fabro-types status.rs SuccessReason; workflow pipeline/finalize.rs build_terminal_event; server.rs event application + slack; cli run/wait.rs; web header.tsx | nextest -p fabro-workflow pipeline::finalize + fabro-server publish_blocked |
-| Boundary exit kind (fabro-08b4, closed) | Same as above + apply_boundary_upgrade; context.mdx docs | nextest boundary tests in finalize |
-| PR create retry (fabro-67e5, closed) | fabro-github CreatePullRequestError; workflow pull_request.rs create_pull_request_with_attempts | nextest -p fabro-github + pipeline::pull_request. Accepted inline (fabro-ec00 ARM 4): small retry loop, gate-covered inline tests in both crates; the publish path of the same file is fork-pinned via fork_publish_conflict_tests.rs |
-| PR model plumbing (fabro-890b, OPEN) | operations/start.rs resolve_pr_model; persisted run spec | WATCH: upstream moved pr_origin_url nearby — this seed should be fixed ON the merged code. Accepted watch-only (fabro-ec00 ARM 4): no durable surface to pin until the seed lands on merged code |
-| spa_refresh mirror race (fabro-332e, OPEN) | fabro-dev spa_refresh.rs; justfile lock; scripts/smoke.nu | just smoke after deploy |
-| ask duplication (fabro-bd6c, OPEN) | cli commands/run/ask.rs render_event | manual two-token probe |
-| attach replay indistinguishable (fabro-204e, OPEN) | cli attach.rs | attach a finished run |
-| Preamble aggregate budget (fabro-a85b, OPEN) | workflow artifact.rs demote_large_values_for_prompt + tests | nextest artifact tests. Accepted inline for now (fabro-ec00 ARM 4): open seed a85b owns the pin decision when it lands; artifact.rs tests are gate-covered meanwhile |
-| just-up lock + smoke (landed) | justfile, scripts/smoke.nu, scripts/wait-healthy.nu | just up full pipeline |
-| run_workflow.nu pipeline (landed) | scripts/run_workflow.nu, scripts/prompts/improve.md | just run hello --adopt <id> |
-| Auto-merge wiring (fabro-ab2c, CLOSED via branch protection) | .github/workflows/lab-check.yml; repo settings; run_workflow auto-merge poll | run_workflow integrates via ff-pull |
-| Duplicate-child guard (fabro-8ee1, CLOSED — re-landed 2026-09-14) | fabro-tool fork_duplicate_child_guard.rs + seam in create.rs (before create_run_from_intent) + fork_duplicate_child_guard_tests.rs; children-listing mocks in fabro-tool/workflow/server parented-create tests | cargo nextest run -p fabro-tool -- fork_duplicate |
-| Line recovery: quota park (fabro-986b, ADR-0021) | workflow: fork_line_recovery.rs + seams in error.rs is_retryable + graph.rs select_edge; presence pin fork_line_recovery_tests.rs | cargo nextest run -p fabro-workflow -- fork_line_recovery |
-| Line recovery: end-path park preservation (fabro-986b gap fix, 2026-09-17) | core: Graph::failure_parks_run default in graph.rs + guard in executor.rs NextStep::End rewrite + mod hook in lib.rs (cfg(test)); workflow: failure_parks_run override in graph.rs (shared with select_edge seam); pins: fabro-core src/fork_line_recovery_tests.rs (3 tests) + workflow failure_parks_run_hook_is_wired_to_the_park_classification + parked_stage_failure_ends_soft_stop_with_quota_signature | cargo nextest run -p fabro-core -- fork_line && cargo nextest run -p fabro-workflow -- fork_line |
-| Line recovery: pre-fire provider gate + breaker exemption (fabro-986b, ADR-0021 rev) | server: server/fork_line_recovery.rs (GateState, provider_window_open, provider_gate_tick, cron_fire_allowed, is_quota_park) + seams in server.rs mod, automation_scheduler.rs (visibility + gate tick/cron gate in loop), automation_breaker.rs (exemption continue + terminal_failure pub(crate)); pin = quota_parks_are_breaker_exempt_and_keep_the_schedule_armed in server/fork_line_recovery.rs breaker_exemption_pin (migrated from automation_scheduler inline tests, fabro-ec00 ARM 3) | cargo nextest run -p fabro-server -- fork_line_recovery + automation_scheduler |
-| Line graphs stall budget (fabro-0e11) | .fabro/workflows/{conductor,develop,merge-upstream}/workflow.fabro stall_timeout="63m"; presence pin in workflow fork_line_recovery_tests.rs (line_graphs_pin_stall_timeout_above_the_legal_wait) | fabro validate conductor/develop/merge-upstream + the pin test |
-| Diff-based publish squash-revert protection (fabro-4ebd, closed; backfilled fabro-ec00) | server: pull_request_conflict.rs (fork-surface header, run_scoped_tree_changes + union + git-data-API merge commit), pull_request_supervisor.rs; workflow: pipeline/pull_request.rs out-of-scope merge gate; github: PullRequestFileStatus + list_pull_request_file_statuses; pin = server/fork_publish_conflict_tests.rs | cargo nextest run -p fabro-server -- fork_publish_conflict |
-| Terminal-run sandbox provisioning for Ask-Fabro (fabro-8d30 part b, closed; backfilled fabro-ec00) | server/handler/sessions.rs provision_replacement_sandbox + replacement_sandbox_spec (seam fns pub(super)); pin = handler/fork_session_provisioning_tests.rs (moved out of sessions.rs inline tests) | cargo nextest run -p fabro-server -- fork_session_provisioning |
-| Sandbox GC (fabro-44d8, OPEN) | server: sandbox_gc.rs + supervisor spawn/abort wiring in serve.rs; sandbox: reclaim.rs + pub(crate) accessor seam in provider.rs (entries/kind/provider accessors, InventoryEntry/provider_error visibility); bollard 0.18 workspace dep (root Cargo.toml, lib/apps/fabro-server/Cargo.toml); pin = server/fork_seam_test.rs | cargo nextest run -p fabro-server -- sandbox_gc + cargo nextest run -p fabro-sandbox -- reclaim |
-| Fork catalog overlay (fabro-cd27, OPEN seed owns future pins) | fabro-llm: fork_catalog.rs (OVERLAY const + presence pin) + fork-catalog-overlay.toml (data); seam in catalog.rs = one `use crate::fork_catalog::OVERLAY` + one `.toml_layer()` call in build_catalog (seam-shrunk 2026-09-19 pre-merge) | cargo nextest run -p fabro-llm -- fork_catalog |
+| W2 | fabro-a875 | Duplicate-child guard (fabro-tool/create.rs seam survives) |
+| W2 | fabro-2889 | Diff-based publish protection (supervisor + platform records) |
+| W2 | fabro-b5a9 | PR-create retry + PR-model plumbing |
+| W2 | fabro-6945 | Fork catalog overlay (fabro-llm seam) |
+| W3 | fabro-2e7b | Quota park on Attractor tiers (ADR-0021 rev 2; BlockedReason::QuotaRateLimit + SoftStop taxonomy already landed, engine-side production is the redesign) |
+| W3 | fabro-288d | Exit kinds deadlock/soft on tiers (ADR-0010 rev; FailureReason variants landed; fold docking documented in fork_taxonomy.rs) |
+| W3 | fabro-788b / fabro-fa0a | Preamble budget / seed_cycles on Attractor |
+| W3 | fabro-1392 / fabro-9b1b / fabro-a044 | Validation rules family / hooks family / workflow transforms (W0 inventory gaps) |
+| W3 | fabro-96c6 | Workflow asset rework develop/conductor/merge-upstream (stall_timeout survives; DOT parser reads all 5 graphs — pinned snapshot fabro-dot) |
+| W3 | fabro-aa5f | Stage envelope (ADR-0009: stage_policy + context_read → host tools) |
+| W4 | fabro-71a8/afab/fdd8/8795/d0dd/d420 | Web re-ports; probe+guards; server ops (approval TTL, env compat, capability gate, staleness); wait endpoint; small CLI verifications; superseded proofs |
+| W5 | fabro-d659 | Cutover runbook (era check, backup, deploy, supervised pass, denkhaus archive) |
 
-## Obsolescence watchlist
+## Local-run preconditions (learned W0, 2026-09-21)
 
-Upstream directions that may supersede our work — re-evaluate per merge:
-
-- Sandbox runtime directory (`/tmp/fabro/runtime`, v0.336.0): any seed
-  about blob/materialization paths should build on this contract.
-- SQLite consolidation (blobs 0.335, auth codes 0.336): new "move state
-  to SQLite" work should follow this line, not add parallel stores.
-- RunIntent / run targets (empty-workspace target in 0.336.0): admission
-  plumbing for branch/SHA is moving — seeds touching run targets must
-  track it.
-- Upstream exit-kind/terminal-status evolution could overlap our
-  PublishBlocked/Boundary taxonomy — if upstream ships an equivalent,
-  port ours onto it and close the local seed as superseded.
-- Graph `on_failure=exit` policy (PR #804, v0.336.0): blocks only the
-  unconditional fallback edge for failed nodes; explicit conditions,
-  preferred/suggested routes and retry targets still match. Orthogonal to
-  our exit kinds (deadlock/soft classify the terminal event; on_failure
-  only constrains routing). Do not adopt in `develop` — its edges already
-  route every failure explicitly and the exit kinds classify better.
-
-## 2026-08-26 (v0.337.0-nightly.0)
-
-- Model stylesheet templates landed (PR #805): root `model_stylesheet`
-  renders via MiniJinja pre-parse with restricted projection
-  (`for_model_stylesheet()` = inputs+vars only). Per-node context work
-  (fabro-900e) should reuse the `for_*()` restricted-projection pattern
-  instead of a new mechanism.
-- Watchlist add: `upstream/node-on-failure` branch = node-level
-  on_failure override (fabro-types/graph.rs, executor, routing) —
-  adjacent to our exit-kind taxonomy; evaluate at next merge.
-## 2026-08-26 (v0.337.0-nightly.1)
-
-- node-on-failure LANDED (PR #806) + on_failure="succeed" (PR #811). Reaffirmed:
-  do NOT adopt in `develop` — its edges route every failure explicitly, exit kinds
-  classify better, and `succeed` would mask quality-gate failures. Orthogonal, no port.
-- seed_cycles (fabro-45d0) re-attached behind apply_recorded_outcome_context —
-  after_record is now a CONFLICT HOTSPOT whenever upstream reshapes outcome context.
-- Watchlist add: upstream PR #751 (open, fork, unreviewed since 2026-08-17) —
-  run-level `[run.agent] skill_dirs` (extra dirs, NOT per-node scoping). Does not
-  solve fabro-d0d6 (per-stage skill scoping); if it lands, build node-level
-  scoping on its LlmSpec/SessionOptions plumbing (model_stylesheet pattern).
-  Seed fabro-d0d6 updated with this note (2026-08-26).
-- Folder run target (PR #790) gated behind "Local admission": RunIntent admission
-  is the validated gate layer — dock future fork admission work (branch/SHA) there.
-
-## 2026-08-27 (post v0.337.0-nightly.1)
-
-- Git run targets gained tag support + PinnedRevision unification (PR #812):
-  `RunTarget::Git(GitRunTarget{repo,branch,tag,sha})`; authority sha > tag >
-  branch HEAD; no fallback on unavailable tag/commit. Run-target watchlist
-  updated: admission matrix is now branch/tag/sha; server preflight still
-  passes `clone_tag: None`. Any fork run-target work builds on
-  clone_source::PinnedRevision, not a parallel pin enum.
-- Title-generation failures now `warn!` with run_id (PR #813) — ops only.
-- Stale entries: fabro-890b CLOSED (PR model plumbing landed a1e27c9bf);
-  run_workflow.nu no longer exists on meta/denkhaus-lab (lab restructure,
-  fabro-a9bb) — verify lab script paths before citing them here.
-
-## 2026-08-31 (v0.339.0-nightly.1, merge 4a22e3d47)
-
-- Daytona now accepts image.docker as snapshot base (DaytonaSnapshotSource
-  enum): our validate_daytona_image_settings REMOVED as superseded; the
-  both-set rejection lives in upstream's validate_provider_capabilities.
-  Our docker-provider mutual exclusion (fabro-969f) kept — no upstream
-  equivalent. Seeds 72a0/829a/f251 updated with merge notes; f251 PR offer
-  still valid (upstream has no docker autobuild).
-- Upstream ships an in-repo product code-review workflow
-  (.fabro/workflows/code-review: rules/builtin YAML set, findings/verdict
-  schemas, publish_pr.py) and calibrates it on their own PRs — parallel to
-  our develop lab dogfooding. Evaluate cross-pollination for the revisor
-  line (ADR-0011): structured findings schema + rule_loader are reusable
-  concepts.
-- SQL run-record foundation landed INACTIVE (RunSummaryStore name kept until
-  cutover; migrations 2026082601 automation_run_targets, 2026082701
-  run_events, 2026082801 automation_environments; strict legacy run history
-  import+verify). Any fork state-to-SQL work must build on this line.
-- Automations now REQUIRE server-managed environments and use canonical run
-  targets + workflow versions — RunIntent admission stays the validated gate
-  layer for fork admission work (branch/tag/SHA matrix from PR #812).
-- Chat Completions streams reject tool-call index gaps (fabro-llm) —
-  robustness only, no fork impact.
-
-## 2026-09-01 (v0.342.0-nightly.0, merge 2df9dc69a + fix 31809f2ad)
-
-- SQLite run-history CUTOVER completed (was INACTIVE since v0.339): runs +
-  run_events now authoritative in SQLite, fail-closed activation with backup +
-  legacy import/verify at server start; deletion waits for the writer lock.
-  Fork run-store work MUST build on RunSummaryStore/SQLite, not SlateDB paths.
-- Upstream bug fixed on our side (fabro-b7c4, 31809f2ad): activation
-  rejected real legacy catalog keys (5-segment by-start layout). Parser now
-  accepts both; upstream offer branch pushed 2026-09-17:
-  `upstream-offer/legacy-catalog-and-variantless-events` on denkhaus/fabro
-  (ports BOTH fabro-b7c4 cases onto upstream/main 170291b9f; see
-  UPSTREAM_OFFER.md there).
-- RunIntent registration spine + local producer support landed: workflow
-  versions register dependency-first; `fabro run` resolves local workflow
-  packages and observes git targets via remote SHA query
-  (remote_branch_sha_noninteractive), not local tracking refs. Run-target
-  admission work docks on RunIntent as before.
-- RunIntentArgs gained tri-state dry_run/auto_approve/preserve_sandbox wire
-  overrides — candidate mechanism for per-run execution overrides without
-  config edits (note for develop/revisor design).
-- ManifestRepoInfo split origin/push origins (see conflict-policy 2026-09-01):
-  our insteadOf canonicalization rides origin_url; push identity compares raw
-  config bytes (upstream semantics).
-
-## 2026-09-02 (v0.344.0-nightly.0, merge 3f6681b26)
-
-- SQLite read-model consolidation COMPLETE: run queries, PR recovery, and
-  session ownership all read SQLite now (PR #830/#829); SlateDB shrinks to
-  event log + warm projection cache. Any fork read path builds on
-  RunSummaryStore::get / Database::get_cached_projection.
-- Session ownership: unique partial index on run_events(session_id) WHERE
-  event_name='run.session.created', fail-closed legacy preflight, snapshot
-  before new migrations. sessions handlers (attach/adopt) ride
-  find_session_owner — fabro-204e (attach replay UX) unchanged, still open.
-- Automations: independent git workflow sources (repo+branch+optional
-  tag/sha aligned with run targets, PR #825); materializer exposes a
-  GitRemote resolver seam (git_checkout.rs resolve-then-prepare, credential
-  reuse) — reuse it for any fork feature needing a credentialed checkout
-  (revisor line) instead of new clone plumbing.
-- fabro-b7c4: upstream STILL lacks the 5-segment by-start catalog fix;
-  local fix 31809f2ad survived the merge untouched; upstream offer branch
-  `upstream-offer/legacy-catalog-and-variantless-events` pushed to
-  denkhaus/fabro 2026-09-17 covering BOTH cases (5-segment catalog keys +
-  variantless sandbox.git/cleanup event names) — user opens the PR to
-  fabro-sh/fabro from it.
-- Push race (environmental): a background watcher pushes origin/denkhaus
-  within ~30s of any local commit — `git merge upstream/main` auto-commits
-  and can get pushed BEFORE the proper merge message/adaptations land.
-  Merge with `--no-commit`, finish fixes + message, then commit and push
-  once. If raced anyway: `--force-with-lease` over the default-message
-  merge is safe when nothing built on it (check origin/denkhaus parents).
-
-## 2026-09-03 (v0.345.0-nightly.0, merge 6530c724f)
-
-- Run-read touchpoint RENAMED again: any fork read path builds on
-  `AppState::load_run_projection` / `Database::load_run_projection` (on-demand:
-  active snapshot OR SQLite replay; PR #835). `cached_run_projection` and
-  `get_cached_projection` no longer exist.
-- CLI runs are now intent-created from immutable workflow versions (PR #831):
-  project/CLI-machine `[run]`+`[environments]` settings are NO LONGER
-  transmitted by `fabro run`/`fabro create`. Workflow behavior (incl.
-  `[run.pull_request]`, environment pinning) must live in workflow.toml or
-  server-managed environments. Watch: manual `fabro run` of workflows relying
-  on `.fabro/project.toml` defaults (implement-issue uses project toolchain env).
-- fabro-b440 crash-loop half FIXED upstream (PR #838 pre-start failure
-  persistence); seed updated with merge note — resume-mode UX still open.
-- fabro-696c: upstream PR #837 now rejects auto-PRs for Local environments at
-  admission (`pull_request_environment_unsupported`) — complements, not
-  supersedes (Docker runs still need PR-capable credentials).
-- Automations: scheduler run creation rides `create_run_from_intent`, so the
-  Local+auto-PR rejection applies to automations uniformly; our Docker
-  environments unaffected.
-
-- 2026-09-05 (v0.346): RunStatusKind::Runnable joined
-  reconcile_incomplete_runs_on_startup (PR #841) — server restarts now emit
-  RunFailed for admitted-but-unstarted runs; our Slack lifecycle routes
-  receive those correctly. Interacts with future revisor cron (ADR-0013
-  phase 3): restarts fail scheduled runs cleanly instead of zombie-ing.
-- 2026-09-05 (v0.346): playground fully removed (PR #839) — if any future
-  seed or doc references /playground or POST /api/v1/playground/chat, treat
-  as dead; PR #533 superseded upstream.
-- 2026-09-05 (v0.346): Client::list_environments() is now available for
-  engine-side use — candidate infra for fabro-8d30 part a (availability
-  probe UX), watch when that seed is picked up.
-
-## 2026-09-06 (v0.348.0-nightly.0, merge 2f326a13c)
-
-- All touchpoints re-verified green post-merge (see
-  `.fabro/reports/merge-upstream/2f326a13c.md`); none superseded.
-- fabro-54f0 (approval TTL backstop) had landed WITHOUT updating the attach
-  and inspect inline snapshots (`approval_timeout_secs` 86400/null) — fixed
-  during this merge's gate. Future features that add run-spec settings
-  fields must sweep `fabro-cli` it-test snapshots in the same commit.
-- lab-check.yml is RETIRED (lab restructure): the auto-merge wiring
-  touchpoint now resolves to `.github/workflows/dogfood-gate.yml` + branch
-  protection (engine-owned).
-
-## 2026-09-12 (v0.353.0-nightly.0, merge 409a3e9dd — sandbox-driver adoption #849)
-
-- SANDBOX LAYER REBASED: fabro-sandbox is a policy shell over git-pinned
-  sandbox-driver crates (rev in root Cargo.toml; CI installs driver plugin
-  executables from that rev). Fork sandbox work targets the driver project,
-  not fabro. Track driver rev bumps per merge — provider behavior (snapshot
-  caching, devcontainer support) advances there.
-- fs_hide/fs_write (fabro-ba96): enforcement seam moved to the agent tool
-  layer (ToolContext fs_check_read/fs_check_write + FsScope
-  filter_dir_entries/filter_paths/filter_grep_matches; apply_patch pre-check
-  + subagent factory inheritance unchanged). ScopedSandbox is GONE — a
-  future re-port must not resurrect a sandbox wrapper.
-- Docker autobuild (fabro-969f/72a0/3822 CLOSED): driver docker provider
-  is SandboxSource::Image only. Deploy-time `just run-images`
-  (scripts/run-images.nu, content-hash label sh.fabro.toolchain.sha256)
-  is the interim; strategic path = the sandbox-driver PR
-  (SandboxSource::Dockerfile for the docker provider, seed fabro-a0e5).
-  Daytona REJECTED as self-host target 2026-09-12: cloud-control-plane-only
-  (BYOC = Enterprise), last OSS control plane v0.190.0 EOL — do not revisit
-  unless Daytona ships a supported self-hosted plane again. Dockerfile.toolchain/.mise edits take effect at
-  the next `just up`, NOT at run time.
-- Web sandbox-activity UI ROLLED BACK (user decision): run-time snapshot
-  build/pull events left the run-event vocabulary; CLI renders driver
-  events natively. Do not re-add web build-step display unless driver
-  events become web-consumable.
-- Availability probe (fabro-8d30a) lives on SandboxInventory::list_managed
-  + status.labels — labels moved OFF SandboxInfo; keep the
-  with_replacement type in fabro-api.
-- Lifecycle guards KEPT (regression watch): upstream reconnect_run_sandbox
-  (run_files.rs) and ask-fabro session build still activate sandboxes and
-  would leak terminal-run ones — our InspectionSandbox + TurnScopedSandbox
-  guards stay; predicates are status.is_terminal() only (driver attach
-  never starts; SandboxActivation is gone).
-- Read-path tolerance: legacy variantless event names read as Unknown
-  (ca770f6b8); when upstream removes more EventBody variants, extend
-  is_legacy_variantless_event_name BEFORE deploying.
-- Resume-from-failure (fabro-7627, salvaged 2026-09-15): engine core in
-  fork-only `lib/components/fabro-workflow/src/operations/fork_resume_from_failure.rs`
-  (ResumeFailureInput, resume_from_failure, resolve_failure_rewind_target + tests),
-  re-export seam in `operations/mod.rs`; server handler in fork-only
-  `lib/apps/fabro-server/src/server/handler/fork_resume.rs` wired via one
-  `.merge(...)` line in `handler/lifecycle.rs::routes()` (run_response +
-  workflow_operation_error_response visibility raised to pub(in crate::server))
-  and one `mod fork_resume;` in `handler/mod.rs`; API path
-  `/api/v1/runs/{id}/resume` in the OpenAPI yaml + generated clients; web
-  `resumeRun`/`canResume` in run-actions.ts + toast/menu wiring. Presence
-  pins: `fork_seam_tests.rs` (entry-checkpoint semantics + OpenAPI path),
-  `tests/it/api/fork_resume.rs` (wire conflict conformance),
-  `apps/fabro-web/app/lib/run-actions.resume.fork.test.ts` (gating).
-
-## 2026-09-18 (v0.360.0-nightly.0, merge 15c046bd1 — quota-era incident)
-
-- Clean merge (7 upstream commits: web board fix, CLI help, docs, version
-  bump) — ZERO conflicts, all fork pins green (40/40).
-- NEW ERA BOUNDARY (PR #240, fabro-e566): run_failed_target reclassifies
-  quota-class failures to Blocked{quota_rate_limit}. First deploy of a
-  #240-carrying binary on a DB with pre-#240 quota-class `failed` rows
-  CRASH-LOOPED: run-history activation replays terminal rows with current
-  projection and fail-closes (3rd era incident; seed fabro-eec6 owns the
-  durable fix). Any future deploy crossing a projection-semantics change
-  must first validate startup against a prod DB snapshot in an isolated
-  container (pattern in mulch engine/failure record 2026-09-18).
-- WAL trap when copying prod SQLite: checkpoint (PRAGMA wal_checkpoint
-  (TRUNCATE)) BEFORE cp — a plain main-file copy silently reverts
-  un-checkpointed writes.
-- Deploy-window check `fabro ps --server https://mirtuell.net` can 404
-  (Traefik unmatched-route) while the app container is crash-looping —
-  a 404 there means "no container registered", not "no runs"; check the
-  host via SSH before concluding the window is open.
-
-## 2026-09-19 (pre-merge diagnosis phase introduced; ahead of v0.361.0-nightly.0)
-
-- PRE-MERGE DIAGNOSIS IS MANDATORY (user directive 2026-09-19, now a
-  phase in SKILL.md): both-touched analysis, feature-risk mapping,
-  semantic drift scan, seam-shrink proposals — presented to the user
-  BEFORE `git merge`.
-- First application (lithos-llm codecs migration analysis): catalog.rs
-  conflict risk LOW (upstream hunks at lines 13/101/241/282/308, fork
-  seam at ~30); ZERO fork-added `codec =` fixtures anywhere; overlay
-  TOML uses no codec/adapter keys → loader-compatible. Seam-shrink
-  executed pre-merge: overlay const+docs moved from catalog.rs into
-  fork_catalog.rs, upstream module doc restored verbatim, missing
-  presence pin added (commit 32265c67c).
-- CORRECTION: fabro-b7c4 (legacy run-catalog keys) lives in fabro-store
-  parse_run_catalog_key, NOT in fabro-llm/catalog.rs — earlier session
-  notes had it wrong. This merge does not touch fabro-store.
-- Clippy absolute_paths forbids inline `crate::` paths in the seam — a
-  "one-line seam" is really import + call (two small hunks).
-- DEPLOY GAP (post-merge, first toolchain release on the new flow): the
-  revisor child 01M2XP626TS98ZTKMR2ZKF4719 failed in 336 ms — sandbox
-  provisioning, docker pull of the fresh fabro-toolchain tag → 401.
-  API-initiated pulls need client-sent registry auth (the host's tofu
-  ghcr_auth docker login does not apply), and the docker sandbox
-  provider settings have NO registry-credential keys. Workaround that
-  held: SSH `docker pull` the pinned tag on the host (image then
-  present, runs provision without pulling). Durable fix seeded (task:
-  registry auth for docker sandbox pulls). Until it lands: env PUT +
-  host pull are ONE deploy step, never separated.
+- ALWAYS `env -u FABRO_SERVER` — the agent shell exports a local dev
+  server and parse-tests assert `server.is_none()`.
+- Docker tests need sandbox-driver plugins on PATH (workspace-pinned rev)
+  and pre-pulled images: `ghcr.io/lithoscomputer/ubuntu-24.04:{slim,dind}-<RUNNER_PIN>`
+  plus CATALOG_IMAGE `ghcr.io/lithoscomputer/ubuntu-22.04:slim`.
+- Run workspace suites with `--profile ci` timeouts and `ulimit -n 8192`.
