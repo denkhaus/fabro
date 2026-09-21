@@ -28,6 +28,13 @@ RUN apk add --no-cache \
 
 COPY --chmod=0755 tmp/docker-context/${TARGETARCH}/fabro /usr/local/bin/fabro
 
+# Sandbox-driver plugins at the workspace-pinned rev (fabro-96c6): the
+# engine spawns `sandbox-driver-<provider>` from PATH; without them no run
+# acquires an environment. Staged by `cargo dev docker-build` beside the
+# server binary.
+COPY --chmod=0755 tmp/docker-context/${TARGETARCH}/sandbox-driver-docker /usr/local/bin/sandbox-driver-docker
+COPY --chmod=0755 tmp/docker-context/${TARGETARCH}/sandbox-driver-host /usr/local/bin/sandbox-driver-host
+
 COPY --chmod=0755 docker/entrypoint.sh /usr/local/bin/fabro-entrypoint
 
 ENV FABRO_HOME=/storage/.home \

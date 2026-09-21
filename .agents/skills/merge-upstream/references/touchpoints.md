@@ -38,8 +38,16 @@ invisible to the merge walk.
 | W4 | fabro-71a8/afab/fdd8/8795/d0dd/d420 | Web re-ports; probe+guards; server ops (approval TTL, env compat, capability gate, staleness); wait endpoint; small CLI verifications; superseded proofs |
 | W5 | fabro-d659 | Cutover runbook (era check, backup, deploy, supervised pass, denkhaus archive) |
 
-## Local-run preconditions (learned W0, 2026-09-21)
+## Local-run preconditions (learned W0, 2026-09-21; staging addendum W3-5)
 
+- Staging = the local docker stack (`just up`). Runs target
+  `denkhaus/fabro@denkhaus-petri` explicitly (the scheduler is off; runs
+  are triggered manually via API or CLI). The image bakes the
+  sandbox-driver plugins at the workspace-pinned rev (fabro-96c6:
+  `cargo dev docker-build` builds sandbox-driver-docker/-host from the
+  Cargo.toml pin; Dockerfile COPYs them). The dev image carries no plugin
+  checksum pin: `.env` sets `PETRI_SANDBOX_PLUGIN_DEV=1` for the local
+  stack; production pins `PETRI_SANDBOX_DOCKER_SHA256` instead.
 - ALWAYS `env -u FABRO_SERVER` — the agent shell exports a local dev
   server and parse-tests assert `server.is_none()`.
 - Docker tests need sandbox-driver plugins on PATH (workspace-pinned rev)

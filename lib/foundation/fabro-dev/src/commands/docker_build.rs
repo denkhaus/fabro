@@ -197,9 +197,15 @@ impl DockerBuildPlan {
             .arg("-v")
             .arg(format!("{}:/out", self.context_dir().display()))
             .arg("rust:1-bookworm")
-            .arg("cp")
-            .arg(format!("/target/{}/release/fabro", self.arch.target()))
-            .arg("/out/fabro")
+            .arg("bash")
+            .arg("-c")
+            .arg(format!(
+                "cp /target/{}/release/fabro /out/fabro && \
+                 cp /target/{}/release/sandbox-driver-docker /target/{}/release/sandbox-driver-host /out/",
+                self.arch.target(),
+                self.arch.target(),
+                self.arch.target()
+            ))
     }
 
     fn image_build_command(&self) -> PlannedCommand {
@@ -224,10 +230,15 @@ impl DockerBuildPlan {
     }
 }
 
+/// The sed line that reads the workspace's pinned sandbox-driver rev out
+/// of `Cargo.toml`, so the plugin build can never drift from the
+/// dependency pin. A raw string: the pattern is shell-sed, not Rust.
+const SANDBOX_PIN_SED: &str = r#"REV=$(sed -n 's/.*sandbox-driver = { git = "[^"]*", rev = "\([0-9a-f]*\)".*/\1/p' Cargo.toml | head -1)"#;
+
 fn build_script(target: &str, zig_arch: &str) -> String {
     format!(
         "set -e; \
-         apt-get update -qq && apt-get install -y -qq pkg-config perl make cmake xz-utils curl >/dev/null; \
+         apt-get update -qq && apt-get install -y -qq pkg-config perl make cmake xz-utils curl git >/dev/null; \
          if [ ! -x /opt/zig/zig-linux-{zig_arch}-{ZIG_VERSION}/zig ]; then \
          curl -fsSL https://ziglang.org/download/{ZIG_VERSION}/zig-linux-{zig_arch}-{ZIG_VERSION}.tar.xz | tar -xJ -C /opt/zig; \
          fi; \
@@ -236,6 +247,17 @@ fn build_script(target: &str, zig_arch: &str) -> String {
          cargo install --locked --root /opt/cargo-tools cargo-zigbuild; \
          fi; \
          rustup target add {target}; \
-         cargo zigbuild --locked --release -p fabro-cli --target {target}"
+         cargo zigbuild --locked --release -p fabro-cli --target {target}; \
+         {SANDBOX_PIN_SED}; \
+         test -n \"$REV\"; \
+         CHECKOUT=$(ls -d ${{CARGO_HOME:-$HOME/.cargo}}/git/checkouts/sandbox-driver-*/$REV 2>/dev/null | head -1); \
+         if [ -z \"$CHECKOUT\" ]; then \
+         git clone --quiet https://github.com/lithoscomputer/sandbox-driver /tmp/sandbox-driver; \
+         git -C /tmp/sandbox-driver checkout --quiet $REV; \
+         CHECKOUT=/tmp/sandbox-driver; \
+         fi; \
+         echo building sandbox-driver plugins at rev $REV; \
+         cargo zigbuild --locked --release --manifest-path \"$CHECKOUT/Cargo.toml\" \
+         -p sandbox-driver-docker -p sandbox-driver-host --target {target} --target-dir $CARGO_TARGET_DIR"
     )
 }
