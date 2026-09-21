@@ -4,8 +4,9 @@
 
 use std::sync::Mutex;
 
-use fabro_api::types;
+use fabro_api::types::{self, Usage};
 use fabro_types::status::RunStatus;
+use fabro_types::test_support::{test_principal, test_run_provenance};
 use fabro_types::{Run, RunId, WorkflowVersionId};
 
 use crate::common::{FabroToolBackend, ToolResult};
@@ -44,7 +45,7 @@ fn run_body() -> Run {
         },
         automation:       None,
         repository:       None,
-        created_by:       fabro_types::test_support::test_principal(),
+        created_by:       test_principal(),
         origin:           fabro_types::RunOrigin::default(),
         labels:           std::collections::HashMap::new(),
         lifecycle:        fabro_types::RunLifecycle {
@@ -67,7 +68,7 @@ fn run_body() -> Run {
             completed_at:  None,
         },
         timing:           None,
-        usage:            Default::default(),
+        usage:            Usage::default(),
         size:             fabro_types::RunSize::default(),
         ask_fabro:        fabro_types::AskFabro::default(),
         diff:             None,
@@ -235,7 +236,7 @@ fn projection_body() -> fabro_types::RunProjection {
             automation: None,
             source_directory: None,
             labels: HashMap::new(),
-            provenance: fabro_types::test_support::test_run_provenance(),
+            provenance: test_run_provenance(),
             definition_blob: None,
             spec_blob: None,
             git: None,
@@ -251,7 +252,7 @@ fn create_params(version: WorkflowVersionId) -> FabroRunCreateParams {
         runs: vec![CreateRunSpec {
             workflow_version_id: version,
             target:              Some(fabro_types::RunTarget::None {}),
-            args:                Default::default(),
+            args:                fabro_types::RunIntentArgs::default(),
             environment_id:      None,
             parent_id:           None,
             title:               None,
@@ -272,7 +273,6 @@ async fn same_version_non_terminal_sibling_rejects_the_create() {
         create_params(version_id()),
         CreateRunOptions {
             forced_parent_id: Some(RunId::new()),
-            ..Default::default()
         },
     )
     .await;
@@ -308,7 +308,6 @@ async fn terminal_sibling_and_other_version_stay_allowed() {
         create_params(version_id()),
         CreateRunOptions {
             forced_parent_id: Some(RunId::new()),
-            ..Default::default()
         },
     )
     .await;
