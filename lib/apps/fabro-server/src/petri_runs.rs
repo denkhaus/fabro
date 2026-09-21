@@ -171,7 +171,9 @@ mod tests {
     use fabro_petri::petri::RunStore as _;
     use fabro_static::EnvVars;
     use fabro_store::platform_records::{PlatformRecord, RunLifecycleKind, RunLifecycleRecord};
-    use fabro_types::{RunId, RunStatus, WorkflowPath, WorkflowVersion};
+    use fabro_types::{
+        FailureReason, RunId, RunStatus, SuccessReason, WorkflowPath, WorkflowVersion,
+    };
     use serde_json::json;
     use tokio::io::AsyncRead;
     use tokio::sync::Notify;
@@ -511,5 +513,295 @@ mod tests {
         // The first server's handles must outlive the check above: a real
         // crash releases nothing, and dropping them here would.
         drop(before);
+    }
+
+    /// A server whose one worker is held open by the test, with a run the
+    /// worker has taken over the API: the run's id and the worker's token.
+    async fn held_worker_run(
+        runtime: &Arc<HeldWorkerRuntime>,
+    ) -> (Arc<AppState>, axum::Router, RunId, String) {
+        let state = TestAppStateBuilder::new()
+            .vault_entries([(EnvVars::OPENAI_API_KEY, "test-openai-api-key")])
+            .worker_runtime(Arc::clone(runtime) as Arc<dyn WorkerRuntime>)
+            .build();
+        write_test_server_record(&state);
+        let app = build_test_router(Arc::clone(&state));
+        let run_id = create_and_start_petri_run(&app).await;
+        spawn_scheduler(Arc::clone(&state));
+        runtime.wait_for_start().await;
+        let token = state.test_issue_worker_token(&run_id);
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/api/v1/runs/{run_id}/petri/open"))
+                    .header(header::AUTHORIZATION, format!("Bearer {token}"))
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(
+                        json!({ "access": "create", "owner": "worker-1" }).to_string(),
+                    ))
+                    .expect("the open request builds"),
+            )
+            .await
+            .expect("the open request completes");
+        assert_eq!(response.status(), StatusCode::OK);
+        (state, app, run_id, token)
+    }
+
+    /// One lifecycle record of the run, stored the way its worker stores
+    /// one: through the platform-records endpoint.
+    async fn record_lifecycle_as_worker(
+        app: &axum::Router,
+        run_id: RunId,
+        token: &str,
+        transition: RunLifecycleKind,
+        status: RunStatus,
+    ) {
+        let record =
+            PlatformRecord::RunLifecycle(RunLifecycleRecord::new(transition).with_status(status));
+        let body = json!({
+            "record": serde_json::to_value(&record).expect("the record encodes"),
+        });
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/api/v1/runs/{run_id}/petri/platform-records"))
+                    .header(header::AUTHORIZATION, format!("Bearer {token}"))
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(body.to_string()))
+                    .expect("the append request builds"),
+            )
+            .await
+            .expect("the append request completes");
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    /// Petri's own finish of the run, stored the way its worker stores it:
+    /// the `run.finished` record on the coordinator log, over the records
+    /// endpoint.
+    async fn record_finish_as_worker(app: &axum::Router, run_id: RunId, token: &str) {
+        let body = json!({
+            "owner": "worker-1",
+            "records": [{
+                "seq": 0,
+                "recorded_at": 1_000,
+                "record": {
+                    "seq": 0,
+                    "origin": "external",
+                    "recorded_at": 1_000,
+                    "body": { "event": "run.finished", "status": "success" },
+                },
+            }],
+        });
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!(
+                        "/api/v1/runs/{run_id}/petri/logs/coordinator/records"
+                    ))
+                    .header(header::AUTHORIZATION, format!("Bearer {token}"))
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(body.to_string()))
+                    .expect("the records request builds"),
+            )
+            .await
+            .expect("the records request completes");
+        assert_eq!(response.status(), StatusCode::NO_CONTENT);
+    }
+
+    /// The worker takes the run as far as running.
+    async fn run_to_running_as_worker(app: &axum::Router, run_id: RunId, token: &str) {
+        for (transition, status) in [
+            (RunLifecycleKind::Starting, RunStatus::Starting),
+            (RunLifecycleKind::Running, RunStatus::Running),
+        ] {
+            record_lifecycle_as_worker(app, run_id, token, transition, status).await;
+        }
+    }
+
+    async fn status_of(app: &axum::Router, run_id: RunId) -> StatusCode {
+        app.clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!("/api/v1/runs/{run_id}"))
+                    .body(Body::empty())
+                    .expect("the run request builds"),
+            )
+            .await
+            .expect("the run request completes")
+            .status()
+    }
+
+    /// The runs the server's usage aggregate has counted: it counts a run
+    /// at its worker's exit, once the exit is fully handled.
+    async fn concluded_runs(app: &axum::Router) -> i64 {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/v1/usage")
+                    .body(Body::empty())
+                    .expect("the usage request builds"),
+            )
+            .await
+            .expect("the usage request completes");
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("the usage body reads");
+        let body: serde_json::Value =
+            serde_json::from_slice(&body).expect("the usage body is JSON");
+        body["totals"]["runs"].as_i64().expect("the run count")
+    }
+
+    /// A delete of the run, as a client issues one.
+    async fn delete_run(app: &axum::Router, run_id: RunId) -> StatusCode {
+        app.clone()
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri(format!("/api/v1/runs/{run_id}"))
+                    .body(Body::empty())
+                    .expect("the delete request builds"),
+            )
+            .await
+            .expect("the delete request completes")
+            .status()
+    }
+
+    /// The server settles a worker's run at Petri's own finish, the record
+    /// the view ends the run on, not at the worker's exit: a delete issued
+    /// the moment the finish lands, while the worker still tears down, is
+    /// accepted, and the worker's exit after it brings nothing back.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_delete_right_after_petris_finish_is_accepted() {
+        let runtime = Arc::new(HeldWorkerRuntime::default());
+        let (state, app, run_id, token) = held_worker_run(&runtime).await;
+
+        run_to_running_as_worker(&app, run_id, &token).await;
+        record_finish_as_worker(&app, run_id, &token).await;
+        assert_eq!(
+            state.test_managed_run_status(&run_id),
+            Some(RunStatus::Succeeded {
+                reason: SuccessReason::Completed,
+            }),
+            "the managed run settled at the finish"
+        );
+        assert!(
+            runtime.running.load(Ordering::SeqCst),
+            "the worker is still up when the delete lands"
+        );
+        assert_eq!(delete_run(&app, run_id).await, StatusCode::NO_CONTENT);
+
+        // The delete ended the worker; its exit is handled in the
+        // background and must leave the run gone.
+        assert!(!runtime.running.load(Ordering::SeqCst));
+        for _ in 0..20 {
+            assert_eq!(status_of(&app, run_id).await, StatusCode::NOT_FOUND);
+            assert_eq!(state.test_managed_run_status(&run_id), None);
+            time::sleep(Duration::from_millis(10)).await;
+        }
+    }
+
+    /// A worker that ends the run without Petri's finish (it failed before
+    /// the engine ran) settles it at its terminal lifecycle record, so a
+    /// delete issued the moment that record lands is accepted too.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_delete_right_after_the_workers_terminal_record_is_accepted() {
+        let runtime = Arc::new(HeldWorkerRuntime::default());
+        let (state, app, run_id, token) = held_worker_run(&runtime).await;
+
+        let failed = RunStatus::Failed {
+            reason: FailureReason::WorkflowError,
+        };
+        record_lifecycle_as_worker(
+            &app,
+            run_id,
+            &token,
+            RunLifecycleKind::Starting,
+            RunStatus::Starting,
+        )
+        .await;
+        record_lifecycle_as_worker(&app, run_id, &token, RunLifecycleKind::Failed, failed).await;
+        assert_eq!(
+            state.test_managed_run_status(&run_id),
+            Some(failed),
+            "the managed run settled at the terminal record"
+        );
+        assert!(
+            runtime.running.load(Ordering::SeqCst),
+            "the worker is still up when the delete lands"
+        );
+
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri(format!("/api/v1/runs/{run_id}"))
+                    .body(Body::empty())
+                    .expect("the delete request builds"),
+            )
+            .await
+            .expect("the delete request completes");
+        assert_eq!(response.status(), StatusCode::NO_CONTENT);
+
+        // The delete ended the worker; its exit is handled in the
+        // background and must leave the run gone.
+        assert!(!runtime.running.load(Ordering::SeqCst));
+        for _ in 0..20 {
+            assert_eq!(status_of(&app, run_id).await, StatusCode::NOT_FOUND);
+            assert_eq!(state.test_managed_run_status(&run_id), None);
+            time::sleep(Duration::from_millis(10)).await;
+        }
+    }
+
+    /// A worker that exits, even unsuccessfully, after its run settled at
+    /// its finish and its terminal record leaves the settled status alone:
+    /// the exit reaps the process and counts the run, nothing more.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_worker_exit_after_the_run_settled_keeps_the_settled_status() {
+        let runtime = Arc::new(HeldWorkerRuntime::default());
+        let (state, app, run_id, token) = held_worker_run(&runtime).await;
+        let succeeded = RunStatus::Succeeded {
+            reason: SuccessReason::Completed,
+        };
+
+        run_to_running_as_worker(&app, run_id, &token).await;
+        record_finish_as_worker(&app, run_id, &token).await;
+        record_lifecycle_as_worker(&app, run_id, &token, RunLifecycleKind::Succeeded, succeeded)
+            .await;
+        assert_eq!(state.test_managed_run_status(&run_id), Some(succeeded));
+
+        // The held worker exits unsuccessfully, as a worker that crashed
+        // after its terminal record would.
+        runtime.end_worker();
+        let mut counted = concluded_runs(&app).await;
+        for _ in 0..500 {
+            if counted == 1 {
+                break;
+            }
+            time::sleep(Duration::from_millis(10)).await;
+            counted = concluded_runs(&app).await;
+        }
+        assert_eq!(counted, 1, "the worker's exit was handled");
+
+        assert_eq!(
+            state.test_managed_run_status(&run_id),
+            Some(succeeded),
+            "the exit did not move the settled status"
+        );
+        let run_state = run_records::projection(&state, run_id)
+            .await
+            .expect("the run state loads")
+            .expect("the run projects");
+        assert_eq!(run_state.status, succeeded);
     }
 }

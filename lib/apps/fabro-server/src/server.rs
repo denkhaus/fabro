@@ -3531,6 +3531,12 @@ fn apply_lifecycle_to_managed_run(state: &AppState, run_id: RunId, record: &RunL
     let Some(managed_run) = runs.get_mut(&run_id) else {
         return;
     };
+    // A settled run is immutable to the lifecycle: the follower still folds
+    // the records before the terminal one after Petri's finish or the
+    // worker's terminal record settled the run, and none may reopen it.
+    if managed_run.status.is_terminal() && !is_terminal_transition(record) {
+        return;
+    }
     match record.transition {
         RunLifecycleKind::Submitted => managed_run.status = RunStatus::Submitted,
         RunLifecycleKind::Pending => {
@@ -3599,6 +3605,80 @@ fn apply_lifecycle_to_managed_run(state: &AppState, run_id: RunId, record: &RunL
         | RunLifecycleKind::CancelRequested
         | RunLifecycleKind::PauseRequested
         | RunLifecycleKind::UnpauseRequested => {}
+    }
+}
+
+/// Whether the transition ends the run.
+fn is_terminal_transition(record: &RunLifecycleRecord) -> bool {
+    matches!(
+        record.transition,
+        RunLifecycleKind::Succeeded | RunLifecycleKind::Failed | RunLifecycleKind::Dead
+    )
+}
+
+/// Settle the in-memory run at Petri's own finish, as its worker stores
+/// the `run.finished` record: the view reports the run ended from the
+/// moment that record is stored, so the managed run the delete precheck
+/// prefers must not still say running while the worker tears down; a
+/// delete in that window was refused as active. A run already settled
+/// keeps its status. The worker's terminal lifecycle record, a moment
+/// later, refines the status and its error and ends the worker's controls
+/// ([`settle_managed_run_at_terminal_record`]); the worker's exit later
+/// reaps the process and leaves the settled status alone.
+pub(in crate::server) fn settle_managed_run_at_finish(
+    state: &AppState,
+    run_id: RunId,
+    status: RunStatus,
+) {
+    let mut runs = state.runs.lock().expect("runs lock poisoned");
+    let Some(managed_run) = runs.get_mut(&run_id) else {
+        return;
+    };
+    if managed_run.status.is_terminal() {
+        return;
+    }
+    managed_run.status = status;
+    managed_run.active_steerable_stages.clear();
+    managed_run.active_non_steerable_stages.clear();
+}
+
+/// Settle the in-memory run at the terminal lifecycle record its worker
+/// stores, ahead of the store: the same as [`settle_managed_run_at_finish`]
+/// for a worker that ended the run without Petri's finish (it failed before
+/// the engine ran), and the record's status, error and control cleanup for
+/// one that did. A record that is not terminal is left to the stream
+/// follower, which folds the stream in order. The worker's exit later
+/// leaves the settled status alone, unless the store ended the run
+/// differently: the worker's append failed and the exit recorded the
+/// failure.
+pub(in crate::server) fn settle_managed_run_at_terminal_record(
+    state: &AppState,
+    run_id: RunId,
+    record: &PlatformRecord,
+) {
+    if let PlatformRecord::RunLifecycle(record) = record {
+        if is_terminal_transition(record) {
+            apply_lifecycle_to_managed_run(state, run_id, record);
+        }
+    }
+}
+
+/// The live status once the run's worker is gone. A run settled at its
+/// terminal record keeps that status: the exit only reaps the process. The
+/// store's final status stands when the run was not settled, or when the
+/// store ended it differently; and a worker that died with no terminal
+/// record and no failure recorded for it is a termination.
+fn status_after_worker_exit(live: RunStatus, stored: RunStatus, exit_success: bool) -> RunStatus {
+    if live.is_terminal() {
+        if stored.is_terminal() { stored } else { live }
+    } else if stored != live {
+        stored
+    } else if exit_success {
+        live
+    } else {
+        RunStatus::Failed {
+            reason: FailureReason::Terminated,
+        }
     }
 }
 
@@ -4204,13 +4284,8 @@ async fn execute_run_subprocess(state: Arc<AppState>, run_id: RunId) {
 
     let mut runs = state.runs.lock().expect("runs lock poisoned");
     if let Some(managed_run) = runs.get_mut(&run_id) {
-        if final_state.status != managed_run.status {
-            managed_run.status = final_state.status;
-        } else if !worker_exit.success {
-            managed_run.status = RunStatus::Failed {
-                reason: FailureReason::Terminated,
-            };
-        }
+        managed_run.status =
+            status_after_worker_exit(managed_run.status, final_state.status, worker_exit.success);
         managed_run.error = final_state
             .conclusion
             .as_ref()

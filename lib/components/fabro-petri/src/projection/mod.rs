@@ -42,8 +42,9 @@ use fabro_store::platform_records::StoredPlatformRecord;
 use fabro_types::{
     RunControlAction, RunDiff, RunId, RunProjection, RunStatus, StageId, StageProjection,
 };
-use petri_execution::ExecutionId;
 use petri_execution::events::{NodeRef, RunEvent, Subject};
+use petri_execution::{CoordinatorEvent, CoordinatorRecord, ExecutionId};
+use petri_store::Record;
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
 use serde_json::Value;
 use tracing::debug;
@@ -368,6 +369,21 @@ pub fn run_id_of(key: &str) -> Option<RunId> {
     key.parse().ok()
 }
 
+/// The status the view gives the run at Petri's own finish, when the
+/// stored record is the coordinator log's `run.finished`: the view reports
+/// the run ended from the moment that record is stored, ahead of Fabro's
+/// terminal lifecycle record. `None` for any other record.
+#[must_use]
+pub fn finished_run_status(record: &Record) -> Option<RunStatus> {
+    let record: CoordinatorRecord = serde_json::from_value(record.record.clone()).ok()?;
+    match record.body {
+        CoordinatorEvent::RunFinished { status } => {
+            Some(coordinator::finished_status(&status.to_string()))
+        }
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use fabro_store::platform_records::{PlatformRecord, RunCreatedRecord};
@@ -376,6 +392,65 @@ mod tests {
     use petri_runtime::ir::{FiringId, NodeId};
 
     use super::*;
+
+    /// A stored coordinator record, as the worker's append carries one.
+    fn coordinator_record(body: &serde_json::Value) -> Record {
+        Record {
+            seq:         3,
+            recorded_at: 1_000,
+            record:      serde_json::json!({
+                "seq": 3,
+                "origin": "external",
+                "recorded_at": 1_000,
+                "body": body,
+            }),
+        }
+    }
+
+    /// Petri's finish gives the run the status the view folds it to; any
+    /// other record, or a line that is not a coordinator record, gives none.
+    #[test]
+    fn a_finish_record_names_the_status_the_view_ends_the_run_on() {
+        let finished = |status: &str| {
+            finished_run_status(&coordinator_record(&serde_json::json!({
+                "event": "run.finished",
+                "status": status,
+            })))
+        };
+        assert_eq!(
+            finished("success"),
+            Some(RunStatus::Succeeded {
+                reason: fabro_types::SuccessReason::Completed,
+            })
+        );
+        assert_eq!(
+            finished("cancelled"),
+            Some(RunStatus::Failed {
+                reason: fabro_types::FailureReason::Cancelled,
+            })
+        );
+        assert_eq!(
+            finished("failed"),
+            Some(RunStatus::Failed {
+                reason: fabro_types::FailureReason::WorkflowError,
+            })
+        );
+        assert_eq!(
+            finished_run_status(&coordinator_record(&serde_json::json!({
+                "event": "run.paused",
+            }))),
+            None
+        );
+        assert_eq!(
+            finished_run_status(&Record {
+                seq:         3,
+                recorded_at: 1_000,
+                record:      serde_json::json!({"event": "run.finished", "status": "success"}),
+            }),
+            None,
+            "an engine line is not a coordinator record"
+        );
+    }
 
     #[test]
     fn a_taken_label_is_made_unique_by_the_execution() {
