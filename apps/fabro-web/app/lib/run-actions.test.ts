@@ -25,6 +25,9 @@ import {
   mapError,
   unarchiveRun,
   unarchiveRuns,
+  canRewind,
+  rewindRun,
+  retryRun,
 } from "./run-actions";
 import { generatedAxios } from "./api-client";
 import { TEST_PRINCIPAL, makeUsage } from "./test-fixtures";
@@ -174,6 +177,36 @@ describe("run lifecycle actions", () => {
     if (result.lifecycle.status.kind === "failed") {
       expect(result.lifecycle.status.reason).toBe("cancelled");
     }
+  });
+
+  test("rewindRun asks for the replacement run and surfaces its id", async () => {
+    const { requests } = stubGeneratedAxiosOnce({
+      status: 200,
+      body: {
+        source_run_id: "run-1",
+        new_run_id: "run-2",
+        target: "@3",
+        checkpoint_sha: "abc123",
+        execution: 1,
+        firing: 4,
+        archived: true,
+      },
+    });
+    const result = await rewindRun("run-1");
+    expect(result.new_run_id).toBe("run-2");
+    expect(requests[0]?.url).toBe("/api/v1/runs/run-1/rewind");
+    expect(requests[0]?.method).toBe("post");
+  });
+
+  test("retryRun posts and parses the replacement run", async () => {
+    const { requests } = stubGeneratedAxiosOnce({
+      status: 200,
+      body: makeRun({ kind: "running" }),
+    });
+    const result = await retryRun("run-1");
+    expect(result.id).toBeTypeOf("string");
+    expect(requests[0]?.url).toBe("/api/v1/runs/run-1/retry");
+    expect(requests[0]?.method).toBe("post");
   });
 
   test("cancelRun parses a 202 response as a pending cancellation", async () => {
@@ -458,5 +491,18 @@ describe("run lifecycle actions", () => {
     expect(isCancellationPendingState("failed", "cancel", true)).toBe(false);
     expect(cancellationActionLabel(true)).toBe("Cancelling…");
     expect(cancellationActionLabel(false)).toBe("Cancel");
+  });
+});
+
+describe("canRewind", () => {
+  test("failed and dead runs can be resumed or retried", () => {
+    expect(canRewind("failed")).toBe(true);
+    expect(canRewind("dead")).toBe(true);
+  });
+
+  test("nothing else can", () => {
+    expect(canRewind("running")).toBe(false);
+    expect(canRewind("succeeded")).toBe(false);
+    expect(canRewind(null)).toBe(false);
   });
 });

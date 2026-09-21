@@ -427,6 +427,7 @@ export * from './run-timing';
 export * from './run-usage';
 export * from './run-usage-stage';
 export * from './run-usage-totals';
+export * from './run-wait-result';
 export * from './sandbox-details';
 export * from './sandbox-file-entry';
 export * from './sandbox-file-list-response';

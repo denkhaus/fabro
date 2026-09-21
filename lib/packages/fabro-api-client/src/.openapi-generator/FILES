@@ -456,6 +456,7 @@ models/run-timing.ts
 models/run-usage-stage.ts
 models/run-usage-totals.ts
 models/run-usage.ts
+models/run-wait-result.ts
 models/run.ts
 models/sandbox-details.ts
 models/sandbox-file-entry.ts
