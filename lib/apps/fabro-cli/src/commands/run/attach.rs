@@ -224,6 +224,12 @@ async fn attach_petri_run_with_client(
     let items = client.list_run_stream(run_id, 0).await?;
     let mut cursor = items.last().map_or(0, |item| item.stream_seq);
     let mut replayed_exit_code = None;
+    // Replayed items render exactly like live ones, so the boundary needs
+    // a marker the reader can see (fabro-204e): one dimmed line before the
+    // history, one where live output begins.
+    if !items.is_empty() && !opts.json_output {
+        replay_marker(styles, &format!("Replaying {} items…", items.len()));
+    }
     for item in &items {
         emit_stream_item(&mut progress_ui, item, opts.json_output)?;
         if let Some(code) = petri_stream::exit_code_of(item) {
@@ -235,6 +241,9 @@ async fn attach_petri_run_with_client(
     }) {
         finish_progress(&mut progress_ui, opts.json_output);
         return Ok(exit_code);
+    }
+    if !items.is_empty() && !opts.json_output {
+        replay_marker(styles, "── live ──");
     }
 
     loop {
@@ -377,6 +386,17 @@ async fn handle_pending_petri_interview(
 
     submit_server_interview_answer(client, run_id, &question.id, &answer).await?;
     Ok(None)
+}
+
+/// One dimmed replay boundary marker on stderr (fabro-204e): replayed
+/// items render exactly like live ones, so the reader needs the line that
+/// tells them apart.
+#[allow(
+    clippy::print_stderr,
+    reason = "the attach progress and its replay markers render on stderr"
+)]
+fn replay_marker(styles: &Styles, text: &str) {
+    eprintln!("{}", styles.dim.apply_to(text));
 }
 
 fn emit_stream_item(

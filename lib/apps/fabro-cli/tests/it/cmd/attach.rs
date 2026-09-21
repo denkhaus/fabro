@@ -18,7 +18,7 @@ use super::support::{
     created_run_id, output_stdout, resolve_run, server_endpoint, wait_for_status,
     write_gated_workflow,
 };
-use crate::support::run_output_filters;
+use crate::support::{replay_marker_filter, run_output_filters};
 
 const SHARED_DAEMON_TIMEOUT: Duration = Duration::from_secs(30);
 
@@ -391,6 +391,7 @@ fn attach_replays_completed_detached_run() {
     exit_code: 0
     ----- stdout -----
     ----- stderr -----
+    Replaying [N] items…
         Web UI: http://localhost:3000/runs/[ULID]
         ✓ Start  [TIME]
         Base: [BASE]
@@ -576,6 +577,11 @@ fn attach_before_completion_streams_to_finished_state() {
         r"\b\d+(\.\d+)?(ms|s)\b".to_string(),
         "[DURATION]".to_string(),
     ));
+    filters.push(replay_marker_filter());
+    // Where the live marker falls depends on how many items the run had
+    // emitted when attach listed them, so this snapshot drops the line;
+    // the replay banner above is the first stderr line either way.
+    filters.push((r"(?m)^── live ──\n".to_string(), String::new()));
     let mut attach_cmd = std::process::Command::new(env!("CARGO_BIN_EXE_fabro"));
     fabro_test::apply_test_isolation(&mut attach_cmd, &context.home_dir);
     attach_cmd.current_dir(&context.temp_dir);
@@ -636,6 +642,7 @@ fn attach_before_completion_streams_to_finished_state() {
     exit_code: 0
     ----- stdout -----
     ----- stderr -----
+    Replaying [N] items…
         Web UI: http://localhost:3000/runs/[ULID]
         ✓ start  [DURATION]
         Base: [BASE]
