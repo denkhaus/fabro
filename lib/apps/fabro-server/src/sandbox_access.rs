@@ -392,16 +392,16 @@ impl InspectionSandbox {
         Arc::clone(&self.sandbox)
     }
 
+    /// Whether evicting what this guard protects must stop the sandbox: a
+    /// terminal run's reactivated sandbox; never a live run's.
+    pub(crate) fn stops_on_eviction(&self) -> bool {
+        self.stop_after
+    }
+
     /// Stop the sandbox again when the inspection reactivated it.
     /// Idempotent: the first call wins, `Drop` is a no-op afterwards.
-    /// Interactive attach sites (ask-fabro session eviction, the afab
-    /// remainder) call this at their session end; `Drop` covers every
-    /// early exit meanwhile.
-    #[cfg_attr(not(test), expect(
-        dead_code,
-        reason = "the read-only inspections rely on Drop; the explicit finish belongs to the \
-                  ask-fabro session-eviction site, the remaining afab item"
-    ))]
+    /// The ask-fabro session slot calls this when it evicts its agent
+    /// (fabro-afab); `Drop` covers every early exit meanwhile.
     pub(crate) async fn finish(&self) {
         if !self.stop_after
             || self

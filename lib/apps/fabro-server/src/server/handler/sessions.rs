@@ -524,11 +524,12 @@ async fn run_streaming_turn(
 
     let outcome = {
         let runtime_entry = turn_lease.entry();
-        let mut agent_slot = runtime_entry.lock_agent().await;
-        if agent_slot.is_none() {
+        let mut slot = runtime_entry.lock_agent().await;
+        if slot.agent.is_none() {
             match build_agent(&state, run_id, &session).await {
-                Ok(agent) => {
-                    *agent_slot = Some(agent);
+                Ok(built) => {
+                    slot.agent = Some(built.agent);
+                    slot.guard = Some(built.guard);
                 }
                 Err(err) => {
                     error!(error = ?err, session_id = %session_id, turn_id = %turn_id, "Failed to build run-backed session runtime");
@@ -551,7 +552,8 @@ async fn run_streaming_turn(
                 }
             }
         }
-        let agent = agent_slot
+        let agent = slot
+            .agent
             .as_mut()
             .expect("session runtime slot should be loaded");
         let cancel_token = CancellationToken::new();
@@ -617,6 +619,13 @@ async fn run_streaming_turn(
                 Utc::now(),
             )
             .await;
+            // A terminal run's session is turn-scoped (fabro-afab; the
+            // legacy TurnScopedSandbox): the turn that restarted the
+            // sandbox ends it here — the agent leaves the slot, the next
+            // turn resumes from the persisted record, and the sandbox
+            // stops. A live run's agent stays cached; its run owns the
+            // sandbox.
+            turn_lease.entry().evict_turn_scoped().await;
         }
         Ok(Err(err)) => {
             turn_lease.entry().clear_agent().await;
@@ -688,13 +697,22 @@ impl AskFabroBuildError {
     }
 }
 
+/// One built Ask Fabro agent with the liveness guard over the run sandbox
+/// it was built on (fabro-afab): the guard is terminal exactly when the
+/// run had already ended, and the turn that loads the agent stops that
+/// sandbox again when it ends.
+struct BuiltSessionAgent {
+    agent: CodingAgent,
+    guard: sandbox_access::InspectionSandbox,
+}
+
 /// The Ask Fabro agent for `session`: resumed from its stored record when a
 /// turn has been persisted, built fresh otherwise.
 async fn build_agent(
     state: &AppState,
     run_id: RunId,
     session: &ProjectedRunSession,
-) -> Result<CodingAgent, AskFabroBuildError> {
+) -> Result<BuiltSessionAgent, AskFabroBuildError> {
     let catalog = state.catalog();
     let llm_result = state.resolve_llm_client().await.map_err(|err| {
         AskFabroBuildError::LlmUnconfigured(format!("LLM credentials are not configured: {err}"))
@@ -733,6 +751,17 @@ async fn build_agent(
     let handle = sandbox_access::attach_running_run_sandbox(&access, sandbox_instance, run_id)
         .await
         .map_err(AskFabroBuildError::SandboxUnavailable)?;
+    // The activation above may have restarted the run's sandbox. A live
+    // run owns that liveness; a terminal run's sandbox runs only for as
+    // long as this agent does, so the guard wraps the handle before
+    // anything below can still fail (every such failure drops the guard
+    // and its Drop stops the sandbox again — fabro-afab, the legacy
+    // turn-scoped terminal-run session).
+    let guard = if projection.is_terminal() {
+        sandbox_access::InspectionSandbox::terminal(Arc::clone(&handle))
+    } else {
+        sandbox_access::InspectionSandbox::live(Arc::clone(&handle))
+    };
     let environment: Arc<dyn Environment> = Arc::new(
         PebbleSandbox::attach(handle, &sandbox_instance.runtime.working_directory)
             .await
@@ -799,7 +828,7 @@ async fn build_agent(
                     .with_context_compaction(true),
             ),
     };
-    builder
+    let agent = builder
         .tools(run_tools)
         // The read-only policy hides and refuses every other tool, so the
         // agent gets exactly the read tools and the two run tools.
@@ -810,7 +839,8 @@ async fn build_agent(
         .redactor(Arc::new(SecretRedactor))
         .build()
         .await
-        .map_err(|err| AskFabroBuildError::Agent(anyhow::Error::new(err)))
+        .map_err(|err| AskFabroBuildError::Agent(anyhow::Error::new(err)))?;
+    Ok(BuiltSessionAgent { agent, guard })
 }
 
 fn selected_session_model(
@@ -2136,6 +2166,58 @@ mod resume_tests {
             .unwrap()
             .expect("the refused record stays stored");
         assert_eq!(after.record.format_version, previous);
+    }
+
+    /// A finished run's session is turn-scoped (fabro-afab; the legacy
+    /// TurnScopedSandbox): the turn that reactivated the run's stopped
+    /// sandbox evicts its agent when it ends, and the next turn resumes
+    /// from the persisted record the way a new process would.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_successful_turn_on_a_terminal_run_evicts_the_turn_scoped_agent() {
+        let twin = twin_openai().await;
+        let namespace = format!("{}::{}", module_path!(), line!());
+        TwinScenarios::new(namespace.clone())
+            .scenario(
+                TwinScenario::responses(MODEL)
+                    .input_contains("First question")
+                    .text("First answer"),
+            )
+            .scenario(
+                TwinScenario::responses(MODEL)
+                    .input_contains("Second question")
+                    .text("Second answer"),
+            )
+            .load(twin)
+            .await;
+        let state = twin_backed_state(twin.base_url.clone(), &namespace);
+        spawn_scheduler(Arc::clone(&state));
+        let app = build_test_router(Arc::clone(&state));
+        let workspace = tempfile::tempdir().unwrap();
+        let run_id = completed_run(&app, workspace.path()).await;
+
+        let created = json_response(
+            &app,
+            post_json(
+                &format!("/runs/{run_id}/sessions"),
+                &serde_json::json!({ "title": "Ask Fabro", "model": MODEL }),
+            ),
+            StatusCode::CREATED,
+        )
+        .await;
+        let session_id: SessionId = created["id"].as_str().unwrap().parse().unwrap();
+
+        turn(&app, session_id, "First question").await;
+        let entry = state.session_runtimes().load_or_create_runtime(session_id);
+        assert!(
+            !entry.has_agent(),
+            "a terminal run's agent is not cached past its turn"
+        );
+
+        turn(&app, session_id, "Second question").await;
+        assert!(
+            !entry.has_agent(),
+            "every turn on a terminal run ends with an empty slot"
+        );
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
