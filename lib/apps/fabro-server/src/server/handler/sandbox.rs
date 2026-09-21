@@ -5,10 +5,11 @@ use std::time::Duration;
 
 use anyhow::Context as _;
 use axum::extract::ws::{Message as WsMessage, WebSocket, WebSocketUpgrade};
-use fabro_pebble_sandbox::{display_for_log, resolve_path};
+use fabro_redact::SecretRedactor;
 use fabro_types::{RunSandboxInstance, SandboxProviderKind};
 use futures_util::FutureExt;
 use futures_util::future::BoxFuture;
+use pebble_coding_agent::sandbox_driver::{display_for_log, resolve_path};
 use sandbox_driver::{FileKind, ListeningPort, PtyOptions, PtySize, Sandbox, Services as _};
 
 use super::super::{
@@ -272,7 +273,7 @@ async fn terminal_websocket(mut socket: WebSocket, state: Arc<AppState>, id: Run
                     Ok(WsMessage::Binary(bytes)) => {
                         if let Err(err) = session.write_input(&bytes).await {
                             let _ = socket
-                                .send(terminal_server_text("error", Some(&display_for_log(&err))))
+                                .send(terminal_server_text("error", Some(&display_for_log(&err, &SecretRedactor))))
                                 .await;
                             break;
                         }
@@ -282,7 +283,7 @@ async fn terminal_websocket(mut socket: WebSocket, state: Arc<AppState>, id: Run
                             Ok(TerminalClientMessage::Resize(size)) => {
                                 if let Err(err) = session.resize(size).await {
                                     let _ = socket
-                                        .send(terminal_server_text("error", Some(&display_for_log(&err))))
+                                        .send(terminal_server_text("error", Some(&display_for_log(&err, &SecretRedactor))))
                                         .await;
                                     break;
                                 }
@@ -317,7 +318,7 @@ async fn terminal_websocket(mut socket: WebSocket, state: Arc<AppState>, id: Run
                     }
                     Err(err) => {
                         let _ = socket
-                            .send(terminal_server_text("error", Some(&display_for_log(&err))))
+                            .send(terminal_server_text("error", Some(&display_for_log(&err, &SecretRedactor))))
                             .await;
                         break;
                     }
@@ -326,7 +327,7 @@ async fn terminal_websocket(mut socket: WebSocket, state: Arc<AppState>, id: Run
         }
     }
     if let Err(err) = session.close().await {
-        tracing::warn!(error = %display_for_log(&err), run_id = %id, "failed to close run terminal session");
+        tracing::warn!(error = %display_for_log(&err, &SecretRedactor), run_id = %id, "failed to close run terminal session");
     }
 }
 
@@ -574,7 +575,11 @@ async fn list_sandbox_files(
             })
             .into_response()
         }
-        Err(err) => ApiError::new(StatusCode::NOT_FOUND, display_for_log(&err)).into_response(),
+        Err(err) => ApiError::new(
+            StatusCode::NOT_FOUND,
+            display_for_log(&err, &SecretRedactor),
+        )
+        .into_response(),
     }
 }
 
@@ -695,7 +700,11 @@ async fn get_sandbox_file(
     };
     let path = resolve_path(&params.path, &record.runtime.working_directory);
     if let Err(err) = sandbox.fs().download(&path, temp.path()).await {
-        return ApiError::new(StatusCode::NOT_FOUND, display_for_log(&err)).into_response();
+        return ApiError::new(
+            StatusCode::NOT_FOUND,
+            display_for_log(&err, &SecretRedactor),
+        )
+        .into_response();
     }
     match fs::read(temp.path()).await {
         Ok(bytes) => octet_stream_response(bytes.into()),
@@ -736,9 +745,11 @@ async fn put_sandbox_file(
     let path = resolve_path(&params.path, &record.runtime.working_directory);
     match sandbox.fs().upload(temp.path(), &path).await {
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
-        Err(err) => {
-            ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, display_for_log(&err)).into_response()
-        }
+        Err(err) => ApiError::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            display_for_log(&err, &SecretRedactor),
+        )
+        .into_response(),
     }
 }
 

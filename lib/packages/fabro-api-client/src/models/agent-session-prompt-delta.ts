@@ -65,7 +65,7 @@ export interface AgentSessionPromptDelta {
     /**
      * Child lifecycle events during the prompt.
      */
-    'subagents': AgentSessionSubagentCounts;
+    'subagent_counts': AgentSessionSubagentCounts;
     /**
      * Compactions the root completed during the prompt.
      */

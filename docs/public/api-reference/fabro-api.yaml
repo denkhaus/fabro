@@ -12295,7 +12295,7 @@ components:
         - context_window
         - tool_calls
         - descendants
-        - subagents
+        - subagent_counts
         - compactions
         - files_touched
         - last_file_touched
@@ -12338,7 +12338,7 @@ components:
           additionalProperties:
             $ref: "#/components/schemas/AgentSessionDescendantAccount"
           description: What each descendant spent during the prompt, by session id.
-        subagents:
+        subagent_counts:
           $ref: "#/components/schemas/AgentSessionSubagentCounts"
           description: Child lifecycle events during the prompt.
         compactions:

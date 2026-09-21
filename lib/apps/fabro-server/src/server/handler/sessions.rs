@@ -15,7 +15,7 @@ use fabro_api::types::{
 };
 use fabro_llm::lithos_catalog::Catalog;
 use fabro_llm::{FabroClient, ModelSelectionError, selection};
-use fabro_pebble_sandbox::{PebbleSandbox, SecretRedactor};
+use fabro_redact::SecretRedactor;
 use fabro_store::{ProjectedRunSession, project_run_session, project_run_sessions};
 use fabro_tool::fabro_client::ClientBackend;
 use fabro_types::session_event::{
@@ -34,6 +34,7 @@ use pebble_coding_agent::events::{CodingAgentEvent, CodingEvent, ToolSummary};
 use pebble_coding_agent::extensions::{
     EnvContext, SystemPromptContext, SystemPromptDecision, SystemPromptTransform,
 };
+use pebble_coding_agent::sandbox_driver::SandboxEnvironment;
 use pebble_coding_agent::tools::{
     PermissionMiddleware, ToolPermission, ToolPermissionPolicy, canonical_tool_name,
 };
@@ -734,7 +735,7 @@ async fn build_agent(
         .await
         .map_err(AskFabroBuildError::SandboxUnavailable)?;
     let environment: Arc<dyn Environment> = Arc::new(
-        PebbleSandbox::attach(handle, &sandbox_instance.runtime.working_directory)
+        SandboxEnvironment::attach(handle, &sandbox_instance.runtime.working_directory)
             .await
             .map_err(|err| AskFabroBuildError::SandboxUnavailable(anyhow::Error::new(err)))?,
     );
