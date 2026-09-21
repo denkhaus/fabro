@@ -128,6 +128,19 @@ async fn run_create_child_checkout_contains_the_parents_pushed_work() {
                 .json_body_obj(&run(child_id, Some(parent.spec.id()), 0));
         })
         .await;
+    // Fork seam (fabro-8ee1): the duplicate-child guard lists the parent's
+    // children before creating — none here.
+    server
+        .mock_async(|when, then| {
+            when.method(GET)
+                .path("/api/v1/runs")
+                .query_param("parent_id", parent.spec.id().to_string());
+            then.status(200).json_body(json!({
+                "data": [],
+                "meta": { "total": 0, "has_more": false }
+            }));
+        })
+        .await;
     let params = serde_json::from_value(
         json!({"runs":[{"workflow_version_id":workflow_version_id,"start":false}]}),
     )
