@@ -95,14 +95,14 @@ futures-util = "0.3"
 # that is killed rather than stopped leaves no sentinel behind). The CI
 # plugin job installs the driver executables at the same rev, read from
 # this file.
-sandbox-driver = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "07600aa5c6695ec4c999da93c05d2cb78fe11b0c" }
-sandbox-driver-protocol = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "07600aa5c6695ec4c999da93c05d2cb78fe11b0c" }
-sandbox-driver-host = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "07600aa5c6695ec4c999da93c05d2cb78fe11b0c" }
-sandbox-driver-docker = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "07600aa5c6695ec4c999da93c05d2cb78fe11b0c" }
-sandbox-driver-docker-config = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "07600aa5c6695ec4c999da93c05d2cb78fe11b0c" }
-sandbox-driver-daytona = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "07600aa5c6695ec4c999da93c05d2cb78fe11b0c" }
-sandbox-driver-daytona-config = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "07600aa5c6695ec4c999da93c05d2cb78fe11b0c" }
-sandbox-driver-testing = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "07600aa5c6695ec4c999da93c05d2cb78fe11b0c" }
+sandbox-driver = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "7cc5d5baf9f4d8a19dc3d9e1e4215f6634c71735" }
+sandbox-driver-protocol = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "7cc5d5baf9f4d8a19dc3d9e1e4215f6634c71735" }
+sandbox-driver-host = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "7cc5d5baf9f4d8a19dc3d9e1e4215f6634c71735" }
+sandbox-driver-docker = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "7cc5d5baf9f4d8a19dc3d9e1e4215f6634c71735" }
+sandbox-driver-docker-config = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "7cc5d5baf9f4d8a19dc3d9e1e4215f6634c71735" }
+sandbox-driver-daytona = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "7cc5d5baf9f4d8a19dc3d9e1e4215f6634c71735" }
+sandbox-driver-daytona-config = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "7cc5d5baf9f4d8a19dc3d9e1e4215f6634c71735" }
+sandbox-driver-testing = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "7cc5d5baf9f4d8a19dc3d9e1e4215f6634c71735" }
 # pebble: the coding agent loop fabro runs its agent stages, Ask Fabro
 # sessions, hook evaluators, and `fabro exec` on. Pinned by rev to pebble
 # `main`. Pebble owns the `PortRoutes` trait fabro implements over its run
@@ -118,13 +118,13 @@ pebble-cli-core = { git = "https://github.com/lithoscomputer/pebble", rev = "67c
 # one copy of each. Only `fabro-petri` and `fabro-dot` (the DOT parser alone)
 # may depend on these packages; the keys carry the `petri_` prefix so the crate
 # names say where they come from.
-petri_runtime = { git = "https://github.com/lithoscomputer/petri.git", rev = "dfdecdc6990cd49ff7a2d070ffccf32563347fa9", package = "petri-runtime" }
-petri_execution = { git = "https://github.com/lithoscomputer/petri.git", rev = "dfdecdc6990cd49ff7a2d070ffccf32563347fa9", package = "petri-execution" }
-petri_store = { git = "https://github.com/lithoscomputer/petri.git", rev = "dfdecdc6990cd49ff7a2d070ffccf32563347fa9", package = "petri-store" }
-petri_attractor_steps = { git = "https://github.com/lithoscomputer/petri.git", rev = "dfdecdc6990cd49ff7a2d070ffccf32563347fa9", package = "petri-attractor-steps" }
-petri_frontend_attractor = { git = "https://github.com/lithoscomputer/petri.git", rev = "dfdecdc6990cd49ff7a2d070ffccf32563347fa9", package = "petri-frontend-attractor" }
-petri_frontend_fabro = { git = "https://github.com/lithoscomputer/petri.git", rev = "dfdecdc6990cd49ff7a2d070ffccf32563347fa9", package = "petri-frontend-fabro" }
-petri_testkit = { git = "https://github.com/lithoscomputer/petri.git", rev = "dfdecdc6990cd49ff7a2d070ffccf32563347fa9", package = "petri-testkit" }
+petri_runtime = { git = "https://github.com/lithoscomputer/petri.git", rev = "46dffa4ee4ff6b2d068e6b741b3d205f2ecab7ac", package = "petri-runtime" }
+petri_execution = { git = "https://github.com/lithoscomputer/petri.git", rev = "46dffa4ee4ff6b2d068e6b741b3d205f2ecab7ac", package = "petri-execution" }
+petri_store = { git = "https://github.com/lithoscomputer/petri.git", rev = "46dffa4ee4ff6b2d068e6b741b3d205f2ecab7ac", package = "petri-store" }
+petri_attractor_steps = { git = "https://github.com/lithoscomputer/petri.git", rev = "46dffa4ee4ff6b2d068e6b741b3d205f2ecab7ac", package = "petri-attractor-steps" }
+petri_frontend_attractor = { git = "https://github.com/lithoscomputer/petri.git", rev = "46dffa4ee4ff6b2d068e6b741b3d205f2ecab7ac", package = "petri-frontend-attractor" }
+petri_frontend_fabro = { git = "https://github.com/lithoscomputer/petri.git", rev = "46dffa4ee4ff6b2d068e6b741b3d205f2ecab7ac", package = "petri-frontend-fabro" }
+petri_testkit = { git = "https://github.com/lithoscomputer/petri.git", rev = "46dffa4ee4ff6b2d068e6b741b3d205f2ecab7ac", package = "petri-testkit" }
 sentry = { version = "0.35", default-features = false, features = ["backtrace", "contexts", "ureq", "rustls"] }
 fork = "0.2"
 exec = "0.3"
