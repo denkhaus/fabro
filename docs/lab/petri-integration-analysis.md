@@ -220,3 +220,26 @@ Conditions routen gegen den prospektiven Kontext). Die Fork-Zähler
    Edge-CONDITIONS auf den Kontextwerten — keine Prompt-Zählung mehr,
    besser als der Fork-Stand.
 Graph-Rework gehört zu W3-5-Rest (mit den Tier-Entscheidungen).
+
+## W3: Stage-Envelope-Seam-Analyse (fabro-aa5f, 2026-09-21)
+
+Zwei Hälften, zwei Lagen:
+
+1. **fs-Scoping (x.fs_write/x.fs_hide)**: Enforcement lebt in UNSERER
+   Crate (fabro-pebble-sandbox: exec-Policy, Pfad-Auflösung). Offene
+   Design-Frage: wie fließen die x.*-Werte vom admittierten Graph zur
+   per-Node-Pebble-Session? Die Admission (fabro-petri/src/admission.rs)
+   ist fabro-seitig lesbar; die Step-Konstruktion läuft petri-seitig.
+   Kandidat: fabro-seitiger Hook/Layer, der beim Workspace/Session-Bau
+   die x.*-Werte des feuernden Knotens liest und die Pebble-Exec-Policy
+   parametrisiert. Braucht eine Design-Runde (ADR-0009 rev).
+2. **context_read (e804)**: nativ gibt es KEIN Kontext-Tool — Kontext
+   kommt über die Fidelity-Preamble. Solange kein Budget-Enforcement
+   existiert (788b-Offer an petri ausstehend), ist ein aktiver Read-Tool
+   nachrangig: die Werte sind ohnehin im Preamble. Nachziehen, sobald
+   das Offer angenommen ist.
+
+FAZIT W3: alle vier offenen Kinder (2e7b, 288d, aa5f, 96c6-Rest)
+konvergieren auf DIE Design-Runde — Tier-Routing (Quota-Park +
+Exit-Kinds) und ADR-0009-rev (Policy-Flow) zusammen entscheiden, dann
+ist der Rest mechanisch.
