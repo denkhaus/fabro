@@ -54,15 +54,130 @@ pub struct Bundle {
 
 impl Bundle {
     /// The bundle as the Fabro frontend reads it: every file at its
-    /// bundle-relative path, and the project settings at
-    /// `.fabro/project.toml`.
+    /// bundle-relative path, the project settings at
+    /// `.fabro/project.toml`, and — for `..`-climbing graph references —
+    /// the alias keys the frontend's lookup tries (fabro-a32d): the
+    /// collector stores a referenced file under its normalized
+    /// bundle-relative path, while the frontend looks the reference up
+    /// under the raw spelling and the graph-dir-joined spelling without
+    /// normalizing, so a `../sibling/workflow.fabro` child or import
+    /// misses. The aliases spell the same bytes under those forms too.
     fn files(&self) -> MapFiles {
         let mut files = self.files.clone();
         if let Some(project) = &self.project_toml {
             files.insert(PROJECT_FILE.to_string(), project.clone());
         }
+        for (alias, content) in reference_aliases(&files) {
+            files.entry(alias).or_insert(content);
+        }
         MapFiles(files)
     }
+}
+
+/// The extra keys under which `..`-climbing graph references find their
+/// files: for every `stack.child_workflow`/`import` reference in every
+/// graph of the map, the raw spelling and the non-normalized
+/// graph-dir-joined spelling, when the reference resolves to a file the
+/// map holds (normalized join). Template references (`{{ ... }}`) never
+/// resolve at check time and are skipped.
+fn reference_aliases(files: &BTreeMap<String, String>) -> Vec<(String, String)> {
+    let mut aliases = Vec::new();
+    for (path, source) in files {
+        if !std::path::Path::new(path.as_str())
+            .extension()
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("fabro"))
+        {
+            continue;
+        }
+        let directory = path.rsplit_once('/').map_or("", |(dir, _)| dir);
+        for reference in graph_references(source) {
+            if reference.contains("{{") || reference.starts_with('/') {
+                continue;
+            }
+            let joined = if directory.is_empty() {
+                reference.clone()
+            } else {
+                format!("{directory}/{reference}")
+            };
+            let Some(content) = files
+                .get(&normalize_bundle_path(&joined))
+                .or_else(|| files.get(&reference))
+            else {
+                continue;
+            };
+            aliases.push((reference.clone(), content.clone()));
+            let normalized = normalize_bundle_path(&joined);
+            if !files.contains_key(&joined) {
+                aliases.push((joined.clone(), content.clone()));
+            }
+            // The referenced graph's OWN file references (`@prompts/x.md`,
+            // imports) resolve against the graph's path AS WRITTEN, so the
+            // whole directory the reference names must be readable under
+            // the alias spelling too.
+            let target_dir = parent_of(&normalized);
+            if target_dir.is_empty() {
+                continue;
+            }
+            for alias_dir in [parent_of(&reference), parent_of(&joined)] {
+                if alias_dir.is_empty() {
+                    continue;
+                }
+                let prefix = format!("{target_dir}/");
+                for (key, value) in files {
+                    if let Some(rest) = key.strip_prefix(&prefix) {
+                        aliases.push((format!("{alias_dir}/{rest}"), value.clone()));
+                    }
+                }
+            }
+        }
+    }
+    aliases
+}
+
+/// The directory part of a `/`-separated bundle path; empty at the root.
+fn parent_of(path: &str) -> &str {
+    path.rsplit_once('/').map_or("", |(dir, _)| dir)
+}
+
+/// Every `stack.child_workflow="…"` and `import="…"` value in a graph's
+/// text.
+fn graph_references(source: &str) -> Vec<String> {
+    let mut references = Vec::new();
+    for key in ["stack.child_workflow", "import"] {
+        let needle = format!("{key}=");
+        let mut rest = source;
+        while let Some(at) = rest.find(&needle) {
+            let after = &rest[at + needle.len()..];
+            let Some(value) = after.strip_prefix('"') else {
+                // An unquoted value names no file we can alias; skip past
+                // it so the scan always advances.
+                rest = &after[after.len().min(1)..];
+                continue;
+            };
+            let Some(end) = value.find('"') else { break };
+            references.push(value[..end].to_string());
+            rest = &value[end + 1..];
+        }
+    }
+    references
+}
+
+/// A bundle path with `.` and `..` segments resolved, `/`-separated. A
+/// reference that would climb out of the bundle root keeps its leading
+/// `..` segments (it does not resolve, and no alias is generated for it).
+fn normalize_bundle_path(path: &str) -> String {
+    let mut segments: Vec<&str> = Vec::new();
+    for segment in path.split('/') {
+        match segment {
+            "" | "." => {}
+            ".." if segments.last().is_some_and(|last| *last != "..") => {
+                segments.pop();
+            }
+            ".." => segments.push(".."),
+            other => segments.push(other),
+        }
+    }
+    segments.join("/")
 }
 
 /// What the launch binds around the file layers: the model default below

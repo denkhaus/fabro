@@ -324,6 +324,56 @@ async fn a_known_model_is_pinned_at_admission() {
 /// bundle's own `[run.environment]`; an id no layer declares is refused
 /// with Petri's diagnostic.
 #[test]
+fn admits_a_child_workflow_reference_that_climbs_out_of_its_directory() {
+    // fabro-a32d: the collector stores the child under its normalized
+    // bundle path while the frontend looks it up under the raw and
+    // dir-joined spellings — the check's alias keys carry both.
+    let parent = r#"digraph Parent {
+        graph [goal="Run the child"]
+        start [shape=Mdiamond]
+        exit [shape=Msquare]
+        run [shape=house, stack.child_workflow="../child/workflow.fabro"]
+        start -> run -> exit
+    }"#;
+    let child = r#"digraph Child {
+        graph [goal="Say hi"]
+        start [shape=Mdiamond]
+        exit [shape=Msquare]
+        say [shape=parallelogram, script="echo hi"]
+        start -> say -> exit
+    }"#;
+    let bundle = Bundle {
+        files:        BTreeMap::from([
+            (
+                ".fabro/workflows/parent/workflow.fabro".to_string(),
+                parent.to_string(),
+            ),
+            (
+                ".fabro/workflows/child/workflow.fabro".to_string(),
+                child.to_string(),
+            ),
+            (
+                "workflow.toml".to_string(),
+                "_version = 1\n\n[workflow]\ngraph = \"workflow.fabro\"\n".to_string(),
+            ),
+        ]),
+        entrypoint:   ".fabro/workflows/parent/workflow.fabro".to_string(),
+        project_toml: None,
+    };
+    let request = request(bundle, RuntimeSpec::default());
+    let admitted = check::check(&request).expect("the bundle is admitted");
+    assert!(
+        admitted
+            .warnings
+            .iter()
+            .all(|diagnostic| diagnostic.code != "attractor.child_workflow_not_found"),
+        "{:?}",
+        admitted.warnings
+    );
+    assert_eq!(admitted.children.len(), 1, "the child graph was lowered");
+}
+
+#[test]
 fn an_unknown_environment_is_refused_and_the_launch_selects_over_the_bundle() {
     let catalog = "[environments.local]\nprovider = \"local\"\n\
                    [environments.docker-small]\nprovider = \"docker\"\n\
