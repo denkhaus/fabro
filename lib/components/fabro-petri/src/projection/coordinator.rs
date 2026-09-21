@@ -130,6 +130,8 @@ impl RunView {
     /// The run's conclusion, from its recorded finish and what the stages
     /// summed to.
     fn conclude(&mut self, status: &str, at: DateTime<Utc>) {
+        use fabro_llm::LONG_RATE_LIMIT_WINDOW;
+        use fabro_llm::gateway::{RateLimitWindow, reset_window};
         // Fork seam read (fabro-6655): snapshot the publish state before the
         // mutable projection borrow below.
         let pull_request_creation = self
@@ -206,6 +208,27 @@ impl RunView {
                 }),
             ),
         };
+        // Fork seam (fabro-2e7b, ADR-0021 rev 2 Option C): a failure whose
+        // message announces a provider usage-window reset (long window or
+        // naive-ETA) parks the run resumable instead of failing it — the
+        // pre-fire provider gate owns its recovery through rewind.
+        if let (RunStatus::Failed { .. }, Some(failure)) = (&run_status, &failure) {
+            let parks = reset_window(&failure.detail.message, std::time::SystemTime::now())
+                .is_some_and(|window| {
+                    matches!(window, RateLimitWindow::UnknownEta)
+                        || matches!(
+                            window,
+                            RateLimitWindow::Reopens(wait)
+                                if wait > LONG_RATE_LIMIT_WINDOW
+                        )
+                });
+            if parks {
+                run_status = RunStatus::Blocked {
+                    blocked_reason: fabro_types::BlockedReason::QuotaRateLimit,
+                };
+            }
+        }
+
         // Fork seam (fabro-288d, ADR-0010 rev Option A): the run's DOT
         // source carries the fork's `x.kind` exit edges; a boundary
         // failure upgrades to `Succeeded { Boundary }`, deadlock/soft

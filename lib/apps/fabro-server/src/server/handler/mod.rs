@@ -14,7 +14,7 @@ mod environments;
 pub(in crate::server) mod events;
 pub(in crate::server) mod graph;
 pub(in crate::server) mod lifecycle;
-mod lineage;
+pub(crate) mod lineage;
 mod llm_sse;
 mod mcp_servers;
 mod models;

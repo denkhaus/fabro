@@ -20,6 +20,8 @@
 pub mod api;
 pub mod catalog;
 pub mod client;
+mod error;
+pub use error::LONG_RATE_LIMIT_WINDOW;
 pub(crate) mod fork_catalog;
 pub mod gateway;
 pub mod probe;

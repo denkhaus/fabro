@@ -54,6 +54,12 @@ pub(crate) const RECHECK_INTERVAL_SECS: i64 = 600;
 /// `Blocked { quota_rate_limit }` the lifecycle table remaps quota deaths
 /// to.
 #[must_use]
+/// The terminal failure of a summary run, from the conclusion the fold
+/// recorded (lifecycle.conclusion_failure, W1-2).
+fn park_failure(run: &fabro_types::Run) -> Option<RunFailure> {
+    run.lifecycle.conclusion_failure.clone()
+}
+
 pub(crate) fn is_quota_park(status: RunStatus, failure: Option<&RunFailure>) -> bool {
     let parked_status = matches!(
         status,
@@ -216,6 +222,53 @@ pub(crate) async fn provider_gate_tick(
                     };
                     gate.note_probe(automation_id, open, now);
                     if open {
+                        // ADR-0021 rev 2 Option C (fabro-2e7b): when the
+                        // newest terminal is a quota park, REWIND it — a
+                        // resume from its last checkpoint — instead of
+                        // firing a fresh run; anything else fires normally.
+                        let park_to_rewind = newest_terminal(&state, automation_id, now)
+                            .await
+                            .filter(|run| {
+                                is_quota_park(run.lifecycle.status, park_failure(run).as_ref())
+                            })
+                            .map(|run| run.id);
+                        if let Some(parked_run_id) = park_to_rewind {
+                            tracing::info!(
+                                automation_id,
+                                run_id = %parked_run_id,
+                                "line gate: provider window reopened — rewinding the parked run (fabro-2e7b Option C)"
+                            );
+                            let state_for_rewind = Arc::clone(&state);
+                            tokio::spawn(async move {
+                                let actor = fabro_types::Principal::System {
+                                    system_kind: fabro_types::SystemActorKind::Engine,
+                                };
+                                match super::handler::lineage::rewind_run_internal(
+                                    state_for_rewind.as_ref(),
+                                    parked_run_id,
+                                    actor,
+                                )
+                                .await
+                                {
+                                    Ok((new_run_id, archived)) => {
+                                        tracing::info!(
+                                            source_run_id = %parked_run_id,
+                                            new_run_id = %new_run_id,
+                                            archived,
+                                            "line gate: parked run rewound after window reopen"
+                                        );
+                                    }
+                                    Err(err) => {
+                                        tracing::warn!(
+                                            source_run_id = %parked_run_id,
+                                            error = %err,
+                                            "line gate: rewind of the parked run failed — the next schedule fire recovers the line"
+                                        );
+                                    }
+                                }
+                            });
+                        }
+                    } else {
                         tracing::info!(
                             automation_id,
                             "line gate: provider window reopened — firing (fabro-986b)"

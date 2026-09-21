@@ -51,13 +51,15 @@ tokio.workspace = true
 tokio-util.workspace = true
 tracing.workspace = true
 
+fabro-llm = { path = "../fabro-llm" }
+
 [dev-dependencies]
+fabro-llm = { path = "../fabro-llm", features = ["test-support"] }
 fabro-petri = { path = ".", features = ["test-support"] }
 fabro-tool = { path = "../fabro-tool" }
 httpmock = "0.8"
 pebble-coding-agent = { workspace = true, features = ["test-util"] }
 fabro-auth = { path = "../../foundation/fabro-auth", features = ["test-support"] }
-fabro-llm = { path = "../fabro-llm", features = ["test-support"] }
 fabro-store = { path = "../fabro-store", features = ["test-support"] }
 fabro-test.workspace = true
 fabro-types = { path = "../../foundation/fabro-types", features = ["test-support"] }
