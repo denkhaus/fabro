@@ -802,9 +802,6 @@ async fn deleting_a_run_prunes_its_host_workspace_through_petri() {
     let store = state.test_petri_run_store();
     let key = RunKey::new(run_id.clone());
     wait_for_free_lease(store, &key).await;
-    // The view reports the run ended from Petri's own finish, before the
-    // server settles the managed run the delete precheck reads.
-    wait_for_managed_settle(&state, &run_id).await;
 
     // A live handle on the run, as its worker holds one, refuses the
     // delete: Petri will not prune under a lease someone holds.
@@ -861,21 +858,6 @@ async fn deleting_a_run_prunes_its_host_workspace_through_petri() {
 }
 
 /// Wait until no owner holds the run's lease.
-/// Wait until the server's own map holds the run as ended.
-async fn wait_for_managed_settle(state: &AppState, run_id: &str) {
-    let run_id: RunId = run_id.parse().expect("a run id");
-    for _ in 0..500 {
-        if state
-            .test_managed_run_status(&run_id)
-            .is_none_or(fabro_types::RunStatus::is_terminal)
-        {
-            return;
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
-    }
-    panic!("the managed run did not settle");
-}
-
 async fn wait_for_free_lease(store: &SqliteRunStore, key: &RunKey) {
     for _ in 0..500 {
         if store.owner(key).await.expect("reads the lease").is_none() {
@@ -892,6 +874,80 @@ fn delete(run_id: &str) -> Request<Body> {
         .uri(api(&format!("/runs/{run_id}")))
         .body(Body::empty())
         .expect("delete request should build")
+}
+
+/// A delete issued the moment the run reads as ended is accepted while its
+/// execution still tears down in the server process: the server settles
+/// the managed run at Petri's own finish, the record the view ends the run
+/// on, not at the terminal record it stores after the engine returns, so
+/// the delete precheck does not refuse the run as active. The execution's
+/// end after the delete brings nothing back.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_delete_right_after_the_run_reads_ended_is_accepted() {
+    if host_plugin().is_none() {
+        return;
+    }
+    let workspace = tempfile::tempdir().expect("workspace tempdir");
+    let settings = settings_from_toml("_version = 1\n\n[run.environment]\nid = \"local\"\n");
+    let state = test_app_state_with_options(settings, 5);
+    let app = test_app_with_scheduler(Arc::clone(&state));
+
+    let version_id = register_version(&app, &[
+        ("workflow.fabro", COMMAND_DOT),
+        ("workflow.toml", PLAIN_SETTINGS),
+    ])
+    .await;
+    let run_id =
+        create_and_start_run_from_intent(&app, intent(&version_id, workspace.path())).await;
+    let status = wait_for_run_status(&app, &run_id, &["succeeded", "failed"]).await;
+    assert_eq!(
+        status,
+        "succeeded",
+        "run: {}",
+        run_json(&app, &run_id).await
+    );
+    // The run's lease is free once its execution let go of the record: a
+    // delete under a held lease is refused for the lease, which the prune
+    // scenario covers, not for the managed run's status.
+    let store = state.test_petri_run_store();
+    let key = RunKey::new(run_id.clone());
+    wait_for_free_lease(store, &key).await;
+
+    let response = app
+        .clone()
+        .oneshot(delete(&run_id))
+        .await
+        .expect("delete route");
+    let status = response.status();
+    let detail = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
+        .unwrap_or_default();
+    assert_eq!(
+        status,
+        StatusCode::NO_CONTENT,
+        "the delete was refused: {detail}"
+    );
+
+    // The execution ends in the background after the delete and must leave
+    // the run gone.
+    for _ in 0..20 {
+        crate::helpers::response_status(
+            app.clone()
+                .oneshot(get(&format!("/runs/{run_id}")))
+                .await
+                .expect("run route"),
+            StatusCode::NOT_FOUND,
+            format!("GET /api/v1/runs/{run_id}"),
+        )
+        .await;
+        assert_eq!(
+            state.test_managed_run_status(&run_id.parse().expect("a run id")),
+            None,
+            "the execution's end brought the managed run back"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
 }
 
 /// The same on the Docker provider: the instance is the run's container,
