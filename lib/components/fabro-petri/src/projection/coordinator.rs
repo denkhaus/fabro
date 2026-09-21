@@ -130,6 +130,12 @@ impl RunView {
     /// The run's conclusion, from its recorded finish and what the stages
     /// summed to.
     fn conclude(&mut self, status: &str, at: DateTime<Utc>) {
+        // Fork seam read (fabro-6655): snapshot the publish state before the
+        // mutable projection borrow below.
+        let pull_request_creation = self
+            .projection
+            .as_ref()
+            .and_then(|projection| projection.pull_request_creation.clone());
         let Some(projection) = self.projection.as_mut() else {
             return;
         };
@@ -139,13 +145,32 @@ impl RunView {
             .and_then(|root| self.state.invocations.get(&root));
         let failure_message = root.and_then(|root| root.failure.clone());
         let (run_status, outcome, failure) = match status {
-            "success" => (
-                RunStatus::Succeeded {
-                    reason: SuccessReason::Completed,
-                },
-                StageOutcome::Succeeded,
-                None,
-            ),
+            "success" => {
+                // Fork seam (fabro-6655, fabro-67e5): a failed publish
+                // downgrades a green conclusion to PublishBlocked, keeping
+                // the run green while naming why delivery is incomplete.
+                if super::fork_taxonomy::publish_creation_failed(pull_request_creation.as_ref()) {
+                    let error = pull_request_creation
+                        .as_ref()
+                        .and_then(|creation| creation.error.clone())
+                        .unwrap_or_else(|| "unknown error".to_string());
+                    (
+                        RunStatus::Succeeded {
+                            reason: SuccessReason::PublishBlocked,
+                        },
+                        StageOutcome::Succeeded,
+                        Some(super::fork_taxonomy::publish_blocked_failure(&error, at)),
+                    )
+                } else {
+                    (
+                        RunStatus::Succeeded {
+                            reason: SuccessReason::Completed,
+                        },
+                        StageOutcome::Succeeded,
+                        None,
+                    )
+                }
+            }
             "cancelled" => (
                 RunStatus::Failed {
                     reason: FailureReason::Cancelled,

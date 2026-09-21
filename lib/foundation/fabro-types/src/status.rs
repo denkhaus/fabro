@@ -308,6 +308,10 @@ pub enum SuccessReason {
     /// The run reached a graph boundary without the goal's terminal stage
     /// (fork taxonomy, fabro-08b4): work preserved, classified as success.
     Boundary,
+    /// The run's graph finished green but its pull-request publish failed
+    /// (fork taxonomy, fabro-67e5): work is preserved on the run branch or
+    /// in checkpoints; only delivery is incomplete.
+    PublishBlocked,
 }
 
 #[derive(

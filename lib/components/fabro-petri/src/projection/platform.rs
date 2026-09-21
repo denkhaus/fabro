@@ -174,6 +174,10 @@ impl RunView {
                         })
                 {
                     creation.fail(record.error.clone(), at);
+                    // Fork seam (fabro-6655): a publish failure trailing the
+                    // conclusion re-classifies the green run as
+                    // PublishBlocked (records can arrive after the finish).
+                    super::fork_taxonomy::reclassify_publish_blocked(projection, at);
                 }
             }
             PlatformRecord::PullRequestLinked(record) => {

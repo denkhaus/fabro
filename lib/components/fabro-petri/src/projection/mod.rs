@@ -27,6 +27,7 @@
 
 mod coordinator;
 mod engine;
+mod fork_taxonomy;
 mod model;
 mod platform;
 mod progress;
