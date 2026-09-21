@@ -1631,3 +1631,121 @@ async fn a_bundle_naming_a_catalog_mcp_server_lists_its_tools_to_the_model() {
         "the session lists the catalog server's tool under the reference's name: {tools:?}"
     );
 }
+
+/// The hello bundle's agent stage, run with the given version files and an
+/// optional intent goal override, to completion: the run's id, the twin's
+/// request-log namespace and the server state.
+async fn run_hello_agent(
+    files: &[(&str, &str)],
+    goal: Option<&str>,
+) -> (Arc<AppState>, axum::Router, String, String) {
+    let workspace = tempfile::tempdir().expect("workspace tempdir");
+    let twin = twin_openai().await;
+    let namespace = format!(
+        "{}::{}::{}",
+        module_path!(),
+        line!(),
+        goal.map_or("file", |_| "override")
+    );
+    TwinScenarios::new(&namespace)
+        .scenario(TwinScenario::responses(OPENAI_MODEL).text("A limerick, added."))
+        .scenario(TwinScenario::responses(OPENAI_MODEL).text("A limerick, added."))
+        .load(twin)
+        .await;
+    let settings = test_settings();
+    let state = TestAppStateBuilder::new()
+        .runtime_settings(settings.server_settings, settings.manifest_run_defaults)
+        .max_concurrent_runs(5)
+        .in_process_execution()
+        .llm_overlay(llm_overlay_with_provider_base_url(
+            "openai",
+            twin.base_url.clone(),
+        ))
+        .vault_entries([(EnvVars::OPENAI_API_KEY, namespace.clone())])
+        .build();
+    let app = test_app_with_scheduler(Arc::clone(&state));
+    let version_id = register_version(&app, files).await;
+    let mut intent = intent(&version_id, workspace.path());
+    intent["args"]["model"] = serde_json::json!(OPENAI_MODEL);
+    if let Some(goal) = goal {
+        intent["goal"] = serde_json::json!(goal);
+    }
+    let run_id = create_and_start_run_from_intent(&app, intent).await;
+    let status = wait_for_run_status(&app, &run_id, &["succeeded", "failed"]).await;
+    let run = run_json(&app, &run_id).await;
+    assert_eq!(status, "succeeded", "run: {run}");
+    // The workspace outlives the run: the run's record names it.
+    std::mem::forget(workspace);
+    (state, app, namespace, run_id)
+}
+
+/// The goal the run shows is the goal its stages execute with: `GET
+/// /runs/{id}` names it, Petri's admitted graph carries it, and the agent
+/// stage's prompt to the model opens with it in place of the graph's own.
+async fn assert_run_goal(app: &axum::Router, namespace: &str, run_id: &str, goal: &str) {
+    let run = run_json(app, run_id).await;
+    assert_eq!(run["goal"], goal, "the run shows the goal: {run}");
+    let graph = admitted_root_graph(app, run_id).await;
+    assert_eq!(
+        graph["params"]["goal"], goal,
+        "Petri admitted the run's goal: {}",
+        graph["params"]
+    );
+    let logs = twin_openai().await.request_logs(namespace).await;
+    let prompt = logs["requests"]
+        .as_array()
+        .expect("twin request logs are an array")
+        .iter()
+        .filter_map(|request| request["input_text"].as_str())
+        .find(|input| input.contains("Add a haiku to the README"))
+        .unwrap_or_else(|| panic!("the agent stage's prompt reached the twin, got {logs}"));
+    assert!(
+        prompt.contains(goal),
+        "the agent's prompt carries the run's goal, got {prompt}"
+    );
+    assert!(
+        !prompt.contains("Say hello and demonstrate a basic Fabro workflow"),
+        "the graph's own goal is replaced, got {prompt}"
+    );
+}
+
+/// An intent's goal override is bound into Petri's check, so the agent
+/// stages execute with the goal the run shows, not the workflow's own.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_goal_override_is_the_goal_the_stages_execute_with() {
+    const GOAL: &str = "Add a limerick to the README instead of a haiku";
+    if host_plugin().is_none() {
+        return;
+    }
+    let [(workflow_path, workflow), (settings_path, settings)] = hello_files();
+    let (_state, app, namespace, run_id) = run_hello_agent(
+        &[(workflow_path, &workflow), (settings_path, &settings)],
+        Some(GOAL),
+    )
+    .await;
+    assert_run_goal(&app, &namespace, &run_id, GOAL).await;
+}
+
+/// A `[run.goal] file` layer in the bundle's `workflow.toml` is the run's
+/// goal the same way: the file's text is what the run shows and what the
+/// agent stage executes with.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_run_goal_file_layer_is_the_goal_the_stages_execute_with() {
+    const GOAL: &str = "Write a limerick about workflow engines into the README";
+    if host_plugin().is_none() {
+        return;
+    }
+    let [(workflow_path, workflow), _] = hello_files();
+    let settings =
+        "_version = 1\n[workflow]\ngraph = \"workflow.fabro\"\n[run.goal]\nfile = \"goal.md\"\n";
+    let (_state, app, namespace, run_id) = run_hello_agent(
+        &[
+            (workflow_path, &workflow),
+            ("workflow.toml", settings),
+            ("goal.md", GOAL),
+        ],
+        None,
+    )
+    .await;
+    assert_run_goal(&app, &namespace, &run_id, GOAL).await;
+}

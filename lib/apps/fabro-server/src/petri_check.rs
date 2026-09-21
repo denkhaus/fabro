@@ -17,6 +17,7 @@ use fabro_llm::selection;
 use fabro_petri::check::{self, Admitted, Bundle, CheckError, CheckRequest, Diagnostic, Launch};
 use fabro_petri::runtime::RuntimeSpec;
 use fabro_types::diagnostic::{Diagnostic as FabroDiagnostic, Severity};
+use fabro_types::settings::run::RunGoal;
 use fabro_types::{ManifestPath, WorkflowSettings};
 use fabro_workflow::Error as WorkflowError;
 use fabro_workflow::workflow_bundle::WorkflowBundle;
@@ -26,11 +27,11 @@ use lithos_llm::catalog::ProviderId;
 pub(crate) const NO_READY_PROVIDER_RULE: &str = "fabro.model.no_ready_provider";
 
 /// The launch Fabro binds around the settings: the run's model and provider
-/// below them, and the environment the run selected above them. When the
-/// settings name neither model nor provider, the default offering of the
-/// eligible providers is bound as the launch model alone: a node that
-/// names no model runs on it, and a node that names a model the catalog
-/// lacks stays unqualified, so Petri's admission refuses it.
+/// below them, and the environment the run selected and the goal the run
+/// resolved above them. When the settings name neither model nor provider, the
+/// default offering of the eligible providers is bound as the launch model
+/// alone: a node that names no model runs on it, and a node that names a model
+/// the catalog lacks stays unqualified, so Petri's admission refuses it.
 pub(crate) fn launch(
     catalog: &Catalog,
     settings: &WorkflowSettings,
@@ -51,7 +52,28 @@ pub(crate) fn launch(
         model,
         provider: settings.run.model.provider.clone(),
         environment: environment.map(str::to_owned),
+        goal: launch_goal(settings),
         repository,
+    }
+}
+
+/// The goal the run resolved, for Petri to bind over the bundle's layers
+/// and the graph's own `goal`: the settings' inline `run.goal`, which the
+/// create path has layered (an intent's override over the workflow layer
+/// over the server's defaults) and whose workflow-layer `file` form is
+/// inlined before layering. A `file` form that survives layering (a server
+/// default) is left to the bundle's own `[run.goal]`, which Petri reads
+/// itself; the text is not read here, away from the run's working
+/// directory.
+#[expect(
+    clippy::disallowed_methods,
+    reason = "goal text passes through in source form, as `materialize_admitted_run` displays it; \
+              Petri renders `{{ inputs.* }}` and `{{ vars.* }}` in it as it renders `[run] goal`"
+)]
+fn launch_goal(settings: &WorkflowSettings) -> Option<String> {
+    match settings.run.goal.as_ref()? {
+        RunGoal::Inline(text) => Some(text.as_source()),
+        RunGoal::File(_) => None,
     }
 }
 
@@ -62,6 +84,7 @@ pub(crate) fn launch_without_catalog(settings: &WorkflowSettings) -> Launch {
         model:       settings.run.model.name.clone(),
         provider:    settings.run.model.provider.clone(),
         environment: None,
+        goal:        launch_goal(settings),
         repository:  None,
     }
 }

@@ -142,6 +142,7 @@ async fn a_launch_binds_the_repository_and_the_model_default() {
             model:       Some("gpt-5.4".to_string()),
             provider:    None,
             environment: None,
+            goal:        None,
             repository:  Some(repository.path().to_path_buf()),
         },
         runtime:            RuntimeSpec::default(),
@@ -366,4 +367,56 @@ fn an_unknown_environment_is_refused_and_the_launch_selects_over_the_bundle() {
     selected.launch.environment = Some("local".to_string());
     let admitted = check::check(&selected).expect("the launch's selection admits");
     assert_eq!(admitted.graph.params["fabro.environment"]["id"], "local");
+}
+
+/// The goal the launch binds (the run's resolved goal: an intent's override,
+/// else the settings' `[run] goal`) is the goal Petri admits over the
+/// bundle's own `[run] goal` and the graph's `goal`: the admitted graph's
+/// `goal` parameter carries it, and so does the agent stage's config, which
+/// is the goal its prompt is assembled from.
+#[tokio::test]
+async fn a_launch_goal_replaces_the_graphs_goal_on_the_admitted_graph_and_its_stages() {
+    const AGENT_WORKFLOW: &str = r#"digraph Agent {
+    graph [goal="The graph's goal"]
+    start [shape=Mdiamond]
+    exit [shape=Msquare]
+    work [shape=box, prompt="Do the work"]
+    start -> work -> exit
+}"#;
+    let settings = format!("{SETTINGS}[run]\ngoal = \"The bundle's goal\"\n");
+    let goal_of = |launch: Launch| {
+        let request = CheckRequest {
+            launch,
+            ..request(
+                bundle(&[
+                    ("workflow.fabro", AGENT_WORKFLOW),
+                    ("workflow.toml", &settings),
+                ]),
+                RuntimeSpec::default(),
+            )
+        };
+        let admitted = check::check(&request).expect("the agent bundle is admitted");
+        let stage = admitted
+            .graph
+            .body
+            .nodes
+            .iter()
+            .find(|node| node.name == "work")
+            .expect("the agent stage is admitted");
+        assert_eq!(
+            stage.step.config["goal"], admitted.graph.params["goal"],
+            "the stage executes with the run's goal"
+        );
+        admitted.graph.params["goal"].clone()
+    };
+
+    assert_eq!(
+        goal_of(Launch {
+            goal: Some("The run's goal override".to_string()),
+            ..Launch::default()
+        }),
+        "The run's goal override"
+    );
+    // Without a launch goal, the bundle's `[run] goal` stands over the graph's.
+    assert_eq!(goal_of(Launch::default()), "The bundle's goal");
 }
