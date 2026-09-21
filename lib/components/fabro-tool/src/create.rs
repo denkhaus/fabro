@@ -133,6 +133,17 @@ pub async fn create_runs_with_options(
                 title: spec.title,
                 goal: spec.goal,
             };
+            // Fork seam (fabro-8ee1): a parent must not gain a second
+            // non-terminal child of the same workflow version — prompt
+            // prose alone proved violable twice (00ffd60f6 incident).
+            if let Some(parent_run_id) = parent_id {
+                super::fork_duplicate_child_guard::reject_duplicate_active_child(
+                    backend.as_ref(),
+                    parent_run_id,
+                    spec.workflow_version_id,
+                )
+                .await?;
+            }
             let run_id = backend.create_run_from_intent(intent).await?;
             created_ids.push(run_id);
             let start_requested = spec.start.unwrap_or(true);
@@ -461,6 +472,17 @@ mod tests {
         item["args"] = json!({"dry_run":false});
         let mut intent = item.clone();
         intent.as_object_mut().unwrap().remove("start");
+        // Fork seam (fabro-8ee1): the duplicate-child guard lists the
+        // parent's children before creating — no children here.
+        server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/api/v1/runs")
+                    .query_param("parent_id", parent_id.to_string());
+                then.status(200)
+                    .json_body(json!({ "data": [], "meta": { "total": 0, "has_more": false } }));
+            })
+            .await;
         let create = server
             .mock_async(|when, then| {
                 when.method(POST)
@@ -501,6 +523,17 @@ mod tests {
         let id = RunId::new();
         let p = parent(RunTarget::None {});
         let parent_id = p.spec.id();
+        // Fork seam (fabro-8ee1): the duplicate-child guard lists the
+        // parent's children before creating — no children here.
+        server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/api/v1/runs")
+                    .query_param("parent_id", parent_id.to_string());
+                then.status(200)
+                    .json_body(json!({ "data": [], "meta": { "total": 0, "has_more": false } }));
+            })
+            .await;
         let state = server
             .mock_async(|when, then| {
                 when.method(GET)

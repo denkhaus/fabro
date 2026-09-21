@@ -8,6 +8,8 @@ mod common;
 mod create;
 mod events;
 pub mod fabro_client;
+mod fork_duplicate_child_guard;
+mod fork_duplicate_child_guard_tests;
 mod gather;
 mod get;
 mod interact;
