@@ -323,6 +323,28 @@ impl RunSummaryStore {
         decode_run_rows(&rows, now)
     }
 
+    /// Run ids whose latest pull-request record links an open pull request
+    /// (fork, fabro-895d staleness supervisor). The latest record per run
+    /// must be a created/linked one — an unlinked or later request
+    /// supersedes it.
+    pub async fn list_linked_pull_request_run_ids(&self) -> Result<Vec<RunId>> {
+        sqlx::query_scalar::<_, String>(
+            "SELECT DISTINCT latest.run_id FROM platform_records AS latest \
+             WHERE latest.kind IN ('pull_request.created', 'pull_request.linked') \
+               AND NOT EXISTS ( \
+                 SELECT 1 FROM platform_records AS later \
+                 WHERE later.run_id = latest.run_id \
+                   AND later.seq > latest.seq \
+                   AND later.kind LIKE 'pull_request.%' \
+               )",
+        )
+        .fetch_all(&self.pool)
+        .await?
+        .into_iter()
+        .map(parse_stored_run_id)
+        .collect()
+    }
+
     /// The newest non-terminal run of an automation (including children of
     /// its runs), for overlap-policy skip logging (fabro-09ea, fork).
     pub async fn active_run_for_automation(&self, automation_id: &str) -> Result<Option<RunId>> {

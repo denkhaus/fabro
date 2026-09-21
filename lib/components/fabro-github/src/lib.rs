@@ -98,8 +98,68 @@ impl<'a> GitHubContext<'a> {
     }
 }
 
+/// Structured pull-request creation failure so callers can separate
+/// retryable transport/5xx conditions from deterministic 4xx answers and
+/// attach scope remediation (fabro-67e5).
+#[derive(Debug, thiserror::Error)]
+pub enum CreatePullRequestError {
+    /// Installation-token minting failed before any REST call.
+    #[error("failed to mint installation token: {0:#}")]
+    Token(#[source] anyhow::Error),
+    /// Constructing the HTTP client failed — a configuration problem, not a
+    /// transient network condition; deterministic.
+    #[error("HTTP client setup failed: {0:#}")]
+    Client(#[source] anyhow::Error),
+    /// The HTTP request itself failed (network error or timeout) — retryable.
+    #[error("pull request request failed: {0:#}")]
+    Transport(#[source] anyhow::Error),
+    /// GitHub answered with a non-2xx status; classify by `status`.
+    #[error("GitHub returned status {status} creating the pull request: {body}")]
+    Status { status: u16, body: String },
+    /// A 2xx response could not be parsed.
+    #[error("failed to parse pull request response: {0:#}")]
+    Parse(#[source] anyhow::Error),
+}
+
+impl CreatePullRequestError {
+    /// Transport failures and 5xx answers are worth one bounded retry;
+    /// everything else repeats identically.
+    #[must_use]
+    pub fn is_retryable(&self) -> bool {
+        match self {
+            Self::Transport(_) => true,
+            Self::Status { status, .. } => *status >= 500,
+            Self::Token(_) | Self::Client(_) | Self::Parse(_) => false,
+        }
+    }
+
+    /// Remediation for deterministic REST rejections, mirroring the
+    /// preflight probe's status mapping (fabro-67e5): a git push covers
+    /// contents, pull-request creation needs the REST pull-requests scope.
+    #[must_use]
+    pub fn scope_hint(&self) -> Option<String> {
+        match self {
+            Self::Status { status: 401, .. } => {
+                Some("401 Unauthorized — token invalid for API use".to_string())
+            }
+            Self::Status { status: 403, .. } => Some(
+                "403 Forbidden — token lacks the scope for this API call (check the \
+                 pull-requests permission of the token or installation)"
+                    .to_string(),
+            ),
+            Self::Status { status: 404, .. } => Some(
+                "404 Not Found — token cannot see this repository via the API (missing \
+                 metadata/read scope or wrong repository)"
+                    .to_string(),
+            ),
+            _ => None,
+        }
+    }
+}
+
 /// Errors returned by pull-request endpoints. Callers branch on `NotFound` to
-/// distinguish a missing PR from any other failure.
+/// distinguish a missing PR from any other failure, and on `Conflict` to
+/// distinguish an unresolvable update-branch conflict from generic errors.
 #[derive(Debug, thiserror::Error)]
 pub enum PullRequestApiError {
     #[error("Pull request #{number} not found in {owner}/{repo}")]
@@ -107,6 +167,16 @@ pub enum PullRequestApiError {
         owner:  String,
         repo:   String,
         number: u64,
+    },
+    /// The update-branch endpoint refused the update (HTTP 422, or 409):
+    /// head and base conflict in a way GitHub will not auto-resolve.
+    /// Deliberately distinct from `Other` so the supervisor can keep the PR
+    /// open and count failed attempts (fabro-94e8).
+    #[error("Pull request #{number} update-branch conflict (status {status}): {body}")]
+    Conflict {
+        number: u64,
+        status: u16,
+        body:   String,
     },
     #[error(transparent)]
     Other(#[from] anyhow::Error),
@@ -876,8 +946,8 @@ pub async fn create_pull_request(
     title: &str,
     body: &str,
     draft: bool,
-) -> anyhow::Result<CreatedPullRequest> {
-    let client = ctx.http_client()?;
+) -> Result<CreatedPullRequest, CreatePullRequestError> {
+    let client = ctx.http_client().map_err(CreatePullRequestError::Client)?;
     create_pull_request_with_client(&client, ctx, owner, repo, base, head, title, body, draft).await
 }
 
@@ -895,7 +965,7 @@ pub async fn create_pull_request_with_client(
     title: &str,
     body: &str,
     draft: bool,
-) -> anyhow::Result<CreatedPullRequest> {
+) -> Result<CreatedPullRequest, CreatePullRequestError> {
     #[derive(Deserialize)]
     struct PullRequestResponse {
         html_url: String,
@@ -912,7 +982,8 @@ pub async fn create_pull_request_with_client(
             ctx.base_url,
             serde_json::json!({ "contents": "write", "pull_requests": "write" }),
         )
-        .await?;
+        .await
+        .map_err(CreatePullRequestError::Token)?;
 
     tracing::info!(title = %title, head = %head, base = %base, draft, "Creating pull request");
 
@@ -934,31 +1005,19 @@ pub async fn create_pull_request_with_client(
         Some(&pr_body),
     )
     .await
-    .context("Failed to create pull request")?;
+    .map_err(CreatePullRequestError::Transport)?;
 
-    match resp.status {
-        201 => {}
-        422 => {
-            bail!("Pull request could not be created (422): {}", resp.text());
-        }
-        401 | 403 => {
-            bail!(
-                "Authentication failed creating pull request ({})",
-                resp.status
-            );
-        }
-        _ => {
-            bail!(
-                "Unexpected status {} creating pull request: {}",
-                resp.status,
-                resp.text()
-            );
-        }
+    // GitHub answers 201 on creation; every other status (including other
+    // 2xx) is surfaced verbatim through the structured error so callers can
+    // classify retryable 5xx from deterministic 4xx.
+    if resp.status != 201 {
+        return Err(CreatePullRequestError::Status {
+            status: resp.status,
+            body:   resp.text().to_string(),
+        });
     }
 
-    let pr: PullRequestResponse = resp
-        .json()
-        .context("Failed to parse pull request response")?;
+    let pr: PullRequestResponse = resp.json().map_err(CreatePullRequestError::Parse)?;
 
     Ok(CreatedPullRequest {
         html_url: pr.html_url,
@@ -1058,6 +1117,22 @@ pub async fn enable_auto_merge_with_client(
     Ok(())
 }
 
+/// Classify an `enablePullRequestAutoMerge` failure message (fabro-b4ed).
+///
+/// GitHub only accepts the mutation on a protected base branch. On an
+/// unprotected base it answers with "Protected branch rules not
+/// configured" or "Pull request is in clean status" (the PR is instantly
+/// mergeable, so there is nothing for auto-merge to gate on). Both mean
+/// the same dead end: no rule will ever merge this pull request
+/// automatically. Substring matching is intentional — GitHub surfaces
+/// these as GraphQL error strings, not typed error codes.
+#[must_use]
+pub fn is_unprotected_base_auto_merge_error(message: &str) -> bool {
+    let message = message.to_ascii_lowercase();
+    message.contains("protected branch rules not configured")
+        || message.contains("pull request is in clean status")
+}
+
 /// Convert a Git SSH URL to HTTPS format for token-based authentication.
 ///
 /// SSH URLs like `git@github.com:owner/repo.git` become
@@ -1075,6 +1150,45 @@ pub fn ssh_url_to_https(url: &str) -> String {
         return format!("https://{rest}");
     }
     url.to_string()
+}
+
+/// Every URL a raw origin can denote under `url.<replacement>.insteadOf`
+/// config rewrites: the raw URL itself, git's forward rewrite (matcher prefix
+/// replaced by the replacement), and the inverse rewrite that recovers the
+/// pre-rewrite form for origins stored in rewritten form.
+///
+/// Git allows multiple `insteadOf` matchers per replacement key; each pair
+/// yields its own candidates. Use with [`normalize_repo_origin_url`] to
+/// compare or canonicalize origins across differently-configured hosts.
+pub fn rewrite_candidates(raw_origin: &str, rewrites: &[(String, String)]) -> Vec<String> {
+    let mut candidates = vec![raw_origin.to_string()];
+    for (replacement, matcher) in rewrites {
+        if let Some(rest) = raw_origin.strip_prefix(matcher.as_str()) {
+            candidates.push(format!("{replacement}{rest}"));
+        }
+        if let Some(rest) = raw_origin.strip_prefix(replacement.as_str()) {
+            candidates.push(format!("{matcher}{rest}"));
+        }
+    }
+    candidates
+}
+
+/// The canonical form of `raw_origin` under `insteadOf` rewrites.
+///
+/// When the origin is stored in rewritten form (it starts with a replacement
+/// prefix, as produced by cloning through an alias), the first
+/// inverse-rewritten candidate replaces it: git rewrites at fetch time, so the
+/// pre-rewrite form is the URL every other host and service recognizes. Origins
+/// stored in pre-rewrite form are returned unchanged — git already applies the
+/// rewrite transparently and the stored form is the canonical one.
+#[must_use]
+pub fn canonicalize_repo_origin_url(raw_origin: &str, rewrites: &[(String, String)]) -> String {
+    for (replacement, matcher) in rewrites {
+        if let Some(rest) = raw_origin.strip_prefix(replacement.as_str()) {
+            return format!("{matcher}{rest}");
+        }
+    }
+    raw_origin.to_string()
 }
 
 pub fn normalize_repo_origin_url(url: &str) -> String {
@@ -1483,6 +1597,179 @@ pub async fn get_pull_request_with_client(
         .context("Failed to parse pull request response")?)
 }
 
+/// One file of a pull request's diff: the changed path plus GitHub's change
+/// status (`added`, `removed`, `modified`, `renamed`, ...). For renames,
+/// `previous_filename` names the path the file was moved away from.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct PullRequestFileStatus {
+    pub filename:          String,
+    pub status:            String,
+    pub previous_filename: Option<String>,
+}
+
+/// List the pull request's changed files with their change statuses.
+///
+/// Used by the run-PR merge gate (fabro-4ebd): a run pull request must not
+/// delete paths outside the run's own change scope.
+pub async fn list_pull_request_file_statuses(
+    ctx: &GitHubContext<'_>,
+    owner: &str,
+    repo: &str,
+    number: u64,
+) -> Result<Vec<PullRequestFileStatus>, PullRequestApiError> {
+    let client = ctx.http_client()?;
+    list_pull_request_file_statuses_with_client(&client, ctx, owner, repo, number).await
+}
+
+pub async fn list_pull_request_file_statuses_with_client(
+    client: &impl HttpClient,
+    ctx: &GitHubContext<'_>,
+    owner: &str,
+    repo: &str,
+    number: u64,
+) -> Result<Vec<PullRequestFileStatus>, PullRequestApiError> {
+    tracing::debug!(owner, repo, number, "Listing pull request files");
+
+    let token = ctx
+        .creds
+        .resolve_bearer_token(
+            client,
+            owner,
+            repo,
+            ctx.base_url,
+            serde_json::json!({ "pull_requests": "read" }),
+        )
+        .await?;
+
+    let url = format!(
+        "{}/repos/{owner}/{repo}/pulls/{number}/files?per_page=100",
+        ctx.base_url
+    );
+    let auth = format!("Bearer {token}");
+    let resp = client
+        .request(HttpMethod::Get, &url, &github_headers(&auth), None)
+        .await
+        .context("Failed to list pull request files")?;
+
+    match resp.status {
+        200 => {}
+        404 => {
+            return Err(PullRequestApiError::NotFound {
+                owner: owner.to_string(),
+                repo: repo.to_string(),
+                number,
+            });
+        }
+        401 | 403 => {
+            return Err(anyhow!(
+                "Authentication failed listing pull request files ({})",
+                resp.status
+            )
+            .into());
+        }
+        status => {
+            return Err(anyhow!(
+                "Unexpected status {status} listing pull request files: {}",
+                resp.text()
+            )
+            .into());
+        }
+    }
+
+    Ok(resp
+        .json::<Vec<PullRequestFileStatus>>()
+        .context("Failed to parse pull request files response")?)
+}
+
+/// One check-run observation for a PR head ref (name, status, conclusion).
+/// `status` is the run state (`queued`, `in_progress`, `completed`), and
+/// `conclusion` is set once the run completes (`success`, `failure`, ...).
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct CheckRunSnapshot {
+    pub name:       String,
+    pub status:     Option<String>,
+    pub conclusion: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct CheckRunsResponse {
+    #[serde(default)]
+    check_runs: Vec<CheckRunSnapshot>,
+}
+
+/// List the check runs for a commit reference (SHA, branch name, or tag).
+///
+/// Used by the merged-wait gate verdict (fabro-ee5d): `mergeable_state`
+/// alone cannot distinguish a young gate (required checks still queued or
+/// running report `blocked`) from a failing one — the check conclusions are
+/// the evidence.
+pub async fn list_check_runs_for_ref(
+    ctx: &GitHubContext<'_>,
+    owner: &str,
+    repo: &str,
+    git_ref: &str,
+) -> Result<Vec<CheckRunSnapshot>, PullRequestApiError> {
+    let client = ctx.http_client()?;
+    list_check_runs_for_ref_with_client(&client, ctx, owner, repo, git_ref).await
+}
+
+pub async fn list_check_runs_for_ref_with_client(
+    client: &impl HttpClient,
+    ctx: &GitHubContext<'_>,
+    owner: &str,
+    repo: &str,
+    git_ref: &str,
+) -> Result<Vec<CheckRunSnapshot>, PullRequestApiError> {
+    tracing::debug!(owner, repo, git_ref, "Fetching check runs");
+
+    let token = ctx
+        .creds
+        .resolve_bearer_token(
+            client,
+            owner,
+            repo,
+            ctx.base_url,
+            serde_json::json!({ "contents": "read", "pull_requests": "read" }),
+        )
+        .await?;
+
+    let url = format!(
+        "{}/repos/{owner}/{repo}/commits/{git_ref}/check-runs",
+        ctx.base_url
+    );
+    let auth = format!("Bearer {token}");
+    let resp = client
+        .request(HttpMethod::Get, &url, &github_headers(&auth), None)
+        .await
+        .context("Failed to fetch check runs")?;
+
+    match resp.status {
+        200 => {}
+        // A ref with no check runs (or a not-yet-created commit ref) is not
+        // an error for the gate verdict: it is simply no failure evidence.
+        404 => return Ok(Vec::new()),
+        401 | 403 => {
+            return Err(anyhow!(
+                "Authentication failed fetching check runs ({})",
+                resp.status
+            )
+            .into());
+        }
+        status => {
+            return Err(anyhow!(
+                "Unexpected status {status} fetching check runs: {}",
+                resp.text()
+            )
+            .into());
+        }
+    }
+
+    Ok(resp
+        .json::<CheckRunsResponse>()
+        .context("Failed to parse check runs response")?
+        .check_runs)
+}
+
 /// Merge a pull request.
 pub async fn merge_pull_request(
     ctx: &GitHubContext<'_>,
@@ -1609,6 +1896,79 @@ pub async fn close_pull_request_with_client(
     }
 }
 
+/// Ask GitHub to update a pull request's branch with the latest base changes
+/// (the update-branch API, fabro-94e8).
+///
+/// HTTP 422 (and 409) surface as [`PullRequestApiError::Conflict`]: head and
+/// base conflict in a way GitHub will not auto-resolve, and callers must not
+/// treat that as a generic failure.
+pub async fn update_pull_request_branch(
+    ctx: &GitHubContext<'_>,
+    owner: &str,
+    repo: &str,
+    number: u64,
+) -> Result<(), PullRequestApiError> {
+    let client = ctx.http_client()?;
+    update_pull_request_branch_with_client(&client, ctx, owner, repo, number).await
+}
+
+pub async fn update_pull_request_branch_with_client(
+    client: &impl HttpClient,
+    ctx: &GitHubContext<'_>,
+    owner: &str,
+    repo: &str,
+    number: u64,
+) -> Result<(), PullRequestApiError> {
+    tracing::debug!(owner, repo, number, "Updating pull request branch");
+
+    let token = ctx
+        .creds
+        .resolve_bearer_token(
+            client,
+            owner,
+            repo,
+            ctx.base_url,
+            serde_json::json!({ "contents": "write", "pull_requests": "write" }),
+        )
+        .await?;
+
+    let url = format!(
+        "{}/repos/{owner}/{repo}/pulls/{number}/update-branch",
+        ctx.base_url
+    );
+    let auth = format!("Bearer {token}");
+
+    let resp = client
+        .request(HttpMethod::Put, &url, &github_headers(&auth), None)
+        .await
+        .context("Failed to update pull request branch")?;
+
+    match resp.status {
+        // GitHub answers 202 Accepted when the update is queued.
+        202 => Ok(()),
+        409 | 422 => Err(PullRequestApiError::Conflict {
+            number,
+            status: resp.status,
+            body: resp.text().to_string(),
+        }),
+        404 => Err(PullRequestApiError::NotFound {
+            owner: owner.to_string(),
+            repo: repo.to_string(),
+            number,
+        }),
+        401 | 403 => Err(anyhow!(
+            "Authentication failed updating pull request branch ({})",
+            resp.status
+        )
+        .into()),
+        status => Err(anyhow!(
+            "Unexpected status {status} updating pull request branch: {}",
+            resp.text()
+        )
+        .into()),
+    }
+}
+
 /// Request a scoped Installation Access Token with `issues: write`
 /// and `organization_projects: write`. Used for GitHub Projects V2.
 pub async fn create_installation_access_token_for_projects(
@@ -1646,6 +2006,29 @@ mod tests {
     fn decode_pem_env_accepts_raw_pem() {
         let pem = "-----BEGIN TEST KEY-----\nabc\n-----END TEST KEY-----";
         assert_eq!(decode_pem_env("GITHUB_APP_PRIVATE_KEY", pem).unwrap(), pem);
+    }
+
+    #[test]
+    fn unprotected_base_auto_merge_errors_are_recognized() {
+        // fabro-b4ed: both GraphQL failure strings an unprotected base
+        // produces must classify as the auto-merge dead end.
+        for message in [
+            "Auto-merge GraphQL error: [{\"message\":\"Protected branch rules not configured\"}]",
+            "Auto-merge GraphQL error: [{\"message\":\"Pull request is in clean status\"}]",
+        ] {
+            assert!(is_unprotected_base_auto_merge_error(message), "{message}");
+        }
+    }
+
+    #[test]
+    fn other_auto_merge_errors_are_not_unprotected_base() {
+        for message in [
+            "Failed to enable auto-merge",
+            "Auto-merge request failed (500)",
+            "Auto-merge GraphQL error: [{\"message\":\"Bad credentials\"}]",
+        ] {
+            assert!(!is_unprotected_base_auto_merge_error(message), "{message}");
+        }
     }
 
     #[test]
@@ -1747,6 +2130,63 @@ mod tests {
         assert_eq!(
             ssh_url_to_https("https://github.com/brynary/arc.git"),
             "https://github.com/brynary/arc.git"
+        );
+    }
+
+    #[test]
+    fn rewrite_candidates_keep_the_raw_url() {
+        let candidates = rewrite_candidates("https://example.com/owner/repo.git", &[]);
+        assert_eq!(candidates, vec!["https://example.com/owner/repo.git"]);
+    }
+
+    #[test]
+    fn rewrite_candidates_recover_canonical_form_from_alias_origin() {
+        // Origin stored in rewritten form: the inverse rewrite recovers the
+        // canonical URL the run spec stores.
+        let rewrites = vec![(
+            "git@denkhaus.github.com:denkhaus/".to_string(),
+            "https://github.com/denkhaus/".to_string(),
+        )];
+        let candidates =
+            rewrite_candidates("git@denkhaus.github.com:denkhaus/fabro.git", &rewrites);
+        assert!(candidates.contains(&"https://github.com/denkhaus/fabro.git".to_string()));
+    }
+
+    #[test]
+    fn rewrite_candidates_apply_forward_rewrite_to_canonical_origin() {
+        // Origin stored canonically: git's forward rewrite yields the alias
+        // form actually used for fetches and pushes.
+        let rewrites = vec![(
+            "git@denkhaus.github.com:denkhaus/".to_string(),
+            "git@github.com:denkhaus/".to_string(),
+        )];
+        let candidates = rewrite_candidates("git@github.com:denkhaus/fabro.git", &rewrites);
+        assert!(candidates.contains(&"git@denkhaus.github.com:denkhaus/fabro.git".to_string()));
+    }
+
+    #[test]
+    fn canonicalize_recovers_pre_rewrite_form_for_alias_origins() {
+        let rewrites = vec![(
+            "git@denkhaus.github.com:denkhaus/".to_string(),
+            "https://github.com/denkhaus/".to_string(),
+        )];
+        assert_eq!(
+            canonicalize_repo_origin_url("git@denkhaus.github.com:denkhaus/fabro.git", &rewrites),
+            "https://github.com/denkhaus/fabro.git"
+        );
+    }
+
+    #[test]
+    fn canonicalize_keeps_canonically_stored_origins_unchanged() {
+        // Git applies the rewrite at fetch time; the stored pre-rewrite form
+        // is already the canonical URL and must not be transformed.
+        let rewrites = vec![(
+            "git@denkhaus.github.com:denkhaus/".to_string(),
+            "https://github.com/denkhaus/".to_string(),
+        )];
+        assert_eq!(
+            canonicalize_repo_origin_url("https://github.com/denkhaus/fabro.git", &rewrites),
+            "https://github.com/denkhaus/fabro.git"
         );
     }
 
@@ -1961,6 +2401,146 @@ mod tests {
     // -----------------------------------------------------------------------
 
     use crate::tests_mock::{self, MockHttpClient};
+
+    // -----------------------------------------------------------------------
+    // CreatePullRequestError classification (fabro-67e5)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn create_pull_request_error_retryability_mirrors_preflight_probe() {
+        assert!(
+            CreatePullRequestError::Status {
+                status: 500,
+                body:   String::new(),
+            }
+            .is_retryable()
+        );
+        assert!(
+            CreatePullRequestError::Status {
+                status: 503,
+                body:   String::new(),
+            }
+            .is_retryable()
+        );
+        assert!(CreatePullRequestError::Transport(anyhow::anyhow!("timed out")).is_retryable());
+        for status in [401u16, 403, 404, 422] {
+            assert!(
+                !CreatePullRequestError::Status {
+                    status,
+                    body: String::new(),
+                }
+                .is_retryable(),
+                "{status} must be deterministic"
+            );
+        }
+        assert!(!CreatePullRequestError::Token(anyhow::anyhow!("mint failed")).is_retryable());
+    }
+
+    #[test]
+    fn create_pull_request_error_scope_hints_match_preflight_wording() {
+        let hint = |status: u16| {
+            CreatePullRequestError::Status {
+                status,
+                body: String::new(),
+            }
+            .scope_hint()
+        };
+        assert!(hint(401).is_some_and(|h| h.contains("401 Unauthorized")));
+        assert!(
+            hint(403).is_some_and(|h| h.contains("pull-requests permission")),
+            "403 must name the pull-requests scope"
+        );
+        assert!(hint(404).is_some_and(|h| h.contains("404 Not Found")));
+        assert!(hint(422).is_none());
+        assert!(hint(502).is_none());
+    }
+
+    #[tokio::test]
+    async fn create_pull_request_maps_403_to_status_error() {
+        let mock = MockHttpClient::new().on(
+            HttpMethod::Post,
+            "/repos/owner/repo/pulls",
+            403,
+            "Resource not accessible by integration",
+        );
+        let creds = GitHubCredentials::Pat("pat-token".to_string());
+        let ctx = GitHubContext::new(&creds, "https://api.example.test");
+
+        let error = create_pull_request_with_client(
+            &mock, &ctx, "owner", "repo", "main", "feature", "Title", "Body", false,
+        )
+        .await
+        .expect_err("403 must surface as a Status error");
+
+        let hint = error.scope_hint().expect("403 carries a scope hint");
+        assert!(hint.starts_with("403 Forbidden — token lacks the scope"));
+        assert!(hint.contains("pull-requests permission"), "{hint}");
+        assert!(!error.is_retryable());
+    }
+
+    // -----------------------------------------------------------------------
+    // update_pull_request_branch — success, conflict, not found
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn update_pull_request_branch_accepts_202() {
+        let mock = MockHttpClient::new().on(
+            HttpMethod::Put,
+            "/repos/owner/repo/pulls/42/update-branch",
+            202,
+            r#"{"message":"Updating pull request branch."}"#,
+        );
+        let creds = GitHubCredentials::Pat("pat-token".to_string());
+        let ctx = GitHubContext::new(&creds, "https://api.example.test");
+
+        update_pull_request_branch_with_client(&mock, &ctx, "owner", "repo", 42)
+            .await
+            .expect("202 must map to Ok");
+        assert_eq!(mock.request_count(), 1);
+    }
+
+    #[tokio::test]
+    async fn update_pull_request_branch_maps_422_to_conflict() {
+        let mock = MockHttpClient::new().on(
+            HttpMethod::Put,
+            "/repos/owner/repo/pulls/42/update-branch",
+            422,
+            r#"{"message":"merge conflict between head and base"}"#,
+        );
+        let creds = GitHubCredentials::Pat("pat-token".to_string());
+        let ctx = GitHubContext::new(&creds, "https://api.example.test");
+
+        let error = update_pull_request_branch_with_client(&mock, &ctx, "owner", "repo", 42)
+            .await
+            .expect_err("422 must surface as a Conflict error");
+
+        assert!(
+            matches!(error, PullRequestApiError::Conflict {
+                number: 42,
+                status: 422,
+                ..
+            }),
+            "expected Conflict, got {error:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn update_pull_request_branch_maps_404_to_not_found() {
+        let mock = MockHttpClient::new().on(
+            HttpMethod::Put,
+            "/repos/owner/repo/pulls/42/update-branch",
+            404,
+            r#"{"message":"Not Found"}"#,
+        );
+        let creds = GitHubCredentials::Pat("pat-token".to_string());
+        let ctx = GitHubContext::new(&creds, "https://api.example.test");
+
+        let error = update_pull_request_branch_with_client(&mock, &ctx, "owner", "repo", 42)
+            .await
+            .expect_err("404 must surface as NotFound");
+
+        assert!(matches!(error, PullRequestApiError::NotFound { .. }));
+    }
 
     // -----------------------------------------------------------------------
     // create_installation_access_token — success

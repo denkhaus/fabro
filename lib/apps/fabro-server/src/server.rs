@@ -167,8 +167,12 @@ use crate::{
 pub(crate) mod automation_breaker;
 mod automation_scheduler;
 mod fork_line_recovery;
+pub(crate) mod fork_staleness_supervisor;
+#[cfg(test)]
+mod fork_staleness_supervisor_tests;
 mod handler;
 pub(crate) mod petri_runs;
+pub(crate) mod pull_request_conflict;
 mod pull_request_supervisor;
 pub(crate) mod resource_sampler;
 pub(crate) mod run_records;
@@ -176,6 +180,7 @@ mod session_runtime;
 pub(crate) mod stream_follower;
 
 pub(crate) use automation_scheduler::spawn_automation_scheduler;
+pub(crate) use fork_staleness_supervisor::spawn_pull_request_staleness_supervisor;
 pub(crate) use handler::graph::render_graph_bytes;
 #[cfg(test)]
 pub(in crate::server) use handler::graph::{

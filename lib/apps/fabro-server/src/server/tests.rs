@@ -5039,7 +5039,7 @@ strategy = "token"
     .expect("github token settings fixture should resolve")
 }
 
-fn create_github_token_app_state(
+pub(super) fn create_github_token_app_state(
     token: Option<&str>,
     github_api_base_url: Option<String>,
 ) -> Arc<AppState> {

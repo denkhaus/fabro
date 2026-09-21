@@ -57,6 +57,39 @@ impl PullRequestCreation {
     }
 }
 
+/// Durable record of the engine's auto-merge enable attempt for a run's
+/// pull request (fabro-b4ed).
+///
+/// GitHub only accepts `enablePullRequestAutoMerge` on a protected base
+/// branch. On an unprotected base the mutation fails ("Protected branch
+/// rules not configured" / "Pull request is in clean status") and nothing
+/// will ever merge the PR automatically — a stuck-gate signal the merged
+/// wait must classify instead of treating the PR as young forever.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PullRequestAutoMergeState {
+    pub status: PullRequestAutoMergeStatus,
+    /// GitHub's error message when enabling failed. Absent when auto-merge
+    /// was enabled successfully.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error:  Option<String>,
+}
+
+/// Outcome of the engine's auto-merge enable attempt (fabro-b4ed).
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, strum::Display, strum::EnumString,
+)]
+#[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
+pub enum PullRequestAutoMergeStatus {
+    /// Auto-merge was enabled; GitHub owns the merge from here.
+    Enabled,
+    /// Enable failed on an unprotected base: no protection rules means no
+    /// auto-merge path — the PR can only be merged manually.
+    UnprotectedBase,
+    /// Enable failed for another reason (transport, permissions, ...).
+    Failed,
+}
+
 /// Minimal GitHub pull request reference stored on a workflow run.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PullRequestLink {
@@ -230,25 +263,31 @@ pub struct PullRequestRef {
 /// Fields mirrored directly from GitHub's pull request REST payload.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PullRequestGithubDetail {
-    pub number:        u64,
-    pub title:         String,
-    pub body:          Option<String>,
-    pub state:         String,
-    pub draft:         bool,
+    pub number:          u64,
+    pub title:           String,
+    pub body:            Option<String>,
+    pub state:           String,
+    pub draft:           bool,
     #[serde(default)]
-    pub merged:        bool,
+    pub merged:          bool,
     #[serde(default)]
-    pub merged_at:     Option<String>,
-    pub mergeable:     Option<bool>,
-    pub additions:     u64,
-    pub deletions:     u64,
-    pub changed_files: u64,
-    pub html_url:      String,
-    pub user:          PullRequestUser,
-    pub head:          PullRequestRef,
-    pub base:          PullRequestRef,
-    pub created_at:    String,
-    pub updated_at:    String,
+    pub merged_at:       Option<String>,
+    pub mergeable:       Option<bool>,
+    /// Raw GitHub `mergeable_state` (`clean`, `dirty`, `blocked`,
+    /// `unknown`, ...). `None` or `unknown` means GitHub is still
+    /// computing mergeability — callers must not treat that as a
+    /// gate-failure signal.
+    #[serde(default)]
+    pub mergeable_state: Option<String>,
+    pub additions:       u64,
+    pub deletions:       u64,
+    pub changed_files:   u64,
+    pub html_url:        String,
+    pub user:            PullRequestUser,
+    pub head:            PullRequestRef,
+    pub base:            PullRequestRef,
+    pub created_at:      String,
+    pub updated_at:      String,
 }
 
 /// Live GitHub pull request fields returned only after a successful GitHub API
