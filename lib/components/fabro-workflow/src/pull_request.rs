@@ -575,7 +575,6 @@ where
             Output = Result<github_app::CreatedPullRequest, fabro_github::CreatePullRequestError>,
         >,
 {
-    use std::future::Future;
     let mut attempts: Vec<String> = Vec::new();
     for attempt in 1..PR_CREATE_ATTEMPTS {
         let error = match create().await {
@@ -592,7 +591,7 @@ where
             error = %error,
             "Transient pull request creation failure; retrying after a short backoff"
         );
-        tokio::time::sleep(PR_CREATE_RETRY_DELAY).await;
+        sleep(PR_CREATE_RETRY_DELAY).await;
     }
     let error = match create().await {
         Ok(created) => return Ok(created),
