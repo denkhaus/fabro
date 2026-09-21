@@ -557,6 +557,69 @@ async fn enable_auto_merge_within_scope(
     enable_auto_merge_if_requested(github, owner, repo, node_id, number, Some(options)).await;
 }
 
+/// Fork surface (fabro-67e5 retry, W2-3): bounded retry around pull request
+/// creation. All attempts except the last retry once on transient
+/// (retryable) failures with a short backoff; deterministic failures fail
+/// fast carrying the scope remediation and the attempt history.
+const PR_CREATE_ATTEMPTS: u32 = 3;
+const PR_CREATE_RETRY_DELAY: std::time::Duration = std::time::Duration::from_secs(2);
+
+async fn create_pull_request_with_attempts<F, Fut>(
+    owner: &str,
+    repo: &str,
+    mut create: F,
+) -> Result<github_app::CreatedPullRequest, String>
+where
+    F: FnMut() -> Fut,
+    Fut: std::future::Future<
+            Output = Result<github_app::CreatedPullRequest, fabro_github::CreatePullRequestError>,
+        >,
+{
+    use std::future::Future;
+    let mut attempts: Vec<String> = Vec::new();
+    for attempt in 1..PR_CREATE_ATTEMPTS {
+        let error = match create().await {
+            Ok(created) => return Ok(created),
+            Err(error) if error.is_retryable() => error,
+            Err(error) => {
+                attempts.push(create_attempt_line(attempt, owner, repo, &error));
+                return Err(final_create_error(&attempts, &error));
+            }
+        };
+        attempts.push(create_attempt_line(attempt, owner, repo, &error));
+        tracing::warn!(
+            attempt,
+            error = %error,
+            "Transient pull request creation failure; retrying after a short backoff"
+        );
+        tokio::time::sleep(PR_CREATE_RETRY_DELAY).await;
+    }
+    let error = match create().await {
+        Ok(created) => return Ok(created),
+        Err(error) => error,
+    };
+    attempts.push(create_attempt_line(PR_CREATE_ATTEMPTS, owner, repo, &error));
+    Err(final_create_error(&attempts, &error))
+}
+
+fn create_attempt_line(
+    attempt: u32,
+    owner: &str,
+    repo: &str,
+    error: &fabro_github::CreatePullRequestError,
+) -> String {
+    format!("attempt {attempt} ({owner}/{repo}): {error:#}")
+}
+
+fn final_create_error(attempts: &[String], error: &fabro_github::CreatePullRequestError) -> String {
+    let history = attempts.join("; ");
+    match error.scope_hint() {
+        Some(hint) if history.is_empty() => format!("pull request creation failed — {hint}"),
+        Some(hint) => format!("pull request creation failed — {hint} ({history})"),
+        None => history,
+    }
+}
+
 async fn enable_auto_merge_if_requested(
     github: &github_app::GitHubContext<'_>,
     owner: &str,
@@ -663,18 +726,20 @@ pub async fn open_pull_request(
     let body = truncate_pr_body(&content.body);
     let title = content.title;
 
-    let created = match github_app::create_pull_request(
-        &req.github,
-        &owner,
-        &repo,
-        req.base_branch,
-        req.head_branch,
-        &title,
-        &body,
-        req.draft,
-    )
-    .await
-    {
+    let create_result = create_pull_request_with_attempts(&owner, &repo, || {
+        github_app::create_pull_request(
+            &req.github,
+            &owner,
+            &repo,
+            req.base_branch,
+            req.head_branch,
+            &title,
+            &body,
+            req.draft,
+        )
+    })
+    .await;
+    let created = match create_result {
         Ok(created) => created,
         Err(create_err) => {
             match reconcile_existing_pull_request(&req, &owner, &repo, "after a failed create")

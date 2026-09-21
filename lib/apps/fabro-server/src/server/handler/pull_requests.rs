@@ -341,6 +341,17 @@ async fn create_run_pull_request(
     }
     let model = if let Some(model) = body.model {
         model
+    } else if let Some(configured) = run_state
+        .spec
+        .settings
+        .run
+        .pull_request
+        .as_ref()
+        .and_then(|settings| settings.model.clone())
+    {
+        // Fork (fabro-890b): an explicit `[run.pull_request] model` wins
+        // over the catalog default; a per-request body model wins over both.
+        configured
     } else {
         let catalog = state.catalog();
         let configured = state.ready_llm_provider_ids().await;
