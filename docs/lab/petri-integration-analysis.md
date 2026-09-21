@@ -154,3 +154,19 @@ architect 6n/10e, merge-upstream 4n/7e, revisor 5n/10e inkl. file-refs).
 Wichtig für lokale Läufe: IMMER `env -u FABRO_SERVER` (Agent-Shell trägt
 FABRO_SERVER=http://127.0.0.1:32276 — macht parse-Tests rot); Docker-
 Tests brauchen slim+dind-Runner + CATALOG_IMAGE lokal gepullt.
+
+## W2-4 + W3-hooks Verifikation (2026-09-21)
+
+- Catalog-Overlay (fabro-6945): Seam in beiden Builder-Pfaden der codecs-
+  Ära, Pin grün — W2 KOMPLETT (a875, 2889, b5a9, 6945).
+- Hooks-Familie (fabro-9b1b): Petris HookVokabular ist ein Superset
+  (StageComplete, script/command/url/prompt/agent, blocking, timeout,
+  sandbox); die HookEntry-Layer nimmt unsere TOMLs unverändert.
+  `fabro validate` über alle 5 Workflows GRÜN — Hooks senken sauber.
+  Ausführungs-Verifikation (stage-journal feuert) läuft mit dem
+  W3-5-Conductor-Szenario (Staging), die Engine-Maschine decken die
+  fabro-petri-Hook-Tests.
+- Drei validate-Warnungen verfeinern die W3-Karte (settings zogen zur
+  Plattform): `[run.meta_branch]` (standalone runner macht kein eigenes
+  Git), `[run.notifications]` (Plattform-Facility), `fabro_tools = true`
+  (Host-Tool-Capability statt Engine-Setting — W3-6-Anker).
