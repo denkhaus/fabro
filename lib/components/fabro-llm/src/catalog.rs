@@ -9,8 +9,6 @@
 //! `metadata.agent` namespace that Pebble reads too.
 
 use fabro_config::LlmLayer;
-
-use crate::fork_catalog::OVERLAY;
 use fabro_static::EnvVars;
 use fabro_types::AgentProfileKind;
 pub use lithos_llm::catalog::Offering;
@@ -19,6 +17,8 @@ use lithos_llm::catalog::{
     adapter_ids, codec_ids,
 };
 use serde::Deserialize;
+
+use crate::fork_catalog::OVERLAY;
 
 /// The metadata namespace agent harnesses read.
 const AGENT_METADATA_NAMESPACE: &str = "agent";

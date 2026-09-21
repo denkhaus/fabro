@@ -10,6 +10,7 @@ mod mcp_servers;
 mod petri_store;
 mod routing;
 mod run_files;
+// mod run_wait; // petri-pending: app-fixture auf TestAppState umstellen (W4-4 rest)
 mod runs;
 mod sandbox_vnc;
 mod sessions;

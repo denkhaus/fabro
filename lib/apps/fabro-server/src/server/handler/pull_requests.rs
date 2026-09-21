@@ -142,12 +142,12 @@ fn pull_request_exists_error(record: &PullRequestLink) -> ApiError {
     )
 }
 
-struct PullRequestGithubContext {
-    record: PullRequestLink,
-    owner:  String,
-    repo:   String,
-    number: u64,
-    creds:  fabro_github::GitHubCredentials,
+pub(super) struct PullRequestGithubContext {
+    pub(super) record: PullRequestLink,
+    pub(super) owner:  String,
+    pub(super) repo:   String,
+    pub(super) number: u64,
+    pub(super) creds:  fabro_github::GitHubCredentials,
 }
 
 async fn load_pull_request_record(
@@ -168,7 +168,7 @@ fn github_coordinates_for_record(record: &PullRequestLink) -> (String, String, u
     (record.owner.clone(), record.repo.clone(), record.number)
 }
 
-async fn load_pull_request_github_context(
+pub(super) async fn load_pull_request_github_context(
     state: &Arc<AppState>,
     id: &RunId,
 ) -> Result<PullRequestGithubContext, ApiError> {
