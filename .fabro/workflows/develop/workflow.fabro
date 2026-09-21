@@ -25,11 +25,14 @@ digraph Develop {
         // was fixed by claim-base diffing, the raise keeps the whole
         // per-seed capture readable without a blob round-trip.
         x.preamble_budget_kb=48,
-        // Deterministic cycle guards (fabro-45d0): engine injects
-        // seed_cycles = { node -> completed visits since current_seed_id
-        // last changed value }. The planner reads counts instead of
-        // counting preamble history (run 01M0T9B7T6 review, rec 1b).
-        x.cycle_counter_reset_key="current_seed_id"
+        // Deterministic cycle guards (fabro-45d0, petri rework in
+        // fabro-96c6): the engine's own node generations count loop
+        // visits — every back-edge re-entry increments
+        // nodes.<id>.generation, so the guard edges read them directly.
+        // Develop is one-seed-per-run, so per-run counts equal the legacy
+        // per-seed seed_cycles. The planner cannot read generations
+        // (expressions only) and needs none: the guards are graph-side,
+        // no model compliance involved.
     ]
 
     start [shape=Mdiamond, label="Start"]
@@ -62,7 +65,6 @@ digraph Develop {
         shape=parallelogram,
         script="nu .fabro/workflows/develop/scripts/tracker-guard.nu",
         output_schema="routing",
-        stdin_source="internal.run_id",
         timeout="30s",
         max_retries=0
     ]
@@ -93,9 +95,9 @@ digraph Develop {
         label="Planner preflight: already-landed check",
         shape=parallelogram,
         script="nu .fabro/workflows/develop/scripts/planner-preflight.nu",
-        // The engine pipes the invoking run id (closure notes + --self
-        // closure identity in dup-run-check) through stdin.
-        stdin_source="internal.run_id",
+        // Petri has no internal.run_id (the legacy engine's run state
+        // reads as null); the script takes the invoking run id from
+        // FABRO_RUN_ID and degrades to empty when nothing binds it.
         output_schema="routing",
         // fabro-900e producer declaration: declares `output.preflight`
         // (the per-candidate verdict table rendered into the planner's
@@ -230,8 +232,8 @@ digraph Develop {
         // on a red bounce (absent on first visits and green runs; additive
         // enrichment, never a blob ref). Deliberately OUT: `journal` and
         // `implementation_summary` (the implementer's OWN outputs echoing
-        // back), review_verdict (planner input), seed_cycles (planner/gate
-        // input) — and with them the planner's painpoints, which never were
+        // back), review_verdict (planner input) — and with them the
+        // planner's painpoints, which never were
         // implementer inputs (stage_ignore alone cannot filter ## Context).
         x.preamble_allow_keys="current_seed_id,current_seed_title,current_seed_brief,output.gatebounce",
         // fabro-1dae: same loop-asset scope as the planner — hidden means no
@@ -373,8 +375,8 @@ digraph Develop {
         // contract — exactly the keys the prompt names as inputs. Seed trio
         // + implementation_summary + the evidence capture (command.output;
         // deduped into the evidence stage section when that renders it).
-        // Deliberately OUT: seed_cycles (planner/gate input), review_verdict
-        // and review_feedback (the reviewer's own stale verdicts), and any
+        // Deliberately OUT: review_verdict and review_feedback (the
+        // reviewer's own stale verdicts), and any
         // future key another node starts writing — the section stays
         // deterministic no matter how the graph grows.
         x.preamble_allow_keys="current_seed_id,current_seed_title,current_seed_brief,implementation_summary,command.output",
@@ -527,7 +529,7 @@ digraph Develop {
     tester -> evidence    [label="Gate green", condition="outcome=succeeded"]
     // Structural gate-guard (fabro-6baf): third consecutive red routes to
     // the human instead of another implementer round.
-    tester -> exit [x.kind="deadlock", label="Gate deadlock (3 reds, needs a human)", condition="seed_cycles.tester >= 3"]
+    tester -> exit [x.kind="deadlock", label="Gate deadlock (3 reds, needs a human)", condition="nodes.tester.generation >= 3"]
     // fabro-56f4: the red bounce passes through the deterministic
     // gatebounce node first (edge pre-step idiom — the engine has no edge
     // pre-steps, the closeout-pattern node is the established way).
@@ -546,9 +548,9 @@ digraph Develop {
 
     reviewer -> closeout  [label="Approved", condition="preferred_label=\"Approved\""]
     // Structural review-guard (fabro-6baf): conditions outrank unconditional
-    // edges, so at seed_cycles.reviewer >= 3 the deadlock exit wins over
-    // re-planning — the loop terminates without model compliance.
-    reviewer -> exit [x.kind="deadlock", label="Review deadlock (3 cycles, needs a human)", condition="seed_cycles.reviewer >= 3"]
+    // edges, so at nodes.reviewer.generation >= 3 the deadlock exit wins
+    // over re-planning — the loop terminates without model compliance.
+    reviewer -> exit [x.kind="deadlock", label="Review deadlock (3 cycles, needs a human)", condition="nodes.reviewer.generation >= 3"]
     reviewer -> planner   [label="Changes requested"]
     // Fast re-review path (run 01M0SS23MJ): a procedural rejection
     // ("verification could not be completed" — evidence delivery, not code)
@@ -559,7 +561,7 @@ digraph Develop {
     // seed"; the edge makes it provable — a second Verification-blocked
     // verdict cannot re-enter evidence and must decide (Approved / Changes
     // requested via the unconditional fallback).
-    reviewer -> evidence  [label="Verification blocked", condition="preferred_label=\"Verification blocked\" && seed_cycles.evidence < 2"]
+    reviewer -> evidence  [label="Verification blocked", condition="preferred_label=\"Verification blocked\" && nodes.evidence.generation < 2"]
     reviewer -> exit [x.kind="soft", label="Reviewer failed (next run re-enters)", condition="outcome=failed"]
 
     // One seed per run (user directive 2026-09-04): after the approved

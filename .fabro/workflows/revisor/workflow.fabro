@@ -10,7 +10,6 @@ digraph Revisor {
         // Same posture as develop (fabro-45d0 measured there): bounded
         // preambles, deterministic cycle counters.
         x.preamble_budget_kb=24,
-        x.cycle_counter_reset_key="revisor_target_run_id"
     ]
 
     start [shape=Mdiamond, label="Start"]
@@ -144,17 +143,19 @@ digraph Revisor {
     analyze -> exit [x.kind="soft", label="Ask failed (next pass retries)"]
 
     // ADR-0015 v2: no HITL gate. One revision per invocation by default —
-    // the engine counts select passes via seed_cycles (reset per target).
-    // Edges are mutually exclusive (matched condition edges can be picked
-    // nondeterministically when several match): failed -> soft exit;
-    // budget exhausted -> natural exit (merges via the normal PR +
-    // auto-merge path, identical to develop); budget remaining -> next
-    // pass. Raising the budget is currently these two constants (N in
-    // "seed_cycles.select >= N" / "< N"); an engine graph attribute can
-    // replace them later.
+    // the engine's own node generations count select passes (every
+    // back-edge re-entry increments nodes.select.generation; the revisor
+    // is one-target-per-run, so per-run counts equal the legacy
+    // reset-per-target seed_cycles). Edges are mutually exclusive (matched
+    // condition edges can be picked nondeterministically when several
+    // match): failed -> soft exit; budget exhausted -> natural exit
+    // (merges via the normal PR + auto-merge path, identical to develop);
+    // budget remaining -> next pass. Raising the budget is currently the
+    // N in "nodes.select.generation >= N" / "< N"; an engine graph
+    // attribute can replace them later.
     file -> exit [x.kind="soft", label="Bookkeeping failed (nothing merged)", condition="outcome=failed"]
-    file -> exit [label="Pass complete (budget)", condition="outcome=succeeded && seed_cycles.select >= 1"]
-    file -> select [label="Continue backlog", condition="outcome=succeeded && seed_cycles.select < 1"]
+    file -> exit [label="Pass complete (budget)", condition="outcome=succeeded && nodes.select.generation >= 1"]
+    file -> select [label="Continue backlog", condition="outcome=succeeded && nodes.select.generation < 1"]
     // Unconditional safety net (validator rule all_conditional_edges):
     // an outcome shape none of the edges above matched routes as a soft
     // exit — nothing merges, the next invocation retries the run.

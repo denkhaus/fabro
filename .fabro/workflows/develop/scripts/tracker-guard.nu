@@ -178,9 +178,10 @@ def develop-claims [journal_dir: string, seed_ids: list, self_run: string]: noth
 }
 
 def main [--dry-run (-d)]: nothing -> nothing {
-    # Non-tty stdin (same nu 0.115 constraint as planner-preflight.nu):
-    # the engine pipes internal.run_id, read it through external cat.
-    let self_run = (cat | str join | str trim)
+    # Petri has no internal.run_id run state (fabro-96c6): the invoking
+    # run id comes from FABRO_RUN_ID when something binds it; empty
+    # degrades self-exclusion (the guard still runs fail-open).
+    let self_run = ($env.FABRO_RUN_ID? | default "" | str trim)
     let now = (date now)
     let stale_hours = ($env.FABRO_GUARD_STALE_HOURS? | default $STALE_HOURS_DEFAULT | into float)
     # Self-exclusion, seed grain (fabro-d9f7): never requeue the current

@@ -8,7 +8,6 @@ digraph Conductor {
         stall_timeout="63m",
         max_node_visits=12,
         x.preamble_budget_kb=12,
-        x.cycle_counter_reset_key="pass_id"
     ]
 
     start [shape=Mdiamond, label="Start"]

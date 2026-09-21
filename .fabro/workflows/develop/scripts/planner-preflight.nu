@@ -225,9 +225,10 @@ const SCRIPT_DIR = (path self | path dirname)
 
 
 def main [--base: string = "origin/denkhaus", --candidates: string, --top: int = 5]: nothing -> nothing {
-    # Non-tty stdin (same nu 0.115 constraint as closeout.nu): the engine
-    # pipes internal.run_id, read it through external cat.
-    let run_id = (cat | str join | str trim)
+    # Petri has no internal.run_id run state (fabro-96c6): the invoking
+    # run id comes from FABRO_RUN_ID when something binds it; empty
+    # degrades the self-closure identity to a no-op exclusion.
+    let run_id = ($env.FABRO_RUN_ID? | default "" | str trim)
 
     mut mode = "checked"
     mut degraded_reason = ""

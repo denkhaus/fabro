@@ -16,9 +16,9 @@ One seed per run (binding): this run claims ONE seed, and after its approval the
 
 ## Cycle guards — structural, not yours
 
-Deadlock guards live in the GRAPH (fabro-6baf): at `seed_cycles.reviewer >= 3` or `seed_cycles.tester >= 3` the engine routes the reviewer/tester straight to the deadlock exit — conditions outrank every other edge, no model compliance involved. You will never see a third cycle; if you do (older engine), route Blocked with `failure_reason` naming the deadlock and the count.
+Deadlock guards live in the GRAPH (fabro-6baf, petri rework in fabro-96c6): at `nodes.reviewer.generation >= 3` or `nodes.tester.generation >= 3` the engine routes the reviewer/tester straight to the deadlock exit — the engine's own loop-generation counters, conditions outrank every other edge, no model compliance involved. You will never see a third cycle; if you do (older engine), route Blocked with `failure_reason` naming the deadlock and the count.
 
-The engine maintains `seed_cycles` deterministically: `{ node -> completed visits since this seed was claimed }`, reset when `current_seed_id` changes value, visible in your `## Context`. You may READ it (e.g. mention burn-down progress in feedback) but never count cycles yourself and never block on your own arithmetic.
+The counters are engine state, not context: `nodes.<id>.generation` counts every back-edge re-entry of a node and only graph conditions can read it. You never see the counts and never need them — never count cycles yourself and never block on your own arithmetic.
 
 ## sd command reference (exact — never invent flags)
 

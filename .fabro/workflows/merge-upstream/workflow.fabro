@@ -7,7 +7,6 @@ digraph MergeUpstream {
         stall_timeout="63m",
         max_node_visits=6,
         x.preamble_budget_kb=12,
-        x.cycle_counter_reset_key="merge_target_sha"
     ]
 
     start [shape=Mdiamond, label="Start"]
