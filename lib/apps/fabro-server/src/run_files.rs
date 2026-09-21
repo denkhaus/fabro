@@ -69,14 +69,33 @@ const SANDBOX_GIT_TIMEOUT: Duration = Duration::from_secs(10);
 /// brought to `Running`, and the directory the run's repository is checked
 /// out in.
 struct SandboxCheckout {
+    /// The reactivated sandbox, behind the run's inspection guard
+    /// (fabro-afab): a terminal run's sandbox is stopped again when the
+    /// checkout drops; a live run keeps its sandbox.
     handle:            Arc<dyn Sandbox>,
+    #[expect(
+        dead_code,
+        reason = "the guard acts in Drop: the checkout keeps the terminal run's reactivated \
+                  sandbox alive exactly as long as the inspection reads it"
+    )]
+    guard:             sandbox_access::InspectionSandbox,
     working_directory: String,
 }
 
 impl SandboxCheckout {
-    fn new(handle: Arc<dyn Sandbox>, working_directory: impl Into<String>) -> Self {
+    fn new(
+        handle: Arc<dyn Sandbox>,
+        working_directory: impl Into<String>,
+        terminal_run: bool,
+    ) -> Self {
+        let guard = if terminal_run {
+            sandbox_access::InspectionSandbox::terminal(handle)
+        } else {
+            sandbox_access::InspectionSandbox::live(handle)
+        };
         Self {
-            handle,
+            handle: guard.sandbox(),
+            guard,
             working_directory: working_directory.into(),
         }
     }
@@ -1231,6 +1250,7 @@ async fn reconnect_run_sandbox(
     Ok(SandboxCheckout::new(
         handle,
         record.runtime.working_directory.clone(),
+        projection.is_terminal(),
     ))
 }
 
@@ -1740,7 +1760,7 @@ mod tests {
 
     /// The mock as the Run Files endpoints hold a sandbox.
     fn checkout(mock: &MockSandbox) -> SandboxCheckout {
-        SandboxCheckout::new(mock.handle(), mock.working_dir)
+        SandboxCheckout::new(mock.handle(), mock.working_dir, false)
     }
 
     fn run_id(_name: &str) -> RunId {

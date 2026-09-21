@@ -166,6 +166,8 @@ use crate::{
 
 pub(crate) mod automation_breaker;
 mod automation_scheduler;
+#[cfg(test)]
+mod fork_inspection_guard_tests;
 mod fork_line_recovery;
 pub(crate) mod fork_staleness_supervisor;
 #[cfg(test)]

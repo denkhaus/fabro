@@ -25,6 +25,7 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 use std::time::Duration;
 
 use anyhow::Context as _;
@@ -349,6 +350,84 @@ pub(crate) async fn activate(sandbox: &dyn Sandbox) -> sandbox_driver::Result<()
         return Ok(());
     }
     sandbox_driver::activate(sandbox, &WaitOptions::default()).await
+}
+
+/// A read-only inspection's reactivated sandbox (fabro-afab; the legacy
+/// InspectionSandbox, Terminal-Run-Leak fabro-8d30a): attaching to a run
+/// that already ended starts a sandbox the run's lifecycle has stopped,
+/// and nothing else would ever stop it again. The guard restores the
+/// stopped state once the inspection is done — on [`Self::finish`] or,
+/// for every early exit, from `Drop`, which spawns the stop so no exit
+/// path can leak the running sandbox. A live run's sandbox is never
+/// stopped here: the run owns it.
+pub(crate) struct InspectionSandbox {
+    sandbox:    Arc<dyn Sandbox>,
+    stop_after: bool,
+    finished:   AtomicBool,
+}
+
+impl InspectionSandbox {
+    /// Wrap an activated sandbox for inspecting a run in a terminal
+    /// state: stopped again on finish.
+    pub(crate) fn terminal(sandbox: Arc<dyn Sandbox>) -> Self {
+        Self {
+            sandbox,
+            stop_after: true,
+            finished: AtomicBool::new(false),
+        }
+    }
+
+    /// Wrap an activated sandbox for inspecting a live run: the run owns
+    /// the sandbox, the inspection stops nothing.
+    pub(crate) fn live(sandbox: Arc<dyn Sandbox>) -> Self {
+        Self {
+            sandbox,
+            stop_after: false,
+            finished: AtomicBool::new(false),
+        }
+    }
+
+    /// The sandbox this inspection reads through.
+    pub(crate) fn sandbox(&self) -> Arc<dyn Sandbox> {
+        Arc::clone(&self.sandbox)
+    }
+
+    /// Stop the sandbox again when the inspection reactivated it.
+    /// Idempotent: the first call wins, `Drop` is a no-op afterwards.
+    /// Interactive attach sites (terminal/ssh/vnc sessions, ask-fabro
+    /// turns) call this at their session end; `Drop` covers every early
+    /// exit meanwhile.
+    #[expect(
+        dead_code,
+        reason = "called by the interactive attach sites landing with the rest of fabro-afab; \
+                  Drop already covers the read-only inspections"
+    )]
+    pub(crate) async fn finish(&self) {
+        if !self.stop_after
+            || self
+                .finished
+                .swap(true, std::sync::atomic::Ordering::SeqCst)
+        {
+            return;
+        }
+        let _ = self.sandbox.stop().await;
+    }
+}
+
+impl Drop for InspectionSandbox {
+    fn drop(&mut self) {
+        if !self.stop_after
+            || self
+                .finished
+                .swap(true, std::sync::atomic::Ordering::SeqCst)
+        {
+            return;
+        }
+        let sandbox = Arc::clone(&self.sandbox);
+        tokio::spawn(async move {
+            let _ = sandbox.stop().await;
+        });
+    }
 }
 
 /// Attaches to a run's sandbox and brings it to `Running`, for every
