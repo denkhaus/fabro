@@ -1550,11 +1550,12 @@ impl AppState {
     /// when no key is stored).
     pub(crate) async fn provider_access(&self) -> Result<ProviderAccess, SecretStoreError> {
         Ok(ProviderAccess {
-            providers: self.server_settings().server.sandbox.providers.clone(),
-            daytona:   self
+            providers:    self.server_settings().server.sandbox.providers.clone(),
+            daytona:      self
                 .vault_secret(EnvVars::DAYTONA_API_KEY)
                 .await?
                 .map(|api_key| self.daytona_credentials(api_key)),
+            storage_root: Some(self.server_storage_dir()),
         })
     }
 
@@ -2400,11 +2401,14 @@ fn build_sandbox_inventory(
 ) -> SandboxInventory {
     let provider_settings = &server_settings.server.sandbox.providers;
     let access = ProviderAccess {
-        providers: provider_settings.clone(),
-        daytona:   daytona_api_key.map(|api_key| {
+        providers:    provider_settings.clone(),
+        daytona:      daytona_api_key.map(|api_key| {
             DaytonaCredentials::from_api_key(api_key, |name| env_lookup(name))
                 .with_http_client(http_client)
         }),
+        // The inventory lists and looks up by id; no run's host directory is
+        // reached through it.
+        storage_root: None,
     };
     let mut inventory = SandboxInventory::empty();
 

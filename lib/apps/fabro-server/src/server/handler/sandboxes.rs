@@ -129,6 +129,7 @@ mod tests {
         inventory.with_lazy(kind, ProviderAccess {
             providers,
             daytona: None,
+            storage_root: None,
         })
     }
 
