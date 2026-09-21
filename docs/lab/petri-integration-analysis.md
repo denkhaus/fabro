@@ -161,11 +161,22 @@ Tests brauchen slim+dind-Runner + CATALOG_IMAGE lokal gepullt.
   Ära, Pin grün — W2 KOMPLETT (a875, 2889, b5a9, 6945).
 - Hooks-Familie (fabro-9b1b): Petris HookVokabular ist ein Superset
   (StageComplete, script/command/url/prompt/agent, blocking, timeout,
-  sandbox); die HookEntry-Layer nimmt unsere TOMLs unverändert.
-  `fabro validate` über alle 5 Workflows GRÜN — Hooks senken sauber.
+  sandbox); die HookEntry-Layer nimmt unsere TOMLs unverändert — die
+  [run.hooks]-Sektionen senken sauber (KEIN Hook-Fehler bei validate).
   Ausführungs-Verifikation (stage-journal feuert) läuft mit dem
   W3-5-Conductor-Szenario (Staging), die Engine-Maschine decken die
   fabro-petri-Hook-Tests.
+- KORREKTUR (gleiche Session, nach Zweitmessung): die GRAPHE validieren
+  NICHT grün (rc=1) — die erste Lesung war falsch. Alle 5 Workflows
+  fallen auf `attractor.unknown_attribute`: die Fork-Stage-Envelope-
+  Attribute (fs_write/fs_hide, context_allow/consume_keys, preamble_*,
+  skills, tools, fabro_tools) sind KEINE Attractor-Attribute — sie waren
+  Fork-Engine-Features (ADR-0009). Petris designed escape: der `x.*`-
+  Namespace (mitgeführt ohne Lesen). W3-5-Umzug: Attribute → `x.*`
+  präfixen, bis W3-6 sie als Host-Tool-Policies aus der Admission liest.
+  Betroffene Graph-Attribute: cycle_counter_reset_key, inspects,
+  preamble_budget_kb, stall_timeout überlebt (kein Fehler), max_node_visits
+  überlebt.
 - Drei validate-Warnungen verfeinern die W3-Karte (settings zogen zur
   Plattform): `[run.meta_branch]` (standalone runner macht kein eigenes
   Git), `[run.notifications]` (Plattform-Facility), `fabro_tools = true`
