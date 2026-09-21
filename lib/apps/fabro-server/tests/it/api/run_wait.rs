@@ -14,7 +14,6 @@ use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use fabro_server::test_support::build_test_router;
 use fabro_types::{RunId, RunStatus, SuccessReason};
-use serde_json::json;
 use tower::ServiceExt;
 
 use crate::helpers::{api, response_json, response_status};
