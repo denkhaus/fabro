@@ -74,6 +74,7 @@ use fabro_llm::credentials::{CredentialProvider, readiness};
 use fabro_petri::blobs::ClientBlobs;
 use fabro_petri::controls::{RunControls, SteerError};
 use fabro_petri::engine::{self, Conclusion, Execution, RunRequest};
+use fabro_petri::fork_stage_envelope::StageEnvelopes;
 use fabro_petri::hooks::HooksSpec;
 use fabro_petri::interview::{Approval, FabroInterviewer};
 use fabro_petri::petri::OwnerId;
@@ -197,8 +198,14 @@ pub(super) async fn execute(worker: PetriWorker<'_>) -> Result<()> {
     }
     runner::set_worker_title(&run_id, WorkerTitlePhase::Running);
 
-    let hooks = HooksSpec::for_run(Arc::clone(&records), &worker.run_state.spec.settings.run)
+    let mut hooks = HooksSpec::for_run(Arc::clone(&records), &worker.run_state.spec.settings.run)
         .with_test_gates(test_checkpoint_gates());
+    // The run's stage envelopes ride its `graph_source`: the lowering
+    // drops `x.*`, so the checkpoint guard reads them off the original
+    // text (fabro-aa5f, ADR-0009 rev).
+    if let Some(source) = worker.run_state.spec.graph_source.clone() {
+        hooks = hooks.with_envelopes(Arc::new(StageEnvelopes::parse(&source)));
+    }
     let request = RunRequest {
         run_id: run_id.to_string(),
         run_dir: worker.run_dir.join("petri"),

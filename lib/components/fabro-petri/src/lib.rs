@@ -68,6 +68,7 @@ pub mod checkpoint;
 pub mod controls;
 pub mod engine;
 pub mod fork;
+pub mod fork_stage_envelope;
 pub mod hooks;
 pub mod host_tools;
 pub mod http_store;

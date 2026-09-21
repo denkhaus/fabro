@@ -32,6 +32,7 @@ use petri_runtime::ir::Graph;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use crate::fork_stage_envelope::{LintSeverity, StageEnvelopes};
 use crate::runtime::RuntimeSpec;
 
 /// The project settings file the Fabro frontend reads at the bundle root.
@@ -176,14 +177,35 @@ pub fn check(request: &CheckRequest) -> Result<Admitted, CheckError> {
     let lowered = runtime
         .check_source(&bundle.entrypoint, text, &bundle.files(), None, &inputs)
         .map_err(CheckError::Load)?;
-    let diagnostics: Vec<Diagnostic> = lowered.diagnostics.iter().map(convert).collect();
+    let mut diagnostics: Vec<Diagnostic> = lowered.diagnostics.iter().map(convert).collect();
+    // The fork's stage-envelope lints (fabro-aa5f, ADR-0009 rev): the
+    // lowering drops `x.*` attributes, so their values are judged here,
+    // over the same text the run's `graph_source` will carry. An invalid
+    // glob refuses the workflow; consistency findings warn.
+    let envelopes = StageEnvelopes::parse(text);
+    let mut fork_errors = false;
+    for lint in envelopes.lint() {
+        fork_errors |= lint.severity == LintSeverity::Error;
+        diagnostics.push(Diagnostic {
+            severity: match lint.severity {
+                LintSeverity::Error => DiagnosticSeverity::Error,
+                LintSeverity::Warning => DiagnosticSeverity::Warning,
+            },
+            code:     lint.code.to_string(),
+            message:  lint.message,
+            hint:     None,
+            file:     bundle.entrypoint.clone(),
+            line:     None,
+            column:   None,
+        });
+    }
     match lowered.graph {
-        Some(graph) => Ok(Admitted {
+        Some(graph) if !fork_errors => Ok(Admitted {
             graph,
             children: lowered.children,
             warnings: diagnostics,
         }),
-        None => Err(CheckError::Rejected(diagnostics)),
+        _ => Err(CheckError::Rejected(diagnostics)),
     }
 }
 

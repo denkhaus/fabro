@@ -438,23 +438,7 @@ impl RunWorkspaces {
                 });
             }
         }
-        let mut add = vec![
-            "add".to_string(),
-            "-A".to_string(),
-            "--".to_string(),
-            ".".to_string(),
-        ];
-        add.extend(
-            EXCLUDE_DIRS
-                .iter()
-                .map(|dir| format!(":(glob,exclude)**/{dir}/**")),
-        );
-        add.extend(
-            self.exclude_globs
-                .iter()
-                .map(|glob| format!(":(glob,exclude){glob}")),
-        );
-        self.git(site, "add", &add).await?;
+        self.stage(site).await?;
         let message = self.message(key, node, status);
         let user_name = format!("user.name={}", self.author.name);
         let user_email = format!("user.email={}", self.author.email);
@@ -480,6 +464,58 @@ impl RunWorkspaces {
             reused: false,
             branched,
         })
+    }
+
+    /// Stage the workspace's files exactly as a commit would: everything,
+    /// minus the excluded caches and configured exclusions. Idempotent;
+    /// `commit` stages again without harm.
+    async fn stage(&self, site: &Site) -> Result<(), CheckpointError> {
+        let mut add = vec![
+            "add".to_string(),
+            "-A".to_string(),
+            "--".to_string(),
+            ".".to_string(),
+        ];
+        add.extend(
+            EXCLUDE_DIRS
+                .iter()
+                .map(|dir| format!(":(glob,exclude)**/{dir}/**")),
+        );
+        add.extend(
+            self.exclude_globs
+                .iter()
+                .map(|glob| format!(":(glob,exclude){glob}")),
+        );
+        self.git(site, "add", &add).await?;
+        Ok(())
+    }
+
+    /// The files a commit would snapshot right now: the staged set against
+    /// the current head (the empty tree for a workspace with no commits
+    /// yet), after [`Self::stage`]. This is what the stage-envelope guard
+    /// judges (fabro-aa5f): a path here is a path the checkpoint is about
+    /// to make durable.
+    pub async fn staged_paths(&self, site: &Site) -> Result<Vec<String>, CheckpointError> {
+        self.stage(site).await?;
+        let base = self
+            .head(site)
+            .await?
+            .unwrap_or_else(|| EMPTY_TREE.to_string());
+        let names = self
+            .git(site, "diff --name-only --cached", &[
+                "diff",
+                "--name-only",
+                "--no-color",
+                "--cached",
+                &base,
+            ])
+            .await?;
+        Ok(names
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty())
+            .map(str::to_string)
+            .collect())
     }
 
     /// The parent of a published commit, or `None` for a root commit.

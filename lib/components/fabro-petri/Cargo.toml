@@ -30,6 +30,7 @@ fabro-vault = { path = "../../foundation/fabro-vault" }
 fabro-workflow = { path = "../fabro-workflow" }
 fabro-checkpoint = { path = "../fabro-checkpoint" }
 fabro-util = { path = "../../foundation/fabro-util" }
+fabro-pebble-sandbox = { path = "../fabro-pebble-sandbox" }
 pebble-coding-agent.workspace = true
 petri_runtime.workspace = true
 petri_execution.workspace = true

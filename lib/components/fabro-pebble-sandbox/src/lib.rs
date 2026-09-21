@@ -16,6 +16,7 @@
 
 mod environment;
 mod exec;
+pub mod fs_scope;
 mod log;
 mod path;
 mod ports;
@@ -29,6 +30,7 @@ pub use exec::{
     DEFAULT_EXEC_OUTPUT_TAIL_BYTES, DEFAULT_RETAINED_OUTPUT_BYTES, DEFAULT_STOP_GRACE,
     ExecResultExt, SandboxExec, command_termination, program_exit_code, redacted_output_tail,
 };
+pub use fs_scope::{FsScope, FsScopeError, ScopeDenial, ScopeViolation};
 pub use log::{default_redacted_output_tail, display_for_log};
 pub use path::{join_sandbox_path, resolve_path};
 pub use ports::{SandboxPortRoutes, port_routes};

@@ -76,6 +76,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
+use fabro_pebble_sandbox::fs_scope::FsScopeError;
 use fabro_store::platform_records::{
     ArtifactCollectedRecord, CheckpointRecord, GitIdentityRecord, RunBranchRecord, RunDiffRecord,
 };
@@ -103,12 +104,18 @@ use crate::checkpoint::{
     CHECKPOINT_FAILED_CLASS, CheckpointError, CheckpointKey, EXCLUDE_DIRS, RunGitSettings,
     RunWorkspaces, Site, Snapshot, WorkspaceDiff,
 };
+use crate::fork_stage_envelope::StageEnvelopes;
 use crate::platform_records::{PlatformRecordError, PlatformRecords};
 use crate::recovery::{self, Plan, RecoveryError, RestoreTarget};
 use crate::workspace::{self, WorkspaceLookup, WorkspaceLookupError};
 
 /// The note kind the hooks record on a firing about its checkpoint.
 pub const CHECKPOINT_NOTE: &str = "fabro.checkpoint";
+
+/// The failure class of a stage-envelope violation (fabro-aa5f): the run
+/// ends, the violating commit never happens, and the projection can name
+/// the class.
+pub const FS_POLICY_VIOLATION_CLASS: &str = "fs_policy_violation";
 
 /// The effect kind of an artifact collection in its operation identity.
 pub const ARTIFACT_EFFECT: &str = "artifact";
@@ -152,6 +159,17 @@ pub enum HookError {
         #[source]
         source: CheckpointError,
     },
+    #[error("the stage envelope of `{node}` has a glob that does not compile")]
+    EnvelopeCompile {
+        node:   String,
+        #[source]
+        source: FsScopeError,
+    },
+    #[error(
+        "stage envelope violation in `{node}`: {} fall outside the node's fs_write scope",
+        .paths.join(", ")
+    )]
+    EnvelopeViolation { node: String, paths: Vec<String> },
     #[error("the checkpoint commit could not be looked up")]
     Find(#[source] CheckpointError),
     #[error("no checkpoint commit exists for {key}")]
@@ -217,6 +235,11 @@ pub struct HooksSpec {
     /// The `[run.artifacts] include` patterns: which files of a stage's
     /// workspace are collected after the stage.
     pub artifacts:  Vec<String>,
+    /// The run's stage envelopes, parsed from its `graph_source`
+    /// (fabro-aa5f, ADR-0009 rev): what the checkpoint guard enforces a
+    /// node's staged files against. `None` leaves every stage
+    /// unrestricted.
+    pub envelopes:  Option<Arc<StageEnvelopes>>,
     /// A test's gate directory: a checkpoint point named by a `.hold` file
     /// there waits for its `.release` file. `None` outside tests.
     pub test_gates: Option<PathBuf>,
@@ -231,6 +254,7 @@ impl HooksSpec {
             records,
             git: RunGitSettings::from(settings),
             artifacts: settings.artifacts.include.clone(),
+            envelopes: None,
             test_gates: None,
         }
     }
@@ -238,6 +262,14 @@ impl HooksSpec {
     #[must_use]
     pub fn with_test_gates(mut self, gates: Option<PathBuf>) -> Self {
         self.test_gates = gates;
+        self
+    }
+
+    /// The run's stage envelopes, parsed from its `graph_source`, for the
+    /// checkpoint guard to enforce (fabro-aa5f, ADR-0009 rev).
+    #[must_use]
+    pub fn with_envelopes(mut self, envelopes: Arc<StageEnvelopes>) -> Self {
+        self.envelopes = Some(envelopes);
         self
     }
 }
@@ -381,6 +413,9 @@ pub struct FabroHooks {
     scopes:          ScopeEnvs,
     /// The checkpoint failure that ended the run, when one did.
     failure:         Mutex<Option<String>>,
+    /// The run's stage envelopes (`graph_source`), for the checkpoint
+    /// guard; `None` leaves every stage unrestricted.
+    envelopes:       Option<Arc<StageEnvelopes>>,
     /// Whether the run continues from its records: a sandbox workspace is
     /// then brought to its snapshot when its scope is first acquired.
     resumed:         bool,
@@ -437,6 +472,7 @@ impl FabroHooks {
                 collected: OnceCell::new(),
             },
             scopes: ScopeEnvs::default(),
+            envelopes: spec.envelopes,
             failure: Mutex::default(),
             resumed,
             restore: OnceCell::new(),
@@ -541,6 +577,58 @@ impl FabroHooks {
         Ok(Some((workspace, site)))
     }
 
+    /// Deny a stage whose staged files fall outside its `x.fs_write`
+    /// scope (fabro-aa5f, ADR-0009 rev). A node without envelope
+    /// attributes, or an envelope that restricts nothing, passes. The
+    /// check runs under the workspace's commit lock over the same staged
+    /// set the commit would snapshot, so a violation is refused before
+    /// anything is committed: an escape never reaches the run branch.
+    ///
+    /// Read-side hiding (`x.fs_hide`) is not enforceable at this seam —
+    /// the checkpoint sees files, not tool calls; the session-level hook
+    /// the ADR names needs a Petri host capability the pinned revision
+    /// does not offer, and upstream gets no offers from us.
+    async fn enforce_stage_envelope(&self, site: &Site, node: &str) -> Result<(), HookError> {
+        let Some(envelopes) = &self.envelopes else {
+            return Ok(());
+        };
+        let Some(scope) = envelopes.fs_scope(node) else {
+            return Ok(());
+        };
+        let scope = scope.map_err(|source| HookError::EnvelopeCompile {
+            node: node.to_string(),
+            source,
+        })?;
+        if !scope.is_active() {
+            return Ok(());
+        }
+        let staged =
+            self.workspaces
+                .staged_paths(site)
+                .await
+                .map_err(|source| HookError::Commit {
+                    node: node.to_string(),
+                    source,
+                })?;
+        let violations: Vec<String> = staged
+            .into_iter()
+            .filter(|path| scope.check_write("", path).is_err())
+            .collect();
+        if violations.is_empty() {
+            return Ok(());
+        }
+        warn!(
+            run_id = %self.run_id,
+            node,
+            paths = violations.len(),
+            "stage envelope violation; the run ends before committing"
+        );
+        Err(HookError::EnvelopeViolation {
+            node:  node.to_string(),
+            paths: violations,
+        })
+    }
+
     /// The checkpoint commit for one attempt's result. `Ok(Some)` is the
     /// note to record, `Ok(None)` nothing to record, `Err` the fatal
     /// failure.
@@ -575,6 +663,7 @@ impl FabroHooks {
         self.gate("commit", node).await;
         let serialized = self.scopes.lock_for(&workspace);
         let _held = serialized.lock().await;
+        self.enforce_stage_envelope(&site, node).await?;
         match self
             .workspaces
             .commit(&site, &workspace, key, node, status.tag())
@@ -1225,8 +1314,16 @@ impl ExecutionHooks for FabroHooks {
                     "checkpoint failed; the run ends"
                 );
                 self.fail_run(&message);
+                let class = if matches!(
+                    error,
+                    HookError::EnvelopeViolation { .. } | HookError::EnvelopeCompile { .. }
+                ) {
+                    FS_POLICY_VIOLATION_CLASS
+                } else {
+                    CHECKPOINT_FAILED_CLASS
+                };
                 prepared.adjustment.status = Some(Status::Failure(
-                    FailureInfo::new(message.clone()).with_class(CHECKPOINT_FAILED_CLASS),
+                    FailureInfo::new(message.clone()).with_class(class),
                 ));
                 prepared.adjustment.reason = Some(message);
             }

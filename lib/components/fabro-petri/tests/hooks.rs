@@ -174,6 +174,7 @@ impl Harness {
                 ..RunGitSettings::default()
             },
             artifacts:  self.artifacts.clone(),
+            envelopes:  None,
             test_gates: None,
         }
     }
