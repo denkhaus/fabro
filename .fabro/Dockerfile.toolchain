@@ -170,22 +170,15 @@ RUN mise exec -- bun install -g \
     && sd --version \
     && ml --version
 
-# fabro-validate (fabro-af97, pinned validate-only scope): no HTTP/API
-# client exists in its dependency graph and no token or auth.json rides
-# the image — the binary cannot reach the server. Staged into the build
-# context (.fabro/bin/) by scripts/run-images.nu from the same checkout
-# the image is built from, so run sandboxes validate workflow assets
-# without a cold cargo build (fabro-c643 class; user decision 2026-09-16:
-# the refresh is coupled to `just image-release`).
-COPY bin/fabro-validate /usr/local/bin/fabro-validate
-RUN chmod +x /usr/local/bin/fabro-validate
-ENV FABRO_VALIDATE_PREBUILT=1
-
-# Full fabro CLI (fabro-fe15, user decision 2026-09-16): staged by
-# scripts/run-images.nu in RELEASE profile (debug is ~342 MB; the
-# demand is PATH availability at container start). Unlike
-# fabro-validate this binary carries an HTTP client — run sandboxes
-# hold no server token/auth.json, and the user explicitly accepted
-# this scope. ADR-0019: the bake is a recorded user decision.
+# Full fabro CLI (fabro-fe15, user decision 2026-09-16; petri rework
+# fabro-96c6): staged by scripts/run-images.nu in RELEASE profile
+# (debug is ~342 MB; the demand is PATH availability at container
+# start). It carries the create check the fork's validation rules live
+# in (fabro-validate is gone), plus an HTTP client — run sandboxes hold
+# no server token/auth.json, and the user explicitly accepted this
+# scope. ADR-0019: the bake is a recorded user decision.
+# FABRO_VALIDATE_PREBUILT=1 keeps the validate-workflows fast path:
+# scripts/validate-workflows.nu uses this binary instead of building.
 COPY bin/fabro /usr/local/bin/fabro
 RUN chmod +x /usr/local/bin/fabro
+ENV FABRO_VALIDATE_PREBUILT=1

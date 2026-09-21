@@ -97,9 +97,9 @@ build-image: web-deps
 # (ghcr.io/denkhaus/fabro): <version>-<shortsha> plus `latest`.
 # Needs a ghcr.io docker login with write:packages (see script header).
 # Release pipeline (user decision 2026-09-16): the server image AND the
-# toolchain image refresh together — the toolchain bakes a fabro-validate
-# binary (af97, validate-only scope) that must stay in sync with each
-# release; `just up` is no longer the intensive path.
+# toolchain image refresh together — the toolchain bakes the fabro CLI
+# (af97/fe15; carries the create check since fabro-96c6) that must stay
+# in sync with each release; `just up` is no longer the intensive path.
 # Also installs the freshly staged binary as the local CLI (fabro-9114):
 # the local workflow targets https://mirtuell.net, `just up` (and its
 # install-cli step) is no longer used, so THIS recipe keeps local CLI and
@@ -237,13 +237,12 @@ cycle *args:
     nu scripts/run_workflow.nu develop {{ args }}
     nu scripts/run_workflow.nu revisor
 
-# Validate workflow graphs (graph-only lint) without the ~7 min Rust
-# test-harness cold build: builds just the fabro-validate binary (small
-# dep subset) and runs the built-in lint rules on every
-# .fabro/workflows/*/workflow.fabro graph. Workflow-relative @-file refs
-# are resolved before the unresolved_file_ref rule runs, so existing refs
-# pass and genuinely missing ones still fail. Optional target: workflow
-# name, workflow dir, workflow.toml path, or graph path.
+# Validate workflow graphs without the ~7 min Rust test-harness cold
+# build: builds just the fabro CLI (fabro-cli subset) and runs the full
+# create check (petri admission + the fork's lint rules) on every
+# .fabro/workflows/*/workflow.fabro graph. @-file refs are resolved by
+# the frontend itself. Optional target: workflow name, workflow dir,
+# workflow.toml path, or graph path.
 #
 # Examples:
 #   just validate-workflows

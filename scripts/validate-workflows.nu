@@ -2,20 +2,18 @@
 # Validate workflow graphs without a Rust test-harness cold build
 # (`just validate-workflows [target]`).
 #
-# Approach (chosen over scoping the rule out): the `fabro-validate`
-# binary pre-processes the raw graph for standalone linting: `@`-file
-# refs (prompt/goal, e.g. `@prompts/simplify.md`) are resolved against the
-# graph file's directory BEFORE the `unresolved_file_ref` rule runs — the
-# same inline strategy as the runtime pipeline. A ref whose file genuinely
-# does not exist keeps its `@` value and still fails validation; scoping
-# the rule out would blanket-suppress real errors. A `model_stylesheet`
-# containing template syntax is blanked (the runtime renders it before the
-# `stylesheet_syntax` rule runs; raw template source cannot be linted).
+# Petri rework (fabro-96c6): the standalone `fabro-validate` binary is
+# gone — the fork's lint rules live in the create check (fabro-petri
+# check), and the CLI's `fabro validate <graph>` runs the same admission
+# in process: @-file refs are resolved against the graph's directory by
+# the frontend itself, invalid x.* envelope globs are refused (aa5f), and
+# warnings (ignored workflow_toml keys, internal.* reads) stay warnings.
 #
-# No Rust test harness is compiled: `cargo build -p fabro-validate
-# --bin fabro-validate` builds only the validator lib and its deps — not
-# the CLI, the server, or dev-dependencies. Warm runs finish in seconds
-# (the cold build of the small dep subset is a one-off).
+# The toolchain image ships the full `fabro` CLI and marks itself with
+# FABRO_VALIDATE_PREBUILT=1 — inside run sandboxes the baked binary is
+# used and no cargo build runs. Local dev checkouts build the CLI binary
+# (fabro-cli only), so a stale local binary can never silently validate
+# wrong rules.
 #
 # `target` (optional): a workflow name (`.fabro/workflows/<name>`), a
 # workflow directory, a `workflow.toml` path, or a graph file path.
@@ -28,32 +26,42 @@ def main [target: string = ""] {
         exit 2
     }
 
-    # Prebuilt fast path (fabro-af97): the toolchain image ships
-    # fabro-validate and marks itself with FABRO_VALIDATE_PREBUILT=1 —
-    # skip the cargo build entirely inside run sandboxes (the cold build
-    # is exactly the cost the image bake removes). Local dev checkouts
-    # keep building from source, so a stale local binary can never
-    # silently validate wrong rules.
+    # Prebuilt fast path (fabro-af97, petri rework fabro-96c6): the
+    # toolchain image ships the full fabro CLI and marks itself with
+    # FABRO_VALIDATE_PREBUILT=1 — skip the cargo build entirely inside
+    # run sandboxes. Local dev checkouts build the CLI from source, so a
+    # stale local binary can never silently validate wrong rules.
     let prebuilt_ok = ((do { $env.FABRO_VALIDATE_PREBUILT? | default "" } | str trim) == "1")
-    let which_ok = ((which fabro-validate | length) > 0)
+    let which_ok = ((which fabro | length) > 0)
     let bin = (if $prebuilt_ok and $which_ok {
-        (which fabro-validate | first | get path)
+        (which fabro | first | get path)
     } else {
-        let build = (do { cargo build --locked --quiet -p fabro-validate --bin fabro-validate } | complete)
+        let build = (do { cargo build --locked --quiet -p fabro-cli --bin fabro } | complete)
         if ($build.exit_code != 0) {
             print -e $build.stderr
             exit $build.exit_code
         }
         ((cargo metadata --no-deps --format-version 1 | from json).target_directory
-            | path join debug fabro-validate)
+            | path join debug fabro)
     })
 
     print $"validate-workflows: ($graphs | length) graph"
-    let result = (do { ^$bin ...$graphs } | complete)
-    print $result.stdout
-    if ($result.exit_code != 0) {
-        print -e $result.stderr
-        exit $result.exit_code
+    # The CLI validates one graph per invocation (full admission per
+    # graph, @-file refs resolved by the frontend). Every graph runs even
+    # when one fails, so one broken asset never hides the state of the
+    # rest; the script exits non-zero after the last one.
+    mut failed = 0
+    for graph in $graphs {
+        let result = (do { ^$bin validate $graph } | complete)
+        print $result.stdout
+        if ($result.exit_code != 0) {
+            print -e $result.stderr
+            $failed = $failed + 1
+        }
+    }
+    if $failed > 0 {
+        print -e $"validate-workflows: ($failed) of ($graphs | length) graphs failed"
+        exit 1
     }
     # Stage-journal inspects coverage (fabro-e907) — always over ALL graphs.
     stage_journal_coverage_check

@@ -12,12 +12,10 @@
 # itself, but develop runs fail at sandbox create when the referenced
 # image is missing — building here keeps `just up` a complete deploy.
 #
-# Toolchain coupling (user decision 2026-09-16, fabro-af97): the
-# toolchain image bakes a fabro-validate binary (validate-only scope —
-# no HTTP client, no token surface). This script builds and stages it
-# from the current checkout into .fabro/bin/, and the rebuild gate
-# hashes Dockerfile content PLUS the binary hash, so every validator
-# change forces a toolchain rebuild. `--push` (used by
+# Toolchain coupling (user decision 2026-09-16, fabro-af97; petri rework
+# fabro-96c6): the standalone fabro-validate binary is gone — the fork's
+# validation rules live in the create check the full CLI carries, so the
+# CLI binary hash alone gates the validator surface. `--push` (used by
 # `just image-release`) additionally pushes the toolchain image to
 # ghcr.io/denkhaus/fabro-toolchain:<git-sha12> — the tag form the
 # server-managed environments pin.
@@ -88,16 +86,17 @@ def build-one [dockerfile: string, tag: string, push: bool] {
     # validator binary hash — a validator change must force a rebuild
     # even when the Dockerfile is byte-identical.
     let hash = (if $tag == "fabro-toolchain:noble" {
-        let validator = (stage-binary fabro-validate fabro-validate)
+        # Petri rework (fabro-96c6): the standalone fabro-validate binary
+        # is gone — the CLI carries the create check. Its hash alone gates
+        # the validator surface now.
         let cli = (stage-binary fabro-cli fabro)
-        let validator_hash = (open --raw $validator | hash sha256)
         let cli_hash = (open --raw $cli | hash sha256)
         # fabro-c643: stage the chef cook context BEFORE hashing, and fold
         # the lockfile hash in — a dependency-graph change must force a
         # toolchain rebuild even when the Dockerfile is byte-identical.
         stage-cook-context
         let lock_hash = (open --raw Cargo.lock | hash sha256)
-        ($content | hash sha256) + ($validator_hash | str substring 0..15) + ($cli_hash | str substring 0..15) + ($lock_hash | str substring 0..15)
+        ($content | hash sha256) + ($cli_hash | str substring 0..15) + ($lock_hash | str substring 0..15)
     } else {
         ($content | hash sha256)
     })
