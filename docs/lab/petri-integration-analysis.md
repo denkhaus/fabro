@@ -243,3 +243,24 @@ FAZIT W3: alle vier offenen Kinder (2e7b, 288d, aa5f, 96c6-Rest)
 konvergieren auf DIE Design-Runde — Tier-Routing (Quota-Park +
 Exit-Kinds) und ADR-0009-rev (Policy-Flow) zusammen entscheiden, dann
 ist der Rest mechanisch.
+
+## W4-3 Dispositionen (fabro-fdd8, 2026-09-21)
+
+1. **Staleness-Supervisor**: bereits W2-2 geportet (fork_staleness_
+   supervisor, 8/8 Wire-Tests).
+2. **Approval-TTL (54f0)**: SUPERSEDED — Petris Interview-Gates tragen
+   natives Expiry (TimeoutPolicy::HandlerManaged: Frage-Deadlines,
+   Gate meldet Expiry, Dispatcher cancelt als `question_expired`).
+   Zombie-Approvals können strukturell nicht entstehen; die Engine-Ära-
+   Supervisor-Datei wurde nicht übernommen.
+3. **environment_compat (94f6)**: ENTFALLEN (strukturell) —
+   `unsupported_resource_fields` existiert auf Petri nicht; Env-Rows
+   validieren zur Schreibzeit, Provider-Kompetenz lebt im sandbox-driver.
+   Bei realen Cutover-Vorfällen: Lint gegen das Driver-Kompetenzmodell.
+4. **capability_gate (ADR-0019)**: ENTFALLEN (strukturell) — Petri
+   resolved GitHub-Credentials ausschließlich aus Server-Settings;
+   Workflow-Registrierung trägt Inhalt, keine Credential-Requests; Env-
+   PUTs sind principal-authentifiziert. Der Fork-Gate-Punkt (per-Run-
+   Permission-Interpolation) existiert nicht mehr — die Invariante
+   („agenten-autore Konfiguration kann sich keine Credentials minten")
+   hält strukturell.
