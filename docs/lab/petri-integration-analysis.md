@@ -264,3 +264,14 @@ ist der Rest mechanisch.
    Permission-Interpolation) existiert nicht mehr — die Invariante
    („agenten-autore Konfiguration kann sich keine Credentials minten")
    hält strukturell.
+
+
+## W3-Korrektur 2 (2026-09-21): x.* wird beim Lowering GEDROPPED
+
+Petris x.-Namespace ist Check-akzeptiert aber Lowering-gefallen (attrs.rs:
+`starts_with(EXTENSION_PREFIX) -> continue`) — die Werte reaching NICHT
+die Admission. Korrektur des W3-5-Mechanismus: der `graph_source`
+(originaler DOT-Text) reitet in jeder Run-Spec und trägt die x.*-Werte
+verbatim. Exit-Kinds (fabro-288d) lesen ihn direkt im Fold
+(fork_exit_kinds.rs, 4 Pins grün); fs-Policy (aa5f) ebenso über den
+graph_source beim Session-Bau statt über die Admission.

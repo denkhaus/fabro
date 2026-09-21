@@ -210,6 +210,19 @@ async fn a_petri_stage_calls_a_run_tool_bound_to_the_run() {
             then.status(422).body("native admission rejection");
         })
         .await;
+    // Fork seam (fabro-8ee1): the duplicate-child guard lists the parent's
+    // children before creating — none here.
+    server
+        .mock_async(|when, then| {
+            when.method(Method::GET)
+                .path("/api/v1/runs")
+                .query_param("parent_id", run_id.to_string());
+            then.status(200).json_body(json!({
+                "data": [],
+                "meta": { "total": 0, "has_more": false }
+            }));
+        })
+        .await;
     let services = services(&server, run_id);
     let legacy: Vec<(String, String)> = register_fabro_run_tools(&services)
         .iter()

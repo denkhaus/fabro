@@ -144,7 +144,7 @@ impl RunView {
             .root
             .and_then(|root| self.state.invocations.get(&root));
         let failure_message = root.and_then(|root| root.failure.clone());
-        let (run_status, outcome, failure) = match status {
+        let (mut run_status, outcome, failure) = match status {
             "success" => {
                 // Fork seam (fabro-6655, fabro-67e5): a failed publish
                 // downgrades a green conclusion to PublishBlocked, keeping
@@ -206,6 +206,27 @@ impl RunView {
                 }),
             ),
         };
+        // Fork seam (fabro-288d, ADR-0010 rev Option A): the run's DOT
+        // source carries the fork's `x.kind` exit edges; a boundary
+        // failure upgrades to `Succeeded { Boundary }`, deadlock/soft
+        // success-shapes downgrade to their park reasons.
+        {
+            let graph_source = projection.spec.graph_source.as_deref().unwrap_or_default();
+            let exit_kinds = super::fork_exit_kinds::ExitKinds::parse(graph_source);
+            let last_stage = self
+                .state
+                .stages
+                .iter()
+                .next_back()
+                .map(|(_, stage)| stage.stage_id.clone());
+            if let Some(overridden) = exit_kinds.classify(
+                status,
+                last_stage.as_ref().map(ToString::to_string).as_deref(),
+                "exit",
+            ) {
+                run_status = overridden;
+            }
+        }
         apply_status(projection, run_status, at);
         projection.pending_control = None;
         projection.pending_interviews.clear();
