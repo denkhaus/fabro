@@ -1,0 +1,50 @@
+# denkhaus fork catalog overlay — ported from the fork's fabro-model
+# provider TOMLs when upstream deleted fabro-model for the lithos catalog
+# (merge of v0.353.0-nightly.0).
+#
+# What it restores on top of the lithos built-ins:
+# - zai glm-5.3 as the default zai model (the fork's workflows pin
+#   `provider = "zai"`, `name = "glm-5.3"`), with the glm/glm5 aliases
+#   moved off glm-5.2.
+# - zai glm-4.7 ALWAYS reasons on the coding endpoint (probe 2026-09-03,
+#   fabro-cd27: enable_thinking=false is rejected with code 1210 naming
+#   low/high/max, reasoning_effort=low yields zero visible reasoning at
+#   5x speed). The lithos built-in carries the pre-probe data
+#   (`reasoning = false`, no effort levels), which starves the PR-content
+#   call of an effort pin.
+# - openrouter: the glm/glm5 aliases point at glm-5.3, whose numbers come
+#   from the lithos live listing (newer than the fork's estimates).
+#
+# Layer order in `build_catalog`: built-ins, then this fork overlay, then
+# the operator's `[llm]` overlay — so operator settings still win.
+schema_version = 1
+
+[providers.zai]
+default_model = "glm-5.3"
+
+[providers.zai.models."glm-5.3"]
+display_name = "GLM 5.3"
+aliases = ["glm", "glm5", "glm53", "glm5.3"]
+api_model = "glm-5.3"
+limits = { context_tokens = 1048576, max_output_tokens = 131072 }
+capabilities = { text = true, images = false, tools = true, reasoning = true, caching = true, sampling = true, reasoning_effort = { low = true, medium = false, high = true, xhigh = false, max = true } }
+protocol_options = { reasoning_effort_levels = true }
+pricing = { input_usd_micros_per_million = 1400000, output_usd_micros_per_million = 4400000, cached_input_usd_micros_per_million = 260000 }
+family = "glm-5"
+
+[providers.zai.models."glm-5.2"]
+aliases = ["glm52", "glm5.2"]
+
+[providers.zai.models."glm-4.7"]
+# Probe 2026-09-03 (fabro-cd27, api.z.ai/api/coding/paas/v4): the coding
+# endpoint always reasons; the old reasoning=false label starved the
+# PR-content call of an effort pin, running it in full-reasoning mode
+# (71s, occasional non-JSON output).
+capabilities = { reasoning = true, reasoning_effort = { low = true, medium = false, high = true, xhigh = false, max = true } }
+protocol_options = { reasoning_effort_levels = true }
+
+[providers.openrouter.models."glm-5.2"]
+aliases = ["glm52", "glm5.2"]
+
+[providers.openrouter.models."glm-5.3"]
+aliases = ["glm", "glm5", "glm53", "glm5.3", "glm-5-3"]

@@ -9,6 +9,8 @@
 //! `metadata.agent` namespace that Pebble reads too.
 
 use fabro_config::LlmLayer;
+
+use crate::fork_catalog::OVERLAY;
 use fabro_static::EnvVars;
 use fabro_types::AgentProfileKind;
 pub use lithos_llm::catalog::Offering;
@@ -30,7 +32,12 @@ pub fn build_catalog(
     overlay: &LlmLayer,
     env_lookup: &dyn Fn(&str) -> Option<String>,
 ) -> Result<Catalog, CatalogError> {
-    let mut builder = Catalog::builder().with_builtin();
+    let mut builder = Catalog::builder()
+        .with_builtin()
+        // Fork seam (fabro-cd27): the denkhaus overlay layers between the
+        // lithos built-ins and the operator's [llm] overlay (later layers
+        // win, so operator settings still override it).
+        .toml_layer("fork catalog overlay", OVERLAY)?;
     if !overlay.is_empty() {
         let mut document = overlay.to_overlay_toml();
         document.insert_str(0, "schema_version = 1\n");
@@ -52,7 +59,12 @@ pub fn build_catalog(
     if implied.is_empty() {
         return Ok(catalog);
     }
-    let mut builder = Catalog::builder().with_builtin();
+    let mut builder = Catalog::builder()
+        .with_builtin()
+        // Fork seam (fabro-cd27): the denkhaus overlay layers between the
+        // lithos built-ins and the operator's [llm] overlay (later layers
+        // win, so operator settings still override it).
+        .toml_layer("fork catalog overlay", OVERLAY)?;
     if !overlay.is_empty() {
         let mut document = overlay.to_overlay_toml();
         document.insert_str(0, "schema_version = 1\n");

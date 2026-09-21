@@ -20,6 +20,7 @@
 pub mod api;
 pub mod catalog;
 pub mod client;
+pub(crate) mod fork_catalog;
 pub mod gateway;
 pub mod probe;
 pub mod selection;
