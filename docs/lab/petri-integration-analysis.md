@@ -181,3 +181,27 @@ Tests brauchen slim+dind-Runner + CATALOG_IMAGE lokal gepullt.
   Plattform): `[run.meta_branch]` (standalone runner macht kein eigenes
   Git), `[run.notifications]` (Plattform-Facility), `fabro_tools = true`
   (Host-Tool-Capability statt Engine-Setting — W3-6-Anker).
+
+## W3: Preamble-Budget-Disposition (fabro-788b, 2026-09-21)
+
+Petri hat die Preamble-Maschinerie GEPORTET (attractor/steps/fidelity.rs
+folgt wörtlich dem fork-era fabro-workflow/handler/llm/preamble.rs) — aber
+ohne die Fork-Erweiterungen. Zwei Fork-Teile, zwei Wege:
+
+1. **Per-Node-Scoping** (x.preamble_stages_ignore/allow_keys): nativer
+   Hebel ist das `fidelity`-Attribut (truncate/compact/summary:low/medium/
+   high/full, per Node wählbar). Keine 1:1-Semantik (Ignore-Listen vs.
+   Modus-Leiter), aber der äquivalente Kontrollraum. Die x.*-Werte bleiben
+   inert dokumentiert; die Linie tuned post-Cutover per fidelity aus
+   Run-Evidence (revisor-Arbeit, nicht Migrationsarbeit).
+2. **Aggregate-Budget + Demote-Large-Values** (preamble_budget_kb 48KB,
+   Blob-Offload-Schwelle): kein Fabro-Seam — die Preamble baut Petri
+   pinned. Strategischer Pfad: UPSTREAM-OFFER an petri (Port der Fork-
+   Budget-Arbeit in fidelity.rs, INLINE_VALUE_MAX ist der Anknüpfungspunkt:
+   8KB-Hardcap vs. unser 48KB-Aggregat + Blob-Detour). Pattern wie der
+   legacy-catalog-Offer.
+
+BONUS aus derselben Recherche: die native Attractor-Attributliste nennt
+on_failure, on_retries_exhausted, allow_partial, goal_gate, retry_target,
+fallback_retry_target — das ist das W3-1/W3-2-Tier-Routing-Vokabular. Die
+Grilling-Vorlagen können direkt darauf aufbauen.
