@@ -121,6 +121,42 @@ fn invalid_fs_globs_are_refused_at_check() {
     assert!(finding.message.contains("work"), "{finding:?}");
 }
 
+/// `x.fs_write=""` is a read-only stage (fabro-ba96): the envelope holds
+/// an empty write list — which is not the same as no envelope at all, the
+/// `None` that means the node declares none — and Petri's check admits
+/// the workflow. The Attractor frontend's attribute surface takes the
+/// empty value; fabro's envelope reader is what gives it meaning.
+#[test]
+fn an_empty_fs_write_is_a_read_only_stage() {
+    let workflow = workflow("  work [shape=parallelogram, script=\"echo hi\", x.fs_write=\"\"]\n");
+    let envelopes = StageEnvelopes::parse(&workflow);
+    let work = envelopes
+        .envelope("work")
+        .expect("an empty value still declares the envelope");
+    assert_eq!(
+        work.fs_write,
+        Some(Vec::new()),
+        "an empty list admits no write at all"
+    );
+    let scope = envelopes
+        .fs_scope("work")
+        .expect("the node declares the envelope")
+        .expect("the empty envelope compiles");
+    assert!(
+        scope.check_write("/workspace", "workflow.fabro").is_err(),
+        "nothing is writable under an empty fs_write"
+    );
+
+    let admitted = check::check(&request(&workflow)).expect("the bundle is admitted");
+    let refusals: Vec<&str> = admitted
+        .warnings
+        .iter()
+        .map(|diagnostic| diagnostic.code.as_str())
+        .filter(|code| code.starts_with("fork.fs_"))
+        .collect();
+    assert!(refusals.is_empty(), "no fs finding fires for {refusals:?}");
+}
+
 /// Consistency findings warn without refusing: an inline ceiling above the
 /// budget, and a write entry under a hide root.
 #[test]
