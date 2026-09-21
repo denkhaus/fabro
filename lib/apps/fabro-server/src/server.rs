@@ -65,7 +65,7 @@ use fabro_petri::controls::{RunControls, SteerError};
 use fabro_petri::projector::Projector;
 use fabro_petri::prune::{self, PruneError, PruneRequest};
 use fabro_redact::redact_jsonl_line;
-use fabro_slack::client::{PostedMessage as SlackPostedMessage, SlackClient};
+use fabro_slack::client::{PostedMessage as SlackPostedMessage, SlackApiError, SlackClient};
 use fabro_slack::config::{
     SlackCredentialResolution,
     resolve_credentials_status_with_lookup as resolve_slack_credentials_status_with_lookup,
@@ -149,6 +149,7 @@ use crate::sandbox_access::{
     self, DAYTONA_CREDENTIAL_PROBE_TIMEOUT, DaytonaCredentials, DaytonaKeyCheck, ProviderAccess,
     SandboxInventory,
 };
+pub(crate) use crate::server::automation_breaker::AutomationBreakerNotifier;
 use crate::server_secrets::ServerSecrets;
 use crate::spawn_env::{self, apply_render_graph_env};
 use crate::worker_control::{
@@ -163,7 +164,9 @@ use crate::{
     canonical_host, demo, diagnostics, run_manifest, security_headers, static_files, web_auth,
 };
 
+pub(crate) mod automation_breaker;
 mod automation_scheduler;
+mod fork_line_recovery;
 mod handler;
 pub(crate) mod petri_runs;
 mod pull_request_supervisor;
@@ -601,6 +604,19 @@ struct SlackService {
 }
 
 impl SlackService {
+    /// Post the ONE aggregated automation-breaker pause message
+    /// (fabro-3d97, fork).
+    pub(crate) async fn post_breaker_message(
+        &self,
+        channel: &str,
+        blocks: &[serde_json::Value],
+    ) -> Result<(), SlackApiError> {
+        self.client
+            .post_message(channel, blocks, None)
+            .await
+            .map(|_| ())
+    }
+
     fn new(bot_token: String, app_token: String, default_channel: Option<String>) -> Self {
         Self {
             client: SlackClient::new(bot_token),
@@ -1152,6 +1168,7 @@ pub struct AppState {
     /// Test switch: execute runs in this process instead of a worker.
     execute_in_process: bool,
     slack_service: Option<Arc<SlackService>>,
+    automation_breaker_notifier: Option<Arc<dyn AutomationBreakerNotifier>>,
     slack_started: AtomicBool,
     github_webhook_secret: Option<String>,
 }
@@ -1322,6 +1339,11 @@ impl AskFabroReadiness {
 }
 
 pub(crate) struct AppStateConfig {
+    /// Fork (fabro-3d97): notifier override for tests; production wires the
+    /// Slack notifier from the Slack service.
+    #[cfg(any(test, feature = "test-support"))]
+    pub(crate) automation_breaker_notifier_override: Option<Arc<dyn AutomationBreakerNotifier>>,
+
     pub(crate) resolved_settings: ResolvedAppStateSettings,
     /// Execute runs in this process instead of a worker (tests only).
     pub(crate) execute_in_process: bool,
@@ -2479,6 +2501,8 @@ pub(crate) fn build_app_state(config: AppStateConfig) -> anyhow::Result<Arc<AppS
         worker_runtime,
         #[cfg(any(test, feature = "test-support"))]
         automation_materializer_override,
+        #[cfg(any(test, feature = "test-support"))]
+        automation_breaker_notifier_override,
     } = config;
 
     let store_pool = db_pool.clone();
@@ -2619,6 +2643,16 @@ pub(crate) fn build_app_state(config: AppStateConfig) -> anyhow::Result<Arc<AppS
             Arc::new(LocalWorkerRuntime::new())
         }
     };
+
+    let automation_breaker_notifier: Option<Arc<dyn AutomationBreakerNotifier>> =
+        slack_service.as_ref().map(|service| {
+            Arc::new(automation_breaker::SlackBreakerNotifier::new(Arc::clone(
+                service,
+            ))) as Arc<dyn AutomationBreakerNotifier>
+        });
+    #[cfg(any(test, feature = "test-support"))]
+    let automation_breaker_notifier =
+        { automation_breaker_notifier_override.or(automation_breaker_notifier) };
     Ok(Arc::new(AppState {
         runs: Mutex::new(HashMap::new()),
         aggregate_usage: Mutex::new(UsageAccumulator::default()),
@@ -2678,6 +2712,7 @@ pub(crate) fn build_app_state(config: AppStateConfig) -> anyhow::Result<Arc<AppS
         shutting_down: AtomicBool::new(false),
         execute_in_process,
         slack_service,
+        automation_breaker_notifier,
         slack_started: AtomicBool::new(false),
         // Startup snapshot for the sync router build; rotating the webhook
         // secret requires a server restart.

@@ -290,6 +290,63 @@ impl RunSummaryStore {
         decode_run_rows(&rows, now)
     }
 
+    /// Terminal runs of one automation, newest first. The automation
+    /// breaker replays these chronologically to count consecutive
+    /// same-signature failures (fabro-3d97, fork).
+    ///
+    /// Quota parks (fabro-e566, fork) end `blocked` with a conclusion
+    /// (completed_at set): they are terminal and stay visible to the
+    /// breaker/gate window — the breaker skips them through
+    /// `is_quota_park`, never counting them. A human-input block has no
+    /// conclusion and stays a live run.
+    pub async fn list_terminal_for_automation(
+        &self,
+        automation_id: &str,
+        limit: u32,
+        now: DateTime<Utc>,
+    ) -> Result<Vec<Run>> {
+        let mut query = QueryBuilder::<Sqlite>::new(SELECT_RUN_SUMMARIES_SQL);
+        query
+            .push(" WHERE automation_id = ")
+            .push_bind(automation_id.to_string())
+            .push(
+                " AND (status IN ('succeeded', 'failed', 'dead')                    OR (status = 'blocked' AND completed_at_ms IS NOT NULL))",
+            );
+        push_order(
+            &mut query,
+            RunSummarySort::CreatedAt,
+            RunSummarySortDirection::Desc,
+            now,
+        );
+        query.push(" LIMIT ").push_bind(i64::from(limit));
+        let rows = query.build().fetch_all(&self.pool).await?;
+        decode_run_rows(&rows, now)
+    }
+
+    /// The newest non-terminal run of an automation (including children of
+    /// its runs), for overlap-policy skip logging (fabro-09ea, fork).
+    pub async fn active_run_for_automation(&self, automation_id: &str) -> Result<Option<RunId>> {
+        let stored: Option<String> = sqlx::query_scalar(
+            r"
+SELECT id
+FROM runs
+WHERE status NOT IN ('succeeded', 'failed', 'dead')
+  AND NOT (status = 'blocked' AND completed_at_ms IS NOT NULL)
+  AND (
+    automation_id = ?
+    OR parent_id IN (SELECT id FROM runs WHERE automation_id = ?)
+  )
+ORDER BY created_at_ms DESC
+LIMIT 1
+",
+        )
+        .bind(automation_id)
+        .bind(automation_id)
+        .fetch_optional(&self.pool)
+        .await?;
+        stored.map(parse_stored_run_id).transpose()
+    }
+
     /// Run ids whose latest pull request creation request has no later
     /// record that resolves it. A newer request supersedes the old one;
     /// `created`, `linked` and `unlinked` resolve any pending request;

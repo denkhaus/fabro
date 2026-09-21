@@ -39,6 +39,7 @@ use crate::jwt_auth::{AuthMode, ConfiguredAuth};
 #[cfg(test)]
 use crate::principal_middleware::{AuthContextSlot, RequestAuthContext};
 use crate::sandbox_access::SandboxInventory;
+use crate::server::automation_breaker::AutomationBreakerNotifier;
 use crate::server::{
     self, AppState, AppStateConfig, EnvLookup, ResolvedAppStateSettings, RouterOptions,
     build_app_state,
@@ -102,6 +103,8 @@ pub struct TestAppStateBuilder {
     env_lookup:                   EnvLookup,
     llm_overlay:                  LlmLayer,
     automation_materializer:      Option<TestAutomationRunMaterializer>,
+    automation_breaker_notifier:  Option<Arc<dyn AutomationBreakerNotifier>>,
+    github_api_base_url:          Option<String>,
     #[cfg(test)]
     worker_runtime:               Option<Arc<dyn WorkerRuntime>>,
 }
@@ -124,6 +127,8 @@ impl Default for TestAppStateBuilder {
             env_lookup:                   default_env_lookup(),
             llm_overlay:                  LlmLayer::default(),
             automation_materializer:      None,
+            automation_breaker_notifier:  None,
+            github_api_base_url:          None,
             #[cfg(test)]
             worker_runtime:               None,
         }
@@ -188,6 +193,18 @@ impl TestAppStateBuilder {
         self
     }
 
+    /// Capture automation breaker pause notifications instead of posting to
+    /// Slack (fabro-3d97). Test-only builder: the only callers are cfg(test)
+    /// scheduler tests.
+    #[cfg(test)]
+    pub(crate) fn automation_breaker_notifier(
+        mut self,
+        notifier: Arc<dyn AutomationBreakerNotifier>,
+    ) -> Self {
+        self.automation_breaker_notifier = Some(notifier);
+        self
+    }
+
     #[cfg(test)]
     pub(crate) fn worker_runtime(mut self, worker_runtime: Arc<dyn WorkerRuntime>) -> Self {
         self.worker_runtime = Some(worker_runtime);
@@ -221,6 +238,13 @@ impl TestAppStateBuilder {
 
     pub fn store_bundle(mut self, store: Arc<Database>, artifact_store: ArtifactStore) -> Self {
         self.store_bundle = Some((store, artifact_store));
+        self
+    }
+
+    /// Point the server's GitHub API client at a mock server (e.g. an
+    /// `httpmock::MockServer` base URL) instead of github.com.
+    pub fn github_api_base_url(mut self, github_api_base_url: impl Into<String>) -> Self {
+        self.github_api_base_url = Some(github_api_base_url.into());
         self
     }
 
@@ -302,7 +326,7 @@ impl TestAppStateBuilder {
             preloaded_vault,
             server_secrets: load_test_server_secrets(server_env_path, self.server_secret_env),
             env_lookup: self.env_lookup,
-            github_api_base_url: None,
+            github_api_base_url: self.github_api_base_url,
             active_config_path,
             http_client: Some(
                 fabro_http::test_http_client().expect("test HTTP client should build"),
@@ -314,6 +338,7 @@ impl TestAppStateBuilder {
             #[cfg(test)]
             worker_runtime: self.worker_runtime,
             automation_materializer_override,
+            automation_breaker_notifier_override: self.automation_breaker_notifier,
         })
     }
 }
@@ -381,6 +406,34 @@ pub fn test_app_state() -> Arc<AppState> {
     ready_test_app_state_builder().build()
 }
 
+/// JWT-auth test state whose builtin `openai` provider points at
+/// `base_url`. `session_secret` must be the caller's module constant:
+/// test_support and server::tests define two DIFFERENT values under the
+/// same TEST_SESSION_SECRET name, and worker tokens validate against
+/// whatever this state loads. Ask-Fabro session tests use this for
+/// hermetic LLM round trips.
+#[expect(
+    clippy::disallowed_methods,
+    reason = "test helper writes a fixture server.env with sync std::fs::write"
+)]
+pub fn jwt_auth_state_with_openai_base_url(base_url: &str, session_secret: &str) -> Arc<AppState> {
+    let vault_path = test_secret_store_path();
+    let server_env_path = vault_path
+        .parent()
+        .expect("test secrets path should have parent")
+        .join("server.env");
+    std::fs::write(
+        &server_env_path,
+        format!("SESSION_SECRET={session_secret}\n"),
+    )
+    .expect("test server env should be writable");
+    TestAppStateBuilder::new()
+        .vault_entries([(EnvVars::OPENAI_API_KEY, TEST_OPENAI_API_KEY)])
+        .provider_base_url("openai", base_url)
+        .vault_path(vault_path)
+        .server_env_path(server_env_path)
+        .build()
+}
 pub fn test_app_state_in_process() -> Arc<AppState> {
     ready_test_app_state_builder()
         .in_process_execution()
@@ -670,7 +723,25 @@ pub fn test_app_state_with_store_and_runtime_settings(
 }
 
 pub(crate) fn default_env_lookup() -> EnvLookup {
-    Arc::new(process_env_var)
+    hermetic_provider_env_lookup(process_env_var)
+}
+
+/// The default test env lookup: `raw` (the process environment) minus the
+/// provider-configuration overrides, so an explicit test override — the
+/// builder's `provider_base_url` overlay — outranks whatever the ambient
+/// process carries (fabro-2dac). Tests that want env-driven provider
+/// behavior inject their own lookup via [`TestAppStateBuilder::env_lookup`].
+///
+/// `OPENAI_BASE_URL` is the one environment override catalog construction
+/// honors above the `[llm]` overlay; scrubbing it here changes test
+/// resolution only, never production env resolution.
+fn hermetic_provider_env_lookup(raw: fn(&str) -> Option<String>) -> EnvLookup {
+    Arc::new(move |name: &str| {
+        if name == EnvVars::OPENAI_BASE_URL {
+            return None;
+        }
+        raw(name)
+    })
 }
 
 pub(crate) fn load_test_server_secrets(
@@ -850,6 +921,7 @@ pub async fn test_register_workflow_version(
 
 #[cfg(test)]
 mod tests {
+    use fabro_static::EnvVars;
     use fabro_types::settings::ObjectStoreSettings;
 
     use super::*;
@@ -859,6 +931,22 @@ mod tests {
             panic!("test server settings should use a local object store");
         };
         Path::new(root)
+    }
+
+    #[test]
+    fn default_env_lookup_scrubs_provider_env_overrides_so_explicit_test_overrides_win() {
+        let lookup = hermetic_provider_env_lookup(|name| Some(format!("process-{name}")));
+
+        assert_eq!(
+            lookup(EnvVars::OPENAI_BASE_URL),
+            None,
+            "an ambient OPENAI_BASE_URL must not defeat the provider_base_url overlay"
+        );
+        assert_eq!(
+            lookup(EnvVars::FABRO_LOG),
+            Some(format!("process-{}", EnvVars::FABRO_LOG)),
+            "unrelated process env still flows through the default test lookup"
+        );
     }
 
     #[test]

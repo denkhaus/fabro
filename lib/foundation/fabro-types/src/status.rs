@@ -412,6 +412,11 @@ impl From<TerminalStatus> for RunStatus {
 #[strum(serialize_all = "snake_case")]
 pub enum BlockedReason {
     HumanInputRequired,
+    /// Fork (fabro-986b/ADR-0021, PR #240 heritage): the run is parked on a
+    /// quota-class provider outage with its work preserved; the pre-fire
+    /// provider gate re-fires when the window reopens. Petri's fold does
+    /// not produce this yet — W3-1's tier routing will.
+    QuotaRateLimit,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

@@ -451,6 +451,7 @@ mod tests {
             origin:           RunOrigin::default(),
             labels:           HashMap::from([("group".to_string(), group.to_string())]),
             lifecycle:        RunLifecycle {
+                conclusion_failure: None,
                 status: RunStatus::Submitted,
                 approval: None,
                 pending_control: None,
