@@ -32,6 +32,7 @@ mod graph;
 mod inspect;
 mod install;
 mod json_global;
+mod judgment_shadow;
 mod logs;
 mod mcp;
 mod model;

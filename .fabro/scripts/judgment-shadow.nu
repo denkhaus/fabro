@@ -24,7 +24,7 @@
 
 const JUDGED_NODES = [evidence reviewer analyze]
 const MODEL = "jev-latest"
-const ENDPOINT = "https://api.typesafe.ai/v1/systemone"
+const ENDPOINT_DEFAULT = "https://api.typesafe.ai/v1/systemone"
 
 def main []: nothing -> nothing {
     let ctx_path = ($env.FABRO_HOOK_CONTEXT? | default "")
@@ -74,6 +74,9 @@ def main []: nothing -> nothing {
     )
     let questions = ($residue | merge {verdict_pre_screen: $verdict})
 
+    # Ops seam: an explicit endpoint override (self-hosted proxies,
+    # scripted twin tests); the production default stays the pinned const.
+    let endpoint = ($env.JUDGMENT_SHADOW_ENDPOINT? | default $ENDPOINT_DEFAULT)
     let started = (date now)
     let line = if ($key | is-empty) {
         {degraded: "no_key"}
@@ -83,16 +86,25 @@ def main []: nothing -> nothing {
                 http post
                     --headers {Authorization: $"Bearer ($key)"}
                     --content-type application/json
-                    $ENDPOINT
+                    $endpoint
                     {
                         model: $MODEL
                         state: {run_id: $run_id, node: $node, context_updates: $updates}
                         questions: $questions
                     }
             )
+            # nu hands back a parsed record for JSON responses and a
+            # plain string otherwise; normalize before cell-path access.
+            let response = (
+                if ($response | describe | str starts-with "string") {
+                    $response | from json
+                } else {
+                    $response
+                }
+            )
             let latency = ((date now) - $started)
             {
-                answers: ($response.decisions? | default $response)
+                answers: ($response.answers? | default null)
                 latency_ms: ($latency / 1ms | into int)
                 cost_usd: ($response.usage?.cost_usd? | default null)
             }
