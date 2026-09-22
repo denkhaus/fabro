@@ -21,6 +21,7 @@ pub(crate) mod run;
 pub(crate) mod runs;
 pub(crate) mod sandbox;
 pub(crate) mod secret;
+pub(crate) mod seeds;
 pub(crate) mod server;
 pub(crate) mod system;
 pub(crate) mod uninstall;

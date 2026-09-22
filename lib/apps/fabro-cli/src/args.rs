@@ -1475,6 +1475,8 @@ pub(crate) enum Commands {
     Parent(ParentNamespace),
     /// Manage server-owned secrets
     Secret(SecretNamespace),
+    /// Operate on the repository's seeds issue tracker (.seeds/, sd-compatible)
+    Seeds(SeedsNamespace),
     /// Manage server environments
     Env(EnvNamespace),
     /// Manage server automations (alias: auto)
@@ -1643,6 +1645,17 @@ impl Commands {
                     SystemRepairCommand::Runs(_) => "system repair runs",
                 },
             },
+            Self::Seeds(ns) => match &ns.command {
+                SeedsCommand::Create(_) => "seeds create",
+                SeedsCommand::Show(_) => "seeds show",
+                SeedsCommand::List(_) => "seeds list",
+                SeedsCommand::Ready(_) => "seeds ready",
+                SeedsCommand::Update(_) => "seeds update",
+                SeedsCommand::Close(_) => "seeds close",
+                SeedsCommand::Dep(_) => "seeds dep",
+                SeedsCommand::Prime(_) => "seeds prime",
+                SeedsCommand::Search(_) => "seeds search",
+            },
             Self::SendAnalytics { .. } => "__send_analytics",
             Self::SendPanic { .. } => "__send_panic",
             Self::CliReference => "__cli-reference",
@@ -1702,6 +1715,46 @@ pub(crate) enum ArtifactCommand {
     List(ArtifactListArgs),
     /// Copy artifacts from a workflow run
     Cp(ArtifactCpArgs),
+}
+
+#[derive(Args)]
+pub(crate) struct SeedsNamespace {
+    #[command(subcommand)]
+    pub(crate) command: SeedsCommand,
+}
+
+/// sd-parity surface for the native seeds tracker integration.
+///
+/// Skeleton phase (`fabro-088b`): subcommand arguments pass through
+/// verbatim; flag-level parity and command bodies arrive with the
+/// command-layer binding (seeds library API vs fabro-side runner).
+#[derive(Subcommand)]
+pub(crate) enum SeedsCommand {
+    /// Create a new seed
+    Create(SeedsRawArgs),
+    /// Show one seed by id
+    Show(SeedsRawArgs),
+    /// List seeds
+    List(SeedsRawArgs),
+    /// List seeds with resolved dependencies
+    Ready(SeedsRawArgs),
+    /// Update seed fields
+    Update(SeedsRawArgs),
+    /// Close a seed
+    Close(SeedsRawArgs),
+    /// Manage seed dependencies
+    Dep(SeedsRawArgs),
+    /// Print a priming prompt from open seeds
+    Prime(SeedsRawArgs),
+    /// Search seeds by keyword
+    Search(SeedsRawArgs),
+}
+
+/// Trailing pass-through arguments until the command layer is wired.
+#[derive(Args)]
+pub(crate) struct SeedsRawArgs {
+    #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+    pub(crate) args: Vec<String>,
 }
 
 #[derive(Args)]

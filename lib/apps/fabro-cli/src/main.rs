@@ -344,6 +344,9 @@ async fn main_inner(worker_token: Option<String>) -> (String, Result<()>) {
             Commands::Secret(ns) => {
                 commands::secret::dispatch(ns, &base_ctx).await?;
             }
+            Commands::Seeds(ns) => {
+                commands::seeds::dispatch(ns, &base_ctx).await?;
+            }
             Commands::Env(ns) => {
                 commands::env::dispatch(ns, &base_ctx).await?;
             }

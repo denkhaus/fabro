@@ -64,6 +64,7 @@ mod secret;
 mod secret_list;
 mod secret_rm;
 mod secret_set;
+mod seeds;
 mod send_analytics;
 mod send_panic;
 mod server_start;
