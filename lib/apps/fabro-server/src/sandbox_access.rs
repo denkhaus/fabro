@@ -11,9 +11,12 @@
 //! Ownership is keyed on `petri.run`: a persisted id is acted on only when
 //! the sandbox behind it still carries the run's label, so an id that has
 //! come to name someone else's sandbox on a shared daemon is refused. A host
-//! sandbox is a directory: it carries no labels, and its id is derived from
-//! its path, so a reconnect from this process designates the directory
-//! again whatever registry the creating process kept.
+//! sandbox is a managed directory the run's worker recorded, with the same
+//! labels, in the host registry inside the run's Petri directory; the
+//! server reads that registry without writing it and attaches to the
+//! directory by path, so the run's ownership is checked on the host as it
+//! is on Docker. Only a directory no registry records is designated again
+//! without a record.
 //!
 //! Credentials arrive explicitly. Nothing here reads the process
 //! environment for a secret: the Daytona key comes from the vault through
@@ -23,11 +26,12 @@
 //! daemon.
 
 use std::collections::BTreeMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Context as _;
+use fabro_config::Storage;
 use fabro_static::EnvVars;
 use fabro_types::settings::server::{
     SandboxPluginSettings, ServerSandboxProviderSettings, ServerSandboxProvidersSettings,
@@ -132,15 +136,34 @@ impl std::fmt::Debug for DaytonaCredentials {
 }
 
 /// What the server needs to reach every provider a run record can name:
-/// its provider settings (which kinds are enabled, which run as plugins)
-/// and the Daytona credentials from the vault.
+/// its provider settings (which kinds are enabled, which run as plugins),
+/// the Daytona credentials from the vault, and the storage root under
+/// which each run's worker kept its host registry.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct ProviderAccess {
-    pub(crate) providers: ServerSandboxProvidersSettings,
-    pub(crate) daytona:   Option<DaytonaCredentials>,
+    pub(crate) providers:    ServerSandboxProvidersSettings,
+    pub(crate) daytona:      Option<DaytonaCredentials>,
+    /// The server's storage root. `None` where no run's host sandbox is
+    /// reached (the doctor's probes, the startup inventory): a host
+    /// record is then designated by path without its registry record.
+    pub(crate) storage_root: Option<PathBuf>,
 }
 
 impl ProviderAccess {
+    /// The host registry the run's worker kept: Petri's `host-registry`
+    /// inside the run's Petri directory, which is `petri` under the run's
+    /// scratch directory (the run directory `petri_runs` hands the worker).
+    fn host_registry(&self, run_id: RunId) -> Option<PathBuf> {
+        let root = self.storage_root.as_ref()?;
+        Some(
+            Storage::new(root)
+                .run_scratch(&run_id)
+                .root()
+                .join("petri")
+                .join("host-registry"),
+        )
+    }
+
     /// The settings entry for `kind`. A bundled kind without an entry is
     /// enabled with defaults; any other kind must be configured.
     fn settings_for(&self, kind: &SandboxProviderKind) -> Option<ServerSandboxProviderSettings> {
@@ -184,11 +207,12 @@ pub(crate) enum ConnectError {
 
 /// Connects the provider behind `kind`, unscoped: every sandbox on the
 /// backend is visible to it. Callers that act on a persisted id narrow it
-/// with [`scope_to_run`].
+/// to the run, as [`attach_run_sandbox`] does.
 ///
 /// Bundled kinds link the driver's provider crates in process. `local` is
-/// the driver's Host provider with a fresh registry: a run's directory is
-/// reached by the id its path derives, whatever registry the worker kept.
+/// the driver's Host provider with a fresh registry, enough for health;
+/// a run's host sandbox is reached through the run's own registry by
+/// [`attach_run_sandbox`].
 /// `docker` connects to the daemon the process environment names, the
 /// same variables Petri hands its Docker plugin, without requiring the
 /// daemon to answer: `health` reports an unreachable daemon so preflight
@@ -278,36 +302,23 @@ fn is_petri_sandbox(labels: &BTreeMap<String, String>) -> bool {
     labels.contains_key(PETRI_RUN_LABEL)
 }
 
-/// `provider` narrowed to the sandboxes of `run_id`: an attach to an id
-/// whose sandbox does not carry the run's `petri.run` label is refused.
-/// The `local` kind is returned unscoped: a host directory carries no
-/// labels, and nothing else shares the host's directories with Fabro.
-/// Deletion does not come through here: a run's sandboxes are deleted
-/// through Petri's lease ledger (`fabro_petri::prune`).
-fn scope_to_run(
-    kind: &SandboxProviderKind,
-    provider: Arc<dyn SandboxProvider>,
-    run_id: RunId,
-) -> Arc<dyn SandboxProvider> {
-    if kind.bundled() == Some(BundledProvider::Local) {
-        return provider;
-    }
-    Arc::new(OwnedProvider::new(provider, run_ownership(run_id)))
-}
-
 /// Attaches to a run's sandbox from its record, through the record's
-/// provider scoped to the run. The handle is whatever state the sandbox is
-/// in; [`activate`] brings it to `Running`.
+/// provider scoped to the run: an attach whose sandbox does not carry the
+/// run's `petri.run` label is refused. The handle is whatever state the
+/// sandbox is in; [`activate`] brings it to `Running`. Deletion does not
+/// come through here: a run's sandboxes are deleted through Petri's lease
+/// ledger (`fabro_petri::prune`).
 ///
-/// A host sandbox is the directory it designates. An id the Host provider
-/// minted for a long path lives only in the registry of the process that
-/// created it (the run's worker), so a reconnect from this process
-/// designates the directory again: the same workspace, whatever the id.
+/// A host sandbox goes through [`attach_host_run_sandbox`]; every other
+/// kind through its connected provider and [`attach_run_sandbox_on`].
 pub(crate) async fn attach_run_sandbox(
     access: &ProviderAccess,
     record: &RunSandboxInstance,
     run_id: RunId,
 ) -> anyhow::Result<Arc<dyn Sandbox>> {
+    if record.provider.bundled() == Some(BundledProvider::Local) {
+        return attach_host_run_sandbox(access, record, run_id).await;
+    }
     let provider = connect_provider(&record.provider, access)
         .await
         .with_context(|| format!("Failed to connect to the {} provider", record.provider))?;
@@ -315,7 +326,8 @@ pub(crate) async fn attach_run_sandbox(
 }
 
 /// [`attach_run_sandbox`] on an already connected, unscoped `provider` for
-/// the record's kind: the run scope is applied here.
+/// the record's kind, which attaches by the record's id: the run scope is
+/// applied here.
 async fn attach_run_sandbox_on(
     provider: Arc<dyn SandboxProvider>,
     record: &RunSandboxInstance,
@@ -323,22 +335,75 @@ async fn attach_run_sandbox_on(
 ) -> anyhow::Result<Arc<dyn Sandbox>> {
     let kind = &record.provider;
     let sandbox_id = &record.runtime.id;
-    let provider = scope_to_run(kind, provider, run_id);
+    let provider = OwnedProvider::new(provider, run_ownership(run_id));
     let id =
         SandboxId::try_new(sandbox_id).with_context(|| format!("Invalid {kind} sandbox id"))?;
-    match provider.attach(&id, None).await {
-        Ok(handle) => Ok(handle),
-        Err(DriverError::NotFound { .. }) if kind.bundled() == Some(BundledProvider::Local) => {
-            let working_directory = &record.runtime.working_directory;
-            let spec = SandboxSpec::new(SandboxSource::HostDirectory)
-                .working_directory(working_directory.clone());
-            provider.create(&spec, None).await.with_context(|| {
-                format!("Failed to reconnect {kind} sandbox '{sandbox_id}' at {working_directory}")
-            })
+    provider
+        .attach(&id, None)
+        .await
+        .with_context(|| format!("Failed to reconnect {kind} sandbox '{sandbox_id}'"))
+}
+
+/// Attaches to a run's host sandbox: the managed directory the record
+/// names, with the record the run's worker kept for it.
+///
+/// The worker's host registry is one process's at a time, so the server
+/// observes it (`HostProvider::observe_registry`) rather than opening it:
+/// the registry is read, never written, and the directory is resolved to
+/// its record by path. That record carries Petri's labels, so the run's
+/// `petri.run` ownership is checked here exactly as it is on Docker, and
+/// the handle refuses every lifecycle change: starting, stopping, and
+/// deleting the sandbox stay the worker's. A stopped sandbox's retained
+/// workspace is usable through the handle.
+///
+/// A directory the registry does not know is designated again without a
+/// record, as before this check existed: the run predates the driver that
+/// records it, this process has no storage root to find the registry under
+/// (a probe, a test), or the run's Petri directory is gone while the
+/// directory is not. Such a handle carries no labels and so no ownership;
+/// it serves the read paths only.
+async fn attach_host_run_sandbox(
+    access: &ProviderAccess,
+    record: &RunSandboxInstance,
+    run_id: RunId,
+) -> anyhow::Result<Arc<dyn Sandbox>> {
+    let kind = &record.provider;
+    // The kind's policy (configured, enabled) is checked as for any other
+    // provider; the fresh provider that connects is not what a run's
+    // directory is reached through.
+    connect_provider(kind, access)
+        .await
+        .with_context(|| format!("Failed to connect to the {kind} provider"))?;
+    let sandbox_id = &record.runtime.id;
+    let working_directory = &record.runtime.working_directory;
+    if let Some(registry) = access.host_registry(run_id) {
+        let observer: Arc<HostProvider> = Arc::new(HostProvider::observe_registry(registry));
+        match observer
+            .attach_directory(Path::new(working_directory), None)
+            .await
+        {
+            Ok(handle) => {
+                return OwnedProvider::new(observer, run_ownership(run_id))
+                    .check(handle)
+                    .await
+                    .with_context(|| format!("Failed to reconnect {kind} sandbox '{sandbox_id}'"));
+            }
+            Err(DriverError::NotFound { .. }) => {}
+            Err(error) => {
+                return Err(anyhow::Error::new(error).context(format!(
+                    "Failed to reconnect {kind} sandbox '{sandbox_id}' at {working_directory}"
+                )));
+            }
         }
-        Err(error) => Err(anyhow::Error::new(error)
-            .context(format!("Failed to reconnect {kind} sandbox '{sandbox_id}'"))),
     }
+    let spec =
+        SandboxSpec::new(SandboxSource::HostDirectory).working_directory(working_directory.clone());
+    HostProvider::new()
+        .create(&spec, None)
+        .await
+        .with_context(|| {
+            format!("Failed to reconnect {kind} sandbox '{sandbox_id}' at {working_directory}")
+        })
 }
 
 /// Brings a sandbox back into use, idempotently: a running sandbox is left
@@ -352,13 +417,18 @@ pub(crate) async fn activate(sandbox: &dyn Sandbox) -> sandbox_driver::Result<()
 }
 
 /// Attaches to a run's sandbox and brings it to `Running`, for every
-/// access-time caller.
+/// access-time caller. A host sandbox is returned as attached: its handle
+/// works in the directory in any recorded state, and starting it is the
+/// worker's alone.
 pub(crate) async fn attach_running_run_sandbox(
     access: &ProviderAccess,
     record: &RunSandboxInstance,
     run_id: RunId,
 ) -> anyhow::Result<Arc<dyn Sandbox>> {
     let sandbox = attach_run_sandbox(access, record, run_id).await?;
+    if record.provider.bundled() == Some(BundledProvider::Local) {
+        return Ok(sandbox);
+    }
     activate(sandbox.as_ref())
         .await
         .with_context(|| format!("Failed to start {} sandbox", record.provider))?;
@@ -462,8 +532,9 @@ pub(crate) async fn check_daytona_api_key(
     probe_timeout: Duration,
 ) -> anyhow::Result<DaytonaKeyCheck> {
     let access = ProviderAccess {
-        providers: ServerSandboxProvidersSettings::default(),
-        daytona:   Some(credentials.clone()),
+        providers:    ServerSandboxProvidersSettings::default(),
+        daytona:      Some(credentials.clone()),
+        storage_root: None,
     };
     let probe = async {
         let health = provider_health(&SandboxProviderKind::DAYTONA, &access).await?;
@@ -839,6 +910,7 @@ mod tests {
         ProviderAccess {
             providers,
             daytona: None,
+            storage_root: None,
         }
     }
 
@@ -962,6 +1034,7 @@ mod tests {
         let access = ProviderAccess {
             providers,
             daytona: None,
+            storage_root: None,
         };
         let error = connect_provider(&SandboxProviderKind::DOCKER, &access)
             .await
@@ -978,6 +1051,138 @@ mod tests {
         assert!(matches!(error, ConnectError::Unconfigured { kind: k } if k == kind("e2b")));
     }
 
+    /// The worker's registry knows the run's directory: the server attaches
+    /// to it with the worker's record, checks the run's label on it, and
+    /// works in it in whatever state the worker left it.
+    #[tokio::test]
+    async fn a_host_record_attaches_with_the_workers_managed_record() {
+        let storage = tempfile::tempdir().unwrap();
+        let access = ProviderAccess {
+            storage_root: Some(storage.path().to_path_buf()),
+            ..ProviderAccess::default()
+        };
+        let run_id = RunId::new();
+        let registry = access.host_registry(run_id).expect("a storage root");
+        // The worker's provider over the run's registry, creating the scope's
+        // managed workspace with Petri's labels.
+        let worker = HostProvider::with_registry(&registry)
+            .await
+            .expect("the worker opens the run's registry");
+        let workspace = registry
+            .parent()
+            .expect("the run's Petri directory")
+            .join("scopes")
+            .join("ws")
+            .join("work");
+        let mut spec = SandboxSpec::new(SandboxSource::HostDirectory)
+            .working_directory(workspace.display().to_string());
+        spec.workspace_ownership = Some(sandbox_driver::WorkspaceOwnership::Managed);
+        spec.labels
+            .insert(PETRI_RUN_LABEL.to_owned(), run_id.to_string());
+        let created = worker
+            .create(&spec, None)
+            .await
+            .expect("the worker creates the managed workspace");
+        created
+            .fs()
+            .write("note", b"kept")
+            .await
+            .expect("the worker writes");
+        let mut record = record(SandboxProviderKind::LOCAL, created.id().as_str());
+        record.runtime.working_directory = created.working_directory().to_owned();
+
+        let attached = attach_run_sandbox(&access, &record, run_id)
+            .await
+            .expect("the run's directory attaches with its record");
+        assert_eq!(
+            attached.id(),
+            created.id(),
+            "the worker's id, not a derived one"
+        );
+        let status = attached.describe().await.expect("describe");
+        assert_eq!(
+            status.labels.get(PETRI_RUN_LABEL).map(String::as_str),
+            Some(run_id.to_string().as_str())
+        );
+        assert_eq!(
+            status.workspace_ownership,
+            Some(sandbox_driver::WorkspaceOwnership::Managed)
+        );
+
+        // A directory the registry records for another run is refused, as
+        // on Docker: the record's label, not the directory, is the proof.
+        let other_run = RunId::new();
+        let mut foreign_spec = SandboxSpec::new(SandboxSource::HostDirectory).working_directory(
+            registry
+                .parent()
+                .expect("the run's Petri directory")
+                .join("scopes")
+                .join("foreign")
+                .join("work")
+                .display()
+                .to_string(),
+        );
+        foreign_spec.workspace_ownership = Some(sandbox_driver::WorkspaceOwnership::Managed);
+        foreign_spec
+            .labels
+            .insert(PETRI_RUN_LABEL.to_owned(), other_run.to_string());
+        let foreign = worker
+            .create(&foreign_spec, None)
+            .await
+            .expect("another run's workspace in the same registry");
+        let mut foreign_record = record.clone();
+        foreign_record.runtime.working_directory = foreign.working_directory().to_owned();
+        let error = attach_run_sandbox(&access, &foreign_record, run_id)
+            .await
+            .err()
+            .expect("the directory carries another run's label");
+        assert!(
+            error.chain().any(|cause| matches!(
+                cause.downcast_ref::<DriverError>(),
+                Some(DriverError::NotOwned { .. })
+            )),
+            "{error:#}"
+        );
+
+        // The worker stops the sandbox at release; the retained workspace is
+        // still read through the server's handle, without starting it.
+        created.stop().await.expect("the worker stops");
+        let running = attach_running_run_sandbox(&access, &record, run_id)
+            .await
+            .expect("a stopped host sandbox's workspace is usable");
+        assert_eq!(
+            running.describe().await.expect("describe").state,
+            SandboxState::Stopped,
+            "the worker's state shows through"
+        );
+        assert_eq!(running.fs().read("note").await.expect("read"), b"kept");
+        let refused = running
+            .delete()
+            .await
+            .expect_err("deletion is the worker's");
+        assert!(matches!(refused, DriverError::ReadOnly { .. }), "{refused}");
+
+        // A directory the registry does not know is designated as before.
+        let other = tempfile::tempdir().unwrap();
+        let mut unknown = record.clone();
+        unknown.runtime.working_directory =
+            other.path().canonicalize().unwrap().display().to_string();
+        let designated = attach_run_sandbox(&access, &unknown, run_id)
+            .await
+            .expect("an unrecorded directory is designated");
+        let status = designated.describe().await.expect("describe");
+        assert_eq!(
+            status.workspace_ownership,
+            Some(sandbox_driver::WorkspaceOwnership::Designated)
+        );
+        assert!(status.labels.is_empty());
+
+        created.delete().await.expect("the worker deletes");
+        foreign.delete().await.expect("the worker deletes");
+    }
+
+    /// Without a storage root there is no registry to consult: the directory
+    /// is designated again, whatever id the record carries.
     #[tokio::test]
     async fn a_host_record_reconnects_by_designating_its_directory() {
         let directory = tempfile::tempdir().unwrap();
@@ -1001,7 +1206,7 @@ mod tests {
             .expect("a host sandbox runs");
         assert!(directory.path().is_dir());
 
-        // The path-derived id attaches directly.
+        // The path-derived id designates the same directory.
         let derived = HostProvider::directory_id(directory.path())
             .await
             .expect("an id for the directory");
