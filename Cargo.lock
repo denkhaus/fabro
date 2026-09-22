@@ -2150,6 +2150,7 @@ dependencies = [
  "sandbox-driver",
  "sandbox-driver-host",
  "scopeguard",
+ "seeds",
  "semver",
  "serde",
  "serde_json",
@@ -6556,6 +6557,17 @@ checksum = "6ce2691df843ecc5d231c0b14ece2acc3efb62c0a398c7e1d875f3983ce020e3"
 dependencies = [
  "core-foundation-sys",
  "libc",
+]
+
+[[package]]
+name = "seeds"
+version = "0.1.0"
+source = "git+https://github.com/denkhaus/seeds?tag=v0.1.0#0de8745b933ff066f371f629e7938aacf41584bc"
+dependencies = [
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
