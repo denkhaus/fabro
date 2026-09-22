@@ -1723,38 +1723,232 @@ pub(crate) struct SeedsNamespace {
     pub(crate) command: SeedsCommand,
 }
 
-/// sd-parity surface for the native seeds tracker integration.
-///
-/// Skeleton phase (`fabro-088b`): subcommand arguments pass through
-/// verbatim; flag-level parity and command bodies arrive with the
-/// command-layer binding (seeds library API vs fabro-side runner).
+/// sd-parity surface over the native seeds tracker (fabro-088b): each
+/// subcommand maps 1:1 onto a `seeds::commands` typed input; flag names
+/// mirror the reference CLI, raw values pass through unparsed (the
+/// library owns validation and envelope shapes).
 #[derive(Subcommand)]
 pub(crate) enum SeedsCommand {
     /// Create a new seed
-    Create(SeedsRawArgs),
-    /// Show one seed by id
-    Show(SeedsRawArgs),
+    Create(SeedsCreateArgs),
+    /// Show one or more seeds by id
+    Show(SeedsShowArgs),
     /// List seeds
-    List(SeedsRawArgs),
+    List(SeedsQueryArgs),
     /// List seeds with resolved dependencies
-    Ready(SeedsRawArgs),
+    Ready(SeedsQueryArgs),
     /// Update seed fields
-    Update(SeedsRawArgs),
-    /// Close a seed
-    Close(SeedsRawArgs),
+    Update(SeedsUpdateArgs),
+    /// Close one or more seeds
+    Close(SeedsCloseArgs),
     /// Manage seed dependencies
-    Dep(SeedsRawArgs),
+    Dep(SeedsDepNamespace),
     /// Print a priming prompt from open seeds
-    Prime(SeedsRawArgs),
+    Prime(SeedsPrimeArgs),
     /// Search seeds by keyword
-    Search(SeedsRawArgs),
+    Search(SeedsSearchArgs),
 }
 
-/// Trailing pass-through arguments until the command layer is wired.
 #[derive(Args)]
-pub(crate) struct SeedsRawArgs {
-    #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
-    pub(crate) args: Vec<String>,
+pub(crate) struct SeedsCreateArgs {
+    /// Seed title
+    #[arg(long)]
+    pub(crate) title:       Option<String>,
+    /// Seed type (task|bug|feature|epic)
+    #[arg(long = "type")]
+    pub(crate) kind:        Option<String>,
+    /// Priority (0-4 or P0-P4)
+    #[arg(long)]
+    pub(crate) priority:    Option<String>,
+    /// Full description body
+    #[arg(long)]
+    pub(crate) description: Option<String>,
+    /// Comma-separated labels
+    #[arg(long)]
+    pub(crate) labels:      Option<String>,
+    /// Assignee
+    #[arg(long)]
+    pub(crate) assignee:    Option<String>,
+    /// JSON envelope output
+    #[arg(long)]
+    pub(crate) json:        bool,
+}
+
+#[derive(Args)]
+pub(crate) struct SeedsShowArgs {
+    /// Seed ids (prefixes allowed by the reference)
+    pub(crate) ids:    Vec<String>,
+    /// Output format (text|json)
+    #[arg(long)]
+    pub(crate) format: Option<String>,
+    /// JSON envelope output
+    #[arg(long)]
+    pub(crate) json:   bool,
+}
+
+/// Shared filters for list/ready/search (mirrors the reference flags).
+#[derive(Args)]
+pub(crate) struct SeedsQueryArgs {
+    /// Filter by status
+    #[arg(long)]
+    pub(crate) status:           Option<String>,
+    /// Filter by type
+    #[arg(long = "type")]
+    pub(crate) kind:             Option<String>,
+    /// Filter by assignee
+    #[arg(long)]
+    pub(crate) assignee:         Option<String>,
+    /// Include all seeds (ignore defaults)
+    #[arg(long)]
+    pub(crate) all:              bool,
+    /// Comma-separated labels (AND)
+    #[arg(long)]
+    pub(crate) label:            Option<String>,
+    /// Comma-separated labels (OR)
+    #[arg(long)]
+    pub(crate) label_any:        Option<String>,
+    /// Only unlabeled seeds
+    #[arg(long)]
+    pub(crate) unlabeled:        bool,
+    /// Comma-separated priorities
+    #[arg(long)]
+    pub(crate) priority:         Option<String>,
+    /// Upper priority bound
+    #[arg(long)]
+    pub(crate) priority_max:     Option<String>,
+    /// Result limit
+    #[arg(long)]
+    pub(crate) limit:            Option<String>,
+    /// Sort order
+    #[arg(long)]
+    pub(crate) sort:             Option<String>,
+    /// Output format (text|json)
+    #[arg(long)]
+    pub(crate) format:           Option<String>,
+    /// JSON envelope output
+    #[arg(long)]
+    pub(crate) json:             bool,
+    /// Respect schedule windows (ready only)
+    #[arg(long)]
+    pub(crate) respect_schedule: bool,
+}
+
+#[derive(Args)]
+pub(crate) struct SeedsSearchArgs {
+    /// Search needle
+    pub(crate) needle:  String,
+    /// Shared list filters
+    #[command(flatten)]
+    pub(crate) filters: SeedsQueryArgs,
+}
+
+#[derive(Args)]
+pub(crate) struct SeedsUpdateArgs {
+    /// Seed id
+    #[arg(long)]
+    pub(crate) id:               Option<String>,
+    /// New status (open|in_progress|closed)
+    #[arg(long)]
+    pub(crate) status:           Option<String>,
+    /// New title
+    #[arg(long)]
+    pub(crate) title:            Option<String>,
+    /// New assignee
+    #[arg(long)]
+    pub(crate) assignee:         Option<String>,
+    /// New description body (replaces the whole body)
+    #[arg(long)]
+    pub(crate) description:      Option<String>,
+    /// New type
+    #[arg(long = "type")]
+    pub(crate) kind:             Option<String>,
+    /// New priority
+    #[arg(long)]
+    pub(crate) priority:         Option<String>,
+    /// Labels to add (comma-separated)
+    #[arg(long = "add-label")]
+    pub(crate) add_label:        Option<String>,
+    /// Labels to remove (comma-separated)
+    #[arg(long = "remove-label")]
+    pub(crate) remove_label:     Option<String>,
+    /// Replace the whole label set
+    #[arg(long = "set-labels")]
+    pub(crate) set_labels:       Option<String>,
+    /// Shallow-merge JSON into extensions
+    #[arg(long)]
+    pub(crate) extensions:       Option<String>,
+    /// Remove the extensions field
+    #[arg(long = "clear-extensions")]
+    pub(crate) clear_extensions: bool,
+    /// JSON envelope output
+    #[arg(long)]
+    pub(crate) json:             bool,
+}
+
+#[derive(Args)]
+pub(crate) struct SeedsCloseArgs {
+    /// Seed ids
+    pub(crate) ids:    Vec<String>,
+    /// Closure reason (appended to the body)
+    #[arg(long)]
+    pub(crate) reason: Option<String>,
+    /// JSON envelope output
+    #[arg(long)]
+    pub(crate) json:   bool,
+}
+
+#[derive(Args)]
+pub(crate) struct SeedsDepNamespace {
+    #[command(subcommand)]
+    pub(crate) command: SeedsDepCommand,
+}
+
+#[derive(Subcommand)]
+pub(crate) enum SeedsDepCommand {
+    /// Add blocker ids to a seed
+    Add(SeedsDepAddArgs),
+    /// Remove a blocker id from seeds
+    Remove(SeedsDepRemoveArgs),
+    /// List dependency links
+    List(SeedsDepListArgs),
+}
+
+#[derive(Args)]
+pub(crate) struct SeedsDepAddArgs {
+    /// Seed id followed by blocker ids
+    pub(crate) ids:  Vec<String>,
+    /// JSON envelope output
+    #[arg(long)]
+    pub(crate) json: bool,
+}
+
+#[derive(Args)]
+pub(crate) struct SeedsDepRemoveArgs {
+    /// Seed ids followed by the blocker id
+    pub(crate) ids:  Vec<String>,
+    /// JSON envelope output
+    #[arg(long)]
+    pub(crate) json: bool,
+}
+
+#[derive(Args)]
+pub(crate) struct SeedsDepListArgs {
+    /// Restrict to one seed id
+    #[arg(long)]
+    pub(crate) id:   Option<String>,
+    /// JSON envelope output
+    #[arg(long)]
+    pub(crate) json: bool,
+}
+
+#[derive(Args)]
+pub(crate) struct SeedsPrimeArgs {
+    /// Compact template and section set
+    #[arg(long)]
+    pub(crate) compact: bool,
+    /// JSON envelope output
+    #[arg(long)]
+    pub(crate) json:    bool,
 }
 
 #[derive(Args)]

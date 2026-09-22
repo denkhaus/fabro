@@ -24,11 +24,11 @@ Usage: fabro seeds [OPTIONS] <COMMAND>
 
 Commands:
   create  Create a new seed
-  show    Show one seed by id
+  show    Show one or more seeds by id
   list    List seeds
   ready   List seeds with resolved dependencies
   update  Update seed fields
-  close   Close a seed
+  close   Close one or more seeds
   dep     Manage seed dependencies
   prime   Print a priming prompt from open seeds
   search  Search seeds by keyword
@@ -45,15 +45,36 @@ Options:
 }
 
 #[test]
-fn unwired_seeds_list_refuses_with_pending_binding_error() {
+fn seeds_list_reads_a_fixture_tracker() {
     let context = test_context!();
+    let root = context.temp_dir.join("seeds-fixture");
+    let seeds_dir = root.join(".seeds");
+    fs::create_dir_all(&seeds_dir).expect("fixture dir");
+    fs::write(seeds_dir.join("config.yaml"), "project: fx\n").expect("config fixture");
+    fs::write(
+        seeds_dir.join("issues.jsonl"),
+        concat!(
+            "{\"id\":\"fx-0001\",\"title\":\"fixture one\",\"status\":\"open\",",
+            "\"type\":\"task\",\"priority\":2,\"labels\":[\"probe\"],\"blockedBy\":[],",
+            "\"assignee\":null,\"createdAt\":\"2026-09-22T00:00:00.000Z\",",
+            "\"updatedAt\":\"2026-09-22T00:00:00.000Z\",\"description\":\"body\"}\n",
+        ),
+    )
+    .expect("issues fixture");
+
     let mut cmd = context.command();
-    cmd.args(["seeds", "list"]);
-    fabro_snapshot!(context.filters(), cmd, @"success: false
-exit_code: 1
------ stdout -----
------ stderr -----
-  × `fabro seeds list` is not wired yet: the seeds command-layer binding is pending (fabro-088b); the tracker format core is already pinned in the workspace");
+    cmd.args(["seeds", "list"]).current_dir(&root);
+    let output = cmd.output().expect("the listing runs");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        output.status.success(),
+        "list failed\nstdout:\n{stdout}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        stdout.contains("fx-0001") && stdout.contains("fixture one"),
+        "the fixture seed lists: {stdout}"
+    );
 }
 
 #[test]
