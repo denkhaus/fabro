@@ -105,10 +105,10 @@ sandbox-driver-daytona-config = { git = "https://github.com/lithoscomputer/sandb
 sandbox-driver-testing = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "07600aa5c6695ec4c999da93c05d2cb78fe11b0c" }
 
 # Native seeds tracker (denkhaus/seeds, ADR-0023): release tags are the
-# cross-repo sync points. INTERIM rev pin: v0.1.0 predates the command-
-# layer lift (seeds-0dfd, their PR #47); ee1bb59 is the validated lift
-# state. Bump to the v0.2.0 tag form once it is cut (fabro-088b).
-seeds = { git = "https://github.com/denkhaus/seeds", rev = "ee1bb59d16abdd0efd012a23bd849f310010287c" }
+# cross-repo sync points. v0.2.0 carries the lifted command-layer library
+# API (seeds-0dfd, their PR #47; the fabro-088b binding's sync point —
+# ee1bb59 ancestor, acceptance documented in the tag message).
+seeds = { git = "https://github.com/denkhaus/seeds", tag = "v0.2.0" }
 # pebble: the coding agent loop fabro runs its agent stages, Ask Fabro
 # sessions, hook evaluators, and `fabro exec` on. Pinned by rev to pebble
 # `main`. Pebble owns the `PortRoutes` trait fabro implements over its run
