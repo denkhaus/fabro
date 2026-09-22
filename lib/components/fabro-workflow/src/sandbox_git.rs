@@ -13,7 +13,8 @@
 use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 
-use fabro_pebble_sandbox::display_for_log;
+use fabro_redact::SecretRedactor;
+use pebble_coding_agent::sandbox_driver::display_for_log;
 use sandbox_driver::{
     Git as _, GitChange, GitDiffEntry, GitDiffOptions, GitFacet, GitFailureKind, GitRevisionRange,
     Sandbox,
@@ -159,7 +160,7 @@ fn diff_facet(sandbox: &dyn Sandbox) -> std::result::Result<GitFacet<'_>, DiffEr
 /// retry reads the same object; a timeout, a transport failure, or anything
 /// else is transient and surfaces as a 503 for the client to retry.
 fn diff_error(error: &sandbox_driver::Error) -> DiffError {
-    let message = display_for_log(error);
+    let message = display_for_log(error, &SecretRedactor);
     match error {
         sandbox_driver::Error::Io { .. } => DiffError::Permanent { message },
         sandbox_driver::Error::Git(failure) => {

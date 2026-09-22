@@ -14,6 +14,10 @@ workspace = true
 
 [dependencies]
 aho-corasick.workspace = true
+# The `Redactor` seam pebble's coding agent and its sandbox-driver adapter
+# call on text a process wrote; `SecretRedactor` is this crate's scanner
+# behind it.
+pebble-coding-agent.workspace = true
 ref-cast.workspace = true
 regex.workspace = true
 serde_json.workspace = true

@@ -33,7 +33,6 @@ fabro-mcp-server = { path = "../fabro-mcp-server" }
 fabro-petri = { path = "../../components/fabro-petri" }
 fabro-manifest = { path = "../../components/fabro-manifest" }
 fabro-proc = { path = "../../foundation/fabro-proc" }
-fabro-pebble-sandbox = { path = "../../components/fabro-pebble-sandbox" }
 sandbox-driver.workspace = true
 sandbox-driver-host.workspace = true
 fabro-graphviz = { path = "../../components/fabro-graphviz" }
