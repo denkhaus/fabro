@@ -6562,7 +6562,7 @@ dependencies = [
 [[package]]
 name = "seeds"
 version = "0.1.0"
-source = "git+https://github.com/denkhaus/seeds?tag=v0.1.0#0de8745b933ff066f371f629e7938aacf41584bc"
+source = "git+https://github.com/denkhaus/seeds?rev=ee1bb59d16abdd0efd012a23bd849f310010287c#ee1bb59d16abdd0efd012a23bd849f310010287c"
 dependencies = [
  "serde",
  "serde_json",
