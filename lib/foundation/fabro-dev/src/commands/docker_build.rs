@@ -201,10 +201,18 @@ impl DockerBuildPlan {
             .arg("-c")
             .arg(format!(
                 "cp /target/{}/release/fabro /out/fabro && \
-                 cp /target/{}/release/sandbox-driver-docker /target/{}/release/sandbox-driver-host /out/",
+                 cp /target/{}/release/sandbox-driver-docker /target/{}/release/sandbox-driver-host /out/ && \
+                 NU_TGZ=/tmp/nu.tar.gz && \
+                 curl -fsSL -o $NU_TGZ \
+                 https://github.com/nushell/nushell/releases/download/{nu_version}/nu-{nu_version}-{musl}.tar.gz && \
+                 echo '{nu_sha}  '$NU_TGZ | sha256sum -c - && \
+                 tar -xzf $NU_TGZ -C /out --strip-components=1 nu-{nu_version}-{musl}/nu",
                 self.arch.target(),
                 self.arch.target(),
-                self.arch.target()
+                self.arch.target(),
+                nu_version = NU_VERSION,
+                musl = self.arch.target(),
+                nu_sha = nu_sha256(self.arch),
             ))
     }
 
@@ -234,6 +242,21 @@ impl DockerBuildPlan {
 /// of `Cargo.toml`, so the plugin build can never drift from the
 /// dependency pin. A raw string: the pattern is shell-sed, not Rust.
 const SANDBOX_PIN_SED: &str = r#"REV=$(sed -n 's/.*sandbox-driver = { git = "[^"]*", rev = "\([0-9a-f]*\)".*/\1/p' Cargo.toml | head -1)"#;
+
+/// Nushell release vendored into the server image for host-side hooks
+/// (fabro-8e13): the official musl tarball, sha256-pinned per arch, staged
+/// through the docker context beside the release binary so `[[run.hooks]]`
+/// script kinds can run nu inside the server container.
+const NU_VERSION: &str = "0.115.0";
+const NU_SHA256_AMD64: &str = "d510565b039b5384986652e579fe443877fcc4df86f16072ed5edca641ad92f1";
+const NU_SHA256_ARM64: &str = "7e60824f66b8c814fdbb52741047d38c8379e4bc5e8271135667ef04e3c55324";
+
+fn nu_sha256(arch: DockerArch) -> &'static str {
+    match arch {
+        DockerArch::Amd64 => NU_SHA256_AMD64,
+        DockerArch::Arm64 => NU_SHA256_ARM64,
+    }
+}
 
 fn build_script(target: &str, zig_arch: &str) -> String {
     format!(

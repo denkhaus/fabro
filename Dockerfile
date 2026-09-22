@@ -35,6 +35,10 @@ COPY --chmod=0755 tmp/docker-context/${TARGETARCH}/fabro /usr/local/bin/fabro
 COPY --chmod=0755 tmp/docker-context/${TARGETARCH}/sandbox-driver-docker /usr/local/bin/sandbox-driver-docker
 COPY --chmod=0755 tmp/docker-context/${TARGETARCH}/sandbox-driver-host /usr/local/bin/sandbox-driver-host
 
+# Vendored nushell (musl, sha256-pinned at staging) for host-side
+# [[run.hooks]] script kinds running inside the server container.
+COPY --chmod=0755 tmp/docker-context/${TARGETARCH}/nu /usr/local/bin/nu
+
 COPY --chmod=0755 docker/entrypoint.sh /usr/local/bin/fabro-entrypoint
 
 ENV FABRO_HOME=/storage/.home \
