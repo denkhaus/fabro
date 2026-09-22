@@ -143,6 +143,16 @@ decision, not an accident - it needs the user plus an ADR.
 
 ## Phase 2 - Build
 
+- `just up` snapshots the WORKING TREE into the local image (build-image
+  builds from the checkout): running it mid-edit ships half-done features
+  into the staging image (2026-09-22: a WIP fabro_ask rode the image).
+  Run it from a landed/clean state, or accept and note the WIP. And a
+  handoff's stack claim is verified, not trusted: `curl -s -o /dev/null
+  -w "%{http_code}" http://127.0.0.1:32276/install/session` — 401 means
+  UNCONFIGURED (install mode), 404 means configured; the 2026-09-22
+  handoff claimed a fresh configured stack while the volume had been
+  empty since 09-17.
+
 - Deterministic-script-first for loop assets (2026-09-16 lesson set):
   when a prompt clause requires JUDGMENT over mechanical data (grep
   history, resolve paths, compute metrics), do not sharpen the prose -
@@ -222,6 +232,15 @@ decision, not an accident - it needs the user plus an ADR.
   space-run diagnostics (ba96, 2026-09-03).
 
 ## Phase 3 - Review
+
+- EXIT-CODE-SAFE VERIFICATION (2026-09-22, fabro-43cf, three wasted fix
+  rounds): `cargo check ... | tail -N` reports tail's exit code (0) — the
+  build failure behind the pipe reads as green. Every verification
+  command in a pipeline ends with an explicit `; echo EXIT=$?` whose
+  variable the session actually checks, or runs unpiped (the bash()
+  handle captures full output anyway). Same class: mock impls of crate
+  traits copy signatures FROM THE TREE, never from memory or the old
+  branch (unlink_run_parent param count changed under us mid-port).
 
 - Run a code-review skill session on the diff since the base point
   (standards axis + spec axis). Fix findings before continuing.
