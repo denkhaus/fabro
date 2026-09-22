@@ -1,0 +1,7 @@
+# fabro-68d3 reproduction harness: unknown mid-text /word token in a
+# stage prompt. Expected (bug): session fails structurally with
+# 'expanding a skill reference' before any LLM call.
+_version = 1
+
+[workflow]
+graph = "workflow.fabro"
