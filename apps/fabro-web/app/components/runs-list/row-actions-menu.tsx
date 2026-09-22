@@ -8,15 +8,14 @@ import { mutateRunListCaches } from "../../lib/board-cache";
 import {
   approveRun,
   archiveRun,
-  rewindRun,
   canArchive,
   canCancel,
   canDelete,
+  canRetry,
   canUnarchive,
   cancellationActionLabel,
   cancellationSuccessMessage,
   cancelRun,
-  canRewind,
   retryRun,
   deleteErrorMessage,
   deleteRun,
@@ -39,7 +38,7 @@ export function RowActionsMenu({ run }: { run: RunWithStatus }) {
   const { mutate } = useSWRConfig();
   const { push } = useToast();
   const [pendingAction, setPendingAction] =
-    useState<LifecycleAction | "delete" | "rewind" | "retry" | null>(null);
+    useState<LifecycleAction | "delete" | "retry" | null>(null);
   const [optimisticallyCancelled, setOptimisticallyCancelled] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [idCopied, setIdCopied] = useState(false);
@@ -50,8 +49,7 @@ export function RowActionsMenu({ run }: { run: RunWithStatus }) {
   const showArchive = canArchive(status);
   const showUnarchive = canUnarchive(status);
   const showCancel = canCancel(status);
-  const showRewind = canRewind(status);
-  const showRetry = showRewind;
+  const showRetry = canRetry(status);
   const showDelete = canDelete(status);
   const cancellationPending = isCancellationPendingState(
     status,
@@ -60,11 +58,11 @@ export function RowActionsMenu({ run }: { run: RunWithStatus }) {
   );
   const pending = pendingAction !== null || cancellationPending;
 
-  const hasLifecycle = showRewind || showRetry || showArchive || showUnarchive;
+  const hasLifecycle = showRetry || showArchive || showUnarchive;
   const hasDestructive = showDeny || showCancel || showDelete;
 
   async function runAction<T>(
-    label: LifecycleAction | "rewind" | "retry",
+    label: LifecycleAction | "retry",
     action: () => Promise<T>,
     successMessage: string | ((result: T) => string),
   ) {
@@ -84,11 +82,9 @@ export function RowActionsMenu({ run }: { run: RunWithStatus }) {
     } catch (error) {
       push({
         message:
-          label === "rewind"
-            ? "Couldn't resume the run right now. Try again."
-            : label === "retry"
-              ? "Couldn't retry the run right now. Try again."
-              : mapError(error, label),
+          label === "retry"
+            ? "Couldn't retry the run right now. Try again."
+            : mapError(error, label),
         tone: "error",
       });
     } finally {
@@ -174,25 +170,6 @@ export function RowActionsMenu({ run }: { run: RunWithStatus }) {
               </button>
             </MenuItem>
           )}
-          {showRewind && (
-            <MenuItem>
-              <button
-                type="button"
-                onClick={() =>
-                  void runAction(
-                    "rewind",
-                    () => rewindRun(run.id),
-                    (result) => `Resumed as run ${result.new_run_id} — earlier progress is kept.`,
-                  )
-                }
-                disabled={pending}
-                className={MENU_ITEM_CLASS}
-              >
-                Resume
-                <span className="ml-auto text-xs text-fg-muted">keep progress</span>
-              </button>
-            </MenuItem>
-          )}
           {showRetry && (
             <MenuItem>
               <button
@@ -201,14 +178,14 @@ export function RowActionsMenu({ run }: { run: RunWithStatus }) {
                   void runAction(
                     "retry",
                     () => retryRun(run.id),
-                    (run) => `Retried as run ${run.id}.`,
+                    (run) => `Retried as run ${run.id} — earlier progress is kept.`,
                   )
                 }
                 disabled={pending}
                 className={MENU_ITEM_CLASS}
               >
                 Retry
-                <span className="ml-auto text-xs text-fg-muted">start over</span>
+                <span className="ml-auto text-xs text-fg-muted">keep progress</span>
               </button>
             </MenuItem>
           )}

@@ -47,22 +47,10 @@ const TERMINAL_RUN_STATUSES = new Set<RunStatus>([
 ]);
 
 /**
- * Re-run a terminal run from its latest checkpoint, keeping every
- * committed stage: the engine replaces the run (the source is archived
- * and marked superseded) and continues from the position (fabro-71a8:
- * the petri port of the legacy resume — same affordance, the rewind API
- * underneath). Returns the id of the replacement run.
- */
-export async function rewindRun(
-  id: string,
-  request?: Request,
-): Promise<{ source_run_id: string; new_run_id: string; target: string }> {
-  return apiData(() => runsApi.rewindRun(id, undefined, requestSignalOptions(request)));
-}
-
-/**
- * Retry a terminal run from its last checkpoint in a replacement run.
- * Returns the replacement run.
+ * Retry a terminal failed run: the engine re-runs only the failed stage
+ * on the files of the stage before it (rerun_last) and keeps every
+ * committed stage — retry IS the resume (fabro-5eed user decision
+ * 2026-09-22). Returns the replacement run.
  */
 export async function retryRun(id: string, request?: Request): Promise<Run> {
   return apiData(() => runsApi.retryRun(id, requestSignalOptions(request)));
@@ -149,11 +137,12 @@ export async function deleteRun(id: string, request?: Request): Promise<void> {
 }
 
 /**
- * A failed run can be resumed (rewound to its latest checkpoint) or
- * retried; a succeeded run has nothing failed to re-run (use a timeline
- * fork for time travel).
+ * A failed or dead run can be retried: the engine re-runs the failed
+ * stage from the run's last checkpoint and keeps every committed stage.
+ * A succeeded run has nothing failed to re-run (use a timeline fork for
+ * time travel).
  */
-export function canRewind(status: string | null | undefined): boolean {
+export function canRetry(status: string | null | undefined): boolean {
   return status === "failed" || status === "dead";
 }
 

@@ -25,8 +25,7 @@ import {
   mapError,
   unarchiveRun,
   unarchiveRuns,
-  canRewind,
-  rewindRun,
+  canRetry,
   retryRun,
 } from "./run-actions";
 import { generatedAxios } from "./api-client";
@@ -177,25 +176,6 @@ describe("run lifecycle actions", () => {
     if (result.lifecycle.status.kind === "failed") {
       expect(result.lifecycle.status.reason).toBe("cancelled");
     }
-  });
-
-  test("rewindRun asks for the replacement run and surfaces its id", async () => {
-    const { requests } = stubGeneratedAxiosOnce({
-      status: 200,
-      body: {
-        source_run_id: "run-1",
-        new_run_id: "run-2",
-        target: "@3",
-        checkpoint_sha: "abc123",
-        execution: 1,
-        firing: 4,
-        archived: true,
-      },
-    });
-    const result = await rewindRun("run-1");
-    expect(result.new_run_id).toBe("run-2");
-    expect(requests[0]?.url).toBe("/api/v1/runs/run-1/rewind");
-    expect(requests[0]?.method).toBe("post");
   });
 
   test("retryRun posts and parses the replacement run", async () => {
@@ -494,15 +474,15 @@ describe("run lifecycle actions", () => {
   });
 });
 
-describe("canRewind", () => {
-  test("failed and dead runs can be resumed or retried", () => {
-    expect(canRewind("failed")).toBe(true);
-    expect(canRewind("dead")).toBe(true);
+describe("canRetry", () => {
+  test("failed and dead runs can be retried (retry is the resume)", () => {
+    expect(canRetry("failed")).toBe(true);
+    expect(canRetry("dead")).toBe(true);
   });
 
   test("nothing else can", () => {
-    expect(canRewind("running")).toBe(false);
-    expect(canRewind("succeeded")).toBe(false);
-    expect(canRewind(null)).toBe(false);
+    expect(canRetry("running")).toBe(false);
+    expect(canRetry("succeeded")).toBe(false);
+    expect(canRetry(null)).toBe(false);
   });
 });
