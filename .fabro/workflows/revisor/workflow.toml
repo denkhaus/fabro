@@ -21,6 +21,17 @@ blocking = false
 timeout = "10s"
 sandbox = true
 
+# Judgment shadow (non-blocking, HOST-side: runs in the server container
+# with the vendored nu and the server env — the OpenRouter key never
+# enters a run sandbox). Appends fabro-judgment-v1 lines; shadow only.
+[[run.hooks]]
+name = "judgment-shadow"
+event = "stage_complete"
+script = "nu .fabro/scripts/judgment-shadow.nu"
+blocking = false
+timeout = "15s"
+sandbox = false
+
 # ── Runtime contract (fabro-03ef) ──────────────────────────────────────
 # Since upstream v0.345, `fabro run`/`fabro create` build runs from
 # immutable workflow intents and no longer transmit project-level
