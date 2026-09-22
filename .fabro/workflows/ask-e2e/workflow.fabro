@@ -1,0 +1,21 @@
+digraph AskE2E {
+    // fabro_ask E2E proof harness (fabro-43cf acceptance, live run):
+    // one analyst stage asks a target run one question. The target run id
+    // arrives via the `target_run` workflow input; keep this graph the
+    // minimal ask surface (no fs writes, no extra tools).
+    graph [goal="Ask a target run one question through fabro_ask and return the analyst's answer", retry_target=exit]
+    rankdir=LR
+
+    start [shape=Mdiamond, label="Start"]
+    exit  [shape=Msquare, label="Exit"]
+
+    ask [
+        label="Ask",
+        prompt="@prompts/ask.md",
+        reasoning_effort="low",
+        x.fabro_tools="fabro_ask"
+    ]
+
+    start -> ask
+    ask -> exit
+}

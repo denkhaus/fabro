@@ -1,0 +1,13 @@
+# fabro_ask E2E proof harness (fabro-43cf acceptance).
+# Run with: fabro run ask-e2e -I target_run=<run-id> [--model ...]
+# The stage carries no fs writes and no tools beyond fabro_ask.
+_version = 1
+
+[workflow]
+graph = "workflow.fabro"
+
+# The run-wide flag registers Fabro's run tools for the run's agent
+# (worker-token agent:run_tools scope); node-level x.fabro_tools keeps
+# the grant down to fabro_ask on the ask stage only.
+[run.agent]
+fabro_tools = true
