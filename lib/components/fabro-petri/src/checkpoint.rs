@@ -50,6 +50,8 @@ use petri_runtime::ir::LogStream;
 use tokio::process::Command;
 use tokio::{fs, time};
 
+use crate::fork_exec_guard::{EXEC_RETRY_DELAYS, retry_on_resource_unavailable};
+
 /// The failure class of a stage whose checkpoint commit failed: fatal to
 /// the run, and terminal for a restart.
 pub const CHECKPOINT_FAILED_CLASS: &str = "checkpoint_failed";
@@ -296,10 +298,10 @@ impl std::fmt::Debug for Site {
 }
 
 /// What one `git` run produced, on either site.
-struct GitOutput {
-    success: bool,
-    stdout:  Vec<u8>,
-    stderr:  Vec<u8>,
+pub struct GitOutput {
+    pub success: bool,
+    pub stdout:  Vec<u8>,
+    pub stderr:  Vec<u8>,
 }
 
 /// A checkpoint commit: the commit, whether an earlier attempt of the same
@@ -1182,10 +1184,17 @@ impl RunWorkspaces {
             "init.defaultBranch=main",
         ];
         all.extend(args.iter().map(AsRef::as_ref));
-        match site {
-            Site::Host(cwd) => self.run_host(cwd, &all, action).await,
-            Site::Sandbox(env) => self.run_sandbox(env, "git", &all, action).await,
-        }
+        // Fork seam (fabro-0c08): a resource-exhausted sandbox fails
+        // every new exec while staying alive; the guard retries that
+        // class on a bounded cooldown ladder. Everything else is
+        // unchanged.
+        retry_on_resource_unavailable(action, &EXEC_RETRY_DELAYS, || async {
+            match site {
+                Site::Host(cwd) => self.run_host(cwd, &all, action).await,
+                Site::Sandbox(env) => self.run_sandbox(env, "git", &all, action).await,
+            }
+        })
+        .await
     }
 
     async fn run_host(
