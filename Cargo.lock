@@ -2670,6 +2670,7 @@ dependencies = [
  "hmac 0.12.1",
  "http-body-util",
  "httpmock",
+ "include_dir",
  "jsonwebtoken",
  "lithos-llm",
  "mime_guess",
@@ -2685,6 +2686,7 @@ dependencies = [
  "sandbox-driver-host",
  "sandbox-driver-protocol",
  "sandbox-driver-testing",
+ "schemars 1.2.1",
  "serde",
  "serde_json",
  "serde_yaml",
@@ -2968,6 +2970,7 @@ dependencies = [
  "bytes",
  "chrono",
  "dirs",
+ "fabro-api",
  "fabro-auth",
  "fabro-client",
  "fabro-config",
@@ -3792,7 +3795,7 @@ dependencies = [
  "js-sys",
  "log",
  "wasm-bindgen",
- "windows-core 0.61.2",
+ "windows-core 0.62.2",
 ]
 
 [[package]]
@@ -3949,6 +3952,25 @@ checksum = "ed0bd9ea81b94169d61c5a397e9faef02153d3711fc62d3270bcde3ac85380d9"
 dependencies = [
  "libflate",
  "zstd",
+]
+
+[[package]]
+name = "include_dir"
+version = "0.7.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "923d117408f1e49d914f1a379a309cffe4f18c05cf4e3d12e613a15fc81bd0dd"
+dependencies = [
+ "include_dir_macros",
+]
+
+[[package]]
+name = "include_dir_macros"
+version = "0.7.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7cab85a7ed0bd5f0e76d93846e0147172bed2e2d3f859bcc33a8d9699cad1a75"
+dependencies = [
+ "proc-macro2",
+ "quote",
 ]
 
 [[package]]
@@ -6910,7 +6932,7 @@ version = "1.4.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c4db69cba1110affc0e9f7bcd48bbf87b3f4fc7c61fc9155afd4c469eb3d6c1b"
 dependencies = [
- "errno 0.2.8",
+ "errno 0.3.14",
  "libc",
 ]
 

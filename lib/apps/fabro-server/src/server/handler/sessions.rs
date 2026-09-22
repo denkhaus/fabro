@@ -48,7 +48,7 @@ use tracing::{error, warn};
 use super::super::session_runtime::{InterruptTurnError, SessionTurnLease, StartTurnError};
 use super::super::{AppState, PaginationParams, paginate_items, parse_run_id_path};
 use crate::error::ApiError;
-use crate::principal_middleware::RequiredUser;
+use crate::principal_middleware::{RequiredRunToolActor, RequiredUser};
 use crate::sandbox_access;
 use crate::worker_token::issue_worker_token;
 
@@ -144,7 +144,10 @@ async fn list_run_sessions(
 }
 
 async fn create_run_session(
-    _auth: RequiredUser,
+    // Ask-Fabro sessions are opened by users (web UI, `fabro ask`) and by
+    // stage agents through the `fabro_ask` run tool (fabro-43cf), whose
+    // worker token carries the agent:run_tools scope.
+    _auth: RequiredRunToolActor,
     State(state): State<Arc<AppState>>,
     Path(run_id): Path<String>,
     Json(request): Json<CreateRunSessionRequest>,
@@ -376,7 +379,9 @@ async fn attach_session_events(
 }
 
 async fn submit_turn(
-    _auth: RequiredUser,
+    // The stage agent's `fabro_ask` call submits its turn with a worker
+    // token (fabro-43cf); users submit theirs through the web UI or CLI.
+    _auth: RequiredRunToolActor,
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
     Json(request): Json<SubmitTurnRequest>,
@@ -788,7 +793,11 @@ async fn build_agent(
         backend:        Arc::new(backend),
         current_run_id: run_id,
     };
-    let run_tools = register_named_fabro_run_tools(&services, ASK_FABRO_RUN_TOOL_NAMES);
+    let mut ask_tools = register_named_fabro_run_tools(&services, ASK_FABRO_RUN_TOOL_NAMES);
+    // Fork feature (fabro-43cf): the analyst also reads the embedded
+    // platform docs corpus — the target run's checkout is a foreign repo
+    // to Fabro's own docs.
+    ask_tools.push(super::fork_ask_docs::docs_tool());
     let selector = format!("{provider_id}/{model}");
 
     // A resumed session continues its stored conversation on the model it
@@ -829,7 +838,7 @@ async fn build_agent(
             ),
     };
     let agent = builder
-        .tools(run_tools)
+        .tools(ask_tools)
         // The read-only policy hides and refuses every other tool, so the
         // agent gets exactly the read tools and the two run tools.
         .tool_middleware(Arc::new(PermissionMiddleware::new(Arc::new(
@@ -1012,7 +1021,10 @@ impl ToolPermissionPolicy for AskFabroToolPolicy {
 fn ask_fabro_allows_tool(tool_name: &str) -> bool {
     match canonical_tool_name(tool_name) {
         "read_file" | "grep" | "glob" => true,
-        name => ASK_FABRO_RUN_TOOL_NAMES.contains(&name),
+        name => {
+            ASK_FABRO_RUN_TOOL_NAMES.contains(&name)
+                || name == super::fork_ask_docs::FORK_ASK_DOCS_TOOL_NAME
+        }
     }
 }
 

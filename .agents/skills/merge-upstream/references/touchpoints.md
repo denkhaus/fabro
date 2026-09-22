@@ -37,6 +37,7 @@ invisible to the merge walk.
 | W3 | fabro-aa5f | Stage envelope (ADR-0009 rev): x.fs_write/x.fs_hide + x.preamble_* parsed from graph_source in fabro-petri/src/fork_stage_envelope.rs; create lints in check.rs; checkpoint write-guard in hooks.rs + staged_paths in checkpoint.rs; FsScope carried in fabro-pebble-sandbox/src/fs_scope.rs; worker wiring petri_worker.rs; pin tests/fork_stage_envelope.rs |
 | W4 | fabro-71a8/afab/fdd8/8795/d0dd/d420 | Web re-ports; probe+guards; server ops (approval TTL, env compat, capability gate, staleness); wait endpoint; small CLI verifications; superseded proofs |
 | W5 | fabro-d659 | Cutover runbook (era check, backup, deploy, supervised pass, denkhaus archive) |
+| W5 | fabro-43cf | fabro_ask stage tool back in the rebuild (fabro-tool ask.rs + catalog + ClientBackend session wire; run_tools dispatch + unknown-name warn; session routes accept run-tool actors; analyst docs corpus fork_ask_docs.rs). Pins: fabro-tool/tests/fork_ask_tool.rs + fabro-workflow/tests/fork_ask_tool_registry.rs |
 
 ## Local-run preconditions (learned W0, 2026-09-21; staging addendum W3-5)
 

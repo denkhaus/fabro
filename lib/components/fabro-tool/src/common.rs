@@ -139,6 +139,26 @@ pub trait FabroToolBackend: Send + Sync {
     ) -> anyhow::Result<PairTranscriptResponse> {
         Err(pair_tool_unavailable_error())
     }
+
+    /// Open an Ask-Fabro session on the target run and return its id.
+    async fn create_ask_session(&self, _run_id: &RunId, _title: &str) -> anyhow::Result<String> {
+        Err(ask_tool_unavailable_error())
+    }
+
+    /// Submit one question to an Ask-Fabro session and return the turn's
+    /// outcome once the analyst's answer is final.
+    async fn submit_ask_turn(
+        &self,
+        _run_id: &RunId,
+        _session_id: &str,
+        _question: &str,
+    ) -> anyhow::Result<crate::AskTurnOutcome> {
+        Err(ask_tool_unavailable_error())
+    }
+}
+
+fn ask_tool_unavailable_error() -> anyhow::Error {
+    ToolError::message(format!("{FABRO_ASK_TOOL_NAME} is not available")).into()
 }
 
 fn pair_tool_unavailable_error() -> anyhow::Error {
@@ -187,6 +207,7 @@ pub const FABRO_RUN_INTERACT_TOOL_NAME: &str = "fabro_run_interact";
 pub const FABRO_RUN_GATHER_TOOL_NAME: &str = "fabro_run_gather";
 pub const FABRO_RUN_EVENTS_TOOL_NAME: &str = "fabro_run_events";
 pub const FABRO_RUN_PAIR_TOOL_NAME: &str = "fabro_run_pair";
+pub const FABRO_ASK_TOOL_NAME: &str = "fabro_ask";
 
 static TOOL_DEFINITIONS: LazyLock<Vec<ToolDefinition>> = LazyLock::new(|| {
     vec![
@@ -225,6 +246,10 @@ static TOOL_DEFINITIONS: LazyLock<Vec<ToolDefinition>> = LazyLock::new(|| {
         tool_definition::<crate::FabroRunWaitParams>(
             FABRO_RUN_WAIT_TOOL_NAME,
             "Block until one run reaches a terminal state or its pull request merges, on one server-side long-poll (up to 3600000 ms). On reached=timeout, call again with the same run id to continue waiting; never sleep-poll.",
+        ),
+        tool_definition::<crate::FabroAskParams>(
+            FABRO_ASK_TOOL_NAME,
+            "Ask one question to the Ask-Fabro analyst of another run and wait for its final answer. The analyst reads the target run's events, state, and workspace; the answer comes back as this tool's result.",
         ),
     ]
 });
@@ -351,6 +376,7 @@ mod tests {
             FABRO_RUN_PAIR_TOOL_NAME,
             FABRO_RUN_EVENTS_TOOL_NAME,
             FABRO_RUN_WAIT_TOOL_NAME,
+            FABRO_ASK_TOOL_NAME,
         ]);
     }
 

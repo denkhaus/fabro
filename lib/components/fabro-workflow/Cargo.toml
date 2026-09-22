@@ -67,3 +67,4 @@ httpmock = "0.8"
 fabro-macros = { path = "../../foundation/fabro-macros" }
 fabro-test = { workspace = true }
 fabro-types = { path = "../../foundation/fabro-types", features = ["test-support"] }
+fabro-api = { path = "../../foundation/fabro-api" }
