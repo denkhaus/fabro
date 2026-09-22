@@ -7,9 +7,11 @@
 mod entropy;
 mod gitleaks;
 mod jsonl;
+mod redactor;
 mod safe_url;
 
 pub use jsonl::{redact_json_value, redact_jsonl_line};
+pub use redactor::SecretRedactor;
 pub use safe_url::{DisplaySafeUrl, DisplaySafeUrlError};
 
 pub(crate) const REDACTION_MARKER: &str = "REDACTED";

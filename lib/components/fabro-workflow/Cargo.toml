@@ -23,7 +23,6 @@ workspace = true
 anyhow.workspace = true
 fabro-auth = { path = "../../foundation/fabro-auth" }
 fabro-config = { path = "../../foundation/fabro-config" }
-fabro-pebble-sandbox = { path = "../fabro-pebble-sandbox" }
 sandbox-driver.workspace = true
 pebble-coding-agent.workspace = true
 fabro-github = { path = "../fabro-github" }

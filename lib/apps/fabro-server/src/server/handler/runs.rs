@@ -1425,7 +1425,7 @@ async fn get_run_stage_context_window(
     let Some(snapshot) = stage
         .agent
         .as_ref()
-        .and_then(|agent| agent.context_window.as_ref())
+        .and_then(|agent| agent.totals.context_window.as_ref())
     else {
         return Json(StageContextWindow::unavailable(
             stage_id,
@@ -1446,7 +1446,7 @@ fn is_agent_context_window_stage(stage: &StageProjection) -> bool {
     if stage
         .agent
         .as_ref()
-        .is_some_and(|agent| agent.context_window.is_some())
+        .is_some_and(|agent| agent.totals.context_window.is_some())
     {
         return true;
     }
