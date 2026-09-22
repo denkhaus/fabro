@@ -9,8 +9,8 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use fabro_tool::FabroToolBackend;
 use fabro_api::types::{ApiQuestion, SubmitAnswerRequest};
+use fabro_tool::FabroToolBackend;
 use fabro_types::{Run, RunId, RunProjection, RunStreamItem};
 use fabro_workflow::run_tools::register_named_fabro_run_tools;
 use fabro_workflow::services::FabroRunToolServices;
@@ -89,10 +89,7 @@ impl FabroToolBackend for PinBackend {
     ) -> anyhow::Result<Vec<RunStreamItem>> {
         pin_unimplemented!()
     }
-    async fn list_run_questions(
-        &self,
-        _run_id: &RunId,
-    ) -> anyhow::Result<Vec<ApiQuestion>> {
+    async fn list_run_questions(&self, _run_id: &RunId) -> anyhow::Result<Vec<ApiQuestion>> {
         pin_unimplemented!()
     }
     async fn submit_run_answer(
