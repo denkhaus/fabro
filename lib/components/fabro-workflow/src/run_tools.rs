@@ -157,6 +157,15 @@ pub(crate) async fn execute_fabro_run_tool(
             let summary = fabro_tool::gather_runs_text(&result);
             render_fabro_tool_result(&summary, &result)
         }
+        fabro_tool::FABRO_BLOB_TOOL_NAME => {
+            let params = parse_fabro_tool_args::<fabro_tool::FabroBlobParams>(name, args)?;
+            let validated = fabro_tool::ValidatedBlob::try_from(params)?;
+            let result =
+                fabro_tool::blob_page(&services.backend, &services.current_run_id, &validated)
+                    .await?;
+            let summary = fabro_tool::blob_page_text(&result);
+            render_fabro_tool_result(&summary, &result)
+        }
         fabro_tool::FABRO_RUN_WAIT_TOOL_NAME => {
             let params = parse_fabro_tool_args::<fabro_tool::FabroRunWaitParams>(name, args)?;
             let result =

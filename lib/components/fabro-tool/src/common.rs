@@ -145,6 +145,16 @@ pub trait FabroToolBackend: Send + Sync {
         Err(ask_tool_unavailable_error())
     }
 
+    /// Read one of the run's blobs back: the bytes a demoted value left
+    /// in the run's blob table, or `None` when the run has none such.
+    async fn read_run_blob(
+        &self,
+        _run_id: &RunId,
+        _hash: &fabro_types::BlobHash,
+    ) -> anyhow::Result<Option<Vec<u8>>> {
+        Err(ToolError::message(format!("{FABRO_BLOB_TOOL_NAME} is not available")).into())
+    }
+
     /// Submit one question to an Ask-Fabro session and return the turn's
     /// outcome once the analyst's answer is final.
     async fn submit_ask_turn(
@@ -208,6 +218,7 @@ pub const FABRO_RUN_GATHER_TOOL_NAME: &str = "fabro_run_gather";
 pub const FABRO_RUN_EVENTS_TOOL_NAME: &str = "fabro_run_events";
 pub const FABRO_RUN_PAIR_TOOL_NAME: &str = "fabro_run_pair";
 pub const FABRO_ASK_TOOL_NAME: &str = "fabro_ask";
+pub const FABRO_BLOB_TOOL_NAME: &str = "fabro_blob";
 
 static TOOL_DEFINITIONS: LazyLock<Vec<ToolDefinition>> = LazyLock::new(|| {
     vec![
@@ -246,6 +257,10 @@ static TOOL_DEFINITIONS: LazyLock<Vec<ToolDefinition>> = LazyLock::new(|| {
         tool_definition::<crate::FabroRunWaitParams>(
             FABRO_RUN_WAIT_TOOL_NAME,
             "Block until one run reaches a terminal state or its pull request merges, on one server-side long-poll (up to 3600000 ms). On reached=timeout, call again with the same run id to continue waiting; never sleep-poll.",
+        ),
+        tool_definition::<crate::FabroBlobParams>(
+            FABRO_BLOB_TOOL_NAME,
+            "Read a demoted blob back with deterministic paging: pass the blob reference you met in the context to learn its byte size and line count, then page it by lines with offset/limit. The reference stays authoritative.",
         ),
         tool_definition::<crate::FabroAskParams>(
             FABRO_ASK_TOOL_NAME,
@@ -376,6 +391,7 @@ mod tests {
             FABRO_RUN_PAIR_TOOL_NAME,
             FABRO_RUN_EVENTS_TOOL_NAME,
             FABRO_RUN_WAIT_TOOL_NAME,
+            FABRO_BLOB_TOOL_NAME,
             FABRO_ASK_TOOL_NAME,
         ]);
     }

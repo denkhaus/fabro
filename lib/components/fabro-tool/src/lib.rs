@@ -5,6 +5,7 @@
 )]
 
 mod ask;
+mod blob;
 mod common;
 mod create;
 mod events;
@@ -25,12 +26,15 @@ pub use ask::{
     AskResult, AskTurnCollector, AskTurnOutcome, AskTurnStatus, FabroAskParams, ValidatedAsk,
     ask_run, ask_run_text,
 };
+pub use blob::{
+    BlobResult, FabroBlobParams, ValidatedBlob, blob_page, blob_page_text, count_lines,
+};
 pub use common::{
-    FABRO_ASK_TOOL_NAME, FABRO_RUN_CREATE_TOOL_NAME, FABRO_RUN_EVENTS_TOOL_NAME,
-    FABRO_RUN_GATHER_TOOL_NAME, FABRO_RUN_GET_TOOL_NAME, FABRO_RUN_INTERACT_TOOL_NAME,
-    FABRO_RUN_PAIR_TOOL_NAME, FABRO_RUN_SEARCH_TOOL_NAME, FABRO_RUN_WAIT_TOOL_NAME,
-    FABRO_WORKFLOW_VERSION_CREATE_TOOL_NAME, FabroToolBackend, RunSummaryResult, ToolDefinition,
-    ToolError, ToolResult, tool_definitions,
+    FABRO_ASK_TOOL_NAME, FABRO_BLOB_TOOL_NAME, FABRO_RUN_CREATE_TOOL_NAME,
+    FABRO_RUN_EVENTS_TOOL_NAME, FABRO_RUN_GATHER_TOOL_NAME, FABRO_RUN_GET_TOOL_NAME,
+    FABRO_RUN_INTERACT_TOOL_NAME, FABRO_RUN_PAIR_TOOL_NAME, FABRO_RUN_SEARCH_TOOL_NAME,
+    FABRO_RUN_WAIT_TOOL_NAME, FABRO_WORKFLOW_VERSION_CREATE_TOOL_NAME, FabroToolBackend,
+    RunSummaryResult, ToolDefinition, ToolError, ToolResult, tool_definitions,
 };
 pub use create::{
     CreateRunOptions, CreateRunSpec, CreateRunsResult, CreatedRunResult, FabroRunCreateParams,

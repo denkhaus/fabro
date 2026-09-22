@@ -276,6 +276,16 @@ impl FabroToolBackend for ClientBackend {
             .await
     }
 
+    async fn read_run_blob(
+        &self,
+        run_id: &RunId,
+        hash: &fabro_types::BlobHash,
+    ) -> anyhow::Result<Option<Vec<u8>>> {
+        self.ensure_run_scope(run_id)?;
+        let bytes = self.client.read_run_blob(run_id, hash).await?;
+        Ok(bytes.map(|bytes| bytes.to_vec()))
+    }
+
     async fn create_ask_session(&self, run_id: &RunId, title: &str) -> anyhow::Result<String> {
         self.ensure_run_scope(run_id)?;
         let session = self

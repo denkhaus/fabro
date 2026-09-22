@@ -177,6 +177,50 @@ fn run_wait_validation_rejects_blank_run_id_and_zero_timeout() {
 }
 
 #[test]
+fn named_registry_resolves_fabro_blob_for_stage_sessions() {
+    let services = FabroRunToolServices {
+        backend:        Arc::new(PinBackend),
+        current_run_id: RunId::new(),
+    };
+    let tools = register_named_fabro_run_tools(&services, &[fabro_tool::FABRO_BLOB_TOOL_NAME]);
+    assert_eq!(
+        tools.len(),
+        1,
+        "fabro_blob must resolve through the named run-tools registry (fabro-d774)"
+    );
+    assert_eq!(tools[0].definition().name, fabro_tool::FABRO_BLOB_TOOL_NAME);
+
+    let definition = tool_definitions()
+        .iter()
+        .find(|definition| definition.name == fabro_tool::FABRO_BLOB_TOOL_NAME)
+        .expect("fabro_blob definition present");
+    let properties = definition
+        .parameters
+        .get("properties")
+        .expect("schema properties");
+    for field in ["ref", "offset", "limit"] {
+        assert!(
+            properties.get(field).is_some(),
+            "blob schema must advertise {field}"
+        );
+    }
+}
+
+#[test]
+fn blob_validation_rejects_malformed_references() {
+    let error = fabro_tool::ValidatedBlob::try_from(fabro_tool::FabroBlobParams {
+        r#ref:  "blob://sha256/not-a-digest".to_owned(),
+        offset: None,
+        limit:  None,
+    })
+    .expect_err("malformed blob references refuse");
+    assert!(
+        error.to_string().contains("blob reference"),
+        "the error names the shape: {error}"
+    );
+}
+
+#[test]
 fn pr_create_failures_classify_retryability_for_the_bounded_loop() {
     // Compile-presence of the retry loop's only public entry (the bounded
     // retry helper is private to pull_request.rs and called from here).
