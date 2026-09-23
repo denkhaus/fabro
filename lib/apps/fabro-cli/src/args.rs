@@ -310,9 +310,6 @@ pub(crate) struct RunArgs {
     #[arg(long, value_name = "RUN")]
     pub(crate) parent: Option<String>,
 
-    /// Declare that this run is created from an agent session; the server
-    /// records the run's created_by as kind=agent with this session id
-
     /// Keep the sandbox alive after the run finishes (for debugging)
     #[arg(long)]
     pub(crate) preserve_sandbox: bool,

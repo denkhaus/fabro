@@ -15,7 +15,9 @@ fn dry_run_branching() {
     ----- stdout -----
     ----- stderr -----
         Run: [ULID]
+    Replaying [N] items…
         Web UI: http://localhost:3000/runs/[ULID]
+    ── live ──
         ✓ Start  [TIME]
         Base: [BASE]
         ✓ Plan  [TIME]
@@ -47,7 +49,9 @@ fn dry_run_conditions() {
     ----- stdout -----
     ----- stderr -----
         Run: [ULID]
+    Replaying [N] items…
         Web UI: http://localhost:3000/runs/[ULID]
+    ── live ──
         ✓ start  [TIME]
         Base: [BASE]
         ✓ Decide  [TIME]
@@ -80,7 +84,9 @@ fn dry_run_parallel() {
     ----- stdout -----
     ----- stderr -----
         Run: [ULID]
+    Replaying [N] items…
         Web UI: http://localhost:3000/runs/[ULID]
+    ── live ──
         ✓ start  [TIME]
         Base: [BASE]
         ✓ Fork Work  [TIME]
@@ -113,7 +119,9 @@ fn dry_run_styled() {
     ----- stdout -----
     ----- stderr -----
         Run: [ULID]
+    Replaying [N] items…
         Web UI: http://localhost:3000/runs/[ULID]
+    ── live ──
         ✓ start  [TIME]
         Base: [BASE]
         ✓ Plan  [TIME]
@@ -144,7 +152,9 @@ fn dry_run_inferred_command() {
     ----- stdout -----
     ----- stderr -----
         Run: [ULID]
+    Replaying [N] items…
         Web UI: http://localhost:3000/runs/[ULID]
+    ── live ──
         ✓ Start  [TIME]
         Base: [BASE]
         ✓ Echo  [TIME]

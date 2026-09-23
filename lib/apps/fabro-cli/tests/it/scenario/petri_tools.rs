@@ -87,7 +87,8 @@ fn write_agent_workspace(context: &fabro_test::TestContext, extra_settings: &str
         format!(
             "digraph Tools {{\n  graph [goal=\"Use the run tools\", default_max_retries=0]\n  \
              start [shape=Mdiamond]\n  exit [shape=Msquare]\n  work [shape=box, \
-             prompt=\"{PROMPT}\", max_retries=0]\n  start -> work -> exit\n}}\n"
+             prompt=\"{PROMPT}\", max_retries=0, \
+             x.fabro_tools=\"fabro_run_search,fabro_run_create\"]\n  start -> work -> exit\n}}\n"
         ),
     )
     .expect("the workflow writes");

@@ -832,7 +832,9 @@ fn dry_run_simple() {
     ----- stdout -----
     ----- stderr -----
         Run: [ULID]
+    Replaying [N] items…
         Web UI: http://localhost:3000/runs/[ULID]
+    ── live ──
         ✓ Start  [TIME]
         Base: [BASE]
         ✓ Run Tests  [TIME]

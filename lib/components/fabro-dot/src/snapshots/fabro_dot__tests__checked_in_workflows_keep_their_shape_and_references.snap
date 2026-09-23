@@ -1,6 +1,5 @@
 ---
 source: lib/components/fabro-dot/src/tests.rs
-assertion_line: 256
 expression: report
 ---
 .fabro/workflows/architect/workflow.fabro: Architect nodes=6 edges=10
@@ -8,6 +7,9 @@ expression: report
   file:prompt:prompts/survey.md@survey
   file:prompt:prompts/analyze.md@analyze
   file:prompt:prompts/file.md@file
+.fabro/workflows/ask-e2e/workflow.fabro: AskE2E nodes=3 edges=2
+  goal-inline
+  file:prompt:prompts/ask.md@ask
 .fabro/workflows/card-game/workflow.fabro: CardGame nodes=20 edges=31
   goal-inline
   inline@expand_spec
@@ -76,7 +78,7 @@ expression: report
   goal-inline
   stylesheet-inline
   inline@plan
-  child:fabro/workflows/implement-plan/workflow.fabro@implement
+  child:../implement-plan/workflow.fabro@implement
 .fabro/workflows/implement-plan/workflow.fabro: ImplementPlan nodes=11 edges=14
   goal-inline
   inline@fix_lints
@@ -98,6 +100,12 @@ expression: report
 .fabro/workflows/pr-simplify/workflow.fabro: PrSimplify nodes=3 edges=2
   goal-inline
   file:prompt:prompts/simplify.md@simplify
+.fabro/workflows/repro-68d3/workflow.fabro: Repro68d3 nodes=3 edges=2
+  goal-inline
+  file:prompt:prompts/mention.md@stage
+.fabro/workflows/repro-d774/workflow.fabro: ReproD774 nodes=4 edges=3
+  goal-inline
+  file:prompt:prompts/ask.md@ask
 .fabro/workflows/revisor/workflow.fabro: Revisor nodes=5 edges=10
   goal-inline
   file:prompt:prompts/select.md@select
