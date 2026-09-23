@@ -32,6 +32,7 @@ invisible to the merge walk.
 | Server ops: staleness supervisor (fabro-fdd8, W4) | server/src/server/fork_staleness_supervisor.rs | server/src/server/fork_staleness_supervisor_tests.rs | `cargo nextest run -p fabro-server -E 'test(staleness)'` |
 | Web re-ports (fabro-71a8, W4) | apps/fabro-web on RunProjection/RunStream | TS tests in-tree (run-actions.test.ts, automations-*.test.tsx); no fork-only naming for web yet | `cd apps/fabro-web && bun test` |
 | fabro_ask + docs analyst (fabro-43cf, W5-pre) | fabro-tool ask.rs + catalog + ClientBackend wire; workflow dispatch; session routes; handler/fork_ask_docs.rs corpus | fabro-tool/tests/fork_ask_tool.rs + fabro-workflow/tests/fork_ask_tool_registry.rs | `cargo nextest run -p fabro-tool --test fork_ask_tool; cargo nextest run -p fabro-workflow --test fork_ask_tool_registry` |
+| Seeds read API (fabro-3488, ADR-0023 step 5) | server/seeds_source.rs (SeedsSource seam, Disabled default); handler/seeds.rs routes; seeds workspace dep in fabro-server; OpenAPI /api/v1/seeds{,/graph,/{id}} | server/src/server/fork_seeds_read_api_tests.rs | `cargo nextest run -p fabro-server -- fork_seeds` |
 
 ## fcb2 audit addendum (2026-09-22 evening)
 

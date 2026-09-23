@@ -26,6 +26,7 @@ pub(in crate::server) mod runs;
 mod sandbox;
 mod sandboxes;
 mod secrets;
+mod seeds;
 mod sessions;
 mod steer;
 pub(in crate::server) mod system;
@@ -229,6 +230,7 @@ pub(super) fn real_routes() -> Router<Arc<AppState>> {
         .merge(worker_control::routes())
         .merge(workflow_versions::routes())
         .merge(sessions::routes())
+        .merge(seeds::routes())
         .merge(system::routes())
         .merge(completions::routes())
 }

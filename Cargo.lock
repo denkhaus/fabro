@@ -2688,6 +2688,7 @@ dependencies = [
  "sandbox-driver-protocol",
  "sandbox-driver-testing",
  "schemars 1.2.1",
+ "seeds",
  "serde",
  "serde_json",
  "serde_yaml",

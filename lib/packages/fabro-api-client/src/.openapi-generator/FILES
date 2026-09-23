@@ -16,6 +16,7 @@ api/run-outputs-api.ts
 api/runs-api.ts
 api/sandboxes-api.ts
 api/secrets-api.ts
+api/seeds-api.ts
 api/sessions-api.ts
 api/settings-api.ts
 api/system-api.ts
@@ -269,6 +270,7 @@ models/paginated-run-list.ts
 models/paginated-run-stage-list.ts
 models/paginated-run-stream-list.ts
 models/paginated-saved-query-list.ts
+models/paginated-seed-list.ts
 models/paginated-session-event-list.ts
 models/paginated-session-list.ts
 models/paginated-workflow-list-response.ts
@@ -483,6 +485,13 @@ models/saved-query.ts
 models/secret-list-response.ts
 models/secret-metadata.ts
 models/secret-type.ts
+models/seed-detail.ts
+models/seed-graph-edge.ts
+models/seed-graph-node.ts
+models/seed-graph.ts
+models/seed-status.ts
+models/seed-summary.ts
+models/seed-type.ts
 models/server-api-settings.ts
 models/server-artifacts-settings.ts
 models/server-auth-github-settings.ts

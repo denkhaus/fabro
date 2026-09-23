@@ -47,6 +47,8 @@ tags:
     description: Platform configuration
   - name: System
     description: Server runtime, maintenance, and event streaming
+  - name: Seeds
+    description: Read-only access to the line's seed tracker (ADR-0023 step 5)
 
 security:
   - BearerAuth: []
@@ -6068,6 +6070,112 @@ paths:
               schema:
                 $ref: "#/components/schemas/ServerSettings"
 
+  /api/v1/seeds:
+    get:
+      operationId: listSeeds
+      tags: [Seeds]
+      summary: List Seeds
+      description: |
+        Read-only list of tracker seeds served from the configured seeds
+        source (the line repository's `.seeds` directory, kept fresh via
+        fetch). Filters compose with AND semantics. The default limit is
+        deliberately generous so tracker-wide views (the seed browser)
+        do not silently hide seeds behind a small page.
+      parameters:
+        - $ref: "#/components/parameters/SeedListLimit"
+        - $ref: "#/components/parameters/PageOffset"
+        - $ref: "#/components/parameters/SeedStatusFilter"
+        - $ref: "#/components/parameters/SeedTypeFilter"
+        - $ref: "#/components/parameters/SeedAssigneeFilter"
+        - $ref: "#/components/parameters/SeedLabelFilter"
+      responses:
+        "200":
+          description: Paginated seed summaries
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedSeedList"
+        "503":
+          description: Seeds source unavailable (not configured or fetch/read failed)
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/seeds/graph:
+    get:
+      operationId: getSeedGraph
+      tags: [Seeds]
+      summary: Seed Dependency Graph
+      description: |
+        Read-only dependency graph over the tracker's seeds. An edge points
+        from a dependent seed to the seed that blocks it (`blockedBy`).
+        Edges referencing unknown seed ids are dropped; the node set covers
+        every seed in the store.
+      responses:
+        "200":
+          description: Seed dependency graph
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SeedGraph"
+        "503":
+          description: Seeds source unavailable (not configured or fetch/read failed)
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/seeds/{id}:
+    get:
+      operationId: getSeed
+      tags: [Seeds]
+      summary: Get Seed
+      description: Read-only seed detail, including the raw record fields for
+        forward compatibility with additive tracker extensions.
+      parameters:
+        - $ref: "#/components/parameters/SeedId"
+      responses:
+        "200":
+          description: Seed detail
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SeedDetail"
+        "404":
+          description: Seed not found
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Seeds source unavailable (not configured or fetch/read failed)
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
 components:
   securitySchemes:
     BearerAuth:
@@ -6319,6 +6427,52 @@ components:
       description: Number of items to skip before returning results.
       schema:
         type: integer
+    SeedId:
+      name: id
+      in: path
+      required: true
+      description: Seed identifier (`<project>-<hex4>`).
+      schema:
+        type: string
+    SeedListLimit:
+      name: page[limit]
+      in: query
+      required: false
+      description: Maximum number of seeds to return per page. Defaults to a
+        generous page so tracker-wide views do not silently hide seeds.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 2000
+        default: 500
+    SeedStatusFilter:
+      name: status
+      in: query
+      required: false
+      description: Filter by seed status.
+      schema:
+        $ref: "#/components/schemas/SeedStatus"
+    SeedTypeFilter:
+      name: type
+      in: query
+      required: false
+      description: Filter by seed type.
+      schema:
+        $ref: "#/components/schemas/SeedType"
+    SeedAssigneeFilter:
+      name: assignee
+      in: query
+      required: false
+      description: Exact assignee match; the literal `none` matches unassigned seeds.
+      schema:
+        type: string
+    SeedLabelFilter:
+      name: label
+      in: query
+      required: false
+      description: Exact label match (a seed must carry the label).
+      schema:
+        type: string
         minimum: 0
         default: 0
       example: 0
@@ -17227,3 +17381,220 @@ components:
           type: string
           description: User's login identifier (e.g. GitHub username).
           example: octocat
+
+    SeedStatus:
+      description: Tracker seed status (seeds format, sd 0.5.15 compatible).
+      type: string
+      enum:
+        - open
+        - in_progress
+        - closed
+
+    SeedType:
+      description: Tracker seed type (seeds format, sd 0.5.15 compatible).
+      type: string
+      enum:
+        - task
+        - bug
+        - feature
+        - epic
+
+    SeedSummary:
+      description: One tracker seed as a list-safe summary.
+      type: object
+      required:
+        - id
+        - title
+        - labels
+        - blockedBy
+      properties:
+        id:
+          type: string
+          description: Seed identifier (`<project>-<hex4>`).
+          example: fabro-3488
+        title:
+          type: string
+          description: Seed title.
+        status:
+          allOf:
+            - $ref: "#/components/schemas/SeedStatus"
+          nullable: true
+          description: Seed status; null when the record carries none.
+        type:
+          allOf:
+            - $ref: "#/components/schemas/SeedType"
+          nullable: true
+          description: Seed type; null when the record carries none.
+        priority:
+          type: integer
+          minimum: 0
+          maximum: 4
+          nullable: true
+          description: Seed priority band (0 most urgent); null when unset.
+        assignee:
+          type: string
+          nullable: true
+          description: Assignee identifier; null when unassigned.
+        labels:
+          type: array
+          items:
+            type: string
+          description: Labels carried by the seed.
+        blockedBy:
+          type: array
+          items:
+            type: string
+          description: Ids of seeds this seed depends on.
+        createdAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Record creation time; null when the record carries none.
+        updatedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Last record update time; null when the record carries none.
+
+    SeedDetail:
+      description: >-
+        Full tracker seed record: every summary field plus the description
+        and the raw record fields (forward compatibility with additive
+        tracker extensions).
+      type: object
+      required:
+        - id
+        - title
+        - labels
+        - blockedBy
+        - fields
+      properties:
+        id:
+          type: string
+          description: Seed identifier (`<project>-<hex4>`).
+          example: fabro-3488
+        title:
+          type: string
+          description: Seed title.
+        description:
+          type: string
+          nullable: true
+          description: Seed body; null when the record carries none.
+        status:
+          allOf:
+            - $ref: "#/components/schemas/SeedStatus"
+          nullable: true
+          description: Seed status; null when the record carries none.
+        type:
+          allOf:
+            - $ref: "#/components/schemas/SeedType"
+          nullable: true
+          description: Seed type; null when the record carries none.
+        priority:
+          type: integer
+          minimum: 0
+          maximum: 4
+          nullable: true
+          description: Seed priority band (0 most urgent); null when unset.
+        assignee:
+          type: string
+          nullable: true
+          description: Assignee identifier; null when unassigned.
+        labels:
+          type: array
+          items:
+            type: string
+          description: Labels carried by the seed.
+        blockedBy:
+          type: array
+          items:
+            type: string
+          description: Ids of seeds this seed depends on.
+        blocks:
+          type: array
+          items:
+            type: string
+          description: Ids of seeds depending on this seed (reverse index).
+        createdAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Record creation time; null when the record carries none.
+        updatedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Last record update time; null when the record carries none.
+        fields:
+          type: object
+          additionalProperties: true
+          description: Raw record fields exactly as stored in issues.jsonl;
+            the authoritative record content, preserved verbatim.
+
+    PaginatedSeedList:
+      description: Paginated list of seeds.
+      type: object
+      required:
+        - data
+        - meta
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/SeedSummary"
+        meta:
+          $ref: "#/components/schemas/PaginationMeta"
+
+    SeedGraphNode:
+      description: One node of the seed dependency graph.
+      type: object
+      required:
+        - id
+        - title
+      properties:
+        id:
+          type: string
+          description: Seed identifier.
+        title:
+          type: string
+          description: Seed title.
+        status:
+          allOf:
+            - $ref: "#/components/schemas/SeedStatus"
+          nullable: true
+          description: Seed status; null when the record carries none.
+        type:
+          allOf:
+            - $ref: "#/components/schemas/SeedType"
+          nullable: true
+          description: Seed type; null when the record carries none.
+
+    SeedGraphEdge:
+      description: Dependency edge from a dependent seed to its blocker.
+      type: object
+      required:
+        - from
+        - to
+      properties:
+        from:
+          type: string
+          description: Id of the seed that is blocked.
+        to:
+          type: string
+          description: Id of the seed that blocks it.
+
+    SeedGraph:
+      description: Seed dependency graph over the tracker's seeds.
+      type: object
+      required:
+        - nodes
+        - edges
+      properties:
+        nodes:
+          type: array
+          items:
+            $ref: "#/components/schemas/SeedGraphNode"
+        edges:
+          type: array
+          items:
+            $ref: "#/components/schemas/SeedGraphEdge"

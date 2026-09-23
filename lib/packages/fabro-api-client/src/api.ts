@@ -31,6 +31,7 @@ export * from './api/run-outputs-api';
 export * from './api/runs-api';
 export * from './api/sandboxes-api';
 export * from './api/secrets-api';
+export * from './api/seeds-api';
 export * from './api/sessions-api';
 export * from './api/settings-api';
 export * from './api/system-api';

@@ -169,6 +169,8 @@ mod automation_scheduler;
 #[cfg(test)]
 mod fork_inspection_guard_tests;
 mod fork_line_recovery;
+#[cfg(test)]
+mod fork_seeds_read_api_tests;
 pub(crate) mod fork_staleness_supervisor;
 #[cfg(test)]
 mod fork_staleness_supervisor_tests;
@@ -178,6 +180,7 @@ pub(crate) mod pull_request_conflict;
 mod pull_request_supervisor;
 pub(crate) mod resource_sampler;
 pub(crate) mod run_records;
+pub mod seeds_source;
 mod session_runtime;
 pub(crate) mod stream_follower;
 
@@ -1125,6 +1128,9 @@ pub struct AppState {
     session_runtimes: SessionRuntimeManager,
     artifact_store: ArtifactStore,
     automation_repo_cache: Arc<GitRepoCache>,
+    /// The seeds read API's data source; unconfigured servers serve the
+    /// documented `503` instead of guessing a checkout (fabro-3488).
+    pub(crate) seeds_source: Arc<dyn seeds_source::SeedsSource>,
     #[cfg(any(test, feature = "test-support"))]
     automation_materializer_override: Option<Arc<dyn AutomationRunMaterializer>>,
     worker_tokens: WorkerTokenKeys,
@@ -1372,6 +1378,10 @@ pub(crate) struct AppStateConfig {
     pub(crate) worker_runtime: Option<Arc<dyn WorkerRuntime>>,
     #[cfg(any(test, feature = "test-support"))]
     pub(crate) automation_materializer_override: Option<Arc<dyn AutomationRunMaterializer>>,
+    /// Fork (fabro-3488): seeds read-API source override for tests;
+    /// production builds the configured source from server settings.
+    #[cfg(any(test, feature = "test-support"))]
+    pub(crate) seeds_source_override: Option<Arc<dyn seeds_source::SeedsSource>>,
 }
 
 #[derive(Clone)]
@@ -2510,6 +2520,8 @@ pub(crate) fn build_app_state(config: AppStateConfig) -> anyhow::Result<Arc<AppS
         automation_materializer_override,
         #[cfg(any(test, feature = "test-support"))]
         automation_breaker_notifier_override,
+        #[cfg(any(test, feature = "test-support"))]
+        seeds_source_override,
     } = config;
 
     let store_pool = db_pool.clone();
@@ -2660,6 +2672,17 @@ pub(crate) fn build_app_state(config: AppStateConfig) -> anyhow::Result<Arc<AppS
     #[cfg(any(test, feature = "test-support"))]
     let automation_breaker_notifier =
         { automation_breaker_notifier_override.or(automation_breaker_notifier) };
+    // The seeds read API's source: a test/support override, else the
+    // configured source once fabro-3488's fork decision lands; until then
+    // an unconfigured server serves the documented `503`.
+    #[cfg(any(test, feature = "test-support"))]
+    let seeds_source = seeds_source_override.unwrap_or_else(|| {
+        Arc::new(seeds_source::DisabledSeedsSource) as Arc<dyn seeds_source::SeedsSource>
+    });
+    #[cfg(not(any(test, feature = "test-support")))]
+    let seeds_source: Arc<dyn seeds_source::SeedsSource> =
+        Arc::new(seeds_source::DisabledSeedsSource);
+
     Ok(Arc::new(AppState {
         runs: Mutex::new(HashMap::new()),
         aggregate_usage: Mutex::new(UsageAccumulator::default()),
@@ -2679,6 +2702,7 @@ pub(crate) fn build_app_state(config: AppStateConfig) -> anyhow::Result<Arc<AppS
         session_runtimes: SessionRuntimeManager::new(),
         artifact_store,
         automation_repo_cache,
+        seeds_source,
         #[cfg(any(test, feature = "test-support"))]
         automation_materializer_override,
         worker_tokens,
