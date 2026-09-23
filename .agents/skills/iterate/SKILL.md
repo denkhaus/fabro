@@ -231,6 +231,16 @@ decision, not an accident - it needs the user plus an ADR.
   building — escape handling silently produced invalid patch fixtures and
   space-run diagnostics (ba96, 2026-09-03).
 
+### API workflow, host-condition notes (2026-09-23)
+- TS client regen (`lib/packages/fabro-api-client`) needs Java; hosts
+  without a working `java` regenerate via Docker with the SAME pinned
+  generator (`docker run --rm -v "$PWD:/local" -w /local
+  openapitools/openapi-generator-cli:v7.20.0 generate -i <spec> ... -o
+  /local/lib/packages/fabro-api-client/src`), then `bun run
+  scripts/normalize-generated.ts`, then fix root-owned output files via
+  an alpine chown sidecar (bun re-creates files through directory write
+  access, so normalize itself may still succeed).
+
 ## Phase 3 - Review
 
 - EXIT-CODE-SAFE VERIFICATION (2026-09-22, fabro-43cf, three wasted fix
