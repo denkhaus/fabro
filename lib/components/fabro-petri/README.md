@@ -4,11 +4,12 @@ Fabro's adapters over Petri, the workflow engine Fabro runs its workflows on.
 
 ## Layering rule
 
-Only this crate imports Petri. The workspace `Cargo.toml` pins the Petri
-packages by revision under `petri_*` keys, and `fabro-petri` is the only
-member that lists them as dependencies. Every other Fabro crate reaches the
-engine through what this crate exports. A Petri pin move is therefore a change
-to this crate and the lockfile, nothing else.
+Only this crate imports Petri. The workspace `Cargo.toml` lists the Petri
+packages under `petri_*` keys, tracking Petri's `main` branch, and
+`fabro-petri` is the only member that lists them as dependencies. Every other
+Fabro crate reaches the engine through what this crate exports. The workspace
+`Cargo.lock` chooses the Petri commit, so moving it (`cargo update -p
+petri-runtime`) is a change to this crate and the lockfile, nothing else.
 
 ## What it holds
 

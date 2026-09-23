@@ -3,9 +3,10 @@
 //!
 //! Petri serves every provider through a sandbox-driver plugin executable it
 //! finds on `PATH` (`sandbox-driver-docker` here); CI installs the
-//! executables at the rev the workspace pins, and a developer installs them
-//! with
-//! `cargo install --locked --git https://github.com/lithoscomputer/sandbox-driver --rev <rev> sandbox-driver-host sandbox-driver-docker`.
+//! executables at the commit `Cargo.lock` resolves `sandbox-driver` to, and a
+//! developer installs them with
+//! `cargo install --locked --git https://github.com/lithoscomputer/sandbox-driver --rev <rev> sandbox-driver-host sandbox-driver-docker`,
+//! with `<rev>` read from that `Cargo.lock` entry.
 //! A scenario configured here runs against its own server so the environment
 //! it creates never leaks into the shared session server.
 

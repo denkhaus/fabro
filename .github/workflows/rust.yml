@@ -147,14 +147,15 @@ jobs:
       # Every Petri run takes its scope through a sandbox-driver plugin
       # executable that Petri finds on PATH: `sandbox-driver-host` for the
       # `local` provider, `sandbox-driver-docker` for `docker`. Installed
-      # at the rev the workspace pins, so the plugins and the in-process
-      # driver are one build; a from-source build, so the two executables
-      # are cached by OS and rev and only rebuilt when the pin moves.
-      - name: Read the sandbox-driver rev the workspace pins
+      # at the commit Cargo.lock resolves sandbox-driver to, so the plugins
+      # and the in-process driver are one build; a from-source build, so the
+      # two executables are cached by OS and commit and only rebuilt when the
+      # lockfile moves the driver.
+      - name: Read the sandbox-driver commit Cargo.lock resolves
         id: sandbox-driver
         run: |
-          rev="$(sed -n 's/^sandbox-driver = { git = "[^"]*", rev = "\([0-9a-f]*\)" }$/\1/p' Cargo.toml)"
-          test -n "$rev"
+          rev="$(cargo metadata --locked --format-version 1 | jq -r '.packages[] | select(.name == "sandbox-driver") | .source' | sed 's/.*#//' | sort -u)"
+          [[ "$rev" =~ ^[0-9a-f]{40}$ ]]
           echo "rev=$rev" >> "$GITHUB_OUTPUT"
       - name: Restore the sandbox-driver plugin executables
         id: sandbox-driver-cache
@@ -220,14 +221,15 @@ jobs:
       # Every Petri run takes its scope through a sandbox-driver plugin
       # executable that Petri finds on PATH: `sandbox-driver-host` for the
       # `local` provider, `sandbox-driver-docker` for `docker`. Installed
-      # at the rev the workspace pins, so the plugins and the in-process
-      # driver are one build; a from-source build, so the two executables
-      # are cached by OS and rev and only rebuilt when the pin moves.
-      - name: Read the sandbox-driver rev the workspace pins
+      # at the commit Cargo.lock resolves sandbox-driver to, so the plugins
+      # and the in-process driver are one build; a from-source build, so the
+      # two executables are cached by OS and commit and only rebuilt when the
+      # lockfile moves the driver.
+      - name: Read the sandbox-driver commit Cargo.lock resolves
         id: sandbox-driver
         run: |
-          rev="$(sed -n 's/^sandbox-driver = { git = "[^"]*", rev = "\([0-9a-f]*\)" }$/\1/p' Cargo.toml)"
-          test -n "$rev"
+          rev="$(cargo metadata --locked --format-version 1 | jq -r '.packages[] | select(.name == "sandbox-driver") | .source' | sed 's/.*#//' | sort -u)"
+          [[ "$rev" =~ ^[0-9a-f]{40}$ ]]
           echo "rev=$rev" >> "$GITHUB_OUTPUT"
       - name: Restore the sandbox-driver plugin executables
         id: sandbox-driver-cache
@@ -268,14 +270,15 @@ jobs:
       # Every Petri run takes its scope through a sandbox-driver plugin
       # executable that Petri finds on PATH: `sandbox-driver-host` for the
       # `local` provider, `sandbox-driver-docker` for `docker`. Installed
-      # at the rev the workspace pins, so the plugins and the in-process
-      # driver are one build; a from-source build, so the two executables
-      # are cached by OS and rev and only rebuilt when the pin moves.
-      - name: Read the sandbox-driver rev the workspace pins
+      # at the commit Cargo.lock resolves sandbox-driver to, so the plugins
+      # and the in-process driver are one build; a from-source build, so the
+      # two executables are cached by OS and commit and only rebuilt when the
+      # lockfile moves the driver.
+      - name: Read the sandbox-driver commit Cargo.lock resolves
         id: sandbox-driver
         run: |
-          rev="$(sed -n 's/^sandbox-driver = { git = "[^"]*", rev = "\([0-9a-f]*\)" }$/\1/p' Cargo.toml)"
-          test -n "$rev"
+          rev="$(cargo metadata --locked --format-version 1 | jq -r '.packages[] | select(.name == "sandbox-driver") | .source' | sed 's/.*#//' | sort -u)"
+          [[ "$rev" =~ ^[0-9a-f]{40}$ ]]
           echo "rev=$rev" >> "$GITHUB_OUTPUT"
       - name: Restore the sandbox-driver plugin executables
         id: sandbox-driver-cache
