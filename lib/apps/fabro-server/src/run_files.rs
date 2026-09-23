@@ -47,7 +47,7 @@ use sandbox_driver::{
     Termination,
 };
 use serde::Deserialize;
-use tokio::sync::{Mutex, watch};
+use tokio::sync::{Mutex, OwnedMutexGuard, watch};
 
 use crate::error::ApiError;
 use crate::principal_middleware::RequiredUser;
@@ -79,6 +79,14 @@ struct SandboxCheckout {
                   sandbox alive exactly as long as the inspection reads it"
     )]
     guard:             sandbox_access::InspectionSandbox,
+    /// The run's serialization gate, held for the checkout's whole read
+    /// window so a deferred inspection stop waits it out instead of
+    /// landing inside it (fabro-2c17).
+    #[expect(
+        dead_code,
+        reason = "the hold acts in Drop: releasing the gate after the read is its whole job"
+    )]
+    gate_hold:         Option<OwnedMutexGuard<()>>,
     working_directory: String,
 }
 
@@ -87,15 +95,18 @@ impl SandboxCheckout {
         handle: Arc<dyn Sandbox>,
         working_directory: impl Into<String>,
         terminal_run: bool,
+        stop_gate: Option<Arc<Mutex<()>>>,
+        gate_hold: Option<OwnedMutexGuard<()>>,
     ) -> Self {
         let guard = if terminal_run {
-            sandbox_access::InspectionSandbox::terminal(handle)
+            sandbox_access::InspectionSandbox::terminal(handle, stop_gate)
         } else {
             sandbox_access::InspectionSandbox::live(handle)
         };
         Self {
             handle: guard.sandbox(),
             guard,
+            gate_hold,
             working_directory: working_directory.into(),
         }
     }
@@ -1244,6 +1255,10 @@ async fn reconnect_run_sandbox(
         .provider_access()
         .await
         .map_err(|err| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string()))?;
+    // Hold the run's gate for the checkout's whole read window so a
+    // deferred inspection stop waits it out (fabro-2c17).
+    let gate = sandbox_access::run_sandbox_gate(run_id);
+    let gate_hold = gate.clone().lock_owned().await;
     let handle = sandbox_access::attach_running_run_sandbox(&access, record, *run_id)
         .await
         .map_err(|err| ApiError::new(StatusCode::CONFLICT, format!("{err:#}")))?;
@@ -1251,6 +1266,8 @@ async fn reconnect_run_sandbox(
         handle,
         record.runtime.working_directory.clone(),
         projection.is_terminal(),
+        (projection.is_terminal()).then_some(gate),
+        Some(gate_hold),
     ))
 }
 
@@ -1760,7 +1777,7 @@ mod tests {
 
     /// The mock as the Run Files endpoints hold a sandbox.
     fn checkout(mock: &MockSandbox) -> SandboxCheckout {
-        SandboxCheckout::new(mock.handle(), mock.working_dir, false)
+        SandboxCheckout::new(mock.handle(), mock.working_dir, false, None, None)
     }
 
     fn run_id(_name: &str) -> RunId {

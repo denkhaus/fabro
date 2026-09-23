@@ -22,10 +22,10 @@
 //! its TLS companions), so the server and the run's containers meet on one
 //! daemon.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
+use std::sync::{Arc, LazyLock, Mutex as StdMutex};
 use std::time::Duration;
 
 use anyhow::Context as _;
@@ -47,8 +47,31 @@ use sandbox_driver_daytona::{DaytonaConfig, DaytonaProvider};
 use sandbox_driver_docker::DockerProvider;
 use sandbox_driver_host::HostProvider;
 use sandbox_driver_protocol::{PluginConfig, PluginSupervisor};
-use tokio::sync::OnceCell;
+use tokio::sync::{Mutex as AsyncMutex, OnceCell};
 use tokio::time;
+use tracing::warn;
+
+/// One gate per run, serializing every access-time sandbox window against
+/// the inspection guards' deferred stops: a request that reactivated a
+/// terminal run's sandbox holds its run's gate while it reads, and the
+/// [`InspectionSandbox`] stop paths take the same gate before they stop,
+/// so one request's `Drop`-spawned stop can never land inside the next
+/// request's exec window (fabro-2c17). The registry never shrinks: it
+/// holds one `Mutex` per run the server has touched.
+fn run_sandbox_gates() -> &'static StdMutex<HashMap<RunId, Arc<AsyncMutex<()>>>> {
+    static GATES: LazyLock<StdMutex<HashMap<RunId, Arc<AsyncMutex<()>>>>> =
+        LazyLock::new(StdMutex::default);
+    &GATES
+}
+
+/// The run's serialization gate for access-time sandbox use (fabro-2c17).
+#[must_use]
+pub(crate) fn run_sandbox_gate(run_id: &RunId) -> Arc<AsyncMutex<()>> {
+    let mut gates = run_sandbox_gates()
+        .lock()
+        .expect("the gate registry is not poisoned");
+    gates.entry(*run_id).or_default().clone()
+}
 
 /// The label Petri stamps on every sandbox it creates for a run, carrying
 /// the run id. Fabro's ownership of a run's sandbox is this label.
@@ -342,14 +365,22 @@ async fn attach_run_sandbox_on(
     }
 }
 
-/// Brings a sandbox back into use, idempotently: a running sandbox is left
-/// alone; a stopped or paused one is started and its Bash verified.
-pub(crate) async fn activate(sandbox: &dyn Sandbox) -> sandbox_driver::Result<()> {
-    let status = sandbox.describe().await?;
-    if status.state == SandboxState::Running {
-        return Ok(());
+/// Brings a sandbox back into use for an access-time window, idempotently:
+/// never trusts a `Running` fast path.
+/// `Running` fast path. A run that just turned terminal may still be
+/// stopping its sandbox — Petri's scope release races the projection the
+/// caller acted on — so this always runs the driver's activate, which
+/// waits out in-flight transitions and proves Bash answers, and one
+/// re-activation rides out a stop that lands mid-probe (fabro-2c17).
+pub(crate) async fn activate_for_inspection(sandbox: &dyn Sandbox) -> sandbox_driver::Result<()> {
+    if let Err(first) = sandbox_driver::activate(sandbox, &WaitOptions::default()).await {
+        warn!(
+            error = ?first,
+            "sandbox activation probe failed; retrying once after a possible terminal stop"
+        );
+        return sandbox_driver::activate(sandbox, &WaitOptions::default()).await;
     }
-    sandbox_driver::activate(sandbox, &WaitOptions::default()).await
+    Ok(())
 }
 
 /// A read-only inspection's reactivated sandbox (fabro-afab; the legacy
@@ -360,18 +391,29 @@ pub(crate) async fn activate(sandbox: &dyn Sandbox) -> sandbox_driver::Result<()
 /// for every early exit, from `Drop`, which spawns the stop so no exit
 /// path can leak the running sandbox. A live run's sandbox is never
 /// stopped here: the run owns it.
+///
+/// With `stop_gate` (the run's [`run_sandbox_gate`]) every stop path
+/// takes the gate before it stops, so a deferred stop waits out any
+/// access-time window still reading through the sandbox instead of
+/// landing inside its exec window (fabro-2c17).
 pub(crate) struct InspectionSandbox {
     sandbox:    Arc<dyn Sandbox>,
+    stop_gate:  Option<Arc<AsyncMutex<()>>>,
     stop_after: bool,
     finished:   AtomicBool,
 }
 
 impl InspectionSandbox {
     /// Wrap an activated sandbox for inspecting a run in a terminal
-    /// state: stopped again on finish.
-    pub(crate) fn terminal(sandbox: Arc<dyn Sandbox>) -> Self {
+    /// state: stopped again on finish, serialized through `stop_gate`
+    /// against every access-time window on the same run.
+    pub(crate) fn terminal(
+        sandbox: Arc<dyn Sandbox>,
+        stop_gate: Option<Arc<AsyncMutex<()>>>,
+    ) -> Self {
         Self {
             sandbox,
+            stop_gate,
             stop_after: true,
             finished: AtomicBool::new(false),
         }
@@ -382,6 +424,7 @@ impl InspectionSandbox {
     pub(crate) fn live(sandbox: Arc<dyn Sandbox>) -> Self {
         Self {
             sandbox,
+            stop_gate: None,
             stop_after: false,
             finished: AtomicBool::new(false),
         }
@@ -401,7 +444,9 @@ impl InspectionSandbox {
     /// Stop the sandbox again when the inspection reactivated it.
     /// Idempotent: the first call wins, `Drop` is a no-op afterwards.
     /// The ask-fabro session slot calls this when it evicts its agent
-    /// (fabro-afab); `Drop` covers every early exit meanwhile.
+    /// (fabro-afab); `Drop` covers every early exit meanwhile. The stop
+    /// holds the run's gate, so it waits out any access-time window
+    /// still reading through the sandbox (fabro-2c17).
     pub(crate) async fn finish(&self) {
         if !self.stop_after
             || self
@@ -410,7 +455,12 @@ impl InspectionSandbox {
         {
             return;
         }
-        let _ = self.sandbox.stop().await;
+        if let Some(gate) = &self.stop_gate {
+            let _held = gate.lock().await;
+            let _ = self.sandbox.stop().await;
+        } else {
+            let _ = self.sandbox.stop().await;
+        }
     }
 }
 
@@ -424,8 +474,14 @@ impl Drop for InspectionSandbox {
             return;
         }
         let sandbox = Arc::clone(&self.sandbox);
+        let gate = self.stop_gate.clone();
         tokio::spawn(async move {
-            let _ = sandbox.stop().await;
+            if let Some(gate) = gate {
+                let _held = gate.lock().await;
+                let _ = sandbox.stop().await;
+            } else {
+                let _ = sandbox.stop().await;
+            }
         });
     }
 }
@@ -438,7 +494,7 @@ pub(crate) async fn attach_running_run_sandbox(
     run_id: RunId,
 ) -> anyhow::Result<Arc<dyn Sandbox>> {
     let sandbox = attach_run_sandbox(access, record, run_id).await?;
-    activate(sandbox.as_ref())
+    activate_for_inspection(sandbox.as_ref())
         .await
         .with_context(|| format!("Failed to start {} sandbox", record.provider))?;
     Ok(sandbox)
@@ -1075,7 +1131,7 @@ mod tests {
             .await
             .expect("the directory is designated again");
         assert_eq!(sandbox.working_directory(), working_directory);
-        activate(sandbox.as_ref())
+        activate_for_inspection(sandbox.as_ref())
             .await
             .expect("a host sandbox runs");
         assert!(directory.path().is_dir());

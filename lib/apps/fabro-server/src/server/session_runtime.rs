@@ -297,7 +297,7 @@ mod tests {
         let (inner, sandbox) = running_sandbox();
         let manager = SessionRuntimeManager::new();
         let entry = manager.load_or_create_runtime(SessionId::new());
-        entry.agent.lock().await.guard = Some(InspectionSandbox::terminal(sandbox));
+        entry.agent.lock().await.guard = Some(InspectionSandbox::terminal(sandbox, None));
         entry.clear_agent().await;
         assert_eq!(inner.current_state(), SandboxState::Stopped);
         assert!(!entry.has_agent());
@@ -340,7 +340,7 @@ mod tests {
         let (inner, sandbox) = running_sandbox();
         let manager = SessionRuntimeManager::new();
         let entry = manager.load_or_create_runtime(SessionId::new());
-        entry.agent.lock().await.guard = Some(InspectionSandbox::terminal(sandbox));
+        entry.agent.lock().await.guard = Some(InspectionSandbox::terminal(sandbox, None));
         entry.evict_turn_scoped().await;
         assert_eq!(inner.current_state(), SandboxState::Stopped);
         assert!(entry.agent.lock().await.guard.is_none());

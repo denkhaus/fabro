@@ -10,6 +10,7 @@ use fabro_types::{RunSandboxInstance, SandboxProviderKind};
 use futures_util::FutureExt;
 use futures_util::future::BoxFuture;
 use sandbox_driver::{FileKind, ListeningPort, PtyOptions, PtySize, Sandbox, Services as _};
+use tokio::sync::OwnedMutexGuard;
 
 use super::super::{
     ApiError, AppState, Bytes, HeaderMap, IntoResponse, Json, NamedTempFile, Path,
@@ -545,7 +546,7 @@ async fn list_sandbox_files(
         Ok(id) => id,
         Err(response) => return response,
     };
-    let (record, sandbox, _inspection) =
+    let (record, sandbox, _inspection, _gate) =
         match reconnect_run_sandbox_for_inspection(&state, &id).await {
             Ok(result) => result,
             Err(response) => return response,
@@ -683,7 +684,7 @@ async fn get_sandbox_file(
         Ok(id) => id,
         Err(response) => return response,
     };
-    let (record, sandbox, _inspection) =
+    let (record, sandbox, _inspection, _gate) =
         match reconnect_run_sandbox_for_inspection(&state, &id).await {
             Ok(result) => result,
             Err(response) => return response,
@@ -721,7 +722,7 @@ async fn put_sandbox_file(
     if let Some(response) = reject_if_archived(state.as_ref(), &id).await {
         return response;
     }
-    let (record, sandbox, _inspection) =
+    let (record, sandbox, _inspection, _gate) =
         match reconnect_run_sandbox_for_inspection(&state, &id).await {
             Ok(result) => result,
             Err(response) => return response,
@@ -758,10 +759,16 @@ async fn reconnect_run_sandbox_for_inspection(
         RunSandboxInstance,
         Arc<dyn Sandbox>,
         sandbox_access::InspectionSandbox,
+        OwnedMutexGuard<()>,
     ),
     Response,
 > {
     let record = load_run_sandbox_instance(state, run_id).await?;
+    // Hold the run's gate for the whole request window: attach, activate,
+    // and the handler's reads serialize against every deferred inspection
+    // stop on the same run (fabro-2c17).
+    let gate = sandbox_access::run_sandbox_gate(run_id);
+    let held = gate.clone().lock_owned().await;
     let sandbox = reconnect_run_sandbox_instance(state, run_id, &record).await?;
     let projection = state.load_run_projection(run_id).await.map_err(|err| {
         ApiError::new(
@@ -771,11 +778,11 @@ async fn reconnect_run_sandbox_for_inspection(
         .into_response()
     })?;
     let guard = if projection.is_terminal() {
-        sandbox_access::InspectionSandbox::terminal(Arc::clone(&sandbox))
+        sandbox_access::InspectionSandbox::terminal(Arc::clone(&sandbox), Some(gate))
     } else {
         sandbox_access::InspectionSandbox::live(Arc::clone(&sandbox))
     };
-    Ok((record, sandbox, guard))
+    Ok((record, sandbox, guard, held))
 }
 
 /// Reconnects a run's sandbox and brings it to running.

@@ -763,7 +763,12 @@ async fn build_agent(
     // and its Drop stops the sandbox again — fabro-afab, the legacy
     // turn-scoped terminal-run session).
     let guard = if projection.is_terminal() {
-        sandbox_access::InspectionSandbox::terminal(Arc::clone(&handle))
+        // The eviction stop serializes through the run's gate against
+        // access-time windows (fabro-2c17).
+        sandbox_access::InspectionSandbox::terminal(
+            Arc::clone(&handle),
+            Some(sandbox_access::run_sandbox_gate(&run_id)),
+        )
     } else {
         sandbox_access::InspectionSandbox::live(Arc::clone(&handle))
     };
