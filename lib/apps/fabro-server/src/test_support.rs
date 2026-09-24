@@ -40,6 +40,7 @@ use crate::jwt_auth::{AuthMode, ConfiguredAuth};
 use crate::principal_middleware::{AuthContextSlot, RequestAuthContext};
 use crate::sandbox_access::SandboxInventory;
 use crate::server::automation_breaker::AutomationBreakerNotifier;
+use crate::server::seeds_source::SeedsSource;
 use crate::server::{
     self, AppState, AppStateConfig, EnvLookup, ResolvedAppStateSettings, RouterOptions,
     build_app_state,
@@ -103,7 +104,7 @@ pub struct TestAppStateBuilder {
     env_lookup:                   EnvLookup,
     llm_overlay:                  LlmLayer,
     automation_materializer:      Option<TestAutomationRunMaterializer>,
-    seeds_source:                 Option<Arc<dyn crate::server::seeds_source::SeedsSource>>,
+    seeds_source:                 Option<Arc<dyn SeedsSource>>,
     automation_breaker_notifier:  Option<Arc<dyn AutomationBreakerNotifier>>,
     github_api_base_url:          Option<String>,
     #[cfg(test)]
@@ -192,10 +193,7 @@ impl TestAppStateBuilder {
 
     /// Serve the seeds read API from `source` instead of the disabled
     /// default (fabro-3488 fork tests).
-    pub fn seeds_source(
-        mut self,
-        source: Arc<dyn crate::server::seeds_source::SeedsSource>,
-    ) -> Self {
+    pub fn seeds_source(mut self, source: Arc<dyn SeedsSource>) -> Self {
         self.seeds_source = Some(source);
         self
     }
