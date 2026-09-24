@@ -169,6 +169,13 @@ impl PreparedRun {
         self.layered.metadata.parent_id
     }
 
+    /// The resolved run id, when the caller resolved one: the id the
+    /// run's scratch (and the git checkout bound into its admission)
+    /// lives under.
+    pub(crate) fn run_id(&self) -> Option<RunId> {
+        self.layered.metadata.run_id
+    }
+
     /// The environment the run overrides selected, when they did.
     pub(crate) fn environment_id(&self) -> Option<&str> {
         self.layered.metadata.environment_id.as_deref()
@@ -223,6 +230,12 @@ pub(crate) enum RunCompilerError {
     /// can distinguish validation and parse failures.
     #[error(transparent)]
     Workflow(#[from] WorkflowError),
+
+    /// The run's git target could not be prepared as the repository the
+    /// engine's start-step checkout binds (fabro-b6c5 FINDING 5): no
+    /// credentials, no readable ref, or a failed worktree.
+    #[error("the run's git target could not be checked out: {0}")]
+    GitCheckout(String),
 }
 
 // Shared source errors also serve manifest preview operations.

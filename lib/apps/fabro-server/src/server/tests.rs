@@ -3603,6 +3603,53 @@ file = "goal.md"
     );
 }
 
+/// A git-target run binds a prepared checkout for the engine's start
+/// step (fabro-b6c5 FINDING 5): without a bound repository Petri seeds an
+/// empty workspace and every stage runs without the repository the run
+/// was asked to start from. Test builds bind the local stub worktree, so
+/// the pin asserts the run's scratch carries a git worktree at the
+/// requested branch naming its target.
+#[tokio::test]
+async fn a_git_target_run_binds_a_prepared_checkout_under_its_scratch() {
+    let state = test_app_state();
+    let app = crate::test_support::build_test_router(Arc::clone(&state));
+    let workflow_version_id = store_workflow_version(&state, MINIMAL_DOT, None).await;
+    let body = post_run_intent(
+        &app,
+        json!({
+            "workflow_version_id": workflow_version_id,
+            "target": {
+                "kind": "git",
+                "repo": "denkhaus/seeds",
+                "branch": "main"
+            },
+            "args": {}
+        }),
+    )
+    .await;
+    let run_id = body["id"].as_str().unwrap().parse::<RunId>().unwrap();
+
+    let scratch = fabro_config::Storage::new(state.server_storage_dir()).run_scratch(&run_id);
+    let worktree = scratch.worktree_dir();
+    let marker = worktree.join("fabro-test-target.txt");
+    let bound = tokio::fs::read_to_string(&marker)
+        .await
+        .expect("the run's scratch carries the bound checkout");
+    assert_eq!(bound.trim(), "denkhaus/seeds @ main");
+
+    let head = std::process::Command::new("git")
+        .args([
+            "-C",
+            &worktree.to_string_lossy(),
+            "rev-parse",
+            "--abbrev-ref",
+            "HEAD",
+        ])
+        .output()
+        .expect("git reads the bound worktree");
+    assert_eq!(String::from_utf8_lossy(&head.stdout).trim(), "main");
+}
+
 #[tokio::test]
 async fn post_runs_run_intent_creates_submitted_none_target_without_git_projection() {
     let state = test_app_state();

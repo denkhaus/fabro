@@ -30,6 +30,7 @@
 //! failed when it cannot.
 
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -50,7 +51,10 @@ use fabro_petri::{SqliteRunStore, admission, run_graph};
 use fabro_store::platform_records::{RunLifecycleKind, RunLifecycleRecord};
 use fabro_types::settings::McpTransport;
 use fabro_types::settings::run::{ApprovalMode, McpServerSettings, RunMode};
-use fabro_types::{FailureReason, RunId, RunRunnableSource, RunStatus, RunTarget, SuccessReason};
+use fabro_types::{
+    FailureReason, GitHubRepositorySlug, GitRunTarget, RunId, RunRunnableSource, RunStatus,
+    RunTarget, SuccessReason,
+};
 use fabro_util::error as error_util;
 use fabro_workflow::Error as WorkflowError;
 use lithos_llm::catalog::ProviderId;
@@ -62,6 +66,7 @@ use super::{
     AppState, RunAnswerTransport, RunExecutionMode, clear_live_run_state, run_records,
     stream_follower,
 };
+use crate::git_checkout::{self, GitCheckoutSelector, WorktreePrepareInput};
 use crate::petri_check;
 use crate::petri_runs::PetriRuns;
 use crate::run_compiler::{AdmittedRun, PreparedRun, RunCompilerError};
@@ -245,6 +250,175 @@ fn mcp_catalog_entry(server: &McpServerSettings) -> toml::Table {
     entry
 }
 
+/// Bind a git target's repository for the engine's start-step checkout
+/// (fabro-b6c5 FINDING 5): a worktree of the requested ref under the
+/// run's scratch, prepared through the automation line's repo cache with
+/// the server's GitHub read auth. Without a bound repository Petri's
+/// start step seeds an empty workspace silently — every stage then runs
+/// without the repository the run was asked to start from.
+///
+/// The worktree sits under the run scratch (beside `petri/`) and lives
+/// until the run's scratch is pruned with the run. The cache clones
+/// `--depth 1`, so the delivered checkout carries shallow history even
+/// when `[run.clone] depth` asks for more; deep-history workflows
+/// (merge-upstream's depth 0) still need a direct deep clone — a filed
+/// residual, not this seam's contract.
+async fn prepare_git_checkout(
+    state: &AppState,
+    run_id: RunId,
+    target: &GitRunTarget,
+) -> Result<PathBuf, RunCompilerError> {
+    let repo = GitHubRepositorySlug::try_new(&target.repo).ok_or_else(|| {
+        RunCompilerError::GitCheckout(format!(
+            "the git target names no canonical repository: {}",
+            target.repo
+        ))
+    })?;
+    // Test builds without GitHub credentials bind a local stub worktree
+    // instead of cloning: the suites that create git-target runs assert
+    // admission and metadata, not checkout content, and no test may reach
+    // the network. Production never runs this arm — it resolves real
+    // credentials below.
+    #[cfg(any(test, feature = "test-support"))]
+    {
+        let settings = state.server_settings();
+        let credentials = state
+            .github_credentials(&settings.server.integrations.github)
+            .await
+            .ok()
+            .flatten();
+        if credentials.is_none() {
+            let worktree = Storage::new(state.server_storage_dir())
+                .run_scratch(&run_id)
+                .worktree_dir();
+            prepare_stub_git_checkout(target, &worktree).await?;
+            return Ok(worktree);
+        }
+    }
+    let settings = state.server_settings();
+    let credentials = state
+        .github_credentials(&settings.server.integrations.github)
+        .await
+        .map_err(|source| {
+            RunCompilerError::GitCheckout(format!(
+                "GitHub credentials for {repo} could not be loaded: {source}"
+            ))
+        })?;
+    let auth = git_checkout::resolve_git_read_auth_config(
+        credentials.as_ref(),
+        &repo,
+        &state.github_api_base_url,
+        state.http_client.clone(),
+    )
+    .await
+    .map_err(|source| {
+        RunCompilerError::GitCheckout(format!(
+            "read auth for {repo} could not be resolved: {source}"
+        ))
+    })?;
+    let worktree = Storage::new(state.server_storage_dir())
+        .run_scratch(&run_id)
+        .worktree_dir();
+    state
+        .automation_repo_cache
+        .prepare_worktree(
+            WorktreePrepareInput {
+                repo:         &repo,
+                selector:     GitCheckoutSelector::from(target),
+                auth:         auth.as_ref(),
+                worktree_dir: &worktree,
+            },
+            &git_checkout::github_clone_url(&repo),
+        )
+        .await
+        .map_err(|source| {
+            RunCompilerError::GitCheckout(format!(
+                "the worktree of {repo} at the requested ref could not be prepared: {source}"
+            ))
+        })?;
+    Ok(worktree)
+}
+
+/// A local stand-in worktree for test builds (see
+/// [`prepare_git_checkout`]): a git repository at the requested branch
+/// whose one commit names the target it stands for. The engine's start
+/// step treats it like any bound repository.
+#[cfg(any(test, feature = "test-support"))]
+async fn prepare_stub_git_checkout(
+    target: &GitRunTarget,
+    worktree: &std::path::Path,
+) -> Result<(), RunCompilerError> {
+    use std::process::Stdio;
+
+    use tokio::process::Command as TokioCommand;
+    let git = |args: &[&str]| {
+        let mut command = TokioCommand::new("git");
+        command
+            .args(["-C", &worktree.to_string_lossy()])
+            .args(args)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        async move { command.status().await }
+    };
+    let fail = |step: &str| {
+        RunCompilerError::GitCheckout(format!(
+            "the test stub checkout for {} could not be prepared: git {step} failed",
+            target.repo
+        ))
+    };
+    tokio::fs::create_dir_all(worktree)
+        .await
+        .map_err(|source| {
+            RunCompilerError::GitCheckout(format!(
+                "the test stub checkout directory could not be created: {source}"
+            ))
+        })?;
+    git(&["init", "--quiet", "-b", &target.branch])
+        .await
+        .map_err(|_| fail("init"))?
+        .success()
+        .then_some(())
+        .ok_or_else(|| fail("init"))?;
+    let marker = worktree.join("fabro-test-target.txt");
+    tokio::fs::write(
+        &marker,
+        format!(
+            "{} @ {}
+",
+            target.repo, target.branch
+        ),
+    )
+    .await
+    .map_err(|source| {
+        RunCompilerError::GitCheckout(format!(
+            "the test stub marker could not be written: {source}"
+        ))
+    })?;
+    git(&["add", "--", marker.to_string_lossy().as_ref()])
+        .await
+        .map_err(|_| fail("add"))?
+        .success()
+        .then_some(())
+        .ok_or_else(|| fail("add"))?;
+    git(&[
+        "-c",
+        "user.name=Fabro Test",
+        "-c",
+        "user.email=noreply@fabro.sh",
+        "commit",
+        "--quiet",
+        "--allow-empty",
+        "-m",
+        "test stub checkout",
+    ])
+    .await
+    .map_err(|_| fail("commit"))?
+    .success()
+    .then_some(())
+    .ok_or_else(|| fail("commit"))?;
+    Ok(())
+}
+
 /// Petri compiles the run: check the bundle, map the diagnostics, persist
 /// the admitted graphs, and read the display graph off them. A refusal is a
 /// validation error carrying Petri's diagnostics.
@@ -256,7 +430,15 @@ pub(crate) async fn admit(
     let settings = prepared.settings();
     let repository = match prepared.target() {
         Some(RunTarget::Folder { path }) => Some(path.into()),
-        Some(RunTarget::Git(_) | RunTarget::None {}) | None => None,
+        Some(RunTarget::Git(target)) => {
+            let run_id = prepared.run_id().ok_or_else(|| {
+                RunCompilerError::GitCheckout(
+                    "a git-target run cannot be admitted without a run id".to_string(),
+                )
+            })?;
+            Some(prepare_git_checkout(state, run_id, target).await?)
+        }
+        Some(RunTarget::None {}) | None => None,
     };
     let launch = petri_check::launch(
         &state.catalog(),
