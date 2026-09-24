@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use chrono::Utc;
 use fabro_store::platform_records::{PlatformRecord, RunLifecycleKind, RunLifecycleRecord};
+use fabro_types::settings::run::ApprovalMode;
 use tokio::time::{Instant, sleep_until};
 
 use super::super::{
@@ -136,7 +137,15 @@ pub(super) async fn queue_run(
         .root()
         .to_path_buf();
     let dot_source = run_state.spec.graph_source.clone().unwrap_or_default();
+    // A run created by its parent's run tools defaults to the human
+    // gate (fabro-b6c5): the platform, not the model, decides when a
+    // worker-made child starts. The run's resolved approval mode
+    // overrides the gate — an intent that asked for `auto_approve`
+    // (or a workflow whose `[[run]]` execution carries it) starts
+    // directly, so an orchestrated line can hand its children the
+    // keys it already holds.
     let approval_required = !resume
+        && run_state.spec.settings.run.execution.approval != ApprovalMode::Auto
         && matches!(
             &actor,
             Principal::Worker { run_id } if run_state.parent_id == Some(*run_id)

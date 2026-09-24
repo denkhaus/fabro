@@ -8011,6 +8011,66 @@ async fn worker_started_child_run_requires_approval_before_becoming_runnable() {
     );
 }
 
+/// The approval gate a worker-made child meets reads the run's resolved
+/// approval mode (fabro-b6c5): an intent that asked for
+/// `auto_approve: true` starts directly, so an orchestrated line can
+/// hand its children the keys it already holds. The human gate stays
+/// the default for every worker child without it.
+#[tokio::test]
+async fn an_auto_approved_worker_child_run_starts_directly() {
+    let (state, app) = jwt_auth_app();
+    let user_jwt = issue_test_user_jwt();
+    let parent_run_id = create_run_with_bearer(&app, &user_jwt).await;
+    let worker_token = issue_test_run_tools_worker_token(&parent_run_id);
+    let mut child_intent =
+        test_intent_with_bearer(&app, "workflow.fabro", MINIMAL_DOT, None, Some(&user_jwt)).await;
+    child_intent["parent_id"] = json!(parent_run_id.to_string());
+    child_intent["args"]["auto_approve"] = json!(true);
+
+    let response = app
+        .clone()
+        .oneshot(json_bearer_request(
+            Method::POST,
+            "/runs",
+            &worker_token,
+            &child_intent,
+        ))
+        .await
+        .unwrap();
+    let child_body = response_json!(response, StatusCode::CREATED).await;
+    let child_run_id = child_body["id"].as_str().unwrap().parse::<RunId>().unwrap();
+
+    let projection = state.load_run_projection(&child_run_id).await.unwrap();
+    assert_eq!(
+        projection.spec.settings.run.execution.approval,
+        ApprovalMode::Auto,
+        "the override resolves into the child's spec"
+    );
+
+    let response = app
+        .clone()
+        .oneshot(json_bearer_request(
+            Method::POST,
+            &format!("/runs/{child_run_id}/start"),
+            &worker_token,
+            &json!({ "resume": false }),
+        ))
+        .await
+        .unwrap();
+    let start_body = response_json!(response, StatusCode::OK).await;
+    assert_eq!(
+        run_json_status(&start_body)["kind"],
+        "runnable",
+        "an auto-approved worker child queues as runnable: {start_body}"
+    );
+
+    let runs = state.runs.lock().expect("runs lock poisoned");
+    assert_eq!(
+        runs.get(&child_run_id).map(|run| run.status),
+        Some(RunStatus::Runnable)
+    );
+}
+
 #[tokio::test]
 async fn denying_pending_child_run_fails_with_approval_denied() {
     let (_state, app) = jwt_auth_app();
