@@ -789,7 +789,10 @@ pub(crate) async fn mint_installation_token_for_id_with_jwt(
     })
 }
 
-/// Request a scoped Installation Access Token with `contents: write`.
+/// Request a scoped Installation Access Token with `contents: write`
+/// and `workflows: write` (fabro-11d9: without `workflows`, GitHub
+/// refuses any push touching `.github/workflows/**` from an App token,
+/// regardless of the app's own permission configuration).
 pub async fn create_installation_access_token(
     client: &impl HttpClient,
     jwt: &str,
@@ -803,13 +806,15 @@ pub async fn create_installation_access_token(
         owner,
         repo,
         base_url,
-        serde_json::json!({ "contents": "write" }),
+        serde_json::json!({ "contents": "write", "workflows": "write" }),
     )
     .await
 }
 
-/// Request a scoped Installation Access Token with `contents: write`
-/// and `pull_requests: write`. Used for creating pull requests.
+/// Request a scoped Installation Access Token with `contents: write`,
+/// `pull_requests: write`, and `workflows: write`. Used for creating
+/// pull requests (fabro-11d9: merging PRs that modify workflow files
+/// also requires the `workflows` permission).
 pub async fn create_installation_access_token_for_pr(
     client: &impl HttpClient,
     jwt: &str,
@@ -823,7 +828,7 @@ pub async fn create_installation_access_token_for_pr(
         owner,
         repo,
         base_url,
-        serde_json::json!({ "contents": "write", "pull_requests": "write" }),
+        serde_json::json!({ "contents": "write", "pull_requests": "write", "workflows": "write" }),
     )
     .await
 }
@@ -888,7 +893,7 @@ pub async fn find_open_pull_request_with_client(
             owner,
             repo,
             ctx.base_url,
-            serde_json::json!({ "contents": "write", "pull_requests": "write" }),
+            serde_json::json!({ "contents": "write", "pull_requests": "write", "workflows": "write" }),
         )
         .await?;
     let mut url = DisplaySafeUrl::parse(&format!("{}/repos/{owner}/{repo}/pulls", ctx.base_url))
@@ -980,7 +985,7 @@ pub async fn create_pull_request_with_client(
             owner,
             repo,
             ctx.base_url,
-            serde_json::json!({ "contents": "write", "pull_requests": "write" }),
+            serde_json::json!({ "contents": "write", "pull_requests": "write", "workflows": "write" }),
         )
         .await
         .map_err(CreatePullRequestError::Token)?;
@@ -1065,7 +1070,7 @@ pub async fn enable_auto_merge_with_client(
             owner,
             repo,
             ctx.base_url,
-            serde_json::json!({ "contents": "write", "pull_requests": "write" }),
+            serde_json::json!({ "contents": "write", "pull_requests": "write", "workflows": "write" }),
         )
         .await?;
 
@@ -1440,12 +1445,15 @@ pub async fn resolve_clone_credentials(
         GitHubCredentials::Installation(token) => token.valid_token()?.to_string(),
         GitHubCredentials::App(_) => {
             let client = ctx.http_client()?;
+            // fabro-11d9: run pushes may touch `.github/workflows/**`;
+            // `contents` alone makes GitHub refuse those pushes from an
+            // App token.
             mint_git_token(
                 &client,
                 ctx,
                 owner,
                 repo,
-                serde_json::json!({ "contents": "write" }),
+                serde_json::json!({ "contents": "write", "workflows": "write" }),
             )
             .await?
         }
@@ -1556,7 +1564,7 @@ pub async fn get_pull_request_with_client(
             owner,
             repo,
             ctx.base_url,
-            serde_json::json!({ "contents": "write", "pull_requests": "write" }),
+            serde_json::json!({ "contents": "write", "pull_requests": "write", "workflows": "write" }),
         )
         .await?;
 
@@ -1799,7 +1807,7 @@ pub async fn merge_pull_request_with_client(
             owner,
             repo,
             ctx.base_url,
-            serde_json::json!({ "contents": "write", "pull_requests": "write" }),
+            serde_json::json!({ "contents": "write", "pull_requests": "write", "workflows": "write" }),
         )
         .await?;
 
@@ -1863,7 +1871,7 @@ pub async fn close_pull_request_with_client(
             owner,
             repo,
             ctx.base_url,
-            serde_json::json!({ "contents": "write", "pull_requests": "write" }),
+            serde_json::json!({ "contents": "write", "pull_requests": "write", "workflows": "write" }),
         )
         .await?;
 
@@ -1928,7 +1936,7 @@ pub async fn update_pull_request_branch_with_client(
             owner,
             repo,
             ctx.base_url,
-            serde_json::json!({ "contents": "write", "pull_requests": "write" }),
+            serde_json::json!({ "contents": "write", "pull_requests": "write", "workflows": "write" }),
         )
         .await?;
 
@@ -2647,7 +2655,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn create_iat_requests_only_contents_write() {
+    async fn create_iat_requests_contents_and_workflows_write() {
         let mock = MockHttpClient::new()
             .on(
                 HttpMethod::Get,
@@ -2663,7 +2671,9 @@ mod tests {
                 r#"{"token": "ghs_xxx", "expires_at": "2099-01-01T00:00:00Z"}"#,
             )
             .with_req_header("Authorization", "Bearer test-jwt")
-            .with_req_body(r#"{"permissions":{"contents":"write"},"repositories":["repo"]}"#);
+            .with_req_body(
+                r#"{"permissions":{"contents":"write","workflows":"write"},"repositories":["repo"]}"#,
+            );
 
         let token = create_installation_access_token(&mock, "test-jwt", "owner", "repo", "")
             .await
@@ -2832,7 +2842,7 @@ mod tests {
             )
             .with_req_header("Authorization", "Bearer test-jwt")
             .with_req_body(
-                r#"{"permissions":{"contents":"write","pull_requests":"write"},"repositories":["repo"]}"#,
+                r#"{"permissions":{"contents":"write","pull_requests":"write","workflows":"write"},"repositories":["repo"]}"#,
             );
 
         let token = create_installation_access_token_for_pr(&mock, "test-jwt", "owner", "repo", "")
