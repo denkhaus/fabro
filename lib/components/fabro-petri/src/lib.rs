@@ -58,8 +58,8 @@
 //! - [`prune`]: a run's sandboxes deleted through Petri's lease ledger, as
 //!   `petri sandbox prune` deletes them, when Fabro deletes the run.
 //!
-//! The Petri packages are workspace dependencies under `petri_*` keys that
-//! track Petri's `main` branch; the workspace `Cargo.lock` chooses the commit.
+//! The Petri packages are workspace dependencies under `petri_*` keys; see the
+//! workspace `Cargo.toml` for how they are tracked.
 
 pub mod admission;
 pub mod blobs;

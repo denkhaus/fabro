@@ -117,7 +117,7 @@ Fabro is an AI-powered workflow orchestration platform. Workflows are defined as
 - **fabro-workflow** — Fabro's platform half of a run: creates a run around Petri's admission (the run's display graph is read off the admitted graph), archives, forks and retries runs, and holds the run tools and the pull request pipeline. Compilation and execution are Petri's, through `fabro-petri`
 - **fabro-dot** — The workflow graph as written, read through Petri's DOT parser: its name, goal, node and edge counts, and the files it references (`import`, `stack.child_workflow`, `@file` prompts, the goal). The bundler and the workflow-version store walk references through it; `fabro-graphviz` re-emits Fabro DOT for Graphviz through it
 - **fabro-graphviz** — SVG rendering of workflow graphs through the vendored Graphviz (`graphviz-sys`)
-- **fabro-petri** — Fabro's adapters over Petri, the workflow engine: the one crate that imports the Petri packages (workspace dependencies tracking Petri `main`, with the commit chosen in `Cargo.lock`), holding the run store over SQLite and the platform adapters
+- **fabro-petri** — Fabro's adapters over Petri, the workflow engine: the one crate that imports the Petri packages (tracking Petri `main`; see the workspace `Cargo.toml`), holding the run store over SQLite and the platform adapters
 - **fabro-server** — Axum HTTP server. Routes for runs, sessions, models, completions, usage. SSE event streaming. Demo mode via header
 - **fabro-llm** — Unified LLM client with providers: Anthropic, OpenAI, Gemini, OpenAI-compatible, plus retry/middleware/streaming
 - **fabro-api** — Auto-generated Rust types and reqwest HTTP client from OpenAPI spec (build.rs + progenitor)
@@ -228,7 +228,7 @@ Fabro is an AI-powered workflow orchestration platform. Workflows are defined as
 - **fabro-workflow** — Fabro's platform half of a run: creates a run around Petri's admission (the run's display graph is read off the admitted graph), archives, forks and retries runs, and holds the run tools and the pull request pipeline. Compilation and execution are Petri's, through `fabro-petri`
 - **fabro-dot** — The workflow graph as written, read through Petri's DOT parser: its name, goal, node and edge counts, and the files it references (`import`, `stack.child_workflow`, `@file` prompts, the goal). The bundler and the workflow-version store walk references through it; `fabro-graphviz` re-emits Fabro DOT for Graphviz through it
 - **fabro-graphviz** — SVG rendering of workflow graphs through the vendored Graphviz (`graphviz-sys`)
-- **fabro-petri** — Fabro's adapters over Petri, the workflow engine: the one crate that imports the Petri packages (workspace dependencies tracking Petri `main`, with the commit chosen in `Cargo.lock`), holding the run store over SQLite and the platform adapters
+- **fabro-petri** — Fabro's adapters over Petri, the workflow engine: the one crate that imports the Petri packages (tracking Petri `main`; see the workspace `Cargo.toml`), holding the run store over SQLite and the platform adapters
 - **fabro-server** — Axum HTTP server. Routes for runs, sessions, models, completions, usage. SSE event streaming. Demo mode via header
 - **fabro-llm** — Unified LLM client with providers: Anthropic, OpenAI, Gemini, OpenAI-compatible, plus retry/middleware/streaming
 - **fabro-api** — Auto-generated Rust types and reqwest HTTP client from OpenAPI spec (build.rs + progenitor)
