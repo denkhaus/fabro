@@ -66,7 +66,7 @@ use super::{
     AppState, RunAnswerTransport, RunExecutionMode, clear_live_run_state, run_records,
     stream_follower,
 };
-use crate::git_checkout::{self, GitCheckoutSelector, WorktreePrepareInput};
+use crate::git_checkout::{self, GitCheckoutSelector, WorktreeDepth, WorktreePrepareInput};
 use crate::petri_check;
 use crate::petri_runs::PetriRuns;
 use crate::run_compiler::{AdmittedRun, PreparedRun, RunCompilerError};
@@ -327,6 +327,7 @@ async fn prepare_git_checkout(
                 selector:     GitCheckoutSelector::from(target),
                 auth:         auth.as_ref(),
                 worktree_dir: &worktree,
+                depth:        WorktreeDepth::Full,
             },
             &git_checkout::github_clone_url(&repo),
         )

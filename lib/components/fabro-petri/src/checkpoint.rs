@@ -1183,6 +1183,16 @@ impl RunWorkspaces {
             "-c",
             "init.defaultBranch=main",
         ];
+        // A sandbox workspace carries the engine-delivered checkout, whose
+        // archive records the SERVER's uid; the sandbox's git runs as its
+        // own user, and git refuses a repository it does not own
+        // ("detected dubious ownership", fabro-b6c5 pass 3). The
+        // checkpoint's content is trusted by construction — it commits
+        // what the engine delivered and the model wrote — so the
+        // ownership check is dropped for sandbox sites only.
+        if matches!(site, Site::Sandbox(_)) {
+            all.extend(["-c", "safe.directory=*"]);
+        }
         all.extend(args.iter().map(AsRef::as_ref));
         // Fork seam (fabro-0c08): a resource-exhausted sandbox fails
         // every new exec while staying alive; the guard retries that

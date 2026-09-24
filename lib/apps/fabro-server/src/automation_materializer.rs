@@ -13,7 +13,8 @@ use fabro_workflow_version::{WorkflowVersionStore, WorkflowVersionStoreError};
 use tokio::{fs, task};
 
 use crate::git_checkout::{
-    self, GitAuthConfig, GitCheckoutError, GitCheckoutSelector, GitRepoCache, WorktreePrepareInput,
+    self, GitAuthConfig, GitCheckoutError, GitCheckoutSelector, GitRepoCache, WorktreeDepth,
+    WorktreePrepareInput,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -216,6 +217,7 @@ impl ProductionAutomationRunMaterializer {
                     selector,
                     auth: remote.auth.as_ref(),
                     worktree_dir,
+                    depth: WorktreeDepth::Shallow,
                 },
                 &remote.clone_url,
             )
