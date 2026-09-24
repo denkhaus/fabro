@@ -6,9 +6,13 @@
 # Fires on stage_complete (non-blocking, host-side: sandbox=false, so the
 # script runs inside the server container, where the vendored nu and the
 # server's env live). On evidence/reviewer/analyze completion it POSTs the
-# stage's context_updates to the TypeSafe System One endpoint (model
-# jev-latest; endpoint corrected from the seed's outdated OpenRouter
-# premise, see docs.typesafe.ai/api) and appends ONE JSON line per call to
+# stage's context_updates to OpenRouter's System One endpoint (model
+# jev-latest; operator repoint 2026-09-24: there is no TYPESAFE_API_KEY —
+# jev runs through OpenRouter with the OPENROUTER_API_KEY that already
+# sits in the mirtuell server env. OpenRouter maps bare System One model
+# ids like jev-latest onto the typesafe/ namespace; usage reports cost as
+# usage.cost, not cost_usd; see openrouter.ai/docs — Submit a System One
+# request) and appends ONE JSON line per call to
 # .fabro/judgments/<run_id>.jsonl — schema fabro-judgment-v1.
 #
 # SHADOW ONLY: no engine decision consumes the stream. Thresholds and
@@ -19,12 +23,12 @@
 # the run is never affected. The hook entry's engine timeout is the outer
 # bound (a kill = skip, no line).
 #
-# Secrets: TYPESAFE_API_KEY comes from the server process env only
+# Secrets: OPENROUTER_API_KEY comes from the server process env only
 # (server-secrets-strategy); it never enters a run sandbox or a prompt.
 
 const JUDGED_NODES = [evidence reviewer analyze]
 const MODEL = "jev-latest"
-const ENDPOINT_DEFAULT = "https://api.typesafe.ai/v1/systemone"
+const ENDPOINT_DEFAULT = "https://openrouter.ai/api/v1/systemone"
 
 def main []: nothing -> nothing {
     let ctx_path = ($env.FABRO_HOOK_CONTEXT? | default "")
@@ -40,10 +44,11 @@ def main []: nothing -> nothing {
         return
     }
     let run_id = ($ctx.run_id? | default "")
-    let key = ($env.TYPESAFE_API_KEY? | default "")
+    let key = ($env.OPENROUTER_API_KEY? | default "")
     let updates = ($ctx.context_updates? | default {})
 
-    # Question shapes follow the System One API (docs.typesafe.ai/api):
+    # Question shapes follow the System One API (same schema on both
+    # surfaces; OpenRouter reference: Submit a System One request):
     # a map of typed questions; choice questions carry the options as a
     # criteria map (option id -> meaning).
     let verdict = {
@@ -106,7 +111,9 @@ def main []: nothing -> nothing {
             {
                 answers: ($response.answers? | default null)
                 latency_ms: ($latency / 1ms | into int)
-                cost_usd: ($response.usage?.cost_usd? | default null)
+                # OpenRouter's System One response reports usage.cost
+                # (the typesafe.ai surface called it cost_usd).
+                cost_usd: ($response.usage?.cost? | default null)
             }
         } catch {|err| {degraded: ($err.msg | str substring 0..120)}}
     }

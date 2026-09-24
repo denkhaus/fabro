@@ -37,7 +37,7 @@ fn judgment_shadow_records_answers_from_a_scripted_twin() {
                 "verdict_pre_screen": {"type": "choice", "choice": "approved"},
                 "residue:src/extra.rs": {"type": "choice", "choice": "harmless_churn"}
             },
-            "usage": {"cost_usd": 0.0012}
+            "usage": {"cost": 0.0012}
         }));
     });
 
@@ -64,7 +64,7 @@ fn judgment_shadow_records_answers_from_a_scripted_twin() {
         .current_dir(&repo_root)
         .env("FABRO_HOOK_CONTEXT", &context_path)
         .env("JUDGMENT_SHADOW_ENDPOINT", server.url("/v1/systemone"))
-        .env("TYPESAFE_API_KEY", "twin-key")
+        .env("OPENROUTER_API_KEY", "twin-key")
         .output()
         .expect("the script runs");
     assert!(
@@ -90,6 +90,10 @@ fn judgment_shadow_records_answers_from_a_scripted_twin() {
     assert_eq!(
         entry["answers"]["residue:src/extra.rs"]["choice"], "harmless_churn",
         "the twin's residue answer lands verbatim: {entry}"
+    );
+    assert_eq!(
+        entry["cost_usd"], 0.0012,
+        "OpenRouter's usage.cost lands as cost_usd: {entry}"
     );
 
     let _ = std::fs::remove_file(&stream);
