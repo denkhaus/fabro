@@ -206,14 +206,15 @@ impl Harness {
         let admitted = check::check(&request(workflow)).expect("the bundle is admitted");
         let (interviewer, observers) = no_questions();
         let hooks = HooksSpec {
-            records:    Arc::clone(&self.records) as Arc<dyn PlatformRecords>,
-            git:        RunGitSettings {
+            records:          Arc::clone(&self.records) as Arc<dyn PlatformRecords>,
+            git:              RunGitSettings {
                 host_workspaces: true,
                 ..RunGitSettings::default()
             },
-            artifacts:  Vec::new(),
-            envelopes:  Some(Arc::new(StageEnvelopes::parse(workflow))),
-            test_gates: None,
+            artifacts:        Vec::new(),
+            envelopes:        Some(Arc::new(StageEnvelopes::parse(workflow))),
+            hook_write_roots: Vec::new(),
+            test_gates:       None,
         };
         let request = RunRequest {
             run_id: self.run_id.to_string(),
