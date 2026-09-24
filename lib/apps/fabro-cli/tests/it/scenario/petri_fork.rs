@@ -20,8 +20,7 @@ use std::process::{Command, Output};
 use fabro_test::test_context;
 
 use super::petri::{
-    RunningServer, host_plugin, run_detached, run_json, wait_for_status, wait_for_success,
-    write_petri_workflow,
+    RunningServer, run_detached, run_json, wait_for_status, wait_for_success, write_petri_workflow,
 };
 
 /// Three command stages that build on each other's files: `one` writes a
@@ -178,9 +177,6 @@ fn read(workspace: &Path, name: &str) -> String {
 /// new run says where it came from.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_fork_at_the_first_stage_continues_with_the_rest_on_its_files() {
-    if host_plugin().is_none() {
-        return;
-    }
     let context = test_context!();
     let server = RunningServer::start().await;
     let bundle = write_petri_workflow(&context, &three_stage_dot());
@@ -260,9 +256,6 @@ async fn a_fork_at_the_first_stage_continues_with_the_rest_on_its_files() {
 /// and finishes the run.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_retry_reruns_the_failed_stage_and_succeeds_when_the_failure_was_transient() {
-    if host_plugin().is_none() {
-        return;
-    }
     let context = test_context!();
     let server = RunningServer::start().await;
     let marker = context.temp_dir.join("flaky.marker");
@@ -316,9 +309,6 @@ async fn a_retry_reruns_the_failed_stage_and_succeeds_when_the_failure_was_trans
 /// names the run that replaced it.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_rewind_supersedes_its_source() {
-    if host_plugin().is_none() {
-        return;
-    }
     let context = test_context!();
     let server = RunningServer::start().await;
     let bundle = write_petri_workflow(&context, &three_stage_dot());
@@ -381,9 +371,6 @@ async fn a_rewind_supersedes_its_source() {
 /// its position and commit, as the CLI prints it and as the API serves it.
 #[tokio::test(flavor = "multi_thread")]
 async fn the_timeline_lists_every_checkpoint_with_its_commit() {
-    if host_plugin().is_none() {
-        return;
-    }
     let context = test_context!();
     let server = RunningServer::start().await;
     let bundle = write_petri_workflow(&context, &three_stage_dot());
@@ -453,9 +440,6 @@ async fn the_timeline_lists_every_checkpoint_with_its_commit() {
 /// refuses it, and the refusal says why. The join, in the root, is.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_fork_inside_a_parallel_branch_is_refused() {
-    if host_plugin().is_none() {
-        return;
-    }
     let context = test_context!();
     let server = RunningServer::start().await;
     let bundle = write_petri_workflow(&context, &parallel_dot());

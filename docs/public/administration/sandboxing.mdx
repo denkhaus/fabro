@@ -7,6 +7,8 @@ Sandboxes isolate agent execution from the host machine. When an agent runs a sh
 
 Fabro bundles three sandbox providers: `local` (no isolation), `docker` (container-level), and `daytona` (cloud VM). Additional providers run as [sandbox-driver](https://github.com/lithoscomputer/sandbox-driver) plugins configured under `[server.sandbox.providers.<kind>]`; an environment selects one by its kind name. See [Environments](/execution/environments) for full provider-specific configuration and [Server configuration](/administration/server-configuration#serversandboxproviders-section) for plugin settings.
 
+The built-in providers run in process for execution, resume, and pruning. Fabro does not need `sandbox-driver-host`, `sandbox-driver-docker`, or `sandbox-driver-daytona` executables or checksum pins for these operations.
+
 Operators can enable or disable which providers the server may launch with
 `[server.sandbox.providers.<kind>]` in `settings.toml`. Missing bundled entries default to
 `enabled = true`; setting `enabled = false` rejects new runs whose effective provider is disabled,

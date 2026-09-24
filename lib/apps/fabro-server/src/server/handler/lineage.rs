@@ -1,5 +1,5 @@
 //! A run's checkpoint timeline, and the runs made from it: fork, rewind and
-//! retry (the integration plan's F5.1).
+//! retry.
 //!
 //! The timeline is the run's `checkpoint` platform records, labelled with
 //! the stages the projector folded them onto. A fork resolves a target on
@@ -26,6 +26,7 @@ use fabro_petri::SqliteRunStore;
 use fabro_petri::fork::{self as petri_fork, ForkError, ForkRequest};
 use fabro_petri::petri::RunStore;
 use fabro_petri::platform_records::SqlitePlatformRecords;
+use fabro_static::EnvVars;
 use fabro_store::{PlatformRecordKind, RunProjection};
 use fabro_types::{FailureReason, Principal, RunId};
 use fabro_util::error as error_util;
@@ -281,6 +282,16 @@ async fn fork_at(
         .await
         .map_err(|err| fork_error(&err))?;
 
+    let daytona_api_key = state
+        .vault_secret(EnvVars::DAYTONA_API_KEY)
+        .await
+        .map_err(|err| {
+            error!(error = ?err, "Loading sandbox credentials failed");
+            ApiError::new(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "secret store operation failed",
+            )
+        })?;
     let new_run_id = RunId::new();
     let storage = Storage::new(state.server_storage_dir());
     let source_run_dir = storage.run_scratch(&id).root().to_path_buf();
@@ -299,6 +310,7 @@ async fn fork_at(
     .map_err(workflow_operation_error)?;
 
     let seeded = petri_fork::fork(ForkRequest {
+        sandbox: state.sandbox_provider_config(daytona_api_key),
         source: id,
         fork: new_run_id,
         source_run_dir: source_run_dir.join("petri"),

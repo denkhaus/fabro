@@ -78,6 +78,7 @@ use fabro_petri::hooks::HooksSpec;
 use fabro_petri::interview::{Approval, FabroInterviewer};
 use fabro_petri::petri::OwnerId;
 use fabro_petri::platform_records::{HttpPlatformRecords, PlatformRecords};
+use fabro_petri::providers::{DaytonaCredentials, SandboxProviderConfig};
 use fabro_petri::runtime::{self, RuntimeSpec};
 use fabro_petri::secrets::VaultSecrets;
 use fabro_petri::{HttpRunStore, admission};
@@ -613,7 +614,13 @@ async fn runtime_spec(
             None
         }
     };
+    let daytona = vault
+        .read()
+        .await
+        .get(EnvVars::DAYTONA_API_KEY)
+        .map(|key| DaytonaCredentials::from_api_key(key.to_owned(), provider_env));
     Ok(RuntimeSpec {
+        sandbox: SandboxProviderConfig::from_lookup(daytona, provider_env),
         settings_toml: None,
         mcp_catalog_toml: None,
         model_client,
@@ -621,4 +628,13 @@ async fn runtime_spec(
         fabro_home,
         run_tools,
     })
+}
+
+/// Non-secret provider selection inherited from the server.
+#[expect(
+    clippy::disallowed_methods,
+    reason = "worker boundary snapshots inherited provider selection"
+)]
+fn provider_env(name: &str) -> Option<String> {
+    std::env::var(name).ok()
 }

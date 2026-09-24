@@ -5,6 +5,7 @@ use anyhow::{Result, anyhow};
 use fabro_api::types;
 use fabro_config::{RunLayer, SettingsLayer, WorkflowSettingsBuilder, project};
 use fabro_manifest::CollectedWorkflowClosure;
+use fabro_petri::providers::SandboxProviderConfig;
 use fabro_petri::run_graph;
 use fabro_petri::runtime::RuntimeSpec;
 
@@ -55,6 +56,7 @@ fn offline_runtime(run: Option<&RunLayer>) -> RuntimeSpec {
         ..SettingsLayer::default()
     };
     RuntimeSpec {
+        sandbox:          SandboxProviderConfig::default(),
         settings_toml:    toml::to_string(&layer).ok(),
         mcp_catalog_toml: None,
         model_client:     None,

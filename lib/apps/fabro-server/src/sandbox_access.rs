@@ -21,7 +21,7 @@
 //! Credentials arrive explicitly. Nothing here reads the process
 //! environment for a secret: the Daytona key comes from the vault through
 //! [`DaytonaCredentials`]. The Docker client resolves its endpoint from the
-//! same variables Petri forwards to its Docker plugin (`DOCKER_HOST` and
+//! same variables Fabro forwards to its worker (`DOCKER_HOST` and
 //! its TLS companions), so the server and the run's containers meet on one
 //! daemon.
 
@@ -32,7 +32,8 @@ use std::time::Duration;
 
 use anyhow::Context as _;
 use fabro_config::Storage;
-use fabro_static::EnvVars;
+use fabro_petri::providers;
+pub(crate) use fabro_petri::providers::DaytonaCredentials;
 use fabro_types::settings::server::{
     SandboxPluginSettings, ServerSandboxProviderSettings, ServerSandboxProvidersSettings,
 };
@@ -46,8 +47,6 @@ use sandbox_driver::{
     Sandbox, SandboxFilter, SandboxId, SandboxProvider, SandboxSource, SandboxSpec, SandboxState,
     WaitOptions,
 };
-use sandbox_driver_daytona::{DaytonaConfig, DaytonaProvider};
-use sandbox_driver_docker::DockerProvider;
 use sandbox_driver_host::HostProvider;
 use sandbox_driver_protocol::{PluginConfig, PluginSupervisor};
 use tokio::sync::OnceCell;
@@ -63,77 +62,8 @@ pub(crate) const PETRI_RUN_LABEL: &str = "petri.run";
 /// it up under the same name.
 const PLUGIN_BINARY_PREFIX: &str = "sandbox-driver";
 
-/// `User-Agent` Fabro presents to remote sandbox control planes.
-const USER_AGENT: &str = concat!("fabro-server/", env!("CARGO_PKG_VERSION"));
-
 /// Budget for the credential probe `fabro doctor` and the install flow run.
 pub(crate) const DAYTONA_CREDENTIAL_PROBE_TIMEOUT: Duration = Duration::from_secs(20);
-
-/// Explicit Daytona credentials: the SDK's configuration with the API key
-/// always present and a `Debug` that never prints it. The process
-/// environment is never consulted.
-#[derive(Clone)]
-pub(crate) struct DaytonaCredentials(DaytonaConfig);
-
-impl DaytonaCredentials {
-    /// Credentials for `api_key` against Daytona's public control plane,
-    /// presenting Fabro's `User-Agent`.
-    #[must_use]
-    pub(crate) fn new(api_key: String) -> Self {
-        Self(DaytonaConfig {
-            api_key: Some(api_key),
-            user_agent: Some(USER_AGENT.to_string()),
-            ..DaytonaConfig::default()
-        })
-    }
-
-    /// Credentials for a vault API key, with the control-plane URL and
-    /// organization taken from `lookup` (server configuration). Nothing is
-    /// read implicitly.
-    pub(crate) fn from_api_key(api_key: String, lookup: impl Fn(&str) -> Option<String>) -> Self {
-        Self::new(api_key)
-            .with_api_url(
-                lookup(EnvVars::DAYTONA_API_URL).or_else(|| lookup(EnvVars::DAYTONA_SERVER_URL)),
-            )
-            .with_organization_id(lookup(EnvVars::DAYTONA_ORGANIZATION_ID))
-    }
-
-    /// The control-plane URL; Daytona's public API when `None`.
-    #[must_use]
-    pub(crate) fn with_api_url(mut self, api_url: Option<String>) -> Self {
-        self.0.api_url = api_url;
-        self
-    }
-
-    #[must_use]
-    pub(crate) fn with_organization_id(mut self, organization_id: Option<String>) -> Self {
-        self.0.organization_id = organization_id;
-        self
-    }
-
-    /// A shared HTTP client; tests pass a no-proxy client here.
-    #[must_use]
-    pub(crate) fn with_http_client(mut self, http_client: Option<fabro_http::HttpClient>) -> Self {
-        self.0.http_client = http_client;
-        self
-    }
-
-    /// The SDK configuration the driver's Daytona provider connects with.
-    #[must_use]
-    fn config(&self) -> &DaytonaConfig {
-        &self.0
-    }
-}
-
-impl std::fmt::Debug for DaytonaCredentials {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("DaytonaCredentials")
-            .field("api_url", &self.0.api_url)
-            .field("organization_id", &self.0.organization_id)
-            .field("target", &self.0.target)
-            .finish_non_exhaustive()
-    }
-}
 
 /// What the server needs to reach every provider a run record can name:
 /// its provider settings (which kinds are enabled, which run as plugins),
@@ -236,19 +166,15 @@ pub(crate) async fn connect_provider(
     };
     Ok(match kind.bundled() {
         Some(BundledProvider::Local) => Arc::new(HostProvider::new()),
-        Some(BundledProvider::Docker) => {
-            Arc::new(DockerProvider::connect_unverified().map_err(driver)?)
-        }
+        Some(BundledProvider::Docker) => providers::connect_docker().map_err(driver)?,
         Some(BundledProvider::Daytona) => {
             let credentials = access
                 .daytona
                 .as_ref()
                 .ok_or(ConnectError::MissingDaytonaCredentials)?;
-            Arc::new(
-                DaytonaProvider::connect_explicit(credentials.config().clone())
-                    .await
-                    .map_err(driver)?,
-            )
+            providers::connect_daytona(credentials)
+                .await
+                .map_err(driver)?
         }
         None => {
             let plugin = settings
@@ -1239,22 +1165,6 @@ mod tests {
         assert_eq!(config.args, vec!["--flag"]);
         assert_eq!(config.env.get("A").map(String::as_str), Some("1"));
         assert_eq!(config.inherit_env, vec!["PATH"]);
-    }
-
-    #[test]
-    fn daytona_credentials_debug_never_prints_the_key() {
-        let credentials = DaytonaCredentials::from_api_key("dtn_secret_key".to_string(), |name| {
-            (name == EnvVars::DAYTONA_ORGANIZATION_ID).then(|| "org-1".to_string())
-        });
-        // The rendering stays out of the assertion messages: a failure must
-        // not print the key it is checking for.
-        let rendered = format!("{credentials:?}");
-        assert!(!rendered.contains("dtn_secret_key"));
-        assert!(rendered.contains("org-1"));
-        assert_eq!(
-            credentials.config().api_key.as_deref(),
-            Some("dtn_secret_key")
-        );
     }
 
     #[test]

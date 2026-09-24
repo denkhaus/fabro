@@ -50,6 +50,7 @@ use fabro_petri::recovery::{self, Recovery, RecoveryRequest};
 use fabro_petri::runtime::{self, RuntimeSpec};
 use fabro_petri::secrets::VaultSecrets;
 use fabro_petri::{SqliteRunStore, admission, projection, run_graph};
+use fabro_static::EnvVars;
 use fabro_store::platform_records::{RunLifecycleKind, RunLifecycleRecord};
 use fabro_types::settings::McpTransport;
 use fabro_types::settings::run::{ApprovalMode, McpServerSettings, RunMode};
@@ -94,6 +95,7 @@ pub(crate) fn runtime_spec(
         }
     };
     RuntimeSpec {
+        sandbox: state.sandbox_provider_config(None),
         settings_toml,
         mcp_catalog_toml,
         model_client,
@@ -456,6 +458,9 @@ pub(crate) async fn execute(state: Arc<AppState>, run_id: RunId) {
         ))),
         &run_state.spec.settings.run,
     );
+    let mut runtime = runtime_spec(&state, &eligible, dry_run);
+    runtime.sandbox =
+        state.sandbox_provider_config(vault.get(EnvVars::DAYTONA_API_KEY).map(str::to_owned));
     let request = RunRequest {
         run_id: run_id.to_string(),
         run_dir: run_dir.join("petri"),
@@ -468,7 +473,7 @@ pub(crate) async fn execute(state: Arc<AppState>, run_id: RunId) {
                 .observe_store(Arc::new(SqliteRunStore::new(state.db_pool.clone()))),
             state: Arc::clone(&state),
         }),
-        runtime: runtime_spec(&state, &eligible, dry_run),
+        runtime,
         provider: run_state.spec.settings.run.environment.provider.clone(),
         cancel,
         // The in-process test path drives no pause: the server's transport

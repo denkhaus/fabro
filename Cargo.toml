@@ -88,9 +88,7 @@ tokio-tungstenite = { version = "0.26", features = ["rustls-tls-webpki-roots"] }
 futures-util = "0.3"
 # sandbox-driver: the sandbox provider layer. Bundled Host, Docker, and
 # Daytona providers link in-process; third-party providers run as stdio
-# plugins through sandbox-driver-protocol. The CI plugin jobs install the
-# driver executables at the commit `Cargo.lock` resolves `sandbox-driver` to,
-# so the plugins and the in-process driver are one build.
+# plugins through sandbox-driver-protocol.
 sandbox-driver = { git = "https://github.com/lithoscomputer/sandbox-driver", branch = "main" }
 sandbox-driver-protocol = { git = "https://github.com/lithoscomputer/sandbox-driver", branch = "main" }
 sandbox-driver-host = { git = "https://github.com/lithoscomputer/sandbox-driver", branch = "main" }

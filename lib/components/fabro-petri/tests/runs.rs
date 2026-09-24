@@ -2,22 +2,13 @@
 //! memory on the stub registry, and a command-only workflow on the host
 //! sandbox through the real step registry.
 //!
-//! Every run, stubbed or real, acquires its scope's environment through the
-//! sandbox-driver host plugin, so both tests skip when that executable is not
-//! found, unless `FABRO_REQUIRE_SANDBOX_PLUGINS` is set. Fabro's CI installs
-//! the plugin on `PATH` in the sandbox-plugins job and requires it there.
+//! Built-in Host scopes run in process without a plugin executable.
 
-#![expect(
-    clippy::disallowed_methods,
-    reason = "the tests locate the plugin executable through the process environment"
-)]
-#![expect(clippy::print_stderr, reason = "a skipped test says why on its stderr")]
-
-use std::env;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
+use fabro_petri::providers::{self, SandboxProviderConfig};
 use petri_execution::host::{self, HostRun};
 use petri_execution::inspect::{self, RunInspection};
 use petri_frontend_fabro::Fabro;
@@ -27,10 +18,6 @@ use petri_runtime::ir::RunStatus;
 use petri_runtime::{RunOptions, Runtime};
 use petri_store::{Access, MemoryRunStore, RunKey, RunStore as _};
 use tokio::fs;
-
-const HOST_PLUGIN: &str = "sandbox-driver-host";
-const HOST_PLUGIN_OVERRIDE: &str = "PETRI_SANDBOX_HOST_PLUGIN";
-const REQUIRE_ENV: &str = "FABRO_REQUIRE_SANDBOX_PLUGINS";
 
 /// A command-only workflow: one script stage between start and exit.
 const COMMAND_WORKFLOW: &str = r#"digraph Command {
@@ -46,27 +33,6 @@ const COMMAND_SETTINGS: &str = "_version = 1\n\n[workflow]\ngraph = \"workflow.f
 /// The `.fabro/workflows/hello` bundle checked into this repository.
 fn hello_bundle() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../.fabro/workflows/hello")
-}
-
-/// The host plugin as Petri's lookup finds it: the override variable, else
-/// the executable on `PATH`. `None`, after saying so, when the test should
-/// skip; a panic when the environment forbids a skip.
-fn host_plugin() -> Option<PathBuf> {
-    let found = env::var_os(HOST_PLUGIN_OVERRIDE)
-        .map(PathBuf::from)
-        .or_else(|| {
-            env::split_paths(&env::var_os("PATH")?)
-                .map(|dir| dir.join(HOST_PLUGIN))
-                .find(|candidate| candidate.is_file())
-        });
-    if found.is_none() {
-        assert!(
-            env::var_os(REQUIRE_ENV).is_none(),
-            "{REQUIRE_ENV} is set, but {HOST_PLUGIN} is not on PATH and {HOST_PLUGIN_OVERRIDE} is unset"
-        );
-        eprintln!("skipping: {HOST_PLUGIN} is not on PATH and {HOST_PLUGIN_OVERRIDE} is unset");
-    }
-    found
 }
 
 /// Write a bundle's files into `<root>/.fabro/workflows/<name>` so the
@@ -131,12 +97,9 @@ async fn run_workflow(
 /// The `hello` bundle, whose one stage is a prompt, completes on the stub
 /// registry with no model, and its record in the memory store says so. The
 /// stubbed stages never run a command, but the run still takes its host
-/// scope through the plugin.
+/// scope through the in-process provider.
 #[tokio::test]
 async fn the_hello_bundle_runs_in_memory_on_the_stub_registry() {
-    if host_plugin().is_none() {
-        return;
-    }
     let root = tempfile::tempdir().expect("a temp dir");
     let bundle = hello_bundle();
     let workflow_text = fs::read_to_string(bundle.join("workflow.fabro"))
@@ -151,9 +114,15 @@ async fn the_hello_bundle_runs_in_memory_on_the_stub_registry() {
     ])
     .await;
     let store = Arc::new(MemoryRunStore::new());
-    let rt = petri_attractor_steps::register_stubs(Runtime::standard().frontend(Fabro::new()))
-        .store(store.clone())
-        .options(run_options(&root.path().join("run"), "hello"));
+    let rt = petri_attractor_steps::register_stubs(
+        Runtime::standard()
+            .in_process_providers(providers::built_in_providers(
+                &SandboxProviderConfig::default(),
+            ))
+            .frontend(Fabro::new()),
+    )
+    .store(store.clone())
+    .options(run_options(&root.path().join("run"), "hello"));
 
     let inspection = run_workflow(&rt, &store, "hello", &workflow).await;
 
@@ -167,9 +136,6 @@ async fn the_hello_bundle_runs_in_memory_on_the_stub_registry() {
 /// real step registry, and its record in the memory store says so.
 #[tokio::test]
 async fn a_command_workflow_runs_on_the_host_sandbox() {
-    if host_plugin().is_none() {
-        return;
-    }
     let root = tempfile::tempdir().expect("a temp dir");
     let workflow = install_bundle(root.path(), "command", &[
         ("workflow.fabro", COMMAND_WORKFLOW),
@@ -177,9 +143,15 @@ async fn a_command_workflow_runs_on_the_host_sandbox() {
     ])
     .await;
     let store = Arc::new(MemoryRunStore::new());
-    let rt = petri_attractor_steps::register(Runtime::standard().frontend(Fabro::new()))
-        .store(store.clone())
-        .options(run_options(&root.path().join("run"), "command"));
+    let rt = petri_attractor_steps::register(
+        Runtime::standard()
+            .in_process_providers(providers::built_in_providers(
+                &SandboxProviderConfig::default(),
+            ))
+            .frontend(Fabro::new()),
+    )
+    .store(store.clone())
+    .options(run_options(&root.path().join("run"), "command"));
 
     let inspection = run_workflow(&rt, &store, "command", &workflow).await;
 

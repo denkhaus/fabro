@@ -1,9 +1,7 @@
 //! A large stage value leaves the run's records for Fabro's blob table
 //! under `blob://sha256/<hex>`, and comes back from the same table.
 //!
-//! The run takes its host scope through the sandbox-driver host plugin, so
-//! the test skips, and says why, when the executable is not found, unless
-//! `FABRO_REQUIRE_SANDBOX_PLUGINS` is set.
+//! Built-in Host scopes run in process without a plugin executable.
 
 mod support;
 
@@ -17,7 +15,7 @@ use fabro_petri::runtime::RuntimeSpec;
 use fabro_store::{BlobStore, test_support};
 use fabro_types::BlobHash;
 use petri_attractor_steps::blobs::{BLOB_REF_PREFIX, OFFLOAD_THRESHOLD, parse_blob_ref};
-use support::{SETTINGS, Silent, admit, all_records, host_plugin, no_questions, run_request};
+use support::{SETTINGS, Silent, admit, all_records, no_questions, run_request};
 
 /// One line of the command's output.
 const LINE: &str = "xxxxxxxx";
@@ -38,9 +36,6 @@ fn workflow(lines: usize) -> String {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_large_output_round_trips_through_the_blob_table() {
-    if host_plugin().is_none() {
-        return;
-    }
     let root = tempfile::tempdir().expect("a temp dir");
     let pool = test_support::in_memory_pool_with(&[
         fabro_db::BLOBS_MIGRATION_SQL,

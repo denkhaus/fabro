@@ -6,9 +6,7 @@
 //! timeout with the gate's default, an auto-approved run answers itself,
 //! and a cancelled run interrupts its question.
 //!
-//! Every run takes its host scope through the sandbox-driver host plugin,
-//! so the tests skip, and say why, when the executable is not found,
-//! unless `FABRO_REQUIRE_SANDBOX_PLUGINS` is set.
+//! Built-in Host scopes run in process without a plugin executable.
 
 mod support;
 
@@ -25,7 +23,7 @@ use fabro_petri::runtime::RuntimeSpec;
 use fabro_types::{Principal, QuestionType, SystemActorKind};
 use petri_execution::{Delivery, InterviewReceipt, RECEIPT_FILE, ReplyRecord};
 use petri_store::MemoryRunStore;
-use support::{SETTINGS, admit, all_records, host_plugin, run_request, wait_until};
+use support::{SETTINGS, admit, all_records, run_request, wait_until};
 use tokio::fs;
 
 /// A board of every notice the adapter posted.
@@ -175,9 +173,6 @@ impl Gate {
 /// submitted under the posted id, as the API delivers it, routes the gate.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_gate_answered_under_the_posted_id_routes_on_the_answer() {
-    if host_plugin().is_none() {
-        return;
-    }
     let gate = Gate::new();
     let workflow = one_gate(&gate.markers, "");
     let runtime = RuntimeSpec::default();
@@ -263,9 +258,6 @@ async fn a_gate_answered_under_the_posted_id_routes_on_the_answer() {
 /// the other order, lands on its own branch.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn two_parallel_gates_each_bind_their_own_answer() {
-    if host_plugin().is_none() {
-        return;
-    }
     let gate = Gate::new();
     let workflow = two_gates(&gate.markers);
     let runtime = RuntimeSpec::default();
@@ -334,9 +326,6 @@ async fn two_parallel_gates_each_bind_their_own_answer() {
 /// the default's branch runs.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn an_unanswered_question_expires_with_the_gates_default() {
-    if host_plugin().is_none() {
-        return;
-    }
     let gate = Gate::new();
     let workflow = one_gate(
         &gate.markers,
@@ -384,9 +373,6 @@ async fn an_unanswered_question_expires_with_the_gates_default() {
 /// engine, and still posts the question and its answer.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn an_auto_approved_run_answers_yes_at_once() {
-    if host_plugin().is_none() {
-        return;
-    }
     let gate = Gate::new();
     let workflow = one_gate(&gate.markers, "");
     let runtime = RuntimeSpec::default();
@@ -427,9 +413,6 @@ async fn an_auto_approved_run_answers_yes_at_once() {
 /// question is interrupted, the gate fails closed and the run is cancelled.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_cancelled_run_interrupts_its_pending_question() {
-    if host_plugin().is_none() {
-        return;
-    }
     let gate = Gate::new();
     let workflow = one_gate(&gate.markers, "");
     let runtime = RuntimeSpec::default();

@@ -6,9 +6,7 @@
 //! concurrent child executions' events.
 //!
 //! The runs execute in the server process under the handler-registry test
-//! override and take their host scope through the sandbox-driver host
-//! plugin, so the tests skip, and say why, when the executable is not
-//! found (see `petri.rs`).
+//! override and take their Host scope through the built-in provider.
 //!
 //! With `FABRO_CAPTURE_PETRI_FIXTURES` set, a scenario also writes its
 //! settled projection and full stream as JSON under the web app's test
@@ -17,7 +15,7 @@
 
 #![expect(
     clippy::disallowed_methods,
-    reason = "the tests locate the plugin executable and the capture switch through the process environment"
+    reason = "the tests read the capture switch through the process environment"
 )]
 #![expect(clippy::print_stderr, reason = "a skipped test says why on its stderr")]
 
@@ -35,7 +33,7 @@ use http_body_util::BodyExt;
 use tokio::time::timeout;
 use tower::ServiceExt;
 
-use super::petri::{PLAIN_SETTINGS, host_plugin, intent, register_version, settled_state};
+use super::petri::{PLAIN_SETTINGS, intent, register_version, settled_state};
 use crate::helpers::{
     api, create_and_start_run_from_intent, repo_root, response_json, run_json, settings_from_toml,
     test_app_state_with_options, test_app_with_scheduler, wait_for_run_status,
@@ -231,9 +229,6 @@ fn wait_for_marker(path: &std::path::Path) {
 /// gap, no duplicate, with the notice between the branches' events.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_reconnecting_client_receives_every_stream_item_once_in_order() {
-    if host_plugin().is_none() {
-        return;
-    }
     let workspace = tempfile::tempdir().expect("workspace tempdir");
     let markers = tempfile::tempdir().expect("marker tempdir");
     let settings = settings_from_toml("_version = 1\n\n[run.environment]\nid = \"local\"\n");

@@ -189,6 +189,11 @@ enabled = true
 enabled = true
 ```
 
+The built-in `local`, `docker`, and `daytona` providers run in process. `local` selects Petri's
+Host provider. Built-in entries reject `path`, `sha256`, `dev`, `args`, `env`, and `inherit_env`;
+no plugin executable or checksum is needed. The legacy built-in
+`PETRI_SANDBOX_{HOST,DOCKER,DAYTONA}_{PLUGIN,SHA256}` variables are ignored.
+
 Any other key names a [sandbox-driver](https://github.com/lithoscomputer/sandbox-driver) plugin:
 an executable that speaks the sandbox-driver JSON-RPC protocol on stdin and stdout. The kind must
 be lowercase ASCII letters, digits, and interior hyphens. The plugin starts with a scrubbed

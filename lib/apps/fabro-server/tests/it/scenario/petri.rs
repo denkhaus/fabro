@@ -7,14 +7,11 @@
 //! run, which the CLI's scenario tests cover with the real binary
 //! (`lib/apps/fabro-cli/tests/it/scenario/petri.rs`).
 //!
-//! The runs that execute take their host scope through the sandbox-driver
-//! host plugin, so those tests skip, and say why, when the executable is not
-//! found, unless `FABRO_REQUIRE_SANDBOX_PLUGINS` is set. The create-time
-//! refusals need no plugin and always run.
+//! Built-in Host scopes run in process without a plugin executable.
 
 #![expect(
     clippy::disallowed_methods,
-    reason = "the tests locate the plugin executable through the process environment"
+    reason = "the tests inspect backend availability through the process environment"
 )]
 #![expect(clippy::print_stderr, reason = "a skipped test says why on its stderr")]
 
@@ -46,11 +43,7 @@ use crate::helpers::{
     test_settings, wait_for_run_status,
 };
 
-const HOST_PLUGIN: &str = "sandbox-driver-host";
-const HOST_PLUGIN_OVERRIDE: &str = "PETRI_SANDBOX_HOST_PLUGIN";
-const DOCKER_PLUGIN: &str = "sandbox-driver-docker";
-const DOCKER_PLUGIN_OVERRIDE: &str = "PETRI_SANDBOX_DOCKER_PLUGIN";
-const REQUIRE_ENV: &str = "FABRO_REQUIRE_SANDBOX_PLUGINS";
+const REQUIRE_ENV: &str = "FABRO_REQUIRE_SANDBOX_BACKENDS";
 
 const OPENAI_MODEL: &str = "gpt-5.4";
 
@@ -110,46 +103,8 @@ const PARALLEL_DOT: &str = r#"digraph Parallel {
 
 pub(super) const PLAIN_SETTINGS: &str = "_version = 1\n\n[workflow]\ngraph = \"workflow.fabro\"\n";
 
-/// The host plugin as Petri's lookup finds it: the override variable, else
-/// the executable on `PATH`. `None`, after saying so, when the test should
-/// skip; a panic when the environment forbids a skip.
-pub(super) fn host_plugin() -> Option<PathBuf> {
-    let found = env::var_os(HOST_PLUGIN_OVERRIDE)
-        .map(PathBuf::from)
-        .or_else(|| {
-            env::split_paths(&env::var_os("PATH")?)
-                .map(|dir| dir.join(HOST_PLUGIN))
-                .find(|candidate| candidate.is_file())
-        });
-    if found.is_none() {
-        assert!(
-            env::var_os(REQUIRE_ENV).is_none(),
-            "{REQUIRE_ENV} is set, but {HOST_PLUGIN} is not on PATH and {HOST_PLUGIN_OVERRIDE} is unset"
-        );
-        eprintln!("skipping: {HOST_PLUGIN} is not on PATH and {HOST_PLUGIN_OVERRIDE} is unset");
-    }
-    found
-}
-
-/// The Docker plugin as Petri's lookup finds it, with a daemon that
-/// answers. `None`, after saying so, when the test should skip; a panic
-/// when the environment forbids a skip and the plugin is missing.
-fn docker_plugin() -> Option<PathBuf> {
-    let found = env::var_os(DOCKER_PLUGIN_OVERRIDE)
-        .map(PathBuf::from)
-        .or_else(|| {
-            env::split_paths(&env::var_os("PATH")?)
-                .map(|dir| dir.join(DOCKER_PLUGIN))
-                .find(|candidate| candidate.is_file())
-        });
-    let Some(found) = found else {
-        assert!(
-            env::var_os(REQUIRE_ENV).is_none(),
-            "{REQUIRE_ENV} is set, but {DOCKER_PLUGIN} is not on PATH and {DOCKER_PLUGIN_OVERRIDE} is unset"
-        );
-        eprintln!("skipping: {DOCKER_PLUGIN} is not on PATH and {DOCKER_PLUGIN_OVERRIDE} is unset");
-        return None;
-    };
+/// A reachable Docker daemon. CI requires the backend instead of skipping.
+fn docker_available() -> bool {
     let daemon = Command::new("docker")
         .args(["version", "--format", "{{.Server.Version}}"])
         .stdout(Stdio::null())
@@ -157,10 +112,13 @@ fn docker_plugin() -> Option<PathBuf> {
         .status()
         .is_ok_and(|status| status.success());
     if !daemon {
+        assert!(
+            env::var_os(REQUIRE_ENV).is_none(),
+            "{REQUIRE_ENV} is set, but no Docker daemon answers"
+        );
         eprintln!("skipping: no Docker daemon answers");
-        return None;
     }
-    Some(found)
+    daemon
 }
 
 /// Register a version whose entrypoint is `workflow.fabro`, with the given
@@ -290,9 +248,6 @@ async fn create_run_response(app: &axum::Router, intent: serde_json::Value) -> s
 /// run succeeded, and Petri's record of the run says the same.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn the_hello_bundle_runs_on_petri() {
-    if host_plugin().is_none() {
-        return;
-    }
     let workspace = tempfile::tempdir().expect("workspace tempdir");
     let twin = twin_openai().await;
     let namespace = format!("{}::{}", module_path!(), line!());
@@ -367,9 +322,6 @@ async fn the_hello_bundle_runs_on_petri() {
 /// A command-only bundle runs on Petri, and Petri's record agrees.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_command_bundle_runs_on_petri() {
-    if host_plugin().is_none() {
-        return;
-    }
     let workspace = tempfile::tempdir().expect("workspace tempdir");
     let settings = settings_from_toml("_version = 1\n\n[run.environment]\nid = \"local\"\n");
     let state = test_app_state_with_options(settings, 5);
@@ -413,9 +365,6 @@ async fn a_command_bundle_runs_on_petri() {
 /// under the fork, and the fork carries the branch results.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_parallel_bundle_projects_its_branches_through_the_server() {
-    if host_plugin().is_none() {
-        return;
-    }
     let workspace = tempfile::tempdir().expect("workspace tempdir");
     let settings = settings_from_toml("_version = 1\n\n[run.environment]\nid = \"local\"\n");
     let state = test_app_state_with_options(settings, 5);
@@ -574,9 +523,6 @@ async fn wait_for_question(app: &axum::Router, run_id: &str) -> serde_json::Valu
 /// interview as a legacy stage's would.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_human_gate_is_answered_through_the_questions_api() {
-    if host_plugin().is_none() {
-        return;
-    }
     let workspace = tempfile::tempdir().expect("workspace tempdir");
     let markers = tempfile::tempdir().expect("marker tempdir");
     let settings = settings_from_toml("_version = 1\n\n[run.environment]\nid = \"local\"\n");
@@ -696,9 +642,6 @@ async fn a_human_gate_is_answered_through_the_questions_api() {
 /// `sandbox cp` reach the sandbox after the run.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_runs_projection_carries_its_host_sandbox_instance() {
-    if host_plugin().is_none() {
-        return;
-    }
     let workspace = tempfile::tempdir().expect("workspace tempdir");
     let settings = settings_from_toml("_version = 1\n\n[run.environment]\nid = \"local\"\n");
     let state = test_app_state_with_options(settings, 5);
@@ -764,9 +707,6 @@ async fn a_runs_projection_carries_its_host_sandbox_instance() {
 /// host workspace Petri kept along with the run.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn deleting_a_run_prunes_its_host_workspace_through_petri() {
-    if host_plugin().is_none() {
-        return;
-    }
     let workspace = tempfile::tempdir().expect("workspace tempdir");
     let settings = settings_from_toml("_version = 1\n\n[run.environment]\nid = \"local\"\n");
     let state = test_app_state_with_options(settings, 5);
@@ -884,9 +824,6 @@ fn delete(run_id: &str) -> Request<Body> {
 /// end after the delete brings nothing back.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_delete_right_after_the_run_reads_ended_is_accepted() {
-    if host_plugin().is_none() {
-        return;
-    }
     let workspace = tempfile::tempdir().expect("workspace tempdir");
     let settings = settings_from_toml("_version = 1\n\n[run.environment]\nid = \"local\"\n");
     let state = test_app_state_with_options(settings, 5);
@@ -955,7 +892,7 @@ async fn a_delete_right_after_the_run_reads_ended_is_accepted() {
 /// attaches to it on the daemon.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_runs_projection_carries_its_docker_sandbox_instance() {
-    if docker_plugin().is_none() {
+    if !docker_available() {
         return;
     }
     let settings = settings_from_toml("_version = 1\n\n[run.environment]\nid = \"docker\"\n");
@@ -1072,7 +1009,7 @@ async fn a_runs_projection_carries_its_docker_sandbox_instance() {
 /// run label.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn the_server_attaches_to_the_container_petri_created() {
-    if docker_plugin().is_none() {
+    if !docker_available() {
         return;
     }
     let twin = twin_openai().await;
@@ -1293,7 +1230,7 @@ fn get(path: &str) -> Request<Body> {
 
 /// The image the server's `docker-small` environment names in the tests
 /// below: a runner image with `git` for the checkpoint commit, and not the
-/// plugin's default, so the container proves the catalog's image reached it.
+/// provider's default, so the container proves the catalog's image reached it.
 const CATALOG_IMAGE: &str = "ghcr.io/lithoscomputer/ubuntu-22.04:slim";
 
 /// A Docker environment in the server's catalog, with the image it runs.
@@ -1397,7 +1334,7 @@ async fn admitted_root_graph(app: &axum::Router, run_id: &str) -> serde_json::Va
 /// A bundle that names a server environment it does not declare admits: the
 /// catalog's `[environments.docker-small]` reaches Petri through the
 /// settings layer, its image lands on the lowered environment, and, with
-/// the Docker plugin and a daemon, the run's container runs that image.
+/// a Docker daemon, the run's container runs that image.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_bundle_naming_a_catalog_environment_runs_on_docker_with_its_image() {
     let settings = settings_from_toml("_version = 1\n\n[run.environment]\nid = \"local\"\n");
@@ -1431,7 +1368,7 @@ async fn a_bundle_naming_a_catalog_environment_runs_on_docker_with_its_image() {
         graph["params"]["fabro.launch"]
     );
 
-    if docker_plugin().is_none() {
+    if !docker_available() {
         return;
     }
     start_run(&app, &run_id).await;
@@ -1583,9 +1520,6 @@ const AGENT_DOT: &str = r#"digraph Agent {
 /// server's tool to the model.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_bundle_naming_a_catalog_mcp_server_lists_its_tools_to_the_model() {
-    if host_plugin().is_none() {
-        return;
-    }
     let workspace = tempfile::tempdir().expect("workspace tempdir");
     let twin = twin_openai().await;
     let namespace = format!("{}::{}", module_path!(), line!());
@@ -1770,9 +1704,6 @@ async fn assert_run_goal(app: &axum::Router, namespace: &str, run_id: &str, goal
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_goal_override_is_the_goal_the_stages_execute_with() {
     const GOAL: &str = "Add a limerick to the README instead of a haiku";
-    if host_plugin().is_none() {
-        return;
-    }
     let [(workflow_path, workflow), (settings_path, settings)] = hello_files();
     let (_state, app, namespace, run_id) = run_hello_agent(
         &[(workflow_path, &workflow), (settings_path, &settings)],
@@ -1788,9 +1719,6 @@ async fn a_goal_override_is_the_goal_the_stages_execute_with() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_run_goal_file_layer_is_the_goal_the_stages_execute_with() {
     const GOAL: &str = "Write a limerick about workflow engines into the README";
-    if host_plugin().is_none() {
-        return;
-    }
     let [(workflow_path, workflow), _] = hello_files();
     let settings =
         "_version = 1\n[workflow]\ngraph = \"workflow.fabro\"\n[run.goal]\nfile = \"goal.md\"\n";

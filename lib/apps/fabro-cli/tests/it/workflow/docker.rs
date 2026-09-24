@@ -1,11 +1,7 @@
 //! The Docker provider for the workflow scenarios: an environment on
 //! [`DOCKER_IMAGE`], on an isolated server.
 //!
-//! Petri serves every provider through a sandbox-driver plugin executable it
-//! finds on `PATH` (`sandbox-driver-docker` here); CI installs the
-//! executables at the `sandbox-driver` commit in `Cargo.lock`, and a developer
-//! installs them with
-//! `cargo install --locked --git https://github.com/lithoscomputer/sandbox-driver --rev <rev> sandbox-driver-host sandbox-driver-docker`.
+//! Petri uses the built-in Docker provider; no plugin executable is needed.
 //! A scenario configured here runs against its own server so the environment
 //! it creates never leaks into the shared session server.
 
@@ -18,7 +14,7 @@
     reason = "a skipped scenario says why on the test's stderr"
 )]
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::{Command, Stdio};
 
 use fabro_test::{TestContext, expect_reqwest_status};
@@ -26,11 +22,10 @@ use serde_json::json;
 
 use crate::cmd::support::server_endpoint;
 
-/// Set in CI so a missing executable or daemon fails the test instead of
+/// Set in CI so a missing daemon or image fails the test instead of
 /// skipping it.
-const REQUIRE_ENV: &str = "FABRO_REQUIRE_SANDBOX_PLUGINS";
+const REQUIRE_ENV: &str = "FABRO_REQUIRE_SANDBOX_BACKENDS";
 const DOCKER_IMAGE: &str = "buildpack-deps:noble";
-const DOCKER_PLUGIN: &str = "sandbox-driver-docker";
 /// The environment id the scenario selects with `--environment`.
 pub(crate) const ENVIRONMENT: &str = "docker";
 
@@ -39,17 +34,6 @@ pub(crate) const ENVIRONMENT: &str = "docker";
 /// prerequisites are missing and the test should skip.
 pub(crate) fn configure(context: &mut TestContext) -> Option<&'static str> {
     let required = std::env::var_os(REQUIRE_ENV).is_some();
-    if plugin_executable().is_none() {
-        assert!(
-            !required,
-            "{REQUIRE_ENV} is set but {DOCKER_PLUGIN} is not on PATH"
-        );
-        eprintln!(
-            "skipping: {DOCKER_PLUGIN} is not on PATH; install the sandbox-driver executables at \
-             the rev Cargo.toml pins"
-        );
-        return None;
-    }
     if !docker_image_available() {
         assert!(
             !required,
@@ -73,14 +57,6 @@ methods = ["dev-token"]
     context.isolated_server();
     create_environment(&context.storage_dir);
     Some(ENVIRONMENT)
-}
-
-/// The Docker plugin executable on `PATH`, when installed.
-fn plugin_executable() -> Option<PathBuf> {
-    let path = std::env::var_os("PATH")?;
-    std::env::split_paths(&path)
-        .map(|dir| dir.join(DOCKER_PLUGIN))
-        .find(|candidate| candidate.is_file())
 }
 
 fn docker_image_available() -> bool {

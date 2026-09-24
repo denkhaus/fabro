@@ -59,9 +59,12 @@ use crate::checkpoint::{CheckpointKey, RunWorkspaces};
 use crate::platform_records::{PlatformRecordError, PlatformRecords};
 use crate::projection::FoldState;
 use crate::projector::ProjectError;
+use crate::providers::{self, SandboxProviderConfig};
 
 /// One fork to seed.
 pub struct ForkRequest {
+    /// The provider configuration used by this server-side operation.
+    pub sandbox:        SandboxProviderConfig,
     /// The run whose records are copied.
     pub source:         RunId,
     /// The new run's id: its Petri run key and its own run scratch.
@@ -178,6 +181,7 @@ pub async fn fork(request: ForkRequest) -> Result<Forked, ForkError> {
     let mut options = RunOptions::new(&request.fork_run_dir);
     options.run_key = Some(fork_key.clone());
     let runtime = Runtime::standard()
+        .in_process_providers(providers::built_in_providers(&request.sandbox))
         .options(options)
         .store(Arc::clone(&request.store));
     let forked = host::fork_from(&runtime, &*source_logs, request.position, ForkOptions {

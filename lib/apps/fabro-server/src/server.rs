@@ -63,6 +63,7 @@ use fabro_llm::{ClientOptions, FabroClient};
 use fabro_mcp_store::McpServerStore;
 use fabro_petri::controls::{RunControls, SteerError};
 use fabro_petri::projector::Projector;
+use fabro_petri::providers::SandboxProviderConfig;
 use fabro_petri::prune::{self, PruneError, PruneRequest};
 use fabro_redact::redact_jsonl_line;
 use fabro_slack::client::{PostedMessage as SlackPostedMessage, SlackClient};
@@ -1545,6 +1546,18 @@ impl AppState {
             .with_http_client(self.http_client().ok())
     }
 
+    /// The same provider selection for execution, fork and prune; credentials
+    /// arrive from the caller's vault read, never the process environment.
+    pub(crate) fn sandbox_provider_config(
+        &self,
+        daytona_api_key: Option<String>,
+    ) -> SandboxProviderConfig {
+        SandboxProviderConfig::from_lookup(
+            daytona_api_key.map(|key| self.daytona_credentials(key)),
+            |name| self.config_env_lookup(name),
+        )
+    }
+
     /// Everything a reconnect needs to reach a run's provider: the server's
     /// provider settings and the Daytona credentials from the vault (`None`
     /// when no key is stored).
@@ -2875,7 +2888,18 @@ async fn delete_run_sandbox_resource(
         .run_scratch(&id)
         .root()
         .join("petri");
+    let daytona_api_key = state
+        .vault_secret(EnvVars::DAYTONA_API_KEY)
+        .await
+        .map_err(|err| {
+            error!(error = ?err, "Loading sandbox credentials failed");
+            ApiError::new(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "secret store operation failed",
+            )
+        })?;
     let report = prune::prune(PruneRequest {
+        sandbox: state.sandbox_provider_config(daytona_api_key),
         run_id: id.to_string(),
         run_dir,
         store: state.petri_runs.shared_store(),

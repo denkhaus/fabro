@@ -51,21 +51,12 @@ const WORKER_ENV_ALLOWLIST: &[&str] = &[
     EnvVars::AWS_CONTAINER_CREDENTIALS_RELATIVE_URI,
     EnvVars::AWS_CONTAINER_CREDENTIALS_FULL_URI,
     EnvVars::AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE,
-    // Petri's sandbox-driver plugins are resolved in the worker, where a
-    // Petri run executes: the plugin path, checksum and dev-mode overrides
-    // cross with `PATH`, so the worker finds the plugins the server would.
-    // A plugin the server's settings configure is set on top of these by
-    // `sandbox_plugin_env`, for every configured kind.
-    EnvVars::PETRI_SANDBOX_HOST_PLUGIN,
-    EnvVars::PETRI_SANDBOX_HOST_SHA256,
-    EnvVars::PETRI_SANDBOX_DOCKER_PLUGIN,
-    EnvVars::PETRI_SANDBOX_DOCKER_SHA256,
-    EnvVars::PETRI_SANDBOX_DAYTONA_PLUGIN,
-    EnvVars::PETRI_SANDBOX_DAYTONA_SHA256,
+    // Preserve generic plugin configuration. Built-in providers run in process
+    // and never receive executable paths or checksum overrides.
     EnvVars::PETRI_SANDBOX_PLUGIN_DEV,
     EnvVars::PETRI_SANDBOX_DOCKER_HOST_ADDRESS,
     EnvVars::PETRI_SANDBOX_ACTION_HOST_IMAGE,
-    // The Docker daemon selection: the worker's Docker plugin reads these
+    // The Docker daemon selection: the worker's Docker provider reads these
     // from its own process, so the worker's sandboxes go to the daemon the
     // server uses (a remote or TLS daemon, a named context), not the
     // default socket.
@@ -75,10 +66,11 @@ const WORKER_ENV_ALLOWLIST: &[&str] = &[
     EnvVars::DOCKER_API_VERSION,
     EnvVars::DOCKER_CONFIG,
     EnvVars::DOCKER_CONTEXT,
-    // Daytona's control-plane selection, the non-secret half: the plugin
-    // reads them from the worker. The API key comes from the vault, set on
-    // the command by the launch (`WorkerLaunchSpec::daytona_api_key`).
+    // Daytona's non-secret selection. The worker reads the API key from
+    // the vault and supplies it explicitly to the in-process provider.
     EnvVars::DAYTONA_API_URL,
+    EnvVars::DAYTONA_SERVER_URL,
+    EnvVars::DAYTONA_TARGET,
     EnvVars::DAYTONA_ORGANIZATION_ID,
     // A test's checkpoint gates: the worker's hooks hold at a named point
     // until the test releases them, so a crash can be placed there.
@@ -110,8 +102,8 @@ fn apply_worker_env_with(
 
 /// The plugin variables Petri reads in the worker, derived from the
 /// server's `[server.sandbox.providers.<kind>]` settings: for every enabled
-/// kind that carries plugin settings, `PETRI_SANDBOX_<KIND>_PLUGIN` from
-/// its `path` and `PETRI_SANDBOX_<KIND>_SHA256` from its `sha256`, and
+/// third-party kind that carries plugin settings, `PETRI_SANDBOX_<KIND>_PLUGIN`
+/// from its `path` and `PETRI_SANDBOX_<KIND>_SHA256` from its `sha256`, and
 /// `PETRI_SANDBOX_PLUGIN_DEV=1` when any of them sets `dev`. The kind is
 /// uppercased with hyphens as underscores, as Petri names the variable. A
 /// kind whose settings name no path is left to Petri's own lookup
@@ -123,6 +115,9 @@ pub(crate) fn sandbox_plugin_env(
     let mut env = Vec::new();
     let mut dev = false;
     for (kind, plugin) in providers.enabled_plugins() {
+        if kind.bundled().is_some() {
+            continue;
+        }
         let upper = kind.as_str().to_ascii_uppercase().replace('-', "_");
         if let Some(path) = &plugin.path {
             env.push((format!("PETRI_SANDBOX_{upper}_PLUGIN"), path.clone()));
@@ -260,6 +255,11 @@ mod tests {
                 "https://daytona.internal/api".to_string(),
             ),
             ("DAYTONA_ORGANIZATION_ID".to_string(), "org-1".to_string()),
+            (
+                "DAYTONA_SERVER_URL".to_string(),
+                "https://daytona-alias.internal/api".to_string(),
+            ),
+            ("DAYTONA_TARGET".to_string(), "us".to_string()),
             ("DAYTONA_API_KEY".to_string(), "leak".to_string()),
         ]);
         let mut cmd = env_command();
@@ -295,18 +295,18 @@ mod tests {
             Some("xterm-256color")
         );
         assert_eq!(actual.get("NO_COLOR").map(String::as_str), Some("1"));
-        // Petri's plugin overrides cross so the worker resolves the same
-        // sandbox-driver plugins the server would.
-        assert_eq!(
-            actual.get("PETRI_SANDBOX_HOST_PLUGIN").map(String::as_str),
-            Some("/opt/petri/sandbox-driver-host")
-        );
+        // Built-in plugin paths and pins never reach the worker.
+        for kind in ["HOST", "DOCKER", "DAYTONA"] {
+            for suffix in ["PLUGIN", "SHA256"] {
+                assert!(!actual.contains_key(&format!("PETRI_SANDBOX_{kind}_{suffix}")));
+            }
+        }
         assert_eq!(
             actual.get("PETRI_SANDBOX_PLUGIN_DEV").map(String::as_str),
             Some("1")
         );
         // The Docker daemon selection crosses whole, so the worker's Docker
-        // plugin drives the daemon the server uses.
+        // provider drives the daemon the server uses.
         assert_eq!(
             actual.get("DOCKER_HOST").map(String::as_str),
             Some("tcp://build-daemon.internal:2376")
@@ -341,6 +341,11 @@ mod tests {
             actual.get("DAYTONA_ORGANIZATION_ID").map(String::as_str),
             Some("org-1")
         );
+        assert_eq!(
+            actual.get("DAYTONA_SERVER_URL").map(String::as_str),
+            Some("https://daytona-alias.internal/api")
+        );
+        assert_eq!(actual.get("DAYTONA_TARGET").map(String::as_str), Some("us"));
         assert!(!actual.contains_key("DAYTONA_API_KEY"));
         assert_eq!(actual.get("CLICOLOR").map(String::as_str), Some("0"));
         assert_eq!(actual.get("CLICOLOR_FORCE").map(String::as_str), Some("1"));
@@ -395,9 +400,8 @@ mod tests {
     }
 
     /// A configured plugin reaches the worker under the names Petri reads,
-    /// a configured path wins over the ambient variable of the same name,
-    /// a kind the settings leave to `PATH` keeps the ambient one, and a
-    /// disabled kind's plugin never crosses.
+    /// while built-in paths and pins and disabled third-party plugins never
+    /// cross.
     #[tokio::test]
     async fn configured_plugins_reach_the_worker_and_win_over_ambient_variables() {
         let mut providers = ServerSandboxProvidersSettings::default();
@@ -433,6 +437,13 @@ mod tests {
                 "/ambient/sandbox-driver-daytona".to_string(),
             ),
         ]);
+        let mut env = env;
+        for kind in ["HOST", "DOCKER", "DAYTONA"] {
+            env.insert(
+                format!("PETRI_SANDBOX_{kind}_SHA256"),
+                "invalid-pin".to_string(),
+            );
+        }
         let mut cmd = env_command();
         apply_worker_env_with(&mut cmd, &sandbox_plugin_env(&providers), &|name| {
             env.get(name).map(OsString::from)
@@ -453,25 +464,11 @@ mod tests {
             Some("1"),
             "one plugin in dev mode puts the worker's lookup in dev mode"
         );
-        assert_eq!(
-            actual
-                .get("PETRI_SANDBOX_DOCKER_PLUGIN")
-                .map(String::as_str),
-            Some("/opt/fabro/plugins/sandbox-driver-docker"),
-            "the settings win over the ambient variable"
-        );
-        assert_eq!(
-            actual.get("PETRI_SANDBOX_HOST_PLUGIN").map(String::as_str),
-            Some("/ambient/sandbox-driver-host"),
-            "a kind without settings keeps the allowlisted ambient variable"
-        );
-        assert_eq!(
-            actual
-                .get("PETRI_SANDBOX_DAYTONA_PLUGIN")
-                .map(String::as_str),
-            Some("/ambient/sandbox-driver-daytona"),
-            "settings without a path leave the ambient variable in place"
-        );
+        for kind in ["HOST", "DOCKER", "DAYTONA"] {
+            for suffix in ["PLUGIN", "SHA256"] {
+                assert!(!actual.contains_key(&format!("PETRI_SANDBOX_{kind}_{suffix}")));
+            }
+        }
         assert!(
             !actual.contains_key("PETRI_SANDBOX_FLY_IO_PLUGIN"),
             "a disabled kind's plugin does not cross"
