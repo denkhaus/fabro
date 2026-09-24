@@ -53,9 +53,17 @@ Common flags:
 
 See [Server Configuration](/administration/server-configuration) for the full `settings.toml` reference.
 
-### Storage and upgrades
+### Upgrading from SlateDB
 
 Fabro stores current run history and content-addressed blobs in SQLite.
+Upgrading from a release that stored these in SlateDB does not automatically
+import them, so those older runs are not available in the current application.
+
+The upgrade leaves existing SlateDB run history and blobs in their original
+local storage directory or object-store location. Retain that data if you may
+need to recover historical runs using a reader compatible with the older
+storage format.
+
 Artifact files use the separate local or S3 object store configured through
 `[server.artifacts]` in [Server Configuration](/administration/server-configuration).
 
@@ -70,11 +78,10 @@ backups are preserved; further backups use numbered suffixes such as
 rewritten file and its backup. Other settings are preserved by this cleanup,
 and subsequent loads do nothing once the section is absent.
 
-This is configuration cleanup only. It neither imports nor deletes historical
-SlateDB data, and the current server does not read that data. The settings
-backup contains configuration, not run history or blobs.
+This cleanup changes configuration only. The settings backup contains no run
+history or blobs.
 
-#### SQLite schema upgrades
+### SQLite schema upgrades
 
 On startup, Fabro applies pending SQLite schema migrations before serving
 normal traffic. Before changing a database that has previously applied
