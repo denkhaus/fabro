@@ -17,14 +17,11 @@
 use std::path::Path;
 use std::process::{Command, Stdio};
 
-use fabro_test::{TestContext, expect_reqwest_status};
+use fabro_test::{REQUIRE_SANDBOX_BACKENDS, TestContext, expect_reqwest_status};
 use serde_json::json;
 
 use crate::cmd::support::server_endpoint;
 
-/// Set in CI so a missing daemon or image fails the test instead of
-/// skipping it.
-const REQUIRE_ENV: &str = "FABRO_REQUIRE_SANDBOX_BACKENDS";
 const DOCKER_IMAGE: &str = "buildpack-deps:noble";
 /// The environment id the scenario selects with `--environment`.
 pub(crate) const ENVIRONMENT: &str = "docker";
@@ -33,11 +30,11 @@ pub(crate) const ENVIRONMENT: &str = "docker";
 /// [`DOCKER_IMAGE`]. Returns the environment id, or `None` when the
 /// prerequisites are missing and the test should skip.
 pub(crate) fn configure(context: &mut TestContext) -> Option<&'static str> {
-    let required = std::env::var_os(REQUIRE_ENV).is_some();
+    let required = std::env::var_os(REQUIRE_SANDBOX_BACKENDS).is_some();
     if !docker_image_available() {
         assert!(
             !required,
-            "{REQUIRE_ENV} is set but no Docker daemon with {DOCKER_IMAGE} is available"
+            "{REQUIRE_SANDBOX_BACKENDS} is set but no Docker daemon with {DOCKER_IMAGE} is available"
         );
         eprintln!("skipping: no Docker daemon with {DOCKER_IMAGE}");
         return None;

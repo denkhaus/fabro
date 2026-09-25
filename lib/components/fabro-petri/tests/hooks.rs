@@ -11,7 +11,6 @@
     clippy::disallowed_methods,
     reason = "the tests inspect backend availability and read the workspace's history with git"
 )]
-#![expect(clippy::print_stderr, reason = "a skipped test says why on its stderr")]
 
 use std::collections::BTreeMap;
 use std::env;
@@ -43,8 +42,6 @@ use tokio::process::Command;
 use tokio_util::sync::CancellationToken;
 
 mod support;
-
-const REQUIRE_ENV: &str = "FABRO_REQUIRE_SANDBOX_BACKENDS";
 
 /// A command-only bundle: the stage lines go between `start` and `exit`,
 /// the edge lines after them.
@@ -79,24 +76,6 @@ fn admit(workflow: &str, settings: &str) -> AdmittedGraphs {
         graph:    admitted.graph,
         children: admitted.children,
     }
-}
-
-/// A reachable Docker daemon. CI requires the backend instead of skipping.
-fn docker_available() -> bool {
-    let daemon = std::process::Command::new("docker")
-        .args(["version", "--format", "{{.Server.Version}}"])
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()
-        .is_ok_and(|status| status.success());
-    if !daemon {
-        assert!(
-            env::var_os(REQUIRE_ENV).is_none(),
-            "{REQUIRE_ENV} is set, but no Docker daemon answers"
-        );
-        eprintln!("skipping: no Docker daemon answers");
-    }
-    daemon
 }
 
 /// One run's pieces: the store, its platform records, where it ran.
@@ -900,7 +879,7 @@ async fn parallel_branches_checkpoint_the_shared_workspace_in_turn() {
 /// its ref, with the platform records naming the same commits.
 #[tokio::test]
 async fn a_docker_run_commits_inside_the_container_and_publishes_every_checkpoint() {
-    if !docker_available() {
+    if !fabro_test::docker_available() {
         return;
     }
     assert_sandbox_run_publishes_every_checkpoint(SandboxProviderKind::DOCKER).await;

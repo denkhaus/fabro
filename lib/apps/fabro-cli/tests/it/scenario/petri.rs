@@ -1752,10 +1752,10 @@ async fn built_in_host_runs_and_prunes_without_plugins() {
     let server = RunningServer::start_with_env("", &[], &[
         (EnvVars::PATH, path),
         (
-            EnvVars::PETRI_SANDBOX_HOST_PLUGIN,
+            "PETRI_SANDBOX_HOST_PLUGIN",
             "/nonexistent/sandbox-driver-host",
         ),
-        (EnvVars::PETRI_SANDBOX_HOST_SHA256, "invalid-pin"),
+        ("PETRI_SANDBOX_HOST_SHA256", "invalid-pin"),
         (EnvVars::PETRI_SANDBOX_PLUGIN_DEV, "0"),
     ])
     .await;

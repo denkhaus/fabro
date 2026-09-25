@@ -618,9 +618,9 @@ async fn runtime_spec(
         .read()
         .await
         .get(EnvVars::DAYTONA_API_KEY)
-        .map(|key| DaytonaCredentials::from_api_key(key.to_owned(), provider_env));
+        .map(|key| DaytonaCredentials::from_api_key(key.to_owned(), crate::process_env_var));
     Ok(RuntimeSpec {
-        sandbox: SandboxProviderConfig::from_lookup(daytona, provider_env),
+        sandbox: SandboxProviderConfig::from_lookup(daytona, crate::process_env_var),
         settings_toml: None,
         mcp_catalog_toml: None,
         model_client,
@@ -628,13 +628,4 @@ async fn runtime_spec(
         fabro_home,
         run_tools,
     })
-}
-
-/// Non-secret provider selection inherited from the server.
-#[expect(
-    clippy::disallowed_methods,
-    reason = "worker boundary snapshots inherited provider selection"
-)]
-fn provider_env(name: &str) -> Option<String> {
-    std::env::var(name).ok()
 }

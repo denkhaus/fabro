@@ -155,6 +155,34 @@ pub fn require_env(name: &str) -> Option<String> {
     }
 }
 
+/// Set in CI so a missing sandbox backend (a Docker daemon or image) fails
+/// the test instead of skipping it.
+pub const REQUIRE_SANDBOX_BACKENDS: &str = "FABRO_REQUIRE_SANDBOX_BACKENDS";
+
+/// A reachable Docker daemon. When [`REQUIRE_SANDBOX_BACKENDS`] is set, a
+/// missing daemon fails the test instead of skipping it.
+#[must_use]
+#[allow(
+    clippy::print_stderr,
+    reason = "Skip notices go to stderr so stdout stays assertable."
+)]
+pub fn docker_available() -> bool {
+    let daemon = std::process::Command::new("docker")
+        .args(["version", "--format", "{{.Server.Version}}"])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .is_ok_and(|status| status.success());
+    if !daemon {
+        assert!(
+            std::env::var_os(REQUIRE_SANDBOX_BACKENDS).is_none(),
+            "{REQUIRE_SANDBOX_BACKENDS} is set, but no Docker daemon answers"
+        );
+        eprintln!("skipping: no Docker daemon answers");
+    }
+    daemon
+}
+
 /// Apply baseline environment isolation to a `Command` that spawns the
 /// `fabro` binary (or a helper that will act like it).
 ///
@@ -228,10 +256,10 @@ fn apply_test_isolation_with_lookup(
     if let Some(path) = lookup(EnvVars::PATH) {
         cmd.env(EnvVars::PATH, path);
     }
-    // Petri resolves its sandbox-driver plugins from these, in the server a
-    // test starts and in the workers that server launches; a developer's
-    // plugin override reaches them like `PATH` does, and so does the Docker
-    // daemon selection the Docker plugin needs.
+    // Petri reads its sandbox settings from these, in the server a test
+    // starts and in the workers that server launches; a developer's
+    // override reaches them like `PATH` does, and so does the Docker daemon
+    // selection the Docker provider needs.
     for name in EnvVars::PETRI_SANDBOX_PLUGIN_VARS
         .iter()
         .chain(EnvVars::DOCKER_VARS)

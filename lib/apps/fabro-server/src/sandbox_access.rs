@@ -144,7 +144,7 @@ pub(crate) enum ConnectError {
 /// a run's host sandbox is reached through the run's own registry by
 /// [`attach_run_sandbox`].
 /// `docker` connects to the daemon the process environment names, the
-/// same variables Petri hands its Docker plugin, without requiring the
+/// same variables Fabro forwards to its worker, without requiring the
 /// daemon to answer: `health` reports an unreachable daemon so preflight
 /// and the doctor see the cause. `daytona` needs the vault key. Any other
 /// kind launches the plugin executable its settings name and supervises

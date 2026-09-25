@@ -1558,6 +1558,25 @@ impl AppState {
         )
     }
 
+    /// [`Self::sandbox_provider_config`] with the Daytona key read from the
+    /// vault, for server-side fork and prune; a secret store failure is a
+    /// 500.
+    pub(crate) async fn load_sandbox_provider_config(
+        &self,
+    ) -> Result<SandboxProviderConfig, ApiError> {
+        let daytona_api_key = self
+            .vault_secret(EnvVars::DAYTONA_API_KEY)
+            .await
+            .map_err(|err| {
+                error!(error = ?err, "Loading sandbox credentials failed");
+                ApiError::new(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "secret store operation failed",
+                )
+            })?;
+        Ok(self.sandbox_provider_config(daytona_api_key))
+    }
+
     /// Everything a reconnect needs to reach a run's provider: the server's
     /// provider settings and the Daytona credentials from the vault (`None`
     /// when no key is stored).
@@ -2888,18 +2907,9 @@ async fn delete_run_sandbox_resource(
         .run_scratch(&id)
         .root()
         .join("petri");
-    let daytona_api_key = state
-        .vault_secret(EnvVars::DAYTONA_API_KEY)
-        .await
-        .map_err(|err| {
-            error!(error = ?err, "Loading sandbox credentials failed");
-            ApiError::new(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "secret store operation failed",
-            )
-        })?;
+    let sandbox = state.load_sandbox_provider_config().await?;
     let report = prune::prune(PruneRequest {
-        sandbox: state.sandbox_provider_config(daytona_api_key),
+        sandbox,
         run_id: id.to_string(),
         run_dir,
         store: state.petri_runs.shared_store(),

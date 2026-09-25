@@ -17,7 +17,6 @@
     clippy::disallowed_methods,
     reason = "these scenarios inspect backend availability and drive the Docker daemon with its CLI"
 )]
-#![expect(clippy::print_stderr, reason = "a skipped test says why on its stderr")]
 
 use std::env;
 use std::path::{Path, PathBuf};
@@ -37,28 +36,9 @@ use super::petri::{
 use crate::support::TEST_DEV_TOKEN;
 
 /// The server-side environment the runs select.
-const REQUIRE_ENV: &str = "FABRO_REQUIRE_SANDBOX_BACKENDS";
 const ENVIRONMENT: &str = "docker";
 /// The twin's model, for the Ask Fabro session.
 const MODEL: &str = "gpt-5.4";
-
-/// A reachable Docker daemon. CI requires the backend instead of skipping.
-fn docker_available() -> bool {
-    let daemon = Command::new("docker")
-        .args(["version", "--format", "{{.Server.Version}}"])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .is_ok_and(|status| status.success());
-    if !daemon {
-        assert!(
-            env::var_os(REQUIRE_ENV).is_none(),
-            "{REQUIRE_ENV} is set, but no Docker daemon answers"
-        );
-        eprintln!("skipping: no Docker daemon answers");
-    }
-    daemon
-}
 
 /// A server with a Docker environment beside the default local one.
 async fn docker_server() -> RunningServer {
@@ -274,7 +254,7 @@ fn restore_actions(server: &RunningServer, run_id: &str) -> Vec<String> {
 /// nothing of the workspace is on the host.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_docker_run_publishes_every_stages_checkpoint_from_the_container() {
-    if !docker_available() {
+    if !fabro_test::docker_available() {
         return;
     }
     let context = test_context!();
@@ -305,7 +285,7 @@ async fn a_docker_run_publishes_every_stages_checkpoint_from_the_container() {
 /// the second stage sees the first stage's files and nothing else.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_retained_container_whose_workspace_drifted_is_reset_on_restart() {
-    if !docker_available() {
+    if !fabro_test::docker_available() {
         return;
     }
     let context = test_context!();
@@ -350,7 +330,7 @@ async fn a_retained_container_whose_workspace_drifted_is_reset_on_restart() {
 /// repository, and the second stage sees the first stage's files.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_lost_container_is_replaced_and_its_workspace_restored_from_the_snapshot() {
-    if !docker_available() {
+    if !fabro_test::docker_available() {
         return;
     }
     let context = test_context!();
@@ -443,7 +423,7 @@ async fn question_inputs(twin: &fabro_test::TwinOpenAi, namespace: &str) -> Vec<
 /// follow-up request carries the file's content back as the tool's answer.
 #[tokio::test(flavor = "multi_thread")]
 async fn an_ask_fabro_turn_reads_a_file_inside_the_runs_container() {
-    if !docker_available() {
+    if !fabro_test::docker_available() {
         return;
     }
     let context = test_context!();

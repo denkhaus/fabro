@@ -115,9 +115,6 @@ pub(crate) fn sandbox_plugin_env(
     let mut env = Vec::new();
     let mut dev = false;
     for (kind, plugin) in providers.enabled_plugins() {
-        if kind.bundled().is_some() {
-            continue;
-        }
         let upper = kind.as_str().to_ascii_uppercase().replace('-', "_");
         if let Some(path) = &plugin.path {
             env.push((format!("PETRI_SANDBOX_{upper}_PLUGIN"), path.clone()));
@@ -403,7 +400,7 @@ mod tests {
     /// while built-in paths and pins and disabled third-party plugins never
     /// cross.
     #[tokio::test]
-    async fn configured_plugins_reach_the_worker_and_win_over_ambient_variables() {
+    async fn third_party_plugins_reach_the_worker_and_built_ins_never_do() {
         let mut providers = ServerSandboxProvidersSettings::default();
         providers.entries.extend([
             provider("e2b", true, SandboxPluginSettings {
@@ -422,23 +419,13 @@ mod tests {
                 ..SandboxPluginSettings::default()
             }),
         ]);
-        let env = HashMap::from([
-            ("PATH".to_string(), "/bin".to_string()),
-            (
-                "PETRI_SANDBOX_HOST_PLUGIN".to_string(),
-                "/ambient/sandbox-driver-host".to_string(),
-            ),
-            (
-                "PETRI_SANDBOX_DOCKER_PLUGIN".to_string(),
-                "/ambient/sandbox-driver-docker".to_string(),
-            ),
-            (
-                "PETRI_SANDBOX_DAYTONA_PLUGIN".to_string(),
-                "/ambient/sandbox-driver-daytona".to_string(),
-            ),
-        ]);
-        let mut env = env;
+        let mut env = HashMap::from([("PATH".to_string(), "/bin".to_string())]);
         for kind in ["HOST", "DOCKER", "DAYTONA"] {
+            let lower = kind.to_ascii_lowercase();
+            env.insert(
+                format!("PETRI_SANDBOX_{kind}_PLUGIN"),
+                format!("/ambient/sandbox-driver-{lower}"),
+            );
             env.insert(
                 format!("PETRI_SANDBOX_{kind}_SHA256"),
                 "invalid-pin".to_string(),

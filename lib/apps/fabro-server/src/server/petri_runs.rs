@@ -46,6 +46,7 @@ use fabro_petri::hooks::HooksSpec;
 use fabro_petri::interview::{Approval, FabroInterviewer};
 use fabro_petri::petri::{Access, Digest, LogId, Record, RunKey, RunLogs, RunStore, StoreError};
 use fabro_petri::platform_records::SqlitePlatformRecords;
+use fabro_petri::providers::SandboxProviderConfig;
 use fabro_petri::recovery::{self, Recovery, RecoveryRequest};
 use fabro_petri::runtime::{self, RuntimeSpec};
 use fabro_petri::secrets::VaultSecrets;
@@ -73,11 +74,12 @@ use crate::run_compiler::{AdmittedRun, PreparedRun, RunCompilerError};
 /// The runtime Petri gets, at create and at execution: the server's run
 /// defaults and environment catalog as the settings layer, the MCP
 /// catalog, the model client over the server's catalog and credentials for
-/// the eligible providers, and the run mode.
+/// the eligible providers, the sandbox providers, and the run mode.
 pub(crate) fn runtime_spec(
     state: &AppState,
     eligible: &[ProviderId],
     dry_run: bool,
+    sandbox: SandboxProviderConfig,
 ) -> RuntimeSpec {
     let settings_toml = settings_layer_toml(state);
     let mcp_catalog_toml = mcp_catalog_toml(&state.mcp_server_store().catalog_settings());
@@ -95,7 +97,7 @@ pub(crate) fn runtime_spec(
         }
     };
     RuntimeSpec {
-        sandbox: state.sandbox_provider_config(None),
+        sandbox,
         settings_toml,
         mcp_catalog_toml,
         model_client,
@@ -276,7 +278,12 @@ pub(crate) async fn admit(
         settings,
         prepared.vars(),
         launch,
-        runtime_spec(state, eligible, dry_run),
+        runtime_spec(
+            state,
+            eligible,
+            dry_run,
+            state.sandbox_provider_config(None),
+        ),
         false,
     )
     .map_err(RunCompilerError::Workflow)?;
@@ -458,9 +465,12 @@ pub(crate) async fn execute(state: Arc<AppState>, run_id: RunId) {
         ))),
         &run_state.spec.settings.run,
     );
-    let mut runtime = runtime_spec(&state, &eligible, dry_run);
-    runtime.sandbox =
-        state.sandbox_provider_config(vault.get(EnvVars::DAYTONA_API_KEY).map(str::to_owned));
+    let runtime = runtime_spec(
+        &state,
+        &eligible,
+        dry_run,
+        state.sandbox_provider_config(vault.get(EnvVars::DAYTONA_API_KEY).map(str::to_owned)),
+    );
     let request = RunRequest {
         run_id: run_id.to_string(),
         run_dir: run_dir.join("petri"),

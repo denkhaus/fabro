@@ -13,10 +13,8 @@
     clippy::disallowed_methods,
     reason = "the tests inspect backend availability through the process environment"
 )]
-#![expect(clippy::print_stderr, reason = "a skipped test says why on its stderr")]
 
 use std::collections::BTreeMap;
-use std::env;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::Arc;
@@ -42,8 +40,6 @@ use crate::helpers::{
     run_json, settings_from_toml, test_app_state_with_options, test_app_with_scheduler,
     test_settings, wait_for_run_status,
 };
-
-const REQUIRE_ENV: &str = "FABRO_REQUIRE_SANDBOX_BACKENDS";
 
 const OPENAI_MODEL: &str = "gpt-5.4";
 
@@ -102,24 +98,6 @@ const PARALLEL_DOT: &str = r#"digraph Parallel {
 }"#;
 
 pub(super) const PLAIN_SETTINGS: &str = "_version = 1\n\n[workflow]\ngraph = \"workflow.fabro\"\n";
-
-/// A reachable Docker daemon. CI requires the backend instead of skipping.
-fn docker_available() -> bool {
-    let daemon = Command::new("docker")
-        .args(["version", "--format", "{{.Server.Version}}"])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .is_ok_and(|status| status.success());
-    if !daemon {
-        assert!(
-            env::var_os(REQUIRE_ENV).is_none(),
-            "{REQUIRE_ENV} is set, but no Docker daemon answers"
-        );
-        eprintln!("skipping: no Docker daemon answers");
-    }
-    daemon
-}
 
 /// Register a version whose entrypoint is `workflow.fabro`, with the given
 /// files beside it.
@@ -892,7 +870,7 @@ async fn a_delete_right_after_the_run_reads_ended_is_accepted() {
 /// attaches to it on the daemon.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_runs_projection_carries_its_docker_sandbox_instance() {
-    if !docker_available() {
+    if !fabro_test::docker_available() {
         return;
     }
     let settings = settings_from_toml("_version = 1\n\n[run.environment]\nid = \"docker\"\n");
@@ -1009,7 +987,7 @@ async fn a_runs_projection_carries_its_docker_sandbox_instance() {
 /// run label.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn the_server_attaches_to_the_container_petri_created() {
-    if !docker_available() {
+    if !fabro_test::docker_available() {
         return;
     }
     let twin = twin_openai().await;
@@ -1368,7 +1346,7 @@ async fn a_bundle_naming_a_catalog_environment_runs_on_docker_with_its_image() {
         graph["params"]["fabro.launch"]
     );
 
-    if !docker_available() {
+    if !fabro_test::docker_available() {
         return;
     }
     start_run(&app, &run_id).await;
