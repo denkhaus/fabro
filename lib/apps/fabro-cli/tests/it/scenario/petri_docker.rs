@@ -9,17 +9,14 @@
 //! Petri created and reads a file the workflow wrote there, its model the
 //! twin.
 //!
-//! The runs take their scope through the sandbox-driver Docker plugin on
-//! this machine's daemon, so the tests skip, and say why, when the
-//! executable is not found or no daemon answers, unless
-//! `FABRO_REQUIRE_SANDBOX_PLUGINS` is set and the plugin is missing. The
-//! server, the detached run and the crash come from `petri.rs`.
+//! The runs use the built-in Docker provider on this machine's daemon.
+//! Tests skip when no daemon answers, unless `FABRO_REQUIRE_SANDBOX_BACKENDS`
+//! requires it. The server, detached run and crash come from `petri.rs`.
 
 #![expect(
     clippy::disallowed_methods,
-    reason = "these scenarios locate the plugin through the process environment and drive the Docker daemon with its CLI"
+    reason = "these scenarios inspect backend availability and drive the Docker daemon with its CLI"
 )]
-#![expect(clippy::print_stderr, reason = "a skipped test says why on its stderr")]
 
 use std::env;
 use std::path::{Path, PathBuf};
@@ -33,52 +30,15 @@ use fabro_test::{
 use serde_json::json;
 
 use super::petri::{
-    REQUIRE_ENV, RunningServer, crash, run_detached_in, wait_for_status, wait_for_success,
-    wait_for_worker, write_petri_workflow,
+    RunningServer, crash, run_detached_in, wait_for_status, wait_for_success, wait_for_worker,
+    write_petri_workflow,
 };
 use crate::support::TEST_DEV_TOKEN;
 
-const DOCKER_PLUGIN: &str = "sandbox-driver-docker";
 /// The server-side environment the runs select.
 const ENVIRONMENT: &str = "docker";
 /// The twin's model, for the Ask Fabro session.
 const MODEL: &str = "gpt-5.4";
-
-/// The Docker plugin as Petri's lookup finds it, with a daemon that
-/// answers. `None`, after saying so, when the test should skip; a panic
-/// when the environment forbids a skip and the plugin is missing.
-fn docker_plugin() -> Option<PathBuf> {
-    let found = env::var_os(EnvVars::PETRI_SANDBOX_DOCKER_PLUGIN)
-        .map(PathBuf::from)
-        .or_else(|| {
-            env::split_paths(&env::var_os(EnvVars::PATH)?)
-                .map(|dir| dir.join(DOCKER_PLUGIN))
-                .find(|candidate| candidate.is_file())
-        });
-    let Some(found) = found else {
-        assert!(
-            env::var_os(REQUIRE_ENV).is_none(),
-            "{REQUIRE_ENV} is set, but {DOCKER_PLUGIN} is not on PATH and {} is unset",
-            EnvVars::PETRI_SANDBOX_DOCKER_PLUGIN
-        );
-        eprintln!(
-            "skipping: {DOCKER_PLUGIN} is not on PATH and {} is unset",
-            EnvVars::PETRI_SANDBOX_DOCKER_PLUGIN
-        );
-        return None;
-    };
-    let daemon = Command::new("docker")
-        .args(["version", "--format", "{{.Server.Version}}"])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .is_ok_and(|status| status.success());
-    if !daemon {
-        eprintln!("skipping: no Docker daemon answers");
-        return None;
-    }
-    Some(found)
-}
 
 /// A server with a Docker environment beside the default local one.
 async fn docker_server() -> RunningServer {
@@ -294,7 +254,7 @@ fn restore_actions(server: &RunningServer, run_id: &str) -> Vec<String> {
 /// nothing of the workspace is on the host.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_docker_run_publishes_every_stages_checkpoint_from_the_container() {
-    if docker_plugin().is_none() {
+    if !fabro_test::docker_available() {
         return;
     }
     let context = test_context!();
@@ -325,7 +285,7 @@ async fn a_docker_run_publishes_every_stages_checkpoint_from_the_container() {
 /// the second stage sees the first stage's files and nothing else.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_retained_container_whose_workspace_drifted_is_reset_on_restart() {
-    if docker_plugin().is_none() {
+    if !fabro_test::docker_available() {
         return;
     }
     let context = test_context!();
@@ -370,7 +330,7 @@ async fn a_retained_container_whose_workspace_drifted_is_reset_on_restart() {
 /// repository, and the second stage sees the first stage's files.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_lost_container_is_replaced_and_its_workspace_restored_from_the_snapshot() {
-    if docker_plugin().is_none() {
+    if !fabro_test::docker_available() {
         return;
     }
     let context = test_context!();
@@ -463,7 +423,7 @@ async fn question_inputs(twin: &fabro_test::TwinOpenAi, namespace: &str) -> Vec<
 /// follow-up request carries the file's content back as the tool's answer.
 #[tokio::test(flavor = "multi_thread")]
 async fn an_ask_fabro_turn_reads_a_file_inside_the_runs_container() {
-    if docker_plugin().is_none() {
+    if !fabro_test::docker_available() {
         return;
     }
     let context = test_context!();

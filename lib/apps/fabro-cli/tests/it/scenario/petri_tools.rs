@@ -1,4 +1,4 @@
-//! Fabro's run tools inside a Petri run (integration plan item F3.4): a
+//! Fabro's run tools inside a Petri run: a
 //! workflow that enables `[run.agent] fabro_tools` runs on Petri in the
 //! worker the server launched, and the agent stage's model, the twin, calls
 //! the run tools the worker registered through Petri's host tool
@@ -9,9 +9,7 @@
 //!
 //! The harness is `petri.rs`'s: a foreground server on disk storage with
 //! the `openai` provider repointed at the twin, its key in the vault, and
-//! the run started with `fabro run --detach`. The runs take their host
-//! scope through the sandbox-driver host plugin, so the tests skip, and say
-//! why, when it is not found.
+//! the run started with `fabro run --detach`. Host scopes run in process.
 
 #![expect(
     clippy::disallowed_methods,
@@ -33,7 +31,7 @@ use fabro_test::{TwinScenario, TwinScenarios, TwinToolCall, test_context, twin_o
 use fabro_types::{WorkflowPath, WorkflowVersion};
 use serde_json::{Value, json};
 
-use super::petri::{RunningServer, host_plugin, run_detached_with, run_json, wait_for_status};
+use super::petri::{RunningServer, run_detached_with, run_json, wait_for_status};
 use crate::support::TEST_DEV_TOKEN;
 
 const MODEL: &str = "gpt-5.4";
@@ -227,9 +225,6 @@ async fn wait_for_children(server: &RunningServer, parent_id: &str) -> Vec<Value
 /// Petri's record under the stage.
 #[tokio::test(flavor = "multi_thread")]
 async fn an_agent_starts_a_child_run_with_a_run_tool_inside_a_petri_run() {
-    if host_plugin().is_none() {
-        return;
-    }
     let context = test_context!();
     let twin = twin_openai().await;
     let namespace = format!("{}::{}", module_path!(), line!());
@@ -322,9 +317,6 @@ async fn an_agent_starts_a_child_run_with_a_run_tool_inside_a_petri_run() {
 /// call.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_run_hook_blocks_a_run_tool_inside_a_petri_run() {
-    if host_plugin().is_none() {
-        return;
-    }
     let context = test_context!();
     let twin = twin_openai().await;
     let namespace = format!("{}::{}", module_path!(), line!());
@@ -391,9 +383,6 @@ async fn a_run_hook_blocks_a_run_tool_inside_a_petri_run() {
 /// parent session.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_sub_agent_calls_an_inherited_run_tool_inside_a_petri_run() {
-    if host_plugin().is_none() {
-        return;
-    }
     let context = test_context!();
     let twin = twin_openai().await;
     let namespace = format!("{}::{}", module_path!(), line!());

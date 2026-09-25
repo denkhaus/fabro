@@ -49,29 +49,16 @@ impl EnvVars {
     pub const FABRO_WEB_URL: &'static str = "FABRO_WEB_URL";
     pub const FABRO_WORKER_TOKEN: &'static str = "FABRO_WORKER_TOKEN";
 
-    // Petri's sandbox-driver plugins: where each provider's plugin executable
-    // is, its checksum override, dev mode for unpinned plugins, and how a
-    // remote Docker daemon's containers reach this machine. A run's worker
-    // resolves the plugins, so these cross into the worker process.
-    pub const PETRI_SANDBOX_HOST_PLUGIN: &'static str = "PETRI_SANDBOX_HOST_PLUGIN";
-    pub const PETRI_SANDBOX_HOST_SHA256: &'static str = "PETRI_SANDBOX_HOST_SHA256";
-    pub const PETRI_SANDBOX_DOCKER_PLUGIN: &'static str = "PETRI_SANDBOX_DOCKER_PLUGIN";
-    pub const PETRI_SANDBOX_DOCKER_SHA256: &'static str = "PETRI_SANDBOX_DOCKER_SHA256";
-    pub const PETRI_SANDBOX_DAYTONA_PLUGIN: &'static str = "PETRI_SANDBOX_DAYTONA_PLUGIN";
-    pub const PETRI_SANDBOX_DAYTONA_SHA256: &'static str = "PETRI_SANDBOX_DAYTONA_SHA256";
+    // Petri's sandbox settings: dev mode for unpinned third-party plugins,
+    // how a remote Docker daemon's containers reach this machine, and the
+    // action-host image. These cross into a run's worker process.
     pub const PETRI_SANDBOX_PLUGIN_DEV: &'static str = "PETRI_SANDBOX_PLUGIN_DEV";
     pub const PETRI_SANDBOX_DOCKER_HOST_ADDRESS: &'static str = "PETRI_SANDBOX_DOCKER_HOST_ADDRESS";
     pub const PETRI_SANDBOX_ACTION_HOST_IMAGE: &'static str = "PETRI_SANDBOX_ACTION_HOST_IMAGE";
 
-    /// Every Petri plugin variable, in one list for the process boundaries
+    /// Every Petri sandbox variable, in one list for the process boundaries
     /// that forward them.
     pub const PETRI_SANDBOX_PLUGIN_VARS: &'static [&'static str] = &[
-        Self::PETRI_SANDBOX_HOST_PLUGIN,
-        Self::PETRI_SANDBOX_HOST_SHA256,
-        Self::PETRI_SANDBOX_DOCKER_PLUGIN,
-        Self::PETRI_SANDBOX_DOCKER_SHA256,
-        Self::PETRI_SANDBOX_DAYTONA_PLUGIN,
-        Self::PETRI_SANDBOX_DAYTONA_SHA256,
         Self::PETRI_SANDBOX_PLUGIN_DEV,
         Self::PETRI_SANDBOX_DOCKER_HOST_ADDRESS,
         Self::PETRI_SANDBOX_ACTION_HOST_IMAGE,
@@ -168,6 +155,7 @@ impl EnvVars {
     pub const DAYTONA_API_KEY: &'static str = "DAYTONA_API_KEY";
     pub const DAYTONA_API_URL: &'static str = "DAYTONA_API_URL";
     pub const DAYTONA_ORGANIZATION_ID: &'static str = "DAYTONA_ORGANIZATION_ID";
+    pub const DAYTONA_TARGET: &'static str = "DAYTONA_TARGET";
     pub const DAYTONA_SERVER_URL: &'static str = "DAYTONA_SERVER_URL";
     pub const SESSION_SECRET: &'static str = "SESSION_SECRET";
 
@@ -256,12 +244,6 @@ mod tests {
             EnvVars::FABRO_VERBOSE,
             EnvVars::FABRO_WEB_URL,
             EnvVars::FABRO_WORKER_TOKEN,
-            EnvVars::PETRI_SANDBOX_HOST_PLUGIN,
-            EnvVars::PETRI_SANDBOX_HOST_SHA256,
-            EnvVars::PETRI_SANDBOX_DOCKER_PLUGIN,
-            EnvVars::PETRI_SANDBOX_DOCKER_SHA256,
-            EnvVars::PETRI_SANDBOX_DAYTONA_PLUGIN,
-            EnvVars::PETRI_SANDBOX_DAYTONA_SHA256,
             EnvVars::PETRI_SANDBOX_PLUGIN_DEV,
             EnvVars::PETRI_SANDBOX_DOCKER_HOST_ADDRESS,
             EnvVars::PETRI_SANDBOX_ACTION_HOST_IMAGE,
@@ -330,6 +312,7 @@ mod tests {
             EnvVars::DAYTONA_API_URL,
             EnvVars::DAYTONA_ORGANIZATION_ID,
             EnvVars::DAYTONA_SERVER_URL,
+            EnvVars::DAYTONA_TARGET,
             EnvVars::SESSION_SECRET,
             EnvVars::CARGO_BIN_EXE_FABRO,
             EnvVars::CARGO_CFG_TARGET_OS,

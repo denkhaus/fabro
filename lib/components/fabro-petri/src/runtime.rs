@@ -1,6 +1,9 @@
 //! The Petri runtime Fabro runs its workflows on, assembled the same way at
 //! create time (for `Runtime::check`) and at execution.
 //!
+//! Built-in sandbox factories are installed for every runtime and connect
+//! only when a scope is acquired.
+//!
 //! The pieces are Petri's own: [`Runtime::standard`] with the Fabro frontend
 //! carrying the server's settings layer, the Attractor step kinds (the real
 //! ones, or the simulated registry for a dry run), the model client as the
@@ -26,10 +29,13 @@ use petri_runtime::Runtime;
 use tracing::debug;
 
 use crate::host_tools;
+use crate::providers::{self, SandboxProviderConfig};
 
 /// What every Petri runtime Fabro builds is configured with.
 #[derive(Clone, Default)]
 pub struct RuntimeSpec {
+    /// Explicit provider configuration. Factories connect only at acquire.
+    pub sandbox:          SandboxProviderConfig,
     /// The operator's settings layer, as `~/.fabro/settings.toml` text: the
     /// lowest of the three layers the Fabro frontend reads (`[run.model]`
     /// defaults, `[[run.hooks]]`, `[run.agent.mcps]`, `[run.environment]`
@@ -64,7 +70,7 @@ impl RuntimeSpec {
     /// registry: only execution swaps in the stubs.
     #[must_use]
     pub fn runtime(&self, for_execution: bool) -> Runtime {
-        let mut runtime = Runtime::standard().frontend(
+        let mut runtime = providers::standard_runtime(&self.sandbox).frontend(
             Fabro::new()
                 .with_settings_toml(self.settings_toml.clone())
                 .with_mcp_catalog_toml(self.mcp_catalog_toml.clone()),

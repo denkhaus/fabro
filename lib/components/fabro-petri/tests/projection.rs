@@ -7,20 +7,11 @@
 //! a live run costs its new records, with the cache that makes it so
 //! dropped at a restart, after the idle period and at the run's finish.
 //!
-//! Every run here takes its scope's environment through the sandbox-driver
-//! host plugin, so the tests skip, and say why, when the executable is not
-//! found, unless `FABRO_REQUIRE_SANDBOX_PLUGINS` is set.
-
-#![expect(
-    clippy::disallowed_methods,
-    reason = "the tests locate the plugin executable through the process environment"
-)]
-#![expect(clippy::print_stderr, reason = "a skipped test says why on its stderr")]
+//! Built-in Host scopes run in process without a plugin executable.
 
 mod support;
 
 use std::collections::BTreeSet;
-use std::env;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -32,8 +23,9 @@ use fabro_petri::check::Launch;
 use fabro_petri::engine::{self, RunStatus as EngineRunStatus};
 use fabro_petri::interview::{Approval, FabroInterviewer};
 use fabro_petri::projector::{self, Projector};
+use fabro_petri::providers::SandboxProviderConfig;
 use fabro_petri::runtime::RuntimeSpec;
-use fabro_petri::{SqliteRunStore, test_support as petri_support};
+use fabro_petri::{SqliteRunStore, providers, test_support as petri_support};
 use fabro_store::platform_records::{
     PlatformRecord, PlatformRecordStore, RunCreatedRecord, RunLifecycleKind, RunLifecycleRecord,
 };
@@ -44,17 +36,13 @@ use fabro_types::{
 };
 use petri_execution::host::{self, HostRun};
 use petri_frontend_fabro::Fabro;
+use petri_runtime::RunOptions;
 use petri_runtime::executor::Retention;
 use petri_runtime::frontend::CompileInputs;
 use petri_runtime::ir::RunStatus as PetriRunStatus;
-use petri_runtime::{RunOptions, Runtime};
 use petri_store::{RunKey, RunStore};
 use tokio::fs;
 use tokio::time::sleep;
-
-const HOST_PLUGIN: &str = "sandbox-driver-host";
-const HOST_PLUGIN_OVERRIDE: &str = "PETRI_SANDBOX_HOST_PLUGIN";
-const REQUIRE_ENV: &str = "FABRO_REQUIRE_SANDBOX_PLUGINS";
 
 const COMMAND_WORKFLOW: &str = r#"digraph Command {
     graph [goal="Run one command"]
@@ -125,24 +113,6 @@ fn described_gate_workflow(markers: &Path) -> String {
 }}"#,
         dir = markers.display()
     )
-}
-
-fn host_plugin() -> Option<PathBuf> {
-    let found = env::var_os(HOST_PLUGIN_OVERRIDE)
-        .map(PathBuf::from)
-        .or_else(|| {
-            env::split_paths(&env::var_os("PATH")?)
-                .map(|dir| dir.join(HOST_PLUGIN))
-                .find(|candidate| candidate.is_file())
-        });
-    if found.is_none() {
-        assert!(
-            env::var_os(REQUIRE_ENV).is_none(),
-            "{REQUIRE_ENV} is set, but {HOST_PLUGIN} is not on PATH and {HOST_PLUGIN_OVERRIDE} is unset"
-        );
-        eprintln!("skipping: {HOST_PLUGIN} is not on PATH and {HOST_PLUGIN_OVERRIDE} is unset");
-    }
-    found
 }
 
 /// A fresh in-memory database with every table the projection touches.
@@ -236,7 +206,8 @@ async fn run_workflow(
     workflow: &Path,
     stubs: bool,
 ) {
-    let runtime = Runtime::standard().frontend(Fabro::new());
+    let runtime =
+        providers::standard_runtime(&SandboxProviderConfig::default()).frontend(Fabro::new());
     let runtime = if stubs {
         petri_attractor_steps::register_stubs(runtime)
     } else {
@@ -466,9 +437,6 @@ async fn stage_states(pool: &DbPool, run_id: RunId) -> Vec<(String, StageState)>
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn the_hello_bundle_projects_live_as_it_rebuilds() {
-    if host_plugin().is_none() {
-        return;
-    }
     let scenario = hello_scenario().await;
     run_live(&scenario).await;
     assert_view_equals_rebuild(&scenario.pool, scenario.run_id).await;
@@ -495,9 +463,6 @@ async fn the_hello_bundle_projects_live_as_it_rebuilds() {
 /// reference, never as the bytes the live log accumulated.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_large_output_projects_as_its_blob_reference() {
-    if host_plugin().is_none() {
-        return;
-    }
     let scenario = large_output_scenario().await;
     run_live(&scenario).await;
     assert_view_equals_rebuild(&scenario.pool, scenario.run_id).await;
@@ -519,9 +484,6 @@ async fn a_large_output_projects_as_its_blob_reference() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_command_workflow_projects_live_as_it_rebuilds() {
-    if host_plugin().is_none() {
-        return;
-    }
     let scenario = command_scenario().await;
     run_live(&scenario).await;
     assert_view_equals_rebuild(&scenario.pool, scenario.run_id).await;
@@ -548,9 +510,6 @@ async fn a_command_workflow_projects_live_as_it_rebuilds() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_parallel_workflow_projects_its_branches_as_child_executions() {
-    if host_plugin().is_none() {
-        return;
-    }
     let scenario = parallel_scenario().await;
     run_live(&scenario).await;
     assert_view_equals_rebuild(&scenario.pool, scenario.run_id).await;
@@ -587,9 +546,6 @@ async fn a_parallel_workflow_projects_its_branches_as_child_executions() {
 /// folds everything.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn dropped_wake_ups_are_caught_up_by_the_next_signal() {
-    if host_plugin().is_none() {
-        return;
-    }
     let scenario = command_scenario().await;
     run_unobserved(&scenario).await;
     assert!(
@@ -614,9 +570,6 @@ async fn dropped_wake_ups_are_caught_up_by_the_next_signal() {
 /// The same, through the startup pass.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn the_startup_pass_catches_up_a_view_nobody_signalled() {
-    if host_plugin().is_none() {
-        return;
-    }
     let scenario = command_scenario().await;
     run_unobserved(&scenario).await;
     let projector = Projector::new(scenario.pool.clone(), scenario.pool.clone());
@@ -638,9 +591,6 @@ async fn the_startup_pass_catches_up_a_view_nobody_signalled() {
 /// a duplicate.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn concurrent_passes_over_one_run_commit_one_contiguous_stream() {
-    if host_plugin().is_none() {
-        return;
-    }
     let scenario = parallel_scenario().await;
     run_unobserved(&scenario).await;
     let projector = Projector::new(scenario.pool.clone(), scenario.pool.clone());
@@ -745,9 +695,6 @@ async fn copy_run_without_records(source: &DbPool, run_id: RunId) -> DbPool {
 /// sequence continuing from where the committed view stood.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_crash_between_the_record_commit_and_the_view_applies_only_the_suffix() {
-    if host_plugin().is_none() {
-        return;
-    }
     let scenario = parallel_scenario().await;
     run_unobserved(&scenario).await;
     let rows = petri_rows(&scenario.pool, scenario.run_id).await;
@@ -863,9 +810,6 @@ async fn a_crash_between_the_record_commit_and_the_view_applies_only_the_suffix(
 /// agree with a projector that saw the run whole.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_restarted_projector_agrees_over_nested_child_executions() {
-    if host_plugin().is_none() {
-        return;
-    }
     let scenario = parallel_scenario().await;
     run_unobserved(&scenario).await;
     let rows = petri_rows(&scenario.pool, scenario.run_id).await;
@@ -928,9 +872,6 @@ async fn a_restarted_projector_agrees_over_nested_child_executions() {
 /// reported incomplete with the reason.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_torn_tail_holds_the_view_and_reports_the_run_incomplete() {
-    if host_plugin().is_none() {
-        return;
-    }
     let scenario = command_scenario().await;
     run_unobserved(&scenario).await;
     let projector = Projector::new(scenario.pool.clone(), scenario.pool.clone());
@@ -1035,9 +976,6 @@ async fn committed_pass(projector: &Projector, run_id: RunId) -> projector::Pass
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_pass_over_a_live_run_costs_its_new_records_not_the_run() {
     const BATCH: usize = 7;
-    if host_plugin().is_none() {
-        return;
-    }
     let scenario = parallel_scenario().await;
     run_unobserved(&scenario).await;
     let rows = petri_rows(&scenario.pool, scenario.run_id).await;
@@ -1088,9 +1026,6 @@ async fn a_pass_over_a_live_run_costs_its_new_records_not_the_run() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_restart_and_the_idle_period_drop_the_cache_and_one_full_replay_rebuilds_it() {
     const BATCH: usize = 5;
-    if host_plugin().is_none() {
-        return;
-    }
     let scenario = parallel_scenario().await;
     run_unobserved(&scenario).await;
     let rows = petri_rows(&scenario.pool, scenario.run_id).await;
@@ -1272,9 +1207,6 @@ impl GateRun {
 /// rebuilds the same.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn an_expired_question_is_pending_while_the_gate_waits_and_closes_on_the_expiry() {
-    if host_plugin().is_none() {
-        return;
-    }
     let gate = Arc::new(gate_run(r#", timeout="1500ms", human.default_choice="no""#).await);
     let running = {
         let gate = Arc::clone(&gate);
@@ -1354,9 +1286,6 @@ async fn an_expired_question_is_pending_while_the_gate_waits_and_closes_on_the_e
 /// on a choice that has none.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_pending_question_carries_its_choice_descriptions_previews_and_context() {
-    if host_plugin().is_none() {
-        return;
-    }
     let gate = Arc::new(gate_run_of(described_gate_workflow).await);
     let running = {
         let gate = Arc::clone(&gate);
@@ -1401,9 +1330,6 @@ async fn a_pending_question_carries_its_choice_descriptions_previews_and_context
 /// the view rebuilds the same.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn an_auto_approved_answer_closes_the_question_in_the_projection() {
-    if host_plugin().is_none() {
-        return;
-    }
     let gate = gate_run("").await;
     gate.run(Approval::Auto).await;
 

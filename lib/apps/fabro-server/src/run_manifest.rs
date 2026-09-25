@@ -233,7 +233,12 @@ pub(crate) async fn check_prepared_manifest(
         None,
     );
     let dry_run = prepared.settings.run.execution.mode == RunMode::DryRun;
-    let runtime = petri_runs::runtime_spec(state, ready_providers, dry_run);
+    let runtime = petri_runs::runtime_spec(
+        state,
+        ready_providers,
+        dry_run,
+        state.sandbox_provider_config(None),
+    );
     let has_ready_provider = !ready_providers.is_empty();
     let prepared = prepared.clone();
     task::spawn_blocking(move || {
@@ -1530,7 +1535,12 @@ mod tests {
             None,
             None,
         );
-        let runtime = crate::server::petri_runs::runtime_spec(state, ready_providers, false);
+        let runtime = crate::server::petri_runs::runtime_spec(
+            state,
+            ready_providers,
+            false,
+            state.sandbox_provider_config(None),
+        );
         validate_prepared_manifest(
             prepared,
             &HashMap::new(),

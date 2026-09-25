@@ -182,9 +182,9 @@ impl miette::Diagnostic for CliDiagnostic {
 
 #[expect(
     clippy::disallowed_methods,
-    reason = "CLI main reads documented process-env controls before telemetry and worker dispatch."
+    reason = "CLI main reads documented process-env controls before telemetry and worker dispatch, and the worker snapshots inherited sandbox provider selection."
 )]
-fn process_env_var(name: &str) -> Option<String> {
+pub(crate) fn process_env_var(name: &str) -> Option<String> {
     std::env::var(name).ok()
 }
 

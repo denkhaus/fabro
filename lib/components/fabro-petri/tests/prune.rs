@@ -3,8 +3,7 @@
 //! tombstoned in the run's record, a second prune has nothing to do, and a
 //! run a live handle holds is refused.
 //!
-//! The run takes its scope through the sandbox-driver host plugin, so the
-//! test skips, and says why, when the executable is not found.
+//! The Host scope runs in process without a plugin executable.
 
 #![expect(
     clippy::disallowed_methods,
@@ -18,12 +17,13 @@ use std::sync::Arc;
 
 use fabro_petri::check::Launch;
 use fabro_petri::engine::{self, RunStatus};
+use fabro_petri::providers::SandboxProviderConfig;
 use fabro_petri::prune::{PruneError, PruneRequest, prune};
 use fabro_petri::runtime::RuntimeSpec;
 use fabro_petri::{SqliteRunStore, petri};
 use fabro_store::test_support;
 use fabro_types::SandboxProviderKind;
-use support::{Silent, admit, host_plugin, no_questions, run_request};
+use support::{Silent, admit, no_questions, run_request};
 
 /// A command-only workflow whose one stage writes a file into its
 /// workspace.
@@ -96,9 +96,6 @@ async fn lease_states(store: &SqliteRunStore, run_id: &str) -> Vec<String> {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_finished_runs_host_workspace_is_deleted_once_and_a_held_run_is_refused() {
-    if host_plugin().is_none() {
-        return;
-    }
     let root = tempfile::tempdir().expect("a temp dir");
     let run_dir = root.path().join("run");
     let pool = test_support::in_memory_pool_with(&[
@@ -137,7 +134,37 @@ async fn a_finished_runs_host_workspace_is_deleted_once_and_a_held_run_is_refuse
     );
     assert_eq!(lease_states(&store, "prune").await, ["stopped"]);
 
+    let logs = petri::RunStore::open(
+        store.as_ref(),
+        &petri::RunKey::new("prune"),
+        petri::Access::Read,
+    )
+    .await
+    .expect("the resources open");
+    let resources = logs
+        .read(&petri::LogId::Resources)
+        .await
+        .expect("the resources read");
+    let legacy_fingerprint = format!(
+        "host:{}",
+        run_dir
+            .join("host-registry")
+            .canonicalize()
+            .expect("canonical registry")
+            .display()
+    );
+    let allocating = resources
+        .iter()
+        .find(|record| {
+            record.record["body"]["state"] == "allocating"
+                && record.record["body"]["fingerprint"].is_string()
+        })
+        .expect("the allocation is recorded");
+    assert_eq!(allocating.record["body"]["fingerprint"], legacy_fingerprint);
+    drop(logs);
+
     let request = || PruneRequest {
+        sandbox:  SandboxProviderConfig::default(),
         run_id:   "prune".to_string(),
         run_dir:  run_dir.clone(),
         store:    store.clone(),
@@ -187,6 +214,7 @@ async fn a_finished_runs_host_workspace_is_deleted_once_and_a_held_run_is_refuse
 async fn a_provider_petri_does_not_serve_is_refused_before_the_store_is_opened() {
     let store = Arc::new(petri_store::MemoryRunStore::new());
     let error = prune(PruneRequest {
+        sandbox: SandboxProviderConfig::default(),
         run_id: "e2b-run".to_string(),
         run_dir: std::env::temp_dir().join("fabro-petri-prune-e2b"),
         store,

@@ -5,18 +5,14 @@
 //!
 //! Each test starts its own foreground server on disk storage, because the
 //! session's shared daemon keeps its object store in memory and the resume
-//! scenario restarts the server. The runs take their host scope through the
-//! sandbox-driver host plugin, so the tests skip, and say why, when the
-//! executable is not found, unless `FABRO_REQUIRE_SANDBOX_PLUGINS` is set.
-//! The plugin's path override crosses into the server and its workers the
-//! way `PATH` does.
+//! scenario restarts the server. Host scopes run in process.
 //!
 //! The harness here (the server, the detached run, the status and event
 //! reads) is shared with the run-tools scenarios in `petri_tools.rs`.
 
 #![expect(
     clippy::disallowed_methods,
-    reason = "these scenarios start a real server subprocess, locate the plugin through the process environment, and poll processes"
+    reason = "these scenarios start a real server subprocess, poll processes"
 )]
 #![expect(
     clippy::disallowed_types,
@@ -47,35 +43,8 @@ use fabro_vault::{SecretType, Vault};
 use crate::cmd::support::created_run_id;
 use crate::support::{TEST_DEV_TOKEN, TEST_SESSION_SECRET, seed_dev_token_auth};
 
-const HOST_PLUGIN: &str = "sandbox-driver-host";
-pub(super) const REQUIRE_ENV: &str = "FABRO_REQUIRE_SANDBOX_PLUGINS";
 pub(super) const RUN_TIMEOUT: Duration = Duration::from_mins(1);
 pub(super) const POLL: Duration = Duration::from_millis(50);
-
-/// The host plugin as Petri's lookup finds it: the override variable, else
-/// the executable on `PATH`. `None`, after saying so, when the test should
-/// skip; a panic when the environment forbids a skip.
-pub(super) fn host_plugin() -> Option<PathBuf> {
-    let found = env::var_os(EnvVars::PETRI_SANDBOX_HOST_PLUGIN)
-        .map(PathBuf::from)
-        .or_else(|| {
-            env::split_paths(&env::var_os(EnvVars::PATH)?)
-                .map(|dir| dir.join(HOST_PLUGIN))
-                .find(|candidate| candidate.is_file())
-        });
-    if found.is_none() {
-        assert!(
-            env::var_os(REQUIRE_ENV).is_none(),
-            "{REQUIRE_ENV} is set, but {HOST_PLUGIN} is not on PATH and {} is unset",
-            EnvVars::PETRI_SANDBOX_HOST_PLUGIN
-        );
-        eprintln!(
-            "skipping: {HOST_PLUGIN} is not on PATH and {} is unset",
-            EnvVars::PETRI_SANDBOX_HOST_PLUGIN
-        );
-    }
-    found
-}
 
 /// A foreground server on its own disk storage, dev-token auth, started
 /// from the compiled `fabro` binary. Dropping it kills the process.
@@ -676,9 +645,6 @@ pub(super) fn wait_until_gate_is_polled(gate: &Path) {
 /// records through the HTTP store, and its lease ended with it.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_petri_run_executes_in_the_server_launched_worker() {
-    if host_plugin().is_none() {
-        return;
-    }
     let context = test_context!();
     let server = RunningServer::start().await;
     let workspace = write_petri_workspace(&context, "echo hello from petri");
@@ -730,9 +696,6 @@ async fn a_petri_run_executes_in_the_server_launched_worker() {
 /// resume mode, which finishes the run with one terminal lifecycle record.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_petri_run_resumes_in_a_new_worker_after_the_server_restarts() {
-    if host_plugin().is_none() {
-        return;
-    }
     let context = test_context!();
     let mut server = RunningServer::start().await;
     let gate = context.temp_dir.join("resume.gate");
@@ -748,7 +711,7 @@ async fn a_petri_run_resumes_in_a_new_worker_after_the_server_restarts() {
     eprintln!("stage is waiting on the gate");
 
     // The crash: the server first, so it never observes the worker exit,
-    // then the worker's whole process group, plugin and stage included.
+    // then the worker's whole process group, stage included.
     server.kill();
     fabro_proc::sigkill_process_group(worker);
     let deadline = Instant::now() + Duration::from_secs(10);
@@ -923,9 +886,6 @@ fn two_gates_dot(markers: &Path) -> String {
 /// and the run's stream records the interview.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_human_gate_in_the_worker_is_answered_through_the_api() {
-    if host_plugin().is_none() {
-        return;
-    }
     let context = test_context!();
     let server = RunningServer::start().await;
     let markers = context.temp_dir.join("markers");
@@ -980,9 +940,6 @@ async fn a_human_gate_in_the_worker_is_answered_through_the_api() {
 /// the API in the other order, binds to its own branch.
 #[tokio::test(flavor = "multi_thread")]
 async fn two_parallel_gates_in_the_worker_each_bind_their_own_answer() {
-    if host_plugin().is_none() {
-        return;
-    }
     let context = test_context!();
     let server = RunningServer::start().await;
     let markers = context.temp_dir.join("markers");
@@ -1033,9 +990,6 @@ async fn two_parallel_gates_in_the_worker_each_bind_their_own_answer() {
 /// pending.
 #[tokio::test(flavor = "multi_thread")]
 async fn an_unanswered_gate_in_the_worker_expires_with_its_default() {
-    if host_plugin().is_none() {
-        return;
-    }
     let context = test_context!();
     let server = RunningServer::start().await;
     let markers = context.temp_dir.join("markers");
@@ -1136,9 +1090,6 @@ fn pretty_filters(context: &fabro_test::TestContext) -> Vec<(String, String)> {
 /// `wait` and `runs inspect` read the projection.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_finished_petri_run_reads_back_through_the_cli() {
-    if host_plugin().is_none() {
-        return;
-    }
     let context = test_context!();
     let server = RunningServer::start().await;
     let workspace = write_petri_workspace(&context, "echo hello from petri");
@@ -1257,9 +1208,6 @@ async fn a_finished_petri_run_reads_back_through_the_cli() {
 /// the gate and the attach exits with the run's status.
 #[tokio::test(flavor = "multi_thread")]
 async fn attach_asks_a_petri_gate_at_the_terminal_and_answers_it() {
-    if host_plugin().is_none() {
-        return;
-    }
     let context = test_context!();
     let server = RunningServer::start().await;
     let markers = context.temp_dir.join("markers");
@@ -1306,9 +1254,6 @@ async fn attach_asks_a_petri_gate_at_the_terminal_and_answers_it() {
 /// the run goes on follow, and the terminal lifecycle record ends it.
 #[tokio::test(flavor = "multi_thread")]
 async fn events_follow_streams_a_petri_run_live_to_its_end() {
-    if host_plugin().is_none() {
-        return;
-    }
     let context = test_context!();
     let server = RunningServer::start().await;
     let gate = context.temp_dir.join("go");
@@ -1400,7 +1345,7 @@ fn three_stage_bundle(context: &fabro_test::TestContext, gate: &Path) -> PathBuf
 /// Kill the server first, so it never observes the worker exit, then the
 /// worker's whole process group, then the stage's own process group when a
 /// stage was waiting on `gate`: a stage process runs in a group of its own
-/// under the host plugin, and a machine crash takes it with everything
+/// under the Host provider, and a machine crash takes it with everything
 /// else, where a killed worker alone would leave it writing into the
 /// workspace.
 pub(super) fn crash(server: &mut RunningServer, worker: u32, gate: Option<&Path>) {
@@ -1465,9 +1410,6 @@ fn three_stage_subjects(run_id: &str) -> Vec<String> {
 /// snapshot (its partial output gone), and the next stage sees both.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_crash_after_a_durable_finish_keeps_its_one_commit() {
-    if host_plugin().is_none() {
-        return;
-    }
     let context = test_context!();
     let mut server = RunningServer::start().await;
     let gate = context.temp_dir.join("two.gate");
@@ -1506,9 +1448,6 @@ async fn a_crash_after_a_durable_finish_keeps_its_one_commit() {
 /// is not durable, the stage reruns once, and one commit exists for it.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_crash_before_the_commit_lands_reruns_the_stage_once() {
-    if host_plugin().is_none() {
-        return;
-    }
     let context = test_context!();
     let mut server = RunningServer::start().await;
     let gate = context.temp_dir.join("two.gate");
@@ -1547,9 +1486,6 @@ async fn a_crash_before_the_commit_lands_reruns_the_stage_once() {
 /// repository, the stage does not rerun, and one commit exists for it.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_crash_before_the_record_reconciles_it_from_the_run_branch() {
-    if host_plugin().is_none() {
-        return;
-    }
     let context = test_context!();
     let mut server = RunningServer::start().await;
     let gate = context.temp_dir.join("two.gate");
@@ -1591,9 +1527,6 @@ async fn a_crash_before_the_record_reconciles_it_from_the_run_branch() {
 /// repository, and the next stage sees the checkpoint's files.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_deleted_workspace_is_restored_from_its_snapshot() {
-    if host_plugin().is_none() {
-        return;
-    }
     let context = test_context!();
     let mut server = RunningServer::start().await;
     let gate = context.temp_dir.join("two.gate");
@@ -1628,9 +1561,6 @@ async fn a_deleted_workspace_is_restored_from_its_snapshot() {
 /// route reruns on the same files.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_failure_route_sees_the_same_committed_files_after_a_crash() {
-    if host_plugin().is_none() {
-        return;
-    }
     let context = test_context!();
     let mut server = RunningServer::start().await;
     let gate = context.temp_dir.join("fix.gate");
@@ -1683,9 +1613,6 @@ async fn a_failure_route_sees_the_same_committed_files_after_a_crash() {
 /// leaves it failed without launching a worker.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_failed_checkpoint_fails_the_run_and_a_restart_leaves_it_failed() {
-    if host_plugin().is_none() {
-        return;
-    }
     let context = test_context!();
     let mut server = RunningServer::start().await;
     let workspace = write_petri_workflow(
@@ -1760,9 +1687,6 @@ async fn a_failed_checkpoint_fails_the_run_and_a_restart_leaves_it_failed() {
 /// exit after the delete brings nothing back.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_delete_right_after_the_run_reads_ended_is_accepted() {
-    if host_plugin().is_none() {
-        return;
-    }
     let context = test_context!();
     let server = RunningServer::start().await;
     let workspace = write_petri_workspace(&context, "true");
@@ -1803,5 +1727,73 @@ async fn a_delete_right_after_the_run_reads_ended_is_accepted() {
         fabro_http::StatusCode::NOT_FOUND,
         "the worker's exit brought the run back"
     );
+    server.shutdown();
+}
+
+/// A Host run acquires and prunes a real scope with no plugin executable
+/// anywhere the worker or server would look. The server is also handed
+/// legacy Host plugin settings, which its prune must ignore; the worker
+/// never receives them (its environment allowlist drops them). The release
+/// workflow runs the suite in a release build, where no plugin checksum is
+/// pinned, so this is the check that a release can run a sandbox at all.
+#[tokio::test(flavor = "multi_thread")]
+async fn built_in_host_runs_and_prunes_without_plugins() {
+    let context = test_context!();
+    let path = "/usr/bin:/bin:/usr/sbin:/sbin";
+    let binary_dir = Path::new(env!("CARGO_BIN_EXE_fabro"))
+        .parent()
+        .expect("binary directory");
+    for kind in ["host", "docker", "daytona"] {
+        let executable = format!("sandbox-driver-{kind}");
+        for directory in env::split_paths(path).chain([binary_dir.to_path_buf()]) {
+            assert!(
+                !directory.join(&executable).exists(),
+                "test requires no {executable} in {}",
+                directory.display()
+            );
+        }
+    }
+    let server = RunningServer::start_with_env("", &[], &[
+        (EnvVars::PATH, path),
+        (
+            "PETRI_SANDBOX_HOST_PLUGIN",
+            "/nonexistent/sandbox-driver-host",
+        ),
+        ("PETRI_SANDBOX_HOST_SHA256", "invalid-pin"),
+        (EnvVars::PETRI_SANDBOX_PLUGIN_DEV, "0"),
+    ])
+    .await;
+    let workspace = write_petri_workspace(&context, "echo built-in > built-in.txt");
+    let run_id = run_detached(&context, &server, &workspace);
+    wait_for_success(&server, &run_id).await;
+    let run_dir = server.petri_run_dir(&run_id);
+    let scopes = run_dir.join("scopes");
+    let entries = std::fs::read_dir(&scopes)
+        .expect("the real Host scope exists")
+        .map(|entry| entry.expect("the scope entry reads").path())
+        .collect::<Vec<_>>();
+    let [scope] = entries.as_slice() else {
+        panic!("expected exactly one Host scope, found {entries:?}");
+    };
+    let scope = scope.clone();
+    assert_eq!(
+        std::fs::read_to_string(scope.join("work/built-in.txt"))
+            .expect("the worker wrote its file"),
+        "built-in\n"
+    );
+    let response = fabro_test::test_http_client()
+        .delete(format!("{}/api/v1/runs/{run_id}", server.api_base_url))
+        .bearer_auth(TEST_DEV_TOKEN)
+        .send()
+        .await
+        .expect("the delete sends");
+    let status = response.status();
+    let detail = response.text().await.unwrap_or_default();
+    assert_eq!(
+        status,
+        fabro_http::StatusCode::NO_CONTENT,
+        "prune failed: {detail}"
+    );
+    assert!(!scope.exists(), "prune removed the managed Host workspace");
     server.shutdown();
 }

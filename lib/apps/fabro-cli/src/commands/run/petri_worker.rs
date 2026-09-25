@@ -78,6 +78,7 @@ use fabro_petri::hooks::HooksSpec;
 use fabro_petri::interview::{Approval, FabroInterviewer};
 use fabro_petri::petri::OwnerId;
 use fabro_petri::platform_records::{HttpPlatformRecords, PlatformRecords};
+use fabro_petri::providers::{DaytonaCredentials, SandboxProviderConfig};
 use fabro_petri::runtime::{self, RuntimeSpec};
 use fabro_petri::secrets::VaultSecrets;
 use fabro_petri::{HttpRunStore, admission};
@@ -613,7 +614,14 @@ async fn runtime_spec(
             None
         }
     };
+    let daytona = vault.read().await.get(EnvVars::DAYTONA_API_KEY).map(|key| {
+        // The same shared client the server attaches, so the worker's
+        // Daytona calls take the server's proxy and CA policy.
+        DaytonaCredentials::from_api_key(key.to_owned(), crate::process_env_var)
+            .with_http_client(fabro_http::http_client().ok())
+    });
     Ok(RuntimeSpec {
+        sandbox: SandboxProviderConfig::from_lookup(daytona, crate::process_env_var),
         settings_toml: None,
         mcp_catalog_toml: None,
         model_client,

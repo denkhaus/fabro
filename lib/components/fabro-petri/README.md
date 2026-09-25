@@ -172,16 +172,15 @@ Integration tests live under `tests/`:
 - `runs.rs` runs the `hello` bundle in memory through `Runtime::standard()`
   with the Fabro frontend and the model-free stub registry, then a
   command-only workflow on the host sandbox through the real step registry.
-  Both skip, and say why, when the `sandbox-driver-host` plugin executable
-  is not on `PATH` (every run takes its scope's environment through it);
-  the sandbox-plugins CI job requires them.
+  Both acquire real Host scopes through the built-in in-process provider;
+  no plugin executable or checksum is required.
 - `check.rs` admits the `hello` bundle and round-trips its graph through
   the blob store, binds the launch, admits a version whose `workflow.toml`
   names `engine = "petri"`, reads the project settings from the map, and
   refuses an unknown attribute, an unknown `[workflow]` key
   (`unsupported.workflow_toml.key`, named in `workflow.toml`) and, with a
   model client over the test catalog, an unknown model
-  (`attractor.model.unknown`). No plugin is needed.
+  (`attractor.model.unknown`). No sandbox is acquired.
 - `sqlite_store.rs` runs Petri's store conformance suite
   (`petri_testkit::run_store::conformance`) against `SqliteRunStore`, plus the
   operator release, lease exclusivity, a crash between appends, and blob
@@ -206,8 +205,7 @@ Integration tests live under `tests/`:
   client over a vault that holds the key, and checks the skills step
   searched the configured Fabro home.
 
-Those four need the host plugin like `runs.rs` does, and `model.rs` also
-starts the twin.
+Those four use the in-process Host provider; `model.rs` also starts the twin.
 
 - `projection.rs` builds the view live (every append signals the
   projector) for the `hello` bundle on the stub registry, a command-only
@@ -217,7 +215,7 @@ starts the twin.
   recovers a crash between the record commit and the view transaction by
   applying only the missing suffix, with the positions and `stream_seq`
   continuing; runs two projectors over one store with child executions; and
-  holds the view at a torn tail. All skip without the host plugin.
+  holds the view at a torn tail. These run without a Host plugin.
 
 The conformance suite over `HttpRunStore` needs a server to talk to, so it
 lives with the server's integration tests

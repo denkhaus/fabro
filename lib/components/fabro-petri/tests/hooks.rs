@@ -4,16 +4,13 @@
 //! failure route, the fatal checkpoint, and the run-end hooks are checked
 //! against the workspace's Git history and the run's records.
 //!
-//! Every run acquires its scope through the sandbox-driver host plugin, so
-//! the tests skip when that executable is not found, unless
-//! `FABRO_REQUIRE_SANDBOX_PLUGINS` is set. The crash cases of the recovery
-//! protocol need a worker to kill and live in the CLI's scenario suite.
+//! Built-in Host scopes run in process without a plugin executable.
+//! The crash cases need a worker to kill and live in the CLI's scenario suite.
 
 #![expect(
     clippy::disallowed_methods,
-    reason = "the tests locate the plugin executable through the process environment and read the workspace's history with git"
+    reason = "the tests inspect backend availability and read the workspace's history with git"
 )]
-#![expect(clippy::print_stderr, reason = "a skipped test says why on its stderr")]
 
 use std::collections::BTreeMap;
 use std::env;
@@ -31,6 +28,7 @@ use fabro_petri::controls::RunControls;
 use fabro_petri::engine::{self, Execution, RunRequest, RunStatus};
 use fabro_petri::hooks::HooksSpec;
 use fabro_petri::platform_records::PlatformRecords;
+use fabro_petri::providers::{DaytonaCredentials, SandboxProviderConfig};
 use fabro_petri::recovery::{self, Recovery, RecoveryRequest};
 use fabro_petri::runtime::RuntimeSpec;
 use fabro_petri::test_support::{MemoryBlobs, MemoryPlatformRecords};
@@ -44,33 +42,6 @@ use tokio::process::Command;
 use tokio_util::sync::CancellationToken;
 
 mod support;
-
-const HOST_PLUGIN: &str = "sandbox-driver-host";
-const HOST_PLUGIN_OVERRIDE: &str = "PETRI_SANDBOX_HOST_PLUGIN";
-const DOCKER_PLUGIN: &str = "sandbox-driver-docker";
-const DOCKER_PLUGIN_OVERRIDE: &str = "PETRI_SANDBOX_DOCKER_PLUGIN";
-const REQUIRE_ENV: &str = "FABRO_REQUIRE_SANDBOX_PLUGINS";
-
-/// The host plugin as Petri's lookup finds it: the override variable, else
-/// the executable on `PATH`. `None`, after saying so, when the test should
-/// skip; a panic when the environment forbids a skip.
-fn host_plugin() -> Option<PathBuf> {
-    let found = env::var_os(HOST_PLUGIN_OVERRIDE)
-        .map(PathBuf::from)
-        .or_else(|| {
-            env::split_paths(&env::var_os("PATH")?)
-                .map(|dir| dir.join(HOST_PLUGIN))
-                .find(|candidate| candidate.is_file())
-        });
-    if found.is_none() {
-        assert!(
-            env::var_os(REQUIRE_ENV).is_none(),
-            "{REQUIRE_ENV} is set, but {HOST_PLUGIN} is not on PATH and {HOST_PLUGIN_OVERRIDE} is unset"
-        );
-        eprintln!("skipping: {HOST_PLUGIN} is not on PATH and {HOST_PLUGIN_OVERRIDE} is unset");
-    }
-    found
-}
 
 /// A command-only bundle: the stage lines go between `start` and `exit`,
 /// the edge lines after them.
@@ -105,39 +76,6 @@ fn admit(workflow: &str, settings: &str) -> AdmittedGraphs {
         graph:    admitted.graph,
         children: admitted.children,
     }
-}
-
-/// The Docker plugin as Petri's lookup finds it, with a daemon that
-/// answers. `None`, after saying so, when the test should skip; a panic
-/// when the environment forbids a skip and the plugin is missing.
-fn docker_plugin() -> Option<PathBuf> {
-    let found = env::var_os(DOCKER_PLUGIN_OVERRIDE)
-        .map(PathBuf::from)
-        .or_else(|| {
-            env::split_paths(&env::var_os("PATH")?)
-                .map(|dir| dir.join(DOCKER_PLUGIN))
-                .find(|candidate| candidate.is_file())
-        });
-    let Some(found) = found else {
-        assert!(
-            env::var_os(REQUIRE_ENV).is_none(),
-            "{REQUIRE_ENV} is set, but {DOCKER_PLUGIN} is not on PATH and {DOCKER_PLUGIN_OVERRIDE} \
-             is unset"
-        );
-        eprintln!("skipping: {DOCKER_PLUGIN} is not on PATH and {DOCKER_PLUGIN_OVERRIDE} is unset");
-        return None;
-    };
-    let daemon = std::process::Command::new("docker")
-        .args(["version", "--format", "{{.Server.Version}}"])
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()
-        .is_ok_and(|status| status.success());
-    if !daemon {
-        eprintln!("skipping: no Docker daemon answers");
-        return None;
-    }
-    Some(found)
 }
 
 /// One run's pieces: the store, its platform records, where it ran.
@@ -194,12 +132,22 @@ impl Harness {
     ) -> engine::RunOutcome {
         let (interviewer, observers) = no_questions();
         let hooks = self.hooks(&provider);
+        let daytona = (provider == SandboxProviderKind::DAYTONA).then(|| {
+            DaytonaCredentials::from_api_key(
+                env::var("DAYTONA_API_KEY").expect("live Daytona credentials"),
+                |name| env::var(name).ok(),
+            )
+        });
+        let sandbox = SandboxProviderConfig::from_lookup(daytona, |name| env::var(name).ok());
         let request = RunRequest {
             run_id: self.run_id.to_string(),
             run_dir: self.run_dir.clone(),
             execution: Execution::Start(admit(workflow, settings)),
             store: Arc::clone(&self.store) as Arc<dyn petri_store::RunStore>,
-            runtime: RuntimeSpec::default(),
+            runtime: RuntimeSpec {
+                sandbox,
+                ..RuntimeSpec::default()
+            },
             provider,
             cancel: CancellationToken::new(),
             controls: RunControls::new(),
@@ -359,9 +307,6 @@ fn stages(inspection: &RunInspection) -> Vec<(String, String)> {
 /// reached Petri's local service through Fabro's wrapper.
 #[tokio::test]
 async fn every_finish_is_committed_and_recorded() {
-    if host_plugin().is_none() {
-        return;
-    }
     let harness = Harness::new();
     let workflow = workflow(
         "  write [shape=parallelogram, script=\"echo one > out.txt\"]\n  check \
@@ -436,9 +381,6 @@ async fn every_finish_is_committed_and_recorded() {
 /// end.
 #[tokio::test]
 async fn artifacts_the_branch_and_the_diffs_are_recorded() {
-    if host_plugin().is_none() {
-        return;
-    }
     let mut harness = Harness::new();
     harness.artifacts = vec!["assets/**".to_string()];
     let workflow = workflow(
@@ -607,9 +549,6 @@ async fn checkpoint_nodes(harness: &Harness) -> Vec<(String, u64)> {
 /// and its failure route runs on the committed files.
 #[tokio::test]
 async fn a_failed_stage_is_committed_and_its_route_sees_the_files() {
-    if host_plugin().is_none() {
-        return;
-    }
     let harness = Harness::new();
     let workflow = workflow(
         "  work [shape=parallelogram, script=\"echo partial > out.txt; exit 1\"]\n  fix \
@@ -650,9 +589,6 @@ async fn a_failed_stage_is_committed_and_its_route_sees_the_files() {
 /// checkpoint's error, and a restart reports it failed without resuming.
 #[tokio::test]
 async fn a_failed_checkpoint_ends_the_run_with_no_route() {
-    if host_plugin().is_none() {
-        return;
-    }
     let harness = Harness::new();
     let workflow = workflow(
         "  wreck [shape=parallelogram, script=\"rm -rf .git && echo garbage > .git && echo wrecked \
@@ -716,9 +652,6 @@ async fn a_failed_checkpoint_ends_the_run_with_no_route() {
 /// starts over, and a run that finished has nothing to bring back.
 #[tokio::test]
 async fn recovery_starts_an_unknown_run_and_resumes_a_finished_one() {
-    if host_plugin().is_none() {
-        return;
-    }
     let harness = Harness::new();
     assert_eq!(harness.recover().await, Recovery::Start);
 
@@ -756,9 +689,6 @@ async fn a_run_hook_blocks_a_tool_effect_through_the_forwarded_service() {
     use serde_json::json;
 
     const MODEL: &str = "gpt-5.6-sol";
-    if host_plugin().is_none() {
-        return;
-    }
     let twin = fabro_test::twin_openai().await;
     let namespace = format!("{}::{}", module_path!(), line!());
     TwinScenarios::new(namespace.clone())
@@ -865,9 +795,6 @@ async fn the_records_name_the_root_invocations_workspace() {
     use fabro_petri::workspace::WorkspaceLookup;
     use petri_execution::InvocationId;
 
-    if host_plugin().is_none() {
-        return;
-    }
     let harness = Harness::new();
     let workflow = workflow(
         "  write [shape=parallelogram, script=\"echo one > out.txt\"]",
@@ -899,9 +826,6 @@ async fn the_records_name_the_root_invocations_workspace() {
 /// problem.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn parallel_branches_checkpoint_the_shared_workspace_in_turn() {
-    if host_plugin().is_none() {
-        return;
-    }
     let harness = Harness::new();
     let workflow = workflow(
         "  fork [shape=component]\n  a [shape=parallelogram, script=\"echo a > a.txt\"]\n  b \
@@ -955,7 +879,7 @@ async fn parallel_branches_checkpoint_the_shared_workspace_in_turn() {
 /// its ref, with the platform records naming the same commits.
 #[tokio::test]
 async fn a_docker_run_commits_inside_the_container_and_publishes_every_checkpoint() {
-    if docker_plugin().is_none() {
+    if !fabro_test::docker_available() {
         return;
     }
     assert_sandbox_run_publishes_every_checkpoint(SandboxProviderKind::DOCKER).await;
@@ -963,8 +887,8 @@ async fn a_docker_run_commits_inside_the_container_and_publishes_every_checkpoin
 
 /// The same protocol on Daytona: the sandbox-driver facets are provider
 /// neutral, so the commit, the bundle and the restore take one path. Live:
-/// it needs `DAYTONA_API_KEY` and the Daytona plugin, and provisions a
-/// sandbox.
+/// it needs `DAYTONA_API_KEY`, passed explicitly to the provider, and
+/// provisions a sandbox.
 #[tokio::test]
 #[ignore = "requires live Daytona credentials and provisions a sandbox"]
 async fn a_daytona_run_commits_inside_the_sandbox_and_publishes_every_checkpoint() {

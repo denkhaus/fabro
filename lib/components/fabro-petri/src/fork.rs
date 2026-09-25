@@ -1,6 +1,5 @@
 //! Forking a Fabro run at a checkpoint: the seam over Petri's
-//! `host::fork_from` that rewind, fork and retry are built on (the
-//! integration plan's F5.1).
+//! `host::fork_from` that rewind, fork and retry are built on.
 //!
 //! Fabro's checkpoint record ties a Petri position `(execution, firing)` to
 //! a Git commit. A fork seeds a new run from the source's records up to such
@@ -48,8 +47,8 @@ use petri_execution::{
     Access, CoordinatorEvent, ExecutionId, InvocationId, RunKey, RunStore,
     StoreError as CoordinatorStoreError,
 };
+use petri_runtime::RunOptions;
 use petri_runtime::ir::FiringId;
-use petri_runtime::{RunOptions, Runtime};
 use petri_store::StoreError;
 use tokio::fs;
 use tokio::process::Command;
@@ -59,6 +58,7 @@ use crate::checkpoint::{CheckpointKey, RunWorkspaces};
 use crate::platform_records::{PlatformRecordError, PlatformRecords};
 use crate::projection::FoldState;
 use crate::projector::ProjectError;
+use crate::providers::{self, SandboxProviderConfig};
 
 /// One fork to seed.
 pub struct ForkRequest {
@@ -177,7 +177,9 @@ pub async fn fork(request: ForkRequest) -> Result<Forked, ForkError> {
 
     let mut options = RunOptions::new(&request.fork_run_dir);
     options.run_key = Some(fork_key.clone());
-    let runtime = Runtime::standard()
+    // A fork only copies records and acquires no sandbox, so it needs no
+    // provider configuration.
+    let runtime = providers::standard_runtime(&SandboxProviderConfig::default())
         .options(options)
         .store(Arc::clone(&request.store));
     let forked = host::fork_from(&runtime, &*source_logs, request.position, ForkOptions {

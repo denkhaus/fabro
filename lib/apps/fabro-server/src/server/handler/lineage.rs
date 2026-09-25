@@ -1,5 +1,5 @@
 //! A run's checkpoint timeline, and the runs made from it: fork, rewind and
-//! retry (the integration plan's F5.1).
+//! retry.
 //!
 //! The timeline is the run's `checkpoint` platform records, labelled with
 //! the stages the projector folded them onto. A fork resolves a target on
