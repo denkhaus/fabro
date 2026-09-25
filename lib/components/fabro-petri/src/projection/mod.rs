@@ -28,7 +28,7 @@
 mod coordinator;
 mod engine;
 mod fork_exit_kinds;
-mod fork_taxonomy;
+pub mod fork_taxonomy;
 mod model;
 mod platform;
 mod progress;

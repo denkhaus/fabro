@@ -164,6 +164,27 @@ impl RunView {
         } else {
             None
         };
+        // Fork seam (fabro-b00c, user decision 2026-09-25 — engine-side): a
+        // green conclusion cannot stand over a recorded leg failure. Petri
+        // surfaces the failure a catch-all edge consumed in the invocation
+        // result (status=success WITH failure recorded); the projector
+        // refuses the green instead: Succeeded{Completed} downgrades to
+        // Failed, keeping the recorded message. Explicit escapes stay
+        // green: PublishBlocked above (set its own success reason), and
+        // the x.kind exit edges below (an explicit graph decision that
+        // consumes the failure deliberately). A parent whose child died
+        // must never read as a clean success.
+        if super::fork_taxonomy::refuses_green_conclusion(&run_status, failure_message.as_deref()) {
+            tracing::warn!(
+                conclusion_downgraded = true,
+                message = %failure_message.as_deref().unwrap_or(""),
+                "recorded leg failure refuses the green conclusion (fabro-b00c)"
+            );
+            run_status = RunStatus::Failed {
+                reason: FailureReason::WorkflowError,
+            };
+        }
+
         let (outcome, failure) = match run_status {
             RunStatus::Failed {
                 reason: reason @ FailureReason::Cancelled,

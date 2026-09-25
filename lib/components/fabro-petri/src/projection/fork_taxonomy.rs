@@ -75,3 +75,16 @@ pub(crate) fn reclassify_publish_blocked(
 fn apply_status_note(projection: &mut fabro_types::RunProjection, at: DateTime<Utc>) {
     projection.status_updated_at = at;
 }
+
+/// Fork seam (fabro-b00c, user decision 2026-09-25 — engine-side): a green
+/// conclusion over a recorded leg failure is refused. Petri surfaces the
+/// failure a catch-all edge consumed in the invocation result; only the
+/// plain Completed success is downgraded — PublishBlocked set its own
+/// reason above, and the x.kind exit edges below are an explicit graph
+/// decision that consumes the failure deliberately. A parent whose child
+/// died must never read as a clean success.
+pub fn refuses_green_conclusion(run_status: &RunStatus, recorded_failure: Option<&str>) -> bool {
+    matches!(run_status, RunStatus::Succeeded {
+        reason: SuccessReason::Completed,
+    }) && recorded_failure.is_some_and(|message| !message.is_empty())
+}
