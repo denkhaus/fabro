@@ -64,6 +64,42 @@ local storage directory or object-store location. Retain that data if you may
 need to recover historical runs using a reader compatible with the older
 storage format.
 
+Artifact files use the separate local or S3 object store configured through
+`[server.artifacts]` in [Server Configuration](/administration/server-configuration).
+
+#### Legacy SlateDB settings
+
+When Fabro loads active server settings that still contain `[server.slatedb]`,
+it backs up the settings file and removes that section and its subtables.
+For `settings.toml`, the backup is
+`settings.toml.server-slatedb-migration.bak` beside the original file. Existing
+backups are preserved; further backups use numbered suffixes such as
+`settings.toml.server-slatedb-migration.1.bak`. A warning identifies the
+rewritten file and its backup. Other settings are preserved by this cleanup,
+and subsequent loads do nothing once the section is absent.
+
+This cleanup changes configuration only. The settings backup contains no run
+history or blobs.
+
+### SQLite schema upgrades
+
+On startup, Fabro applies pending SQLite schema migrations before serving
+normal traffic. Before changing a database that has previously applied
+migrations, it writes a snapshot beside the database as
+`fabro.sqlite3.pre-migration.bak`. A fresh database or a restart with no pending
+migrations does not create a new snapshot. Each later schema upgrade replaces
+this snapshot; failure to create it stops the upgrade.
+
+The Petri transition drops the former SQL `run_events` table and its activation
+bookkeeping. Those events are not converted into Petri run history. Current
+runs use Petri records and Fabro platform records in SQLite.
+
+For a database rollback, stop the server and restore the `.pre-migration.bak`
+snapshot, then remove any `-wal` and `-shm` siblings before starting the
+corresponding older binary. The snapshot holds the database state immediately
+before the most recent schema upgrade. Restoring it loses database writes
+accepted after that snapshot.
+
 ## Submitting runs
 
 Register the workflow content, create a run from that version, then request execution. This example uses a clone-based default environment and an empty workspace target; add the authentication headers required by your server:
