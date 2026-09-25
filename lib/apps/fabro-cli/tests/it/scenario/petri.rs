@@ -1730,8 +1730,12 @@ async fn a_delete_right_after_the_run_reads_ended_is_accepted() {
     server.shutdown();
 }
 
-/// The release build must acquire and prune a real Host scope without any
-/// plugin executable or checksum. This also runs in CI's release profile.
+/// A Host run acquires and prunes a real scope with no plugin executable
+/// anywhere the worker or server would look. The server is also handed
+/// legacy Host plugin settings, which its prune must ignore; the worker
+/// never receives them (its environment allowlist drops them). The release
+/// workflow runs the suite in a release build, where no plugin checksum is
+/// pinned, so this is the check that a release can run a sandbox at all.
 #[tokio::test(flavor = "multi_thread")]
 async fn built_in_host_runs_and_prunes_without_plugins() {
     let context = test_context!();
@@ -1764,12 +1768,14 @@ async fn built_in_host_runs_and_prunes_without_plugins() {
     wait_for_success(&server, &run_id).await;
     let run_dir = server.petri_run_dir(&run_id);
     let scopes = run_dir.join("scopes");
-    let scope = std::fs::read_dir(&scopes)
+    let entries = std::fs::read_dir(&scopes)
         .expect("the real Host scope exists")
-        .next()
-        .expect("one scope")
-        .expect("the scope reads")
-        .path();
+        .map(|entry| entry.expect("the scope entry reads").path())
+        .collect::<Vec<_>>();
+    let [scope] = entries.as_slice() else {
+        panic!("expected exactly one Host scope, found {entries:?}");
+    };
+    let scope = scope.clone();
     assert_eq!(
         std::fs::read_to_string(scope.join("work/built-in.txt"))
             .expect("the worker wrote its file"),

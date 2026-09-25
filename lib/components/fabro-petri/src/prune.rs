@@ -26,7 +26,7 @@ use fabro_types::SandboxProviderKind;
 pub use petri_execution::prune::PruneReport;
 use petri_execution::prune::{self as petri_prune};
 use petri_execution::{RunKey, RunStore};
-use petri_runtime::{RunOptions, Runtime};
+use petri_runtime::RunOptions;
 
 use crate::engine;
 use crate::providers::{self, SandboxProviderConfig};
@@ -72,8 +72,7 @@ pub async fn prune(request: PruneRequest) -> Result<PruneReport, PruneError> {
     options.run_key = Some(RunKey::new(request.run_id.as_str()));
     options.retention = engine::RETENTION;
     options.sandbox.backend = backend;
-    let runtime = Runtime::bare()
-        .in_process_providers(providers::built_in_providers(&request.sandbox))
+    let runtime = providers::bare_runtime(&request.sandbox)
         .store(request.store)
         .options(options);
     petri_prune::prune(&runtime)

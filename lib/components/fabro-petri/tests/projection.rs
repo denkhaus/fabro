@@ -36,10 +36,10 @@ use fabro_types::{
 };
 use petri_execution::host::{self, HostRun};
 use petri_frontend_fabro::Fabro;
+use petri_runtime::RunOptions;
 use petri_runtime::executor::Retention;
 use petri_runtime::frontend::CompileInputs;
 use petri_runtime::ir::RunStatus as PetriRunStatus;
-use petri_runtime::{RunOptions, Runtime};
 use petri_store::{RunKey, RunStore};
 use tokio::fs;
 use tokio::time::sleep;
@@ -206,11 +206,8 @@ async fn run_workflow(
     workflow: &Path,
     stubs: bool,
 ) {
-    let runtime = Runtime::standard()
-        .in_process_providers(providers::built_in_providers(
-            &SandboxProviderConfig::default(),
-        ))
-        .frontend(Fabro::new());
+    let runtime =
+        providers::standard_runtime(&SandboxProviderConfig::default()).frontend(Fabro::new());
     let runtime = if stubs {
         petri_attractor_steps::register_stubs(runtime)
     } else {

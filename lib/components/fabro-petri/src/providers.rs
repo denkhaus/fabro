@@ -4,13 +4,18 @@
 //! the vault. Factories connect lazily per run; a Host-only run needs neither
 //! Docker nor Daytona. Host registry ownership stays with Petri: server
 //! attach uses an observer instead of these factories.
+//!
+//! Every Petri runtime Fabro builds starts from [`standard_runtime`] or
+//! [`bare_runtime`], so none falls back to launching a provider plugin,
+//! which a release build cannot verify.
 
+use std::path::Path;
 use std::sync::Arc;
 
 use async_trait::async_trait;
 use fabro_static::EnvVars;
 use petri_runtime::{
-    InProcessProviders, ProviderContext, ProviderFactory, ProviderNetwork, fingerprint,
+    InProcessProviders, ProviderContext, ProviderFactory, ProviderNetwork, Runtime, fingerprint,
 };
 use sandbox_driver::{AuthError, Error, ProviderKind, SandboxProvider};
 use sandbox_driver_daytona::{DaytonaConfig, DaytonaProvider};
@@ -40,13 +45,14 @@ impl DaytonaCredentials {
     /// Credentials for a vault API key, with the control-plane URL and
     /// organization taken from `lookup` (server configuration). Nothing is
     /// read implicitly.
+    ///
+    /// These are the two settings the Daytona plugin read in the worker, so
+    /// a lease it recorded keeps its fingerprint: no URL alias and no
+    /// placement target, neither of which reached the plugin.
     pub fn from_api_key(api_key: String, lookup: impl Fn(&str) -> Option<String>) -> Self {
         Self::new(api_key)
-            .with_api_url(
-                lookup(EnvVars::DAYTONA_API_URL).or_else(|| lookup(EnvVars::DAYTONA_SERVER_URL)),
-            )
+            .with_api_url(lookup(EnvVars::DAYTONA_API_URL))
             .with_organization_id(lookup(EnvVars::DAYTONA_ORGANIZATION_ID))
-            .with_target(lookup(EnvVars::DAYTONA_TARGET))
     }
 
     /// The control-plane URL; Daytona's public API when `None`.
@@ -59,13 +65,6 @@ impl DaytonaCredentials {
     #[must_use]
     pub fn with_organization_id(mut self, organization_id: Option<String>) -> Self {
         self.0.organization_id = organization_id;
-        self
-    }
-
-    /// The configured Daytona placement target, kept unset when omitted.
-    #[must_use]
-    pub fn with_target(mut self, target: Option<String>) -> Self {
-        self.0.target = target;
         self
     }
 
@@ -88,7 +87,6 @@ impl std::fmt::Debug for DaytonaCredentials {
         f.debug_struct("DaytonaCredentials")
             .field("api_url", &self.0.api_url)
             .field("organization_id", &self.0.organization_id)
-            .field("target", &self.0.target)
             .finish_non_exhaustive()
     }
 }
@@ -98,25 +96,57 @@ impl std::fmt::Debug for DaytonaCredentials {
 /// configuration never connects to a backend or requires a credential.
 #[derive(Clone, Debug, Default)]
 pub struct SandboxProviderConfig {
-    pub docker_host:         Option<String>,
-    pub docker_host_address: Option<String>,
-    pub daytona:             Option<DaytonaCredentials>,
+    docker_host:         Option<String>,
+    docker_host_address: Option<String>,
+    daytona:             Option<DaytonaCredentials>,
 }
 
 impl SandboxProviderConfig {
-    /// Snapshot the Docker network/fingerprint selection from the same
-    /// environment the Docker client uses. Daytona credentials are explicit.
+    /// The configuration for `daytona`'s credentials, with how a remote
+    /// Docker daemon's containers reach this machine from `lookup`.
+    ///
+    /// The Docker endpoint is read from this process's `DOCKER_HOST`, never
+    /// from `lookup`: the Docker client connects to the daemon that
+    /// variable names, so the lease fingerprint and network name the daemon
+    /// the sandboxes are actually created on.
     pub fn from_lookup(
         daytona: Option<DaytonaCredentials>,
         lookup: impl Fn(&str) -> Option<String>,
     ) -> Self {
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "the Docker client reads DOCKER_HOST from this process; the fingerprint must name the same daemon"
+        )]
+        let docker_host = std::env::var(EnvVars::DOCKER_HOST).ok();
         Self {
-            docker_host: lookup(EnvVars::DOCKER_HOST),
+            docker_host,
             docker_host_address: lookup(EnvVars::PETRI_SANDBOX_DOCKER_HOST_ADDRESS)
                 .filter(|value| !value.trim().is_empty()),
             daytona,
         }
     }
+}
+
+/// Petri's standard runtime with Fabro's built-in providers installed.
+#[must_use]
+pub fn standard_runtime(config: &SandboxProviderConfig) -> Runtime {
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "the one place a standard runtime is built, with the built-in providers installed"
+    )]
+    let runtime = Runtime::standard();
+    runtime.in_process_providers(built_in_providers(config))
+}
+
+/// Petri's bare runtime with Fabro's built-in providers installed.
+#[must_use]
+pub fn bare_runtime(config: &SandboxProviderConfig) -> Runtime {
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "the one place a bare runtime is built, with the built-in providers installed"
+    )]
+    let runtime = Runtime::bare();
+    runtime.in_process_providers(built_in_providers(config))
 }
 
 /// The Docker connection used by both the server and Petri. The driver reads
@@ -142,7 +172,7 @@ pub async fn connect_daytona(
 
 /// One lazy factory per built-in kind. Missing Daytona credentials fail
 /// only when a Daytona scope is acquired, never for admission or a Host run.
-pub fn built_in_providers(config: &SandboxProviderConfig) -> InProcessProviders {
+fn built_in_providers(config: &SandboxProviderConfig) -> InProcessProviders {
     InProcessProviders::new()
         .with(Arc::new(HostFactory))
         .with(Arc::new(DockerFactory {
@@ -160,12 +190,10 @@ impl ProviderFactory for HostFactory {
         "host"
     }
 
+    /// An empty registry path when Petri supplies none, as the plugin
+    /// recorded it.
     fn fingerprint_seed(&self, context: &ProviderContext) -> String {
-        fingerprint::host(
-            context
-                .host_registry()
-                .expect("Petri supplies the Host registry"),
-        )
+        fingerprint::host(context.host_registry().unwrap_or(Path::new("")))
     }
 
     fn network(&self) -> ProviderNetwork {
@@ -176,9 +204,12 @@ impl ProviderFactory for HostFactory {
         &self,
         context: &ProviderContext,
     ) -> sandbox_driver::Result<Arc<dyn SandboxProvider>> {
-        let registry = context
-            .host_registry()
-            .expect("Petri supplies the Host registry");
+        let registry = context.host_registry().ok_or_else(|| {
+            Error::invalid_spec(
+                "host_registry",
+                "Petri supplied no Host registry for this run",
+            )
+        })?;
         Ok(Arc::new(HostProvider::with_registry(registry).await?))
     }
 }
@@ -224,7 +255,7 @@ impl DaytonaFactory {
         fingerprint::daytona(
             config.and_then(|config| config.api_url.as_deref()),
             config.and_then(|config| config.organization_id.as_deref()),
-            config.and_then(|config| config.target.as_deref()),
+            None,
         )
     }
 }
@@ -237,13 +268,6 @@ impl ProviderFactory for DaytonaFactory {
 
     fn fingerprint_seed(&self, _context: &ProviderContext) -> String {
         self.seed()
-    }
-
-    fn region(&self) -> Option<&str> {
-        self.0
-            .as_ref()
-            .and_then(|credentials| credentials.config().target.as_deref())
-            .filter(|region| !region.is_empty())
     }
 
     fn network(&self) -> ProviderNetwork {
@@ -277,21 +301,16 @@ mod tests {
                 "docker:unix:///var/run/docker.sock",
             ),
         ] {
-            let config = SandboxProviderConfig::from_lookup(None, |name| {
-                (name == EnvVars::DOCKER_HOST)
-                    .then(|| host.map(str::to_owned))
-                    .flatten()
-            });
             let factory = DockerFactory {
-                host:         config.docker_host,
-                host_address: config.docker_host_address,
+                host:         host.map(str::to_owned),
+                host_address: None,
             };
             assert_eq!(factory.seed(), expected);
         }
     }
 
     #[test]
-    fn daytona_fingerprint_keeps_unset_values_and_the_configured_target() {
+    fn daytona_fingerprint_keeps_the_plugin_seed() {
         let unset = DaytonaCredentials::from_api_key("test-key".to_string(), |_| None);
         assert_eq!(DaytonaFactory(Some(unset)).seed(), "daytona:::");
         let configured =
@@ -303,34 +322,33 @@ mod tests {
                 _ => None,
             });
         let factory = DaytonaFactory(Some(configured));
-        assert_eq!(factory.seed(), "daytona:https://daytona.example:org-1:us");
-        assert_eq!(factory.region(), Some("us"));
-        let blank =
-            DaytonaCredentials::new("test-key".to_string()).with_target(Some(String::new()));
-        assert_eq!(DaytonaFactory(Some(blank)).region(), None);
+        assert_eq!(factory.seed(), "daytona:https://daytona.example:org-1:");
+        assert_eq!(factory.region(), None);
     }
 
     #[test]
-    fn daytona_url_alias_and_http_client_survive_the_shared_configuration() {
+    fn daytona_configuration_ignores_the_url_alias_and_keeps_the_http_client() {
         let credentials = DaytonaCredentials::from_api_key("test-key".to_string(), |name| {
             (name == EnvVars::DAYTONA_SERVER_URL).then(|| "https://alias.example".to_string())
         })
         .with_http_client(Some(fabro_test::test_http_client()));
-        assert_eq!(
-            credentials.config().api_url.as_deref(),
-            Some("https://alias.example")
-        );
+        assert_eq!(credentials.config().api_url, None);
         assert!(credentials.config().http_client.is_some());
     }
 
     #[test]
-    fn provider_configuration_debug_never_prints_the_key() {
+    fn provider_configuration_keeps_the_key_but_never_prints_it() {
         let key = "dtn_test_sensitive_value";
         let config = SandboxProviderConfig::from_lookup(
-            Some(DaytonaCredentials::from_api_key(key.to_string(), |_| None)),
+            Some(DaytonaCredentials::from_api_key(key.to_string(), |name| {
+                (name == EnvVars::DAYTONA_ORGANIZATION_ID).then(|| "org-1".to_string())
+            })),
             |_| None,
         );
+        let daytona = config.daytona.as_ref().expect("the credentials are kept");
+        assert_eq!(daytona.config().api_key.as_deref(), Some(key));
         let rendered = format!("{config:?}");
         assert!(!rendered.contains(key));
+        assert!(rendered.contains("org-1"));
     }
 }

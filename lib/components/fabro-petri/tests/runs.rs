@@ -115,11 +115,7 @@ async fn the_hello_bundle_runs_in_memory_on_the_stub_registry() {
     .await;
     let store = Arc::new(MemoryRunStore::new());
     let rt = petri_attractor_steps::register_stubs(
-        Runtime::standard()
-            .in_process_providers(providers::built_in_providers(
-                &SandboxProviderConfig::default(),
-            ))
-            .frontend(Fabro::new()),
+        providers::standard_runtime(&SandboxProviderConfig::default()).frontend(Fabro::new()),
     )
     .store(store.clone())
     .options(run_options(&root.path().join("run"), "hello"));
@@ -144,11 +140,7 @@ async fn a_command_workflow_runs_on_the_host_sandbox() {
     .await;
     let store = Arc::new(MemoryRunStore::new());
     let rt = petri_attractor_steps::register(
-        Runtime::standard()
-            .in_process_providers(providers::built_in_providers(
-                &SandboxProviderConfig::default(),
-            ))
-            .frontend(Fabro::new()),
+        providers::standard_runtime(&SandboxProviderConfig::default()).frontend(Fabro::new()),
     )
     .store(store.clone())
     .options(run_options(&root.path().join("run"), "command"));

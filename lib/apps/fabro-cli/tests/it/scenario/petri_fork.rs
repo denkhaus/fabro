@@ -1,5 +1,5 @@
 //! Fork, rewind, retry and the timeline over Petri runs, through a real
-//! server and its worker subprocess (the integration plan's F5.1).
+//! server and its worker subprocess.
 //!
 //! The harness is `petri.rs`'s: a foreground server on disk storage, a run
 //! created and started with `fabro run --detach`, executed by the worker

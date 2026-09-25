@@ -1,7 +1,6 @@
 use std::ffi::OsString;
 
 use fabro_static::EnvVars;
-use fabro_types::settings::server::ServerSandboxProvidersSettings;
 use tokio::process::Command;
 
 const WORKER_ENV_ALLOWLIST: &[&str] = &[
@@ -51,9 +50,8 @@ const WORKER_ENV_ALLOWLIST: &[&str] = &[
     EnvVars::AWS_CONTAINER_CREDENTIALS_RELATIVE_URI,
     EnvVars::AWS_CONTAINER_CREDENTIALS_FULL_URI,
     EnvVars::AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE,
-    // Preserve generic plugin configuration. Built-in providers run in process
-    // and never receive executable paths or checksum overrides.
-    EnvVars::PETRI_SANDBOX_PLUGIN_DEV,
+    // Petri's sandbox settings the worker's in-process providers read. No
+    // plugin settings cross: the worker never launches a provider plugin.
     EnvVars::PETRI_SANDBOX_DOCKER_HOST_ADDRESS,
     EnvVars::PETRI_SANDBOX_ACTION_HOST_IMAGE,
     // The Docker daemon selection: the worker's Docker provider reads these
@@ -69,8 +67,6 @@ const WORKER_ENV_ALLOWLIST: &[&str] = &[
     // Daytona's non-secret selection. The worker reads the API key from
     // the vault and supplies it explicitly to the in-process provider.
     EnvVars::DAYTONA_API_URL,
-    EnvVars::DAYTONA_SERVER_URL,
-    EnvVars::DAYTONA_TARGET,
     EnvVars::DAYTONA_ORGANIZATION_ID,
     // A test's checkpoint gates: the worker's hooks hold at a named point
     // until the test releases them, so a crash can be placed there.
@@ -82,55 +78,9 @@ const WORKER_ENV_ALLOWLIST: &[&str] = &[
 
 const RENDER_GRAPH_ENV_ALLOWLIST: &[&str] = &[EnvVars::PATH, EnvVars::HOME, EnvVars::TMPDIR];
 
-/// The worker's environment: the allowlisted ambient variables, then the
-/// plugin variables the server's settings derive, which win over an
-/// ambient variable of the same name.
-pub(crate) fn apply_worker_env(cmd: &mut Command, sandbox_plugins: &[(String, String)]) {
-    apply_worker_env_with(cmd, sandbox_plugins, &process_env_var_os);
-}
-
-fn apply_worker_env_with(
-    cmd: &mut Command,
-    sandbox_plugins: &[(String, String)],
-    lookup: &dyn Fn(&str) -> Option<OsString>,
-) {
-    apply_allowlist(cmd, WORKER_ENV_ALLOWLIST, lookup);
-    for (name, value) in sandbox_plugins {
-        cmd.env(name, value);
-    }
-}
-
-/// The plugin variables Petri reads in the worker, derived from the
-/// server's `[server.sandbox.providers.<kind>]` settings: for every enabled
-/// third-party kind that carries plugin settings, `PETRI_SANDBOX_<KIND>_PLUGIN`
-/// from its `path` and `PETRI_SANDBOX_<KIND>_SHA256` from its `sha256`, and
-/// `PETRI_SANDBOX_PLUGIN_DEV=1` when any of them sets `dev`. The kind is
-/// uppercased with hyphens as underscores, as Petri names the variable. A
-/// kind whose settings name no path is left to Petri's own lookup
-/// (`sandbox-driver-<kind>` beside the executable, then on `PATH`), the
-/// same lookup the server's attach uses.
-pub(crate) fn sandbox_plugin_env(
-    providers: &ServerSandboxProvidersSettings,
-) -> Vec<(String, String)> {
-    let mut env = Vec::new();
-    let mut dev = false;
-    for (kind, plugin) in providers.enabled_plugins() {
-        let upper = kind.as_str().to_ascii_uppercase().replace('-', "_");
-        if let Some(path) = &plugin.path {
-            env.push((format!("PETRI_SANDBOX_{upper}_PLUGIN"), path.clone()));
-        }
-        if let Some(sha256) = &plugin.sha256 {
-            env.push((format!("PETRI_SANDBOX_{upper}_SHA256"), sha256.clone()));
-        }
-        dev |= plugin.dev;
-    }
-    if dev {
-        env.push((
-            EnvVars::PETRI_SANDBOX_PLUGIN_DEV.to_string(),
-            "1".to_string(),
-        ));
-    }
-    env
+/// The worker's environment: the allowlisted ambient variables only.
+pub(crate) fn apply_worker_env(cmd: &mut Command) {
+    apply_allowlist(cmd, WORKER_ENV_ALLOWLIST, &process_env_var_os);
 }
 
 pub(crate) fn apply_render_graph_env(cmd: &mut Command) {
@@ -160,15 +110,7 @@ mod tests {
     use std::ffi::OsString;
     use std::path::Path;
 
-    use fabro_types::SandboxProviderKind;
-    use fabro_types::settings::server::{
-        SandboxPluginSettings, ServerSandboxProviderSettings, ServerSandboxProvidersSettings,
-    };
-
-    use super::{
-        RENDER_GRAPH_ENV_ALLOWLIST, WORKER_ENV_ALLOWLIST, apply_allowlist, apply_worker_env_with,
-        sandbox_plugin_env,
-    };
+    use super::{RENDER_GRAPH_ENV_ALLOWLIST, WORKER_ENV_ALLOWLIST, apply_allowlist};
 
     fn env_command() -> tokio::process::Command {
         assert!(Path::new("/usr/bin/env").exists());
@@ -292,16 +234,10 @@ mod tests {
             Some("xterm-256color")
         );
         assert_eq!(actual.get("NO_COLOR").map(String::as_str), Some("1"));
-        // Built-in plugin paths and pins never reach the worker.
-        for kind in ["HOST", "DOCKER", "DAYTONA"] {
-            for suffix in ["PLUGIN", "SHA256"] {
-                assert!(!actual.contains_key(&format!("PETRI_SANDBOX_{kind}_{suffix}")));
-            }
-        }
-        assert_eq!(
-            actual.get("PETRI_SANDBOX_PLUGIN_DEV").map(String::as_str),
-            Some("1")
-        );
+        // No plugin setting reaches the worker: it never launches a
+        // provider plugin.
+        assert!(!actual.contains_key("PETRI_SANDBOX_HOST_PLUGIN"));
+        assert!(!actual.contains_key("PETRI_SANDBOX_PLUGIN_DEV"));
         // The Docker daemon selection crosses whole, so the worker's Docker
         // provider drives the daemon the server uses.
         assert_eq!(
@@ -338,11 +274,11 @@ mod tests {
             actual.get("DAYTONA_ORGANIZATION_ID").map(String::as_str),
             Some("org-1")
         );
-        assert_eq!(
-            actual.get("DAYTONA_SERVER_URL").map(String::as_str),
-            Some("https://daytona-alias.internal/api")
-        );
-        assert_eq!(actual.get("DAYTONA_TARGET").map(String::as_str), Some("us"));
+        // The URL alias and placement target never reached the Daytona
+        // plugin, so they stay out and plugin-era leases keep their
+        // fingerprint.
+        assert!(!actual.contains_key("DAYTONA_SERVER_URL"));
+        assert!(!actual.contains_key("DAYTONA_TARGET"));
         assert!(!actual.contains_key("DAYTONA_API_KEY"));
         assert_eq!(actual.get("CLICOLOR").map(String::as_str), Some("0"));
         assert_eq!(actual.get("CLICOLOR_FORCE").map(String::as_str), Some("1"));
@@ -380,99 +316,6 @@ mod tests {
         assert!(!actual.contains_key("GITHUB_APP_WEBHOOK_SECRET"));
         assert!(!actual.contains_key("FABRO_WORKER_TOKEN"));
         assert!(!actual.contains_key("MY_API_KEY"));
-    }
-
-    fn provider(
-        kind: &str,
-        enabled: bool,
-        plugin: SandboxPluginSettings,
-    ) -> (SandboxProviderKind, ServerSandboxProviderSettings) {
-        (
-            SandboxProviderKind::try_new(kind).expect("a valid kind"),
-            ServerSandboxProviderSettings {
-                enabled,
-                plugin: Some(plugin),
-            },
-        )
-    }
-
-    /// A configured plugin reaches the worker under the names Petri reads,
-    /// while built-in paths and pins and disabled third-party plugins never
-    /// cross.
-    #[tokio::test]
-    async fn third_party_plugins_reach_the_worker_and_built_ins_never_do() {
-        let mut providers = ServerSandboxProvidersSettings::default();
-        providers.entries.extend([
-            provider("e2b", true, SandboxPluginSettings {
-                path: Some("/opt/fabro/plugins/sandbox-driver-e2b".to_string()),
-                sha256: Some("0123abcd".to_string()),
-                dev: true,
-                ..SandboxPluginSettings::default()
-            }),
-            provider("docker", true, SandboxPluginSettings {
-                path: Some("/opt/fabro/plugins/sandbox-driver-docker".to_string()),
-                ..SandboxPluginSettings::default()
-            }),
-            provider("daytona", true, SandboxPluginSettings::default()),
-            provider("fly-io", false, SandboxPluginSettings {
-                path: Some("/opt/fabro/plugins/sandbox-driver-fly-io".to_string()),
-                ..SandboxPluginSettings::default()
-            }),
-        ]);
-        let mut env = HashMap::from([("PATH".to_string(), "/bin".to_string())]);
-        for kind in ["HOST", "DOCKER", "DAYTONA"] {
-            let lower = kind.to_ascii_lowercase();
-            env.insert(
-                format!("PETRI_SANDBOX_{kind}_PLUGIN"),
-                format!("/ambient/sandbox-driver-{lower}"),
-            );
-            env.insert(
-                format!("PETRI_SANDBOX_{kind}_SHA256"),
-                "invalid-pin".to_string(),
-            );
-        }
-        let mut cmd = env_command();
-        apply_worker_env_with(&mut cmd, &sandbox_plugin_env(&providers), &|name| {
-            env.get(name).map(OsString::from)
-        });
-
-        let actual = env_output(cmd).await;
-
-        assert_eq!(
-            actual.get("PETRI_SANDBOX_E2B_PLUGIN").map(String::as_str),
-            Some("/opt/fabro/plugins/sandbox-driver-e2b")
-        );
-        assert_eq!(
-            actual.get("PETRI_SANDBOX_E2B_SHA256").map(String::as_str),
-            Some("0123abcd")
-        );
-        assert_eq!(
-            actual.get("PETRI_SANDBOX_PLUGIN_DEV").map(String::as_str),
-            Some("1"),
-            "one plugin in dev mode puts the worker's lookup in dev mode"
-        );
-        for kind in ["HOST", "DOCKER", "DAYTONA"] {
-            for suffix in ["PLUGIN", "SHA256"] {
-                assert!(!actual.contains_key(&format!("PETRI_SANDBOX_{kind}_{suffix}")));
-            }
-        }
-        assert!(
-            !actual.contains_key("PETRI_SANDBOX_FLY_IO_PLUGIN"),
-            "a disabled kind's plugin does not cross"
-        );
-    }
-
-    #[test]
-    fn no_configured_plugin_derives_no_variables() {
-        assert!(sandbox_plugin_env(&ServerSandboxProvidersSettings::default()).is_empty());
-        let mut providers = ServerSandboxProvidersSettings::default();
-        providers
-            .entries
-            .extend([provider("docker", true, SandboxPluginSettings::default())]);
-        assert!(
-            sandbox_plugin_env(&providers).is_empty(),
-            "settings with neither a path nor a pin nor dev mode add nothing"
-        );
     }
 
     #[tokio::test]

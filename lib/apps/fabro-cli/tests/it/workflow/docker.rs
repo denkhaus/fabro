@@ -7,17 +7,16 @@
 
 #![expect(
     clippy::disallowed_methods,
-    reason = "test setup reads the process environment for its opt-in gate and probes Docker synchronously"
+    reason = "a failed setup reads the isolated server's log synchronously"
 )]
 #![expect(
     clippy::print_stderr,
-    reason = "a skipped scenario says why on the test's stderr"
+    reason = "a failed setup prints the server log tail on the test's stderr"
 )]
 
 use std::path::Path;
-use std::process::{Command, Stdio};
 
-use fabro_test::{REQUIRE_SANDBOX_BACKENDS, TestContext, expect_reqwest_status};
+use fabro_test::{TestContext, expect_reqwest_status};
 use serde_json::json;
 
 use crate::cmd::support::server_endpoint;
@@ -30,13 +29,7 @@ pub(crate) const ENVIRONMENT: &str = "docker";
 /// [`DOCKER_IMAGE`]. Returns the environment id, or `None` when the
 /// prerequisites are missing and the test should skip.
 pub(crate) fn configure(context: &mut TestContext) -> Option<&'static str> {
-    let required = std::env::var_os(REQUIRE_SANDBOX_BACKENDS).is_some();
-    if !docker_image_available() {
-        assert!(
-            !required,
-            "{REQUIRE_SANDBOX_BACKENDS} is set but no Docker daemon with {DOCKER_IMAGE} is available"
-        );
-        eprintln!("skipping: no Docker daemon with {DOCKER_IMAGE}");
+    if !fabro_test::docker_image_available(DOCKER_IMAGE) {
         return None;
     }
 
@@ -54,15 +47,6 @@ methods = ["dev-token"]
     context.isolated_server();
     create_environment(&context.storage_dir);
     Some(ENVIRONMENT)
-}
-
-fn docker_image_available() -> bool {
-    Command::new("docker")
-        .args(["image", "inspect", DOCKER_IMAGE])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .is_ok_and(|status| status.success())
 }
 
 fn toml_path(path: &Path) -> String {
@@ -106,7 +90,7 @@ fn create_environment(storage_dir: &Path) {
 }
 
 /// Run a scenario; when it fails, print the isolated server's log first, since
-/// the worker's stderr (and so a plugin's launch failure) lands only there
+/// the worker's stderr (and so a sandbox provider failure) lands only there
 /// and the server root is removed when the context drops.
 pub(crate) fn run_with_server_log(context: &TestContext, scenario: impl FnOnce()) {
     let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(scenario));

@@ -70,13 +70,11 @@ impl RuntimeSpec {
     /// registry: only execution swaps in the stubs.
     #[must_use]
     pub fn runtime(&self, for_execution: bool) -> Runtime {
-        let mut runtime = Runtime::standard()
-            .in_process_providers(providers::built_in_providers(&self.sandbox))
-            .frontend(
-                Fabro::new()
-                    .with_settings_toml(self.settings_toml.clone())
-                    .with_mcp_catalog_toml(self.mcp_catalog_toml.clone()),
-            );
+        let mut runtime = providers::standard_runtime(&self.sandbox).frontend(
+            Fabro::new()
+                .with_settings_toml(self.settings_toml.clone())
+                .with_mcp_catalog_toml(self.mcp_catalog_toml.clone()),
+        );
         if let Some(client) = &self.model_client {
             runtime = runtime.capability(PebbleClient(client.clone()));
         }

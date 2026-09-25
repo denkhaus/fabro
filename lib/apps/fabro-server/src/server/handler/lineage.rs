@@ -281,7 +281,6 @@ async fn fork_at(
         .await
         .map_err(|err| fork_error(&err))?;
 
-    let sandbox = state.load_sandbox_provider_config().await?;
     let new_run_id = RunId::new();
     let storage = Storage::new(state.server_storage_dir());
     let source_run_dir = storage.run_scratch(&id).root().to_path_buf();
@@ -300,7 +299,6 @@ async fn fork_at(
     .map_err(workflow_operation_error)?;
 
     let seeded = petri_fork::fork(ForkRequest {
-        sandbox,
         source: id,
         fork: new_run_id,
         source_run_dir: source_run_dir.join("petri"),

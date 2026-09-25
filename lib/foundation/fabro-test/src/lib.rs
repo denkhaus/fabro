@@ -162,25 +162,47 @@ pub const REQUIRE_SANDBOX_BACKENDS: &str = "FABRO_REQUIRE_SANDBOX_BACKENDS";
 /// A reachable Docker daemon. When [`REQUIRE_SANDBOX_BACKENDS`] is set, a
 /// missing daemon fails the test instead of skipping it.
 #[must_use]
+pub fn docker_available() -> bool {
+    sandbox_backend_available(
+        docker_succeeds(&["version", "--format", "{{.Server.Version}}"]),
+        "no Docker daemon answers",
+    )
+}
+
+/// A Docker daemon that already holds `image`, under the same
+/// fail-or-skip policy as [`docker_available`].
+#[must_use]
+pub fn docker_image_available(image: &str) -> bool {
+    sandbox_backend_available(
+        docker_succeeds(&["image", "inspect", image]),
+        &format!("no Docker daemon with {image}"),
+    )
+}
+
+fn docker_succeeds(args: &[&str]) -> bool {
+    std::process::Command::new("docker")
+        .args(args)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .is_ok_and(|status| status.success())
+}
+
+/// `available`, or a skip notice for `missing` (a failure when
+/// [`REQUIRE_SANDBOX_BACKENDS`] is set).
 #[allow(
     clippy::print_stderr,
     reason = "Skip notices go to stderr so stdout stays assertable."
 )]
-pub fn docker_available() -> bool {
-    let daemon = std::process::Command::new("docker")
-        .args(["version", "--format", "{{.Server.Version}}"])
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()
-        .is_ok_and(|status| status.success());
-    if !daemon {
+fn sandbox_backend_available(available: bool, missing: &str) -> bool {
+    if !available {
         assert!(
             std::env::var_os(REQUIRE_SANDBOX_BACKENDS).is_none(),
-            "{REQUIRE_SANDBOX_BACKENDS} is set, but no Docker daemon answers"
+            "{REQUIRE_SANDBOX_BACKENDS} is set, but {missing}"
         );
-        eprintln!("skipping: no Docker daemon answers");
+        eprintln!("skipping: {missing}");
     }
-    daemon
+    available
 }
 
 /// Apply baseline environment isolation to a `Command` that spawns the
