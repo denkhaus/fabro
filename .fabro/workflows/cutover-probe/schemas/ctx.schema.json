@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Cutover probe ctx output",
+  "type": "object",
+  "required": ["outcome", "preferred_next_label", "context_updates"],
+  "properties": {
+    "outcome": {"type": "string"},
+    "preferred_next_label": {"type": "string", "enum": ["Key out"]},
+    "context_updates": {
+      "type": "object",
+      "required": ["probe_key"],
+      "properties": {"probe_key": {"type": "string"}}
+    }
+  }
+}

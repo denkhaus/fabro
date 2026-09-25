@@ -1,0 +1,51 @@
+digraph CutoverProbe {
+    graph [goal="Probe the petri cutover contract seams: a schema stage's context_updates reach a stdin_source stage, and a loop-asset write passes the checkpoint envelope", default_max_retries=0]
+    rankdir=LR
+
+    start [shape=Mdiamond, label="Start"]
+    exit  [shape=Msquare, label="Exit"]
+
+    // Seam 1 (the c5a0 fix): Contract::Schema must spread a top-level
+    // context_updates object into the run context — the stdin stage below
+    // resolves probe_key through stdin_source and fails on empty stdin.
+    ctx [
+        label="Ctx: schema stage emits context_updates",
+        prompt="@prompts/ctx.md",
+        reasoning_effort="low",
+        output_schema="@schemas/ctx.schema.json"
+    ]
+    stdin [
+        label="Stdin: reads probe_key",
+        shape=parallelogram,
+        script="test \"$(cat)\" = \"cutover-probe-42\"",
+        stdin_source="probe_key",
+        timeout="10s",
+        max_retries=0
+    ]
+    // Seam 2 (the implementer envelope fix): a write under the loop-asset
+    // write root must pass the checkpoint's staged-set check.
+    mulch [
+        label="Envelope: writes the loop-asset tree",
+        prompt="@prompts/mulch.md",
+        reasoning_effort="low",
+        x.fs_write=".mulch/**",
+        output_schema="routing"
+    ]
+
+    // Seam 3 (the implementer shape): a BROAD-write stage — fs_write UNSET,
+    // hide narrowed — must commit a PRODUCT-path write (a pinned write list
+    // here would deny exactly this; pass 5 died that way).
+    product [
+        label="Product: writes a source path",
+        prompt="@prompts/product.md",
+        reasoning_effort="low",
+        x.fs_hide=".fabro/**,.seeds/**,.agents/**",
+        output_schema="routing"
+    ]
+
+    start -> ctx
+    ctx -> stdin [label="Key out"]
+    stdin -> mulch
+    mulch -> product [label="Write out"]
+    product -> exit [label="Product out"]
+}
