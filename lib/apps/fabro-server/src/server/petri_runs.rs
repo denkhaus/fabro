@@ -354,6 +354,7 @@ async fn prepare_stub_git_checkout(
 ) -> Result<(), RunCompilerError> {
     use std::process::Stdio;
 
+    use tokio::fs;
     use tokio::process::Command as TokioCommand;
     let git = |args: &[&str]| {
         let mut command = TokioCommand::new("git");
@@ -370,13 +371,11 @@ async fn prepare_stub_git_checkout(
             target.repo
         ))
     };
-    tokio::fs::create_dir_all(worktree)
-        .await
-        .map_err(|source| {
-            RunCompilerError::GitCheckout(format!(
-                "the test stub checkout directory could not be created: {source}"
-            ))
-        })?;
+    fs::create_dir_all(worktree).await.map_err(|source| {
+        RunCompilerError::GitCheckout(format!(
+            "the test stub checkout directory could not be created: {source}"
+        ))
+    })?;
     git(&["init", "--quiet", "-b", &target.branch])
         .await
         .map_err(|_| fail("init"))?
@@ -384,7 +383,7 @@ async fn prepare_stub_git_checkout(
         .then_some(())
         .ok_or_else(|| fail("init"))?;
     let marker = worktree.join("fabro-test-target.txt");
-    tokio::fs::write(
+    fs::write(
         &marker,
         format!(
             "{} @ {}

@@ -200,3 +200,29 @@ opt-level = 2
 opt-level = 2
 [profile.dev.package.regex-syntax]
 opt-level = 2
+
+
+# FORK PATCH (fabro-c5a0): petri's Contract::Schema never spreads a
+# response's top-level context_updates into the run context, so every
+# stdin_source-over-context-key stage after a schema'd agent stage reads
+# empty stdin (deterministic cutover child failure 3/3). denkhaus/petri
+# branch `fabro` carries the spread in the agent and prompt Structured
+# arms (fork commit cfcacaa over lithoscomputer/petri cbab2c5, the rev
+# this tree validated). Remove this block — and the fork branch — when
+# lithoscomputer/petri merges the equivalent fix (PR to follow).
+[patch."https://github.com/lithoscomputer/petri.git"]
+petri-runtime = { git = "https://github.com/denkhaus/petri", branch = "fabro" }
+petri-execution = { git = "https://github.com/denkhaus/petri", branch = "fabro" }
+petri-store = { git = "https://github.com/denkhaus/petri", branch = "fabro" }
+petri-attractor-steps = { git = "https://github.com/denkhaus/petri", branch = "fabro" }
+petri-frontend-attractor = { git = "https://github.com/denkhaus/petri", branch = "fabro" }
+petri-frontend-native = { git = "https://github.com/denkhaus/petri", branch = "fabro" }
+petri-frontend-fabro = { git = "https://github.com/denkhaus/petri", branch = "fabro" }
+petri-driver = { git = "https://github.com/denkhaus/petri", branch = "fabro" }
+petri-engine = { git = "https://github.com/denkhaus/petri", branch = "fabro" }
+petri-executor = { git = "https://github.com/denkhaus/petri", branch = "fabro" }
+petri-executor-sandbox = { git = "https://github.com/denkhaus/petri", branch = "fabro" }
+petri-ir = { git = "https://github.com/denkhaus/petri", branch = "fabro" }
+petri-steps = { git = "https://github.com/denkhaus/petri", branch = "fabro" }
+petri-testkit = { git = "https://github.com/denkhaus/petri", branch = "fabro" }
+petri-frontend = { git = "https://github.com/denkhaus/petri", branch = "fabro" }
