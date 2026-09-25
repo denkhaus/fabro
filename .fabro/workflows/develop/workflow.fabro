@@ -245,15 +245,18 @@ digraph Develop {
         // CLI's expertise writes must be admitted explicitly. .mulch
         // leaves the hide list (a write glob under fs_hide is denied as
         // hidden; implementer envelope violation on the seeds-parity
-        // expertise write) and fs_write pins writes to the mulch tree;
-        // the tracker stays hidden (the closeout command stage owns the
-        // seed write) and seed work may legitimately touch files outside
+        // expertise write). fs_write stays UNSET — an explicit list
+        // would pin writes to the list alone and deny the PRODUCT writes
+        // (the implementer's whole job; a pinned .mulch-only list killed
+        // the next pass the same way). Unset + narrowed hide = hidden
+        // paths stay denied, every product path stays writable; the
+        // tracker stays hidden (the closeout command stage owns the seed
+        // write) and seed work may legitimately touch files outside
         // the primary code areas (README,
         // fixtures). Gate
         // re-runs keep working through the shell escape hatch.
         x.fs_hide=".fabro/**,.seeds/**,.agents/**,scripts/**,justfile",
-        x.fs_write=".mulch/**",
-        // fabro-900e: stable context_updates contract (see planner).
+                // fabro-900e: stable context_updates contract (see planner).
         // lesson_capture (run 01M1EGK6J8): the
         // implementer prompt REQUIRES the mx-id-or-skip answer as data —
         // the envelope dropped it once (visible notice) until declared here.
