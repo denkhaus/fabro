@@ -78,6 +78,24 @@ A version can be reused for several children, each with its own goal, target, an
 the agent's read tool and pass literal `goal` text. Workflow names, paths, inline
 source objects, and `goal_file` are no longer run-create inputs.
 
+Inside a workflow run, prefer the `files_from` form over transcribing contents:
+name the workflow's directory in the run's sandbox and the server collects the
+tree itself — two short strings instead of a streamed closure:
+
+```json
+{
+  "entrypoint": "develop/workflow.toml",
+  "files_from": ".fabro/workflows/develop"
+}
+```
+
+Keys arrive relative to the directory's parent, so the `<slug>/` entrypoint form
+works unchanged. `files` and `files_from` are mutually exclusive; `files_from`
+exists only where the caller's surface has the run's sandbox behind it (the
+conductor's stages; MCP and Ask Fabro pass `files` inline). The collection is
+bounded — 200 files, 256 KiB per file, 2 MiB total, UTF-8 text only — and a
+violated bound errors rather than truncating.
+
 This flow works in Local, Docker, and Daytona environments. The agent can clone a
 remote workflow in its sandbox and submit the resulting contents. Fabro's native
 tool handler executes outside the sandbox, so registration treats file-map keys

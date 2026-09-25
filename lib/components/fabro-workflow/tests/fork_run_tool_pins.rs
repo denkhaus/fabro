@@ -27,6 +27,7 @@ use fabro_types::{Run, RunId, RunProjection, RunStreamItem};
 use fabro_workflow::pull_request::open_pull_request;
 use fabro_workflow::run_tools::register_named_fabro_run_tools;
 use fabro_workflow::services::FabroRunToolServices;
+use serde_json::json;
 
 struct PinBackend;
 
@@ -202,6 +203,52 @@ fn named_registry_resolves_fabro_blob_for_stage_sessions() {
         assert!(
             properties.get(field).is_some(),
             "blob schema must advertise {field}"
+        );
+    }
+}
+
+#[test]
+fn workflow_version_registration_keeps_the_files_from_source() {
+    // fabro-4b29: the conductor's survey registers workflow closures from
+    // the run's sandbox — the tool must keep advertising the `files_from`
+    // source beside inline `files`, with `entrypoint` the only required
+    // key, and the two sources must stay mutually exclusive. Dropping this
+    // surface returns every conductor pass to transcribing ~118 KB
+    // closures through tool arguments (01MGJXV71TD).
+    let definition = tool_definitions()
+        .iter()
+        .find(|definition| definition.name == fabro_tool::FABRO_WORKFLOW_VERSION_CREATE_TOOL_NAME)
+        .expect("workflow version registration stays in the catalog");
+    let schema = &definition.parameters;
+    let properties = schema["properties"].as_object().expect("an object schema");
+    assert_eq!(properties.len(), 3, "entrypoint, files, files_from");
+    assert!(
+        properties.contains_key("files_from"),
+        "the sandbox source must stay advertised"
+    );
+    assert_eq!(
+        schema["required"],
+        json!(["entrypoint"]),
+        "neither source is required alone"
+    );
+
+    // The params refuse the both-set and neither-set forms with an error
+    // naming the exclusivity.
+    for value in [
+        json!({"entrypoint": "develop/workflow.toml"}),
+        json!({
+            "entrypoint": "develop/workflow.toml",
+            "files": {"develop/workflow.toml": "digraph W {}"},
+            "files_from": ".fabro/workflows/develop"
+        }),
+    ] {
+        let params: fabro_tool::FabroWorkflowVersionCreateParams =
+            serde_json::from_value(value).unwrap();
+        let error = fabro_tool::ValidatedWorkflowVersionCreate::try_from(params)
+            .expect_err("the two sources are mutually exclusive");
+        assert!(
+            error.to_string().contains("exactly one"),
+            "the error names the exclusivity: {error}"
         );
     }
 }

@@ -730,6 +730,31 @@ impl Client {
     }
 
     /// Retrieves one canonical server-managed environment by ID.
+    /// Reads one workspace directory of a run's sandbox: the run-tool
+    /// `files_from` collection (fabro-4b29). Worker-token scoped on the
+    /// server; keys are relative to the directory's parent.
+    pub async fn list_run_sandbox_files(
+        &self,
+        run_id: &RunId,
+        directory: &str,
+    ) -> Result<types::RunSandboxFileMap> {
+        let response = self
+            .send_api(|client| {
+                let run_id = run_id.to_string();
+                let directory = directory.to_string();
+                async move {
+                    client
+                        .list_run_sandbox_files()
+                        .id(run_id)
+                        .directory(directory)
+                        .send()
+                        .await
+                }
+            })
+            .await?;
+        Ok(response.into_inner())
+    }
+
     pub async fn retrieve_environment(&self, id: &str) -> Result<types::Environment> {
         let response = self
             .send_api(|client| {

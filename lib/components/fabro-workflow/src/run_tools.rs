@@ -96,7 +96,23 @@ pub(crate) async fn execute_fabro_run_tool(
         fabro_tool::FABRO_WORKFLOW_VERSION_CREATE_TOOL_NAME => {
             let params =
                 parse_fabro_tool_args::<fabro_tool::FabroWorkflowVersionCreateParams>(name, args)?;
-            let source = fabro_tool::ValidatedWorkflowVersionCreate::try_from(params)?;
+            let source = match params.files_from.as_deref() {
+                // `files_from` (fabro-4b29): the closure comes from this
+                // run's sandbox — the backend collects the directory and
+                // the map flows through the same validation as inline
+                // files. Two short strings instead of a transcribed
+                // closure.
+                Some(directory) => {
+                    let run_id = services.current_run_id;
+                    let sandbox_files = services
+                        .backend
+                        .read_run_sandbox_files(&run_id, directory)
+                        .await
+                        .map_err(|err| fabro_tool::ToolError::from_anyhow(&err))?;
+                    params.resolve(sandbox_files)?
+                }
+                None => fabro_tool::ValidatedWorkflowVersionCreate::try_from(params)?,
+            };
             let result =
                 fabro_tool::create_workflow_version(Arc::clone(&services.backend), source).await?;
             let summary = fabro_tool::workflow_version_create_text(&result);
@@ -368,6 +384,85 @@ mod tests {
         .await
         .unwrap_err();
         assert!(error.to_string().contains("not present"));
+        upload.assert_calls_async(1).await;
+    }
+
+    /// The `files_from` half of registration (fabro-4b29): the dispatch
+    /// collects the directory from the run's sandbox through the backend
+    /// and the map flows through the same packaging + upload as inline
+    /// files — the presence pin is that the SAME closure, inline and
+    /// collected, registers the SAME content-addressed version id.
+    #[tokio::test]
+    async fn workflow_version_files_from_collects_and_registers_the_same_version() {
+        let server = httpmock::MockServer::start_async().await;
+        let run_id: RunId = "01KRBZW4DW0000000000000002".parse().unwrap();
+        // The closure as the run's sandbox holds it: keys relative to the
+        // directory's parent.
+        let closure = json!({
+            "directory": ".fabro/workflows/develop",
+            "files": {
+                "develop/workflow": "digraph W {}",
+                "develop/prompts/planner.md": "plan"
+            }
+        });
+        let collected = server
+            .mock_async(|when, then| {
+                when.method(httpmock::Method::GET)
+                    .path(format!("/api/v1/runs/{run_id}/sandbox-files"))
+                    .query_param("directory", ".fabro/workflows/develop");
+                then.status(200).json_body_obj(&closure);
+            })
+            .await;
+        // The version the SingleGraphPackager derives from that exact map:
+        // identical content, so an inline call with the same files must
+        // produce the same id.
+        let version = WorkflowVersion::new(
+            "develop/workflow".parse().unwrap(),
+            BTreeMap::from([
+                (
+                    "develop/workflow".parse().unwrap(),
+                    "digraph W {}".to_string(),
+                ),
+                (
+                    "develop/prompts/planner.md".parse().unwrap(),
+                    "plan".to_string(),
+                ),
+            ]),
+            BTreeMap::new(),
+        )
+        .unwrap();
+        let id = version.id().unwrap();
+        let upload = server
+            .mock_async(|when, then| {
+                when.method(httpmock::Method::POST)
+                    .path("/api/v1/workflow-versions")
+                    .json_body_obj(&version);
+                then.status(201)
+                    .json_body(json!({"workflow_version_id": id}));
+            })
+            .await;
+        let client = fabro_client::Client::new_no_proxy(&server.url("")).unwrap();
+        let services = FabroRunToolServices {
+            backend:        Arc::new(
+                ClientBackend::new(Arc::new(client))
+                    .with_workflow_version_packager(Arc::new(SingleGraphPackager)),
+            ),
+            current_run_id: run_id,
+        };
+        let name = fabro_tool::FABRO_WORKFLOW_VERSION_CREATE_TOOL_NAME;
+        let output = execute_fabro_run_tool(
+            name,
+            json!({
+                "entrypoint": "develop/workflow",
+                "files_from": ".fabro/workflows/develop"
+            }),
+            &services,
+        )
+        .await
+        .unwrap();
+        let (summary, _) = output.split_once('\n').unwrap();
+        assert_eq!(summary, format!("Registered workflow version {id}"));
+        collected.assert_calls_async(1).await;
         upload.assert_calls_async(1).await;
     }
 

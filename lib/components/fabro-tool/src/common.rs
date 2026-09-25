@@ -54,6 +54,19 @@ pub trait FabroToolBackend: Send + Sync {
         Err(workflow_version_tool_unavailable_error())
     }
 
+    /// Read every text file under `directory` (workspace-relative) of
+    /// `run_id`'s sandbox, keyed relative to the directory's parent — the
+    /// `files_from` half of workflow-version registration (fabro-4b29).
+    /// Only surfaces bound to a run's sandbox serve it; the default
+    /// refuses with a teaching error.
+    async fn read_run_sandbox_files(
+        &self,
+        _run_id: &RunId,
+        _directory: &str,
+    ) -> anyhow::Result<std::collections::BTreeMap<String, String>> {
+        Err(run_sandbox_files_unavailable_error())
+    }
+
     async fn create_run_from_intent(&self, intent: fabro_types::RunIntent)
     -> anyhow::Result<RunId>;
 
@@ -179,6 +192,15 @@ pub(crate) fn workflow_version_tool_unavailable_error() -> anyhow::Error {
     ToolError::message(format!(
         "{FABRO_WORKFLOW_VERSION_CREATE_TOOL_NAME} is not available"
     ))
+    .into()
+}
+
+pub(crate) fn run_sandbox_files_unavailable_error() -> anyhow::Error {
+    ToolError::message(
+        "reading workflow files from the run sandbox (files_from) is not available on this \
+         surface; pass the file contents inline in `files` instead"
+            .to_string(),
+    )
     .into()
 }
 
@@ -404,10 +426,19 @@ mod tests {
             .expect("workflow version creation should be in the shared catalog");
         let schema = &definition.parameters;
         assert_eq!(schema["additionalProperties"], false);
-        assert_eq!(schema["properties"].as_object().unwrap().len(), 2);
-        assert_eq!(
-            schema["required"],
-            serde_json::json!(["entrypoint", "files"])
+        // entrypoint, files, files_from — the sandbox-supplied source is
+        // optional and never required (fabro-4b29).
+        assert_eq!(schema["properties"].as_object().unwrap().len(), 3);
+        assert_eq!(schema["required"], serde_json::json!(["entrypoint"]));
+    }
+
+    #[test]
+    fn run_sandbox_files_error_teaches_the_inline_alternative() {
+        let error = run_sandbox_files_unavailable_error();
+        let text = format!("{error:#}");
+        assert!(
+            text.contains("inline"),
+            "the teaching error names the inline alternative: {text}"
         );
     }
 

@@ -3792,6 +3792,80 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /api/v1/runs/{id}/sandbox-files:
+    get:
+      operationId: listRunSandboxFiles
+      tags: [Runs]
+      summary: Read one workspace directory of the run's sandbox
+      description: |
+        Returns every regular text file under one workspace-relative directory of the run's sandbox, contents inline, keyed by paths relative to the directory's parent (a `.fabro/workflows/<slug>` directory yields `<slug>/workflow.toml` keys).
+
+        Serves run-tool `files_from` workflow-version registration: the closure is read from the caller's own sandbox instead of being transcribed through tool arguments. Reads are bounded and refuse rather than truncate: at most 200 files, 256 KiB per file, 2 MiB total, tree depth 8, UTF-8 text only. Binary, non-UTF-8, or symlinked entries refuse the whole read.
+
+        Only the run's own worker token may call this; user principals keep the elided run-files diff view.
+      parameters:
+        - $ref: "#/components/parameters/RunId"
+        - name: directory
+          in: query
+          required: true
+          description: Workspace-relative directory to read (for example `.fabro/workflows/develop`). Must resolve inside the sandbox working directory.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 512
+      responses:
+        "200":
+          description: The directory's text files with parent-relative keys
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunSandboxFileMap"
+        "400":
+          description: Malformed directory parameter (empty, root, traversal escape, or not a directory).
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Run not found or its sandbox was not created.
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: The run's sandbox cannot be reached right now. Safe to retry.
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "413":
+          description: The directory's collection exceeds a bound (files, per-file bytes, or total bytes).
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: A collected entry is not UTF-8 text (binary or symlinked file).
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /api/v1/runs/{id}/commits:
     get:
       operationId: listRunCommits
@@ -14787,6 +14861,23 @@ components:
             $ref: "#/components/schemas/FileDiff"
         meta:
           $ref: "#/components/schemas/RunFilesMeta"
+
+    RunSandboxFileMap:
+      description: |
+        Every regular text file under one workspace-relative directory of a run's sandbox, keyed by paths relative to the directory's parent. Bounded: at most 200 files, 256 KiB per file, 2 MiB total; a violated bound refuses the read instead of truncating it.
+      type: object
+      required:
+        - directory
+        - files
+      properties:
+        directory:
+          type: string
+          description: The requested workspace-relative directory.
+        files:
+          type: object
+          description: File contents keyed by path relative to the directory's parent (`<slug>/workflow.toml` for a `.fabro/workflows/<slug>` directory).
+          additionalProperties:
+            type: string
 
     RunCommitParent:
       description: Parent commit pointer.

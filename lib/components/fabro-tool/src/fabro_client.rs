@@ -82,6 +82,19 @@ impl FabroToolBackend for ClientBackend {
         Ok(packaged.root_id())
     }
 
+    async fn read_run_sandbox_files(
+        &self,
+        run_id: &RunId,
+        directory: &str,
+    ) -> anyhow::Result<std::collections::BTreeMap<String, String>> {
+        self.ensure_run_scope(run_id)?;
+        let collected = self
+            .client
+            .list_run_sandbox_files(run_id, directory)
+            .await?;
+        Ok(collected.files.into_iter().collect())
+    }
+
     async fn create_run_from_intent(&self, intent: RunIntent) -> anyhow::Result<RunId> {
         anyhow::ensure!(
             self.run_scope.is_none(),

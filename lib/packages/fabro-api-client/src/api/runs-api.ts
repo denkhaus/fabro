@@ -74,6 +74,8 @@ import type { RunIntent } from '../models';
 // @ts-ignore
 import type { RunManifest } from '../models';
 // @ts-ignore
+import type { RunSandboxFileMap } from '../models';
+// @ts-ignore
 import type { RunTimelineResponse } from '../models';
 // @ts-ignore
 import type { RunWaitResult } from '../models';
@@ -794,6 +796,53 @@ export const RunsApiAxiosParamCreator = function (configuration?: Configuration)
             let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
             localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
             localVarRequestOptions.data = serializeDataIfNeeded(linkRunPullRequestRequest, localVarRequestOptions, configuration)
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * Returns every regular text file under one workspace-relative directory of the run\'s sandbox, contents inline, keyed by paths relative to the directory\'s parent (a `.fabro/workflows/<slug>` directory yields `<slug>/workflow.toml` keys).  Serves run-tool `files_from` workflow-version registration: the closure is read from the caller\'s own sandbox instead of being transcribed through tool arguments. Reads are bounded and refuse rather than truncate: at most 200 files, 256 KiB per file, 2 MiB total, tree depth 8, UTF-8 text only. Binary, non-UTF-8, or symlinked entries refuse the whole read.  Only the run\'s own worker token may call this; user principals keep the elided run-files diff view.
+         * @summary Read one workspace directory of the run\'s sandbox
+         * @param {string} id Unique run identifier (ULID).
+         * @param {string} directory Workspace-relative directory to read (for example &#x60;.fabro/workflows/develop&#x60;). Must resolve inside the sandbox working directory.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listRunSandboxFiles: async (id: string, directory: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'id' is not null or undefined
+            assertParamExists('listRunSandboxFiles', 'id', id)
+            // verify required parameter 'directory' is not null or undefined
+            assertParamExists('listRunSandboxFiles', 'directory', directory)
+            const localVarPath = `/api/v1/runs/{id}/sandbox-files`
+                .replace(`{${"id"}}`, encodeURIComponent(String(id)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            // authentication SessionCookie required
+
+            // authentication BearerAuth required
+            // http bearer authentication required
+            await setBearerAuthToObject(localVarHeaderParameter, configuration)
+
+            if (directory !== undefined) {
+                localVarQueryParameter['directory'] = directory;
+            }
+
+            localVarHeaderParameter['Accept'] = 'application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
 
             return {
                 url: toPathString(localVarUrlObj),
@@ -1869,6 +1918,20 @@ export const RunsApiFp = function(configuration?: Configuration) {
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
+         * Returns every regular text file under one workspace-relative directory of the run\'s sandbox, contents inline, keyed by paths relative to the directory\'s parent (a `.fabro/workflows/<slug>` directory yields `<slug>/workflow.toml` keys).  Serves run-tool `files_from` workflow-version registration: the closure is read from the caller\'s own sandbox instead of being transcribed through tool arguments. Reads are bounded and refuse rather than truncate: at most 200 files, 256 KiB per file, 2 MiB total, tree depth 8, UTF-8 text only. Binary, non-UTF-8, or symlinked entries refuse the whole read.  Only the run\'s own worker token may call this; user principals keep the elided run-files diff view.
+         * @summary Read one workspace directory of the run\'s sandbox
+         * @param {string} id Unique run identifier (ULID).
+         * @param {string} directory Workspace-relative directory to read (for example &#x60;.fabro/workflows/develop&#x60;). Must resolve inside the sandbox working directory.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async listRunSandboxFiles(id: string, directory: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<RunSandboxFileMap>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.listRunSandboxFiles(id, directory, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['RunsApi.listRunSandboxFiles']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
          * Returns durable run summaries from the backing store, including runs persisted before the current server boot. Supports per-status filtering and sorting for both list and kanban renderings. Archived runs are hidden by default; pass `include_archived=true` (or `status=archived`) to include them. Runs in the `removing` bucket are hidden unless explicitly requested via `status=removing`.
          * @summary List Runs
          * @param {number} [pageLimit] Maximum number of items to return per page.
@@ -2314,6 +2377,17 @@ export const RunsApiFactory = function (configuration?: Configuration, basePath?
             return localVarFp.linkRunPullRequest(id, linkRunPullRequestRequest, options).then((request) => request(axios, basePath));
         },
         /**
+         * Returns every regular text file under one workspace-relative directory of the run\'s sandbox, contents inline, keyed by paths relative to the directory\'s parent (a `.fabro/workflows/<slug>` directory yields `<slug>/workflow.toml` keys).  Serves run-tool `files_from` workflow-version registration: the closure is read from the caller\'s own sandbox instead of being transcribed through tool arguments. Reads are bounded and refuse rather than truncate: at most 200 files, 256 KiB per file, 2 MiB total, tree depth 8, UTF-8 text only. Binary, non-UTF-8, or symlinked entries refuse the whole read.  Only the run\'s own worker token may call this; user principals keep the elided run-files diff view.
+         * @summary Read one workspace directory of the run\'s sandbox
+         * @param {string} id Unique run identifier (ULID).
+         * @param {string} directory Workspace-relative directory to read (for example &#x60;.fabro/workflows/develop&#x60;). Must resolve inside the sandbox working directory.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listRunSandboxFiles(id: string, directory: string, options?: RawAxiosRequestConfig): AxiosPromise<RunSandboxFileMap> {
+            return localVarFp.listRunSandboxFiles(id, directory, options).then((request) => request(axios, basePath));
+        },
+        /**
          * Returns durable run summaries from the backing store, including runs persisted before the current server boot. Supports per-status filtering and sorting for both list and kanban renderings. Archived runs are hidden by default; pass `include_archived=true` (or `status=archived`) to include them. Runs in the `removing` bucket are hidden unless explicitly requested via `status=removing`.
          * @summary List Runs
          * @param {number} [pageLimit] Maximum number of items to return per page.
@@ -2714,6 +2788,18 @@ export class RunsApi extends BaseAPI {
      */
     public linkRunPullRequest(id: string, linkRunPullRequestRequest: LinkRunPullRequestRequest, options?: RawAxiosRequestConfig) {
         return RunsApiFp(this.configuration).linkRunPullRequest(id, linkRunPullRequestRequest, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * Returns every regular text file under one workspace-relative directory of the run\'s sandbox, contents inline, keyed by paths relative to the directory\'s parent (a `.fabro/workflows/<slug>` directory yields `<slug>/workflow.toml` keys).  Serves run-tool `files_from` workflow-version registration: the closure is read from the caller\'s own sandbox instead of being transcribed through tool arguments. Reads are bounded and refuse rather than truncate: at most 200 files, 256 KiB per file, 2 MiB total, tree depth 8, UTF-8 text only. Binary, non-UTF-8, or symlinked entries refuse the whole read.  Only the run\'s own worker token may call this; user principals keep the elided run-files diff view.
+     * @summary Read one workspace directory of the run\'s sandbox
+     * @param {string} id Unique run identifier (ULID).
+     * @param {string} directory Workspace-relative directory to read (for example &#x60;.fabro/workflows/develop&#x60;). Must resolve inside the sandbox working directory.
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public listRunSandboxFiles(id: string, directory: string, options?: RawAxiosRequestConfig) {
+        return RunsApiFp(this.configuration).listRunSandboxFiles(id, directory, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**
