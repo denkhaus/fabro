@@ -146,42 +146,33 @@ impl RunView {
             .root
             .and_then(|root| self.state.invocations.get(&root));
         let failure_message = root.and_then(|root| root.failure.clone());
-        let (mut run_status, outcome, failure) = match status {
-            "success" => {
-                // Fork seam (fabro-6655, fabro-67e5): a failed publish
-                // downgrades a green conclusion to PublishBlocked, keeping
-                // the run green while naming why delivery is incomplete.
-                if super::fork_taxonomy::publish_creation_failed(pull_request_creation.as_ref()) {
-                    let error = pull_request_creation
-                        .as_ref()
-                        .and_then(|creation| creation.error.clone())
-                        .unwrap_or_else(|| "unknown error".to_string());
-                    (
-                        RunStatus::Succeeded {
-                            reason: SuccessReason::PublishBlocked,
-                        },
-                        StageOutcome::Succeeded,
-                        Some(super::fork_taxonomy::publish_blocked_failure(&error, at)),
-                    )
-                } else {
-                    (
-                        RunStatus::Succeeded {
-                            reason: SuccessReason::Completed,
-                        },
-                        StageOutcome::Succeeded,
-                        None,
-                    )
-                }
-            }
-            "cancelled" => (
-                RunStatus::Failed {
-                    reason: FailureReason::Cancelled,
-                },
+        let mut run_status = finished_status(status);
+        // Fork seam (fabro-6655, fabro-67e5): a failed publish
+        // downgrades a green conclusion to PublishBlocked, keeping
+        // the run green while naming why delivery is incomplete.
+        let publish_blocked_failure = if matches!(run_status, RunStatus::Succeeded { .. })
+            && super::fork_taxonomy::publish_creation_failed(pull_request_creation.as_ref())
+        {
+            let error = pull_request_creation
+                .as_ref()
+                .and_then(|creation| creation.error.clone())
+                .unwrap_or_else(|| "unknown error".to_string());
+            run_status = RunStatus::Succeeded {
+                reason: SuccessReason::PublishBlocked,
+            };
+            Some(super::fork_taxonomy::publish_blocked_failure(&error, at))
+        } else {
+            None
+        };
+        let (outcome, failure) = match run_status {
+            RunStatus::Failed {
+                reason: reason @ FailureReason::Cancelled,
+            } => (
                 StageOutcome::Failed {
                     retry_requested: false,
                 },
                 Some(RunFailure {
-                    reason: FailureReason::Cancelled,
+                    reason,
                     detail: FailureDetail::new(
                         failure_message
                             .clone()
@@ -190,15 +181,12 @@ impl RunView {
                     ),
                 }),
             ),
-            _ => (
-                RunStatus::Failed {
-                    reason: FailureReason::WorkflowError,
-                },
+            RunStatus::Failed { reason } => (
                 StageOutcome::Failed {
                     retry_requested: false,
                 },
                 Some(RunFailure {
-                    reason: FailureReason::WorkflowError,
+                    reason,
                     detail: FailureDetail::new(
                         failure_message
                             .clone()
@@ -207,7 +195,9 @@ impl RunView {
                     ),
                 }),
             ),
+            _ => (StageOutcome::Succeeded, None),
         };
+        let failure = failure.or(publish_blocked_failure);
         // Fork seam (fabro-2e7b, ADR-0021 rev 2 Option C): a failure whose
         // message announces a provider usage-window reset (long window or
         // naive-ETA) parks the run resumable instead of failing it — the
@@ -283,6 +273,22 @@ impl RunView {
                 .or_else(|| last_checkpoint.map(|checkpoint| checkpoint.diff.clone()))
                 .unwrap_or_default(),
         });
+    }
+}
+
+/// The status Fabro gives a run at Petri's finish, by the status the finish
+/// records (`success`, `cancelled`, or a failure).
+pub(super) fn finished_status(status: &str) -> RunStatus {
+    match status {
+        "success" => RunStatus::Succeeded {
+            reason: SuccessReason::Completed,
+        },
+        "cancelled" => RunStatus::Failed {
+            reason: FailureReason::Cancelled,
+        },
+        _ => RunStatus::Failed {
+            reason: FailureReason::WorkflowError,
+        },
     }
 }
 

@@ -22,7 +22,7 @@ use fabro_llm::gateway::{GatewayAdapter, GatewayError, GatewayTransport};
 use fabro_llm::lithos_catalog::{Catalog, CatalogProvider};
 use fabro_llm::middleware::{Call, Middleware, Next, Output};
 use fabro_llm::{Client, ClientOptions, Error as LlmError, ErrorKind};
-use fabro_pebble_sandbox::{PebbleSandbox, SecretRedactor};
+use fabro_redact::SecretRedactor;
 use fabro_static::EnvVars;
 use fabro_types::settings::cli::OutputFormat as SettingsOutputFormat;
 use fabro_types::settings::run::{McpServerSettings, ResolvedMcpEntry};
@@ -35,6 +35,7 @@ use pebble_cli_core::approval::TerminalApproval;
 use pebble_cli_core::render::{self, JsonStream, RenderOptions, Style};
 use pebble_cli_core::session::{SessionOptions, run_prompt_with};
 use pebble_coding_agent::environment::Environment;
+use pebble_coding_agent::sandbox_driver::SandboxEnvironment;
 use pebble_coding_agent::subagents::SubagentOptions;
 use pebble_coding_agent::tools::{PermissionLevelPolicy, PermissionMiddleware};
 use pebble_coding_agent::{CodingAgent, CodingAgentOptions, MemoryDiscovery, SkillDiscovery};
@@ -522,7 +523,9 @@ async fn run_session(
 /// removed, brought to `Running` with its Bash verified. The provider is
 /// returned beside the sandbox because the session's processes are the
 /// provider's process groups; it must outlive the session.
-async fn host_sandbox(working_directory: PathBuf) -> AnyResult<(HostProvider, Arc<PebbleSandbox>)> {
+async fn host_sandbox(
+    working_directory: PathBuf,
+) -> AnyResult<(HostProvider, Arc<SandboxEnvironment>)> {
     let provider = HostProvider::new();
     let handle = provider
         .create(
@@ -536,7 +539,7 @@ async fn host_sandbox(working_directory: PathBuf) -> AnyResult<(HostProvider, Ar
         .await
         .context("failed to start the local sandbox")?;
     let working_directory = handle.working_directory().to_string();
-    let sandbox = PebbleSandbox::attach(handle, working_directory)
+    let sandbox = SandboxEnvironment::attach(handle, working_directory)
         .await
         .context("failed to read the local sandbox's platform")?;
     Ok((provider, Arc::new(sandbox)))

@@ -22,7 +22,8 @@ use fabro_api::types::{
     PetriPlatformRecordAppendRequest, PetriPlatformRecordList, PetriRecord, PetriRecordList,
     PetriReleaseRequest, WriteBlobResponse,
 };
-use fabro_petri::petri::{Access, Digest, OwnerId, Record, StoreError};
+use fabro_petri::petri::{Access, Digest, LogId, OwnerId, Record, StoreError};
+use fabro_petri::projection::finished_run_status;
 use fabro_petri::run_store::{log_id_text, parse_log_id};
 use fabro_store::{PlatformRecord, PlatformRecordKind, StagePosition, StoredPlatformRecord};
 use fabro_types::BlobHash;
@@ -32,6 +33,7 @@ use serde_json::{Map, Value, json};
 use super::super::{
     ApiError, AppState, Bytes, IntoResponse, Json, Query, RequireWorkerRunScoped,
     RequireWorkerRunSegment, Response, Router, RunId, State, StatusCode, octet_stream_response,
+    settle_managed_run_at_finish, settle_managed_run_at_terminal_record,
 };
 
 /// The largest batch of records one append may carry. Petri batches an
@@ -155,6 +157,14 @@ async fn append_records(
         Ok(writer) => writer,
         Err(err) => return store_error_response(id, &err),
     };
+    // The view ends the run at Petri's own finish, the moment the record
+    // is stored and a pass folds it: the managed run settles first, so a
+    // delete that lands while the worker still tears down is not refused.
+    if log == LogId::Coordinator {
+        if let Some(status) = records.iter().find_map(finished_run_status) {
+            settle_managed_run_at_finish(&state, id, status);
+        }
+    }
     match writer.append(&log, &records).await {
         Ok(()) => {
             // The records are durable; the projection trails them from here.
@@ -269,6 +279,10 @@ async fn append_platform_record(
         (Some(execution), Some(firing)) => Some(StagePosition { execution, firing }),
         _ => None,
     };
+    // A terminal lifecycle record ends the run in the view as Petri's
+    // finish does, for a worker that ended the run without one: the
+    // managed run settles before the record is stored.
+    settle_managed_run_at_terminal_record(&state, id, &record);
     let summaries = &state.stores.run_summaries;
     match summaries
         .platform_records()

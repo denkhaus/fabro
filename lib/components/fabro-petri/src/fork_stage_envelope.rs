@@ -22,7 +22,7 @@
 
 use std::collections::BTreeMap;
 
-use fabro_pebble_sandbox::fs_scope::{FsScope, FsScopeError};
+use fabro_redact::fs_scope::{FsScope, FsScopeError};
 use fabro_util::workspace_glob::WorkspaceGlob;
 
 /// The aggregate preamble budget when no `x.preamble_budget_kb` is set:

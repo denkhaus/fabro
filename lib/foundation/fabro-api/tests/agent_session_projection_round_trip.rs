@@ -86,19 +86,19 @@ fn a_populated_projection_matches_its_openapi_schema() {
     assert_eq!(projection.route.model.as_deref(), Some("claude-fable-5"));
     assert_eq!(projection.prompts, 1);
     assert!(projection.prompt.completed);
-    assert_eq!(projection.messages, 2);
-    assert_eq!(projection.retries, 1);
-    assert_eq!(projection.descendants.len(), 1);
+    assert_eq!(projection.totals.messages, 2);
+    assert_eq!(projection.totals.retries, 1);
+    assert_eq!(projection.totals.descendants.len(), 1);
     assert_eq!(projection.tools.len(), 2);
     assert_eq!(projection.mcp_servers.len(), 2);
     assert_eq!(projection.skills.activated.len(), 1);
     assert_eq!(projection.todos.len(), 1);
     assert_eq!(projection.subagents.len(), 2);
-    assert_eq!(projection.compactions.len(), 1);
+    assert_eq!(projection.totals.compactions.len(), 1);
     assert_eq!(projection.failovers.len(), 1);
     assert!(projection.failover_stopped.is_some());
-    assert_eq!(projection.files_touched, ["/workspace/src/lib.rs"]);
-    assert!(projection.context_window.is_some());
+    assert_eq!(projection.totals.files_touched, ["/workspace/src/lib.rs"]);
+    assert!(projection.totals.context_window.is_some());
 
     let value = serde_json::to_value(&projection).unwrap();
     assert!(

@@ -34,7 +34,7 @@ use fabro_api::types::{
     RunFilesMeta, RunFilesMetaDegradedReason, RunFilesMetaScope, RunFilesMetaSource,
     RunFilesMetaToSha, RunSandboxFileMap,
 };
-use fabro_pebble_sandbox::{SandboxExec, display_for_log};
+use fabro_redact::SecretRedactor;
 use fabro_types::RunId;
 use fabro_util::shell;
 use fabro_workflow::sandbox_git::{
@@ -42,6 +42,7 @@ use fabro_workflow::sandbox_git::{
     list_diff_numstat, stream_blob_metadata, stream_blobs,
 };
 use futures_util::FutureExt;
+use pebble_coding_agent::sandbox_driver::{SandboxExec, display_for_log};
 use sandbox_driver::{
     Git as _, GitCommit, GitDiffOptions, GitFacet, GitLogOptions, GitRevisionRange, Sandbox,
     Termination,
@@ -826,7 +827,7 @@ fn sandbox_git_error(op: &str, error: &sandbox_driver::Error) -> ApiError {
     if timed_out {
         return transient_503(op, "command timed out");
     }
-    transient_503(op, &display_for_log(error))
+    transient_503(op, &display_for_log(error, &SecretRedactor))
 }
 
 /// Build the degraded response from the stored terminal diff patch.
@@ -1296,7 +1297,12 @@ async fn resolve_ref_sha_and_time(
             None,
         )
         .await
-        .map_err(|err| ApiError::new(StatusCode::SERVICE_UNAVAILABLE, display_for_log(&err)))?;
+        .map_err(|err| {
+            ApiError::new(
+                StatusCode::SERVICE_UNAVAILABLE,
+                display_for_log(&err, &SecretRedactor),
+            )
+        })?;
     if !res.success() {
         return Err(ApiError::new(
             StatusCode::SERVICE_UNAVAILABLE,
@@ -1974,8 +1980,8 @@ fn not_text(path: &str) -> ApiError {
 mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
 
-    use fabro_pebble_sandbox::test_support::{MockSandbox, exec_result};
     use fabro_types::{PetriAdmission, RunId, test_support};
+    use pebble_coding_agent::sandbox_driver::test_support::{MockSandbox, exec_result};
     use sandbox_driver::ExecResult;
     use tokio::time::{Duration, sleep};
 

@@ -802,9 +802,6 @@ async fn deleting_a_run_prunes_its_host_workspace_through_petri() {
     let store = state.test_petri_run_store();
     let key = RunKey::new(run_id.clone());
     wait_for_free_lease(store, &key).await;
-    // The view reports the run ended from Petri's own finish, before the
-    // server settles the managed run the delete precheck reads.
-    wait_for_managed_settle(&state, &run_id).await;
 
     // A live handle on the run, as its worker holds one, refuses the
     // delete: Petri will not prune under a lease someone holds.
@@ -861,21 +858,6 @@ async fn deleting_a_run_prunes_its_host_workspace_through_petri() {
 }
 
 /// Wait until no owner holds the run's lease.
-/// Wait until the server's own map holds the run as ended.
-async fn wait_for_managed_settle(state: &AppState, run_id: &str) {
-    let run_id: RunId = run_id.parse().expect("a run id");
-    for _ in 0..500 {
-        if state
-            .test_managed_run_status(&run_id)
-            .is_none_or(fabro_types::RunStatus::is_terminal)
-        {
-            return;
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
-    }
-    panic!("the managed run did not settle");
-}
-
 async fn wait_for_free_lease(store: &SqliteRunStore, key: &RunKey) {
     for _ in 0..500 {
         if store.owner(key).await.expect("reads the lease").is_none() {
@@ -892,6 +874,80 @@ fn delete(run_id: &str) -> Request<Body> {
         .uri(api(&format!("/runs/{run_id}")))
         .body(Body::empty())
         .expect("delete request should build")
+}
+
+/// A delete issued the moment the run reads as ended is accepted while its
+/// execution still tears down in the server process: the server settles
+/// the managed run at Petri's own finish, the record the view ends the run
+/// on, not at the terminal record it stores after the engine returns, so
+/// the delete precheck does not refuse the run as active. The execution's
+/// end after the delete brings nothing back.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_delete_right_after_the_run_reads_ended_is_accepted() {
+    if host_plugin().is_none() {
+        return;
+    }
+    let workspace = tempfile::tempdir().expect("workspace tempdir");
+    let settings = settings_from_toml("_version = 1\n\n[run.environment]\nid = \"local\"\n");
+    let state = test_app_state_with_options(settings, 5);
+    let app = test_app_with_scheduler(Arc::clone(&state));
+
+    let version_id = register_version(&app, &[
+        ("workflow.fabro", COMMAND_DOT),
+        ("workflow.toml", PLAIN_SETTINGS),
+    ])
+    .await;
+    let run_id =
+        create_and_start_run_from_intent(&app, intent(&version_id, workspace.path())).await;
+    let status = wait_for_run_status(&app, &run_id, &["succeeded", "failed"]).await;
+    assert_eq!(
+        status,
+        "succeeded",
+        "run: {}",
+        run_json(&app, &run_id).await
+    );
+    // The run's lease is free once its execution let go of the record: a
+    // delete under a held lease is refused for the lease, which the prune
+    // scenario covers, not for the managed run's status.
+    let store = state.test_petri_run_store();
+    let key = RunKey::new(run_id.clone());
+    wait_for_free_lease(store, &key).await;
+
+    let response = app
+        .clone()
+        .oneshot(delete(&run_id))
+        .await
+        .expect("delete route");
+    let status = response.status();
+    let detail = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
+        .unwrap_or_default();
+    assert_eq!(
+        status,
+        StatusCode::NO_CONTENT,
+        "the delete was refused: {detail}"
+    );
+
+    // The execution ends in the background after the delete and must leave
+    // the run gone.
+    for _ in 0..20 {
+        crate::helpers::response_status(
+            app.clone()
+                .oneshot(get(&format!("/runs/{run_id}")))
+                .await
+                .expect("run route"),
+            StatusCode::NOT_FOUND,
+            format!("GET /api/v1/runs/{run_id}"),
+        )
+        .await;
+        assert_eq!(
+            state.test_managed_run_status(&run_id.parse().expect("a run id")),
+            None,
+            "the execution's end brought the managed run back"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
 }
 
 /// The same on the Docker provider: the instance is the run's container,
@@ -1630,4 +1686,122 @@ async fn a_bundle_naming_a_catalog_mcp_server_lists_its_tools_to_the_model() {
         tools.contains(&"mcp__notes__echo"),
         "the session lists the catalog server's tool under the reference's name: {tools:?}"
     );
+}
+
+/// The hello bundle's agent stage, run with the given version files and an
+/// optional intent goal override, to completion: the run's id, the twin's
+/// request-log namespace and the server state.
+async fn run_hello_agent(
+    files: &[(&str, &str)],
+    goal: Option<&str>,
+) -> (Arc<AppState>, axum::Router, String, String) {
+    let workspace = tempfile::tempdir().expect("workspace tempdir");
+    let twin = twin_openai().await;
+    let namespace = format!(
+        "{}::{}::{}",
+        module_path!(),
+        line!(),
+        goal.map_or("file", |_| "override")
+    );
+    TwinScenarios::new(&namespace)
+        .scenario(TwinScenario::responses(OPENAI_MODEL).text("A limerick, added."))
+        .scenario(TwinScenario::responses(OPENAI_MODEL).text("A limerick, added."))
+        .load(twin)
+        .await;
+    let settings = test_settings();
+    let state = TestAppStateBuilder::new()
+        .runtime_settings(settings.server_settings, settings.manifest_run_defaults)
+        .max_concurrent_runs(5)
+        .in_process_execution()
+        .llm_overlay(llm_overlay_with_provider_base_url(
+            "openai",
+            twin.base_url.clone(),
+        ))
+        .vault_entries([(EnvVars::OPENAI_API_KEY, namespace.clone())])
+        .build();
+    let app = test_app_with_scheduler(Arc::clone(&state));
+    let version_id = register_version(&app, files).await;
+    let mut intent = intent(&version_id, workspace.path());
+    intent["args"]["model"] = serde_json::json!(OPENAI_MODEL);
+    if let Some(goal) = goal {
+        intent["goal"] = serde_json::json!(goal);
+    }
+    let run_id = create_and_start_run_from_intent(&app, intent).await;
+    let status = wait_for_run_status(&app, &run_id, &["succeeded", "failed"]).await;
+    let run = run_json(&app, &run_id).await;
+    assert_eq!(status, "succeeded", "run: {run}");
+    // The workspace outlives the run: the run's record names it.
+    std::mem::forget(workspace);
+    (state, app, namespace, run_id)
+}
+
+/// The goal the run shows is the goal its stages execute with: `GET
+/// /runs/{id}` names it, Petri's admitted graph carries it, and the agent
+/// stage's prompt to the model opens with it in place of the graph's own.
+async fn assert_run_goal(app: &axum::Router, namespace: &str, run_id: &str, goal: &str) {
+    let run = run_json(app, run_id).await;
+    assert_eq!(run["goal"], goal, "the run shows the goal: {run}");
+    let graph = admitted_root_graph(app, run_id).await;
+    assert_eq!(
+        graph["params"]["goal"], goal,
+        "Petri admitted the run's goal: {}",
+        graph["params"]
+    );
+    let logs = twin_openai().await.request_logs(namespace).await;
+    let prompt = logs["requests"]
+        .as_array()
+        .expect("twin request logs are an array")
+        .iter()
+        .filter_map(|request| request["input_text"].as_str())
+        .find(|input| input.contains("Add a haiku to the README"))
+        .unwrap_or_else(|| panic!("the agent stage's prompt reached the twin, got {logs}"));
+    assert!(
+        prompt.contains(goal),
+        "the agent's prompt carries the run's goal, got {prompt}"
+    );
+    assert!(
+        !prompt.contains("Say hello and demonstrate a basic Fabro workflow"),
+        "the graph's own goal is replaced, got {prompt}"
+    );
+}
+
+/// An intent's goal override is bound into Petri's check, so the agent
+/// stages execute with the goal the run shows, not the workflow's own.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_goal_override_is_the_goal_the_stages_execute_with() {
+    const GOAL: &str = "Add a limerick to the README instead of a haiku";
+    if host_plugin().is_none() {
+        return;
+    }
+    let [(workflow_path, workflow), (settings_path, settings)] = hello_files();
+    let (_state, app, namespace, run_id) = run_hello_agent(
+        &[(workflow_path, &workflow), (settings_path, &settings)],
+        Some(GOAL),
+    )
+    .await;
+    assert_run_goal(&app, &namespace, &run_id, GOAL).await;
+}
+
+/// A `[run.goal] file` layer in the bundle's `workflow.toml` is the run's
+/// goal the same way: the file's text is what the run shows and what the
+/// agent stage executes with.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_run_goal_file_layer_is_the_goal_the_stages_execute_with() {
+    const GOAL: &str = "Write a limerick about workflow engines into the README";
+    if host_plugin().is_none() {
+        return;
+    }
+    let [(workflow_path, workflow), _] = hello_files();
+    let settings =
+        "_version = 1\n[workflow]\ngraph = \"workflow.fabro\"\n[run.goal]\nfile = \"goal.md\"\n";
+    let (_state, app, namespace, run_id) = run_hello_agent(
+        &[
+            (workflow_path, &workflow),
+            ("workflow.toml", settings),
+            ("goal.md", GOAL),
+        ],
+        None,
+    )
+    .await;
+    assert_run_goal(&app, &namespace, &run_id, GOAL).await;
 }

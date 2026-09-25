@@ -225,17 +225,12 @@ fn run_json_pending_control(run: &serde_json::Value) -> &serde_json::Value {
 async fn mock_daytona_auth_probe(server: &MockServer) -> httpmock::Mock<'_> {
     server
         .mock_async(|when, then| {
-            when.method(GET)
-                .path("/sandbox/paginated")
-                .query_param("page", "1")
-                .query_param("limit", "1");
+            when.method(GET).path("/sandbox").query_param("limit", "1");
             then.status(200)
                 .header("content-type", "application/json")
                 .json_body(json!({
                     "items": [],
-                    "total": 0,
-                    "page": 1,
-                    "totalPages": 0
+                    "nextCursor": null
                 }));
         })
         .await
@@ -11048,4 +11043,48 @@ async fn run_tools_worker_registers_contents_then_creates_by_version_id() {
     );
     assert_eq!(projection.spec.target, Some(RunTarget::None {}));
     assert!(projection.start.is_none());
+}
+
+/// A run settled at its terminal record keeps that status at its worker's
+/// exit, whatever the exit status, unless the store ended the run
+/// differently: then the store's terminal status stands.
+#[test]
+fn a_settled_run_keeps_its_status_at_worker_exit() {
+    let settled = RunStatus::Succeeded {
+        reason: SuccessReason::Completed,
+    };
+    assert_eq!(status_after_worker_exit(settled, settled, false), settled);
+    assert_eq!(status_after_worker_exit(settled, settled, true), settled);
+    assert_eq!(
+        status_after_worker_exit(settled, RunStatus::Running, false),
+        settled
+    );
+    let recorded = RunStatus::Failed {
+        reason: FailureReason::Terminated,
+    };
+    assert_eq!(status_after_worker_exit(settled, recorded, false), recorded);
+}
+
+/// A run its worker left unsettled takes the store's final status; with
+/// none recorded, an unsuccessful exit is a termination and a successful
+/// one changes nothing.
+#[test]
+fn an_unsettled_run_takes_the_stores_status_or_a_termination_at_worker_exit() {
+    let failed = RunStatus::Failed {
+        reason: FailureReason::WorkflowError,
+    };
+    assert_eq!(
+        status_after_worker_exit(RunStatus::Running, failed, false),
+        failed
+    );
+    assert_eq!(
+        status_after_worker_exit(RunStatus::Running, RunStatus::Running, false),
+        RunStatus::Failed {
+            reason: FailureReason::Terminated,
+        }
+    );
+    assert_eq!(
+        status_after_worker_exit(RunStatus::Running, RunStatus::Running, true),
+        RunStatus::Running
+    );
 }

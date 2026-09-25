@@ -7,9 +7,17 @@
 mod entropy;
 mod gitleaks;
 mod jsonl;
+mod redactor;
 mod safe_url;
 
+// Fork feature (ADR-0021): the stage-envelope fs scope petri's checkpoint
+// hook compiles x.fs_write/x.fs_hide lists against; moved here when upstream
+// deleted fabro-pebble-sandbox (merge 2026-09-25), a fork-only file upstream
+// cannot conflict away.
+pub mod fs_scope;
+
 pub use jsonl::{redact_json_value, redact_jsonl_line};
+pub use redactor::SecretRedactor;
 pub use safe_url::{DisplaySafeUrl, DisplaySafeUrlError};
 
 pub(crate) const REDACTION_MARKER: &str = "REDACTED";

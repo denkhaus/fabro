@@ -243,7 +243,10 @@ impl RunView {
         let agent = stage.agent.get_or_insert_default();
         agent.apply(envelope);
         if stage.completion.is_none() {
-            stage.usage = agent.usage.saturating_add(agent.descendant_usage());
+            stage.usage = agent
+                .totals
+                .usage
+                .saturating_add(agent.totals.descendant_usage());
         }
         // A tool the stage's list names was called, by any of its sessions.
         if let CodingEvent::ToolCallStarted { tool_name, .. } = &envelope.event {

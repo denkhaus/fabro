@@ -76,7 +76,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
-use fabro_pebble_sandbox::fs_scope::FsScopeError;
+use fabro_redact::fs_scope::FsScopeError;
 use fabro_store::platform_records::{
     ArtifactCollectedRecord, CheckpointRecord, GitIdentityRecord, RunBranchRecord, RunDiffRecord,
 };

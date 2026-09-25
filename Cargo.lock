@@ -1642,7 +1642,7 @@ checksum = "d7a1e2f27636f116493b8b860f5546edb47c8d8f8ea73e1d2a20be88e28d1fea"
 [[package]]
 name = "daytona-api-client"
 version = "0.1.0"
-source = "git+https://github.com/brynary/daytona-sdk-rust?rev=5e86990418e21f4288ce537c9852dfdf78768abc#5e86990418e21f4288ce537c9852dfdf78768abc"
+source = "git+https://github.com/brynary/daytona-sdk-rust?branch=main#0e69058c888a6562c70a5b16d707253914cff563"
 dependencies = [
  "reqwest 0.13.4",
  "reqwest-middleware",
@@ -1656,7 +1656,7 @@ dependencies = [
 [[package]]
 name = "daytona-sdk"
 version = "0.1.0"
-source = "git+https://github.com/brynary/daytona-sdk-rust?rev=5e86990418e21f4288ce537c9852dfdf78768abc#5e86990418e21f4288ce537c9852dfdf78768abc"
+source = "git+https://github.com/brynary/daytona-sdk-rust?branch=main#0e69058c888a6562c70a5b16d707253914cff563"
 dependencies = [
  "daytona-api-client",
  "daytona-toolbox-client",
@@ -1676,7 +1676,7 @@ dependencies = [
 [[package]]
 name = "daytona-toolbox-client"
 version = "0.1.0"
-source = "git+https://github.com/brynary/daytona-sdk-rust?rev=5e86990418e21f4288ce537c9852dfdf78768abc#5e86990418e21f4288ce537c9852dfdf78768abc"
+source = "git+https://github.com/brynary/daytona-sdk-rust?branch=main#0e69058c888a6562c70a5b16d707253914cff563"
 dependencies = [
  "reqwest 0.13.4",
  "reqwest-middleware",
@@ -2110,7 +2110,6 @@ dependencies = [
  "fabro-manifest",
  "fabro-mcp-server",
  "fabro-oauth",
- "fabro-pebble-sandbox",
  "fabro-petri",
  "fabro-proc",
  "fabro-redact",
@@ -2519,27 +2518,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "fabro-pebble-sandbox"
-version = "0.362.0-nightly.0"
-dependencies = [
- "async-trait",
- "fabro-redact",
- "fabro-types",
- "fabro-util",
- "pebble-coding-agent",
- "sandbox-driver",
- "sandbox-driver-host",
- "sandbox-driver-testing",
- "serde_json",
- "strum 0.28.0",
- "tempfile",
- "thiserror 2.0.18",
- "tokio",
- "tokio-util",
- "tracing",
-]
-
-[[package]]
 name = "fabro-petri"
 version = "0.362.0-nightly.0"
 dependencies = [
@@ -2555,8 +2533,8 @@ dependencies = [
  "fabro-http",
  "fabro-interview",
  "fabro-llm",
- "fabro-pebble-sandbox",
  "fabro-petri",
+ "fabro-redact",
  "fabro-store",
  "fabro-test",
  "fabro-tool",
@@ -2602,10 +2580,13 @@ name = "fabro-redact"
 version = "0.362.0-nightly.0"
 dependencies = [
  "aho-corasick",
+ "fabro-util",
+ "pebble-coding-agent",
  "ref-cast",
  "regex",
  "serde",
  "serde_json",
+ "strum 0.28.0",
  "thiserror 2.0.18",
  "toml 0.8.23",
  "tracing",
@@ -2646,7 +2627,6 @@ dependencies = [
  "fabro-macros",
  "fabro-manifest",
  "fabro-mcp-store",
- "fabro-pebble-sandbox",
  "fabro-petri",
  "fabro-proc",
  "fabro-redact",
@@ -2982,7 +2962,6 @@ dependencies = [
  "fabro-http",
  "fabro-llm",
  "fabro-macros",
- "fabro-pebble-sandbox",
  "fabro-redact",
  "fabro-store",
  "fabro-test",
@@ -4330,7 +4309,7 @@ checksum = "6373607a59f0be73a39b6fe456b8192fcc3585f602af20751600e974dd455e77"
 [[package]]
 name = "lithos-llm"
 version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/lithos-llm?rev=43a42ac28e9d9bcf40a91abc02be4f12ca274ebb#43a42ac28e9d9bcf40a91abc02be4f12ca274ebb"
+source = "git+https://github.com/lithoscomputer/lithos-llm?branch=main#43a42ac28e9d9bcf40a91abc02be4f12ca274ebb"
 dependencies = [
  "async-trait",
  "aws-config",
@@ -5120,7 +5099,7 @@ checksum = "df94ce210e5bc13cb6651479fa48d14f601d9858cfe0467f43ae157023b938d3"
 [[package]]
 name = "pebble-agent"
 version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/pebble?rev=67c9f486dd28f15c04e8d590a91e6f5563f7605d#67c9f486dd28f15c04e8d590a91e6f5563f7605d"
+source = "git+https://github.com/lithoscomputer/pebble?branch=main#72a51ea2652be619f214e331f1fde87e9acb2267"
 dependencies = [
  "async-trait",
  "futures-util",
@@ -5137,7 +5116,7 @@ dependencies = [
 [[package]]
 name = "pebble-cli-core"
 version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/pebble?rev=67c9f486dd28f15c04e8d590a91e6f5563f7605d#67c9f486dd28f15c04e8d590a91e6f5563f7605d"
+source = "git+https://github.com/lithoscomputer/pebble?branch=main#72a51ea2652be619f214e331f1fde87e9acb2267"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -5166,7 +5145,7 @@ dependencies = [
 [[package]]
 name = "pebble-coding-agent"
 version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/pebble?rev=67c9f486dd28f15c04e8d590a91e6f5563f7605d#67c9f486dd28f15c04e8d590a91e6f5563f7605d"
+source = "git+https://github.com/lithoscomputer/pebble?branch=main#72a51ea2652be619f214e331f1fde87e9acb2267"
 dependencies = [
  "async-trait",
  "futures-util",
@@ -5175,6 +5154,8 @@ dependencies = [
  "reqwest 0.13.4",
  "rmcp",
  "rustix",
+ "sandbox-driver",
+ "sandbox-driver-testing",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -5206,7 +5187,7 @@ checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
 [[package]]
 name = "petri-attractor-steps"
 version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/petri.git?rev=9d5171558115d94e867af01ec6d1938e0f636e12#9d5171558115d94e867af01ec6d1938e0f636e12"
+source = "git+https://github.com/lithoscomputer/petri.git?branch=main#cbab2c5f134dcbd625f554b6fd6d9704a31bcfd9"
 dependencies = [
  "async-trait",
  "globset",
@@ -5237,7 +5218,7 @@ dependencies = [
 [[package]]
 name = "petri-driver"
 version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/petri.git?rev=9d5171558115d94e867af01ec6d1938e0f636e12#9d5171558115d94e867af01ec6d1938e0f636e12"
+source = "git+https://github.com/lithoscomputer/petri.git?branch=main#cbab2c5f134dcbd625f554b6fd6d9704a31bcfd9"
 dependencies = [
  "async-trait",
  "getrandom 0.3.4",
@@ -5257,7 +5238,7 @@ dependencies = [
 [[package]]
 name = "petri-engine"
 version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/petri.git?rev=9d5171558115d94e867af01ec6d1938e0f636e12#9d5171558115d94e867af01ec6d1938e0f636e12"
+source = "git+https://github.com/lithoscomputer/petri.git?branch=main#cbab2c5f134dcbd625f554b6fd6d9704a31bcfd9"
 dependencies = [
  "petri-ir",
  "serde",
@@ -5269,7 +5250,7 @@ dependencies = [
 [[package]]
 name = "petri-execution"
 version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/petri.git?rev=9d5171558115d94e867af01ec6d1938e0f636e12#9d5171558115d94e867af01ec6d1938e0f636e12"
+source = "git+https://github.com/lithoscomputer/petri.git?branch=main#cbab2c5f134dcbd625f554b6fd6d9704a31bcfd9"
 dependencies = [
  "async-trait",
  "petri-driver",
@@ -5293,7 +5274,7 @@ dependencies = [
 [[package]]
 name = "petri-executor"
 version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/petri.git?rev=9d5171558115d94e867af01ec6d1938e0f636e12#9d5171558115d94e867af01ec6d1938e0f636e12"
+source = "git+https://github.com/lithoscomputer/petri.git?branch=main#cbab2c5f134dcbd625f554b6fd6d9704a31bcfd9"
 dependencies = [
  "async-trait",
  "libc",
@@ -5308,7 +5289,7 @@ dependencies = [
 [[package]]
 name = "petri-executor-sandbox"
 version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/petri.git?rev=9d5171558115d94e867af01ec6d1938e0f636e12#9d5171558115d94e867af01ec6d1938e0f636e12"
+source = "git+https://github.com/lithoscomputer/petri.git?branch=main#cbab2c5f134dcbd625f554b6fd6d9704a31bcfd9"
 dependencies = [
  "async-trait",
  "petri-executor",
@@ -5330,7 +5311,7 @@ dependencies = [
 [[package]]
 name = "petri-frontend"
 version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/petri.git?rev=9d5171558115d94e867af01ec6d1938e0f636e12#9d5171558115d94e867af01ec6d1938e0f636e12"
+source = "git+https://github.com/lithoscomputer/petri.git?branch=main#cbab2c5f134dcbd625f554b6fd6d9704a31bcfd9"
 dependencies = [
  "marked-yaml",
  "petri-ir",
@@ -5344,7 +5325,7 @@ dependencies = [
 [[package]]
 name = "petri-frontend-attractor"
 version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/petri.git?rev=9d5171558115d94e867af01ec6d1938e0f636e12#9d5171558115d94e867af01ec6d1938e0f636e12"
+source = "git+https://github.com/lithoscomputer/petri.git?branch=main#cbab2c5f134dcbd625f554b6fd6d9704a31bcfd9"
 dependencies = [
  "minijinja",
  "petri-frontend",
@@ -5361,7 +5342,7 @@ dependencies = [
 [[package]]
 name = "petri-frontend-fabro"
 version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/petri.git?rev=9d5171558115d94e867af01ec6d1938e0f636e12#9d5171558115d94e867af01ec6d1938e0f636e12"
+source = "git+https://github.com/lithoscomputer/petri.git?branch=main#cbab2c5f134dcbd625f554b6fd6d9704a31bcfd9"
 dependencies = [
  "petri-frontend",
  "petri-frontend-attractor",
@@ -5377,7 +5358,7 @@ dependencies = [
 [[package]]
 name = "petri-frontend-native"
 version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/petri.git?rev=9d5171558115d94e867af01ec6d1938e0f636e12#9d5171558115d94e867af01ec6d1938e0f636e12"
+source = "git+https://github.com/lithoscomputer/petri.git?branch=main#cbab2c5f134dcbd625f554b6fd6d9704a31bcfd9"
 dependencies = [
  "petri-frontend",
  "petri-ir",
@@ -5388,7 +5369,7 @@ dependencies = [
 [[package]]
 name = "petri-ir"
 version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/petri.git?rev=9d5171558115d94e867af01ec6d1938e0f636e12#9d5171558115d94e867af01ec6d1938e0f636e12"
+source = "git+https://github.com/lithoscomputer/petri.git?branch=main#cbab2c5f134dcbd625f554b6fd6d9704a31bcfd9"
 dependencies = [
  "regex",
  "serde",
@@ -5401,7 +5382,7 @@ dependencies = [
 [[package]]
 name = "petri-runtime"
 version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/petri.git?rev=9d5171558115d94e867af01ec6d1938e0f636e12#9d5171558115d94e867af01ec6d1938e0f636e12"
+source = "git+https://github.com/lithoscomputer/petri.git?branch=main#cbab2c5f134dcbd625f554b6fd6d9704a31bcfd9"
 dependencies = [
  "async-trait",
  "petri-driver",
@@ -5422,7 +5403,7 @@ dependencies = [
 [[package]]
 name = "petri-steps"
 version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/petri.git?rev=9d5171558115d94e867af01ec6d1938e0f636e12#9d5171558115d94e867af01ec6d1938e0f636e12"
+source = "git+https://github.com/lithoscomputer/petri.git?branch=main#cbab2c5f134dcbd625f554b6fd6d9704a31bcfd9"
 dependencies = [
  "async-trait",
  "petri-executor",
@@ -5438,7 +5419,7 @@ dependencies = [
 [[package]]
 name = "petri-store"
 version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/petri.git?rev=9d5171558115d94e867af01ec6d1938e0f636e12#9d5171558115d94e867af01ec6d1938e0f636e12"
+source = "git+https://github.com/lithoscomputer/petri.git?branch=main#cbab2c5f134dcbd625f554b6fd6d9704a31bcfd9"
 dependencies = [
  "async-trait",
  "getrandom 0.3.4",
@@ -5453,7 +5434,7 @@ dependencies = [
 [[package]]
 name = "petri-testkit"
 version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/petri.git?rev=9d5171558115d94e867af01ec6d1938e0f636e12#9d5171558115d94e867af01ec6d1938e0f636e12"
+source = "git+https://github.com/lithoscomputer/petri.git?branch=main#cbab2c5f134dcbd625f554b6fd6d9704a31bcfd9"
 dependencies = [
  "async-trait",
  "petri-driver",
@@ -6332,7 +6313,7 @@ dependencies = [
 [[package]]
 name = "sandbox-driver"
 version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/sandbox-driver?rev=07600aa5c6695ec4c999da93c05d2cb78fe11b0c#07600aa5c6695ec4c999da93c05d2cb78fe11b0c"
+source = "git+https://github.com/lithoscomputer/sandbox-driver?branch=main#236196ed134dd594e7678e38ebbe968097f1935c"
 dependencies = [
  "async-trait",
  "globset",
@@ -6349,13 +6330,14 @@ dependencies = [
 [[package]]
 name = "sandbox-driver-daytona"
 version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/sandbox-driver?rev=07600aa5c6695ec4c999da93c05d2cb78fe11b0c#07600aa5c6695ec4c999da93c05d2cb78fe11b0c"
+source = "git+https://github.com/lithoscomputer/sandbox-driver?branch=main#236196ed134dd594e7678e38ebbe968097f1935c"
 dependencies = [
  "anyhow",
  "async-trait",
  "base64",
  "daytona-api-client",
  "daytona-sdk",
+ "futures-util",
  "hmac 0.12.1",
  "rand 0.10.1",
  "reqwest 0.13.4",
@@ -6376,7 +6358,7 @@ dependencies = [
 [[package]]
 name = "sandbox-driver-daytona-config"
 version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/sandbox-driver?rev=07600aa5c6695ec4c999da93c05d2cb78fe11b0c#07600aa5c6695ec4c999da93c05d2cb78fe11b0c"
+source = "git+https://github.com/lithoscomputer/sandbox-driver?branch=main#236196ed134dd594e7678e38ebbe968097f1935c"
 dependencies = [
  "sandbox-driver-docker-config",
  "serde",
@@ -6386,7 +6368,7 @@ dependencies = [
 [[package]]
 name = "sandbox-driver-docker"
 version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/sandbox-driver?rev=07600aa5c6695ec4c999da93c05d2cb78fe11b0c#07600aa5c6695ec4c999da93c05d2cb78fe11b0c"
+source = "git+https://github.com/lithoscomputer/sandbox-driver?branch=main#236196ed134dd594e7678e38ebbe968097f1935c"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -6407,7 +6389,7 @@ dependencies = [
 [[package]]
 name = "sandbox-driver-docker-config"
 version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/sandbox-driver?rev=07600aa5c6695ec4c999da93c05d2cb78fe11b0c#07600aa5c6695ec4c999da93c05d2cb78fe11b0c"
+source = "git+https://github.com/lithoscomputer/sandbox-driver?branch=main#236196ed134dd594e7678e38ebbe968097f1935c"
 dependencies = [
  "serde",
  "serde_json",
@@ -6416,7 +6398,7 @@ dependencies = [
 [[package]]
 name = "sandbox-driver-host"
 version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/sandbox-driver?rev=07600aa5c6695ec4c999da93c05d2cb78fe11b0c#07600aa5c6695ec4c999da93c05d2cb78fe11b0c"
+source = "git+https://github.com/lithoscomputer/sandbox-driver?branch=main#236196ed134dd594e7678e38ebbe968097f1935c"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -6434,7 +6416,7 @@ dependencies = [
 [[package]]
 name = "sandbox-driver-protocol"
 version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/sandbox-driver?rev=07600aa5c6695ec4c999da93c05d2cb78fe11b0c#07600aa5c6695ec4c999da93c05d2cb78fe11b0c"
+source = "git+https://github.com/lithoscomputer/sandbox-driver?branch=main#236196ed134dd594e7678e38ebbe968097f1935c"
 dependencies = [
  "async-trait",
  "base64",
@@ -6451,7 +6433,7 @@ dependencies = [
 [[package]]
 name = "sandbox-driver-testing"
 version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/sandbox-driver?rev=07600aa5c6695ec4c999da93c05d2cb78fe11b0c#07600aa5c6695ec4c999da93c05d2cb78fe11b0c"
+source = "git+https://github.com/lithoscomputer/sandbox-driver?branch=main#236196ed134dd594e7678e38ebbe968097f1935c"
 dependencies = [
  "async-trait",
  "sandbox-driver",
@@ -7936,7 +7918,7 @@ dependencies = [
 [[package]]
 name = "twin-core"
 version = "0.1.5"
-source = "git+https://github.com/lithoscomputer/twins?rev=ca45f0e50a6716d716aa2f638ca3cf767e88f613#ca45f0e50a6716d716aa2f638ca3cf767e88f613"
+source = "git+https://github.com/lithoscomputer/twins?branch=main#19bf6ae2fbfcea7a845fe9fa0796b1d613db859a"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -7970,7 +7952,7 @@ dependencies = [
 [[package]]
 name = "twin-openai"
 version = "0.1.5"
-source = "git+https://github.com/lithoscomputer/twins?rev=ca45f0e50a6716d716aa2f638ca3cf767e88f613#ca45f0e50a6716d716aa2f638ca3cf767e88f613"
+source = "git+https://github.com/lithoscomputer/twins?branch=main#19bf6ae2fbfcea7a845fe9fa0796b1d613db859a"
 dependencies = [
  "anyhow",
  "async-stream",
