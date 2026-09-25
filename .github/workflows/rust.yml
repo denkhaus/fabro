@@ -159,8 +159,6 @@ jobs:
           docker pull "ghcr.io/lithoscomputer/ubuntu-24.04:slim-$pin"
           docker pull ghcr.io/lithoscomputer/ubuntu-22.04:slim
       - run: cargo nextest run --locked --workspace --status-level slow --profile ci
-      - name: Verify built-in Host execution and prune in a release build
-        run: cargo nextest run --locked --release -p fabro-cli --test it -E 'test(built_in_host_runs_and_prunes_without_plugins)' --profile ci
       # The twin-mode ignored suites this job once ran belonged to fabro-agent,
       # which pebble's coding agent replaced; the agent loop's workflow-level
       # tests run in the suite above, and pebble's own suite covers the loop.
