@@ -238,10 +238,12 @@ impl DockerBuildPlan {
     }
 }
 
-/// The sed line that reads the workspace's pinned sandbox-driver rev out
-/// of `Cargo.toml`, so the plugin build can never drift from the
-/// dependency pin. A raw string: the pattern is shell-sed, not Rust.
-const SANDBOX_PIN_SED: &str = r#"REV=$(sed -n 's/.*sandbox-driver = { git = "[^"]*", rev = "\([0-9a-f]*\)".*/\1/p' Cargo.toml | head -1)"#;
+/// The awk line that reads the sandbox-driver rev `Cargo.lock` resolves,
+/// so the plugin build can never drift from the dependency the binary
+/// linked. The Lithos git deps track `branch = "main"` upstream, so the
+/// rev lives in the lockfile, not in `Cargo.toml` (same source upstream's
+/// CI plugin job reads). A raw string: the pattern is shell-awk, not Rust.
+const SANDBOX_PIN_SED: &str = r#"REV=$(awk '/^name = "sandbox-driver"$/{getline; getline; sub(/.*#/, ""); sub(/".*/, ""); print; exit}' Cargo.lock)"#;
 
 /// Nushell release vendored into the server image for host-side hooks
 /// (fabro-8e13): the official musl tarball, sha256-pinned per arch, staged

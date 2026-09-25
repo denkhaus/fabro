@@ -239,13 +239,20 @@ digraph Develop {
         // planner's painpoints, which never were
         // implementer inputs (stage_ignore alone cannot filter ## Context).
         x.preamble_allow_keys="current_seed_id,current_seed_title,current_seed_brief,output.gatebounce",
-        // fabro-1dae: same loop-asset scope as the planner — hidden means no
-        // read, no discovery, no write through file tools. fs_write stays
-        // unset: hidden paths are unwritable anyway, and seed work may
-        // legitimately touch files outside the primary code areas (README,
+        // fabro-1dae (petri checkpoint semantics): the shell is the loop-
+        // asset escape hatch (just/sd/ml/nu) and the checkpoint envelope
+        // judges the staged working-tree set, not the tool — the mulch
+        // CLI's expertise writes must be admitted explicitly. .mulch
+        // leaves the hide list (a write glob under fs_hide is denied as
+        // hidden; implementer envelope violation on the seeds-parity
+        // expertise write) and fs_write pins writes to the mulch tree;
+        // the tracker stays hidden (the closeout command stage owns the
+        // seed write) and seed work may legitimately touch files outside
+        // the primary code areas (README,
         // fixtures). Gate
         // re-runs keep working through the shell escape hatch.
-        x.fs_hide=".fabro/**,.seeds/**,.mulch/**,.agents/**,scripts/**,justfile",
+        x.fs_hide=".fabro/**,.seeds/**,.agents/**,scripts/**,justfile",
+        x.fs_write=".mulch/**",
         // fabro-900e: stable context_updates contract (see planner).
         // lesson_capture (run 01M1EGK6J8): the
         // implementer prompt REQUIRES the mx-id-or-skip answer as data —
