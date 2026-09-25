@@ -108,11 +108,14 @@ digraph Revisor {
         // bookkeeping needs no repo memory; inert until fabro-9588.
         project_memory=false,
         x.preamble_stages_ignore="select,analyze,file",
-        // .seeds hidden from FILE tools too: sd create/list and the git
-        // commit run via shell (the documented escape hatch), so the
-        // write-allowlist stays the artifact trees only.
-        x.fs_hide="lib/**,apps/**,docs/**,.seeds/**",
-        x.fs_write=".fabro/revisions/**",
+        // Filing writes the tracker through the shell (the documented
+        // escape hatch), but petri's checkpoint envelope judges the
+        // staged set, not the tool: the tracker file is admitted
+        // explicitly and leaves the hide list (a write glob under
+        // fs_hide is denied as hidden); the write-allowlist stays the
+        // artifact trees plus exactly the tracker file.
+        x.fs_hide="lib/**,apps/**,docs/**",
+        x.fs_write=".seeds/issues.jsonl,.fabro/revisions/**",
         x.fabro_tools="",
         // Read window: current target + current findings ONLY. Filing,
         // marker, and commit need no journal history — prior-pass

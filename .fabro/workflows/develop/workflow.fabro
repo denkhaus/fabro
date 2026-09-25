@@ -166,11 +166,14 @@ digraph Develop {
         // preambles never re-render stale values.
         x.context_consume_keys="review_verdict,review_feedback,implementation_summary",
         // fabro-1dae (stage envelope fs scope): planning never touches
-        // loop assets — the tracker is reached via the sd CLI (shell
-        // is the documented escape hatch), never by file tools, and the
-        // planner writes no files at all (context_updates + sd only).
-        x.fs_hide=".fabro/**,.seeds/**,.mulch/**,.agents/**,scripts/**,justfile",
-        x.fs_write="",
+        // loop assets by FILE tools — but the tracker CLI claim mutates
+        // the working tree, and petri's checkpoint envelope judges the
+        // staged set, not the tool: the claim write is admitted here
+        // explicitly. A write glob under fs_hide is denied as hidden,
+        // so the tracker file leaves the hide list; every other loop
+        // asset stays hidden and writes stay pinned to the tracker file.
+        x.fs_hide=".fabro/**,.mulch/**,.agents/**,scripts/**,justfile",
+        x.fs_write=".seeds/issues.jsonl",
         // fabro-900e (envelope write side): the planner's context_updates
         // contract is stable — declare it so the preamble_allow_keys lint
         // (fabro-e47c) can prove producers, and drift (an undocumented new
