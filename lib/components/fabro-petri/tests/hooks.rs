@@ -55,6 +55,34 @@ fn workflow(stages: &str, edges: &str) -> String {
 
 const SETTINGS: &str = "_version = 1\n\n[workflow]\ngraph = \"workflow.fabro\"\n";
 
+/// The host plugin as Petri's lookup finds it: the override variable, else
+/// the executable on `PATH`. `None`, after saying so, when the test should
+/// skip; a panic when the environment forbids a skip. (Restored from the
+/// pre-merge branch state: upstream's in-process-provider rewrite of this
+/// file dropped the helper our hook-write-roots tests still guard with.)
+const HOST_PLUGIN: &str = "sandbox-driver-host";
+const HOST_PLUGIN_OVERRIDE: &str = "PETRI_SANDBOX_HOST_PLUGIN";
+const REQUIRE_ENV: &str = "FABRO_REQUIRE_SANDBOX_PLUGINS";
+
+fn host_plugin() -> Option<PathBuf> {
+    let found = env::var_os(HOST_PLUGIN_OVERRIDE)
+        .map(PathBuf::from)
+        .or_else(|| {
+            env::split_paths(&env::var_os("PATH")?)
+                .map(|dir| dir.join(HOST_PLUGIN))
+                .find(|candidate| candidate.is_file())
+        });
+    if found.is_none() {
+        assert!(
+            env::var_os(REQUIRE_ENV).is_none(),
+            "{REQUIRE_ENV} is set, but {HOST_PLUGIN} is not on PATH and {HOST_PLUGIN_OVERRIDE} is unset"
+        );
+        eprintln!("skipping: {HOST_PLUGIN} is not on PATH and {HOST_PLUGIN_OVERRIDE} is unset");
+    }
+    found
+}
+
+
 /// The bundle admitted the way the create handler admits it.
 fn admit(workflow: &str, settings: &str) -> AdmittedGraphs {
     let request = CheckRequest {
