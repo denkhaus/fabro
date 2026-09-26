@@ -31,7 +31,11 @@
 #          (fabro-3b1b deferred by the same user decision).
 FROM ubuntu:24.04 AS base
 
-ARG RUST_NIGHTLY=nightly-2026-04-14
+# nightly-2026-09-22 (seeds-e160): seeds 0.5.0 — installed below through
+# mise's cargo backend — needs library features (result_option_map_or_default
+# et al.) that 2026-04-14 predates; the seeds release pipeline pins the same
+# nightly, so the image's cargo can build the tracker CLI again.
+ARG RUST_NIGHTLY=nightly-2026-09-22
 
 # Native build dependencies: gcc/make for the linker, pkg-config + perl +
 # cmake + xz for the vendored native crates in Cargo.lock (openssl-sys,
