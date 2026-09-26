@@ -18,6 +18,7 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::Arc;
+use std::time::Duration;
 
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
@@ -36,12 +37,15 @@ use fabro_types::{RunId, WorkflowPath, WorkflowVersion};
 use tower::ServiceExt;
 
 use crate::helpers::{
-    api, create_and_start_run_from_intent, minimal_manifest_json, read_repo_file, response_json,
-    run_json, settings_from_toml, test_app_state_with_options, test_app_with_scheduler,
-    test_settings, wait_for_run_status,
+    self, api, create_and_start_run_from_intent, minimal_manifest_json, read_repo_file,
+    response_json, run_json, settings_from_toml, test_app_state_with_options,
+    test_app_with_scheduler, test_settings, wait_for_run_status,
 };
 
 const OPENAI_MODEL: &str = "gpt-5.4";
+// A cold Docker daemon may need to download the runner image before the run
+// starts.
+const DOCKER_RUN_TIMEOUT: Duration = Duration::from_mins(1);
 
 /// A command-only workflow: one script stage between start and exit.
 const COMMAND_DOT: &str = r#"digraph Command {
@@ -919,7 +923,13 @@ async fn a_runs_projection_carries_its_docker_sandbox_instance() {
         "args": {},
     });
     let run_id = create_and_start_run_from_intent(&app, intent).await;
-    let status = wait_for_run_status(&app, &run_id, &["succeeded", "failed"]).await;
+    let status = helpers::wait_for_run_status_with_timeout(
+        &app,
+        &run_id,
+        &["succeeded", "failed"],
+        DOCKER_RUN_TIMEOUT,
+    )
+    .await;
     assert_eq!(
         status,
         "succeeded",
@@ -1022,7 +1032,13 @@ async fn the_server_attaches_to_the_container_petri_created() {
         "args": {},
     });
     let run_id = create_and_start_run_from_intent(&app, intent).await;
-    let status = wait_for_run_status(&app, &run_id, &["succeeded", "failed"]).await;
+    let status = helpers::wait_for_run_status_with_timeout(
+        &app,
+        &run_id,
+        &["succeeded", "failed"],
+        DOCKER_RUN_TIMEOUT,
+    )
+    .await;
     assert_eq!(
         status,
         "succeeded",
@@ -1350,7 +1366,13 @@ async fn a_bundle_naming_a_catalog_environment_runs_on_docker_with_its_image() {
         return;
     }
     start_run(&app, &run_id).await;
-    let status = wait_for_run_status(&app, &run_id, &["succeeded", "failed"]).await;
+    let status = helpers::wait_for_run_status_with_timeout(
+        &app,
+        &run_id,
+        &["succeeded", "failed"],
+        DOCKER_RUN_TIMEOUT,
+    )
+    .await;
     let projection = settled_state(&state, &app, &run_id).await;
     assert_eq!(status, "succeeded", "run: {projection}");
     let instance = &projection["sandbox"]["instance"];
