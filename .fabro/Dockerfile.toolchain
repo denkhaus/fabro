@@ -145,7 +145,7 @@ RUN set -eux; \
         aqua:nushell/nushell@0.115.0 \
         just@1.58.0 \
         aqua:BurntSushi/ripgrep@15.2.0 \
-        cargo:seeds@0.3.0 \
+        cargo:seeds@0.4.0 \
     && bun --version \
     && nu --version \
     && just --version \
@@ -165,7 +165,7 @@ RUN set -eux; \
 # Repo agent tooling: AGENTS.md asks agents to run `seeds prime` / `ml
 # prime` at session start; without these binaries every run wastes turns
 # on failures. The seeds tracker CLI comes from crates.io through
-# mise's cargo backend (0.3.0, installed above with the tool pins —
+# mise's cargo backend (0.4.0, installed above with the tool pins —
 # compiled by the image's own cargo; the deprecated ubi backend is NOT
 # used) — the binary is `seeds`; the npm `sd` reference tool is RETIRED,
 # no sd executable ships in this image. Mulch stays on the mise bun into
