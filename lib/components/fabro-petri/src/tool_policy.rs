@@ -71,9 +71,23 @@ impl HookService for ToolPolicyHooks {
 /// The denial for `tool` on `node`, when the node's `x.tools` allowlist
 /// excludes it: `None` proceeds. A node without the attribute, or a run
 /// without envelopes, never denies.
+///
+/// The two tool families govern themselves separately (the legacy
+/// engine's posture): `x.tools` lists the session's own coding tools,
+/// `x.fabro_tools` lists the run tools the host seam registers — a tool
+/// in the node's `x.fabro_tools` passes the `x.tools` gate, exactly as
+/// the host seam enforces that list on its own.
 #[must_use]
 pub fn denied_tool(envelopes: &StageEnvelopes, node: &str, tool: &str) -> Option<String> {
-    let tools = envelopes.envelope(node)?.tools.as_ref()?;
+    let envelope = envelopes.envelope(node)?;
+    if envelope
+        .fabro_tools
+        .as_ref()
+        .is_some_and(|fabro| fabro.iter().any(|allowed| allowed == tool))
+    {
+        return None;
+    }
+    let tools = envelope.tools.as_ref()?;
     if tools.iter().any(|allowed| allowed == tool) {
         return None;
     }
@@ -121,6 +135,19 @@ mod tests {
         let source = r#"digraph W { reviewer [x.tools=""] }"#;
         let reason = denied_tool(&envelopes(source), "reviewer", "read_file").expect("denied");
         assert!(reason.contains("no session tools"));
+    }
+
+    #[test]
+    fn a_run_tool_in_fabro_tools_passes_the_tools_gate() {
+        let source = r#"digraph W {
+            parent [x.tools="read_file", x.fabro_tools="fabro_run_create,fabro_run_wait"]
+        }"#;
+        let parsed = envelopes(source);
+        assert_eq!(denied_tool(&parsed, "parent", "fabro_run_create"), None);
+        assert_eq!(denied_tool(&parsed, "parent", "read_file"), None);
+        let reason =
+            denied_tool(&parsed, "parent", "write_file").expect("session tool still gated");
+        assert!(reason.contains("read_file"));
     }
 
     #[test]
