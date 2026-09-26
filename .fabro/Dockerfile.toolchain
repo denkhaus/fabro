@@ -145,10 +145,12 @@ RUN set -eux; \
         aqua:nushell/nushell@0.115.0 \
         just@1.58.0 \
         aqua:BurntSushi/ripgrep@15.2.0 \
+        ubi:denkhaus/seeds@v0.3.0 \
     && bun --version \
     && nu --version \
     && just --version \
-    && rg --version
+    && rg --version \
+    && seeds --version
 
 # NO gh in the toolchain image (ADR-0019 capability gate, user decision
 # 2026-09-08): gh was briefly baked in for the planner's in-flight-PR guard
@@ -160,15 +162,18 @@ RUN set -eux; \
 # fabro_runs_list data instead (fabro-06e0, Weg A: extend existing tools,
 # no new agent tools).
 
-# Repo agent tooling: AGENTS.md asks agents to run `sd prime` / `ml prime` at
-# session start; without these binaries every run wastes turns on failures.
-# Pinned to the versions used on the host (seeds 0.5.15, mulch 0.10.7).
-# Installed through the mise bun into BUN_INSTALL (lab exemplar).
+# Repo agent tooling: AGENTS.md asks agents to run `seeds prime` / `ml
+# prime` at session start; without these binaries every run wastes turns
+# on failures. The seeds tracker CLI comes from denkhaus/seeds GitHub
+# release binaries through mise's ubi backend (v0.3.0, installed above
+# with the tool pins — prebuilt, no compile) — the binary is `seeds`;
+# the npm `sd` reference tool is RETIRED, no sd executable ships in this
+# image. Mulch stays on the mise bun into BUN_INSTALL (0.10.7, lab
+# exemplar).
 RUN mise exec -- bun install -g \
-        @os-eco/seeds-cli@0.5.15 \
         @os-eco/mulch-cli@0.10.7 \
-    && sd --version \
-    && ml --version
+    && ml --version \
+    && ! command -v sd
 
 # Full fabro CLI (fabro-fe15, user decision 2026-09-16; petri rework
 # fabro-96c6): staged by scripts/run-images.nu in RELEASE profile
