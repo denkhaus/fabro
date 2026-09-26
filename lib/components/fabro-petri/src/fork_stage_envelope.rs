@@ -19,8 +19,14 @@
 //! multi-line attribute blocks, never a full DOT grammar. It can misread
 //! attribute text embedded in quoted labels; the lints then judge what
 //! was read, and a misread hides an envelope rather than inventing one.
+//!
+//! Unknown `x.*` attribute names are REFUSED at create (`lint`,
+//! fabro-70af): the petri rework dropped the whole legacy per-node
+//! family silently, and only a loud admission keeps the next attribute
+//! from going dark the same way. Names in the recognized-but-unenforced
+//! family warn — each turns silent once its enforcement lands.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use fabro_redact::fs_scope::{FsScope, FsScopeError};
 use fabro_util::workspace_glob::WorkspaceGlob;
@@ -28,6 +34,36 @@ use fabro_util::workspace_glob::WorkspaceGlob;
 /// The aggregate preamble budget when no `x.preamble_budget_kb` is set:
 /// the value the legacy engine defaulted to (fabro-a85b).
 const DEFAULT_PREAMBLE_BUDGET_KB: u64 = 48;
+
+/// The `x.*` attributes parsed AND enforced today, on node or graph
+/// blocks: the envelope set plus the graph preamble budget. Edges carry
+/// [`EDGE_X`] only.
+const ENFORCED_X: &[&str] = &[
+    "x.fs_hide",
+    "x.fs_write",
+    "x.preamble_inline_max_kb",
+    "x.preamble_budget_kb",
+    "x.fabro_tools",
+];
+
+/// The legacy per-node family the petri rework dropped (fabro-70af):
+/// recognized by the census — warned as unenforced, never silently
+/// dropped — until each name lands its enforcement and moves up into
+/// [`ENFORCED_X`].
+const RECOGNIZED_X: &[&str] = &[
+    "x.tools",
+    "x.skills",
+    "x.inspects",
+    "x.preamble_stages_ignore",
+    "x.preamble_stages_latest_only",
+    "x.preamble_allow_keys",
+    "x.context_allow_keys",
+    "x.context_consume_keys",
+    "x.preamble_output_max_lines",
+];
+
+/// The `x.*` attributes an edge block may carry: exit kinds.
+const EDGE_X: &[&str] = &["x.kind"];
 
 /// One node's stage envelope, as written.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -55,11 +91,21 @@ pub struct GraphEnvelope {
     pub preamble_inline_max_kb: Option<u64>,
 }
 
+/// One `x.*` attribute site the scan saw: the block's subject (a node
+/// name, `graph`, or an edge's `a -> b` text) and the attribute name.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct XAttributeSite {
+    subject: String,
+    name:    String,
+    on_edge: bool,
+}
+
 /// Stage envelopes by node, parsed from the DOT `graph_source`.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct StageEnvelopes {
-    nodes: BTreeMap<String, NodeEnvelope>,
-    graph: GraphEnvelope,
+    nodes:   BTreeMap<String, NodeEnvelope>,
+    graph:   GraphEnvelope,
+    x_sites: Vec<XAttributeSite>,
 }
 
 /// One lint finding over the parsed envelopes.
@@ -91,6 +137,7 @@ impl StageEnvelopes {
     pub fn parse(graph_source: &str) -> Self {
         let mut nodes: BTreeMap<String, NodeEnvelope> = BTreeMap::new();
         let mut graph = GraphEnvelope::default();
+        let mut x_sites = Vec::new();
         let mut rest = graph_source;
         while let Some(open) = rest.find('[') {
             let head = &rest[..open];
@@ -109,7 +156,15 @@ impl StageEnvelopes {
                 .unwrap_or_default()
                 .trim()
                 .trim_matches(|c: char| c.is_whitespace() || c == ';' || c == ',');
-            if subject.contains("->") {
+            let on_edge = subject.contains("->");
+            for attribute in x_attribute_names(block) {
+                x_sites.push(XAttributeSite {
+                    subject: subject.to_string(),
+                    name: attribute,
+                    on_edge,
+                });
+            }
+            if on_edge {
                 continue;
             }
             let name = subject.split_whitespace().next().unwrap_or_default();
@@ -137,7 +192,11 @@ impl StageEnvelopes {
                 }
             }
         }
-        Self { nodes, graph }
+        Self {
+            nodes,
+            graph,
+            x_sites,
+        }
     }
 
     /// The envelope of `node`: the exact name, or the base name when the
@@ -175,6 +234,7 @@ impl StageEnvelopes {
     #[must_use]
     pub fn lint(&self) -> Vec<StageEnvelopeLint> {
         let mut findings = Vec::new();
+        self.lint_x_vocabulary(&mut findings);
         for (node, envelope) in &self.nodes {
             for (attribute, entries) in [
                 ("fs_hide", &envelope.fs_hide),
@@ -247,6 +307,112 @@ impl StageEnvelopes {
         }
         findings
     }
+
+    /// The `x.*` vocabulary findings (fabro-70af): an unknown name on a
+    /// node, graph, or edge block refuses the workflow — the silent drop
+    /// is how the whole legacy family went dark — while a recognized
+    /// name without enforcement warns once per (subject, name).
+    fn lint_x_vocabulary(&self, findings: &mut Vec<StageEnvelopeLint>) {
+        let mut warned = BTreeSet::new();
+        for site in &self.x_sites {
+            if site.on_edge {
+                if !EDGE_X.contains(&site.name.as_str()) {
+                    findings.push(StageEnvelopeLint {
+                        severity: LintSeverity::Error,
+                        code:     "fork.x_attribute_known",
+                        message:  format!(
+                            "edge '{}' carries unknown attribute '{}': edges accept x.kind only \
+                             (fabro-70af refuses unknown x.* instead of dropping them)",
+                            site.subject, site.name
+                        ),
+                        node:     None,
+                    });
+                }
+                continue;
+            }
+            if ENFORCED_X.contains(&site.name.as_str()) {
+                continue;
+            }
+            if RECOGNIZED_X.contains(&site.name.as_str()) {
+                if warned.insert((site.subject.clone(), site.name.clone())) {
+                    findings.push(StageEnvelopeLint {
+                        severity: LintSeverity::Warning,
+                        code:     "fork.x_attribute_enforced",
+                        message:  format!(
+                            "'{}' declares '{}': recognized but NOT enforced on this engine yet \
+                             (fabro-70af re-implementation pending)",
+                            site.subject, site.name
+                        ),
+                        node:     Some(site.subject.clone()),
+                    });
+                }
+                continue;
+            }
+            findings.push(StageEnvelopeLint {
+                severity: LintSeverity::Error,
+                code:     "fork.x_attribute_known",
+                message:  format!(
+                    "'{}' carries unknown attribute '{}': not in the x.* vocabulary — a typo or \
+                     an unannounced name; refused instead of silently dropped (fabro-70af)",
+                    site.subject, site.name
+                ),
+                node:     Some(site.subject.clone()),
+            });
+        }
+    }
+}
+
+/// The `x.*` attribute names in a block, quoted spans stripped first so
+/// label text cannot pose as an attribute. A name counts only when its
+/// whole `x.<name>=` span sits at a delimiter boundary.
+fn x_attribute_names(block: &str) -> Vec<String> {
+    let stripped = strip_quoted_spans(block);
+    let mut names = Vec::new();
+    let mut rest = stripped.as_str();
+    while let Some(at) = rest.find("x.") {
+        let before_boundary = rest[..at]
+            .chars()
+            .next_back()
+            .is_none_or(|c| matches!(c, ' ' | '\t' | '\n' | '\r' | ',' | '[' | ';'));
+        let after = &rest[at + 2..];
+        if before_boundary {
+            if let Some(equals) = after.find('=') {
+                let name: String = after[..equals]
+                    .chars()
+                    .take_while(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || *c == '_')
+                    .collect();
+                if !name.is_empty() && name.len() == equals {
+                    names.push(format!("x.{name}"));
+                }
+            }
+        }
+        rest = after;
+    }
+    names
+}
+
+/// The block with double-quoted spans (label text, attribute values)
+/// removed, escape-aware.
+fn strip_quoted_spans(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut quoted = false;
+    let mut escaped = false;
+    for character in text.chars() {
+        if quoted {
+            if escaped {
+                escaped = false;
+            } else if character == '\\' {
+                escaped = true;
+            } else if character == '"' {
+                quoted = false;
+            }
+        } else if character == '"' {
+            quoted = true;
+        } else {
+            out.push(character);
+        }
+    }
+    out
 }
 
 /// Whether a hide-glob list covers a write entry: the entry's literal
@@ -310,6 +476,8 @@ fn number(block: &str, name: &str) -> Option<u64> {
 
 #[cfg(test)]
 mod tests {
+    use std::path::{Path, PathBuf};
+
     use super::*;
 
     const WORKFLOW: &str = r#"digraph W {
@@ -414,5 +582,135 @@ mod tests {
                 .any(|lint| lint.severity == LintSeverity::Error
                     && lint.code == "fork.fs_globs_valid")
         );
+    }
+
+    #[test]
+    fn unknown_x_attribute_refuses_admission() {
+        let source = r#"digraph W { a [x.fs_write="lib/**", x.preamble_stage_ignore="b"] }"#;
+        let findings = StageEnvelopes::parse(source).lint();
+        let unknown = findings
+            .iter()
+            .find(|lint| lint.code == "fork.x_attribute_known")
+            .expect("the typo'd name is refused");
+        assert_eq!(unknown.severity, LintSeverity::Error);
+        assert_eq!(unknown.node.as_deref(), Some("a"));
+        assert!(unknown.message.contains("x.preamble_stage_ignore"));
+    }
+
+    #[test]
+    fn recognized_but_unenforced_family_warns_once_per_subject() {
+        let source = r#"digraph W {
+            a [x.preamble_stages_ignore="b,c", x.context_allow_keys="k", x.tools="read_file"]
+            b [x.preamble_stages_ignore="a"]
+        }"#;
+        let findings = StageEnvelopes::parse(source).lint();
+        let warnings: Vec<_> = findings
+            .iter()
+            .filter(|lint| lint.code == "fork.x_attribute_enforced")
+            .collect();
+        assert_eq!(warnings.len(), 4, "three names on a, one on b");
+        assert!(
+            warnings
+                .iter()
+                .all(|lint| lint.severity == LintSeverity::Warning)
+        );
+        assert!(
+            findings
+                .iter()
+                .all(|lint| lint.code != "fork.x_attribute_known")
+        );
+    }
+
+    #[test]
+    fn edges_accept_only_exit_kinds() {
+        let kinds = r#"digraph W { a -> b [x.kind="soft"] }"#;
+        assert!(
+            StageEnvelopes::parse(kinds)
+                .lint()
+                .iter()
+                .all(|lint| lint.code != "fork.x_attribute_known")
+        );
+        let bogus = r#"digraph W { a -> b [x.kind="soft", x.fs_write="lib/**"] }"#;
+        let findings = StageEnvelopes::parse(bogus).lint();
+        assert!(
+            findings
+                .iter()
+                .any(|lint| lint.severity == LintSeverity::Error
+                    && lint.code == "fork.x_attribute_known"
+                    && lint.message.contains("x.fs_write"))
+        );
+    }
+
+    #[test]
+    fn label_text_cannot_pose_as_an_x_attribute() {
+        let source = r#"digraph W { a [label="the x.bogus=1 attribute is documented"] }"#;
+        assert!(
+            StageEnvelopes::parse(source)
+                .lint()
+                .iter()
+                .all(|lint| lint.code != "fork.x_attribute_known")
+        );
+    }
+
+    /// fabro-70af: the workspace's own graphs stay inside the x.*
+    /// vocabulary — every attribute fabro's workflows carry is either
+    /// enforced or a recognized member of the pending family. A new
+    /// attribute name lands here first, red, before any workflow uses it
+    /// silently.
+    #[test]
+    fn workspace_x_census_stays_within_the_vocabulary() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
+        let mut graphs = Vec::new();
+        collect_fabro_files(&root.join(".fabro"), &mut graphs);
+        assert!(
+            !graphs.is_empty(),
+            "the census found no .fabro graphs under the repo root"
+        );
+        let mut offenders = Vec::new();
+        for graph in &graphs {
+            for lint in StageEnvelopes::parse(&read(graph)).lint() {
+                if lint.code == "fork.x_attribute_known" {
+                    offenders.push(format!(
+                        "{}: {}",
+                        graph.strip_prefix(&root).unwrap_or(graph).display(),
+                        lint.message
+                    ));
+                }
+            }
+        }
+        assert!(
+            offenders.is_empty(),
+            "unknown x.* attributes in the workspace graphs:\n{}",
+            offenders.join("\n")
+        );
+    }
+
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "test-only census I/O over the checkout"
+    )]
+    fn collect_fabro_files(dir: &Path, out: &mut Vec<PathBuf>) {
+        let entries = std::fs::read_dir(dir)
+            .unwrap_or_else(|error| panic!("read_dir {}: {error}", dir.display()));
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                collect_fabro_files(&path, out);
+            } else if path
+                .extension()
+                .is_some_and(|extension| extension == "fabro")
+            {
+                out.push(path);
+            }
+        }
+    }
+
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "test-only census I/O over the checkout"
+    )]
+    fn read(path: &Path) -> String {
+        std::fs::read_to_string(path)
+            .unwrap_or_else(|error| panic!("read {}: {error}", path.display()))
     }
 }
