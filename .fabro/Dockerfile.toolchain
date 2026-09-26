@@ -31,11 +31,7 @@
 #          (fabro-3b1b deferred by the same user decision).
 FROM ubuntu:24.04 AS base
 
-# nightly-2026-09-22 (seeds-e160): seeds 0.5.0 — installed below through
-# mise's cargo backend — needs library features (result_option_map_or_default
-# et al.) that 2026-04-14 predates; the seeds release pipeline pins the same
-# nightly, so the image's cargo can build the tracker CLI again.
-ARG RUST_NIGHTLY=nightly-2026-09-22
+ARG RUST_NIGHTLY=nightly-2026-04-14
 
 # Native build dependencies: gcc/make for the linker, pkg-config + perl +
 # cmake + xz for the vendored native crates in Cargo.lock (openssl-sys,
@@ -149,12 +145,33 @@ RUN set -eux; \
         aqua:nushell/nushell@0.115.0 \
         just@1.58.0 \
         aqua:BurntSushi/ripgrep@15.2.0 \
-        cargo:seeds@0.5.0 \
     && bun --version \
     && nu --version \
     && just --version \
-    && rg --version \
-    && seeds --version
+    && rg --version
+
+# seeds (seeds-e160): the tracker CLI comes from the project's musl-static
+# release binaries, NOT mise's cargo backend — seeds 0.5.0 needs library
+# features (result_option_map_or_default et al.) that this image's pinned
+# nightly-2026-04-14 predates (cargo exit 101), while bumping the nightly
+# to the seeds pin (2026-09-22) breaks cargo-insta's locked rustix. The
+# release pipeline builds the musl binaries with zero runtime deps, so
+# the download is version-pinned and checksum-verified instead.
+ARG SEEDS_VERSION=0.5.0
+ARG SEEDS_SHA256_X86_64=1c4e0ad346830b31032459331135226263ea1d156379ea8764017e32da64aae6
+ARG SEEDS_SHA256_AARCH64=695b14863a2268a020c2441aa1a29e5df04b08dbc306e0fea038db1cc824ef4d
+RUN set -eux; \
+    case "${TARGETARCH:-amd64}" in \
+        amd64) triple=x86_64-unknown-linux-musl; sha="${SEEDS_SHA256_X86_64}";; \
+        arm64) triple=aarch64-unknown-linux-musl; sha="${SEEDS_SHA256_AARCH64}";; \
+        *) echo "unsupported TARGETARCH ${TARGETARCH}"; exit 1;; \
+    esac; \
+    curl -fsSL "https://github.com/denkhaus/seeds/releases/download/v${SEEDS_VERSION}/seeds-${SEEDS_VERSION}-${triple}.tar.gz" -o /tmp/seeds.tgz; \
+    echo "${sha}  /tmp/seeds.tgz" | sha256sum -c -; \
+    tar -xzf /tmp/seeds.tgz -C /usr/local/bin seeds; \
+    chmod 0755 /usr/local/bin/seeds; \
+    rm /tmp/seeds.tgz; \
+    seeds --version
 
 # NO gh in the toolchain image (ADR-0019 capability gate, user decision
 # 2026-09-08): gh was briefly baked in for the planner's in-flight-PR guard
@@ -168,12 +185,10 @@ RUN set -eux; \
 
 # Repo agent tooling: AGENTS.md asks agents to run `seeds prime` / `ml
 # prime` at session start; without these binaries every run wastes turns
-# on failures. The seeds tracker CLI comes from crates.io through
-# mise's cargo backend (0.5.0, installed above with the tool pins —
-# compiled by the image's own cargo; the deprecated ubi backend is NOT
-# used) — the binary is `seeds`; the npm `sd` reference tool is RETIRED,
-# no sd executable ships in this image. Mulch stays on the mise bun into
-# BUN_INSTALL (0.10.7, lab exemplar).
+# on failures. The seeds tracker CLI is the musl-static release binary
+# installed above (v${SEEDS_VERSION}); the npm `sd` reference tool is
+# RETIRED, no sd executable ships in this image. Mulch stays on the mise
+# bun into BUN_INSTALL (0.10.7, lab exemplar).
 RUN mise exec -- bun install -g \
         @os-eco/mulch-cli@0.10.7 \
     && ml --version \
