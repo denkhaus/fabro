@@ -127,7 +127,6 @@ impl RunView {
     }
 
     /// The run's conclusion, from its recorded finish and what the stages
-    /// The run's conclusion, from its recorded finish and what the stages
     /// summed to.
     fn conclude(&mut self, status: &str, at: DateTime<Utc>) {
         use fabro_llm::LONG_RATE_LIMIT_WINDOW;
@@ -164,17 +163,20 @@ impl RunView {
         } else {
             None
         };
-        // Fork seam (fabro-b00c, user decision 2026-09-25 — engine-side): a
-        // green conclusion cannot stand over a recorded leg failure. Petri
-        // surfaces the failure a catch-all edge consumed in the invocation
-        // result (status=success WITH failure recorded); the projector
-        // refuses the green instead: Succeeded{Completed} downgrades to
-        // Failed, keeping the recorded message. Explicit escapes stay
-        // green: PublishBlocked above (set its own success reason), and
-        // the x.kind exit edges below (an explicit graph decision that
-        // consumes the failure deliberately). A parent whose child died
-        // must never read as a clean success.
-        if super::fork_taxonomy::refuses_green_conclusion(&run_status, failure_message.as_deref()) {
+        // Fork seam (fabro-b00c, user decision 2026-09-25 — engine-side,
+        // refined 2026-09-26 option a): a green conclusion cannot stand
+        // over a leg failure a CATCH-ALL (unconditional) edge consumed —
+        // that is the fake-green the rule exists for. A failure an
+        // EXPLICIT conditional edge routed onward is control flow, the
+        // petri TerminalNode rule's own line, and stays green; a
+        // retried-then-succeeded leg never counts, because the leg's
+        // FINAL outcome is what the stages hold. PublishBlocked above set
+        // its own success reason, and the x.kind exit edges below are an
+        // explicit graph decision that consumes the failure deliberately.
+        // A parent whose child died must never read as a clean success.
+        let catch_all_failure = catch_all_leg_failure(projection, failure_message.as_deref());
+        if super::fork_taxonomy::refuses_green_conclusion(&run_status, catch_all_failure.as_deref())
+        {
             tracing::warn!(
                 conclusion_downgraded = true,
                 message = %failure_message.as_deref().unwrap_or(""),
@@ -324,6 +326,59 @@ fn branch_slot(slot: &str) -> Option<(u64, u32)> {
     let index = parts.next()?.parse::<u32>().ok()?;
     let firing = fork.rsplit_once('@')?.1.parse::<u64>().ok()?;
     Some((firing, index))
+}
+
+/// The first leg failure a catch-all (unconditional) edge consumed, as
+/// the message the downgrade names: `None` when every failed leg rode an
+/// explicit conditional route — or when no leg failed at all (a
+/// retried-then-succeeded leg's final outcome is success, so it never
+/// appears here). The failed leg's consumer is the next stage in the
+/// projection's execution order, or `exit` when the leg is last.
+fn catch_all_leg_failure(
+    projection: &fabro_types::RunProjection,
+    recorded: Option<&str>,
+) -> Option<String> {
+    // Stages in EXECUTION order: `StageId` orders lexicographically, the
+    // run's own order lives in each stage's first event sequence.
+    let mut stages: Vec<(u32, String, Option<String>)> = projection
+        .iter_stages()
+        .map(|(stage_id, stage)| {
+            (
+                stage.first_event_seq.get(),
+                stage_id.node_id().to_string(),
+                stage.completion.as_ref().and_then(|completion| {
+                    completion.outcome.is_failure().then(|| {
+                        completion
+                            .failure_reason
+                            .clone()
+                            .or_else(|| recorded.map(str::to_string))
+                            .unwrap_or_default()
+                    })
+                }),
+            )
+        })
+        .collect();
+    stages.sort_by_key(|(seq, _, _)| *seq);
+    let Some((index, _)) = stages
+        .iter()
+        .enumerate()
+        .find(|(_, (_, _, failure))| failure.is_some())
+    else {
+        // No failed leg: a recorded message without a failed stage is a
+        // superseded attempt's echo — retries are invisible.
+        return None;
+    };
+    let (_, node, message) = &stages[index];
+    let consumer = stages
+        .get(index + 1)
+        .map_or_else(|| "exit".to_string(), |(_, next, _)| next.clone());
+    let edges = super::edge_conditions::EdgeConditions::parse(
+        projection.spec.graph_source.as_deref().unwrap_or_default(),
+    );
+    if edges.is_conditional(node, &consumer) {
+        return None;
+    }
+    message.clone()
 }
 
 #[cfg(test)]
