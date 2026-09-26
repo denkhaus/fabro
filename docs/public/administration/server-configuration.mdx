@@ -189,18 +189,20 @@ enabled = true
 enabled = true
 ```
 
+The built-in `local`, `docker`, and `daytona` providers run in process. `local` selects Petri's
+Host provider. Built-in entries reject `path`, `sha256`, `dev`, `args`, `env`, and `inherit_env`;
+no plugin executable or checksum is needed. The legacy built-in
+`PETRI_SANDBOX_{HOST,DOCKER,DAYTONA}_{PLUGIN,SHA256}` variables are ignored.
+
 Any other key names a [sandbox-driver](https://github.com/lithoscomputer/sandbox-driver) plugin:
 an executable that speaks the sandbox-driver JSON-RPC protocol on stdin and stdout. The kind must
 be lowercase ASCII letters, digits, and interior hyphens. The plugin starts with a scrubbed
 environment: only `env` and the ambient variables listed in `inherit_env` reach it. Bundled
 providers reject these plugin keys.
 
-The same executable serves both sides of a run. The server launches it to reach a run's
-sandbox after the fact (the sandbox tab, files, terminal, Ask Fabro), and Petri launches it in
-the run's worker to create the sandbox. The server hands the worker `path` and `sha256` as
-`PETRI_SANDBOX_<KIND>_PLUGIN` and `PETRI_SANDBOX_<KIND>_SHA256` (the kind uppercased, hyphens
-as underscores), and `PETRI_SANDBOX_PLUGIN_DEV=1` when any configured plugin sets `dev`, so a
-plugin configured here needs no second configuration for the worker.
+The server launches the plugin to reach a sandbox after the fact (the sandbox tab, files,
+terminal, Ask Fabro). Runs execute only on the built-in providers for now, so a run's worker
+never launches a plugin and receives none of these settings.
 
 ```toml title="settings.toml"
 [server.sandbox.providers.e2b]

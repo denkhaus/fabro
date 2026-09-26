@@ -6,8 +6,8 @@
 //! sandbox prune` deletes them, over the store the run's records live in,
 //! rather than through a provider call of Fabro's own: Petri opens the run
 //! for writing, so a live worker that still holds the lease refuses the
-//! delete; it checks each lease's fingerprint against the plugin it
-//! launches, so a changed daemon or account is a problem to report, never
+//! delete; it checks each lease's fingerprint against the provider it
+//! connects, so a changed daemon or account is a problem to report, never
 //! a delete on another backend; it writes the delete intent before the
 //! provider call and the tombstone after, beside the run's other records;
 //! and each provider removes its sandbox's managed workspace, a host
@@ -26,12 +26,15 @@ use fabro_types::SandboxProviderKind;
 pub use petri_execution::prune::PruneReport;
 use petri_execution::prune::{self as petri_prune};
 use petri_execution::{RunKey, RunStore};
-use petri_runtime::{RunOptions, Runtime};
+use petri_runtime::RunOptions;
 
 use crate::engine;
+use crate::providers::{self, SandboxProviderConfig};
 
 /// One run whose sandboxes are to be deleted.
 pub struct PruneRequest {
+    /// The provider configuration used by this server-side operation.
+    pub sandbox:  SandboxProviderConfig,
     /// The Fabro run id, which is Petri's run key.
     pub run_id:   String,
     /// Where the run's worker ran Petri: its host registry and action-host
@@ -69,7 +72,9 @@ pub async fn prune(request: PruneRequest) -> Result<PruneReport, PruneError> {
     options.run_key = Some(RunKey::new(request.run_id.as_str()));
     options.retention = engine::RETENTION;
     options.sandbox.backend = backend;
-    let runtime = Runtime::bare().store(request.store).options(options);
+    let runtime = providers::bare_runtime(&request.sandbox)
+        .store(request.store)
+        .options(options);
     petri_prune::prune(&runtime)
         .await
         .map_err(|error| match error {

@@ -178,10 +178,9 @@ fn run_stream_items(run_dir: &Path) -> Vec<RunStreamItem> {
 /// - `docker`: the Docker provider, an environment on `buildpack-deps:noble`
 ///   created on an isolated server.
 ///
-/// Petri serves each provider through the matching sandbox-driver plugin
-/// executable on `PATH`. The `docker` variant skips without
-/// `sandbox-driver-docker` or without a Docker daemon that has the image,
-/// unless `FABRO_REQUIRE_SANDBOX_PLUGINS` is set, as CI sets it.
+/// The built-in providers run in process. The `docker` variant skips when
+/// no Docker daemon has the required image, unless CI requires the backend
+/// with `FABRO_REQUIRE_SANDBOX_BACKENDS`.
 macro_rules! sandbox_tests {
     ($name:ident) => {
         sandbox_tests!($name, keys = []);

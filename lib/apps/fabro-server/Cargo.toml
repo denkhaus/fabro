@@ -37,8 +37,6 @@ schemars = "1.2.1"
 fabro-workflow-version = { path = "../../components/fabro-workflow-version" }
 sandbox-driver.workspace = true
 sandbox-driver-host.workspace = true
-sandbox-driver-docker.workspace = true
-sandbox-driver-daytona.workspace = true
 sandbox-driver-protocol.workspace = true
 fabro-github = { path = "../../components/fabro-github" }
 pebble-agent.workspace = true

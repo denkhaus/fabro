@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use fabro_test::{fabro_snapshot, test_context};
 
-use super::petri::{RunningServer, host_plugin, run_detached, wait_for_success};
+use super::petri::{RunningServer, run_detached, wait_for_success};
 use crate::cmd::support::{read_text, text_tree};
 
 /// Three command stages that leave files under `assets/`. The second and
@@ -45,9 +45,6 @@ fn artifact_workspace(context: &fabro_test::TestContext) -> PathBuf {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn artifact_commands_read_the_artifacts_the_hooks_collected() {
-    if host_plugin().is_none() {
-        return;
-    }
     let context = test_context!();
     let server = RunningServer::start().await;
     let workspace = artifact_workspace(&context);

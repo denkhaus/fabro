@@ -147,12 +147,13 @@ impl ServerSandboxProvidersSettings {
             .map(|(kind, _)| kind)
     }
 
-    /// Enabled kinds that are served by a plugin executable.
+    /// Enabled third-party kinds that are served by a plugin executable.
+    /// Bundled kinds run in process, so plugin settings on them are ignored.
     pub fn enabled_plugins(
         &self,
     ) -> impl Iterator<Item = (&SandboxProviderKind, &SandboxPluginSettings)> {
         self.entries.iter().filter_map(|(kind, entry)| {
-            (entry.enabled)
+            (entry.enabled && kind.bundled().is_none())
                 .then_some(entry.plugin.as_ref())
                 .flatten()
                 .map(|plugin| (kind, plugin))

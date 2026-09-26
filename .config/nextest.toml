@@ -16,7 +16,7 @@ leak-timeout = "500ms"
     slow-timeout = { period = "2s", terminate-after = 3 }
 
     # fabro-petri's adapter tests run whole workflows on the host sandbox
-    # through the sandbox-driver plugin, and one of them calls the twin.
+    # through the in-process provider, and one of them calls the twin.
     [[profile.default.overrides]]
     filter = "package(fabro-petri)"
     slow-timeout = { period = "5s", terminate-after = 4 }
