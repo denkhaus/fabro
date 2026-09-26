@@ -16,14 +16,18 @@
 //! - `x.kind="soft"` + a success-shaped finish → `Failed { SoftStop }`
 //!   (infrastructure could not finish; the next run re-enters).
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use fabro_types::{FailureReason, RunStatus, SuccessReason};
 
 /// Exit kinds by (from-node, to-node) parsed from the DOT `graph_source`.
 #[derive(Debug, Default, Clone, PartialEq)]
 pub(crate) struct ExitKinds {
-    edges: BTreeMap<(String, String), String>,
+    edges:       BTreeMap<(String, String), String>,
+    /// Edges without an `x.kind` — the plain routes a success-shaped
+    /// finish takes (fabro-843d: a kind edge beside a plain one is not
+    /// the exit a green conclusion used).
+    plain_edges: BTreeSet<(String, String)>,
 }
 
 impl ExitKinds {
@@ -32,6 +36,7 @@ impl ExitKinds {
     /// multi-line attributes included).
     pub(crate) fn parse(graph_source: &str) -> Self {
         let mut edges = BTreeMap::new();
+        let mut plain_edges = BTreeSet::new();
         // Ein Kantenblock beginnt bei "name ->" und endet mit "]".
         let mut rest = graph_source;
         while let Some(arrow) = rest.find("->") {
@@ -59,14 +64,19 @@ impl ExitKinds {
                 .trim()
                 .to_string();
             let to = to.split_whitespace().next().unwrap_or_default().to_string();
-            if let Some(kind) = parse_x_kind(block) {
-                if !from.is_empty() && !to.is_empty() {
-                    edges.insert((from, to), kind.to_string());
+            if !from.is_empty() && !to.is_empty() {
+                match parse_x_kind(block) {
+                    Some(kind) => {
+                        edges.insert((from.clone(), to.clone()), kind.to_string());
+                    }
+                    None => {
+                        plain_edges.insert((from, to));
+                    }
                 }
             }
             rest = tail;
         }
-        Self { edges }
+        Self { edges, plain_edges }
     }
 
     /// The exit kind of the edge `from -> to`, when it carries one.
@@ -79,6 +89,14 @@ impl ExitKinds {
     /// Classify a conclusion by its exit route (ADR-0010 rev Option A).
     /// `finished` is Petri's finish word (`success`, `cancelled`, else
     /// failure); `last_stage` names the stage that routed to `exit`.
+    ///
+    /// A success-shaped finish takes an `x.kind` exit only when that edge
+    /// is the node's SOLE route to `exit` (fabro-843d): a node with a
+    /// plain edge beside the kind edge — the mini's closeout carries
+    /// `Seed closed` next to its failure-gated soft exit — left through
+    /// the plain route, and the kind classification must not fire on a
+    /// route the run never took. Failure-shaped finishes keep the
+    /// unconditional reading.
     pub(crate) fn classify(
         &self,
         finished: &str,
@@ -87,19 +105,27 @@ impl ExitKinds {
     ) -> Option<RunStatus> {
         let from = last_stage?;
         let kind = self.kind_of(from, to_exit)?;
+        let sole_exit_route = !self.has_plain_edge(from, to_exit);
         match (kind, finished) {
             ("boundary", "success") => None, // green needs no upgrade
             ("boundary", _) => Some(RunStatus::Succeeded {
                 reason: SuccessReason::Boundary,
             }),
-            ("deadlock", "success") => Some(RunStatus::Failed {
+            ("deadlock", "success") if sole_exit_route => Some(RunStatus::Failed {
                 reason: FailureReason::Deadlock,
             }),
-            ("soft", "success") => Some(RunStatus::Failed {
+            ("soft", "success") if sole_exit_route => Some(RunStatus::Failed {
                 reason: FailureReason::SoftStop,
             }),
             _ => None,
         }
+    }
+
+    /// Whether `from -> to_exit` exists WITHOUT an `x.kind` attribute:
+    /// the plain route a success-shaped finish takes.
+    fn has_plain_edge(&self, from: &str, to_exit: &str) -> bool {
+        self.plain_edges
+            .contains(&(from.to_string(), to_exit.to_string()))
     }
 }
 
@@ -149,6 +175,37 @@ digraph Develop {
         assert!(matches!(status, RunStatus::Succeeded {
             reason: SuccessReason::Boundary,
         }));
+    }
+
+    #[test]
+    fn a_kind_edge_beside_a_plain_edge_does_not_fire_on_success() {
+        // fabro-843d: the mini's closeout carries `Seed closed` (plain)
+        // next to its failure-gated soft exit — a green conclusion left
+        // through the plain route and must stay green.
+        let source = r#"
+            closeout -> exit [label="Seed closed"]
+            closeout -> exit [x.kind="soft", label="Closeout failed", condition="outcome=failed"]
+        "#;
+        let kinds = ExitKinds::parse(source);
+        assert_eq!(
+            kinds.classify("success", Some("closeout"), "exit"),
+            None,
+            "the plain edge is the success route"
+        );
+    }
+
+    #[test]
+    fn a_sole_kind_exit_still_fires_on_success() {
+        // probe-06's shape: the deadlock edge is the only exit route.
+        let source =
+            "flaky -> exit [x.kind=\"deadlock\", condition=\"nodes.flaky.generation >= 2\"]";
+        let kinds = ExitKinds::parse(source);
+        assert_eq!(
+            kinds.classify("success", Some("flaky"), "exit"),
+            Some(RunStatus::Failed {
+                reason: FailureReason::Deadlock,
+            })
+        );
     }
 
     #[test]
