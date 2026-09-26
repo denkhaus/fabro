@@ -21,9 +21,10 @@ bun = "1.4.0"
 "aqua:nushell/nushell" = "0.115.0"
 # Expertise CLI (git-native, see AGENTS.md); bin: ml/mulch.
 "npm:@os-eco/mulch-cli" = "0.10.7"
-# The issue tracker CLI `seeds` comes from crates.io via the GLOBAL mise
-# config (`cargo:seeds`, published 0.3.0; the denkhaus Rust app replaced
-# the npm @os-eco/seeds-cli reference tool 2026-09-26 — no sd bin).
+"cargo:seeds" = "0.3.0"
+# The issue tracker CLI `seeds`, pinned LOCALLY (crates.io 0.3.0; the
+# denkhaus Rust app replaced the npm @os-eco/seeds-cli reference tool
+# 2026-09-26 — no sd bin). The repo must not rely on a global install.
 
 [settings.npm]
 # Default aube backend aborts on its interactive `mise add` approval prompt
