@@ -22,6 +22,7 @@ use lithos_llm::credentials::CredentialProvider;
 use petri_attractor_steps::hooks::LocalHooks;
 use petri_attractor_steps::pebble::PebbleClient;
 use petri_attractor_steps::skills::FabroHome;
+use petri_execution::hooks::{HookAdapter, HookServiceHandle};
 use petri_frontend_fabro::Fabro;
 use petri_runtime::Runtime;
 use tracing::debug;
@@ -104,10 +105,8 @@ impl RuntimeSpec {
         let local = Arc::new(LocalHooks::default());
         let policy = Arc::new(ToolPolicyHooks::new(local.clone(), self.envelopes.clone()));
         runtime = runtime
-            .hooks(Arc::new(petri_execution::hooks::HookAdapter::new(
-                policy.clone(),
-            )))
-            .capability(petri_execution::hooks::HookServiceHandle(policy))
+            .hooks(Arc::new(HookAdapter::new(policy.clone())))
+            .capability(HookServiceHandle(policy))
             .capability(local.environments());
         if for_execution && self.dry_run {
             petri_attractor_steps::register_stubs(runtime)
