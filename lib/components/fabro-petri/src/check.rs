@@ -34,6 +34,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::fork_stage_envelope::{LintSeverity, StageEnvelopes};
+use crate::generation_guard_lint;
 use crate::runtime::RuntimeSpec;
 
 /// The project settings file the Fabro frontend reads at the bundle root.
@@ -303,6 +304,28 @@ pub fn check(request: &CheckRequest) -> Result<Admitted, CheckError> {
     // lowering drops `x.*` attributes, so their values are judged here,
     // over the same text the run's `graph_source` will carry. An invalid
     // glob refuses the workflow; consistency findings warn.
+    // The generation-guard-vs-breaker lint (fabro-51ad): the lowered
+    // graph carries the run policy's circuit-breaker limit; a guard that
+    // fires beyond it warns, with the recommendation, at create.
+    if let Some(graph) = lowered.graph.as_ref() {
+        for lint in generation_guard_lint::lint(
+            text,
+            graph
+                .policy
+                .loop_restart_signature_limit
+                .map(std::num::NonZeroU32::get),
+        ) {
+            diagnostics.push(Diagnostic {
+                severity: DiagnosticSeverity::Warning,
+                code:     "fork.generation_guard_vs_breaker".to_string(),
+                message:  lint.message,
+                hint:     None,
+                file:     bundle.entrypoint.clone(),
+                line:     None,
+                column:   None,
+            });
+        }
+    }
     let envelopes = StageEnvelopes::parse(text);
     let mut fork_errors = false;
     for lint in envelopes.lint() {

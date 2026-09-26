@@ -247,17 +247,18 @@ impl RunView {
         {
             let graph_source = projection.spec.graph_source.as_deref().unwrap_or_default();
             let exit_kinds = super::fork_exit_kinds::ExitKinds::parse(graph_source);
-            // The stage id is `node@visit` (the display label); the exit
-            // edges carry bare node names, so the kind lookup sees the
-            // node the last stage ran, not its visit suffix (fabro-51ad:
-            // a looping deadlock exit read as workflow_error because
-            // `flaky@3` never matched the `flaky -> exit` edge).
+            // The kind lookup needs the stage that ROUTED to exit, not
+            // the exit stage itself: `node@visit` display ids never match
+            // the DOT edge names, and the exit node runs after the router
+            // (fabro-51ad: a looping deadlock exit read as workflow_error
+            // because `flaky@3`/`exit@1` never matched `flaky -> exit`).
             let last_stage = self
                 .state
                 .stages
                 .iter()
-                .next_back()
-                .map(|(_, stage)| stage.stage_id.node_id().to_string());
+                .rev()
+                .map(|(_, stage)| stage.stage_id.node_id().to_string())
+                .find(|node| node != "exit");
             if let Some(overridden) = exit_kinds.classify(status, last_stage.as_deref(), "exit") {
                 run_status = overridden;
             }
