@@ -52,6 +52,12 @@ expression: report
 .fabro/workflows/context-demo/workflow.fabro: ContextDemo nodes=3 edges=2
   goal-inline
   inline@emit
+.fabro/workflows/cutover-probe/workflow.fabro: CutoverProbe nodes=6 edges=5
+  goal-inline
+  file:output_schema:schemas/ctx.schema.json@ctx
+  file:prompt:prompts/ctx.md@ctx
+  file:prompt:prompts/mulch.md@mulch
+  file:prompt:prompts/product.md@product
 .fabro/workflows/daytona-medium/workflow.fabro: DaytonaMedium nodes=3 edges=2
   goal-inline
 .fabro/workflows/develop/workflow.fabro: Develop nodes=12 edges=27
