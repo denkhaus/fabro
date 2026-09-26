@@ -1,5 +1,25 @@
 services:
+  # Log-Shipper (port of fabro-tofu modules/rootprint-vector, ADR-0004/0005):
+  # every container's stdout/stderr via the read-only Docker socket;
+  # WARN/ERROR + curated INFO lifecycle milestones to the cluster Rootprint.
+  # Local instance ships as service.name=container_name — fabro logs arrive
+  # as `fabro-lokal`, distinct from mirtuell (user directive 2026-09-25).
+  rootprint-vector:
+    container_name: rootprint-vector
+    image: timberio/vector:0.54.0-alpine
+    restart: unless-stopped
+    environment:
+      ROOTPRINT_TOKEN: ${ROOTPRINT_TOKEN:-}
+      ROOTPRINT_INGEST_URL: ${ROOTPRINT_INGEST_URL:?set ROOTPRINT_INGEST_URL in .env}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./compose/rootprint-vector.yaml:/etc/vector/vector.yaml:ro
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
   fabro:
+    container_name: fabro-lokal
     image: ghcr.io/fabro-sh/fabro:${FABRO_VERSION:-nightly}
     restart: unless-stopped
     ports:

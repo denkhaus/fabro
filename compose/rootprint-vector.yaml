@@ -1,0 +1,165 @@
+# Managed by tofu (modules/rootprint-vector) — do not edit by hand.
+# Log-Shipper config (ADR-0004, amended by ADR-0005): every container's
+# stdout/stderr via the Docker socket. Traffic policy: WARN/ERROR always,
+# PLUS curated INFO lifecycle milestones (seed fabro-tofu-cd74) —
+# INFO/DEBUG never leave the host otherwise, same threshold as the
+# cluster collectors. OTLP packing derived from the Rootprint docs
+# (https://docs.rootprint.io/send-logs/platforms/docker), with two
+# deliberate deviations: severity comes from fabro's tracing level prefix
+# (word inference is only the fallback), and the curated-INFO gate sits
+# before the severity drop. The ingest token is deliberately NOT in this
+# file: it arrives as container env and is interpolated by Vector at
+# startup (${ROOTPRINT_TOKEN} — tofu escape).
+data_dir: /var/lib/vector
+
+sources:
+  docker:
+    type: docker_logs
+    # LOCAL policy (user directive 2026-09-25): ship ONLY the fabro-lokal
+    # container — ddev/litellm/other local stacks stay on the host.
+    include_containers:
+      - fabro-lokal
+
+transforms:
+  # severity: fabro's tracing lines carry the real level inside the body
+  # ('<ts>  WARN <spans>: <target>: <message> ...'). The level token is
+  # parsed FIRST and wins; the docs' word inference (error/warn anywhere
+  # in the body) stays as fallback for containers without a tracing
+  # prefix (traefik, one-shots). Live 2026-09-14: word inference alone
+  # mislabeled 36/39 WARN bodies as ERROR ('...Z WARN ... error=LLM
+  # generation failed...' — the error branch is checked first).
+  enrich:
+    type: remap
+    inputs: [docker]
+    source: |
+      .message = to_string(.message) ?? ""
+      .curated_info = false
+
+      lvl = parse_regex(.message, r'^\S+\s+(?P<level>TRACE|DEBUG|INFO|WARN|ERROR)\s') ?? null
+      if lvl != null {
+        if lvl.level == "TRACE" {
+          .severity_number = 1
+        } else if lvl.level == "DEBUG" {
+          .severity_number = 5
+        } else if lvl.level == "INFO" {
+          .severity_number = 9
+        } else if lvl.level == "WARN" {
+          .severity_number = 13
+        } else {
+          .severity_number = 17
+        }
+        .severity_text = lvl.level
+      } else {
+        lower = downcase(.message)
+        if match(lower, r'\berror\b|\bfatal\b|\bpanic\b|\bexception\b') {
+          .severity_number = 17
+          .severity_text   = "ERROR"
+        } else if match(lower, r'\bwarn(ing)?\b|\bdeprecated\b|\bretry\b') {
+          .severity_number = 13
+          .severity_text   = "WARN"
+        } else {
+          .severity_number = 9
+          .severity_text   = "INFO"
+        }
+      }
+
+      # curated INFO milestones (ADR-0005): scheduler/supervisor/expiry
+      # targets are allowlisted wholesale (all their INFO lines are
+      # milestones); the run lifecycle is matched by message because its
+      # targets also carry non-lifecycle INFO ('Webhook received').
+      # Noise targets (pebble_coding_agent, event sink, sandbox-fs) are
+      # simply not in the list — they stay below the WARN threshold.
+      t = parse_regex(.message, r'^\S+\s+(?:TRACE|DEBUG|INFO|WARN|ERROR)\s+(?:(?:[a-zA-Z_]\w*)\{[^{}]*\}:\s*)*(?P<target>[a-zA-Z_]\w*(?:::\w+)*):\s(?P<msg>.*)$') ?? null
+      if t != null {
+        tgt = string!(t.target)
+        msg = string!(t.msg)
+        # workflow-version store registrations: no INFO line exists yet
+        # (verified against the denkhaus fork AND origin/main 2026-09-15);
+        # the next fabro release bakes the observability feature in —
+        # the two registration targets flow the day the image digest is
+        # bumped, with no further change here
+        if match(tgt, r'^(fabro_server::server::(automation_scheduler|fork_line_recovery|approval_expiry|pull_request_supervisor|handler::workflow_versions)|fabro_tool::workflow_version)$') {
+          .curated_info = true
+        }
+        if starts_with(msg, "Run created from intent") { .curated_info = true }
+        if starts_with(msg, "Run completed")            { .curated_info = true }
+        if starts_with(msg, "Run cancelled")            { .curated_info = true }
+      }
+
+  # traffic policy: WARN/ERROR always, curated INFO milestones alongside
+  # (ADR-0005) — everything else stays on the host
+  keep_warnings:
+    type: filter
+    inputs: [enrich]
+    condition: '(to_int(.severity_number) ?? 0) >= 13 || (to_bool(.curated_info) ?? false)'
+
+  # OTLP packing — docs-derived; inputs sit downstream of keep_warnings
+  to_otlp:
+    type: remap
+    inputs: [keep_warnings]
+    source: |
+      msg = string!(.message)
+      ts_nano = to_unix_timestamp(now(), unit: "nanoseconds")
+      if exists(.timestamp) && is_timestamp(.timestamp) {
+        ts_nano = to_unix_timestamp!(.timestamp, unit: "nanoseconds")
+      }
+      sev_num  = to_int(.severity_number) ?? 9
+      sev_text = string(.severity_text)   ?? "INFO"
+
+      cname = string(.container_name) ?? ""
+      cname = replace(cname, r'^/', "")
+      svc_name = "unknown_service"
+      if cname != "" { svc_name = cname }
+
+      attrs = [
+        { "key": "container.runtime", "value": { "stringValue": "docker" } }
+      ]
+      if exists(.container_id) { attrs = push(attrs, { "key": "container.id",         "value": { "stringValue": string!(.container_id) } }) }
+      if cname != ""           { attrs = push(attrs, { "key": "container.name",       "value": { "stringValue": cname } }) }
+      if exists(.image)        { attrs = push(attrs, { "key": "container.image.name", "value": { "stringValue": string!(.image) } }) }
+      if exists(.image_id)     { attrs = push(attrs, { "key": "container.image.id",   "value": { "stringValue": string!(.image_id) } }) }
+      if exists(.stream)       { attrs = push(attrs, { "key": "log.iostream",         "value": { "stringValue": string!(.stream) } }) }
+
+      . = {
+        "resourceLogs": [{
+          "resource": {
+            "attributes": [
+              { "key": "service.name", "value": { "stringValue": svc_name } },
+              { "key": "host.name",    "value": { "stringValue": get_hostname!() } }
+            ]
+          },
+          "scopeLogs": [{
+            "scope": { "name": "vector", "version": "" },
+            "logRecords": [{
+              "timeUnixNano":         ts_nano,
+              "observedTimeUnixNano": to_unix_timestamp(now(), unit: "nanoseconds"),
+              "severityNumber":       sev_num,
+              "severityText":         sev_text,
+              "body":                 { "stringValue": msg },
+              "attributes":           attrs,
+              "traceId":              "",
+              "spanId":               "",
+              "flags":                0,
+              "droppedAttributesCount": 0
+            }]
+          }]
+        }]
+      }
+
+sinks:
+  rootprint:
+    type: opentelemetry
+    inputs: [to_otlp]
+    protocol:
+      type: http
+      uri: ${ROOTPRINT_INGEST_URL}
+      method: post
+      encoding:
+        codec: otlp
+      compression: gzip
+      request:
+        headers:
+          Authorization: "Bearer ${ROOTPRINT_TOKEN}"
+      batch:
+        timeout_secs: 1
+        max_bytes: 8388608
