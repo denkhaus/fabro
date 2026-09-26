@@ -44,6 +44,7 @@ const ENFORCED_X: &[&str] = &[
     "x.preamble_inline_max_kb",
     "x.preamble_budget_kb",
     "x.fabro_tools",
+    "x.tools",
 ];
 
 /// The legacy per-node family the petri rework dropped (fabro-70af):
@@ -51,7 +52,6 @@ const ENFORCED_X: &[&str] = &[
 /// dropped — until each name lands its enforcement and moves up into
 /// [`ENFORCED_X`].
 const RECOGNIZED_X: &[&str] = &[
-    "x.tools",
     "x.skills",
     "x.inspects",
     "x.preamble_stages_ignore",
@@ -80,6 +80,12 @@ pub struct NodeEnvelope {
     /// register none either — the per-node allowlist the legacy engine
     /// enforced, restored at the host-tools seam (fabro-96c6).
     pub fabro_tools:            Option<Vec<String>>,
+    /// `x.tools`: when present, the only session tools the node's agent
+    /// may call (an empty value: none — the read-only reviewer posture).
+    /// Enforced mechanically at the tool boundary, Pebble's middleware
+    /// included ([`crate::tool_policy`], fabro-1a41); `None` leaves the
+    /// session's full toolset.
+    pub tools:                  Option<Vec<String>>,
 }
 
 /// The graph block's envelope numbers, as written.
@@ -182,11 +188,14 @@ impl StageEnvelopes {
                     preamble_inline_max_kb: number(block, "x.preamble_inline_max_kb"),
                     fabro_tools:            attribute(block, "x.fabro_tools")
                         .map(|_| list(block, "x.fabro_tools")),
+                    tools:                  attribute(block, "x.tools")
+                        .map(|_| list(block, "x.tools")),
                 };
                 let declares = !envelope.fs_hide.is_empty()
                     || envelope.fs_write.is_some()
                     || envelope.preamble_inline_max_kb.is_some()
-                    || envelope.fabro_tools.is_some();
+                    || envelope.fabro_tools.is_some()
+                    || envelope.tools.is_some();
                 if declares {
                     nodes.insert(name.to_string(), envelope);
                 }
@@ -600,7 +609,7 @@ mod tests {
     #[test]
     fn recognized_but_unenforced_family_warns_once_per_subject() {
         let source = r#"digraph W {
-            a [x.preamble_stages_ignore="b,c", x.context_allow_keys="k", x.tools="read_file"]
+            a [x.preamble_stages_ignore="b,c", x.context_allow_keys="k", x.skills="discover"]
             b [x.preamble_stages_ignore="a"]
         }"#;
         let findings = StageEnvelopes::parse(source).lint();

@@ -19,6 +19,7 @@ use lithos_llm::Client;
 use lithos_llm::catalog::{Catalog, ProviderId};
 use lithos_llm::client::ClientBuildError;
 use lithos_llm::credentials::CredentialProvider;
+use petri_attractor_steps::hooks::LocalHooks;
 use petri_attractor_steps::pebble::PebbleClient;
 use petri_attractor_steps::skills::FabroHome;
 use petri_frontend_fabro::Fabro;
@@ -27,6 +28,7 @@ use tracing::debug;
 
 use crate::fork_stage_envelope::StageEnvelopes;
 use crate::host_tools;
+use crate::tool_policy::ToolPolicyHooks;
 
 /// What every Petri runtime Fabro builds is configured with.
 #[derive(Clone, Default)]
@@ -92,6 +94,21 @@ impl RuntimeSpec {
                 self.envelopes.clone(),
             ));
         }
+        // The host-supplied hook service (the documented replacement seam):
+        // Petri's local service wrapped with the per-node `x.tools` policy
+        // (fabro-1a41), so the tool boundary — Pebble's middleware included
+        // — denies calls outside a node's allowlist before they run, and
+        // every other point still reaches the local `[[run.hooks]]` service.
+        // Installed before `register`, which then steps its own service
+        // aside; `FabroHooks` wraps this adapter in turn at execution.
+        let local = Arc::new(LocalHooks::default());
+        let policy = Arc::new(ToolPolicyHooks::new(local.clone(), self.envelopes.clone()));
+        runtime = runtime
+            .hooks(Arc::new(petri_execution::hooks::HookAdapter::new(
+                policy.clone(),
+            )))
+            .capability(petri_execution::hooks::HookServiceHandle(policy))
+            .capability(local.environments());
         if for_execution && self.dry_run {
             petri_attractor_steps::register_stubs(runtime)
         } else {

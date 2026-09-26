@@ -86,6 +86,7 @@ pub mod runtime;
 pub mod secrets;
 #[cfg(feature = "test-support")]
 pub mod test_support;
+pub mod tool_policy;
 pub mod workspace;
 
 pub use http_store::HttpRunStore;
