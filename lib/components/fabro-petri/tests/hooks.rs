@@ -82,7 +82,6 @@ fn host_plugin() -> Option<PathBuf> {
     found
 }
 
-
 /// The bundle admitted the way the create handler admits it.
 fn admit(workflow: &str, settings: &str) -> AdmittedGraphs {
     let request = CheckRequest {

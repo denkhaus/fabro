@@ -43,8 +43,34 @@ use fabro_vault::{SecretType, Vault};
 use crate::cmd::support::created_run_id;
 use crate::support::{TEST_DEV_TOKEN, TEST_SESSION_SECRET, seed_dev_token_auth};
 
+const HOST_PLUGIN: &str = "sandbox-driver-host";
+pub(super) const REQUIRE_ENV: &str = "FABRO_REQUIRE_SANDBOX_PLUGINS";
 pub(super) const RUN_TIMEOUT: Duration = Duration::from_mins(1);
 pub(super) const POLL: Duration = Duration::from_millis(50);
+
+/// The host plugin as Petri's lookup finds it: the override variable, else
+/// the executable on `PATH`. `None`, after saying so, when the test should
+/// skip; a panic when the environment forbids a skip. (Restored from the
+/// pre-merge branch state: upstream's in-process-provider rewrite dropped
+/// it while our scenario tests still guard with it.)
+pub(super) fn host_plugin() -> Option<PathBuf> {
+    const HOST_PLUGIN_OVERRIDE: &str = "PETRI_SANDBOX_HOST_PLUGIN";
+    let found = env::var_os(HOST_PLUGIN_OVERRIDE)
+        .map(PathBuf::from)
+        .or_else(|| {
+            env::split_paths(&env::var_os(EnvVars::PATH)?)
+                .map(|dir| dir.join(HOST_PLUGIN))
+                .find(|candidate| candidate.is_file())
+        });
+    if found.is_none() {
+        assert!(
+            env::var_os(REQUIRE_ENV).is_none(),
+            "{REQUIRE_ENV} is set, but {HOST_PLUGIN} is not on PATH and {HOST_PLUGIN_OVERRIDE} is unset"
+        );
+        eprintln!("skipping: {HOST_PLUGIN} is not on PATH and {HOST_PLUGIN_OVERRIDE} is unset");
+    }
+    found
+}
 
 /// A foreground server on its own disk storage, dev-token auth, started
 /// from the compiled `fabro` binary. Dropping it kills the process.
