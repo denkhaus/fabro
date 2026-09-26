@@ -179,6 +179,7 @@ pub(crate) mod petri_runs;
 pub(crate) mod pull_request_conflict;
 mod pull_request_supervisor;
 pub(crate) mod resource_sampler;
+mod run_publish;
 pub(crate) mod run_records;
 pub mod seeds_source;
 mod session_runtime;
@@ -194,6 +195,7 @@ pub(in crate::server) use handler::graph::{
 #[cfg(test)]
 pub(in crate::server) use handler::system::validate_github_slug;
 pub(crate) use pull_request_supervisor::spawn_pull_request_creation_supervisor;
+pub(crate) use run_publish::spawn_run_publish_supervisor;
 use session_runtime::SessionRuntimeManager;
 
 pub(crate) type EnvLookup = Arc<dyn Fn(&str) -> Option<String> + Send + Sync>;
@@ -1151,6 +1153,9 @@ pub struct AppState {
     automation_scheduler_notify: Notify,
     pull_request_scheduler_notify: Notify,
     pull_request_creation_queue: Mutex<pull_request_supervisor::PendingPullRequestCreationQueue>,
+    run_publish_scheduler_notify: Notify,
+    run_publish_queue: Mutex<run_publish::RunPublishQueue>,
+    run_publish_locks: KeyedMutex<RunId>,
     global_event_tx: broadcast::Sender<RunStreamItem>,
     /// Per-run coalescing registry for `GET /runs/{id}/files`. Concurrent
     /// callers for the same run share one materialization; different runs
@@ -1314,6 +1319,12 @@ impl AppState {
         &self,
     ) -> impl std::future::Future<Output = ()> + '_ {
         self.pull_request_scheduler_notify.notified()
+    }
+
+    pub(crate) fn run_publish_scheduler_notified(
+        &self,
+    ) -> impl std::future::Future<Output = ()> + '_ {
+        self.run_publish_scheduler_notify.notified()
     }
 }
 
@@ -1734,6 +1745,7 @@ impl AppState {
         self.scheduler_notify.notify_waiters();
         self.automation_scheduler_notify.notify_waiters();
         self.pull_request_scheduler_notify.notify_waiters();
+        self.run_publish_scheduler_notify.notify_waiters();
     }
 
     pub(crate) fn shutdown_token(&self) -> CancellationToken {
@@ -2725,6 +2737,9 @@ pub(crate) fn build_app_state(config: AppStateConfig) -> anyhow::Result<Arc<AppS
         pull_request_creation_queue: Mutex::new(
             pull_request_supervisor::PendingPullRequestCreationQueue::default(),
         ),
+        run_publish_scheduler_notify: Notify::new(),
+        run_publish_queue: Mutex::new(run_publish::RunPublishQueue::default()),
+        run_publish_locks: KeyedMutex::new(),
         global_event_tx,
         files_in_flight: new_files_in_flight(),
         pull_request_create_locks: KeyedMutex::new(),

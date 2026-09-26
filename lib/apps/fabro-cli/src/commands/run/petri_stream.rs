@@ -845,6 +845,36 @@ fn format_platform_record(ts: &str, record: &Value, styles: &Styles) -> Option<S
                 styles.dim.apply_to(source)
             ))
         }
+        "run.branch_published" => {
+            let branch = record
+                .get("run_branch")
+                .and_then(Value::as_str)
+                .unwrap_or("?");
+            let sha = record
+                .get("head_sha")
+                .and_then(Value::as_str)
+                .map_or_else(String::new, short_sha);
+            let outcome = record.get("outcome").and_then(Value::as_str)?;
+            let line = match outcome {
+                "published" => format!("Published: {branch} at {sha}"),
+                "skipped" => format!(
+                    "Publish skipped: {}",
+                    record
+                        .pointer("/reason")
+                        .and_then(Value::as_str)
+                        .unwrap_or("?")
+                ),
+                "failed" => format!(
+                    "Publish failed: {}",
+                    record
+                        .pointer("/error")
+                        .and_then(Value::as_str)
+                        .unwrap_or("?")
+                ),
+                other => format!("Publish {other}: {branch}"),
+            };
+            Some(format!("{ts}   {}", styles.dim.apply_to(line)))
+        }
         "run.diff" => {
             let summary = record.get("diff_summary")?;
             let count = |key: &str| summary.get(key).and_then(Value::as_i64).unwrap_or(0);

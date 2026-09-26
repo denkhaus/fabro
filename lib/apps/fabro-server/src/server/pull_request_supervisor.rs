@@ -174,6 +174,17 @@ async fn attempt_pull_request_creation(
         Err(err) => return Ok(Err(err.detail().to_string())),
     };
     let catalog = state.catalog();
+    // The run's `[run.pull_request]` settings shape the creation
+    // (fabro-ac40): a workflow that asks for a ready (non-draft) PR with
+    // auto-merge gets one, the defaults stay a draft without auto-merge.
+    let pr_settings = run_state.spec.settings.run.pull_request.clone();
+    let draft = pr_settings.as_ref().is_none_or(|settings| settings.draft);
+    let auto_merge = pr_settings
+        .as_ref()
+        .filter(|settings| settings.auto_merge)
+        .map(|settings| pull_request::AutoMergeOptions {
+            merge_strategy: settings.merge_strategy.clone(),
+        });
     let request = pull_request::OpenPullRequestRequest {
         github,
         origin_url: &inputs.normalized_origin,
@@ -183,8 +194,8 @@ async fn attempt_pull_request_creation(
         goal: inputs.goal,
         diff: inputs.diff,
         model: &creation.model,
-        draft: true,
-        auto_merge: None,
+        draft,
+        auto_merge,
         llm_source: Arc::clone(&state.llm_source),
         catalog,
         conclusion: Some(inputs.conclusion),
@@ -217,12 +228,12 @@ async fn attempt_pull_request_creation(
             state,
             *run_id,
             PlatformRecord::PullRequestCreated(PullRequestCreatedRecord {
-                number:    link.number,
-                owner:     link.owner.clone(),
-                repo:      link.repo.clone(),
-                html_url:  link.html_url(),
-                head_sha:  Some(inputs.final_git_sha.to_string()),
-                draft:     true,
+                number: link.number,
+                owner: link.owner.clone(),
+                repo: link.repo.clone(),
+                html_url: link.html_url(),
+                head_sha: Some(inputs.final_git_sha.to_string()),
+                draft,
                 operation: None,
             }),
         )

@@ -407,6 +407,42 @@ LIMIT 1
         .collect()
     }
 
+    /// Run ids whose branch publish is still owed (fabro-ac40): runs that
+    /// finished successfully against a repository and carry no
+    /// `run.branch_published` record yet. Any outcome record — published,
+    /// skipped, failed — settles the debt, so the set stays bounded by
+    /// unfinished publishes; `completed_after_ms` bounds the backlog a
+    /// server adopts at boot (runs that finished before the cutoff are
+    /// left alone).
+    pub async fn list_run_publish_candidate_run_ids(
+        &self,
+        completed_after_ms: i64,
+        limit: u32,
+    ) -> Result<Vec<RunId>> {
+        let limit = i64::from(limit);
+        sqlx::query_scalar::<_, String>(
+            "SELECT runs.id FROM runs \
+             WHERE runs.status = 'succeeded' \
+               AND runs.completed_at_ms IS NOT NULL \
+               AND runs.completed_at_ms >= ? \
+               AND json_extract(runs.summary_json, '$.repository.origin_url') IS NOT NULL \
+               AND NOT EXISTS ( \
+                 SELECT 1 FROM platform_records AS published \
+                 WHERE published.run_id = runs.id \
+                   AND published.kind = 'run.branch_published' \
+               ) \
+             ORDER BY runs.completed_at_ms DESC, runs.id DESC \
+             LIMIT ?",
+        )
+        .bind(completed_after_ms)
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await?
+        .into_iter()
+        .map(parse_stored_run_id)
+        .collect()
+    }
+
     /// Identity fields for every stored run, for selector resolution without
     /// decoding full summaries.
     pub async fn list_identities(&self) -> Result<Vec<RunSummaryIdentity>> {
@@ -739,7 +775,7 @@ mod tests {
     };
     use crate::platform_records::{
         PlatformRecord, PullRequestCreatedRecord, PullRequestFailedRecord,
-        PullRequestRequestedRecord,
+        PullRequestRequestedRecord, RunBranchPublishOutcome, RunBranchPublishedRecord,
     };
     use crate::test_support as store_test_support;
 
@@ -1126,6 +1162,101 @@ mod tests {
         let mut expected = vec![pending_id, failed_id, renewed_id];
         expected.sort();
         assert_eq!(candidates, expected);
+    }
+
+    #[tokio::test]
+    async fn run_publish_candidates_are_unpublished_successful_repository_runs() {
+        let (_directory, store) = store().await;
+        let created_at = dt("2026-08-27T12:00:00Z");
+        let cutoff = created_at.timestamp_millis();
+        let owed_id = run_id(created_at.timestamp_millis().cast_unsigned(), 1);
+        let settled_id = run_id(created_at.timestamp_millis().cast_unsigned() + 1, 2);
+        let failed_run_id = run_id(created_at.timestamp_millis().cast_unsigned() + 2, 3);
+        let no_repo_id = run_id(created_at.timestamp_millis().cast_unsigned() + 3, 4);
+        let too_old_id = run_id(
+            (created_at - chrono::Duration::hours(3))
+                .timestamp_millis()
+                .cast_unsigned(),
+            5,
+        );
+        let records = store.platform_records();
+
+        let succeeded_with_repo = |id: RunId, at: DateTime<Utc>| {
+            let mut projected = projection(id, "green", at);
+            projected.spec.git = Some(fabro_types::GitContext {
+                origin_url: "https://github.com/acme/widgets.git".to_string(),
+                branch:     "main".to_string(),
+                sha:        None,
+                dirty:      fabro_types::DirtyStatus::Clean,
+            });
+            projected.status = RunStatus::Succeeded {
+                reason: SuccessReason::Completed,
+            };
+            projected.last_event_at = at;
+            projected.conclusion = Some(Conclusion {
+                timestamp:            at,
+                status:               StageOutcome::Succeeded,
+                timing:               RunTiming::wall_only(60_000),
+                failure:              None,
+                final_git_commit_sha: Some("abc123".to_string()),
+                stages:               Vec::new(),
+                usage:                None,
+                total_retries:        0,
+                diff:                 RunDiff {
+                    patch:   None,
+                    summary: Some(DiffSummary {
+                        files_changed: 1,
+                        additions:     2,
+                        deletions:     0,
+                    }),
+                },
+            });
+            projected
+        };
+
+        // Owed: a green repository run without an outcome record.
+        write(&store, &succeeded_with_repo(owed_id, created_at)).await;
+        // Settled: the same shape, but an outcome record exists.
+        write(&store, &succeeded_with_repo(settled_id, created_at)).await;
+        records
+            .append(
+                &settled_id,
+                &PlatformRecord::RunBranchPublished(RunBranchPublishedRecord {
+                    run_branch: "fabro/run/x".to_string(),
+                    head_sha:   "abc123".to_string(),
+                    outcome:    RunBranchPublishOutcome::Skipped {
+                        reason: "run_branch_push_disabled".to_string(),
+                    },
+                }),
+                None,
+            )
+            .await
+            .unwrap();
+        // A failed run owes nothing even with a repository.
+        let mut failed_run = succeeded_with_repo(failed_run_id, created_at);
+        failed_run.status = RunStatus::Failed {
+            reason: FailureReason::WorkflowError,
+        };
+        failed_run.conclusion = None;
+        write(&store, &failed_run).await;
+        // A green run without a repository cannot publish.
+        let mut no_repo = projection(no_repo_id, "local", created_at);
+        no_repo.status = RunStatus::Succeeded {
+            reason: SuccessReason::Completed,
+        };
+        write(&store, &no_repo).await;
+        // A green repository run finished before the cutoff is left alone.
+        write(
+            &store,
+            &succeeded_with_repo(too_old_id, created_at - chrono::Duration::hours(3)),
+        )
+        .await;
+
+        let candidates = store
+            .list_run_publish_candidate_run_ids(cutoff, 16)
+            .await
+            .unwrap();
+        assert_eq!(candidates, vec![owed_id]);
     }
 
     #[tokio::test]

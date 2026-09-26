@@ -37,7 +37,7 @@ use crate::server::{
     self, AppState, AppStateConfig, ResolvedAppStateSettings, RouterOptions, build_app_state,
     build_router_with_options, reconcile_incomplete_runs_on_startup, shutdown_active_workers,
     spawn_automation_scheduler, spawn_pull_request_creation_supervisor,
-    spawn_pull_request_staleness_supervisor, spawn_scheduler,
+    spawn_pull_request_staleness_supervisor, spawn_run_publish_supervisor, spawn_scheduler,
 };
 use crate::server_secrets::{ServerSecrets, process_env_snapshot};
 use crate::startup::{resolve_startup, validate_startup_configuration};
@@ -771,6 +771,7 @@ where
     let pull_request_creation_supervisor =
         spawn_pull_request_creation_supervisor(Arc::clone(&state));
     spawn_pull_request_staleness_supervisor(Arc::clone(&state));
+    spawn_run_publish_supervisor(Arc::clone(&state));
     let router = build_router_with_options(Arc::clone(&state), &auth_mode, RouterOptions {
         web_enabled,
         #[cfg(debug_assertions)]
