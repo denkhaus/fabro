@@ -16,7 +16,7 @@ use fabro_test::{
     expect_axum_status_in, expect_axum_text,
 };
 use fabro_types::ServerSettings;
-use tokio::time::sleep;
+use tokio::time::{self, sleep};
 use tower::ServiceExt;
 
 pub(crate) const MINIMAL_DOT: &str = r#"digraph Test {
@@ -307,18 +307,36 @@ pub(crate) async fn wait_for_run_status(
     run_id: &str,
     expected: &[&str],
 ) -> String {
-    for _ in 0..POLL_ATTEMPTS {
-        let body = run_json(app, run_id).await;
-        let status = body["lifecycle"]["status"]["kind"]
-            .as_str()
-            .expect("run response should include a tagged status kind")
-            .to_string();
-        if expected.iter().any(|candidate| *candidate == status) {
-            return status;
+    wait_for_run_status_with_timeout(app, run_id, expected, Duration::from_secs(5)).await
+}
+
+pub(crate) async fn wait_for_run_status_with_timeout(
+    app: &axum::Router,
+    run_id: &str,
+    expected: &[&str],
+    timeout: Duration,
+) -> String {
+    let mut last_body = serde_json::Value::Null;
+    time::timeout(timeout, async {
+        loop {
+            last_body = run_json(app, run_id).await;
+            let status = last_body["lifecycle"]["status"]["kind"]
+                .as_str()
+                .expect("run response should include a tagged status kind");
+            if expected.contains(&status) {
+                return status.to_owned();
+            }
+            sleep(POLL_INTERVAL).await;
         }
-        sleep(POLL_INTERVAL).await;
-    }
-    panic!("run {run_id} did not reach any of {expected:?}");
+    })
+    .await
+    .unwrap_or_else(|_| {
+        panic!(
+            "run {run_id} did not reach any of {expected:?} within {timeout:?}; \
+             last lifecycle: {}; last sandbox: {}",
+            last_body["lifecycle"], last_body["sandbox"]
+        )
+    })
 }
 
 pub(crate) async fn wait_for_run_status_not_in(
