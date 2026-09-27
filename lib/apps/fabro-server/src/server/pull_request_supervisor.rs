@@ -183,7 +183,7 @@ async fn attempt_pull_request_creation(
         .as_ref()
         .filter(|settings| settings.auto_merge)
         .map(|settings| pull_request::AutoMergeOptions {
-            merge_strategy: settings.merge_strategy.clone(),
+            merge_strategy: settings.merge_strategy,
         });
     let request = pull_request::OpenPullRequestRequest {
         github,

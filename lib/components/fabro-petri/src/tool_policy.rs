@@ -153,9 +153,6 @@ mod tests {
     #[test]
     fn expansion_clones_carry_the_allowlist() {
         let source = r#"digraph W { reader [x.tools="read_file"] }"#;
-        assert_eq!(
-            denied_tool(&envelopes(source), "reader#2", "write_file").is_some(),
-            true
-        );
+        assert!(denied_tool(&envelopes(source), "reader#2", "write_file").is_some());
     }
 }

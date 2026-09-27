@@ -64,6 +64,7 @@ const HOST_PLUGIN: &str = "sandbox-driver-host";
 const HOST_PLUGIN_OVERRIDE: &str = "PETRI_SANDBOX_HOST_PLUGIN";
 const REQUIRE_ENV: &str = "FABRO_REQUIRE_SANDBOX_PLUGINS";
 
+#[allow(clippy::print_stderr, reason = "test-skip notice, not tool output")]
 fn host_plugin() -> Option<PathBuf> {
     let found = env::var_os(HOST_PLUGIN_OVERRIDE)
         .map(PathBuf::from)

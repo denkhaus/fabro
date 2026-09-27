@@ -6,12 +6,12 @@
 //! exactly this line first — this module brings the projection's
 //! conclusion in line with it.
 
-use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 
 /// Edges by (from-node, to-node) that carry a `condition=` attribute.
 #[derive(Debug, Default, Clone, PartialEq)]
 pub(crate) struct EdgeConditions {
-    conditional: BTreeMap<(String, String), ()>,
+    conditional: BTreeSet<(String, String)>,
 }
 
 impl EdgeConditions {
@@ -21,7 +21,7 @@ impl EdgeConditions {
     /// `[` keeps collecting attribute lines until its `]`. A bracket-less
     /// edge must never inherit the NEXT edge's block.
     pub(crate) fn parse(graph_source: &str) -> Self {
-        let mut conditional = BTreeMap::new();
+        let mut conditional = BTreeSet::new();
         let lines: Vec<&str> = graph_source.lines().collect();
         let mut index = 0;
         while let Some(line) = lines.get(index) {
@@ -46,7 +46,7 @@ impl EdgeConditions {
                 close += next.matches(']').count();
             }
             if has_condition(&block) {
-                conditional.insert((from, to), ());
+                conditional.insert((from, to));
             }
         }
         Self { conditional }
@@ -72,7 +72,7 @@ impl EdgeConditions {
     /// condition-gated route.
     pub(crate) fn is_conditional(&self, from: &str, to: &str) -> bool {
         self.conditional
-            .contains_key(&(from.to_string(), to.to_string()))
+            .contains(&(from.to_string(), to.to_string()))
     }
 }
 
