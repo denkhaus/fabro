@@ -28,9 +28,9 @@ def cap1 [x] {
 }
 
 def main [--days: int = 7, --threshold: float = 0.6] {
-    let open_seeds = (do { sd list --limit 1000 --format json } | complete
+    let open_seeds = (do { seeds list --limit 1000 --format json } | complete
         | get stdout | from json | get issues? | default [])
-    let closed_seeds = (do { sd list --status closed --limit 1000 --format json } | complete
+    let closed_seeds = (do { seeds list --status closed --limit 1000 --format json } | complete
         | get stdout | from json | get issues? | default [])
     let all = ($open_seeds | append $closed_seeds)
 

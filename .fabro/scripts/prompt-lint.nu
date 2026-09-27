@@ -120,7 +120,10 @@ def main [] {
         # 1. seed ids must resolve
         for id in (seed-ids-in $text) {
             let full = $"fabro-($id)"
-            let s = (do { sd show $full --format json } | complete)
+            # sd -> seeds cutover (2026-09-26): the Rust tracker CLI is
+            # `seeds` on PATH everywhere now (host + toolchain image);
+            # exit codes match (0 resolves, 1 not found).
+            let s = (do { seeds show $full --format json } | complete)
             if $s.exit_code != 0 {
                 $errors = ($errors | append $"($f): seed id '($full)' does not resolve in the tracker")
             }

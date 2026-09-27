@@ -90,7 +90,7 @@ digraph Revisor {
         x.context_allow_keys="revision_findings,journal"
     ]
 
-    // File: deterministic bookkeeping. sd create per finding (English
+    // File: deterministic bookkeeping. seeds create per finding (English
     // seeds, one change each), the revision report doubles as the
     // bookkeeping marker (.fabro/revisions/<run-id>.md — no marker on the
     // base branch = run not yet revised), then git add+commit of exactly

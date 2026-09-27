@@ -1,4 +1,4 @@
-# Issue tracker: Seeds (sd)
+# Issue tracker: Seeds (seeds CLI)
 
 Issues for this repo live in Seeds — git-native issue tracking in `.seeds/`,
 driven by the `seeds` CLI. Not GitHub Issues: upstream PRs exist, but tracked

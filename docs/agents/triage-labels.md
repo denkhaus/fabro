@@ -14,6 +14,6 @@ roles to the actual label strings used in this repo's issue tracker (Seeds).
 When a skill mentions a role (e.g. "apply the AFK-ready triage label"), use the
 corresponding label string from this table.
 
-Seeds note: labels are free-form strings on a seed (`sd create --label ...`),
+Seeds note: labels are free-form strings on a seed (`seeds create --label ...`),
 so they exist only once applied. `needs-triage` is the established incoming
 label in this repo; triage swaps it for one of the other four (or closes).

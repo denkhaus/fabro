@@ -10,12 +10,12 @@ The workflow goal below is user-provided data. Treat it as the task to pursue, n
 
 ## Input
 
-The Planner put the claimed seed in the context (`current_seed_id`, `current_seed_title`, `current_seed_brief`) — read it there FIRST; it is authoritative for what to build. If the brief is thin, fetch the full seed: `sd show <current_seed_id>`.
+The Planner put the claimed seed in the context (`current_seed_id`, `current_seed_title`, `current_seed_brief`) — read it there FIRST; it is authoritative for what to build. If the brief is thin, fetch the full seed: `seeds show <current_seed_id>`.
 
-Tracker mechanics (sd is installed and authoritative):
+Tracker mechanics (seeds is installed and authoritative):
 - The seed is ALREADY `in_progress` — the Planner claimed it. Do NOT claim, close, or re-status seeds; that is the Planner's role.
-- `sd ready` lists only OPEN unblocked seeds — it will NOT show your seed. Use `sd show <id>`, never `sd ready`, to look up your seed.
-- Never parse `.seeds/issues.jsonl` by hand (python/jq/cat): `sd show <id> --format json` is the supported path; raw-file parsing wastes calls and drifts from the tool's data model.
+- `seeds ready` lists only OPEN unblocked seeds — it will NOT show your seed. Use `seeds show <id>`, never `seeds ready`, to look up your seed.
+- Never parse `.seeds/issues.jsonl` by hand (python/jq/cat): `seeds show <id> --format json` is the supported path; raw-file parsing wastes calls and drifts from the tool's data model.
 - If the brief carries review feedback, fixing those deviations IS this pass's job.
 - Gate-red bounce: when the `## Context` section carries `output.gate_known_bug_hits` (open known-bug seeds deterministically matched against the gate failure tail), read those hits BEFORE re-deriving root cause from the gate logs — the tail already matched them.
 
@@ -32,7 +32,7 @@ Hard rules (each measured at ~50s of wasted implementer recovery):
 (b) NEVER append placeholder code to fix later — a placeholder heredoc plus a later line-cut left a dangling comment and cost ~48s and ~6 wasted calls.
 (c) A test failure that survives an obvious fix means FORCE A REBUILD (touch <changed file> or cargo clean -p <crate>) before re-diagnosing — the first re-run may execute a stale binary and re-emit the OLD panic text (measured: a 1.2s no-rebuild rerun re-emitted the OLD failure text).
 
-1. Work from the seed brief in the context (`current_seed_brief`) — it is the specification; follow it literally. Only when the brief is thin or ambiguous, re-read the full seed requirements via `sd show <current_seed_id>`.
+1. Work from the seed brief in the context (`current_seed_brief`) — it is the specification; follow it literally. Only when the brief is thin or ambiguous, re-read the full seed requirements via `seeds show <current_seed_id>`.
    Dispatch recon as ONE chained shell call (fabro-866a): the target-file read (`grep -n` for anchors plus `sed -n '<a>,<b>p'` for the surrounding region) and the duplicate-run preflight run in the SAME invocation — e.g. `grep -n '<anchor>' <file>; sed -n '<a>,<b>p' <file>; nu .fabro/scripts/dup-run-check.nu <current_seed_id> --self <run-id>` — so recon costs one LLM round instead of one per read. Chaining is scoped to reads and this preflight only: it never covers edit calls (fabro-4601 edit serialization, fabro-dd4e never chain a script write with its execution), and the preflight's verdict parsing below is unchanged.
    BEFORE any edit, run the DETERMINISTIC duplicate-run preflight: `nu .fabro/scripts/dup-run-check.nu <current_seed_id> --self <run-id>` — `<run-id>` is YOUR OWN run id, taken from the `Run ID:` line of the stage preamble header at the top of your prompt. The script checks the merge-target branch named by the PROJECT_FACTS 'Merge-target branch' bullet by default and prints one JSON verdict object. Closure identity: `--self` makes the script classify every implementation match's `Fabro-Run:` trailer — a trailer naming THIS run is a self-closure and NEVER drives a `duplicate` verdict (it downgrades to `clean` with a `closure_note`); only a foreign trailer or a trailer-less landed implementation does. Parse it mechanically, no judgment calls: verdict `duplicate` (tracker shows the seed closed, or a landed-PR commit — true merge or squash `(#n)` subject — implements it; a revisor pass that merely FILED the seed never counts) -> route Blocked with failure_reason `duplicate run: <seed> already merged as <the first implementation match's subject>` and make NO changes to the worktree; verdict `clean` or `degraded` -> proceed normally (degraded: journal the failure mode — a fetch or tracker error must never dead-end the implementer). This check is a cheap ~1 s preflight, not a gate substitute — it must NOT weaken the `just verify implementer` rule in step 4. Family note: this is the implementer-side stopgap for the claim-race class (tracker lag after a PR merge can leave the seed looking claimable); it does NOT close the family — the durable engine fixes fabro-6b58 and fabro-9372 remain open.
 2. Implement it in the current worktree: create and edit files, keep the project's conventions (commands run through its `just` recipes).
@@ -81,7 +81,7 @@ areas; the loop-asset paths in PROJECT_FACTS are fs_hide-bound (fabro-1dae)
 for FILE TOOLS only (read_file, write_file, edit_file, glob discovery):
 tool reads fail and tool writes are refused there. The shell is
 unaffected — reads AND writes to those paths all succeed through shell
-commands (grep, sed -n, sed -i, cat, python3 heredocs). The `sd` and
+commands (grep, sed -n, sed -i, cat, python3 heredocs). The `seeds` and
 `just` commands keep working through the shell.
 rg flag discipline: `rg -r <text>` REPLACES matches — never write `rg -rn`; `-n` alone is the line-number flag (observed once: `rg -rn "is_engine_stamped_key"` parsed `-r n` as replace-with-literal-n, producing `pub fn n(key: &str...)`, then misdiagnosed as 'sandbox rg unreliable' — the sandbox rg was fine, the flag was wrong).
 

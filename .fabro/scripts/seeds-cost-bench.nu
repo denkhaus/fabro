@@ -22,11 +22,11 @@ def main [
   let fabro_bin = ($env.FABRO_BIN? | default "fabro")
   mut samples = {}
 
-  let sd_cost = if (which sd | is-empty) {
+  let sd_cost = if (which seeds | is-empty) {
     null
   } else {
     let t0 = (date now)
-    for _ in 1..$runs { sd list --limit 5 | ignore }
+    for _ in 1..$runs { seeds list --limit 5 | ignore }
     ((date now) - $t0) / $runs
   }
 

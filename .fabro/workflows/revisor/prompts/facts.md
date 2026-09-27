@@ -6,11 +6,11 @@ project-agnostic). Porting the loop means editing this file plus the
 workflow graph, not the prompts. A stale value here is loop friction:
 report it in the journal, never silently work around it.
 
-- Issue tracker — the `sd` CLI (Seeds, git-native in `.seeds/`). Seed ids
+- Issue tracker — the `seeds` CLI (Seeds, git-native in `.seeds/`). Seed ids
   carry the prefix `fabro-` (e.g. `fabro-37a6`); the supported read path
-  is `sd show <id> --format json`. `sd search` matches title/description
+  is `seeds show <id> --format json`. `seeds search` matches title/description
   text only and is AND-strict: use ONE keyword per query (broaden by
-  dropping words), and use `sd show` — never `sd search` — for id
+  dropping words), and use `seeds show` — never `seeds search` — for id
   lookups.
 - Merge-target branch — `origin/denkhaus`: the branch the line's run PRs
   integrate into. The duplicate-run preflight

@@ -95,12 +95,12 @@ def preflight [script: path, candidates: string, self: string] {
 # Read one seed from the scratch seeds tracker via sd (parsed issue
 # record; null on failure) — never parse .seeds/issues.jsonl by hand.
 def sd-stat [id: string] {
-    let r = (do { sd show $id --format json } | complete)
+    let r = (do { seeds show $id --format json } | complete)
     if $r.exit_code != 0 { null } else { $r.stdout | from json | get issue }
 }
 
 # Fabricate one scratch-tracker row: the exact compact-JSON-per-line
-# shape sd itself writes (verified against sd init/create output), for
+# shape sd itself writes (verified against seeds init/create output), for
 # the (l)-(n) live close-arm cases.
 def fixture-row [id: string, status: string] {
     # concat, not $"($id)" interpolation: the literal parentheses around
@@ -291,7 +291,7 @@ def main [] {
         # script must NEVER write it: duplicates of every shape route
         # "Preflight done" as advisory verdicts and the rows stay
         # untouched (the planner owns decisions and closures).
-        sd init | ignore
+        seeds init | ignore
         [(fixture-row 'fabro-fix003' 'open')
          (fixture-row 'fabro-fix009' 'closed')
          (fixture-row 'fabro-fix010' 'open')

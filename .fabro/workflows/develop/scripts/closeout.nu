@@ -168,7 +168,7 @@ def seed-demand-visible [seed_id: string]: nothing -> bool {
     let base = (seed-claim-base $seed_id (run-base))
     let diff_res = (do { git diff $base.base -- . ':(exclude).seeds' ':(exclude).fabro/journal' } | complete)
     if $diff_res.exit_code != 0 { return true }
-    let title = (do -i { sd show $seed_id --format json | from json | get issue.title } | default '')
+    let title = (do -i { seeds show $seed_id --format json | from json | get issue.title } | default '')
     let tokens = (do -i { demand-tokens $title } | default [])
     demand-visible $tokens $diff_res.stdout
 }
@@ -249,7 +249,7 @@ def residual-seed-labels []: nothing -> list<string> {
 def sweep-reviewer-findings [seed_id: string, run_id: string, journal_path: string]: nothing -> nothing {
     for finding in (journal-nonblocking $journal_path) {
         let desc = $"Residual defect the reviewer explicitly flagged as non-blocking while approving ($seed_id).\n\nFinding text: \"($finding)\"\n\nOrigin: closed seed ($seed_id), reviewer journal ($journal_path).\nBasis: run ($run_id), closed seed ($seed_id)"
-        let res = (do { sd create --title (finding-title $finding $seed_id) --description $desc --type bug --assignee fabro --labels (residual-seed-labels | str join ",") } | complete)
+        let res = (do { seeds create --title (finding-title $finding $seed_id) --description $desc --type bug --assignee fabro --labels (residual-seed-labels | str join ",") } | complete)
         if $res.exit_code != 0 {
             print -e $"closeout: WARNING — could not file reviewer finding as a seed \(non-blocking, from ($seed_id)\): ($res.stderr | str trim)"
         } else {
@@ -339,7 +339,7 @@ def sweep-deferred-actions [seed_id: string, run_id: string, journal_path: strin
     for action in (journal-deferred $journal_path) {
         let text = (deferred-text $action)
         let desc = $"Deferred human follow-up the implementer disclosed while implementing ($seed_id)\n\nAction: \"($text)\"\n\nOrigin: closed seed ($seed_id), implementer journal ($journal_path), marker observation.\nBasis: run ($run_id), closed seed ($seed_id)"
-        let res = (do { sd create --title (deferred-title $text $seed_id) --description $desc --type task --assignee fabro --labels (residual-seed-labels | str join ",") } | complete)
+        let res = (do { seeds create --title (deferred-title $text $seed_id) --description $desc --type task --assignee fabro --labels (residual-seed-labels | str join ",") } | complete)
         if $res.exit_code != 0 {
             print -e $"closeout: WARNING — could not file deferred action as a seed \(from ($seed_id)\): ($res.stderr | str trim)"
         } else {
@@ -396,7 +396,7 @@ def main []: nothing -> nothing {
     # marker observations -> zero sd create calls.
     do -i { sweep-deferred-actions $seed_id $run_id $".fabro/journal/($run_id).jsonl" } | ignore
 
-    let res = (do { sd close $seed_id } | complete)
+    let res = (do { seeds close $seed_id } | complete)
     if $res.exit_code != 0 {
         print -e $"closeout: sd close ($seed_id) failed: ($res.stderr | str trim)"
         exit 1

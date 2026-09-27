@@ -188,7 +188,7 @@ def stdin-seed-id []: nothing -> string {
 # does not know it. Returns the issue record (id, title, description, ...).
 def claimed-seed []: nothing -> any {
     let seed_id = (stdin-seed-id)
-    let res = (do { sd show $seed_id --format json } | complete)
+    let res = (do { seeds show $seed_id --format json } | complete)
     if $res.exit_code != 0 {
         print -e $"evidence: sd show ($seed_id) failed — seed not resolvable in tracker: ($res.stderr | str trim)"
         exit 1

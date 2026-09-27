@@ -239,11 +239,11 @@ def main [--base: string = "origin/denkhaus", --candidates: string, --top: int =
     # degrades per-candidate to "no anchors", never to a script failure.
     let cand = (if $candidates != null {
         $candidates | split row ',' | each {|c| $c | str trim} | where {|c| not ($c | is-empty)} | each {|id|
-            let r = (do { sd show $id --format json } | complete)
+            let r = (do { seeds show $id --format json } | complete)
             {id: $id, description: (if $r.exit_code != 0 { "" } else { (try { $r.stdout | from json | get -o issue.description | default "" } catch { "" }) })}
         }
     } else {
-        let r = (do { sd ready --assignee fabro --limit 200 --format json } | complete)
+        let r = (do { seeds ready --assignee fabro --limit 200 --format json } | complete)
         if $r.exit_code != 0 {
             $mode = "degraded"
             $degraded_reason = $"sd ready failed: ($r.stderr | str trim | str substring 0..200)"

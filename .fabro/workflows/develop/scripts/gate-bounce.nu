@@ -107,13 +107,13 @@ def main []: nothing -> nothing {
         return
     }
 
-    if (which sd | is-empty) {
+    if (which seeds | is-empty) {
         warn "sd not on PATH — no known-bug enrichment"
         empty_hits
         return
     }
 
-    let res = (do { sd list --format json --limit 200 } | complete)
+    let res = (do { seeds list --format json --limit 200 } | complete)
     if $res.exit_code != 0 {
         let detail = ($res.stderr | str trim | str replace --all '{' '' | str replace --all '}' '')
         warn $"sd list unavailable: ($detail) — no known-bug enrichment"

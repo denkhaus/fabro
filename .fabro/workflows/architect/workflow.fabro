@@ -57,7 +57,7 @@ digraph Architect {
     // 2026-09-17: no fabro_ask indirection — direct classical application)
     // and applies its method headless: deepening scan, deletion test,
     // codebase-design vocabulary, exploration of the real code (the node
-    // therefore reads lib/apps/docs; .seeds stays file-hidden, sd runs via
+    // therefore reads lib/apps/docs; .seeds stays file-hidden, seeds runs via
     // shell). The review is persisted under the reviews tree; findings
     // distill into a context key for the bookkeeper. No fabro tool grants.
     analyze [
@@ -83,7 +83,7 @@ digraph Architect {
     ]
 
     // File: deterministic bookkeeping per the revisor file-node pattern.
-    // sd create per finding with Basis lines and labels; cooldown marker
+    // seeds create per finding with Basis lines and labels; cooldown marker
     // .fabro/architecture/<date>-pass.md; commit exactly the artifact
     // paths. Self-parks (marker-only, files nothing) on < 2 candidates.
     file [
@@ -95,7 +95,7 @@ digraph Architect {
         reasoning_effort="low",
         project_memory=false,
         x.preamble_stages_ignore="survey,analyze,file",
-        // .seeds hidden from FILE tools: sd create and the git commit
+        // .seeds hidden from FILE tools: seeds create and the git commit
         // run via shell (the documented escape hatch).
         x.fs_hide="lib/**,apps/**,docs/**,.seeds/**",
         x.fs_write=".fabro/architecture/**",

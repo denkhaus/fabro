@@ -219,9 +219,9 @@ def main [...ids: string, --base: string = "origin/denkhaus", --self: string] {
     for id in $ids {
         mut tracker_status = "unknown"
         mut tracker_note = ""
-        let sd_ok = ((which sd | length) > 0)
+        let sd_ok = ((which seeds | length) > 0)
         if $sd_ok {
-            let s = (do { sd show $id --format json } | complete)
+            let s = (do { seeds show $id --format json } | complete)
             if $s.exit_code == 0 {
                 $tracker_status = ($s.stdout | from json | get issue.status? | default "unknown")
             } else {

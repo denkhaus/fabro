@@ -56,8 +56,8 @@ The review body is the skill's candidate structure in Markdown — no HTML, no t
 
 The backlog runs share root causes; without a tracker check every pass re-distills the same findings the file stage then has to merge away. So:
 
-1. Run `sd list --format compact` — the current tracker, INCLUDING seeds earlier architect passes already filed.
-2. For each recurring theme in the review, run `sd search "<theme keyword>"` — ONE keyword per query (AND-strict); title matches are not enough; content duplicates hide behind different titles.
+1. Run `seeds list --format compact` — the current tracker, INCLUDING seeds earlier architect passes already filed.
+2. For each recurring theme in the review, run `seeds search "<theme keyword>"` — ONE keyword per query (AND-strict); title matches are not enough; content duplicates hide behind different titles.
 3. A finding that names the SAME concrete change as an existing seed is a duplicate: OPEN seed -> drop it and record `duplicate_of: <id>` for the journal; CLOSED seed -> the change is already implemented, drop it likewise. Only a genuinely NEW change (different file/mechanism/effect) survives.
 
 ## Step 5 — distill (scope-filtered)
@@ -66,12 +66,12 @@ SCOPE FILTER FIRST (the FACTS CHANGE SURFACE entry, binding): a candidate that r
 
 Convert the SURVIVING findings into `architecture_findings`: an array of seed candidates. A candidate is actionable only when it names ONE concrete change (file/module/node, what to change, expected effect) grounded in the survey base or the review, AND states its upstream interplay per the FACTS UPSTREAM-FORK INTERPLAY LENS: the target surface (fork-owned file, loop asset, minimal seam, or content-only edit of an upstream-owned file — the last one names that file's upstream churn rate). Drop generic advice, drop praise, merge duplicates among themselves. A recommendation missing BOTH a known seed id and a new-seed justification is dropped as non-actionable. Each entry: {"title": "<short imperative, English>", "description": "<what/where/effect>", "priority": <2 normal, 1 high impact>, "kind": "<normal | needs-user>"}. `kind` is `needs-user` when the change would add, change, or remove a tool, credential, or permission in an agent-reachable surface (ADR-0019), or fork a product-design decision the user owns. An empty array is a valid outcome. Name the dropped duplicates with their seed ids in the journal observation.
 
-## sd command reference (exact — never invent flags)
+## seeds command reference (exact — never invent flags)
 
 | Command | Purpose |
 |---|---|
-| `sd list --format compact` | Whole tracker picture before distilling. |
-| `sd search <query> --format compact` | Theme lookup; one per recurring theme. |
+| `seeds list --format compact` | Whole tracker picture before distilling. |
+| `seeds search <query> --format compact` | Theme lookup; one per recurring theme. |
 
 ## Hard rules
 

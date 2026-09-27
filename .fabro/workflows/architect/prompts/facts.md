@@ -6,11 +6,11 @@ project-agnostic). Porting the loop means editing this file plus the
 workflow graph, not the prompts. A stale value here is loop friction:
 report it in the journal, never silently work around it.
 
-- Issue tracker — the `sd` CLI (Seeds, git-native in `.seeds/`). Seed ids
+- Issue tracker — the `seeds` CLI (Seeds, git-native in `.seeds/`). Seed ids
   carry the prefix `fabro-` (e.g. `fabro-37a6`); the supported read path
-  is `sd show <id> --format json`. `sd search` matches title/description
+  is `seeds show <id> --format json`. `seeds search` matches title/description
   text only and is AND-strict: use ONE keyword per query (broaden by
-  dropping words); `sd show`, never `sd search`, for id lookups.
+  dropping words); `seeds show`, never `seeds search`, for id lookups.
 - Friction score — `nu .fabro/scripts/friction-score.nu` computes the
   deterministic 0.0-1.0 systemic-friction score from tracker + journal
   metrics. Output: ONE JSON object with `score`, `verdict`

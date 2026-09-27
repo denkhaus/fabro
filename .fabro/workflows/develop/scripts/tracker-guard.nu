@@ -190,8 +190,8 @@ def main [--dry-run (-d)]: nothing -> nothing {
     # explicit and covers manual mid-run invocations.
     let current_seed = ($env.FABRO_GUARD_CURRENT_SEED? | default "")
 
-    let open_res = (do { sd list --format json --assignee fabro --limit 200 } | complete)
-    let inprog_res = (do { sd list --format json --status in_progress --assignee fabro --limit 200 } | complete)
+    let open_res = (do { seeds list --format json --assignee fabro --limit 200 } | complete)
+    let inprog_res = (do { seeds list --format json --status in_progress --assignee fabro --limit 200 } | complete)
     let base = (guard-decision $open_res $inprog_res)
 
     # Stale-claim requeue arm. Fail-open: any degraded input (sd failure
@@ -211,7 +211,7 @@ def main [--dry-run (-d)]: nothing -> nothing {
         {requeued: (if $dry_run { $decisions } else { [] }), failed: []}
     } else {
         let results = ($decisions | each {|sid|
-            let r = (do { sd update $sid --status open --assignee fabro } | complete)
+            let r = (do { seeds update $sid --status open --assignee fabro } | complete)
             {sid: $sid, ok: ($r.exit_code == 0)}
         })
         {requeued: ($results | where ok | get sid), failed: ($results | where ok == false | get sid)}

@@ -37,11 +37,11 @@ Write the answer to `.fabro/reviews/develop/<run-id>.md` with this header (same 
 
 The backlog runs share root causes; without a tracker check every pass re-distills the same findings the file stage then has to merge away. So:
 
-1. Run `sd list --format compact` — that is the current tracker, INCLUDING seeds this revisor run already filed (they are committed on this branch).
-2. For each recurring theme in the answer, run `sd search "<theme keyword>"` — title matches are not enough; content duplicates hide behind different titles.
+1. Run `seeds list --format compact` — that is the current tracker, INCLUDING seeds this revisor run already filed (they are committed on this branch).
+2. For each recurring theme in the answer, run `seeds search "<theme keyword>"` — title matches are not enough; content duplicates hide behind different titles.
 3. A finding that names the SAME concrete change as an existing seed is a duplicate: OPEN seed → drop it and record `duplicate_of: <id>` for the journal; CLOSED seed → the change is already implemented, drop it likewise. Only a genuinely NEW change (different file/mechanism/effect — a superset or an orthogonal fix) survives.
 
-Filed seeds carry the `revision` label (the bookkeeper sets it), so `sd list --label revision` shows this loop's whole output — assume that set exists and grows.
+Filed seeds carry the `revision` label (the bookkeeper sets it), so `seeds list --label revision` shows this loop's whole output — assume that set exists and grows.
 
 ## Step 3.5 — duplicate-run check BEFORE distilling (fabro-91ff, 2026-09-09)
 
@@ -57,12 +57,12 @@ The target run may itself be a duplicate: two overlapping conductor passes can c
 
 Convert the SURVIVING recommendations into `revision_findings`: an array of seed candidates. A candidate is actionable only when it names ONE concrete change (file or node, what to change, expected effect) attributable to THIS run's evidence. Drop generic advice, drop praise, merge duplicates among themselves. A recommendation missing BOTH a known seed id and a new-seed justification is dropped as non-actionable (consistent with the other drop rules). Each entry: {"title": "<short imperative, English>", "description": "<what/where/effect, grounded in this run>", "priority": <2 normal, 1 high impact>}. An empty array is a valid outcome: a healthy run gets a marker-only revision. Name the dropped duplicates with their seed ids in the journal observation — the report must show what was withheld and why.
 
-## sd command reference (exact — never invent flags)
+## seeds command reference (exact — never invent flags)
 
 | Command | Purpose |
 |---|---|
-| `sd list --format compact` | Whole tracker picture before distilling. |
-| `sd search <query> --format compact` | Theme lookup; run one per recurring recommendation theme. |
+| `seeds list --format compact` | Whole tracker picture before distilling. |
+| `seeds search <query> --format compact` | Theme lookup; run one per recurring recommendation theme. |
 
 ## Hard rules
 
