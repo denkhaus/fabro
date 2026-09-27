@@ -697,7 +697,11 @@ async fn run_publish_supervisor(state: Arc<AppState>) {
                 }
             },
             _ = scan_interval.tick() => scan_requested = true,
-            joined = workers.join_next_with_id() => {
+            // join_next_with_id is Ready(None) FOREVER once the JoinSet is
+            // empty — an unguarded arm spins the whole loop without a
+            // single await (fabro-629b, live-proven by instrumented rig:
+            // 584M iterations, active=0). Park it while no worker runs.
+            joined = workers.join_next_with_id(), if !active.is_empty() => {
                 match joined {
                     Some(Ok((task_id, result))) => {
                         let run_id = active.remove(&task_id);
