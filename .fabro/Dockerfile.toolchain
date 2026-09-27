@@ -132,7 +132,11 @@ ARG MISE_VERSION=v2026.8.10
 # requires updating this ENV; this image is repo-scoped anyway (it
 # bakes this repo's toolset pins).
 ENV MISE_DATA_DIR=/mise \
-    MISE_TRUSTED_CONFIG_PATHS=/repos/denkhaus/fabro \
+    # Petri clone contract places the repo at /workspace (no /repos
+    # symlink) — the survey sandbox hit mise refusing /workspace/.mise.toml
+    # (2026-09-27 conductor live test). Dual-trust like the seeds image
+    # (ADR-0023 exemplar): legacy path kept, /workspace added.
+    MISE_TRUSTED_CONFIG_PATHS=/repos/denkhaus/fabro:/workspace \
     BUN_INSTALL=/mise/bun-global \
     PATH=/mise/shims:/mise/bun-global/bin:${PATH}
 
