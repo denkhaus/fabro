@@ -640,6 +640,12 @@ async fn run_publish_supervisor(state: Arc<AppState>) {
     // finishes while the server lives is published without waiting for
     // the scan.
     let mut signals = state.petri_projector.subscribe();
+    // A dropped projector sender makes recv() Ready(Err(Closed)) on EVERY
+    // poll — an unguarded select arm then spins the loop without a single
+    // await (fabro-629b: 100% single-core, zero syscalls, runtime
+    // starvation). The guard parks the arm once the channel is gone; the
+    // scheduler notify and the scan interval keep the loop alive.
+    let mut signals_open = true;
 
     loop {
         if scan_requested {
@@ -674,7 +680,7 @@ async fn run_publish_supervisor(state: Arc<AppState>) {
         tokio::select! {
             () = shutdown.cancelled() => break,
             () = state.run_publish_scheduler_notified() => {},
-            signaled = signals.recv() => {
+            signaled = signals.recv(), if signals_open => {
                 match signaled {
                     Ok(run_id) => {
                         if signal_is_publishable(&state, &run_id).await
@@ -687,7 +693,7 @@ async fn run_publish_supervisor(state: Arc<AppState>) {
                     Err(RecvError::Lagged(_)) => {
                         scan_requested = true;
                     }
-                    Err(RecvError::Closed) => {},
+                    Err(RecvError::Closed) => signals_open = false,
                 }
             },
             _ = scan_interval.tick() => scan_requested = true,

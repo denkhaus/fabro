@@ -1212,6 +1212,10 @@ async fn drive_agent(
     let mut receiver = agent.subscribe();
     let prompt = agent.prompt_with_cancellation(input, cancel_token);
     tokio::pin!(prompt);
+    // Same fabro-629b guard as run_publish: a closed channel is
+    // Ready(Err) on every poll — an unguarded arm spins this loop hot for
+    // the rest of the agent turn. Park the arm and let the prompt decide.
+    let mut events_open = true;
 
     loop {
         tokio::select! {
@@ -1225,7 +1229,7 @@ async fn drive_agent(
                 }
                 return Ok(report.result.map(|_| ()));
             }
-            event = receiver.recv() => {
+            event = receiver.recv(), if events_open => {
                 match event {
                     Ok(event) => {
                         record_turn_output(output, &event);
@@ -1234,7 +1238,8 @@ async fn drive_agent(
                         ))
                         .await?;
                     }
-                    Err(RecvError::Lagged(_) | RecvError::Closed) => {}
+                    Err(RecvError::Lagged(_)) => {}
+                    Err(RecvError::Closed) => events_open = false,
                 }
             }
         }
