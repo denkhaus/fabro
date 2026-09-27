@@ -190,13 +190,13 @@ def claimed-seed []: nothing -> any {
     let seed_id = (stdin-seed-id)
     let res = (do { seeds show $seed_id --format json } | complete)
     if $res.exit_code != 0 {
-        print -e $"evidence: sd show ($seed_id) failed — seed not resolvable in tracker: ($res.stderr | str trim)"
+        print -e $"evidence: seeds show ($seed_id) failed — seed not resolvable in tracker: ($res.stderr | str trim)"
         exit 1
     }
     let parsed = (do -i { $res.stdout | from json })
     let issue = ($parsed | get -o issue | default null)
     if $issue == null or (($issue | get -o id | default '') != $seed_id) {
-        print -e $"evidence: sd show \($seed_id\) returned no matching seed record"
+        print -e $"evidence: seeds show \($seed_id\) returned no matching seed record"
         exit 1
     }
     $issue

@@ -17474,7 +17474,7 @@ components:
           example: octocat
 
     SeedStatus:
-      description: Tracker seed status (seeds format, sd 0.5.15 compatible).
+      description: Tracker seed status (seeds format, sd-0.5.15 read+write compatible).
       type: string
       enum:
         - open
@@ -17482,7 +17482,7 @@ components:
         - closed
 
     SeedType:
-      description: Tracker seed type (seeds format, sd 0.5.15 compatible).
+      description: Tracker seed type (seeds format, sd-0.5.15 read+write compatible).
       type: string
       enum:
         - task

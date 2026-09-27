@@ -6,14 +6,14 @@
 #
 # Basis (run 01M0SFEYVC9TD6MP816RHEBFQY): planner@1 spent 27.7 s wall /
 # 25.4 s inference / $0.0186 solely to discover 0 open seeds — what two
-# `sd list` calls prove mechanically.
+# `seeds list` calls prove mechanically.
 #
 # Ownership rule (PROJECT_FACTS): BOTH calls filter `--assignee fabro
-# --limit 200` — plain `sd list` would count unassigned/user-owned seeds
+# --limit 200` — plain `seeds list` would count unassigned/user-owned seeds
 # this line must never work. The empty-tracker exit fires only when no
-# FABRO-ASSIGNED seed remains (open or in_progress). `sd list` default
+# FABRO-ASSIGNED seed remains (open or in_progress). `seeds list` default
 # output is OPEN issues only, which includes blocked-open seeds (per the
-# seed body; `sd ready` alone lists unblocked only and would misroute,
+# seed body; `seeds ready` alone lists unblocked only and would misroute,
 # fabro-aa3d) — hence open via the default listing, in_progress via
 # `--status in_progress`.
 #
@@ -27,7 +27,7 @@
 #     (unconditional edge to the preflight, then the planner unchanged).
 #     This node produces NO context value — none is required downstream.
 #
-# FAIL-OPEN (annotated choice): if `sd` errors, exits non-zero, or
+# FAIL-OPEN (annotated choice): if `seeds` errors, exits non-zero, or
 # prints non-JSON output, the node routes "Tracker non-empty" (degraded
 # mode) — it NEVER parks and NEVER fails the run: a broken tracker must
 # not dead-end the dev loop, and the planner adjudicates the residue.
@@ -35,11 +35,11 @@
 #
 # Stale-claim requeue arm (fabro-d9f7): in_progress fabro-assigned seeds
 # with NO live develop run claiming them, whose last claiming develop
-# run's terminal activity (stage journal last ts) — or sd updatedAt when
+# run's terminal activity (stage journal last ts) — or seeds updatedAt when
 # no develop journal claims the seed — is older than the stale
-# threshold, are reset to open via `sd update <id> --status open
+# threshold, are reset to open via `seeds update <id> --status open
 # --assignee fabro`. Orphaned claims stop pinning seeds outside
-# `sd ready` eligibility. Claim association reuses the preflight's
+# `seeds ready` eligibility. Claim association reuses the preflight's
 # journal-claims mechanism (seed ids on `"node":"planner"` journal
 # lines — the documented PROJECT_FACTS fallback); a claiming journal
 # fresher than the threshold means a live run owns the claim and the
@@ -49,9 +49,9 @@
 # IMMEDIATELY, no 6h wait; live (non-terminal) claims alone keep the
 # reference clock. Runs whose terminality is unprovable (journal
 # absent — e.g. a failed run's branch-only journal — or ending
-# mid-flight) keep the 6h journal-silence clock / sd updatedAt
+# mid-flight) keep the 6h journal-silence clock / seeds updatedAt
 # fallback.
-# Fail-open on this arm too: degraded inputs (sd
+# Fail-open on this arm too: degraded inputs (seeds
 # failure, unreadable journal dir) skip requeueing entirely and report
 # degraded — never a false requeue. Self-exclusion at BOTH grains: the
 # current run's journal is skipped entirely (the engine pipes
@@ -69,7 +69,7 @@
 # FABRO_GUARD_STALE_HOURS.
 const STALE_HOURS_DEFAULT = 6.0
 
-# Count issues in one `complete`-style sd result; -1 marks failure
+# Count issues in one `complete`-style seeds result; -1 marks failure
 # (non-zero exit, invalid JSON, or success:false) for the fail-open path.
 def sd-issue-count [res: record] {
     if $res.exit_code != 0 { return (-1) }
@@ -81,7 +81,7 @@ def sd-issue-count [res: record] {
     ($parsed.issues? | default [] | length)
 }
 
-# Parse one `complete`-style sd list result into its issues table;
+# Parse one `complete`-style seeds list result into its issues table;
 # null marks failure (same classes as sd-issue-count's -1).
 def sd-issues [res: record] {
     if $res.exit_code != 0 { return null }
@@ -91,7 +91,7 @@ def sd-issues [res: record] {
     ($parsed.issues? | default [])
 }
 
-# Pure decision over the two sd results (smoke-testable without
+# Pure decision over the two seeds results (smoke-testable without
 # shelling): {exit_code, stdout} records -> routing record.
 def guard-decision [open_res: record, inprog_res: record] {
     let open_n = (sd-issue-count $open_res)
@@ -113,7 +113,7 @@ def guard-decision [open_res: record, inprog_res: record] {
 # a claim is NOT in flight and is stale IMMEDIATELY (a closeout journal
 # must never pin the seed past its run's death). When at least one LIVE
 # claim exists, the live claims' freshest ts is the reference clock;
-# when no develop journal claims the seed at all, sd updatedAt stands
+# when no develop journal claims the seed at all, seeds updatedAt stands
 # in (claim with a lost/absent journal). A live claiming journal fresher
 # than the threshold means a live run owns the claim and the seed is
 # never listed — never requeue it.
@@ -124,7 +124,7 @@ def stale-claim-ids [seeds: list, claims: list, now: datetime, stale_hours: floa
         let mine = ($claims | where seed == $s.id)
         let live = ($mine | where {|c| not ($c.terminal? | default false)})
         if ($mine | is-empty) {
-            # no claiming journal: sd updatedAt is the claim clock
+            # no claiming journal: seeds updatedAt is the claim clock
             ($now - ($s.updatedAt | into datetime)) > ($stale_hours * 1hr)
         } else if ($live | is-empty) {
             # only terminal claims: orphaned NOW, no silence wait
@@ -194,7 +194,7 @@ def main [--dry-run (-d)]: nothing -> nothing {
     let inprog_res = (do { seeds list --format json --status in_progress --assignee fabro --limit 200 } | complete)
     let base = (guard-decision $open_res $inprog_res)
 
-    # Stale-claim requeue arm. Fail-open: any degraded input (sd failure
+    # Stale-claim requeue arm. Fail-open: any degraded input (seeds failure
     # or unreadable journals) skips requeueing entirely.
     let inprog_seeds = (sd-issues $inprog_res)
     let seed_ids = ($inprog_seeds | default [] | get -o id | default [])

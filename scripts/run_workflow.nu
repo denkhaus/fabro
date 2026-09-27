@@ -62,7 +62,7 @@ def main [
                                          # intent environment override outranks
                                          # the workflow.toml pin). Default is
                                          # toolchain on the merged world: the
-                                         # develop tester needs just/nu/sd,
+                                         # develop tester needs just/nu/seeds,
                                          # which fabro-runner:mise LACKS
                                          # (cycle 1, 2026-09-05: 'just: command
                                          # not found' 3x deterministic).

@@ -1,7 +1,7 @@
 #!/usr/bin/env nu
 # Fixture battery for dup-run-check.nu (fabro-4b76): exercises the closure
 # identity (--self) semantics end-to-end against a synthetic git repo — no
-# /tmp sd wrappers, no dependence on the live tracker or the real
+# /tmp seeds wrappers, no dependence on the live tracker or the real
 # merge-target branch. Fixture seed ids (fabro-fix*) do not exist in the
 # tracker, so the tracker arm degrades to `unknown` and the verdicts below
 # are driven purely by the landed-PR history the battery fabricates —
@@ -92,7 +92,7 @@ def preflight [script: path, candidates: string, self: string] {
     $out.stdout | lines | last | from json
 }
 
-# Read one seed from the scratch seeds tracker via sd (parsed issue
+# Read one seed from the scratch seeds tracker via seeds (parsed issue
 # record; null on failure) — never parse .seeds/issues.jsonl by hand.
 def sd-stat [id: string] {
     let r = (do { seeds show $id --format json } | complete)
@@ -100,7 +100,7 @@ def sd-stat [id: string] {
 }
 
 # Fabricate one scratch-tracker row: the exact compact-JSON-per-line
-# shape sd itself writes (verified against seeds init/create output), for
+# shape seeds itself writes (verified against seeds init/create output), for
 # the (l)-(n) live close-arm cases.
 def fixture-row [id: string, status: string] {
     # concat, not $"($id)" interpolation: the literal parentheses around
@@ -287,7 +287,7 @@ def main [] {
         expect 'j: merged run branch never marks' $j2row.in_flight false
 
         # (l)-(n) fabro-83df report-only: scratch seeds tracker in the
-        # work clone (CWD) — sd resolves .seeds relative to CWD. The
+        # work clone (CWD) — seeds resolves .seeds relative to CWD. The
         # script must NEVER write it: duplicates of every shape route
         # "Preflight done" as advisory verdicts and the rows stay
         # untouched (the planner owns decisions and closures).

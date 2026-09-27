@@ -118,10 +118,10 @@ def warn-dockerfile-diff [seed_id: string]: nothing -> nothing {
 # Closure-discipline pre-close check (fabro-02c4)
 #
 # WHY: seed fabro-9967 was closed 2026-09-09 15:42 (in a seeds:sync)
-# although its demand (sd ready cap + created_since in planner.md) was
+# although its demand (seeds ready cap + created_since in planner.md) was
 # never implemented — NO implementing diff existed — and the revisor
 # caught it only by accident while deduping (run 01M23J61HH8Z,
-# regression finding). Before its `sd close`, this gate verifies the
+# regression finding). Before its `seeds close`, this gate verifies the
 # run actually delivered a diff the seed's demand is visible in
 # (claim-base anchored — the same seed-claim-base/run-base helpers the
 # Dockerfile warning uses). If not visible, the run does NOT close: the
@@ -133,7 +133,7 @@ def warn-dockerfile-diff [seed_id: string]: nothing -> nothing {
 # claim itself, journal records quoting the brief) and would satisfy
 # the match with zero implementation.
 #
-# Degrade-to-close: any git/sd failure inside the verdict returns
+# Degrade-to-close: any git/seeds failure inside the verdict returns
 # visible=true — this gate must never block a legitimate close on
 # tooling error (same philosophy as the Dockerfile warning above). An
 # empty token set (title unparsable) degrades to a non-empty-patch
@@ -162,7 +162,7 @@ def demand-visible [tokens: list<string>, patch: string]: nothing -> bool {
 }
 
 # Best-effort visibility verdict for THIS seed against the run diff
-# (claim-base anchored, fallback run base). Never blocks on git/sd
+# (claim-base anchored, fallback run base). Never blocks on git/seeds
 # failure — degrades to visible.
 def seed-demand-visible [seed_id: string]: nothing -> bool {
     let base = (seed-claim-base $seed_id (run-base))
@@ -180,17 +180,17 @@ def seed-demand-visible [seed_id: string]: nothing -> bool {
 # journal observations with explicit non-blocking wording ("non-blocking",
 # "noted but not blocking", "not blocking"). Before fabro-22fa those
 # findings lived only in `.fabro/journal/<run_id>.jsonl` — when closeout
-# ran `sd close`, the finding died with the closed seed: no open brief
+# ran `seeds close`, the finding died with the closed seed: no open brief
 # existed to fold the follow-up into. This sweep re-files each explicitly
 # non-blocking reviewer observation as a NEW open seed BEFORE the close,
 # with provenance (finding text, closed seed id, source run id) in the
 # body so the finding survives closure traceably.
 #
-# ADVISORY ONLY: every failure (journal missing, JSON unparsable, sd
+# ADVISORY ONLY: every failure (journal missing, JSON unparsable, seeds
 # create error) logs to stderr and NEVER blocks the close — same
 # degrade-to-silence philosophy as warn-dockerfile-diff (`do -i` +
 # `do { ... } | complete` wrappers). Null path: a journal with no
-# non-blocking reviewer findings yields an empty list and ZERO sd create
+# non-blocking reviewer findings yields an empty list and ZERO seeds create
 # calls — byte-identical close semantics.
 # ---------------------------------------------------------------------------
 
@@ -236,7 +236,7 @@ def finding-title [finding: string, seed_id: string]: nothing -> string {
 
 # Pure: labels for a residual seed filed by the advisory sweep. Marks
 # machine-filed provenance so the planner pool can tell a residual from
-# user-assigned work (fabro-2ab8); `sd create` takes comma-labels.
+# user-assigned work (fabro-2ab8); `seeds create` takes comma-labels.
 def residual-seed-labels []: nothing -> list<string> {
     ["residual"]
 }
@@ -244,7 +244,7 @@ def residual-seed-labels []: nothing -> list<string> {
 # Advisory sweep: file each non-blocking reviewer finding as an open
 # seed (type bug, assignee fabro so the develop line can pick it up,
 # labels `residual` so the planner sees the machine-filed provenance).
-# Never raises: caller wraps in `do -i`; internal sd failures print to
+# Never raises: caller wraps in `do -i`; internal seeds failures print to
 # stderr and continue.
 def sweep-reviewer-findings [seed_id: string, run_id: string, journal_path: string]: nothing -> nothing {
     for finding in (journal-nonblocking $journal_path) {
@@ -265,17 +265,17 @@ def sweep-reviewer-findings [seed_id: string, run_id: string, journal_path: stri
 # follow-up) — an implementer discloses a deferred human follow-up (a
 # regen-confirm or local-only step that cannot run in-sandbox) only in
 # `implementation_summary`, which the planner node consumes but the
-# stage journal never carries: when closeout ran `sd close`, the
+# stage journal never carries: when closeout ran `seeds close`, the
 # follow-up died with the seed. Channel contract: implementer.md also
 # emits each deferred action as a JOURNAL observation starting with the
 # deterministic marker `deferred-action: ` (fabro-7aac), and this sweep
 # filters implementer-node observations by that marker BEFORE the close.
 #
 # Advisory semantics identical to fabro-22fa above: `do -i` wrapping,
-# complete-wrapped `sd create`, failures print to stderr and never block
+# complete-wrapped `seeds create`, failures print to stderr and never block
 # the close. Placed AFTER the PARK gate so a parked (still-open) seed
 # does not double-file on its re-run's closeout. Null path: a journal
-# with no marker observations yields an empty list and ZERO sd create
+# with no marker observations yields an empty list and ZERO seeds create
 # calls — byte-identical close semantics.
 # ---------------------------------------------------------------------------
 
@@ -334,7 +334,7 @@ def deferred-title [action: string, seed_id: string]: nothing -> string {
 # (type task, assignee fabro so the develop line can pick it up, labels
 # `residual` for machine-filed provenance — same pool semantics as
 # sweep-reviewer-findings). Never raises: caller wraps in `do -i`;
-# internal sd failures print to stderr and continue.
+# internal seeds failures print to stderr and continue.
 def sweep-deferred-actions [seed_id: string, run_id: string, journal_path: string]: nothing -> nothing {
     for action in (journal-deferred $journal_path) {
         let text = (deferred-text $action)
@@ -363,7 +363,7 @@ def main []: nothing -> nothing {
     # Dockerfile-touch warning (fabro-6f6e): advisory only — `do -i` plus
     # the per-call complete wrappers above guarantee no failure here can
     # reach the close below. No Dockerfile touched: byte-identical close
-    # semantics (stdin validation, sd close, exit codes).
+    # semantics (stdin validation, seeds close, exit codes).
     do -i { warn-dockerfile-diff $seed_id } | ignore
 
     # Closure-discipline gate (fabro-02c4): PARK instead of closing when
@@ -381,10 +381,10 @@ def main []: nothing -> nothing {
     # reviewer findings as open seeds BEFORE the close, labeled `residual`
     # (fabro-2ab8) so their provenance is machine-visible in the planner
     # pool. Advisory only —
-    # `do -i` plus the complete-wrapped sd calls inside guarantee no
+    # `do -i` plus the complete-wrapped seeds calls inside guarantee no
     # failure here can reach the close below. After the PARK gate so a
     # parked (still-open) seed does not double-file on its re-run's
-    # close. Null path: no findings -> zero sd create calls.
+    # close. Null path: no findings -> zero seeds create calls.
     let run_id = (do -i { current-run-id } | default '')
     do -i { sweep-reviewer-findings $seed_id $run_id $".fabro/journal/($run_id).jsonl" } | ignore
 
@@ -393,12 +393,12 @@ def main []: nothing -> nothing {
     # observations (marker contract in implementer.md) as open seeds
     # BEFORE the close. Advisory only — same wrapping discipline as the
     # reviewer sweep above, also after the PARK gate. Null path: no
-    # marker observations -> zero sd create calls.
+    # marker observations -> zero seeds create calls.
     do -i { sweep-deferred-actions $seed_id $run_id $".fabro/journal/($run_id).jsonl" } | ignore
 
     let res = (do { seeds close $seed_id } | complete)
     if $res.exit_code != 0 {
-        print -e $"closeout: sd close ($seed_id) failed: ($res.stderr | str trim)"
+        print -e $"closeout: seeds close ($seed_id) failed: ($res.stderr | str trim)"
         exit 1
     }
     print $"closeout: closed ($seed_id) — one seed per run, exiting"

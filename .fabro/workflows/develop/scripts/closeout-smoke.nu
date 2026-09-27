@@ -46,7 +46,7 @@ if (dockerfile-hits []) != [] { fail "empty input not empty" }
 # --- Closure-discipline pre-close check (fabro-02c4) -----------------
 # Token extraction: distinctive >=4-char tokens survive; function-word
 # stopwords, short tokens, and duplicates drop.
-let toks = (demand-tokens "Closeout closure discipline: sd close only when the seed demand is visible in the run diff, else a documented reason is mandatory")
+let toks = (demand-tokens "Closeout closure discipline: seeds close only when the seed demand is visible in the run diff, else a documented reason is mandatory")
 for expected in ["closeout" "demand" "visible" "diff"] {
     if not ($toks | any {|t| $t == $expected }) { fail $"demand-tokens dropped '($expected)'" }
 }
@@ -107,7 +107,7 @@ if not ($jl.0 | str contains "Latin-1") {
 
 # Null path, fixture journal (tmp file): a real reviewer record with NO
 # non-blocking findings must yield an empty list — and an empty list
-# means zero sd create calls in the sweep loop. Also proves the
+# means zero seeds create calls in the sweep loop. Also proves the
 # missing-journal path degrades to empty.
 let tmp = (mktemp -t closeout-null.XXXXXX.jsonl)
 '{"node":"reviewer","data":{"painpoints":[],"observations":["Clean approve: diff verified against spec, nothing residual."]}}' | save -f $tmp
@@ -129,7 +129,7 @@ if ($ft | str length) > 140 {
     fail "finding-title unbounded excerpt"
 }
 
-# Residual label (fabro-2ab8): the sweep's sd create args carry the
+# Residual label (fabro-2ab8): the sweep's seeds create args carry the
 # `residual` label so machine-filed provenance is visible in the pool.
 if (residual-seed-labels) != ["residual"] {
     fail $"residual-seed-labels wrong: (residual-seed-labels | to json -r)"
@@ -197,7 +197,7 @@ if not ($dj.0 | str contains "bun run generate") {
 
 # Null path, fixture journal (tmp file): a real implementer record with
 # NO marker observations must yield an empty list — and an empty list
-# means zero sd create calls in the sweep loop. Also proves the
+# means zero seeds create calls in the sweep loop. Also proves the
 # missing-journal path degrades to empty.
 let dtmp = (mktemp -t closeout-deferred-null.XXXXXX.jsonl)
 '{"node":"implementer","data":{"painpoints":[],"observations":["Clean pass: sweep added, smoke green, nothing deferred."]}}' | save -f $dtmp

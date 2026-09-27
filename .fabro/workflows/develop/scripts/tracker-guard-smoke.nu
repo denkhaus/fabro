@@ -3,7 +3,7 @@
 # guard-decision/sd-issue-count over canned `complete`-style records —
 # both-empty route, non-empty routes (open and in_progress arms), and
 # the sd-failure fail-open contract (non-zero exit, invalid JSON,
-# success:false) — without shelling to sd (the live-path is a manual
+# success:false) — without shelling to seeds (the live-path is a manual
 # invocation check, closeout-smoke pattern). The `source` const
 # resolves against THIS file's directory, so the script runs from any
 # cwd:
@@ -45,10 +45,10 @@ if (label-of $open_route) != "Tracker non-empty" { fail $"open-non-empty misrout
 let inprog_route = (guard-decision (ok-empty) (ok-issues 1))
 if (label-of $inprog_route) != "Tracker non-empty" { fail $"in-progress-non-empty misrouted: ($inprog_route | to json -r)" }
 
-# Fail-open: non-zero sd exit (either call) -> planner path, succeeded.
+# Fail-open: non-zero seeds exit (either call) -> planner path, succeeded.
 let sd_dead = {"exit_code": 1, "stdout": "", "stderr": "boom"}
-if (label-of (guard-decision $sd_dead (ok-empty))) != "Tracker non-empty" { fail "sd open-failure not fail-open" }
-if (label-of (guard-decision (ok-empty) $sd_dead)) != "Tracker non-empty" { fail "sd in-progress-failure not fail-open" }
+if (label-of (guard-decision $sd_dead (ok-empty))) != "Tracker non-empty" { fail "seeds open-failure not fail-open" }
+if (label-of (guard-decision (ok-empty) $sd_dead)) != "Tracker non-empty" { fail "seeds in-progress-failure not fail-open" }
 
 # Fail-open: invalid JSON stdout -> planner path.
 let bad_json = {"exit_code": 0, "stdout": "not json at all"}
@@ -141,5 +141,5 @@ if (terminal-tip? "01M2TEST" "fabro(01M2TEST): reviewer (failed)" 3600 60) { fai
 
 # Sourcing tracker-guard.nu imports its `def main`; nu auto-invokes it
 # after the top level runs — exit explicitly so the smoke never shells
-# to sd (closeout-smoke idiom).
+# to seeds (closeout-smoke idiom).
 exit 0

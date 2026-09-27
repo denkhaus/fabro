@@ -42,7 +42,7 @@ name = "glm-5.3"
 
 # NO prepare steps: the toolchain environment bakes
 # everything (rust nightly pin, clippy/rustfmt, nextest, just, nu, rg, bun,
-# sd/ml, pytest — .fabro/Dockerfile.toolchain). Runs start instantly; a
+# seeds/ml, pytest — .fabro/Dockerfile.toolchain). Runs start instantly; a
 # prepare no-op check would only burn tester time.
 
 # Dev-cycle: push checkpoint/metadata branches to the fork (local feature

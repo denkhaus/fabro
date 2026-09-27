@@ -9,7 +9,7 @@
 #   (default base: origin/denkhaus — the FACTS merge-target branch)
 #
 # Mechanical classification, no LLM judgment:
-#   - tracker-authoritative: `sd show <id>` status closed -> duplicate,
+#   - tracker-authoritative: `seeds show <id>` status closed -> duplicate,
 #     UNLESS the closing evidence classifies as a self-closure (--self).
 #   - history: commits on the base ref referencing the seed id, restricted
 #     to LANDED-PR commits — true merge commits (2-parent) OR squash-merge
@@ -120,7 +120,7 @@ def with-closure [rows, self_id] {
 }
 
 # Last commit whose .seeds patch ADDS the closed status for this id — the
-# mechanical form of "tracker closedAt evidence" (sd writes one compact JSON
+# mechanical form of "tracker closedAt evidence" (seeds writes one compact JSON
 # line per issue; the closing edit adds '<id> ... "status":"closed"').
 def closing-seeds-commit [base, id] {
     let r = (do { ^git log --format="%H %s" -n 50 $base -- .seeds } | complete)
@@ -143,7 +143,7 @@ def closing-seeds-commit [base, id] {
 # Inherit a Fabro-Run trailer for a trailer-less seeds-close commit from the
 # adjacent landed-PR commit: the seeds-close commit's first parent when it
 # carries a trailer, else the nearest preceding landed-PR commit (true merge
-# or squash subject `(#<n>)`) that carries one. sd stamps no trailer on its
+# or squash subject `(#<n>)`) that carries one. seeds stamps no trailer on its
 # closing sync commit, but that sync sits directly on the closing run's
 # landed PR (fabro-cf2a). Null when nothing adjacent carries a trailer.
 def inherited-trailer [base, sha] {
@@ -225,10 +225,10 @@ def main [...ids: string, --base: string = "origin/denkhaus", --self: string] {
             if $s.exit_code == 0 {
                 $tracker_status = ($s.stdout | from json | get issue.status? | default "unknown")
             } else {
-                $tracker_note = "sd show failed — tracker check skipped"
+                $tracker_note = "seeds show failed — tracker check skipped"
             }
         } else {
-            $tracker_note = "sd absent — tracker check skipped"
+            $tracker_note = "seeds absent — tracker check skipped"
         }
 
         if $fetch.exit_code != 0 {

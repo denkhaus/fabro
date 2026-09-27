@@ -1,6 +1,6 @@
 #!/usr/bin/env nu
 # seeds call-cost benchmark (fabro-088b acceptance b): measures wall-clock
-# cost of tracker listing through the reference shim (`sd list`, the
+# cost of tracker listing through the reference shim (`seeds list`, the
 # PATH-shim form the line uses today) and through `fabro seeds list`
 # (native compile-in, wired or pending). Prints a JSON verdict; the
 # acceptance is call-cost parity with the reference, measured in-sandbox.
@@ -12,7 +12,7 @@
 #   - `fabro seeds list` refuses with the pending-binding error until the
 #     command layer is wired (fabro-088b); the verdict reports it as
 #     `pending` instead of a cost.
-#   - Reference measurement needs `sd` on PATH and a .seeds/ checkout in
+#   - Reference measurement needs `seeds` on PATH and a .seeds/ checkout in
 #     --cwd (default: repo root).
 
 def main [

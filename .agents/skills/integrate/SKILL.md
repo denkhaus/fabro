@@ -14,7 +14,6 @@ that a fabro workflow's agent stages should use MUST be vendored into
 `improve-codebase-architecture`) — only there can a run's LLM agent
 recognize and load them.
 
-
 One incoming-batch review, end to end. Chat replies in German, all
 written artifacts in English. The autonomous line implements; this
 skill reviews, reconciles, and integrates. Never implement seeds here
@@ -23,14 +22,14 @@ skill reviews, reconciles, and integrates. Never implement seeds here
 ## Phase 0 - Preconditions (order matters)
 
 1. `git fetch origin --prune` + `git pull --ff-only` BEFORE reading any
-   `sd` state - the tracker view is branch-local and goes stale the
+   `seeds` state - the tracker view is branch-local and goes stale the
    moment another machine runs the line (2026-09-08: closed seeds read
    as open from a pre-pull dump).
 2. Diverged (local commits + incoming)? Merge is fine - but EVERY merge
    touching `.seeds/issues.jsonl` or `.mulch/**` gets the JSONL
    discipline below BEFORE anything else continues.
 3. Window snapshot for later pushes: open run PRs, `git ls-remote
-   --heads origin 'refs/heads/fabro/run/*'` newest branch, line state.
+--heads origin 'refs/heads/fabro/run/*'` newest branch, line state.
    A run branch head younger than the newest merged PR = run in flight.
    Scheduler-off does NOT mean nothing fires (2026-09-18 lesson): a
    line-watch heartbeat in a left-running agent session fires the
@@ -46,7 +45,7 @@ skill reviews, reconciles, and integrates. Never implement seeds here
    closures (a dying watcher claimed live validation + a published PR
    where neither was true).
 4. Server-side health of the incoming window: `rootprint hist -q
-   'service_name:fabro' --since <window covering the incoming commits>`
+'service_name:fabro' --since <window covering the incoming commits>`
    (skill `rootprint`) - pass-time server errors are invisible in the
    PRs: hook exit failures, LLM fallback warns, scheduler noise. Real
    findings feed Phase 4 as seeds (run id as Basis). WARN/ERROR only -
@@ -190,7 +189,7 @@ commit, line).
   crates). A green per-PR gate does not replace an at-HEAD batch check.
 - Fork-feature regression net (user directive 2026-09-13): always run
   the FORK-ONLY presence suites at HEAD after the pull — `cargo
-  nextest run -p fabro-workflow -- fork_seam` plus any newer fork-only
+nextest run -p fabro-workflow -- fork_seam` plus any newer fork-only
   test files. They pin fork features upstream does not have; a red
   fork-only test at HEAD means an incoming commit (usually an upstream
   merge, 00ffd60f6/fabro-8ee1 class) dropped a fork feature together
@@ -204,6 +203,7 @@ commit, line).
 ### Axis 6 - Docs completeness for new features
 
 Every landed feature answers: does the source of truth know about it?
+
 - OpenAPI spec (`docs/public/api-reference/fabro-api.yaml`) for new
   HTTP surfaces - spec first, then progenitor/types (AGENTS.md API loop).
 - `AGENTS.md` architecture sections for new crates/components/commands.
@@ -218,7 +218,7 @@ Every landed feature answers: does the source of truth know about it?
 Optional judgment pre-screen (ADR-0022): before deep-diving closures,
 run per-closed-seed Nouls ("is this demand visible in the merged
 diff?") and let flagged seeds take the Phase-3.1 deep check first;
-use it to rerank `sd search` candidates toward "extend that one"
+use it to rerank `seeds search` candidates toward "extend that one"
 before filing a sibling. Advisory only, fail-open
 (`.fabro/scripts/judgment.nu`); logs land automatically in
 `~/.local/state/fabro-judgments/<YYYY-MM-DD>.jsonl` --skill integrate --phase closure-verification.
@@ -230,7 +230,7 @@ before filing a sibling. Advisory only, fail-open
    there. A closure that is neither diff-visible nor documented
    anywhere is a tracker-hygiene defect: file it (reason must be
    recoverable in the seed record, not only in journals).
-2. **Duplicate elimination:** before filing ANY new seed, `sd search`
+2. **Duplicate elimination:** before filing ANY new seed, `seeds search`
    the finding's key terms (failure mode, tool name, error string,
    path). Most findings already have a seed; extend THAT one with fresh
    run evidence instead of filing a sibling.
@@ -245,7 +245,7 @@ before filing a sibling. Advisory only, fail-open
    changed); seeds whose demand the tree already implements close with
    the implementing commit as evidence. Every close follows the
    closure discipline: reason + evidence in the seed record BEFORE
-   `sd close`.
+   `seeds close`.
 5. **Same-problem-different-form check:** when two commits/seeds look
    unrelated but describe one underlying defect, name the shared class
    and unify the follow-up (do not file per-symptom seeds).

@@ -14,7 +14,6 @@ that a fabro workflow's agent stages should use MUST be vendored into
 `improve-codebase-architecture`) — only there can a run's LLM agent
 recognize and load them.
 
-
 One development cycle, end to end. The user starts a cycle by invoking
 /iterate; the agent drives everything else. Chat replies in German,
 all written artifacts in English.
@@ -76,28 +75,28 @@ decision, not an accident - it needs the user plus an ADR.
   journal the components when a cycle ends in `grind` or worse so the
   trend stays visible.
 - Is a workflow cycle in flight? (`fabro ps`, or a `just run`/`just
-  cycle` process). Serialization principle (ADR-0015): while the
+cycle` process). Serialization principle (ADR-0015): while the
   develop/revisor workflow works the tracker, this agent session does
   NOT claim seeds - one line, one executor. Wait for terminal state or
   ask the user. The line's work queue is the @fabro-assigned view
-  (`sd ready --assignee fabro`, ADR-0018): a running pass plus an
+  (`seeds ready --assignee fabro`, ADR-0018): a running pass plus an
   empty queue is fine (fail-closed park between cycles); a parked pass
   with a NON-empty queue, a parallel pass, or a lost on_overlap are
   incidents (see standing rules).
 - Interrupted cycle? Reconstruct BEFORE selecting: `git status` (uncommitted
-  diff is the interrupted operation) + `sd list --status in_progress` tell
+  diff is the interrupted operation) + `seeds list --status in_progress` tell
   you what was mid-flight; continue that work instead of picking a new seed.
-- `sd ready` and the open-seed list for candidates, ALWAYS with
-  `--limit 500` on any `sd list`: the default caps at 50 silently, and
+- `seeds ready` and the open-seed list for candidates, ALWAYS with
+  `--limit 500` on any `seeds list`: the default caps at 50 silently, and
   200 no longer suffices either (2026-09-16: the open count passed 283
   and a 200-capped view hid today's fresh revisor seeds from dedup;
   earlier: capped 50 while the tracker held 447, fabro-c16d/fabro-5ff7).
-  `sd search` is AND-strict over title/description: ONE keyword per
-  query (broaden by dropping words), `sd show <id>` for id lookups -
-  never `sd search <id>` (2026-09-16 revisor sessions). `ml prime
-  <domain>` only when the cycle touches that domain.
+  `seeds search` is AND-strict over title/description: ONE keyword per
+  query (broaden by dropping words), `seeds show <id>` for id lookups -
+  never `seeds search <id>` (2026-09-16 revisor sessions). `ml prime
+<domain>` only when the cycle touches that domain.
 - Seeds are git-native: `git fetch` + `git pull --ff-only` BEFORE reading
-  `sd` state when another machine may have run the line - the tracker
+  `seeds` state when another machine may have run the line - the tracker
   view is branch-local and goes stale (2026-09-08: fabro-16ff read as
   open from a pre-pull queue dump although the other machine's run had
   closed it hours earlier; cleanup decisions must come from post-pull
@@ -125,20 +124,20 @@ decision, not an accident - it needs the user plus an ADR.
 - Executor decision (user directive 2026-09-06, extends ADR-0013
   dogfooding + ADR-0015): the agent implements NO seeds itself anymore
   - product AND engine/platform seeds alike go to the autonomous line.
-  The conductor is cron-activated and drives the develop workflow; it
-  picks, claims, and implements seeds on its own schedule. Manual
-  `just run develop` / `just cycle` starts are repair actions only,
-  when the autonomous line is down, and with the user's knowledge.
-  This agent's /iterate job: orient and monitor the autonomous line,
-  grill pivotal design forks with the user and write the agreed
-  design INTO the seed BEFORE the workflow implements it, review
-  landed diffs, revise the autonomous workflows themselves (standing
-  directive), reflect, and report. The workflow owns implementation,
-  not review or reflection.
-- Claim the seed: `sd update <id> --status in_progress` — DIRECT
+    The conductor is cron-activated and drives the develop workflow; it
+    picks, claims, and implements seeds on its own schedule. Manual
+    `just run develop` / `just cycle` starts are repair actions only,
+    when the autonomous line is down, and with the user's knowledge.
+    This agent's /iterate job: orient and monitor the autonomous line,
+    grill pivotal design forks with the user and write the agreed
+    design INTO the seed BEFORE the workflow implements it, review
+    landed diffs, revise the autonomous workflows themselves (standing
+    directive), reflect, and report. The workflow owns implementation,
+    not review or reflection.
+- Claim the seed: `seeds update <id> --status in_progress` — DIRECT
   implementation only. In delegation mode the goal names the seed and
   the RUN's planner claims it; an agent-side claim would remove it from
-  `sd ready` and the planner would find nothing (cycle-2 insight,
+  `seeds ready` and the planner would find nothing (cycle-2 insight,
   2026-09-05).
 
 ## Phase 2 - Build
@@ -148,7 +147,7 @@ decision, not an accident - it needs the user plus an ADR.
   into the staging image (2026-09-22: a WIP fabro_ask rode the image).
   Run it from a landed/clean state, or accept and note the WIP. And a
   handoff's stack claim is verified, not trusted: `curl -s -o /dev/null
-  -w "%{http_code}" http://127.0.0.1:32276/install/session` — 401 means
+-w "%{http_code}" http://127.0.0.1:32276/install/session` — 401 means
   UNCONFIGURED (install mode), 404 means configured; the 2026-09-22
   handoff claimed a fresh configured stack while the volume had been
   empty since 09-17.
@@ -215,7 +214,7 @@ decision, not an accident - it needs the user plus an ADR.
   it. Approved-but-invisible forks are the most expensive class of drift
   because everything else looks done.
 - English everywhere written; no inline shell logic in the justfile
-  (scripts/*.nu only); shell_quote for sandbox command strings.
+  (scripts/\*.nu only); shell_quote for sandbox command strings.
 - After programmatic (slice/regex) edits to large files, verify uniqueness
   of the touched definitions before building: a mis-anchored slice
   duplicated a ~300-line test region in fabro-4556 and only the compiler
@@ -232,12 +231,13 @@ decision, not an accident - it needs the user plus an ADR.
   space-run diagnostics (ba96, 2026-09-03).
 
 ### API workflow, host-condition notes (2026-09-23)
+
 - TS client regen (`lib/packages/fabro-api-client`) needs Java; hosts
   without a working `java` regenerate via Docker with the SAME pinned
   generator (`docker run --rm -v "$PWD:/local" -w /local
-  openapitools/openapi-generator-cli:v7.20.0 generate -i <spec> ... -o
-  /local/lib/packages/fabro-api-client/src`), then `bun run
-  scripts/normalize-generated.ts`, then fix root-owned output files via
+openapitools/openapi-generator-cli:v7.20.0 generate -i <spec> ... -o
+/local/lib/packages/fabro-api-client/src`), then `bun run
+scripts/normalize-generated.ts`, then fix root-owned output files via
   an alpine chown sidecar (bun re-creates files through directory write
   access, so normalize itself may still succeed).
 
@@ -279,14 +279,14 @@ decision, not an accident - it needs the user plus an ADR.
   review did not happen - a skipped guide load is a process failure,
   even when tests pass (the fabro_run_logs cycle shipped two logic bugs
   - inverted severity ordering, ISO-dash timestamp check - that a
-  guide-first pass would have caught at design time).
+    guide-first pass would have caught at design time).
 - The standards axis IS rust-style-guide (plus the AGENTS.md strategy
   docs): reviewers load `workflows/code-review-refactor.md` and the
   guideline pages covering the diff. Guide findings are findings, not
   opinions.
 - FORK-FEATURE REGRESSION CHECK (user directive 2026-09-13): run the
   fork-only presence suites on the reviewed tree (`cargo nextest run -p
-  fabro-workflow -- fork_seam` + any newer fork-only test files) and
+fabro-workflow -- fork_seam` + any newer fork-only test files) and
   check every NEW fork feature in the diff carries a presence pin
   (fork-only test file + touchpoints row). A red fork-only test means
   a landed fork feature regressed — fix or revert, never relax the
@@ -306,7 +306,7 @@ decision, not an accident - it needs the user plus an ADR.
   fabro-41de to the full evidence class): workflow assets stay
   ABSTRACT and PROJECT-AGNOSTIC without endangering function - no run
   ids, PR numbers, commit shas, dated cost narratives, or
-  machine-specific paths in .fabro/workflows/** (prompts, graphs,
+  machine-specific paths in .fabro/workflows/\*\* (prompts, graphs,
   tomls, script message strings; facts carriers may state project
   facts, not evidence archaeology). Every agent editing a prompt must
   know this is forbidden; the rule's evidence belongs in the seed's
@@ -411,12 +411,12 @@ decision, not an accident - it needs the user plus an ADR.
 
 ## Phase 5 - Integrate
 
-- Commit code BEFORE `sd sync`: sync sweeps STAGED changes + `.seeds`
+- Commit code BEFORE `seeds sync`: sync sweeps STAGED changes + `.seeds`
   only - unstaged worktree edits do not ride along, and a staged rename
   can go out without its matching edits (2026-09-16 incident: hook-path
-  breakage in an intermediate push). Never call `sd sync` inside a
+  breakage in an intermediate push). Never call `seeds sync` inside a
   workflow stage (it splits revisions into two commits, fabro-9ea5).
-  Line-watch closes through `sd close --reason` with the reason appended
+  Line-watch closes through `seeds close --reason` with the reason appended
   to the body first (fabro-02c4).
 - Commit and push. Deploy/smoke where the domain requires it.
 - PRODUCTION DEPLOY (user directive 2026-09-13): after SUBSTANTIAL
@@ -454,7 +454,7 @@ decision, not an accident - it needs the user plus an ADR.
   locally; ONE push decision at the END of the cycle/heartbeat in a
   single mechanical gate: (a) `fabro ps --server https://mirtuell.net`
   shows NO running conductor/develop/revisor run AND (b) the open-PR
-  list is empty.  Both checks and the push share one cell (the 2026-09-15
+  list is empty. Both checks and the push share one cell (the 2026-09-15
   PR #156 lesson); a refusal means the push waits for the next
   heartbeat's after-merge window. THE GATE IS A SCRIPT, not hand-rolled
   cell logic: `nu .fabro/scripts/push-gate.nu` (exit 0 = open). Two
@@ -487,8 +487,8 @@ decision, not an accident - it needs the user plus an ADR.
   the later updatedAt winning, verify zero duplicate ids, only then
   push the repair. reached=blocked (PR #34) surfaces stuck gates in the
   wait, but the branch update itself stays manual until fabro-94e8.
-- Close or update seeds (`sd close` / `sd update`), write an ADR when a
-  decision crystallized, `sd sync` + push.
+- Close or update seeds (`seeds close` / `seeds update`), write an ADR when a
+  decision crystallized, `seeds sync` + push.
 
 ## Phase 6 - Reflect (MANDATORY - never skip, every cycle)
 
@@ -500,19 +500,19 @@ decision, not an accident - it needs the user plus an ADR.
    preferences to memory; process lessons HERE. No finding may stay
    unrecorded. LOCAL test-stack deploys are ALWAYS `just up` (cached
    loop: SPA, binary, image, CLI, compose) - `docker compose up
-   --build` builds nothing here and `cargo build -p <name>` drifts with
+--build` builds nothing here and `cargo build -p <name>` drifts with
    upstream package renames. PRODUCTION deploys are `just
-   image-release` + fabro-tofu apply (Phase 5) - never compose
+image-release` + fabro-tofu apply (Phase 5) - never compose
    production by hand.
 2. **Learnings -> mulch**: `ml record <domain> --type
-   <convention|pattern|failure|decision> --description ...` (+ evidence
+<convention|pattern|failure|decision> --description ...` (+ evidence
    flags), then `ml sync`. Real insights only - no ritual filler.
 3. **New demands -> seeds**: feature requests, bug demand, and gaps
-   observed on the way are filed autonomously with `sd create` -
+   observed on the way are filed autonomously with `seeds create` -
    never parked in chat. SEARCH BEFORE FILING (user correction
-   2026-09-07): run `sd search` with the finding's key terms (failure
-   mode, tool name, script path, error string) before every `sd
-   create` - most autonomous-line failures already have a seed
+   2026-09-07): run `seeds search` with the finding's key terms (failure
+   mode, tool name, script path, error string) before every `seeds
+create` - most autonomous-line failures already have a seed
    (rate-limit windows, watchdog, journal hook, mise trust all did).
    When covered, extend THAT seed with the fresh run evidence.
    Parallel-filing guard (2026-09-16): a RUNNING revisor's tracker
@@ -524,10 +524,10 @@ decision, not an accident - it needs the user plus an ADR.
    fabro-7028 corruption): never pass seed bodies or additions through
    an interpolated bash string - backticks in Markdown bodies execute
    as command substitution and silently strip content from the WHOLE
-   rewritten body; write sd create/update --description via Python
+   rewritten body; write seeds create/update --description via Python
    subprocess LIST-args (no shell), and verify the READ shape on the
-   first seed of a batch BEFORE building update payloads - `sd show
-   --format json` wraps the record under a top-level `issue` key, and a
+   first seed of a batch BEFORE building update payloads - `seeds show
+--format json` wraps the record under a top-level `issue` key, and a
    description read off the envelope silently comes back empty, turning
    the update into a whole-body overwrite (2026-09-17: four evidence
    extensions wiped 5c45/9a42/b765/8275 before the roundtrip check
@@ -570,13 +570,13 @@ decision, not an accident - it needs the user plus an ADR.
    2026-09-15 - connect engine painpoints with agent painpoints;
    both halves into one seed). DISPATCH DEDUPE: when dispatching new
    revisor seeds, check whether you filed the SAME finding in parallel
-   (your own recent seeds, sd search before assigning); keep the
+   (your own recent seeds, seeds search before assigning); keep the
    RICHER seed regardless of author, fold the lesser's unique content
    into it, close the lesser with a duplicate reason naming both ids
    and queue exposure (2x on 2026-09-15: d76c/96e7, 7280/58cb).
    Tracker reads in the ceremony carry `--limit 200` (Phase 0 cap
    rule). RLM heartbeats are SESSION-scoped: if `rlm_heartbeat
-   .list()` shows no active `line-watch` at session start, recreate
+.list()` shows no active `line-watch` at session start, recreate
    it from this spec (try the PYTHON module first - the shell CLI may
    not exist while the module works, 2026-09-17; delivery_mode is a
    string literal, not an enum attribute); if the session host rejects
@@ -589,7 +589,7 @@ decision, not an accident - it needs the user plus an ADR.
 ## Standing rules
 
 - Judgment pre-screens (ADR-0022, optional, lowest priority of the
-  three session skills): composite-score `sd ready` candidates in
+  three session skills): composite-score `seeds ready` candidates in
   Phase 1 and per-hunk risk pre-screens in Phase 3 via
   `.fabro/scripts/judgment.nu` — advisory only, fail-open, thresholds
   only after the fabro-d4c6 evaluation report exists; judgments log
@@ -618,7 +618,7 @@ decision, not an accident - it needs the user plus an ADR.
   decision gets reverted, not ratified.
 - Ownership boundary (ADR-0018, user decisions 2026-09-07): the
   autonomous line works ONLY on seeds assigned to `fabro`
-  (`sd ready --assignee fabro` is the planner's sole candidate source,
+  (`seeds ready --assignee fabro` is the planner's sole candidate source,
   fail-closed). The revisor files seeds UNASSIGNED - reviewing is not
   owning. The agent's `@fabro` assignment is a proposal; user + agent
   decide execution ownership jointly (cycle report = standing forum,

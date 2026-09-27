@@ -1,7 +1,7 @@
 #!/usr/bin/env nu
 # Deterministic already-landed preflight (fabro-a32f): runs BEFORE the
 # planner LLM lap and greps the merge-target base history for the top
-# `sd ready --assignee fabro` candidates, reusing dup-run-check.nu's
+# `seeds ready --assignee fabro` candidates, reusing dup-run-check.nu's
 # landed-implementation classification verbatim (filed-only revisor
 # commits never count; Fabro-Run trailer identity via --self; a landed
 # true-merge or squash `(#n)` commit implementing the seed counts).
@@ -51,8 +51,8 @@
 # Usage (node invocation; also drivable standalone for dry-runs):
 #   echo <run-id> | nu planner-preflight.nu [--base origin/denkhaus]
 #   nu planner-preflight.nu --candidates fabro-x,fabro-y --report-only
-#     --candidates  comma-separated override of the sd ready candidate
-#                   list (dry-run / fixture path; skips sd ready)
+#     --candidates  comma-separated override of the seeds ready candidate
+#                   list (dry-run / fixture path; skips seeds ready)
 #     --report-only skip the closure side effects — report the landing
 #                   verdict without closing anything (dry-run / fixtures)
 #     --top N       how many top candidates to check (default 5)
@@ -233,7 +233,7 @@ def main [--base: string = "origin/denkhaus", --candidates: string, --top: int =
     mut mode = "checked"
     mut degraded_reason = ""
 
-    # Candidate list: --candidates override, else the top of sd ready.
+    # Candidate list: --candidates override, else the top of seeds ready.
     # Candidates carry their description so cited file:line anchors can
     # be verified (fabro-7daf); a description that cannot be fetched
     # degrades per-candidate to "no anchors", never to a script failure.
@@ -246,16 +246,16 @@ def main [--base: string = "origin/denkhaus", --candidates: string, --top: int =
         let r = (do { seeds ready --assignee fabro --limit 200 --format json } | complete)
         if $r.exit_code != 0 {
             $mode = "degraded"
-            $degraded_reason = $"sd ready failed: ($r.stderr | str trim | str substring 0..200)"
+            $degraded_reason = $"seeds ready failed: ($r.stderr | str trim | str substring 0..200)"
             []
         } else {
             let parsed = (try { $r.stdout | from json } catch { null })
             if $parsed == null {
                 $mode = "degraded"
-                $degraded_reason = "sd ready output not valid JSON"
+                $degraded_reason = "seeds ready output not valid JSON"
                 []
             } else {
-                # sd ready --format json: {success, command, issues: [...]}
+                # seeds ready --format json: {success, command, issues: [...]}
                 # (issues is absent/empty when nothing is ready)
                 $parsed | get -o issues | default [] | each {|i| {id: ($i | get -o id | default ""), description: ($i | get -o description | default "")}} | where {|c| not ($c.id | is-empty)}
             }
@@ -267,7 +267,7 @@ def main [--base: string = "origin/denkhaus", --candidates: string, --top: int =
     if ($cand | is-empty) {
         if $mode != "degraded" {
             $mode = "degraded"
-            $degraded_reason = "no candidates (empty override or empty sd ready)"
+            $degraded_reason = "no candidates (empty override or empty seeds ready)"
         }
         {"outcome": "succeeded",
          "preferred_next_label": "Preflight done",

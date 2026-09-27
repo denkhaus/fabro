@@ -1,7 +1,7 @@
 #!/usr/bin/env nu
 # Graph-contract smoke (fabro-83df / fabro-92e2, 2026-09-19): pins the
 # develop graph's deterministic-exit contract that the 2026-09-19
-# goal-gate incident broke. Pure file assertions, no sd, no git — the
+# goal-gate incident broke. Pure file assertions, no seeds, no git — the
 # same closeout-smoke pattern (checked into the repo, wired into
 # scripts/qualitygate.nu's loop-asset tier).
 #
