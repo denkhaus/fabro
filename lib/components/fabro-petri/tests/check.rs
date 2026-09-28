@@ -21,6 +21,7 @@ use fabro_petri::check::{self, Bundle, CheckError, CheckRequest, DiagnosticSever
 use fabro_petri::runtime::{self, RuntimeSpec};
 use fabro_store::{BlobStore, test_support};
 use lithos_llm::catalog::ProviderId;
+use petri_runtime::ir::RuntimeTarget;
 
 const COMMAND_WORKFLOW: &str = r#"digraph Command {
     graph [goal="Run one command"]
@@ -419,4 +420,60 @@ async fn a_launch_goal_replaces_the_graphs_goal_on_the_admitted_graph_and_its_st
     );
     // Without a launch goal, the bundle's `[run] goal` stands over the graph's.
     assert_eq!(goal_of(Launch::default()), "The bundle's goal");
+}
+
+/// Dry-run admission must cover child workflows too, and its rewritten
+/// graphs must survive the same digest-checked persistence as any other run.
+#[tokio::test]
+async fn dry_run_admission_makes_nested_scopes_local_and_preserves_graph_digests() {
+    let root = r#"digraph Root {
+        start [shape=Mdiamond]
+        exit [shape=Msquare]
+        child [shape=house, stack.child_workflow="child/workflow.fabro"]
+        start -> child -> exit
+    }"#;
+    let settings = format!(
+        "{SETTINGS}\n[run.environment]\nid = \"docker\"\n\n[environments.docker]\nprovider = \"docker\"\n[environments.docker.image]\ndocker = \"invalid.example/dry-run:must-not-pull\"\n"
+    );
+    let files = [
+        ("workflow.fabro", root),
+        ("workflow.toml", settings.as_str()),
+        ("child/workflow.fabro", COMMAND_WORKFLOW),
+        ("child/workflow.toml", settings.as_str()),
+    ];
+    let real = check::check(&request(bundle(&files), RuntimeSpec::default()))
+        .expect("the real workflow admits");
+    assert!(!real.children.is_empty());
+    assert!(
+        real.graph
+            .body
+            .scopes
+            .iter()
+            .any(|scope| { matches!(scope.runtime.target, RuntimeTarget::Container { .. }) })
+    );
+    let dry_run = check::check(&request(bundle(&files), RuntimeSpec {
+        dry_run: true,
+        ..RuntimeSpec::default()
+    }))
+    .expect("the dry run admits");
+    assert_eq!(dry_run.children.len(), real.children.len());
+    for graph in std::iter::once(&dry_run.graph).chain(&dry_run.children) {
+        assert!(!graph.body.scopes.is_empty());
+        for scope in &graph.body.scopes {
+            assert_eq!(scope.runtime.target, RuntimeTarget::HostProcess);
+            assert!(scope.services.is_empty());
+            assert!(scope.runtime.requirements.is_empty());
+        }
+    }
+    let blobs = BlobStore::new(test_support::in_memory_pool_with(&[
+        fabro_db::BLOBS_MIGRATION_SQL,
+    ]));
+    let record = admission::persist(&blobs, &dry_run)
+        .await
+        .expect("the graphs persist");
+    let loaded = admission::load(&blobs, &record)
+        .await
+        .expect("the graph digests match");
+    assert_eq!(loaded.graph, dry_run.graph);
+    assert_eq!(loaded.children, dry_run.children);
 }

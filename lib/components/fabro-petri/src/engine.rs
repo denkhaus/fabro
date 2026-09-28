@@ -170,9 +170,15 @@ pub enum Conclusion {
 
 /// Execute the run to its end and report what the record says.
 pub async fn run(request: RunRequest) -> Result<RunOutcome, RunError> {
-    let backend = backend(&request.provider).ok_or_else(|| RunError::UnsupportedProvider {
-        provider: request.provider.clone(),
-    })?;
+    let backend = if request.runtime.dry_run {
+        // The dry-run admission pass puts every scope on the host. Keep the
+        // real local workspace for Fabro's checkpoint and artifact hooks.
+        SandboxBackend::Host
+    } else {
+        backend(&request.provider).ok_or_else(|| RunError::UnsupportedProvider {
+            provider: request.provider.clone(),
+        })?
+    };
     let key = RunKey::new(request.run_id.as_str());
     let mut options = RunOptions::new(&request.run_dir);
     options.run_key = Some(key.clone());
@@ -196,7 +202,10 @@ pub async fn run(request: RunRequest) -> Result<RunOutcome, RunError> {
     if let Some(blobs) = &request.blobs {
         runtime = runtime.capability(RunBlobs::output_store(Arc::clone(blobs)));
     }
-    let fabro_hooks = request.hooks.map(|spec| {
+    let fabro_hooks = request.hooks.map(|mut spec| {
+        if request.runtime.dry_run {
+            spec.git.host_workspaces = true;
+        }
         let inner = runtime
             .installed_hooks()
             .unwrap_or_else(|| Arc::new(NoHooks));
