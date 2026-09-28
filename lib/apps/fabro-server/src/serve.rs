@@ -1348,16 +1348,18 @@ mod tests {
     }
 
     #[test]
-    fn runtime_server_settings_preserve_custom_artifact_root() {
+    fn runtime_server_settings_keep_local_artifacts_under_storage_dir() {
+        // Servers have always kept local artifacts under the storage
+        // directory, including installs whose settings name a `local.root`.
         let settings = server_settings(
             r#"
 _version = 1
 [server.storage]
 root = "/srv/from-disk"
 [server.artifacts]
-prefix = "selected-prefix"
+prefix = "artifacts"
 [server.artifacts.local]
-root = "/mnt/artifact-files"
+root = "/srv/from-disk/objects"
 "#,
         );
         for storage_root in ["/srv/from-disk", "/srv/from-runtime"] {
@@ -1365,7 +1367,13 @@ root = "/mnt/artifact-files"
                 .clone()
                 .with_storage_override(Path::new(storage_root));
             assert_eq!(resolved.server.storage.root, storage_root);
-            assert_eq!(resolved.server.artifacts, settings.server.artifacts);
+            assert_eq!(resolved.server.artifacts.prefix, "artifacts");
+            assert_eq!(
+                resolved.server.artifacts.store,
+                fabro_types::settings::ObjectStoreSettings::Local {
+                    root: format!("{storage_root}/objects/artifacts"),
+                }
+            );
             // Startup and config reload can apply the same override again.
             assert_eq!(
                 resolved

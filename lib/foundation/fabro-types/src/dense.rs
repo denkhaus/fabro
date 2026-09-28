@@ -16,14 +16,11 @@ pub struct ServerSettings {
 impl ServerSettings {
     #[must_use]
     pub fn with_storage_override(mut self, path: &Path) -> Self {
-        // Only the derived default follows the storage directory. A custom
-        // artifact location is independent of the database and runtime root.
-        let default_artifact_root =
-            ServerArtifactsSettings::default_local_root(Path::new(&self.server.storage.root));
+        // The local artifact store always lives under the storage directory.
+        // A configured `local.root` has never moved it, and existing objects
+        // are only found there.
         if let ObjectStoreSettings::Local { root } = &mut self.server.artifacts.store {
-            if *root == default_artifact_root {
-                *root = ServerArtifactsSettings::default_local_root(path);
-            }
+            *root = ServerArtifactsSettings::default_local_root(path);
         }
         self.server.storage.root = path.display().to_string();
         self
