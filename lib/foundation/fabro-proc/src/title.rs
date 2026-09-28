@@ -13,12 +13,6 @@ unsafe impl Sync for Buffer {}
 
 static STATE: OnceLock<Mutex<Buffer>> = OnceLock::new();
 
-#[cfg(target_os = "linux")]
-unsafe extern "C" {
-    fn fabro_proctitle_argv_start() -> *mut libc::c_char;
-    fn fabro_proctitle_argv_len() -> libc::c_ulong;
-}
-
 #[cfg(target_os = "macos")]
 unsafe extern "C" {
     fn _NSGetArgv() -> *mut *mut *mut libc::c_char;
@@ -73,21 +67,36 @@ fn write_title(dst: &mut [u8], title: &[u8]) {
 }
 
 #[cfg(target_os = "linux")]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "process-title initialization reads this process's kernel-owned argv bounds once"
+)]
 fn platform_init() -> Option<Buffer> {
-    // SAFETY: these symbols are provided by the Linux-only C object compiled in
-    // build.rs.
-    let start = unsafe { fabro_proctitle_argv_start() };
-    // SAFETY: paired with the symbol above.
-    let len = unsafe { fabro_proctitle_argv_len() };
-    let len = usize::try_from(len).ok()?;
-    if start.is_null() || len == 0 {
-        return None;
-    }
-
+    // Linux exposes the original argv span independently of libc. In particular,
+    // musl does not pass argc/argv to C constructors, unlike glibc.
+    let stat = std::fs::read_to_string("/proc/self/stat").ok()?;
+    let (start, len) = linux_argv_span(&stat)?;
     Some(Buffer {
-        start: start.cast(),
+        // The kernel reports this process's writable, initial argv allocation.
+        // No code in this crate relocates or frees that allocation.
+        start: std::ptr::with_exposed_provenance_mut(start),
         len,
     })
+}
+
+#[cfg(any(target_os = "linux", test))]
+fn linux_argv_span(stat: &str) -> Option<(usize, usize)> {
+    // comm (field 2) can contain spaces and ')'; the final ')' ends it.
+    let (_, tail) = stat.rsplit_once(')')?;
+    let mut fields = tail.split_whitespace();
+    // The tail starts at field 3; arg_start and arg_end are fields 48 and 49.
+    let start: usize = fields.nth(45)?.parse().ok()?;
+    let end: usize = fields.next()?.parse().ok()?;
+    let len = end.checked_sub(start)?;
+    if start == 0 || len == 0 || len > isize::MAX as usize {
+        return None;
+    }
+    Some((start, len))
 }
 
 #[cfg(target_os = "macos")]
@@ -140,7 +149,23 @@ fn platform_init() -> Option<Buffer> {
 
 #[cfg(test)]
 mod tests {
-    use super::write_title;
+    use super::{linux_argv_span, write_title};
+
+    #[test]
+    fn linux_argv_bounds_handle_parentheses_in_the_process_name() {
+        let fields = vec!["0"; 45].join(" ");
+        let stat = format!("42 (a name ) with (parens)) {fields} 4096 4160 5000 5100 0");
+        assert_eq!(linux_argv_span(&stat), Some((4096, 64)));
+    }
+
+    #[test]
+    fn linux_argv_bounds_refuse_missing_or_invalid_addresses() {
+        let fields = vec!["0"; 45].join(" ");
+        for addresses in ["", "4096", "0 64", "4096 4096", "4160 4096", "x 4160"] {
+            let stat = format!("42 (probe) {fields} {addresses}");
+            assert_eq!(linux_argv_span(&stat), None, "{stat}");
+        }
+    }
 
     #[test]
     fn write_title_zero_fills_remainder() {

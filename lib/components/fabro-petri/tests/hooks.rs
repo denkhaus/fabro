@@ -302,6 +302,62 @@ fn stages(inspection: &RunInspection) -> Vec<(String, String)> {
         .collect()
 }
 
+/// A dry run keeps checkpointable local workspaces even when the selected
+/// environment would require Docker or Daytona. Its command is simulated.
+#[tokio::test]
+async fn dry_runs_use_local_workspaces_and_checkpoint_without_sandbox_credentials() {
+    for provider in [SandboxProviderKind::DOCKER, SandboxProviderKind::DAYTONA] {
+        let harness = Harness::new();
+        let workflow = workflow(
+            r#"  write [shape=parallelogram, script="touch should-not-exist; exit 1"]"#,
+            "  start -> write -> exit",
+        );
+        let settings = format!(
+            "{SETTINGS}\n[run.environment]\nid = \"remote\"\n\n[environments.remote]\nprovider = \"{provider}\"\n\n[environments.remote.image]\ndocker = \"invalid.example/dry-run:must-not-pull\"\n"
+        );
+        let runtime = RuntimeSpec {
+            dry_run: true,
+            ..RuntimeSpec::default()
+        };
+        let graphs = support::admit(
+            &[("workflow.fabro", &workflow), ("workflow.toml", &settings)],
+            Launch::default(),
+            &runtime,
+        );
+        let mut request = support::run_request(
+            &harness.run_id.to_string(),
+            &harness.run_dir,
+            graphs,
+            harness.store.clone(),
+            runtime,
+            support::no_questions(Arc::new(support::Silent)),
+        );
+        request.hooks = Some(harness.hooks(&provider));
+        request.provider = provider.clone();
+        request.blobs = Some(harness.blobs.clone());
+        let outcome = engine::run(request).await.expect("the dry run executes");
+        assert_eq!(
+            outcome.status,
+            RunStatus::Success,
+            "{provider}: {outcome:?}"
+        );
+        assert!(outcome.complete, "{provider}: {:?}", outcome.incomplete);
+        let workspace = harness.workspace().await;
+        assert!(
+            !harness
+                .workspace_path(&workspace)
+                .join("should-not-exist")
+                .exists()
+        );
+        assert_eq!(
+            harness.checkpoints().len(),
+            3,
+            "{provider}: every stage checkpoints"
+        );
+        assert_eq!(harness.snapshot_commits(&workspace).await.len(), 3);
+    }
+}
+
 /// Every finished stage is committed on the run branch with the identity
 /// trailers, its platform record names the commit, and the run-end hooks
 /// reached Petri's local service through Fabro's wrapper.

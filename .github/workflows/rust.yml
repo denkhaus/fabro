@@ -17,6 +17,7 @@ on:
       - "docs/public/reference/user-configuration.mdx"
       - "openapi/**"
       - ".github/workflows/rust.yml"
+      - ".github/workflows/release.yml"
   pull_request:
     branches: [main]
     paths:
@@ -33,6 +34,7 @@ on:
       - "docs/public/reference/user-configuration.mdx"
       - "openapi/**"
       - ".github/workflows/rust.yml"
+      - ".github/workflows/release.yml"
   workflow_dispatch:
 
 concurrency:
@@ -203,7 +205,6 @@ jobs:
 
   test-macos:
     name: Test (macOS)
-    if: github.event_name == 'workflow_dispatch'
     runs-on: macos-15
     permissions:
       contents: read
@@ -220,3 +221,25 @@ jobs:
       - uses: taiki-e/install-action@773334c0e05d7e699e4d78234494308223f3a2cf # nextest
       # No Docker daemon on the macOS runner: the Docker tests skip there.
       - run: cargo nextest run --locked --workspace --status-level slow --profile ci
+
+  process-title-musl:
+    name: Process titles (musl)
+    runs-on: ubuntu-24.04-x86-32-cores
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - run: sudo apt-get update && sudo apt-get install -y musl-tools
+      - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+        with:
+          toolchain: 1.97.1
+          targets: x86_64-unknown-linux-musl
+      - uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # v2
+      - uses: taiki-e/install-action@773334c0e05d7e699e4d78234494308223f3a2cf # nextest
+      - name: Test real process titles under musl
+        env:
+          CC_x86_64_unknown_linux_musl: musl-gcc
+          CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER: musl-gcc
+        run: cargo nextest run --locked --release -p fabro-proc --target x86_64-unknown-linux-musl --profile ci

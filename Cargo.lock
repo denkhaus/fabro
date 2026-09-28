@@ -2566,7 +2566,6 @@ dependencies = [
 name = "fabro-proc"
 version = "0.369.0-nightly.0"
 dependencies = [
- "cc",
  "libc",
  "tempfile",
  "thiserror 2.0.18",

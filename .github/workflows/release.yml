@@ -61,6 +61,14 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y build-essential pkg-config libssl-dev
 
+      - name: Install Docker for ARM Linux tests
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: |
+          sudo apt-get install -y docker.io acl
+          sudo systemctl start docker
+          sudo setfacl -m "u:$(id -un):rw" /var/run/docker.sock
+          docker info
+
       - name: Install musl toolchain for x86_64-musl tests
         if: matrix.target == 'x86_64-unknown-linux-musl'
         run: sudo apt-get install -y musl-tools
@@ -104,7 +112,7 @@ jobs:
         env:
           CC_x86_64_unknown_linux_musl: musl-gcc
           CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER: musl-gcc
-        run: cargo nextest run --locked --workspace --target ${{ matrix.target }} --release --status-level slow --profile ci
+        run: cargo nextest run --locked --workspace --target ${{ matrix.target }} --release --status-level slow --profile ci --no-fail-fast
 
       - name: Test
         # aarch64-musl test runs have not been validated on the compile
@@ -115,7 +123,7 @@ jobs:
           if [[ "$RUNNER_OS" == "macOS" ]]; then
             ulimit -n 4096
           fi
-          cargo nextest run --locked --workspace --target ${{ matrix.target }} --release --status-level slow --profile ci
+          cargo nextest run --locked --workspace --target ${{ matrix.target }} --release --status-level slow --profile ci --no-fail-fast
 
       - name: Build (musl via cargo-zigbuild)
         if: matrix.musl
