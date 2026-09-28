@@ -63,6 +63,41 @@ def interpolated-regex-check [file: string] {
     }
 }
 
+# Bare-paren-text check: inside an interpolated string ($'...' / $"...")
+# EVERY (...) is a subexpression — literal prose parens like
+# (fabro-1a41, guards investigation) PARSE as list syntax and explode at
+# RUNTIME with 'Command ... not found' (two crashes on 2026-09-28: the
+# workbench seed-ensure success print and the known-red yellow print; nu
+# --ide-check cannot catch this class). A paren group containing a comma is
+# list syntax and never a useful interpolation — flag it.
+def paren-comma-bare [line: string] {
+    # examine ONLY the interpolated-string spans themselves ($'...' / $"..."):
+    # record literals on the same line carry legitimate commas in braces, and
+    # `str join ', '` carries its comma inside quotes inside a legitimate
+    # subexpression — neither is bare text-paren list syntax
+    let spans = ($line | parse --regex `(?P<s>\$["'][^"']*["'])`)
+    if ($spans | is-empty) { false } else {
+        # escaped parens \(...\) are the CORRECT literal-paren idiom — neutralize them first
+        ($spans | get s | any {|s| ($s | str replace -ar `\\[()]` 'X' | parse --regex `\([^()]*,[^()]*\)` | is-not-empty) })
+    }
+}
+
+def bare-paren-check [file: string] {
+    let text = (open --raw $file)
+    let hits = ($text | lines | enumerate | where {|it|
+        (($it.item | str trim | str starts-with '#') == false) and (($it.item | str contains '$"') and (paren-comma-bare $it.item))
+    })
+    if ($hits | is-not-empty) {
+        for h in $hits {
+            print $"bare-paren FAILED: ($file):($h.index + 1) — comma paren group inside an interpolated string is list syntax, not text"
+            print $"  ($h.item | str trim)"
+        }
+        false
+    } else {
+        true
+    }
+}
+
 def main [] {
     let scripts = (script-paths)
     if ($scripts | is-empty) {
@@ -74,6 +109,7 @@ def main [] {
     for s in $scripts {
         if not (parse-check $s) { $green = false }
         if not (interpolated-regex-check $s) { $green = false }
+        if not (bare-paren-check $s) { $green = false }
     }
     if $green {
         print 'lint-nu: green'
