@@ -417,6 +417,45 @@ async fn every_finish_is_committed_and_recorded() {
     assert_eq!(run_end, "run_complete\nsandbox_cleanup\n");
 }
 
+/// `[[run.hooks]]` contexts carry the run's id: the runtime installs its
+/// own local hook service for the tool-policy seam, which Petri run-binds
+/// only for a service it built itself, so before fabro-6558 nothing bound
+/// it and every context (and `FABRO_RUN_ID`) reached hooks empty — the
+/// stage journal landed in `.fabro/journal/.jsonl` instead of
+/// `<run_id>.jsonl`.
+#[tokio::test]
+async fn run_hook_contexts_carry_the_run_id() {
+    let harness = Harness::new();
+    let workflow = workflow(
+        "  noop [shape=parallelogram, script=\"true\"]",
+        "  start -> noop -> exit",
+    );
+    let settings = format!(
+        "{SETTINGS}\n[[run.hooks]]\nevent = \"run_complete\"\nscript = \"printf '%s' \\\"$FABRO_RUN_ID\\\" \
+         > env-run-id.txt; grep -o '\\\"run_id\\\":\\\"[^\\\"]*\\\"' \\\"$FABRO_HOOK_CONTEXT\\\" > \
+         ctx-run-id.txt\"\n"
+    );
+    let outcome = harness.run(&workflow, &settings).await;
+    assert_eq!(outcome.status, RunStatus::Success, "{outcome:?}");
+    assert!(outcome.complete, "{:?}", outcome.incomplete);
+
+    let workspace = harness.workspace().await;
+    let path = harness.workspace_path(&workspace);
+    let run_id = harness.run_id.to_string();
+    let env_id = fs::read_to_string(path.join("env-run-id.txt"))
+        .await
+        .expect("the hook saw FABRO_RUN_ID");
+    assert_eq!(env_id, run_id, "the env var carries the run id");
+    let ctx_id = fs::read_to_string(path.join("ctx-run-id.txt"))
+        .await
+        .expect("the hook context carried a run id");
+    assert_eq!(
+        ctx_id.trim(),
+        format!("\"run_id\":\"{run_id}\""),
+        "the context's run_id field matches the run"
+    );
+}
+
 /// The stage-envelope guard meets the stage-journal hook contract
 /// (fabro-b6c5): a run that wires sandbox hooks keeps its
 /// `.fabro/journal/` traffic exempt from `x.fs_write`, so a deny-all

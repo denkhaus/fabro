@@ -645,5 +645,8 @@ async fn runtime_spec(
         fabro_home,
         run_tools,
         envelopes,
+        // The engine binds the run's id on the local hook service when the
+        // run executes; the worker assembles the spec before that.
+        run_id: None,
     })
 }

@@ -52,6 +52,14 @@ name = "glm-5.3"
 # seeds/ml, pytest — .fabro/Dockerfile.toolchain). Runs start instantly; a
 # prepare no-op check would only burn tester time.
 
+# Full-history clone: the petri engine's checkpoint publishing bundles
+# the workspace commit and traverses its whole ancestry; a depth cut
+# silently truncates the bundle at the shallow boundary and kills every
+# sandbox git-target run at its first checkpoint (fabro-b6c5, fabro-6558;
+# mx-9251c9).
+[run.clone]
+depth = 0
+
 # Dev-cycle: push checkpoint/metadata branches to the fork (local feature
 # testing keeps them pushable so the PR cycle can engage).
 [run.run_branch]

@@ -64,6 +64,7 @@ fn offline_runtime(run: Option<&RunLayer>) -> RuntimeSpec {
         fabro_home:       None,
         run_tools:        None,
         envelopes:        None,
+        run_id:           None,
     }
 }
 

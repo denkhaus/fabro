@@ -112,6 +112,9 @@ pub(crate) fn runtime_spec(
         // tools to; like the legacy in-process path, it runs without them.
         run_tools: None,
         envelopes: None,
+        // The engine binds the run's id on the local hook service when the
+        // run executes; the launch spec itself has no id to give yet.
+        run_id: None,
     }
 }
 

@@ -25,6 +25,7 @@ use lithos_llm::credentials::CredentialProvider;
 use petri_attractor_steps::hooks::LocalHooks;
 use petri_attractor_steps::pebble::PebbleClient;
 use petri_attractor_steps::skills::FabroHome;
+use petri_attractor_steps::stage::RunInfo;
 use petri_execution::hooks::{HookAdapter, HookServiceHandle};
 use petri_frontend_fabro::Fabro;
 use petri_runtime::Runtime;
@@ -71,6 +72,13 @@ pub struct RuntimeSpec {
     /// allowlist against (fabro-96c6). `None` registers the full set on
     /// every session.
     pub envelopes:        Option<Arc<StageEnvelopes>>,
+    /// The run's id, as `[[run.hooks]]` contexts report it (`FABRO_RUN_ID`
+    /// and the context's `run_id`): the runtime installs its own local
+    /// hook service for the tool-policy seam, which Petri run-binds only
+    /// for a service it built itself, so the spec's id is bound here
+    /// instead (fabro-6558). `None` leaves it unset (admission checks,
+    /// offline validation).
+    pub run_id:           Option<String>,
 }
 
 impl RuntimeSpec {
@@ -109,6 +117,11 @@ impl RuntimeSpec {
         // Installed before `register`, which then steps its own service
         // aside; `FabroHooks` wraps this adapter in turn at execution.
         let local = Arc::new(LocalHooks::default());
+        if let Some(run_id) = &self.run_id {
+            local.set_run(RunInfo {
+                run_id: run_id.clone(),
+            });
+        }
         let policy = Arc::new(ToolPolicyHooks::new(local.clone(), self.envelopes.clone()));
         runtime = runtime
             .hooks(Arc::new(HookAdapter::new(policy.clone())))
