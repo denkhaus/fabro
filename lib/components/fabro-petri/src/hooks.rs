@@ -25,10 +25,10 @@
 //!   and the checkpoint's operation identity, with the stage's diff from its
 //!   parent commit (`diff_summary`, and the patch as a blob); then the stage's
 //!   artifacts: every file under `[run.artifacts] include` in the stage's
-//!   workspace goes to the blob table and gets an `artifact.collected` record,
-//!   unless the same file with the same content was already collected earlier
-//!   in the run. A failed write is a recorded problem on the transition, never
-//!   a blocked route.
+//!   workspace goes to configured artifact storage and gets an
+//!   `artifact.collected` record, unless the same file with the same content
+//!   was already collected earlier in the run. A failed write is a recorded
+//!   problem on the transition, never a blocked route.
 //! - `run_finished`: the run's diff, its run branch against its base commit, as
 //!   the `run.diff` platform record with the patch as a blob; then the
 //!   forwarded point, so the local service runs `run_complete` and `run_failed`
@@ -76,12 +76,14 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
+use bytes::Bytes;
 use fabro_store::platform_records::{
-    ArtifactCollectedRecord, CheckpointRecord, GitIdentityRecord, RunBranchRecord, RunDiffRecord,
+    ArtifactCollectedRecord, CheckpointRecord, GitIdentityRecord, OperationKey, RunBranchRecord,
+    RunDiffRecord,
 };
 use fabro_store::{PlatformRecord, PlatformRecordKind, StagePosition};
 use fabro_types::settings::run::RunNamespace;
-use fabro_types::{BlobHash, DiffSummary, GitIdentity, RunId};
+use fabro_types::{ArtifactSource, BlobHash, DiffSummary, GitIdentity, RunId};
 use fabro_util::error::collect_chain;
 use fabro_util::sync;
 use fabro_util::workspace_glob::{WorkspaceGlobError, WorkspaceGlobSet};
@@ -98,6 +100,7 @@ use tokio::sync::{Mutex as AsyncMutex, OnceCell};
 use tokio::{fs, time};
 use tracing::{debug, info, warn};
 
+use crate::artifacts::{ArtifactWriteError, ArtifactWriter};
 use crate::blobs::Blobs;
 use crate::checkpoint::{
     CHECKPOINT_FAILED_CLASS, CheckpointError, CheckpointKey, EXCLUDE_DIRS, RunGitSettings,
@@ -120,7 +123,7 @@ const GATE_POLL: Duration = Duration::from_millis(50);
 /// budget.
 const ARTIFACT_MAX_FILES: usize = 100;
 /// The largest file collected, the legacy executor's budget.
-const ARTIFACT_MAX_FILE_BYTES: u64 = 10 * 1024 * 1024;
+const ARTIFACT_MAX_FILE_BYTES: u64 = fabro_types::ARTIFACT_MAX_FILE_BYTES as u64;
 /// The most bytes one stage's collection keeps, the legacy executor's
 /// budget.
 const ARTIFACT_MAX_TOTAL_BYTES: u64 = 50 * 1024 * 1024;
@@ -184,8 +187,8 @@ pub enum HookError {
     },
     #[error("invalid run.artifacts.include pattern")]
     Globs(#[source] Arc<WorkspaceGlobError>),
-    #[error("the run has no blob table to collect artifacts into")]
-    NoBlobs,
+    #[error("the captured artifact could not be stored")]
+    Artifact(#[source] ArtifactWriteError),
     #[error("the workspace could not be listed below `{root}`")]
     List {
         root:   String,
@@ -212,26 +215,33 @@ impl HookError {
 /// What Fabro's hooks need beside the run: where the platform records go,
 /// the run's Git settings, and which files are the run's artifacts.
 pub struct HooksSpec {
-    pub records:    Arc<dyn PlatformRecords>,
-    pub git:        RunGitSettings,
+    pub records:         Arc<dyn PlatformRecords>,
+    pub git:             RunGitSettings,
     /// The `[run.artifacts] include` patterns: which files of a stage's
     /// workspace are collected after the stage.
-    pub artifacts:  Vec<String>,
+    pub artifacts:       Vec<String>,
     /// A test's gate directory: a checkpoint point named by a `.hold` file
     /// there waits for its `.release` file. `None` outside tests.
-    pub test_gates: Option<PathBuf>,
+    pub test_gates:      Option<PathBuf>,
+    /// Where captured workspace files go.
+    pub artifact_writer: Arc<dyn ArtifactWriter>,
 }
 
 impl HooksSpec {
     /// The spec a run's settings give: its Git settings and its artifact
-    /// patterns.
+    /// patterns, captured through `artifact_writer`.
     #[must_use]
-    pub fn for_run(records: Arc<dyn PlatformRecords>, settings: &RunNamespace) -> Self {
+    pub fn for_run(
+        records: Arc<dyn PlatformRecords>,
+        settings: &RunNamespace,
+        artifact_writer: Arc<dyn ArtifactWriter>,
+    ) -> Self {
         Self {
             records,
             git: RunGitSettings::from(settings),
             artifacts: settings.artifacts.include.clone(),
             test_gates: None,
+            artifact_writer,
         }
     }
 
@@ -248,7 +258,7 @@ impl HooksSpec {
 type AcquiredEnv = (String, Arc<dyn ExecEnv>);
 
 /// The identity of a collected file: its path and content digest.
-type ArtifactIdentity = (String, String);
+type ArtifactIdentity = (String, BlobHash);
 
 /// A checkpoint's workspace and commit.
 type WorkspaceCommit = (String, String);
@@ -306,6 +316,9 @@ struct ArtifactLedger {
     /// Every artifact collected so far, by path and digest: read from the
     /// store once, then kept current with every append.
     collected: OnceCell<Mutex<HashSet<ArtifactIdentity>>>,
+    /// One lock per identity being captured, so concurrent transitions that
+    /// leave the same file upload and record it once.
+    capturing: Mutex<HashMap<ArtifactIdentity, Arc<AsyncMutex<()>>>>,
 }
 
 /// Where each acquired scope's workspace is, and the locks that serialize
@@ -367,9 +380,9 @@ pub struct FabroHooks {
     inner:           Arc<dyn ExecutionHooks>,
     run_id:          RunId,
     records:         Arc<dyn PlatformRecords>,
-    /// Where an artifact's bytes and a diff's patch go; `None` records
-    /// summaries alone.
+    /// Where diff patches go; `None` records summaries alone.
     blobs:           Option<Arc<dyn Blobs>>,
+    artifact_writer: Arc<dyn ArtifactWriter>,
     workspaces:      RunWorkspaces,
     lookup:          WorkspaceLookup,
     identity:        GitIdentity,
@@ -396,8 +409,7 @@ impl FabroHooks {
     /// run whose records are in `store` under `run_key`, with its
     /// workspaces under `run_dir`. `resumed` says the run continues from
     /// its records, so a sandbox workspace is brought to its snapshot at
-    /// its scope's first acquisition. `blobs` is where artifact bytes and
-    /// diff patches go.
+    /// its scope's first acquisition. `blobs` holds diff patches.
     #[must_use]
     pub fn new(
         spec: HooksSpec,
@@ -425,6 +437,7 @@ impl FabroHooks {
             run_id,
             records: spec.records,
             blobs,
+            artifact_writer: spec.artifact_writer,
             workspaces,
             lookup: WorkspaceLookup::new(Arc::clone(&store), run_key),
             identity,
@@ -434,6 +447,7 @@ impl FabroHooks {
             checkpoints: CheckpointLedger::default(),
             artifacts: ArtifactLedger {
                 globs:     WorkspaceGlobSet::try_new(&spec.artifacts).map_err(Arc::new),
+                capturing: Mutex::default(),
                 collected: OnceCell::new(),
             },
             scopes: ScopeEnvs::default(),
@@ -943,19 +957,17 @@ impl FabroHooks {
             // environment; there is no workspace to collect from.
             return Ok(0);
         };
-        let Some(blobs) = &self.blobs else {
-            return Err(HookError::NoBlobs);
-        };
-        let already = self.collected_artifacts().await?;
         let candidates = list_artifacts(env.as_ref(), globs).await?;
-        let limit = usize::try_from(ARTIFACT_MAX_FILE_BYTES).unwrap_or(usize::MAX);
         let mut collected = 0;
         let mut total_bytes = 0_u64;
         for (path, size) in select_artifacts(candidates) {
             if total_bytes.saturating_add(size) > ARTIFACT_MAX_TOTAL_BYTES {
                 break;
             }
-            let bytes = match env.read_file_limited(Path::new(&path), limit).await {
+            let bytes = match env
+                .read_file_limited(Path::new(&path), fabro_types::ARTIFACT_MAX_FILE_BYTES)
+                .await
+            {
                 Ok(Some(bytes)) => bytes,
                 Ok(None) => continue,
                 Err(error) => {
@@ -963,47 +975,102 @@ impl FabroHooks {
                     continue;
                 }
             };
-            let digest = BlobHash::new(&bytes);
-            let identity = (path.clone(), digest.to_string());
-            if sync::lock(already).contains(&identity) {
+            if !self.store_artifact(key, &path, bytes.into()).await? {
                 continue;
             }
-            let blob = blobs
-                .write(&bytes)
-                .await
-                .map_err(|source| HookError::Blob {
-                    what: format!("artifact `{path}`"),
-                    source,
-                })?;
-            let record = PlatformRecord::ArtifactCollected(ArtifactCollectedRecord {
-                execution: key.execution,
-                firing: key.firing,
-                attempt: key.attempt,
-                path: path.clone(),
-                blob,
-                bytes: u64::try_from(bytes.len()).unwrap_or(u64::MAX),
-                digest: digest.to_string(),
-                operation: Some(key.operation_for(ARTIFACT_EFFECT)),
-            });
-            self.records
-                .append(
-                    &self.run_id,
-                    &record,
-                    Some(StagePosition {
-                        execution: key.execution,
-                        firing:    key.firing,
-                    }),
-                )
-                .await
-                .map_err(|source| HookError::Write {
-                    kind: "artifact",
-                    source,
-                })?;
-            sync::lock(already).insert(identity);
             total_bytes = total_bytes.saturating_add(size);
             collected += 1;
         }
         Ok(collected)
+    }
+
+    /// Publish bytes before their record; only a recorded capture enters
+    /// the ledger. Failed writes remain retryable, including after restart.
+    async fn store_artifact(
+        &self,
+        key: CheckpointKey,
+        path: &str,
+        bytes: Bytes,
+    ) -> Result<bool, HookError> {
+        let already = self.collected_artifacts().await?;
+        let digest = BlobHash::new(&bytes);
+        let identity = (path.to_owned(), digest);
+        if sync::lock(already).contains(&identity) {
+            return Ok(false);
+        }
+        let capture = Arc::clone(
+            sync::lock(&self.artifacts.capturing)
+                .entry(identity.clone())
+                .or_default(),
+        );
+        let _capturing = capture.lock().await;
+        // Whoever held the lock before may have recorded this identity.
+        if sync::lock(already).contains(&identity) {
+            return Ok(false);
+        }
+        let size = u64::try_from(bytes.len()).unwrap_or(u64::MAX);
+        self.artifact_writer
+            .write(&self.run_id, &digest, bytes)
+            .await
+            .map_err(HookError::Artifact)?;
+        let operation = key.operation_for(ARTIFACT_EFFECT);
+        let record = PlatformRecord::ArtifactCollected(ArtifactCollectedRecord {
+            execution: key.execution,
+            firing:    key.firing,
+            attempt:   key.attempt,
+            path:      path.to_owned(),
+            source:    ArtifactSource::ObjectStore(digest),
+            bytes:     size,
+            operation: Some(operation.clone()),
+        });
+        let appended = self
+            .records
+            .append(
+                &self.run_id,
+                &record,
+                Some(StagePosition {
+                    execution: key.execution,
+                    firing:    key.firing,
+                }),
+            )
+            .await;
+        if let Err(source) = appended {
+            // The append can reach the store and lose only its response. A
+            // record that landed is this capture; appending it again would
+            // list the file twice.
+            if !self.artifact_recorded(&identity, &operation).await {
+                return Err(HookError::Write {
+                    kind: "artifact",
+                    source,
+                });
+            }
+        }
+        sync::lock(already).insert(identity.clone());
+        sync::lock(&self.artifacts.capturing).remove(&identity);
+        Ok(true)
+    }
+
+    /// Whether the run's records hold this capture's record, read fresh.
+    async fn artifact_recorded(
+        &self,
+        identity: &ArtifactIdentity,
+        operation: &OperationKey,
+    ) -> bool {
+        let Ok(stored) = self
+            .records
+            .read_kind(&self.run_id, PlatformRecordKind::ArtifactCollected)
+            .await
+        else {
+            return false;
+        };
+        stored.into_iter().any(|record| match record.record {
+            PlatformRecord::ArtifactCollected(artifact) => {
+                artifact.path == identity.0
+                    && artifact.source.hash() == identity.1
+                    && artifact.operation.as_ref() == Some(operation)
+            }
+            _ => false,
+        })
     }
 
     /// The artifacts already collected for the run, read once: a file that
@@ -1024,7 +1091,7 @@ impl FabroHooks {
                     .into_iter()
                     .filter_map(|record| match record.record {
                         PlatformRecord::ArtifactCollected(artifact) => {
-                            Some((artifact.path, artifact.digest))
+                            Some((artifact.path, artifact.source.hash()))
                         }
                         _ => None,
                     })
@@ -1351,7 +1418,332 @@ impl ExecutionHooks for FabroHooks {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+
+    use fabro_store::{ArtifactStore, StoredPlatformRecord};
+    use object_store::memory::InMemory;
+    use tokio::sync::Barrier;
+
     use super::*;
+    use crate::artifacts::StoreArtifactWriter;
+    use crate::test_support::MemoryPlatformRecords;
+
+    struct NoHooks;
+    #[async_trait::async_trait]
+    impl ExecutionHooks for NoHooks {}
+
+    struct FlakyRecords {
+        records: MemoryPlatformRecords,
+        fail:    AtomicBool,
+        /// Commit the failing append anyway, as a lost response does.
+        commit:  bool,
+    }
+
+    #[async_trait::async_trait]
+    impl PlatformRecords for FlakyRecords {
+        async fn append(
+            &self,
+            run_id: &RunId,
+            record: &PlatformRecord,
+            position: Option<StagePosition>,
+        ) -> Result<StoredPlatformRecord, PlatformRecordError> {
+            if self.fail.swap(false, Ordering::SeqCst) {
+                if self.commit {
+                    self.records.append(run_id, record, position).await?;
+                }
+                return Err(PlatformRecordError::Store(fabro_store::Error::Io(
+                    std::io::Error::other("test append unavailable"),
+                )));
+            }
+            self.records.append(run_id, record, position).await
+        }
+        async fn read_kind(
+            &self,
+            run_id: &RunId,
+            kind: PlatformRecordKind,
+        ) -> Result<Vec<StoredPlatformRecord>, PlatformRecordError> {
+            self.records.read_kind(run_id, kind).await
+        }
+    }
+
+    struct FlakyWriter {
+        writer: StoreArtifactWriter,
+        fail:   AtomicBool,
+    }
+
+    #[async_trait::async_trait]
+    impl ArtifactWriter for FlakyWriter {
+        async fn write(
+            &self,
+            run_id: &RunId,
+            digest: &BlobHash,
+            bytes: Bytes,
+        ) -> Result<(), ArtifactWriteError> {
+            if self.fail.swap(false, Ordering::SeqCst) {
+                return Err(ArtifactWriteError::Store(fabro_store::Error::Io(
+                    std::io::Error::other("test store unavailable"),
+                )));
+            }
+            self.writer.write(run_id, digest, bytes).await
+        }
+    }
+
+    /// Holds every upload until the test has started all of them.
+    struct GatedWriter {
+        writer:  StoreArtifactWriter,
+        gate:    Barrier,
+        uploads: AtomicUsize,
+    }
+
+    #[async_trait::async_trait]
+    impl ArtifactWriter for GatedWriter {
+        async fn write(
+            &self,
+            run_id: &RunId,
+            digest: &BlobHash,
+            bytes: Bytes,
+        ) -> Result<(), ArtifactWriteError> {
+            self.uploads.fetch_add(1, Ordering::SeqCst);
+            let write = self.writer.write(run_id, digest, bytes);
+            // A second capture of the identity must wait on the first, not
+            // reach this point: time the gate out rather than hang.
+            let _ = time::timeout(Duration::from_millis(200), self.gate.wait()).await;
+            write.await
+        }
+    }
+
+    fn artifact_hooks(
+        root: &Path,
+        run_id: RunId,
+        records: Arc<dyn PlatformRecords>,
+        artifact_writer: Arc<dyn ArtifactWriter>,
+    ) -> FabroHooks {
+        FabroHooks::new(
+            HooksSpec {
+                records,
+                git: RunGitSettings::default(),
+                artifacts: vec!["assets/**".to_string()],
+                test_gates: None,
+                artifact_writer,
+            },
+            Arc::new(NoHooks),
+            run_id,
+            RunKey::new(run_id.to_string()),
+            root.to_path_buf(),
+            Arc::new(petri_store::MemoryRunStore::new()),
+            false,
+            None,
+        )
+    }
+
+    #[tokio::test]
+    async fn artifact_failures_preserve_sources_and_retry_without_false_ledger_entries() {
+        for fail_upload in [true, false] {
+            let root = tempfile::tempdir().unwrap();
+            let run = RunId::new();
+            let store = ArtifactStore::new(Arc::new(InMemory::new()), "artifacts");
+            let records = Arc::new(FlakyRecords {
+                records: MemoryPlatformRecords::new(),
+                fail:    AtomicBool::new(!fail_upload),
+                commit:  false,
+            });
+            let writer = Arc::new(FlakyWriter {
+                writer: StoreArtifactWriter::new(store.clone()),
+                fail:   AtomicBool::new(fail_upload),
+            });
+            let hooks = artifact_hooks(root.path(), run, records.clone(), writer.clone());
+            let key = CheckpointKey {
+                execution: 0,
+                firing:    1,
+                attempt:   1,
+            };
+            let path = "assets/report.bin".to_string();
+            let bytes = Bytes::from_static(b"binary\0payload");
+            let hash = BlobHash::new(&bytes);
+            let error = hooks
+                .store_artifact(key, &path, bytes.clone())
+                .await
+                .unwrap_err();
+            assert!(error.render().contains(if fail_upload {
+                "test store unavailable"
+            } else {
+                "test append unavailable"
+            }));
+            assert!(records.records.records(&run).is_empty());
+            assert!(sync::lock(hooks.collected_artifacts().await.unwrap()).is_empty());
+            assert_eq!(
+                store.get_capture(&run, &hash).await.unwrap().is_some(),
+                !fail_upload
+            );
+            assert!(store.list_for_run(&run).await.unwrap().is_empty());
+            assert!(
+                hooks
+                    .store_artifact(key, &path, bytes.clone())
+                    .await
+                    .unwrap()
+            );
+            assert!(
+                !hooks
+                    .store_artifact(key, &path, bytes.clone())
+                    .await
+                    .unwrap()
+            );
+            let resumed = artifact_hooks(root.path(), run, records.clone(), writer);
+            assert!(
+                !resumed
+                    .store_artifact(key, &path, bytes.clone())
+                    .await
+                    .unwrap()
+            );
+            assert!(
+                resumed
+                    .store_artifact(key, &path, Bytes::from_static(b"changed"))
+                    .await
+                    .unwrap()
+            );
+            assert_eq!(records.records.records(&run).len(), 2);
+        }
+    }
+
+    #[tokio::test]
+    async fn artifact_legacy_resume_preserves_sources_and_new_run_isolation() {
+        let root = tempfile::tempdir().unwrap();
+        let run = RunId::new();
+        let records = Arc::new(MemoryPlatformRecords::new());
+        let store = ArtifactStore::new(Arc::new(InMemory::new()), "artifacts");
+        let key = CheckpointKey {
+            execution: 0,
+            firing:    1,
+            attempt:   1,
+        };
+        let bytes = Bytes::from_static(b"old payload");
+        let hash = BlobHash::new(&bytes);
+        let path = "assets/report.bin".to_string();
+        records
+            .append(
+                &run,
+                &PlatformRecord::ArtifactCollected(ArtifactCollectedRecord {
+                    execution: key.execution,
+                    firing:    key.firing,
+                    attempt:   key.attempt,
+                    path:      path.clone(),
+                    source:    ArtifactSource::SqliteBlob(hash),
+                    bytes:     bytes.len() as u64,
+                    operation: None,
+                }),
+                None,
+            )
+            .await
+            .unwrap();
+        let resumed = artifact_hooks(
+            root.path(),
+            run,
+            records.clone(),
+            Arc::new(StoreArtifactWriter::new(store.clone())),
+        );
+        assert!(
+            !resumed
+                .store_artifact(key, &path, bytes.clone())
+                .await
+                .unwrap()
+        );
+        assert!(store.get_capture(&run, &hash).await.unwrap().is_none());
+        assert!(
+            resumed
+                .store_artifact(key, &path, Bytes::from_static(b"changed"))
+                .await
+                .unwrap()
+        );
+        assert_eq!(records.records(&run).len(), 2);
+
+        // A fork has its own run ID and no inherited capture records. The same
+        // payload must be captured under that run, without a cross-run reference.
+        let fork = RunId::new();
+        let fork_hooks = artifact_hooks(
+            root.path(),
+            fork,
+            records.clone(),
+            Arc::new(StoreArtifactWriter::new(store.clone())),
+        );
+        assert!(
+            fork_hooks
+                .store_artifact(key, &path, bytes.clone())
+                .await
+                .unwrap()
+        );
+        assert_eq!(
+            store.get_capture(&fork, &hash).await.unwrap().unwrap(),
+            bytes
+        );
+        assert!(store.get_capture(&run, &hash).await.unwrap().is_none());
+        assert_eq!(records.records(&fork).len(), 1);
+    }
+
+    #[tokio::test]
+    async fn concurrent_captures_of_one_file_upload_and_record_it_once() {
+        let root = tempfile::tempdir().unwrap();
+        let run = RunId::new();
+        let records = Arc::new(MemoryPlatformRecords::new());
+        let store = ArtifactStore::new(Arc::new(InMemory::new()), "artifacts");
+        let writer = Arc::new(GatedWriter {
+            writer:  StoreArtifactWriter::new(store.clone()),
+            gate:    Barrier::new(2),
+            uploads: AtomicUsize::new(0),
+        });
+        let hooks = artifact_hooks(root.path(), run, records.clone(), writer.clone());
+        let key = |firing| CheckpointKey {
+            execution: 0,
+            firing,
+            attempt: 1,
+        };
+        let bytes = Bytes::from_static(b"same payload");
+        let (first, second) = tokio::join!(
+            hooks.store_artifact(key(1), "assets/report.bin", bytes.clone()),
+            hooks.store_artifact(key(2), "assets/report.bin", bytes.clone()),
+        );
+        let mut outcomes = [first.unwrap(), second.unwrap()];
+        outcomes.sort_unstable();
+        assert_eq!(outcomes, [false, true]);
+        assert_eq!(writer.uploads.load(Ordering::SeqCst), 1);
+        assert_eq!(records.records(&run).len(), 1);
+    }
+
+    #[tokio::test]
+    async fn a_committed_append_whose_response_was_lost_is_recorded_once() {
+        let root = tempfile::tempdir().unwrap();
+        let run = RunId::new();
+        let store = ArtifactStore::new(Arc::new(InMemory::new()), "artifacts");
+        let records = Arc::new(FlakyRecords {
+            records: MemoryPlatformRecords::new(),
+            fail:    AtomicBool::new(true),
+            commit:  true,
+        });
+        let hooks = artifact_hooks(
+            root.path(),
+            run,
+            records.clone(),
+            Arc::new(StoreArtifactWriter::new(store)),
+        );
+        let key = CheckpointKey {
+            execution: 0,
+            firing:    1,
+            attempt:   1,
+        };
+        let bytes = Bytes::from_static(b"payload");
+        assert!(
+            hooks
+                .store_artifact(key, "assets/report.bin", bytes.clone())
+                .await
+                .unwrap()
+        );
+        assert!(
+            !hooks
+                .store_artifact(key, "assets/report.bin", bytes)
+                .await
+                .unwrap()
+        );
+        assert_eq!(records.records.records(&run).len(), 1);
+    }
 
     #[test]
     fn the_selection_keeps_the_smallest_files_within_the_budgets() {

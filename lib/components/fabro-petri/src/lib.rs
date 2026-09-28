@@ -64,6 +64,7 @@
 //! workspace `Cargo.toml` for how they are tracked.
 
 pub mod admission;
+pub mod artifacts;
 pub mod blobs;
 pub mod check;
 pub mod checkpoint;

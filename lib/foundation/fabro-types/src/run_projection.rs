@@ -13,7 +13,7 @@ use strum::{Display, EnumString, IntoStaticStr};
 
 use crate::agent_props::{AgentSessionActivatedProps, StagePromptProps};
 use crate::{
-    AgentBackend, BlobHash, Checkpoint, Conclusion, GitIdentity, InterviewQuestionRecord,
+    AgentBackend, ArtifactSource, Checkpoint, Conclusion, GitIdentity, InterviewQuestionRecord,
     InvalidTransition, ModelRef, ModelUsage, ParallelBranchId, PullRequestCreation,
     PullRequestLink, RunApproval, RunControlAction, RunDiff, RunId, RunSandbox, RunSpec, RunStatus,
     RunTiming, StageCompletion, StageHandler, StageId, StageState, StageTiming, StartRecord,
@@ -59,7 +59,9 @@ pub struct RunProjection {
     pub pending_interviews:    BTreeMap<String, PendingInterviewRecord>,
     /// The files collected from the run's workspaces under
     /// `[run.artifacts] include`, one entry per capture, in the order they
-    /// were recorded. The bytes are in the blob table under `blob`.
+    /// were recorded. Each entry's `source` says where its bytes are: the
+    /// configured artifact store for `object`, the SQLite blob table for
+    /// earlier captures under `blob`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub artifacts:             Vec<RunArtifact>,
     stages:                    HashMap<StageId, StageProjection>,
@@ -75,8 +77,9 @@ pub struct RunArtifact {
     /// The file's path relative to the workspace root.
     pub relative_path: String,
     pub size:          u64,
-    /// The blob that holds the file's bytes.
-    pub blob:          BlobHash,
+    /// Where the file's bytes are stored.
+    #[serde(flatten)]
+    pub source:        ArtifactSource,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -918,6 +921,50 @@ impl RunProjection {
                 self.status_updated_at = ts;
                 Ok(())
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod artifact_tests {
+    use super::RunArtifact;
+    use crate::BlobHash;
+
+    fn artifact() -> serde_json::Value {
+        serde_json::json!({
+            "stage_id": "write@1", "retry": 1,
+            "relative_path": "assets/report.bin", "size": 7
+        })
+    }
+
+    #[test]
+    fn artifact_sources_round_trip_old_and_new_projection_json() {
+        for source in ["blob", "object"] {
+            let mut json = artifact();
+            json[source] = serde_json::json!(BlobHash::new(b"payload"));
+            let decoded: RunArtifact = serde_json::from_value(json.clone()).unwrap();
+            assert_eq!(serde_json::to_value(decoded).unwrap(), json);
+        }
+    }
+
+    #[test]
+    fn artifact_sources_reject_ambiguous_missing_and_invalid_hashes() {
+        let hash = serde_json::json!(BlobHash::new(b"payload"));
+        for fields in [
+            serde_json::json!({}),
+            serde_json::json!({"blob": hash, "object": hash}),
+            serde_json::json!({"blob": hash, "object": null}),
+            serde_json::json!({"object": "not-a-hash"}),
+            serde_json::json!({"blob": "not-a-hash"}),
+        ] {
+            let mut json = artifact();
+            json.as_object_mut()
+                .unwrap()
+                .extend(fields.as_object().unwrap().clone());
+            assert!(
+                serde_json::from_value::<RunArtifact>(json.clone()).is_err(),
+                "{json}"
+            );
         }
     }
 }

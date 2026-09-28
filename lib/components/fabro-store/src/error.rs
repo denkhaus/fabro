@@ -26,6 +26,8 @@ pub enum Error {
     BlobHashConflict { blob_hash: BlobHash },
     #[error("stored blob data does not match requested hash {blob_hash}")]
     BlobIntegrity { blob_hash: BlobHash },
+    #[error("captured content does not match its digest {expected}")]
+    CaptureDigestMismatch { expected: BlobHash },
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
     #[error("Invalid event payload: {0}")]
