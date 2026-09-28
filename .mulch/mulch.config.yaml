@@ -33,6 +33,7 @@ domains:
   llm: {}
   petri: {}
   rust: {}
+  fabro: {}
 governance:
   max_entries: 100
   warn_entries: 150
