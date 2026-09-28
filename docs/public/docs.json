@@ -235,7 +235,6 @@
                 "group": "Run Internals",
                 "icon": "microchip",
                 "pages": [
-                  "GET /api/v1/runs/{id}/checkpoint",
                   "GET /api/v1/runs/{id}/stages",
                   "GET /api/v1/runs/{id}/settings"
                 ]

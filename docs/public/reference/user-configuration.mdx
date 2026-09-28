@@ -192,12 +192,12 @@ Define or override an LLM provider. The keys are the lithos provider record.
 |---|---|---|---|
 | `display_name` | string | required for new providers | Human-readable provider name. |
 | `adapter` | string | `"http"` | lithos adapter id: `http` or `bedrock`. Any other id names a custom adapter the application registered. |
-| `codecs` | array<string> | `["openai-chat"]` | Wire codecs the host speaks, in preference order: `openai-chat`, `openai-responses`, `anthropic-messages`, `gemini-generate`, or `bedrock-converse`. A Chat Completions host needs no line. |
+| `codecs` | `array<string>` | `["openai-chat"]` | Wire codecs the host speaks, in preference order: `openai-chat`, `openai-responses`, `anthropic-messages`, `gemini-generate`, or `bedrock-converse`. A Chat Completions host needs no line. |
 | `base_url` | string | required for new providers | Provider API base URL. The `openai-chat` codec appends `/v1/chat/completions` unless the URL already ends in a version segment. |
 | `auth` | table | required for new providers | Auth scheme: `{ type = "bearer" }`, `{ type = "header", name = "x-api-key" }`, `{ type = "headers" }`, `{ type = "none" }`, or `{ type = "aws" }`. |
 | `enabled` | boolean | `true` | Set `false` to hide a provider from Fabro. `bedrock`, `bedrock-openai`, `litellm`, `modal`, and `ollama` ship disabled. |
 | `priority` | integer | `0` | Higher-priority ready providers win unqualified model and default selection. |
-| `aliases` | array<string> | `[]` | Additional provider names accepted by model routing and fallback config. |
+| `aliases` | `array<string>` | `[]` | Additional provider names accepted by model routing and fallback config. |
 | `default_model` | string | None | The provider's default model id. |
 | `allow_passthrough` | boolean | `false` | Whether `provider/model` selectors may name models the catalog does not list. |
 | `api_key_url` | string | None | Where an operator obtains an API key. Shown by `fabro provider login` and the install flow. |
@@ -224,7 +224,7 @@ aliases. `api_model` is the string sent to the provider and defaults to the id.
 | Key | Type / values | Default | Description |
 |---|---|---|---|
 | `display_name` | string | required for new models | Human-readable model name. |
-| `aliases` | array<string> | `[]` | Additional selectors. Aliases may repeat across providers. |
+| `aliases` | `array<string>` | `[]` | Additional selectors. Aliases may repeat across providers. |
 | `api_model` | string | model id | Wire model identifier sent to this provider. |
 | `limits` | `{ context_tokens, max_output_tokens }` | None | Token limits. |
 | `capabilities` | table | unknown | Per-capability `true`, `false`, or `"unknown"`: `text`, `images`, `audio`, `documents`, `tools`, `reasoning`, `caching`, `cache_routing`, `sampling`, plus `tool_choice = { required, named }`, `response_format = { json_object, json_schema }`, `reasoning_effort = { minimal, low, medium, high, xhigh, max }`, and `speed = { fast, balanced, economical }`. |
@@ -324,7 +324,7 @@ name = "claude-sonnet-4-5"
 
 | Key | Type / values | Default | Description |
 |---|---|---|---|
-| `fallbacks` | table<string, array<string>> | {} | Model-keyed fallback chains. Each value is an ordered list of bare<br />providers, bare model IDs or aliases, or provider-qualified<br />`provider:selector` values. A qualified selector may be a model ID,<br />alias, or provider API ID. Legacy `provider/model` values remain<br />accepted. Each list supports the `...` splice marker at layering time.<br />Fabro selects one chain from the original requested model. A fallback<br />target never activates another model's chain.<br /><br />Model keys stay unresolved in this sparse layer because `fabro<br />validate` is offline and has no server model catalog. |
+| `fallbacks` | `table<string, array<string>>` | {} | Model-keyed fallback chains. Each value is an ordered list of bare<br />providers, bare model IDs or aliases, or provider-qualified<br />`provider:selector` values. A qualified selector may be a model ID,<br />alias, or provider API ID. Legacy `provider/model` values remain<br />accepted. Each list supports the `...` splice marker at layering time.<br />Fabro selects one chain from the original requested model. A fallback<br />target never activates another model's chain.<br /><br />Model keys stay unresolved in this sparse layer because `fabro<br />validate` is offline and has no server model catalog. |
 | `name` | string | None | Model name for workflow runs. |
 | `provider` | string | None | Provider name for workflow model selection. |
 
@@ -399,7 +399,7 @@ tool_timeout = "90s"
 | Key | Type / values | Default | Description |
 |---|---|---|---|
 | `type` | `"stdio"` \| `"http"` \| `"sandbox"` | None | MCP transport type. |
-| `command` | array<string> | None | Command and arguments for `stdio` or `sandbox` transports. |
+| `command` | `array<string>` | None | Command and arguments for `stdio` or `sandbox` transports. |
 | `script` | string | None | Shell script alternative to `command` for process-launching transports. A `stdio` script runs on the host through `sh -c`; a `sandbox` script is evaluated inside the sandbox by non-login Bash. |
 | `url` | string | None | Remote MCP URL for `http` transport. |
 | `port` | integer | None | Sandbox port for `sandbox` transport. |
