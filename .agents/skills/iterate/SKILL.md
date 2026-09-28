@@ -1,707 +1,253 @@
----
-name: iterate
-description: Fabro dev lifecycle in one flow. Use when the user invokes /iterate or asks to start or continue a development cycle - select seed work, build, run code-review, deepen with improve-codebase-architecture when warranted, grill with docs at pivotal forks, and close EVERY cycle with the mandatory self-reflection step that optimizes this skill, records learnings to mulch, and files seeds for new demands. The rust-style-guide skill is the binding Rust coding policy in every phase.
----
-
 # /iterate (fabro only)
-
-## Scope — local-only agent skill (user directive 2026-09-16)
-
-This skill is a LOCAL session instrument for the human-side agent. It is
-NEVER referenced from, loaded by, or wired into fabro workflows. Skills
-that a fabro workflow's agent stages should use MUST be vendored into
-`.fabro/skills/<name>/` in the repo (like `rust-style-guide` and
-`improve-codebase-architecture`) — only there can a run's LLM agent
-recognize and load them.
 
 One development cycle, end to end. The user starts a cycle by invoking
 /iterate; the agent drives everything else. Chat replies in German,
 all written artifacts in English.
 
-## Coding policy (Rust)
+Scope: LOCAL session instrument for the human-side agent. Fabro workflows
+never load or reference this skill; skills a run's agent stages need are
+vendored into `.fabro/skills/<name>/`.
 
-The `rust-style-guide` skill is THE binding Rust coding policy for all
-Rust work in this repo - upstream code, our platform changes, and local
-features share ONE style. It is the same guide the upstream workflow
-agents use (supporting files in `.fabro/skills/rust-style-guide/`). It is
-central in every phase below: grill against it, plan against it, build
-with it, review by it, deepen with it. A deviation from the guide is a
-decision, not an accident - it needs the user plus an ADR.
+## Routing — where knowledge lives
 
-## Phase 0 - Orient (always, cheap)
+This file carries the LOOP and the BINDING RULES. Expertise lives in the
+stores it belongs to; reach them by phase need:
 
-- One world (user directive 2026-09-09; retirement landed 2026-09-05):
-  all work - platform, engine, product, docs - lives on `denkhaus` in
-  the main checkout (`git branch --show-current` must say `denkhaus`).
-  The product/lab branches are gone (archived as tags
-  archive/denkhaus-lab-final, archive/meta-denkhaus-lab-final); there is
-  nothing to switch between. Local machine = the dev/agent checkout;
-  runs execute on the PRODUCTION fabro server `https://mirtuell.net`
-  (user directive 2026-09-13: ALWAYS work against mirtuell.net - every
-  line query carries `--server https://mirtuell.net` (`fabro ps`,
-  `inspect`, `events`, `pr view`); never mistake the local server's
-  run list for the line). The local server (127.0.0.1:32276) is for
-  TESTS only. NEVER git worktrees - branch switches happen in the main
-  checkout.
-- Server-side observation: rootprint (skill `rootprint`) queries the
-  production server's logs (fabro-tofu deployment in the mirtuell
-  cluster) without deployment access - use it to orient on line health
-  and diagnose incidents (hook failures, scheduler/gate behavior,
-  provider warns, log-noise shifts). Two gotchas: `severity_text` is
-  unreliable (the collector maps everything to ERROR - filter on body
-  text, e.g. `-q 'service_name:fabro AND body:"WARN"'`), and INFO is
-  not ingested (curated run-lifecycle INFO requested, fabro-tofu
-  seed fabro-tofu-cd74) - run timelines come from `fabro ps`/events, not
-  logs. Every real log finding becomes a seed the same turn; nothing
-  stays observation-only.
-- Rootprint correlation per run (user directive 2026-09-15): for every
-  run under evaluation, join the run's rootprint log window
-  (`service_name:fabro`, `severity_number:17`/`:13`, deduped by
-  `body.message` pattern, run-id scoped where possible) with the run's
-  journal painpoints. Engine logs and agent journals are two views of
-  the same run: engine symptoms (hook exit 127, provider structured-
-  output warns, pipeline errors) explain or extend what the agents
-  reported, and agent findings often name the engine defect the logs
-  show. Correlated findings land in ONE seed carrying both halves;
-  never report logs without checking whether a journal already names
-  the cause, or vice versa.
-- Line friction score (deterministic, 2026-09-16): run
-  `nu .fabro/scripts/friction-score.nu` once during orientation. It
-  computes a 0.0-1.0 systemic-friction score from tracker + journal
-  metrics (drain deficit, backlog stagnation, starvation, stuck claims)
-  and a verdict: `normal` (<0.30), `grind` (0.30-0.60),
-  `architecture-due` (>=0.60). The verdict gates Phase 4 deepening and
-  is the trigger condition of the architect workflow (fabro-562a);
-  journal the components when a cycle ends in `grind` or worse so the
-  trend stays visible.
-- Is a workflow cycle in flight? (`fabro ps`, or a `just run`/`just
-cycle` process). Serialization principle (ADR-0015): while the
-  develop/revisor workflow works the tracker, this agent session does
-  NOT claim seeds - one line, one executor. Wait for terminal state or
-  ask the user. The line's work queue is the @fabro-assigned view
-  (`seeds ready --assignee fabro`, ADR-0018): a running pass plus an
-  empty queue is fine (fail-closed park between cycles); a parked pass
-  with a NON-empty queue, a parallel pass, or a lost on_overlap are
-  incidents (see standing rules).
-- Interrupted cycle? Reconstruct BEFORE selecting: `git status` (uncommitted
-  diff is the interrupted operation) + `seeds list --status in_progress` tell
-  you what was mid-flight; continue that work instead of picking a new seed.
-- `seeds ready` and the open-seed list for candidates, ALWAYS with
-  `--limit 500` on any `seeds list`: the default caps at 50 silently, and
-  200 no longer suffices either (2026-09-16: the open count passed 283
-  and a 200-capped view hid today's fresh revisor seeds from dedup;
-  earlier: capped 50 while the tracker held 447, fabro-c16d/fabro-5ff7).
-  `seeds search` is AND-strict over title/description: ONE keyword per
-  query (broaden by dropping words), `seeds show <id>` for id lookups -
-  never `seeds search <id>` (2026-09-16 revisor sessions). `ml prime
-<domain>` only when the cycle touches that domain.
-- Seeds are git-native: `git fetch` + `git pull --ff-only` BEFORE reading
-  `seeds` state when another machine may have run the line - the tracker
-  view is branch-local and goes stale (2026-09-08: fabro-16ff read as
-  open from a pre-pull queue dump although the other machine's run had
-  closed it hours earlier; cleanup decisions must come from post-pull
-  state).
+- `ml prime <domain>` — incident expertise and conventions. Domains you
+  will need: `rust` (edit mechanics), `testing` (verification discipline),
+  `git` (push/PR discipline), `tooling` (tracker hygiene, bench landing),
+  `nu` (scripting pitfalls), `engine` (over limit — prefer specific domains).
+- `seeds show <id>` / `seeds search <term>` — actionable work, one keyword
+  per search (AND-strict).
+- ADRs in `docs/lab/adr/` — decisions. Ones this skill leans on: 0008
+  (graph+prompts+scripts as one unit), 0009 (stage-envelope family order),
+  0012 (dogfooding), 0015 (serialization, one line one executor), 0017
+  (tool-agnostic engine), 0018 (ownership boundary), 0019 (capability
+  gate), 0021 (fork_line_recovery pattern), 0022 (judgment pre-screens).
+- `docs/internal/*-strategy.md` + AGENTS.md — read before touching the
+  matching area (logging, events, testing, secrets, migrations, errors,
+  React effects).
+- `.agents/skills/rust-style-guide` — THE binding Rust policy, identical
+  for upstream and fork code.
 
-## Phase 1 - Select
+## Phase 0 — Orient (always, cheap)
 
-- Pick the highest-value open seed, respecting family order
-  (stage envelope, ADR-0009: 900e -> 47b5 -> e47c -> e804 -> ba96),
-  blockers (`!`), and the user's current focus.
-- If the choice or the design is pivotal or unclear: run a
-  grill-with-docs session FIRST (grilling + domain-modeling; evidence =
-  CONTEXT.md, ADRs, seeds, code, rust-style-guide). Never guess at
-  weichenstellende decisions - they belong to the user.
-- Public-contract NAMES (graph attributes, API fields, tool names, CLI
-  flags) are pivotal too: name the capability, not the consumer's motive
-  (2026-08-31 lesson: `revises` -> `inspects`, user decision AFTER
-  implementation - cheap only because nothing was committed). Surface
-  naming for user decision in Phase 1 or before the first commit,
-  never settle it silently in the diff.
-- Plan against the guide: the plan names the guideline pages the design
-  must satisfy (newtypes, enums-vs-traits, error taxonomy, async task
-  lifecycle, ...). A design that must deviate is itself a pivotal fork -
-  put it to the user in the grill session, never drift silently.
-- Executor decision (user directive 2026-09-06, extends ADR-0013
-  dogfooding + ADR-0015): the agent implements NO seeds itself anymore
-  - product AND engine/platform seeds alike go to the autonomous line.
-    The conductor is cron-activated and drives the develop workflow; it
-    picks, claims, and implements seeds on its own schedule. Manual
-    `just run develop` / `just cycle` starts are repair actions only,
-    when the autonomous line is down, and with the user's knowledge.
-    This agent's /iterate job: orient and monitor the autonomous line,
-    grill pivotal design forks with the user and write the agreed
-    design INTO the seed BEFORE the workflow implements it, review
-    landed diffs, revise the autonomous workflows themselves (standing
-    directive), reflect, and report. The workflow owns implementation,
-    not review or reflection.
-- Claim the seed: `seeds update <id> --status in_progress` — DIRECT
-  implementation only. In delegation mode the goal names the seed and
-  the RUN's planner claims it; an agent-side claim would remove it from
-  `seeds ready` and the planner would find nothing (cycle-2 insight,
-  2026-09-05).
+- One world: everything works on branch `denkhaus` in the main checkout
+  (`git branch --show-current` must say `denkhaus`). Runs execute on the
+  PRODUCTION server `https://mirtuell.net` — every line query carries
+  `--server https://mirtuell.net`. The local server (127.0.0.1:32276) is
+  for TESTS only. Branch switches happen in the main checkout; git
+  worktrees never.
+- `git fetch` + `git pull --ff-only` BEFORE reading tracker state when
+  another machine may have run the line — the tracker view is branch-local.
+- Line state: `fabro ps` (mirtuell). A running pass plus an empty
+  `seeds ready --assignee fabro` queue is fine (fail-closed park); a parked
+  pass with a non-empty queue, a parallel pass, or a lost `on_overlap:skip`
+  is an incident. While the workflow works the tracker, this session
+  claims nothing — one line, one executor.
+- Interrupted cycle: reconstruct BEFORE selecting — `git status` plus
+  `seeds list --status in_progress` name the mid-flight work; continue it.
+- Tracker reads always carry `--limit 500` (`seeds list` caps at 50
+  silently). `seeds ready` for candidates; `seeds show <id>` for ids.
+- Rootprint (skill `rootprint`) observes the production server: filter on
+  body text, `severity_text` is unreliable; INFO is not ingested, so run
+  timelines come from `fabro ps`/events. For EVERY run under evaluation,
+  correlate the run's rootprint window with its journal painpoints and
+  land findings in ONE seed carrying both halves.
+- Friction score: run `nu .fabro/scripts/friction-score.nu` once. Verdicts:
+  `normal` (<0.30), `grind` (0.30–0.60), `architecture-due` (>=0.60) —
+  gates Phase 4; journal the components when a cycle ends in grind.
 
-## Phase 2 - Build
+## Phase 1 — Select
 
-- `just up` snapshots the WORKING TREE into the local image (build-image
-  builds from the checkout): running it mid-edit ships half-done features
-  into the staging image (2026-09-22: a WIP fabro_ask rode the image).
-  Run it from a landed/clean state, or accept and note the WIP. And a
-  handoff's stack claim is verified, not trusted: `curl -s -o /dev/null
--w "%{http_code}" http://127.0.0.1:32276/install/session` — 401 means
-  UNCONFIGURED (install mode), 404 means configured; the 2026-09-22
-  handoff claimed a fresh configured stack while the volume had been
-  empty since 09-17.
+- Pick the highest-value open seed respecting family order (ADR-0009:
+  900e -> 47b5 -> e47c -> e804 -> ba96), blockers (`!`), and the user's
+  focus.
+- Pivotal or unclear choice/design: grill-with-docs FIRST (grilling +
+  domain-modeling; evidence = CONTEXT.md, ADRs, seeds, code, guide).
+  Weichenstellende decisions belong to the user. Public-contract NAMES
+  (graph attributes, API fields, tool names, CLI flags) are pivotal too:
+  name the capability, surface naming for user decision before the first
+  commit.
+- Plan against the guide: name the guideline pages the design must
+  satisfy. A design that must deviate is itself a pivotal fork.
+- Executor decision (directive 2026-09-06): this agent implements NO
+  seeds — product and engine/platform work goes to the autonomous line.
+  This session orients, monitors, grills pivotal forks (writing the agreed
+  design INTO the seed before the workflow implements it), reviews landed
+  diffs, revises the autonomous workflows, reflects, reports. The
+  conductor claims seeds; an agent-side claim would empty the planner's
+  queue. Claim (`seeds update --status in_progress`) only in direct-mode
+  bootstrapping exceptions (see Standing rules).
 
-- Bench/tooling scripts with a deterministic-reset step (workbench
-  seed-ensure's `git reset --hard origin/main`) WIPE uncommitted edits to
-  themselves when run mid-edit (2026-09-28, twice: once by the script's
-  reset, once by a hand-rolled landing sequence that reset before
-  committing). Rules: such scripts REFUSE dirty trees (guard in step 0);
-  script edits LAND via the one-command dance (`just land` in fabro-test,
-  scripts/land.nu) BEFORE the next run — edit -> branch -> commit -> push,
-  never reset first; a merge-504 from gh can be a FALSE negative (recheck
-  PR state = MERGED before failing).
-- Nu interpolated strings treat EVERY bare `(...)` as a subexpression:
-  prose parens like `(fabro-1a41, guards investigation)` PARSE as list
-  syntax and explode at RUNTIME ('Command ... not found') — nu --ide-check
-  cannot catch this class. Escape literal parens `\(...\)`; the
-  mechanical net is lint-nu's bare-paren-check (fabro bffd0ce43). Two
-  same-class bench crashes on 2026-09-28 before the rule existed.
-- Deterministic-script-first for loop assets (2026-09-16 lesson set):
-  when a prompt clause requires JUDGMENT over mechanical data (grep
-  history, resolve paths, compute metrics), do not sharpen the prose -
-  replace the clause with a script that prints a JSON verdict
-  (`.fabro/scripts/`: dup-run-check.nu, friction-score.nu, prompt-lint.nu
-  are the proven shape; claim-check.nu is the filed successor). The
-  prompt keeps only the call + verdict routing. Rationale: prompt-side
-  mandates get skipped at reasoning_effort=low (fabro-4c81 evidence);
-  scripts do not. Authoring rules: `nu -c` snippets in prompts must be
-  single-quoted or file-based ($-vars die in double quotes, fabro-2904);
-  never write and execute an edited script in one shell call (write/run
-  race, fabro-dd4e); new shared loop scripts live in `.fabro/scripts/`
-  and must pass `just lint-nu`.
-- Seeds BEFORE implementation (user directive 2026-08-27): file the seed
-  or update the existing one with the agreed design BEFORE writing code.
-  If implementation goes wrong, the plan must already be durable in the
-  tracker — design decisions never live only in chat or in the diff.
-  Close/update the seed with evidence after the work lands.
-- Rust changes (platform AND local features): load the rust-style-guide
-  skill FIRST - `guidelines.md` plus only the pages the task needs, and
-  `workflows/new-rust-project.md` when creating or configuring a crate.
-  Write code that conforms from the start; do not retrofit style after
-  review. MECHANICAL GATE (user directive 2026-09-06, after the wait.rs
-  rework round): reading SKILL.md + the TOC is NOT enough - the actual
-  guideline PAGES for the diff (async, errors, logging, naming, testing,
-  ...) are read in the SAME turn as the design, BEFORE the first Rust
-  edit cell, and their names go into the session notes for the cycle
-  report. A Rust edit without prior page load is a process defect even
-  when tests pass.
-- Platform/engine change: ALSO delegated to the autonomous line
-  (user directive 2026-09-06) - PR #28 (fabro-tool, b1b6df41f) proved
-  the develop workflow ships engine Rust. This agent feeds the seed
-  with pointers (files, trait seams, guideline pages) instead of
-  writing the code. Direct code edits happen only when the user
-  explicitly assigns them to this agent in chat.
-- Engine+workflow validation: run the develop
-  workflow via the wrapper (`just run <workflow> ...`, or `just cycle`
-  for develop+revisor; ADR-0015: the wrapper no longer runs an ask
-  review - the revisor owns revisioning); quality gates run inside the run.
-- Probe-rig placement (2026-09-28, fabro-6558 session): workspace-relative
-  hook/stage scripts in a probe workflow resolve against the RUN TARGET
-  checkout, not the workflow-source ref - a probe living only on a side
-  branch dies (nu: file not found) when the run targets main. Either land
-  the probe on the target branch first, or create the run with
-  --target OWNER/REPO@<probe-branch>. Nu verify scripts get pos AND neg
-  dry-runs (fake ctx in a temp dir) before any run - nu `and`-chains hide
-  bare-identifier bugs (`$envr` vs `envr`) that only the neg case exposes.
-- ADR-0008: change graph, prompts, scripts, and settings as ONE unit
-  in the same change.
-- Inserting an item BEFORE a struct via an anchor on the struct's own
-  line detaches the struct's derive/attribute block onto the NEW item
-  (fabro-09ea, 2026-09-02: the enum landed between `#[derive(...)]` and
-  `pub struct Automation` — duplicate-impl and missing-derive errors).
-  When the anchor is an item's declaration line, check the lines ABOVE
-  the anchor belong to it, and include or explicitly re-attach them.
-- Apply file edits as single-flow assert->write cells (fabro-8d30a,
-  2026-09-02): a Python edit cell whose write_text sits in an early-exit
-  branch silently drops the edit — the OpenAPI path block and a struct
-  field were both lost this way and only the compiler/codegen revealed
-  them minutes later. One cell, one write, assert before it; never a
-  conditional write path. Verify with a grep of the written anchor
-  immediately after the cell.
-- Fork-to-edge checklist before the first commit (fabro-7461, 2026-09-02):
-  when the user approved a design with numbered forks (loop, fail modes,
-  gate routing), re-check EACH fork is literally visible in the artifact
-  (an edge, an attribute, a prompt line) — the revisor's approved LOOP
-  was missing from the first graph draft; only the spec reviewer caught
-  it. Approved-but-invisible forks are the most expensive class of drift
-  because everything else looks done.
-- English everywhere written; no inline shell logic in the justfile
-  (scripts/\*.nu only); shell_quote for sandbox command strings.
-- After programmatic (slice/regex) edits to large files, verify uniqueness
-  of the touched definitions before building: a mis-anchored slice
-  duplicated a ~300-line test region in fabro-4556 and only the compiler
-  caught it; counting `fn <name>` occurrences is cheaper than
-  checkout-restore-and-reapply.
-- Adding a struct field across a crate: do NOT regex-sweep struct-literal
-  sites by grep — run the test compile (`cargo nextest ... --no-run`) and
-  use the compiler's missing-field list as the worklist. A ba96 regex pass
-  mis-injected into `impl` blocks and `-> Type {` return positions and
-  needed three fix rounds; the compiler enumerates exactly the value
-  positions. Same class: when generating Rust string fixtures from Python
-  heredocs, print/verify the written literal (or test-compile it) before
-  building — escape handling silently produced invalid patch fixtures and
-  space-run diagnostics (ba96, 2026-09-03).
+## Phase 2 — Build (delegation mode: feed the seed, not the diff)
 
-### API workflow, host-condition notes (2026-09-23)
+- File the seed with the agreed design BEFORE any code exists — design
+  decisions live in the tracker, never only in chat or the diff.
+- Feed implementation seeds with pointers: files, trait seams, guideline
+  pages. Platform/engine changes are line work too (PR #28 proved it).
+- Rust work (when directly assigned): mechanical gate — read SKILL.md AND
+  the guideline pages covering the diff in the SAME turn, before the first
+  Rust edit cell; name the pages in the cycle report.
+- Loop assets are deterministic-script-first: a prompt clause requiring
+  judgment over mechanical data becomes a script that prints a verdict
+  (`.fabro/scripts/`, `just lint-nu` for new nu scripts; prompts keep only
+  the call + verdict routing). Never write and execute an edited script in
+  one shell call.
+- Probe rigs: workspace-relative hook/stage scripts resolve against the
+  RUN TARGET checkout — land the probe on the target branch first or
+  create with `--target OWNER/REPO@<probe-branch>`. Nu verify scripts get
+  positive AND negative dry-runs before any run.
+- `just up` ships the working tree into the local image: run it from a
+  landed/clean state. A handoff's stack claim is verified
+  (`.../install/session`: 401 = unconfigured, 404 = configured).
+- Edit mechanics (anchors above items, one-cell assert->write, slice
+  uniqueness, compiler-as-worklist, fixture verification): `ml prime rust`.
 
-- TS client regen (`lib/packages/fabro-api-client`) needs Java; hosts
-  without a working `java` regenerate via Docker with the SAME pinned
-  generator (`docker run --rm -v "$PWD:/local" -w /local
-openapitools/openapi-generator-cli:v7.20.0 generate -i <spec> ... -o
-/local/lib/packages/fabro-api-client/src`), then `bun run
-scripts/normalize-generated.ts`, then fix root-owned output files via
-  an alpine chown sidecar (bun re-creates files through directory write
-  access, so normalize itself may still succeed).
+## Phase 3 — Review
 
-## Phase 3 - Review
+- Run the code-review skill on the diff since the base point (standards
+  axis = rust-style-guide + strategy docs; spec axis). Freeze the diff to
+  a patch file first; both axes review the frozen snapshot.
+- Proof of work: the cycle report NAMES the guideline pages loaded for
+  the diff and the verification commands actually run.
+- Fork-feature regression check: run the fork-only presence suites
+  (`cargo nextest run -p fabro-workflow -- fork_seam` + newer fork-only
+  files) on the reviewed tree. Every NEW fork feature carries a presence
+  pin (fork-only test file + touchpoints row); a pin-less fork feature
+  ships only with a filed seed. Red fork-only test = landed fork feature
+  regressed: fix or revert, never relax the test.
+- Landed prompt diffs get a FACT-CHECK against repo reality: claimed
+  branches, paths, command behavior. Prompt hygiene: workflow prompts
+  land WITHOUT seed-id literals, run ids, PR numbers, commit shas, dated
+  cost narratives, or machine-specific paths (`.fabro/workflows/**`);
+  branch/merge facts belong in PROJECT_FACTS. The mechanical net is the
+  prompt-lint evidence ban.
+- Verify a reviewer's factual premise in code before fixing; the same for
+  revisor seed citations (check the cited seed's premise AND
+  implementation status). A closed seed whose demand is invisible in any
+  diff: grep `.fabro/journal` + `.fabro/revisions` for the id before
+  reporting it lost; an undocumented closure is itself a finding.
+- Tool-call misuse by agents is BOUNDARY evidence, not prompt material:
+  fix the boundary (validation naming property paths, contract
+  ergonomics), file the boundary seed in the same session.
+- Revise the autonomous workflows after every delegated cycle: inspect
+  the runs' journals and stage outcomes; every painpoint lands as a seed,
+  a skill edit, or an explicit no-action note in the cycle report.
+  `fabro ask <run-id>` improve-review occasionally (~every 5th cycle).
+- Verification discipline (unpiped commands, full reruns, sequential
+  load, failure-set diffs, clean-tree controls, simulation safety,
+  e2e-profile traps): `ml prime testing`.
 
-- EXIT-CODE-SAFE VERIFICATION (2026-09-22, fabro-43cf; three MORE
-  incidents 2026-09-28 incl. a masked `just up` failure and a masked
-  tofu error): `cmd | tail -N` reports tail's exit code (0) — the
-  failure behind the pipe reads as green, and a bash-done follow-up
-  then claims exit:0 for a failed deploy. Verification AND deploy/build
-  commands run UNPIPED (the bash() handle captures full output; tail
-  belongs on read-only inspection only). Same class: after fixing a
-  missing-field compile error, re-run the FULL workspace check before
-  believing green — the compiler's missing-field list is per-crate and
-  the next crate's site is only reported by the next full run
-  (fabro-6558: third RuntimeSpec site surfaced only in just up's release
-  build). Same class: mock impls of crate
-  traits copy signatures FROM THE TREE, never from memory or the old
-  branch (unlink_run_parent param count changed under us mid-port).
+## Phase 4 — Deepen (conditional)
 
-- Run a code-review skill session on the diff since the base point
-  (standards axis + spec axis). Fix findings before continuing.
-- Review the FROZEN diff: snapshot `git diff HEAD` (plus untracked files)
-  to a patch file and point both subagents at it. Do not start applying
-  one axis's findings while the other axis still reviews the live tree —
-  a drifting tree makes the spec axis report phantom breakage (e47c
-  lesson, 2026-09-02).
-- Clean-tree control experiments (stash to prove a failure pre-exists):
-  snapshot the working diff to a file FIRST, run the control, then verify
-  restoration by comparing `git status` before/after. Never suppress
-  `git stash pop` output — a silently dropped pop can lose fixes and
-  surface only at final verification (e47c lesson, 2026-09-02).
-- Red/green-case SIMULATIONS on throwaway branches are the same class
-  (fabro-1dae, 2026-09-02): a `git add -A <scope>` + commit + reset
-  --hard cycle on the sim branch silently swept uncommitted review
-  fixes into the sim commit and destroyed the unstaged rest. Before any
-  simulation: stash the working tree (or commit first), snapshot the
-  diff, then cut the sim branch from a CLEAN tree; restore and VERIFY
-  byte-identity (the workflow.fabro closing brace has no trailing
-  newline — a whole-line `sed` can eat structural bytes).
-- PROOF OF WORK (user directive 2026-08-27, after the fabro_run_logs
-  cycle skipped the guide): the cycle report NAMES the guideline pages
-  loaded for the diff and the verification commands actually run
-  (tests/clippy/rustfmt per package). A report without both means the
-  review did not happen - a skipped guide load is a process failure,
-  even when tests pass (the fabro_run_logs cycle shipped two logic bugs
-  - inverted severity ordering, ISO-dash timestamp check - that a
-    guide-first pass would have caught at design time).
-- The standards axis IS rust-style-guide (plus the AGENTS.md strategy
-  docs): reviewers load `workflows/code-review-refactor.md` and the
-  guideline pages covering the diff. Guide findings are findings, not
-  opinions.
-- FORK-FEATURE REGRESSION CHECK (user directive 2026-09-13): run the
-  fork-only presence suites on the reviewed tree (`cargo nextest run -p
-fabro-workflow -- fork_seam` + any newer fork-only test files) and
-  check every NEW fork feature in the diff carries a presence pin
-  (fork-only test file + touchpoints row). A red fork-only test means
-  a landed fork feature regressed — fix or revert, never relax the
-  test; a pin-less fork feature ships only with a filed seed for the
-  missing pin (fabro-8ee1/00ffd60f6 class).
-- Landed prompt diffs get a FACT-CHECK against repo reality (2026-09-15,
-  PR #159): a workflow-prompt change that reads plausible can encode a
-  wrong repo fact - the duplicate-run preflight shipped grepping
-  origin/main while the line merges run PRs into denkhaus, a silent
-  no-op guard. Verify claimed branches, paths, and command behavior in
-  the tree; branch/merge assumptions belong in PROJECT_FACTS, never
-  hard-coded literals in stage prompts. PROMPT HYGIENE (user directive
-  2026-09-15, seed fabro-41de): workflow prompts land WITHOUT seed-id
-  literals - status assertions about tracker state rot, provenance
-  lives in seeds/journals/ADRs; flag id literals in reviewed prompt
-  diffs. PROMPT ABSTRACTION (user directive 2026-09-16, extends
-  fabro-41de to the full evidence class): workflow assets stay
-  ABSTRACT and PROJECT-AGNOSTIC without endangering function - no run
-  ids, PR numbers, commit shas, dated cost narratives, or
-  machine-specific paths in .fabro/workflows/\*\* (prompts, graphs,
-  tomls, script message strings; facts carriers may state project
-  facts, not evidence archaeology). Every agent editing a prompt must
-  know this is forbidden; the rule's evidence belongs in the seed's
-  Basis line, never the prompt. Flag every such literal in reviewed
-  prompt diffs; the mechanical net is the prompt-lint evidence ban
-  (fabro-41de extension).
-- Architecture passes have TWO disjoint output modes: the AUTONOMOUS
-  architect workflow writes markdown reviews under
-  .fabro/architecture/reviews/ plus seeds - it NEVER builds the
-  interactive improve-codebase-architecture skill's HTML report
-  (user directive 2026-09-16). The HTML report + localhost server is
-  exclusively the interactive skill's user-facing artifact; skip it in
-  any headless/agent context. The architect workflow LOADS the
-  improve-codebase-architecture skill itself (vendored under
-  .fabro/skills/, user decision 2026-09-16 - it achieves the best
-  results); iterate is a purely LOCAL instrument and anchors nothing
-  inside workflows (fabro-ac78).
-- Verify a reviewer's FACTUAL premise in code before fixing (e804
-  lesson, 2026-09-02): the spec axis claimed raw blob:// refs reach the
-  tool; the dispatch path had already resolved them to file:// pointers.
-  The premise was wrong, but it exposed an adjacent hardening gap that
-  WAS real. Read the call path first, then fix what is actually true.
-  Same rule for REVISOR reviews and their seed citations (fabro-01b9,
-  2026-09-09): review 01M22PCGN4 rec 8 justified a change with 'open
-  seed fabro-01b9' whose demand the tree had already implemented since
-  619765c63 (qualitygate lite path). Before filing, extending, or
-  assigning from a review rec, verify the cited seed's premise AND its
-  implementation status against the tree; close stale seeds with the
-  evidence, never implement them again.
-  CLOSED seeds are no exception (a0e3 lesson, 2026-09-09): a closed seed
-  whose demand is not visible in any diff may be an absorption/stale
-  closure whose reason lives ONLY in a revisor journal - grep
-  .fabro/journal + .fabro/revisions for the seed id BEFORE reporting it
-  as lost work; if the closure is undocumented anywhere, that itself is
-  a tracker-hygiene finding (the closure reason must be recoverable).
-- Clippy failures on UNTOUCHED files after mixing stable builds with the
-  pinned nightly can be stale-cache artifacts (e804): snapshot the diff
-  (including untracked files - stash ^3 parent carries them) BEFORE a
-  clean-tree control, and re-run the lint on the clean tree before
-  believing the failure.
-- Tool-call misuse by agents is BOUNDARY evidence, not prompt material (user
-  review 2026-09-06): when an agent repeatedly drops required fields or
-  guesses payload shapes, fix the boundary first — verbose validation errors
-  naming property paths (fabro-e4ac) and contract ergonomics that accept the
-  natural payload (fabro-528b: workflow_source-only specs). Prompt example
-  fixes are stopgaps only; the boundary seed is filed in the same session.
-- REVISE THE AUTONOMOUS WORKFLOWS (user directive 2026-09-05, extended
-  same day): after every delegated cycle or conductor pass, inspect the
-  journals and stage outcomes of the AUTONOMOUS runs themselves —
-  revisor, conductor, merge-upstream — because none of them has its own
-  revisor; findings that only surface in a run's own journal (tool
-  walls, write drops, prompt defects, orchestration gaps) die silently
-  otherwise. Every such painpoint must land as a seed, a skill edit, or
-  an explicit no-action note in the cycle report - never in chat only.
-  A full `fabro ask <run-id>` improve-review is NOT needed every cycle
-  but is worth running occasionally (e.g. every 5th cycle or when the
-  journals show recurring unresolved painpoints).
-- LOCAL VERIFICATION SEQUENCING (2026-09-17): never run a full nextest
-  suite and the pinned-nightly clippy concurrently - the double compile
-  load made the whole pebble_agent battery time out against the tight
-  fabro-workflow default watchdog (2s x 3) and looked like a regression;
-  heavy verification commands run SEQUENTIALLY. When the tree already has
-  known-red tests (clean-tree-control proven), verification is by
-  failure-set DIFF against the stash control, not plain green.
-- E2E-test verification (2026-08-31 lesson, fabro-47b5): a green
-  `--profile e2e` run can be a NO-OP for twin-only tests
-  (NEXTEST_PROFILE=e2e => TestMode::Strict => e2e_test(twin) prints
-  "skipping" and returns Ok) — run twin tests in the DEFAULT profile.
-  And tests/it's `LlmCodergenBackend`/`make_llm_backend` seam never
-  builds agent sessions: session-level features need httpmock + the
-  REAL `AgentApiBackend` (wire-body asserts are the strongest proof).
+- Standing path: the autonomous architect workflow fires on its own
+  schedule (self-gated by friction, 48h cooldown) and files its own
+  seeds. Fire it or wait for cron BEFORE any manual
+  improve-codebase-architecture pass; the manual skill is the fallback
+  (server down, workflow broken) or on explicit user request.
+- Architect scope is binding: findings restructure ONLY the fork's own
+  surface (`.fabro/workflows/**`, `.fabro/scripts/**`, fork-only files,
+  our tooling). Upstream-owned `lib/**`/`apps/**` is observable, never
+  restructurable. Apply the same filter when reviewing architect findings.
+- Deepen when review surfaced structural smells OR the Phase 0 verdict is
+  `architecture-due`. `grind` deepens only on smells; `normal` never
+  deepens on score alone. Judge proposals against the guide and
+  codebase-design vocabulary. The AUTONOMOUS architect writes markdown
+  reviews + seeds only — the interactive skill's HTML report is
+  exclusively the interactive skill's artifact.
 
-## Phase 4 - Deepen (conditional)
+## Phase 5 — Integrate
 
-- The autonomous architect workflow (`.fabro/workflows/architect/`,
-  2026-09-16) is the standing path: it self-gates on the friction score
-  (48h cooldown) and files its own seeds. Fire it (or wait for its cron)
-  BEFORE running a manual improve-codebase-architecture pass; the manual
-  skill pass is the fallback when the flow cannot run (server down,
-  workflow broken) or the user wants interactive grilling.
-- ARCHITECT SCOPE (user directive 2026-09-17, binding): architect
-  findings may restructure ONLY the fork's own surface - `.fabro/workflows/**`,
-  `.fabro/scripts/**`, fork-only files (presence-pin pattern), our tooling.
-  Upstream-owned `lib/**`/`apps/**` code is observable, never restructurable
-  (the fork depends on upstream merges; big refactors of upstream code tear
-  apart at the next merge). Reframe upstream-restructuring findings to the
-  fork surface or drop them; apply the same filter when REVIEWING architect
-  findings (fabro-90ae class).
-- Deepen when EITHER holds: (a) review surfaced structural smells or the
-  touched area needs design sharpening, OR (b) the Phase 0 friction
-  score verdict is `architecture-due` (>=0.60) - systemic grind is the
-  deterministic warrant for an architecture pass even without
-  cycle-local smells (2026-09-16: the manual pass after grind lifted
-  drain/inflow 0.43 -> 0.79 and preceded 4 zero-seed revisor passes).
-  `grind` (0.30-0.60) deepens only when smells exist; `normal` never
-  deepens on score alone. Skip when the cycle was mechanical and the
-  verdict is `normal` - not every cycle needs this.
-- Judge deepening proposals against the guide as well: enums-vs-traits,
-  newtype vs primitives, error taxonomy and layer boundaries, public
-  API evolution, module visibility. codebase-design supplies the
-  vocabulary (depth, seam); rust-style-guide names the target shape.
+- Commit code BEFORE `seeds sync` (sync sweeps staged changes + `.seeds`
+  only). Never `seeds sync` inside a workflow stage. Line-watch closes
+  through `seeds close --reason` with the reason appended to the body
+  first.
+- Push policy: during the cycle, pulls and read-only integration stay
+  allowed; the PUSH direction is gated to one mechanical decision at the
+  END: `nu .fabro/scripts/push-gate.nu` (exit 0 = open: no running
+  conductor/develop/revisor pass AND no open run PR). Check and push
+  share one cell. A repaired gate is validated against a known-active
+  line state before its first OPEN verdict is trusted. Incident restore
+  may push as soon as no pass runs. Evidence and history: `ml prime git`.
+- Deploy windows: deploy only while no conductor pass runs. Pause the
+  line first (automation replace with FULL body + `If-Match` revision +
+  explicit `on_overlap: skip`; re-GET and verify it survived), deploy
+  nonblocking, smoke on mirtuell.net, re-enable, monitor via heartbeat.
+- Production deploy after substantial engine changes (binary-need check:
+  any `lib/` path in the merged work): `just image-release` +
+  fabro-tofu apply (`cd ~/dev/fabro-tofu`, mise exec tofu). `just up`
+  refreshes the LOCAL test stack only. gopass cold cache hangs
+  non-interactively — ask the user to warm it before tofu runs.
+- Bench tooling (fabro-test): script changes land through the one-command
+  PR dance (`just land <subject>`), NEVER a manual reset dance; scripts
+  with a deterministic-reset step refuse dirty trees. The bench
+  (`nu scripts/workbench.nu`, local stack default) is the engine gate —
+  a full table with only tracked known-reds (YELLOW, exit 0) is the pass
+  state; every fresh red is a finding. Nu scripting pitfalls:
+  `ml prime nu` and `ml prime tooling`.
 
-## Phase 5 - Integrate
+## Phase 6 — Reflect (mandatory, every cycle)
 
-- Commit code BEFORE `seeds sync`: sync sweeps STAGED changes + `.seeds`
-  only - unstaged worktree edits do not ride along, and a staged rename
-  can go out without its matching edits (2026-09-16 incident: hook-path
-  breakage in an intermediate push). Never call `seeds sync` inside a
-  workflow stage (it splits revisions into two commits, fabro-9ea5).
-  Line-watch closes through `seeds close --reason` with the reason appended
-  to the body first (fabro-02c4).
-- Commit and push. Deploy/smoke where the domain requires it.
-- PRODUCTION DEPLOY (user directive 2026-09-13): after SUBSTANTIAL
-  ENGINE CHANGES (the binary-need check below fires: any lib/ path in
-  the merged work), rebuild the release image with `just image-release`
-  (ghcr.io push, needs a docker login with write:packages) and deploy
-  with fabro-tofu: `cd ~/dev/fabro-tofu && just tofu apply` (profile
-  picker; non-interactive agent form:
-  `TF_DATA_DIR=.terraform-prod tofu apply -var-file=envs/prod.tfvars`
-  from that repo). mirtuell.net runs the released image - a merged
-  engine change is NOT live until this cycle runs. `just up` refreshes
-  only the LOCAL test stack (127.0.0.1:32276), never production.
-- DEPLOY WINDOWS (user directive 2026-09-07): deploys ONLY while no
-  conductor pass runs on mirtuell.net. Pause the line first (PUT
-  automation replace with schedule enabled:false - the PUT needs the
-  FULL body name/environment_id/target/workflow/triggers, the
-  `If-Match: "<revision>"` header from the current GET (428 without
-  it), and an explicit `on_overlap: skip` - replaces and UI edits can
-  wipe it; response is the bare automation, so re-GET and verify
-  on_overlap survived), deploy nonblocking, verify smoke on
-  https://mirtuell.net (health, ps, authenticated automations probe),
-  then re-enable the schedule the same way. A heartbeat (~5m) monitors
-  the deploy and performs the resume.
-- BINARY-NEED CHECK (2026-09-07 lesson, user caught it): claiming
-  'repo-side only, no binary need' for a merged PR requires diffing it
-  against lib/ - .fabro/docs/tracker-only changes skip the rebuild, but
-  any lib/ path (even a small crate like fabro-validate) changes the
-  server/CLI image and needs the next just up.
-- PUSH POLICY (user directive 2026-09-17): the local iterate/integrate
-  cycle does NOT push to denkhaus during its work at all - no rolling
-  branch updates while a fabro run is executing. PULLS and integration
-  of landed fabro work (fetch, ff-pull, review/journal/tracker reads)
-  stay allowed and expected DURING runs - they are read-only and the
-  line-watch depends on them; only the push direction is gated. Commits accumulate
-  locally; ONE push decision at the END of the cycle/heartbeat in a
-  single mechanical gate: (a) `fabro ps --server https://mirtuell.net`
-  shows NO running conductor/develop/revisor run AND (b) the open-PR
-  list is empty. Both checks and the push share one cell (the 2026-09-15
-  PR #156 lesson); a refusal means the push waits for the next
-  heartbeat's after-merge window. THE GATE IS A SCRIPT, not hand-rolled
-  cell logic: `nu .fabro/scripts/push-gate.nu` (exit 0 = open). Two
-  hard lessons: `fabro ps --json` carries status as {"kind": "..."} - a
-  `== 'running'` string compare silently passes while runs are active
-  (2026-09-17: two pushes escaped during a live conductor pass through
-  exactly that bug), and gh JSON output can carry ANSI codes (use
-  `--jq`). A new or repaired gate MUST be validated against a
-  KNOWN-ACTIVE line state (create/observe a running pass, assert the
-  gate refuses) before its first OPEN verdict is trusted. Rationale: the squash-revert incident
-  (fabro-4ebd, 2026-09-17) - a push at 11:22 while a revisor ran
-  silently DELETED the pushed work at the run's 12:18 publish; the
-  danger window starts at RUN START, not at PR-open, and a mid-run push
-  buys nothing (the running workspace never sees it). Exception: an
-  active incident RESTORE may push as soon as only (a) holds (no
-  running pass), because leaving the line branch corrupted is worse
-  than dirtying a run PR.
-- PUSH/PR COORDINATION (legacy, still applies inside the safe gate):
-  pushing to denkhaus while a run PR is open can
-  turn it DIRTY and stall auto-merge (2026-09-09: check and push in one
-  cell, PR #81 CONFLICTING; 2026-09-15: the check SAW one open PR and
-  the push still ran because they shared a cell - PR #156 went dirty,
-  branch repair needed). If one goes dirty (with checks running OR a green gate),
-  update its branch (merge denkhaus into the run branch). A clean LOCAL
-  `git merge-tree` does NOT prove GitHub reports mergeable - verify the
-  PR's mergeable state after any push that raced a run PR. JSONL repair
-  discipline: git may auto-merge .seeds/.mulch "cleanly" and STILL
-  duplicate lines (PR #81 repair: 7 seeds present in old AND new
-  versions) - a clean merge is not a correct merge. Dedupe by id with
-  the later updatedAt winning, verify zero duplicate ids, only then
-  push the repair. reached=blocked (PR #34) surfaces stuck gates in the
-  wait, but the branch update itself stays manual until fabro-94e8.
-- Close or update seeds (`seeds close` / `seeds update`), write an ADR when a
-  decision crystallized, `seeds sync` + push.
-
-## Phase 6 - Reflect (MANDATORY - never skip, every cycle)
-
-1. **Cost review**: what took longer than it should, what needed
-   retries, what was missing at decision time? EVERY finding that
-   implies a behavior change MUST become an edit to THIS skill file
-   (user directive 2026-08-27: a reflection that does not refine the
-   workflow is ineffective). Domain knowledge goes to mulch; durable
-   preferences to memory; process lessons HERE. No finding may stay
-   unrecorded. LOCAL test-stack deploys are ALWAYS `just up` (cached
-   loop: SPA, binary, image, CLI, compose) - `docker compose up
---build` builds nothing here and `cargo build -p <name>` drifts with
-   upstream package renames. PRODUCTION deploys are `just
-image-release` + fabro-tofu apply (Phase 5) - never compose
-   production by hand.
-2. **Learnings -> mulch**: `ml record <domain> --type
-<convention|pattern|failure|decision> --description ...` (+ evidence
-   flags), then `ml sync`. Real insights only - no ritual filler.
-3. **New demands -> seeds**: feature requests, bug demand, and gaps
-   observed on the way are filed autonomously with `seeds create` -
-   never parked in chat. SEARCH BEFORE FILING (user correction
-   2026-09-07): run `seeds search` with the finding's key terms (failure
-   mode, tool name, script path, error string) before every `seeds
-create` - most autonomous-line failures already have a seed
-   (rate-limit windows, watchdog, journal hook, mise trust all did).
-   When covered, extend THAT seed with the fresh run evidence.
-   Parallel-filing guard (2026-09-16): a RUNNING revisor's tracker
-   snapshot lags the line - before filing a same-theme seed, check
-   whether the active revisor pass covers the same run/theme (it will
-   file its own version); prefer extending an existing seed or waiting
-   one beat, and dedupe after merge by keeping the richer seed
-   instead of filing a duplicate. SHELL-SAFE SEED BODIES (2026-09-17,
-   fabro-7028 corruption): never pass seed bodies or additions through
-   an interpolated bash string - backticks in Markdown bodies execute
-   as command substitution and silently strip content from the WHOLE
-   rewritten body; write seeds create/update --description via Python
-   subprocess LIST-args (no shell), and verify the READ shape on the
-   first seed of a batch BEFORE building update payloads - `seeds show
---format json` wraps the record under a top-level `issue` key, and a
-   description read off the envelope silently comes back empty, turning
-   the update into a whole-body overwrite (2026-09-17: four evidence
-   extensions wiped 5c45/9a42/b765/8275 before the roundtrip check
-   caught it; assert the current body is non-empty, then roundtrip
-   after every write); if corrupted, restore from
-   git show HEAD:.seeds/issues.jsonl and re-append. OWNERSHIP ON FILING (ADR-0018):
-   seeds land unassigned by default; assign `@fabro` immediately ONLY
-   for clearly-line work (it is a proposal, vetoable by reassignment);
-   design forks, grill topics, and user-decisions get `needs-user`.
-   Every unassigned seed appears in the report's ASSIGNMENT PENDING
-   section (step 5).
-4. **Open forks ahead**: note uncertainties and upcoming pivotal
-   decisions for the next grill-with-docs; the user makes weichenstellende
-   calls.
-5. **Cycle report**: compact summary - outcome, verification evidence,
-   seeds filed/closed, skill changes made. Every seed listed with a
-   ONE-LINE DESCRIPTION, never a bare id (user directive 2026-08-27).
-   ALWAYS include an ASSIGNMENT PENDING section: every seed filed since
-   the last report that is still unassigned (revisor seeds land
-   unassigned per ADR-0018 D2), each with a one-line @fabro
-   recommendation - the cycle report is the standing joint forum where
-   user + agent decide execution ownership (ADR-0018 D3). BETWEEN
-   cycles, the persistent line-watch heartbeat carries the same
-   ceremony: new revisor seeds of the approved classes (per the
-   2026-09-07 curation: workflow/revision/engine/ci/web/docs work) get
-   @fabro as a proposal, design forks and user decisions get
-   needs-user and stay unassigned + flagged; every assignment is
-   surfaced in the heartbeat report. Categorize EVERY revisor seed -
-   none stays silently unassigned (user directive 2026-09-07). Then
-   end the turn; the user starts the next cycle with /iterate.
-6. **Line-watch heartbeat** (user directive 2026-09-09): an RLM
-   heartbeat with label `line-watch`, interval 10m, delivery_mode
-   follow_up, carries this ceremony between cycles - pull, evaluate
-   new reviews/journals (gaps + misconceptions, premise-check
-   against the tree), dispatch unassigned seeds per ADR-0018, push
-   with run-PR deferral + JSONL dedupe discipline, report compactly
-   in German. EVERY evaluated run also gets the Phase 0 rootprint
-   correlation pass: sweep the run's log window and join engine-side
-   patterns with the run's journal painpoints (user directive
-   2026-09-15 - connect engine painpoints with agent painpoints;
-   both halves into one seed). DISPATCH DEDUPE: when dispatching new
-   revisor seeds, check whether you filed the SAME finding in parallel
-   (your own recent seeds, seeds search before assigning); keep the
-   RICHER seed regardless of author, fold the lesser's unique content
-   into it, close the lesser with a duplicate reason naming both ids
-   and queue exposure (2x on 2026-09-15: d76c/96e7, 7280/58cb).
-   Tracker reads in the ceremony carry `--limit 200` (Phase 0 cap
-   rule). RLM heartbeats are SESSION-scoped: if `rlm_heartbeat
-.list()` shows no active `line-watch` at session start, recreate
-   it from this spec (try the PYTHON module first - the shell CLI may
-   not exist while the module works, 2026-09-17; delivery_mode is a
-   string literal, not an enum attribute); if the session host rejects
-   rlm_heartbeat requests entirely (no heartbeat controller attached),
-   fall back to
-   asking the user to set the visible /heartbeat with this ceremony
-   as the prompt text (2026-09-15: exactly that fallback ran the
-   whole evening) - do not silently run without a watch.
+1. Cost review: what took longer than it should, what needed retries,
+   what was missing at decision time. EVERY finding that implies a
+   behavior change becomes an edit to THIS skill; domain knowledge goes
+   to mulch (`ml record ...`, then `ml sync` — real insights only);
+   durable preferences to memory. No finding stays unrecorded.
+2. New demands become seeds (`seeds create`), searched-first for
+   duplicates. Ownership per ADR-0018: unassigned by default; `@fabro`
+   only as a proposal for clearly-line work; design forks and
+   user-decisions get `needs-user`. Shell-safe bodies and tracker
+   roundtrips: `ml prime tooling`.
+3. Note open forks ahead for the next grill-with-docs.
+4. Cycle report: outcome, verification evidence (commands run), seeds
+   filed/closed — each with a ONE-LINE description, never a bare id —
+   and ALWAYS an ASSIGNMENT PENDING section: every unassigned seed with
+   a one-line @fabro recommendation. Categorize every revisor seed.
+5. Line-watch heartbeat (label `line-watch`, interval 10m, follow-up
+   delivery): pull, evaluate journals/reviews (premise-checked against
+   the tree), dispatch seeds per ADR-0018 with dispatch-dedupe (keep the
+   richer seed, close the lesser naming both ids), push through the gate
+   with JSONL-dedupe discipline, rootprint correlation for every
+   evaluated run, report compactly in German. RLM heartbeats are
+   session-scoped: recreate from this spec when missing; if the session
+   host rejects heartbeats entirely, ask the user to set the visible
+   /heartbeat with this ceremony — never run silently unwatched.
 
 ## Standing rules
 
-- Judgment pre-screens (ADR-0022, optional, lowest priority of the
-  three session skills): composite-score `seeds ready` candidates in
-  Phase 1 and per-hunk risk pre-screens in Phase 3 via
-  `.fabro/scripts/judgment.nu` — advisory only, fail-open, thresholds
-  only after the fabro-d4c6 evaluation report exists; judgments log
-  automatically to the canonical session log
-  `~/.local/state/fabro-judgments/<YYYY-MM-DD>.jsonl` (script default; --log-file only for overrides)
-  with --skill iterate.
-
-- Security-hole closures are DIRECT agent work (user directive
-  2026-09-08): seeds that CLOSE security holes (capability gating,
-  credential removal, sandbox hardening) are assigned to `agent`,
-  NEVER to fabro - the fixer must not stand in the trust circle the
-  holes could compromise, and the line's agents write the very configs
-  being gated. The agent implements them with the full mechanical
-  gate (guide pages first, tests, clippy/fmt) like any bootstrapping
-  exception.
-- Capability gate (ADR-0019, user decision 2026-09-08): agent
-  sandboxes get ONLY what the task minimally requires (least
-  privilege). All GitHub writes are ENGINE-mediated (fabro-github
-  crate, server-side: run PRs, auto-merge, gate, branch updates) -
-  agents never receive raw authenticated clients (no token-bearing gh,
-  curl, API keys). Any seed/PR adding/removing/changing a tool,
-  credential, or permission in an agent-reachable surface (Dockerfiles,
-  environment env, tool allowlists, hooks) is needs-user + unassigned
-  until the user approves; reviewers and the line-watch block such
-  changes on sight. A merged capability change without a recorded user
-  decision gets reverted, not ratified.
-- Ownership boundary (ADR-0018, user decisions 2026-09-07): the
-  autonomous line works ONLY on seeds assigned to `fabro`
-  (`seeds ready --assignee fabro` is the planner's sole candidate source,
-  fail-closed). The revisor files seeds UNASSIGNED - reviewing is not
-  owning. The agent's `@fabro` assignment is a proposal; user + agent
-  decide execution ownership jointly (cycle report = standing forum,
-  ASSIGNMENT PENDING section). User-owned seeds (grill sessions,
-  design forks like fabro-3b1b, upstream-posture) stay unassigned.
-  Emergencies bypass the picker entirely: line down -> agent repairs
-  directly with the user's knowledge, seed filed retroactively.
-- Line-health watchpoints during monitoring: verify on_overlap=skip
-  survived any automation change (UI/replace wipes it, fabro-fb16
-  class); a parallel conductor pass means the policy was lost; a
-  pass parked on Tracker-empty with a non-empty backlog means the
-  assignment queue ran dry - surface it in the report, never
-  bulk-assign behind the user's back. LANDED-WORK CHECK (2026-09-13,
-  pass 01M2E2805XB4): a pass where every run shows "succeeded" can
-  still have produced NOTHING on denkhaus - after each pass, confirm
-  the child PR actually merged into denkhaus (base branch = denkhaus,
-  not a run branch) and the work commits appear in origin/denkhaus;
-  child PRs basing on anything other than the line branch are a
-  stranding incident (engine inheritance gap, fabro-b4ed).
-- Tool-agnostic engine (ADR-0017, user decision 2026-09-07): fabro
-  engine components (sandbox providers, workflow engine, server, CLI)
-  never reference project-scope tooling by name or behavior (mise,
-  asdf, direnv, nvm, ...). Project tooling bootstrap lives in project
-  artifacts: .fabro/Dockerfile.toolchain, server environment env,
-  workflow hooks/scripts. The engine's stable contract is the clone
-  layout (/repos/<owner>/<repo>, /workspace/<repo> symlink). Any
-  'bootstrap tool X in run containers' demand maps to project
-  artifacts first, never to engine seams.
+- Judgment pre-screens (ADR-0022): advisory, fail-open, via
+  `.fabro/scripts/judgment.nu`; thresholds only after the fabro-d4c6
+  evaluation report exists; logs to
+  `~/.local/state/fabro-judgments/<date>.jsonl`.
+- Security-hole closures are DIRECT agent work, never line work: the
+  fixer must not stand in the trust circle being closed. Full mechanical
+  gate applies.
+- Capability gate (ADR-0019): agent sandboxes get least privilege; all
+  GitHub writes are engine-mediated; any seed/PR changing a tool,
+  credential, or permission in an agent-reachable surface is needs-user
+  until the user approves; reviewers and line-watch block such changes on
+  sight. A merged capability change without a recorded user decision is
+  reverted, not ratified.
+- Ownership (ADR-0018): the line works ONLY `@fabro`-assigned seeds
+  (fail-closed picker). The revisor files seeds UNASSIGNED. Emergencies
+  bypass the picker: line down -> agent repairs directly with the user's
+  knowledge, seed filed retroactively.
+- Line-health watchpoints: verify `on_overlap=skip` survived any
+  automation change; a parallel pass means the policy was lost; a parked
+  pass with a non-empty backlog is surfaced, never bulk-assigned behind
+  the user's back. Landed-work check: after each pass, confirm the child
+  PR merged into `denkhaus` (base branch = denkhaus) and the work commits
+  appear in origin/denkhaus.
+- Tool-agnostic engine (ADR-0017): engine components never reference
+  project-scope tooling by name; bootstrap lives in project artifacts.
 - Upstream posture: we offer nothing until upstream reacts to our open
-  issues/PRs (fabro-f251 parked, no priority).
-- Single-world reality (user directive 2026-09-09): there is exactly
-  one working world - `denkhaus` locally, the fabro server for runs.
-  Do not reintroduce world/branch switching or worktree setups; retired
-  contexts live only as archive tags and docs/lab/ history.
-- Fork-feature presence pinning (user directive 2026-09-13, extended
-  2026-09-14): every durable fork feature (engine guards, seam contracts,
-  asset/engine couplings) gets its IMPLEMENTATION in fork-only source
-  files (pattern: fork_line_recovery.rs in fabro-workflow and
-  fabro-server, ADR-0021 D7) wired through minimal one-line seams in
-  upstream files, plus a presence test in a FORK-ONLY test file — a file upstream does not have, canonically
-  `lib/components/fabro-workflow/src/handler/llm/fork_seam_tests.rs` —
-  plus a touchpoints row (`.agents/skills/merge-upstream/references/touchpoints.md`).
-  Upstream merges cannot conflict away or silently drop a fork-only
-  file, so a dropped feature reds the gate instead of regressing
-  quietly (the #832 salvage merge removed the fabro-8ee1 guard AND its
-  inline tests in one resolution; inline tests cannot catch their own
-  removal). Every cycle phase can regression-test against these
-  suites: `cargo nextest run -p fabro-workflow -- fork_seam` (+ newer
-  fork-only files). Phase 3 review runs them on the frozen diff's
-  tree; Phase 5 integrate runs them at HEAD before pushing; new fork
-  features without a presence pin are a review finding, not style.
+  issues/PRs. Upstream drift threshold 5 minor versions before action.
+- Fork-feature presence pinning: every durable fork feature lives in a
+  fork-only source file wired through minimal one-line seams, with a
+  presence test in a fork-only test file plus a touchpoints row —
+  upstream merges cannot silently drop it.
 - Boundaries: mulch = expertise, seeds = actionable work, ADRs =
-  decisions, this skill = process. Nothing stays in chat that belongs
-  in one of them.
-- Test-only helpers behind the test-support feature; strum for enum
-  string/int conversions; AGENTS.md Rust import style - these
-  fabro-specific rules sit ON TOP of rust-style-guide, never against it.
+  decisions, this skill = process. Nothing stays in chat that belongs in
+  one of them. Fabro-specific Rust rules (test-support feature, strum,
+  import style, shell_quote) sit ON TOP of rust-style-guide.
