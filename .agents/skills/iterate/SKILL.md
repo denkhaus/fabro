@@ -191,6 +191,14 @@ cycle` process). Serialization principle (ADR-0015): while the
   workflow via the wrapper (`just run <workflow> ...`, or `just cycle`
   for develop+revisor; ADR-0015: the wrapper no longer runs an ask
   review - the revisor owns revisioning); quality gates run inside the run.
+- Probe-rig placement (2026-09-28, fabro-6558 session): workspace-relative
+  hook/stage scripts in a probe workflow resolve against the RUN TARGET
+  checkout, not the workflow-source ref - a probe living only on a side
+  branch dies (nu: file not found) when the run targets main. Either land
+  the probe on the target branch first, or create the run with
+  --target OWNER/REPO@<probe-branch>. Nu verify scripts get pos AND neg
+  dry-runs (fake ctx in a temp dir) before any run - nu `and`-chains hide
+  bare-identifier bugs (`$envr` vs `envr`) that only the neg case exposes.
 - ADR-0008: change graph, prompts, scripts, and settings as ONE unit
   in the same change.
 - Inserting an item BEFORE a struct via an anchor on the struct's own
@@ -243,12 +251,18 @@ scripts/normalize-generated.ts`, then fix root-owned output files via
 
 ## Phase 3 - Review
 
-- EXIT-CODE-SAFE VERIFICATION (2026-09-22, fabro-43cf, three wasted fix
-  rounds): `cargo check ... | tail -N` reports tail's exit code (0) — the
-  build failure behind the pipe reads as green. Every verification
-  command in a pipeline ends with an explicit `; echo EXIT=$?` whose
-  variable the session actually checks, or runs unpiped (the bash()
-  handle captures full output anyway). Same class: mock impls of crate
+- EXIT-CODE-SAFE VERIFICATION (2026-09-22, fabro-43cf; three MORE
+  incidents 2026-09-28 incl. a masked `just up` failure and a masked
+  tofu error): `cmd | tail -N` reports tail's exit code (0) — the
+  failure behind the pipe reads as green, and a bash-done follow-up
+  then claims exit:0 for a failed deploy. Verification AND deploy/build
+  commands run UNPIPED (the bash() handle captures full output; tail
+  belongs on read-only inspection only). Same class: after fixing a
+  missing-field compile error, re-run the FULL workspace check before
+  believing green — the compiler's missing-field list is per-crate and
+  the next crate's site is only reported by the next full run
+  (fabro-6558: third RuntimeSpec site surfaced only in just up's release
+  build). Same class: mock impls of crate
   traits copy signatures FROM THE TREE, never from memory or the old
   branch (unlink_run_parent param count changed under us mid-port).
 
