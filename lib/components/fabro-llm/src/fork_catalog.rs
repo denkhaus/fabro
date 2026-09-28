@@ -17,6 +17,8 @@ pub(crate) const OVERLAY: &str = include_str!("fork-catalog-overlay.toml");
 #[cfg(test)]
 mod tests {
     use fabro_config::LlmLayer;
+    use lithos_llm::catalog::ProviderId;
+    use lithos_llm::types::ResponseFormat;
 
     use crate::catalog::build_catalog;
 
@@ -40,6 +42,41 @@ mod tests {
         assert!(
             glm47.capabilities().reasoning().is_supported(),
             "the fork overlay marks glm-4.7 as always-reasoning (fabro-cd27)"
+        );
+    }
+
+    /// Operator directive 2026-09-28 (fabro-d5b1): the structured paths —
+    /// run titles, PR content — take zai's small default, and glm-4.7 is
+    /// the one zai model the fork declares structured output for. glm-5.3
+    /// carries none, so the title path was refused on every run
+    /// ("model zai/glm-5.3 does not support structured output").
+    #[test]
+    fn zai_small_default_is_the_structured_model() {
+        let catalog = build_catalog(&LlmLayer::default(), &|_| None)
+            .expect("builtin + fork overlay catalog builds");
+        let zai = ProviderId::new("zai");
+        let small = catalog
+            .small_default_for(&[zai])
+            .expect("zai has a small default");
+        assert_eq!(
+            small.model.id().as_str(),
+            "glm-4.7",
+            "the run-title path takes zai's small default (fabro-d5b1)"
+        );
+        let schema = ResponseFormat::JsonSchema {
+            name:   "run_title".to_string(),
+            schema: serde_json::json!({"type": "object"}),
+        };
+        let glm47 = catalog.model("zai", "glm-4.7").expect("glm-4.7 exists");
+        assert!(
+            glm47.capabilities().response_format(&schema).is_supported(),
+            "glm-4.7 answers structured requests (operator directive 2026-09-28)"
+        );
+        let glm53 = catalog.model("zai", "glm-5.3").expect("glm-5.3 exists");
+        assert!(
+            !glm53.capabilities().response_format(&schema).is_supported(),
+            "glm-5.3 is not declared structured-output capable: a future \
+             overlay that claims it must come with a probe"
         );
     }
 }

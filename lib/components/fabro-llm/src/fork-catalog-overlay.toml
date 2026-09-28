@@ -40,8 +40,16 @@ aliases = ["glm52", "glm5.2"]
 # endpoint always reasons; the old reasoning=false label starved the
 # PR-content call of an effort pin, running it in full-reasoning mode
 # (71s, occasional non-JSON output).
-capabilities = { reasoning = true, reasoning_effort = { low = true, medium = false, high = true, xhigh = false, max = true } }
+# Operator directive 2026-09-28: glm-4.7 answers structured requests
+# (response_format), unlike glm-5.3 whose catalog entry carries none — so
+# the fork declares the capability here and marks the model as zai's
+# small default. Run-title generation picks the small default, and the
+# title path (like PR content) needs `complete_object`; with
+# response_format "unknown" every run title was refused ("model
+# zai/glm-5.3 does not support structured output", fabro-d5b1).
+capabilities = { reasoning = true, reasoning_effort = { low = true, medium = false, high = true, xhigh = false, max = true }, response_format = { json_object = true, json_schema = true } }
 protocol_options = { reasoning_effort_levels = true }
+small_default = true
 
 [providers.openrouter.models."glm-5.2"]
 aliases = ["glm52", "glm5.2"]
