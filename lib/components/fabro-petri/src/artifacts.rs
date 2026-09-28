@@ -1,6 +1,7 @@
 //! Captured workspace files go to the server's configured artifact store.
 //! Engine values and patches keep using the separate blob capability.
 
+use bytes::Bytes;
 use fabro_client::Client;
 use fabro_store::ArtifactStore;
 use fabro_types::{BlobHash, RunId};
@@ -13,54 +14,68 @@ pub enum ArtifactWriteError {
     Upload(#[source] anyhow::Error),
 }
 
-/// Run-bound storage for captured files, keyed by the `digest` the caller
-/// computed over `bytes`. Implementations publish complete objects before
-/// returning, preserve errors, and permit concurrent and repeated writes of
-/// identical content.
+/// Storage for captured files, keyed by the run the hooks record them under
+/// and the `digest` of `bytes`. Implementations reject bytes that do not
+/// match `digest`, publish complete objects before returning, preserve
+/// errors, and permit concurrent and repeated writes of identical content.
 #[async_trait::async_trait]
 pub trait ArtifactWriter: Send + Sync {
-    async fn write(&self, digest: &BlobHash, bytes: &[u8]) -> Result<(), ArtifactWriteError>;
+    async fn write(
+        &self,
+        run_id: &RunId,
+        digest: &BlobHash,
+        bytes: Bytes,
+    ) -> Result<(), ArtifactWriteError>;
 }
 
 pub struct StoreArtifactWriter {
-    store:  ArtifactStore,
-    run_id: RunId,
+    store: ArtifactStore,
 }
 
 impl StoreArtifactWriter {
     #[must_use]
-    pub fn new(store: ArtifactStore, run_id: RunId) -> Self {
-        Self { store, run_id }
+    pub fn new(store: ArtifactStore) -> Self {
+        Self { store }
     }
 }
 
 #[async_trait::async_trait]
 impl ArtifactWriter for StoreArtifactWriter {
-    async fn write(&self, digest: &BlobHash, bytes: &[u8]) -> Result<(), ArtifactWriteError> {
+    async fn write(
+        &self,
+        run_id: &RunId,
+        digest: &BlobHash,
+        bytes: Bytes,
+    ) -> Result<(), ArtifactWriteError> {
         self.store
-            .put_capture(&self.run_id, digest, bytes)
+            .put_capture(run_id, digest, bytes)
             .await
             .map_err(ArtifactWriteError::from)
     }
 }
 
+/// Uploads to the server, which checks the digest before storing.
 pub struct ClientArtifactWriter {
     client: Client,
-    run_id: RunId,
 }
 
 impl ClientArtifactWriter {
     #[must_use]
-    pub fn new(client: Client, run_id: RunId) -> Self {
-        Self { client, run_id }
+    pub fn new(client: Client) -> Self {
+        Self { client }
     }
 }
 
 #[async_trait::async_trait]
 impl ArtifactWriter for ClientArtifactWriter {
-    async fn write(&self, digest: &BlobHash, bytes: &[u8]) -> Result<(), ArtifactWriteError> {
+    async fn write(
+        &self,
+        run_id: &RunId,
+        digest: &BlobHash,
+        bytes: Bytes,
+    ) -> Result<(), ArtifactWriteError> {
         self.client
-            .write_run_artifact_content(&self.run_id, digest, bytes)
+            .write_run_artifact_content(run_id, digest, bytes)
             .await
             .map_err(ArtifactWriteError::Upload)
     }

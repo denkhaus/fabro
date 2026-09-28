@@ -188,10 +188,7 @@ impl Harness {
             },
             artifacts:       self.artifacts.clone(),
             test_gates:      None,
-            artifact_writer: Arc::new(StoreArtifactWriter::new(
-                self.artifact_store.clone(),
-                self.run_id,
-            )),
+            artifact_writer: Arc::new(StoreArtifactWriter::new(self.artifact_store.clone())),
         }
     }
 
@@ -484,8 +481,7 @@ async fn artifacts_the_branch_and_the_diffs_are_recorded() {
         "{artifacts:?}"
     );
     assert_eq!(artifacts[0].bytes, 3);
-    assert_eq!(artifacts[0].digest, artifacts[0].source.hash().to_string());
-    assert_ne!(artifacts[0].digest, artifacts[1].digest);
+    assert_ne!(artifacts[0].source.hash(), artifacts[1].source.hash());
     assert!(
         artifacts
             .iter()

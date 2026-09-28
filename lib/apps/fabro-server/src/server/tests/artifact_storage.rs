@@ -92,7 +92,7 @@ async fn artifact_upload_rejects_unauthorized_invalid_and_oversized_bodies_witho
     let hash = BlobHash::new(b"valid content");
     state
         .artifact_store
-        .put_capture(&run, &hash, b"valid content")
+        .put_capture(&run, &hash, Bytes::from_static(b"valid content"))
         .await
         .unwrap();
     let digest = hash.to_string();
@@ -264,8 +264,11 @@ async fn artifact_worker_client_uses_the_configured_s3_backend_and_prefix() {
         .connect()
         .await
         .unwrap();
-    let writer = ClientArtifactWriter::new(client, run);
-    writer.write(&hash, &bytes).await.unwrap();
+    let writer = ClientArtifactWriter::new(client);
+    writer
+        .write(&run, &hash, Bytes::from(bytes.clone()))
+        .await
+        .unwrap();
     assert_eq!(
         state
             .artifact_store

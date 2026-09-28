@@ -450,7 +450,6 @@ pub struct CheckpointRecord {
 
 /// One file collected from a stage's workspace after its attempt finished.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(try_from = "ArtifactCollectedWire")]
 pub struct ArtifactCollectedRecord {
     pub execution: u64,
     pub firing:    u64,
@@ -458,49 +457,58 @@ pub struct ArtifactCollectedRecord {
     pub attempt:   u32,
     /// The file's path relative to the workspace root.
     pub path:      String,
-    /// Where the file's bytes are stored.
-    #[serde(flatten)]
+    /// Where the file's bytes are stored. Its hash is the SHA-256 of the
+    /// bytes: with `path`, the identity a later capture of the same
+    /// unchanged file is matched by. The wire also carries it as `digest`.
+    #[serde(flatten, with = "source_with_digest")]
     pub source:    ArtifactSource,
     pub bytes:     u64,
-    /// The SHA-256 of the bytes as lowercase hex: with `path`, the identity
-    /// a later capture of the same unchanged file is matched by.
-    pub digest:    String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub operation: Option<OperationKey>,
 }
 
-/// Private decoding boundary for validating the redundant legacy checksum.
-#[derive(Deserialize)]
-struct ArtifactCollectedWire {
-    execution: u64,
-    firing:    u64,
-    attempt:   u32,
-    path:      String,
-    #[serde(flatten)]
-    source:    ArtifactSource,
-    bytes:     u64,
-    digest:    String,
-    #[serde(default)]
-    operation: Option<OperationKey>,
-}
+/// The record's `digest` key repeats its source's hash as lowercase hex, as
+/// every earlier record wrote it. It is derived on write and checked on read.
+mod source_with_digest {
+    use fabro_types::ArtifactSource;
+    use serde::de::Error as _;
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-impl TryFrom<ArtifactCollectedWire> for ArtifactCollectedRecord {
-    type Error = &'static str;
+    #[derive(Serialize)]
+    struct Written<'a> {
+        #[serde(flatten)]
+        source: &'a ArtifactSource,
+        digest: String,
+    }
 
-    fn try_from(wire: ArtifactCollectedWire) -> std::result::Result<Self, Self::Error> {
-        if wire.digest != wire.source.hash().to_string() {
-            return Err("artifact checksum does not match its payload source");
+    #[derive(Deserialize)]
+    struct Read {
+        #[serde(flatten)]
+        source: ArtifactSource,
+        digest: String,
+    }
+
+    pub(super) fn serialize<S: Serializer>(
+        source: &ArtifactSource,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error> {
+        Written {
+            source,
+            digest: source.hash().to_string(),
         }
-        Ok(Self {
-            execution: wire.execution,
-            firing:    wire.firing,
-            attempt:   wire.attempt,
-            path:      wire.path,
-            source:    wire.source,
-            bytes:     wire.bytes,
-            digest:    wire.digest,
-            operation: wire.operation,
-        })
+        .serialize(serializer)
+    }
+
+    pub(super) fn deserialize<'de, D: Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<ArtifactSource, D::Error> {
+        let read = Read::deserialize(deserializer)?;
+        if read.digest != read.source.hash().to_string() {
+            return Err(D::Error::custom(
+                "artifact checksum does not match its payload source",
+            ));
+        }
+        Ok(read.source)
     }
 }
 
@@ -887,7 +895,6 @@ mod tests {
                     path:      "assets/report.txt".to_string(),
                     source:    ArtifactSource::SqliteBlob(BlobHash::new(b"report")),
                     bytes:     6,
-                    digest:    BlobHash::new(b"report").to_string(),
                     operation: Some(OperationKey {
                         execution: 0,
                         decision:  DecisionRef::AttemptStart {

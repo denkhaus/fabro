@@ -456,10 +456,7 @@ pub(crate) async fn execute(state: Arc<AppState>, run_id: RunId) {
             &state.stores.run_summaries,
         ))),
         &run_state.spec.settings.run,
-        Arc::new(StoreArtifactWriter::new(
-            state.artifact_store.clone(),
-            run_id,
-        )),
+        Arc::new(StoreArtifactWriter::new(state.artifact_store.clone())),
     );
     let request = RunRequest {
         run_id: run_id.to_string(),

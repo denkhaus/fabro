@@ -59,7 +59,9 @@ pub struct RunProjection {
     pub pending_interviews:    BTreeMap<String, PendingInterviewRecord>,
     /// The files collected from the run's workspaces under
     /// `[run.artifacts] include`, one entry per capture, in the order they
-    /// were recorded. The bytes are in the blob table under `blob`.
+    /// were recorded. Each entry's `source` says where its bytes are: the
+    /// configured artifact store for `object`, the SQLite blob table for
+    /// earlier captures under `blob`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub artifacts:             Vec<RunArtifact>,
     stages:                    HashMap<StageId, StageProjection>,

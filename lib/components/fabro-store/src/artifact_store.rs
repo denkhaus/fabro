@@ -10,6 +10,7 @@ use object_store::buffered::BufWriter;
 use object_store::path::Path as ObjectPath;
 use percent_encoding::{AsciiSet, NON_ALPHANUMERIC, percent_decode_str, utf8_percent_encode};
 use tokio::io::AsyncWriteExt;
+use tokio::task;
 
 use crate::{Error, Result, StageId};
 
@@ -74,16 +75,44 @@ impl ArtifactStore {
     }
 
     pub async fn put(&self, run_id: &RunId, key: &ArtifactKey, data: &[u8]) -> Result<()> {
-        self.put_at(&self.artifact_path(run_id, key)?, data).await
+        self.put_at(
+            &self.artifact_path(run_id, key)?,
+            Bytes::copy_from_slice(data),
+        )
+        .await
     }
 
     /// Publish a complete captured file under its content digest within the
-    /// run. `hash` must be `BlobHash::new(data)`; callers verify or compute
-    /// it. Repeating a put of the same content is safe; metadata is recorded
-    /// separately only after this operation succeeds.
-    pub async fn put_capture(&self, run_id: &RunId, hash: &BlobHash, data: &[u8]) -> Result<()> {
-        debug_assert_eq!(*hash, BlobHash::new(data));
-        self.put_at(&self.capture_path(run_id, hash)?, data).await
+    /// run, after checking that `data` hashes to `hash`. Repeating a put of
+    /// the same content is safe; metadata is recorded separately only after
+    /// this operation succeeds.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::CaptureDigestMismatch`] when `data` does not hash to `hash`;
+    /// nothing is written then.
+    pub async fn put_capture(&self, run_id: &RunId, hash: &BlobHash, data: Bytes) -> Result<()> {
+        let path = self.capture_path(run_id, hash)?;
+        // Up to the capture size limit of bytes: hash off the async workers.
+        let (actual, data) = task::spawn_blocking(move || (BlobHash::new(&data), data))
+            .await
+            .map_err(|err| Error::Other(format!("capture digest task failed: {err}")))?;
+        if actual != *hash {
+            return Err(Error::CaptureDigestMismatch { expected: *hash });
+        }
+        self.put_at(&path, data).await
+    }
+
+    /// Remove one captured file's content. Removing absent content succeeds.
+    pub async fn delete_capture(&self, run_id: &RunId, hash: &BlobHash) -> Result<()> {
+        match self
+            .object_store
+            .delete(&self.capture_path(run_id, hash)?)
+            .await
+        {
+            Ok(()) | Err(object_store::Error::NotFound { .. }) => Ok(()),
+            Err(err) => Err(err.into()),
+        }
     }
 
     /// Read run-owned content named by a capture record, without consulting
@@ -92,18 +121,22 @@ impl ArtifactStore {
         self.get_at(&self.capture_path(run_id, hash)?).await
     }
 
+    /// Everything under a run's `captures/` belongs to recorded captures,
+    /// never to historical stage keys, whatever digest namespace it uses.
+    fn captures_root(&self, run_id: &RunId) -> Result<ObjectPath> {
+        Ok(self.run_prefix(run_id)?.child("captures"))
+    }
+
     fn capture_prefix(&self, run_id: &RunId) -> Result<ObjectPath> {
-        Ok(self.run_prefix(run_id)?.child("captures").child("sha256"))
+        Ok(self.captures_root(run_id)?.child("sha256"))
     }
 
     fn capture_path(&self, run_id: &RunId, hash: &BlobHash) -> Result<ObjectPath> {
         Ok(self.capture_prefix(run_id)?.child(hash.to_string()))
     }
 
-    async fn put_at(&self, path: &ObjectPath, data: &[u8]) -> Result<()> {
-        self.object_store
-            .put(path, Bytes::copy_from_slice(data).into())
-            .await?;
+    async fn put_at(&self, path: &ObjectPath, data: Bytes) -> Result<()> {
+        self.object_store.put(path, data.into()).await?;
         Ok(())
     }
 
@@ -181,7 +214,7 @@ impl ArtifactStore {
 
     pub async fn list_for_run(&self, run_id: &RunId) -> Result<Vec<NodeArtifact>> {
         let prefix = self.run_prefix(run_id)?;
-        let captures = self.capture_prefix(run_id)?;
+        let captures = self.captures_root(run_id)?;
         let mut stream = self.object_store.list(Some(&prefix));
         let mut artifacts = Vec::new();
         while let Some(meta) = stream.next().await.transpose()? {
@@ -474,7 +507,10 @@ mod tests {
         store.write_metadata("test").await.unwrap();
         store.put(&run, &legacy, b"legacy").await.unwrap();
         for id in [&run, &run, &other] {
-            store.put_capture(id, &hash, bytes).await.unwrap();
+            store
+                .put_capture(id, &hash, Bytes::from_static(bytes))
+                .await
+                .unwrap();
         }
         let location = ObjectPath::from(format!("artifacts/{run}/captures/sha256/{hash}"));
         assert_eq!(
@@ -510,16 +546,55 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn capture_namespace_does_not_hide_malformed_legacy_objects() {
+    async fn capture_namespace_is_never_listed_as_stage_artifacts() {
         let objects: Arc<dyn ObjectStore> = Arc::new(InMemory::new());
         let store = ArtifactStore::new(objects.clone(), "artifacts");
         let run = RunId::new();
-        let location = ObjectPath::from(format!("artifacts/{run}/captures/elsewhere/bad"));
-        objects
-            .put(&location, Bytes::from_static(b"bad").into())
+        let legacy = ArtifactKey::new(StageId::new("build", 1), 1, "report.txt");
+        store.put(&run, &legacy, b"legacy").await.unwrap();
+        for location in [
+            format!("artifacts/{run}/captures/elsewhere/other"),
+            format!("artifacts/{run}/captures/stray"),
+        ] {
+            objects
+                .put(
+                    &ObjectPath::from(location),
+                    Bytes::from_static(b"other").into(),
+                )
+                .await
+                .unwrap();
+        }
+        let listed = store.list_for_run(&run).await.unwrap();
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].filename, "report.txt");
+    }
+
+    #[tokio::test]
+    async fn put_capture_rejects_content_that_does_not_match_its_digest() {
+        let objects: Arc<dyn ObjectStore> = Arc::new(InMemory::new());
+        let store = ArtifactStore::new(objects.clone(), "artifacts");
+        let run = RunId::new();
+        let hash = fabro_types::BlobHash::new(b"expected");
+        let err = store
+            .put_capture(&run, &hash, Bytes::from_static(b"other"))
+            .await
+            .unwrap_err();
+        assert!(matches!(err, Error::CaptureDigestMismatch { expected } if expected == hash));
+        assert!(store.get_capture(&run, &hash).await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn delete_capture_removes_content_and_tolerates_absence() {
+        let store = test_store();
+        let run = RunId::new();
+        let hash = fabro_types::BlobHash::new(b"content");
+        store
+            .put_capture(&run, &hash, Bytes::from_static(b"content"))
             .await
             .unwrap();
-        assert!(store.list_for_run(&run).await.is_err());
+        store.delete_capture(&run, &hash).await.unwrap();
+        assert!(store.get_capture(&run, &hash).await.unwrap().is_none());
+        store.delete_capture(&run, &hash).await.unwrap();
     }
 
     #[tokio::test]

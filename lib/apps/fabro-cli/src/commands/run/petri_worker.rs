@@ -201,10 +201,7 @@ pub(super) async fn execute(worker: PetriWorker<'_>) -> Result<()> {
     let hooks = HooksSpec::for_run(
         Arc::clone(&records),
         &worker.run_state.spec.settings.run,
-        Arc::new(ClientArtifactWriter::new(
-            worker.client.clone_for_reuse(),
-            run_id,
-        )),
+        Arc::new(ClientArtifactWriter::new(worker.client.clone_for_reuse())),
     )
     .with_test_gates(test_checkpoint_gates());
     let request = RunRequest {

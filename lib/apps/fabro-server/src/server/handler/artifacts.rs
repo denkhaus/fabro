@@ -8,9 +8,9 @@ use async_zip::{Compression, ZipEntryBuilder};
 use axum::extract::DefaultBodyLimit;
 use axum::extract::rejection::BytesRejection;
 use axum::http::HeaderValue;
-use axum::routing::put;
+use axum::routing;
 use fabro_store::{ArtifactStore, BlobStore, Error as StoreError};
-use fabro_types::{ARTIFACT_MAX_FILE_BYTES, ArtifactSource, BlobHash, RunProjection};
+use fabro_types::{ARTIFACT_MAX_FILE_BYTES, ArtifactSource, RunProjection};
 use fabro_util::error::collect_chain;
 use futures_util::SinkExt as _;
 use futures_util::io::AsyncWriteExt as _;
@@ -27,7 +27,7 @@ use super::super::{
     RequireRunScoped, RequiredUser, Response, Router, RunArtifactEntry, RunArtifactListResponse,
     RunId, StageArtifactEntry, State, StatusCode, WriteBlobResponse, get, header,
     octet_stream_response, parse_blob_hash_path, parse_run_id_path, parse_stage_id_path, post,
-    reject_if_archived, required_query_param, validate_relative_artifact_path,
+    reject_if_archived, required_query_param, run_records, validate_relative_artifact_path,
 };
 use crate::principal_middleware::RequireWorkerRunSegment;
 
@@ -35,7 +35,8 @@ pub(super) fn routes() -> Router<Arc<AppState>> {
     Router::new()
         .route(
             "/runs/{id}/artifacts/content/{digest}",
-            put(write_run_artifact_content).layer(DefaultBodyLimit::max(ARTIFACT_MAX_FILE_BYTES)),
+            routing::put(write_run_artifact_content)
+                .layer(DefaultBodyLimit::max(ARTIFACT_MAX_FILE_BYTES)),
         )
         .route("/runs/{id}/blobs", post(write_run_blob))
         .route("/runs/{id}/blobs/{blobHash}", get(read_run_blob))
@@ -79,23 +80,34 @@ async fn write_run_artifact_content(
     if let Err(error) = state.load_run_projection(&id).await {
         return error.into_response();
     }
-    if BlobHash::new(&body) != expected {
-        return ApiError::bad_request("Artifact content does not match its digest.")
-            .into_response();
-    }
-    match state
-        .artifact_store
-        .put_capture(&id, &expected, &body)
-        .await
-    {
-        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+    match state.artifact_store.put_capture(&id, &expected, body).await {
+        Ok(()) => {}
+        Err(StoreError::CaptureDigestMismatch { .. }) => {
+            return ApiError::bad_request("Artifact content does not match its digest.")
+                .into_response();
+        }
         Err(error) => {
             warn!(run_id = %id, error = %collect_chain(&error).join(": "), "Artifact upload failed");
-            ApiError::new(
+            return ApiError::new(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "Artifact storage failed.",
             )
-            .into_response()
+            .into_response();
+        }
+    }
+    // Run deletion removes the run before its objects. A run still present
+    // now is deleted after this upload landed, and its deletion removes the
+    // upload; a run already gone never will, so the upload goes here.
+    match run_records::projection(state.as_ref(), id).await {
+        Ok(Some(_)) => StatusCode::NO_CONTENT.into_response(),
+        Ok(None) => {
+            if let Err(cleanup) = state.artifact_store.delete_capture(&id, &expected).await {
+                warn!(run_id = %id, error = %collect_chain(&cleanup).join(": "), "Artifact upload for a deleted run could not be removed");
+            }
+            ApiError::not_found("Run not found.").into_response()
+        }
+        Err(error) => {
+            ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, error.to_string()).into_response()
         }
     }
 }
@@ -564,7 +576,7 @@ async fn get_stage_artifact(
 #[cfg(test)]
 mod tests {
     use async_zip::base::read::mem::ZipFileReader;
-    use fabro_types::{RunArtifact, StageId, test_support};
+    use fabro_types::{BlobHash, RunArtifact, StageId, test_support};
 
     use super::*;
 
@@ -583,7 +595,7 @@ mod tests {
         let new = BlobHash::new(b"new object");
         state
             .artifact_store
-            .put_capture(&run, &new, b"new object")
+            .put_capture(&run, &new, Bytes::from_static(b"new object"))
             .await
             .unwrap();
         for (path, size, source) in [
@@ -612,7 +624,11 @@ mod tests {
         // Unrecorded content is never a file-list entry.
         state
             .artifact_store
-            .put_capture(&run, &BlobHash::new(b"orphan"), b"orphan")
+            .put_capture(
+                &run,
+                &BlobHash::new(b"orphan"),
+                Bytes::from_static(b"orphan"),
+            )
             .await
             .unwrap();
         let entries = run_artifacts(&state, &run, &projection).await.unwrap();

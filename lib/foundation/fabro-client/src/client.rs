@@ -1847,14 +1847,16 @@ impl Client {
         &self,
         run_id: &RunId,
         digest: &BlobHash,
-        data: &[u8],
+        data: Bytes,
     ) -> Result<()> {
+        let data = &data;
         self.send_api(|client| async move {
             client
                 .write_run_artifact_content()
                 .id(run_id.to_string())
                 .digest(*digest)
-                .body(data.to_vec())
+                // A `Bytes` clone shares the buffer, including on a retry.
+                .body(data.clone())
                 .send()
                 .await
         })
