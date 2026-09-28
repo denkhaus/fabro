@@ -17,6 +17,7 @@ on:
       - "docs/public/reference/user-configuration.mdx"
       - "openapi/**"
       - ".github/workflows/rust.yml"
+      - ".github/workflows/release.yml"
   pull_request:
     branches: [main]
     paths:
@@ -33,6 +34,7 @@ on:
       - "docs/public/reference/user-configuration.mdx"
       - "openapi/**"
       - ".github/workflows/rust.yml"
+      - ".github/workflows/release.yml"
   workflow_dispatch:
 
 concurrency:
@@ -144,30 +146,7 @@ jobs:
         with:
           cache-on-failure: true
       - uses: taiki-e/install-action@773334c0e05d7e699e4d78234494308223f3a2cf # nextest
-      # Every Petri run takes its scope through a sandbox-driver plugin
-      # executable that Petri finds on PATH: `sandbox-driver-host` for the
-      # `local` provider, `sandbox-driver-docker` for `docker`. Installed
-      # at the rev the workspace pins, so the plugins and the in-process
-      # driver are one build; a from-source build, so the two executables
-      # are cached by OS and rev and only rebuilt when the pin moves.
-      - name: Read the sandbox-driver rev the workspace pins
-        id: sandbox-driver
-        run: |
-          rev="$(sed -n 's/^sandbox-driver = { git = "[^"]*", rev = "\([0-9a-f]*\)" }$/\1/p' Cargo.toml)"
-          test -n "$rev"
-          echo "rev=$rev" >> "$GITHUB_OUTPUT"
-      - name: Restore the sandbox-driver plugin executables
-        id: sandbox-driver-cache
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
-        with:
-          path: |
-            ~/.cargo/bin/sandbox-driver-host
-            ~/.cargo/bin/sandbox-driver-docker
-          key: sandbox-driver-plugins-${{ runner.os }}-${{ steps.sandbox-driver.outputs.rev }}
-      - name: Install the sandbox-driver plugin executables
-        if: steps.sandbox-driver-cache.outputs.cache-hit != 'true'
-        run: cargo install --locked --git https://github.com/lithoscomputer/sandbox-driver --rev "${{ steps.sandbox-driver.outputs.rev }}" sandbox-driver-host sandbox-driver-docker
-      # The images the suite's Docker tests run. The plugin pulls a missing
+      # The images the suite's Docker tests run. The provider pulls a missing
       # image on first use, but a 1 GiB pull inside a run's wait is a flake,
       # so pull them here, where a registry problem reads as one. Most tests
       # leave the image to Petri, whose Docker scope runs on its default
@@ -194,9 +173,9 @@ jobs:
     permissions:
       contents: read
     env:
-      # The Docker scenarios skip when the executable, the daemon or the
+      # The Docker scenarios skip when the daemon or the
       # image is missing; in CI a skip is a failure.
-      FABRO_REQUIRE_SANDBOX_PLUGINS: "1"
+      FABRO_REQUIRE_SANDBOX_BACKENDS: "1"
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -217,40 +196,15 @@ jobs:
           pin="$(sed -n 's/^const RUNNER_PIN: &str = "\([0-9a-f]*\)";$/\1/p' "$backend")"
           test -n "$pin"
           docker pull "ghcr.io/lithoscomputer/ubuntu-24.04:slim-$pin"
-      # Every Petri run takes its scope through a sandbox-driver plugin
-      # executable that Petri finds on PATH: `sandbox-driver-host` for the
-      # `local` provider, `sandbox-driver-docker` for `docker`. Installed
-      # at the rev the workspace pins, so the plugins and the in-process
-      # driver are one build; a from-source build, so the two executables
-      # are cached by OS and rev and only rebuilt when the pin moves.
-      - name: Read the sandbox-driver rev the workspace pins
-        id: sandbox-driver
-        run: |
-          rev="$(sed -n 's/^sandbox-driver = { git = "[^"]*", rev = "\([0-9a-f]*\)" }$/\1/p' Cargo.toml)"
-          test -n "$rev"
-          echo "rev=$rev" >> "$GITHUB_OUTPUT"
-      - name: Restore the sandbox-driver plugin executables
-        id: sandbox-driver-cache
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
-        with:
-          path: |
-            ~/.cargo/bin/sandbox-driver-host
-            ~/.cargo/bin/sandbox-driver-docker
-          key: sandbox-driver-plugins-${{ runner.os }}-${{ steps.sandbox-driver.outputs.rev }}
-      - name: Install the sandbox-driver plugin executables
-        if: steps.sandbox-driver-cache.outputs.cache-hit != 'true'
-        run: cargo install --locked --git https://github.com/lithoscomputer/sandbox-driver --rev "${{ steps.sandbox-driver.outputs.rev }}" sandbox-driver-host sandbox-driver-docker
       # The workflow scenarios on the Docker provider. The scenarios are e2e
       # tests (ignored by default); the key-free ones run here, the
       # LLM-backed ones self-skip without credentials.
       - run: cargo nextest run --locked --profile ci --status-level slow --run-ignored only -p fabro-cli --test it -E 'test(/::docker_/)'
-      # The Petri runs (not ignored: they skip without the host plugin, which
-      # the environment above forbids).
+      # Petri adapter runs use the built-in providers; Docker is required here.
       - run: cargo nextest run --locked --profile ci --status-level slow -p fabro-petri
 
   test-macos:
     name: Test (macOS)
-    if: github.event_name == 'workflow_dispatch'
     runs-on: macos-15
     permissions:
       contents: read
@@ -265,28 +219,27 @@ jobs:
         with:
           cache-on-failure: true
       - uses: taiki-e/install-action@773334c0e05d7e699e4d78234494308223f3a2cf # nextest
-      # Every Petri run takes its scope through a sandbox-driver plugin
-      # executable that Petri finds on PATH: `sandbox-driver-host` for the
-      # `local` provider, `sandbox-driver-docker` for `docker`. Installed
-      # at the rev the workspace pins, so the plugins and the in-process
-      # driver are one build; a from-source build, so the two executables
-      # are cached by OS and rev and only rebuilt when the pin moves.
-      - name: Read the sandbox-driver rev the workspace pins
-        id: sandbox-driver
-        run: |
-          rev="$(sed -n 's/^sandbox-driver = { git = "[^"]*", rev = "\([0-9a-f]*\)" }$/\1/p' Cargo.toml)"
-          test -n "$rev"
-          echo "rev=$rev" >> "$GITHUB_OUTPUT"
-      - name: Restore the sandbox-driver plugin executables
-        id: sandbox-driver-cache
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
-        with:
-          path: |
-            ~/.cargo/bin/sandbox-driver-host
-            ~/.cargo/bin/sandbox-driver-docker
-          key: sandbox-driver-plugins-${{ runner.os }}-${{ steps.sandbox-driver.outputs.rev }}
-      - name: Install the sandbox-driver plugin executables
-        if: steps.sandbox-driver-cache.outputs.cache-hit != 'true'
-        run: cargo install --locked --git https://github.com/lithoscomputer/sandbox-driver --rev "${{ steps.sandbox-driver.outputs.rev }}" sandbox-driver-host sandbox-driver-docker
       # No Docker daemon on the macOS runner: the Docker tests skip there.
       - run: cargo nextest run --locked --workspace --status-level slow --profile ci
+
+  process-title-musl:
+    name: Process titles (musl)
+    runs-on: ubuntu-24.04-x86-32-cores
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - run: sudo apt-get update && sudo apt-get install -y musl-tools
+      - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+        with:
+          toolchain: 1.97.1
+          targets: x86_64-unknown-linux-musl
+      - uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # v2
+      - uses: taiki-e/install-action@773334c0e05d7e699e4d78234494308223f3a2cf # nextest
+      - name: Test real process titles under musl
+        env:
+          CC_x86_64_unknown_linux_musl: musl-gcc
+          CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER: musl-gcc
+        run: cargo nextest run --locked --release -p fabro-proc --target x86_64-unknown-linux-musl --profile ci

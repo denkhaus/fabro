@@ -12,6 +12,8 @@
 //!   run's records are its source of truth in Fabro's tables;
 //! - [`runtime`]: the Petri runtime Fabro assembles, at create time and at
 //!   execution;
+//! - [`providers`]: lazy in-process Host, Docker and Daytona factories, sharing
+//!   explicit configuration with the server's sandbox access;
 //! - [`check`]: Petri compiles a workflow version's bundle at create time, and
 //!   its diagnostics come back in a shape Fabro maps onto its own;
 //! - [`admission`]: the admitted graphs in Fabro's blob store, named on the run
@@ -58,8 +60,8 @@
 //! - [`prune`]: a run's sandboxes deleted through Petri's lease ledger, as
 //!   `petri sandbox prune` deletes them, when Fabro deletes the run.
 //!
-//! The Petri packages are pinned by revision in the workspace `Cargo.toml`
-//! under `petri_*` keys.
+//! The Petri packages are workspace dependencies under `petri_*` keys; see the
+//! workspace `Cargo.toml` for how they are tracked.
 
 pub mod admission;
 pub mod artifacts;
@@ -77,6 +79,7 @@ pub mod petri;
 pub mod platform_records;
 pub mod projection;
 pub mod projector;
+pub mod providers;
 pub mod prune;
 pub mod recovery;
 pub mod run_graph;

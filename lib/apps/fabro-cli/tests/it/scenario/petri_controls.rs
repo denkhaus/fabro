@@ -15,9 +15,8 @@
 //! the worker never answers (a test hook mutes the worker's answers).
 //!
 //! The harness is `petri.rs`'s: a foreground server on disk storage, the
-//! run started with `fabro run --detach`, and the host scope through the
-//! sandbox-driver host plugin, so the tests skip, and say why, when the
-//! plugin is not found.
+//! run started with `fabro run --detach`, and the Host scope running in
+//! process.
 
 #![expect(
     clippy::disallowed_methods,
@@ -37,9 +36,9 @@ use fabro_test::{TwinScenario, TwinScenarios, TwinToolCall, test_context, twin_o
 use serde_json::{Value, json};
 
 use super::petri::{
-    RunningServer, answer, count_of, host_plugin, run_detached, run_detached_with, run_json,
-    run_status, run_stream, settled_stream, stream_names, wait_for_questions, wait_for_status,
-    wait_for_worker, wait_until_gate_is_polled, write_petri_workflow,
+    RunningServer, answer, count_of, run_detached, run_detached_with, run_json, run_status,
+    run_stream, settled_stream, stream_names, wait_for_questions, wait_for_status, wait_for_worker,
+    wait_until_gate_is_polled, write_petri_workflow,
 };
 use crate::support::TEST_DEV_TOKEN;
 
@@ -331,9 +330,6 @@ async fn assert_petri_succeeded(server: &RunningServer, run_id: &str) {
 /// both carry the pause and the unpause.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_pause_holds_the_next_stage_until_the_unpause() {
-    if host_plugin().is_none() {
-        return;
-    }
     let context = test_context!();
     let server = RunningServer::start().await;
     let gate = context.temp_dir.join("a.gate");
@@ -405,9 +401,6 @@ async fn a_pause_holds_the_next_stage_until_the_unpause() {
 /// no control request is recorded, since none went through the API.
 #[tokio::test(flavor = "multi_thread")]
 async fn the_user_signals_pause_and_unpause_the_worker() {
-    if host_plugin().is_none() {
-        return;
-    }
     let context = test_context!();
     let server = RunningServer::start().await;
     let gate = context.temp_dir.join("a.gate");
@@ -482,9 +475,6 @@ async fn the_user_signals_pause_and_unpause_the_worker() {
 /// stream carries the `control.requested` record, and the run succeeds.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_steer_reaches_the_agent_stage_on_the_twin() {
-    if host_plugin().is_none() {
-        return;
-    }
     let context = test_context!();
     let twin = twin_openai().await;
     let namespace = format!("{}::{}", module_path!(), line!());
@@ -614,9 +604,6 @@ async fn a_steer_reaches_the_agent_stage_on_the_twin() {
 /// reaches that stage's session and no other.
 #[tokio::test(flavor = "multi_thread")]
 async fn two_live_agent_stages_are_steered_apart_by_their_labels() {
-    if host_plugin().is_none() {
-        return;
-    }
     let context = test_context!();
     let twin = twin_openai().await;
     let namespace = format!("{}::{}", module_path!(), line!());
@@ -776,9 +763,6 @@ async fn two_live_agent_stages_are_steered_apart_by_their_labels() {
 /// `attractor.turn.interrupted` report, and the run succeeds.
 #[tokio::test(flavor = "multi_thread")]
 async fn an_interrupt_ends_the_turn_and_its_text_is_the_next_input() {
-    if host_plugin().is_none() {
-        return;
-    }
     let context = test_context!();
     let twin = twin_openai().await;
     let namespace = format!("{}::{}", module_path!(), line!());
@@ -912,9 +896,6 @@ const UNNAMED_INTERRUPT_REFUSAL: &str =
 /// answer routes the run to its end.
 #[tokio::test(flavor = "multi_thread")]
 async fn an_interrupt_of_a_gate_stage_is_refused_with_no_live_turn() {
-    if host_plugin().is_none() {
-        return;
-    }
     let context = test_context!();
     let server = RunningServer::start().await;
     let marker = context.temp_dir.join("yes.marker");
@@ -993,9 +974,6 @@ async fn an_interrupt_of_a_gate_stage_is_refused_with_no_live_turn() {
 /// muted through the server's test hook, forwarded to the worker by name.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_control_the_worker_never_answers_is_pending() {
-    if host_plugin().is_none() {
-        return;
-    }
     let context = test_context!();
     let server =
         RunningServer::start_with_env("", &[], &[(EnvVars::FABRO_TEST_CONTROL_ACKS_MUTED, "1")])
@@ -1048,9 +1026,6 @@ async fn a_control_the_worker_never_answers_is_pending() {
 /// without a new admission: a pause holds admission, never running work.)
 #[tokio::test(flavor = "multi_thread")]
 async fn a_run_paused_before_a_crash_resumes_paused() {
-    if host_plugin().is_none() {
-        return;
-    }
     let context = test_context!();
     let mut server = RunningServer::start().await;
     let gate = context.temp_dir.join("a.gate");

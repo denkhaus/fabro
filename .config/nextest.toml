@@ -7,6 +7,18 @@ leak-timeout = "500ms"
     filter = "package(fabro-cli)"
     slow-timeout = { period = "6s", terminate-after = 4 }
 
+    # Docker scenarios allow 60s for a cold image pull; leave time for cleanup.
+    # Keep this before the general server override because the first match wins.
+    [[profile.default.overrides]]
+    filter = """
+        package(fabro-server) & (
+            test(=scenario::petri::a_runs_projection_carries_its_docker_sandbox_instance)
+            | test(=scenario::petri::the_server_attaches_to_the_container_petri_created)
+            | test(=scenario::petri::a_bundle_naming_a_catalog_environment_runs_on_docker_with_its_image)
+        )
+    """
+    slow-timeout = { period = "30s", terminate-after = 3 }
+
     [[profile.default.overrides]]
     filter = "package(fabro-server)"
     slow-timeout = { period = "5s", terminate-after = 4 }
@@ -16,7 +28,7 @@ leak-timeout = "500ms"
     slow-timeout = { period = "2s", terminate-after = 3 }
 
     # fabro-petri's adapter tests run whole workflows on the host sandbox
-    # through the sandbox-driver plugin, and one of them calls the twin.
+    # through the in-process provider, and one of them calls the twin.
     [[profile.default.overrides]]
     filter = "package(fabro-petri)"
     slow-timeout = { period = "5s", terminate-after = 4 }

@@ -4,10 +4,8 @@
 //! The `hello` bundle's agent stage calls the OpenAI twin through a model
 //! client built over a vault that holds the key; the twin requires a
 //! bearer token and logs requests under it, so a request logged under the
-//! vault's key proves the key came from the vault. The run takes its host
-//! scope through the sandbox-driver host plugin, so the test skips, and
-//! says why, when the executable is not found, unless
-//! `FABRO_REQUIRE_SANDBOX_PLUGINS` is set.
+//! vault's key proves the key came from the vault. The Host scope runs in
+//! process.
 
 mod support;
 
@@ -24,7 +22,7 @@ use fabro_types::SecretType;
 use fabro_vault::Vault;
 use lithos_llm::catalog::ProviderId;
 use petri_store::MemoryRunStore;
-use support::{Silent, all_records, hello_bundle, host_plugin, no_questions, run_request};
+use support::{Silent, all_records, hello_bundle, no_questions, run_request};
 use tokio::fs;
 use tokio::sync::RwLock as AsyncRwLock;
 
@@ -32,9 +30,6 @@ const OPENAI_MODEL: &str = "gpt-5.4";
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_model_call_authenticates_through_the_vault_and_skills_read_the_home() {
-    if host_plugin().is_none() {
-        return;
-    }
     let twin = twin_openai().await;
     let namespace = format!("{}::{}", module_path!(), line!());
     TwinScenarios::new(&namespace)

@@ -1,4 +1,4 @@
-//! What the adapter tests share: the host plugin lookup, a bundle admitted
+//! What the adapter tests share: a bundle admitted
 //! through `check`, a run request over the engine assembly, and the run's
 //! records read back from its store.
 
@@ -8,7 +8,6 @@
 )]
 
 use std::collections::BTreeMap;
-use std::env;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -25,38 +24,8 @@ use petri_store::{Access, LogId, RunKey, RunStore};
 use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
 
-const HOST_PLUGIN: &str = "sandbox-driver-host";
-const HOST_PLUGIN_OVERRIDE: &str = "PETRI_SANDBOX_HOST_PLUGIN";
-const REQUIRE_ENV: &str = "FABRO_REQUIRE_SANDBOX_PLUGINS";
-
 pub(crate) const POLL: Duration = Duration::from_millis(10);
 pub(crate) const PATIENCE: Duration = Duration::from_secs(30);
-
-/// The host plugin as Petri's lookup finds it: the override variable, else
-/// the executable on `PATH`. `None`, after saying so, when the test should
-/// skip; a panic when the environment forbids a skip.
-#[expect(
-    clippy::disallowed_methods,
-    reason = "the tests locate the plugin executable through the process environment"
-)]
-#[expect(clippy::print_stderr, reason = "a skipped test says why on its stderr")]
-pub(crate) fn host_plugin() -> Option<PathBuf> {
-    let found = env::var_os(HOST_PLUGIN_OVERRIDE)
-        .map(PathBuf::from)
-        .or_else(|| {
-            env::split_paths(&env::var_os("PATH")?)
-                .map(|dir| dir.join(HOST_PLUGIN))
-                .find(|candidate| candidate.is_file())
-        });
-    if found.is_none() {
-        assert!(
-            env::var_os(REQUIRE_ENV).is_none(),
-            "{REQUIRE_ENV} is set, but {HOST_PLUGIN} is not on PATH and {HOST_PLUGIN_OVERRIDE} is unset"
-        );
-        eprintln!("skipping: {HOST_PLUGIN} is not on PATH and {HOST_PLUGIN_OVERRIDE} is unset");
-    }
-    found
-}
 
 /// The `.fabro/workflows/hello` bundle checked into this repository.
 pub(crate) fn hello_bundle() -> PathBuf {

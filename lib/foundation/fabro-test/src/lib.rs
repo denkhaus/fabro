@@ -155,6 +155,56 @@ pub fn require_env(name: &str) -> Option<String> {
     }
 }
 
+/// Set in CI so a missing sandbox backend (a Docker daemon or image) fails
+/// the test instead of skipping it.
+pub const REQUIRE_SANDBOX_BACKENDS: &str = "FABRO_REQUIRE_SANDBOX_BACKENDS";
+
+/// A reachable Docker daemon. When [`REQUIRE_SANDBOX_BACKENDS`] is set, a
+/// missing daemon fails the test instead of skipping it.
+#[must_use]
+pub fn docker_available() -> bool {
+    sandbox_backend_available(
+        docker_succeeds(&["version", "--format", "{{.Server.Version}}"]),
+        "no Docker daemon answers",
+    )
+}
+
+/// A Docker daemon that already holds `image`, under the same
+/// fail-or-skip policy as [`docker_available`].
+#[must_use]
+pub fn docker_image_available(image: &str) -> bool {
+    sandbox_backend_available(
+        docker_succeeds(&["image", "inspect", image]),
+        &format!("no Docker daemon with {image}"),
+    )
+}
+
+fn docker_succeeds(args: &[&str]) -> bool {
+    std::process::Command::new("docker")
+        .args(args)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .is_ok_and(|status| status.success())
+}
+
+/// `available`, or a skip notice for `missing` (a failure when
+/// [`REQUIRE_SANDBOX_BACKENDS`] is set).
+#[allow(
+    clippy::print_stderr,
+    reason = "Skip notices go to stderr so stdout stays assertable."
+)]
+fn sandbox_backend_available(available: bool, missing: &str) -> bool {
+    if !available {
+        assert!(
+            std::env::var_os(REQUIRE_SANDBOX_BACKENDS).is_none(),
+            "{REQUIRE_SANDBOX_BACKENDS} is set, but {missing}"
+        );
+        eprintln!("skipping: {missing}");
+    }
+    available
+}
+
 /// Apply baseline environment isolation to a `Command` that spawns the
 /// `fabro` binary (or a helper that will act like it).
 ///
@@ -228,10 +278,10 @@ fn apply_test_isolation_with_lookup(
     if let Some(path) = lookup(EnvVars::PATH) {
         cmd.env(EnvVars::PATH, path);
     }
-    // Petri resolves its sandbox-driver plugins from these, in the server a
-    // test starts and in the workers that server launches; a developer's
-    // plugin override reaches them like `PATH` does, and so does the Docker
-    // daemon selection the Docker plugin needs.
+    // Petri reads its sandbox settings from these, in the server a test
+    // starts and in the workers that server launches; a developer's
+    // override reaches them like `PATH` does, and so does the Docker daemon
+    // selection the Docker provider needs.
     for name in EnvVars::PETRI_SANDBOX_PLUGIN_VARS
         .iter()
         .chain(EnvVars::DOCKER_VARS)

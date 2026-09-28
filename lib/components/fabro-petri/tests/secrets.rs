@@ -2,9 +2,7 @@
 //! command's environment, and the value never reaches `petri_records`:
 //! Petri masks every record before it is appended.
 //!
-//! The run takes its host scope through the sandbox-driver host plugin, so
-//! the test skips, and says why, when the executable is not found, unless
-//! `FABRO_REQUIRE_SANDBOX_PLUGINS` is set.
+//! Built-in Host scopes run in process without a plugin executable.
 
 mod support;
 
@@ -19,7 +17,7 @@ use fabro_petri::secrets::VaultSecrets;
 use fabro_store::test_support;
 use fabro_types::SecretType;
 use fabro_vault::Vault;
-use support::{Silent, admit, host_plugin, no_questions, run_request};
+use support::{Silent, admit, no_questions, run_request};
 
 const TOKEN: &str = "hunter2-hunter2-hunter2";
 
@@ -50,9 +48,6 @@ TOKEN = "{{ secrets.TOKEN }}"
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_secret_reaches_the_command_and_is_masked_in_every_record() {
-    if host_plugin().is_none() {
-        return;
-    }
     let root = tempfile::tempdir().expect("a temp dir");
     let pool = test_support::in_memory_pool_with(&[
         fabro_db::BLOBS_MIGRATION_SQL,
@@ -106,9 +101,6 @@ async fn a_secret_reaches_the_command_and_is_masked_in_every_record() {
 /// ends the way Fabro's failure policy for a command ends it.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_secret_nobody_provides_fails_the_command() {
-    if host_plugin().is_none() {
-        return;
-    }
     let root = tempfile::tempdir().expect("a temp dir");
     let store = Arc::new(petri_store::MemoryRunStore::new());
     let runtime = RuntimeSpec::default();

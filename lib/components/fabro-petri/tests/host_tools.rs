@@ -1,23 +1,14 @@
-//! Fabro's run tools on a Petri run from this crate (integration plan item
-//! F3.4): `RuntimeSpec::run_tools` installs the adapter as Petri's host
-//! tool capability, a workflow with one agent stage runs on the real step
-//! registry against a scripted model, and the stage's session gets the
-//! tools the legacy worker registers, bound to the run: the model is
-//! advertised every run tool, its `fabro_run_create` call reaches Fabro's
-//! API with the Petri run as the child's parent, the API's answer comes
-//! back to the model, and the call is in the run's record under the stage.
+//! Fabro's run tools on a Petri run from this crate: `RuntimeSpec::run_tools`
+//! installs the adapter as Petri's host tool capability, a workflow with one
+//! agent stage runs on the real step registry against a scripted model, and the
+//! stage's session gets the tools the legacy worker registers, bound to the
+//! run: the model is advertised every run tool, its `fabro_run_create` call
+//! reaches Fabro's API with the Petri run as the child's parent, the API's
+//! answer comes back to the model, and the call is in the run's record under
+//! the stage.
 //!
-//! Every run takes its scope through the sandbox-driver host plugin, so
-//! the tests skip when that executable is not found, unless
-//! `FABRO_REQUIRE_SANDBOX_PLUGINS` is set.
+//! Built-in Host scopes run in process without a plugin executable.
 
-#![expect(
-    clippy::disallowed_methods,
-    reason = "the tests locate the plugin executable through the process environment"
-)]
-#![expect(clippy::print_stderr, reason = "a skipped test says why on its stderr")]
-
-use std::env;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
@@ -48,10 +39,6 @@ use petri_store::{Access, MemoryRunStore, RunKey, RunStore};
 use serde_json::json;
 use tokio::fs;
 
-const HOST_PLUGIN: &str = "sandbox-driver-host";
-const HOST_PLUGIN_OVERRIDE: &str = "PETRI_SANDBOX_HOST_PLUGIN";
-const REQUIRE_ENV: &str = "FABRO_REQUIRE_SANDBOX_PLUGINS";
-
 /// One agent stage on the native backend, pinned to the scripted model.
 const AGENT_WORKFLOW: &str = r#"digraph Agent {
     graph [goal="Start a child run", backend="api", default_max_retries=0]
@@ -62,27 +49,6 @@ const AGENT_WORKFLOW: &str = r#"digraph Agent {
 }"#;
 
 const AGENT_SETTINGS: &str = "_version = 1\n\n[workflow]\ngraph = \"workflow.fabro\"\n";
-
-/// The host plugin as Petri's lookup finds it: the override variable, else
-/// the executable on `PATH`. `None`, after saying so, when the test should
-/// skip; a panic when the environment forbids a skip.
-fn host_plugin() -> Option<PathBuf> {
-    let found = env::var_os(HOST_PLUGIN_OVERRIDE)
-        .map(PathBuf::from)
-        .or_else(|| {
-            env::split_paths(&env::var_os("PATH")?)
-                .map(|dir| dir.join(HOST_PLUGIN))
-                .find(|candidate| candidate.is_file())
-        });
-    if found.is_none() {
-        assert!(
-            env::var_os(REQUIRE_ENV).is_none(),
-            "{REQUIRE_ENV} is set, but {HOST_PLUGIN} is not on PATH and {HOST_PLUGIN_OVERRIDE} is unset"
-        );
-        eprintln!("skipping: {HOST_PLUGIN} is not on PATH and {HOST_PLUGIN_OVERRIDE} is unset");
-    }
-    found
-}
 
 /// Write the agent bundle into `<root>/.fabro/workflows/agent`; the
 /// workflow file.
@@ -187,9 +153,6 @@ fn advertised(request: &Request) -> Vec<(String, String)> {
 /// answer reaches the model; the call is in the record under the stage.
 #[tokio::test]
 async fn a_petri_stage_calls_a_run_tool_bound_to_the_run() {
-    if host_plugin().is_none() {
-        return;
-    }
     let root = tempfile::tempdir().expect("a temp dir");
     let workflow = install_bundle(root.path()).await;
     let run_id = RunId::new();
@@ -271,9 +234,6 @@ async fn a_petri_stage_calls_a_run_tool_bound_to_the_run() {
 /// one tool the model called marked invoked.
 #[tokio::test]
 async fn the_projection_lists_the_stages_tools_and_marks_the_one_called() {
-    if host_plugin().is_none() {
-        return;
-    }
     let root = tempfile::tempdir().expect("a temp dir");
     let workflow = install_bundle(root.path()).await;
     let run_id = RunId::new();
@@ -375,9 +335,6 @@ async fn the_projection_lists_the_stages_tools_and_marks_the_one_called() {
 /// rather than parenting a child run to the wrong run.
 #[tokio::test]
 async fn services_for_another_run_give_the_stage_no_run_tools() {
-    if host_plugin().is_none() {
-        return;
-    }
     let root = tempfile::tempdir().expect("a temp dir");
     let workflow = install_bundle(root.path()).await;
     let run_id = RunId::new();

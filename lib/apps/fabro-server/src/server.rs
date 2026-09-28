@@ -63,6 +63,7 @@ use fabro_llm::{ClientOptions, FabroClient};
 use fabro_mcp_store::McpServerStore;
 use fabro_petri::controls::{RunControls, SteerError};
 use fabro_petri::projector::Projector;
+use fabro_petri::providers::SandboxProviderConfig;
 use fabro_petri::prune::{self, PruneError, PruneRequest};
 use fabro_redact::redact_jsonl_line;
 use fabro_slack::client::{PostedMessage as SlackPostedMessage, SlackClient};
@@ -150,7 +151,7 @@ use crate::sandbox_access::{
     SandboxInventory,
 };
 use crate::server_secrets::ServerSecrets;
-use crate::spawn_env::{self, apply_render_graph_env};
+use crate::spawn_env::apply_render_graph_env;
 use crate::worker_control::{
     LocalWorkerControlBus, WORKER_CONTROL_ACK_WAIT, WorkerControlAcks, WorkerControlBus,
     WorkerControlBusError,
@@ -1545,6 +1546,33 @@ impl AppState {
             .with_http_client(self.http_client().ok())
     }
 
+    /// The same provider selection for execution, fork and prune; credentials
+    /// arrive from the caller's vault read, never the process environment.
+    pub(crate) fn sandbox_provider_config(
+        &self,
+        daytona_api_key: Option<String>,
+    ) -> SandboxProviderConfig {
+        SandboxProviderConfig::from_lookup(
+            daytona_api_key.map(|key| self.daytona_credentials(key)),
+            |name| self.config_env_lookup(name),
+        )
+    }
+
+    /// [`Self::sandbox_provider_config`] for a server-side prune of
+    /// `provider`'s sandboxes, with the Daytona key read from the vault only
+    /// when `provider` is Daytona.
+    pub(crate) async fn load_sandbox_provider_config(
+        &self,
+        provider: &SandboxProviderKind,
+    ) -> Result<SandboxProviderConfig, SecretStoreError> {
+        let daytona_api_key = if *provider == SandboxProviderKind::DAYTONA {
+            self.vault_secret(EnvVars::DAYTONA_API_KEY).await?
+        } else {
+            None
+        };
+        Ok(self.sandbox_provider_config(daytona_api_key))
+    }
+
     /// Everything a reconnect needs to reach a run's provider: the server's
     /// provider settings and the Daytona credentials from the vault (`None`
     /// when no key is stored).
@@ -2875,7 +2903,29 @@ async fn delete_run_sandbox_resource(
         .run_scratch(&id)
         .root()
         .join("petri");
+    let sandbox = match state.load_sandbox_provider_config(&record.provider).await {
+        Ok(sandbox) => sandbox,
+        // A forced or restarted delete goes on without the sandboxes, as it
+        // does for any other prune failure below.
+        Err(err) if force || delete_started => {
+            tracing::warn!(
+                run_id = %id,
+                provider = %record.provider,
+                error = ?err,
+                "Skipping the sandbox prune after loading sandbox credentials failed during run deletion"
+            );
+            return Ok(SandboxDeleteOutcome::Cleaned);
+        }
+        Err(err) => {
+            error!(error = ?err, "Loading sandbox credentials failed");
+            return Err(ApiError::new(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "secret store operation failed",
+            ));
+        }
+    };
     let report = prune::prune(PruneRequest {
+        sandbox,
         run_id: id.to_string(),
         run_dir,
         store: state.petri_runs.shared_store(),
@@ -3777,7 +3827,6 @@ fn worker_launch_spec(
     run_dir: &std::path::Path,
     agent_fabro_tools_enabled: bool,
     github_app_private_key: Option<String>,
-    daytona_api_key: Option<String>,
 ) -> anyhow::Result<WorkerLaunchSpec> {
     let current_exe = std::env::current_exe().context("reading current executable path")?;
     let executable =
@@ -3816,11 +3865,7 @@ fn worker_launch_spec(
         fabro_log,
         active_config_path: state.active_config_path().to_path_buf(),
         github_app_private_key,
-        daytona_api_key,
         fabro_home: fabro_config::Home::from_env().root().to_path_buf(),
-        sandbox_plugin_env: spawn_env::sandbox_plugin_env(
-            &state.server_settings().server.sandbox.providers,
-        ),
     })
 }
 
@@ -4137,21 +4182,9 @@ async fn execute_run_subprocess(state: Arc<AppState>, run_id: RunId) {
         return;
     }
 
-    // A Daytona run's worker hands the vault's key to Petri's Daytona
-    // plugin through its own environment; any other run's worker never
-    // sees it.
-    let wants_daytona =
-        run_state.spec.settings.run.environment.provider == SandboxProviderKind::DAYTONA;
-    let secrets = async {
-        let github_app_private_key = state.vault_secret(EnvVars::GITHUB_APP_PRIVATE_KEY).await?;
-        let daytona_api_key = if wants_daytona {
-            state.vault_secret(EnvVars::DAYTONA_API_KEY).await?
-        } else {
-            None
-        };
-        Ok::<_, SecretStoreError>((github_app_private_key, daytona_api_key))
-    };
-    let (github_app_private_key, daytona_api_key) = match secrets.await {
+    // The worker reads the Daytona key from the vault itself; only the
+    // GitHub App key crosses on its command.
+    let github_app_private_key = match state.vault_secret(EnvVars::GITHUB_APP_PRIVATE_KEY).await {
         Ok(value) => value,
         Err(err) => {
             fail_run_before_execution(
@@ -4175,7 +4208,6 @@ async fn execute_run_subprocess(state: Arc<AppState>, run_id: RunId) {
             &run_dir_for_build,
             agent_fabro_tools_enabled,
             github_app_private_key,
-            daytona_api_key,
         )
     })
     .await

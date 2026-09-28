@@ -61,6 +61,14 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y build-essential pkg-config libssl-dev
 
+      - name: Install Docker for ARM Linux tests
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: |
+          sudo apt-get install -y docker.io acl
+          sudo systemctl start docker
+          sudo setfacl -m "u:$(id -un):rw" /var/run/docker.sock
+          docker info
+
       - name: Install musl toolchain for x86_64-musl tests
         if: matrix.target == 'x86_64-unknown-linux-musl'
         run: sudo apt-get install -y musl-tools
@@ -88,6 +96,15 @@ jobs:
       - name: Refresh embedded SPA
         run: cargo --locked dev spa refresh
 
+      - name: Pull the images the Docker tests run
+        if: runner.os == 'Linux' && matrix.target != 'aarch64-unknown-linux-musl'
+        run: |
+          backend="$(dirname "$(cargo metadata --locked --format-version 1 | jq -r '.packages[] | select(.name == "petri-executor-sandbox") | .manifest_path')")/src/backend.rs"
+          pin="$(sed -n 's/^const RUNNER_PIN: &str = "\([0-9a-f]*\)";$/\1/p' "$backend")"
+          test -n "$pin"
+          docker pull "ghcr.io/lithoscomputer/ubuntu-24.04:slim-$pin"
+          docker pull ghcr.io/lithoscomputer/ubuntu-22.04:slim
+
       - name: Test (x86_64-musl)
         # nextest still shells through cargo test for this target, so
         # build.rs C code needs an explicit musl compiler/linker.
@@ -95,7 +112,7 @@ jobs:
         env:
           CC_x86_64_unknown_linux_musl: musl-gcc
           CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER: musl-gcc
-        run: cargo nextest run --locked --workspace --target ${{ matrix.target }} --release --status-level slow --profile ci
+        run: cargo nextest run --locked --workspace --target ${{ matrix.target }} --release --status-level slow --profile ci --no-fail-fast
 
       - name: Test
         # aarch64-musl test runs have not been validated on the compile
@@ -106,7 +123,7 @@ jobs:
           if [[ "$RUNNER_OS" == "macOS" ]]; then
             ulimit -n 4096
           fi
-          cargo nextest run --locked --workspace --target ${{ matrix.target }} --release --status-level slow --profile ci
+          cargo nextest run --locked --workspace --target ${{ matrix.target }} --release --status-level slow --profile ci --no-fail-fast
 
       - name: Build (musl via cargo-zigbuild)
         if: matrix.musl

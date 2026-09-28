@@ -1,6 +1,9 @@
 //! The Petri runtime Fabro runs its workflows on, assembled the same way at
 //! create time (for `Runtime::check`) and at execution.
 //!
+//! Built-in sandbox factories are installed for every runtime and connect
+//! only when a scope is acquired.
+//!
 //! The pieces are Petri's own: [`Runtime::standard`] with the Fabro frontend
 //! carrying the server's settings layer, the Attractor step kinds (the real
 //! ones, or the simulated registry for a dry run), the model client as the
@@ -22,14 +25,19 @@ use lithos_llm::credentials::CredentialProvider;
 use petri_attractor_steps::pebble::PebbleClient;
 use petri_attractor_steps::skills::FabroHome;
 use petri_frontend_fabro::Fabro;
-use petri_runtime::Runtime;
+use petri_runtime::ir::{Graph, RuntimeTarget};
+use petri_runtime::steps::Capabilities;
+use petri_runtime::{AdmissionPass, AdmissionProblem, Runtime};
 use tracing::debug;
 
 use crate::host_tools;
+use crate::providers::{self, SandboxProviderConfig};
 
 /// What every Petri runtime Fabro builds is configured with.
 #[derive(Clone, Default)]
 pub struct RuntimeSpec {
+    /// Explicit provider configuration. Factories connect only at acquire.
+    pub sandbox:          SandboxProviderConfig,
     /// The operator's settings layer, as `~/.fabro/settings.toml` text: the
     /// lowest of the three layers the Fabro frontend reads (`[run.model]`
     /// defaults, `[[run.hooks]]`, `[run.agent.mcps]`, `[run.environment]`
@@ -45,8 +53,8 @@ pub struct RuntimeSpec {
     /// catalog the admission pass resolves model selectors against. `None`
     /// leaves every LLM node unpinned and every model call unconfigured.
     pub model_client:     Option<Client>,
-    /// Run the simulated step registry (Fabro's `--dry-run` handlers)
-    /// instead of the real one.
+    /// Simulate steps (Fabro's `--dry-run` handlers) in local workspaces,
+    /// without acquiring the configured Docker or Daytona sandboxes.
     pub dry_run:          bool,
     /// The Fabro home the skills step reads; `None` leaves it to Petri's
     /// own lookup (`FABRO_HOME`, else `$HOME/.fabro`).
@@ -64,7 +72,7 @@ impl RuntimeSpec {
     /// registry: only execution swaps in the stubs.
     #[must_use]
     pub fn runtime(&self, for_execution: bool) -> Runtime {
-        let mut runtime = Runtime::standard().frontend(
+        let mut runtime = providers::standard_runtime(&self.sandbox).frontend(
             Fabro::new()
                 .with_settings_toml(self.settings_toml.clone())
                 .with_mcp_catalog_toml(self.mcp_catalog_toml.clone()),
@@ -83,11 +91,30 @@ impl RuntimeSpec {
         if let Some(services) = &self.run_tools {
             runtime = runtime.capability(host_tools::capability(services.clone()));
         }
+        if self.dry_run {
+            runtime = runtime.admission(LocalDryRun);
+        }
         if for_execution && self.dry_run {
             petri_attractor_steps::register_stubs(runtime)
         } else {
             petri_attractor_steps::register(runtime)
         }
+    }
+}
+
+/// Dry runs keep real local workspaces for checkpoint hooks, while simulated
+/// stages need neither container images nor sidecars. Do this during admission
+/// so Petri persists the effective scopes and re-digests nested graphs itself.
+struct LocalDryRun;
+
+impl AdmissionPass for LocalDryRun {
+    fn admit(&self, graph: &mut Graph, _caps: &Capabilities) -> Vec<AdmissionProblem> {
+        for scope in &mut graph.body.scopes {
+            scope.runtime.target = RuntimeTarget::HostProcess;
+            scope.runtime.requirements.clear();
+            scope.services.clear();
+        }
+        Vec::new()
     }
 }
 

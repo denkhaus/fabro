@@ -225,17 +225,12 @@ fn run_json_pending_control(run: &serde_json::Value) -> &serde_json::Value {
 async fn mock_daytona_auth_probe(server: &MockServer) -> httpmock::Mock<'_> {
     server
         .mock_async(|when, then| {
-            when.method(GET)
-                .path("/sandbox/paginated")
-                .query_param("page", "1")
-                .query_param("limit", "1");
+            when.method(GET).path("/sandbox").query_param("limit", "1");
             then.status(200)
                 .header("content-type", "application/json")
                 .json_body(json!({
                     "items": [],
-                    "total": 0,
-                    "page": 1,
-                    "totalPages": 0
+                    "nextCursor": null
                 }));
         })
         .await
@@ -2279,7 +2274,6 @@ fn worker_command_forwards_github_app_private_key_from_vault() {
         storage_dir.path(),
         false,
         Some("test-private-key".to_string()),
-        None,
     )
     .unwrap();
     let cmd = LocalWorkerRuntime::command_for_spec(&spec);
@@ -2291,74 +2285,6 @@ fn worker_command_forwards_github_app_private_key_from_vault() {
     assert_eq!(
         command_env_value(&cmd, EnvVars::DAYTONA_API_KEY),
         EnvOverride::Unchanged
-    );
-}
-
-/// A Daytona run's worker carries the vault's key for Petri's Daytona
-/// plugin.
-#[cfg(unix)]
-#[test]
-fn worker_command_forwards_daytona_api_key_from_vault() {
-    let storage_dir = tempfile::tempdir().unwrap();
-    let state = worker_command_test_state(storage_dir.path(), &["dev-token"], Some(TEST_DEV_TOKEN));
-    let spec = worker_launch_spec(
-        state.as_ref(),
-        RunId::new(),
-        RunExecutionMode::Start,
-        storage_dir.path(),
-        false,
-        None,
-        Some("dtn_test-key".to_string()),
-    )
-    .unwrap();
-    let cmd = LocalWorkerRuntime::command_for_spec(&spec);
-
-    assert_eq!(
-        command_env_value(&cmd, EnvVars::DAYTONA_API_KEY),
-        EnvOverride::Set("dtn_test-key".to_string())
-    );
-}
-
-/// A plugin configured under `[server.sandbox.providers.<kind>]` reaches
-/// the worker under the names Petri reads, so a run on that kind finds its
-/// plugin without a second configuration.
-#[cfg(unix)]
-#[test]
-fn worker_command_forwards_configured_sandbox_plugins() {
-    let storage_dir = tempfile::tempdir().unwrap();
-    let state = worker_command_test_state_with_extra_config(
-        storage_dir.path(),
-        &["dev-token"],
-        Some(TEST_DEV_TOKEN),
-        r#"
-[server.sandbox.providers.e2b]
-path = "/opt/fabro/plugins/sandbox-driver-e2b"
-sha256 = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
-dev = true
-"#,
-    );
-    let cmd = worker_command(
-        state.as_ref(),
-        RunId::new(),
-        RunExecutionMode::Start,
-        storage_dir.path(),
-        false,
-    )
-    .unwrap();
-
-    assert_eq!(
-        command_env_value(&cmd, "PETRI_SANDBOX_E2B_PLUGIN"),
-        EnvOverride::Set("/opt/fabro/plugins/sandbox-driver-e2b".to_string())
-    );
-    assert_eq!(
-        command_env_value(&cmd, "PETRI_SANDBOX_E2B_SHA256"),
-        EnvOverride::Set(
-            "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef".to_string()
-        )
-    );
-    assert_eq!(
-        command_env_value(&cmd, EnvVars::PETRI_SANDBOX_PLUGIN_DEV),
-        EnvOverride::Set("1".to_string())
     );
 }
 
@@ -2563,7 +2489,6 @@ fn worker_command(
         mode,
         run_dir,
         agent_fabro_tools_enabled,
-        None,
         None,
     )?;
     Ok(LocalWorkerRuntime::command_for_spec(&spec))

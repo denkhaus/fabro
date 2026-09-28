@@ -7,14 +7,11 @@ use std::time::Duration;
 
 use fabro_test::{fabro_snapshot, test_context};
 
-use super::petri::{RunningServer, host_plugin, run_detached, run_json, wait_for_success};
+use super::petri::{RunningServer, run_detached, run_json, wait_for_success};
 use crate::cmd::support::{read_text, text_tree};
 
 #[tokio::test(flavor = "multi_thread")]
 async fn artifact_worker_captures_large_files_in_the_configured_local_store() {
-    if host_plugin().is_none() {
-        return;
-    }
     let context = test_context!();
     let server = RunningServer::start_with(
         "\n[server.artifacts]\nprovider = \"local\"\nprefix = \"selected-prefix\"\n",
@@ -162,9 +159,6 @@ fn artifact_workspace(context: &fabro_test::TestContext) -> PathBuf {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn artifact_commands_read_the_artifacts_the_hooks_collected() {
-    if host_plugin().is_none() {
-        return;
-    }
     let context = test_context!();
     let server = RunningServer::start().await;
     let workspace = artifact_workspace(&context);

@@ -61,6 +61,15 @@ jobs:
       - uses: taiki-e/install-action@773334c0e05d7e699e4d78234494308223f3a2cf # nextest
         if: steps.skip.outputs.skip != 'true'
 
+      - name: Pull the images the Docker tests run
+        if: steps.skip.outputs.skip != 'true'
+        run: |
+          backend="$(dirname "$(cargo metadata --locked --format-version 1 | jq -r '.packages[] | select(.name == "petri-executor-sandbox") | .manifest_path')")/src/backend.rs"
+          pin="$(sed -n 's/^const RUNNER_PIN: &str = "\([0-9a-f]*\)";$/\1/p' "$backend")"
+          test -n "$pin"
+          docker pull "ghcr.io/lithoscomputer/ubuntu-24.04:slim-$pin"
+          docker pull ghcr.io/lithoscomputer/ubuntu-22.04:slim
+
       - name: Release nightly
         if: steps.skip.outputs.skip != 'true'
         run: |

@@ -92,17 +92,12 @@ fn assert_no_legacy_environment_dir(temp_dir: &tempfile::TempDir) {
 async fn mock_daytona_auth_probe(server: &MockServer) -> httpmock::Mock<'_> {
     server
         .mock_async(|when, then| {
-            when.method(GET)
-                .path("/sandbox/paginated")
-                .query_param("page", "1")
-                .query_param("limit", "1");
+            when.method(GET).path("/sandbox").query_param("limit", "1");
             then.status(200)
                 .header("content-type", "application/json")
                 .json_body(serde_json::json!({
                     "items": [],
-                    "total": 0,
-                    "page": 1,
-                    "totalPages": 0
+                    "nextCursor": null
                 }));
         })
         .await
