@@ -1,12 +1,13 @@
-# Feature touchpoints — PETRI ERA (branch denkhaus-petri)
+# Feature touchpoints — PETRI ERA (branch denkhaus)
 
-The fork line lives on `denkhaus-petri` (base: upstream/main 40419cbd2,
-created 2026-09-20; epic fabro-9930 owns the port waves; full analysis:
-`docs/lab/petri-integration-analysis.md`). `denkhaus` is the conserved
-pre-petri branch; its old-engine touchpoint rows live in that branch's
-history and in the analysis doc — do not resurrect them here.
+The fork line lives on `denkhaus` (the petri line, renamed from
+`denkhaus-petri` on 2026-09-27; base: upstream/main 40419cbd2, epic
+fabro-9930 owns the port waves; full analysis:
+`docs/lab/petri-integration-analysis.md`). The pre-petri world is archived
+as branch `denkhaus-0`; its old-engine touchpoint rows live in that
+branch's history and in the analysis doc — do not resurrect them here.
 
-Merges walk `upstream/main -> denkhaus-petri`. Every durable fork feature
+Merges walk `upstream/main -> denkhaus`. Every durable fork feature
 keeps TWO pins: a row here (LLM-walked) AND a fork-only test a merge can
 never drop. A row without a test is a gap; a test without a row is
 invisible to the merge walk.
@@ -79,7 +80,7 @@ W2-W4 rows promoted above; pin-form status per closed wave seed:
 ## Local-run preconditions (learned W0, 2026-09-21; staging addendum W3-5)
 
 - Staging = the local docker stack (`just up`). Runs target
-  `denkhaus/fabro@denkhaus-petri` explicitly (the scheduler is off; runs
+  `denkhaus/fabro@denkhaus` explicitly (the scheduler is off; runs
   are triggered manually via API or CLI). The image bakes the
   sandbox-driver plugins at the workspace-pinned rev (fabro-96c6:
   `cargo dev docker-build` builds sandbox-driver-docker/-host from the

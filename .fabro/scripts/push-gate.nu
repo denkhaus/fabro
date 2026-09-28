@@ -3,7 +3,7 @@
 # 2026-09-17: NEVER push to the LINE branch while a pass runs; user
 # correction 2026-09-21: the gate is BRANCH-SCOPED — only pushes to the
 # line branch denkhaus can dirty a running pass's workspace or its run
-# PRs. A push to another branch (denkhaus-petri, the Petri integration
+# PRs. A push to another branch (a non-line branch, the Petri integration
 # branch no run bases on until the W5 cutover) is always OPEN).
 #
 # Two conditions, both must hold for OPEN on the line branch:

@@ -21,7 +21,7 @@ name: Dogfood Gate
 
 on:
   pull_request:
-    branches: [denkhaus-petri]
+    branches: [denkhaus]
 
 concurrency:
   group: dogfood-gate-${{ github.ref }}
