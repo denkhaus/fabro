@@ -152,6 +152,21 @@ cycle` process). Serialization principle (ADR-0015): while the
   handoff claimed a fresh configured stack while the volume had been
   empty since 09-17.
 
+- Bench/tooling scripts with a deterministic-reset step (workbench
+  seed-ensure's `git reset --hard origin/main`) WIPE uncommitted edits to
+  themselves when run mid-edit (2026-09-28, twice: once by the script's
+  reset, once by a hand-rolled landing sequence that reset before
+  committing). Rules: such scripts REFUSE dirty trees (guard in step 0);
+  script edits LAND via the one-command dance (`just land` in fabro-test,
+  scripts/land.nu) BEFORE the next run — edit -> branch -> commit -> push,
+  never reset first; a merge-504 from gh can be a FALSE negative (recheck
+  PR state = MERGED before failing).
+- Nu interpolated strings treat EVERY bare `(...)` as a subexpression:
+  prose parens like `(fabro-1a41, guards investigation)` PARSE as list
+  syntax and explode at RUNTIME ('Command ... not found') — nu --ide-check
+  cannot catch this class. Escape literal parens `\(...\)`; the
+  mechanical net is lint-nu's bare-paren-check (fabro bffd0ce43). Two
+  same-class bench crashes on 2026-09-28 before the rule existed.
 - Deterministic-script-first for loop assets (2026-09-16 lesson set):
   when a prompt clause requires JUDGMENT over mechanical data (grep
   history, resolve paths, compute metrics), do not sharpen the prose -
