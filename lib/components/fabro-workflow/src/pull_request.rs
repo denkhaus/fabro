@@ -8,6 +8,7 @@ use fabro_llm::lithos_catalog::Catalog;
 use fabro_llm::{Client, ClientOptions, Request, selection};
 use fabro_store::RunProjection;
 use fabro_types::settings::run::MergeStrategy;
+use fabro_types::settings::{ModelRef, ResolvedModelRef};
 use fabro_types::{Conclusion, PullRequestLink, RunSpec, format_cost as outcome_format_cost};
 use fabro_util::text::strip_goal_decoration;
 use lithos_llm::catalog::ProviderId;
@@ -89,6 +90,33 @@ fn truncation_caps_for_context_window(ctx: usize) -> TruncationCaps {
             .checked_div(FRACTION_DEN)
             .unwrap_or(PLAN_HARD_CAP)
             .min(PLAN_HARD_CAP),
+    }
+}
+
+/// The LLM client's route form of the configured PR model (fabro-6558
+/// evening): Fabro's `[run.pull_request] model` names the provider with a
+/// colon (`zai:glm-4.7`), while the client splits routes on `/` — an
+/// unconverted selector resolves no route, the generation call fails with
+/// "model selector `zai:glm-4.7` was not found", and every pull request
+/// falls back to the deterministic skeleton. A model that names no
+/// provider stays bare: the client's own catalog matching picks it.
+fn client_selector(model: &str, catalog: &Catalog) -> String {
+    match model
+        .parse::<ModelRef>()
+        .map(|reference| reference.resolve(catalog))
+    {
+        Ok(Ok(ResolvedModelRef::Model {
+            provider: Some(provider),
+            selector,
+        })) => format!("{provider}/{selector}"),
+        Ok(Ok(ResolvedModelRef::Model {
+            provider: None,
+            selector,
+        })) => selector,
+        // A provider-only reference, an ambiguous one, and an unparseable
+        // one keep the client's own default handling (the bare token, or
+        // the whole string the client will refuse and report).
+        Ok(Ok(ResolvedModelRef::Provider(_)) | Err(_)) | Err(_) => model.to_owned(),
     }
 }
 
@@ -366,7 +394,7 @@ async fn build_pr_content_with_client(
     };
 
     let request = Request::builder()
-        .model(model)
+        .model(client_selector(model, catalog))
         .system(PR_BODY_SYSTEM_PROMPT)
         .message(Message::text(Role::User, prompt))
         .build()
@@ -911,6 +939,33 @@ limits = { context_tokens = 8192, max_output_tokens = 1024 }
 capabilities = { text = true, tools = true, response_format = { json_object = true, json_schema = true } }
 "#,
         )
+    }
+
+    /// The configured `[run.pull_request] model` reaches the client in its
+    /// route form: Fabro spells the provider with a colon, the client
+    /// splits on `/` (fabro-6558; an unconverted selector fails with
+    /// "model selector `zai:glm-4.7` was not found" and every pull
+    /// request falls back to the skeleton).
+    #[test]
+    fn the_configured_pr_model_reaches_the_client_in_route_form() {
+        let catalog = fabro_llm::test_support::test_catalog_with_overlay(
+            r#"
+[providers.zai]
+display_name = "Zai"
+base_url = "http://zai.invalid/v1"
+auth = { type = "bearer" }
+
+[providers.zai.models."glm-4.7"]
+display_name = "GLM 4.7"
+api_model = "glm-4.7"
+capabilities = { text = true }
+"#,
+        );
+        assert_eq!(client_selector("zai:glm-4.7", &catalog), "zai/glm-4.7");
+        // A bare model keeps its shape: the client matches it itself.
+        assert_eq!(client_selector("glm-4.7", &catalog), "glm-4.7");
+        // An already-routed selector stays as it is.
+        assert_eq!(client_selector("zai/glm-4.7", &catalog), "zai/glm-4.7");
     }
 
     /// A client over [`mock_catalog`] whose `provider_name` answers with
