@@ -24,6 +24,7 @@ mod error;
 pub use error::LONG_RATE_LIMIT_WINDOW;
 pub(crate) mod fork_catalog;
 pub mod gateway;
+pub mod judgment;
 pub mod probe;
 pub mod selection;
 #[cfg(any(test, feature = "test-support"))]
@@ -43,5 +44,10 @@ pub use lithos_llm::types::{
 };
 pub use lithos_llm::{
     adapter, catalog as lithos_catalog, credentials, estimate, middleware, types,
+};
+pub use judgment::{
+    Answer, AnswerValue, JudgmentClient, JudgmentEndpoint, JudgmentError, JudgmentRequest,
+    JudgmentResponse, JudgmentUsage, Question, DEFAULT_BASE_URL, DEFAULT_MODEL,
+    is_judgment_model,
 };
 pub use selection::{FallbackTarget, ModelSelectionError, SelectedModel};

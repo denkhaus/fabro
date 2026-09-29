@@ -56,3 +56,25 @@ aliases = ["glm52", "glm5.2"]
 
 [providers.openrouter.models."glm-5.3"]
 aliases = ["glm", "glm5", "glm53", "glm5.3", "glm-5-3"]
+
+# Judgment model (ADR-0022 wave 3, fabro-b506): TypeSafe's System One
+# (Jev) through OpenRouter's System One surface (operator repoint
+# 2026-09-24; endpoint https://openrouter.ai/api/v1/systemone). The
+# catalog id carries the typesafe/ namespace OpenRouter maps bare ids
+# onto; the wire id stays the version-pinned bare `jev-latest`
+# (api_model) so threshold tuning cannot drift with an alias. Billing is
+# input-only (~$0.042/Mtok, ADR-0022 live probe 2026-09-26): no output
+# rate. The `metadata.fabro.kind = "judgment"` marker is fabro-side —
+# lithos's catalog schema has no kind field — read by fabro-llm's
+# `judgment::is_judgment_model`. Not a chat model: text/tools/reasoning
+# stay off; evaluation (typed choice/score/boolean questions) is the
+# capability it actually has.
+[providers.openrouter.models."typesafe/jev-latest"]
+display_name = "System One Jev (judgment)"
+aliases = ["jev", "jev-latest"]
+api_model = "jev-latest"
+capabilities = { text = false, images = false, tools = false, reasoning = false, caching = false, sampling = false, evaluation = { choice = true, score = true, boolean = true } }
+pricing = { input_usd_micros_per_million = 42000 }
+
+[providers.openrouter.models."typesafe/jev-latest".metadata.fabro]
+kind = "judgment"
