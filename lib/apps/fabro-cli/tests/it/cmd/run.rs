@@ -1045,6 +1045,50 @@ fn run_rejects_removed_run_id_flag() {
 }
 
 #[test]
+fn json_run_auto_approves_human_gates() {
+    let context = test_context!();
+    context.ensure_home_server_auth_methods();
+    context.write_temp(
+        "auto-approve.fabro",
+        r#"digraph HumanGate {
+  start [shape=Mdiamond]
+  approve [shape=hexagon, label="Approve?"]
+  exit [shape=Msquare]
+  start -> approve
+  approve -> exit [label="[A] Approve"]
+}
+"#,
+    );
+    let output = context
+        .command()
+        .args([
+            "--json",
+            "run",
+            "--auto-approve",
+            "--environment",
+            "local",
+            "auto-approve.fabro",
+        ])
+        .assert()
+        .success();
+    let items: Vec<Value> = std::str::from_utf8(&output.get_output().stdout)
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    assert!(items.iter().any(|item| {
+        item.pointer("/item/derived/parsed/kind") == Some(&Value::from("question"))
+    }));
+    assert!(
+        items.iter().any(|item| {
+            item.pointer("/item/record/body/event") == Some(&Value::from("run.finished"))
+                && item.pointer("/item/record/body/status") == Some(&Value::from("success"))
+        }),
+        "JSON mode must continue through an automatically approved gate to completion"
+    );
+}
+
+#[test]
 fn json_run_requires_manual_input_for_human_gates_without_auto_approve() {
     let context = test_context!();
     context.ensure_home_server_auth_methods();
