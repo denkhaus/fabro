@@ -73,6 +73,33 @@ fn dry_run_prints_equivalent_build_commands() {
 }
 
 #[test]
+fn dry_run_injects_git_sha_into_the_builder_container() {
+    let output = fabro_dev()
+        .args(["docker-build", "--arch", "amd64", "--dry-run"])
+        .assert()
+        .success()
+        .get_output()
+        .clone();
+    let stdout = output_text(&output.stdout);
+
+    // `to_shell_line` shell-quotes the env arg, e.g. -e 'FABRO_GIT_SHA=<sha>'.
+    let marker = "FABRO_GIT_SHA=";
+    let Some(index) = stdout.find(marker) else {
+        panic!("dry-run should inject FABRO_GIT_SHA into the builder:\n{stdout}");
+    };
+    let sha = &stdout[index + marker.len()..];
+    let sha: String = sha
+        .chars()
+        .take_while(|c| c.is_ascii_hexdigit() && !c.is_whitespace())
+        .collect();
+    assert_eq!(
+        sha.len(),
+        12,
+        "injected sha must be 12 lowercase hex chars (fabro-6ffb):\n{stdout}"
+    );
+}
+
+#[test]
 fn dry_run_compile_only_skips_image_build() {
     let output = fabro_dev()
         .args([

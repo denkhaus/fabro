@@ -12,6 +12,7 @@ use std::process::Command as StdCommand;
 
 use anyhow::{Context as _, Result, bail};
 use fabro_api::types;
+use fabro_build_support::SHORT_SHA_LEN;
 use tokio::task::spawn_blocking;
 
 use super::{
@@ -47,19 +48,26 @@ fn git_head_sha12() -> Result<String> {
 }
 
 fn validate_sha12(tag: &str) -> Result<()> {
-    let valid = tag.len() == 12
+    let valid = tag.len() == SHORT_SHA_LEN
         && tag
             .bytes()
             .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte));
     anyhow::ensure!(
         valid,
-        "toolchain tag must be a 12-character lowercase hex git sha, got {tag:?}"
+        "toolchain tag must be a {SHORT_SHA_LEN}-character lowercase hex git sha, got {tag:?}"
     );
     Ok(())
 }
 
 fn toolchain_image(sha12: &str) -> String {
     format!("{TOOLCHAIN_IMAGE_REPO}:{sha12}")
+}
+
+/// Parity predicate: the deployed server's build sha must start with the
+/// tag's sha. Both sides use `SHORT_SHA_LEN` chars (the server may report a
+/// longer sha), so a correctly-built server always passes (fabro-6ffb).
+fn server_sha_matches(server_sha: &str, sha12: &str) -> bool {
+    server_sha.starts_with(sha12)
 }
 
 /// Fail-closed parity gate: the tag's sha12 must match the deployed server's
@@ -75,7 +83,7 @@ async fn verify_deployed_server_parity(client: &Client, sha12: &str) -> Result<(
         );
     };
     anyhow::ensure!(
-        server_sha.starts_with(sha12),
+        server_sha_matches(&server_sha, sha12),
         "deployed-server/tag mismatch: server is built from {server_sha}, tag is {sha12} ({}); \
          pin only after deploying the matching server image",
         toolchain_image(sha12)
@@ -171,7 +179,7 @@ pub(super) async fn pin_toolchain_command(
 
 #[cfg(test)]
 mod tests {
-    use super::validate_sha12;
+    use super::{SHORT_SHA_LEN, server_sha_matches, validate_sha12};
 
     #[test]
     fn sha12_validation_accepts_lowercase_hex_and_rejects_everything_else() {
@@ -186,5 +194,33 @@ mod tests {
             "13 chars rejected"
         );
         assert!(validate_sha12("").is_err(), "empty rejected");
+    }
+
+    #[test]
+    fn short_sha_length_constant_agrees_with_build_metadata() {
+        // The tag contract and the embedded FABRO_GIT_SHA must share one
+        // length (fabro-6ffb); a drift here is what broke the parity gate.
+        assert_eq!(SHORT_SHA_LEN, 12);
+    }
+
+    #[test]
+    fn parity_comparison_covers_equal_prefix_and_mismatch() {
+        let tag = "0123456789ab";
+        assert!(
+            server_sha_matches("0123456789ab", tag),
+            "equal 12-char server sha matches"
+        );
+        assert!(
+            server_sha_matches("0123456789abcdef0123456789abcdef01234567", tag),
+            "full-length server sha with the tag as prefix matches"
+        );
+        assert!(
+            !server_sha_matches("fedcba987654", tag),
+            "different 12-char server sha is a mismatch"
+        );
+        assert!(
+            !server_sha_matches("0123456", tag),
+            "legacy 7-char embedded sha can never satisfy a 12-char tag"
+        );
     }
 }
