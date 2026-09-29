@@ -35,6 +35,10 @@ pub use client::{
     ClientOptions, FabroClient, LlmSetupError, RetryListener, RetryNotice, build_client,
     build_offline_client, configured_providers,
 };
+pub use judgment::{
+    Answer, AnswerValue, DEFAULT_BASE_URL, DEFAULT_MODEL, JudgmentClient, JudgmentEndpoint,
+    JudgmentError, JudgmentRequest, JudgmentResponse, JudgmentUsage, Question, is_judgment_model,
+};
 pub use lithos_llm::client::{Client, ClientBuild};
 pub use lithos_llm::middleware::{CallContext, CancellationToken, RetryPolicy, RetryStage};
 pub use lithos_llm::resolver::ModelSelectionError as RouteSelectionError;
@@ -44,10 +48,5 @@ pub use lithos_llm::types::{
 };
 pub use lithos_llm::{
     adapter, catalog as lithos_catalog, credentials, estimate, middleware, types,
-};
-pub use judgment::{
-    Answer, AnswerValue, JudgmentClient, JudgmentEndpoint, JudgmentError, JudgmentRequest,
-    JudgmentResponse, JudgmentUsage, Question, DEFAULT_BASE_URL, DEFAULT_MODEL,
-    is_judgment_model,
 };
 pub use selection::{FallbackTarget, ModelSelectionError, SelectedModel};

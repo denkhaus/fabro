@@ -55,7 +55,7 @@ pub struct JudgmentEndpoint {
     /// The Decisions API endpoint (see [`DEFAULT_BASE_URL`]).
     pub base_url: String,
     /// The wire model id (see [`DEFAULT_MODEL`]).
-    pub model:     String,
+    pub model:    String,
 }
 
 impl Default for JudgmentEndpoint {
@@ -100,9 +100,13 @@ impl JudgmentRequest {
     /// Builds the request `client.judge` would send for `state` and
     /// `questions` under `model`.
     #[must_use]
-    pub fn new(model: impl Into<String>, state: Value, questions: BTreeMap<String, Question>) -> Self {
+    pub fn new(
+        model: impl Into<String>,
+        state: Value,
+        questions: BTreeMap<String, Question>,
+    ) -> Self {
         Self {
-            model:     model.into(),
+            model: model.into(),
             state,
             questions,
         }
@@ -293,8 +297,7 @@ pub fn is_judgment_model(model: &CatalogModel) -> bool {
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;
-    use std::sync::Arc;
-    use std::sync::Mutex;
+    use std::sync::{Arc, Mutex};
 
     use fabro_test::test_http_client;
     use httpmock::MockServer;
@@ -303,31 +306,30 @@ mod tests {
     use serde_json::json;
     use tokio::time::Duration;
 
+    use super::{JudgmentRequest, is_judgment_model};
     use crate::client::{RetryListener, RetryNotice};
     use crate::judgment::{
         AnswerValue, JudgmentClient, JudgmentEndpoint, JudgmentResponse, Question,
     };
-
-    use super::{JudgmentRequest, is_judgment_model};
 
     /// The wire model id the hook and the provider agree on (operator
     /// repoint 2026-09-24): bare `jev-latest`, no alias drift.
     const WIRE_MODEL: &str = "jev-latest";
 
     fn verdict_question() -> (String, Question) {
-        (
-            "verdict_pre_screen".to_string(),
-            Question::Choice {
-                instructions: "Adjudicate the reviewed change.".to_string(),
-                criteria:     BTreeMap::from([
-                    ("approved".to_string(), "The change satisfies its spec.".to_string()),
-                    (
-                        "changes_requested".to_string(),
-                        "The change has gaps.".to_string(),
-                    ),
-                ]),
-            },
-        )
+        ("verdict_pre_screen".to_string(), Question::Choice {
+            instructions: "Adjudicate the reviewed change.".to_string(),
+            criteria:     BTreeMap::from([
+                (
+                    "approved".to_string(),
+                    "The change satisfies its spec.".to_string(),
+                ),
+                (
+                    "changes_requested".to_string(),
+                    "The change has gaps.".to_string(),
+                ),
+            ]),
+        })
     }
 
     #[test]
@@ -337,22 +339,16 @@ mod tests {
             json!({"run_id": "r1", "node": "reviewer"}),
             BTreeMap::from([
                 verdict_question(),
-                (
-                    "flakiness".to_string(),
-                    Question::Score {
-                        instructions: "Score the failure's flakiness.".to_string(),
-                        criteria:     BTreeMap::from([(
-                            "deterministic".to_string(),
-                            "Same tree, same result.".to_string(),
-                        )]),
-                    },
-                ),
-                (
-                    "free_form".to_string(),
-                    Question::Noul {
-                        instructions: "What changed?".to_string(),
-                    },
-                ),
+                ("flakiness".to_string(), Question::Score {
+                    instructions: "Score the failure's flakiness.".to_string(),
+                    criteria:     BTreeMap::from([(
+                        "deterministic".to_string(),
+                        "Same tree, same result.".to_string(),
+                    )]),
+                }),
+                ("free_form".to_string(), Question::Noul {
+                    instructions: "What changed?".to_string(),
+                }),
             ]),
         );
         let wire = serde_json::to_value(&request).expect("request serializes");
@@ -360,8 +356,7 @@ mod tests {
         assert_eq!(wire["questions"]["verdict_pre_screen"]["type"], "choice");
         assert_eq!(wire["questions"]["flakiness"]["type"], "score");
         assert_eq!(wire["questions"]["free_form"]["type"], "noul");
-        let back: JudgmentRequest =
-            serde_json::from_value(wire).expect("request round-trips");
+        let back: JudgmentRequest = serde_json::from_value(wire).expect("request round-trips");
         assert_eq!(back, request);
     }
 
@@ -381,12 +376,14 @@ mod tests {
             },
             "usage": {"cost": 0.00003}
         }"#;
-        let response: JudgmentResponse =
-            serde_json::from_str(body).expect("response decodes");
+        let response: JudgmentResponse = serde_json::from_str(body).expect("response decodes");
         let verdict = &response.answers["verdict_pre_screen"];
         assert_eq!(verdict.answer, AnswerValue::Choice("approved".to_string()));
         assert_eq!(
-            verdict.probabilities.as_ref().and_then(|p| p.get("approved")),
+            verdict
+                .probabilities
+                .as_ref()
+                .and_then(|p| p.get("approved")),
             Some(&0.91)
         );
         assert_eq!(verdict.confidence, Some(0.88));
@@ -396,8 +393,7 @@ mod tests {
         );
         assert_eq!(response.usage.as_ref().and_then(|u| u.cost), Some(0.00003));
         let wire = serde_json::to_value(&response).expect("response serializes");
-        let back: JudgmentResponse =
-            serde_json::from_value(wire).expect("response round-trips");
+        let back: JudgmentResponse = serde_json::from_value(wire).expect("response round-trips");
         assert_eq!(back, response);
     }
 
@@ -509,13 +505,14 @@ mod tests {
             })),
         );
         let response = client
-            .judge("test-key", json!({}), BTreeMap::from([(
-                "flakiness".to_string(),
-                Question::Score {
+            .judge(
+                "test-key",
+                json!({}),
+                BTreeMap::from([("flakiness".to_string(), Question::Score {
                     instructions: "Score flakiness.".to_string(),
                     criteria:     BTreeMap::new(),
-                },
-            )]))
+                })]),
+            )
             .await
             .expect("judgment succeeds after retry");
         assert_eq!(
