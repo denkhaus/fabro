@@ -74,11 +74,13 @@ jobs:
       # Petri runs take their scope through sandbox-driver plugin executables
       # that must be on PATH, at the rev the workspace pins (mirrors upstream
       # rust.yml). Without them the workspace suite fails/skips.
-      - name: Read the sandbox-driver rev the workspace pins
+      - name: Read the sandbox-driver rev the lock pins
         id: sandbox-driver
         if: steps.changes.outputs.rust == 'true'
         run: |
-          rev="$(sed -n 's/^sandbox-driver = { git = "[^"]*", rev = "\([0-9a-f]*\)" }$/\1/p' Cargo.toml)"
+          # Cargo.toml tracks Lithos deps on branches since upstream's
+          # deps/branch-pins merge; the exact rev lives in Cargo.lock.
+          rev="$(grep -A2 '^name = "sandbox-driver"$' Cargo.lock | sed -n 's/^source = ".*#\([0-9a-f]\{7,40\}\)".*$/\1/p' | head -1)"
           test -n "$rev"
           echo "rev=$rev" >> "$GITHUB_OUTPUT"
       - name: Restore the sandbox-driver plugin executables
