@@ -407,6 +407,7 @@ fn run_completed_dry_run(context: &TestContext, workflow: &Path) -> RunSetup {
         run_id,
     };
     wait_for_run_finished(&run_setup.run_dir);
+    wait_for_run_publish_record(&run_setup.run_dir);
     run_setup
 }
 
@@ -930,6 +931,21 @@ pub(crate) fn command_log_text(run_dir: &Path, stage_id: &StageId) -> String {
 pub(crate) fn wait_for_run_finished(run_dir: &Path) {
     wait_for_stream_item(run_dir, "the terminal lifecycle record", |item| {
         crate::support::is_terminal_lifecycle(item)
+    });
+}
+
+/// Wait until the run's stream holds the publish-outcome record.
+///
+/// The publish supervisor appends `run.branch_published` beside the
+/// terminal lifecycle record, and under load either can land first; tests
+/// that assert the stream's tail must see both (fabro-0664).
+pub(crate) fn wait_for_run_publish_record(run_dir: &Path) {
+    wait_for_stream_item(run_dir, "the run.branch_published record", |item| {
+        let record = item.item.get("record");
+        record
+            .and_then(|record| record.get("kind"))
+            .and_then(serde_json::Value::as_str)
+            == Some("run.branch_published")
     });
 }
 

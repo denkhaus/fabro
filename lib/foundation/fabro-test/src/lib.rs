@@ -77,6 +77,9 @@ fn insta_filters() -> Vec<(String, String)> {
             r"Duration:\s+\d+\s+(seconds?|minutes?|hours?)",
             "Duration:  [DURATION]",
         ),
+        // The run-branch publish record carries the checkpoint commit's sha
+        // (run.branch_published; nondeterministic across runs).
+        (r#""head_sha":"[0-9a-f]{7,40}""#, r#""head_sha":"[SHA]""#),
         (r"Base: [^\n]+ \([0-9a-f]{7,40}\)", "Base: [BASE]"),
         (r"(Branch: [^\n]+ from )[0-9a-f]{7,40}", "${1}[SHA]"),
         // The sandbox driver's events: per-process event source ids, operation
