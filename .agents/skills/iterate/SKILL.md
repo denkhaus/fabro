@@ -1,3 +1,20 @@
+---
+name: iterate
+description: >-
+  Drive one fabro development cycle end to end on the fork branch denkhaus:
+  orient on line state (production server, friction score, interrupted
+  cycles), select the highest-value seed, delegate implementation to the
+  autonomous line (the session claims no seeds), grill pivotal forks,
+  review landed diffs (code-review, fork presence pins, fact-checks),
+  deepen conditionally, integrate (commit, push-gate, deploy windows),
+  and reflect (cost review, seed filing, line-watch heartbeat). Use when
+  the user invokes /iterate, asks for a development cycle or the next
+  cycle step, or wants cycle work continued after an interruption. Local
+  session instrument only; fabro workflows never load it. Complements the
+  integrate skill: iterate owns the OUTGOING cycle, integrate the INCOMING
+  side.
+---
+
 # /iterate (fabro only)
 
 One development cycle, end to end. The user starts a cycle by invoking
