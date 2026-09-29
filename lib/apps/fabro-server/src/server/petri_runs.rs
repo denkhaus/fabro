@@ -487,6 +487,7 @@ pub(crate) async fn execute(state: Arc<AppState>, run_id: RunId) {
         }),
         runtime,
         provider: run_state.spec.settings.run.environment.provider.clone(),
+        resources: run_state.spec.settings.run.environment.resources.clone(),
         cancel,
         // The in-process test path drives no pause: the server's transport
         // for it names the worker. A steer or an interrupt is answered in

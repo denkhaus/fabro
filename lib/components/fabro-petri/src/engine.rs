@@ -47,6 +47,8 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use fabro_types::settings::run::EnvironmentResourcesSettings;
+use fabro_types::settings::size::Size;
 use fabro_types::{FailureReason, RunId, SandboxProviderKind};
 use petri_execution::host::{self, HostError, HostRun};
 use petri_execution::inspect::{self, InspectError, RunInspection};
@@ -57,7 +59,7 @@ use petri_execution::{
 use petri_runtime::driver::lifecycle::ExecutionHooks;
 pub use petri_runtime::executor::Retention;
 use petri_runtime::executor::SecretProvider;
-use petri_runtime::{LostSandbox, RunOptions, SandboxBackend};
+use petri_runtime::{DaytonaResources, LostSandbox, RunOptions, SandboxBackend};
 use tokio::fs;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, info, warn};
@@ -94,6 +96,8 @@ pub struct RunRequest {
     pub runtime:     RuntimeSpec,
     /// The sandbox provider Fabro resolved for the run's environment.
     pub provider:    SandboxProviderKind,
+    /// Resolved environment resources for the Daytona runner snapshot.
+    pub resources:   EnvironmentResourcesSettings,
     /// Fires to cancel the run.
     pub cancel:      CancellationToken,
     /// The run's pause, unpause and steer controls, which the caller keeps
@@ -142,6 +146,8 @@ pub struct RunOutcome {
 pub enum RunError {
     #[error("the run's sandbox provider `{provider}` is not one Petri serves")]
     UnsupportedProvider { provider: SandboxProviderKind },
+    #[error("the Daytona CPU allocation must be a non-negative integer: {cpu}")]
+    InvalidCpu { cpu: i32 },
     #[error("the run's record could not be opened")]
     Open(#[source] petri_store::StoreError),
     #[error("the run's record could not be read")]
@@ -184,6 +190,9 @@ pub async fn run(request: RunRequest) -> Result<RunOutcome, RunError> {
     options.run_key = Some(key.clone());
     options.retention = RETENTION;
     options.sandbox.backend = backend;
+    if backend == SandboxBackend::Daytona {
+        options.sandbox.daytona_resources = daytona_resources(&request.resources)?;
+    }
     // Fabro's hooks restore a sandbox workspace from its snapshots at the
     // scope's acquisition, so a lease whose sandbox is gone gets a fresh
     // one instead of failing the run.
@@ -390,6 +399,26 @@ fn error_chain(error: &RunError) -> String {
         cause = next.source();
     }
     parts.join(": ")
+}
+
+/// Overlay Fabro's configured allocation on Petri's runner defaults.
+fn daytona_resources(
+    settings: &EnvironmentResourcesSettings,
+) -> Result<DaytonaResources, RunError> {
+    let defaults = DaytonaResources::default();
+    Ok(DaytonaResources {
+        cpu_cores: settings
+            .cpu
+            .map(|cpu| u32::try_from(cpu).map_err(|_| RunError::InvalidCpu { cpu }))
+            .transpose()?
+            .unwrap_or(defaults.cpu_cores),
+        memory_mb: settings.memory.map_or(defaults.memory_mb, mebibytes),
+        disk_mb:   settings.disk.map(mebibytes).or(defaults.disk_mb),
+    })
+}
+
+fn mebibytes(size: Size) -> u64 {
+    size.as_bytes().div_ceil(1024 * 1024)
 }
 
 /// The sandbox backend for Fabro's provider kind; `None` for a kind Petri
