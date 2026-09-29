@@ -412,17 +412,13 @@ fn daytona_resources(
             .map(|cpu| u32::try_from(cpu).map_err(|_| RunError::InvalidCpu { cpu }))
             .transpose()?
             .unwrap_or(defaults.cpu_cores),
-        memory_mb: settings
-            .memory
-            .map_or(defaults.memory_mb, daytona_mebibytes),
-        disk_mb:   settings.disk.map(daytona_mebibytes).or(defaults.disk_mb),
+        memory_mb: settings.memory.map_or(defaults.memory_mb, mebibytes),
+        disk_mb:   settings.disk.map(mebibytes).or(defaults.disk_mb),
     })
 }
 
-fn daytona_mebibytes(size: Size) -> u64 {
-    // Daytona allocates whole GiB. Round up as the driver does before
-    // Petri validates the minimum and compares the resolved snapshot size.
-    size.as_bytes().div_ceil(1024 * 1024 * 1024) * 1024
+fn mebibytes(size: Size) -> u64 {
+    size.as_bytes().div_ceil(1024 * 1024)
 }
 
 /// The sandbox backend for Fabro's provider kind; `None` for a kind Petri
