@@ -34,7 +34,7 @@ use fabro_petri::recovery::{self, Recovery, RecoveryRequest};
 use fabro_petri::runtime::RuntimeSpec;
 use fabro_petri::test_support::{MemoryBlobs, MemoryPlatformRecords};
 use fabro_store::{ArtifactStore, PlatformRecord, PlatformRecordKind};
-use fabro_types::settings::run::RunCheckpointSettings;
+use fabro_types::settings::run::{EnvironmentResourcesSettings, RunCheckpointSettings};
 use fabro_types::{GitIdentitySource, RunId, SandboxProviderKind};
 use object_store::local::LocalFileSystem;
 use petri_execution::inspect::{self, RunInspection};
@@ -163,6 +163,7 @@ impl Harness {
                 ..RuntimeSpec::default()
             },
             provider,
+            resources: EnvironmentResourcesSettings::default(),
             cancel: CancellationToken::new(),
             controls: RunControls::new(),
             interviewer,
@@ -827,6 +828,7 @@ async fn a_run_hook_blocks_a_tool_effect_through_the_forwarded_service() {
             ..RuntimeSpec::default()
         },
         provider: SandboxProviderKind::LOCAL,
+        resources: EnvironmentResourcesSettings::default(),
         cancel: CancellationToken::new(),
         controls: RunControls::new(),
         interviewer,

@@ -219,6 +219,14 @@ pub(super) async fn execute(worker: PetriWorker<'_>) -> Result<()> {
             .environment
             .provider
             .clone(),
+        resources: worker
+            .run_state
+            .spec
+            .settings
+            .run
+            .environment
+            .resources
+            .clone(),
         cancel: cancel_token.clone(),
         controls: controls.clone(),
         interviewer: Arc::new(petri_interviewer),
