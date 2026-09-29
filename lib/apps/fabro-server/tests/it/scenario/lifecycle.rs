@@ -88,10 +88,13 @@ const GATE_DOT: &str = r#"digraph GateTest {
     graph [goal="Test gate"]
     start [shape=Mdiamond]
     exit  [shape=Msquare]
-    work  [shape=box, prompt="Do work"]
+    // Script stages, not prompts: this scenario exercises the HTTP question
+    // and answer lifecycle, and a model turn would need the twin (and its
+    // timing) for nothing the test asserts.
+    work  [shape=parallelogram, script="true"]
     gate  [shape=hexagon, type="human", label="Approve?"]
-    done  [shape=box, prompt="Finish"]
-    revise [shape=box, prompt="Revise"]
+    done  [shape=parallelogram, script="true"]
+    revise [shape=parallelogram, script="true"]
 
     start -> work -> gate
     gate -> done   [label="[A] Approve"]
