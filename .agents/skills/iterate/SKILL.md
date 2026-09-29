@@ -103,6 +103,13 @@ stores it belongs to; reach them by phase need:
   decisions live in the tracker, never only in chat or the diff.
 - Feed implementation seeds with pointers: files, trait seams, guideline
   pages. Platform/engine changes are line work too (PR #28 proved it).
+- Fork wiring (2026-09-30, 3fce cycle): a fix on a forked dep repo is NOT
+  shipped until every consuming workspace's Cargo.lock pins the new rev -
+  `branch =` patch pins move only on `cargo update`; bump the lock in the
+  SAME change (a fabro lock still at the pre-fix petri rev nearly shipped a
+  half fix and probe-15 red). Patch BOTH crates of a multi-crate fork repo
+  (pebble-coding-agent AND pebble-agent) - a single entry splits shared
+  traits into two copies and fails unification.
 - Rust work (when directly assigned): mechanical gate — read SKILL.md AND
   the guideline pages covering the diff in the SAME turn, before the first
   Rust edit cell; name the pages in the cycle report.
@@ -140,6 +147,13 @@ stores it belongs to; reach them by phase need:
   cost narratives, or machine-specific paths (`.fabro/workflows/**`);
   branch/merge facts belong in PROJECT_FACTS. The mechanical net is the
   prompt-lint evidence ban.
+- Direct pushes to the line branch skip dogfood-gate (it runs on PRs only)
+  and reds accumulate invisibly until the next PR pays for them
+  (2026-09-30: three stale suites surfaced at once). Run the touched
+  crates' tests before a direct denkhaus push, or use a PR vehicle for
+  test-affecting work. Never switch branches while a background cargo
+  runs - the builder reads live sources and a mixed build invalidates the
+  whole run.
 - Verify a reviewer's factual premise in code before fixing; the same for
   revisor seed citations (check the cited seed's premise AND
   implementation status). A closed seed whose demand is invisible in any
@@ -180,6 +194,10 @@ stores it belongs to; reach them by phase need:
   only). Never `seeds sync` inside a workflow stage. Line-watch closes
   through `seeds close --reason` with the reason appended to the body
   first.
+- A `fabro create` whose post-processing dies still created the run:
+  capture exactly one run id per intended create and `fabro rm --force`
+  duplicates immediately - submitted ghosts count as active runs and wedge
+  the push gate.
 - Push policy: during the cycle, pulls and read-only integration stay
   allowed; the PUSH direction is gated to one mechanical decision at the
   END: `nu .fabro/scripts/push-gate.nu` (exit 0 = open: no running
@@ -246,6 +264,11 @@ stores it belongs to; reach them by phase need:
   until the user approves; reviewers and line-watch block such changes on
   sight. A merged capability change without a recorded user decision is
   reverted, not ratified.
+- Seeds whose fix surface is an implementer-hidden loop asset (`scripts/**`,
+  `.fabro/**`, `justfile`) are unlandable by the develop line - the fs
+  envelope correctly kills the write every pass (fabro-c4be, two envelope
+  kills 2026-09-30). Classify them direct work at assignment or ask for a
+  deliberate envelope exception.
 - Ownership (ADR-0018): the line works ONLY `@fabro`-assigned seeds
   (fail-closed picker). The revisor files seeds UNASSIGNED. Emergencies
   bypass the picker: line down -> agent repairs directly with the user's
