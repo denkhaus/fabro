@@ -40,13 +40,14 @@ if (sanitize "no tokens here") != "no tokens here" {
 if (resolve-blobrefs "plain text no refs") != "plain text no refs" {
     fail "resolve-blobrefs no-refs text must be unchanged"
 }
+let repo_root = $env.PWD
 let tmp = (mktemp -d)
 let sha = "1111111111111111111111111111111111111111111111111111111111111111"
 mkdir $"($tmp)/.fabro/blobs"
 "BLOB-CONTENT-HERE" | save --force $"($tmp)/.fabro/blobs/($sha).json"
 cd $tmp
 let inlined = (resolve-blobrefs $"pre blob://sha256/($sha) post")
-cd /workspace/fabro
+cd $repo_root
 rm -rf $tmp
 if $inlined != "pre BLOB-CONTENT-HERE post" {
     fail $"resolve-blobrefs resolvable ref must inline: ($inlined)"
