@@ -36,6 +36,20 @@ async fn daytona_runs_forward_configured_resources_in_provider_units() {
 }
 
 #[tokio::test]
+async fn daytona_accepts_an_explicit_disk_matching_the_provider_default() {
+    assert_snapshot_request(
+        EnvironmentResourcesSettings {
+            disk: Some("3GB".parse().unwrap()),
+            ..EnvironmentResourcesSettings::default()
+        },
+        2,
+        4,
+        Some(3),
+    )
+    .await;
+}
+
+#[tokio::test]
 async fn daytona_decimal_memory_meets_the_runner_minimum_without_defaulting_disk() {
     assert_snapshot_request(
         EnvironmentResourcesSettings {

@@ -59,9 +59,7 @@ use petri_execution::{
 use petri_runtime::driver::lifecycle::ExecutionHooks;
 pub use petri_runtime::executor::Retention;
 use petri_runtime::executor::SecretProvider;
-use petri_runtime::{
-    DaytonaResources, DaytonaSandboxKind, LostSandbox, RunOptions, SandboxBackend,
-};
+use petri_runtime::{DaytonaResources, LostSandbox, RunOptions, SandboxBackend};
 use tokio::fs;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, info, warn};
@@ -192,9 +190,6 @@ pub async fn run(request: RunRequest) -> Result<RunOutcome, RunError> {
     options.run_key = Some(key.clone());
     options.retention = RETENTION;
     options.sandbox.backend = backend;
-    // Fabro runs on Daytona's generally available containers; Petri's VM
-    // default requires runner capacity that ordinary accounts may not have.
-    options.sandbox.daytona_kind = DaytonaSandboxKind::Container;
     if backend == SandboxBackend::Daytona {
         options.sandbox.daytona_resources = daytona_resources(&request.resources)?;
     }
@@ -406,7 +401,7 @@ fn error_chain(error: &RunError) -> String {
     parts.join(": ")
 }
 
-/// Keep the configured allocation, leaving an unspecified disk to Daytona.
+/// Overlay Fabro's configured allocation on Petri's runner defaults.
 fn daytona_resources(
     settings: &EnvironmentResourcesSettings,
 ) -> Result<DaytonaResources, RunError> {
@@ -420,7 +415,7 @@ fn daytona_resources(
         memory_mb: settings
             .memory
             .map_or(defaults.memory_mb, daytona_mebibytes),
-        disk_mb:   settings.disk.map(daytona_mebibytes),
+        disk_mb:   settings.disk.map(daytona_mebibytes).or(defaults.disk_mb),
     })
 }
 
