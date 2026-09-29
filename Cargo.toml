@@ -223,6 +223,7 @@ petri-executor-sandbox = { git = "https://github.com/denkhaus/petri", branch = "
 petri-ir = { git = "https://github.com/denkhaus/petri", branch = "fabro" }
 petri-steps = { git = "https://github.com/denkhaus/petri", branch = "fabro" }
 petri-testkit = { git = "https://github.com/denkhaus/petri", branch = "fabro" }
+petri-frontend = { git = "https://github.com/denkhaus/petri", branch = "fabro" }
 
 
 # FORK PATCH (fabro-3fce): pebble's skill-reference expansion applied to
@@ -237,4 +238,3 @@ petri-testkit = { git = "https://github.com/denkhaus/petri", branch = "fabro" }
 [patch."https://github.com/lithoscomputer/pebble.git"]
 pebble-coding-agent = { git = "https://github.com/denkhaus/pebble", branch = "fabro" }
 pebble-agent = { git = "https://github.com/denkhaus/pebble", branch = "fabro" }
-petri-frontend = { git = "https://github.com/denkhaus/petri", branch = "fabro" }

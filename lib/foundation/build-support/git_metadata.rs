@@ -50,6 +50,20 @@ pub fn cargo_profile() -> String {
     std::env::var("PROFILE").unwrap_or_default()
 }
 
+/// The `FABRO_GIT_SHA` image-build injection: image builds (`cargo dev
+/// docker-build`) compile without usable git metadata inside the builder
+/// container, so the build plan injects the sha as this env var and the
+/// build script never embeds an empty sha (fabro-6ffb).
+#[expect(
+    clippy::disallowed_methods,
+    reason = "Build scripts read the FABRO_GIT_SHA image-build injection seam outside application runtime configuration."
+)]
+pub fn injected_git_sha() -> Option<String> {
+    std::env::var("FABRO_GIT_SHA")
+        .ok()
+        .filter(|sha| !sha.is_empty())
+}
+
 #[expect(
     clippy::disallowed_methods,
     reason = "Build scripts run outside Tokio and need synchronous git probes for embedded build metadata."

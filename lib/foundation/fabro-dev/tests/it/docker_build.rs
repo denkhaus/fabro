@@ -94,8 +94,8 @@ fn dry_run_injects_git_sha_into_the_builder_container() {
         .collect();
     assert_eq!(
         sha.len(),
-        12,
-        "injected sha must be 12 lowercase hex chars (fabro-6ffb):\n{stdout}"
+        fabro_build_support::SHORT_SHA_LEN,
+        "injected sha must be SHORT_SHA_LEN lowercase hex chars (fabro-6ffb):\n{stdout}"
     );
 }
 

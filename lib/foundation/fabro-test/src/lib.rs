@@ -59,41 +59,53 @@ pub fn find_test_fixtures_dir(start: &Path) -> Option<PathBuf> {
 }
 
 /// Static filters applied to every snapshot.
-static INSTA_FILTERS: &[(&str, &str)] = &[
-    (r"fabro \d+\.\d+\.\d+(?:-[\w.]+)?", "fabro [VERSION]"),
-    // 12-char short sha (fabro_build_support::SHORT_SHA_LEN, fabro-6ffb);
-    // the trailing (?: \w+)? profile suffix keeps matching debug builds.
-    (r"\([0-9a-f]{12} \d{4}-\d{2}-\d{2}(?: \w+)?\)", "([BUILD])"),
-    (r"\b[0-9A-HJKMNP-TV-Z]{26}\b", "[ULID]"),
-    (r"in \d+(\.\d+)?(ms|s)", "in [TIME]"),
-    (
-        r"\[STORAGE_DIR\]/scratch/\d{8}-dry-run-\[ULID\]",
-        "[DRY_RUN_DIR]",
-    ),
-    (r"\[STORAGE_DIR\]/scratch/\d{8}-\[ULID\]", "[RUN_DIR]"),
-    (
-        r"Duration:\s+\d+\s+(seconds?|minutes?|hours?)",
-        "Duration:  [DURATION]",
-    ),
-    (r"Base: [^\n]+ \([0-9a-f]{7,40}\)", "Base: [BASE]"),
-    (r"(Branch: [^\n]+ from )[0-9a-f]{7,40}", "${1}[SHA]"),
-    // The sandbox driver's events: per-process event source ids, operation
-    // ids, sub-second durations, and a local sandbox's path-derived id.
-    (
-        r#""source_id"(\s*:\s*)"[0-9a-f]{32}""#,
-        r#""source_id"$1"[HEX]""#,
-    ),
-    (
-        r#""operation_id"(\s*:\s*)"[0-9a-f]{32}""#,
-        r#""operation_id"$1"[HEX]""#,
-    ),
-    (r#""nanos"(\s*:\s*)\d+"#, r#""nanos"$1"[NANOS]""#),
-    (r"host-dir-[0-9a-f]+", "host-dir-[HEX]"),
-    // A local sandbox's registry-minted id (a creation time, a process id
-    // and a counter), for a directory too long for a path-derived id.
-    (r"host-g[0-9a-f]+-\d+-\d+", "host-g[ID]"),
-    (r"\\([\w\d])", "/$1"),
-];
+///
+/// The build-sha pattern derives from `SHORT_SHA_LEN` so the filter and the
+/// embedded sha cannot drift (fabro-6ffb, mx-8a5660); the trailing
+/// `(?: \w+)?` profile suffix keeps matching debug builds.
+fn insta_filters() -> Vec<(String, String)> {
+    let mut filters: Vec<(String, String)> = [
+        (r"fabro \d+\.\d+\.\d+(?:-[\w.]+)?", "fabro [VERSION]"),
+        (r"\b[0-9A-HJKMNP-TV-Z]{26}\b", "[ULID]"),
+        (r"in \d+(\.\d+)?(ms|s)", "in [TIME]"),
+        (
+            r"\[STORAGE_DIR\]/scratch/\d{8}-dry-run-\[ULID\]",
+            "[DRY_RUN_DIR]",
+        ),
+        (r"\[STORAGE_DIR\]/scratch/\d{8}-\[ULID\]", "[RUN_DIR]"),
+        (
+            r"Duration:\s+\d+\s+(seconds?|minutes?|hours?)",
+            "Duration:  [DURATION]",
+        ),
+        (r"Base: [^\n]+ \([0-9a-f]{7,40}\)", "Base: [BASE]"),
+        (r"(Branch: [^\n]+ from )[0-9a-f]{7,40}", "${1}[SHA]"),
+        // The sandbox driver's events: per-process event source ids, operation
+        // ids, sub-second durations, and a local sandbox's path-derived id.
+        (
+            r#""source_id"(\s*:\s*)"[0-9a-f]{32}""#,
+            r#""source_id"$1"[HEX]""#,
+        ),
+        (
+            r#""operation_id"(\s*:\s*)"[0-9a-f]{32}""#,
+            r#""operation_id"$1"[HEX]""#,
+        ),
+        (r#""nanos"(\s*:\s*)\d+"#, r#""nanos"$1"[NANOS]""#),
+        (r"host-dir-[0-9a-f]+", "host-dir-[HEX]"),
+        // A local sandbox's registry-minted id (a creation time, a process id
+        // and a counter), for a directory too long for a path-derived id.
+        (r"host-g[0-9a-f]+-\d+-\d+", "host-g[ID]"),
+        (r"\\([\w\d])", "/$1"),
+    ]
+    .into_iter()
+    .map(|(pattern, replacement)| (pattern.to_string(), replacement.to_string()))
+    .collect();
+    let build_sha = format!(
+        r"\([0-9a-f]{{{}}} \d{{4}}-\d{{2}}-\d{{2}}(?: \w+)?\)",
+        fabro_build_support::SHORT_SHA_LEN
+    );
+    filters.insert(1, (build_sha, "([BUILD])".to_string()));
+    filters
+}
 
 const MANAGED_STORAGE_MARKER: &str = "# fabro-test managed storage_dir";
 const SESSION_LOCK_TIMEOUT: Duration = Duration::from_secs(20);
@@ -1499,11 +1511,7 @@ impl TestContext {
     /// Returns the combined static + context-specific filters.
     pub fn filters(&self) -> Vec<(String, String)> {
         let mut filters = self.filters.clone();
-        filters.extend(
-            INSTA_FILTERS
-                .iter()
-                .map(|(pat, rep)| ((*pat).to_string(), (*rep).to_string())),
-        );
+        filters.extend(insta_filters());
         filters
     }
 
@@ -2173,10 +2181,7 @@ macro_rules! fabro_json_snapshot {
 impl TestContext {
     /// Returns just the static default filters (no context-specific paths).
     pub fn default_filters() -> Vec<(String, String)> {
-        INSTA_FILTERS
-            .iter()
-            .map(|(pat, rep)| ((*pat).to_string(), (*rep).to_string()))
-            .collect()
+        insta_filters()
     }
 }
 

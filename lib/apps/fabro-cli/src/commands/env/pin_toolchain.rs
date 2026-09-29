@@ -33,7 +33,7 @@ const PIN_ATTEMPTS: usize = 2;
 )]
 fn git_head_sha12() -> Result<String> {
     let output = StdCommand::new("git")
-        .args(["rev-parse", "--short=12", "HEAD"])
+        .args(["rev-parse", &format!("--short={SHORT_SHA_LEN}"), "HEAD"])
         .output()
         .context("failed to run git rev-parse")?;
     if !output.status.success() {
