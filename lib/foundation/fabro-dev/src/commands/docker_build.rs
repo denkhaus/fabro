@@ -68,6 +68,10 @@ struct DockerBuildPlan {
     compile_only:   bool,
     tag:            String,
     workspace_root: PathBuf,
+    /// Short (12-char) git sha injected into the builder container as
+    /// `FABRO_GIT_SHA`, so the server binary embeds a build sha even when
+    /// the builder has no usable git metadata (fabro-6ffb).
+    git_sha:        String,
 }
 
 #[expect(
@@ -75,11 +79,13 @@ struct DockerBuildPlan {
     reason = "dev docker-build command reports progress and dry-run commands directly"
 )]
 pub(crate) fn docker_build(args: DockerBuildArgs) -> Result<()> {
+    let workspace_root = workspace_root();
     let plan = DockerBuildPlan {
         arch:           args.arch.map_or_else(DockerArch::detect, Ok)?,
         compile_only:   args.compile_only,
         tag:            args.tag,
-        workspace_root: workspace_root(),
+        workspace_root: workspace_root.clone(),
+        git_sha:        host_short_sha(&workspace_root)?,
     };
 
     if args.dry_run {
@@ -179,6 +185,8 @@ impl DockerBuildPlan {
             .arg("CARGO_TARGET_DIR=/target")
             .arg("-e")
             .arg("LIBZ_SYS_STATIC=1")
+            .arg("-e")
+            .arg(format!("FABRO_GIT_SHA={}", self.git_sha))
             .arg("rust:1-bookworm")
             .arg("bash")
             .arg("-c")
@@ -258,6 +266,20 @@ fn nu_sha256(arch: DockerArch) -> &'static str {
         DockerArch::Amd64 => NU_SHA256_AMD64,
         DockerArch::Arm64 => NU_SHA256_ARM64,
     }
+}
+
+/// Short git sha of the working tree, truncated from the full sha so the
+/// embedded `FABRO_GIT_SHA` agrees with `fabro_build_support`'s
+/// `SHORT_SHA_LEN` contract (fabro-6ffb).
+fn host_short_sha(root: &std::path::Path) -> Result<String> {
+    let full_sha = super::resolve_git_revision(root, "HEAD")?;
+    if full_sha.len() < fabro_build_support::SHORT_SHA_LEN {
+        bail!(
+            "git rev-parse HEAD returned a sha shorter than {} chars: {full_sha}",
+            fabro_build_support::SHORT_SHA_LEN
+        );
+    }
+    Ok(full_sha[..fabro_build_support::SHORT_SHA_LEN].to_string())
 }
 
 fn build_script(target: &str, zig_arch: &str) -> String {
