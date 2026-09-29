@@ -109,6 +109,19 @@ def build-one [dockerfile: string, tag: string, push: bool] {
         let current = ($inspect.stdout | str trim)
         if $current == $hash {
             print $"run-images: ($tag) up to date \(sha ($hash | str substring 0..11)\)"
+            # fabro-3351: an up-to-date LOCAL build must not suppress the
+            # registry push — `just up` then `just image-release` left the
+            # ghcr sha tag unpublished while the pin step assumed it existed.
+            # Pushing is idempotent: a remote that already holds the digest
+            # uploads nothing.
+            if $push and $tag == "fabro-toolchain:noble" {
+                let sha12 = (git rev-parse --short=12 HEAD | str trim)
+                let remote = $"ghcr.io/denkhaus/fabro-toolchain:($sha12)"
+                docker tag $tag $remote
+                print $"run-images: pushing ($remote) ..."
+                docker push $remote
+                print $"run-images: pushed ($remote) — server-managed environments pin this sha tag"
+            }
             return
         }
     }
