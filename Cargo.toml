@@ -223,4 +223,18 @@ petri-executor-sandbox = { git = "https://github.com/denkhaus/petri", branch = "
 petri-ir = { git = "https://github.com/denkhaus/petri", branch = "fabro" }
 petri-steps = { git = "https://github.com/denkhaus/petri", branch = "fabro" }
 petri-testkit = { git = "https://github.com/denkhaus/petri", branch = "fabro" }
+
+
+# FORK PATCH (fabro-3fce): pebble's skill-reference expansion applied to
+# every input - typed or harness-synthesized - so an assembled agent prompt
+# carrying two path-like /tokens died structurally ("Only one skill
+# reference per input is allowed", failure_class skill_missing, no LLM
+# call). denkhaus/pebble branch `fabro` makes the input's source decide
+# (a person's typed turn expands, synthesized input passes through; fork
+# commit 3ea3424 over lithoscomputer/pebble ba2928d, the rev this tree
+# validated). Remove this block - and the fork branch - when
+# lithoscomputer/pebble wires `is_prompt_source` itself (PR to follow).
+[patch."https://github.com/lithoscomputer/pebble.git"]
+pebble-coding-agent = { git = "https://github.com/denkhaus/pebble", branch = "fabro" }
+pebble-agent = { git = "https://github.com/denkhaus/pebble", branch = "fabro" }
 petri-frontend = { git = "https://github.com/denkhaus/petri", branch = "fabro" }
