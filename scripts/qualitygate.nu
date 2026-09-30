@@ -321,11 +321,52 @@ def check-run-scope [lane: string]: nothing -> nothing {
     print "run-scope green"
 }
 
+# Pure: the paths whose exec bit is DROPPED among `git diff --summary`
+# lines — exactly the ' mode change 100755 => 100644 <path>' shape git
+# emits. The reverse (100644 => 100755, gaining +x) never matches:
+# granting the exec bit is legitimate, dropping it through a run diff
+# is not (fabro-9569: an exec bit rode a green run twice before anyone
+# noticed).
+def mode-drop-paths [summary_lines: list<string>]: nothing -> list<string> {
+    $summary_lines
+    | parse --regex '^ mode change 100755 => 100644 (?<p>.+)$'
+    | get -o p
+    | default []
+}
+
+# Deterministic exec-bit preservation verdict over the run diff
+# (fabro-9569): the loop tester's tier behind
+# `nu scripts/qualitygate.nu check-mode-preservation`. RED on any
+# 100755 => 100644 drop; green on mode-preserving diffs and on +x gains.
+# Fail-open on the guard's own errors: a git failure skips the tier
+# (lane convention — a broken probe must not RED a sound diff).
+def check-mode-preservation []: nothing -> nothing {
+    let base = (run-base)
+    let res = (do { ^git diff --summary $base.base } | complete)
+    if $res.exit_code != 0 {
+        print "mode-preservation: git diff --summary failed — skipping (fail-open)"
+        return
+    }
+    let drops = (mode-drop-paths ($res.stdout | lines | compact))
+    print $"== mode-preservation — ($drops | length) exec-bit drop\(s\) =="
+    if ($drops | is-not-empty) {
+        for d in $drops { print $"mode-preservation: exec bit dropped \(100755 => 100644\): ($d)" }
+        exit 1
+    }
+    print "mode-preservation green"
+}
+
 # Subcommand surface: `nu scripts/qualitygate.nu check-run-scope <lane>`
 # is the loop tester's touched-scope check (and the product lane's manual
 # probe). Bare invocation stays the full product gate.
 def "main check-run-scope" [lane: string = "product"]: nothing -> nothing {
     check-run-scope $lane
+}
+
+# Subcommand surface: `nu scripts/qualitygate.nu check-mode-preservation`
+# is the loop tester's exec-bit tier (fabro-9569).
+def "main check-mode-preservation" []: nothing -> nothing {
+    check-mode-preservation
 }
 
 def main [] {
