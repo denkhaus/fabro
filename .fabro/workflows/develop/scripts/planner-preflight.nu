@@ -199,6 +199,21 @@ def in-flight-claims [remote: string, base: string, self_id: string] {
 # the description is missing/rotted/mismatched; anchor_flags carries the
 # per-anchor detail. The verdict itself is unchanged — anchor rot routes
 # through planner adjudication, never through this script's close path.
+# Envelope-risk (fabro-c4be class, systemic fix 2026-09-30): the
+# implementer's fs envelope hides loop assets (.fabro/workflows|scripts|
+# skills, .agents, root scripts/, justfile) and external tools (mulch/ml)
+# from run sandboxes — a seed whose DEMAND names such a surface cannot be
+# landed by the develop line and dies at its first out-of-scope write
+# (kills on record: 3351 x2, f22b, 1f52). ADVISORY flag: a body mention
+# is not proof (the path may be cited as BASIS while the fix surface is
+# repo-visible) — the planner verifies the primary surface before
+# claiming; envelope_risk seeds with a repo-visible primary surface stay
+# claimable.
+def envelope-risk? [desc: string]: nothing -> bool {
+    let tokens = [".fabro/workflows" ".fabro/scripts" ".fabro/skills" ".agents/" "scripts/" "justfile" "ml record" "mulch"]
+    $tokens | any {|t| $desc | str contains $t}
+}
+
 def row [v: record, desc: string, root: string, claims: list] {
     let m = ($v.implementation_matches? | default [] | first | default {})
     let ce = ($v.closing_evidence? | default {})
@@ -214,7 +229,8 @@ def row [v: record, desc: string, root: string, claims: list] {
      anchors_ok: (($flags | length) == 0),
      anchor_flags: $flags,
      in_flight: ($hit != null),
-     in_flight_run: (if $hit == null { null } else { $hit.run })}
+     in_flight_run: (if $hit == null { null } else { $hit.run}),
+     envelope_risk: (envelope-risk? $desc)}
 }
 
 # Resolve dup-run-check relative to THIS script (.fabro/scripts/ is
@@ -304,10 +320,11 @@ def main [--base: string = "origin/denkhaus", --candidates: string, --top: int =
     let legend = {duplicate: "advisory: implementation possibly already in merge-target base (or tracker-closed without resolvable evidence) — planner judges acceptance criteria and closes per the two-branch rule",
                   clean: "no landed implementation found",
                   degraded: "check failed (fetch/tracker error)"}
+    let envelope_legend = {envelope_risk: "advisory: the body names a loop-asset or external-tool surface the implementer fs envelope hides — verify the PRIMARY fix surface is repo-visible (lib/ apps/ docs/ web) before claiming; loop-asset-only or external-tool seeds are DIRECT WORK (skip, journal the classification)"}
     let report = {mode: $mode,
                   run_id: ($run_id | default null),
                   candidates: ($verdicts | enumerate | each {|e| row $e.item ($cdesc | get -o $e.index | default "") ($SCRIPT_DIR | path join '../../../..') ($inflight.claims | default [])}),
-                  legend: $legend,
+                  legend: ($legend | merge $envelope_legend),
                   degraded_reason: (if ($degraded_reason | is-empty) { null } else { $degraded_reason }),
                   in_flight_note: ($inflight.note? | default null)}
     {"outcome": "succeeded",
