@@ -45,6 +45,18 @@ name = "glm-5.3"
 # seeds/ml, pytest — .fabro/Dockerfile.toolchain). Runs start instantly; a
 # prepare no-op check would only burn tester time.
 
+# Canonical run target for MANUAL starts (fabro-70b5 era): this host's
+# origin is an SSH host alias, and the manifest's origin read resolves
+# git's url.insteadOf rewrites — the engine therefore sees the alias,
+# which no GitHub URL parser accepts. run.scm pins the canonical
+# repository (same pin as the loop workflow; engine-side fix is seed
+# fabro-f394). Server-side automation starts carry their own target and
+# are unaffected.
+[run.scm]
+provider = "github"
+owner = "denkhaus"
+repository = "fabro"
+
 # Full-history clone: the petri engine's checkpoint publishing bundles
 # the workspace commit and traverses its whole ancestry; a depth cut
 # silently truncates the bundle at the shallow boundary and kills every
