@@ -23,6 +23,7 @@ pub mod client;
 mod error;
 pub use error::LONG_RATE_LIMIT_WINDOW;
 pub(crate) mod fork_catalog;
+pub mod fork_structured;
 pub mod gateway;
 pub mod judgment;
 pub mod judgment_replay;
@@ -35,6 +36,9 @@ pub use catalog::{build_catalog, default_catalog};
 pub use client::{
     ClientOptions, FabroClient, LlmSetupError, RetryListener, RetryNotice, build_client,
     build_offline_client, configured_providers,
+};
+pub use fork_structured::{
+    TolerantCompletion, complete_object_tolerant, decode_json_object, extract_json_document,
 };
 pub use judgment::{
     Answer, AnswerValue, DEFAULT_BASE_URL, DEFAULT_MODEL, JudgmentClient, JudgmentEndpoint,
