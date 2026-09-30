@@ -25,6 +25,7 @@ pub use error::LONG_RATE_LIMIT_WINDOW;
 pub(crate) mod fork_catalog;
 pub mod gateway;
 pub mod judgment;
+pub mod judgment_replay;
 pub mod probe;
 pub mod selection;
 #[cfg(any(test, feature = "test-support"))]
