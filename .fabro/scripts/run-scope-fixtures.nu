@@ -13,6 +13,10 @@
 #   - loop lane: everything outside the loop-asset set violates
 #     (lib/, docs/, apps/, .agents/, .mulch/); loop assets + the tracker
 #     file pass.
+#   - exec-bit preservation (fabro-9569): mode-drop-paths matches only
+#     100755 => 100644 drops (git's ` mode change 100755 => 100644 <path>`
+#     summary shape); the git fixture proves check-mode-preservation RED
+#     on an exec-bit drop and GREEN on a mode-preserving +x-gain diff.
 
 # `source` resolves relative to THIS file's directory (anchor_check.nu
 # idiom); the runtime path for re-invocation is derived at run time.
@@ -59,6 +63,22 @@ expect-violations ["lib/apps/fabro-cli/src/main.rs" "docs/internal/x.md" "apps/f
 # Empty diff: green for both lanes.
 expect-violations [] "product" []
 expect-violations [] "loop" []
+
+# ── pure classification, exec-bit preservation (fabro-9569) ──────────
+# mode-drop-paths over `git diff --summary` line shapes: a 100755 =>
+# 100644 drop matches; a +x gain (100644 => 100755), content-only
+# diffs, and renames never do.
+def expect-drops [lines: list<string>, expected: list<string>]: nothing -> nothing {
+    let got = (mode-drop-paths $lines)
+    if $got != $expected {
+        fail $"mode-drop lines=($lines | to json -r): expected ($expected | to json -r), got ($got | to json -r)"
+    }
+}
+expect-drops [" mode change 100755 => 100644 scripts/run.sh"] ["scripts/run.sh"]
+expect-drops [" mode change 100644 => 100755 scripts/run.sh"] []
+expect-drops [" scripts/run.sh | 2 +-" " rename scripts/a.sh => scripts/b.sh (98%)"] []
+expect-drops [] []
+expect-drops [" mode change 100755 => 100644 a.sh" " mode change 100644 => 100755 b.sh"] ["a.sh"]
 
 # ── drift pin: the loop-asset set is encoded in evidence.nu
 # (loop-work-path — the reviewer scope) and qualitygate.nu (loop-asset?
@@ -123,7 +143,41 @@ let loop_rc2 = (probe loop)
 if $product_rc2 != 0 { fail $"git fixture: product lane should be GREEN on a repo-code-only diff \(rc=($product_rc2)\)" }
 if $loop_rc2 == 0 { fail $"git fixture: loop lane should be RED on a repo-code-only diff \(rc=($loop_rc2)\)" }
 
-print "run-scope-fixtures: ok — pure classification + git base derivation, RED proven both ways both lanes"
+# ── end-to-end git fixture, exec-bit preservation (fabro-9569) ───────
+# The base commit carries a tracked executable; a run branch that drops
+# its exec bit (100755 => 100644) must RED check-mode-preservation, a
+# mode-preserving content edit (plus a NEW executable) must stay GREEN.
+cd $FX
+do { ^git checkout -q main } | ignore
+"tool" | save tool.sh
+^chmod +x tool.sh
+do { ^git add -A } | ignore
+do { ^git commit -qm base-tool } | ignore
+
+def probe-mode []: nothing -> int {
+    (do { nu $QUALITYGATE check-mode-preservation } | complete | get exit_code)
+}
+
+# Exec-bit drop -> RED.
+do { ^git checkout -qb fabro/run/fxrun3 } | ignore
+^chmod -x tool.sh
+do { ^git add -A } | ignore
+do { ^git commit -qm "fabro(fxrun3): implementer (succeeded)" } | ignore
+let mode_rc = (probe-mode)
+if $mode_rc == 0 { fail $"git fixture: check-mode-preservation should be RED on an exec-bit drop \(rc=($mode_rc)\)" }
+
+# Mode-preserving content edit + a NEW executable (+x gain) -> GREEN.
+do { ^git checkout -q main } | ignore
+do { ^git checkout -qb fabro/run/fxrun4 } | ignore
+"tool v2" | save --force tool.sh
+"new" | save fresh.sh
+^chmod +x fresh.sh
+do { ^git add -A } | ignore
+do { ^git commit -qm "fabro(fxrun4): implementer (succeeded)" } | ignore
+let mode_rc2 = (probe-mode)
+if $mode_rc2 != 0 { fail $"git fixture: check-mode-preservation should be GREEN on a mode-preserving diff with a +x gain \(rc=($mode_rc2)\)" }
+
+print "run-scope-fixtures: ok — pure classification + git base derivation + exec-bit preservation, RED proven both ways both lanes"
 
 # Sourcing qualitygate.nu imports its `def main`; nu auto-invokes it after
 # the top level runs (closeout-smoke idiom) — exit explicitly so the

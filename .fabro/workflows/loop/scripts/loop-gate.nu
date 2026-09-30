@@ -19,7 +19,10 @@
 #      touches ONLY loop assets (.fabro/**, scripts/**, justfile,
 #      .seeds/issues.jsonl); a loop run editing lib/, docs/, apps/ is
 #      out of lane and REDs.
-#   5. Rust fmt tier, ONLY when the diff touches .rs files — a pure
+#   5. `nu scripts/qualitygate.nu check-mode-preservation` — no exec-bit
+#      drop (100755 => 100644) rides the run diff (fabro-9569); granting
+#      +x stays green.
+#   6. Rust fmt tier, ONLY when the diff touches .rs files — a pure
 #      safety net: loop seeds should never touch Rust (the run-scope
 #      check already refuses lib/**; scripts/** is nu-only today). If a
 #      .rs file ever appears in scope, format discipline still applies.
@@ -69,6 +72,7 @@ def main []: nothing -> nothing {
     if not (check 'lint-nu (every nu script)' (do { ^just lint-nu } | complete)) { exit 1 }
     if not (check 'prompt-lint (literal hygiene)' (do { ^nu .fabro/scripts/prompt-lint.nu } | complete)) { exit 1 }
     if not (check 'run-scope (loop lane: diff touches only loop assets)' (do { ^nu scripts/qualitygate.nu check-run-scope loop } | complete)) { exit 1 }
+    if not (check 'mode-preservation (no exec-bit drop through the run diff)' (do { ^nu scripts/qualitygate.nu check-mode-preservation } | complete)) { exit 1 }
 
     # Rust fmt tier — only when the diff actually touches .rs files.
     let rs = (do { ^git diff --name-only $base } | complete | get stdout | lines | compact | where {|p| $p | str ends-with '.rs'})
