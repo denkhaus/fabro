@@ -330,7 +330,7 @@ fn answered_outcome(cycle: &ReviewCycle, response: &JudgmentResponse) -> CycleOu
         .get("verdict_pre_screen")
         .and_then(|answer| match &answer.answer {
             AnswerValue::Choice(choice) => Some(choice.clone()),
-            AnswerValue::Score(_) => None,
+            AnswerValue::Score(_) | AnswerValue::Noul(_) => None,
         });
     CycleOutcome {
         run_id: cycle.run_id.clone(),
@@ -699,7 +699,8 @@ mod tests {
                 then.status(200).json_body(json!({
                     "answers": {
                         "verdict_pre_screen": {
-                            "answer": "approved",
+                            "type": "choice",
+                            "choice": "approved",
                             "confidence": 0.9
                         }
                     },

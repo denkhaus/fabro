@@ -83,7 +83,10 @@ pub enum Question {
     },
     Score {
         instructions: String,
-        criteria:     BTreeMap<String, String>,
+        /// The rubric as a string array — the System One wire contract
+        /// rejects a map here (probe 2026-09-30: zod `expected array` on
+        /// `questions.*.criteria` for score questions).
+        criteria:     Vec<String>,
     },
     Noul {
         instructions: String,
@@ -117,7 +120,15 @@ impl JudgmentRequest {
 
 /// The answer to one question: the selected option (or score), the
 /// probability mass over the criteria, and the model's confidence.
+///
+/// Wire shape (probe-proven 2026-09-30 against OpenRouter's System One
+/// surface): `{"type":"choice","choice":"approved","probabilities":{…},
+/// "confidence":0.27}` — `score` answers carry the number in `score`
+/// (probabilities keyed by rubric index, a `legend` maps them back),
+/// `noul` answers carry a bare number in `noul`. The adapter below maps
+/// all three onto [`AnswerValue`].
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(try_from = "AnswerWire", into = "AnswerWire")]
 pub struct Answer {
     pub answer:        AnswerValue,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -126,13 +137,84 @@ pub struct Answer {
     pub confidence:    Option<f64>,
 }
 
-/// The selected value: an option id for `choice`/`noul` questions, a number
-/// for `score` questions.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(untagged)]
+/// The selected value: an option id for `choice` questions, a number for
+/// `score` and `noul` questions.
+#[derive(Clone, Debug, PartialEq)]
 pub enum AnswerValue {
     Choice(String),
     Score(f64),
+    Noul(f64),
+}
+
+/// The wire form of one answer, System One's tagged shape.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+struct AnswerWire {
+    #[serde(rename = "type")]
+    kind:          String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    choice:        Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    score:         Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    noul:          Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    probabilities: Option<BTreeMap<String, f64>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    confidence:    Option<f64>,
+}
+
+/// A wire answer whose `type` names no known question kind.
+#[derive(Debug, thiserror::Error)]
+#[error("unknown answer type `{kind}` (choice={choice:?} score={score:?}          noul={noul:?})")]
+pub struct UnknownAnswerType {
+    kind:   String,
+    choice: Option<String>,
+    score:  Option<f64>,
+    noul:   Option<f64>,
+}
+
+impl TryFrom<AnswerWire> for Answer {
+    type Error = UnknownAnswerType;
+
+    fn try_from(wire: AnswerWire) -> Result<Self, Self::Error> {
+        let answer = match wire.kind.as_str() {
+            "choice" => wire.choice.clone().map(AnswerValue::Choice),
+            "score" => wire.score.map(AnswerValue::Score),
+            "noul" => wire.noul.map(AnswerValue::Noul),
+            _ => None,
+        };
+        match answer {
+            Some(answer) => Ok(Self {
+                answer,
+                probabilities: wire.probabilities,
+                confidence: wire.confidence,
+            }),
+            None => Err(UnknownAnswerType {
+                kind:   wire.kind,
+                choice: wire.choice,
+                score:  wire.score,
+                noul:   wire.noul,
+            }),
+        }
+    }
+}
+
+impl From<Answer> for AnswerWire {
+    fn from(answer: Answer) -> Self {
+        let (kind, choice, score, noul) = match answer.answer {
+            AnswerValue::Choice(choice) => ("choice", Some(choice), None, None),
+            AnswerValue::Score(score) => ("score", None, Some(score), None),
+            AnswerValue::Noul(noul) => ("noul", None, None, Some(noul)),
+        };
+        Self {
+            kind: kind.to_string(),
+            choice,
+            score,
+            noul,
+            probabilities: answer.probabilities,
+            confidence: answer.confidence,
+        }
+    }
 }
 
 /// The usage block. OpenRouter's System One response reports
@@ -344,10 +426,7 @@ mod tests {
                 verdict_question(),
                 ("flakiness".to_string(), Question::Score {
                     instructions: "Score the failure's flakiness.".to_string(),
-                    criteria:     BTreeMap::from([(
-                        "deterministic".to_string(),
-                        "Same tree, same result.".to_string(),
-                    )]),
+                    criteria:     vec!["deterministic: same tree, same result".to_string()],
                 }),
                 ("free_form".to_string(), Question::Noul {
                     instructions: "What changed?".to_string(),
@@ -358,6 +437,10 @@ mod tests {
         assert_eq!(wire["model"], WIRE_MODEL);
         assert_eq!(wire["questions"]["verdict_pre_screen"]["type"], "choice");
         assert_eq!(wire["questions"]["flakiness"]["type"], "score");
+        assert!(
+            wire["questions"]["flakiness"]["criteria"].is_array(),
+            "score criteria ride the wire as an array (probe 2026-09-30)"
+        );
         assert_eq!(wire["questions"]["free_form"]["type"], "noul");
         let back: JudgmentRequest = serde_json::from_value(wire).expect("request round-trips");
         assert_eq!(back, request);
@@ -365,16 +448,27 @@ mod tests {
 
     #[test]
     fn response_round_trips_probabilities_confidence_usage() {
+        // The System One wire shape (probe 2026-09-30): tagged answers,
+        // score carries a legend and index-keyed probabilities, noul a
+        // bare number.
         let body = r#"{
             "answers": {
                 "verdict_pre_screen": {
-                    "answer": "approved",
+                    "type": "choice",
+                    "choice": "approved",
                     "probabilities": {"approved": 0.91, "changes_requested": 0.09},
                     "confidence": 0.88
                 },
                 "flakiness": {
-                    "answer": 0.4,
+                    "type": "score",
+                    "score": 0.4,
+                    "legend": {"0": "deterministic: same tree, same result"},
+                    "probabilities": {"0": 0.65, "1": 0.35},
                     "confidence": 0.7
+                },
+                "free_form": {
+                    "type": "noul",
+                    "noul": 0.25
                 }
             },
             "usage": {"cost": 0.00003}
@@ -393,6 +487,10 @@ mod tests {
         assert_eq!(
             response.answers["flakiness"].answer,
             AnswerValue::Score(0.4)
+        );
+        assert_eq!(
+            response.answers["free_form"].answer,
+            AnswerValue::Noul(0.25)
         );
         assert_eq!(response.usage.as_ref().and_then(|u| u.cost), Some(0.00003));
         let wire = serde_json::to_value(&response).expect("response serializes");
@@ -444,7 +542,8 @@ mod tests {
                 then.status(200).json_body(json!({
                     "answers": {
                         "verdict_pre_screen": {
-                            "answer": "approved",
+                            "type": "choice",
+                            "choice": "approved",
                             "probabilities": {"approved": 0.9},
                             "confidence": 0.8
                         }
@@ -499,7 +598,9 @@ mod tests {
                         HttpMockResponse::builder()
                             .status(200)
                             .header("content-type", "application/json")
-                            .body(r#"{"answers":{"flakiness":{"answer":0.9,"confidence":0.99}}}"#)
+                            .body(
+                                r#"{"answers":{"flakiness":{"type":"score","score":0.9,"confidence":0.99}}}"#,
+                            )
                             .build()
                     }
                 });
@@ -524,7 +625,7 @@ mod tests {
                 json!({}),
                 BTreeMap::from([("flakiness".to_string(), Question::Score {
                     instructions: "Score flakiness.".to_string(),
-                    criteria:     BTreeMap::new(),
+                    criteria:     vec!["deterministic: same tree, same result".to_string()],
                 })]),
             )
             .await
