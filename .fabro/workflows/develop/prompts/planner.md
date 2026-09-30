@@ -139,3 +139,5 @@ Blocked (cycle guard fired — review or gate deadlock on one seed; the seed sta
 The JSON object must be the final thing in your response.
 
 Keep everything BEFORE the JSON object as short as possible — the full response text (including the JSON) is re-read by later stages as context. One short paragraph of reasoning maximum; the JSON object carries the data.
+
+The JSON object itself must stay COMPACT: at most ~1500 characters. `current_seed_brief` is a digest — what to build plus the 2-4 decisive acceptance criteria as one-line pointers; the Implementer reads the full seed via `seeds show`, so never re-echo seed bodies, acceptance lists verbatim, or file contents. An oversized final JSON is truncated by the stage output budget and fails the output contract.
