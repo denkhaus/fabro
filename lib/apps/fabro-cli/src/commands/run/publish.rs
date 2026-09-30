@@ -98,7 +98,7 @@ pub(super) async fn source_credential(
     )
     .await
     {
-        Ok(credentials) => SourceCredential::from_encoded(encode(&credentials)),
+        Ok(credentials) => encode(&credentials),
         Err(err) => {
             warn!(repository = %repository, error = %err, "no read credential for the run's repository; it is fetched anonymously");
             None
@@ -106,20 +106,24 @@ pub(super) async fn source_credential(
     }
 }
 
-fn encode(credentials: &GitCloneCredentials) -> String {
-    BASE64_STANDARD.encode(format!(
+fn encode(credentials: &GitCloneCredentials) -> Option<SourceCredential> {
+    SourceCredential::from_encoded(BASE64_STANDARD.encode(format!(
         "{}:{}",
         credentials.username(),
         credentials.password()
-    ))
+    )))
 }
 
 /// A successful GitHub-target run's publication: the run branch pushed, and
 /// the pull request its settings ask for opened.
 pub(super) struct GitHubPublisher {
     run_id:       RunId,
-    spec:         RunSpec,
     repository:   GitHubRepositorySlug,
+    /// The branch the target names: the pull request's base.
+    base_branch:  String,
+    goal:         String,
+    /// The run's model, when its settings name one.
+    model:        Option<String>,
     credentials:  Option<GitHubCredentials>,
     pull_request: Option<PullRequestSettings>,
     llm_source:   Arc<dyn CredentialProvider>,
@@ -147,11 +151,16 @@ impl GitHubPublisher {
         {
             return None;
         }
+        let Some(RunTarget::Git(target)) = spec.target.as_ref() else {
+            return None;
+        };
         let repository = repository(spec)?;
         Some(Self {
             run_id,
-            spec: spec.clone(),
             repository,
+            base_branch: target.branch.clone(),
+            goal: spec.graph.goal.clone(),
+            model: settings.model.name.clone(),
             credentials,
             pull_request: settings
                 .pull_request
@@ -167,8 +176,8 @@ impl GitHubPublisher {
     /// The model that writes the pull request: the run's, or the catalog's
     /// default among the providers whose credentials resolve.
     async fn model(&self) -> Option<String> {
-        if let Some(model) = self.spec.settings.run.model.name.clone() {
-            return Some(model);
+        if let Some(model) = &self.model {
+            return Some(model.clone());
         }
         let ready = readiness(self.catalog.enabled_providers(), self.llm_source.as_ref()).await;
         self.catalog
@@ -182,9 +191,6 @@ impl GitHubPublisher {
         settings: &PullRequestSettings,
         publication: &Publication,
     ) -> Result<(), String> {
-        let Some(RunTarget::Git(target)) = self.spec.target.as_ref() else {
-            return Err("pull request creation requires a GitHub target".to_string());
-        };
         let model = self
             .model()
             .await
@@ -195,10 +201,10 @@ impl GitHubPublisher {
         let created = pull_request::open_pull_request(OpenPullRequestRequest {
             github:            context,
             origin_url:        &origin_url,
-            base_branch:       &target.branch,
+            base_branch:       &self.base_branch,
             head_branch:       &publication.run_branch,
             expected_head_sha: &publication.head_sha,
-            goal:              &self.spec.graph.goal,
+            goal:              &self.goal,
             diff:              &publication.patch,
             model:             &model,
             draft:             settings.draft,
@@ -267,24 +273,16 @@ async fn push(
 ) -> Result<(), String> {
     let mut url = repository.https_url();
     url.push_str(".git");
-    let header = format!("AUTHORIZATION: basic {}", encode(credentials));
-    let env = [
-        ("GIT_CONFIG_COUNT", "1".to_string()),
-        ("GIT_CONFIG_KEY_0", format!("http.{url}.extraheader")),
-        ("GIT_CONFIG_VALUE_0", header),
-    ];
+    let env = encode(credentials)
+        .map(|credential| credential.header_env(&url))
+        .unwrap_or_default();
     let refspec = format!(
         "{}:refs/heads/{}",
         publication.head_sha, publication.run_branch
     );
     let mut last = String::new();
     for attempt in 1..=PUSH_ATTEMPTS {
-        let output = git(
-            &publication.snapshot_repository,
-            &["push", "--quiet", &url, &refspec],
-            &env,
-        )
-        .await?;
+        let output = git_push(&publication.snapshot_repository, &url, &refspec, &env).await?;
         if output.status.success() {
             return Ok(());
         }
@@ -307,17 +305,19 @@ async fn push(
     ))
 }
 
-/// `git` in `directory` with `env` added, non-interactive, bounded.
-async fn git(
+/// `git push` of `refspec` to `url` from `directory` with `env` added,
+/// non-interactive, bounded.
+async fn git_push(
     directory: &Path,
-    args: &[&str],
-    env: &[(&str, String)],
+    url: &str,
+    refspec: &str,
+    env: &[(String, String)],
 ) -> Result<std::process::Output, String> {
     let mut command = Command::new("git");
     command
-        .args(args)
+        .args(["push", "--quiet", url, refspec])
         .current_dir(directory)
-        .envs(env.iter().map(|(key, value)| (*key, value)))
+        .envs(env.iter().map(|(key, value)| (key, value)))
         .env("GIT_TERMINAL_PROMPT", "0")
         .stdin(std::process::Stdio::null())
         .kill_on_drop(true);

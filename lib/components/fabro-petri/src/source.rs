@@ -64,6 +64,23 @@ impl SourceCredential {
     pub fn encoded(&self) -> &str {
         &self.0
     }
+
+    /// The environment that has `git` present this credential as an
+    /// `Authorization` header to `url` alone.
+    #[must_use]
+    pub fn header_env(&self, url: &str) -> Vec<(String, String)> {
+        vec![
+            ("GIT_CONFIG_COUNT".to_string(), "1".to_string()),
+            (
+                "GIT_CONFIG_KEY_0".to_string(),
+                format!("http.{url}.extraheader"),
+            ),
+            (
+                "GIT_CONFIG_VALUE_0".to_string(),
+                format!("AUTHORIZATION: basic {}", self.0),
+            ),
+        ]
+    }
 }
 
 impl fmt::Debug for SourceCredential {
@@ -142,20 +159,10 @@ impl RunSource {
     /// the credential as an `Authorization` header for the origin alone.
     #[must_use]
     pub fn fetch_env(&self) -> Vec<(String, String)> {
-        let Some(credential) = &self.credential else {
-            return Vec::new();
-        };
-        vec![
-            ("GIT_CONFIG_COUNT".to_string(), "1".to_string()),
-            (
-                "GIT_CONFIG_KEY_0".to_string(),
-                format!("http.{}.extraheader", self.origin),
-            ),
-            (
-                "GIT_CONFIG_VALUE_0".to_string(),
-                format!("AUTHORIZATION: basic {}", credential.encoded()),
-            ),
-        ]
+        self.credential
+            .as_ref()
+            .map(|credential| credential.header_env(&self.origin))
+            .unwrap_or_default()
     }
 
     /// The `--depth` argument of a fetch, when the history is limited.

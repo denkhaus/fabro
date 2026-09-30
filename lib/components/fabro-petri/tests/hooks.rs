@@ -1121,13 +1121,7 @@ async fn a_git_source_is_checked_out_shallow_and_checkpoints_build_on_its_commit
         let mut harness = Harness::new();
         let (origin, head) = upstream(&harness.run_dir.with_file_name("upstream"), 3).await;
         harness.sandboxed = sandboxed;
-        harness.source = Some(RunSource {
-            origin:     format!("file://{}", origin.display()),
-            revision:   SourceRevision::Branch("main".to_string()),
-            branch:     "main".to_string(),
-            depth:      Some(1),
-            credential: None,
-        });
+        harness.source = Some(file_source(&origin, "main", Some(1)));
         let workflow = workflow(
             "  edit [shape=parallelogram, script=\"test \\\"$(cat README.md)\\\" = 'revision 3'              && test \\\"$(git rev-parse --is-shallow-repository)\\\" = true && git rev-parse              origin/main && echo edited >> README.md && git -c user.name=Agent -c \
              user.email=agent@example.com commit -q -am 'agent edit' && echo uncommitted > \
@@ -1194,13 +1188,7 @@ async fn a_prepared_workspace_is_left_as_it_is() {
         GitAuthor::default(),
         &RunCheckpointSettings::default(),
     )
-    .with_source(Some(RunSource {
-        origin:     format!("file://{}", origin.display()),
-        revision:   SourceRevision::Branch("main".to_string()),
-        branch:     "main".to_string(),
-        depth:      None,
-        credential: None,
-    }));
+    .with_source(Some(file_source(&origin, "main", None)));
     let path = root.path().join("prepared");
     fs::create_dir_all(&path)
         .await
@@ -1228,13 +1216,7 @@ async fn an_unavailable_revision_fails_the_checkout() {
         GitAuthor::default(),
         &RunCheckpointSettings::default(),
     )
-    .with_source(Some(RunSource {
-        origin:     format!("file://{}", origin.display()),
-        revision:   SourceRevision::Branch("missing".to_string()),
-        branch:     "missing".to_string(),
-        depth:      Some(1),
-        credential: None,
-    }));
+    .with_source(Some(file_source(&origin, "missing", Some(1))));
     let path = root.path().join("fresh");
     let site = Site::Host(path);
     let error = workspaces
@@ -1248,6 +1230,26 @@ async fn an_unavailable_revision_fails_the_checkout() {
 struct RecordingPublisher {
     published: std::sync::Mutex<Vec<Publication>>,
     fail:      Option<String>,
+}
+
+impl RecordingPublisher {
+    fn new(fail: Option<&str>) -> Arc<Self> {
+        Arc::new(Self {
+            published: std::sync::Mutex::default(),
+            fail:      fail.map(str::to_string),
+        })
+    }
+}
+
+/// The source of a run checked out from the local repository `origin`.
+fn file_source(origin: &Path, branch: &str, depth: Option<u32>) -> RunSource {
+    RunSource {
+        origin: format!("file://{}", origin.display()),
+        revision: SourceRevision::Branch(branch.to_string()),
+        branch: branch.to_string(),
+        depth,
+        credential: None,
+    }
 }
 
 #[async_trait::async_trait]
@@ -1269,13 +1271,7 @@ async fn published_run(
 ) -> (Harness, engine::RunOutcome) {
     let mut harness = Harness::new();
     let (origin, _) = upstream(&harness.run_dir.with_file_name("upstream"), 2).await;
-    harness.source = Some(RunSource {
-        origin:     format!("file://{}", origin.display()),
-        revision:   SourceRevision::Branch("main".to_string()),
-        branch:     "main".to_string(),
-        depth:      Some(1),
-        credential: None,
-    });
+    harness.source = Some(file_source(&origin, "main", Some(1)));
     harness.publisher = Some(Arc::clone(publisher) as Arc<dyn RunPublisher>);
     let workflow = workflow(
         &format!("  edit [shape=parallelogram, {attributes}]"),
@@ -1291,10 +1287,7 @@ async fn published_run(
 /// on (held by the snapshot repository) and its patch, before the run ends.
 #[tokio::test]
 async fn a_successful_run_is_published_with_its_branch_head_and_patch() {
-    let publisher = Arc::new(RecordingPublisher {
-        published: std::sync::Mutex::default(),
-        fail:      None,
-    });
+    let publisher = RecordingPublisher::new(None);
     let (harness, outcome) = published_run("script=\"echo edited >> README.md\"", &publisher).await;
     assert_eq!(outcome.status, RunStatus::Success, "{outcome:?}");
     assert!(!outcome.publish_failed);
@@ -1322,10 +1315,7 @@ async fn a_successful_run_is_published_with_its_branch_head_and_patch() {
 /// A publication that fails fails the run, with the reason.
 #[tokio::test]
 async fn a_failed_publication_fails_the_run() {
-    let publisher = Arc::new(RecordingPublisher {
-        published: std::sync::Mutex::default(),
-        fail:      Some("the push was rejected".to_string()),
-    });
+    let publisher = RecordingPublisher::new(Some("the push was rejected"));
     let (_, outcome) = published_run("script=\"echo edited >> README.md\"", &publisher).await;
     assert_eq!(outcome.status, RunStatus::Failed, "{outcome:?}");
     assert!(outcome.publish_failed);
@@ -1335,10 +1325,7 @@ async fn a_failed_publication_fails_the_run() {
 /// A run that fails (here, at a goal gate) is not published.
 #[tokio::test]
 async fn a_failed_run_is_not_published() {
-    let publisher = Arc::new(RecordingPublisher {
-        published: std::sync::Mutex::default(),
-        fail:      None,
-    });
+    let publisher = RecordingPublisher::new(None);
     let (_, outcome) = published_run("script=\"exit 3\", goal_gate=true", &publisher).await;
     assert_eq!(outcome.status, RunStatus::Failed, "{outcome:?}");
     assert!(!outcome.publish_failed);

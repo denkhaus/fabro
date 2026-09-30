@@ -464,7 +464,7 @@ impl RunWorkspaces {
             &source.origin,
         ])
         .await?;
-        self.fetch_source(site, "origin", &source.revision.refspec())
+        self.fetch_source(source, site, "origin", &source.revision.refspec())
             .await?;
         self.git(site, "checkout", &[
             "checkout",
@@ -484,20 +484,23 @@ impl RunWorkspaces {
             .await?;
         }
         let sha = self.git(site, "rev-parse", &["rev-parse", "HEAD"]).await?;
-        self.seed_snapshot(workspace, &sha).await?;
+        self.seed_snapshot(source, workspace, &sha).await?;
         Ok(Some(sha))
     }
 
     /// Put the commit a workspace was checked out at into its snapshot
     /// repository, under [`SOURCE_REF`], fetched from the origin at the run's
     /// depth.
-    async fn seed_snapshot(&self, workspace: &str, sha: &str) -> Result<(), CheckpointError> {
-        let Some(source) = &self.source else {
-            return Ok(());
-        };
+    async fn seed_snapshot(
+        &self,
+        source: &RunSource,
+        workspace: &str,
+        sha: &str,
+    ) -> Result<(), CheckpointError> {
         let repository = Site::Host(self.ensure_snapshot_repository(workspace).await?);
         if !self.has_object(&repository, sha).await? {
-            self.fetch_source(&repository, &source.origin, sha).await?;
+            self.fetch_source(source, &repository, &source.origin, sha)
+                .await?;
         }
         self.git(&repository, "update-ref", &["update-ref", SOURCE_REF, sha])
             .await?;
@@ -521,20 +524,14 @@ impl RunWorkspaces {
     }
 
     /// Fetch `refspec` from `remote` (a remote name, or the origin's URL) at
-    /// `site`, with the source's credential and depth.
+    /// `site`, with `source`'s credential and depth.
     async fn fetch_source(
         &self,
+        source: &RunSource,
         site: &Site,
         remote: &str,
         refspec: &str,
     ) -> Result<(), CheckpointError> {
-        let Some(source) = &self.source else {
-            return Err(CheckpointError::Command {
-                action: "fetch".to_string(),
-                status: "no source".to_string(),
-                detail: "the run has no repository to fetch from".to_string(),
-            });
-        };
         let depth = source.depth_arg();
         let mut args = vec!["fetch", "-q", "--no-tags"];
         if let Some(depth) = depth.as_deref() {
@@ -796,14 +793,7 @@ impl RunWorkspaces {
         {
             return Ok(false);
         }
-        Ok(self
-            .git_status(site, "cat-file", &[
-                "cat-file",
-                "-e",
-                &format!("{sha}^{{commit}}"),
-            ])
-            .await?
-            .is_some())
+        self.has_object(site, sha).await
     }
 
     /// Bring the workspace back to `sha`: tracked files reset, untracked
@@ -979,7 +969,7 @@ impl RunWorkspaces {
             ])
             .await?;
         }
-        self.fetch_source(site, "origin", base).await
+        self.fetch_source(source, site, "origin", base).await
     }
 
     async fn verify_restored(&self, site: &Site, sha: &str) -> Result<(), CheckpointError> {

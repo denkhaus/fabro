@@ -71,6 +71,7 @@ use fabro_auth::VaultCredentialSource;
 use fabro_client::{Client, ServerTarget};
 use fabro_interview::{ControlInterviewer, WorkerControlMessage, WorkerControlOutcome};
 use fabro_llm::credentials::{CredentialProvider, readiness};
+use fabro_llm::lithos_catalog::Catalog;
 use fabro_petri::artifacts::ClientArtifactWriter;
 use fabro_petri::blobs::ClientBlobs;
 use fabro_petri::controls::{RunControls, SteerError};
@@ -168,7 +169,10 @@ pub(super) async fn execute(worker: PetriWorker<'_>) -> Result<()> {
     let vault = runner::load_worker_vault(worker.storage_dir).await?;
     let secrets = VaultSecrets::from_vault(&*vault.read().await);
     let run_tools = run_tool_services(&worker);
+    let catalog =
+        command_context::load_cli_catalog().context("failed to build worker LLM catalog")?;
     let runtime = runtime_spec(
+        catalog.clone(),
         &vault,
         &worker.run_state,
         worker.fabro_home.clone(),
@@ -211,20 +215,21 @@ pub(super) async fn execute(worker: PetriWorker<'_>) -> Result<()> {
             None
         }
     };
-    let source = RunSource::for_run(
+    let mut source = RunSource::for_run(
         worker.run_state.spec.target.as_ref(),
         &worker.run_state.spec.settings.run,
-        publish::source_credential(&worker.run_state.spec, github.as_ref()).await,
+        None,
     );
+    if let Some(source) = &mut source {
+        source.credential =
+            publish::source_credential(&worker.run_state.spec, github.as_ref()).await;
+    }
     let publisher = publish::GitHubPublisher::for_run(
         run_id,
         &worker.run_state.spec,
         github,
         Arc::new(VaultCredentialSource::new(Arc::clone(&vault))),
-        Arc::new(
-            command_context::load_cli_catalog()
-                .context("failed to build the worker's pull request catalog")?,
-        ),
+        Arc::new(catalog),
         Arc::clone(&records),
         worker.client.clone_for_reuse(),
     )
@@ -639,13 +644,12 @@ fn run_tool_services(worker: &PetriWorker<'_>) -> Option<FabroRunToolServices> {
 /// the providers whose credentials resolve, the run's mode, the Fabro
 /// home the server named, and the run tools when the run has them.
 async fn runtime_spec(
+    catalog: Catalog,
     vault: &Arc<AsyncRwLock<Vault>>,
     run_state: &RunProjection,
     fabro_home: Option<PathBuf>,
     run_tools: Option<FabroRunToolServices>,
 ) -> Result<RuntimeSpec> {
-    let catalog =
-        command_context::load_cli_catalog().context("failed to build worker LLM catalog")?;
     let credentials: Arc<dyn CredentialProvider> =
         Arc::new(VaultCredentialSource::new(Arc::clone(vault)));
     let ready = readiness(catalog.enabled_providers(), credentials.as_ref()).await;

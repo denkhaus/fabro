@@ -1234,12 +1234,16 @@ impl FabroHooks {
                 source,
             })?;
         let patch_blob = self.patch_blob(&diff).await?;
-        let publication = branch.run_branch.clone().map(|run_branch| Publication {
-            run_branch,
-            head_sha: head_sha.clone(),
-            snapshot_repository: self.workspaces.snapshot_repository(&workspace),
-            patch: diff.patch.clone(),
-        });
+        let publication = branch
+            .run_branch
+            .clone()
+            .filter(|_| self.publisher.is_some())
+            .map(|run_branch| Publication {
+                run_branch,
+                head_sha: head_sha.clone(),
+                snapshot_repository: self.workspaces.snapshot_repository(&workspace),
+                patch: diff.patch,
+            });
         let record = PlatformRecord::RunDiff(RunDiffRecord {
             base_sha: Some(base_sha),
             head_sha: Some(head_sha),
@@ -1265,15 +1269,8 @@ impl FabroHooks {
 
     /// Hand a successful run's work to the publisher, before the run's
     /// terminal record. A failure fails the run with its reason.
-    async fn publish(&self, publication: Option<Publication>) {
-        let Some(publisher) = &self.publisher else {
-            return;
-        };
-        let Some(publication) = publication else {
-            debug!(run_id = %self.run_id, "the run has no run branch head; nothing to publish");
-            return;
-        };
-        match publisher.publish(&publication).await {
+    async fn publish(&self, publisher: &dyn RunPublisher, publication: &Publication) {
+        match publisher.publish(publication).await {
             Ok(()) => info!(
                 run_id = %self.run_id,
                 branch = publication.run_branch,
@@ -1507,8 +1504,10 @@ impl ExecutionHooks for FabroHooks {
                 None
             }
         };
-        if finished.status == RunStatus::Success && self.checkpoint_failure().is_none() {
-            self.publish(publication).await;
+        if let (Some(publisher), Some(publication)) = (&self.publisher, &publication) {
+            if finished.status == RunStatus::Success && self.checkpoint_failure().is_none() {
+                self.publish(publisher.as_ref(), publication).await;
+            }
         }
         self.inner.run_finished(context, finished).await
     }
