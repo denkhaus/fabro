@@ -1,5 +1,6 @@
 ---
 source: lib/components/fabro-dot/src/tests.rs
+assertion_line: 256
 expression: report
 ---
 .fabro/workflows/architect/workflow.fabro: Architect nodes=6 edges=10
@@ -95,6 +96,12 @@ expression: report
 .fabro/workflows/interview/workflow.fabro: Interview nodes=8 edges=15
   goal-inline
   inline@summarize
+.fabro/workflows/loop/workflow.fabro: Loop nodes=11 edges=26
+  goal-inline
+  file:output_schema:schemas/planner-output.schema.json@planner
+  file:prompt:prompts/planner.md@planner
+  file:prompt:prompts/implementer.md@implementer
+  file:prompt:prompts/reviewer.md@reviewer
 .fabro/workflows/merge-upstream/workflow.fabro: MergeUpstream nodes=4 edges=7
   goal-inline
   file:prompt:prompts/merge.md@merge
