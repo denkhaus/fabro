@@ -154,6 +154,15 @@ stores it belongs to; reach them by phase need:
   test-affecting work. Never switch branches while a background cargo
   runs - the builder reads live sources and a mixed build invalidates the
   whole run.
+- Failed-run salvage (user directive 2026-09-30): when an evaluated run
+  FAILED or is a green-lie `succeeded` and its implementer/tester stages
+  produced noteworthy work (non-trivial diff), SALVAGE it — `fabro dump
+  --output <dir> <run>` (run state is durable on mirtuell), apply the
+  stage diff, verify, land via PR citing the run (the PR #337/#339
+  pattern), or file a salvage-pointer seed citing run id + dump command +
+  stranded checkpoints when direct landing does not fit. Never let
+  stranded work vanish silently; never let a failed run close or lose a
+  seed (closure follows the publish path — failed runs publish nothing).
 - Verify a reviewer's factual premise in code before fixing; the same for
   revisor seed citations (check the cited seed's premise AND
   implementation status). A closed seed whose demand is invisible in any
@@ -250,7 +259,8 @@ stores it belongs to; reach them by phase need:
    the tree), dispatch seeds per ADR-0018 with dispatch-dedupe (keep the
    richer seed, close the lesser naming both ids), push through the gate
    with JSONL-dedupe discipline, rootprint correlation for every
-   evaluated run, report compactly in German. RLM heartbeats are
+   evaluated run, SALVAGE SWEEP per the failed-run salvage rule above for
+   every failed/green-lie run, report compactly in German. RLM heartbeats are
    session-scoped: recreate from this spec when missing; if the session
    host rejects heartbeats entirely, ask the user to set the visible
    /heartbeat with this ceremony — never run silently unwatched.
