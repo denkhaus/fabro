@@ -2388,9 +2388,11 @@ dependencies = [
 name = "fabro-llm"
 version = "0.362.0-nightly.0"
 dependencies = [
+ "anyhow",
  "async-trait",
  "bytes",
  "chrono",
+ "clap",
  "fabro-auth",
  "fabro-config",
  "fabro-http",

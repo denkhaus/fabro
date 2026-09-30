@@ -1,0 +1,17 @@
+{
+  "cycles": 100,
+  "judged": 0,
+  "degraded": 100,
+  "agreed": 0,
+  "agreement_rate": null,
+  "confidence_distribution": {},
+  "ground_truth_distribution": {
+    "approved": 98,
+    "changes_requested": 2
+  },
+  "total_cost_usd": 0.0,
+  "cost_per_cycle": null,
+  "retry_autonomy_floor": 0.85,
+  "autonomy_meets_floor": null,
+  "advisory_surfacing_threshold": null
+}
