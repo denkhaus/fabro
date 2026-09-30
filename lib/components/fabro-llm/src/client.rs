@@ -56,7 +56,7 @@ impl RetryListener {
         Self(Arc::new(listener))
     }
 
-    fn notify(&self, notice: RetryNotice) {
+    pub(crate) fn notify(&self, notice: RetryNotice) {
         (self.0)(notice);
     }
 }

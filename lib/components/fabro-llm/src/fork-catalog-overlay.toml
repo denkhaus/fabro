@@ -56,3 +56,23 @@ aliases = ["glm52", "glm5.2"]
 
 [providers.openrouter.models."glm-5.3"]
 aliases = ["glm", "glm5", "glm53", "glm5.3", "glm-5-3"]
+
+# Judgment model (ADR-0022 wave 3, fabro-b506): TypeSafe's System One
+# (Jev) through OpenRouter's System One surface (operator repoint
+# 2026-09-24; endpoint https://openrouter.ai/api/v1/systemone). The lithos
+# built-ins already carry the OpenRouter Jev rows, so this OVERRIDES the
+# built-in `jev-latest` row in place — a parallel `typesafe/jev-latest`
+# key with a `jev-latest` alias is a DuplicateModelSelector and the whole
+# catalog build refuses it. The override pins the wire id to the bare
+# `jev-latest` the System One surface expects (no `~` alias drift while
+# thresholds are tuned) and adds the fabro-side
+# `metadata.fabro.kind = "judgment"` marker that lithos's kindless schema
+# cannot carry, read by fabro-llm's `judgment::is_judgment_model`.
+# Capabilities and pricing merge through from the built-in row:
+# evaluation-only, input-only billing (output priced zero).
+[providers.openrouter.models."jev-latest"]
+aliases = ["jev"]
+api_model = "jev-latest"
+
+[providers.openrouter.models."jev-latest".metadata.fabro]
+kind = "judgment"
