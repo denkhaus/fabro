@@ -158,7 +158,7 @@ beat the real record in `ml search`.
 
 ## Verification-only briefs
 
-If the brief is marked verification-only: check each acceptance criterion against the worktree, run a smoke check only within the step-4 cost-tiered whitelist (parse-level verification for config-only seeds; never a cold `cargo run`; never the quality gate), and make NO code changes if everything holds. Answer with the verification result per criterion. If a criterion is NOT satisfied, implement only what is missing and say so.
+Verification-only claims never reach this node: the planner routes them planner → evidence → reviewer directly, so no verification-only brief exists here.
 
 ## Artifact hygiene — hard rules
 
