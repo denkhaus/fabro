@@ -214,6 +214,12 @@ stores it belongs to; reach them by phase need:
   fabro-tofu apply (`cd ~/dev/fabro-tofu`, mise exec tofu). `just up`
   refreshes the LOCAL test stack only. gopass cold cache hangs
   non-interactively — ask the user to warm it before tofu runs.
+- After EVERY tofu deploy: commit the fabro-tofu `variables.tf` image pin
+  in the same session (2026-09-30 near-miss: the night deploy applied via
+  `-var` override, the uncommitted default bump was lost, and the next
+  plain `tofu apply` would have rolled production back to a pre-fix
+  image). The committed default must name the LIVE image before the
+  session ends.
 - Bench tooling (fabro-test): script changes land through the one-command
   PR dance (`just land <subject>`), NEVER a manual reset dance; scripts
   with a deterministic-reset step refuse dirty trees. The bench
