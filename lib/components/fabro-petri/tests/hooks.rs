@@ -27,7 +27,7 @@ use fabro_petri::checkpoint::{
 };
 use fabro_petri::controls::RunControls;
 use fabro_petri::engine::{self, Execution, RunRequest, RunStatus};
-use fabro_petri::hooks::HooksSpec;
+use fabro_petri::hooks::{HooksSpec, Publication, RunPublisher};
 use fabro_petri::platform_records::PlatformRecords;
 use fabro_petri::providers::{DaytonaCredentials, SandboxProviderConfig};
 use fabro_petri::recovery::{self, Recovery, RecoveryRequest};
@@ -96,6 +96,8 @@ struct Harness {
     /// Treat the local provider's workspaces as a sandbox's: `git` runs
     /// through the scope's environment and checkpoints leave as bundles.
     sandboxed:      bool,
+    /// What a successful run's work does when it ends.
+    publisher:      Option<Arc<dyn RunPublisher>>,
     _root:          tempfile::TempDir,
 }
 
@@ -121,6 +123,7 @@ impl Harness {
             artifacts: Vec::new(),
             source: None,
             sandboxed: false,
+            publisher: None,
             _root: root,
         }
     }
@@ -136,6 +139,7 @@ impl Harness {
             test_gates:      None,
             artifact_writer: Arc::new(StoreArtifactWriter::new(self.artifact_store.clone())),
             source:          self.source.clone(),
+            publisher:       self.publisher.clone(),
         }
     }
 
@@ -1238,4 +1242,105 @@ async fn an_unavailable_revision_fails_the_checkout() {
         .await
         .expect_err("the branch does not exist");
     assert!(error.to_string().contains("git fetch failed"), "{error}");
+}
+
+/// A publisher that records what it was handed and answers as told.
+struct RecordingPublisher {
+    published: std::sync::Mutex<Vec<Publication>>,
+    fail:      Option<String>,
+}
+
+#[async_trait::async_trait]
+impl RunPublisher for RecordingPublisher {
+    async fn publish(&self, publication: &Publication) -> Result<(), String> {
+        self.published
+            .lock()
+            .expect("the ledger locks")
+            .push(publication.clone());
+        self.fail.clone().map_or(Ok(()), Err)
+    }
+}
+
+/// A run checked out from `origin` on the local provider, whose one stage
+/// has the node attributes `attributes`, published through `publisher`.
+async fn published_run(
+    attributes: &str,
+    publisher: &Arc<RecordingPublisher>,
+) -> (Harness, engine::RunOutcome) {
+    let mut harness = Harness::new();
+    let (origin, _) = upstream(&harness.run_dir.with_file_name("upstream"), 2).await;
+    harness.source = Some(RunSource {
+        origin:     format!("file://{}", origin.display()),
+        revision:   SourceRevision::Branch("main".to_string()),
+        branch:     "main".to_string(),
+        depth:      Some(1),
+        credential: None,
+    });
+    harness.publisher = Some(Arc::clone(publisher) as Arc<dyn RunPublisher>);
+    let workflow = workflow(
+        &format!("  edit [shape=parallelogram, {attributes}]"),
+        "  start -> edit -> exit",
+    );
+    let outcome = harness
+        .run_on(SandboxProviderKind::LOCAL, &workflow, SETTINGS)
+        .await;
+    (harness, outcome)
+}
+
+/// A successful run hands its publisher the run branch, the commit it ends
+/// on (held by the snapshot repository) and its patch, before the run ends.
+#[tokio::test]
+async fn a_successful_run_is_published_with_its_branch_head_and_patch() {
+    let publisher = Arc::new(RecordingPublisher {
+        published: std::sync::Mutex::default(),
+        fail:      None,
+    });
+    let (harness, outcome) = published_run("script=\"echo edited >> README.md\"", &publisher).await;
+    assert_eq!(outcome.status, RunStatus::Success, "{outcome:?}");
+    assert!(!outcome.publish_failed);
+
+    let published = publisher.published.lock().unwrap().clone();
+    assert_eq!(published.len(), 1, "published once");
+    let publication = &published[0];
+    assert_eq!(
+        publication.run_branch,
+        format!("fabro/run/{}", harness.run_id)
+    );
+    let (_, last) = harness.checkpoints().last().cloned().expect("a checkpoint");
+    assert_eq!(publication.head_sha, last);
+    assert_eq!(
+        git(&publication.snapshot_repository, &["cat-file", "-t", &last]).await,
+        "commit"
+    );
+    assert!(
+        publication.patch.contains("+edited"),
+        "{}",
+        publication.patch
+    );
+}
+
+/// A publication that fails fails the run, with the reason.
+#[tokio::test]
+async fn a_failed_publication_fails_the_run() {
+    let publisher = Arc::new(RecordingPublisher {
+        published: std::sync::Mutex::default(),
+        fail:      Some("the push was rejected".to_string()),
+    });
+    let (_, outcome) = published_run("script=\"echo edited >> README.md\"", &publisher).await;
+    assert_eq!(outcome.status, RunStatus::Failed, "{outcome:?}");
+    assert!(outcome.publish_failed);
+    assert_eq!(outcome.failure.as_deref(), Some("the push was rejected"));
+}
+
+/// A run that fails (here, at a goal gate) is not published.
+#[tokio::test]
+async fn a_failed_run_is_not_published() {
+    let publisher = Arc::new(RecordingPublisher {
+        published: std::sync::Mutex::default(),
+        fail:      None,
+    });
+    let (_, outcome) = published_run("script=\"exit 3\", goal_gate=true", &publisher).await;
+    assert_eq!(outcome.status, RunStatus::Failed, "{outcome:?}");
+    assert!(!outcome.publish_failed);
+    assert!(publisher.published.lock().unwrap().is_empty());
 }

@@ -58,23 +58,19 @@ async fn main() {
     // inherits a process env that no longer contains this credential, so an
     // unscrubbed spawn site cannot leak it. The token flows to `runner::execute`
     // through explicit function arguments instead of the environment.
-    let worker_secrets = if subcommand == Some("__run-worker") {
-        let secrets = commands::run::WorkerSecrets {
-            token:          process_env_var(EnvVars::FABRO_WORKER_TOKEN),
-            git_credential: process_env_var(EnvVars::FABRO_RUN_GIT_CREDENTIAL),
-        };
+    let worker_token = if subcommand == Some("__run-worker") {
+        let worker_token = process_env_var(EnvVars::FABRO_WORKER_TOKEN);
         #[expect(
             clippy::disallowed_methods,
-            reason = "Scrub the worker's credentials from this process's env before any \
-                      child process is spawned, so no descendant can inherit them."
+            reason = "Scrub the worker bearer from this process's env before any \
+                      child process is spawned, so no descendant can inherit it."
         )]
         {
             std::env::remove_var(EnvVars::FABRO_WORKER_TOKEN);
-            std::env::remove_var(EnvVars::FABRO_RUN_GIT_CREDENTIAL);
         }
-        secrets
+        worker_token
     } else {
-        commands::run::WorkerSecrets::default()
+        None
     };
 
     install_miette_hook();
@@ -84,7 +80,7 @@ async fn main() {
 
     let start = std::time::Instant::now();
 
-    let (command_name, result) = Box::pin(main_inner(worker_secrets)).await;
+    let (command_name, result) = Box::pin(main_inner(worker_token)).await;
     let duration_ms = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
     let exit_code = result.as_ref().err().map_or(0, exit::exit_code_for);
 
@@ -192,7 +188,7 @@ pub(crate) fn process_env_var(name: &str) -> Option<String> {
     std::env::var(name).ok()
 }
 
-async fn main_inner(worker_secrets: commands::run::WorkerSecrets) -> (String, Result<()>) {
+async fn main_inner(worker_token: Option<String>) -> (String, Result<()>) {
     let _ = default_provider().install_default();
 
     let cli = Cli::parse();
@@ -255,7 +251,7 @@ async fn main_inner(worker_secrets: commands::run::WorkerSecrets) -> (String, Re
                 commands::exec::execute(args, &base_ctx).await?;
             }
             Commands::RunCmd(cmd) => {
-                Box::pin(commands::run::dispatch(cmd, &base_ctx, worker_secrets)).await?;
+                Box::pin(commands::run::dispatch(cmd, &base_ctx, worker_token)).await?;
             }
             Commands::Preflight(args) => {
                 commands::preflight::execute(args, &base_ctx).await?;

@@ -48,8 +48,6 @@ pub(crate) struct WorkerLaunchSpec {
     pub(crate) fabro_log:              Option<String>,
     pub(crate) active_config_path:     PathBuf,
     pub(crate) github_app_private_key: Option<String>,
-    /// The read-only credential the run's GitHub target is fetched with.
-    pub(crate) run_git_credential:     Option<String>,
     /// The Fabro home the server resolved, so a Petri run's skills step
     /// reads the same home whatever the worker's environment says.
     pub(crate) fabro_home:             PathBuf,
@@ -110,9 +108,6 @@ impl LocalWorkerRuntime {
         cmd.env(EnvVars::FABRO_WORKER_TOKEN, &spec.worker_token);
         if let Some(pem) = spec.github_app_private_key.as_deref() {
             cmd.env(EnvVars::GITHUB_APP_PRIVATE_KEY, pem);
-        }
-        if let Some(credential) = spec.run_git_credential.as_deref() {
-            cmd.env(EnvVars::FABRO_RUN_GIT_CREDENTIAL, credential);
         }
 
         #[cfg(unix)]

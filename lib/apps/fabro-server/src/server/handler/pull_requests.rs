@@ -314,36 +314,6 @@ fn available_pull_request_response(
     }
 }
 
-/// Record that a pull request should be created for the run, unless one
-/// exists or a creation is already pending. The caller holds the run's
-/// pull request create lock. `Ok(true)` when this call recorded the request.
-pub(in crate::server) async fn request_pull_request_creation(
-    state: &Arc<AppState>,
-    id: RunId,
-    model: String,
-    force: bool,
-) -> Result<bool, ApiError> {
-    // Under the create lock, the projection is the latest word on whether a
-    // pull request exists or a creation is already pending.
-    let run_state = state.load_run_projection(&id).await?;
-    let appended = run_state.pull_request.is_none()
-        && !run_state
-            .pull_request_creation
-            .as_ref()
-            .is_some_and(fabro_types::PullRequestCreation::is_pending);
-    if appended {
-        let record = PlatformRecord::PullRequestRequested(PullRequestRequestedRecord {
-            creation_id: fabro_types::PullRequestCreationId::new(),
-            model,
-            force,
-        });
-        run_records::append(state, id, record)
-            .await
-            .map_err(|err| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string()))?;
-    }
-    Ok(appended)
-}
-
 async fn create_run_pull_request(
     RequireRunScoped(id): RequireRunScoped,
     State(state): State<Arc<AppState>>,
@@ -383,10 +353,29 @@ async fn create_run_pull_request(
         }
     };
     let _create_guard = state.pull_request_create_locks.lock(id).await;
-    let appended = match request_pull_request_creation(&state, id, model, body.force).await {
-        Ok(appended) => appended,
+    let creation_id = fabro_types::PullRequestCreationId::new();
+    // Under the create lock, the projection is the latest word on whether a
+    // pull request exists or a creation is already pending.
+    let run_state = match state.load_run_projection(&id).await {
+        Ok(run_state) => run_state,
         Err(err) => return err.into_response(),
     };
+    let appended = run_state.pull_request.is_none()
+        && !run_state
+            .pull_request_creation
+            .as_ref()
+            .is_some_and(fabro_types::PullRequestCreation::is_pending);
+    if appended {
+        let record = PlatformRecord::PullRequestRequested(PullRequestRequestedRecord {
+            creation_id,
+            model,
+            force: body.force,
+        });
+        if let Err(err) = run_records::append(&state, id, record).await {
+            return ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string())
+                .into_response();
+        }
+    }
 
     let run_state = match state.load_run_projection(&id).await {
         Ok(run_state) => run_state,

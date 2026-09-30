@@ -30,9 +30,11 @@
 //!   was already collected earlier in the run. A failed write is a recorded
 //!   problem on the transition, never a blocked route.
 //! - `run_finished`: the run's diff, its run branch against its base commit, as
-//!   the `run.diff` platform record with the patch as a blob; then the
-//!   forwarded point, so the local service runs `run_complete` and `run_failed`
-//!   with the sandbox in place.
+//!   the `run.diff` platform record with the patch as a blob; for a successful
+//!   run, its publication ([`RunPublisher`]: the platform pushes the run branch
+//!   and opens a pull request), whose failure fails the run before its terminal
+//!   record; then the forwarded point, so the local service runs `run_complete`
+//!   and `run_failed` with the sandbox in place.
 //! - `scope_acquired`: a fresh run's Git target checked out into the workspace
 //!   from inside the scope, with its snapshot repository seeded with the
 //!   starting commit ([`crate::source`]); a resumed run's workspace brought to
@@ -99,7 +101,7 @@ use petri_runtime::driver::lifecycle::{
     ScopeReleased, Transition, TransitionError, TransitionReport,
 };
 use petri_runtime::executor::{EnvError, ExecEnv};
-use petri_runtime::ir::{ExecutionId, FailureInfo, ScopeId, Status};
+use petri_runtime::ir::{ExecutionId, FailureInfo, RunStatus, ScopeId, Status};
 use serde_json::json;
 use tokio::sync::{Mutex as AsyncMutex, OnceCell};
 use tokio::{fs, time};
@@ -234,6 +236,29 @@ pub struct HooksSpec {
     /// Where a Git target's workspaces are checked out from, when a fresh
     /// run first acquires them. `None` for a run with no remote repository.
     pub source:          Option<RunSource>,
+    /// What a successful run's work does when it ends; `None` publishes
+    /// nothing.
+    pub publisher:       Option<Arc<dyn RunPublisher>>,
+}
+
+/// What a successful run hands its publisher when it ends: the run branch,
+/// the commit it ends on, the snapshot repository that holds it, and the
+/// run's patch against the commit the branch started from.
+#[derive(Clone, Debug)]
+pub struct Publication {
+    pub run_branch:          String,
+    pub head_sha:            String,
+    pub snapshot_repository: PathBuf,
+    pub patch:               String,
+}
+
+/// The platform's end-of-run publication: what a successful run's work does
+/// after its last stage and before its terminal record, such as pushing the
+/// run branch and opening a pull request. An `Err` fails the run with the
+/// message, as a failed publish did on the legacy executor.
+#[async_trait::async_trait]
+pub trait RunPublisher: Send + Sync {
+    async fn publish(&self, publication: &Publication) -> Result<(), String>;
 }
 
 impl HooksSpec {
@@ -252,7 +277,15 @@ impl HooksSpec {
             test_gates: None,
             artifact_writer,
             source: None,
+            publisher: None,
         }
+    }
+
+    /// Publish a successful run's work through `publisher` when it ends.
+    #[must_use]
+    pub fn with_publisher(mut self, publisher: Option<Arc<dyn RunPublisher>>) -> Self {
+        self.publisher = publisher;
+        self
     }
 
     /// Check a Git target's workspaces out from `source`.
@@ -411,6 +444,9 @@ pub struct FabroHooks {
     scopes:          ScopeEnvs,
     /// The checkpoint failure that ended the run, when one did.
     failure:         Mutex<Option<String>>,
+    publisher:       Option<Arc<dyn RunPublisher>>,
+    /// Why the run's publication failed, when it did.
+    publish_failure: Mutex<Option<String>>,
     /// Whether the run continues from its records: a sandbox workspace is
     /// then brought to its snapshot when its scope is first acquired.
     resumed:         bool,
@@ -470,6 +506,8 @@ impl FabroHooks {
             },
             scopes: ScopeEnvs::default(),
             failure: Mutex::default(),
+            publisher: spec.publisher,
+            publish_failure: Mutex::default(),
             resumed,
             restore: OnceCell::new(),
             store,
@@ -489,6 +527,13 @@ impl FabroHooks {
     #[must_use]
     pub fn checkpoint_failure(&self) -> Option<String> {
         sync::lock(&self.failure).clone()
+    }
+
+    /// Why the run's publication failed, when it did: the run then fails
+    /// with this message.
+    #[must_use]
+    pub fn publish_failure(&self) -> Option<String> {
+        sync::lock(&self.publish_failure).clone()
     }
 
     /// The run's workspaces on this host, as the hooks reach them.
@@ -1159,7 +1204,7 @@ impl FabroHooks {
     /// the branch started from, in the snapshot repository on this host.
     /// Nothing is recorded for a run that never created its branch or
     /// never checkpointed.
-    async fn record_run_diff(&self) -> Result<(), HookError> {
+    async fn record_run_diff(&self) -> Result<Option<Publication>, HookError> {
         self.recorded_checkpoints().await?;
         let branch = match self.checkpoints.branch.get() {
             Some(branch) => Some(branch.clone()),
@@ -1167,14 +1212,14 @@ impl FabroHooks {
         };
         let Some(branch) = branch else {
             debug!(run_id = %self.run_id, "no run branch is recorded; no run diff");
-            return Ok(());
+            return Ok(None);
         };
         let Some(base_sha) = branch.base_sha.clone() else {
-            return Ok(());
+            return Ok(None);
         };
         let Some((workspace, head_sha)) = self.checkpoints.last() else {
             debug!(run_id = %self.run_id, "no checkpoint is recorded; no run diff");
-            return Ok(());
+            return Ok(None);
         };
         // The run's diff is measured in the workspace the branch started
         // in; a last checkpoint elsewhere (a nested invocation's workspace)
@@ -1189,6 +1234,12 @@ impl FabroHooks {
                 source,
             })?;
         let patch_blob = self.patch_blob(&diff).await?;
+        let publication = branch.run_branch.clone().map(|run_branch| Publication {
+            run_branch,
+            head_sha: head_sha.clone(),
+            snapshot_repository: self.workspaces.snapshot_repository(&workspace),
+            patch: diff.patch.clone(),
+        });
         let record = PlatformRecord::RunDiff(RunDiffRecord {
             base_sha: Some(base_sha),
             head_sha: Some(head_sha),
@@ -1209,7 +1260,31 @@ impl FabroHooks {
             deletions = diff.summary.deletions,
             "run diff recorded"
         );
-        Ok(())
+        Ok(publication)
+    }
+
+    /// Hand a successful run's work to the publisher, before the run's
+    /// terminal record. A failure fails the run with its reason.
+    async fn publish(&self, publication: Option<Publication>) {
+        let Some(publisher) = &self.publisher else {
+            return;
+        };
+        let Some(publication) = publication else {
+            debug!(run_id = %self.run_id, "the run has no run branch head; nothing to publish");
+            return;
+        };
+        match publisher.publish(&publication).await {
+            Ok(()) => info!(
+                run_id = %self.run_id,
+                branch = publication.run_branch,
+                sha = publication.head_sha,
+                "run published"
+            ),
+            Err(message) => {
+                warn!(run_id = %self.run_id, error = %message, "the run's publication failed");
+                *sync::lock(&self.publish_failure) = Some(message);
+            }
+        }
     }
 
     /// Hold at a test gate when one is set for this point and node.
@@ -1425,8 +1500,15 @@ impl ExecutionHooks for FabroHooks {
             failure = finished.failure.as_deref().unwrap_or(""),
             "Petri run finished; recording the run's diff and running the run-end hooks"
         );
-        if let Err(error) = self.record_run_diff().await {
-            warn!(run_id = %self.run_id, error = %error.render(), "the run's diff was not recorded");
+        let publication = match self.record_run_diff().await {
+            Ok(publication) => publication,
+            Err(error) => {
+                warn!(run_id = %self.run_id, error = %error.render(), "the run's diff was not recorded");
+                None
+            }
+        };
+        if finished.status == RunStatus::Success && self.checkpoint_failure().is_none() {
+            self.publish(publication).await;
         }
         self.inner.run_finished(context, finished).await
     }
@@ -1580,6 +1662,7 @@ mod tests {
                 test_gates: None,
                 artifact_writer,
                 source: None,
+                publisher: None,
             },
             Arc::new(NoHooks),
             run_id,

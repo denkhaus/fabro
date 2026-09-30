@@ -75,14 +75,14 @@ use fabro_petri::artifacts::ClientArtifactWriter;
 use fabro_petri::blobs::ClientBlobs;
 use fabro_petri::controls::{RunControls, SteerError};
 use fabro_petri::engine::{self, Conclusion, Execution, RunRequest};
-use fabro_petri::hooks::HooksSpec;
+use fabro_petri::hooks::{HooksSpec, RunPublisher};
 use fabro_petri::interview::{Approval, FabroInterviewer};
 use fabro_petri::petri::OwnerId;
 use fabro_petri::platform_records::{HttpPlatformRecords, PlatformRecords};
 use fabro_petri::providers::{DaytonaCredentials, SandboxProviderConfig};
 use fabro_petri::runtime::{self, RuntimeSpec};
 use fabro_petri::secrets::VaultSecrets;
-use fabro_petri::source::{RunSource, SourceCredential};
+use fabro_petri::source::RunSource;
 use fabro_petri::{HttpRunStore, admission};
 use fabro_static::EnvVars;
 use fabro_store::RunProjection;
@@ -99,26 +99,24 @@ use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
+use super::publish;
 use super::runner::{self, WorkerTitlePhase};
 use crate::args::RunWorkerMode;
 use crate::command_context;
 
 /// What the worker holds when it hands a run to Petri.
 pub(super) struct PetriWorker<'a> {
-    pub(super) run_id:         RunId,
-    pub(super) target:         ServerTarget,
-    pub(super) client:         Client,
-    pub(super) run_state:      RunProjection,
-    pub(super) storage_dir:    &'a Path,
-    pub(super) run_dir:        PathBuf,
-    pub(super) mode:           RunWorkerMode,
+    pub(super) run_id:       RunId,
+    pub(super) target:       ServerTarget,
+    pub(super) client:       Client,
+    pub(super) run_state:    RunProjection,
+    pub(super) storage_dir:  &'a Path,
+    pub(super) run_dir:      PathBuf,
+    pub(super) mode:         RunWorkerMode,
     /// The Fabro home the server named; `None` falls back to Petri's own
     /// lookup of the worker's environment.
-    pub(super) fabro_home:     Option<PathBuf>,
-    pub(super) worker_token:   &'a str,
-    /// The read-only credential the run's GitHub target is fetched with,
-    /// when the server resolved one.
-    pub(super) git_credential: Option<SourceCredential>,
+    pub(super) fabro_home:   Option<PathBuf>,
+    pub(super) worker_token: &'a str,
 }
 
 /// Execute the run to its end. `Ok` when the record says it succeeded;
@@ -203,17 +201,41 @@ pub(super) async fn execute(worker: PetriWorker<'_>) -> Result<()> {
     }
     runner::set_worker_title(&run_id, WorkerTitlePhase::Running);
 
+    // A GitHub target is fetched into its sandbox with a read-only token and
+    // published with a push token, both minted from the server's
+    // credentials here.
+    let github = match publish::github_credentials(&*vault.read().await) {
+        Ok(credentials) => credentials,
+        Err(err) => {
+            warn!(run_id = %run_id, error = %err, "GitHub credentials are unavailable to the worker");
+            None
+        }
+    };
     let source = RunSource::for_run(
         worker.run_state.spec.target.as_ref(),
         &worker.run_state.spec.settings.run,
-        worker.git_credential.clone(),
+        publish::source_credential(&worker.run_state.spec, github.as_ref()).await,
     );
+    let publisher = publish::GitHubPublisher::for_run(
+        run_id,
+        &worker.run_state.spec,
+        github,
+        Arc::new(VaultCredentialSource::new(Arc::clone(&vault))),
+        Arc::new(
+            command_context::load_cli_catalog()
+                .context("failed to build the worker's pull request catalog")?,
+        ),
+        Arc::clone(&records),
+        worker.client.clone_for_reuse(),
+    )
+    .map(|publisher| Arc::new(publisher) as Arc<dyn RunPublisher>);
     let hooks = HooksSpec::for_run(
         Arc::clone(&records),
         &worker.run_state.spec.settings.run,
         Arc::new(ClientArtifactWriter::new(worker.client.clone_for_reuse())),
     )
     .with_source(source)
+    .with_publisher(publisher)
     .with_test_gates(test_checkpoint_gates());
     let request = RunRequest {
         run_id: run_id.to_string(),

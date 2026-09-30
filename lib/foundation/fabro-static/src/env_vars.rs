@@ -26,9 +26,6 @@ impl EnvVars {
     pub const FABRO_PUSH_CRED_REFRESH_INTERVAL_SECONDS: &'static str =
         "FABRO_PUSH_CRED_REFRESH_INTERVAL_SECONDS";
     pub const FABRO_QUIET: &'static str = "FABRO_QUIET";
-    /// The read-only credential a run's worker fetches its GitHub target
-    /// with: the base64 of `username:password`, scrubbed at worker startup.
-    pub const FABRO_RUN_GIT_CREDENTIAL: &'static str = "FABRO_RUN_GIT_CREDENTIAL";
     pub const FABRO_SERVER: &'static str = "FABRO_SERVER";
     pub const FABRO_SERVER_MAX_CONCURRENT_RUNS: &'static str = "FABRO_SERVER_MAX_CONCURRENT_RUNS";
     pub const FABRO_SLACK_APP_TOKEN: &'static str = "FABRO_SLACK_APP_TOKEN";
@@ -231,7 +228,6 @@ mod tests {
             EnvVars::FABRO_PUSH_CRED_REFRESH_AHEAD,
             EnvVars::FABRO_PUSH_CRED_REFRESH_INTERVAL_SECONDS,
             EnvVars::FABRO_QUIET,
-            EnvVars::FABRO_RUN_GIT_CREDENTIAL,
             EnvVars::FABRO_SERVER,
             EnvVars::FABRO_SERVER_MAX_CONCURRENT_RUNS,
             EnvVars::FABRO_SLACK_APP_TOKEN,

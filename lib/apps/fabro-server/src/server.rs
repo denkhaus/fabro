@@ -169,7 +169,6 @@ mod handler;
 pub(crate) mod petri_runs;
 mod pull_request_supervisor;
 pub(crate) mod resource_sampler;
-pub(crate) mod run_publication;
 pub(crate) mod run_records;
 mod session_runtime;
 pub(crate) mod stream_follower;
@@ -3828,7 +3827,6 @@ fn worker_launch_spec(
     run_dir: &std::path::Path,
     agent_fabro_tools_enabled: bool,
     github_app_private_key: Option<String>,
-    run_git_credential: Option<String>,
 ) -> anyhow::Result<WorkerLaunchSpec> {
     let current_exe = std::env::current_exe().context("reading current executable path")?;
     let executable =
@@ -3867,7 +3865,6 @@ fn worker_launch_spec(
         fabro_log,
         active_config_path: state.active_config_path().to_path_buf(),
         github_app_private_key,
-        run_git_credential,
         fabro_home: fabro_config::Home::from_env().root().to_path_buf(),
     })
 }
@@ -4185,9 +4182,6 @@ async fn execute_run_subprocess(state: Arc<AppState>, run_id: RunId) {
         return;
     }
 
-    // The read-only credential the worker fetches a GitHub target with,
-    // resolved for this launch.
-    let run_git_credential = run_publication::clone_credential(&state, &run_state.spec).await;
     // The worker reads the Daytona key from the vault itself; only the
     // GitHub App key crosses on its command.
     let github_app_private_key = match state.vault_secret(EnvVars::GITHUB_APP_PRIVATE_KEY).await {
@@ -4214,7 +4208,6 @@ async fn execute_run_subprocess(state: Arc<AppState>, run_id: RunId) {
             &run_dir_for_build,
             agent_fabro_tools_enabled,
             github_app_private_key,
-            run_git_credential,
         )
     })
     .await
@@ -4324,7 +4317,6 @@ async fn execute_run_subprocess(state: Arc<AppState>, run_id: RunId) {
     };
 
     accumulate_concluded_run_usage(&state, &final_state);
-    run_publication::spawn(Arc::clone(&state), run_id);
 
     let mut runs = state.runs.lock().expect("runs lock poisoned");
     if let Some(managed_run) = runs.get_mut(&run_id) {

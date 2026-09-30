@@ -294,7 +294,7 @@ impl GitAuthConfig {
         }
     }
 
-    pub(crate) fn git_env(&self, clone_url: &str) -> Vec<(String, String)> {
+    fn git_env(&self, clone_url: &str) -> Vec<(String, String)> {
         vec![
             ("GIT_CONFIG_COUNT".to_string(), "1".to_string()),
             (
@@ -305,7 +305,7 @@ impl GitAuthConfig {
         ]
     }
 
-    pub(crate) fn sensitive_values(&self) -> &[String] {
+    fn sensitive_values(&self) -> &[String] {
         &self.sensitive_values
     }
 }

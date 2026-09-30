@@ -131,14 +131,16 @@ pub enum RunStatus {
 /// What the durable record says about the run once it ended.
 #[derive(Clone, Debug)]
 pub struct RunOutcome {
-    pub status:     RunStatus,
+    pub status:         RunStatus,
     /// The root invocation's failure message, when it failed.
-    pub failure:    Option<String>,
+    pub failure:        Option<String>,
     /// Whether the record is whole: the run recorded its finish and every
     /// log replays byte for byte.
-    pub complete:   bool,
+    pub complete:       bool,
     /// Every reason `complete` is false.
-    pub incomplete: Vec<String>,
+    pub incomplete:     Vec<String>,
+    /// Whether the run failed publishing its work after its last stage.
+    pub publish_failed: bool,
 }
 
 /// Why the run could not be executed or its outcome read.
@@ -301,6 +303,16 @@ pub async fn run(request: RunRequest) -> Result<RunOutcome, RunError> {
         outcome.status = RunStatus::Failed;
         outcome.failure = Some(failure);
     }
+    // A successful run whose publication failed is a failed run: its work
+    // did not reach where the settings sent it.
+    if let Some(failure) = fabro_hooks
+        .as_ref()
+        .and_then(|hooks| hooks.publish_failure())
+    {
+        outcome.status = RunStatus::Failed;
+        outcome.failure = Some(failure);
+        outcome.publish_failed = true;
+    }
     Ok(outcome)
 }
 
@@ -360,6 +372,7 @@ pub fn conclusion(result: &Result<RunOutcome, RunError>) -> Conclusion {
         Ok(outcome) => {
             let reason = match outcome.status {
                 RunStatus::Cancelled => FailureReason::Cancelled,
+                RunStatus::Failed if outcome.publish_failed => FailureReason::PublishFailed,
                 RunStatus::Success | RunStatus::Failed => FailureReason::WorkflowError,
             };
             Conclusion::Failed {
@@ -493,6 +506,7 @@ fn outcome(
         failure,
         complete: inspection.complete,
         incomplete: inspection.incomplete,
+        publish_failed: false,
     })
 }
 
@@ -531,7 +545,19 @@ mod tests {
             } else {
                 vec!["execution 0 did not finish".to_string()]
             },
+            publish_failed: false,
         }
+    }
+
+    #[test]
+    fn a_failed_publication_concludes_publish_failed() {
+        let mut outcome = outcome_with(RunStatus::Failed, Some("the push was rejected"), true);
+        outcome.publish_failed = true;
+        let Conclusion::Failed { reason, message } = conclusion(&Ok(outcome)) else {
+            panic!("the run failed");
+        };
+        assert_eq!(reason, FailureReason::PublishFailed);
+        assert!(message.contains("the push was rejected"), "{message}");
     }
 
     #[test]

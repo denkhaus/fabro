@@ -29,7 +29,7 @@ The rest of this page describes the `app` strategy, which is required for browse
 |---|---|
 | **OAuth login** | Users sign in to the web UI with their GitHub account |
 | **Private repo cloning** | Daytona and Docker sandboxes fetch private repositories using short-lived, read-only Installation Access Tokens |
-| **Run branch pushing** | When a run ends, the Fabro server pushes the run branch to origin |
+| **Run branch pushing** | Before a successful run finishes, Fabro pushes the run branch to origin |
 | **Auto-PR** | When `[run.pull_request] enabled = true` in the [run config](/execution/run-configuration#runpull_request), Fabro opens a PR from the agent's working branch after a successful run |
 | **Auto-merge** | When `[run.pull_request] auto_merge = true`, Fabro enables GitHub's auto-merge on created PRs so they merge automatically once required checks pass |
 | **Sandbox GITHUB_TOKEN** | When `[run.integrations.github.permissions]` are declared at any layer (workflow, project, or user settings), Fabro mints a scoped Installation Access Token and injects it as `GITHUB_TOKEN` in the sandbox |
@@ -218,9 +218,9 @@ An empty `allowed_usernames` list rejects all users.
 
 When a run targets a GitHub repository, its workspace is checked out inside the sandbox (Docker or Daytona) before the first stage runs:
 
-1. When the server launches the run's worker, it signs a short-lived JWT using the App ID and private key (RS256, 10-minute validity)
+1. When the run's worker starts, it signs a short-lived JWT using the App ID and private key (RS256, 10-minute validity)
 2. Using the JWT, Fabro looks up the GitHub App installation for the repository (`GET /repos/\{owner\}/\{repo\}/installation`)
-3. Fabro requests a scoped Installation Access Token with `contents: read` permission on the specific repository and hands it to the worker, which removes it from its environment at startup
+3. Fabro requests a scoped Installation Access Token with `contents: read` permission on the specific repository
 4. Inside the sandbox, Fabro fetches the selected revision from `https://github.com/<owner>/<repo>` at the run's `[run.clone] depth`, presenting the token as an HTTP header on that one command, and checks out the working branch
 5. The workspace's `origin` is the plain HTTPS URL: the token is never written into the repository, its configuration, or its remote
 
@@ -318,9 +318,9 @@ Every commit a run creates is authored and committed by the run's GitHub credent
 
 ### Checkpoint pushing
 
-After each workflow stage, Fabro [checkpoints](/execution/checkpoints) the workspace on the run branch, `fabro/run/<run-id>`, and moves the commit to the server. When a successful run ends, the server pushes the run's final commit to that branch on origin with its own credentials (an Installation Access Token with `contents: write`, minted for the push). The sandbox never holds a credential that can push. `[run.run_branch] push = false` keeps the branch on the server.
+After each workflow stage, Fabro [checkpoints](/execution/checkpoints) the workspace on the run branch, `fabro/run/<run-id>`, and moves the commit to the server. After a successful run's last stage and before the run finishes, Fabro pushes the final commit to that branch on origin with an Installation Access Token with `contents: write`, minted for the push, so a long run never pushes with an expired token. The sandbox never holds a credential that can push. `[run.run_branch] push = false` keeps the branch on the server.
 
-When pull request creation is enabled and the run changed files, the server then requests the pull request, and Fabro checks that GitHub reports the run branch at the exact final commit before opening it. A failed push or pull request request is recorded on the run as a warning notice; the run's own outcome is unchanged.
+When pull request creation is enabled and the run changed files, Fabro then checks that GitHub reports the run branch at the exact final commit and opens the pull request. A failed push, branch check, or PR creation marks the run as failed with `publish_failed`; the terminal run event is emitted only after this step finishes.
 
 ## Troubleshooting
 

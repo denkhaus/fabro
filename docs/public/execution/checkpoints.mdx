@@ -86,7 +86,7 @@ This means your original working directory stays untouched while the agent makes
 If the working directory has uncommitted changes, the worktree starts from committed `HEAD` and those uncommitted changes are not included. Fabro logs a warning so you can commit, stash, or run explicitly in place when that is what you want.
 </Note>
 
-For Docker and Daytona sandboxes, a GitHub target is checked out inside the sandbox and checkpoint Git operations run there; each checkpoint commit reaches the server as a Git bundle. When a successful run ends, the server pushes the run branch to origin when pushing is configured.
+For Docker and Daytona sandboxes, a GitHub target is checked out inside the sandbox and checkpoint Git operations run there; each checkpoint commit reaches the server as a Git bundle. Before a successful run finishes, Fabro pushes the run branch to origin when pushing is configured.
 
 ## Resuming a run
 
@@ -123,7 +123,7 @@ After a node completes, Fabro:
 3. Collects the code diff.
 4. Emits a checkpoint event with execution state and the code commit SHA. The run store persists this event and updates the projection.
 
-A checkpoint commit failure stops execution. A diff failure emits a warning notice. When the run ends, the server pushes the run branch; a failed push is a warning notice on the run.
+A checkpoint commit failure stops execution. A diff failure emits a warning notice. A failed final push or pull request marks a successful run as failed with `publish_failed`.
 
 ## Inspecting run history
 

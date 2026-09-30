@@ -33,13 +33,14 @@ macOS note: if `cargo nextest run` fails with `Too many open files (os error 24)
 - A GitHub target's workspace is checked out by Fabro's hooks, not by the
   sandbox driver or Petri's `start` checkout: when a fresh run's scope is
   acquired, `fabro-petri`'s `RunWorkspaces::check_out_source` fetches the
-  target's revision inside the sandbox with a read-only token the server
-  resolves at each worker launch (`FABRO_RUN_GIT_CREDENTIAL`, scrubbed at
-  worker startup), and seeds the workspace's snapshot repository with that
-  commit so checkpoint bundles from a shallow clone import. When the run
-  ends, the server pushes the final checkpoint to `fabro/run/<id>` from the
-  snapshot repository and requests the pull request
-  (`fabro-server/src/server/run_publication.rs`). `CloneRequest` still
+  target's revision inside the sandbox with a read-only token the worker
+  mints from the server's GitHub credentials, and seeds the workspace's
+  snapshot repository with that commit so checkpoint bundles from a shallow
+  clone import. In the `run_finished` hook, before the terminal record, a
+  successful run's worker pushes the final checkpoint to `fabro/run/<id>`
+  from the snapshot repository and opens the pull request its settings ask
+  for (`fabro-cli/src/commands/run/publish.rs`); a failure fails the run
+  with `publish_failed`. `CloneRequest` still
   travels beside the sandbox spec so the run record names the origin and
   branch; the sandbox layer refuses a request that asks it to clone.
   Preflight and `fabro exec` initialize sandboxes with `CloneRequest::none()`,
@@ -152,13 +153,14 @@ Fabro is an AI-powered workflow orchestration platform. Workflows are defined as
 - A GitHub target's workspace is checked out by Fabro's hooks, not by the
   sandbox driver or Petri's `start` checkout: when a fresh run's scope is
   acquired, `fabro-petri`'s `RunWorkspaces::check_out_source` fetches the
-  target's revision inside the sandbox with a read-only token the server
-  resolves at each worker launch (`FABRO_RUN_GIT_CREDENTIAL`, scrubbed at
-  worker startup), and seeds the workspace's snapshot repository with that
-  commit so checkpoint bundles from a shallow clone import. When the run
-  ends, the server pushes the final checkpoint to `fabro/run/<id>` from the
-  snapshot repository and requests the pull request
-  (`fabro-server/src/server/run_publication.rs`). `CloneRequest` still
+  target's revision inside the sandbox with a read-only token the worker
+  mints from the server's GitHub credentials, and seeds the workspace's
+  snapshot repository with that commit so checkpoint bundles from a shallow
+  clone import. In the `run_finished` hook, before the terminal record, a
+  successful run's worker pushes the final checkpoint to `fabro/run/<id>`
+  from the snapshot repository and opens the pull request its settings ask
+  for (`fabro-cli/src/commands/run/publish.rs`); a failure fails the run
+  with `publish_failed`. `CloneRequest` still
   travels beside the sandbox spec so the run record names the origin and
   branch; the sandbox layer refuses a request that asks it to clone.
   Preflight and `fabro exec` initialize sandboxes with `CloneRequest::none()`,
