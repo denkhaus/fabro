@@ -23,7 +23,7 @@ use fabro_petri::artifacts::StoreArtifactWriter;
 use fabro_petri::blobs::Blobs;
 use fabro_petri::check::{self, Bundle, CheckRequest, Launch};
 use fabro_petri::checkpoint::{
-    CHECKPOINT_FAILED_CLASS, CheckpointKey, RunGitSettings, RunWorkspaces,
+    CHECKPOINT_FAILED_CLASS, CheckpointKey, RunGitSettings, RunWorkspaces, SOURCE_REF, Site,
 };
 use fabro_petri::controls::RunControls;
 use fabro_petri::engine::{self, Execution, RunRequest, RunStatus};
@@ -32,6 +32,7 @@ use fabro_petri::platform_records::PlatformRecords;
 use fabro_petri::providers::{DaytonaCredentials, SandboxProviderConfig};
 use fabro_petri::recovery::{self, Recovery, RecoveryRequest};
 use fabro_petri::runtime::RuntimeSpec;
+use fabro_petri::source::{RunSource, SourceRevision};
 use fabro_petri::test_support::{MemoryBlobs, MemoryPlatformRecords};
 use fabro_store::{ArtifactStore, PlatformRecord, PlatformRecordKind};
 use fabro_types::settings::run::{EnvironmentResourcesSettings, RunCheckpointSettings};
@@ -90,6 +91,11 @@ struct Harness {
     /// The `[run.artifacts] include` patterns the hooks collect under.
     artifacts:      Vec<String>,
     artifact_store: ArtifactStore,
+    /// Where the run's workspaces are checked out from.
+    source:         Option<RunSource>,
+    /// Treat the local provider's workspaces as a sandbox's: `git` runs
+    /// through the scope's environment and checkpoints leave as bundles.
+    sandboxed:      bool,
     _root:          tempfile::TempDir,
 }
 
@@ -113,6 +119,8 @@ impl Harness {
             records: Arc::new(MemoryPlatformRecords::new()),
             blobs: Arc::new(MemoryBlobs::new()),
             artifacts: Vec::new(),
+            source: None,
+            sandboxed: false,
             _root: root,
         }
     }
@@ -121,12 +129,13 @@ impl Harness {
         HooksSpec {
             records:         Arc::clone(&self.records) as Arc<dyn PlatformRecords>,
             git:             RunGitSettings {
-                host_workspaces: *provider == SandboxProviderKind::LOCAL,
+                host_workspaces: *provider == SandboxProviderKind::LOCAL && !self.sandboxed,
                 ..RunGitSettings::default()
             },
             artifacts:       self.artifacts.clone(),
             test_gates:      None,
             artifact_writer: Arc::new(StoreArtifactWriter::new(self.artifact_store.clone())),
+            source:          self.source.clone(),
         }
     }
 
@@ -1056,4 +1065,177 @@ async fn assert_sandbox_run_publishes_every_checkpoint(provider: SandboxProvider
         LARGE_FILE_BYTES.to_string(),
         "the large file came through the split transfer whole"
     );
+}
+
+/// An upstream repository with `commits` commits on `main`, each changing
+/// `README.md`, and the commit `main` ends on.
+async fn upstream(root: &Path, commits: usize) -> (PathBuf, String) {
+    let work = root.join("upstream-work");
+    let bare = root.join("upstream.git");
+    fs::create_dir_all(&work)
+        .await
+        .expect("the work tree creates");
+    git(&work, &["init", "-q", "-b", "main"]).await;
+    for index in 1..=commits {
+        fs::write(work.join("README.md"), format!("revision {index}\n"))
+            .await
+            .expect("the file writes");
+        git(&work, &["add", "README.md"]).await;
+        git(&work, &[
+            "-c",
+            "user.name=Upstream",
+            "-c",
+            "user.email=upstream@example.com",
+            "commit",
+            "-q",
+            "-m",
+            &format!("revision {index}"),
+        ])
+        .await;
+    }
+    git(root, &[
+        "clone",
+        "-q",
+        "--bare",
+        &work.to_string_lossy(),
+        &bare.to_string_lossy(),
+    ])
+    .await;
+    let head = git(&work, &["rev-parse", "HEAD"]).await;
+    (bare, head)
+}
+
+/// A Git target's run starts from its repository at depth one: the stage
+/// sees the files and a shallow history, the snapshot repository is seeded
+/// with the starting commit, and every checkpoint builds on it (a commit the
+/// stage made itself included), whether the workspace is on the host or
+/// `git` runs through the scope's environment and checkpoints leave as
+/// bundles (which a shallow clone could not send whole).
+#[tokio::test]
+async fn a_git_source_is_checked_out_shallow_and_checkpoints_build_on_its_commit() {
+    for sandboxed in [false, true] {
+        let mut harness = Harness::new();
+        let (origin, head) = upstream(&harness.run_dir.with_file_name("upstream"), 3).await;
+        harness.sandboxed = sandboxed;
+        harness.source = Some(RunSource {
+            origin:     format!("file://{}", origin.display()),
+            revision:   SourceRevision::Branch("main".to_string()),
+            branch:     "main".to_string(),
+            depth:      Some(1),
+            credential: None,
+        });
+        let workflow = workflow(
+            "  edit [shape=parallelogram, script=\"test \\\"$(cat README.md)\\\" = 'revision 3'              && test \\\"$(git rev-parse --is-shallow-repository)\\\" = true && git rev-parse              origin/main && echo edited >> README.md && git -c user.name=Agent -c \
+             user.email=agent@example.com commit -q -am 'agent edit' && echo uncommitted > \
+             notes.txt\"]",
+            "  start -> edit -> exit",
+        );
+        let outcome = harness
+            .run_on(SandboxProviderKind::LOCAL, &workflow, SETTINGS)
+            .await;
+        assert_eq!(
+            outcome.status,
+            RunStatus::Success,
+            "sandboxed={sandboxed}: {outcome:?}"
+        );
+
+        let workspace = harness.workspace().await;
+        let workspaces = harness.workspaces();
+        assert_eq!(
+            workspaces
+                .source_base(&workspace)
+                .await
+                .expect("the base reads"),
+            Some(head.clone()),
+            "sandboxed={sandboxed}: the snapshot repository is seeded with the starting commit"
+        );
+        let repository = workspaces.snapshot_repository(&workspace);
+        assert_eq!(git(&repository, &["rev-parse", SOURCE_REF]).await, head);
+        let checkpoints = harness.checkpoints();
+        let (_, last) = checkpoints.last().expect("a checkpoint was recorded");
+        assert_eq!(
+            git(&repository, &["show", &format!("{last}:README.md")]).await,
+            "revision 3\nedited",
+            "sandboxed={sandboxed}: the last checkpoint carries the stage's edit"
+        );
+        let (_, first) = checkpoints.first().expect("a checkpoint was recorded");
+        assert_eq!(
+            git(&repository, &["rev-parse", &format!("{first}^")]).await,
+            head,
+            "sandboxed={sandboxed}: the run branch starts on the source's commit"
+        );
+        assert_eq!(
+            git(&repository, &["show", &format!("{last}:notes.txt")]).await,
+            "uncommitted",
+            "sandboxed={sandboxed}: the checkpoint after the stage's own commit carries the rest"
+        );
+        assert_eq!(
+            git(&repository, &["rev-list", "--count", last]).await,
+            (checkpoints.len() + 2).to_string(),
+            "sandboxed={sandboxed}: the snapshot holds the run's commits, the stage's own commit \
+             among them, on the one starting commit"
+        );
+    }
+}
+
+/// A workspace that already holds a repository is not checked out again:
+/// the source is fetched once per fresh workspace.
+#[tokio::test]
+async fn a_prepared_workspace_is_left_as_it_is() {
+    let root = tempfile::tempdir().expect("a temp dir");
+    let (origin, _) = upstream(root.path(), 1).await;
+    let workspaces = RunWorkspaces::new(
+        root.path().join("run"),
+        "run-1".to_string(),
+        GitAuthor::default(),
+        &RunCheckpointSettings::default(),
+    )
+    .with_source(Some(RunSource {
+        origin:     format!("file://{}", origin.display()),
+        revision:   SourceRevision::Branch("main".to_string()),
+        branch:     "main".to_string(),
+        depth:      None,
+        credential: None,
+    }));
+    let path = root.path().join("prepared");
+    fs::create_dir_all(&path)
+        .await
+        .expect("the workspace creates");
+    git(&path, &["init", "-q"]).await;
+    let site = Site::Host(path.clone());
+    assert_eq!(
+        workspaces
+            .check_out_source(&site, "prepared")
+            .await
+            .expect("the check succeeds"),
+        None
+    );
+    assert!(!path.join("README.md").exists());
+}
+
+/// A revision the origin does not have fails the checkout with git's reason.
+#[tokio::test]
+async fn an_unavailable_revision_fails_the_checkout() {
+    let root = tempfile::tempdir().expect("a temp dir");
+    let (origin, _) = upstream(root.path(), 1).await;
+    let workspaces = RunWorkspaces::new(
+        root.path().join("run"),
+        "run-1".to_string(),
+        GitAuthor::default(),
+        &RunCheckpointSettings::default(),
+    )
+    .with_source(Some(RunSource {
+        origin:     format!("file://{}", origin.display()),
+        revision:   SourceRevision::Branch("missing".to_string()),
+        branch:     "missing".to_string(),
+        depth:      Some(1),
+        credential: None,
+    }));
+    let path = root.path().join("fresh");
+    let site = Site::Host(path);
+    let error = workspaces
+        .check_out_source(&site, "fresh")
+        .await
+        .expect_err("the branch does not exist");
+    assert!(error.to_string().contains("git fetch failed"), "{error}");
 }

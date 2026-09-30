@@ -43,6 +43,8 @@
 //! - [`checkpoint`]: the Git snapshots of a run's workspaces, on the host or
 //!   inside a Docker or Daytona sandbox, and the snapshot repository they are
 //!   published to;
+//! - [`source`]: where a GitHub target's workspace is checked out from, the
+//!   revision, depth and read credential its in-sandbox fetch uses;
 //! - [`recovery`]: the resume-on-restart protocol, which brings every live
 //!   workspace to the snapshot its durable state names: a host workspace before
 //!   the run goes back to a worker, a sandbox workspace in the worker when its
@@ -86,6 +88,7 @@ pub mod run_graph;
 pub mod run_store;
 pub mod runtime;
 pub mod secrets;
+pub mod source;
 #[cfg(feature = "test-support")]
 pub mod test_support;
 pub mod workspace;

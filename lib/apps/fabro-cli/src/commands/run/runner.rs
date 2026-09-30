@@ -14,6 +14,7 @@ use fabro_interview::{
 };
 use fabro_manifest::SuppliedWorkflowVersionPackager;
 use fabro_petri::controls::RunControls;
+use fabro_petri::source::SourceCredential;
 use fabro_tool::fabro_client::ClientBackend;
 use fabro_types::RunId;
 use fabro_vault::{SecretStore, Vault};
@@ -62,6 +63,7 @@ pub(crate) async fn execute(
     mode: RunWorkerMode,
     fabro_home: Option<PathBuf>,
     worker_token: &str,
+    git_credential: Option<String>,
 ) -> Result<()> {
     let _ = fabro_proc::title_init();
     set_worker_title(&run_id, initial_worker_title_phase(mode));
@@ -89,6 +91,7 @@ pub(crate) async fn execute(
         mode,
         fabro_home,
         worker_token,
+        git_credential: git_credential.and_then(SourceCredential::from_encoded),
     }))
     .await
 }

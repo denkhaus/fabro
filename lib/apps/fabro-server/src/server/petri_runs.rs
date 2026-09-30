@@ -51,6 +51,7 @@ use fabro_petri::providers::SandboxProviderConfig;
 use fabro_petri::recovery::{self, Recovery, RecoveryRequest};
 use fabro_petri::runtime::{self, RuntimeSpec};
 use fabro_petri::secrets::VaultSecrets;
+use fabro_petri::source::{RunSource, SourceCredential};
 use fabro_petri::{SqliteRunStore, admission, projection, run_graph};
 use fabro_static::EnvVars;
 use fabro_store::platform_records::{RunLifecycleKind, RunLifecycleRecord};
@@ -460,13 +461,21 @@ pub(crate) async fn execute(state: Arc<AppState>, run_id: RunId) {
     let observers = vec![petri_interviewer.observer()];
     let (_, eligible) = state.resolve_llm_client_with_ready_ids().await;
     let dry_run = run_state.spec.settings.run.execution.mode == RunMode::DryRun;
+    let source = RunSource::for_run(
+        run_state.spec.target.as_ref(),
+        &run_state.spec.settings.run,
+        super::run_publication::clone_credential(&state, &run_state.spec)
+            .await
+            .and_then(SourceCredential::from_encoded),
+    );
     let hooks = HooksSpec::for_run(
         Arc::new(SqlitePlatformRecords::new(Arc::clone(
             &state.stores.run_summaries,
         ))),
         &run_state.spec.settings.run,
         Arc::new(StoreArtifactWriter::new(state.artifact_store.clone())),
-    );
+    )
+    .with_source(source);
     let runtime = runtime_spec(
         &state,
         &eligible,
@@ -537,6 +546,7 @@ pub(crate) async fn execute(state: Arc<AppState>, run_id: RunId) {
             warn!(run_id = %run_id, error = ?err, "the run's final state could not be read for the usage aggregate");
         }
     }
+    super::run_publication::spawn(Arc::clone(&state), run_id);
 }
 
 /// Bring a Petri run the server left in flight back to its worker after a

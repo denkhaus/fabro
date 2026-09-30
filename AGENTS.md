@@ -30,12 +30,20 @@ macOS note: if `cargo nextest run` fails with `Too many open files (os error 24)
 ### Docker sandbox provider
 - Docker is the default runtime sandbox provider from `defaults.toml`. The Fabro process must have a working Docker client environment (`DOCKER_HOST`, socket access, Docker Desktop behavior, TLS settings, groups/permissions, and any remote daemon policy are operator responsibilities).
 - The packaged compose service mounts `/var/run/docker.sock` so the server can create sibling run containers on the host daemon. This is host-root-equivalent under Docker's security model; only use it in the trusted, single-tenant deployment model described by the sandbox code/docs.
-- Fabro no longer clones a repository into a sandbox: the engine prepares
-  every run's checkout. `CloneRequest` still travels beside the sandbox spec
-  so the run record names the origin and branch; fabro validates it (a pin
-  needs a branch, a non-GitHub origin needs `skip_clone`) and refuses a
-  request that asks for a clone. Preflight and `fabro exec` initialize
-  sandboxes with `CloneRequest::none()`, which creates an empty workspace.
+- A GitHub target's workspace is checked out by Fabro's hooks, not by the
+  sandbox driver or Petri's `start` checkout: when a fresh run's scope is
+  acquired, `fabro-petri`'s `RunWorkspaces::check_out_source` fetches the
+  target's revision inside the sandbox with a read-only token the server
+  resolves at each worker launch (`FABRO_RUN_GIT_CREDENTIAL`, scrubbed at
+  worker startup), and seeds the workspace's snapshot repository with that
+  commit so checkpoint bundles from a shallow clone import. When the run
+  ends, the server pushes the final checkpoint to `fabro/run/<id>` from the
+  snapshot repository and requests the pull request
+  (`fabro-server/src/server/run_publication.rs`). `CloneRequest` still
+  travels beside the sandbox spec so the run record names the origin and
+  branch; the sandbox layer refuses a request that asks it to clone.
+  Preflight and `fabro exec` initialize sandboxes with `CloneRequest::none()`,
+  which creates an empty workspace.
 
 ### Release automation
 - `cargo dev release` — creates the next stable release tag. Use `cargo dev release --nightly` for a nightly prerelease. Use `--dry-run` to print planned commands without mutating git or running Cargo, `--skip-tests` only after running the release-mode smoke yourself, and `--release-date YYYY-MM-DD` or `FABRO_RELEASE_DATE` for deterministic version computation.
@@ -141,12 +149,20 @@ Fabro is an AI-powered workflow orchestration platform. Workflows are defined as
 ### Docker sandbox provider
 - Docker is the default runtime sandbox provider from `defaults.toml`. The Fabro process must have a working Docker client environment (`DOCKER_HOST`, socket access, Docker Desktop behavior, TLS settings, groups/permissions, and any remote daemon policy are operator responsibilities).
 - The packaged compose service mounts `/var/run/docker.sock` so the server can create sibling run containers on the host daemon. This is host-root-equivalent under Docker's security model; only use it in the trusted, single-tenant deployment model described by the sandbox code/docs.
-- Fabro no longer clones a repository into a sandbox: the engine prepares
-  every run's checkout. `CloneRequest` still travels beside the sandbox spec
-  so the run record names the origin and branch; fabro validates it (a pin
-  needs a branch, a non-GitHub origin needs `skip_clone`) and refuses a
-  request that asks for a clone. Preflight and `fabro exec` initialize
-  sandboxes with `CloneRequest::none()`, which creates an empty workspace.
+- A GitHub target's workspace is checked out by Fabro's hooks, not by the
+  sandbox driver or Petri's `start` checkout: when a fresh run's scope is
+  acquired, `fabro-petri`'s `RunWorkspaces::check_out_source` fetches the
+  target's revision inside the sandbox with a read-only token the server
+  resolves at each worker launch (`FABRO_RUN_GIT_CREDENTIAL`, scrubbed at
+  worker startup), and seeds the workspace's snapshot repository with that
+  commit so checkpoint bundles from a shallow clone import. When the run
+  ends, the server pushes the final checkpoint to `fabro/run/<id>` from the
+  snapshot repository and requests the pull request
+  (`fabro-server/src/server/run_publication.rs`). `CloneRequest` still
+  travels beside the sandbox spec so the run record names the origin and
+  branch; the sandbox layer refuses a request that asks it to clone.
+  Preflight and `fabro exec` initialize sandboxes with `CloneRequest::none()`,
+  which creates an empty workspace.
 
 ### Release automation
 - `cargo dev release` — creates the next stable release tag. Use `cargo dev release --nightly` for a nightly prerelease. Use `--dry-run` to print planned commands without mutating git or running Cargo, `--skip-tests` only after running the release-mode smoke yourself, and `--release-date YYYY-MM-DD` or `FABRO_RELEASE_DATE` for deterministic version computation.

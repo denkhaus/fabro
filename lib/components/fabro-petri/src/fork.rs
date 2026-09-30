@@ -54,7 +54,7 @@ use tokio::fs;
 use tokio::process::Command;
 use tracing::{debug, info};
 
-use crate::checkpoint::{CheckpointKey, RunWorkspaces};
+use crate::checkpoint::{CheckpointKey, RunWorkspaces, SOURCE_REF};
 use crate::platform_records::{PlatformRecordError, PlatformRecords};
 use crate::projection::FoldState;
 use crate::projector::ProjectError;
@@ -414,6 +414,19 @@ async fn seed_snapshots(
     for key in keys {
         let name = key.snapshot_ref();
         args.push(format!("+{name}:{name}"));
+    }
+    // The commit a checked-out workspace started from goes with its
+    // checkpoints: the fork's bundles and restores are cut against it.
+    if git(&source_repository, &[
+        "rev-parse",
+        "-q",
+        "--verify",
+        SOURCE_REF,
+    ])
+    .await
+    .is_ok()
+    {
+        args.push(format!("+{SOURCE_REF}:{SOURCE_REF}"));
     }
     git(&repository, &args).await.map_err(failed)?;
     debug!(

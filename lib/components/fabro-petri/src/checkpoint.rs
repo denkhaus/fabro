@@ -50,6 +50,8 @@ use petri_runtime::ir::LogStream;
 use tokio::process::Command;
 use tokio::{fs, time};
 
+use crate::source::{RunSource, SourceRevision};
+
 /// The failure class of a stage whose checkpoint commit failed: fatal to
 /// the run, and terminal for a restart.
 pub const CHECKPOINT_FAILED_CLASS: &str = "checkpoint_failed";
@@ -64,6 +66,14 @@ pub const ATTEMPT_TRAILER: &str = "Fabro-Attempt";
 
 const FOOTER: &str = "\u{2692}\u{fe0f} Generated with [Fabro](https://fabro.sh)";
 const REFS_PREFIX: &str = "refs/checkpoints/";
+
+/// The ref in a snapshot repository that names the commit the workspace was
+/// checked out at from the run's source: the basis every bundle of the
+/// run's own commits is cut against.
+pub const SOURCE_REF: &str = "refs/fabro/source";
+
+/// How long a fetch from the run's origin may take.
+const SOURCE_FETCH_TIMEOUT: Duration = Duration::from_mins(5);
 
 /// Git's empty tree: what a root commit is diffed against.
 const EMPTY_TREE: &str = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
@@ -351,6 +361,9 @@ pub struct RunWorkspaces {
     author:        GitAuthor,
     exclude_globs: Vec<String>,
     timeout:       Duration,
+    /// Where a Git target's workspaces are checked out from; `None` for a
+    /// run with no remote repository.
+    source:        Option<RunSource>,
 }
 
 impl RunWorkspaces {
@@ -367,7 +380,16 @@ impl RunWorkspaces {
             author,
             exclude_globs: settings.exclude_globs.clone(),
             timeout: Duration::from_millis(settings.commit_timeout_ms.max(1)),
+            source: None,
         }
+    }
+
+    /// The same workspaces, checked out from `source` when a fresh run first
+    /// acquires them, and restored from it into a fresh sandbox.
+    #[must_use]
+    pub fn with_source(mut self, source: Option<RunSource>) -> Self {
+        self.source = source;
+        self
     }
 
     /// The run branch every workspace of the run commits on.
@@ -403,6 +425,152 @@ impl RunWorkspaces {
     #[must_use]
     pub fn host(&self, workspace: &str) -> Site {
         Site::Host(self.workspace_path(workspace))
+    }
+
+    /// Check the run's source out into a workspace that holds no repository
+    /// yet, at the revision the run starts from, and seed the workspace's
+    /// snapshot repository with that commit. A workspace that already holds
+    /// a repository (a resumed run's, or a sandbox another execution already
+    /// prepared) is left as it is. The commit checked out, or `None` when the
+    /// run has no source or the workspace was already prepared.
+    pub async fn check_out_source(
+        &self,
+        site: &Site,
+        workspace: &str,
+    ) -> Result<Option<String>, CheckpointError> {
+        let Some(source) = &self.source else {
+            return Ok(None);
+        };
+        if let Site::Host(path) = site {
+            fs::create_dir_all(path)
+                .await
+                .map_err(|source| CheckpointError::Io {
+                    path: path.clone(),
+                    source,
+                })?;
+        }
+        if self
+            .git_status(site, "rev-parse", &["rev-parse", "--git-dir"])
+            .await?
+            .is_some()
+        {
+            return Ok(None);
+        }
+        self.git(site, "init", &["init", "-q"]).await?;
+        self.git(site, "remote add", &[
+            "remote",
+            "add",
+            "origin",
+            &source.origin,
+        ])
+        .await?;
+        self.fetch_source(site, "origin", &source.revision.refspec())
+            .await?;
+        self.git(site, "checkout", &[
+            "checkout",
+            "-q",
+            "-B",
+            &source.branch,
+            "FETCH_HEAD",
+        ])
+        .await?;
+        if let SourceRevision::Branch(branch) = &source.revision {
+            // `origin/<branch>` resolves offline, as a clone leaves it.
+            self.git(site, "update-ref", &[
+                "update-ref",
+                &format!("refs/remotes/origin/{branch}"),
+                "FETCH_HEAD",
+            ])
+            .await?;
+        }
+        let sha = self.git(site, "rev-parse", &["rev-parse", "HEAD"]).await?;
+        self.seed_snapshot(workspace, &sha).await?;
+        Ok(Some(sha))
+    }
+
+    /// Put the commit a workspace was checked out at into its snapshot
+    /// repository, under [`SOURCE_REF`], fetched from the origin at the run's
+    /// depth.
+    async fn seed_snapshot(&self, workspace: &str, sha: &str) -> Result<(), CheckpointError> {
+        let Some(source) = &self.source else {
+            return Ok(());
+        };
+        let repository = Site::Host(self.ensure_snapshot_repository(workspace).await?);
+        if !self.has_object(&repository, sha).await? {
+            self.fetch_source(&repository, &source.origin, sha).await?;
+        }
+        self.git(&repository, "update-ref", &["update-ref", SOURCE_REF, sha])
+            .await?;
+        Ok(())
+    }
+
+    /// The commit the workspace was checked out at from the run's source, as
+    /// its snapshot repository records it.
+    pub async fn source_base(&self, workspace: &str) -> Result<Option<String>, CheckpointError> {
+        let repository = self.snapshot_repository(workspace);
+        if !fs::try_exists(&repository).await.unwrap_or(false) {
+            return Ok(None);
+        }
+        self.git_status(&Site::Host(repository), "rev-parse", &[
+            "rev-parse",
+            "-q",
+            "--verify",
+            &format!("{SOURCE_REF}^{{commit}}"),
+        ])
+        .await
+    }
+
+    /// Fetch `refspec` from `remote` (a remote name, or the origin's URL) at
+    /// `site`, with the source's credential and depth.
+    async fn fetch_source(
+        &self,
+        site: &Site,
+        remote: &str,
+        refspec: &str,
+    ) -> Result<(), CheckpointError> {
+        let Some(source) = &self.source else {
+            return Err(CheckpointError::Command {
+                action: "fetch".to_string(),
+                status: "no source".to_string(),
+                detail: "the run has no repository to fetch from".to_string(),
+            });
+        };
+        let depth = source.depth_arg();
+        let mut args = vec!["fetch", "-q", "--no-tags"];
+        if let Some(depth) = depth.as_deref() {
+            args.push(depth);
+        }
+        args.extend([remote, "--", refspec]);
+        let output = self
+            .run_with(
+                site,
+                "fetch",
+                &args,
+                &source.fetch_env(),
+                SOURCE_FETCH_TIMEOUT,
+            )
+            .await?;
+        if output.success {
+            Ok(())
+        } else {
+            Err(CheckpointError::Command {
+                action: "fetch".to_string(),
+                status: "non-zero exit".to_string(),
+                detail: detail(&output.stderr),
+            })
+        }
+    }
+
+    /// Whether the repository at `site` holds the commit `sha`.
+    async fn has_object(&self, site: &Site, sha: &str) -> Result<bool, CheckpointError> {
+        Ok(self
+            .git_status(site, "cat-file", &[
+                "cat-file",
+                "-e",
+                &format!("{sha}^{{commit}}"),
+            ])
+            .await?
+            .is_some())
     }
 
     /// Commit the workspace's files on the run branch as the snapshot of
@@ -725,11 +893,19 @@ impl RunWorkspaces {
             "{workspace}.restore-{}.bundle",
             key.transfer_name()
         ));
+        // A workspace checked out from the run's source gets its starting
+        // commit from the origin again and the run's own commits as a bundle
+        // cut against it.
+        let base = self.source_base(workspace).await?;
+        let revision = match &base {
+            Some(base) => format!("{base}..{}", key.snapshot_ref()),
+            None => key.snapshot_ref(),
+        };
         self.git(&Site::Host(repository), "bundle create", &[
             "bundle",
             "create",
             &staged.to_string_lossy(),
-            &key.snapshot_ref(),
+            &revision,
         ])
         .await?;
         let bytes = fs::read(&staged)
@@ -747,6 +923,9 @@ impl RunWorkspaces {
             })?;
         let restored = async {
             self.git(&site, "init", &["init", "-q"]).await?;
+            if let Some(base) = &base {
+                self.fetch_base(&site, base).await?;
+            }
             self.git(&site, "fetch", &[
                 "fetch",
                 "-q",
@@ -770,6 +949,37 @@ impl RunWorkspaces {
         .await;
         self.remove_transfer(&site, &bundle).await;
         restored
+    }
+
+    /// Bring the source's starting commit into a sandbox workspace that
+    /// lacks it, with `origin` naming the source.
+    async fn fetch_base(&self, site: &Site, base: &str) -> Result<(), CheckpointError> {
+        if self.has_object(site, base).await? {
+            return Ok(());
+        }
+        let Some(source) = &self.source else {
+            return Err(CheckpointError::Command {
+                action: "fetch".to_string(),
+                status: "no source".to_string(),
+                detail: format!(
+                    "the workspace starts from {base}, which only the run's source repository holds"
+                ),
+            });
+        };
+        if self
+            .git_status(site, "remote get-url", &["remote", "get-url", "origin"])
+            .await?
+            .is_none()
+        {
+            self.git(site, "remote add", &[
+                "remote",
+                "add",
+                "origin",
+                &source.origin,
+            ])
+            .await?;
+        }
+        self.fetch_source(site, "origin", base).await
     }
 
     async fn verify_restored(&self, site: &Site, sha: &str) -> Result<(), CheckpointError> {
@@ -932,6 +1142,17 @@ impl RunWorkspaces {
             }
             _ => None,
         };
+        // A workspace checked out from the run's source falls back to the
+        // commit it started from, which the repository was seeded with, so a
+        // stage's own commits never make the bundle carry the source's whole
+        // history.
+        let basis = match basis {
+            Some(parent) => Some(parent),
+            None => match self.source_base(workspace).await? {
+                Some(base) if self.has_object(&site, &base).await? => Some(base),
+                _ => None,
+            },
+        };
         let revision = match &basis {
             Some(parent) => format!("{parent}..{branch}"),
             None => branch.clone(),
@@ -1051,7 +1272,9 @@ impl RunWorkspaces {
         };
         let mut all = vec!["-c"];
         all.extend(args);
-        let output = self.run_sandbox(env, "sh", &all, action).await?;
+        let output = self
+            .run_sandbox(env, "sh", &all, action, &[], self.timeout)
+            .await?;
         if output.success {
             Ok(String::from_utf8_lossy(&output.stdout).trim().to_owned())
         } else {
@@ -1133,6 +1356,19 @@ impl RunWorkspaces {
         action: &str,
         args: &[S],
     ) -> Result<GitOutput, CheckpointError> {
+        self.run_with(site, action, args, &[], self.timeout).await
+    }
+
+    /// [`Self::run`] with extra environment for the one command and its own
+    /// deadline: a fetch from the origin carries its credential this way.
+    async fn run_with<S: AsRef<str>>(
+        &self,
+        site: &Site,
+        action: &str,
+        args: &[S],
+        env: &[(String, String)],
+        timeout: Duration,
+    ) -> Result<GitOutput, CheckpointError> {
         let mut all: Vec<&str> = vec![
             "-c",
             "core.hooksPath=/dev/null",
@@ -1147,8 +1383,11 @@ impl RunWorkspaces {
         ];
         all.extend(args.iter().map(AsRef::as_ref));
         match site {
-            Site::Host(cwd) => self.run_host(cwd, &all, action).await,
-            Site::Sandbox(env) => self.run_sandbox(env, "git", &all, action).await,
+            Site::Host(cwd) => self.run_host(cwd, &all, action, env, timeout).await,
+            Site::Sandbox(sandbox) => {
+                self.run_sandbox(sandbox, "git", &all, action, env, timeout)
+                    .await
+            }
         }
     }
 
@@ -1157,11 +1396,14 @@ impl RunWorkspaces {
         cwd: &Path,
         args: &[&str],
         action: &str,
+        env: &[(String, String)],
+        timeout: Duration,
     ) -> Result<GitOutput, CheckpointError> {
         let mut command = Command::new("git");
         command
             .args(args)
             .current_dir(cwd)
+            .envs(env.iter().map(|(key, value)| (key, value)))
             .env("GIT_TERMINAL_PROMPT", "0")
             .env_remove("GIT_DIR")
             .env_remove("GIT_WORK_TREE")
@@ -1170,7 +1412,7 @@ impl RunWorkspaces {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .kill_on_drop(true);
-        match time::timeout(self.timeout, command.output()).await {
+        match time::timeout(timeout, command.output()).await {
             Ok(Ok(output)) => Ok(GitOutput {
                 success: output.status.success(),
                 stdout:  output.stdout,
@@ -1181,8 +1423,8 @@ impl RunWorkspaces {
                 source,
             }),
             Err(_) => Err(CheckpointError::TimedOut {
-                action:  action.to_string(),
-                timeout: self.timeout,
+                action: action.to_string(),
+                timeout,
             }),
         }
     }
@@ -1195,13 +1437,17 @@ impl RunWorkspaces {
         program: &str,
         args: &[&str],
         action: &str,
+        extra_env: &[(String, String)],
+        timeout: Duration,
     ) -> Result<GitOutput, CheckpointError> {
         let spec = ProcessSpec::new(program, args)
             .with_output(OutputMode::Bytes)
-            .with_timeout(Some(self.timeout))
+            .with_timeout(Some(timeout))
             .with_env(
-                [("GIT_TERMINAL_PROMPT".into(), "0".into())]
-                    .into_iter()
+                extra_env
+                    .iter()
+                    .map(|(key, value)| (key.as_str().into(), value.as_str().into()))
+                    .chain([("GIT_TERMINAL_PROMPT".into(), "0".into())])
                     .collect(),
             );
         let mut handle = env
@@ -1243,8 +1489,8 @@ impl RunWorkspaces {
         let (stdout, stderr) = drain.await.unwrap_or_default();
         if status.timed_out {
             return Err(CheckpointError::TimedOut {
-                action:  action.to_string(),
-                timeout: self.timeout,
+                action: action.to_string(),
+                timeout,
             });
         }
         Ok(GitOutput {

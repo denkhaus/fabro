@@ -39,10 +39,20 @@ pub(crate) mod test_support;
 pub(crate) mod timeline;
 pub(crate) mod wait;
 
+/// The credentials the server hands a run worker through its environment,
+/// captured and scrubbed from the process before anything is spawned.
+#[derive(Default)]
+pub(crate) struct WorkerSecrets {
+    /// The worker's bearer for the server's API.
+    pub(crate) token:          Option<String>,
+    /// The read-only credential the run's GitHub target is fetched with.
+    pub(crate) git_credential: Option<String>,
+}
+
 pub(crate) async fn dispatch(
     cmd: RunCommands,
     base_ctx: &CommandContext,
-    worker_token: Option<String>,
+    worker_secrets: WorkerSecrets,
 ) -> Result<()> {
     let printer = base_ctx.printer();
 
@@ -106,7 +116,8 @@ pub(crate) async fn dispatch(
             mode,
             fabro_home,
         }) => {
-            let worker_token = worker_token
+            let worker_token = worker_secrets
+                .token
                 .filter(|token| !token.trim().is_empty())
                 .ok_or_else(|| {
                     anyhow!("FABRO_WORKER_TOKEN is required for worker subprocess auth")
@@ -121,6 +132,7 @@ pub(crate) async fn dispatch(
                     mode,
                     fabro_home,
                     &worker_token,
+                    worker_secrets.git_credential,
                 )
                 .instrument(run_span),
             )

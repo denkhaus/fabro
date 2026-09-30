@@ -82,6 +82,7 @@ use fabro_petri::platform_records::{HttpPlatformRecords, PlatformRecords};
 use fabro_petri::providers::{DaytonaCredentials, SandboxProviderConfig};
 use fabro_petri::runtime::{self, RuntimeSpec};
 use fabro_petri::secrets::VaultSecrets;
+use fabro_petri::source::{RunSource, SourceCredential};
 use fabro_petri::{HttpRunStore, admission};
 use fabro_static::EnvVars;
 use fabro_store::RunProjection;
@@ -104,17 +105,20 @@ use crate::command_context;
 
 /// What the worker holds when it hands a run to Petri.
 pub(super) struct PetriWorker<'a> {
-    pub(super) run_id:       RunId,
-    pub(super) target:       ServerTarget,
-    pub(super) client:       Client,
-    pub(super) run_state:    RunProjection,
-    pub(super) storage_dir:  &'a Path,
-    pub(super) run_dir:      PathBuf,
-    pub(super) mode:         RunWorkerMode,
+    pub(super) run_id:         RunId,
+    pub(super) target:         ServerTarget,
+    pub(super) client:         Client,
+    pub(super) run_state:      RunProjection,
+    pub(super) storage_dir:    &'a Path,
+    pub(super) run_dir:        PathBuf,
+    pub(super) mode:           RunWorkerMode,
     /// The Fabro home the server named; `None` falls back to Petri's own
     /// lookup of the worker's environment.
-    pub(super) fabro_home:   Option<PathBuf>,
-    pub(super) worker_token: &'a str,
+    pub(super) fabro_home:     Option<PathBuf>,
+    pub(super) worker_token:   &'a str,
+    /// The read-only credential the run's GitHub target is fetched with,
+    /// when the server resolved one.
+    pub(super) git_credential: Option<SourceCredential>,
 }
 
 /// Execute the run to its end. `Ok` when the record says it succeeded;
@@ -199,11 +203,17 @@ pub(super) async fn execute(worker: PetriWorker<'_>) -> Result<()> {
     }
     runner::set_worker_title(&run_id, WorkerTitlePhase::Running);
 
+    let source = RunSource::for_run(
+        worker.run_state.spec.target.as_ref(),
+        &worker.run_state.spec.settings.run,
+        worker.git_credential.clone(),
+    );
     let hooks = HooksSpec::for_run(
         Arc::clone(&records),
         &worker.run_state.spec.settings.run,
         Arc::new(ClientArtifactWriter::new(worker.client.clone_for_reuse())),
     )
+    .with_source(source)
     .with_test_gates(test_checkpoint_gates());
     let request = RunRequest {
         run_id: run_id.to_string(),

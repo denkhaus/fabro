@@ -33,6 +33,11 @@
 //!   the `run.diff` platform record with the patch as a blob; then the
 //!   forwarded point, so the local service runs `run_complete` and `run_failed`
 //!   with the sandbox in place.
+//! - `scope_acquired`: a fresh run's Git target checked out into the workspace
+//!   from inside the scope, with its snapshot repository seeded with the
+//!   starting commit ([`crate::source`]); a resumed run's workspace brought to
+//!   its snapshot instead (see below). A checkout that fails fails the scope's
+//!   firings with the reason.
 //! - `scope_released`: forwarded, so the local service runs `sandbox_cleanup`
 //!   with the sandbox in place. Fabro's own end-of-run work (the terminal
 //!   lifecycle event, notifications on it) is the run lifecycle path's, on the
@@ -108,6 +113,7 @@ use crate::checkpoint::{
 };
 use crate::platform_records::{PlatformRecordError, PlatformRecords};
 use crate::recovery::{self, Plan, RecoveryError, RestoreTarget};
+use crate::source::RunSource;
 use crate::workspace::{self, WorkspaceLookup, WorkspaceLookupError};
 
 /// The note kind the hooks record on a firing about its checkpoint.
@@ -225,6 +231,9 @@ pub struct HooksSpec {
     pub test_gates:      Option<PathBuf>,
     /// Where captured workspace files go.
     pub artifact_writer: Arc<dyn ArtifactWriter>,
+    /// Where a Git target's workspaces are checked out from, when a fresh
+    /// run first acquires them. `None` for a run with no remote repository.
+    pub source:          Option<RunSource>,
 }
 
 impl HooksSpec {
@@ -242,7 +251,15 @@ impl HooksSpec {
             artifacts: settings.artifacts.include.clone(),
             test_gates: None,
             artifact_writer,
+            source: None,
         }
+    }
+
+    /// Check a Git target's workspaces out from `source`.
+    #[must_use]
+    pub fn with_source(mut self, source: Option<RunSource>) -> Self {
+        self.source = source;
+        self
     }
 
     #[must_use]
@@ -431,7 +448,8 @@ impl FabroHooks {
             run_id.to_string(),
             spec.git.author,
             &spec.git.checkpoint,
-        );
+        )
+        .with_source(spec.source);
         Self {
             inner,
             run_id,
@@ -744,6 +762,42 @@ impl FabroHooks {
                 }
             })
             .await
+    }
+
+    /// A fresh run's workspace, checked out from the run's source before
+    /// the first attempt runs in it. A failure fails the scope's firings
+    /// with the reason.
+    async fn check_out_source(
+        &self,
+        workspace: &str,
+        site: &Site,
+    ) -> Result<(), ScopeAcquiredError> {
+        let serialized = self.scopes.lock_for(workspace);
+        let _held = serialized.lock().await;
+        match self.workspaces.check_out_source(site, workspace).await {
+            Ok(Some(sha)) => {
+                info!(
+                    run_id = %self.run_id,
+                    workspace,
+                    sha,
+                    site = ?site,
+                    "workspace checked out from the run's repository"
+                );
+                Ok(())
+            }
+            Ok(None) => Ok(()),
+            Err(error) => {
+                warn!(
+                    run_id = %self.run_id,
+                    workspace,
+                    error = %error,
+                    "the run's repository could not be checked out"
+                );
+                Err(ScopeAcquiredError::new(format!(
+                    "the run's repository could not be checked out: {error}"
+                )))
+            }
+        }
     }
 
     /// Bring a workspace to the snapshot the resumed run's durable state
@@ -1402,14 +1456,14 @@ impl ExecutionHooks for FabroHooks {
             acquired.scope,
             (workspace.clone(), Arc::clone(&acquired.env)),
         );
-        if !self.resumed {
-            return Ok(());
-        }
         let site = if self.host_workspaces {
             self.workspaces.host(&workspace)
         } else {
             Site::Sandbox(Arc::clone(&acquired.env))
         };
+        if !self.resumed {
+            return self.check_out_source(&workspace, &site).await;
+        }
         self.restore(&workspace, &site)
             .await
             .map_err(|error| ScopeAcquiredError::new(error.render()))
@@ -1525,6 +1579,7 @@ mod tests {
                 artifacts: vec!["assets/**".to_string()],
                 test_gates: None,
                 artifact_writer,
+                source: None,
             },
             Arc::new(NoHooks),
             run_id,
