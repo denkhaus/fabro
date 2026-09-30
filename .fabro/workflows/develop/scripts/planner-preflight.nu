@@ -240,7 +240,14 @@ def row [v: record, desc: string, root: string, claims: list] {
 const SCRIPT_DIR = (path self | path dirname)
 
 
-def main [--base: string = "origin/denkhaus", --candidates: string, --top: int = 5]: nothing -> nothing {
+# Lane parameter (fabro-70b5): the preflight serves BOTH lanes — develop
+# (default, assignee fabro) and the loop meta lane (--assignee loop,
+# candidates from the loop queue). The envelope_risk flag inverts its
+# meaning across lanes: the PRODUCT planner skips flagged seeds (loop
+# assets are unlandable there); the LOOP planner takes exactly the
+# flagged surface class (a @loop seed whose primary surface is
+# repo-visible is MISROUTED — the loop planner prompt owns that arm).
+def main [--base: string = "origin/denkhaus", --candidates: string, --top: int = 5, --assignee: string = "fabro"]: nothing -> nothing {
     # Petri has no internal.run_id run state (fabro-96c6): the invoking
     # run id comes from FABRO_RUN_ID when something binds it; empty
     # degrades the self-closure identity to a no-op exclusion.
@@ -259,7 +266,7 @@ def main [--base: string = "origin/denkhaus", --candidates: string, --top: int =
             {id: $id, description: (if $r.exit_code != 0 { "" } else { (try { $r.stdout | from json | get -o issue.description | default "" } catch { "" }) })}
         }
     } else {
-        let r = (do { seeds ready --assignee fabro --limit 200 --format json } | complete)
+        let r = (do { seeds ready --assignee $assignee --limit 200 --format json } | complete)
         if $r.exit_code != 0 {
             $mode = "degraded"
             $degraded_reason = $"seeds ready failed: ($r.stderr | str trim | str substring 0..200)"

@@ -1,0 +1,211 @@
+digraph Loop {
+    graph [
+        goal="Maintain the loop's own machinery one seed per run: claim the next loop-assigned seed, edit workflow+prompts+scripts as one unit, gate deterministically, review, exit",
+        // fabro-70b5 meta lane: this workflow maintains the loop's own
+        // assets (ADR-0008 one-unit) from the 'loop' assignee queue —
+        // symmetric to develop per ADR-0018. All OTHER runs keep the
+        // product fs envelope; the a9bb "deterministic protection" is
+        // schema-parseability (the tester battery), never a write ban.
+        x.inspects="loop",
+        rankdir=LR,
+        // Loop-gate battery is cheap (prebuilt validate + lints, no
+        // compile tier) — 33m covers LLM stages with headroom under the
+        // default stall watchdog.
+        stall_timeout="33m",
+        max_node_visits=40,
+        x.preamble_budget_kb=48
+    ]
+
+    start [shape=Mdiamond, label="Start"]
+    // Exit kinds mirror develop (fabro-b907): deadlock keeps the seed
+    // open for a human; soft exits re-enter on the next run.
+    exit  [shape=Msquare, label="Exit"]
+
+    // Tracker guard: the develop script with --assignee loop — one file,
+    // a fix lands once (stage-journal sharing pattern). Drained
+    // loop-queue fast exit costs zero planner tokens; the stale-claim
+    // requeue arm re-assigns to 'loop'. The lane flag is pinned by the
+    // loop graph-contract smoke.
+    tracker_guard [
+        label="Tracker guard: empty loop-queue fast exit + stale-claim requeue",
+        shape=parallelogram,
+        script="nu .fabro/workflows/develop/scripts/tracker-guard.nu --assignee loop",
+        output_schema="routing",
+        timeout="30s",
+        max_retries=0
+    ]
+
+    // Planner preflight: the develop script with --assignee loop — same
+    // already-landed report, same anchor/in-flight arms, loop candidates.
+    // envelope_risk INVERTS meaning across lanes: the product planner
+    // skips flagged seeds (ce525b8a7); the loop planner takes exactly
+    // that surface class — a @loop seed whose primary surface is
+    // repo-visible is misrouted and the loop planner prompt owns that
+    // arm.
+    preflight [
+        label="Planner preflight: already-landed check (loop queue)",
+        shape=parallelogram,
+        script="nu .fabro/workflows/develop/scripts/planner-preflight.nu --assignee loop",
+        output_schema="routing",
+        x.context_allow_keys="output.preflight",
+        timeout="2m",
+        max_retries=1
+    ]
+
+    // Planner: same shape as develop's, meta focus. The tracker claim is
+    // the node's only write (fs_write pins the tracker file); loop
+    // assets stay hidden from FILE TOOLS (shell reads are the documented
+    // path for judging seed-basis against assets).
+    planner [
+        label="Planner",
+        prompt="@prompts/planner.md",
+        x.skills="discover",
+        output_schema="@schemas/planner-output.schema.json",
+        output_retries=2,
+        max_visits=20,
+        retry_policy="standard",
+        reasoning_effort="low",
+        x.preamble_stages_ignore="planner,implementer,evidence",
+        x.context_consume_keys="review_verdict,review_feedback,implementation_summary",
+        x.fs_hide=".fabro/**,.mulch/**,.agents/**,scripts/**,justfile",
+        x.fs_write=".seeds/issues.jsonl",
+        x.context_allow_keys="current_seed_id,current_seed_title,current_seed_brief,review_verdict,journal",
+        x.fabro_tools="fabro_run_search"
+    ]
+
+    // Claim-contract gate (fabro-c42f stopgap): the shared develop script
+    // is lane-agnostic — it only proves current_seed_id arrived.
+    claim_check [
+        label="Claim check: seed id contract",
+        shape=parallelogram,
+        script="nu .fabro/workflows/develop/scripts/claim-check.nu",
+        stdin_source="current_seed_id",
+        timeout="30s",
+        max_retries=0
+    ]
+
+    // Implementer: edits the loop's own machinery. fs_write pins EXACTLY
+    // the loop-asset set (the smoke pins the pair against
+    // scripts/qualitygate.nu's loop-asset?); fs_hide is REDUCED to the
+    // session-level surfaces (.agents skills, .mulch expertise — ml
+    // writes are not loop work) — the meta lane must SEE and EDIT loop
+    // assets with file tools (the a9bb user decision: deterministic
+    // protection means schema-parseability, never a write ban).
+    // No lesson_capture contract: mulch is hidden, so loop lessons land
+    // as journal painpoints (the revisor files them as seeds).
+    implementer [
+        label="Implementer",
+        prompt="@prompts/implementer.md",
+        x.skills="discover",
+        output_schema="routing",
+        output_retries=2,
+        max_visits=10,
+        fidelity="summary:high",
+        reasoning_effort="low",
+        retry_policy="standard",
+        x.preamble_stages_ignore="planner,reviewer,implementer",
+        x.preamble_stages_latest_only=true,
+        x.tools="read_file,write_file,edit_file,glob,grep,shell,use_skill",
+        x.fabro_tools="",
+        x.preamble_allow_keys="current_seed_id,current_seed_title,current_seed_brief",
+        x.fs_hide=".agents/**,.mulch/**",
+        x.fs_write=".fabro/**,scripts/**,justfile,.seeds/issues.jsonl",
+        x.context_allow_keys="implementation_summary,journal"
+    ]
+
+    // Tester: the deterministic loop battery (fabro-70b5 part C) —
+    // validate every graph, lint every nu script, prompt-lint literal
+    // hygiene, run-scope (loop lane), fmt only if .rs files appear.
+    // NEVER the product compile tier: clippy/nextest belong to develop.
+    tester [
+        label="Loop Gate",
+        shape=parallelogram,
+        script="nu .fabro/workflows/loop/scripts/loop-gate.nu",
+        timeout="10m",
+        max_retries=1
+    ]
+
+    // Evidence: the develop script with --lane loop — loop assets ARE
+    // the review scope; out-of-lane paths surface in the anomaly
+    // section for the reviewer to adjudicate.
+    evidence [
+        label="Evidence",
+        shape=parallelogram,
+        script="nu .fabro/workflows/develop/scripts/evidence.nu --lane loop",
+        stdin_source="current_seed_id",
+        timeout="2m",
+        max_retries=1
+    ]
+
+    // Reviewer: read-only by engine enforcement, same posture as
+    // develop's (tools allow-list + empty fs_write). Judges the loop-work
+    // diff against the seed spec: ADR-0008 one-unit completeness, prompt
+    // hygiene, ADR-0019 capability gate on agent-reachable surfaces.
+    reviewer [
+        label="Reviewer",
+        prompt="@prompts/reviewer.md",
+        x.skills="discover",
+        fidelity="summary:high",
+        reasoning_effort="low",
+        x.preamble_stages_ignore="planner,implementer,reviewer",
+        x.preamble_stages_latest_only=true,
+        x.preamble_allow_keys="current_seed_id,current_seed_title,current_seed_brief,implementation_summary,command.output",
+        x.context_allow_keys="review_verdict,review_feedback,journal",
+        x.preamble_inline_max_kb=16,
+        x.preamble_output_max_lines=200,
+        x.fs_write="",
+        x.tools="read_file,grep,glob",
+        x.fabro_tools="",
+        output_schema="routing",
+        output_retries=2,
+        max_visits=20,
+        retry_policy="standard"
+    ]
+
+    // Closeout: the develop script with --lane loop — closes exactly
+    // this run's seed (stdin), residual/deferred sweeps file @loop.
+    closeout [
+        label="Closeout",
+        shape=parallelogram,
+        script="nu .fabro/workflows/develop/scripts/closeout.nu --lane loop",
+        stdin_source="current_seed_id",
+        timeout="1m",
+        max_retries=1
+    ]
+
+    start -> tracker_guard
+    tracker_guard -> exit [label="Tracker empty", condition="preferred_label=\"Tracker empty\""]
+    tracker_guard -> preflight [label="Tracker non-empty"]
+    preflight -> planner [label="Preflight done"]
+
+    planner -> exit [label="Tracker empty", condition="preferred_label=\"Tracker empty\""]
+    planner -> exit [label="Already landed", condition="preferred_label=\"Already landed\""]
+    planner -> exit [x.kind="deadlock", label="Blocked", condition="preferred_label=\"Blocked\""]
+    planner -> exit        [label="Planner failed", condition="outcome=failed"]
+    planner -> evidence [label="Verification-only", condition="preferred_label=\"Verification-only\""]
+    planner -> claim_check [label="Seed claimed"]
+    claim_check -> implementer [label="Seed id present"]
+    claim_check -> planner [label="Claim contract failed, re-plan", condition="outcome=failed"]
+
+    implementer -> planner  [label="Blocked", condition="outcome=failed"]
+    implementer -> tester   [label="Implemented"]
+
+    tester -> evidence    [label="Gate green", condition="outcome=succeeded"]
+    tester -> exit [x.kind="deadlock", label="Gate deadlock (3 reds, needs a human)", condition="nodes.tester.generation >= 3"]
+    // No gatebounce node in the loop lane: the implementer reads the
+    // tester stage section directly (preamble keeps tester) and the
+    // battery output is small enough to inline.
+    tester -> implementer [label="Gate red"]
+
+    evidence -> reviewer [label="Evidence ready", condition="outcome=succeeded"]
+    evidence -> exit [x.kind="soft", label="Capture failed (next run re-enters)"]
+
+    reviewer -> closeout  [label="Approved", condition="preferred_label=\"Approved\""]
+    reviewer -> exit [x.kind="deadlock", label="Review deadlock (3 cycles, needs a human)", condition="nodes.reviewer.generation >= 3"]
+    reviewer -> planner   [label="Changes requested"]
+    reviewer -> evidence  [label="Verification blocked", condition="preferred_label=\"Verification blocked\" && nodes.evidence.generation < 2"]
+    reviewer -> exit [x.kind="soft", label="Reviewer failed (next run re-enters)", condition="outcome=failed"]
+
+    closeout -> exit [label="Seed closed"]
+    closeout -> exit [x.kind="soft", label="Closeout failed (seed stays open)", condition="outcome=failed"]
+}

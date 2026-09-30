@@ -22,6 +22,7 @@
 def lint-files [] {
     (glob .fabro/workflows/conductor/**/*)
     | append (glob .fabro/workflows/develop/**/*)
+    | append (glob .fabro/workflows/loop/**/*)
     | append (glob .fabro/workflows/revisor/**/*)
     | append (glob .fabro/scripts/*.nu)
     | where {|p| ([$p '.md' '.fabro' '.toml' '.nu'] | any {|ext| ($p | str ends-with $ext)})}

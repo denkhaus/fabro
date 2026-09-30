@@ -146,6 +146,18 @@ def is-loop-path [path: string]: nothing -> bool {
     ($LOOP_PREFIXES | any {|p| $path | str starts-with $p}) or ($path in $LOOP_ROOTS)
 }
 
+# Loop-lane classification (fabro-70b5): in the LOOP lane the loop
+# assets ARE the seed work (the review scope), and everything else is
+# out-of-lane churn for the anomaly section. The set mirrors the loop
+# implementer's x.fs_write plus the tracker file: .fabro/**, scripts/**,
+# justfile, .seeds/issues.jsonl. Keep in sync with the loop graph's
+# envelope (the loop graph-contract smoke pins the graph side) and with
+# scripts/qualitygate.nu's loop-asset?.
+def loop-work-path [path: string]: nothing -> bool {
+    let prefix_hit = ([".fabro/" "scripts/"] | any {|q| $path | str starts-with $q})
+    ($prefix_hit) or ($path in ["justfile" ".seeds/issues.jsonl"])
+}
+
 # numstat rows {add del path} for base -> working tree (staged + unstaged).
 # numstat emits "-" for binary files; `total` counts those as 0.
 def numstat-rows [base: string]: nothing -> list<record<add: string, del: string, path: string>> {
@@ -419,7 +431,12 @@ def worktree-section [wt_lines: list<string>]: nothing -> string {
 # main
 # ---------------------------------------------------------------------------
 
-def main []: nothing -> nothing {
+# Lane parameter (fabro-70b5): product (default — develop's reviewer
+# scope is repo code, loop paths are churn) or loop (the meta lane's
+# reviewer scope IS the loop assets; everything else is out-of-lane and
+# surfaces in the anomaly section for adjudication). Passed by the
+# calling graph's script line; deterministic via the run's workflow spec.
+def main [--lane: string = "product"]: nothing -> nothing {
     let base = (run-base)
     let no_base_note = (if not $base.grounded {
         "NO RUN BASE — no checkpoint commits found for this run.\nThe diff below is empty or misleading; treat this evidence as unreliable.\n\n"
@@ -431,8 +448,20 @@ def main []: nothing -> nothing {
     # by the improve workflow. They are NO review input —
     # dropped here, so they appear in NO section and NO count.
     let rows = (numstat-rows $base.base | where {|r| not ($r.path | str starts-with ".fabro/journal/")})
-    let seed_rows = ($rows | where {|r| not (is-loop-path $r.path)} | sort-by path)
-    let churn_rows = ($rows | where {|r| is-loop-path $r.path} | sort-by path)
+    # Lane classification: product inverts loop-ness, loop inverts it
+    # again (loop assets = seed work). The tracker file flips sides with
+    # the lane: product churn (bookkeeping) vs loop seed work (the loop
+    # implementer may legitimately write it — reviewed hunks).
+    let seed_rows = (if $lane == "loop" {
+        $rows | where {|r| loop-work-path $r.path} | sort-by path
+    } else {
+        $rows | where {|r| not (is-loop-path $r.path)} | sort-by path
+    })
+    let churn_rows = (if $lane == "loop" {
+        $rows | where {|r| not (loop-work-path $r.path)} | sort-by path
+    } else {
+        $rows | where {|r| is-loop-path $r.path} | sort-by path
+    })
 
     let wt = (worktree-state)
     let wip = (claimed-seed)

@@ -246,10 +246,10 @@ def residual-seed-labels []: nothing -> list<string> {
 # labels `residual` so the planner sees the machine-filed provenance).
 # Never raises: caller wraps in `do -i`; internal seeds failures print to
 # stderr and continue.
-def sweep-reviewer-findings [seed_id: string, run_id: string, journal_path: string]: nothing -> nothing {
+def sweep-reviewer-findings [seed_id: string, run_id: string, journal_path: string, residual_assignee: string]: nothing -> nothing {
     for finding in (journal-nonblocking $journal_path) {
         let desc = $"Residual defect the reviewer explicitly flagged as non-blocking while approving ($seed_id).\n\nFinding text: \"($finding)\"\n\nOrigin: closed seed ($seed_id), reviewer journal ($journal_path).\nBasis: run ($run_id), closed seed ($seed_id)"
-        let res = (do { seeds create --title (finding-title $finding $seed_id) --description $desc --type bug --assignee fabro --labels (residual-seed-labels | str join ",") } | complete)
+        let res = (do { seeds create --title (finding-title $finding $seed_id) --description $desc --type bug --assignee $residual_assignee --labels (residual-seed-labels | str join ",") } | complete)
         if $res.exit_code != 0 {
             print -e $"closeout: WARNING — could not file reviewer finding as a seed \(non-blocking, from ($seed_id)\): ($res.stderr | str trim)"
         } else {
@@ -335,11 +335,11 @@ def deferred-title [action: string, seed_id: string]: nothing -> string {
 # `residual` for machine-filed provenance — same pool semantics as
 # sweep-reviewer-findings). Never raises: caller wraps in `do -i`;
 # internal seeds failures print to stderr and continue.
-def sweep-deferred-actions [seed_id: string, run_id: string, journal_path: string]: nothing -> nothing {
+def sweep-deferred-actions [seed_id: string, run_id: string, journal_path: string, residual_assignee: string]: nothing -> nothing {
     for action in (journal-deferred $journal_path) {
         let text = (deferred-text $action)
         let desc = $"Deferred human follow-up the implementer disclosed while implementing ($seed_id)\n\nAction: \"($text)\"\n\nOrigin: closed seed ($seed_id), implementer journal ($journal_path), marker observation.\nBasis: run ($run_id), closed seed ($seed_id)"
-        let res = (do { seeds create --title (deferred-title $text $seed_id) --description $desc --type task --assignee fabro --labels (residual-seed-labels | str join ",") } | complete)
+        let res = (do { seeds create --title (deferred-title $text $seed_id) --description $desc --type task --assignee $residual_assignee --labels (residual-seed-labels | str join ",") } | complete)
         if $res.exit_code != 0 {
             print -e $"closeout: WARNING — could not file deferred action as a seed \(from ($seed_id)\): ($res.stderr | str trim)"
         } else {
@@ -348,7 +348,13 @@ def sweep-deferred-actions [seed_id: string, run_id: string, journal_path: strin
     }
 }
 
-def main []: nothing -> nothing {
+# Lane parameter (fabro-70b5): product (default, develop) or loop. The
+# lane fixes the assignee residual/deferred sweeps file under — residuals
+# from a loop run are loop-asset follow-ups (@loop); product residuals
+# stay @fabro. Passed by the calling graph's script line; deterministic
+# via the run's workflow spec.
+def main [--lane: string = "product"]: nothing -> nothing {
+    let residual_assignee = (if $lane == "loop" { "loop" } else { "fabro" })
     # Non-tty stdin: nu 0.115's `input` only works on a tty and raises an
     # I/O error on pipes (run 01M1PVMS7B6N39MG0041C5F7P6) — the engine pipes
     # the context value, so read it through an external `cat`, which inherits
@@ -386,7 +392,7 @@ def main []: nothing -> nothing {
     # parked (still-open) seed does not double-file on its re-run's
     # close. Null path: no findings -> zero seeds create calls.
     let run_id = (do -i { current-run-id } | default '')
-    do -i { sweep-reviewer-findings $seed_id $run_id $".fabro/journal/($run_id).jsonl" } | ignore
+    do -i { sweep-reviewer-findings $seed_id $run_id $".fabro/journal/($run_id).jsonl" $residual_assignee } | ignore
 
     # Deferred-action sweep (fabro-7aac): re-file deferred human
     # follow-ups the implementer disclosed as `deferred-action:` journal
@@ -394,7 +400,7 @@ def main []: nothing -> nothing {
     # BEFORE the close. Advisory only — same wrapping discipline as the
     # reviewer sweep above, also after the PARK gate. Null path: no
     # marker observations -> zero seeds create calls.
-    do -i { sweep-deferred-actions $seed_id $run_id $".fabro/journal/($run_id).jsonl" } | ignore
+    do -i { sweep-deferred-actions $seed_id $run_id $".fabro/journal/($run_id).jsonl" $residual_assignee } | ignore
 
     let res = (do { seeds close $seed_id } | complete)
     if $res.exit_code != 0 {

@@ -177,7 +177,12 @@ def develop-claims [journal_dir: string, seed_ids: list, self_run: string]: noth
     {claims: $claims, degraded: false}
 }
 
-def main [--dry-run (-d)]: nothing -> nothing {
+# Lane parameter (fabro-70b5): the guard serves BOTH lanes — develop
+# (default, assignee fabro) and the loop meta lane (--assignee loop).
+# The flag is passed by the calling graph's script line, so the lane is
+# fixed deterministically by the run's workflow spec; ONE file, a fix
+# lands once (stage-journal.nu sharing pattern).
+def main [--dry-run (-d), --assignee: string = "fabro"]: nothing -> nothing {
     # Petri has no internal.run_id run state (fabro-96c6): the invoking
     # run id comes from FABRO_RUN_ID when something binds it; empty
     # degrades self-exclusion (the guard still runs fail-open).
@@ -190,8 +195,8 @@ def main [--dry-run (-d)]: nothing -> nothing {
     # explicit and covers manual mid-run invocations.
     let current_seed = ($env.FABRO_GUARD_CURRENT_SEED? | default "")
 
-    let open_res = (do { seeds list --format json --assignee fabro --limit 200 } | complete)
-    let inprog_res = (do { seeds list --format json --status in_progress --assignee fabro --limit 200 } | complete)
+    let open_res = (do { seeds list --format json --assignee $assignee --limit 200 } | complete)
+    let inprog_res = (do { seeds list --format json --status in_progress --assignee $assignee --limit 200 } | complete)
     let base = (guard-decision $open_res $inprog_res)
 
     # Stale-claim requeue arm. Fail-open: any degraded input (seeds failure
@@ -211,7 +216,7 @@ def main [--dry-run (-d)]: nothing -> nothing {
         {requeued: (if $dry_run { $decisions } else { [] }), failed: []}
     } else {
         let results = ($decisions | each {|sid|
-            let r = (do { seeds update $sid --status open --assignee fabro } | complete)
+            let r = (do { seeds update $sid --status open --assignee $assignee } | complete)
             {sid: $sid, ok: ($r.exit_code == 0)}
         })
         {requeued: ($results | where ok | get sid), failed: ($results | where ok == false | get sid)}

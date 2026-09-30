@@ -127,6 +127,10 @@ def check-loop-assets [] {
         # the develop graph must keep its deterministic-exit contract —
         # planner ungated, preflight report-only, guard exits intact.
         '.fabro/workflows/develop/scripts/graph-contract-smoke.nu'
+        # Loop-lane graph-contract pin (fabro-70b5): lane wiring flags,
+        # the implementer envelope pin, the red bounce — the meta lane's
+        # load-bearing contracts, same tier as the develop pin.
+        '.fabro/workflows/loop/scripts/graph-contract-smoke.nu'
     ]
     for smoke in $smokes {
         let res = (do { ^nu $smoke } | complete)
@@ -152,6 +156,10 @@ def check-loop-assets [] {
         # selection deterministically, plus the live real-tree invariant
         # for the memoize entry in revision 01M2X8458MDWMRVBRVEMDX9W4J.
         '.fabro/workflows/revisor/scripts/overflow-ledger-fixtures.nu'
+        # run-scope fixtures (fabro-70b5 part D): the run-scope
+        # classification RED both ways, both lanes, plus the git base
+        # derivation — this tier proves the meta lane's diff boundary.
+        '.fabro/scripts/run-scope-fixtures.nu'
     ]
     for battery in $batteries {
         let res = (do { ^nu $battery } | complete)
@@ -228,11 +236,108 @@ def check-workspace-compiles [] {
     true
 }
 
+# ── Run-scope check (fabro-70b5 part D) ────────────────────────────────
+# Diff-side scope enforcement for BOTH lanes. The engine's stage envelope
+# (x.fs_write) judges the staged set per node and kills out-of-scope
+# writes at checkpoint — but the implementer's shell can stage paths the
+# envelope's unset write side never sees (a product implementer has NO
+# fs_write pin: any staged file passes the checkpoint guard). This check
+# is the deterministic net over the RUN DIFF the graph declares:
+#
+#   product lane (develop tester): a diff touching loop assets REDs the
+#     gate — loop assets are the meta lane's surface, never the product
+#     implementer's. Exemptions: .fabro/journal/** (the stage-journal
+#     hook's own writes, hook-owned per fabro-b6c5) and
+#     .seeds/issues.jsonl (tracker bookkeeping: planner claim, close).
+#   loop lane (loop tester calls `check-run-scope loop`): the diff may
+#     touch ONLY the loop assets the loop implementer's fs_write pins
+#     (.fabro/**, scripts/**, justfile, .seeds/issues.jsonl) — a loop
+#     run editing lib/ or docs/ is out of lane and REDs.
+#
+# Determinism: the CALLING GRAPH fixes the lane (the script line lives in
+# the run's workflow spec) — no env sniffing, no run-record lookups.
+# Interactive invocations (no run branch) diff the working tree, same as
+# touched-crates.
+
+# Pure: one path against the loop-lane allow-list (mirrors the loop
+# implementer's x.fs_write — keep the pair in sync; the loop
+# graph-contract smoke pins the graph side).
+def loop-asset? [p: string]: nothing -> bool {
+    let prefix_hit = ([".fabro/" "scripts/"] | any {|q| $p | str starts-with $q})
+    ($prefix_hit) or ($p in ["justfile" ".seeds/issues.jsonl"])
+}
+
+# Pure: one path against the product-lane deny-list (loop assets minus
+# the hook-owned journal and tracker bookkeeping writes).
+def product-denied? [p: string]: nothing -> bool {
+    if ($p | str starts-with ".fabro/journal/") { return false }
+    if ($p == ".seeds/issues.jsonl") { return false }
+    let prefix_hit = ([".fabro/" ".agents/" ".mulch/" ".seeds/" "scripts/"] | any {|q| $p | str starts-with $q})
+    ($prefix_hit) or ($p == "justfile")
+}
+
+# Pure: the violating paths for one lane. product -> out-of-lane loop
+# assets; loop -> everything outside the loop-asset allow-list.
+def scope-violations [paths: list<string>, lane: string]: nothing -> list<string> {
+    if $lane == "loop" {
+        $paths | where {|p| not (loop-asset? $p)}
+    } else {
+        $paths | where {|p| product-denied? $p}
+    }
+}
+
+# The run-diff path list: grounded on the run branch's checkpoint base,
+# else the working tree (interactive/manual), same base rule as
+# touched-crates.
+def run-diff-paths [base: record]: nothing -> list<string> {
+    let res = (do { git diff --name-only $base.base } | complete)
+    if $res.exit_code != 0 { return [] }
+    $res.stdout | lines | compact
+}
+
+# Deterministic run-scope verdict for one lane (product|loop). Prints the
+# violations and exits 1 on any; exit 0 when the diff is in lane. An
+# empty diff is green (a bookkeeping-only run diff is legitimate).
+def check-run-scope [lane: string]: nothing -> nothing {
+    if not ($lane in ["product" "loop"]) {
+        print -e $"check-run-scope: unknown lane '($lane)' \(product|loop\)"
+        exit 2
+    }
+    let base = (run-base)
+    if not $base.grounded {
+        print "run-scope base ungrounded: interactive or pre-checkpoint, diffing working tree"
+    }
+    let violations = (scope-violations (run-diff-paths $base) $lane)
+    print $"== run-scope [($lane)] — ($violations | length) violation\(s\) =="
+    if ($violations | is-not-empty) {
+        for v in $violations { print $"run-scope: ($lane) lane diff touches out-of-scope path: ($v)" }
+        exit 1
+    }
+    print "run-scope green"
+}
+
+# Subcommand surface: `nu scripts/qualitygate.nu check-run-scope <lane>`
+# is the loop tester's touched-scope check (and the product lane's manual
+# probe). Bare invocation stays the full product gate.
+def "main check-run-scope" [lane: string = "product"]: nothing -> nothing {
+    check-run-scope $lane
+}
+
 def main [] {
     let crates = (touched-crates)
     let base = (run-base)
     if not $base.grounded {
         print 'gate base ungrounded: interactive or pre-checkpoint, diffing working tree'
+    }
+
+    # Run-scope tier (fabro-70b5): the product gate refuses loop-asset
+    # diffs BEFORE any compile work — a shell-staged .fabro write must
+    # not ride a green gate. First red stops (qualitygate style).
+    let scope = (scope-violations (run-diff-paths $base) "product")
+    if ($scope | is-not-empty) {
+        for v in $scope { print $"run-scope: product lane diff touches out-of-scope path: ($v)" }
+        print "GATE RED"
+        exit 1
     }
     if ($crates | is-empty) {
         print "no crates touched"
