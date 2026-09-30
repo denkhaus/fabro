@@ -8,7 +8,13 @@
 #      (or --adopt <run-id> to resume with an existing run)
 #   3. fabro start <id> + fabro attach <id>      -> live output
 #   4. fabro wait <id> --json                    -> status/reason truth
-#   5. integrate (fetch origin first):
+#   5. resolve the run PR: the wait JSON when it
+#      carries one, else a bounded `gh pr list`
+#      poll (~90s) — the platform may create the
+#      PR seconds AFTER terminal status (race);
+#      orchestration runs (PR-less workflows, by
+#      slug) fast-exit here instead
+#   6. integrate (fetch origin first):
 #        - post the required `lab-check` status LOCALLY on the run branch
 #          head (variant B, fabro-ab2c: no Actions runner involved; the
 #          lab-check.yml workflow is disabled/commented in the tree)
@@ -134,14 +140,47 @@ def main [
         fail $"run ($run_id) ended ($status) ($reason) — nothing integrated; inspect ($server)/runs/($run_id)"
     }
 
-    # Orchestration runs (conductor) disable PRs: no PR means nothing to
-    # auto-merge — skip the integration wait instead of polling a merge
-    # that cannot happen (the journal stays on the run branch; the UI
-    # and Slack carry the outcomes).
+    # Orchestration runs disable PRs: no PR means nothing to auto-merge —
+    # skip the integration wait instead of polling a merge that cannot
+    # happen (the journal stays on the run branch; the UI and Slack carry
+    # the outcomes). PR-less workflows are distinguished by SLUG, never by
+    # PR absence: the wait JSON's pull_request field is only populated
+    # while the wait event stream saw the PR, and the platform can create
+    # the PR ~seconds AFTER terminal status (fabro-4acd race) — treating
+    # absence as orchestration silently skipped integration.
+    const prless_workflows = ['conductor']
+    if $workflow in $prless_workflows {
+        print $"run_workflow: orchestration workflow ($workflow) disables PRs - nothing to integrate"
+        exit 0
+    }
     let has_pr = (($info | get -o pull_request | default null) != null)
     if not $has_pr {
-        print "run_workflow: orchestration run - no PR - nothing to integrate"
-        exit 0
+        # Bounded positive lookup: poll `gh pr list --head fabro/run/<id>`
+        # for a short window before concluding anything (fabro-4acd: the
+        # PR appeared ~20s after terminal). On a hit, fall through to the
+        # normal integrate path; on no hit, still continue — the run-branch
+        # check below decides loudly whether anything can be integrated.
+        let pr_polls = 18
+        mut pr_found = false
+        print $"run_workflow: wait JSON lacks pull_request — polling gh for the run PR for ($pr_polls * 5) sec"
+        for _ in 1..$pr_polls {
+            sleep 5sec
+            let listed = (do {
+                ^gh pr list --repo ($GITHUB_REPO) --head $"fabro/run/($run_id)" --json number --limit 1
+            } | complete)
+            if $listed.exit_code == 0 {
+                let prs = (try { $listed.stdout | from json } catch { [] })
+                if ($prs | length) > 0 {
+                    $pr_found = true
+                    break
+                }
+            }
+        }
+        if $pr_found {
+            print 'run_workflow: run PR found after terminal (created late) — continuing integration'
+        } else {
+            print 'run_workflow: WARN no run PR seen within the poll window — continuing; the run-branch check below decides'
+        }
     }
 
     # ── 5. integrate the run branch ──────────────────────────────────
