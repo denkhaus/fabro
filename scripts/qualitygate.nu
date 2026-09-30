@@ -267,12 +267,17 @@ def loop-asset? [p: string]: nothing -> bool {
     ($prefix_hit) or ($p in ["justfile" ".seeds/issues.jsonl"])
 }
 
-# Pure: one path against the product-lane deny-list (loop assets minus
-# the hook-owned journal and tracker bookkeeping writes).
+# Pure: one path against the product-lane deny-list — EXACTLY develop's
+# implementer fs_hide set (.fabro/**, .seeds/**, .agents/**, scripts/**,
+# justfile) minus the hook-owned journal and the tracker bookkeeping
+# write. `.mulch/**` is deliberately NOT denied: develop's implementer
+# has a mandatory lesson-capture contract (`ml record` writes the
+# git-tracked expertise files) — refusing it would false-red every
+# lesson-recording product run (fabro-70b5 spec review).
 def product-denied? [p: string]: nothing -> bool {
     if ($p | str starts-with ".fabro/journal/") { return false }
     if ($p == ".seeds/issues.jsonl") { return false }
-    let prefix_hit = ([".fabro/" ".agents/" ".mulch/" ".seeds/" "scripts/"] | any {|q| $p | str starts-with $q})
+    let prefix_hit = ([".fabro/" ".agents/" ".seeds/" "scripts/"] | any {|q| $p | str starts-with $q})
     ($prefix_hit) or ($p == "justfile")
 }
 
@@ -290,7 +295,7 @@ def scope-violations [paths: list<string>, lane: string]: nothing -> list<string
 # else the working tree (interactive/manual), same base rule as
 # touched-crates.
 def run-diff-paths [base: record]: nothing -> list<string> {
-    let res = (do { git diff --name-only $base.base } | complete)
+    let res = (do { ^git diff --name-only $base.base } | complete)
     if $res.exit_code != 0 { return [] }
     $res.stdout | lines | compact
 }

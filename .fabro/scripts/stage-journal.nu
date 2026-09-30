@@ -1,7 +1,7 @@
 #!/usr/bin/env nu
 # Stage journal hook (ADR-0009 candidate, seed fabro-176b final design).
 #
-# SHARED by all three loop workflows (conductor, develop, revisor): each
+# SHARED by all four loop workflows (conductor, develop, loop, revisor): each
 # workflow.toml references this ONE copy from its [[run.hooks]] block —
 # never duplicate this file per workflow; a fix lands here exactly once.
 #

@@ -32,7 +32,7 @@ const PINNED_TOOLCHAIN = "nightly-2026-04-14"
 
 def run-base [] {
     let run_id = (
-        git branch --show-current | str trim
+        ^git branch --show-current | str trim
         | parse --regex 'fabro/run/(?P<id>[^/]+)$'
         | get -o id.0
         | default ''
@@ -44,11 +44,11 @@ def run-base [] {
         return "HEAD"
     }
     let subject_mark = $"fabro\(($run_id)\):"
-    let checkpoints = (git log --format=%H --fixed-strings --grep $subject_mark | lines | compact)
+    let checkpoints = (^git log --format=%H --fixed-strings --grep $subject_mark | lines | compact)
     if ($checkpoints | is-empty) {
         return "HEAD"
     }
-    git rev-parse $"($checkpoints | last)^" | str trim
+    ^git rev-parse $"($checkpoints | last)^" | str trim
 }
 
 def check [name: string, res: record]: nothing -> bool {
@@ -71,7 +71,7 @@ def main []: nothing -> nothing {
     if not (check 'run-scope (loop lane: diff touches only loop assets)' (do { ^nu scripts/qualitygate.nu check-run-scope loop } | complete)) { exit 1 }
 
     # Rust fmt tier — only when the diff actually touches .rs files.
-    let rs = (do { git diff --name-only $base } | complete | get stdout | lines | compact | where {|p| $p | str ends-with '.rs'})
+    let rs = (do { ^git diff --name-only $base } | complete | get stdout | lines | compact | where {|p| $p | str ends-with '.rs'})
     if ($rs | is-not-empty) {
         print $"== rust fmt — diff touches \(($rs | length)\) .rs file\(s\) =="
         let res = (do { ^cargo $'+($PINNED_TOOLCHAIN)' fmt --check --all } | complete)
