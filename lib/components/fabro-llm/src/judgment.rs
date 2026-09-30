@@ -17,7 +17,8 @@
 //! never enters a run sandbox or a prompt.
 //!
 //! The model catalog entry lives in `fork-catalog-overlay.toml`
-//! (openrouter `typesafe/jev-latest`); the `kind = "judgment"` marker is
+//! (the openrouter `jev-latest` row, overridden in place); the
+//! `kind = "judgment"` marker is
 //! fabro-side metadata — lithos's catalog schema has no kind field — read by
 //! [`is_judgment_model`].
 
@@ -28,6 +29,7 @@ use lithos_llm::middleware::{RetryPolicy, RetryStage};
 use lithos_llm::types::{Error as LlmError, ErrorData, ErrorKind, RetryClassification};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use tokio::time::sleep;
 
 use crate::client::{RetryListener, RetryNotice};
 
@@ -38,9 +40,9 @@ use crate::client::{RetryListener, RetryNotice};
 pub const DEFAULT_BASE_URL: &str = "https://openrouter.ai/api/v1/systemone";
 
 /// The wire model id, version-pinned so threshold tuning cannot drift with
-/// an alias (ADR-0022). The catalog entry's id is
-/// `openrouter/typesafe/jev-latest`; the wire spelling OpenRouter expects is
-/// the bare id.
+/// an alias (ADR-0022). The catalog entry is the fork overlay's override
+/// of the `openrouter/jev-latest` row; the wire spelling OpenRouter expects
+/// is the bare id.
 pub const DEFAULT_MODEL: &str = "jev-latest";
 
 /// The metadata namespace Fabro's own catalog markers live under.
@@ -158,7 +160,7 @@ pub struct JudgmentError(#[from] LlmError);
 
 impl JudgmentError {
     /// The provider-neutral failure, for callers that report or journal it.
-    #[must_use]
+    /// No `#[must_use]` here: `&LlmError` already carries it.
     pub fn as_llm_error(&self) -> &LlmError {
         &self.0
     }
@@ -231,7 +233,7 @@ impl JudgmentClient {
                 });
             }
             attempt += 1;
-            tokio::time::sleep(delay).await;
+            sleep(delay).await;
         }
     }
 
@@ -297,10 +299,11 @@ pub fn is_judgment_model(model: &CatalogModel) -> bool {
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::{Arc, Mutex};
 
     use fabro_test::test_http_client;
-    use httpmock::MockServer;
+    use httpmock::{HttpMockResponse, MockServer};
     use lithos_llm::middleware::RetryPolicy;
     use lithos_llm::types::ErrorKind;
     use serde_json::json;
@@ -405,15 +408,16 @@ mod tests {
         let catalog = crate::build_catalog(&fabro_config::LlmLayer::default(), &|_| None)
             .expect("catalog builds");
         let model = catalog
-            .model("openrouter", "typesafe/jev-latest")
-            .expect("openrouter typesafe/jev-latest is registered");
+            .model("openrouter", "jev-latest")
+            .expect("the overlay override of the openrouter jev-latest row is in place");
         assert!(is_judgment_model(model), "kind=judgment marker present");
         assert_eq!(model.api_model(), WIRE_MODEL, "wire id stays bare");
         let pricing = model.pricing().expect("pricing present");
         assert_eq!(pricing.input_usd_micros_per_million, Some(42_000));
         assert_eq!(
-            pricing.output_usd_micros_per_million, None,
-            "judgment billing is input-only"
+            pricing.output_usd_micros_per_million,
+            Some(0),
+            "judgment billing is input-only: output priced zero through the              built-in row the override merges with"
         );
         let ordinary = catalog
             .model("openrouter", "glm-5.3")
@@ -434,9 +438,9 @@ mod tests {
                 when.method(httpmock::Method::POST)
                     .path("/systemone")
                     .header("Authorization", "Bearer test-key")
-                    .json_body_includes("\"model\":\"jev-latest\"")
-                    .json_body_includes("\"run_id\":\"r1\"")
-                    .json_body_includes("\"verdict_pre_screen\":{\"type\":\"choice\"");
+                    .body_includes("\"model\":\"jev-latest\"")
+                    .body_includes("\"run_id\":\"r1\"")
+                    .body_includes("\"verdict_pre_screen\":{\"type\":\"choice\"");
                 then.status(200).json_body(json!({
                     "answers": {
                         "verdict_pre_screen": {
@@ -474,21 +478,31 @@ mod tests {
     }
 
     /// Twin: a 500 then 200 retries through the policy and reports each
-    /// retry on the RetryListener path.
+    /// retry on the RetryListener path. One mock answers by call count —
+    /// two path-matched mocks would both match every call, httpmock serves
+    /// the first, and the 500 would never lift.
     #[tokio::test]
     async fn judge_retries_server_errors_and_notifies_listener() {
         let server = MockServer::start_async().await;
-        let fail = server
+        let answered = Arc::new(AtomicUsize::new(0));
+        let calls = Arc::clone(&answered);
+        let mock = server
             .mock_async(|when, then| {
                 when.method(httpmock::Method::POST).path("/");
-                then.status(500).body("upstream exploded");
-            })
-            .await;
-        let ok = server
-            .mock_async(|_, then| {
-                then.status(200).json_body(json!({
-                    "answers": {"flakiness": {"answer": 0.9, "confidence": 0.99}}
-                }));
+                then.respond_with(move |_| {
+                    if calls.fetch_add(1, Ordering::SeqCst) == 0 {
+                        HttpMockResponse::builder()
+                            .status(500)
+                            .body("upstream exploded")
+                            .build()
+                    } else {
+                        HttpMockResponse::builder()
+                            .status(200)
+                            .header("content-type", "application/json")
+                            .body(r#"{"answers":{"flakiness":{"answer":0.9,"confidence":0.99}}}"#)
+                            .build()
+                    }
+                });
             })
             .await;
         let notices = Arc::new(Mutex::new(Vec::new()));
@@ -519,16 +533,17 @@ mod tests {
             response.answers["flakiness"].answer,
             AnswerValue::Score(0.9)
         );
-        let notices = notices.lock().expect("notices");
-        assert_eq!(notices.len(), 1, "the 500 produced one retry notice");
-        assert_eq!(notices[0].attempt, 1);
-        assert_eq!(
-            notices[0].error.kind,
-            ErrorKind::Server,
-            "the 500 maps to a server error"
-        );
-        fail.assert_calls_async(1).await;
-        ok.assert_calls_async(1).await;
+        {
+            let notices = notices.lock().expect("notices");
+            assert_eq!(notices.len(), 1, "the 500 produced one retry notice");
+            assert_eq!(notices[0].attempt, 1);
+            assert_eq!(
+                notices[0].error.kind,
+                ErrorKind::Server,
+                "the 500 maps to a server error"
+            );
+        }
+        mock.assert_calls_async(2).await;
     }
 
     /// Twin: an auth failure never retries.
