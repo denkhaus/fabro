@@ -31,6 +31,17 @@ sandbox = false
 provider = "zai"
 name = "glm-5.3"
 
+# Canonical run target for MANUAL starts (fabro-70b5 part H: first runs
+# manual): this host's origin is an SSH host alias whose normalized URL is
+# not github.com, and fabro-manifest does not (yet) apply git's
+# url.insteadOf rewrites — run.scm pins the canonical repository so the
+# caller checkout derives a valid GitHub run target. Server-side
+# automation starts are unaffected (they carry their own target).
+[run.scm]
+provider = "github"
+owner = "denkhaus"
+repository = "fabro"
+
 # Full-history clone (same basis as develop: checkpoint publishing
 # traverses the whole ancestry; a depth cut kills git-target runs).
 [run.clone]
