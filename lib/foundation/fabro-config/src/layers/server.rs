@@ -36,6 +36,8 @@ pub struct ServerLayer {
     pub logging:      Option<ServerLoggingLayer>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub integrations: Option<ServerIntegrationsLayer>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub seeds:        Option<ServerSeedsLayer>,
 }
 
 /// `[server.listen]` — shared bind transport.
@@ -250,4 +252,27 @@ pub struct SlackIntegrationLayer {
 pub struct IntegrationWebhooksLayer {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub strategy: Option<WebhookStrategy>,
+}
+
+/// `[server.seeds]` — the read-only seeds API's tracker mirror
+/// (fabro-3488). Absent leaves the seeds endpoints unconfigured (`503`).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, fabro_macros::Combine)]
+#[serde(deny_unknown_fields)]
+pub struct ServerSeedsLayer {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mirror: Option<SeedsMirrorLayer>,
+}
+
+/// `[server.seeds.mirror]` — the line-repository mirror the seeds read API
+/// serves. `origin` and `branch` must be set together; a partially
+/// configured mirror is a resolve error.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, fabro_macros::Combine)]
+#[serde(deny_unknown_fields)]
+pub struct SeedsMirrorLayer {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origin:    Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub branch:    Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_dir: Option<String>,
 }

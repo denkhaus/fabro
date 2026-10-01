@@ -18,12 +18,6 @@ pub struct SeedsSnapshot {
     /// The parsed `.seeds/` store.
     pub store:  Arc<Store>,
     /// The commit the snapshot was taken at, when the source knows it.
-    // Transitional (fabro-3488): the production source under the pending
-    // fork decision fills this; the fixture pins its handoff meanwhile.
-    #[allow(
-        dead_code,
-        reason = "the production source under the pending fork decision fills this"
-    )]
     pub commit: Option<String>,
 }
 
@@ -33,13 +27,6 @@ pub enum SeedsSourceError {
     /// No seeds source is configured; the endpoints answer `503`.
     Unconfigured,
     /// The configured source failed to refresh or read.
-    // Transitional (fabro-3488): constructed by the production source
-    // under the pending fork decision; the failing-source 503 test pins
-    // the mapping meanwhile.
-    #[allow(
-        dead_code,
-        reason = "the production source under the pending fork decision constructs this"
-    )]
     Unavailable(String),
 }
 
