@@ -15632,6 +15632,7 @@ components:
         - scheduler
         - logging
         - integrations
+        - seeds
       properties:
         listen:
           $ref: "#/components/schemas/ServerListenSettings"
@@ -15653,6 +15654,28 @@ components:
           $ref: "#/components/schemas/ServerLoggingSettings"
         integrations:
           $ref: "#/components/schemas/ServerIntegrationsSettings"
+        seeds:
+          $ref: "#/components/schemas/ServerSeedsSettings"
+
+    ServerSeedsSettings:
+      type: object
+      required: [mirror]
+      properties:
+        mirror:
+          oneOf:
+            - $ref: "#/components/schemas/SeedsMirrorSettings"
+            - type: "null"
+
+    SeedsMirrorSettings:
+      type: object
+      required: [origin, branch]
+      properties:
+        origin:
+          type: string
+        branch:
+          type: string
+        cache_dir:
+          type: ["string", "null"]
 
     ServerListenSettings:
       oneOf:

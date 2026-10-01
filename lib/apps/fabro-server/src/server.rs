@@ -170,6 +170,7 @@ mod automation_scheduler;
 #[cfg(test)]
 mod fork_inspection_guard_tests;
 mod fork_line_recovery;
+pub(crate) mod fork_seeds_git_source;
 #[cfg(test)]
 mod fork_seeds_read_api_tests;
 pub(crate) mod fork_staleness_supervisor;
@@ -2716,16 +2717,26 @@ pub(crate) fn build_app_state(config: AppStateConfig) -> anyhow::Result<Arc<AppS
     #[cfg(any(test, feature = "test-support"))]
     let automation_breaker_notifier =
         { automation_breaker_notifier_override.or(automation_breaker_notifier) };
-    // The seeds read API's source: a test/support override, else the
-    // configured source once fabro-3488's fork decision lands; until then
-    // an unconfigured server serves the documented `503`.
+    // The seeds read API's source (fabro-3488, fork decision B): a
+    // test/support override, else the configured `[server.seeds.mirror]`
+    // line-repo mirror; an unconfigured server serves the documented `503`.
+    let production_seeds_source: Arc<dyn seeds_source::SeedsSource> =
+        match current_server_settings.server.seeds.mirror.as_ref() {
+            Some(mirror) => {
+                let cache_root = mirror.cache_dir.clone().map_or_else(
+                    || Storage::new(&storage_root).cache_dir().join("seeds-repos"),
+                    PathBuf::from,
+                );
+                Arc::new(fork_seeds_git_source::GitSeedsSource::new(
+                    mirror, cache_root,
+                ))
+            }
+            None => Arc::new(seeds_source::DisabledSeedsSource),
+        };
     #[cfg(any(test, feature = "test-support"))]
-    let seeds_source = seeds_source_override.unwrap_or_else(|| {
-        Arc::new(seeds_source::DisabledSeedsSource) as Arc<dyn seeds_source::SeedsSource>
-    });
+    let seeds_source = seeds_source_override.unwrap_or(production_seeds_source);
     #[cfg(not(any(test, feature = "test-support")))]
-    let seeds_source: Arc<dyn seeds_source::SeedsSource> =
-        Arc::new(seeds_source::DisabledSeedsSource);
+    let seeds_source = production_seeds_source;
 
     Ok(Arc::new(AppState {
         runs: Mutex::new(HashMap::new()),

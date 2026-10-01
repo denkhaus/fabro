@@ -1,17 +1,23 @@
 //! The seeds read API (fabro-3488, ADR-0023 step 5): list, detail, and
-//! dependency graph over a `SeedsSource`, plus the unconfigured `503`.
+//! dependency graph over a `SeedsSource`, plus the unconfigured `503`,
+//! and the production `GitRepoCache` mirror (fork decision B) with its
+//! served-ref invalidation contract.
 //!
 //! Fork-only presence pin: upstream has no seeds endpoints, so a merge
 //! that drops the read API reds here instead of silently stripping it.
 
+use std::path::Path;
 use std::sync::Arc;
+use std::time::Duration;
 
 use axum::body::Body;
 use axum::http::{Method, Request, StatusCode};
+use fabro_types::settings::server::SeedsMirrorSettings;
 use seeds::Store;
 use serde_json::Value;
 use tower::ServiceExt;
 
+use crate::server::fork_seeds_git_source::GitSeedsSource;
 use crate::server::seeds_source::{
     DisabledSeedsSource, SeedsSnapshot, SeedsSource, SeedsSourceError,
 };
@@ -234,4 +240,218 @@ async fn the_fixture_snapshot_commit_travels_with_the_source() {
     };
     let snapshot = source.snapshot().await.expect("snapshot");
     assert_eq!(snapshot.commit.as_deref(), Some("abc123"));
+}
+
+// ── Production mirror (GitRepoCache, fork decision B) ──────────────────
+
+#[expect(
+    clippy::disallowed_methods,
+    reason = "test fixture drives a local git upstream with sync std::process::Command"
+)]
+fn git(dir: &Path, args: &[&str]) {
+    let status = std::process::Command::new("git")
+        .args(args)
+        .current_dir(dir)
+        .status()
+        .expect("git spawns");
+    assert!(status.success(), "git {:?} in {}", args, dir.display());
+}
+
+#[expect(
+    clippy::disallowed_methods,
+    reason = "test fixture writes .seeds files with sync std::fs::write"
+)]
+fn write_seeds(work: &Path, issue_id: &str) {
+    let root = work.join(".seeds");
+    std::fs::create_dir_all(&root).expect("seeds dir");
+    std::fs::write(
+        root.join("config.yaml"),
+        "project: \"fabro\"\nversion: \"1\"\n",
+    )
+    .expect("config");
+    std::fs::write(
+        root.join("issues.jsonl"),
+        format!(
+            "{{\"id\":\"{issue_id}\",\"title\":\"Seed {issue_id}\",\"status\":\"open\",\
+             \"type\":\"task\",\"blockedBy\":[]}}\n"
+        ),
+    )
+    .expect("issues");
+}
+
+/// Seed a local bare upstream whose branches each carry a one-seed
+/// `.seeds` store; returns the origin path and each branch's tip SHA in
+/// order.
+#[expect(
+    clippy::disallowed_methods,
+    reason = "test fixture drives a local git upstream with sync std::process::Command"
+)]
+fn mirror_upstream(temp: &Path, branches: &[(&str, &str)]) -> (std::path::PathBuf, Vec<String>) {
+    let upstream = temp.join("upstream.git");
+    git(temp, &[
+        "init",
+        "--bare",
+        "--initial-branch=main",
+        &upstream.display().to_string(),
+    ]);
+    let work = temp.join("work");
+    git(temp, &[
+        "init",
+        "--initial-branch=main",
+        &work.display().to_string(),
+    ]);
+    for (key, value) in [
+        ("user.email", "test@fabro.sh"),
+        ("user.name", "Fabro Test"),
+        ("commit.gpgsign", "false"),
+    ] {
+        git(&work, &["config", key, value]);
+    }
+
+    let mut tips = Vec::new();
+    for (branch, issue_id) in branches {
+        git(&work, &["checkout", "-b", branch]);
+        write_seeds(&work, issue_id);
+        git(&work, &["add", "."]);
+        git(&work, &["commit", "-m", &format!("seeds {issue_id}")]);
+        let refspec = format!("HEAD:refs/heads/{branch}");
+        git(&work, &["push", &upstream.display().to_string(), &refspec]);
+        let output = std::process::Command::new("git")
+            .args(["rev-parse", "HEAD"])
+            .current_dir(&work)
+            .output()
+            .expect("rev-parse spawns");
+        assert!(output.status.success());
+        tips.push(
+            String::from_utf8(output.stdout)
+                .expect("git output is utf-8")
+                .trim()
+                .to_string(),
+        );
+    }
+    (upstream, tips)
+}
+
+fn mirror_settings(origin: &Path, branch: &str) -> SeedsMirrorSettings {
+    SeedsMirrorSettings {
+        origin:    origin.display().to_string(),
+        branch:    branch.to_string(),
+        cache_dir: None,
+    }
+}
+
+async fn snapshot_ids(source: &GitSeedsSource) -> Vec<String> {
+    source
+        .snapshot()
+        .await
+        .expect("mirror snapshot")
+        .store
+        .issues
+        .iter()
+        .map(|record| record.id().to_string())
+        .collect()
+}
+
+#[tokio::test]
+async fn the_configured_mirror_serves_seeds_through_the_router() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let (upstream, tips) = mirror_upstream(temp.path(), &[("line-a", "fabro-0001")]);
+    let source = Arc::new(GitSeedsSource::new(
+        &mirror_settings(&upstream, "line-a"),
+        temp.path().join("cache"),
+    ));
+
+    // The snapshot carries the branch tip as its commit provenance.
+    let snapshot = source.snapshot().await.expect("snapshot");
+    assert_eq!(snapshot.commit.as_deref(), Some(tips[0].as_str()));
+    assert_eq!(snapshot.store.issues.len(), 1);
+
+    let router = router_with(source);
+    let (status, json) = get_json(&router, "/api/v1/seeds").await;
+    assert_eq!(status, StatusCode::OK);
+    let data = json["data"].as_array().expect("data array");
+    assert_eq!(data.len(), 1);
+    assert_eq!(data[0]["id"], "fabro-0001");
+}
+
+#[tokio::test]
+async fn a_cached_snapshot_never_survives_a_branch_switch() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let (upstream, tips) = mirror_upstream(temp.path(), &[
+        ("line-a", "fabro-0001"),
+        ("line-b", "fabro-0002"),
+    ]);
+    // One shared mirror cache, as a re-wired server reuses the same root.
+    let cache_root = temp.path().join("cache");
+
+    let source_a = GitSeedsSource::new(&mirror_settings(&upstream, "line-a"), cache_root.clone());
+    assert_eq!(snapshot_ids(&source_a).await, ["fabro-0001"]);
+
+    // The served ref flips to line-b over the SAME cache: the snapshot
+    // from line-a must never survive the move.
+    let source_b = GitSeedsSource::new(&mirror_settings(&upstream, "line-b"), cache_root.clone());
+    let snapshot_b = source_b.snapshot().await.expect("snapshot b");
+    assert_eq!(snapshot_b.commit.as_deref(), Some(tips[1].as_str()));
+    assert_eq!(snapshot_b.store.issues.len(), 1);
+    assert_eq!(ids(&snapshot_b), ["fabro-0002"]);
+
+    // And back: a flip to line-a again re-reads line-a's seeds.
+    let source_a2 = GitSeedsSource::new(&mirror_settings(&upstream, "line-a"), cache_root);
+    assert_eq!(snapshot_ids(&source_a2).await, ["fabro-0001"]);
+}
+
+#[tokio::test]
+async fn an_upstream_commit_move_invalidates_the_cached_snapshot() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let (upstream, tips) = mirror_upstream(temp.path(), &[("line-b", "fabro-0002")]);
+    let work = temp.path().join("work");
+    let source = GitSeedsSource::new(
+        &mirror_settings(&upstream, "line-b"),
+        temp.path().join("cache"),
+    )
+    .with_refresh_window(Duration::ZERO);
+    assert_eq!(snapshot_ids(&source).await, ["fabro-0002"]);
+
+    // The branch tip moves upstream (a new seed lands on line-b).
+    git(&work, &["checkout", "line-b"]);
+    write_seeds(&work, "fabro-0003");
+    git(&work, &["add", "."]);
+    git(&work, &["commit", "-m", "seeds fabro-0003"]);
+    git(&work, &[
+        "push",
+        &upstream.display().to_string(),
+        "HEAD:refs/heads/line-b",
+    ]);
+
+    let snapshot = source.snapshot().await.expect("snapshot after move");
+    assert_eq!(ids(&snapshot), ["fabro-0003"]);
+    assert_ne!(snapshot.commit.as_deref(), tips.first().map(String::as_str));
+}
+
+#[tokio::test]
+async fn a_failing_configured_mirror_serves_the_documented_503() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let origin = temp.path().join("missing-upstream.git");
+    let source = Arc::new(GitSeedsSource::new(
+        &mirror_settings(&origin, "line-a"),
+        temp.path().join("cache"),
+    ));
+    let Err(error) = source.snapshot().await else {
+        panic!("missing origin should fail")
+    };
+    assert!(matches!(error, SeedsSourceError::Unavailable(_)), "{error}");
+
+    let router = router_with(source);
+    let (status, json) = get_json(&router, "/api/v1/seeds").await;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(json["errors"][0]["code"], "seeds_source_unavailable");
+}
+
+fn ids(snapshot: &SeedsSnapshot) -> Vec<String> {
+    snapshot
+        .store
+        .issues
+        .iter()
+        .map(|record| record.id().to_string())
+        .collect()
 }
