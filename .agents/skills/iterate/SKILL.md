@@ -64,6 +64,13 @@ stores it belongs to; reach them by phase need:
   claims nothing — one line, one executor.
 - Interrupted cycle: reconstruct BEFORE selecting — `git status` plus
   `seeds list --status in_progress` name the mid-flight work; continue it.
+- Sprint ledger (ADR-0024, nu-agent model): read `.fabro/iterate-state.json`.
+  If `sprints_reflected < sprints_completed`, the pending reflection runs
+  FIRST (Phase 6 short form) — no new sprint starts unreflected. If
+  `sprints_completed % 3 == 0 && last_arch_review_at_sprint !=
+  sprints_completed`, the architecture gate is DUE: surface to the user
+  (manual era: an architect run can be fired via the api trigger while
+  schedules are paused).
 - Tracker reads always carry `--limit 500` (`seeds list` caps at 50
   silently). `seeds ready` for candidates; `seeds show <id>` for ids.
 - Rootprint (skill `rootprint`) observes the production server: filter on
@@ -254,7 +261,14 @@ stores it belongs to; reach them by phase need:
    filed/closed — each with a ONE-LINE description, never a bare id —
    and ALWAYS an ASSIGNMENT PENDING section: every unassigned seed with
    a one-line @fabro recommendation. Categorize every revisor seed.
-5. Line-watch heartbeat (label `line-watch`, interval 10m, follow-up
+5. Sprint ledger update (nu-agent model, ADR-0024): if this cycle closed
+   a seed with a SUBSTANTIVE diff, `sprints_completed` +1 (verify-only
+   closures count 0 — provisional rule, see ledger bootstrap note). Run the
+   SHORT reflection now (painpoints -> seeds/skill edits/no-action notes),
+   set `sprints_reflected = sprints_completed`, append one notes[] line.
+   Architect findings from a gate pass become seeds IMMEDIATELY — nothing
+   survives only in a report. Commit the ledger with the cycle's work.
+6. Line-watch heartbeat (label `line-watch`, interval 10m, follow-up
    delivery): pull, evaluate journals/reviews (premise-checked against
    the tree), dispatch seeds per ADR-0018 with dispatch-dedupe (keep the
    richer seed, close the lesser naming both ids), push through the gate
