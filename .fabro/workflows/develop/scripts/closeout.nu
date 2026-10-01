@@ -348,6 +348,110 @@ def sweep-deferred-actions [seed_id: string, run_id: string, journal_path: strin
     }
 }
 
+# ---------------------------------------------------------------------------
+# EXEMPTION-arm sweep (fabro-534e)
+#
+# WHY: a brief can carry an EXEMPTION bullet — a deferred user/infra
+# arm of the seed's demand the run cannot land (image release, deploy,
+# external tool, human decision). Before this sweep that arm lived only
+# in the brief (planner context) and the closed run's journal: when
+# closeout ran `seeds close`, the reminder died with the seed and the
+# deferred action went tracker-invisible. Channel contract (the brief
+# is context, not a closeout input): planner.md marks each deferred arm
+# as an `EXEMPTION: <action>` bullet in the brief AND emits the same
+# arm as a JOURNAL observation starting with the deterministic marker
+# `exemption: ` — this sweep filters PLANNER-node observations by that
+# marker BEFORE the close and re-files each arm as a NEW open seed.
+#
+# The filed seed carries labels `ops,residual` (machine-filed
+# provenance per fabro-2ab8, plus the ops class) and NO assignee:
+# an EXEMPTION arm is by definition a user action, and assigning
+# backlog seeds is the user's decision — visibility, not routing.
+#
+# Advisory semantics identical to the sweeps above: `do -i` wrapping,
+# complete-wrapped `seeds create`, failures print to stderr and never
+# block the close, placed after the PARK gate. Null path: no marker
+# observations -> zero seeds create calls — byte-identical close
+# semantics.
+# ---------------------------------------------------------------------------
+
+# Pure: the deterministic journal marker for brief EXEMPTION arms.
+# Single source of truth for the filter (is-exemption) and the strip
+# (exemption-text), mirroring deferred-marker above.
+def exemption-marker []: nothing -> string {
+    "exemption:"
+}
+
+# Pure: does a planner observation carry the marker AT ITS START?
+# Case-insensitive and whitespace-tolerant; mid-sentence mentions do
+# not match (the prompt contract puts the marker at the start, one
+# observation per arm).
+def is-exemption [obs: string]: nothing -> bool {
+    ($obs | str trim | str lowercase | str starts-with (exemption-marker))
+}
+
+# Pure: the arm text after the marker, for the filed seed body.
+# Non-matching input passes through unchanged (defensive; the sweep
+# filter already matched).
+def exemption-text [obs: string]: nothing -> string {
+    let t = ($obs | str trim)
+    let low = ($t | str lowercase)
+    if not ($low | str starts-with (exemption-marker)) { return $t }
+    let mlen = (exemption-marker | str length)
+    $t | str substring ($mlen..) | str trim
+}
+
+# Pure: EXEMPTION arms from journal JSONL text — planner-node records
+# only, their observations, filtered by is-exemption.
+def exemptions-from-journal [text: string]: nothing -> list<string> {
+    let obs = (
+        $text | lines | compact
+        | each {|l| do -i { $l | from json } }
+        | where {|r| ($r | describe | str starts-with "record") and (($r | get -o node | default '') == "planner")}
+        | get -o data
+        | where {|d| $d != null}
+        | each {|d| $d | get -o observations | default []}
+        | flatten
+    )
+    $obs | where {|o| is-exemption $o}
+}
+
+# Best-effort file-level read: missing/unreadable journal -> empty list.
+def journal-exemptions [journal_path: string]: nothing -> list<string> {
+    do -i { exemptions-from-journal (open --raw $journal_path) } | default []
+}
+
+# Pure: filed-seed title — bounded arm excerpt plus provenance.
+def exemption-title [arm: string, seed_id: string]: nothing -> string {
+    let excerpt = (if ($arm | str length) > 70 { $arm | str substring 0..69 } else { $arm })
+    $"EXEMPTION arm from ($seed_id): ($excerpt)"
+}
+
+# Pure: labels for an EXEMPTION-arm seed. `ops` marks the user-action
+# class, `residual` the machine-filed provenance (fabro-2ab8);
+# `seeds create` takes comma-labels.
+def exemption-seed-labels []: nothing -> list<string> {
+    ["ops" "residual"]
+}
+
+# Advisory sweep: file each brief EXEMPTION arm as a NEW open seed
+# (type task, NO assignee — a user action stays unassigned until the
+# user claims it, per the backlog-assignment policy). Never raises:
+# caller wraps in `do -i`; internal seeds failures print to stderr and
+# continue.
+def sweep-exemption-arms [seed_id: string, run_id: string, journal_path: string]: nothing -> nothing {
+    for arm in (journal-exemptions $journal_path) {
+        let text = (exemption-text $arm)
+        let desc = $"Deferred user/infra action the run exempted while implementing ($seed_id) — the run could not land this arm itself.\n\nAction: \"($text)\"\n\nOrigin: closed seed ($seed_id), EXEMPTION bullet in its brief, planner journal ($journal_path), marker observation.\nBasis: run ($run_id), closed seed ($seed_id)"
+        let res = (do { seeds create --title (exemption-title $text $seed_id) --description $desc --type task --labels (exemption-seed-labels | str join ",") } | complete)
+        if $res.exit_code != 0 {
+            print -e $"closeout: WARNING — could not file EXEMPTION arm as a seed \(from ($seed_id)\): ($res.stderr | str trim)"
+        } else {
+            print $"closeout: filed EXEMPTION arm as open seed: ($res.stdout | str trim)"
+        }
+    }
+}
+
 # Lane parameter (fabro-70b5): product (default, develop) or loop. The
 # lane fixes the assignee residual/deferred sweeps file under — residuals
 # from a loop run are loop-asset follow-ups (@loop); product residuals
@@ -401,6 +505,15 @@ def main [--lane: string = "product"]: nothing -> nothing {
     # reviewer sweep above, also after the PARK gate. Null path: no
     # marker observations -> zero seeds create calls.
     do -i { sweep-deferred-actions $seed_id $run_id $".fabro/journal/($run_id).jsonl" $residual_assignee } | ignore
+
+    # EXEMPTION-arm sweep (fabro-534e): re-file brief EXEMPTION bullets
+    # — deferred user/infra arms the run exempted — that the planner
+    # mirrored as `exemption:` journal observations (marker contract in
+    # planner.md) as open, UNASSIGNED ops seeds BEFORE the close.
+    # Advisory only — same wrapping discipline as the sweeps above, also
+    # after the PARK gate. Null path: no marker observations -> zero
+    # seeds create calls.
+    do -i { sweep-exemption-arms $seed_id $run_id $".fabro/journal/($run_id).jsonl" } | ignore
 
     let res = (do { seeds close $seed_id } | complete)
     if $res.exit_code != 0 {
