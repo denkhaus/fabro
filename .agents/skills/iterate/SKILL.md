@@ -306,8 +306,16 @@ stores it belongs to; reach them by phase need:
   appear in origin/denkhaus.
 - Tool-agnostic engine (ADR-0017): engine components never reference
   project-scope tooling by name; bootstrap lives in project artifacts.
-- Upstream posture: we offer nothing until upstream reacts to our open
-  issues/PRs. Upstream drift threshold 5 minor versions before action.
+- Upstream posture (ADR-0024, 2026-10-01): the platform base is FROZEN at
+  0.362.0-nightly (merge-base 1b4fb1528). No routine merges of fabro main.
+  Intake: (a) petri/pebble fork merges only when they compile and pass gates
+  against OUR base (skip+record what needs fabro-side changes we lack);
+  (b) fabro-main fixes land as bounded, justified cherry-picks (registered
+  candidate: the sandbox-side publication rewrite #913). Drift watching is
+  informational, never action-triggering. Selectively OFFER general,
+  non-strategic fixes upstream (fabro-d485); strategic assets stay
+  fork-private. Endgame: convergence or a deliberate wholesale switch —
+  keep the .fabro layer portable (seams/presence pins stay binding).
 - Fork-feature presence pinning: every durable fork feature lives in a
   fork-only source file wired through minimal one-line seams, with a
   presence test in a fork-only test file plus a touchpoints row —
