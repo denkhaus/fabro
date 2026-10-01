@@ -546,7 +546,7 @@ export const RunsApiAxiosParamCreator = function (configuration?: Configuration)
             };
         },
         /**
-         * Creates a new run from a checkpoint of the source run and starts it. The new run holds the source\'s records up to the checkpoint\'s position and continues from there in a fresh workspace restored to the checkpoint\'s commit. The source run is left untouched. A checkpoint inside a parallel branch cannot be forked at; fork at the parallel stage instead.
+         * Creates a new run from a checkpoint of the source run and starts it. The new run holds the source\'s records up to the checkpoint\'s position and continues from there in a fresh workspace restored to the checkpoint\'s commit. The source run is left untouched. A checkpoint inside a parallel branch cannot be forked at; fork at the parallel stage instead. Requires a GitHub target with run-branch creation and pushes enabled; the checkpoint commit must be available on the source run\'s published branch. The final terminal checkpoint is refused because it leaves no work to acquire a workspace. For a completed run, select an earlier checkpoint explicitly or retry the workflow from the beginning.
          * @summary Fork Run
          * @param {string} id Unique run identifier (ULID).
          * @param {ForkRequest} [forkRequest]
@@ -1204,7 +1204,7 @@ export const RunsApiAxiosParamCreator = function (configuration?: Configuration)
             };
         },
         /**
-         * Creates a new run from a checkpoint of a terminal source run and starts it, then archives the source run and records `run.superseded_by` on it. Returns 207 when the new run was created but the source archive step failed.
+         * Creates a new run from a checkpoint of a terminal source run and starts it, then archives the source run and records `run.superseded_by` on it. Returns 207 when the new run was created but the source archive step failed. Requires a GitHub target with run-branch creation and pushes enabled. The checkpoint must leave work to execute: the final terminal checkpoint is refused; select an earlier checkpoint or retry the workflow from the beginning.
          * @summary Rewind Run
          * @param {string} id Unique run identifier (ULID).
          * @param {RewindRequest} [rewindRequest]
@@ -1732,7 +1732,7 @@ export const RunsApiFp = function(configuration?: Configuration) {
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
-         * Creates a new run from a checkpoint of the source run and starts it. The new run holds the source\'s records up to the checkpoint\'s position and continues from there in a fresh workspace restored to the checkpoint\'s commit. The source run is left untouched. A checkpoint inside a parallel branch cannot be forked at; fork at the parallel stage instead.
+         * Creates a new run from a checkpoint of the source run and starts it. The new run holds the source\'s records up to the checkpoint\'s position and continues from there in a fresh workspace restored to the checkpoint\'s commit. The source run is left untouched. A checkpoint inside a parallel branch cannot be forked at; fork at the parallel stage instead. Requires a GitHub target with run-branch creation and pushes enabled; the checkpoint commit must be available on the source run\'s published branch. The final terminal checkpoint is refused because it leaves no work to acquire a workspace. For a completed run, select an earlier checkpoint explicitly or retry the workflow from the beginning.
          * @summary Fork Run
          * @param {string} id Unique run identifier (ULID).
          * @param {ForkRequest} [forkRequest]
@@ -1938,7 +1938,7 @@ export const RunsApiFp = function(configuration?: Configuration) {
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
-         * Creates a new run from a checkpoint of a terminal source run and starts it, then archives the source run and records `run.superseded_by` on it. Returns 207 when the new run was created but the source archive step failed.
+         * Creates a new run from a checkpoint of a terminal source run and starts it, then archives the source run and records `run.superseded_by` on it. Returns 207 when the new run was created but the source archive step failed. Requires a GitHub target with run-branch creation and pushes enabled. The checkpoint must leave work to execute: the final terminal checkpoint is refused; select an earlier checkpoint or retry the workflow from the beginning.
          * @summary Rewind Run
          * @param {string} id Unique run identifier (ULID).
          * @param {RewindRequest} [rewindRequest]
@@ -2180,7 +2180,7 @@ export const RunsApiFactory = function (configuration?: Configuration, basePath?
             return localVarFp.denyRun(id, denyRunRequest, options).then((request) => request(axios, basePath));
         },
         /**
-         * Creates a new run from a checkpoint of the source run and starts it. The new run holds the source\'s records up to the checkpoint\'s position and continues from there in a fresh workspace restored to the checkpoint\'s commit. The source run is left untouched. A checkpoint inside a parallel branch cannot be forked at; fork at the parallel stage instead.
+         * Creates a new run from a checkpoint of the source run and starts it. The new run holds the source\'s records up to the checkpoint\'s position and continues from there in a fresh workspace restored to the checkpoint\'s commit. The source run is left untouched. A checkpoint inside a parallel branch cannot be forked at; fork at the parallel stage instead. Requires a GitHub target with run-branch creation and pushes enabled; the checkpoint commit must be available on the source run\'s published branch. The final terminal checkpoint is refused because it leaves no work to acquire a workspace. For a completed run, select an earlier checkpoint explicitly or retry the workflow from the beginning.
          * @summary Fork Run
          * @param {string} id Unique run identifier (ULID).
          * @param {ForkRequest} [forkRequest]
@@ -2341,7 +2341,7 @@ export const RunsApiFactory = function (configuration?: Configuration, basePath?
             return localVarFp.retryRun(id, options).then((request) => request(axios, basePath));
         },
         /**
-         * Creates a new run from a checkpoint of a terminal source run and starts it, then archives the source run and records `run.superseded_by` on it. Returns 207 when the new run was created but the source archive step failed.
+         * Creates a new run from a checkpoint of a terminal source run and starts it, then archives the source run and records `run.superseded_by` on it. Returns 207 when the new run was created but the source archive step failed. Requires a GitHub target with run-branch creation and pushes enabled. The checkpoint must leave work to execute: the final terminal checkpoint is refused; select an earlier checkpoint or retry the workflow from the beginning.
          * @summary Rewind Run
          * @param {string} id Unique run identifier (ULID).
          * @param {RewindRequest} [rewindRequest]
@@ -2565,7 +2565,7 @@ export class RunsApi extends BaseAPI {
     }
 
     /**
-     * Creates a new run from a checkpoint of the source run and starts it. The new run holds the source\'s records up to the checkpoint\'s position and continues from there in a fresh workspace restored to the checkpoint\'s commit. The source run is left untouched. A checkpoint inside a parallel branch cannot be forked at; fork at the parallel stage instead.
+     * Creates a new run from a checkpoint of the source run and starts it. The new run holds the source\'s records up to the checkpoint\'s position and continues from there in a fresh workspace restored to the checkpoint\'s commit. The source run is left untouched. A checkpoint inside a parallel branch cannot be forked at; fork at the parallel stage instead. Requires a GitHub target with run-branch creation and pushes enabled; the checkpoint commit must be available on the source run\'s published branch. The final terminal checkpoint is refused because it leaves no work to acquire a workspace. For a completed run, select an earlier checkpoint explicitly or retry the workflow from the beginning.
      * @summary Fork Run
      * @param {string} id Unique run identifier (ULID).
      * @param {ForkRequest} [forkRequest]
@@ -2741,7 +2741,7 @@ export class RunsApi extends BaseAPI {
     }
 
     /**
-     * Creates a new run from a checkpoint of a terminal source run and starts it, then archives the source run and records `run.superseded_by` on it. Returns 207 when the new run was created but the source archive step failed.
+     * Creates a new run from a checkpoint of a terminal source run and starts it, then archives the source run and records `run.superseded_by` on it. Returns 207 when the new run was created but the source archive step failed. Requires a GitHub target with run-branch creation and pushes enabled. The checkpoint must leave work to execute: the final terminal checkpoint is refused; select an earlier checkpoint or retry the workflow from the beginning.
      * @summary Rewind Run
      * @param {string} id Unique run identifier (ULID).
      * @param {RewindRequest} [rewindRequest]

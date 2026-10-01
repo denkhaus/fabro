@@ -51,6 +51,7 @@ use fabro_petri::providers::SandboxProviderConfig;
 use fabro_petri::recovery::{self, Recovery, RecoveryRequest};
 use fabro_petri::runtime::{self, RuntimeSpec};
 use fabro_petri::secrets::VaultSecrets;
+use fabro_petri::source::RunSource;
 use fabro_petri::{SqliteRunStore, admission, projection, run_graph};
 use fabro_static::EnvVars;
 use fabro_store::platform_records::{RunLifecycleKind, RunLifecycleRecord};
@@ -460,13 +461,21 @@ pub(crate) async fn execute(state: Arc<AppState>, run_id: RunId) {
     let observers = vec![petri_interviewer.observer()];
     let (_, eligible) = state.resolve_llm_client_with_ready_ids().await;
     let dry_run = run_state.spec.settings.run.execution.mode == RunMode::DryRun;
+    // The in-process path serves the server's tests: a Git target is
+    // fetched without a credential, and nothing is published.
+    let source = RunSource::for_run(
+        run_state.spec.target.as_ref(),
+        &run_state.spec.settings.run,
+        None,
+    );
     let hooks = HooksSpec::for_run(
         Arc::new(SqlitePlatformRecords::new(Arc::clone(
             &state.stores.run_summaries,
         ))),
         &run_state.spec.settings.run,
         Arc::new(StoreArtifactWriter::new(state.artifact_store.clone())),
-    );
+    )
+    .with_source(source);
     let runtime = runtime_spec(
         &state,
         &eligible,
@@ -576,12 +585,10 @@ pub(crate) async fn reconcile_on_startup(
     let mode = if held {
         let request = RecoveryRequest::for_run(
             run_id,
-            run_dir.join("petri"),
             Arc::new(SqliteRunStore::new(state.db_pool.clone())),
             Arc::new(SqlitePlatformRecords::new(Arc::clone(
                 &state.stores.run_summaries,
             ))),
-            &run_state.spec.settings.run,
         );
         match recovery::recover(request)
             .await
@@ -592,7 +599,7 @@ pub(crate) async fn reconcile_on_startup(
                 info!(
                     run_id = %run_id,
                     workspaces = workspaces.len(),
-                    "Petri run's workspaces match its durable state"
+                    "Petri recovery plan ready; the worker will verify retained workspaces"
                 );
                 RunExecutionMode::Resume
             }

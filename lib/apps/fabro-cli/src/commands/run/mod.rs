@@ -23,6 +23,7 @@ pub(crate) mod overrides;
 pub(crate) mod petri_stream;
 mod petri_worker;
 pub(crate) mod preview;
+mod publish;
 mod remote_workflow;
 mod resolution;
 pub(crate) mod resume;

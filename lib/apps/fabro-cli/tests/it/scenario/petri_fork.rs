@@ -1,13 +1,11 @@
 //! Fork, rewind, retry and the timeline over Petri runs, through a real
 //! server and its worker subprocess.
 //!
-//! The harness is `petri.rs`'s: a foreground server on disk storage, a run
-//! created and started with `fabro run --detach`, executed by the worker
-//! the server launches over the HTTP run store. Every checkpoint of a run
-//! is a commit on its run branch and a `checkpoint` platform record at its
-//! Petri position; the timeline lists them, and a fork seeds a new run from
-//! the source's records up to one of them, whose worker restores the
-//! checkpoint's files into a fresh workspace and continues from there.
+//! Local-folder runs are checkpointed in their workspace and can retry from
+//! the start, but refuse fork and rewind: only a published run branch can
+//! seed a new workspace.
+//! Git-backed forks are covered by fabro-petri's sandbox/remote integration
+//! test.
 
 #![expect(
     clippy::disallowed_methods,
@@ -100,7 +98,7 @@ async fn timeline(server: &RunningServer, run_id: &str) -> serde_json::Value {
 }
 
 /// The timeline's entries as `(node, execution, firing, attempt, sha)`.
-fn entries(timeline: &serde_json::Value) -> Vec<(String, u64, u64, u64, String)> {
+fn entries(timeline: &serde_json::Value) -> Vec<(String, u64, u64, u64, Option<String>)> {
     timeline["entries"]
         .as_array()
         .expect("the timeline has entries")
@@ -111,10 +109,7 @@ fn entries(timeline: &serde_json::Value) -> Vec<(String, u64, u64, u64, String)>
                 entry["execution"].as_u64().expect("an execution"),
                 entry["firing"].as_u64().expect("a firing"),
                 entry["attempt"].as_u64().expect("an attempt"),
-                entry["run_commit_sha"]
-                    .as_str()
-                    .expect("a checkpoint commit")
-                    .to_string(),
+                entry["run_commit_sha"].as_str().map(str::to_owned),
             )
         })
         .collect()
@@ -156,103 +151,30 @@ fn commit_subjects(workspace: &Path) -> Vec<String> {
         .collect()
 }
 
-fn current_branch(workspace: &Path) -> String {
-    let output = Command::new("git")
-        .args(["rev-parse", "--abbrev-ref", "HEAD"])
-        .current_dir(workspace)
-        .output()
-        .expect("git runs");
-    String::from_utf8_lossy(&output.stdout).trim().to_string()
-}
-
 fn read(workspace: &Path, name: &str) -> String {
     std::fs::read_to_string(workspace.join(name))
         .unwrap_or_else(|err| panic!("{name} in {}: {err}", workspace.display()))
 }
 
-/// A three-stage run forked at its first stage's checkpoint continues with
-/// the other two in a new run: the new run keeps the source's records up to
-/// `one`, its workspace holds `one`'s file restored from the checkpoint,
-/// and `two` and `three` run on it and commit on the new run branch. The
-/// new run says where it came from.
+/// A local-folder run cannot fork without a published checkpoint.
 #[tokio::test(flavor = "multi_thread")]
-async fn a_fork_at_the_first_stage_continues_with_the_rest_on_its_files() {
+async fn a_local_folder_fork_is_refused_without_creating_a_run() {
     let context = test_context!();
     let server = RunningServer::start().await;
     let bundle = write_petri_workflow(&context, &three_stage_dot());
     let source = run_detached(&context, &server, &bundle);
     wait_for_success(&server, &source).await;
-    let source_timeline = timeline(&server, &source).await;
-    assert_eq!(nodes(&source_timeline), [
-        "start", "one", "two", "three", "exit"
-    ]);
-    let source_entries = entries(&source_timeline);
-    let (_, one_execution, one_firing, _, one_sha) = source_entries[1].clone();
-
-    let forked = cli_json(&context, &server, &["fork", &source, "one", "--json"]);
-    assert_eq!(forked["source_run_id"], source);
-    assert_eq!(forked["target"], "@2");
-    assert_eq!(forked["execution"].as_u64(), Some(one_execution));
-    assert_eq!(forked["firing"].as_u64(), Some(one_firing));
-    assert_eq!(forked["checkpoint_sha"], one_sha);
-    assert_eq!(forked["rerun_last"], false);
-    let fork = forked["new_run_id"]
-        .as_str()
-        .expect("the new run id")
-        .to_string();
-    assert_ne!(fork, source);
-    wait_for_success(&server, &fork).await;
-
-    // The fork's timeline: the source's checkpoints up to `one`, then its own.
-    let fork_timeline = timeline(&server, &fork).await;
-    assert_eq!(nodes(&fork_timeline), [
-        "start", "one", "two", "three", "exit"
-    ]);
-    let fork_entries = entries(&fork_timeline);
-    assert_eq!(fork_entries[..2], source_entries[..2]);
-    assert_ne!(fork_entries[2].4, source_entries[2].4);
-    assert_eq!(fork_timeline["forked_from"]["source_run_id"], source);
-    assert_eq!(
-        fork_timeline["forked_from"]["execution"].as_u64(),
-        Some(one_execution)
-    );
-    assert_eq!(
-        fork_timeline["forked_from"]["firing"].as_u64(),
-        Some(one_firing)
-    );
-    assert_eq!(fork_timeline["forked_from"]["rerun_last"], false);
-    assert!(source_timeline["forked_from"].is_null());
-
-    // The fork's workspace: `one.txt` restored from the checkpoint, the
-    // rest made by the fork's own stages, on the fork's run branch after the
-    // source's commits.
-    let fork_workspace = workspace(&server, &fork);
-    assert_eq!(read(&fork_workspace, "one.txt"), "one\n");
-    assert_eq!(read(&fork_workspace, "two.txt"), "two\n");
-    assert_eq!(read(&fork_workspace, "three.txt"), "three\n");
-    assert_eq!(current_branch(&fork_workspace), format!("fabro/run/{fork}"));
-    assert_eq!(commit_subjects(&fork_workspace), [
-        format!("fabro({source}): start (success)"),
-        format!("fabro({source}): one (success)"),
-        format!("fabro({fork}): two (success)"),
-        format!("fabro({fork}): three (success)"),
-        format!("fabro({fork}): exit (success)"),
-    ]);
-
-    // The projection names the origin on both sides.
-    let state = run_json(&server, &format!("runs/{fork}/state")).await;
-    assert_eq!(state["forked_from"]["source_run_id"], source);
-    assert_eq!(state["spec"]["fork_source_ref"]["source_run_id"], source);
-    assert_eq!(state["spec"]["fork_source_ref"]["checkpoint_sha"], one_sha);
-    assert!(state["retried_from"].is_null());
+    let refused = cli(&context, &server, &["fork", &source, "one", "--json"]);
+    assert!(!refused.status.success());
+    assert!(String::from_utf8_lossy(&refused.stderr).contains("GitHub-backed run"));
     let summary = run_json(&server, &format!("runs/{source}")).await;
     assert!(summary["superseded_by"].is_null());
     assert_eq!(summary["lifecycle"]["archived"], false);
     server.shutdown();
 }
 
-/// A retry starts the workflow over in a new run: every stage runs again
-/// in a fresh workspace, so a transient failure passes the second time.
+/// A retry starts the workflow again in a new workspace. A transient
+/// failure can succeed on this second execution.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_retry_starts_over_and_succeeds_when_the_failure_was_transient() {
     let context = test_context!();
@@ -303,65 +225,22 @@ async fn a_retry_starts_over_and_succeeds_when_the_failure_was_transient() {
     server.shutdown();
 }
 
-/// A rewind forks the run and supersedes it: the source is archived and
-/// names the run that replaced it.
+/// Refusing rewind must leave the original run available and unarchived.
 #[tokio::test(flavor = "multi_thread")]
-async fn a_rewind_supersedes_its_source() {
+async fn a_local_folder_rewind_is_refused_without_archiving_its_source() {
     let context = test_context!();
     let server = RunningServer::start().await;
     let bundle = write_petri_workflow(&context, &three_stage_dot());
     let source = run_detached(&context, &server, &bundle);
     wait_for_success(&server, &source).await;
-
-    // Without a target the command lists the timeline instead.
     let listed = cli_json(&context, &server, &["rewind", &source, "--json"]);
-    assert_eq!(
-        listed["entries"]
-            .as_array()
-            .map(Vec::len)
-            .expect("a timeline"),
-        5
-    );
-
-    let rewound = cli_json(&context, &server, &["rewind", &source, "@3", "--json"]);
-    assert_eq!(rewound["source_run_id"], source);
-    assert_eq!(rewound["target"], "@3");
-    assert_eq!(rewound["archived"], true);
-    assert!(rewound["archive_error"].is_null());
-    assert_eq!(rewound["status"], 200);
-    let replacement = rewound["new_run_id"]
-        .as_str()
-        .expect("the new run id")
-        .to_string();
-
-    let summary = run_json(&server, &format!("runs/{source}")).await;
-    assert_eq!(summary["superseded_by"], replacement);
-    assert_eq!(summary["lifecycle"]["archived"], true);
-    let state = run_json(&server, &format!("runs/{source}/state")).await;
-    assert_eq!(state["superseded_by"], replacement);
-
-    wait_for_success(&server, &replacement).await;
-    assert_eq!(nodes(&timeline(&server, &replacement).await), [
-        "start", "one", "two", "three", "exit"
-    ]);
-    let replacement_workspace = workspace(&server, &replacement);
-    assert_eq!(read(&replacement_workspace, "two.txt"), "two\n");
-    assert_eq!(commit_subjects(&replacement_workspace), [
-        format!("fabro({source}): start (success)"),
-        format!("fabro({source}): one (success)"),
-        format!("fabro({source}): two (success)"),
-        format!("fabro({replacement}): three (success)"),
-        format!("fabro({replacement}): exit (success)"),
-    ]);
-
-    // An archived run is neither forked nor rewound again.
-    let refused = cli(&context, &server, &["fork", &source, "@2"]);
+    assert_eq!(listed["entries"].as_array().unwrap().len(), 5);
+    let refused = cli(&context, &server, &["rewind", &source, "@3", "--json"]);
     assert!(!refused.status.success());
-    assert!(
-        String::from_utf8_lossy(&refused.stderr).contains("archived"),
-        "stderr:\n{}",
-        String::from_utf8_lossy(&refused.stderr)
-    );
+    assert!(String::from_utf8_lossy(&refused.stderr).contains("GitHub-backed run"));
+    let summary = run_json(&server, &format!("runs/{source}")).await;
+    assert!(summary["superseded_by"].is_null());
+    assert_eq!(summary["lifecycle"]["archived"], false);
     server.shutdown();
 }
 
@@ -375,33 +254,18 @@ async fn the_timeline_lists_every_checkpoint_with_its_commit() {
     let run_id = run_detached(&context, &server, &bundle);
     wait_for_success(&server, &run_id).await;
 
-    let recorded = server.checkpoints(&run_id).await;
+    let recorded: Vec<(u64, u64, u64, Option<String>)> = server
+        .checkpoints(&run_id)
+        .await
+        .into_iter()
+        .map(|(key, sha)| (key.execution, key.firing, u64::from(key.attempt), Some(sha)))
+        .collect();
     let listed = cli_json(&context, &server, &["timeline", &run_id, "--json"]);
-    let listed_entries: Vec<(u64, u64, u64, String)> = listed["entries"]
-        .as_array()
-        .expect("entries")
-        .iter()
-        .map(|entry| {
-            (
-                entry["execution"].as_u64().expect("execution"),
-                entry["firing"].as_u64().expect("firing"),
-                entry["attempt"].as_u64().expect("attempt"),
-                entry["run_commit_sha"].as_str().expect("sha").to_string(),
-            )
-        })
+    let listed_entries: Vec<(u64, u64, u64, Option<String>)> = entries(&listed)
+        .into_iter()
+        .map(|(_, execution, firing, attempt, sha)| (execution, firing, attempt, sha))
         .collect();
-    let recorded_entries: Vec<(u64, u64, u64, String)> = recorded
-        .iter()
-        .map(|(key, sha)| {
-            (
-                key.execution,
-                key.firing,
-                u64::from(key.attempt),
-                sha.clone(),
-            )
-        })
-        .collect();
-    assert_eq!(listed_entries, recorded_entries);
+    assert_eq!(listed_entries, recorded);
     assert_eq!(listed_entries.len(), 5);
     let ordinals: Vec<u64> = listed["entries"]
         .as_array()
@@ -437,7 +301,7 @@ async fn the_timeline_lists_every_checkpoint_with_its_commit() {
 /// A checkpoint inside a parallel branch is not a fork position: Petri
 /// refuses it, and the refusal says why. The join, in the root, is.
 #[tokio::test(flavor = "multi_thread")]
-async fn a_fork_inside_a_parallel_branch_is_refused() {
+async fn a_local_folder_parallel_run_cannot_be_forked() {
     let context = test_context!();
     let server = RunningServer::start().await;
     let bundle = write_petri_workflow(&context, &parallel_dot());
@@ -459,7 +323,7 @@ async fn a_fork_inside_a_parallel_branch_is_refused() {
     );
     let stderr = String::from_utf8_lossy(&refused.stderr);
     assert!(
-        stderr.contains("inside a child invocation cannot be forked"),
+        stderr.contains("GitHub-backed run"),
         "the refusal names the branch:\n{stderr}"
     );
     // Nothing was started for it.
@@ -473,25 +337,7 @@ async fn a_fork_inside_a_parallel_branch_is_refused() {
         .collect();
     assert!(ids.iter().all(|id| *id == source), "runs: {ids:?}");
 
-    // A fork at the stage after the join continues from the root.
-    let done = all
-        .iter()
-        .zip(1_u64..)
-        .find(|((node, ..), _)| node == "done")
-        .map(|(_, ordinal)| ordinal)
-        .expect("`done` has a checkpoint");
-    let forked = cli_json(&context, &server, &[
-        "fork",
-        &source,
-        &format!("@{done}"),
-        "--json",
-    ]);
-    let fork = forked["new_run_id"]
-        .as_str()
-        .expect("the new run id")
-        .to_string();
-    wait_for_success(&server, &fork).await;
-    let fork_workspace = workspace(&server, &fork);
-    assert_eq!(read(&fork_workspace, "done.txt"), "done\n");
+    let refused = cli(&context, &server, &["fork", &source, "done"]);
+    assert!(!refused.status.success());
     server.shutdown();
 }

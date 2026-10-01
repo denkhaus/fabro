@@ -23,18 +23,23 @@ use fabro_petri::artifacts::StoreArtifactWriter;
 use fabro_petri::blobs::Blobs;
 use fabro_petri::check::{self, Bundle, CheckRequest, Launch};
 use fabro_petri::checkpoint::{
-    CHECKPOINT_FAILED_CLASS, CheckpointKey, RunGitSettings, RunWorkspaces,
+    CHECKPOINT_FAILED_CLASS, CheckpointKey, RunGitSettings, RunWorkspaces, Site,
 };
 use fabro_petri::controls::RunControls;
 use fabro_petri::engine::{self, Execution, RunRequest, RunStatus};
-use fabro_petri::hooks::HooksSpec;
-use fabro_petri::platform_records::PlatformRecords;
+use fabro_petri::fork;
+use fabro_petri::hooks::{HooksSpec, Publication, RunPublisher};
+use fabro_petri::platform_records::{PlatformRecordError, PlatformRecords};
 use fabro_petri::providers::{DaytonaCredentials, SandboxProviderConfig};
+use fabro_petri::prune::{self, PruneRequest};
 use fabro_petri::recovery::{self, Recovery, RecoveryRequest};
 use fabro_petri::runtime::RuntimeSpec;
+use fabro_petri::source::{RunSource, SourceRevision};
 use fabro_petri::test_support::{MemoryBlobs, MemoryPlatformRecords};
 use fabro_store::{ArtifactStore, PlatformRecord, PlatformRecordKind};
-use fabro_types::settings::run::{EnvironmentResourcesSettings, RunCheckpointSettings};
+use fabro_types::settings::run::{
+    EnvironmentResourcesSettings, RunCheckpointSettings, RunNamespace,
+};
 use fabro_types::{GitIdentitySource, RunId, SandboxProviderKind};
 use object_store::local::LocalFileSystem;
 use petri_execution::inspect::{self, RunInspection};
@@ -90,11 +95,19 @@ struct Harness {
     /// The `[run.artifacts] include` patterns the hooks collect under.
     artifacts:      Vec<String>,
     artifact_store: ArtifactStore,
+    /// Where the run's workspaces are checked out from.
+    source:         Option<RunSource>,
+    /// Treat the local provider's workspaces as a sandbox's: `git` runs
+    /// through the scope's environment and checkpoints leave as bundles.
+    sandboxed:      bool,
+    /// What a successful run's work does when it ends.
+    publisher:      Option<Arc<dyn RunPublisher>>,
+    fail_run_diff:  bool,
     _root:          tempfile::TempDir,
 }
 
 impl Harness {
-    fn new() -> Self {
+    async fn new() -> Self {
         let root = tempfile::tempdir().expect("a temp dir");
         let artifact_root = root.path().join("artifacts");
         std::fs::create_dir(&artifact_root).expect("the isolated artifact directory creates");
@@ -105,6 +118,7 @@ impl Harness {
             ),
             "captures-test",
         );
+        let (origin, _) = upstream(&root.path().join("fixture"), 1).await;
         Self {
             artifact_store,
             run_id: RunId::new(),
@@ -113,20 +127,30 @@ impl Harness {
             records: Arc::new(MemoryPlatformRecords::new()),
             blobs: Arc::new(MemoryBlobs::new()),
             artifacts: Vec::new(),
+            source: Some(file_source(&origin, "main", None)),
+            sandboxed: false,
+            publisher: None,
+            fail_run_diff: false,
             _root: root,
         }
     }
 
     fn hooks(&self, provider: &SandboxProviderKind) -> HooksSpec {
         HooksSpec {
-            records:         Arc::clone(&self.records) as Arc<dyn PlatformRecords>,
+            records:         if self.fail_run_diff {
+                Arc::new(RejectRunDiff(self.records.clone()))
+            } else {
+                self.records.clone()
+            },
             git:             RunGitSettings {
-                host_workspaces: *provider == SandboxProviderKind::LOCAL,
+                host_workspaces: *provider == SandboxProviderKind::LOCAL && !self.sandboxed,
                 ..RunGitSettings::default()
             },
             artifacts:       self.artifacts.clone(),
             test_gates:      None,
             artifact_writer: Arc::new(StoreArtifactWriter::new(self.artifact_store.clone())),
+            source:          self.source.clone(),
+            publisher:       self.publisher.clone(),
         }
     }
 
@@ -144,6 +168,16 @@ impl Harness {
         workflow: &str,
         settings: &str,
     ) -> engine::RunOutcome {
+        self.execute_on(provider, workflow, settings, false).await
+    }
+
+    async fn execute_on(
+        &self,
+        provider: SandboxProviderKind,
+        workflow: &str,
+        settings: &str,
+        resumed: bool,
+    ) -> engine::RunOutcome {
         let (interviewer, observers) = no_questions();
         let hooks = self.hooks(&provider);
         let daytona = (provider == SandboxProviderKind::DAYTONA).then(|| {
@@ -156,7 +190,11 @@ impl Harness {
         let request = RunRequest {
             run_id: self.run_id.to_string(),
             run_dir: self.run_dir.clone(),
-            execution: Execution::Start(admit(workflow, settings)),
+            execution: if resumed {
+                Execution::Resume
+            } else {
+                Execution::Start(admit(workflow, settings))
+            },
             store: Arc::clone(&self.store) as Arc<dyn petri_store::RunStore>,
             runtime: RuntimeSpec {
                 sandbox,
@@ -173,27 +211,6 @@ impl Harness {
             hooks: Some(hooks),
         };
         engine::run(request).await.expect("the run executes")
-    }
-
-    /// The commits the snapshot repository of `workspace` holds, oldest
-    /// first, as `(sha, subject, key)`: every checkpoint's history, whatever
-    /// site committed it.
-    async fn snapshot_commits(
-        &self,
-        workspace: &str,
-    ) -> Vec<(String, String, Option<CheckpointKey>)> {
-        let repository = self.workspaces().snapshot_repository(workspace);
-        // Topological, so the linear run history reads parents first even
-        // when commits share a timestamp.
-        let log = git(&repository, &[
-            "log",
-            "--topo-order",
-            "--reverse",
-            "--all",
-            "--format=%H%x00%s%x00%B%x1e",
-        ])
-        .await;
-        parse_log(&log)
     }
 
     async fn inspection(&self) -> RunInspection {
@@ -251,10 +268,8 @@ impl Harness {
     async fn recover(&self) -> Recovery {
         recovery::recover(RecoveryRequest {
             run_id:  self.run_id,
-            run_dir: self.run_dir.clone(),
             store:   Arc::clone(&self.store) as Arc<dyn petri_store::RunStore>,
             records: Arc::clone(&self.records) as Arc<dyn PlatformRecords>,
-            git:     RunGitSettings::default(),
         })
         .await
         .expect("recovery decides")
@@ -303,6 +318,7 @@ fn parse_log(log: &str) -> Vec<(String, String, Option<CheckpointKey>)> {
             let body = parts.next().unwrap_or_default();
             (sha, subject, CheckpointKey::from_message(body))
         })
+        .filter(|(_, _, key)| key.is_some())
         .collect()
 }
 
@@ -322,7 +338,8 @@ fn stages(inspection: &RunInspection) -> Vec<(String, String)> {
 #[tokio::test]
 async fn dry_runs_use_local_workspaces_and_checkpoint_without_sandbox_credentials() {
     for provider in [SandboxProviderKind::DOCKER, SandboxProviderKind::DAYTONA] {
-        let harness = Harness::new();
+        let mut harness = Harness::new().await;
+        harness.source = None;
         let workflow = workflow(
             r#"  write [shape=parallelogram, script="touch should-not-exist; exit 1"]"#,
             "  start -> write -> exit",
@@ -369,7 +386,7 @@ async fn dry_runs_use_local_workspaces_and_checkpoint_without_sandbox_credential
             3,
             "{provider}: every stage checkpoints"
         );
-        assert_eq!(harness.snapshot_commits(&workspace).await.len(), 3);
+        assert_eq!(commits(&harness.workspace_path(&workspace)).await.len(), 3);
     }
 }
 
@@ -378,7 +395,7 @@ async fn dry_runs_use_local_workspaces_and_checkpoint_without_sandbox_credential
 /// reached Petri's local service through Fabro's wrapper.
 #[tokio::test]
 async fn every_finish_is_committed_and_recorded() {
-    let harness = Harness::new();
+    let harness = Harness::new().await;
     let workflow = workflow(
         "  write [shape=parallelogram, script=\"echo one > out.txt\"]\n  check \
          [shape=parallelogram, script=\"test \\\"$(cat out.txt)\\\" = one\"]",
@@ -429,13 +446,7 @@ async fn every_finish_is_committed_and_recorded() {
         "{checkpoints:?}"
     );
 
-    // The snapshot repository holds every checkpoint.
-    let published = harness
-        .workspaces()
-        .published(&workspace)
-        .await
-        .expect("the snapshots list");
-    assert_eq!(published.len(), 4);
+    assert!(!harness.run_dir.join("snapshots").exists());
 
     // `run_complete` and `sandbox_cleanup` ran through the forwarded
     // service, with the sandbox in place.
@@ -452,7 +463,7 @@ async fn every_finish_is_committed_and_recorded() {
 /// the end.
 #[tokio::test]
 async fn artifacts_the_branch_and_the_diffs_are_recorded() {
-    let mut harness = Harness::new();
+    let mut harness = Harness::new().await;
     harness.artifacts = vec!["assets/**".to_string()];
     let workflow = workflow(
         "  write [shape=parallelogram, script=\"mkdir -p assets && printf one > \
@@ -531,8 +542,15 @@ async fn artifacts_the_branch_and_the_diffs_are_recorded() {
     let checkpoints = harness.checkpoints();
     assert_eq!(
         branches[0].base_sha.as_deref(),
-        Some(checkpoints[0].1.as_str()),
-        "a branch in a fresh repository starts from its first checkpoint"
+        Some(
+            git(&harness.workspace_path(&workspace), &[
+                "rev-parse",
+                &format!("{}^", checkpoints[0].1)
+            ])
+            .await
+            .as_str()
+        ),
+        "the branch starts at the upstream commit"
     );
     let identities: Vec<_> = records
         .iter()
@@ -558,7 +576,8 @@ async fn artifacts_the_branch_and_the_diffs_are_recorded() {
         })
         .collect();
     assert_eq!(diffs.len(), 5, "{diffs:?}");
-    assert_eq!(diffs[0], (None, false));
+    assert_eq!(diffs[0].0.unwrap().files_changed, 0);
+    assert!(!diffs[0].1);
     let write = diffs[1].0.expect("the write diff");
     assert_eq!(
         (write.files_changed, write.additions, write.deletions),
@@ -632,7 +651,7 @@ async fn checkpoint_nodes(harness: &Harness) -> Vec<(String, u64)> {
 /// and its failure route runs on the committed files.
 #[tokio::test]
 async fn a_failed_stage_is_committed_and_its_route_sees_the_files() {
-    let harness = Harness::new();
+    let harness = Harness::new().await;
     let workflow = workflow(
         "  work [shape=parallelogram, script=\"echo partial > out.txt; exit 1\"]\n  fix \
          [shape=parallelogram, script=\"test \\\"$(cat out.txt)\\\" = partial && echo fixed >> \
@@ -672,7 +691,7 @@ async fn a_failed_stage_is_committed_and_its_route_sees_the_files() {
 /// checkpoint's error, and a restart reports it failed without resuming.
 #[tokio::test]
 async fn a_failed_checkpoint_ends_the_run_with_no_route() {
-    let harness = Harness::new();
+    let harness = Harness::new().await;
     let workflow = workflow(
         "  wreck [shape=parallelogram, script=\"rm -rf .git && echo garbage > .git && echo wrecked \
          > out.txt\"]\n  next [shape=parallelogram, script=\"echo next > next.txt\"]\n  fix \
@@ -735,7 +754,7 @@ async fn a_failed_checkpoint_ends_the_run_with_no_route() {
 /// starts over, and a run that finished has nothing to bring back.
 #[tokio::test]
 async fn recovery_starts_an_unknown_run_and_resumes_a_finished_one() {
-    let harness = Harness::new();
+    let harness = Harness::new().await;
     assert_eq!(harness.recover().await, Recovery::Start);
 
     let workflow = workflow(
@@ -802,7 +821,7 @@ async fn a_run_hook_blocks_a_tool_effect_through_the_forwarded_service() {
     .expect("the model client builds")
     .expect("openai is eligible");
 
-    let harness = Harness::new();
+    let harness = Harness::new().await;
     let (interviewer, observers) = no_questions();
     let workflow = format!(
         "digraph Hooks {{\n  graph [backend=\"api\", goal=\"Check the tool hooks\", \
@@ -879,7 +898,7 @@ async fn the_records_name_the_root_invocations_workspace() {
     use fabro_petri::workspace::WorkspaceLookup;
     use petri_execution::InvocationId;
 
-    let harness = Harness::new();
+    let harness = Harness::new().await;
     let workflow = workflow(
         "  write [shape=parallelogram, script=\"echo one > out.txt\"]",
         "  start -> write -> exit",
@@ -910,7 +929,7 @@ async fn the_records_name_the_root_invocations_workspace() {
 /// problem.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn parallel_branches_checkpoint_the_shared_workspace_in_turn() {
-    let harness = Harness::new();
+    let harness = Harness::new().await;
     let workflow = workflow(
         "  fork [shape=component]\n  a [shape=parallelogram, script=\"echo a > a.txt\"]\n  b \
          [shape=parallelogram, script=\"echo b > b.txt\"]\n  merge [shape=tripleoctagon]\n  check \
@@ -955,6 +974,19 @@ async fn parallel_branches_checkpoint_the_shared_workspace_in_turn() {
     );
     assert_eq!(inspection.executions.len(), 3, "the root and two branches");
     assert_eq!(harness.workspace().await, "invocation-0-scope-0");
+    let child = recorded.iter().find(|key| key.execution != 0).unwrap();
+    let refused = fork::check(
+        harness.store.as_ref(),
+        harness.run_id,
+        fork::position(child.execution, child.firing),
+    )
+    .await
+    .unwrap_err();
+    assert!(
+        refused
+            .to_string()
+            .contains("inside a child invocation cannot be forked")
+    );
 }
 
 /// On Docker the workspace lives inside the container: every finished
@@ -983,77 +1015,559 @@ async fn a_daytona_run_commits_inside_the_sandbox_and_publishes_every_checkpoint
     assert_sandbox_run_publishes_every_checkpoint(SandboxProviderKind::DAYTONA).await;
 }
 
-/// Bytes of incompressible data the first stage writes: past the plugin
-/// transport's 16 MiB cap on one file read, so its bundle leaves the
-/// sandbox in more than one part.
-const LARGE_FILE_BYTES: usize = 20 * 1024 * 1024;
-
-/// A two-stage run on `provider`, whose workspace lives inside a sandbox:
-/// nothing of it is on the host, every checkpoint is published, and the
-/// bundles carried the stages' files, a large one in parts.
+/// Git commits and pushes use the acquired sandbox, without a host repository.
 async fn assert_sandbox_run_publishes_every_checkpoint(provider: SandboxProviderKind) {
-    let harness = Harness::new();
+    let mut harness = Harness::new().await;
+    harness.source = Some(RunSource {
+        origin:      "https://github.com/octocat/Hello-World.git".to_string(),
+        revision:    SourceRevision::Branch("master".to_string()),
+        branch:      "master".to_string(),
+        depth:       Some(1),
+        credentials: None,
+    });
+    let publisher = RecordingPublisher::new(None);
+    harness.publisher = Some(publisher.clone());
     let workflow = workflow(
-        &format!(
-            "  write [shape=parallelogram, script=\"echo one > out.txt && head -c \
-             {LARGE_FILE_BYTES} /dev/urandom > large.bin\"]\n  check [shape=parallelogram, \
-             script=\"test \\\"$(cat out.txt)\\\" = one && git log --format=%s | head -1 | grep -q \
-             write\"]"
-        ),
+        r#"  write [shape=parallelogram, script="echo one > out.txt"]
+  check [shape=parallelogram, script="test -f out.txt && git log --format=%s | head -1 | grep -q write"]"#,
         "  start -> write -> check -> exit",
     );
-    let outcome = harness.run_on(provider, &workflow, SETTINGS).await;
-    assert_eq!(outcome.status, RunStatus::Success, "{outcome:?}");
-    assert!(outcome.complete, "{:?}", outcome.incomplete);
-
-    let checkpoints = harness.checkpoints();
-    assert_eq!(checkpoints.len(), 4, "{checkpoints:?}");
-    let workspace = "invocation-0-scope-0";
-    assert!(
-        !harness.workspaces().workspace_exists(workspace).await,
-        "nothing of the workspace is on the host"
-    );
-    let published = harness
-        .workspaces()
-        .published(workspace)
+    let outcome = harness.run_on(provider.clone(), &workflow, SETTINGS).await;
+    if provider == SandboxProviderKind::DOCKER {
+        prune::prune(PruneRequest {
+            sandbox: SandboxProviderConfig::from_lookup(None, |name| env::var(name).ok()),
+            run_id: harness.run_id.to_string(),
+            run_dir: harness.run_dir.clone(),
+            store: harness.store.clone(),
+            provider,
+        })
         .await
-        .expect("the snapshot repository lists");
-    let mut by_key: Vec<(CheckpointKey, String)> = published
-        .iter()
-        .map(|snapshot| (snapshot.key, snapshot.sha.clone()))
-        .collect();
-    let mut recorded = checkpoints.clone();
-    recorded.sort();
-    by_key.sort();
-    assert_eq!(by_key, recorded, "every record names a published snapshot");
-
-    let commits = harness.snapshot_commits(workspace).await;
-    let subjects: Vec<&str> = commits
-        .iter()
-        .map(|(_, subject, _)| subject.as_str())
-        .collect();
-    let run_id = harness.run_id.to_string();
-    assert_eq!(subjects, vec![
-        format!("fabro({run_id}): start (success)"),
-        format!("fabro({run_id}): write (success)"),
-        format!("fabro({run_id}): check (success)"),
-        format!("fabro({run_id}): exit (success)"),
-    ]);
-    let (write_sha, _, _) = &commits[1];
-    let repository = harness.workspaces().snapshot_repository(workspace);
-    assert_eq!(
-        git(&repository, &["show", &format!("{write_sha}:out.txt")]).await,
-        "one",
-        "the bundle carried the stage's files"
+        .expect("the test container is pruned");
+    }
+    assert_eq!(outcome.status, RunStatus::Success, "{outcome:?}");
+    assert_eq!(harness.checkpoints().len(), 4);
+    assert_eq!(publisher.pushed.lock().unwrap().len(), 4);
+    assert!(!harness.run_dir.join("snapshots").exists());
+    assert!(
+        !harness
+            .workspaces()
+            .workspace_exists("invocation-0-scope-0")
+            .await
     );
+}
+
+/// An upstream repository with `commits` commits on `main`, each changing
+/// `README.md`, and the commit `main` ends on.
+async fn upstream(root: &Path, commits: usize) -> (PathBuf, String) {
+    let work = root.join("upstream-work");
+    let bare = root.join("upstream.git");
+    fs::create_dir_all(&work)
+        .await
+        .expect("the work tree creates");
+    git(&work, &["init", "-q", "-b", "main"]).await;
+    for index in 1..=commits {
+        fs::write(work.join("README.md"), format!("revision {index}\n"))
+            .await
+            .expect("the file writes");
+        git(&work, &["add", "README.md"]).await;
+        git(&work, &[
+            "-c",
+            "user.name=Upstream",
+            "-c",
+            "user.email=upstream@example.com",
+            "commit",
+            "-q",
+            "-m",
+            &format!("revision {index}"),
+        ])
+        .await;
+    }
+    git(root, &[
+        "clone",
+        "-q",
+        "--bare",
+        &work.to_string_lossy(),
+        &bare.to_string_lossy(),
+    ])
+    .await;
+    let head = git(&work, &["rev-parse", "HEAD"]).await;
+    (bare, head)
+}
+
+/// A Git target's run starts from its repository at depth one: the stage
+/// sees the files and a shallow history, the snapshot repository is seeded
+/// with the starting commit, and every checkpoint builds on it (a commit the
+/// stage made itself included), whether the workspace is on the host or
+/// `git` runs through the scope's environment and checkpoints leave as
+/// bundles (which a shallow clone could not send whole).
+#[tokio::test]
+async fn a_git_source_is_checked_out_shallow_and_checkpoints_build_on_its_commit() {
+    for sandboxed in [false, true] {
+        let mut harness = Harness::new().await;
+        let (origin, head) = upstream(&harness.run_dir.with_file_name("upstream"), 3).await;
+        harness.sandboxed = sandboxed;
+        harness.source = Some(file_source(&origin, "main", Some(1)));
+        let workflow = workflow(
+            "  edit [shape=parallelogram, script=\"test \\\"$(cat README.md)\\\" = 'revision 3'              && test \\\"$(git rev-parse --is-shallow-repository)\\\" = true && git rev-parse              origin/main && echo edited >> README.md && git -c user.name=Agent -c \
+             user.email=agent@example.com commit -q -am 'agent edit' && echo uncommitted > \
+             notes.txt\"]",
+            "  start -> edit -> exit",
+        );
+        let outcome = harness
+            .run_on(SandboxProviderKind::LOCAL, &workflow, SETTINGS)
+            .await;
+        assert_eq!(
+            outcome.status,
+            RunStatus::Success,
+            "sandboxed={sandboxed}: {outcome:?}"
+        );
+
+        let workspace = harness.workspace().await;
+        let workspaces = harness.workspaces();
+        assert!(!harness.run_dir.join("snapshots").exists());
+        let repository = workspaces.workspace_path(&workspace);
+        let checkpoints = harness.checkpoints();
+        let (_, last) = checkpoints.last().expect("a checkpoint was recorded");
+        assert_eq!(
+            git(&repository, &["show", &format!("{last}:README.md")]).await,
+            "revision 3\nedited",
+            "sandboxed={sandboxed}: the last checkpoint carries the stage's edit"
+        );
+        let (_, first) = checkpoints.first().expect("a checkpoint was recorded");
+        assert_eq!(
+            git(&repository, &["rev-parse", &format!("{first}^")]).await,
+            head,
+            "sandboxed={sandboxed}: the run branch starts on the source's commit"
+        );
+        assert_eq!(
+            git(&repository, &["show", &format!("{last}:notes.txt")]).await,
+            "uncommitted",
+            "sandboxed={sandboxed}: the checkpoint after the stage's own commit carries the rest"
+        );
+        assert_eq!(
+            git(&repository, &["rev-list", "--count", last]).await,
+            (checkpoints.len() + 2).to_string(),
+            "sandboxed={sandboxed}: the snapshot holds the run's commits, the stage's own commit \
+             among them, on the one starting commit"
+        );
+    }
+}
+
+/// A workspace that already holds a repository is not checked out again:
+/// the source is fetched once per fresh workspace.
+#[tokio::test]
+async fn a_prepared_workspace_is_left_as_it_is() {
+    let root = tempfile::tempdir().expect("a temp dir");
+    let (origin, _) = upstream(root.path(), 1).await;
+    let workspaces = RunWorkspaces::new(
+        root.path().join("run"),
+        "run-1".to_string(),
+        GitAuthor::default(),
+        &RunCheckpointSettings::default(),
+    )
+    .with_source(Some(file_source(&origin, "main", None)));
+    let path = root.path().join("prepared");
+    fs::create_dir_all(&path)
+        .await
+        .expect("the workspace creates");
+    git(&path, &["init", "-q"]).await;
+    let site = Site::Host(path.clone());
     assert_eq!(
-        git(&repository, &[
-            "cat-file",
-            "-s",
-            &format!("{write_sha}:large.bin")
+        workspaces
+            .check_out_source(&site, "prepared")
+            .await
+            .expect("the check succeeds"),
+        None
+    );
+    assert!(!path.join("README.md").exists());
+}
+
+/// A revision the origin does not have fails the checkout with git's reason.
+#[tokio::test]
+async fn an_unavailable_revision_fails_the_checkout() {
+    let root = tempfile::tempdir().expect("a temp dir");
+    let (origin, _) = upstream(root.path(), 1).await;
+    let workspaces = RunWorkspaces::new(
+        root.path().join("run"),
+        "run-1".to_string(),
+        GitAuthor::default(),
+        &RunCheckpointSettings::default(),
+    )
+    .with_source(Some(file_source(&origin, "missing", Some(1))));
+    let path = root.path().join("fresh");
+    let site = Site::Host(path);
+    let error = workspaces
+        .check_out_source(&site, "fresh")
+        .await
+        .expect_err("the branch does not exist");
+    assert!(error.to_string().contains("git fetch failed"), "{error}");
+}
+
+/// A publisher that records what it was handed and answers as told.
+struct RecordingPublisher {
+    pushed:    std::sync::Mutex<Vec<(Site, String, String)>>,
+    published: std::sync::Mutex<Vec<Publication>>,
+    fail:      Option<String>,
+}
+
+impl RecordingPublisher {
+    fn new(fail: Option<&str>) -> Arc<Self> {
+        Arc::new(Self {
+            pushed:    std::sync::Mutex::default(),
+            published: std::sync::Mutex::default(),
+            fail:      fail.map(str::to_string),
+        })
+    }
+}
+
+/// The source of a run checked out from the local repository `origin`.
+fn file_source(origin: &Path, branch: &str, depth: Option<u32>) -> RunSource {
+    RunSource {
+        origin: format!("file://{}", origin.display()),
+        revision: SourceRevision::Branch(branch.to_string()),
+        branch: branch.to_string(),
+        depth,
+        credentials: None,
+    }
+}
+
+#[async_trait::async_trait]
+impl RunPublisher for RecordingPublisher {
+    async fn push(&self, site: &Site, branch: &str, sha: &str) -> Result<(), String> {
+        self.pushed
+            .lock()
+            .unwrap()
+            .push((site.clone(), branch.to_string(), sha.to_string()));
+        Ok(())
+    }
+    async fn publish(&self, publication: &Publication) -> Result<(), String> {
+        self.published
+            .lock()
+            .expect("the ledger locks")
+            .push(publication.clone());
+        self.fail.clone().map_or(Ok(()), Err)
+    }
+}
+
+/// A run checked out from `origin` on the local provider, whose one stage
+/// has the node attributes `attributes`, published through `publisher`.
+async fn published_run(
+    attributes: &str,
+    publisher: &Arc<RecordingPublisher>,
+) -> (Harness, engine::RunOutcome) {
+    let mut harness = Harness::new().await;
+    let (origin, _) = upstream(&harness.run_dir.with_file_name("upstream"), 2).await;
+    harness.source = Some(file_source(&origin, "main", Some(1)));
+    harness.publisher = Some(Arc::clone(publisher) as Arc<dyn RunPublisher>);
+    let workflow = workflow(
+        &format!("  edit [shape=parallelogram, {attributes}]"),
+        "  start -> edit -> exit",
+    );
+    let outcome = harness
+        .run_on(SandboxProviderKind::LOCAL, &workflow, SETTINGS)
+        .await;
+    (harness, outcome)
+}
+
+/// A successful run hands its publisher the run branch, the commit it ends
+/// on (held by the snapshot repository) and its patch, before the run ends.
+#[tokio::test]
+async fn a_successful_run_is_published_with_its_branch_head_and_patch() {
+    let publisher = RecordingPublisher::new(None);
+    let (harness, outcome) = published_run("script=\"echo edited >> README.md\"", &publisher).await;
+    assert_eq!(outcome.status, RunStatus::Success, "{outcome:?}");
+    assert!(!outcome.publish_failed);
+
+    let published = publisher.published.lock().unwrap().clone();
+    assert_eq!(published.len(), 1, "published once");
+    let publication = &published[0];
+    assert_eq!(
+        publication.run_branch,
+        format!("fabro/run/{}", harness.run_id)
+    );
+    let (_, last) = harness.checkpoints().last().cloned().expect("a checkpoint");
+    assert_eq!(publication.head_sha, last);
+    assert_eq!(
+        git(&harness.workspace_path(&harness.workspace().await), &[
+            "cat-file", "-t", &last
         ])
         .await,
-        LARGE_FILE_BYTES.to_string(),
-        "the large file came through the split transfer whole"
+        "commit"
     );
+    assert!(
+        publication.patch.contains("+edited"),
+        "{}",
+        publication.patch
+    );
+}
+
+/// A publication that fails fails the run, with the reason.
+#[tokio::test]
+async fn a_failed_publication_fails_the_run() {
+    let publisher = RecordingPublisher::new(Some("the push was rejected"));
+    let (_, outcome) = published_run("script=\"echo edited >> README.md\"", &publisher).await;
+    assert_eq!(outcome.status, RunStatus::Failed, "{outcome:?}");
+    assert!(outcome.publish_failed);
+    assert_eq!(outcome.failure.as_deref(), Some("the push was rejected"));
+}
+
+/// A run that fails (here, at a goal gate) is not published.
+#[tokio::test]
+async fn a_failed_run_is_not_published() {
+    let publisher = RecordingPublisher::new(None);
+    let (_, outcome) = published_run("script=\"exit 3\", goal_gate=true", &publisher).await;
+    assert_eq!(outcome.status, RunStatus::Failed, "{outcome:?}");
+    assert!(!outcome.publish_failed);
+    assert!(publisher.published.lock().unwrap().is_empty());
+}
+
+struct OriginPublisher {
+    origin: String,
+    pushed: std::sync::Mutex<Vec<String>>,
+}
+
+#[async_trait::async_trait]
+impl RunPublisher for OriginPublisher {
+    async fn push(&self, site: &Site, branch: &str, sha: &str) -> Result<(), String> {
+        assert!(
+            matches!(site, Site::Sandbox(_)),
+            "push runs through the sandbox environment"
+        );
+        site.push(
+            &self.origin,
+            &format!("{sha}:refs/heads/{branch}"),
+            &[],
+            std::time::Duration::from_secs(30),
+        )
+        .await
+        .map_err(|error| error.to_string())?;
+        self.pushed.lock().unwrap().push(sha.to_owned());
+        Ok(())
+    }
+
+    async fn publish(&self, publication: &Publication) -> Result<(), String> {
+        self.push(
+            &publication.site,
+            &publication.run_branch,
+            &publication.head_sha,
+        )
+        .await
+    }
+}
+
+/// The shallow checkout regression: a fork fetches a published checkpoint
+/// directly from the origin inside its new sandbox, after the old workspace
+/// has gone. No server Git refs or bundles participate.
+#[tokio::test]
+async fn a_shallow_run_pushes_each_checkpoint_and_its_fork_fetches_from_the_origin() {
+    assert_shallow_fork(1).await;
+}
+
+#[tokio::test]
+async fn a_terminal_checkpoint_is_refused_before_creating_a_fork() {
+    assert_shallow_fork(3).await;
+}
+
+async fn assert_shallow_fork(checkpoint_index: usize) {
+    use fabro_petri::fork::{self, ForkRequest};
+    let mut original = Harness::new().await;
+    let (origin, _) = upstream(&original.run_dir.with_file_name("remote"), 5).await;
+    original.source = Some(file_source(&origin, "main", Some(1)));
+    original.sandboxed = true;
+    let publisher = Arc::new(OriginPublisher {
+        origin: format!("file://{}", origin.display()),
+        pushed: std::sync::Mutex::default(),
+    });
+    original.publisher = Some(publisher.clone());
+    let graph = workflow(
+        r#"  write [shape=parallelogram, script="printf 'durable bytes\nsecond line\n' > result.txt"]
+  verify [shape=parallelogram, script="test -f result.txt && test -f README.md && cat result.txt"]"#,
+        "  start -> write -> verify -> exit",
+    );
+    let outcome = original.run(&graph, SETTINGS).await;
+    assert_eq!(outcome.status, RunStatus::Success, "{outcome:?}");
+    let checkpoints = original.checkpoints();
+    let pushed = publisher.pushed.lock().unwrap().clone();
+    assert_eq!(
+        &pushed[..checkpoints.len()],
+        checkpoints
+            .iter()
+            .map(|(_, sha)| sha.clone())
+            .collect::<Vec<_>>()
+    );
+    assert!(!original.run_dir.join("snapshots").exists());
+
+    let mut forked = Harness::new().await;
+    forked.store = original.store.clone();
+    forked.records = original.records.clone();
+    forked.source = original.source.clone();
+    forked.sandboxed = true;
+    forked.publisher = Some(publisher.clone());
+    let (key, checkpoint_sha) = &checkpoints[checkpoint_index];
+    if checkpoint_index == checkpoints.len() - 1 {
+        let refused = fork::check(
+            original.store.as_ref(),
+            original.run_id,
+            fork::position(key.execution, key.firing),
+        )
+        .await
+        .expect_err("terminal checkpoint is refused");
+        assert!(
+            refused
+                .to_string()
+                .contains("terminal checkpoint has no remaining work")
+        );
+        assert!(
+            !forked.run_dir.exists(),
+            "refuse before creating a new run or sandbox"
+        );
+        return;
+    }
+    let seeded = fork::fork(ForkRequest {
+        source:       original.run_id,
+        fork:         forked.run_id,
+        fork_run_dir: forked.run_dir.clone(),
+        store:        forked.store.clone(),
+        records:      forked.records.clone(),
+        position:     fork::position(key.execution, key.firing),
+        rerun_last:   false,
+        settings:     RunNamespace::default(),
+    })
+    .await
+    .expect("the fork is seeded");
+    assert_eq!(
+        seeded.start.expect("the selected checkpoint").sha,
+        *checkpoint_sha
+    );
+    fs::remove_dir_all(&original.run_dir)
+        .await
+        .expect("the original workspace is deleted");
+    let outcome = forked
+        .execute_on(SandboxProviderKind::LOCAL, &graph, SETTINGS, true)
+        .await;
+    assert_eq!(outcome.status, RunStatus::Success, "{outcome:?}");
+    let path = forked.workspace_path(&forked.workspace().await);
+    if let Some((_, first_new)) = forked.checkpoints().get(checkpoint_index + 1) {
+        assert_eq!(
+            git(&path, &["rev-parse", &format!("{first_new}^")]).await,
+            *checkpoint_sha,
+            "the fork continues from the selected checkpoint, not the source run's final head"
+        );
+    } else {
+        assert_eq!(git(&path, &["rev-parse", "HEAD"]).await, *checkpoint_sha);
+    }
+    assert_eq!(
+        fs::read(path.join("result.txt"))
+            .await
+            .expect("the recovered file reads"),
+        b"durable bytes\nsecond line\n"
+    );
+    assert_eq!(
+        git(&path, &["branch", "--show-current"]).await,
+        format!("fabro/run/{}", forked.run_id)
+    );
+    assert_eq!(
+        git(&origin, &[
+            "rev-parse",
+            &format!("refs/heads/fabro/run/{}", forked.run_id)
+        ])
+        .await,
+        git(&path, &["rev-parse", "HEAD"]).await
+    );
+    assert!(!forked.run_dir.join("snapshots").exists());
+}
+
+/// A host workspace with no repository is initialized and checkpointed: every
+/// stage commits on the run branch, and nothing is kept on the server.
+#[tokio::test]
+async fn an_empty_host_workspace_is_initialized_and_checkpointed() {
+    let mut harness = Harness::new().await;
+    harness.source = None;
+    let graph = workflow(
+        r#"  write [shape=parallelogram, script="echo data > result.txt"]"#,
+        "  start -> write -> exit",
+    );
+    let outcome = harness.run(&graph, SETTINGS).await;
+    assert_eq!(outcome.status, RunStatus::Success);
+    assert_eq!(harness.checkpoints().len(), 3);
+    let path = harness.workspace_path(&harness.workspace().await);
+    assert_eq!(commits(&path).await.len(), 3);
+    assert_eq!(
+        git(&path, &["rev-parse", "--abbrev-ref", "HEAD"]).await,
+        format!("fabro/run/{}", harness.run_id)
+    );
+    assert!(!harness.run_dir.join("snapshots").exists());
+}
+
+#[tokio::test]
+async fn ordinary_recovery_refuses_a_missing_workspace() {
+    use fabro_petri::recovery::RestoreTarget;
+    let harness = Harness::new().await;
+    let graph = workflow(
+        r#"  write [shape=parallelogram, script="echo data > result.txt"]"#,
+        "  start -> write -> exit",
+    );
+    assert_eq!(
+        harness.run(&graph, SETTINGS).await.status,
+        RunStatus::Success
+    );
+    let workspace = harness.workspace().await;
+    let path = harness.workspace_path(&workspace);
+    let (key, sha) = harness.checkpoints().last().unwrap().clone();
+    fs::remove_dir_all(&path).await.unwrap();
+    let result = recovery::bring_to(
+        &harness.workspaces(),
+        &Site::Host(path.clone()),
+        &workspace,
+        &RestoreTarget { key, sha },
+    )
+    .await;
+    assert!(result.is_err());
+    assert!(
+        !path.exists(),
+        "normal resume does not recreate the checkout"
+    );
+}
+
+struct RejectRunDiff(Arc<MemoryPlatformRecords>);
+
+#[async_trait::async_trait]
+impl PlatformRecords for RejectRunDiff {
+    async fn append(
+        &self,
+        run_id: &RunId,
+        record: &PlatformRecord,
+        position: Option<fabro_store::StagePosition>,
+    ) -> Result<fabro_store::StoredPlatformRecord, PlatformRecordError> {
+        if matches!(record, PlatformRecord::RunDiff(_)) {
+            return Err(PlatformRecordError::Store(fabro_store::Error::Io(
+                std::io::Error::other("run diff unavailable"),
+            )));
+        }
+        self.0.append(run_id, record, position).await
+    }
+    async fn read_kind(
+        &self,
+        run_id: &RunId,
+        kind: PlatformRecordKind,
+    ) -> Result<Vec<fabro_store::StoredPlatformRecord>, PlatformRecordError> {
+        self.0.read_kind(run_id, kind).await
+    }
+}
+
+#[tokio::test]
+async fn a_run_diff_failure_cannot_silently_skip_publication() {
+    let mut harness = Harness::new().await;
+    harness.fail_run_diff = true;
+    let publisher = RecordingPublisher::new(None);
+    harness.publisher = Some(publisher.clone());
+    let graph = workflow(
+        r#"  write [shape=parallelogram, script="echo data > result.txt"]"#,
+        "  start -> write -> exit",
+    );
+    let outcome = harness.run(&graph, SETTINGS).await;
+    assert_eq!(outcome.status, RunStatus::Failed, "{outcome:?}");
+    assert!(outcome.publish_failed);
+    assert!(outcome.failure.unwrap().contains("run diff unavailable"));
+    assert!(publisher.published.lock().unwrap().is_empty());
 }

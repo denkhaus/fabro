@@ -41,12 +41,11 @@
 //!   `prepare_result` and its platform record in `transition`, around Petri's
 //!   own hook service for `[[run.hooks]]`;
 //! - [`checkpoint`]: the Git snapshots of a run's workspaces, on the host or
-//!   inside a Docker or Daytona sandbox, and the snapshot repository they are
-//!   published to;
-//! - [`recovery`]: the resume-on-restart protocol, which brings every live
-//!   workspace to the snapshot its durable state names: a host workspace before
-//!   the run goes back to a worker, a sandbox workspace in the worker when its
-//!   scope is acquired;
+//!   inside a Docker or Daytona sandbox, with pushes from that same workspace;
+//! - [`source`]: where a GitHub target's workspace is checked out from, the
+//!   revision, depth and read credential its in-sandbox fetch uses;
+//! - [`recovery`]: recovery planning from execution records; the worker resets
+//!   surviving Git workspaces when their scopes are acquired;
 //! - [`platform_records`]: Fabro's platform records as the adapters reach them,
 //!   in the server's database or over its API from a worker;
 //! - [`host_tools`]: Fabro's run tools on every native agent session of a run,
@@ -54,9 +53,8 @@
 //! - [`controls`]: the controls Fabro drives on a live run (pause, unpause,
 //!   steer, cancel), over Petri's control service;
 //! - [`fork`]: a run seeded from another's records up to a checkpoint's
-//!   position, over Petri's `host::fork_from`, with the kept checkpoints, their
-//!   snapshots and the run branch carried over: what rewind, fork and retry are
-//!   built on;
+//!   position, over Petri's `host::fork_from`, with checkpoint metadata and the
+//!   run branch carried over; the new sandbox fetches the published code;
 //! - [`prune`]: a run's sandboxes deleted through Petri's lease ledger, as
 //!   `petri sandbox prune` deletes them, when Fabro deletes the run.
 //!
@@ -86,6 +84,7 @@ pub mod run_graph;
 pub mod run_store;
 pub mod runtime;
 pub mod secrets;
+pub mod source;
 #[cfg(feature = "test-support")]
 pub mod test_support;
 pub mod workspace;

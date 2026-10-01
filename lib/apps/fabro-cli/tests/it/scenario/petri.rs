@@ -1334,7 +1334,7 @@ fn three_stage_bundle(context: &fabro_test::TestContext, gate: &Path) -> PathBuf
             "digraph Stages {{\n  graph [goal=\"Three stages\", default_max_retries=0]\n  start \
              [shape=Mdiamond]\n  exit [shape=Msquare]\n  one [shape=parallelogram, script=\"echo \
              one > one.txt\"]\n  two [shape=parallelogram, script=\"echo run >> two.log; {}; \
-             echo two > two.txt\"]\n  three [shape=parallelogram, script=\"test \\\"$(cat \
+             echo two > two.txt\"]\n  three [shape=parallelogram, goal_gate=true, script=\"test \\\"$(cat \
              one.txt)\\\" = one && test \\\"$(cat two.txt)\\\" = two && cp two.log \
              three.log\"]\n  start -> one -> two -> three -> exit\n}}\n",
             wait_for(gate)
@@ -1397,9 +1397,10 @@ fn subjects(commits: &[(String, Option<CheckpointKey>)]) -> Vec<&str> {
         .collect()
 }
 
-/// The commit subjects one run of the three-stage bundle produces.
+/// The commit subjects one run of the three-stage bundle produces; its goal
+/// gate on `three` adds the `goal_check` stage.
 fn three_stage_subjects(run_id: &str) -> Vec<String> {
-    ["start", "one", "two", "three", "exit"]
+    ["start", "one", "two", "three", "goal_check", "exit"]
         .iter()
         .map(|node| format!("fabro({run_id}): {node} (success)"))
         .collect()
@@ -1437,7 +1438,7 @@ async fn a_crash_after_a_durable_finish_keeps_its_one_commit() {
         server.stderr_text()
     );
     let checkpoints = server.checkpoints(&run_id).await;
-    assert_eq!(checkpoints.len(), 5, "{checkpoints:?}");
+    assert_eq!(checkpoints.len(), 6, "{checkpoints:?}");
     let keys: Vec<Option<CheckpointKey>> = checkpoints.iter().map(|(key, _)| Some(*key)).collect();
     let committed: Vec<Option<CheckpointKey>> = commits.iter().map(|(_, key)| *key).collect();
     assert_eq!(keys, committed);
@@ -1513,7 +1514,7 @@ async fn a_crash_before_the_record_reconciles_it_from_the_run_branch() {
         "the stage with a durable finish did not rerun"
     );
     let checkpoints = server.checkpoints(&run_id).await;
-    assert_eq!(checkpoints.len(), 5, "{checkpoints:?}");
+    assert_eq!(checkpoints.len(), 6, "{checkpoints:?}");
     let keys: Vec<Option<CheckpointKey>> = checkpoints.iter().map(|(key, _)| Some(*key)).collect();
     let committed: Vec<Option<CheckpointKey>> = commits.iter().map(|(_, key)| *key).collect();
     assert_eq!(
@@ -1523,10 +1524,10 @@ async fn a_crash_before_the_record_reconciles_it_from_the_run_branch() {
     server.shutdown();
 }
 
-/// A workspace deleted while the run is down is restored from the snapshot
-/// repository, and the next stage sees the checkpoint's files.
+/// A workspace deleted while the run is down is not reconstructed: the
+/// server keeps no copy of the repository, so the resumed run fails.
 #[tokio::test(flavor = "multi_thread")]
-async fn a_deleted_workspace_is_restored_from_its_snapshot() {
+async fn a_deleted_workspace_fails_the_resumed_run() {
     let context = test_context!();
     let mut server = RunningServer::start().await;
     let gate = context.temp_dir.join("two.gate");
@@ -1542,17 +1543,11 @@ async fn a_deleted_workspace_is_restored_from_its_snapshot() {
     std::fs::remove_dir_all(&path).expect("the workspace is deleted");
 
     server.launch().await;
-    wait_until_gate_is_polled(&gate);
-    std::fs::write(&gate, "go").expect("the gate opens");
-    wait_for_success(&server, &run_id).await;
-
-    let (restored, commits) = server.workspace_commits(&run_id);
-    assert_eq!(restored, path);
-    assert_eq!(subjects(&commits), three_stage_subjects(&run_id));
     assert_eq!(
-        std::fs::read_to_string(restored.join("one.txt")).expect("one.txt was restored"),
-        "one\n"
+        wait_for_status(&server, &run_id, &["failed", "succeeded"]).await,
+        "failed"
     );
+    assert!(!path.exists(), "the deleted workspace is not recreated");
     server.shutdown();
 }
 
