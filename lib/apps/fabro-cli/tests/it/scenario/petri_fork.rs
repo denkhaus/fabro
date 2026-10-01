@@ -13,7 +13,7 @@
 )]
 
 use std::path::{Path, PathBuf};
-use std::process::Output;
+use std::process::{Command, Output};
 
 use fabro_test::test_context;
 
@@ -133,6 +133,24 @@ fn workspace(server: &RunningServer, run_id: &str) -> PathBuf {
     workspaces.remove(0)
 }
 
+/// The subjects of the commits on the workspace's branch, oldest first.
+fn commit_subjects(workspace: &Path) -> Vec<String> {
+    let output = Command::new("git")
+        .args(["log", "--reverse", "--format=%s"])
+        .current_dir(workspace)
+        .output()
+        .expect("git runs");
+    assert!(
+        output.status.success(),
+        "git log failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .map(ToOwned::to_owned)
+        .collect()
+}
+
 fn read(workspace: &Path, name: &str) -> String {
     std::fs::read_to_string(workspace.join(name))
         .unwrap_or_else(|err| panic!("{name} in {}: {err}", workspace.display()))
@@ -188,7 +206,13 @@ async fn a_retry_starts_over_and_succeeds_when_the_failure_was_transient() {
     assert_eq!(read(&retry_workspace, "one.txt"), "one\n");
     assert_eq!(read(&retry_workspace, "flaky.txt"), "flaky\n");
     assert_eq!(read(&retry_workspace, "three.txt"), "three\n");
-    assert!(!retry_workspace.join(".git").exists());
+    assert_eq!(commit_subjects(&retry_workspace), [
+        format!("fabro({retry}): start (success)"),
+        format!("fabro({retry}): one (success)"),
+        format!("fabro({retry}): flaky (success)"),
+        format!("fabro({retry}): three (success)"),
+        format!("fabro({retry}): exit (success)"),
+    ]);
     let state = run_json(&server, &format!("runs/{retry}/state")).await;
     assert_eq!(state["retried_from"], source);
     assert!(state["spec"]["fork_source_ref"].is_null());
