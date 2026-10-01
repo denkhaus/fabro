@@ -251,11 +251,10 @@ async fn a_fork_at_the_first_stage_continues_with_the_rest_on_its_files() {
     server.shutdown();
 }
 
-/// A retry of a run whose last stage failed reruns that stage: the failure
-/// was transient, so the retry passes it on the files of the stage before
-/// and finishes the run.
+/// A retry starts the workflow over in a new run: every stage runs again
+/// in a fresh workspace, so a transient failure passes the second time.
 #[tokio::test(flavor = "multi_thread")]
-async fn a_retry_reruns_the_failed_stage_and_succeeds_when_the_failure_was_transient() {
+async fn a_retry_starts_over_and_succeeds_when_the_failure_was_transient() {
     let context = test_context!();
     let server = RunningServer::start().await;
     let marker = context.temp_dir.join("flaky.marker");
@@ -280,22 +279,21 @@ async fn a_retry_reruns_the_failed_stage_and_succeeds_when_the_failure_was_trans
     assert_eq!(nodes(&retry_timeline), [
         "start", "one", "flaky", "three", "exit"
     ]);
-    assert_eq!(retry_timeline["forked_from"]["source_run_id"], source);
-    assert_eq!(retry_timeline["forked_from"]["rerun_last"], true);
+    assert!(retry_timeline["forked_from"].is_null());
     let retry_workspace = workspace(&server, &retry);
     assert_eq!(read(&retry_workspace, "one.txt"), "one\n");
     assert_eq!(read(&retry_workspace, "flaky.txt"), "flaky\n");
     assert_eq!(read(&retry_workspace, "three.txt"), "three\n");
     assert_eq!(commit_subjects(&retry_workspace), [
-        format!("fabro({source}): start (success)"),
-        format!("fabro({source}): one (success)"),
+        format!("fabro({retry}): start (success)"),
+        format!("fabro({retry}): one (success)"),
         format!("fabro({retry}): flaky (success)"),
         format!("fabro({retry}): three (success)"),
         format!("fabro({retry}): exit (success)"),
     ]);
     let state = run_json(&server, &format!("runs/{retry}/state")).await;
     assert_eq!(state["retried_from"], source);
-    assert_eq!(state["spec"]["fork_source_ref"]["source_run_id"], source);
+    assert!(state["spec"]["fork_source_ref"].is_null());
 
     // The source is untouched, and a second retry is refused for the
     // running or archived cases alone: it is terminal, so it may retry again.

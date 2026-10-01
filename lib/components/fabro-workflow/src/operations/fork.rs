@@ -117,13 +117,28 @@ pub fn forked_run_record(input: &ForkedRunInput<'_>) -> RunCreatedRecord {
 /// (`run.created` and the `submitted` transition), which wake its
 /// projector.
 pub async fn persist_forked_run(store: &Database, input: &ForkedRunInput<'_>) -> Result<(), Error> {
-    fs::create_dir_all(&input.run_dir).await.map_err(|err| {
+    persist_new_run(
+        store,
+        input.new_run_id,
+        &input.run_dir,
+        forked_run_record(input),
+    )
+    .await
+}
+
+pub(super) async fn persist_new_run(
+    store: &Database,
+    run_id: RunId,
+    run_dir: &std::path::Path,
+    created: RunCreatedRecord,
+) -> Result<(), Error> {
+    fs::create_dir_all(run_dir).await.map_err(|err| {
         Error::Io(format!(
             "creating run directory {}: {err}",
-            input.run_dir.display()
+            run_dir.display()
         ))
     })?;
-    let created = PlatformRecord::RunCreated(forked_run_record(input));
+    let created = PlatformRecord::RunCreated(created);
     let submitted = PlatformRecord::RunLifecycle(
         RunLifecycleRecord::new(RunLifecycleKind::Submitted).with_status(RunStatus::Submitted),
     );
@@ -131,11 +146,11 @@ pub async fn persist_forked_run(store: &Database, input: &ForkedRunInput<'_>) ->
     let platform_records = summaries.platform_records();
     for record in [created, submitted] {
         platform_records
-            .append(&input.new_run_id, &record, None)
+            .append(&run_id, &record, None)
             .await
             .map_err(|err| Error::engine_with_source("run store operation failed", err))?;
     }
-    summaries.notify_platform_record(input.new_run_id);
+    summaries.notify_platform_record(run_id);
     Ok(())
 }
 

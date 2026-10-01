@@ -1,47 +1,38 @@
-//! Retrying a run: a fork from its last checkpoint.
-//!
-//! A retry forks a terminal run at its last checkpoint. When the run failed
-//! on a stage (its last durable finish is the failed stage's), the position's
-//! firing runs again, so the retry reruns the failed stage on the files of
-//! the stage before it; a run that succeeded, was cancelled or died forks at
-//! the last position as it stands, and continues from there.
+//! Retrying starts a new execution from the original spec. It does not
+//! require Git checkpoints or reconstruct the previous workspace.
 
-use fabro_types::{FailureReason, RunId, RunProjection, RunStatus};
+use std::path::Path;
 
-use super::fork::{ensure_forkable, ensure_terminal};
+use fabro_store::platform_records::RunCreatedRecord;
+use fabro_store::{Database, RunProjection};
+use fabro_types::{RunId, RunProvenance};
+
+use super::fork;
 use crate::error::Error;
 
-/// A run can be retried when it is terminal and not archived.
 pub fn ensure_retryable(source: &RunProjection, run_id: &RunId) -> Result<(), Error> {
-    ensure_forkable(source, run_id)?;
-    ensure_terminal(source, run_id, "retry")
+    fork::ensure_forkable(source, run_id)?;
+    fork::ensure_terminal(source, run_id, "retry")
 }
 
-/// Whether the retry reruns the last checkpointed stage: it does when the
-/// run failed on its own terms, since that stage's finish is the failure.
-#[must_use]
-pub fn reruns_last(status: RunStatus) -> bool {
-    matches!(
-        status,
-        RunStatus::Failed { reason } if reason != FailureReason::Cancelled
-    )
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_failed_run_reruns_its_last_stage_and_the_others_continue() {
-        assert!(reruns_last(RunStatus::Failed {
-            reason: FailureReason::WorkflowError,
-        }));
-        assert!(!reruns_last(RunStatus::Failed {
-            reason: FailureReason::Cancelled,
-        }));
-        assert!(!reruns_last(RunStatus::Dead));
-        assert!(!reruns_last(RunStatus::Succeeded {
-            reason: fabro_types::SuccessReason::Completed,
-        }));
-    }
+pub async fn persist_retried_run(
+    store: &Database,
+    source: &RunProjection,
+    run_id: RunId,
+    run_dir: &Path,
+    provenance: RunProvenance,
+    web_url: Option<String>,
+) -> Result<(), Error> {
+    let mut spec = source.spec.clone();
+    spec.run_id = run_id;
+    spec.fork_source_ref = None;
+    spec.provenance = provenance;
+    let created = RunCreatedRecord {
+        spec,
+        title: Some(source.title().into_owned()),
+        parent_id: source.parent_id,
+        retried_from: Some(source.spec.run_id),
+        web_url,
+    };
+    fork::persist_new_run(store, run_id, run_dir, created).await
 }

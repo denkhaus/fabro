@@ -14,7 +14,7 @@ pub use fork::{
     ForkedRunInput, ResolvedForkTarget, ensure_forkable, ensure_terminal, forked_run_record,
     persist_forked_run,
 };
-pub use retry::{ensure_retryable, reruns_last};
+pub use retry::{ensure_retryable, persist_retried_run};
 pub use rewind::{ensure_rewindable, superseded_record};
 pub use timeline::{
     ForkTarget, RunTimeline, StageLabel, StageLabels, TimelineEntry, TimelinePosition,

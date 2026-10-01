@@ -1321,7 +1321,7 @@ pub(crate) enum RunCommands {
     Logs(LogsArgs),
     /// Resume an interrupted workflow run
     Resume(ResumeArgs),
-    /// Retry a finished workflow run from its last checkpoint in a new run
+    /// Retry a finished workflow from the start in a new run
     Retry(RetryArgs),
     /// Fork a workflow run from an earlier checkpoint into a new run
     Fork(ForkArgs),

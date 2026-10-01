@@ -1164,7 +1164,7 @@ export const RunsApiAxiosParamCreator = function (configuration?: Configuration)
             };
         },
         /**
-         * Creates a new run from the terminal source run\'s last checkpoint and starts it. When the source failed on a stage, that stage runs again on the files of the stage before it; otherwise the new run continues from the last checkpoint as it stands. The new run records `retried_from` and `fork_source_ref`; the source run is left unchanged. Active and archived runs are not retryable.
+         * Creates a new run from the terminal source run\'s saved specification and starts the workflow from the beginning in a fresh workspace. No Git checkpoint is required. The new run records `retried_from` without a `fork_source_ref`; the source run is left unchanged. Active and archived runs are not retryable.
          * @summary Retry Run
          * @param {string} id Unique run identifier (ULID).
          * @param {*} [options] Override http request option.
@@ -1925,7 +1925,7 @@ export const RunsApiFp = function(configuration?: Configuration) {
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
-         * Creates a new run from the terminal source run\'s last checkpoint and starts it. When the source failed on a stage, that stage runs again on the files of the stage before it; otherwise the new run continues from the last checkpoint as it stands. The new run records `retried_from` and `fork_source_ref`; the source run is left unchanged. Active and archived runs are not retryable.
+         * Creates a new run from the terminal source run\'s saved specification and starts the workflow from the beginning in a fresh workspace. No Git checkpoint is required. The new run records `retried_from` without a `fork_source_ref`; the source run is left unchanged. Active and archived runs are not retryable.
          * @summary Retry Run
          * @param {string} id Unique run identifier (ULID).
          * @param {*} [options] Override http request option.
@@ -2331,7 +2331,7 @@ export const RunsApiFactory = function (configuration?: Configuration, basePath?
             return localVarFp.retrieveRunGraphSource(id, options).then((request) => request(axios, basePath));
         },
         /**
-         * Creates a new run from the terminal source run\'s last checkpoint and starts it. When the source failed on a stage, that stage runs again on the files of the stage before it; otherwise the new run continues from the last checkpoint as it stands. The new run records `retried_from` and `fork_source_ref`; the source run is left unchanged. Active and archived runs are not retryable.
+         * Creates a new run from the terminal source run\'s saved specification and starts the workflow from the beginning in a fresh workspace. No Git checkpoint is required. The new run records `retried_from` without a `fork_source_ref`; the source run is left unchanged. Active and archived runs are not retryable.
          * @summary Retry Run
          * @param {string} id Unique run identifier (ULID).
          * @param {*} [options] Override http request option.
@@ -2730,7 +2730,7 @@ export class RunsApi extends BaseAPI {
     }
 
     /**
-     * Creates a new run from the terminal source run\'s last checkpoint and starts it. When the source failed on a stage, that stage runs again on the files of the stage before it; otherwise the new run continues from the last checkpoint as it stands. The new run records `retried_from` and `fork_source_ref`; the source run is left unchanged. Active and archived runs are not retryable.
+     * Creates a new run from the terminal source run\'s saved specification and starts the workflow from the beginning in a fresh workspace. No Git checkpoint is required. The new run records `retried_from` without a `fork_source_ref`; the source run is left unchanged. Active and archived runs are not retryable.
      * @summary Retry Run
      * @param {string} id Unique run identifier (ULID).
      * @param {*} [options] Override http request option.
