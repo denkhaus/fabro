@@ -322,7 +322,12 @@ fn mirror_upstream(temp: &Path, branches: &[(&str, &str)]) -> (std::path::PathBu
             .output()
             .expect("rev-parse spawns");
         assert!(output.status.success());
-        tips.push(String::from_utf8(output.stdout).unwrap().trim().to_string());
+        tips.push(
+            String::from_utf8(output.stdout)
+                .expect("git output is utf-8")
+                .trim()
+                .to_string(),
+        );
     }
     (upstream, tips)
 }

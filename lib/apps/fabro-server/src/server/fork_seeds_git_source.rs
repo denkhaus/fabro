@@ -77,7 +77,7 @@ impl GitSeedsSource {
 
     /// Shrink the refresh window (tests observe invalidation without
     /// waiting out the production window).
-    #[cfg(any(test, feature = "test-support"))]
+    #[cfg(test)]
     pub(crate) fn with_refresh_window(mut self, window: Duration) -> Self {
         self.refresh_window = window;
         self
