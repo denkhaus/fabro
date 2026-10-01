@@ -1,8 +1,9 @@
 //! Fork, rewind, retry and the timeline over Petri runs, through a real
 //! server and its worker subprocess.
 //!
-//! Non-Git runs have execution checkpoints, can retry from the start, and
-//! refuse fork/rewind because no published checkpoint can seed a workspace.
+//! Local-folder runs are checkpointed in their workspace and can retry from
+//! the start, but refuse fork and rewind: only a published run branch can
+//! seed a new workspace.
 //! Git-backed forks are covered by fabro-petri's sandbox/remote integration
 //! test.
 
@@ -139,7 +140,7 @@ fn read(workspace: &Path, name: &str) -> String {
 
 /// A local-folder run cannot fork without a published checkpoint.
 #[tokio::test(flavor = "multi_thread")]
-async fn a_non_git_fork_is_refused_without_creating_a_run() {
+async fn a_local_folder_fork_is_refused_without_creating_a_run() {
     let context = test_context!();
     let server = RunningServer::start().await;
     let bundle = write_petri_workflow(&context, &three_stage_dot());
@@ -202,7 +203,7 @@ async fn a_retry_starts_over_and_succeeds_when_the_failure_was_transient() {
 
 /// Refusing rewind must leave the original run available and unarchived.
 #[tokio::test(flavor = "multi_thread")]
-async fn a_non_git_rewind_is_refused_without_archiving_its_source() {
+async fn a_local_folder_rewind_is_refused_without_archiving_its_source() {
     let context = test_context!();
     let server = RunningServer::start().await;
     let bundle = write_petri_workflow(&context, &three_stage_dot());
@@ -220,20 +221,28 @@ async fn a_non_git_rewind_is_refused_without_archiving_its_source() {
 }
 
 /// The timeline lists every checkpoint the run recorded, in order, with
-/// its position and optional commit, in both the CLI and API.
+/// its position and commit, as the CLI prints it and as the API serves it.
 #[tokio::test(flavor = "multi_thread")]
-async fn the_timeline_lists_non_git_checkpoints_without_commit_shas() {
+async fn the_timeline_lists_every_checkpoint_with_its_commit() {
     let context = test_context!();
     let server = RunningServer::start().await;
     let bundle = write_petri_workflow(&context, &three_stage_dot());
     let run_id = run_detached(&context, &server, &bundle);
     wait_for_success(&server, &run_id).await;
 
-    assert!(server.checkpoints(&run_id).await.is_empty());
+    let recorded: Vec<(u64, u64, u64, Option<String>)> = server
+        .checkpoints(&run_id)
+        .await
+        .into_iter()
+        .map(|(key, sha)| (key.execution, key.firing, u64::from(key.attempt), Some(sha)))
+        .collect();
     let listed = cli_json(&context, &server, &["timeline", &run_id, "--json"]);
-    let listed_entries = entries(&listed);
+    let listed_entries: Vec<(u64, u64, u64, Option<String>)> = entries(&listed)
+        .into_iter()
+        .map(|(_, execution, firing, attempt, sha)| (execution, firing, attempt, sha))
+        .collect();
+    assert_eq!(listed_entries, recorded);
     assert_eq!(listed_entries.len(), 5);
-    assert!(listed_entries.iter().all(|entry| entry.4.is_none()));
     let ordinals: Vec<u64> = listed["entries"]
         .as_array()
         .expect("entries")
@@ -268,7 +277,7 @@ async fn the_timeline_lists_non_git_checkpoints_without_commit_shas() {
 /// A checkpoint inside a parallel branch is not a fork position: Petri
 /// refuses it, and the refusal says why. The join, in the root, is.
 #[tokio::test(flavor = "multi_thread")]
-async fn a_non_git_parallel_run_cannot_be_forked() {
+async fn a_local_folder_parallel_run_cannot_be_forked() {
     let context = test_context!();
     let server = RunningServer::start().await;
     let bundle = write_petri_workflow(&context, &parallel_dot());

@@ -72,8 +72,10 @@
 //! all use this environment. Only execution metadata, patches and selected
 //! artifacts are persisted on the server. Normal resume requires the original
 //! workspace; a fork acquires a new sandbox and fetches its checkpoint from
-//! GitHub. Empty and local-folder targets record execution checkpoints without
-//! Git commits.
+//! GitHub. A run with no GitHub source commits only when its workspace is on
+//! the host (a local-folder, empty or dry run); its checkpoints stay in that
+//! workspace. Docker and Daytona runs with no GitHub source record execution
+//! checkpoints without Git commits.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -485,7 +487,11 @@ impl FabroHooks {
             email:  spec.git.author.email.clone(),
             source: spec.git.identity_source,
         };
-        let checkpoint_enabled = spec.source.is_some() && spec.git.enabled;
+        // A host workspace commits checkpoints without a GitHub source (local
+        // folders, empty Local targets, dry runs); a sandbox without one does
+        // not, so an image without `git` cannot fail the run.
+        let checkpoint_enabled =
+            spec.git.enabled && (spec.source.is_some() || spec.git.host_workspaces);
         let workspaces = RunWorkspaces::new(
             run_dir,
             run_id.to_string(),

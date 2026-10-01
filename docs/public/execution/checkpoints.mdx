@@ -3,7 +3,7 @@ title: "Checkpoints"
 description: "How Fabro uses Git to checkpoint and resume workflow runs"
 ---
 
-Fabro records every workflow run in the durable run store. For GitHub targets with run branches enabled, it also commits file changes inside the run workspace after each node completes. Empty and local-folder targets keep execution records without automatic Git checkpoint commits, even when the supplied folder contains a Git repository.
+Fabro records every workflow run in the durable run store. With run branches enabled, it also commits file changes inside the run workspace after each node completes. GitHub targets push those commits to the run branch; local runs keep them in their workspace. A local-folder run works in a clone of the folder's committed `HEAD`, so uncommitted changes are not included, and a folder that is not a Git repository starts as an empty workspace.
 
 ## Code and execution history
 
@@ -142,14 +142,12 @@ fabro dump 01JKXYZ --output ./run-dump
 
 ## When checkpointing is active
 
-Git checkpointing activates automatically when:
+Git checkpointing activates automatically when run branches are enabled and either:
 
-- The run targets a GitHub repository with cloning enabled
-- Run branches are enabled
-- The run is not a dry run
+- The run targets a GitHub repository with cloning enabled, or
+- The run's workspace is on the host: a Local environment, or any `--dry-run`
 
 It is skipped when:
 
-- The target is an empty workspace or a local folder
-- The run uses `--dry-run`
-- Cloning or run branches are disabled
+- Run branches are disabled
+- A Docker or Daytona run has no GitHub target, or its cloning is disabled

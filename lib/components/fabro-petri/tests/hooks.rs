@@ -336,7 +336,7 @@ fn stages(inspection: &RunInspection) -> Vec<(String, String)> {
 /// A dry run keeps checkpointable local workspaces even when the selected
 /// environment would require Docker or Daytona. Its command is simulated.
 #[tokio::test]
-async fn dry_runs_use_local_workspaces_without_git_or_sandbox_credentials() {
+async fn dry_runs_use_local_workspaces_and_checkpoint_without_sandbox_credentials() {
     for provider in [SandboxProviderKind::DOCKER, SandboxProviderKind::DAYTONA] {
         let mut harness = Harness::new().await;
         harness.source = None;
@@ -383,10 +383,10 @@ async fn dry_runs_use_local_workspaces_without_git_or_sandbox_credentials() {
         );
         assert_eq!(
             harness.checkpoints().len(),
-            0,
-            "{provider}: dry runs do not create Git checkpoints"
+            3,
+            "{provider}: every stage checkpoints"
         );
-        assert!(!harness.workspace_path(&workspace).join(".git").exists());
+        assert_eq!(commits(&harness.workspace_path(&workspace)).await.len(), 3);
     }
 }
 
@@ -1477,8 +1477,10 @@ async fn assert_shallow_fork(checkpoint_index: usize) {
     assert!(!forked.run_dir.join("snapshots").exists());
 }
 
+/// A host workspace with no repository is initialized and checkpointed: every
+/// stage commits on the run branch, and nothing is kept on the server.
 #[tokio::test]
-async fn an_empty_workspace_keeps_execution_records_without_git_checkpoints() {
+async fn an_empty_host_workspace_is_initialized_and_checkpointed() {
     let mut harness = Harness::new().await;
     harness.source = None;
     let graph = workflow(
@@ -1487,15 +1489,13 @@ async fn an_empty_workspace_keeps_execution_records_without_git_checkpoints() {
     );
     let outcome = harness.run(&graph, SETTINGS).await;
     assert_eq!(outcome.status, RunStatus::Success);
-    assert!(harness.checkpoints().is_empty());
+    assert_eq!(harness.checkpoints().len(), 3);
     let path = harness.workspace_path(&harness.workspace().await);
-    assert!(!path.join(".git").exists());
-    let records = harness
-        .records
-        .read_kind(&harness.run_id, PlatformRecordKind::Checkpoint)
-        .await
-        .unwrap();
-    assert_eq!(records.len(), 3);
+    assert_eq!(commits(&path).await.len(), 3);
+    assert_eq!(
+        git(&path, &["rev-parse", "--abbrev-ref", "HEAD"]).await,
+        format!("fabro/run/{}", harness.run_id)
+    );
     assert!(!harness.run_dir.join("snapshots").exists());
 }
 
@@ -1570,25 +1570,4 @@ async fn a_run_diff_failure_cannot_silently_skip_publication() {
     assert!(outcome.publish_failed);
     assert!(outcome.failure.unwrap().contains("run diff unavailable"));
     assert!(publisher.published.lock().unwrap().is_empty());
-}
-
-#[tokio::test]
-async fn a_local_repository_without_a_git_target_gets_no_automatic_commits() {
-    let mut harness = Harness::new().await;
-    harness.source = None;
-    let graph = workflow(
-        r#"  write [shape=parallelogram, script="git init -q && echo data > result.txt && git add result.txt && git -c user.name=User -c user.email=user@example.com commit -qm user-commit"]"#,
-        "  start -> write -> exit",
-    );
-    assert_eq!(
-        harness.run(&graph, SETTINGS).await.status,
-        RunStatus::Success
-    );
-    let path = harness.workspace_path(&harness.workspace().await);
-    assert_eq!(git(&path, &["rev-list", "--count", "HEAD"]).await, "1");
-    assert_eq!(
-        git(&path, &["log", "--format=%s", "-1"]).await,
-        "user-commit"
-    );
-    assert!(harness.checkpoints().is_empty());
 }

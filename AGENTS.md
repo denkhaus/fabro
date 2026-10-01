@@ -40,9 +40,11 @@ macOS note: if `cargo nextest run` fails with `Too many open files (os error 24)
   retries the push and opens the configured pull request; a failure fails the
   run with `publish_failed` (`fabro-cli/src/commands/run/publish.rs`). Ordinary
   resume requires the retained workspace. A GitHub-backed fork fetches the
-  source run branch inside its new sandbox. Empty and local-folder targets
-  keep execution metadata without automatic Git checkpoints; retry starts a
-  fresh execution from the saved spec. `CloneRequest` still
+  source run branch inside its new sandbox. Runs on host workspaces (local
+  folders, empty Local targets, dry runs) still commit checkpoints in that
+  workspace, without pushing; Docker and Daytona runs with no GitHub target
+  keep execution metadata without Git commits. Retry starts a fresh execution
+  from the saved spec. `CloneRequest` still
   travels beside the sandbox spec so the run record names the origin and
   branch; the sandbox layer refuses a request that asks it to clone.
   Preflight and `fabro exec` initialize sandboxes with `CloneRequest::none()`,
@@ -162,9 +164,11 @@ Fabro is an AI-powered workflow orchestration platform. Workflows are defined as
   retries the push and opens the configured pull request; a failure fails the
   run with `publish_failed` (`fabro-cli/src/commands/run/publish.rs`). Ordinary
   resume requires the retained workspace. A GitHub-backed fork fetches the
-  source run branch inside its new sandbox. Empty and local-folder targets
-  keep execution metadata without automatic Git checkpoints; retry starts a
-  fresh execution from the saved spec. `CloneRequest` still
+  source run branch inside its new sandbox. Runs on host workspaces (local
+  folders, empty Local targets, dry runs) still commit checkpoints in that
+  workspace, without pushing; Docker and Daytona runs with no GitHub target
+  keep execution metadata without Git commits. Retry starts a fresh execution
+  from the saved spec. `CloneRequest` still
   travels beside the sandbox spec so the run record names the origin and
   branch; the sandbox layer refuses a request that asks it to clone.
   Preflight and `fabro exec` initialize sandboxes with `CloneRequest::none()`,
