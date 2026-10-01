@@ -5,7 +5,7 @@ use std::time::Duration;
 use fabro_github::{self as github_app, ssh_url_to_https};
 use fabro_llm::credentials::CredentialProvider;
 use fabro_llm::lithos_catalog::Catalog;
-use fabro_llm::{Client, ClientOptions, Request, selection};
+use fabro_llm::{Client, ClientOptions, Request, fork_structured, selection};
 use fabro_store::RunProjection;
 use fabro_types::settings::run::MergeStrategy;
 use fabro_types::settings::{ModelRef, ResolvedModelRef};
@@ -404,16 +404,21 @@ async fn build_pr_content_with_client(
     // JSON request with prose — must not fail the creation. The goal
     // titles the PR and the notice stands in for the narrative; the plan,
     // details and footer sections below are assembled as always.
-    let generated = match client
-        .complete_object(request, "pr_content", PR_CONTENT_SCHEMA.clone())
-        .await
+    let generated = match fork_structured::complete_object_tolerant(
+        &client,
+        request,
+        "pr_content",
+        PR_CONTENT_SCHEMA.clone(),
+    )
+    .await
     {
         Ok(completion) => match serde_json::from_value::<PrContent>(completion.object) {
             Ok(generated) => generated,
             Err(error) => {
                 warn!(
                     model = %model,
-                    error = %error,
+                    layer = "pr_content.deserialize",
+                    error = ?error,
                     "PR content did not deserialize; using the deterministic skeleton"
                 );
                 skeleton_pr_content(goal)
@@ -422,7 +427,8 @@ async fn build_pr_content_with_client(
         Err(error) => {
             warn!(
                 model = %model,
-                error = %error,
+                layer = "pr_content.structured_completion",
+                error = ?error,
                 "PR content generation failed; using the deterministic skeleton"
             );
             skeleton_pr_content(goal)
@@ -1643,6 +1649,39 @@ capabilities = { text = true }
             content
                 .body
                 .contains("Generated with [Fabro](https://fabro.sh)")
+        );
+    }
+
+    /// The zai/glm-4.7 reply shape (fabro-4c11): the model answers the
+    /// structured-output request with prose wrapping a fenced JSON document.
+    /// The content builder must extract the document instead of falling back
+    /// to the skeleton.
+    #[tokio::test]
+    async fn build_pr_content_extracts_fenced_json_from_prose_reply() {
+        let payload = format!(
+            "Sure! Here is the PR content:\n```json\n{}\n```\nHope that helps.",
+            pr_content_json("Fenced title", "Narrative from a fenced document.")
+        );
+        let harness = setup_fallback_test_harness(&payload).await;
+
+        let content = build_pr_content(
+            "diff --git a/src/lib.rs b/src/lib.rs\n+fn x() {}\n",
+            "Add the feature\n\nlonger description",
+            "gpt-5.4",
+            Arc::clone(&harness.llm_source),
+            harness.catalog.clone(),
+            None,
+            None,
+        )
+        .await
+        .expect("the fenced document keeps PR content building");
+
+        assert_eq!(content.title, "Fenced title");
+        assert!(content.body.contains("Narrative from a fenced document."));
+        assert!(
+            !content
+                .body
+                .contains("The LLM did not produce a description")
         );
     }
 
