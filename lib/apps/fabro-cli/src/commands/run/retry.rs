@@ -5,8 +5,7 @@ use crate::args::RetryArgs;
 use crate::command_context::CommandContext;
 use crate::shared::print_json_pretty;
 
-/// Retry a finished run from its last checkpoint in a new run, which starts
-/// at once.
+/// Retry a finished workflow from the start in a new run.
 pub(crate) async fn run(args: &RetryArgs, base_ctx: &CommandContext) -> Result<()> {
     let printer = base_ctx.printer();
     let ctx = base_ctx.with_target(&args.server)?;

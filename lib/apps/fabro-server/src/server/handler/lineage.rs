@@ -9,9 +9,9 @@
 //! (`fabro_petri::fork`), and queues it in resume mode, so its worker
 //! acquires a fresh workspace, restores the checkpoint's commit into it and
 //! continues from the position. A rewind is a fork of a terminal run that
-//! archives the source and records `run.superseded` on it; a retry is a
-//! fork of a terminal run at its last checkpoint, with the failed stage run
-//! again when the run failed on one.
+//! archives the source and records `run.superseded` on it. A retry is not a
+//! fork: it is a new run from the source's saved spec, started from the
+//! beginning, so it needs no checkpoint or workspace from the source.
 
 use std::sync::Arc;
 
@@ -53,7 +53,6 @@ pub(super) fn routes() -> Router<Arc<AppState>> {
 enum ForkKind {
     Fork,
     Rewind,
-    Retry,
 }
 
 /// A fork made and queued.
@@ -86,14 +85,13 @@ async fn run_timeline(
 async fn fork_run(
     RequireRunManagementTarget(id, actor): RequireRunManagementTarget,
     State(state): State<Arc<AppState>>,
-    headers: HeaderMap,
     body: Option<Json<api::ForkRequest>>,
 ) -> Response {
     let target = match parse_fork_target(body.and_then(|Json(body)| body.target)) {
         Ok(target) => target,
         Err(err) => return err.into_response(),
     };
-    match fork_at(state.as_ref(), id, actor, &headers, ForkKind::Fork, target).await {
+    match fork_at(state.as_ref(), id, actor, ForkKind::Fork, target).await {
         Ok(outcome) => (
             StatusCode::OK,
             Json(api::ForkResponse {
@@ -114,23 +112,13 @@ async fn fork_run(
 async fn rewind_run(
     RequireRunManagementTarget(id, actor): RequireRunManagementTarget,
     State(state): State<Arc<AppState>>,
-    headers: HeaderMap,
     body: Option<Json<api::RewindRequest>>,
 ) -> Response {
     let target = match parse_fork_target(body.and_then(|Json(body)| body.target)) {
         Ok(target) => target,
         Err(err) => return err.into_response(),
     };
-    let outcome = match fork_at(
-        state.as_ref(),
-        id,
-        actor.clone(),
-        &headers,
-        ForkKind::Rewind,
-        target,
-    )
-    .await
-    {
+    let outcome = match fork_at(state.as_ref(), id, actor.clone(), ForkKind::Rewind, target).await {
         Ok(outcome) => outcome,
         Err(err) => return err.into_response(),
     };
@@ -175,8 +163,29 @@ async fn retry_run(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
 ) -> Response {
-    match fork_at(state.as_ref(), id, actor, &headers, ForkKind::Retry, None).await {
-        Ok(outcome) => run_response(state.as_ref(), outcome.new_run_id, StatusCode::CREATED).await,
+    let result = async {
+        let source = run_records::require_projection(state.as_ref(), id).await?;
+        operations::ensure_retryable(&source, &id).map_err(workflow_operation_error)?;
+        let new_run_id = RunId::new();
+        let storage = Storage::new(state.server_storage_dir());
+        let run_dir = storage.run_scratch(&new_run_id).root().to_path_buf();
+        Box::pin(operations::persist_retried_run(
+            state.store_ref().as_ref(),
+            &source,
+            new_run_id,
+            &run_dir,
+            run_provenance(&headers, &actor),
+            state.run_web_url(&new_run_id),
+        ))
+        .await
+        .map_err(workflow_operation_error)?;
+        let projection = run_records::require_projection(state.as_ref(), new_run_id).await?;
+        queue_run(state.as_ref(), new_run_id, &projection, false, actor).await?;
+        Ok::<_, ApiError>(new_run_id)
+    }
+    .await;
+    match result {
+        Ok(id) => run_response(state.as_ref(), id, StatusCode::CREATED).await,
         Err(err) => err.into_response(),
     }
 }
@@ -252,7 +261,6 @@ async fn fork_at(
     state: &AppState,
     id: RunId,
     actor: Principal,
-    headers: &HeaderMap,
     kind: ForkKind,
     target: Option<ForkTarget>,
 ) -> Result<ForkOutcome, ApiError> {
@@ -260,17 +268,13 @@ async fn fork_at(
     match kind {
         ForkKind::Fork => operations::ensure_forkable(&source, &id),
         ForkKind::Rewind => operations::ensure_rewindable(&source, &id),
-        ForkKind::Retry => operations::ensure_retryable(&source, &id),
     }
     .map_err(workflow_operation_error)?;
     let timeline = timeline(state, id).await?;
-    let entry = match kind {
-        ForkKind::Retry => timeline.latest(),
-        ForkKind::Fork | ForkKind::Rewind => timeline.resolve_or_latest(target.as_ref()),
-    }
-    .map_err(workflow_operation_error)?;
+    let entry = timeline
+        .resolve_or_latest(target.as_ref())
+        .map_err(workflow_operation_error)?;
     let resolved = ResolvedForkTarget::of(entry).map_err(workflow_operation_error)?;
-    let rerun_last = kind == ForkKind::Retry && operations::reruns_last(source.status);
 
     // A position Petri would refuse is refused before the new run exists.
     let position = petri_fork::position(resolved.position.execution, resolved.position.firing);
@@ -285,15 +289,14 @@ async fn fork_at(
     let storage = Storage::new(state.server_storage_dir());
     let source_run_dir = storage.run_scratch(&id).root().to_path_buf();
     let run_dir = storage.run_scratch(&new_run_id).root().to_path_buf();
-    let provenance = (kind == ForkKind::Retry).then(|| run_provenance(headers, &actor));
     operations::persist_forked_run(state.store_ref().as_ref(), &operations::ForkedRunInput {
         source: &source,
         new_run_id,
         run_dir: run_dir.clone(),
         checkpoint_sha: resolved.checkpoint_sha.clone(),
-        provenance,
+        provenance: None,
         web_url: state.run_web_url(&new_run_id),
-        retried_from: (kind == ForkKind::Retry).then_some(id),
+        retried_from: None,
     })
     .await
     .map_err(workflow_operation_error)?;
@@ -308,7 +311,7 @@ async fn fork_at(
             &state.stores.run_summaries,
         ))),
         position,
-        rerun_last,
+        rerun_last: false,
         settings: source.spec.settings.run.clone(),
     })
     .await;
@@ -337,7 +340,7 @@ async fn fork_at(
         source_run_id: id,
         new_run_id,
         target: resolved,
-        rerun_last,
+        rerun_last: false,
     })
 }
 
