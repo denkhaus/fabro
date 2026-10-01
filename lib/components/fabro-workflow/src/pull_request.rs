@@ -405,7 +405,7 @@ async fn build_pr_content_with_client(
     // titles the PR and the notice stands in for the narrative; the plan,
     // details and footer sections below are assembled as always.
     let generated = match fabro_llm::fork_structured::complete_object_tolerant(
-        client,
+        &client,
         request,
         "pr_content",
         PR_CONTENT_SCHEMA.clone(),
