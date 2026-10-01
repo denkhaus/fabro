@@ -116,5 +116,5 @@ def main [--days: int = 7, --threshold: float = 0.6] {
         stuck_in_progress: $stuck,
         open_total: $open_n},
      window_days: $days,
-     computed_at: (date now | format date "%Y-%m-%dT%H:%M:%SZ")} | to json --raw | print
+     computed_at: (date now | date to-timezone utc | format date "%Y-%m-%dT%H:%M:%SZ")} | to json --raw | print
 }

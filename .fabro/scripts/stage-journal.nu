@@ -93,7 +93,7 @@ def main []: nothing -> nothing {
         node: $node,
         visit: (next-visit $out $node),
         status: ($ctx.status? | default ""),
-        ts: (date now | format date "%Y-%m-%dT%H:%M:%SZ"),
+        ts: (date now | date to-timezone utc | format date "%Y-%m-%dT%H:%M:%SZ"),
         data: $data
     }
 
