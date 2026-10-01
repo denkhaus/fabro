@@ -11,16 +11,18 @@
 //! embedding host does. Its own work, at each point:
 //!
 //! - `prepare_result`: the checkpoint commit, before the `StepFinished` record
-//!   is appended, so a durable finish implies a durable snapshot. A stage that
-//!   failed on its own terms is committed like a successful one; only a
-//!   cancelled attempt is not. A failed commit is fatal to the run: the outcome
-//!   becomes a failure of class `checkpoint_failed`, the run is cancelled
-//!   through the coordinator handle, and `transition` refuses the firing's
-//!   routes, so no route is taken. The commit that creates the run branch also
-//!   records where it started: the `run.branch` platform record (the branch
-//!   name and the base commit) and the `git.identity` record (who authors the
-//!   commits, and where that identity came from), both at that checkpoint's
-//!   stage position, so the stream orders them with the firing's finish.
+//!   is appended. Git-backed runs push that commit from the sandbox; a failed
+//!   push warns and is retried at the next checkpoint and at final publication.
+//!   A stage that failed on its own terms is committed like a successful one;
+//!   only a cancelled attempt is not. A failed commit is fatal to the run: the
+//!   outcome becomes a failure of class `checkpoint_failed`, the run is
+//!   cancelled through the coordinator handle, and `transition` refuses the
+//!   firing's routes, so no route is taken. The commit that creates the run
+//!   branch also records where it started: the `run.branch` platform record
+//!   (the branch name and the base commit) and the `git.identity` record (who
+//!   authors the commits, and where that identity came from), both at that
+//!   checkpoint's stage position, so the stream orders them with the firing's
+//!   finish.
 //! - `transition`: the platform checkpoint record, keyed on the Petri position
 //!   and the checkpoint's operation identity, with the stage's diff from its
 //!   parent commit (`diff_summary`, and the patch as a blob); then the stage's
@@ -36,10 +38,10 @@
 //!   record; then the forwarded point, so the local service runs `run_complete`
 //!   and `run_failed` with the sandbox in place.
 //! - `scope_acquired`: a fresh run's Git target checked out into the workspace
-//!   from inside the scope, with its snapshot repository seeded with the
-//!   starting commit ([`crate::source`]); a resumed run's workspace brought to
-//!   its snapshot instead (see below). A checkout that fails fails the scope's
-//!   firings with the reason.
+//!   from inside the scope ([`crate::source`]); a resumed run uses its
+//!   surviving workspace, while an explicit fork fetches the source run's
+//!   branch from GitHub. A checkout that fails fails the scope's firings with
+//!   the reason.
 //! - `scope_released`: forwarded, so the local service runs `sandbox_cleanup`
 //!   with the sandbox in place. Fabro's own end-of-run work (the terminal
 //!   lifecycle event, notifications on it) is the run lifecycle path's, on the
@@ -66,17 +68,12 @@
 //! Petri's host backend keeps under the run directory (`crate::checkpoint`).
 //! On Docker or Daytona the workspace lives inside the scope's sandbox: the
 //! hooks keep the environment Petri hands them at `scope_acquired`, run
-//! `git` inside the scope through it, and move the commit out as a bundle
-//! into the same snapshot repository the host path pushes to. Artifacts are
-//! read out through the same environment on every provider. The same
-//! point is where a resumed run brings a workspace to the snapshot its
-//! durable state names, before the first attempt runs in it: verified,
-//! reset, or, in a fresh sandbox (Petri replaces a lost one on Fabro's
-//! request), restored from a bundle of the checkpoint. The plan is
-//! [`recovery::plan`], the one the server applied to host workspaces before
-//! it relaunched the worker; a host workspace is verified here, unless the
-//! run is a fork whose fresh workspace nothing restored yet
-//! ([`crate::fork`]), which is restored from the seeded snapshot repository.
+//! `git` inside the scope through it. Checkpoints, diffs, fetches and pushes
+//! all use this environment. Only execution metadata, patches and selected
+//! artifacts are persisted on the server. Normal resume requires the original
+//! workspace; a fork acquires a new sandbox and fetches its checkpoint from
+//! GitHub. Empty and local-folder targets record execution checkpoints without
+//! Git commits.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -113,6 +110,7 @@ use crate::checkpoint::{
     CHECKPOINT_FAILED_CLASS, CheckpointError, CheckpointKey, EXCLUDE_DIRS, RunGitSettings,
     RunWorkspaces, Site, Snapshot, WorkspaceDiff,
 };
+use crate::fork::{self, ForkError};
 use crate::platform_records::{PlatformRecordError, PlatformRecords};
 use crate::recovery::{self, Plan, RecoveryError, RestoreTarget};
 use crate::source::RunSource;
@@ -203,6 +201,8 @@ pub enum HookError {
         #[source]
         source: EnvError,
     },
+    #[error("the fork origin could not be read")]
+    Fork(#[source] ForkError),
     #[error("the run's restore plan could not be read")]
     Plan(#[source] RecoveryError),
     #[error("{reason}")]
@@ -242,14 +242,14 @@ pub struct HooksSpec {
 }
 
 /// What a successful run hands its publisher when it ends: the run branch,
-/// the commit it ends on, the snapshot repository that holds it, and the
+/// the commit it ends on, the workspace that holds it, and the
 /// run's patch against the commit the branch started from.
 #[derive(Clone, Debug)]
 pub struct Publication {
-    pub run_branch:          String,
-    pub head_sha:            String,
-    pub snapshot_repository: PathBuf,
-    pub patch:               String,
+    pub run_branch: String,
+    pub head_sha:   String,
+    pub site:       Site,
+    pub patch:      String,
 }
 
 /// The platform's end-of-run publication: what a successful run's work does
@@ -258,6 +258,10 @@ pub struct Publication {
 /// message, as a failed publish did on the legacy executor.
 #[async_trait::async_trait]
 pub trait RunPublisher: Send + Sync {
+    /// Push one checkpoint. A failure is retried by later checkpoints and
+    /// final publication, which must succeed for the run to succeed.
+    async fn push(&self, site: &Site, branch: &str, sha: &str) -> Result<(), String>;
+
     async fn publish(&self, publication: &Publication) -> Result<(), String>;
 }
 
@@ -427,34 +431,36 @@ impl ScopeEnvs {
 
 /// Fabro's `ExecutionHooks`, around the hooks the runtime installed.
 pub struct FabroHooks {
-    inner:           Arc<dyn ExecutionHooks>,
-    run_id:          RunId,
-    records:         Arc<dyn PlatformRecords>,
+    inner:              Arc<dyn ExecutionHooks>,
+    run_id:             RunId,
+    records:            Arc<dyn PlatformRecords>,
     /// Where diff patches go; `None` records summaries alone.
-    blobs:           Option<Arc<dyn Blobs>>,
-    artifact_writer: Arc<dyn ArtifactWriter>,
-    workspaces:      RunWorkspaces,
-    lookup:          WorkspaceLookup,
-    identity:        GitIdentity,
-    host_workspaces: bool,
-    test_gates:      Option<PathBuf>,
-    handle:          OnceLock<CoordinatorHandle>,
-    checkpoints:     CheckpointLedger,
-    artifacts:       ArtifactLedger,
-    scopes:          ScopeEnvs,
+    blobs:              Option<Arc<dyn Blobs>>,
+    artifact_writer:    Arc<dyn ArtifactWriter>,
+    workspaces:         RunWorkspaces,
+    checkpoint_enabled: bool,
+    sites:              Mutex<HashMap<String, Site>>,
+    lookup:             WorkspaceLookup,
+    identity:           GitIdentity,
+    host_workspaces:    bool,
+    test_gates:         Option<PathBuf>,
+    handle:             OnceLock<CoordinatorHandle>,
+    checkpoints:        CheckpointLedger,
+    artifacts:          ArtifactLedger,
+    scopes:             ScopeEnvs,
     /// The checkpoint failure that ended the run, when one did.
-    failure:         Mutex<Option<String>>,
-    publisher:       Option<Arc<dyn RunPublisher>>,
+    failure:            Mutex<Option<String>>,
+    publisher:          Option<Arc<dyn RunPublisher>>,
     /// Why the run's publication failed, when it did.
-    publish_failure: Mutex<Option<String>>,
+    publish_failure:    Mutex<Option<String>>,
     /// Whether the run continues from its records: a sandbox workspace is
     /// then brought to its snapshot when its scope is first acquired.
-    resumed:         bool,
+    resumed:            bool,
     /// The snapshot every live sandbox workspace must sit on before work
     /// resumes in it, read once from the records; an entry leaves when it
     /// is applied.
-    restore:         OnceCell<Mutex<BTreeMap<String, RestoreTarget>>>,
-    store:           Arc<dyn RunStore>,
+    restore:            OnceCell<Mutex<BTreeMap<String, Vec<RestoreTarget>>>>,
+    store:              Arc<dyn RunStore>,
 }
 
 impl FabroHooks {
@@ -479,6 +485,7 @@ impl FabroHooks {
             email:  spec.git.author.email.clone(),
             source: spec.git.identity_source,
         };
+        let checkpoint_enabled = spec.source.is_some() && spec.git.enabled;
         let workspaces = RunWorkspaces::new(
             run_dir,
             run_id.to_string(),
@@ -493,6 +500,8 @@ impl FabroHooks {
             blobs,
             artifact_writer: spec.artifact_writer,
             workspaces,
+            checkpoint_enabled,
+            sites: Mutex::default(),
             lookup: WorkspaceLookup::new(Arc::clone(&store), run_key),
             identity,
             host_workspaces: spec.git.host_workspaces,
@@ -630,6 +639,10 @@ impl FabroHooks {
         status: &Status,
         origin: ResultOrigin,
     ) -> Result<Option<Note>, HookError> {
+        self.gate("prepare", node).await;
+        if !self.checkpoint_enabled {
+            return Ok(None);
+        }
         let Some((workspace, site)) = self.site_of(context, scope).await? else {
             // A skipped node or a driver-made outcome may precede the scope's
             // environment; nothing of the stage's exists to snapshot.
@@ -669,6 +682,22 @@ impl FabroHooks {
                     "checkpoint committed"
                 );
                 self.committed(key, &workspace, &snapshot).await;
+                // Only the workspace that owns the run branch publishes it.
+                // Isolated child workspaces must not race to replace its head.
+                if let Some(publisher) = &self.publisher {
+                    if self
+                        .stored_branch()
+                        .await?
+                        .is_some_and(|branch| branch.workspace.as_deref() == Some(&workspace))
+                    {
+                        if let Err(message) = publisher
+                            .push(&site, &self.workspaces.run_branch(), &snapshot.sha)
+                            .await
+                        {
+                            warn!(run_id = %self.run_id, error = %message, "checkpoint push failed; final publication will retry");
+                        }
+                    }
+                }
                 Ok(Some(Note::new(
                     CHECKPOINT_NOTE,
                     json!({
@@ -789,17 +818,15 @@ impl FabroHooks {
 
     /// The restore plan of a resumed run, read once: what every live
     /// sandbox workspace must be brought to at its first acquisition.
-    async fn restore_targets(&self) -> Result<&Mutex<BTreeMap<String, RestoreTarget>>, HookError> {
+    async fn restore_targets(
+        &self,
+    ) -> Result<&Mutex<BTreeMap<String, Vec<RestoreTarget>>>, HookError> {
         self.restore
             .get_or_try_init(|| async {
-                let plan = recovery::plan(
-                    Arc::clone(&self.store),
-                    self.records.as_ref(),
-                    &self.run_id,
-                    &self.workspaces,
-                )
-                .await
-                .map_err(HookError::Plan)?;
+                let plan =
+                    recovery::plan(Arc::clone(&self.store), self.records.as_ref(), &self.run_id)
+                        .await
+                        .map_err(HookError::Plan)?;
                 match plan {
                     Plan::Resume { targets } => Ok(Mutex::new(targets)),
                     Plan::Start => Ok(Mutex::default()),
@@ -845,19 +872,57 @@ impl FabroHooks {
         }
     }
 
-    /// Bring a workspace to the snapshot the resumed run's durable state
-    /// names, once, at its first acquisition. After a restart the server
-    /// already brought a host workspace there, so this verifies; a fork's
-    /// fresh workspace is restored here from the snapshot repository the
-    /// fork seeded; a sandbox workspace is only reachable here.
+    /// Reset a surviving workspace to its recorded checkpoint. An explicit
+    /// fork may fetch the source run's branch into a new workspace.
     async fn restore(&self, workspace: &str, site: &Site) -> Result<(), HookError> {
         let targets = self.restore_targets().await?;
         let target = sync::lock(targets).remove(workspace);
-        let Some(target) = target else {
+        let Some(targets) = target else {
+            return Ok(());
+        };
+        let Some(mut target) = targets.first().cloned() else {
             return Ok(());
         };
         let serialized = self.scopes.lock_for(workspace);
         let _held = serialized.lock().await;
+        if !self
+            .workspaces
+            .has_commit(site, &target.sha)
+            .await
+            .map_err(HookError::Find)?
+        {
+            let origin = fork::origin_of(self.store.as_ref(), self.run_id)
+                .await
+                .map_err(HookError::Fork)?;
+            if let Some(origin) = origin {
+                // An explicit fork may acquire a fresh workspace. Normal
+                // resumes never reconstruct a lost repository.
+                if self
+                    .workspaces
+                    .head(site)
+                    .await
+                    .map_err(HookError::Find)?
+                    .is_none()
+                {
+                    self.workspaces
+                        .restore_fork(site, &origin.source_run_id.to_string(), &target.sha)
+                        .await
+                        .map_err(HookError::Find)?;
+                }
+            }
+        }
+        // Platform records can arrive out of commit order from parallel stages.
+        // Choose by Git ancestry here, where the actual repository is available.
+        for candidate in targets.iter().skip(1) {
+            if self
+                .workspaces
+                .is_ancestor(site, &target.sha, &candidate.sha)
+                .await
+                .map_err(HookError::Find)?
+            {
+                target = candidate.clone();
+            }
+        }
         let action = recovery::bring_to(&self.workspaces, site, workspace, &target)
             .await
             .map_err(HookError::Restore)?;
@@ -884,6 +949,41 @@ impl FabroHooks {
         if sync::lock(recorded).contains(&key) {
             return Ok(());
         }
+        if !self.checkpoint_enabled {
+            self.records
+                .append(
+                    &self.run_id,
+                    &PlatformRecord::Checkpoint(CheckpointRecord {
+                        execution:      key.execution,
+                        firing:         key.firing,
+                        attempt:        Some(key.attempt),
+                        workspace:      None,
+                        git_commit_sha: None,
+                        diff_summary:   None,
+                        patch_blob:     None,
+                        operation:      Some(key.operation()),
+                    }),
+                    Some(StagePosition {
+                        execution: key.execution,
+                        firing:    key.firing,
+                    }),
+                )
+                .await
+                .map_err(|source| HookError::Write {
+                    kind: "checkpoint",
+                    source,
+                })?;
+            sync::lock(recorded).insert(key);
+            return Ok(());
+        }
+        let site = self
+            .site_of(context, scope)
+            .await?
+            .ok_or(HookError::NoWorkspace {
+                scope,
+                execution: context.execution,
+            })?
+            .1;
         let (workspace, sha) = if let Some(committed) = self.checkpoints.commit_of(key) {
             committed
         } else {
@@ -894,14 +994,14 @@ impl FabroHooks {
             };
             let serialized = self.scopes.lock_for(&workspace);
             let held = serialized.lock().await;
-            let found = self.workspaces.find(&workspace, key).await;
+            let found = self.workspaces.find(&site, key).await;
             drop(held);
             let sha = found
                 .map_err(HookError::Find)?
                 .ok_or(HookError::NoCommit { key })?;
             (workspace, sha)
         };
-        let (diff_summary, patch_blob) = match self.stage_diff(&workspace, &sha).await {
+        let (diff_summary, patch_blob) = match self.stage_diff(&site, &sha).await {
             Ok(diff) => diff,
             Err(error) => {
                 // The record still names the commit; the diff is a view.
@@ -950,7 +1050,7 @@ impl FabroHooks {
     /// the diff is not empty.
     async fn stage_diff(
         &self,
-        workspace: &str,
+        site: &Site,
         sha: &str,
     ) -> Result<(Option<DiffSummary>, Option<BlobHash>), HookError> {
         let failed = |source| HookError::Diff {
@@ -959,7 +1059,7 @@ impl FabroHooks {
         };
         let parent = self
             .workspaces
-            .commit_parent(workspace, sha)
+            .commit_parent(site, sha)
             .await
             .map_err(failed)?;
         let Some(parent) = parent else {
@@ -967,7 +1067,7 @@ impl FabroHooks {
         };
         let diff = self
             .workspaces
-            .diff(workspace, Some(&parent), sha)
+            .diff(site, Some(&parent), sha)
             .await
             .map_err(failed)?;
         let patch_blob = self.patch_blob(&diff).await?;
@@ -1201,7 +1301,7 @@ impl FabroHooks {
     }
 
     /// The run's diff: the run branch's last checkpoint against the base
-    /// the branch started from, in the snapshot repository on this host.
+    /// the branch started from, computed inside the workspace.
     /// Nothing is recorded for a run that never created its branch or
     /// never checkpointed.
     async fn record_run_diff(&self) -> Result<Option<Publication>, HookError> {
@@ -1217,7 +1317,7 @@ impl FabroHooks {
         let Some(base_sha) = branch.base_sha.clone() else {
             return Ok(None);
         };
-        let Some((workspace, head_sha)) = self.checkpoints.last() else {
+        let Some((workspace, _)) = self.checkpoints.last() else {
             debug!(run_id = %self.run_id, "no checkpoint is recorded; no run diff");
             return Ok(None);
         };
@@ -1225,9 +1325,39 @@ impl FabroHooks {
         // in; a last checkpoint elsewhere (a nested invocation's workspace)
         // is not this branch's head.
         let workspace = branch.workspace.clone().unwrap_or(workspace);
+        let site = sync::lock(&self.sites)
+            .get(&workspace)
+            .cloned()
+            .ok_or_else(|| HookError::Unresumable {
+                reason: format!(
+                    "the run branch workspace {workspace} is unavailable for publication"
+                ),
+            })?;
+        let stored = self
+            .records
+            .read_kind(&self.run_id, PlatformRecordKind::Checkpoint)
+            .await
+            .map_err(|source| HookError::Read {
+                kind: "checkpoint",
+                source,
+            })?;
+        let head_sha = stored
+            .into_iter()
+            .rev()
+            .find_map(|stored| match stored.record {
+                PlatformRecord::Checkpoint(record)
+                    if record.workspace.as_deref() == Some(&workspace) =>
+                {
+                    record.git_commit_sha
+                }
+                _ => None,
+            })
+            .ok_or_else(|| HookError::Unresumable {
+                reason: "the run branch has no checkpoint".to_string(),
+            })?;
         let diff = self
             .workspaces
-            .diff(&workspace, Some(&base_sha), &head_sha)
+            .diff(&site, Some(&base_sha), &head_sha)
             .await
             .map_err(|source| HookError::Diff {
                 what: "run's diff",
@@ -1241,7 +1371,7 @@ impl FabroHooks {
             .map(|run_branch| Publication {
                 run_branch,
                 head_sha: head_sha.clone(),
-                snapshot_repository: self.workspaces.snapshot_repository(&workspace),
+                site,
                 patch: diff.patch,
             });
         let record = PlatformRecord::RunDiff(RunDiffRecord {
@@ -1500,13 +1630,23 @@ impl ExecutionHooks for FabroHooks {
         let publication = match self.record_run_diff().await {
             Ok(publication) => publication,
             Err(error) => {
-                warn!(run_id = %self.run_id, error = %error.render(), "the run's diff was not recorded");
+                let message = error.render();
+                warn!(run_id = %self.run_id, error = %message, "the run's diff was not recorded");
+                if self.publisher.is_some() && finished.status == RunStatus::Success {
+                    *sync::lock(&self.publish_failure) = Some(message);
+                }
                 None
             }
         };
-        if let (Some(publisher), Some(publication)) = (&self.publisher, &publication) {
+        if let Some(publisher) = &self.publisher {
             if finished.status == RunStatus::Success && self.checkpoint_failure().is_none() {
-                self.publish(publisher.as_ref(), publication).await;
+                if let Some(publication) = &publication {
+                    self.publish(publisher.as_ref(), publication).await;
+                } else if self.publish_failure().is_none() {
+                    *sync::lock(&self.publish_failure) = Some(
+                        "the run has no recorded branch and checkpoint to publish".to_string(),
+                    );
+                }
             }
         }
         self.inner.run_finished(context, finished).await
@@ -1542,12 +1682,13 @@ impl ExecutionHooks for FabroHooks {
         } else {
             Site::Sandbox(Arc::clone(&acquired.env))
         };
-        if !self.resumed {
-            return self.check_out_source(&workspace, &site).await;
+        sync::lock(&self.sites).insert(workspace.clone(), site.clone());
+        if self.resumed {
+            self.restore(&workspace, &site)
+                .await
+                .map_err(|error| ScopeAcquiredError::new(error.render()))?;
         }
-        self.restore(&workspace, &site)
-            .await
-            .map_err(|error| ScopeAcquiredError::new(error.render()))
+        self.check_out_source(&workspace, &site).await
     }
 }
 

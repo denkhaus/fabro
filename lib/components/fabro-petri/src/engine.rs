@@ -195,12 +195,8 @@ pub async fn run(request: RunRequest) -> Result<RunOutcome, RunError> {
     if backend == SandboxBackend::Daytona {
         options.sandbox.daytona_resources = daytona_resources(&request.resources)?;
     }
-    // Fabro's hooks restore a sandbox workspace from its snapshots at the
-    // scope's acquisition, so a lease whose sandbox is gone gets a fresh
-    // one instead of failing the run.
-    if request.hooks.is_some() && backend != SandboxBackend::Host {
-        options.sandbox.lost_sandbox = LostSandbox::Replace;
-    }
+    // A normal resume requires its original sandbox to survive.
+    options.sandbox.lost_sandbox = LostSandbox::Refuse;
     let resumed = matches!(request.execution, Execution::Resume);
     let mut runtime = request
         .runtime

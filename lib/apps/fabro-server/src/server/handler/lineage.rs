@@ -5,8 +5,8 @@
 //! the stages the projector folded them onto. A fork resolves a target on
 //! that timeline (`@ordinal`, a node, or `node@visit`; the latest checkpoint
 //! by default), creates the new run's row (`fabro_workflow::operations`),
-//! seeds its records, checkpoints, snapshots and run branch from the source
-//! (`fabro_petri::fork`), and queues it in resume mode, so its worker
+//! seeds its execution records, checkpoint metadata and run branch from the
+//! source (`fabro_petri::fork`), and queues it in resume mode, so its worker
 //! acquires a fresh workspace, restores the checkpoint's commit into it and
 //! continues from the position. A rewind is a fork of a terminal run that
 //! archives the source and records `run.superseded` on it. A retry is not a
@@ -27,7 +27,7 @@ use fabro_petri::fork::{self as petri_fork, ForkError, ForkRequest};
 use fabro_petri::petri::RunStore;
 use fabro_petri::platform_records::SqlitePlatformRecords;
 use fabro_store::{PlatformRecordKind, RunProjection};
-use fabro_types::{FailureReason, Principal, RunId};
+use fabro_types::{FailureReason, Principal, RunId, RunTarget};
 use fabro_util::error as error_util;
 use fabro_workflow::Error as WorkflowError;
 use fabro_workflow::operations::{self, ForkTarget, ResolvedForkTarget, RunTimeline};
@@ -270,6 +270,14 @@ async fn fork_at(
         ForkKind::Rewind => operations::ensure_rewindable(&source, &id),
     }
     .map_err(workflow_operation_error)?;
+    if !matches!(source.spec.target, Some(RunTarget::Git(_)))
+        || !source.spec.settings.run.run_branch.enabled
+        || !source.spec.settings.run.run_branch.push
+    {
+        return Err(ApiError::bad_request(
+            "forking requires a GitHub-backed run with checkpoint pushes enabled",
+        ));
+    }
     let timeline = timeline(state, id).await?;
     let entry = timeline
         .resolve_or_latest(target.as_ref())
@@ -287,7 +295,6 @@ async fn fork_at(
 
     let new_run_id = RunId::new();
     let storage = Storage::new(state.server_storage_dir());
-    let source_run_dir = storage.run_scratch(&id).root().to_path_buf();
     let run_dir = storage.run_scratch(&new_run_id).root().to_path_buf();
     operations::persist_forked_run(state.store_ref().as_ref(), &operations::ForkedRunInput {
         source: &source,
@@ -304,7 +311,6 @@ async fn fork_at(
     let seeded = petri_fork::fork(ForkRequest {
         source: id,
         fork: new_run_id,
-        source_run_dir: source_run_dir.join("petri"),
         fork_run_dir: run_dir.join("petri"),
         store,
         records: Arc::new(SqlitePlatformRecords::new(Arc::clone(

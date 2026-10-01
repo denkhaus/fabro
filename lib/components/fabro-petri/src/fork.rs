@@ -1,5 +1,5 @@
 //! Forking a Fabro run at a checkpoint: the seam over Petri's
-//! `host::fork_from` that rewind, fork and retry are built on.
+//! `host::fork_from` that rewind and fork are built on.
 //!
 //! Fabro's checkpoint record ties a Petri position `(execution, firing)` to
 //! a Git commit. A fork seeds a new run from the source's records up to such
@@ -12,14 +12,10 @@
 //!    `run.started` whose `forked_from` names the source and the position. No
 //!    sandbox lease is carried over, so the resume acquires the position
 //!    execution's scopes fresh.
-//! 2. The source's checkpoint records for every attempt the fork kept are
-//!    written again under the new run, at their positions, and the snapshot
-//!    repository of every workspace they name is seeded with those checkpoints'
-//!    refs alone, fetched from the source's repository under the source's run
-//!    scratch. That is what the resume's recovery plan
-//!    ([`crate::recovery::plan`]) reads: the last durable finish of the
-//!    position execution names the snapshot the fresh workspace is restored to
-//!    at `scope_acquired`, on the host and in a sandbox alike.
+//! 2. The source's checkpoint records for retained attempts are copied under
+//!    the new run. At first scope acquisition the worker fetches the source
+//!    run's published branch from GitHub and checks out the selected commit. No
+//!    repository is copied or stored on the server.
 //! 3. The fork's `run.branch` record names the run branch the restore creates
 //!    (`fabro/run/<new id>`) and the commit it starts from, with the
 //!    `git.identity` beside it, both at the checkpoint's position, so the hooks
@@ -31,7 +27,6 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
-use std::process::Stdio;
 use std::sync::Arc;
 
 use fabro_checkpoint::author::GitAuthor;
@@ -50,11 +45,9 @@ use petri_execution::{
 use petri_runtime::RunOptions;
 use petri_runtime::ir::FiringId;
 use petri_store::StoreError;
-use tokio::fs;
-use tokio::process::Command;
 use tracing::{debug, info};
 
-use crate::checkpoint::{CheckpointKey, RunWorkspaces, SOURCE_REF};
+use crate::checkpoint::CheckpointKey;
 use crate::platform_records::{PlatformRecordError, PlatformRecords};
 use crate::projection::FoldState;
 use crate::projector::ProjectError;
@@ -63,26 +56,23 @@ use crate::providers::{self, SandboxProviderConfig};
 /// One fork to seed.
 pub struct ForkRequest {
     /// The run whose records are copied.
-    pub source:         RunId,
+    pub source:       RunId,
     /// The new run's id: its Petri run key and its own run scratch.
-    pub fork:           RunId,
-    /// The source's Petri run directory (its scratch's `petri`), where its
-    /// snapshot repositories are.
-    pub source_run_dir: PathBuf,
-    /// The fork's Petri run directory, where its snapshot repositories go.
-    pub fork_run_dir:   PathBuf,
+    pub fork:         RunId,
+    /// The fork's Petri run directory, used by Petri.
+    pub fork_run_dir: PathBuf,
     /// The server's run store: the source is read from it, the fork is
     /// written into it.
-    pub store:          Arc<dyn RunStore>,
+    pub store:        Arc<dyn RunStore>,
     /// The platform records of both runs.
-    pub records:        Arc<dyn PlatformRecords>,
+    pub records:      Arc<dyn PlatformRecords>,
     /// The position the source's records are kept up to.
-    pub position:       ForkPosition,
+    pub position:     ForkPosition,
     /// Whether the position's firing runs again (a retry of a failed
     /// stage) instead of keeping its finish.
-    pub rerun_last:     bool,
+    pub rerun_last:   bool,
     /// The run's settings, for its Git author and checkpoint settings.
-    pub settings:       RunNamespace,
+    pub settings:     RunNamespace,
 }
 
 /// A seeded fork, not yet resumed.
@@ -125,17 +115,13 @@ pub enum ForkError {
     Log(#[source] CoordinatorStoreError),
     #[error("the checkpoint records could not be read or written")]
     Records(#[source] PlatformRecordError),
-    #[error("the snapshot repository for `{workspace}` could not be seeded: {detail}")]
-    Snapshots {
-        workspace: String,
-        detail:    String,
-    },
 }
 
 /// Refuse a position Petri would refuse, before anything is written for
 /// the fork: an execution the source does not have, or one inside a child
 /// invocation (a branch of a parallel node), whose caller's firing is live
-/// at every position inside it. The messages are Petri's own.
+/// at every position inside it. Also refuse the final terminal checkpoint:
+/// it leaves no work that would acquire a workspace for publication.
 pub async fn check(
     store: &dyn RunStore,
     source: RunId,
@@ -160,13 +146,33 @@ pub async fn check(
             position.execution
         )));
     }
+    let inspection = inspect::inspect_run(&*logs)
+        .await
+        .map_err(ForkError::Inspect)?;
+    if inspection
+        .executions
+        .iter()
+        .find(|execution| execution.execution == position.execution)
+        .and_then(|execution| execution.engine.as_ref())
+        .is_some_and(|engine| {
+            matches!(engine.exit, Some(inspect::ExitInspection::Terminal { .. }))
+                && engine
+                    .attempts
+                    .last()
+                    .is_some_and(|attempt| attempt.firing == position.firing.raw())
+        })
+    {
+        return Err(ForkError::Refused(
+            "the terminal checkpoint has no remaining work to acquire a sandbox; select an earlier checkpoint or retry the workflow from the start".to_string(),
+        ));
+    }
     Ok(())
 }
 
-/// Seed the fork: Petri's records, then the kept checkpoints, their
-/// snapshots and the run branch. The new run must not exist in the store
-/// yet.
+/// Seed the fork: Petri's records, the kept checkpoints and the run branch. The
+/// new run must not exist in the store yet.
 pub async fn fork(request: ForkRequest) -> Result<Forked, ForkError> {
+    check(request.store.as_ref(), request.source, request.position).await?;
     let source_key = RunKey::new(request.source.to_string());
     let fork_key = RunKey::new(request.fork.to_string());
     let source_logs = request
@@ -272,8 +278,6 @@ pub async fn fork(request: ForkRequest) -> Result<Forked, ForkError> {
         });
     }
 
-    // The snapshot repositories: one per workspace the kept checkpoints
-    // name, holding those checkpoints' refs alone.
     let author = request
         .settings
         .git
@@ -281,30 +285,6 @@ pub async fn fork(request: ForkRequest) -> Result<Forked, ForkError> {
         .as_ref()
         .map(GitAuthor::from)
         .unwrap_or_default();
-    let source_workspaces = RunWorkspaces::new(
-        request.source_run_dir.clone(),
-        request.source.to_string(),
-        author.clone(),
-        &request.settings.checkpoint,
-    );
-    let fork_workspaces = RunWorkspaces::new(
-        request.fork_run_dir.clone(),
-        request.fork.to_string(),
-        author.clone(),
-        &request.settings.checkpoint,
-    );
-    let mut by_workspace: BTreeMap<String, Vec<CheckpointKey>> = BTreeMap::new();
-    for kept in &checkpoints {
-        if let Some(workspace) = &kept.workspace {
-            by_workspace
-                .entry(workspace.clone())
-                .or_default()
-                .push(kept.key);
-        }
-    }
-    for (workspace, keys) in &by_workspace {
-        seed_snapshots(&source_workspaces, &fork_workspaces, workspace, keys).await?;
-    }
 
     // The run branch the restore creates, from the checkpoint the fork
     // starts on, and the identity that authors the fork's commits.
@@ -315,7 +295,7 @@ pub async fn fork(request: ForkRequest) -> Result<Forked, ForkError> {
             firing:    start.key.firing,
         };
         let branch = PlatformRecord::RunBranch(RunBranchRecord {
-            run_branch: Some(fork_workspaces.run_branch()),
+            run_branch: Some(format!("fabro/run/{}", request.fork)),
             base_sha:   Some(start.sha.clone()),
             workspace:  start.workspace.clone(),
         });
@@ -375,88 +355,6 @@ fn checkpoint_key(record: &CheckpointRecord) -> Option<CheckpointKey> {
                 attempt:   record.attempt?,
             })
         })
-}
-
-/// Create the fork's bare snapshot repository for `workspace` and fetch the
-/// kept checkpoints' refs into it from the source's.
-async fn seed_snapshots(
-    source: &RunWorkspaces,
-    fork: &RunWorkspaces,
-    workspace: &str,
-    keys: &[CheckpointKey],
-) -> Result<(), ForkError> {
-    let failed = |detail: String| ForkError::Snapshots {
-        workspace: workspace.to_string(),
-        detail,
-    };
-    let source_repository = source.snapshot_repository(workspace);
-    if !fs::try_exists(&source_repository).await.unwrap_or(false) {
-        return Err(failed(format!(
-            "the source run has no snapshot repository at {}",
-            source_repository.display()
-        )));
-    }
-    let repository = fork.snapshot_repository(workspace);
-    fs::create_dir_all(&repository).await.map_err(|error| {
-        failed(format!(
-            "{} could not be created: {error}",
-            repository.display()
-        ))
-    })?;
-    git(&repository, &["init", "-q", "--bare"])
-        .await
-        .map_err(failed)?;
-    let mut args = vec![
-        "fetch".to_string(),
-        "-q".to_string(),
-        source_repository.to_string_lossy().into_owned(),
-    ];
-    for key in keys {
-        let name = key.snapshot_ref();
-        args.push(format!("+{name}:{name}"));
-    }
-    // The commit a checked-out workspace started from goes with its
-    // checkpoints: the fork's bundles and restores are cut against it.
-    if git(&source_repository, &[
-        "rev-parse",
-        "-q",
-        "--verify",
-        SOURCE_REF,
-    ])
-    .await
-    .is_ok()
-    {
-        args.push(format!("+{SOURCE_REF}:{SOURCE_REF}"));
-    }
-    git(&repository, &args).await.map_err(failed)?;
-    debug!(
-        workspace,
-        refs = keys.len(),
-        repository = %repository.display(),
-        "the fork's snapshot repository is seeded"
-    );
-    Ok(())
-}
-
-/// Run `git` in `repository`; a non-zero exit is the error's detail.
-async fn git<S: AsRef<str>>(repository: &std::path::Path, args: &[S]) -> Result<(), String> {
-    let output = Command::new("git")
-        .args(args.iter().map(AsRef::as_ref))
-        .current_dir(repository)
-        .stdin(Stdio::null())
-        .output()
-        .await
-        .map_err(|error| format!("git could not run: {error}"))?;
-    if output.status.success() {
-        Ok(())
-    } else {
-        Err(format!(
-            "git {} failed ({}): {}",
-            args.first().map_or("", AsRef::as_ref),
-            output.status,
-            String::from_utf8_lossy(&output.stderr).trim()
-        ))
-    }
 }
 
 /// The position a checkpoint's execution and firing name, in Petri's ids.

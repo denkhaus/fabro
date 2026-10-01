@@ -1,54 +1,21 @@
-//! Resume on restart: the recovery protocol whose rule is that the
-//! workspace a resumed stage sees matches Petri's durable execution state
-//! (the integration plan's F3.5).
-//!
-//! For a Petri run the server finds in flight at startup, once the previous
-//! worker's lease is released, [`recover`] reads the durable execution
-//! state through `inspect_run` and decides:
-//!
-//! - a run with a `checkpoint_failed` finish anywhere is reported failed and
-//!   not resumed: a failed checkpoint cancelled it, and nothing of it is
-//!   reconciled;
-//! - otherwise, for every live execution, the last durable finish names the
-//!   snapshot its workspace must sit on: the checkpoint record's commit, or,
-//!   when the record was lost to the crash, the commit found by its key in the
-//!   workspace's snapshot repository or history, which is then recorded again;
-//! - a workspace that survives is verified to sit on that commit, unchanged, or
-//!   reset to it; a workspace that is gone, or a fresh one with no history (a
-//!   fork's first acquisition), is restored from the run's snapshot repository;
-//! - a durable finish with no snapshot fails the run with a named error rather
-//!   than resume it on stale files.
-//!
-//! Every child invocation's scope has its own snapshots, keyed by
-//! execution; a nested invocation that inherits its caller's sandbox shares
-//! the caller's workspace, and the workspace is brought to the newest of
-//! the live executions' snapshots on it.
-//!
-//! The decision is [`plan`], over the records and the snapshot repository
-//! alone, both on this host whatever the provider. Applying it differs: a
-//! host workspace is brought to its snapshot here, before the worker is
-//! relaunched; a Docker or Daytona workspace lives inside a sandbox only
-//! the worker's run reaches, so its target is deferred, and the worker's
-//! hooks read the same plan and apply it through the scope's environment
-//! at `scope_acquired`, before the first attempt runs there
-//! ([`bring_to`]).
+//! Resume execution from durable records using the surviving workspace.
+//! Git checkpoints are reset in place when present. Missing workspaces are
+//! never reconstructed here; explicit forks fetch their source run on GitHub
+//! when the worker acquires the new sandbox. Runs without Git checkpoints
+//! retain execution metadata without gaining workspace backup guarantees.
 
 use std::collections::BTreeMap;
-use std::path::PathBuf;
 use std::sync::Arc;
 
-use fabro_store::platform_records::CheckpointRecord;
-use fabro_store::{PlatformRecord, PlatformRecordKind, StagePosition};
+use fabro_store::{PlatformRecord, PlatformRecordKind};
 use fabro_types::RunId;
-use fabro_types::settings::run::RunNamespace;
 use petri_execution::host::{self, HostError};
 use petri_execution::inspect::{self, ExecutionInspection, InspectError};
 use petri_execution::{Access, InvocationId, RunKey, RunStore};
 use petri_store::StoreError;
-use tracing::info;
 
 use crate::checkpoint::{
-    CHECKPOINT_FAILED_CLASS, CheckpointError, CheckpointKey, RunGitSettings, RunWorkspaces, Site,
+    CHECKPOINT_FAILED_CLASS, CheckpointError, CheckpointKey, RunWorkspaces, Site,
 };
 use crate::platform_records::{PlatformRecordError, PlatformRecords};
 use crate::workspace::{WorkspaceLookup, WorkspaceLookupError};
@@ -57,11 +24,8 @@ use crate::workspace::{WorkspaceLookup, WorkspaceLookupError};
 /// and its Git settings.
 pub struct RecoveryRequest {
     pub run_id:  RunId,
-    /// The run directory Petri ran under (the run's `petri` scratch).
-    pub run_dir: PathBuf,
     pub store:   Arc<dyn RunStore>,
     pub records: Arc<dyn PlatformRecords>,
-    pub git:     RunGitSettings,
 }
 
 impl RecoveryRequest {
@@ -69,17 +33,13 @@ impl RecoveryRequest {
     #[must_use]
     pub fn for_run(
         run_id: RunId,
-        run_dir: PathBuf,
         store: Arc<dyn RunStore>,
         records: Arc<dyn PlatformRecords>,
-        settings: &RunNamespace,
     ) -> Self {
         Self {
             run_id,
-            run_dir,
             store,
             records,
-            git: RunGitSettings::from(settings),
         }
     }
 }
@@ -91,8 +51,6 @@ pub enum WorkspaceAction {
     Verified,
     /// It was brought back to the snapshot.
     Reset,
-    /// It was gone and was recreated from the snapshot repository.
-    Restored,
     /// It lives in a sandbox this process does not reach: the worker's
     /// hooks bring it to the snapshot when its scope is acquired.
     Deferred,
@@ -112,7 +70,7 @@ pub enum Plan {
     Start,
     /// The run continues; each live workspace, by id, and its snapshot.
     Resume {
-        targets: BTreeMap<String, RestoreTarget>,
+        targets: BTreeMap<String, Vec<RestoreTarget>>,
     },
     /// The run cannot continue and is reported failed.
     Failed { reason: String },
@@ -162,13 +120,11 @@ pub enum RecoveryError {
 }
 
 /// Decide how the run continues: the snapshot every live workspace must sit
-/// on, from the records and the snapshot repository, with a lost record
-/// reconciled from the repository. Nothing is touched.
+/// on, from execution and checkpoint records. Nothing is touched.
 pub async fn plan(
     store: Arc<dyn RunStore>,
     records: &dyn PlatformRecords,
     run_id: &RunId,
-    workspaces: &RunWorkspaces,
 ) -> Result<Plan, RecoveryError> {
     let key = RunKey::new(run_id.to_string());
     let logs = match store.open(&key, Access::Read).await {
@@ -204,29 +160,19 @@ pub async fn plan(
         return Ok(Plan::Failed { reason: failed });
     }
     let planner = Planner {
-        records,
-        run_id,
-        workspaces,
-        lookup: WorkspaceLookup::new(store, key),
+        lookup:   WorkspaceLookup::new(store, key),
         recorded: recorded_checkpoints(records, run_id).await?,
     };
     planner.targets(&inspection.executions).await
 }
 
-/// Decide how the run continues, and bring its host workspaces to their
-/// snapshots; a sandbox workspace's target is deferred to the worker.
+/// Decide how the run continues. All Git work is deferred to the worker
+/// using the acquired workspace, including for the local provider.
 pub async fn recover(request: RecoveryRequest) -> Result<Recovery, RecoveryError> {
-    let workspaces = RunWorkspaces::new(
-        request.run_dir.clone(),
-        request.run_id.to_string(),
-        request.git.author.clone(),
-        &request.git.checkpoint,
-    );
     let targets = match plan(
         Arc::clone(&request.store),
         &*request.records,
         &request.run_id,
-        &workspaces,
     )
     .await?
     {
@@ -235,62 +181,34 @@ pub async fn recover(request: RecoveryRequest) -> Result<Recovery, RecoveryError
         Plan::Resume { targets } => targets,
     };
 
-    let mut recovered = Vec::new();
-    for (workspace, target) in targets {
-        let action = if request.git.host_workspaces {
-            bring_to(
-                &workspaces,
-                &workspaces.host(&workspace),
-                &workspace,
-                &target,
-            )
-            .await?
-        } else {
-            WorkspaceAction::Deferred
-        };
-        info!(
-            run_id = %request.run_id,
-            workspace,
-            sha = target.sha,
-            action = ?action,
-            "workspace's durable snapshot decided"
-        );
-        recovered.push(RecoveredWorkspace {
-            workspace,
-            sha: target.sha,
-            action,
-        });
-    }
+    let recovered = targets
+        .into_iter()
+        .flat_map(|(workspace, targets)| {
+            targets.into_iter().map(move |target| RecoveredWorkspace {
+                workspace: workspace.clone(),
+                sha:       target.sha,
+                action:    WorkspaceAction::Deferred,
+            })
+        })
+        .collect();
     Ok(Recovery::Resume {
         workspaces: recovered,
     })
 }
 
-/// The snapshot one live execution's last durable finish names on a
-/// workspace.
-struct Candidate {
-    key: CheckpointKey,
-    sha: String,
+/// The decision over one run's durable records.
+struct Planner {
+    lookup:   WorkspaceLookup,
+    recorded: BTreeMap<CheckpointKey, (Option<String>, String)>,
 }
 
-/// The decision over one run's records and snapshot repository.
-struct Planner<'a> {
-    records:    &'a dyn PlatformRecords,
-    run_id:     &'a RunId,
-    workspaces: &'a RunWorkspaces,
-    lookup:     WorkspaceLookup,
-    /// The run's checkpoint records by key: the workspace they name and
-    /// the commit.
-    recorded:   BTreeMap<CheckpointKey, (Option<String>, String)>,
-}
-
-impl Planner<'_> {
+impl Planner {
     /// The snapshot each live execution's workspace must sit on. A live
     /// execution is one whose log records no exit: `inspect_run` reports
     /// it as incomplete. A workspace several live executions share is
     /// brought to the newest of their snapshots.
     async fn targets(&self, executions: &[ExecutionInspection]) -> Result<Plan, RecoveryError> {
-        let mut candidates: BTreeMap<String, Vec<Candidate>> = BTreeMap::new();
+        let mut candidates: BTreeMap<String, Vec<RestoreTarget>> = BTreeMap::new();
         for execution in executions
             .iter()
             .filter(|execution| execution.status == "incomplete")
@@ -306,134 +224,26 @@ impl Planner<'_> {
             if owned.is_empty() {
                 continue;
             }
-            let mut found = false;
             for workspace in owned {
-                if let Some(sha) = self.snapshot_of(&workspace, key).await? {
-                    found = true;
-                    candidates
-                        .entry(workspace)
-                        .or_default()
-                        .push(Candidate { key, sha });
+                if let Some((recorded_workspace, sha)) = self.recorded.get(&key) {
+                    if recorded_workspace
+                        .as_deref()
+                        .is_none_or(|id| id == workspace)
+                    {
+                        candidates
+                            .entry(workspace)
+                            .or_default()
+                            .push(RestoreTarget {
+                                key,
+                                sha: sha.clone(),
+                            });
+                    }
                 }
             }
-            if !found {
-                return Ok(Plan::Failed {
-                    reason: format!(
-                        "no checkpoint snapshot exists for the last durable finish of {key}; the \
-                         run cannot resume on stale files"
-                    ),
-                });
-            }
         }
 
-        let mut targets = BTreeMap::new();
-        for (workspace, candidates) in candidates {
-            let target = self.newest(&workspace, &candidates).await?;
-            targets.insert(workspace, target);
-        }
-        Ok(Plan::Resume { targets })
-    }
-
-    /// The snapshot of `key` in `workspace`: the commit its record names,
-    /// when the record names this workspace or none; else the commit found
-    /// by its key in the workspace's snapshot repository or history, which
-    /// is then recorded again for the record the crash lost. `None` when no
-    /// snapshot exists.
-    async fn snapshot_of(
-        &self,
-        workspace: &str,
-        key: CheckpointKey,
-    ) -> Result<Option<String>, RecoveryError> {
-        if let Some((recorded_workspace, sha)) = self.recorded.get(&key) {
-            if recorded_workspace
-                .as_deref()
-                .is_none_or(|recorded| recorded == workspace)
-            {
-                return Ok(Some(sha.clone()));
-            }
-        }
-        let found = self
-            .workspaces
-            .find(workspace, key)
-            .await
-            .map_err(|source| RecoveryError::Workspace {
-                workspace: workspace.to_string(),
-                source,
-            })?;
-        if let Some(sha) = &found {
-            self.reconcile_record(key, workspace, sha).await?;
-        }
-        Ok(found)
-    }
-
-    /// Write the record a crash lost, from the commit found by its key.
-    async fn reconcile_record(
-        &self,
-        key: CheckpointKey,
-        workspace: &str,
-        sha: &str,
-    ) -> Result<(), RecoveryError> {
-        info!(
-            run_id = %self.run_id,
-            execution = key.execution,
-            firing = key.firing,
-            attempt = key.attempt,
-            sha,
-            "checkpoint record reconciled from the run branch"
-        );
-        let record = PlatformRecord::Checkpoint(CheckpointRecord {
-            execution:      key.execution,
-            firing:         key.firing,
-            attempt:        Some(key.attempt),
-            workspace:      Some(workspace.to_string()),
-            git_commit_sha: Some(sha.to_string()),
-            diff_summary:   None,
-            patch_blob:     None,
-            operation:      Some(key.operation()),
-        });
-        self.records
-            .append(
-                self.run_id,
-                &record,
-                Some(StagePosition {
-                    execution: key.execution,
-                    firing:    key.firing,
-                }),
-            )
-            .await
-            .map_err(RecoveryError::Records)?;
-        Ok(())
-    }
-
-    /// Of the snapshots live executions name on one workspace, the one
-    /// every other descends from, else the last named. Two executions that
-    /// name the same commit share it under the first one's key.
-    async fn newest(
-        &self,
-        workspace: &str,
-        candidates: &[Candidate],
-    ) -> Result<RestoreTarget, RecoveryError> {
-        let mut chosen = &candidates[0];
-        for candidate in &candidates[1..] {
-            if self
-                .workspaces
-                .is_ancestor(workspace, &chosen.sha, &candidate.sha)
-                .await
-                .map_err(|source| RecoveryError::Workspace {
-                    workspace: workspace.to_string(),
-                    source,
-                })?
-            {
-                chosen = candidate;
-            }
-        }
-        let chosen = candidates
-            .iter()
-            .find(|candidate| candidate.sha == chosen.sha)
-            .unwrap_or(chosen);
-        Ok(RestoreTarget {
-            key: chosen.key,
-            sha: chosen.sha.clone(),
+        Ok(Plan::Resume {
+            targets: candidates,
         })
     }
 }
@@ -500,11 +310,8 @@ async fn recorded_checkpoints(
     Ok(recorded)
 }
 
-/// Verify, reset or restore the workspace at `site` onto its target: a
-/// workspace that still holds the commit is verified or reset in place; a
-/// gone one, a fresh directory with no history (a fork's first
-/// acquisition), or a sandbox whose repository lost the commit, is restored
-/// from the snapshot repository (a bundle of the snapshot, into a sandbox).
+/// Verify or reset an existing workspace. A missing commit is an error;
+/// this operation never reconstructs a lost workspace.
 pub async fn bring_to(
     workspaces: &RunWorkspaces,
     site: &Site,
@@ -530,9 +337,7 @@ pub async fn bring_to(
         workspaces.reset(site, &target.sha).await.map_err(failed)?;
         return Ok(WorkspaceAction::Reset);
     }
-    workspaces
-        .restore(site, workspace, target.key, &target.sha)
-        .await
-        .map_err(failed)?;
-    Ok(WorkspaceAction::Restored)
+    Err(failed(CheckpointError::MissingCommit {
+        sha: target.sha.clone(),
+    }))
 }

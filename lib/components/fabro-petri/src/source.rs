@@ -6,10 +6,7 @@
 //! scope's environment is acquired for a fresh run, the hooks fetch the
 //! revision into the workspace from inside the scope, so the files belong to
 //! the user every later command runs as and nothing is copied in from this
-//! host (see [`crate::hooks`]). The same fetch seeds the workspace's snapshot
-//! repository with the starting commit, so every checkpoint leaves the
-//! sandbox as a bundle of the run's own commits alone, and a shallow clone's
-//! missing history is never needed. Petri's own `start` checkout is not used
+//! host (see [`crate::hooks`]). Petri's own `start` checkout is not used
 //! for a Git target: the run binds no repository for it.
 //!
 //! The credential reaches one `git` command at a time through its

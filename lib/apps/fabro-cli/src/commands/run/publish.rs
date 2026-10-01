@@ -6,17 +6,16 @@
 //! server named (`FABRO_CONFIG`), the App key the server hands the worker,
 //! or `GITHUB_TOKEN` from the worker's vault snapshot. From them it mints a
 //! read-only token for the checkout inside the sandbox when the run starts,
-//! and a push token when the run ends, so a long run never pushes with an
-//! expired token.
+//! and a fresh push token for each checkpoint, so a long run never pushes with
+//! an expired token.
 //!
 //! Publication runs in Fabro's `run_finished` hook, after the last stage and
 //! before the run's terminal record, as the legacy publish step did: the
-//! final checkpoint is pushed from the run's snapshot repository to the run
+//! final checkpoint is pushed from inside the sandbox to the run
 //! branch on GitHub, and, when the run changed files and its settings ask
 //! for one, a pull request is opened and recorded. A failure fails the run
 //! with `publish_failed`.
 
-use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -27,6 +26,7 @@ use fabro_config::ServerSettingsBuilder;
 use fabro_github::{GitCloneCredentials, GitHubContext, GitHubCredentials};
 use fabro_llm::credentials::{CredentialProvider, readiness};
 use fabro_llm::lithos_catalog::Catalog;
+use fabro_petri::checkpoint::Site;
 use fabro_petri::hooks::{Publication, RunPublisher};
 use fabro_petri::platform_records::PlatformRecords;
 use fabro_petri::source::SourceCredential;
@@ -37,7 +37,6 @@ use fabro_types::settings::server::GithubIntegrationStrategy;
 use fabro_types::{GitHubRepositorySlug, RunId, RunSpec, RunTarget};
 use fabro_vault::Vault;
 use fabro_workflow::pull_request::{self, AutoMergeOptions, OpenPullRequestRequest};
-use tokio::process::Command;
 use tokio::time;
 use tracing::warn;
 
@@ -146,6 +145,7 @@ impl GitHubPublisher {
     ) -> Option<Self> {
         let settings = &spec.settings.run;
         if settings.execution.mode == RunMode::DryRun
+            || !settings.clone.enabled
             || !settings.run_branch.enabled
             || !settings.run_branch.push
         {
@@ -238,7 +238,7 @@ impl GitHubPublisher {
 
 #[async_trait::async_trait]
 impl RunPublisher for GitHubPublisher {
-    async fn publish(&self, publication: &Publication) -> Result<(), String> {
+    async fn push(&self, site: &Site, branch: &str, sha: &str) -> Result<(), String> {
         let credentials = self.credentials.as_ref().ok_or_else(|| {
             "pushing the run branch requires the server's GitHub credentials".to_string()
         })?;
@@ -251,47 +251,63 @@ impl RunPublisher for GitHubPublisher {
         )
         .await
         .map_err(|err| format!("no push credential for {}: {err:#}", self.repository))?;
-        push(&self.repository, &push_credentials, publication).await?;
+        push(&self.repository, &push_credentials, site, branch, sha).await
+    }
+
+    async fn publish(&self, publication: &Publication) -> Result<(), String> {
+        self.push(
+            &publication.site,
+            &publication.run_branch,
+            &publication.head_sha,
+        )
+        .await?;
         let Some(settings) = &self.pull_request else {
             return Ok(());
         };
         if publication.patch.trim().is_empty() {
             return Ok(());
         }
+        let credentials = self
+            .credentials
+            .as_ref()
+            .ok_or_else(|| "GitHub credentials are unavailable".to_string())?;
+        let base_url = fabro_github::github_api_base_url();
+        let context = GitHubContext::new(credentials, &base_url);
         Box::pin(self.open_pull_request(context, settings, publication)).await
     }
 }
 
-/// Push the run's final commit from its snapshot repository to the run
+/// Push a checkpoint from inside its workspace to the run
 /// branch on GitHub, retrying a failure that may be a token still
 /// replicating. The credential reaches `git` as an HTTP header for the
 /// repository alone and never appears in the error.
 async fn push(
     repository: &GitHubRepositorySlug,
     credentials: &GitCloneCredentials,
-    publication: &Publication,
+    site: &Site,
+    branch: &str,
+    sha: &str,
 ) -> Result<(), String> {
     let mut url = repository.https_url();
     url.push_str(".git");
     let env = encode(credentials)
         .map(|credential| credential.header_env(&url))
         .unwrap_or_default();
-    let refspec = format!(
-        "{}:refs/heads/{}",
-        publication.head_sha, publication.run_branch
-    );
+    let refspec = format!("{sha}:refs/heads/{branch}");
     let mut last = String::new();
     for attempt in 1..=PUSH_ATTEMPTS {
-        let output = git_push(&publication.snapshot_repository, &url, &refspec, &env).await?;
-        if output.status.success() {
-            return Ok(());
+        match site.push(&url, &refspec, &env, PUSH_TIMEOUT).await {
+            Ok(()) => return Ok(()),
+            Err(error) => {
+                last = error.to_string().replace(credentials.password(), "***");
+                if let Some(encoded) = encode(credentials) {
+                    last = last.replace(encoded.encoded(), "***");
+                }
+            }
         }
-        last = String::from_utf8_lossy(&output.stderr)
-            .trim()
-            .replace(credentials.password(), "***");
         warn!(
             attempt,
-            branch = publication.run_branch,
+            branch,
             error = last,
             "pushing the run branch failed"
         );
@@ -300,32 +316,8 @@ async fn push(
         }
     }
     Err(format!(
-        "the run branch {} could not be pushed to {repository}: {last}",
-        publication.run_branch
+        "the run branch {branch} could not be pushed to {repository}: {last}"
     ))
-}
-
-/// `git push` of `refspec` to `url` from `directory` with `env` added,
-/// non-interactive, bounded.
-async fn git_push(
-    directory: &Path,
-    url: &str,
-    refspec: &str,
-    env: &[(String, String)],
-) -> Result<std::process::Output, String> {
-    let mut command = Command::new("git");
-    command
-        .args(["push", "--quiet", url, refspec])
-        .current_dir(directory)
-        .envs(env.iter().map(|(key, value)| (key, value)))
-        .env("GIT_TERMINAL_PROMPT", "0")
-        .stdin(std::process::Stdio::null())
-        .kill_on_drop(true);
-    match time::timeout(PUSH_TIMEOUT, command.output()).await {
-        Ok(Ok(output)) => Ok(output),
-        Ok(Err(err)) => Err(format!("git could not run: {err}")),
-        Err(_) => Err(format!("git push timed out after {PUSH_TIMEOUT:?}")),
-    }
 }
 
 #[cfg(test)]

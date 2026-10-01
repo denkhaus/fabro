@@ -585,12 +585,10 @@ pub(crate) async fn reconcile_on_startup(
     let mode = if held {
         let request = RecoveryRequest::for_run(
             run_id,
-            run_dir.join("petri"),
             Arc::new(SqliteRunStore::new(state.db_pool.clone())),
             Arc::new(SqlitePlatformRecords::new(Arc::clone(
                 &state.stores.run_summaries,
             ))),
-            &run_state.spec.settings.run,
         );
         match recovery::recover(request)
             .await
@@ -601,7 +599,7 @@ pub(crate) async fn reconcile_on_startup(
                 info!(
                     run_id = %run_id,
                     workspaces = workspaces.len(),
-                    "Petri run's workspaces match its durable state"
+                    "Petri recovery plan ready; the worker will verify retained workspaces"
                 );
                 RunExecutionMode::Resume
             }

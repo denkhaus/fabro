@@ -3,7 +3,7 @@ title: "Checkpoints"
 description: "How Fabro uses Git to checkpoint and resume workflow runs"
 ---
 
-Fabro checkpoints every workflow run using Git plus the durable run store. After each node completes, Fabro commits file changes to the run branch and records execution state in the durable event stream so that interrupted runs can be resumed exactly where they left off. This happens automatically — no configuration required beyond running inside a Git repository.
+Fabro records every workflow run in the durable run store. For GitHub targets with run branches enabled, it also commits file changes inside the run workspace after each node completes. Empty and local-folder targets keep execution records without automatic Git checkpoint commits, even when the supplied folder contains a Git repository.
 
 ## Code and execution history
 
@@ -71,22 +71,15 @@ The checkpoint projection captures the execution state needed to resume a run:
 
 The durable run store also keeps the current checkpoint so `resume`, `inspect`, and API reads do not need to rely on scratch files.
 
-## Worktrees
+## Run workspaces
 
-Fabro uses Git worktrees to isolate workflow runs from your working directory. When a local run starts in a Git repository:
+A GitHub target is checked out inside the run workspace. For Docker and Daytona, checkout, checkpoint commits, diffs, and pushes execute inside the sandbox. The host provider performs those operations in its local run workspace. Fabro keeps no second checkout, bare snapshot repository, or Git checkpoint bundle on the server for a remote sandbox.
 
-1. Fabro records the current HEAD as the **base SHA**
-2. Creates a new branch `fabro/run/{run_id}` at that SHA
-3. Adds a worktree at `{run_dir}/worktree` on that branch
-4. Changes into the worktree directory for the duration of the run
+When pushing is configured, Fabro pushes `fabro/run/{run_id}` after each checkpoint and again before successful completion. Execution records and artifact payloads remain in the run store and CAS.
 
-This means your original working directory stays untouched while the agent makes changes in the worktree. When the run completes, Fabro removes the worktree and restores your original directory.
+Ordinary resume requires the original workspace to survive. Git-backed workspaces reset to their recorded checkpoint; non-Git workspaces continue with their surviving files. Losing the workspace does not trigger automatic reconstruction or sandbox replacement.
 
-<Note>
-If the working directory has uncommitted changes, the worktree starts from committed `HEAD` and those uncommitted changes are not included. Fabro logs a warning so you can commit, stash, or run explicitly in place when that is what you want.
-</Note>
-
-For Docker and Daytona sandboxes, a GitHub target is checked out inside the sandbox and checkpoint Git operations run there; each checkpoint commit reaches the server as a Git bundle. Before a successful run finishes, Fabro pushes the run branch to origin when pushing is configured.
+A GitHub-backed fork or rewind fetches the source run's published branch inside a fresh workspace and checks out the selected checkpoint. This requires run-branch pushes to be enabled and the commit to be available on origin. Select a checkpoint with remaining work: the final terminal checkpoint is refused because no stage remains to acquire a workspace. A retry starts the workflow from the beginning using its saved specification, without requiring the previous workspace or any Git checkpoint.
 
 ## Resuming a run
 
@@ -123,7 +116,7 @@ After a node completes, Fabro:
 3. Collects the code diff.
 4. Emits a checkpoint event with execution state and the code commit SHA. The run store persists this event and updates the projection.
 
-A checkpoint commit failure stops execution. A diff failure emits a warning notice. A failed final push or pull request marks a successful run as failed with `publish_failed`.
+A checkpoint commit failure stops execution. A stage diff failure emits a warning notice. An intermediate push failure warns and is retried at later checkpoints and final publication. Failure to prepare required final publication, push the final commit, or open the pull request marks an otherwise successful run as failed with `publish_failed`.
 
 ## Inspecting run history
 
@@ -151,12 +144,12 @@ fabro dump 01JKXYZ --output ./run-dump
 
 Git checkpointing activates automatically when:
 
-- The run uses a Git repository and checkpointing has not been explicitly disabled
-- Local runs can create a Git worktree under the run scratch directory
-- Docker or Daytona can clone the configured GitHub origin into the sandbox
+- The run targets a GitHub repository with cloning enabled
+- Run branches are enabled
+- The run is not a dry run
 
 It is skipped when:
 
-- The working directory is not a Git repository
+- The target is an empty workspace or a local folder
 - The run uses `--dry-run`
-- The run is explicitly started in place with checkpointing disabled
+- Cloning or run branches are disabled

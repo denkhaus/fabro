@@ -286,38 +286,15 @@ impl RunningServer {
         }
     }
 
-    /// The one host workspace of the run, and the commits on its run
-    /// branch, oldest first, as `(subject, key)`.
-    fn workspace_commits(&self, run_id: &str) -> (PathBuf, Vec<(String, Option<CheckpointKey>)>) {
+    /// The one host workspace, without assuming the run uses Git.
+    fn workspace_path(&self, run_id: &str) -> PathBuf {
         let scopes = self.petri_run_dir(run_id).join("scopes");
-        let mut workspaces: Vec<PathBuf> = std::fs::read_dir(&scopes)
-            .expect("the scopes directory lists")
-            .map(|entry| entry.expect("an entry reads").path().join("work"))
+        let workspaces: Vec<_> = std::fs::read_dir(scopes)
+            .expect("the scopes directory exists")
+            .map(|entry| entry.expect("the scope entry reads").path().join("work"))
             .collect();
-        assert_eq!(workspaces.len(), 1, "one workspace: {workspaces:?}");
-        let workspace = workspaces.remove(0);
-        let output = Command::new("git")
-            .args(["log", "--reverse", "--format=%s%x00%B%x1e"])
-            .current_dir(&workspace)
-            .output()
-            .expect("git runs");
-        assert!(
-            output.status.success(),
-            "git log failed: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-        let log = String::from_utf8_lossy(&output.stdout).into_owned();
-        let commits = log
-            .split('\u{1e}')
-            .filter(|entry| !entry.trim().is_empty())
-            .map(|entry| {
-                let mut parts = entry.trim_start().splitn(2, '\0');
-                let subject = parts.next().unwrap_or_default().to_string();
-                let body = parts.next().unwrap_or_default();
-                (subject, CheckpointKey::from_message(body))
-            })
-            .collect();
-        (workspace, commits)
+        assert_eq!(workspaces.len(), 1);
+        workspaces[0].clone()
     }
 
     /// The run's checkpoint records, in seq order, as `(node position, sha)`.
@@ -1161,19 +1138,16 @@ async fn a_finished_petri_run_reads_back_through_the_cli() {
     [CLOCK] ▶ start
     [CLOCK]    │ checkout: [TEMP_DIR]/petri-workspace is not a Git repository; the workspace starts empty
     [CLOCK] ✓ start  [DURATION]
-    [CLOCK]   Branch: fabro/run/[ULID] from [SHA]
-    [CLOCK]   Git identity: Fabro <noreply@fabro.sh>  default
-    [CLOCK]    ⎘ Checkpoint [SHA]
+    [CLOCK]    ⎘ Checkpoint (no commit)
     [CLOCK] ▶ say
     [CLOCK]    start → say continue
     [CLOCK]    │ hello from petri
     [CLOCK] ✓ say  [DURATION]
-    [CLOCK]    ⎘ Checkpoint [SHA]
+    [CLOCK]    ⎘ Checkpoint (no commit)
     [CLOCK] ▶ exit
     [CLOCK]    say → exit continue
     [CLOCK] ✓ exit  [DURATION]
-    [CLOCK]    ⎘ Checkpoint [SHA]
-    [CLOCK]   Diff: +0 -0 in 0 file(s)
+    [CLOCK]    ⎘ Checkpoint (no commit)
     [CLOCK] ✓ SUCCEEDED [DURATION]
     [CLOCK]   · succeeded
     ----- stderr -----
@@ -1334,7 +1308,7 @@ fn three_stage_bundle(context: &fabro_test::TestContext, gate: &Path) -> PathBuf
             "digraph Stages {{\n  graph [goal=\"Three stages\", default_max_retries=0]\n  start \
              [shape=Mdiamond]\n  exit [shape=Msquare]\n  one [shape=parallelogram, script=\"echo \
              one > one.txt\"]\n  two [shape=parallelogram, script=\"echo run >> two.log; {}; \
-             echo two > two.txt\"]\n  three [shape=parallelogram, script=\"test \\\"$(cat \
+             echo two > two.txt\"]\n  three [shape=parallelogram, goal_gate=true, script=\"test \\\"$(cat \
              one.txt)\\\" = one && test \\\"$(cat two.txt)\\\" = two && cp two.log \
              three.log\"]\n  start -> one -> two -> three -> exit\n}}\n",
             wait_for(gate)
@@ -1389,27 +1363,10 @@ pub(super) async fn wait_for_success(server: &RunningServer, run_id: &str) {
     );
 }
 
-/// The subjects of the commits on the run branch.
-fn subjects(commits: &[(String, Option<CheckpointKey>)]) -> Vec<&str> {
-    commits
-        .iter()
-        .map(|(subject, _)| subject.as_str())
-        .collect()
-}
-
-/// The commit subjects one run of the three-stage bundle produces.
-fn three_stage_subjects(run_id: &str) -> Vec<String> {
-    ["start", "one", "two", "three", "exit"]
-        .iter()
-        .map(|node| format!("fabro({run_id}): {node} (success)"))
-        .collect()
-}
-
-/// A worker killed after a stage's finish is durable: on the restart the
-/// stage's commit is not repeated, the stage in flight reruns on the
-/// snapshot (its partial output gone), and the next stage sees both.
+/// Durable execution finishes survive restart. The in-flight stage reruns
+/// in its surviving workspace, including its partial non-Git output.
 #[tokio::test(flavor = "multi_thread")]
-async fn a_crash_after_a_durable_finish_keeps_its_one_commit() {
+async fn a_non_git_crash_resumes_execution_in_the_surviving_workspace() {
     let context = test_context!();
     let mut server = RunningServer::start().await;
     let gate = context.temp_dir.join("two.gate");
@@ -1428,49 +1385,45 @@ async fn a_crash_after_a_durable_finish_keeps_its_one_commit() {
     std::fs::write(&gate, "go").expect("the gate opens");
     wait_for_success(&server, &run_id).await;
 
-    let (path, commits) = server.workspace_commits(&run_id);
-    assert_eq!(subjects(&commits), three_stage_subjects(&run_id));
+    let path = server.workspace_path(&run_id);
+    assert!(!path.join(".git").exists());
     assert_eq!(
         std::fs::read_to_string(path.join("three.log")).expect("three copied the log"),
-        "run\n",
-        "the crashed attempt's partial output was reset before the rerun; server log:\n{}",
+        "run\nrun\n",
+        "non-Git recovery preserves the interrupted attempt's files; server log:\n{}",
         server.stderr_text()
     );
-    let checkpoints = server.checkpoints(&run_id).await;
-    assert_eq!(checkpoints.len(), 5, "{checkpoints:?}");
-    let keys: Vec<Option<CheckpointKey>> = checkpoints.iter().map(|(key, _)| Some(*key)).collect();
-    let committed: Vec<Option<CheckpointKey>> = commits.iter().map(|(_, key)| *key).collect();
-    assert_eq!(keys, committed);
+    assert!(server.checkpoints(&run_id).await.is_empty());
+    assert!(!server.petri_run_dir(&run_id).join("snapshots").exists());
     server.shutdown();
 }
 
-/// A worker killed in `prepare_result` before the commit lands: the finish
-/// is not durable, the stage reruns once, and one commit exists for it.
+/// A worker killed before its durable finish reruns that stage once.
 #[tokio::test(flavor = "multi_thread")]
-async fn a_crash_before_the_commit_lands_reruns_the_stage_once() {
+async fn a_crash_before_a_durable_finish_reruns_the_stage_once() {
     let context = test_context!();
     let mut server = RunningServer::start().await;
     let gate = context.temp_dir.join("two.gate");
     std::fs::write(&gate, "open").expect("the script gate is open from the start");
     let workspace = three_stage_bundle(&context, &gate);
-    server.hold("commit", "two");
+    server.hold("prepare", "two");
     let run_id = run_detached(&context, &server, &workspace);
 
     wait_for_status(&server, &run_id, &["running"]).await;
     let worker = wait_for_worker(&run_id);
-    server.wait_until_held(&run_id, "commit", "two");
+    server.wait_until_held(&run_id, "prepare", "two");
     crash(&mut server, worker, None);
 
-    server.release("commit", "two");
+    server.release("prepare", "two");
     server.launch().await;
     wait_for_success(&server, &run_id).await;
 
-    let (path, commits) = server.workspace_commits(&run_id);
-    assert_eq!(subjects(&commits), three_stage_subjects(&run_id));
+    let path = server.workspace_path(&run_id);
+    assert!(!path.join(".git").exists());
     assert_eq!(
         std::fs::read_to_string(path.join("three.log")).expect("three copied the log"),
-        "run\n",
-        "the stage reran once, on the snapshot before it"
+        "run\nrun\n",
+        "the stage reran once in the existing workspace"
     );
     let store = server.petri_store().await;
     let outcome = engine::outcome_of(&store, &run_id)
@@ -1481,11 +1434,10 @@ async fn a_crash_before_the_commit_lands_reruns_the_stage_once() {
     server.shutdown();
 }
 
-/// A worker killed after the commit and its durable finish but before the
-/// platform record: the restart reconciles the record from the snapshot
-/// repository, the stage does not rerun, and one commit exists for it.
+/// A durable finish before its platform record does not rerun the stage;
+/// the resumed transition writes the missing metadata.
 #[tokio::test(flavor = "multi_thread")]
-async fn a_crash_before_the_record_reconciles_it_from_the_run_branch() {
+async fn a_crash_before_the_platform_record_replays_the_record() {
     let context = test_context!();
     let mut server = RunningServer::start().await;
     let gate = context.temp_dir.join("two.gate");
@@ -1498,35 +1450,30 @@ async fn a_crash_before_the_record_reconciles_it_from_the_run_branch() {
     let worker = wait_for_worker(&run_id);
     server.wait_until_held(&run_id, "record", "two");
     let before = server.checkpoints(&run_id).await;
-    assert_eq!(before.len(), 2, "start and one are recorded: {before:?}");
+    assert!(
+        before.is_empty(),
+        "non-Git checkpoints do not carry commit SHAs"
+    );
     crash(&mut server, worker, None);
 
     server.release("record", "two");
     server.launch().await;
     wait_for_success(&server, &run_id).await;
 
-    let (path, commits) = server.workspace_commits(&run_id);
-    assert_eq!(subjects(&commits), three_stage_subjects(&run_id));
+    let path = server.workspace_path(&run_id);
+    assert!(!path.join(".git").exists());
     assert_eq!(
         std::fs::read_to_string(path.join("three.log")).expect("three copied the log"),
         "run\n",
         "the stage with a durable finish did not rerun"
     );
-    let checkpoints = server.checkpoints(&run_id).await;
-    assert_eq!(checkpoints.len(), 5, "{checkpoints:?}");
-    let keys: Vec<Option<CheckpointKey>> = checkpoints.iter().map(|(key, _)| Some(*key)).collect();
-    let committed: Vec<Option<CheckpointKey>> = commits.iter().map(|(_, key)| *key).collect();
-    assert_eq!(
-        keys, committed,
-        "the reconciled record names the one commit"
-    );
+    assert!(server.checkpoints(&run_id).await.is_empty());
     server.shutdown();
 }
 
-/// A workspace deleted while the run is down is restored from the snapshot
-/// repository, and the next stage sees the checkpoint's files.
+/// Execution records cannot reconstruct a deleted non-Git workspace.
 #[tokio::test(flavor = "multi_thread")]
-async fn a_deleted_workspace_is_restored_from_its_snapshot() {
+async fn a_non_git_run_cannot_recover_deleted_files() {
     let context = test_context!();
     let mut server = RunningServer::start().await;
     let gate = context.temp_dir.join("two.gate");
@@ -1537,30 +1484,27 @@ async fn a_deleted_workspace_is_restored_from_its_snapshot() {
     let worker = wait_for_worker(&run_id);
     wait_until_gate_is_polled(&gate);
     crash(&mut server, worker, Some(&gate));
-    let (path, commits) = server.workspace_commits(&run_id);
-    assert_eq!(subjects(&commits), three_stage_subjects(&run_id)[..2]);
+    let path = server.workspace_path(&run_id);
+    assert!(path.join("one.txt").exists());
     std::fs::remove_dir_all(&path).expect("the workspace is deleted");
 
     server.launch().await;
     wait_until_gate_is_polled(&gate);
     std::fs::write(&gate, "go").expect("the gate opens");
-    wait_for_success(&server, &run_id).await;
-
-    let (restored, commits) = server.workspace_commits(&run_id);
-    assert_eq!(restored, path);
-    assert_eq!(subjects(&commits), three_stage_subjects(&run_id));
     assert_eq!(
-        std::fs::read_to_string(restored.join("one.txt")).expect("one.txt was restored"),
-        "one\n"
+        wait_for_status(&server, &run_id, &["failed", "succeeded"]).await,
+        "failed"
+    );
+    assert!(
+        !path.join("one.txt").exists(),
+        "deleted files cannot be reconstructed"
     );
     server.shutdown();
 }
 
-/// A stage that fails on its own terms routes to its failure edge on the
-/// committed files, and after a crash once the failure is durable the
-/// route reruns on the same files.
+/// A failure route resumes with the files left in the existing workspace.
 #[tokio::test(flavor = "multi_thread")]
-async fn a_failure_route_sees_the_same_committed_files_after_a_crash() {
+async fn a_failure_route_uses_the_surviving_files_after_a_crash() {
     let context = test_context!();
     let mut server = RunningServer::start().await;
     let gate = context.temp_dir.join("fix.gate");
@@ -1589,94 +1533,52 @@ async fn a_failure_route_sees_the_same_committed_files_after_a_crash() {
     std::fs::write(&gate, "go").expect("the gate opens");
     wait_for_success(&server, &run_id).await;
 
-    let (path, commits) = server.workspace_commits(&run_id);
-    assert_eq!(subjects(&commits), vec![
-        format!("fabro({run_id}): start (success)"),
-        format!("fabro({run_id}): work (failure)"),
-        format!("fabro({run_id}): fix (success)"),
-        format!("fabro({run_id}): exit (success)"),
-    ]);
+    let path = server.workspace_path(&run_id);
     assert_eq!(
         std::fs::read_to_string(path.join("out.txt")).expect("out.txt"),
         "partial\nfixed\n"
     );
     assert_eq!(
         std::fs::read_to_string(path.join("fix.log")).expect("fix.log"),
-        "run\n",
-        "the route saw the failed stage's files, not its own interrupted attempt's"
+        "run\nrun\n",
+        "the route continued with the existing files, including partial output"
     );
     server.shutdown();
 }
 
-/// A checkpoint commit that fails ends the run: `checkpoint_failed` is
-/// recorded, no route runs, the run is reported failed, and a restart
-/// leaves it failed without launching a worker.
+/// A failed non-Git execution stays terminal across a server restart.
 #[tokio::test(flavor = "multi_thread")]
-async fn a_failed_checkpoint_fails_the_run_and_a_restart_leaves_it_failed() {
+async fn a_failed_non_git_run_stays_failed_after_a_restart() {
     let context = test_context!();
     let mut server = RunningServer::start().await;
     let workspace = write_petri_workflow(
         &context,
-        "digraph Wreck {\n  graph [goal=\"Wreck the repository\", default_max_retries=0]\n  start \
-         [shape=Mdiamond]\n  exit [shape=Msquare]\n  wreck [shape=parallelogram, script=\"rm -rf \
-         .git && echo garbage > .git\"]\n  next [shape=parallelogram, script=\"echo next > \
-         next.txt\"]\n  fix [shape=parallelogram, script=\"echo fix > fix.txt\"]\n  start -> wreck \
-         -> next -> exit\n  wreck -> fix [condition=\"outcome=failed\"]\n  fix -> exit\n}\n",
+        r#"digraph Failure {
+        graph [goal="Fail", default_max_retries=0]
+        start [shape=Mdiamond]
+        fail [shape=parallelogram, script="exit 1", goal_gate=true]
+        exit [shape=Msquare]
+        start -> fail -> exit
+    }"#,
     );
     let run_id = run_detached(&context, &server, &workspace);
-    let status = wait_for_status(&server, &run_id, &["succeeded", "failed"]).await;
-    let run = run_json(&server, &format!("runs/{run_id}")).await;
-    assert_eq!(status, "failed", "run: {run}");
-    // The run's failure travels on the stream as the platform record of
-    // its terminal lifecycle transition, with the failure's message as the
-    // reason.
-    let failures: Vec<String> = settled_stream(&server, &run_id)
-        .await
-        .iter()
-        .filter_map(|line| {
-            let record = &line["item"]["record"];
-            (line["kind"] == "platform"
-                && record["kind"] == "run.lifecycle"
-                && record["transition"] == "failed")
-                .then(|| record["reason"].as_str().unwrap_or_default().to_string())
-        })
-        .collect();
-    assert_eq!(failures.len(), 1, "{failures:?}");
-    assert!(
-        failures[0].contains("checkpoint commit of `wreck` failed"),
-        "{failures:?}"
-    );
-    let scopes = server.petri_run_dir(&run_id).join("scopes");
-    let work = std::fs::read_dir(&scopes)
-        .expect("the scopes directory lists")
-        .map(|entry| entry.expect("an entry reads").path().join("work"))
-        .next()
-        .expect("one workspace");
-    assert!(!work.join("next.txt").exists(), "no route ran");
-    assert!(!work.join("fix.txt").exists(), "no route ran");
-
-    let store = server.petri_store().await;
-    let outcome = engine::outcome_of(&store, &run_id)
-        .await
-        .expect("the run's Petri record inspects");
-    assert_ne!(outcome.status, RunStatus::Success, "{outcome:?}");
-    let checkpoints = server.checkpoints(&run_id).await;
     assert_eq!(
-        checkpoints.len(),
-        1,
-        "only start was recorded: {checkpoints:?}"
+        wait_for_status(&server, &run_id, &["succeeded", "failed"]).await,
+        "failed"
     );
-
-    // The restart finds the run terminal and launches nothing for it.
+    assert!(server.checkpoints(&run_id).await.is_empty());
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while worker_pid(&run_id).is_some() {
+        assert!(
+            Instant::now() < deadline,
+            "the terminal worker did not exit"
+        );
+        tokio::time::sleep(POLL).await;
+    }
     server.kill();
     server.launch().await;
     assert_eq!(run_status(&server, &run_id).await, "failed");
-    std::thread::sleep(Duration::from_secs(1));
-    assert_eq!(
-        worker_pid(&run_id),
-        None,
-        "no worker was launched for the failed run"
-    );
+    assert_eq!(worker_pid(&run_id), None);
     server.shutdown();
 }
 
@@ -1795,5 +1697,45 @@ async fn built_in_host_runs_and_prunes_without_plugins() {
         "prune failed: {detail}"
     );
     assert!(!scope.exists(), "prune removed the managed Host workspace");
+    server.shutdown();
+}
+
+/// Retry works without a Git checkpoint and starts the workflow again.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_retry_without_git_checkpoints_starts_the_workflow_again() {
+    let context = test_context!();
+    let server = RunningServer::start().await;
+    let counter = context.temp_dir.join("retry-runs.txt");
+    let workspace = write_petri_workflow(
+        &context,
+        &format!(
+            r#"digraph Retry {{
+        graph [goal="Retry from the start", default_max_retries=0]
+        start [shape=Mdiamond]
+        write [shape=parallelogram, script="echo run >> '{}'", goal_gate=true]
+        exit [shape=Msquare]
+        start -> write -> exit
+    }}"#,
+            counter.display()
+        ),
+    );
+    let original = run_detached(&context, &server, &workspace);
+    wait_for_success(&server, &original).await;
+    assert!(server.checkpoints(&original).await.is_empty());
+    let response = fabro_test::test_http_client()
+        .post(format!(
+            "{}/api/v1/runs/{original}/retry",
+            server.api_base_url
+        ))
+        .bearer_auth(TEST_DEV_TOKEN)
+        .send()
+        .await
+        .unwrap();
+    let retried = expect_reqwest_json(response, fabro_http::StatusCode::CREATED, "retry").await;
+    let run_id = retried["id"].as_str().expect("the retry run id");
+    assert_ne!(run_id, original);
+    wait_for_success(&server, run_id).await;
+    assert_eq!(std::fs::read_to_string(counter).unwrap(), "run\nrun\n");
+    assert!(server.checkpoints(run_id).await.is_empty());
     server.shutdown();
 }

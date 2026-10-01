@@ -2437,7 +2437,10 @@ paths:
         Creates a new run from a checkpoint of a terminal source run and
         starts it, then archives the source run and records
         `run.superseded_by` on it. Returns 207 when the new run was created
-        but the source archive step failed.
+        but the source archive step failed. Requires a GitHub target with
+        run-branch creation and pushes enabled. The checkpoint must leave
+        work to execute: the final terminal checkpoint is refused; select
+        an earlier checkpoint or retry the workflow from the beginning.
       parameters:
         - $ref: "#/components/parameters/RunId"
       requestBody:
@@ -2498,7 +2501,12 @@ paths:
         position and continues from there in a fresh workspace restored to
         the checkpoint's commit. The source run is left untouched. A
         checkpoint inside a parallel branch cannot be forked at; fork at the
-        parallel stage instead.
+        parallel stage instead. Requires a GitHub target with run-branch
+        creation and pushes enabled; the checkpoint commit must be available
+        on the source run's published branch. The final terminal checkpoint
+        is refused because it leaves no work to acquire a workspace. For a
+        completed run, select an earlier checkpoint explicitly or retry the
+        workflow from the beginning.
       parameters:
         - $ref: "#/components/parameters/RunId"
       requestBody:
