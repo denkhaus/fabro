@@ -7,3 +7,4 @@
 {"$schema":"fabro-journal-v1","run_id":"01M3VNC0K06GFJVVVCQ88XWMSW","node":"tester","visit":1,"status":"succeeded","ts":"2026-10-01T12:02:42Z","data":{}}
 {"$schema":"fabro-journal-v1","run_id":"01M3VNC0K06GFJVVVCQ88XWMSW","node":"evidence","visit":1,"status":"succeeded","ts":"2026-10-01T12:02:43Z","data":{}}
 {"$schema":"fabro-journal-v1","run_id":"01M3VNC0K06GFJVVVCQ88XWMSW","node":"reviewer","visit":1,"status":"succeeded","ts":"2026-10-01T12:03:06Z","data":{}}
+{"$schema":"fabro-journal-v1","run_id":"01M3VNC0K06GFJVVVCQ88XWMSW","node":"closeout","visit":1,"status":"succeeded","ts":"2026-10-01T12:03:07Z","data":{}}
