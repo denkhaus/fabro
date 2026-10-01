@@ -218,7 +218,82 @@ if ($dft | str length) > 140 {
     fail "deferred-title unbounded excerpt"
 }
 
-print "closeout-smoke: ok — reviewer-journal and deferred-action sweep logic verified"
+# --- EXEMPTION-arm sweep (fabro-534e) ----------------------------------
+# Marker matching: `exemption:` at the START, case-insensitive,
+# whitespace-tolerant; mid-sentence mentions and plain observations
+# never match.
+if not (is-exemption "exemption: run just image-release and apply the tofu stack (infra is outside the run)") {
+    fail "is-exemption dropped the start marker"
+}
+if not (is-exemption "  Exemption: confirm the deploy with the on-call human") {
+    fail "is-exemption is case/whitespace sensitive"
+}
+if (is-exemption "the brief carried an exemption: mid-sentence mention") {
+    fail "is-exemption matched a mid-sentence marker mention"
+}
+if (is-exemption "ordinary planner observation, no marker") {
+    fail "is-exemption matched a plain observation"
+}
+
+# Marker strip: exemption-text yields the arm text after the marker;
+# non-matching input passes through (defensive path).
+if (exemption-text "exemption: run just image-release") != "run just image-release" {
+    fail $"exemption-text strip wrong: (exemption-text 'exemption: run just image-release')"
+}
+if (exemption-text "plain text") != "plain text" {
+    fail "exemption-text passthrough broken"
+}
+
+# Journal parsing: planner-node observations only; implementer-node
+# marker observations and non-matching planner observations never file;
+# unparsable lines degrade away.
+let ej = (
+    exemptions-from-journal (
+        [
+            '{"node":"implementer","data":{"observations":["exemption: implementer is not the sweep source"]}}'
+            '{"node":"planner","data":{"observations":["claimed the seed, nothing exempted"]}}'
+            '{"node":"planner","data":{"observations":["exemption: deploy the landed fix via image-release plus tofu apply — user/infra action"]}}'
+            '{"node":"reviewer","data":{}}'
+            'not json at all'
+        ] | str join "\n"
+    )
+)
+if ($ej | length) != 1 {
+    fail $"exemptions-from-journal wrong count: ($ej | to json -r)"
+}
+if not ($ej.0 | str contains "tofu apply") {
+    fail "exemptions-from-journal dropped the arm text"
+}
+
+# Null path, fixture journal (tmp file): a real planner record with NO
+# marker observations must yield an empty list — and an empty list
+# means zero seeds create calls in the sweep loop. Also proves the
+# missing-journal path degrades to empty.
+let etmp = (mktemp -t closeout-exemption-null.XXXXXX.jsonl)
+'{"node":"planner","data":{"painpoints":[],"observations":["Clean claim: brief written, nothing exempted."]}}' | save -f $etmp
+if ((journal-exemptions $etmp) | is-not-empty) {
+    fail "exemption null-path fixture journal produced arms (would file seeds)"
+}
+rm -f $etmp
+if ((journal-exemptions "/nonexistent/.fabro/journal/none4.jsonl") | is-not-empty) {
+    fail "exemption missing journal did not degrade to empty"
+}
+
+# Filed-seed title: excerpt + provenance, bounded length.
+let eft = (exemption-title "release the toolchain image and apply the deployment stack so the fix reaches production" "fabro-534e")
+if not ($eft | str starts-with "EXEMPTION arm from fabro-534e:") {
+    fail $"exemption-title missing prefix: ($eft)"
+}
+if ($eft | str length) > 140 {
+    fail "exemption-title unbounded excerpt"
+}
+
+# Labels: the ops class plus machine-filed residual provenance.
+if (exemption-seed-labels) != ["ops" "residual"] {
+    fail $"exemption-seed-labels wrong: (exemption-seed-labels | to json -r)"
+}
+
+print "closeout-smoke: ok — reviewer-journal, deferred-action and exemption-arm sweep logic verified"
 
 
 # Sourcing closeout.nu imports its `def main`; nu auto-invokes it after
