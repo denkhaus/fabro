@@ -45,15 +45,11 @@ const ENFORCED_X: &[&str] = &[
     "x.preamble_budget_kb",
     "x.fabro_tools",
     "x.tools",
-];
-
-/// The legacy per-node family the petri rework dropped (fabro-70af):
-/// recognized by the census — warned as unenforced, never silently
-/// dropped — until each name lands its enforcement and moves up into
-/// [`ENFORCED_X`].
-const RECOGNIZED_X: &[&str] = &[
-    "x.skills",
-    "x.inspects",
+    // The preamble family (fabro-70af PART 2b): parsed here, enforced
+    // through the fork's `PreamblePolicy` seam — the runtime installs the
+    // envelopes as the `PreamblePolicyHandle` capability
+    // ([`crate::fork_preamble_policy`]) and the agent/prompt steps consult
+    // it at render time.
     "x.preamble_stages_ignore",
     "x.preamble_stages_latest_only",
     "x.preamble_allow_keys",
@@ -62,6 +58,12 @@ const RECOGNIZED_X: &[&str] = &[
     "x.preamble_output_max_lines",
 ];
 
+/// The legacy per-node family still waiting for its enforcement
+/// (fabro-70af): recognized by the census — warned as unenforced, never
+/// silently dropped — until each name lands its enforcement and moves up
+/// into [`ENFORCED_X`].
+const RECOGNIZED_X: &[&str] = &["x.skills", "x.inspects"];
+
 /// The `x.*` attributes an edge block may carry: exit kinds.
 const EDGE_X: &[&str] = &["x.kind"];
 
@@ -69,23 +71,45 @@ const EDGE_X: &[&str] = &["x.kind"];
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct NodeEnvelope {
     /// `x.fs_hide`: workspace-relative globs hidden from the stage.
-    pub fs_hide:                Vec<String>,
+    pub fs_hide: Vec<String>,
     /// `x.fs_write`: when the attribute is present, the only writable
     /// globs. `Some([])` (an empty value) is a read-only stage.
-    pub fs_write:               Option<Vec<String>>,
+    pub fs_write: Option<Vec<String>>,
     /// `x.preamble_inline_max_kb` on the node, when set.
     pub preamble_inline_max_kb: Option<u64>,
     /// `x.fabro_tools`: when present, the run tools the node's sessions
     /// may register (an empty value: none). Nodes without the attribute
     /// register none either — the per-node allowlist the legacy engine
     /// enforced, restored at the host-tools seam (fabro-96c6).
-    pub fabro_tools:            Option<Vec<String>>,
+    pub fabro_tools: Option<Vec<String>>,
     /// `x.tools`: when present, the only session tools the node's agent
     /// may call (an empty value: none — the read-only reviewer posture).
     /// Enforced mechanically at the tool boundary, Pebble's middleware
     /// included ([`crate::tool_policy`], fabro-1a41); `None` leaves the
     /// session's full toolset.
-    pub tools:                  Option<Vec<String>>,
+    pub tools: Option<Vec<String>>,
+    /// `x.preamble_stages_ignore`: completed stages this node's preamble
+    /// never shows, by base name (fabro-70af PART 2b).
+    pub preamble_stages_ignore: Vec<String>,
+    /// `x.preamble_stages_latest_only`: repeated firings of a stage
+    /// (`tester`, `tester#2`, …) collapse to the latest in this node's
+    /// preamble, render-only.
+    pub preamble_stages_latest_only: bool,
+    /// `x.context_allow_keys`: when set, the only `## Context` keys the
+    /// node's preamble may show.
+    pub context_allow_keys: Option<Vec<String>>,
+    /// `x.preamble_allow_keys`: when set, an additional `## Context` key
+    /// filter; with both set, a key shows only when both lists name it.
+    pub preamble_allow_keys: Option<Vec<String>>,
+    /// `x.context_consume_keys`: keys removed from the run context after
+    /// this node records (tombstoned at merge through the fork seam).
+    pub context_consume_keys: Vec<String>,
+    /// `x.preamble_budget_kb` on the node, when set: the rendered
+    /// preamble's byte ceiling, in place of the graph's.
+    pub preamble_budget_kb: Option<u64>,
+    /// `x.preamble_output_max_lines` on the node, when set: the per-stage
+    /// output block's line ceiling in the preamble.
+    pub preamble_output_max_lines: Option<u64>,
 }
 
 /// The graph block's envelope numbers, as written.
@@ -182,20 +206,34 @@ impl StageEnvelopes {
                 graph.preamble_inline_max_kb = number(block, "x.preamble_inline_max_kb");
             } else {
                 let envelope = NodeEnvelope {
-                    fs_hide:                list(block, "x.fs_hide"),
-                    fs_write:               attribute(block, "x.fs_write")
-                        .map(|_| list(block, "x.fs_write")),
+                    fs_hide: list(block, "x.fs_hide"),
+                    fs_write: attribute(block, "x.fs_write").map(|_| list(block, "x.fs_write")),
                     preamble_inline_max_kb: number(block, "x.preamble_inline_max_kb"),
-                    fabro_tools:            attribute(block, "x.fabro_tools")
+                    fabro_tools: attribute(block, "x.fabro_tools")
                         .map(|_| list(block, "x.fabro_tools")),
-                    tools:                  attribute(block, "x.tools")
-                        .map(|_| list(block, "x.tools")),
+                    tools: attribute(block, "x.tools").map(|_| list(block, "x.tools")),
+                    preamble_stages_ignore: list(block, "x.preamble_stages_ignore"),
+                    preamble_stages_latest_only: flag(block, "x.preamble_stages_latest_only"),
+                    context_allow_keys: attribute(block, "x.context_allow_keys")
+                        .map(|_| list(block, "x.context_allow_keys")),
+                    preamble_allow_keys: attribute(block, "x.preamble_allow_keys")
+                        .map(|_| list(block, "x.preamble_allow_keys")),
+                    context_consume_keys: list(block, "x.context_consume_keys"),
+                    preamble_budget_kb: number(block, "x.preamble_budget_kb"),
+                    preamble_output_max_lines: number(block, "x.preamble_output_max_lines"),
                 };
                 let declares = !envelope.fs_hide.is_empty()
                     || envelope.fs_write.is_some()
                     || envelope.preamble_inline_max_kb.is_some()
                     || envelope.fabro_tools.is_some()
-                    || envelope.tools.is_some();
+                    || envelope.tools.is_some()
+                    || !envelope.preamble_stages_ignore.is_empty()
+                    || envelope.preamble_stages_latest_only
+                    || envelope.context_allow_keys.is_some()
+                    || envelope.preamble_allow_keys.is_some()
+                    || !envelope.context_consume_keys.is_empty()
+                    || envelope.preamble_budget_kb.is_some()
+                    || envelope.preamble_output_max_lines.is_some();
                 if declares {
                     nodes.insert(name.to_string(), envelope);
                 }
@@ -216,6 +254,25 @@ impl StageEnvelopes {
             let base = node.split('#').next().unwrap_or(node);
             self.nodes.get(base)
         })
+    }
+
+    /// The graph block's envelope, for the seams that need the aggregate
+    /// preamble numbers (the PART 2b policy source).
+    #[must_use]
+    pub fn graph(&self) -> &GraphEnvelope {
+        &self.graph
+    }
+
+    /// The node's effective preamble budget (fabro-70af PART 2b): the
+    /// node's own `x.preamble_budget_kb`, else the graph's. Explicit
+    /// declarations only — the legacy 48 KB default
+    /// (`DEFAULT_PREAMBLE_BUDGET_KB`) stays a lint baseline, never an
+    /// implicit ceiling on every node's preamble.
+    #[must_use]
+    pub fn preamble_budget_kb(&self, node: &str) -> Option<u64> {
+        self.envelope(node)
+            .and_then(|envelope| envelope.preamble_budget_kb)
+            .or(self.graph.preamble_budget_kb)
     }
 
     /// The node's compiled write scope, when the node declares envelope
@@ -478,6 +535,12 @@ fn list(block: &str, name: &str) -> Vec<String> {
         .collect()
 }
 
+/// A bare boolean attribute: `true` (case-sensitive) is set, anything
+/// else — including absence — is not.
+fn flag(block: &str, name: &str) -> bool {
+    attribute(block, name).is_some_and(|value| value.trim() == "true")
+}
+
 /// A numeric attribute, when present and well-formed.
 fn number(block: &str, name: &str) -> Option<u64> {
     attribute(block, name)?.trim().parse().ok()
@@ -610,14 +673,18 @@ mod tests {
     fn recognized_but_unenforced_family_warns_once_per_subject() {
         let source = r#"digraph W {
             a [x.preamble_stages_ignore="b,c", x.context_allow_keys="k", x.skills="discover"]
-            b [x.preamble_stages_ignore="a"]
+            b [x.skills="discover", x.inspects="run_search"]
         }"#;
         let findings = StageEnvelopes::parse(source).lint();
         let warnings: Vec<_> = findings
             .iter()
             .filter(|lint| lint.code == "fork.x_attribute_enforced")
             .collect();
-        assert_eq!(warnings.len(), 4, "three names on a, one on b");
+        assert_eq!(
+            warnings.len(),
+            3,
+            "x.skills and x.inspects on b, x.skills on a"
+        );
         assert!(
             warnings
                 .iter()
@@ -627,6 +694,50 @@ mod tests {
             findings
                 .iter()
                 .all(|lint| lint.code != "fork.x_attribute_known")
+        );
+    }
+
+    /// The preamble family is enforced as of PART 2b: declaring its names
+    /// raises no `fork.x_attribute_enforced` warning anymore — the
+    /// envelope parses and the runtime lowers it onto the fork seam
+    /// ([`crate::fork_preamble_policy`]).
+    #[test]
+    fn the_preamble_family_parses_and_no_longer_warns_unenforced() {
+        let source = r#"digraph W {
+            graph [x.preamble_budget_kb=24]
+            a [
+                x.preamble_stages_ignore="b,c",
+                x.preamble_stages_latest_only=true,
+                x.context_allow_keys="k1,k2",
+                x.preamble_allow_keys="k1",
+                x.context_consume_keys="k2",
+                x.preamble_output_max_lines=200,
+                x.preamble_budget_kb=12
+            ]
+        }"#;
+        let envelopes = StageEnvelopes::parse(source);
+        let envelope = envelopes.envelope("a").expect("the family declares");
+        assert_eq!(envelope.preamble_stages_ignore, ["b", "c"]);
+        assert!(envelope.preamble_stages_latest_only);
+        assert_eq!(
+            envelope.context_allow_keys.as_deref(),
+            Some(&["k1".to_string(), "k2".to_string()][..])
+        );
+        assert_eq!(
+            envelope.preamble_allow_keys.as_deref(),
+            Some(&["k1".to_string()][..])
+        );
+        assert_eq!(envelope.context_consume_keys, ["k2"]);
+        assert_eq!(envelope.preamble_output_max_lines, Some(200));
+        assert_eq!(envelope.preamble_budget_kb, Some(12));
+        assert_eq!(envelopes.preamble_budget_kb("a"), Some(12));
+        assert_eq!(envelopes.preamble_budget_kb("other"), Some(24));
+        assert!(
+            envelopes
+                .lint()
+                .iter()
+                .all(|lint| lint.code != "fork.x_attribute_enforced"
+                    && lint.code != "fork.x_attribute_known")
         );
     }
 
