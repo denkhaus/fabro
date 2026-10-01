@@ -154,12 +154,10 @@ fn balanced_documents(text: &str) -> Vec<&str> {
                 }
                 depth += 1;
             }
-            b'}' | b']' => {
-                if depth > 0 {
-                    depth -= 1;
-                    if depth == 0 && (byte == b'}') == open_is_object {
-                        spans.push(&text[open..=index]);
-                    }
+            b'}' | b']' if depth > 0 => {
+                depth -= 1;
+                if depth == 0 && (byte == b'}') == open_is_object {
+                    spans.push(&text[open..=index]);
                 }
             }
             _ => {}

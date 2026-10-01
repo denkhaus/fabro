@@ -5,7 +5,7 @@ use std::time::Duration;
 use fabro_github::{self as github_app, ssh_url_to_https};
 use fabro_llm::credentials::CredentialProvider;
 use fabro_llm::lithos_catalog::Catalog;
-use fabro_llm::{Client, ClientOptions, Request, selection};
+use fabro_llm::{Client, ClientOptions, Request, fork_structured, selection};
 use fabro_store::RunProjection;
 use fabro_types::settings::run::MergeStrategy;
 use fabro_types::settings::{ModelRef, ResolvedModelRef};
@@ -404,7 +404,7 @@ async fn build_pr_content_with_client(
     // JSON request with prose — must not fail the creation. The goal
     // titles the PR and the notice stands in for the narrative; the plan,
     // details and footer sections below are assembled as always.
-    let generated = match fabro_llm::fork_structured::complete_object_tolerant(
+    let generated = match fork_structured::complete_object_tolerant(
         &client,
         request,
         "pr_content",
