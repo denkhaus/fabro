@@ -445,7 +445,7 @@ impl RunWorkspaces {
             site,
             "fetch",
             &args,
-            &source.fetch_env(),
+            &source.fetch_env().await,
             SOURCE_FETCH_TIMEOUT,
         )
         .await?;

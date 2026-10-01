@@ -4,10 +4,14 @@
 //! The worker resolves the server's GitHub credentials itself, as the
 //! legacy worker did: the strategy and App id from the server settings the
 //! server named (`FABRO_CONFIG`), the App key the server hands the worker,
-//! or `GITHUB_TOKEN` from the worker's vault snapshot. From them it mints a
-//! read-only token for the checkout inside the sandbox when the run starts,
-//! and a fresh push token for each checkpoint, so a long run never pushes with
-//! an expired token.
+//! or `GITHUB_TOKEN` from the worker's vault snapshot. From them it keeps two
+//! cached token sources for the run: a read-only one for fetches inside the
+//! sandbox and a `contents: write` one for pushes. Each fetch and push asks
+//! its source, which reuses one installation token until it nears expiry and
+//! then mints the next. Reuse matters: GitHub can reject a token minted
+//! moments earlier, before it has replicated, so minting per push turns a
+//! long run's pushes into repeated failures. Re-minting near expiry keeps a
+//! run of any length on a live token.
 //!
 //! Publication runs in Fabro's `run_finished` hook, after the last stage and
 //! before the run's terminal record, as the legacy publish step did: the
@@ -23,13 +27,14 @@ use anyhow::{Context, Result};
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use fabro_config::ServerSettingsBuilder;
-use fabro_github::{GitCloneCredentials, GitHubContext, GitHubCredentials};
-use fabro_llm::credentials::{CredentialProvider, readiness};
+use fabro_github::token_source::{InstallationTokenSource, SecretString};
+use fabro_github::{GitHubContext, GitHubCredentials};
+use fabro_llm::credentials::{self, CredentialProvider};
 use fabro_llm::lithos_catalog::Catalog;
 use fabro_petri::checkpoint::Site;
 use fabro_petri::hooks::{Publication, RunPublisher};
 use fabro_petri::platform_records::PlatformRecords;
-use fabro_petri::source::SourceCredential;
+use fabro_petri::source::{SourceCredential, SourceCredentials};
 use fabro_static::EnvVars;
 use fabro_store::platform_records::{PlatformRecord, PullRequestCreatedRecord};
 use fabro_types::settings::run::{PullRequestSettings, RunMode};
@@ -42,8 +47,8 @@ use tracing::warn;
 
 /// How long one push to the repository may take.
 const PUSH_TIMEOUT: Duration = Duration::from_mins(5);
-/// Attempts at the push: a freshly minted token can take a moment to reach
-/// every GitHub replica.
+/// Attempts at the push, all with the one token resolved for it: a freshly
+/// minted token can take a moment to reach every GitHub replica.
 const PUSH_ATTEMPTS: u32 = 3;
 const PUSH_RETRY_DELAY: Duration = Duration::from_secs(2);
 
@@ -79,38 +84,62 @@ fn repository(spec: &RunSpec) -> Option<GitHubRepositorySlug> {
     Some(target.clone().validate().ok()?.repository().clone())
 }
 
-/// The read-only credential the run's workspaces are fetched with. `None`
-/// when the run has no GitHub target or no credentials resolve; a public
-/// repository is then fetched anonymously.
-pub(super) async fn source_credential(
+/// A cached token source for the run's repository with `permissions`, or
+/// `None` when the run has no GitHub target or no credentials resolve.
+fn token_source(
     spec: &RunSpec,
     credentials: Option<&GitHubCredentials>,
-) -> Option<SourceCredential> {
+    permissions: serde_json::Value,
+) -> Option<Arc<InstallationTokenSource>> {
     let repository = repository(spec)?;
     let credentials = credentials?;
-    let base_url = fabro_github::github_api_base_url();
-    let context = GitHubContext::new(credentials, &base_url);
-    match fabro_github::resolve_read_only_clone_credentials(
-        &context,
-        repository.owner(),
-        repository.repo(),
-    )
-    .await
-    {
-        Ok(credentials) => encode(&credentials),
+    match InstallationTokenSource::for_repository(
+        credentials,
+        repository.owner().to_string(),
+        repository.repo().to_string(),
+        permissions,
+    ) {
+        Ok(source) => Some(source),
         Err(err) => {
-            warn!(repository = %repository, error = %err, "no read credential for the run's repository; it is fetched anonymously");
+            warn!(repository = %repository, error = %format!("{err:#}"), "no GitHub token source for the run's repository");
             None
         }
     }
 }
 
-fn encode(credentials: &GitCloneCredentials) -> Option<SourceCredential> {
-    SourceCredential::from_encoded(BASE64_STANDARD.encode(format!(
-        "{}:{}",
-        credentials.username(),
-        credentials.password()
-    )))
+/// The read-only credentials the run's workspaces are fetched with. `None`
+/// when the run has no GitHub target or no credentials resolve; a public
+/// repository is then fetched anonymously.
+pub(super) fn source_credentials(
+    spec: &RunSpec,
+    credentials: Option<&GitHubCredentials>,
+) -> Option<Arc<dyn SourceCredentials>> {
+    let tokens = token_source(spec, credentials, serde_json::json!({ "contents": "read" }))?;
+    Some(Arc::new(ReadCredentials(tokens)))
+}
+
+/// Fetch credentials resolved from the run's read-only token source.
+struct ReadCredentials(Arc<InstallationTokenSource>);
+
+#[async_trait::async_trait]
+impl SourceCredentials for ReadCredentials {
+    async fn credential(&self) -> Option<SourceCredential> {
+        match self.0.resolve().await {
+            Ok(resolved) => basic(&resolved.token),
+            Err(err) => {
+                warn!(error = %format!("{err:#}"), "no read credential for the run's repository; it is fetched anonymously");
+                None
+            }
+        }
+    }
+}
+
+/// The HTTP basic credential `git` presents for an installation token or
+/// personal access token.
+fn basic(token: &SecretString) -> Option<SourceCredential> {
+    SourceCredential::from_encoded(
+        BASE64_STANDARD.encode(format!("x-access-token:{}", token.expose())),
+    )
 }
 
 /// A successful GitHub-target run's publication: the run branch pushed, and
@@ -124,6 +153,8 @@ pub(super) struct GitHubPublisher {
     /// The run's model, when its settings name one.
     model:        Option<String>,
     credentials:  Option<GitHubCredentials>,
+    /// The run's `contents: write` token source; `None` without credentials.
+    push_tokens:  Option<Arc<InstallationTokenSource>>,
     pull_request: Option<PullRequestSettings>,
     llm_source:   Arc<dyn CredentialProvider>,
     catalog:      Arc<Catalog>,
@@ -155,6 +186,11 @@ impl GitHubPublisher {
             return None;
         };
         let repository = repository(spec)?;
+        let push_tokens = token_source(
+            spec,
+            credentials.as_ref(),
+            serde_json::json!({ "contents": "write" }),
+        );
         Some(Self {
             run_id,
             repository,
@@ -162,6 +198,7 @@ impl GitHubPublisher {
             goal: spec.graph.goal.clone(),
             model: settings.model.name.clone(),
             credentials,
+            push_tokens,
             pull_request: settings
                 .pull_request
                 .clone()
@@ -179,7 +216,9 @@ impl GitHubPublisher {
         if let Some(model) = &self.model {
             return Some(model.clone());
         }
-        let ready = readiness(self.catalog.enabled_providers(), self.llm_source.as_ref()).await;
+        let ready =
+            credentials::readiness(self.catalog.enabled_providers(), self.llm_source.as_ref())
+                .await;
         self.catalog
             .default_offering_for(&ready.ready)
             .map(|entry| entry.model.id().to_string())
@@ -239,19 +278,14 @@ impl GitHubPublisher {
 #[async_trait::async_trait]
 impl RunPublisher for GitHubPublisher {
     async fn push(&self, site: &Site, branch: &str, sha: &str) -> Result<(), String> {
-        let credentials = self.credentials.as_ref().ok_or_else(|| {
+        let tokens = self.push_tokens.as_ref().ok_or_else(|| {
             "pushing the run branch requires the server's GitHub credentials".to_string()
         })?;
-        let base_url = fabro_github::github_api_base_url();
-        let context = GitHubContext::new(credentials, &base_url);
-        let push_credentials = fabro_github::resolve_clone_credentials(
-            &context,
-            self.repository.owner(),
-            self.repository.repo(),
-        )
-        .await
-        .map_err(|err| format!("no push credential for {}: {err:#}", self.repository))?;
-        push(&self.repository, &push_credentials, site, branch, sha).await
+        let resolved = tokens
+            .resolve()
+            .await
+            .map_err(|err| format!("no push credential for {}: {err:#}", self.repository))?;
+        push(&self.repository, &resolved.token, site, branch, sha).await
     }
 
     async fn publish(&self, publication: &Publication) -> Result<(), String> {
@@ -279,18 +313,20 @@ impl RunPublisher for GitHubPublisher {
 
 /// Push a checkpoint from inside its workspace to the run
 /// branch on GitHub, retrying a failure that may be a token still
-/// replicating. The credential reaches `git` as an HTTP header for the
+/// replicating. The token reaches `git` as an HTTP header for the
 /// repository alone and never appears in the error.
 async fn push(
     repository: &GitHubRepositorySlug,
-    credentials: &GitCloneCredentials,
+    token: &SecretString,
     site: &Site,
     branch: &str,
     sha: &str,
 ) -> Result<(), String> {
     let mut url = repository.https_url();
     url.push_str(".git");
-    let env = encode(credentials)
+    let credential = basic(token);
+    let env = credential
+        .as_ref()
         .map(|credential| credential.header_env(&url))
         .unwrap_or_default();
     let refspec = format!("{sha}:refs/heads/{branch}");
@@ -299,9 +335,9 @@ async fn push(
         match site.push(&url, &refspec, &env, PUSH_TIMEOUT).await {
             Ok(()) => return Ok(()),
             Err(error) => {
-                last = error.to_string().replace(credentials.password(), "***");
-                if let Some(encoded) = encode(credentials) {
-                    last = last.replace(encoded.encoded(), "***");
+                last = error.to_string().replace(token.expose(), "***");
+                if let Some(credential) = &credential {
+                    last = last.replace(credential.encoded(), "***");
                 }
             }
         }
@@ -322,6 +358,11 @@ async fn push(
 
 #[cfg(test)]
 mod tests {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    use chrono::Utc;
+    use fabro_github::InstallationToken;
+    use fabro_github::test_support::{InstallationTokenMinter, installation_token_source};
     use fabro_llm::credentials::NoCredentials;
     use fabro_llm::test_support;
     use fabro_petri::test_support::MemoryPlatformRecords;
@@ -370,5 +411,37 @@ mod tests {
         let mut empty = spec();
         empty.target = Some(RunTarget::None {});
         assert!(!publishes(&empty));
+    }
+
+    /// Mints `token-<n>` for its n-th mint, valid for an hour.
+    #[derive(Default)]
+    struct CountingMinter(AtomicUsize);
+
+    #[async_trait::async_trait]
+    impl InstallationTokenMinter for CountingMinter {
+        async fn mint(&self) -> anyhow::Result<InstallationToken> {
+            let n = self.0.fetch_add(1, Ordering::SeqCst) + 1;
+            Ok(InstallationToken {
+                token:      format!("token-{n}"),
+                expires_at: Utc::now() + chrono::Duration::hours(1),
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn fetches_reuse_one_cached_read_token() {
+        let minter = Arc::new(CountingMinter::default());
+        let credentials = ReadCredentials(installation_token_source(
+            "acme/widgets",
+            Arc::clone(&minter) as Arc<dyn InstallationTokenMinter>,
+        ));
+        let first = credentials.credential().await.unwrap();
+        let second = credentials.credential().await.unwrap();
+        assert_eq!(first, second);
+        assert_eq!(minter.0.load(Ordering::SeqCst), 1);
+        assert_eq!(
+            first.encoded(),
+            BASE64_STANDARD.encode("x-access-token:token-1")
+        );
     }
 }

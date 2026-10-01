@@ -318,7 +318,7 @@ Every commit a run creates is authored and committed by the run's GitHub credent
 
 ### Checkpoint pushing
 
-After each workflow stage, Fabro [checkpoints](/execution/checkpoints) the workspace on the run branch, `fabro/run/<run-id>`, and pushes it directly from that workspace. Fabro keeps no second Git repository or checkpoint bundles on the server. In App mode, the worker mints a fresh Installation Access Token with `contents: write` for each checkpoint push and passes it only to the sandbox Git command. The token is not saved in the repository's remote URL or configuration. `[run.run_branch] push = false` keeps the branch only in the run workspace.
+After each workflow stage, Fabro [checkpoints](/execution/checkpoints) the workspace on the run branch, `fabro/run/<run-id>`, and pushes it directly from that workspace. Fabro keeps no second Git repository or checkpoint bundles on the server. In App mode, the worker pushes with an Installation Access Token with `contents: write`, reusing one token until it nears expiry and then minting the next, and passes it only to the sandbox Git command. The token is not saved in the repository's remote URL or configuration. `[run.run_branch] push = false` keeps the branch only in the run workspace.
 
 An intermediate push failure logs a warning; later checkpoints and final publication retry the push. After a successful run's last stage and before the run finishes, Fabro awaits one final push.
 

@@ -206,8 +206,8 @@ pub(super) async fn execute(worker: PetriWorker<'_>) -> Result<()> {
     runner::set_worker_title(&run_id, WorkerTitlePhase::Running);
 
     // A GitHub target is fetched into its sandbox with a read-only token and
-    // published with a push token, both minted from the server's
-    // credentials here.
+    // published with a push token, each from a token source over the
+    // server's credentials that the run keeps for its whole life.
     let github = match publish::github_credentials(&*vault.read().await) {
         Ok(credentials) => credentials,
         Err(err) => {
@@ -221,8 +221,7 @@ pub(super) async fn execute(worker: PetriWorker<'_>) -> Result<()> {
         None,
     );
     if let Some(source) = &mut source {
-        source.credential =
-            publish::source_credential(&worker.run_state.spec, github.as_ref()).await;
+        source.credentials = publish::source_credentials(&worker.run_state.spec, github.as_ref());
     }
     let publisher = publish::GitHubPublisher::for_run(
         run_id,

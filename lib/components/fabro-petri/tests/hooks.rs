@@ -1019,11 +1019,11 @@ async fn a_daytona_run_commits_inside_the_sandbox_and_publishes_every_checkpoint
 async fn assert_sandbox_run_publishes_every_checkpoint(provider: SandboxProviderKind) {
     let mut harness = Harness::new().await;
     harness.source = Some(RunSource {
-        origin:     "https://github.com/octocat/Hello-World.git".to_string(),
-        revision:   SourceRevision::Branch("master".to_string()),
-        branch:     "master".to_string(),
-        depth:      Some(1),
-        credential: None,
+        origin:      "https://github.com/octocat/Hello-World.git".to_string(),
+        revision:    SourceRevision::Branch("master".to_string()),
+        branch:      "master".to_string(),
+        depth:       Some(1),
+        credentials: None,
     });
     let publisher = RecordingPublisher::new(None);
     harness.publisher = Some(publisher.clone());
@@ -1227,7 +1227,7 @@ fn file_source(origin: &Path, branch: &str, depth: Option<u32>) -> RunSource {
         revision: SourceRevision::Branch(branch.to_string()),
         branch: branch.to_string(),
         depth,
-        credential: None,
+        credentials: None,
     }
 }
 

@@ -11,9 +11,12 @@
 //!
 //! The credential reaches one `git` command at a time through its
 //! environment, as an HTTP header scoped to the origin. It is never written
-//! into the repository, its configuration, or its remote URL.
+//! into the repository, its configuration, or its remote URL. Each fetch asks
+//! the run's [`SourceCredentials`] for it, so a workspace first acquired hours
+//! into a run still presents a live token.
 
 use std::fmt;
+use std::sync::Arc;
 
 use fabro_types::settings::run::{RunCloneSettings, RunMode, RunNamespace};
 use fabro_types::{GitRunTarget, RunTarget};
@@ -86,18 +89,48 @@ impl fmt::Debug for SourceCredential {
     }
 }
 
+/// Where a run's fetches get their credential, asked once per fetch.
+#[async_trait::async_trait]
+pub trait SourceCredentials: Send + Sync {
+    /// The credential the next fetch presents; `None` fetches anonymously.
+    async fn credential(&self) -> Option<SourceCredential>;
+}
+
+/// A fixed credential, presented by every fetch.
+#[async_trait::async_trait]
+impl SourceCredentials for SourceCredential {
+    async fn credential(&self) -> Option<Self> {
+        Some(self.clone())
+    }
+}
+
 /// A run's GitHub repository as its workspaces check it out.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone)]
 pub struct RunSource {
     /// The repository's HTTPS URL: the workspace's `origin`.
-    pub origin:     String,
-    pub revision:   SourceRevision,
+    pub origin:      String,
+    pub revision:    SourceRevision,
     /// The branch the workspace stands on before the run branch is created
     /// from it.
-    pub branch:     String,
+    pub branch:      String,
     /// Commits of history to fetch; `None` is the whole history.
-    pub depth:      Option<u32>,
-    pub credential: Option<SourceCredential>,
+    pub depth:       Option<u32>,
+    pub credentials: Option<Arc<dyn SourceCredentials>>,
+}
+
+impl fmt::Debug for RunSource {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("RunSource")
+            .field("origin", &self.origin)
+            .field("revision", &self.revision)
+            .field("branch", &self.branch)
+            .field("depth", &self.depth)
+            .field(
+                "credentials",
+                &self.credentials.as_ref().map(|_| "<redacted>"),
+            )
+            .finish()
+    }
 }
 
 impl RunSource {
@@ -108,7 +141,7 @@ impl RunSource {
         target: &GitRunTarget,
         origin: String,
         clone: &RunCloneSettings,
-        credential: Option<SourceCredential>,
+        credentials: Option<Arc<dyn SourceCredentials>>,
     ) -> Option<Self> {
         if !clone.enabled {
             return None;
@@ -127,7 +160,7 @@ impl RunSource {
             depth: clone
                 .depth_limit()
                 .and_then(|depth| u32::try_from(depth).ok()),
-            credential,
+            credentials,
         })
     }
 
@@ -139,7 +172,7 @@ impl RunSource {
     pub fn for_run(
         target: Option<&RunTarget>,
         settings: &RunNamespace,
-        credential: Option<SourceCredential>,
+        credentials: Option<Arc<dyn SourceCredentials>>,
     ) -> Option<Self> {
         let Some(RunTarget::Git(target)) = target else {
             return None;
@@ -149,15 +182,18 @@ impl RunSource {
         }
         let validated = target.clone().validate().ok()?;
         let origin = validated.repository().https_url();
-        Self::for_target(validated.target(), origin, &settings.clone, credential)
+        Self::for_target(validated.target(), origin, &settings.clone, credentials)
     }
 
     /// The environment a `git` command that talks to the origin runs with:
     /// the credential as an `Authorization` header for the origin alone.
-    #[must_use]
-    pub fn fetch_env(&self) -> Vec<(String, String)> {
-        self.credential
-            .as_ref()
+    pub async fn fetch_env(&self) -> Vec<(String, String)> {
+        let Some(credentials) = &self.credentials else {
+            return Vec::new();
+        };
+        credentials
+            .credential()
+            .await
             .map(|credential| credential.header_env(&self.origin))
             .unwrap_or_default()
     }
@@ -221,16 +257,17 @@ mod tests {
         assert_eq!(full.depth_arg(), None);
     }
 
-    #[test]
-    fn the_credential_is_scoped_to_the_origin_and_never_printed() {
+    #[tokio::test]
+    async fn the_credential_is_scoped_to_the_origin_and_never_printed() {
+        let credential = SourceCredential::from_encoded("c2VjcmV0").unwrap();
         let source = RunSource::for_target(
             &target(None, None),
             "https://github.com/acme/widgets".to_string(),
             &clone(true, 1),
-            SourceCredential::from_encoded("c2VjcmV0"),
+            Some(Arc::new(credential)),
         )
         .unwrap();
-        let env = source.fetch_env();
+        let env = source.fetch_env().await;
         assert!(env.contains(&(
             "GIT_CONFIG_KEY_0".to_string(),
             "http.https://github.com/acme/widgets.extraheader".to_string()

@@ -113,6 +113,7 @@ walkdir.workspace = true
 rmcp = { workspace = true, features = ["client", "transport-child-process"] }
 fabro-build-support = { path = "../../foundation/build-support" }
 fabro-server = { path = "../fabro-server", features = ["test-support"] }
+fabro-github = { path = "../../components/fabro-github", features = ["test-support"] }
 fabro-petri = { path = "../../components/fabro-petri", features = ["test-support"] }
 fabro-workflow = { path = "../../components/fabro-workflow", features = ["test-support"] }
 fabro-types = { path = "../../foundation/fabro-types", features = ["clap", "test-support"] }
