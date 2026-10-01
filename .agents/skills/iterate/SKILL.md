@@ -285,6 +285,15 @@ stores it belongs to; reach them by phase need:
   envelope correctly kills the write every pass (fabro-c4be, two envelope
   kills 2026-09-30). Classify them direct work at assignment or ask for a
   deliberate envelope exception.
+- DIRECT-FIX PROPOSAL DUTY (user directive 2026-10-01, e62d cycle): at
+  filing/triage time, EVERY seed whose fix surface makes it unlandable by
+  the line (loop-asset class above) or trivially mechanical (one-file,
+  evidence already in hand) is PROPOSED to the user as a direct fix in the
+  same turn it is filed - never silently queued. Waiting for a lane slot
+  on work this session could land in minutes loses a day per seed
+  ("sonst verlieren wir Zeit"). The proposal names the seed, the fix
+  surface, why the line cannot or should not take it, and the estimated
+  effort; the user decides GO/no.
 - Ownership (ADR-0018): the line works ONLY `@fabro`-assigned seeds
   (fail-closed picker). The revisor files seeds UNASSIGNED. Emergencies
   bypass the picker: line down -> agent repairs directly with the user's
