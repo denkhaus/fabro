@@ -36,7 +36,10 @@
 # arg-spread wrapper — rest params would swallow --flags meant for the
 # external command.
 
-const SERVER_DEFAULT = 'http://127.0.0.1:32276'
+# Line server (fabro-e62d): the manual develop era targets mirtuell — the
+# local 127.0.0.1 stack is for TESTS only and a silent default there costs a
+# dead start (connection refused at fabro create). Override with FABRO_SERVER.
+const SERVER_DEFAULT = 'https://mirtuell.net'
 const GITHUB_REPO = 'denkhaus/fabro'  # lab world repo (variant B status posts)
 
 # Terminal failure: loud ALARM block on stderr, exit 1.
@@ -75,6 +78,10 @@ def main [
 ]: nothing -> nothing {
     let fabro_bin = ($env.FABRO_BIN? | default $"($env.HOME)/.fabro/bin/fabro")
     let server = ($env.FABRO_SERVER? | default $SERVER_DEFAULT)
+    # fabro-e62d: quoting-proof goal source — just interpolates {{ args }} raw
+    # into the recipe line, so a --goal with spaces/parens breaks bash or nu.
+    # FABRO_RUN_GOAL passes through every layer un-reparsed.
+    let goal = (if ($goal | is-empty) { $env.FABRO_RUN_GOAL? | default '' } else { $goal })
 
     # ── 1. guards ────────────────────────────────────────────────────
     let current = ((do { git branch --show-current } | complete).stdout | str trim)
@@ -229,6 +236,18 @@ def main [
         $auto_merged = ((do {
             git diff --quiet $run_branch $"origin/($branch)"
         } | complete).exit_code == 0)
+        if not $auto_merged {
+            # fabro-e62d: tree equality alone missed a landed squash merge
+            # (observed: PR #349 merged while the poll kept reporting not
+            # landed). GitHub's own PR state is the authoritative signal.
+            let merged = (do {
+                ^gh pr list --repo ($GITHUB_REPO) --head $"fabro/run/($run_id)" --state merged --json number --limit 1
+            } | complete)
+            if $merged.exit_code == 0 {
+                let prs = (try { $merged.stdout | from json } catch { [] })
+                $auto_merged = (($prs | length) > 0)
+            }
+        }
         if $auto_merged { break }
     }
     let already_merged = $auto_merged
@@ -236,7 +255,7 @@ def main [
         print 'run_workflow: auto-merge landed — fast-forward pull'
         ok (do { git pull --ff-only origin $branch } | complete) 'git pull'
     } else {
-        print $"run_workflow: WARN auto-merge did not land within ($merge_deadline * 15) sec — EMERGENCY squash fallback engages (dogfood-gate stuck? check the PR checks)"
+        print $"run_workflow: WARN auto-merge did not land within ($merge_deadline * 15) sec — EMERGENCY squash fallback engages \(dogfood-gate stuck? check the PR checks\)"
         print $"run_workflow: squash-merging ($run_branch) into ($branch) \(provisional auto-merge, fabro-ab2c)"
         ok (do { git merge --squash $run_branch } | complete) 'squash merge'
         let nothing_staged = ((do { git diff --cached --quiet } | complete).exit_code == 0)
