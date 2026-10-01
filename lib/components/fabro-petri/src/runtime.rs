@@ -32,9 +32,9 @@ use petri_runtime::Runtime;
 use tracing::debug;
 
 use crate::fork_stage_envelope::StageEnvelopes;
-use crate::host_tools;
 use crate::providers::{self, SandboxProviderConfig};
 use crate::tool_policy::ToolPolicyHooks;
+use crate::{fork_preamble_policy, host_tools};
 
 /// What every Petri runtime Fabro builds is configured with.
 #[derive(Clone, Default)]
@@ -69,8 +69,10 @@ pub struct RuntimeSpec {
     pub run_tools:        Option<FabroRunToolServices>,
     /// The run's stage envelopes, parsed off its `graph_source`: what the
     /// host-tools capability enforces the per-node `x.fabro_tools`
-    /// allowlist against (fabro-96c6). `None` registers the full set on
-    /// every session.
+    /// allowlist against (fabro-96c6), what the tool policy enforces
+    /// `x.tools` against (fabro-1a41), and what the preamble policy
+    /// source lowers onto the fork seam (fabro-70af PART 2b). `None`
+    /// registers the full set on every session.
     pub envelopes:        Option<Arc<StageEnvelopes>>,
     /// The run's id, as `[[run.hooks]]` contexts report it (`FABRO_RUN_ID`
     /// and the context's `run_id`): the runtime installs its own local
@@ -108,6 +110,16 @@ impl RuntimeSpec {
                 services.clone(),
                 self.envelopes.clone(),
             ));
+        }
+        // The preamble family (fabro-70af PART 2b): the envelopes as the
+        // fork seam's `PreamblePolicyHandle` — the agent and prompt steps
+        // consult it at render time for `x.preamble_stages_ignore`,
+        // `x.preamble_stages_latest_only`, the allow-keys filters,
+        // budgets, output caps, and consume-keys tombstones. A run
+        // without envelopes installs none and keeps the default no-op
+        // policy.
+        if let Some(envelopes) = &self.envelopes {
+            runtime = runtime.capability(fork_preamble_policy::capability(envelopes.clone()));
         }
         // The host-supplied hook service (the documented replacement seam):
         // Petri's local service wrapped with the per-node `x.tools` policy
