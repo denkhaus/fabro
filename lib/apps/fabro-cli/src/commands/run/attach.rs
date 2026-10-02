@@ -331,6 +331,14 @@ async fn handle_pending_petri_interview(
     };
 
     if json_pending_interview_requires_manual_input(opts.json_output, opts.auto_approve) {
+        // The pending-question projection may be ahead of our replay/live
+        // cursor. It commits together with the stream records, so catch up
+        // before exiting to include the question and everything preceding it.
+        // We return immediately; buffered live items cannot be emitted twice.
+        for item in client.list_run_stream(run_id, *cursor).await? {
+            emit_stream_item(progress_ui, &item, opts.json_output)?;
+            *cursor = item.stream_seq;
+        }
         fabro_util::printerr!(printer, "{JSON_INTERVIEW_MESSAGE}");
         return Ok(Some(ExitCode::from(1)));
     }
