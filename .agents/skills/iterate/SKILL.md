@@ -73,16 +73,23 @@ stores it belongs to; reach them by phase need:
   claims nothing — one line, one executor.
 - Interrupted cycle: reconstruct BEFORE selecting — `git status` plus
   `seeds list --status in_progress` name the mid-flight work; continue it.
-- Sprint ledger (ADR-0024, nu-agent model): read `.fabro/iterate-state.json`.
-  If `sprints_reflected < sprints_completed`, the pending reflection runs
-  FIRST (Phase 6 short form) — no new sprint starts unreflected. If
-  `sprints_completed % 3 == 0 && last_arch_review_at_sprint !=
-  sprints_completed`, the architecture gate is DUE: surface to the user
+- Sprint ledger (nu-agent model, session-LOCAL): read `iterate-state.json`
+  in the repo ROOT (user directive 2026-10-02 evening: root, never
+  `.fabro/`). The sprint system is the SESSION's working mode, mirroring
+  nu-agent's iterate skill — the LINE has nothing to do with sprints and
+  implements none of the mechanics (no ledger writes in lane assets, no
+  reflection parks, no counters; fabro-cadd rejected, PRs #359/#360 closed
+  not-planned). If `sprints_reflected < sprints_completed`, the pending
+  reflection runs FIRST (Phase 6 short form) — no new sprint starts
+  unreflected. If `sprints_completed % 3 == 0 && last_arch_review_at_sprint
+  != sprints_completed`, the architecture gate is DUE: surface to the user
   and fire the LOCAL improve-codebase-architecture agent (user directive
   2026-10-02: the architect WORKFLOW stays deactivated on the line — never
   the api trigger; the local agent's top recommendations are filed as
-  seeds automatically and assigned per owner: agent (local) / fabro /
-  loop).
+  seeds automatically). ALL seeds filed from the architecture pass are
+  worked LOCALLY by this session; loop-asset-surface findings may go to
+  the loop workflow — none go to the develop line (user directive
+  2026-10-02 evening).
 - Tracker reads always carry `--limit 500` (`seeds list` caps at 50
   silently). `seeds ready` for candidates; `seeds show <id>` for ids.
 - Rootprint (skill `rootprint`) observes the production server: filter on
@@ -115,21 +122,30 @@ stores it belongs to; reach them by phase need:
   WRONG seed (claim/claim-check mismatch class). Verify with
   `seeds show <id>` (assignee set) in the same breath as the fire; the
   goal text names the seed id AND its one-line topic.
-- Executor decision (directive 2026-09-06): this agent implements NO
-  seeds — product and engine/platform work goes to the autonomous line.
-  This session orients, monitors, grills pivotal forks (writing the agreed
-  design INTO the seed before the workflow implements it), reviews landed
-  diffs, revises the autonomous workflows, reflects, reports. The
-  conductor claims seeds; an agent-side claim would empty the planner's
-  queue. Claim (`seeds update --status in_progress`) only in direct-mode
-  bootstrapping exceptions (see Standing rules).
+- Executor decision (SUPERSEDED 2026-10-02 evening, local-first model):
+  invoking /iterate means the session works LOCALLY first — the nu-agent
+  sprint loop IS this session's working mode (claim, implement, review,
+  reflect; the conductor-role split of directive 2026-09-06 is retired).
+  improve-codebase-architecture-filed seeds are worked LOCALLY. @loop
+  seeds go to the loop workflow (which works them WITHOUT any sprint
+  framing). Develop-line dispatch remains an explicit delegation CHOICE
+  for product/engine seeds (parallelizable work, or when the user routes
+  a seed there) — never the default, and never sprint-coupled. This
+  session still orients, grills pivotal forks (writing the agreed design
+  INTO the seed before implementation), reviews, reflects, reports.
 
-## Phase 2 — Build (delegation mode: feed the seed, not the diff)
+## Phase 2 — Build (local-first; delegation only by explicit choice)
 
 - File the seed with the agreed design BEFORE any code exists — design
   decisions live in the tracker, never only in chat or the diff.
-- Feed implementation seeds with pointers: files, trait seams, guideline
-  pages. Platform/engine changes are line work too (PR #28 proved it).
+- LOCAL builds follow the nu-agent sprint discipline: claim
+  (`seeds update --status in_progress`), implement under the mechanical
+  gates of the touched surface (Rust: rust-style-guide + guideline pages
+  loaded and NAMED before the first edit cell), verify with real
+  commands, close with evidence. The full direct-fix recipe below
+  (lint first, dry-runs, unpiped exit codes) is binding for local work.
+- Delegated builds (the explicit-choice case): feed implementation seeds
+  with pointers — files, trait seams, guideline pages.
 - Fork wiring (2026-09-30, 3fce cycle): a fix on a forked dep repo is NOT
   shipped until every consuming workspace's Cargo.lock pins the new rev -
   `branch =` patch pins move only on `cargo update`; bump the lock in the
@@ -318,24 +334,17 @@ stores it belongs to; reach them by phase need:
    filed/closed — each with a ONE-LINE description, never a bare id —
    and ALWAYS an ASSIGNMENT PENDING section: every unassigned seed with
    a one-line @fabro recommendation. Categorize every revisor seed.
-5. Sprint ledger update (nu-agent model, ADR-0024): a closure that lands
-  after its session ends is registered RETROACTIVELY by the next session
-  (the ledger bootstraps behind the merge queue — normal, not drift).
-  Counting rule: any seed closure with a substantive diff counts 1 sprint
-  regardless of lane (develop, loop, or direct fix that changes behavior);
-  docs-only, row-only, and verify-only closures count 0. Fire-time
-  operator check: the ledger note names what closed and where it landed.
+5. Sprint ledger update (nu-agent model, session-LOCAL): counting rule
+  (user directive 2026-10-02 evening): ONLY closures this session worked
+  LOCALLY with a substantive diff count 1 sprint; docs-only, row-only,
+  and verify-only closures count 0. LINE closures (loop lane, delegated
+  develop runs) NEVER count — the line is not inside a sprint. Historical
+  note: the bootstrap-era count of 3 includes develop-lane closures under
+  the superseded lane-blind rule; kept as history, not recounted.
 5b. Heartbeat cadence tracks reality: 20m while anything autonomous runs
   (pass, build, deploy chain); 60m when everything is user-gated. Refresh
   the instruction at every phase change — a heartbeat still carrying a
   completed critical path is noise that erodes trust.
-6. Line-watch heartbeat (label `line-watch`, interval 10m, follow-up
-   a seed with a SUBSTANTIVE diff, `sprints_completed` +1 (verify-only
-   closures count 0 — provisional rule, see ledger bootstrap note). Run the
-   SHORT reflection now (painpoints -> seeds/skill edits/no-action notes),
-   set `sprints_reflected = sprints_completed`, append one notes[] line.
-   Architect findings from a gate pass become seeds IMMEDIATELY — nothing
-   survives only in a report. Commit the ledger with the cycle's work.
 6. Line-watch heartbeat (label `line-watch`, interval 10m, follow-up
    delivery): pull, evaluate journals/reviews (premise-checked against
    the tree), dispatch seeds per ADR-0018 with dispatch-dedupe (keep the
@@ -408,6 +417,15 @@ stores it belongs to; reach them by phase need:
   fork-only source file wired through minimal one-line seams, with a
   presence test in a fork-only test file plus a touchpoints row —
   upstream merges cannot silently drop it.
+- Session/line ownership boundary (user directive 2026-10-02 evening,
+  fabro-cadd lesson): session bookkeeping — the sprint ledger, the
+  reflection invariant, the arch-gate cadence — is iterate-skill-LOCAL
+  and lives at the repo root (`iterate-state.json`). Any seed proposing
+  to port session bookkeeping or control-loop ceremony into line assets
+  (`.fabro/workflows/**`, `.fabro/scripts/**`, `scripts/**`) is
+  needs-user/grill-first — NEVER assigned to a lane unseen. The line's
+  fail-closed invariants are its own (tracker, envelope, gates), never
+  the session's homework. The architect agent is local, permanently.
 - Boundaries: mulch = expertise, seeds = actionable work, ADRs =
   decisions, this skill = process. Nothing stays in chat that belongs in
   one of them. Fabro-specific Rust rules (test-support feature, strum,
