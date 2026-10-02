@@ -212,6 +212,30 @@ def main [] {
         expect 'p: verify/move-seed squash filed_only' $p.filed_only_matches 1
         expect 'p: verify/move-seed squash impl matches' ($p.implementation_matches | length) 0
 
+        # (q)/(r) fabro-4401 mention-only: a landed squash whose ONLY
+        # seed-id reference sits on a journal-style bullet of the commit
+        # body (the incident shape: cherry-pick a7f7b2d4b8 #356 vs run
+        # 01M3YWBVKHAC8EHPYWM9BQBXZ3, whose diff was entirely foreign)
+        # is a MENTION, never a landed implementation -> clean with a
+        # mention_only count. A real implementation whose subject uses the
+        # short-id form and whose body carries the id on a NARRATIVE line
+        # ("Root cause (fabro-x): ...", e.g. real 9df5f5c4f 'fix(2093):
+        # ...') still matches -> duplicate.
+        ^git commit -q --allow-empty -m 'cherry-pick #911: foreign fix lands here (#111)' -m '* sprint ledger bootstrap (ADR-0024, fabro-fix015 skeleton): scope narrowed'
+        ^git commit -q --allow-empty -m 'fix(16): automation edit keeps overlap policy (#112)' -m 'Root cause (fabro-fix016): the replace payload could not carry the field'
+        ^git push -q origin main
+
+        let q = (check $script 'fabro-fix015' 'RUN-SELF')
+        expect 'q: bullet-only mention verdict' $q.verdict 'clean'
+        expect 'q: bullet-only mention count' $q.mention_only_matches 1
+        expect 'q: bullet-only mention impl matches' ($q.implementation_matches | length) 0
+        expect 'q: bullet-only mention filed_only count' $q.filed_only_matches 0
+
+        let rr = (check $script 'fabro-fix016' 'RUN-SELF')
+        expect 'r: narrative-body implementation verdict' $rr.verdict 'duplicate'
+        expect 'r: narrative-body implementation matches' ($rr.implementation_matches | length) 1
+        expect 'r: narrative-body not mention-only' $rr.mention_only_matches 0
+
         # (l)-(n) fabro-ead4 fixture history: foreign landed
         # implementations for fix010 (closes from the live arm, non-top),
         # fix011 (duplicate verdict but deliberately NO tracker row -> its

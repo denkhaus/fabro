@@ -225,7 +225,13 @@ def row [v: record, desc: string, root: string, claims: list] {
      verdict: $v.verdict,
      sha: ($m.sha? | default ($ce.sha? | default null)),
      subject: (if (($m.subject? | default ($ce.subject? | default "")) | is-empty) { null } else { ($m.subject? | default ($ce.subject? | default "")) | str substring 0..120 }),
+     # fabro-4401: surface the closure class of the top match (impl first,
+     # else closing evidence) so a foreign closure reads as the advisory
+     # input it is — never a mechanical close instruction.
+     closure: ($m.closure? | default ($ce.closure? | default null)),
+     closure_source: (if ($m.sha? | default null) != null { "implementation" } else if ($ce.sha? | default null) != null { "closing_evidence" } else { null }),
      filed_only_matches: ($v.filed_only_matches? | default 0),
+     mention_only_matches: ($v.mention_only_matches? | default 0),
      anchors_ok: (($flags | length) == 0),
      anchor_flags: $flags,
      in_flight: ($hit != null),
@@ -328,10 +334,19 @@ def main [--base: string = "origin/denkhaus", --candidates: string, --top: int =
                   clean: "no landed implementation found",
                   degraded: "check failed (fetch/tracker error)"}
     let envelope_legend = {envelope_risk: "advisory: the body names a loop-asset or external-tool surface the implementer fs envelope hides — verify the PRIMARY fix surface is repo-visible (lib/ apps/ docs/ web) before claiming; loop-asset-only or external-tool seeds are DIRECT WORK (skip, journal the classification)"}
+    # fabro-4401: a `duplicate` is ALWAYS advisory-only — never a mechanical
+    # close. Matches whose only seed-id reference sits in journal-style
+    # bullet lines of a landed commit's message are mention-only and are
+    # downgraded before the verdict, so they surface as this count instead
+    # of a false 'duplicate' (incident: cherry-pick a7f7b2d4b8 vs run
+    # 01M3YWBVKHAC8EHPYWM9BQBXZ3). closure=foreign implementation matches
+    # still yield 'duplicate' — advisory input, the planner judges
+    # acceptance criteria per the two-branch rule.
+    let mention_legend = {mention_only_matches: "advisory: landed commits whose only seed-id reference sits in journal-style message bullets — mentions, never landed implementations; they cannot produce a 'duplicate' verdict"}
     let report = {mode: $mode,
                   run_id: ($run_id | default null),
                   candidates: ($verdicts | enumerate | each {|e| row $e.item ($cdesc | get -o $e.index | default "") ($SCRIPT_DIR | path join '../../../..') ($inflight.claims | default [])}),
-                  legend: ($legend | merge $envelope_legend),
+                  legend: ($legend | merge $envelope_legend | merge $mention_legend),
                   degraded_reason: (if ($degraded_reason | is-empty) { null } else { $degraded_reason }),
                   in_flight_note: ($inflight.note? | default null)}
     {"outcome": "succeeded",
