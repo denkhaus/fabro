@@ -154,6 +154,10 @@ def is-loop-path [path: string]: nothing -> bool {
 # envelope (the loop graph-contract smoke pins the graph side) and with
 # scripts/qualitygate.nu's loop-asset?.
 def loop-work-path [path: string]: nothing -> bool {
+    # fabro-9973: the fabro-dot snapshot dir is the ONE lib/ exception —
+    # keep in sync with qualitygate.nu loop-asset? and the loop graph's
+    # x.fs_write (the run-scope fixtures pin the triple).
+    if ($path | str starts-with "lib/components/fabro-dot/src/snapshots/") { return true }
     let prefix_hit = ([".fabro/" "scripts/"] | any {|q| $path | str starts-with $q})
     ($prefix_hit) or ($path in ["justfile" ".seeds/issues.jsonl"])
 }

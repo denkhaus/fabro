@@ -263,6 +263,12 @@ def check-workspace-compiles [] {
 # implementer's x.fs_write — keep the pair in sync; the loop
 # graph-contract smoke pins the graph side).
 def loop-asset? [p: string]: nothing -> bool {
+    # fabro-9973: the ONE lib/ exception. The fabro-dot checked-in-
+    # workflows snapshot under this directory is mechanically derived
+    # from .fabro/workflows graphs — accepting it (`cargo insta accept`)
+    # is part of the loop lane's one-unit graph edit, not a product-code
+    # edit. Every other lib/ path stays out of lane.
+    if ($p | str starts-with "lib/components/fabro-dot/src/snapshots/") { return true }
     let prefix_hit = ([".fabro/" "scripts/"] | any {|q| $p | str starts-with $q})
     ($prefix_hit) or ($p in ["justfile" ".seeds/issues.jsonl"])
 }
@@ -298,6 +304,33 @@ def run-diff-paths [base: record]: nothing -> list<string> {
     let res = (do { ^git diff --name-only $base.base } | complete)
     if $res.exit_code != 0 { return [] }
     $res.stdout | lines | compact
+}
+
+# fabro-dot snapshot tier (fabro-9973): any lane diff that changes a
+# checked-in workflow graph (.fabro/workflows/**/*.fabro) must run the
+# fabro-dot checked-in-workflows snapshot test BEFORE publish — the
+# incident class: a workflow.fabro shape change shipped with an
+# unaccepted snapshot (edge counts off) and the dogfood gate paid a
+# full compile cycle to catch it. Bounded probe: exactly one crate's
+# test, only when the diff actually touches a graph; skipped otherwise.
+def check-dot-snapshot [base: record]: nothing -> bool {
+    let graphs = (run-diff-paths $base | where {|p|
+        ($p | str starts-with '.fabro/workflows/') and ($p | str ends-with '.fabro')
+    })
+    if ($graphs | is-empty) {
+        print '== fabro-dot snapshot skipped — no workflow graph in the diff =='
+        return true
+    }
+    print $"== cargo nextest -p fabro-dot checked_in_workflows — diff touches \(($graphs | length)\) workflow graph\(s\) =="
+    let res = (do { ^cargo nextest run -p fabro-dot checked_in_workflows --retries $NEXTEST_RETRIES } | complete)
+    if $res.exit_code != 0 {
+        print ($res.stdout | str trim -r -c "\n" | lines | where {|l| ($l | str contains 'FAIL') or ($l | str contains 'Summary')} | last 20)
+        print ($res.stderr | str trim -r -c "\n" | lines | last 10)
+        print 'fabro-dot snapshot drift: a checked-in workflow graph changed shape — run `cargo insta accept` to update lib/components/fabro-dot/src/snapshots/ and ship the .snap update in the SAME diff'
+        return false
+    }
+    print 'fabro-dot snapshot green'
+    true
 }
 
 # Deterministic run-scope verdict for one lane (product|loop). Prints the
@@ -369,6 +402,17 @@ def "main check-mode-preservation" []: nothing -> nothing {
     check-mode-preservation
 }
 
+# Subcommand surface: `nu scripts/qualitygate.nu check-dot-snapshot` is
+# the loop tester's fabro-dot snapshot tier (fabro-9973) — the same
+# check the product gate runs inline, shared instead of copied.
+def "main check-dot-snapshot" []: nothing -> nothing {
+    let base = (run-base)
+    if not $base.grounded {
+        print "dot-snapshot base ungrounded: interactive or pre-checkpoint, diffing working tree"
+    }
+    if not (check-dot-snapshot $base) { exit 1 }
+}
+
 def main [] {
     let crates = (touched-crates)
     let base = (run-base)
@@ -382,6 +426,13 @@ def main [] {
     let scope = (scope-violations (run-diff-paths $base) "product")
     if ($scope | is-not-empty) {
         for v in $scope { print $"run-scope: product lane diff touches out-of-scope path: ($v)" }
+        print "GATE RED"
+        exit 1
+    }
+    # fabro-dot snapshot tier (fabro-9973): before either branch — a
+    # workflow-graph shape change must be snapshot-accepted even in a
+    # crates-touched run. First red stops (qualitygate style).
+    if not (check-dot-snapshot $base) {
         print "GATE RED"
         exit 1
     }

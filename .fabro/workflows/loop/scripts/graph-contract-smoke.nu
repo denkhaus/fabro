@@ -20,8 +20,10 @@
 #      dropped flag would silently work @fabro's queue / capture the
 #      product review scope.
 #   7. Implementer envelope: x.fs_write names EXACTLY the loop-asset
-#      set (.fabro/**, scripts/**, justfile, .seeds/issues.jsonl) and
-#      fs_hide hides .agents/** (the meta lane must SEE loop assets).
+#      set (.fabro/**, scripts/**, justfile, .seeds/issues.jsonl) plus
+#      the fabro-dot snapshot dir (fabro-9973 — the one lib/ exception,
+#      mechanically derived from .fabro/workflows graphs) and fs_hide
+#      hides .agents/** (the meta lane must SEE loop assets).
 #   8. tester -> implementer ("Gate red") edge EXISTS — the loop lane has
 #      no gatebounce node; the red bounce returns straight to the
 #      implementer.
@@ -29,7 +31,7 @@
 #      (just qualitygate must not appear on the tester node).
 
 const GRAPH = ('.fabro/workflows/loop/workflow.fabro' | path expand)
-const FS_WRITE_EXPECTED = 'x.fs_write=".fabro/**,scripts/**,justfile,.seeds/issues.jsonl"'
+const FS_WRITE_EXPECTED = 'x.fs_write=".fabro/**,scripts/**,justfile,.seeds/issues.jsonl,lib/components/fabro-dot/src/snapshots/**"'
 
 def fail [what: string]: nothing -> nothing {
     print -e $"loop graph-contract-smoke: FAIL — ($what)"

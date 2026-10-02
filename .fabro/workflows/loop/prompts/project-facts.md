@@ -9,11 +9,16 @@ never silently work around it.
 - Primary work surface — where loop-seed work lands: the loop's own
   machinery (ADR-0008 one-unit): `.fabro/workflows/**` (graphs, prompts,
   schemas, scripts), `.fabro/scripts/**`, root `scripts/**`, `justfile`,
-  and the tracker file `.seeds/issues.jsonl`. The loop implementer's
-  fs envelope pins EXACTLY this set; the loop tester's run-scope check
-  refuses every other path.
+  and the tracker file `.seeds/issues.jsonl` — plus ONE lib/ exception:
+  `lib/components/fabro-dot/src/snapshots/**`, the snapshot file
+  mechanically derived from the workflow graphs (accept it with
+  `cargo insta accept` when the dot-snapshot gate tier goes RED on your
+  graph-shape change; ship the .snap update in the same diff). The loop
+  implementer's fs envelope pins EXACTLY this set; the loop tester's
+  run-scope check refuses every other path.
 - Out-of-lane surfaces — never touched by a loop run: product code
-  (`lib/`, `apps/`, `docs/`, `lib/packages/`), session-level skills
+  (`lib/`, `apps/`, `docs/`, `lib/packages/`) EXCEPT the fabro-dot
+  snapshot dir above, session-level skills
   (`.agents/`), expertise (`.mulch/`). A seed whose primary surface is
   one of these is misrouted — see the planner prompt.
 - Merge-target branch — the branch this seed loop's run PRs integrate
@@ -36,8 +41,11 @@ never silently work around it.
 
 - Deterministic gate (loop lane): `nu .fabro/workflows/loop/scripts/loop-gate.nu` — the tester step owns it. The battery: validate every
   workflow graph (petri admission), lint every nu script, prompt-lint
-  literal hygiene, run-scope (diff touches only loop assets), rust fmt
-  only when .rs files appear. NEVER the product compile tier.
+  literal hygiene, run-scope (diff touches only loop assets), and — only
+  when the diff changes a workflow graph — the fabro-dot
+  checked-in-workflows snapshot test (accept drift with
+  `cargo insta accept` before publish). NEVER the product compile tier
+  otherwise; rust fmt only when .rs files appear.
 - Stage journal: `.fabro/journal/<run_id>.jsonl` — one JSON record per
   stage completion; the fallback source for recovering a run's claimed
   seed id.

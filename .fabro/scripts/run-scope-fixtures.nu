@@ -54,11 +54,14 @@ expect-violations [".fabro/journal/01X.jsonl" ".seeds/issues.jsonl"] "product" [
 expect-violations ["lib/apps/fabro-cli/src/main.rs" "apps/fabro-web/src/x.ts" "docs/public/api.yaml" "README.md"] "product" []
 
 # ── pure classification, loop lane ────────────────────────────────────
-# Loop assets pass (the meta lane's surface).
-expect-violations [".fabro/workflows/loop/workflow.fabro" "scripts/qualitygate.nu" "justfile" ".seeds/issues.jsonl" ".fabro/journal/01X.jsonl"] "loop" []
+# Loop assets pass (the meta lane's surface); the fabro-dot snapshot dir
+# passes too (fabro-9973 — mechanically derived from .fabro/workflows
+# graphs, part of the loop lane's one-unit graph edit).
+expect-violations [".fabro/workflows/loop/workflow.fabro" "scripts/qualitygate.nu" "justfile" ".seeds/issues.jsonl" ".fabro/journal/01X.jsonl" "lib/components/fabro-dot/src/snapshots/fabro_dot__tests__x.snap"] "loop" []
 
-# Everything else violates (out of lane).
-expect-violations ["lib/apps/fabro-cli/src/main.rs" "docs/internal/x.md" "apps/fabro-web/src/x.ts" "Cargo.toml" ".agents/skills/x/SKILL.md" ".mulch/expertise/rust.jsonl" ".seeds/other.jsonl"] "loop" ["lib/apps/fabro-cli/src/main.rs" "docs/internal/x.md" "apps/fabro-web/src/x.ts" "Cargo.toml" ".agents/skills/x/SKILL.md" ".mulch/expertise/rust.jsonl" ".seeds/other.jsonl"]
+# Everything else violates (out of lane) — including lib/ paths OUTSIDE
+# the snapshot dir (adjacent product code stays out of lane).
+expect-violations ["lib/apps/fabro-cli/src/main.rs" "lib/components/fabro-dot/src/tests.rs" "docs/internal/x.md" "apps/fabro-web/src/x.ts" "Cargo.toml" ".agents/skills/x/SKILL.md" ".mulch/expertise/rust.jsonl" ".seeds/other.jsonl"] "loop" ["lib/apps/fabro-cli/src/main.rs" "lib/components/fabro-dot/src/tests.rs" "docs/internal/x.md" "apps/fabro-web/src/x.ts" "Cargo.toml" ".agents/skills/x/SKILL.md" ".mulch/expertise/rust.jsonl" ".seeds/other.jsonl"]
 
 # Empty diff: green for both lanes.
 expect-violations [] "product" []
@@ -97,6 +100,13 @@ if not ($evidence_src | str contains $PIN_PREFIXES) or not ($evidence_src | str 
 }
 if not ($QUALITYGATE_SRC | str contains $PIN_PREFIXES_QG) or not ($QUALITYGATE_SRC | str contains $PIN_EXACT_QG) {
     fail "drift pin: qualitygate.nu loop-asset? set changed — realign with evidence.nu loop-work-path \(and the loop graph x.fs_write\)"
+}
+# fabro-9973: the snapshot-dir exception must live in BOTH mirrors (and
+# the loop graph pins its own copy) — a one-sided exception would split
+# gate scope from reviewer scope.
+const PIN_SNAPSHOT_DIR = 'lib/components/fabro-dot/src/snapshots/'
+if not ($evidence_src | str contains $PIN_SNAPSHOT_DIR) or not ($QUALITYGATE_SRC | str contains $PIN_SNAPSHOT_DIR) {
+    fail "drift pin: the fabro-dot snapshot-dir exception (fabro-9973) must appear in BOTH evidence.nu loop-work-path and qualitygate.nu loop-asset?"
 }
 
 # ── end-to-end git fixture ────────────────────────────────────────────
