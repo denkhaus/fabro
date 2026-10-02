@@ -12,6 +12,12 @@
 #   * Rust-path PRs: fmt (pinned nightly), clippy --workspace -D warnings,
 #     nextest --workspace (Linux, cached) — the real program, because a code
 #     change is what it is for.
+#   * loop-asset PRs WITHOUT Rust paths (.fabro/**, scripts/*.nu — the loop
+#     lane's surface): a LIGHT tier runs only the fabro-dot suite, whose
+#     checked-in-workflows shape snapshot is the Rust-facing contract for
+#     .fabro/workflows changes (PR #359 lesson); nu scripts stay covered by
+#     the lane's in-run lint. ~minutes instead of the full program, so
+#     30-minute loop cadences are not gate-bound (user order 2026-10-02).
 #   * TS-path PRs: typecheck + tests via bun.
 #
 # The check run name is the job id (dogfood-gate); branch protection on
@@ -44,12 +50,30 @@ jobs:
           git fetch origin "${{ github.base_ref }}" --depth=1 >/dev/null 2>&1 || true
           files=$(git diff --name-only "$base"...HEAD || git diff --name-only "$base" HEAD)
           echo "$files" | head -50
-          rust=$(echo "$files" | grep -qE '^(lib/|Cargo\.toml$|Cargo\.lock$|\.cargo/|rust-toolchain|justfile$|scripts/qualitygate)' && echo true || echo false)
+          rust=$(echo "$files" | grep -qE '^(lib/|Cargo\.toml$|Cargo\.lock$|\.cargo/|rust-toolchain|justfile$)' && echo true || echo false)
           ts=$(echo "$files" | grep -qE '^(apps/|lib/packages/|bun\.lock$|\.github/workflows/dogfood-gate\.yml$)' && echo true || echo false)
+          loop=$(echo "$files" | grep -qE '^(\.fabro/(workflows|scripts)/|scripts/.*\.nu$)' && echo true || echo false)
           {
             echo "rust=$rust"
             echo "ts=$ts"
+            echo "loop=$loop"
           } >> "$GITHUB_OUTPUT"
+
+      # ── Light tier (loop assets without Rust paths) ────────────────────
+      # Only fabro-dot: its checked-in-workflows snapshot is the Rust-facing
+      # contract for .fabro/workflows shape changes (PR #359). Nu-script
+      # syntax stays covered by the loop lane's in-run `just lint-nu` gate.
+      - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+        if: steps.changes.outputs.rust != 'true' && steps.changes.outputs.loop == 'true'
+      - uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # v2
+        if: steps.changes.outputs.rust != 'true' && steps.changes.outputs.loop == 'true'
+        with:
+          cache-on-failure: true
+      - uses: taiki-e/install-action@773334c0e05d7e699e4d78234494308223f3a2cf # nextest
+        if: steps.changes.outputs.rust != 'true' && steps.changes.outputs.loop == 'true'
+      - name: Loop-asset shape tests (fabro-dot)
+        if: steps.changes.outputs.rust != 'true' && steps.changes.outputs.loop == 'true'
+        run: cargo nextest run --locked -p fabro-dot --profile ci
 
       # ── Rust (only when Rust paths changed) ────────────────────────────
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
