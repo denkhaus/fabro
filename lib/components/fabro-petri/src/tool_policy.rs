@@ -5,10 +5,15 @@
 //! `HookService`: at `BeforeToolUse` it asks the node's stage envelope —
 //! a node that declares `x.tools` may call only those session tools, and
 //! a call outside the list is denied mechanically, the reason stated to
-//! the model, before Pebble runs the tool. Every other point, and every
-//! call of a node without the attribute, passes through to the local
-//! service unchanged, so `[[run.hooks]]` keep running. The wrapper is
-//! what [`RuntimeSpec::runtime`](crate::runtime::RuntimeSpec::runtime)
+//! the model, before Pebble runs the tool. At the dispatch points
+//! (`BeforeVisit`, `Retrying`, `BeforeAttempt`) it records the node
+//! being dispatched on the run's [`StageDispatch`] cell, which the
+//! sandbox exec facet reads to inject `FABRO_STAGE` (fabro-6e7f) — the
+//! hook service is the one fabro-owned component that sees every
+//! stage's view before the step spawns anything. Every other point, and
+//! every call of a node without the attribute, passes through to the
+//! local service unchanged, so `[[run.hooks]]` keep running. The wrapper
+//! is what [`RuntimeSpec::runtime`](crate::runtime::RuntimeSpec::runtime)
 //! installs as the `HookServiceHandle` capability before
 //! `petri_attractor_steps::register`, the documented host-replacement
 //! seam; the driver's awaited hooks (`FabroHooks`) wrap it in turn and
@@ -19,6 +24,7 @@ use std::sync::Arc;
 use petri_attractor_steps::hooks::LocalHooks;
 use petri_execution::hooks::{HookDecision, HookPoint, HookReport, HookRequest, HookService};
 
+use crate::fork_stage_env::StageDispatch;
 use crate::fork_stage_envelope::StageEnvelopes;
 
 /// The wrapped local hook service with the run's stage envelopes.
@@ -26,21 +32,45 @@ use crate::fork_stage_envelope::StageEnvelopes;
 pub struct ToolPolicyHooks {
     inner:     Arc<LocalHooks>,
     envelopes: Option<Arc<StageEnvelopes>>,
+    stages:    Arc<StageDispatch>,
 }
 
 impl ToolPolicyHooks {
     /// Wrap `inner` (Petri's local `[[run.hooks]]` service) with the
-    /// `x.tools` policy for `envelopes`; `None` is a pure passthrough,
-    /// the runtime without envelopes.
+    /// `x.tools` policy for `envelopes` and the stage recorder `stages`;
+    /// `None` envelopes is a pure passthrough, the runtime without
+    /// envelopes.
     #[must_use]
-    pub fn new(inner: Arc<LocalHooks>, envelopes: Option<Arc<StageEnvelopes>>) -> Self {
-        Self { inner, envelopes }
+    pub fn new(
+        inner: Arc<LocalHooks>,
+        envelopes: Option<Arc<StageEnvelopes>>,
+        stages: Arc<StageDispatch>,
+    ) -> Self {
+        Self {
+            inner,
+            envelopes,
+            stages,
+        }
     }
+}
+
+/// The points that precede a step's spawns: where the node being
+/// dispatched becomes the run's current stage.
+fn is_dispatch_point(point: HookPoint) -> bool {
+    matches!(
+        point,
+        HookPoint::BeforeVisit | HookPoint::Retrying | HookPoint::BeforeAttempt
+    )
 }
 
 #[async_trait::async_trait]
 impl HookService for ToolPolicyHooks {
     async fn run(&self, request: HookRequest) -> HookReport {
+        if let Some(view) = &request.view {
+            if is_dispatch_point(request.point) {
+                self.stages.set(view.node_name());
+            }
+        }
         if let (Some(envelopes), Some(view)) = (&self.envelopes, &request.view) {
             if matches!(request.point, HookPoint::BeforeToolUse) {
                 if let Some(tool) = request

@@ -31,6 +31,7 @@ use petri_frontend_fabro::Fabro;
 use petri_runtime::Runtime;
 use tracing::debug;
 
+use crate::fork_stage_env::StageDispatch;
 use crate::fork_stage_envelope::StageEnvelopes;
 use crate::providers::{self, SandboxProviderConfig};
 use crate::tool_policy::ToolPolicyHooks;
@@ -89,7 +90,12 @@ impl RuntimeSpec {
     /// registry: only execution swaps in the stubs.
     #[must_use]
     pub fn runtime(&self, for_execution: bool) -> Runtime {
-        let mut runtime = providers::standard_runtime(&self.sandbox).frontend(
+        // The engine-injected stage environment (fabro-6e7f): one cell per
+        // runtime, shared between the hook service that records the node
+        // being dispatched and the sandbox exec facet that injects
+        // `FABRO_STAGE` into every process the stage spawns.
+        let stages = StageDispatch::shared();
+        let mut runtime = providers::staged_runtime(&self.sandbox, &stages).frontend(
             Fabro::new()
                 .with_settings_toml(self.settings_toml.clone())
                 .with_mcp_catalog_toml(self.mcp_catalog_toml.clone()),
@@ -134,7 +140,11 @@ impl RuntimeSpec {
                 run_id: run_id.clone(),
             });
         }
-        let policy = Arc::new(ToolPolicyHooks::new(local.clone(), self.envelopes.clone()));
+        let policy = Arc::new(ToolPolicyHooks::new(
+            local.clone(),
+            self.envelopes.clone(),
+            stages,
+        ));
         runtime = runtime
             .hooks(Arc::new(HookAdapter::new(policy.clone())))
             .capability(HookServiceHandle(policy))

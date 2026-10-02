@@ -72,6 +72,7 @@ pub mod engine;
 pub mod fork;
 pub mod fork_exec_guard;
 pub mod fork_preamble_policy;
+pub mod fork_stage_env;
 pub mod fork_stage_envelope;
 pub mod generation_guard_lint;
 pub mod hooks;
