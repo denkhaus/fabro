@@ -22,6 +22,8 @@ use sandbox_driver_daytona::{DaytonaConfig, DaytonaProvider};
 use sandbox_driver_docker::DockerProvider;
 use sandbox_driver_host::HostProvider;
 
+use crate::fork_stage_env::{StageDispatch, StageFactory};
+
 const USER_AGENT: &str = concat!("fabro-server/", env!("CARGO_PKG_VERSION"));
 
 /// Explicit Daytona credentials: the SDK's configuration with the API key
@@ -135,7 +137,28 @@ pub fn standard_runtime(config: &SandboxProviderConfig) -> Runtime {
         reason = "the one place a standard runtime is built, with the built-in providers installed"
     )]
     let runtime = Runtime::standard();
-    runtime.in_process_providers(built_in_providers(config))
+    runtime.in_process_providers(built_in_providers(config, None))
+}
+
+/// [`standard_runtime`] with the engine-injected stage environment
+/// (fabro-6e7f): every sandbox the providers connect wraps its `exec`
+/// facet with [`crate::fork_stage_env`], so each process a stage spawns
+/// carries `FABRO_STAGE=<node-id>` as the run's hook service records it.
+#[must_use]
+pub fn staged_runtime(config: &SandboxProviderConfig, stages: &Arc<StageDispatch>) -> Runtime {
+    staged_runtime_inner(config, Some(stages))
+}
+
+fn staged_runtime_inner(
+    config: &SandboxProviderConfig,
+    stages: Option<&Arc<StageDispatch>>,
+) -> Runtime {
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "the one place a standard runtime is built, with the built-in providers installed"
+    )]
+    let runtime = Runtime::standard();
+    runtime.in_process_providers(built_in_providers(config, stages))
 }
 
 /// Petri's bare runtime with Fabro's built-in providers installed.
@@ -146,7 +169,7 @@ pub fn bare_runtime(config: &SandboxProviderConfig) -> Runtime {
         reason = "the one place a bare runtime is built, with the built-in providers installed"
     )]
     let runtime = Runtime::bare();
-    runtime.in_process_providers(built_in_providers(config))
+    runtime.in_process_providers(built_in_providers(config, None))
 }
 
 /// The Docker connection used by both the server and Petri. The driver reads
@@ -172,14 +195,25 @@ pub async fn connect_daytona(
 
 /// One lazy factory per built-in kind. Missing Daytona credentials fail
 /// only when a Daytona scope is acquired, never for admission or a Host run.
-fn built_in_providers(config: &SandboxProviderConfig) -> InProcessProviders {
+/// With `stages`, each factory is wrapped for the engine-injected stage
+/// environment (fabro-6e7f).
+fn built_in_providers(
+    config: &SandboxProviderConfig,
+    stages: Option<&Arc<StageDispatch>>,
+) -> InProcessProviders {
+    let factory = |factory: Arc<dyn ProviderFactory>| match stages {
+        Some(stages) => {
+            Arc::new(StageFactory::new(factory, Arc::clone(stages))) as Arc<dyn ProviderFactory>
+        }
+        None => factory,
+    };
     InProcessProviders::new()
-        .with(Arc::new(HostFactory))
-        .with(Arc::new(DockerFactory {
+        .with(factory(Arc::new(HostFactory)))
+        .with(factory(Arc::new(DockerFactory {
             host:         config.docker_host.clone(),
             host_address: config.docker_host_address.clone(),
-        }))
-        .with(Arc::new(DaytonaFactory(config.daytona.clone())))
+        })))
+        .with(factory(Arc::new(DaytonaFactory(config.daytona.clone()))))
 }
 
 struct HostFactory;

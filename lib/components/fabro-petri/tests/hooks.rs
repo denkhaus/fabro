@@ -456,6 +456,33 @@ async fn run_hook_contexts_carry_the_run_id() {
     );
 }
 
+/// The engine-injected stage environment (fabro-6e7f): every process a
+/// stage spawns sees `FABRO_STAGE` naming the node being dispatched, one
+/// value per node, through the sandbox exec facet the provider factories
+/// wrapped.
+#[tokio::test]
+async fn stage_processes_carry_the_dispatched_stage() {
+    let harness = Harness::new();
+    let workflow = workflow(
+        "  survey [shape=parallelogram, script=\"printf '%s' \\\"$FABRO_STAGE\\\" > \
+         stage-survey.txt\"]\n  develop [shape=parallelogram, script=\"printf '%s' \
+         \\\"$FABRO_STAGE\\\" > stage-develop.txt\"]",
+        "  start -> survey -> develop -> exit",
+    );
+    let outcome = harness.run(&workflow, SETTINGS).await;
+    assert_eq!(outcome.status, RunStatus::Success, "{outcome:?}");
+    assert!(outcome.complete, "{:?}", outcome.incomplete);
+
+    let workspace = harness.workspace().await;
+    let path = harness.workspace_path(&workspace);
+    for node in ["survey", "develop"] {
+        let seen = fs::read_to_string(path.join(format!("stage-{node}.txt")))
+            .await
+            .unwrap_or_else(|error| panic!("the {node} stage saw FABRO_STAGE: {error}"));
+        assert_eq!(seen, node, "the engine's stage names the dispatched node");
+    }
+}
+
 /// The stage-envelope guard meets the stage-journal hook contract
 /// (fabro-b6c5): a run that wires sandbox hooks keeps its
 /// `.fabro/journal/` traffic exempt from `x.fs_write`, so a deny-all
