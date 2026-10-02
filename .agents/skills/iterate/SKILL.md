@@ -73,10 +73,10 @@ stores it belongs to; reach them by phase need:
   claims nothing — one line, one executor.
 - Interrupted cycle: reconstruct BEFORE selecting — `git status` plus
   `seeds list --status in_progress` name the mid-flight work; continue it.
-- Sprint ledger (nu-agent model, session-LOCAL): read `iterate-state.json`
-  in the repo ROOT (user directive 2026-10-02 evening: root, never
-  `.fabro/`). The sprint system is the SESSION's working mode, mirroring
-  nu-agent's iterate skill — the LINE has nothing to do with sprints and
+- Sprint ledger (session-LOCAL): read `iterate-state.json` in the repo
+  ROOT (user directive 2026-10-02 evening: root, never `.fabro/`). The
+  sprint system is this SESSION's working mode — the LINE has nothing to
+  do with sprints and
   implements none of the mechanics (no ledger writes in lane assets, no
   reflection parks, no counters; fabro-cadd rejected, PRs #359/#360 closed
   not-planned). If `sprints_reflected < sprints_completed`, the pending
@@ -123,9 +123,9 @@ stores it belongs to; reach them by phase need:
   `seeds show <id>` (assignee set) in the same breath as the fire; the
   goal text names the seed id AND its one-line topic.
 - Executor decision (SUPERSEDED 2026-10-02 evening, local-first model):
-  invoking /iterate means the session works LOCALLY — the nu-agent sprint
-  loop IS this session's working mode (claim, implement, review, reflect;
-  the conductor-role split of directive 2026-09-06 is retired). DEFAULT
+  invoking /iterate means the session works LOCALLY — the sprint loop
+  (claim, implement, review, reflect) IS this session's working mode (the
+  conductor-role split of directive 2026-09-06 is retired). DEFAULT
   ASSIGNMENT (user directive 2026-10-02 late): EVERYTHING is implemented
   by this session locally; ONLY loop-asset work (surfaces
   `.fabro/workflows/**`, `.fabro/scripts/**`, `scripts/**`, justfile,
@@ -140,7 +140,7 @@ stores it belongs to; reach them by phase need:
 
 - File the seed with the agreed design BEFORE any code exists — design
   decisions live in the tracker, never only in chat or the diff.
-- LOCAL builds follow the nu-agent sprint discipline: claim
+- LOCAL builds follow the sprint discipline: claim
   (`seeds update --status in_progress`), implement under the mechanical
   gates of the touched surface (Rust: rust-style-guide + guideline pages
   loaded and NAMED before the first edit cell), verify with real
@@ -348,7 +348,7 @@ stores it belongs to; reach them by phase need:
    filed/closed — each with a ONE-LINE description, never a bare id —
    and ALWAYS an ASSIGNMENT PENDING section: every unassigned seed with
    a one-line @fabro recommendation. Categorize every revisor seed.
-5. Sprint ledger update (nu-agent model, session-LOCAL): counting rule
+5. Sprint ledger update (session-LOCAL): counting rule
   (user directive 2026-10-02 evening): ONLY closures this session worked
   LOCALLY with a substantive diff count 1 sprint; docs-only, row-only,
   and verify-only closures count 0. LINE closures (loop lane, delegated
