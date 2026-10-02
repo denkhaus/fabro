@@ -98,6 +98,14 @@ stores it belongs to; reach them by phase need:
   commit.
 - Plan against the guide: name the guideline pages the design must
   satisfy. A design that must deviate is itself a pivotal fork.
+- Dispatch is one ceremony: ASSIGN, VERIFY, FIRE. A seed named in a run
+  goal must be claimable by the fail-closed picker BEFORE the fire
+  (`@fabro` for develop work, `@loop` for loop assets) — an unassigned
+  seed in a goal makes the planner silently substitute the next claimable
+  seed while the implementer still follows the goal text, closing the
+  WRONG seed (claim/claim-check mismatch class). Verify with
+  `seeds show <id>` (assignee set) in the same breath as the fire; the
+  goal text names the seed id AND its one-line topic.
 - Executor decision (directive 2026-09-06): this agent implements NO
   seeds — product and engine/platform work goes to the autonomous line.
   This session orients, monitors, grills pivotal forks (writing the agreed
@@ -123,6 +131,12 @@ stores it belongs to; reach them by phase need:
 - Rust work (when directly assigned): mechanical gate — read SKILL.md AND
   the guideline pages covering the diff in the SAME turn, before the first
   Rust edit cell; name the pages in the cycle report.
+- Direct-fix verification recipe (before any push): lint first
+  (`just lint-nu` for nu), then DRY-RUNS — positive AND negative — each
+  as its own shell call, exit codes read from the process (never behind
+  a pipe: `$?` reads the last pipeline member, not the script). Nu
+  interpolated strings treat `word:` before a `(` as a command call —
+  reword such phrases; parse-clean does not mean run-clean.
 - Loop assets are deterministic-script-first: a prompt clause requiring
   judgment over mechanical data becomes a script that prints a verdict
   (`.fabro/scripts/`, `just lint-nu` for new nu scripts; prompts keep only
@@ -157,6 +171,14 @@ stores it belongs to; reach them by phase need:
   cost narratives, or machine-specific paths (`.fabro/workflows/**`);
   branch/merge facts belong in PROJECT_FACTS. The mechanical net is the
   prompt-lint evidence ban.
+- Local full-crate verification runs with `--profile ci` timeouts: a
+  default-profile timeout on a Docker/sandbox test under dev-host
+  conditions is an environment artifact (known class), not a regression —
+  rerun isolated with the ci profile before treating it red.
+- After any non-PR integration (emergency squash, manual land): sweep
+  for the platform-created run PR and the run branch — a leftover open PR
+  blocks the push-gate and fakes in-flight state. Close the PR as
+  already-integrated citing the landed sha; delete the branch.
 - Direct pushes to the line branch skip dogfood-gate (it runs on PRs only)
   and reds accumulate invisibly until the next PR pays for them
   (2026-09-30: three stale suites surfaced at once). Run the touched
@@ -191,6 +213,16 @@ stores it belongs to; reach them by phase need:
 
 ## Phase 4 — Deepen (conditional)
 
+- Architecture-gate procedure (local agent): delegate the scan to a
+  sub-agent with an output contract (candidates to a file: files, scope,
+  problem, solution, benefits, deletion-test verdict, strength), curate
+  with the fork-scope filter, then file EVERY non-Speculative candidate
+  as a seed IMMEDIATELY with owner-based assignment — nothing survives
+  only in the report. Render the HTML report (interactive skill's
+  artifact) on LOCALHOST only — anything beyond this machine is an
+  exposure decision that belongs to the user. Mark the ledger
+  (`last_arch_review_at_sprint`) and offer the grilling loop for the
+  picked candidate.
 - Standing path (user directive 2026-10-02, freeze era): the architect
   WORKFLOW is DEACTIVATED on the line — the architecture gate fires the
   LOCAL improve-codebase-architecture agent instead; its top
@@ -230,6 +262,17 @@ stores it belongs to; reach them by phase need:
   line first (automation replace with FULL body + `If-Match` revision +
   explicit `on_overlap: skip`; re-GET and verify it survived), deploy
   nonblocking, smoke on mirtuell.net, re-enable, monitor via heartbeat.
+- Fork releases follow ADR-0025 naming `<frozen-base>-fork.N` — the
+  upstream `cargo dev release` path (origin main push) is WRONG for the
+  line branch. Until a fork mode exists: manual bump = workspace
+  `Cargo.toml` version + `cargo update --workspace` + `just
+  image-release` (tag `<version>-<sha>`); N increments once per built
+  release; the base moves only with a deliberate intake decision.
+- Secret-gated steps (tofu/gopass) are probed with a bounded check
+  (`timeout 5 ... gopass show`) BEFORE the step that needs them; the
+  store relocks on its own TTL — ask the user to warm it EARLY, not at
+  deploy time. Recompute the sandbox-plugin sha per deploy (same pin rev
+  usually means the same sha — verify, never assume).
 - Production deploy after substantial engine changes (binary-need check:
   any `lib/` path in the merged work): `just image-release` +
   fabro-tofu apply (`cd ~/dev/fabro-tofu`, mise exec tofu). `just up`
@@ -266,7 +309,18 @@ stores it belongs to; reach them by phase need:
    filed/closed — each with a ONE-LINE description, never a bare id —
    and ALWAYS an ASSIGNMENT PENDING section: every unassigned seed with
    a one-line @fabro recommendation. Categorize every revisor seed.
-5. Sprint ledger update (nu-agent model, ADR-0024): if this cycle closed
+5. Sprint ledger update (nu-agent model, ADR-0024): a closure that lands
+  after its session ends is registered RETROACTIVELY by the next session
+  (the ledger bootstraps behind the merge queue — normal, not drift).
+  Counting rule: any seed closure with a substantive diff counts 1 sprint
+  regardless of lane (develop, loop, or direct fix that changes behavior);
+  docs-only, row-only, and verify-only closures count 0. Fire-time
+  operator check: the ledger note names what closed and where it landed.
+5b. Heartbeat cadence tracks reality: 20m while anything autonomous runs
+  (pass, build, deploy chain); 60m when everything is user-gated. Refresh
+  the instruction at every phase change — a heartbeat still carrying a
+  completed critical path is noise that erodes trust.
+6. Line-watch heartbeat (label `line-watch`, interval 10m, follow-up
    a seed with a SUBSTANTIVE diff, `sprints_completed` +1 (verify-only
    closures count 0 — provisional rule, see ledger bootstrap note). Run the
    SHORT reflection now (painpoints -> seeds/skill edits/no-action notes),
@@ -286,6 +340,12 @@ stores it belongs to; reach them by phase need:
 
 ## Standing rules
 
+- Wait budgets derive from observed service latencies, not guesses: a
+  bounded wait must outlive the slowest LEGITIMATE stage of what it waits
+  for (PR creation after terminal status; required-check duration on a
+  PR). A fallback that bypasses a verification path must re-check the
+  gated path one last time before engaging, and clean up the ghost it
+  creates (open PR, remote branch) so gates downstream inherit nothing.
 - Judgment pre-screens (ADR-0022): advisory, fail-open, via
   `.fabro/scripts/judgment.nu`; thresholds only after the fabro-d4c6
   evaluation report exists; logs to
