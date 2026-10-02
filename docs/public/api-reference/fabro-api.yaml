@@ -7279,6 +7279,14 @@ components:
           example: dependency-update
         workflow_source:
           $ref: "#/components/schemas/AutomationGitWorkflowSource"
+        on_overlap:
+          allOf:
+            - $ref: "#/components/schemas/AutomationOverlapPolicy"
+          description: >-
+            Overlap policy for scheduled fires. Absent (untagged) resolves
+            to `skip` at fire time. Create and replace default an omitted
+            policy to an explicit `skip`, so definitions edited through the
+            API keep a visible policy (fabro-2093).
         triggers:
           type: array
           items:
@@ -7379,6 +7387,13 @@ components:
           example: dependency-update
         workflow_source:
           $ref: "#/components/schemas/AutomationGitWorkflowSource"
+        on_overlap:
+          allOf:
+            - $ref: "#/components/schemas/AutomationOverlapPolicy"
+          description: >-
+            Overlap policy for scheduled fires. Omitted defaults to an
+            explicit `skip`, so a replace that does not carry the field
+            never silently untags the definition (fabro-2093).
         triggers:
           type: array
           items:
@@ -7416,10 +7431,31 @@ components:
           example: dependency-update
         workflow_source:
           $ref: "#/components/schemas/AutomationGitWorkflowSource"
+        on_overlap:
+          allOf:
+            - $ref: "#/components/schemas/AutomationOverlapPolicy"
+          description: >-
+            Overlap policy for scheduled fires. Omitted defaults to an
+            explicit `skip`, so a replace that does not carry the field
+            never silently untags the definition (fabro-2093).
         triggers:
           type: array
           items:
             $ref: "#/components/schemas/AutomationTrigger"
+
+    AutomationOverlapPolicy:
+      description: >-
+        What a scheduled fire does while a previous run of the same
+        automation is still non-terminal.
+      type: string
+      enum:
+        - skip
+        - fire
+      x-variants:
+        - name: skip
+          description: Skip the fire; the next tick retries.
+        - name: fire
+          description: Fire regardless of an overlapping run (explicit intent).
 
     AutomationListResponse:
       description: List envelope for automation definitions.

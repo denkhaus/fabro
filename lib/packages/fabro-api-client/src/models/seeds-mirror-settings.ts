@@ -14,14 +14,8 @@
 
 
 
-/**
- * Tracker seed status (seeds format, sd-0.5.15 read+write compatible).
- */
-
-export const SeedStatus = {
-    OPEN: 'open',
-    IN_PROGRESS: 'in_progress',
-    CLOSED: 'closed'
-} as const;
-
-export type SeedStatus = typeof SeedStatus[keyof typeof SeedStatus];
+export interface SeedsMirrorSettings {
+    'origin': string;
+    'branch': string;
+    'cache_dir'?: string | null;
+}

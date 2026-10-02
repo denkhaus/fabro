@@ -15,13 +15,12 @@
 
 
 /**
- * Tracker seed status (seeds format, sd-0.5.15 read+write compatible).
+ * What a scheduled fire does while a previous run of the same automation is still non-terminal.
  */
 
-export const SeedStatus = {
-    OPEN: 'open',
-    IN_PROGRESS: 'in_progress',
-    CLOSED: 'closed'
+export const AutomationOverlapPolicy = {
+    SKIP: 'skip',
+    FIRE: 'fire'
 } as const;
 
-export type SeedStatus = typeof SeedStatus[keyof typeof SeedStatus];
+export type AutomationOverlapPolicy = typeof AutomationOverlapPolicy[keyof typeof AutomationOverlapPolicy];

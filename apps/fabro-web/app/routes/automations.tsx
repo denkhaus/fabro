@@ -59,9 +59,11 @@ interface AutomationRow {
   environmentId: string | null;
   workflowSource?: string;
   schedule?: string;
+  scheduleEnabled: boolean;
   apiEnabled: boolean;
   icon: ComponentType<{ className?: string }>;
   color: string;
+  automation: Automation;
 }
 
 const slugIconMap: Record<string, ComponentType<{ className?: string }>> = {
@@ -103,9 +105,11 @@ function mapAutomations(result: AutomationListResponse | undefined): AutomationR
         ? workflowSourceSummary(a.workflow_source)
         : undefined,
       schedule:   findScheduleTrigger(a)?.expression,
+      scheduleEnabled: findScheduleTrigger(a)?.enabled ?? false,
       apiEnabled: hasEnabledApiTrigger(a),
       icon:       slugIconMap[a.workflow] ?? CodeBracketIcon,
       color:      slugColorMap[a.workflow] ?? "var(--color-teal-500)",
+      automation: a,
     };
   });
 }
@@ -122,13 +126,17 @@ function AutomationCard({
   automation,
   busy,
   running,
+  toggling,
   onRun,
+  onToggle,
   onDelete,
 }: {
   automation: AutomationRow;
   busy: boolean;
   running: boolean;
+  toggling: boolean;
   onRun: () => void;
+  onToggle: () => void;
   onDelete: () => void;
 }) {
   const Icon = automation.icon;
@@ -148,7 +156,13 @@ function AutomationCard({
             <span className="text-sm font-medium text-fg-2 group-hover:text-fg">{automation.name}</span>
             <span className="font-mono text-xs text-fg-muted">{automation.workflow}</span>
             {automation.schedule && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-teal-500/10 border border-teal-500/20 px-2 py-0.5 text-[11px] font-medium text-teal-300">
+              <span
+                className={
+                  automation.scheduleEnabled
+                    ? "inline-flex items-center gap-1 rounded-full bg-teal-500/10 border border-teal-500/20 px-2 py-0.5 text-[11px] font-medium text-teal-300"
+                    : "inline-flex items-center gap-1 rounded-full bg-fg-muted/10 border border-fg-muted/20 px-2 py-0.5 text-[11px] font-medium text-fg-muted line-through decoration-fg-muted/50"
+                }
+              >
                 <ClockIcon className="size-3" />
                 {automation.schedule}
               </span>
@@ -169,10 +183,27 @@ function AutomationCard({
       {automation.schedule ? (
         <button
           type="button"
-          title="Pause schedule"
-          className="flex size-8 shrink-0 items-center justify-center rounded-full border border-amber/20 text-amber transition-colors hover:border-amber/50 hover:bg-amber/10 hover:text-fg"
+          onClick={onToggle}
+          disabled={toggling || busy}
+          aria-label={automation.scheduleEnabled ? "Pause schedule" : "Resume schedule"}
+          title={
+            automation.scheduleEnabled
+              ? "Pause schedule"
+              : "Resume schedule"
+          }
+          className={
+            automation.scheduleEnabled
+              ? "flex size-8 shrink-0 items-center justify-center rounded-full border border-amber/20 text-amber transition-colors hover:border-amber/50 hover:bg-amber/10 hover:text-fg disabled:cursor-not-allowed disabled:opacity-60"
+              : "flex size-8 shrink-0 items-center justify-center rounded-full border border-teal-500/20 text-teal-500 transition-colors hover:border-teal-500/50 hover:bg-teal-500/10 hover:text-fg disabled:cursor-not-allowed disabled:opacity-60"
+          }
         >
-          <PauseIcon className="size-3.5" />
+          {toggling ? (
+            <ArrowPathIcon className="size-3.5 animate-spin [animation-duration:450ms]" aria-hidden="true" />
+          ) : automation.scheduleEnabled ? (
+            <PauseIcon className="size-3.5" />
+          ) : (
+            <ClockIcon className="size-3.5" />
+          )}
         </button>
       ) : (
         <button
@@ -272,6 +303,7 @@ export default function Automations() {
   const [pendingDelete, setPendingDelete] = useState<AutomationRow | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [runningId, setRunningId] = useState<string | null>(null);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
 
   async function runAutomation(automation: AutomationRow) {
     if (runningId) return;
@@ -289,6 +321,50 @@ export default function Automations() {
             : "Couldn't start a run. Please try again.",
       });
       setRunningId(null);
+    }
+  }
+
+  // Pause/resume sends a FULL replace — including `on_overlap` and the
+  // current `If-Match` revision — so toggling a schedule never drops any
+  // part of the definition (fabro-2093).
+  async function toggleSchedule(automation: AutomationRow) {
+    if (togglingId) return;
+    setTogglingId(automation.id);
+    const source = automation.automation;
+    const resuming = !automation.scheduleEnabled;
+    try {
+      await apiData(() =>
+        automationsApi.replaceAutomation(automation.id, automation.revision, {
+          name: source.name,
+          description: source.description ?? null,
+          environment_id: source.environment_id ?? "",
+          target: source.target,
+          workflow: source.workflow,
+          workflow_source: source.workflow_source ?? undefined,
+          on_overlap: source.on_overlap ?? "skip",
+          triggers: source.triggers.map((trigger) =>
+            trigger.type === "schedule"
+              ? { ...trigger, enabled: resuming }
+              : trigger,
+          ),
+        }),
+      );
+      await mutate(queryKeys.automations.list());
+      toast.push({
+        message: resuming
+          ? `Schedule for “${automation.name}” resumed.`
+          : `Schedule for “${automation.name}” paused.`,
+      });
+    } catch (cause) {
+      toast.push({
+        tone: "error",
+        message:
+          cause instanceof ApiError && cause.message
+            ? cause.message
+            : "Couldn't update the schedule. Please try again.",
+      });
+    } finally {
+      setTogglingId(null);
     }
   }
 
@@ -380,7 +456,9 @@ export default function Automations() {
                 automation={automation}
                 busy={deleting || (runningId !== null && runningId !== automation.id)}
                 running={runningId === automation.id}
+                toggling={togglingId === automation.id}
                 onRun={() => runAutomation(automation)}
+                onToggle={() => toggleSchedule(automation)}
                 onDelete={() => setPendingDelete(automation)}
               />
             ))}

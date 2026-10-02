@@ -70,6 +70,7 @@ models/automation-api-trigger.ts
 models/automation-git-workflow-source.ts
 models/automation-list-meta.ts
 models/automation-list-response.ts
+models/automation-overlap-policy.ts
 models/automation-ref.ts
 models/automation-schedule-trigger.ts
 models/automation-trigger.ts
@@ -493,6 +494,7 @@ models/seed-graph.ts
 models/seed-status.ts
 models/seed-summary.ts
 models/seed-type.ts
+models/seeds-mirror-settings.ts
 models/server-api-settings.ts
 models/server-artifacts-settings.ts
 models/server-auth-github-settings.ts
@@ -507,6 +509,7 @@ models/server-namespace.ts
 models/server-sandbox-provider-settings.ts
 models/server-sandbox-settings.ts
 models/server-scheduler-settings.ts
+models/server-seeds-settings.ts
 models/server-settings.ts
 models/server-storage-settings.ts
 models/server-web-settings.ts

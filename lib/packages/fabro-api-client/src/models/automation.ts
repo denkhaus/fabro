@@ -18,6 +18,9 @@
 import type { AutomationGitWorkflowSource } from './automation-git-workflow-source';
 // May contain unused imports in some cases
 // @ts-ignore
+import type { AutomationOverlapPolicy } from './automation-overlap-policy';
+// May contain unused imports in some cases
+// @ts-ignore
 import type { AutomationTrigger } from './automation-trigger';
 // May contain unused imports in some cases
 // @ts-ignore
@@ -48,5 +51,9 @@ export interface Automation {
      */
     'workflow': string;
     'workflow_source'?: AutomationGitWorkflowSource;
+    /**
+     * Overlap policy for scheduled fires. Absent (untagged) resolves to `skip` at fire time. Create and replace default an omitted policy to an explicit `skip`, so definitions edited through the API keep a visible policy (fabro-2093).
+     */
+    'on_overlap'?: AutomationOverlapPolicy;
     'triggers': Array<AutomationTrigger>;
 }

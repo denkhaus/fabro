@@ -494,6 +494,60 @@ async fn get_automation_returns_current_etag() {
 }
 
 #[tokio::test]
+async fn create_automation_defaults_on_overlap_to_skip() {
+    let (app, _temp_dir, _automation_dir) = automation_app();
+    let created = create_automation(&app, "nightly", "Nightly").await;
+    assert_eq!(created["on_overlap"], json!("skip"));
+}
+
+#[tokio::test]
+async fn replace_automation_defaults_on_overlap_to_skip_when_omitted() {
+    let (app, _temp_dir, _sqlite_path) = automation_app();
+    let created = create_automation(&app, "nightly", "Nightly").await;
+    let revision = revision_from(&created);
+    // The UI's historical replace shape: no `on_overlap` field at all
+    // (fabro-2093). The server must persist an explicit `skip`, never an
+    // untagged definition. The replace response is re-derived from the
+    // persisted canonical bytes, so asserting it proves durability.
+    let replacement = replacement_body("UI shape");
+
+    let response = app
+        .oneshot(request_with_if_match(
+            Method::PUT,
+            "/automations/nightly",
+            revision,
+            Some(replacement),
+        ))
+        .await
+        .expect("replace automation should respond");
+    let body = response_json(response, StatusCode::OK, "PUT /api/v1/automations/nightly").await;
+
+    assert_eq!(body["on_overlap"], json!("skip"));
+}
+
+#[tokio::test]
+async fn replace_automation_round_trips_explicit_on_overlap() {
+    let (app, _temp_dir, _sqlite_path) = automation_app();
+    let created = create_automation(&app, "nightly", "Nightly").await;
+    let revision = revision_from(&created);
+    let mut replacement = replacement_body("Parallel allowed");
+    replacement["on_overlap"] = json!("fire");
+
+    let response = app
+        .oneshot(request_with_if_match(
+            Method::PUT,
+            "/automations/nightly",
+            revision,
+            Some(replacement),
+        ))
+        .await
+        .expect("replace automation should respond");
+    let body = response_json(response, StatusCode::OK, "PUT /api/v1/automations/nightly").await;
+
+    assert_eq!(body["on_overlap"], json!("fire"));
+}
+
+#[tokio::test]
 async fn replace_automation_accepts_unquoted_if_match_and_returns_new_etag() {
     let (app, _temp_dir, _automation_dir) = automation_app();
     let created = create_automation(&app, "nightly", "Nightly").await;

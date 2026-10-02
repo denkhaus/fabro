@@ -3,7 +3,8 @@ use std::sync::Arc;
 use axum::http::HeaderMap;
 use axum_extra::extract::Query as ExtraQuery;
 use fabro_automation::{
-    Automation, AutomationDraft, AutomationId, AutomationReplace, AutomationStoreError,
+    Automation, AutomationDraft, AutomationId, AutomationOverlapPolicy, AutomationReplace,
+    AutomationStoreError,
 };
 use fabro_environment::EnvironmentId;
 use fabro_store::{RunSummaryListQuery, RunSummaryVisibility};
@@ -199,6 +200,11 @@ async fn create_automation(
         draft.environment_id.as_deref(),
         StatusCode::UNPROCESSABLE_ENTITY,
     )?);
+    // A definition written through the API always carries a visible overlap
+    // policy: an omitted `on_overlap` becomes an explicit `Skip` instead of
+    // an untagged `None`, so replaces never silently drop the field
+    // (fabro-2093). Fire stays explicit user intent.
+    draft.on_overlap = Some(draft.on_overlap.unwrap_or(AutomationOverlapPolicy::Skip));
     let automation = state.automation_store().create(draft).await?;
     state.notify_automation_scheduler();
     Ok((StatusCode::CREATED, Json(automation)).into_response())
@@ -230,6 +236,12 @@ async fn replace_automation(
         replacement.environment_id.as_deref(),
         StatusCode::UNPROCESSABLE_ENTITY,
     )?);
+    // See create_automation: replaces persist a visible overlap policy.
+    replacement.on_overlap = Some(
+        replacement
+            .on_overlap
+            .unwrap_or(AutomationOverlapPolicy::Skip),
+    );
     let automation = state
         .automation_store()
         .replace(&id, &expected, replacement)

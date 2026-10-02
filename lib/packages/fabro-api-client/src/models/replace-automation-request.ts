@@ -18,6 +18,9 @@
 import type { AutomationGitWorkflowSource } from './automation-git-workflow-source';
 // May contain unused imports in some cases
 // @ts-ignore
+import type { AutomationOverlapPolicy } from './automation-overlap-policy';
+// May contain unused imports in some cases
+// @ts-ignore
 import type { AutomationTrigger } from './automation-trigger';
 // May contain unused imports in some cases
 // @ts-ignore
@@ -39,5 +42,9 @@ export interface ReplaceAutomationRequest {
      */
     'workflow': string;
     'workflow_source'?: AutomationGitWorkflowSource;
+    /**
+     * Overlap policy for scheduled fires. Omitted defaults to an explicit `skip`, so a replace that does not carry the field never silently untags the definition (fabro-2093).
+     */
+    'on_overlap'?: AutomationOverlapPolicy;
     'triggers': Array<AutomationTrigger>;
 }

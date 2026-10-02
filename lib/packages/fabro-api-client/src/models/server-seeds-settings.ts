@@ -13,15 +13,10 @@
  */
 
 
+// May contain unused imports in some cases
+// @ts-ignore
+import type { SeedsMirrorSettings } from './seeds-mirror-settings';
 
-/**
- * Tracker seed status (seeds format, sd-0.5.15 read+write compatible).
- */
-
-export const SeedStatus = {
-    OPEN: 'open',
-    IN_PROGRESS: 'in_progress',
-    CLOSED: 'closed'
-} as const;
-
-export type SeedStatus = typeof SeedStatus[keyof typeof SeedStatus];
+export interface ServerSeedsSettings {
+    'mirror': SeedsMirrorSettings | null;
+}

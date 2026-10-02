@@ -15,7 +15,7 @@
 
 
 /**
- * Tracker seed type (seeds format, sd 0.5.15 compatible).
+ * Tracker seed type (seeds format, sd-0.5.15 read+write compatible).
  */
 
 export const SeedType = {
