@@ -14,8 +14,9 @@
 # `do { ^cmd } | complete`).
 #
 # Touched-crate + base detection reuse the qualitygate.nu pattern. The
-# stage arrives as an ARGUMENT in v1; engine-side FABRO_STAGE env
-# injection is the follow-up fork recorded in fabro-6e7f.
+# stage comes from the engine-injected FABRO_STAGE env (fabro-6e7f /
+# fork_stage_env.rs) since v2 (fabro-a9cc); an explicit argument remains
+# as a manual override.
 
 const PINNED_TOOLCHAIN = "nightly-2026-04-14"
 
@@ -142,11 +143,31 @@ def stage-implementer [] {
     print "verify: implementer stage green"
 }
 
-def main [stage: string] {
-    match $stage {
+# Stage source (fabro-a9cc, v2): the engine-injected FABRO_STAGE env is
+# authoritative inside a run (fork_stage_env.rs, fabro-6e7f); an explicit
+# argument overrides it for local/manual use only.
+def main [stage?: string] {
+    let stage = (if ($stage == null or $stage == '') { null } else { $stage })
+    let resolved = (
+        if $stage != null {
+            let env_stage = ($env | get -o FABRO_STAGE | default '')
+            if ($env_stage != '') and ($env_stage != $stage) {
+                print $"verify: WARN argument '($stage)' overrides injected FABRO_STAGE '($env_stage)' — manual use only"
+            }
+            $stage
+        } else if (($env | get -o FABRO_STAGE | default '') != '') {
+            $env.FABRO_STAGE
+        } else {
+            print 'verify: no stage — pass one (e.g. `just verify implementer`) or run inside a stage (FABRO_STAGE injected)'
+            exit 2
+        }
+    )
+    let src = (if $stage != null { 'argument' } else { 'FABRO_STAGE' })
+    print $"verify: stage ($resolved) from ($src)"
+    match $resolved {
         'implementer' => { stage-implementer }
         _ => {
-            print $"verify: unknown stage '($stage)' (v1: implementer)"
+            print $"verify: unknown stage '($resolved)' — v2 supports implementer"
             exit 2
         }
     }
