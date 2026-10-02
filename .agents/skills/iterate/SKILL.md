@@ -57,6 +57,15 @@ stores it belongs to; reach them by phase need:
   worktrees never.
 - `git fetch` + `git pull --ff-only` BEFORE reading tracker state when
   another machine may have run the line — the tracker view is branch-local.
+- Open-PR sweep BEFORE anything else (user directive 2026-10-02, PR #359
+  lesson): `gh pr list --repo denkhaus/fabro --state open` plus
+  `gh pr checks <n>` for each. A run PR (`fabro/run/*` branches) with a RED
+  dogfood-gate blocks auto-merge, fakes in-flight state, and wedges the
+  push gate — diagnose and repair it BEFORE selecting/dispatching a seed:
+  snapshot drift -> accept the snapshot ON THE RUN BRANCH and push (auto-
+  merge then lands it); deeper breakage -> salvage-or-close decision.
+  A merged-on-another-machine PR means the local view is stale: pull again.
+  Green-but-waiting PRs: note them, do not touch.
 - Line state: `fabro ps` (mirtuell). A running pass plus an empty
   `seeds ready --assignee fabro` queue is fine (fail-closed park); a parked
   pass with a non-empty queue, a parallel pass, or a lost `on_overlap:skip`
