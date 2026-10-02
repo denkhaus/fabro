@@ -86,7 +86,11 @@ digraph Loop {
 
     // Implementer: edits the loop's own machinery. fs_write pins EXACTLY
     // the loop-asset set (the smoke pins the pair against
-    // scripts/qualitygate.nu's loop-asset?); fs_hide is REDUCED to the
+    // scripts/qualitygate.nu's loop-asset?) plus the ONE lib/ exception
+    // (fabro-9973): the fabro-dot snapshot directory the dot-snapshot
+    // gate tier asks the lane to accept after a workflow-graph shape
+    // change — mechanically derived from .fabro/workflows, never
+    // product code. fs_hide is REDUCED to the
     // session-level surfaces (.agents skills, .mulch expertise — ml
     // writes are not loop work) — the meta lane must SEE and EDIT loop
     // assets with file tools (the a9bb user decision: deterministic
@@ -109,19 +113,23 @@ digraph Loop {
         x.fabro_tools="",
         x.preamble_allow_keys="current_seed_id,current_seed_title,current_seed_brief",
         x.fs_hide=".agents/**,.mulch/**",
-        x.fs_write=".fabro/**,scripts/**,justfile,.seeds/issues.jsonl",
+        x.fs_write=".fabro/**,scripts/**,justfile,.seeds/issues.jsonl,lib/components/fabro-dot/src/snapshots/**",
         x.context_allow_keys="implementation_summary,journal"
     ]
 
     // Tester: the deterministic loop battery (fabro-70b5 part C) —
     // validate every graph, lint every nu script, prompt-lint literal
-    // hygiene, run-scope (loop lane), fmt only if .rs files appear.
-    // NEVER the product compile tier: clippy/nextest belong to develop.
+    // hygiene, run-scope (loop lane), exec-bit preservation, the
+    // fabro-dot snapshot tier when the diff changes a workflow graph
+    // (fabro-9973 — the one bounded Rust probe; it may cold-compile
+    // one crate, hence the wider timeout), fmt only if .rs files
+    // appear. NEVER the product compile tier: clippy/nextest belong to
+    // develop.
     tester [
         label="Loop Gate",
         shape=parallelogram,
         script="nu .fabro/workflows/loop/scripts/loop-gate.nu",
-        timeout="10m",
+        timeout="20m",
         max_retries=1
     ]
 

@@ -20,7 +20,7 @@ Tracker mechanics:
 
 ## Your capability envelope — the meta lane's widened scope
 
-This node's fs envelope is the lane's contract: file tools read AND write loop assets (`.fabro/**`, `scripts/**`, `justfile`, the tracker file). Session-level skills (`.agents/**`) and expertise (`.mulch/**`) are hidden — skills load session-level, expertise is not loop work. Every write outside the pinned set dies at checkpoint (fs_policy_violation) and REDs the tester's run-scope check. Product code (`lib/`, `apps/`, `docs/`) is out of lane: a seed whose fix belongs there is a misroute — route Blocked naming it, never edit product files.
+This node's fs envelope is the lane's contract: file tools read AND write loop assets (`.fabro/**`, `scripts/**`, `justfile`, the tracker file) plus the one derived-snapshot directory named in PROJECT_FACTS (accept its file when the dot-snapshot gate tier goes RED on your graph-shape change — that acceptance is part of the one-unit edit, never an excuse to edit other product files). Session-level skills (`.agents/**`) and expertise (`.mulch/**`) are hidden — skills load session-level, expertise is not loop work. Every write outside the pinned set dies at checkpoint (fs_policy_violation) and REDs the tester's run-scope check. Product code (`lib/`, `apps/`, `docs/`) is out of lane: a seed whose fix belongs there is a misroute — route Blocked naming it, never edit product files.
 
 Hard rules:
 (a) ANY shell call that compiles or tests MUST pass `timeout_ms` of at least 60000.

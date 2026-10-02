@@ -22,14 +22,23 @@
 #   5. `nu scripts/qualitygate.nu check-mode-preservation` — no exec-bit
 #      drop (100755 => 100644) rides the run diff (fabro-9569); granting
 #      +x stays green.
-#   6. Rust fmt tier, ONLY when the diff touches .rs files — a pure
+#   6. `nu scripts/qualitygate.nu check-dot-snapshot` (fabro-9973) — ONLY
+#      when the run diff changes a workflow graph under
+#      .fabro/workflows/**: run the fabro-dot checked-in-workflows
+#      snapshot test (one crate, no product battery). A graph-shape
+#      change that ships without its accepted snapshot costs a full
+#      dogfood-gate cycle to catch; the drift REDs here instead, with
+#      the acceptance instruction.
+#   7. Rust fmt tier, ONLY when the diff touches .rs files — a pure
 #      safety net: loop seeds should never touch Rust (the run-scope
 #      check already refuses lib/**; scripts/** is nu-only today). If a
 #      .rs file ever appears in scope, format discipline still applies.
 #
 # NOT here (deliberate, fabro-70b5): the product gate's clippy/nextest
 # compile tier — the product lane's tester owns that; the loop lane
-# never compiles Rust.
+# never compiles product code — EXCEPT the one bounded probe above
+# (fabro-9973): the fabro-dot snapshot tier compiles exactly one crate
+# and only when the diff changes a workflow graph.
 
 const PINNED_TOOLCHAIN = "nightly-2026-04-14"
 
@@ -73,6 +82,7 @@ def main []: nothing -> nothing {
     if not (check 'prompt-lint (literal hygiene)' (do { ^nu .fabro/scripts/prompt-lint.nu } | complete)) { exit 1 }
     if not (check 'run-scope (loop lane: diff touches only loop assets)' (do { ^nu scripts/qualitygate.nu check-run-scope loop } | complete)) { exit 1 }
     if not (check 'mode-preservation (no exec-bit drop through the run diff)' (do { ^nu scripts/qualitygate.nu check-mode-preservation } | complete)) { exit 1 }
+    if not (check 'dot-snapshot (fabro-dot checked-in-workflows when the diff touches a workflow graph)' (do { ^nu scripts/qualitygate.nu check-dot-snapshot } | complete)) { exit 1 }
 
     # Rust fmt tier — only when the diff actually touches .rs files.
     let rs = (do { ^git diff --name-only $base } | complete | get stdout | lines | compact | where {|p| $p | str ends-with '.rs'})
