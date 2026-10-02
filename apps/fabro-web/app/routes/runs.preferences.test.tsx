@@ -103,7 +103,12 @@ const BOARD_REFRESH_EVENTS = new Set([
   "pull_request.unlinked",
 ]);
 
+// Partial-mock: bun's mock.module is process-wide (restore does not
+// undo it) — spread the REAL module so every export stays available
+// to later files in the same run; override only what this test needs.
+const realQueries = await import("../lib/queries");
 mock.module("../lib/queries", () => ({
+  ...realQueries,
   useAllRuns: (...args: unknown[]) => {
     queryCalls.push({ hook: "useAllRuns", args });
     return { data: allRuns, isLoading: false };
@@ -129,12 +134,16 @@ mock.module("../lib/queries", () => ({
   useSystemInfo: () => ({ data: { server_url: "http://127.0.0.1:32276" } }),
 }));
 
+const reallibboardevents = await import("../lib/board-events");
 mock.module("../lib/board-events", () => ({
+  ...reallibboardevents,
   shouldRefreshBoardForEvent: (event: string) => BOARD_REFRESH_EVENTS.has(event),
   useBoardEvents: () => {},
 }));
 
+const realswr = await import("swr");
 mock.module("swr", () => ({
+  ...realswr,
   useSWRConfig: () => ({ mutate: () => Promise.resolve(undefined) }),
 }));
 

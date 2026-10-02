@@ -10,7 +10,12 @@ let currentRunState: any = null;
 let currentLoading = false;
 let currentError: Error | null = null;
 
+// Partial-mock: bun's mock.module is process-wide (restore does not
+// undo it) — spread the REAL module so every export stays available
+// to later files in the same run; override only what this test needs.
+const realQueries = await import("../lib/queries");
 mock.module("../lib/queries", () => ({
+  ...realQueries,
   useRun: () => ({
     data:         null,
     error:        null,
@@ -71,7 +76,14 @@ mock.module("../components/terminal-view", () => ({
 // Stub the services panel the same way as terminal-view: render only the
 // leading slot so tab-presence assertions reach the mode toggle without
 // pulling in the panel's own data-fetching dependencies.
+// NOTE: bun's mock.module is process-wide and mock.restore() does NOT
+// undo it — later files in the same `bun test` run (services-panel.test)
+// resolve names off this factory. Partial-mock instead of a bare stub:
+// spread the REAL module and override only what this test needs (the
+// default export's data-fetching), so every named export stays real.
+const realServicesPanel = await import("./run-sandbox/services-panel");
 mock.module("./run-sandbox/services-panel", () => ({
+  ...realServicesPanel,
   default: ({ leading }: { leading?: ReactNode }) => <div>{leading}</div>,
 }));
 

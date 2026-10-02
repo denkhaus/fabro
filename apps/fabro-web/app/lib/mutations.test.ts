@@ -12,11 +12,15 @@ const useSWRMutationMock = mock((_key: unknown, _fetcher: unknown, options: unkn
   };
 });
 
+const realSwr = await import("swr");
 mock.module("swr", () => ({
+  ...realSwr,
   useSWRConfig: () => ({ mutate: mutateMock }),
 }));
 
+const realSwrMutation = await import("swr/mutation");
 mock.module("swr/mutation", () => ({
+  ...realSwrMutation,
   default: useSWRMutationMock,
 }));
 

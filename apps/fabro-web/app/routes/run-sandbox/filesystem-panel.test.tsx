@@ -42,7 +42,9 @@ function makeEmptyFileState(): FileQueryState {
   };
 }
 
+const reallibqueries = await import("../../lib/queries");
 mock.module("../../lib/queries", () => ({
+  ...reallibqueries,
   useSandboxFiles: (id: string | undefined, path: string | undefined) => {
     lastFilesArgs = { id, path };
     return filesState;

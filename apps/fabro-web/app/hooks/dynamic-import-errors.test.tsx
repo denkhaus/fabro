@@ -10,7 +10,9 @@ import type {
 
 const importFailure = new Error("chunk unavailable");
 
+const reallibimportchunk = await import("../lib/import-chunk");
 mock.module("../lib/import-chunk", () => ({
+  ...reallibimportchunk,
   importChunk: async () => {
     throw importFailure;
   },

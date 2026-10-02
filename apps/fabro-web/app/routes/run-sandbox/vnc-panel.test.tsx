@@ -21,7 +21,9 @@ function makeIdleState(): VncQueryState {
   };
 }
 
+const reallibqueries = await import("../../lib/queries");
 mock.module("../../lib/queries", () => ({
+  ...reallibqueries,
   useSandboxVncPreview: (_id: string | undefined, enabled: boolean) => {
     lastEnabled = enabled;
     return vncState;

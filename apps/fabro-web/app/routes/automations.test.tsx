@@ -42,7 +42,12 @@ mock.module("@headlessui/react", () => ({
     createElement("div", props, children),
 }));
 
+// Partial-mock: bun's mock.module is process-wide (restore does not
+// undo it) — spread the REAL module so every export stays available
+// to later files in the same run; override only what this test needs.
+const realQueries = await import("../lib/queries");
 mock.module("../lib/queries", () => ({
+  ...realQueries,
   useAutomations: () => ({
     data: {
       data: currentAutomations,
@@ -53,22 +58,25 @@ mock.module("../lib/queries", () => ({
   }),
 }));
 
+// Partial-mock: bun's mock.module is process-wide (restore does not
+// undo it) — spread the REAL module so every export stays available
+// to later files in the same run; override only what this test needs.
+const realApiClient = await import("../lib/api-client");
 mock.module("../lib/api-client", () => ({
-  ApiError: class ApiError extends Error {},
-  apiData: async function apiData<T>(
-    call: () => Promise<{ data: T }>,
-  ): Promise<T> {
-    const response = await call();
-    return response.data;
-  },
+  ...realApiClient,
+  // Only the API object this route hits is replaced; apiData/ApiError stay
+  // REAL so later files in the same run test the real adapter behavior.
   automationsApi: {
+    ...realApiClient.automationsApi,
     replaceAutomation: replaceAutomationMock,
     createAutomationRun: mock(() => Promise.resolve({ data: { id: "run_1" } })),
     deleteAutomation: mock(() => Promise.resolve({ data: {} })),
   },
 }));
 
+const realSwr = await import("swr");
 mock.module("swr", () => ({
+  ...realSwr,
   useSWRConfig: () => ({ mutate: swrMutateMock }),
 }));
 
