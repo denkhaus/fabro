@@ -123,16 +123,18 @@ stores it belongs to; reach them by phase need:
   `seeds show <id>` (assignee set) in the same breath as the fire; the
   goal text names the seed id AND its one-line topic.
 - Executor decision (SUPERSEDED 2026-10-02 evening, local-first model):
-  invoking /iterate means the session works LOCALLY first — the nu-agent
-  sprint loop IS this session's working mode (claim, implement, review,
-  reflect; the conductor-role split of directive 2026-09-06 is retired).
-  improve-codebase-architecture-filed seeds are worked LOCALLY. @loop
-  seeds go to the loop workflow (which works them WITHOUT any sprint
-  framing). Develop-line dispatch remains an explicit delegation CHOICE
-  for product/engine seeds (parallelizable work, or when the user routes
-  a seed there) — never the default, and never sprint-coupled. This
-  session still orients, grills pivotal forks (writing the agreed design
-  INTO the seed before implementation), reviews, reflects, reports.
+  invoking /iterate means the session works LOCALLY — the nu-agent sprint
+  loop IS this session's working mode (claim, implement, review, reflect;
+  the conductor-role split of directive 2026-09-06 is retired). DEFAULT
+  ASSIGNMENT (user directive 2026-10-02 late): EVERYTHING is implemented
+  by this session locally; ONLY loop-asset work (surfaces
+  `.fabro/workflows/**`, `.fabro/scripts/**`, `scripts/**`, justfile,
+  fabro-test rigs) is assigned `@loop` for the loop workflow (which works
+  it WITHOUT sprint framing). improve-codebase-architecture-filed seeds
+  are worked LOCALLY. Develop-line dispatch is gone as a default; it
+  stays possible only as an explicit user-routed exception. This session
+  still orients, grills pivotal forks (writing the agreed design INTO the
+  seed before implementation), reviews, reflects, reports.
 
 ## Phase 2 — Build (local-first; delegation only by explicit choice)
 
@@ -317,8 +319,20 @@ stores it belongs to; reach them by phase need:
   state; every fresh red is a finding. Nu scripting pitfalls:
   `ml prime nu` and `ml prime tooling`.
 
-## Phase 6 — Reflect (mandatory, every cycle)
+## Phase 6 — Reflect (mandatory, every sprint close)
 
+0. END-OF-SPRINT CEREMONY (user directive 2026-10-02 late): every sprint
+   close ends with a Zusammenfassung + Ausblick in the chat, delivered in
+   WAIT-WHAT style (the ~/.agents/skills/wait-what re-pitch format):
+   give context FIRST so the user instantly re-enters (which sprint just
+   closed, which seed, where it landed), then the summary (what was done,
+   verification evidence), then the AUSBLICK — what the NEXT sprint will
+   work (name the seed and topic) and WHERE the user is needed (decisions,
+   gates, credentials, reviews). Simplified short sentences, the repo's
+   ubiquitous language (Sprint, Seed, Linie, Ledger, Gate, Loop-Lane);
+   chat language stays German. After the summary the next sprint starts
+   IMMEDIATELY (backlog order) unless a user gate from the Ausblick is
+   blocking it.
 1. Cost review: what took longer than it should, what needed retries,
    what was missing at decision time. EVERY finding that implies a
    behavior change becomes an edit to THIS skill; domain knowledge goes
