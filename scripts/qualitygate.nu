@@ -160,6 +160,10 @@ def check-loop-assets [] {
         # classification RED both ways, both lanes, plus the git base
         # derivation — this tier proves the meta lane's diff boundary.
         '.fabro/scripts/run-scope-fixtures.nu'
+        # sprint-ledger battery (fabro-cadd, ADR-0024): counter increment
+        # on a substantive close, arch-gate advisory at the 3rd boundary,
+        # reflection-invariant park + lift, fail-open on a missing ledger.
+        '.fabro/scripts/sprint-ledger-fixtures.nu'
     ]
     for battery in $batteries {
         let res = (do { ^nu $battery } | complete)

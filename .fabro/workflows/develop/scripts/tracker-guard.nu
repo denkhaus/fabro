@@ -199,6 +199,21 @@ def main [--dry-run (-d), --assignee: string = "fabro"]: nothing -> nothing {
     let inprog_res = (do { seeds list --format json --status in_progress --assignee $assignee --limit 200 } | complete)
     let base = (guard-decision $open_res $inprog_res)
 
+    # Sprint-reflection park (fabro-cadd, ADR-0024 nu-agent sprint-model
+    # port): the committed sprint ledger's invariant — no new pass starts
+    # while sprints_reflected < sprints_completed — parks the run HERE,
+    # ahead of the preflight/planner, fail-closed on PROVEN unreflected
+    # state only. Fail-open mirror of the seeds arms: a missing ledger,
+    # a failed check call, or non-JSON output degrades to normal routing.
+    # Only overrides the non-empty route — an empty tracker already exits.
+    let sprint_res = (do { nu .fabro/scripts/sprint-ledger.nu check } | complete)
+    let sprint = (if $sprint_res.exit_code == 0 {
+        (try { $sprint_res.stdout | str trim | lines | last | from json } catch { null })
+    } else { null })
+    let base = (if (($sprint | get -o park | default false)) and $base.preferred_next_label == "Tracker non-empty" {
+        $base | update preferred_next_label "Unreflected sprint park"
+    } else { $base })
+
     # Stale-claim requeue arm. Fail-open: any degraded input (seeds failure
     # or unreadable journals) skips requeueing entirely.
     let inprog_seeds = (sd-issues $inprog_res)
@@ -224,6 +239,7 @@ def main [--dry-run (-d), --assignee: string = "fabro"]: nothing -> nothing {
 
     $base
     | merge {
+        sprint_ledger: ($sprint | default null),
         requeued: $applied.requeued,
         requeue_failed: $applied.failed,
         dry_run: $dry_run,

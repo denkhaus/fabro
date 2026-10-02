@@ -520,5 +520,15 @@ def main [--lane: string = "product"]: nothing -> nothing {
         print -e $"closeout: seeds close ($seed_id) failed: ($res.stderr | str trim)"
         exit 1
     }
+
+    # Sprint ledger (fabro-cadd, ADR-0024): every closed seed with a
+    # substantive diff counts 1 sprint. Fail-open by construction — the
+    # ledger script degrades to a warning on any internal error and this
+    # call is do-i wrapped, so it can never fail the close. The counter
+    # increment leaves sprints_reflected behind ON PURPOSE: the next
+    # run's tracker-guard parks on the reflection invariant until the
+    # session-side short reflection lands (`sprint-ledger reflect`).
+    do -i { nu .fabro/scripts/sprint-ledger.nu record-close --seed $seed_id --run-id $run_id } | ignore
+
     print $"closeout: closed ($seed_id) — one seed per run, exiting"
 }

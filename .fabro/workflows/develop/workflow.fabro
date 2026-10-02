@@ -473,6 +473,12 @@ digraph Develop {
     // own "Tracker empty" edge below (the label contract predates this
     // node; this edge reuses it).
     tracker_guard -> exit [label="Tracker empty", condition="preferred_label=\"Tracker empty\""]
+    // Sprint-reflection park (fabro-cadd, ADR-0024): the sprint ledger
+    // proves sprints_reflected < sprints_completed — the run parks (soft
+    // exit) until the session-side short reflection lands
+    // (`nu .fabro/scripts/sprint-ledger.nu reflect`). Fail-closed on the
+    // PROVEN state only; ledger failure degrades to Tracker non-empty.
+    tracker_guard -> exit [x.kind="soft", label="Unreflected sprint park", condition="preferred_label=\"Unreflected sprint park\""]
     // Unconditional fail-open route: non-empty tracker OR any seeds failure
     // all continue into the preflight (then the planner) unchanged.
     tracker_guard -> preflight [label="Tracker non-empty"]

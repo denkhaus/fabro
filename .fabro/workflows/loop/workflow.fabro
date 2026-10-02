@@ -175,6 +175,9 @@ digraph Loop {
 
     start -> tracker_guard
     tracker_guard -> exit [label="Tracker empty", condition="preferred_label=\"Tracker empty\""]
+    // Sprint-reflection park (fabro-cadd, ADR-0024) — same contract as
+    // develop's edge: proven unreflected sprint state parks the run.
+    tracker_guard -> exit [x.kind="soft", label="Unreflected sprint park", condition="preferred_label=\"Unreflected sprint park\""]
     tracker_guard -> preflight [label="Tracker non-empty"]
     preflight -> planner [label="Preflight done"]
 
