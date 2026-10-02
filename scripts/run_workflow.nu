@@ -167,7 +167,10 @@ def main [
         # PR appeared ~20s after terminal). On a hit, fall through to the
         # normal integrate path; on no hit, still continue — the run-branch
         # check below decides loudly whether anything can be integrated.
-        let pr_polls = 18
+        # fabro-767b: observed PR creation up to ~2-3 min AFTER terminal
+        # status (PR #357, 09:03:03Z vs 09:00:59Z) — 90s was too short and
+        # sent a healthy integration into the emergency squash path.
+        let pr_polls = 60
         mut pr_found = false
         print $"run_workflow: wait JSON lacks pull_request — polling gh for the run PR for ($pr_polls * 5) sec"
         for _ in 1..$pr_polls {
@@ -229,7 +232,10 @@ def main [
     # ancestor of origin/<branch> after integration — an is-ancestor
     # check can never see the landed merge.
     mut auto_merged = false
-    let merge_deadline = 40
+    # fabro-767b: the PR's required dogfood-gate takes ~25 min — a 600s
+    # merge deadline squashes while the gate is still RUNNING (bypasses
+    # verification). 120 x 15s = 30 min covers it.
+    let merge_deadline = 120
     for _ in 1..$merge_deadline {
         sleep 15sec
         let _ = (do { git fetch origin $branch } | complete)
@@ -255,6 +261,33 @@ def main [
         print 'run_workflow: auto-merge landed — fast-forward pull'
         ok (do { git pull --ff-only origin $branch } | complete) 'git pull'
     } else {
+        # fabro-767b pre-squash guard: if an OPEN run PR exists and its
+        # checks are still pending, the gate is doing its job — keep
+        # waiting (bounded) instead of squashing past a running gate.
+        mut guard = 0
+        while $guard < 60 {
+            let open_prs = (do {
+                ^gh pr list --repo ($GITHUB_REPO) --head $"fabro/run/($run_id)" --state open --json number --limit 1
+            } | complete)
+            let prs = (try { $open_prs.stdout | from json } catch { [] })
+            if ($prs | length) == 0 { break }
+            let checks = (do {
+                ^gh pr checks --repo ($GITHUB_REPO) ($prs | first | get number) --json state,bucket
+            } | complete)
+            let pend = (try { $checks.stdout | from json | where bucket == 'pending' | length } catch { 1 })
+            if $pend == 0 { break }
+            print $"run_workflow: run PR exists with pending checks — waiting out the gate \(fabro-767b guard, round ($guard)\)"
+            sleep 15sec
+            $auto_merged = ((do {
+                ^gh pr list --repo ($GITHUB_REPO) --head $"fabro/run/($run_id)" --state merged --json number --limit 1
+            } | complete | get stdout | from json | length) > 0)
+            if $auto_merged { break }
+            $guard = $guard + 1
+        }
+        if $auto_merged {
+            print 'run_workflow: auto-merge landed during the guard — fast-forward pull'
+            ok (do { git pull --ff-only origin $branch } | complete) 'git pull'
+        } else {
         print $"run_workflow: WARN auto-merge did not land within ($merge_deadline * 15) sec — EMERGENCY squash fallback engages \(dogfood-gate stuck? check the PR checks\)"
         print $"run_workflow: squash-merging ($run_branch) into ($branch) \(provisional auto-merge, fabro-ab2c)"
         ok (do { git merge --squash $run_branch } | complete) 'squash merge'
@@ -284,6 +317,24 @@ def main [
                     fail $"git push failed: ($detail)"
                 }
             }
+            }
+
+            # fabro-767b sweep: a PR that appeared late (or never merged)
+            # is redundant once the squash carried the work — close it as
+            # already-integrated and delete the run branch so the
+            # push-gate inherits no ghost (PR #357 incident).
+            let leftover = (do {
+                ^gh pr list --repo ($GITHUB_REPO) --head $"fabro/run/($run_id)" --state open --json number --limit 1
+            } | complete)
+            let lprs = (try { $leftover.stdout | from json } catch { [] })
+            if ($lprs | length) > 0 {
+                let lnum = ($lprs | first | get number)
+                print $"run_workflow: closing leftover run PR #($lnum) as already-integrated (fabro-767b sweep)"
+                let _ = (do {
+                    ^gh pr close ($lnum) --repo ($GITHUB_REPO) --comment $"Already integrated via emergency squash into ($branch) — the PR appeared late or its gate never concluded (fabro-767b)."
+                } | complete)
+            }
+            let _ = (do { git push origin --delete $"fabro/run/($run_id)" } | complete)
         }
     }
 
