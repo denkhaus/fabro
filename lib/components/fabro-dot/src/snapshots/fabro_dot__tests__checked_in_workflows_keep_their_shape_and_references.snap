@@ -96,7 +96,7 @@ expression: report
 .fabro/workflows/interview/workflow.fabro: Interview nodes=8 edges=15
   goal-inline
   inline@summarize
-.fabro/workflows/loop/workflow.fabro: Loop nodes=11 edges=26
+.fabro/workflows/loop/workflow.fabro: Loop nodes=11 edges=27
   goal-inline
   file:output_schema:schemas/planner-output.schema.json@planner
   file:prompt:prompts/planner.md@planner
