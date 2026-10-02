@@ -3,6 +3,7 @@
     reason = "CLI manifest builder: sync file I/O building install manifests"
 )]
 
+pub mod fork_insteadof;
 mod local_workflow_package;
 mod supplied_workflow;
 #[cfg(test)]
@@ -591,9 +592,22 @@ fn inspect_local_git(
         .map(fabro_github::normalize_repo_origin_url)
         .filter(|url| !url.is_empty())
         .or_else(|| {
-            origin_url
-                .as_deref()
-                .map(fabro_github::normalize_repo_origin_url)
+            // Fork (fabro-f394): recover the canonical GitHub form of an
+            // origin stored under an SSH host alias before it is
+            // normalized, so alias-origin checkouts still derive a run
+            // target. Canonical configured origins stay untouched. Both
+            // origin views are tried: libgit2 applies insteadOf rewrites to
+            // remote.url(), while push_origin_url keeps the raw config bytes.
+            let rewrites = fork_insteadof::host_insteadof_rewrites(repo_path);
+            [origin_url.as_deref(), push_origin_url.as_deref()]
+                .into_iter()
+                .flatten()
+                .find_map(|url| fork_insteadof::try_canonical_github_origin(url, &rewrites))
+                .or_else(|| {
+                    origin_url
+                        .as_deref()
+                        .map(fabro_github::normalize_repo_origin_url)
+                })
                 .filter(|url| !url.is_empty())
         })
         .unwrap_or_default();
@@ -623,7 +637,7 @@ fn build_legacy_git_context(
     Some(local.legacy_git_context)
 }
 
-fn github_run_target(origin_url: &str, branch: &str) -> Option<GitRunTarget> {
+pub(crate) fn github_run_target(origin_url: &str, branch: &str) -> Option<GitRunTarget> {
     let (owner, repository) = fabro_github::parse_github_owner_repo(origin_url).ok()?;
     let slug = GitHubRepositorySlug::try_new(&format!("{owner}/{repository}"))?;
     let validated = RunTarget::Git(GitRunTarget {
@@ -754,7 +768,11 @@ fn publish_manifest_branch_best_effort(
         .filter(|url| !url.is_empty())
     {
         let remote = fabro_github::normalize_repo_origin_url(origin_url);
-        if remote != repo_origin_url {
+        // Fork (fabro-f394): accept any `url.<replacement>.insteadOf`
+        // rewrite candidate as the match, so an alias-origin checkout still
+        // satisfies the `[run.scm]` configured-vs-origin equality check.
+        let rewrites = fork_insteadof::host_insteadof_rewrites(repo_path);
+        if !fork_insteadof::origins_denote_same_repository(&remote, &repo_origin_url, &rewrites) {
             return BranchPublishStatus::OriginMismatch;
         }
     }
