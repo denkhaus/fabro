@@ -16,6 +16,15 @@
 #     subjects ending in `(#<n>)`.
 #   - a landed-PR commit whose subject names a revisor pass only FILED the
 #     seed -> filed-only, NOT a duplicate.
+#   - fabro-4401 mention-only: a landed commit whose ONLY seed-id
+#     references sit on journal-style bullet lines of the commit body
+#     (subject clean) MENTIONS the seed — e.g. a cherry-pick whose squash
+#     message pastes the run's observations ("* sprint ledger bootstrap
+#     (ADR-0024, fabro-cadd skeleton) ...") while the diff is entirely
+#     foreign — -> mention-only, counted in `mention_only_matches`,
+#     never an implementation match. A real implementation names the seed
+#     in its subject or a narrative body line ("Root cause (fabro-x):"),
+#     so it still matches.
 #   - non-PR commits referencing the id (seed-sync/tracker churn) are
 #     reported as `other` — informational, never a duplicate.
 #
@@ -86,10 +95,41 @@ def git-log-matching [base, id, extra] {
 # re-closed deliberately reopened seeds on 2026-09-19). Same conservative
 # direction: a false negative routes the planner; a false positive would
 # auto-close live work.
-def classify-filed [rows] {
+def classify-filed [rows, id] {
     $rows | each {|r|
-        {sha: $r.sha, subject: $r.subject, filed_only: ($r.subject =~ '(?i)(revisor (pass|:))|(\brevise\s+(develop\s+)?run\b)|(\bfile\s+\d+\s+[^;()]*seeds?\b)|(;\s*file\s+fabro-[0-9a-z]+)|(\bfile\s+seeds?\s+fabro-[0-9a-z]+)|(\breopen\b)|(\bverify\b)|(\bmove\s+seed\b)|(\bclose\s+seed\b)')}
+        {sha: $r.sha, subject: $r.subject, filed_only: ($r.subject =~ '(?i)(revisor (pass|:))|(\brevise\s+(develop\s+)?run\b)|(\bfile\s+\d+\s+[^;()]*seeds?\b)|(;\s*file\s+fabro-[0-9a-z]+)|(\bfile\s+seeds?\s+fabro-[0-9a-z]+)|(\breopen\b)|(\bverify\b)|(\bmove\s+seed\b)|(\bclose\s+seed\b)'),
+         mention_only: (mention-only? $r.sha $id $r.subject)}
     }
+}
+
+# fabro-4401: a landed commit whose subject does NOT carry the seed id and
+# whose every id-bearing body line is a journal-style bullet (`* ...`,
+# `- ...`, `+ ...`) only MENTIONS the seed — the incident shape is
+# cherry-pick a7f7b2d4b8 (#356), whose squash body pasted the run's
+# observation bullets ("* sprint ledger bootstrap (ADR-0024, fabro-cadd
+# skeleton) ...") while its diff implemented entirely foreign work; the
+# resulting 'duplicate' verdict was a false positive the planner had to
+# re-derive (run 01M3YWBVKHAC8EHPYWM9BQBXZ3). A real implementation
+# commits the id in its subject or a narrative body line ("Root cause
+# (fabro-x): ..."), which bullets never match, so it stays an
+# implementation match. Conservative in the filed-only direction: a false
+# negative routes the planner normally; a false positive would force a
+# duplicate verdict on a mention.
+def mention-only? [sha: string, id: string, subject: string] {
+    if ($subject | str contains $id) {
+        return false
+    }
+    let r = (do { ^git log -1 --format=%B $sha } | complete)
+    if $r.exit_code != 0 {
+        return false
+    }
+    let hits = ($r.stdout | lines | where {|l| ($l | str contains $id) and (not ($l | str trim | is-empty))})
+    if ($hits | is-empty) {
+        return false
+    }
+    # every id-bearing body line is a bullet: journal-observation paste,
+    # not an implementation narrative
+    $hits | all {|l| $l =~ '^\s*[*+-]\s'}
 }
 
 # Fabro-Run trailer of one commit; null when the commit has none.
@@ -239,9 +279,10 @@ def main [...ids: string, --base: string = "origin/denkhaus", --self: string] {
         let merges = (git-log-matching $base $id [--merges]).rows
         let all_no_merge = (git-log-matching $base $id [--no-merges]).rows
         let squashes = ($all_no_merge | where {|r| ($r.subject =~ '\(#\d+\)$')})
-        let landed = (classify-filed ($merges | append $squashes))
-        let implementations = ($landed | where {|r| not $r.filed_only})
+        let landed = (classify-filed ($merges | append $squashes) $id)
+        let implementations = ($landed | where {|r| (not $r.filed_only) and (not $r.mention_only)})
         let filed_only = ($landed | where {|r| $r.filed_only})
+        let mention_only = ($landed | where {|r| $r.mention_only})
         let other = ($all_no_merge | where {|r| not ($r.subject =~ '\(#\d+\)$')})
 
         let impl = (with-closure $implementations $self_id)
@@ -288,6 +329,7 @@ def main [...ids: string, --base: string = "origin/denkhaus", --self: string] {
          tracker_note: (if ($tracker_note | is-empty) { null } else { $tracker_note }),
          implementation_matches: $impl,
          filed_only_matches: ($filed_only | length),
+         mention_only_matches: ($mention_only | length),
          other_refs: ($other | length),
          closing_evidence: $closing_evidence,
          closure_note: $closure_note} | to json --raw | print
