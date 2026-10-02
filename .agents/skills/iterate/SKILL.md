@@ -69,8 +69,11 @@ stores it belongs to; reach them by phase need:
   FIRST (Phase 6 short form) — no new sprint starts unreflected. If
   `sprints_completed % 3 == 0 && last_arch_review_at_sprint !=
   sprints_completed`, the architecture gate is DUE: surface to the user
-  (manual era: an architect run can be fired via the api trigger while
-  schedules are paused).
+  and fire the LOCAL improve-codebase-architecture agent (user directive
+  2026-10-02: the architect WORKFLOW stays deactivated on the line — never
+  the api trigger; the local agent's top recommendations are filed as
+  seeds automatically and assigned per owner: agent (local) / fabro /
+  loop).
 - Tracker reads always carry `--limit 500` (`seeds list` caps at 50
   silently). `seeds ready` for candidates; `seeds show <id>` for ids.
 - Rootprint (skill `rootprint`) observes the production server: filter on
@@ -188,11 +191,13 @@ stores it belongs to; reach them by phase need:
 
 ## Phase 4 — Deepen (conditional)
 
-- Standing path: the autonomous architect workflow fires on its own
-  schedule (self-gated by friction, 48h cooldown) and files its own
-  seeds. Fire it or wait for cron BEFORE any manual
-  improve-codebase-architecture pass; the manual skill is the fallback
-  (server down, workflow broken) or on explicit user request.
+- Standing path (user directive 2026-10-02, freeze era): the architect
+  WORKFLOW is DEACTIVATED on the line — the architecture gate fires the
+  LOCAL improve-codebase-architecture agent instead; its top
+  recommendations become seeds automatically, assigned per owner (agent
+  local / fabro / loop). The autonomous architect workflow returns only
+  on an explicit future user order (then: self-gated by friction, 48h
+  cooldown, files its own seeds).
 - Architect scope is binding: findings restructure ONLY the fork's own
   surface (`.fabro/workflows/**`, `.fabro/scripts/**`, fork-only files,
   our tooling). Upstream-owned `lib/**`/`apps/**` is observable, never
