@@ -282,7 +282,10 @@ stores it belongs to; reach them by phase need:
   allowed; the PUSH direction is gated to one mechanical decision at the
   END: `nu .fabro/scripts/push-gate.nu` (exit 0 = open: no running
   conductor/develop/revisor pass AND no open run PR). Check and push
-  share one cell. A repaired gate is validated against a known-active
+  share one cell, and the gate runs UNPIPED — `&&` behind a pipe reads
+  the pipe member's exit code, not the gate's (2026-10-02 23:00
+  incident: a `gate | tail -1 && git push` pushed straight through a
+  REFUSED verdict while a loop pass ran). A repaired gate is validated against a known-active
   line state before its first OPEN verdict is trusted. Incident restore
   may push as soon as no pass runs. Evidence and history: `ml prime git`.
 - Deploy windows: deploy only while no conductor pass runs. Pause the
