@@ -36,8 +36,11 @@ never silently work around it.
 
 - Deterministic gate (loop lane): `nu .fabro/workflows/loop/scripts/loop-gate.nu` — the tester step owns it. The battery: validate every
   workflow graph (petri admission), lint every nu script, prompt-lint
-  literal hygiene, run-scope (diff touches only loop assets), rust fmt
-  only when .rs files appear. NEVER the product compile tier.
+  literal hygiene, run-scope (diff touches only loop assets), the
+  fabro-dot checked-in-workflows snapshot test when the diff touches a
+  walked graph (a shape change ships with its snapshot accepted or
+  REDs before publish), rust fmt only when .rs files appear. NEVER the
+  product compile tier.
 - Stage journal: `.fabro/journal/<run_id>.jsonl` — one JSON record per
   stage completion; the fallback source for recovering a run's claimed
   seed id.

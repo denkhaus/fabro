@@ -115,8 +115,10 @@ digraph Loop {
 
     // Tester: the deterministic loop battery (fabro-70b5 part C) —
     // validate every graph, lint every nu script, prompt-lint literal
-    // hygiene, run-scope (loop lane), fmt only if .rs files appear.
-    // NEVER the product compile tier: clippy/nextest belong to develop.
+    // hygiene, run-scope (loop lane), the fabro-dot checked-in
+    // snapshot when the diff touches a walked graph, fmt only if .rs
+    // files appear. NEVER the product compile tier: clippy/nextest
+    // belong to develop.
     tester [
         label="Loop Gate",
         shape=parallelogram,

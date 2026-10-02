@@ -356,6 +356,68 @@ def check-mode-preservation []: nothing -> nothing {
     print "mode-preservation green"
 }
 
+# ── Workflow-shape snapshot tier (fabro-9973) ───────────────────────────
+# fabro-dot's checked_in_workflows_keep_their_shape_and_references test
+# snapshots the shape and reference closure of EVERY checked-in graph the
+# walker covers (`.fabro` files under .fabro/workflows/,
+# test/dot-compatibility/, and the fabro-cli workflow fixtures). A lane
+# diff that changes a graph's shape changes that snapshot too; shipping
+# the change without accepting it turns into a ~24 min dogfood-gate catch
+# AFTER merge (evidence: PR #359 shipped edges=27 unaccepted, red gate on
+# the closed run branch). This tier runs the test BEFORE publish, but
+# only when the run diff actually touches a walked graph, so graph-free
+# diffs pay nothing.
+#
+# RED remediation: review the pending snapshot, then accept it with
+#   cargo insta accept --snapshot-path lib/components/fabro-dot/src/snapshots/
+# That acceptance is a product-lane surface (lib/): a loop-lane run must
+# route Blocked naming the out-of-lane acceptance, never edit lib/ itself.
+
+# The walker's directories — keep in sync with checked_in_workflows()
+# in lib/components/fabro-dot/src/tests.rs.
+const DOT_WALKED_DIRS = [
+    ".fabro/workflows/"
+    "test/dot-compatibility/"
+    "lib/apps/fabro-cli/tests/it/workflow/fixtures/"
+]
+
+# Pure: is this diff path a graph the fabro-dot walker snapshots?
+def dot-walked? [p: string]: nothing -> bool {
+    ($p | str ends-with '.fabro') and ($DOT_WALKED_DIRS | any {|d| $p | str starts-with $d})
+}
+
+# Deterministic workflow-shape verdict over the run diff: runs the
+# fabro-dot checked-in-workflows snapshot test when the diff touches a
+# walked graph, skips (green) otherwise. Main paths consume the bool;
+# the subcommand turns false into exit 1.
+def check-workflow-shape [base: record]: nothing -> bool {
+    let touched = (run-diff-paths $base | where {|p| dot-walked? $p})
+    if ($touched | is-empty) {
+        print '== workflow-shape snapshot skipped — diff touches no walked graph =='
+        return true
+    }
+    print $"== cargo nextest -p fabro-dot checked_in_workflows — diff touches \(($touched | length)\) walked graph\(s\) =="
+    let res = (do { ^cargo nextest run -p fabro-dot checked_in_workflows_keep_their_shape_and_references } | complete)
+    if $res.exit_code != 0 {
+        print ($res.stdout | str trim -r -c "\n" | lines | last 30)
+        print ($res.stderr | str trim -r -c "\n")
+        print 'workflow-shape snapshot RED — accept the pending snapshot (cargo insta accept, lib/components/fabro-dot/src/snapshots/) BEFORE publish; loop-lane runs route Blocked naming the out-of-lane acceptance'
+        return false
+    }
+    print 'workflow-shape snapshot green'
+    true
+}
+
+# Subcommand surface: `nu scripts/qualitygate.nu check-workflow-shape`
+# is the loop tester's graph-shape tier (fabro-9973).
+def "main check-workflow-shape" []: nothing -> nothing {
+    let base = (run-base)
+    if not $base.grounded {
+        print 'workflow-shape base ungrounded: interactive or pre-checkpoint, diffing working tree'
+    }
+    if not (check-workflow-shape $base) { exit 1 }
+}
+
 # Subcommand surface: `nu scripts/qualitygate.nu check-run-scope <lane>`
 # is the loop tester's touched-scope check (and the product lane's manual
 # probe). Bare invocation stays the full product gate.
@@ -387,19 +449,19 @@ def main [] {
     }
     if ($crates | is-empty) {
         print "no crates touched"
-        let green = ((check-loop-assets) and (check-fmt))
+        let green = ((check-loop-assets) and (check-fmt) and (check-workflow-shape $base))
         if $green { print "GATE GREEN"; exit 0 }
         print "GATE RED"
         exit 1
     }
     if ($crates | any {|c| $c == '__workspace__' }) {
-        let green = ((check-loop-assets) and (check-fmt) and (check-workspace-compiles))
+        let green = ((check-loop-assets) and (check-fmt) and (check-workspace-compiles) and (check-workflow-shape $base))
         if $green { print "GATE GREEN"; exit 0 }
         print "GATE RED"
         exit 1
     }
     print $"touched crates: ($crates | str join ', ')"
-    let green = ((check-loop-assets) and (check-fmt) and (check-clippy $crates) and (build-renderer-if-needed $crates) and (check-tests $crates))
+    let green = ((check-loop-assets) and (check-fmt) and (check-clippy $crates) and (build-renderer-if-needed $crates) and (check-tests $crates) and (check-workflow-shape $base))
     if $green {
         print "GATE GREEN"
         exit 0
