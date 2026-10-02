@@ -13,6 +13,8 @@
 #   2. NO preflight -> exit edge — report-only preflight, never a script
 #      exit.
 #   3. tracker_guard -> exit ("Tracker empty") edge EXISTS.
+#   3b. tracker_guard -> exit ("Sprint unreflected") park edge EXISTS
+#      (fabro-cadd reflection invariant — loop lane only).
 #   4. preflight -> planner ("Preflight done") edge EXISTS.
 #   5. planner -> exit ("Already landed") edge EXISTS.
 #   6. Lane wiring: tracker_guard and preflight script lines carry
@@ -56,6 +58,12 @@ def main [] {
     }
     if not ($lines | any {|l| ($l | str contains 'tracker_guard -> exit') and ($l | str contains 'Tracker empty')}) {
         fail 'tracker_guard -> exit ("Tracker empty") edge missing'
+    }
+    # 3b. Sprint-ledger reflection park (fabro-cadd): the loop-lane guard
+    # arm routes "Sprint unreflected" to a deadlock exit — a dropped edge
+    # would strand the park label (no matching route).
+    if not ($lines | any {|l| ($l | str contains 'tracker_guard -> exit') and ($l | str contains 'Sprint unreflected')}) {
+        fail 'tracker_guard -> exit ("Sprint unreflected") park edge missing'
     }
     if not ($lines | any {|l| ($l | str contains 'preflight -> planner') and ($l | str contains 'Preflight done')}) {
         fail 'preflight -> planner ("Preflight done") edge missing'

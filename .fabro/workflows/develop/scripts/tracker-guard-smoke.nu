@@ -139,6 +139,22 @@ if (terminal-tip? "01M2TEST" "" 86400 60) { fail "empty subject must not be term
 # grace boundary: exactly grace age is NOT terminal (strict >).
 if (terminal-tip? "01M2TEST" "fabro(01M2TEST): reviewer (failed)" 3600 60) { fail "exact-grace failed tip must not be terminal" }
 
+# --- Reflection park arm (fabro-cadd): park-decision pure logic ---
+# parked ONLY on the parsed invariant; non-zero exit / invalid JSON /
+# non-record stdout all degrade to not-parked (fail-open — a broken
+# ledger never parks the line).
+let pk_hit = (park-decision {"exit_code": 0, "stdout": '{"parked":true,"degraded":false,"sprints_completed":3,"sprints_reflected":2}'})
+if not $pk_hit.parked { fail $"park-decision unreflected ledger must park: ($pk_hit | to json -r)" }
+if $pk_hit.degraded { fail "park-decision clean park must not be degraded" }
+let pk_clear = (park-decision {"exit_code": 0, "stdout": '{"parked":false,"degraded":false,"sprints_completed":3,"sprints_reflected":3}'})
+if $pk_clear.parked { fail "park-decision reflected ledger must not park" }
+let pk_dead = (park-decision {"exit_code": 1, "stdout": "", "stderr": "boom"})
+if $pk_dead.parked or not $pk_dead.degraded { fail "park-decision script failure must fail open (not parked, degraded)" }
+let pk_bad = (park-decision {"exit_code": 0, "stdout": "not json"})
+if $pk_bad.parked or not $pk_bad.degraded { fail "park-decision invalid JSON must fail open" }
+let pk_missing_key = (park-decision {"exit_code": 0, "stdout": '{"degraded":true}'})
+if $pk_missing_key.parked { fail "park-decision absent parked key must not park" }
+
 # Sourcing tracker-guard.nu imports its `def main`; nu auto-invokes it
 # after the top level runs — exit explicitly so the smoke never shells
 # to seeds (closeout-smoke idiom).

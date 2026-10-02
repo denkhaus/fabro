@@ -25,9 +25,10 @@ digraph Loop {
     // a fix lands once (stage-journal sharing pattern). Drained
     // loop-queue fast exit costs zero planner tokens; the stale-claim
     // requeue arm re-assigns to 'loop'. The lane flag is pinned by the
-    // loop graph-contract smoke.
+    // loop graph-contract smoke. Loop-lane extra arm (fabro-cadd): the
+    // sprint-ledger reflection park ("Sprint unreflected" edge below).
     tracker_guard [
-        label="Tracker guard: empty loop-queue fast exit + stale-claim requeue",
+        label="Tracker guard: empty loop-queue fast exit + stale-claim requeue + sprint park",
         shape=parallelogram,
         script="nu .fabro/workflows/develop/scripts/tracker-guard.nu --assignee loop",
         output_schema="routing",
@@ -175,6 +176,14 @@ digraph Loop {
 
     start -> tracker_guard
     tracker_guard -> exit [label="Tracker empty", condition="preferred_label=\"Tracker empty\""]
+    # Sprint-ledger reflection park (fabro-cadd, ADR-0024 iterate model):
+    # the loop lane owns the sprint ledger, and a pass may not START while
+    # sprints_reflected < sprints_completed — the tracker guard's loop-lane
+    # arm routes here (fail-closed on the PARSED invariant, fail-open on a
+    # missing/corrupt ledger). Deadlock exit: seeds stay open, work
+    # preserved; the session-side short reflection (iterate skill Phase 6)
+    # clears the park. Loop-lane only — the develop graph never routes it.
+    tracker_guard -> exit [x.kind="deadlock", label="Sprint unreflected", condition="preferred_label=\"Sprint unreflected\""]
     tracker_guard -> preflight [label="Tracker non-empty"]
     preflight -> planner [label="Preflight done"]
 

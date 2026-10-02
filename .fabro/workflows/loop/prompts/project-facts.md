@@ -38,6 +38,17 @@ never silently work around it.
   workflow graph (petri admission), lint every nu script, prompt-lint
   literal hygiene, run-scope (diff touches only loop assets), rust fmt
   only when .rs files appear. NEVER the product compile tier.
+- Sprint ledger (iterate model, ADR-0024): `.fabro/iterate-state.json`
+  counts sprints — one closed seed with a substantive diff = 1 sprint,
+  ANY lane; verify-only closures count 0. The deterministic Closeout
+  step updates it on every seed close (counter + line-side short
+  reflection ride the close; `nu .fabro/scripts/iterate-ledger.nu` is
+  the only reader/writer). The loop tracker guard parks the run
+  ("Sprint unreflected", deadlock exit — seeds stay open) while
+  `sprints_reflected < sprints_completed`: run the session-side short
+  reflection first. When closeout prints `gate_due: true` (every 3rd
+  sprint), the LOCAL improve-codebase-architecture agent pass is due —
+  record it with `iterate-ledger.nu --mode arch-reviewed`.
 - Stage journal: `.fabro/journal/<run_id>.jsonl` — one JSON record per
   stage completion; the fallback source for recovering a run's claimed
   seed id.

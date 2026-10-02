@@ -148,6 +148,10 @@ def check-loop-assets [] {
     # are tools, not batteries).
     let batteries = [
         '.fabro/scripts/dup-run-check-fixtures.nu'
+        # Sprint-ledger battery (fabro-cadd): counters on close, the
+        # arch-gate boundary (3/6), the reflection-invariant park, and
+        # the fail-open contracts — against throwaway state files.
+        '.fabro/scripts/iterate-ledger-smoke.nu'
         # planner-preflight anchor battery (fabro-83df report-only
         # end-to-end case included; 0.5s measured 2026-09-19)
         '.fabro/scripts/planner-preflight-anchor-fixtures.nu'

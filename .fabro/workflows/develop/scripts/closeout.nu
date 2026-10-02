@@ -452,6 +452,68 @@ def sweep-exemption-arms [seed_id: string, run_id: string, journal_path: string]
     }
 }
 
+# ---------------------------------------------------------------------------
+# Sprint ledger close (fabro-cadd, ADR-0024 iterate model port)
+#
+# WHY: the sprint ledger (.fabro/iterate-state.json) was maintained ONLY by
+# the session-side iterate skill — run closures that landed outside a
+# session (or sessions that skipped Phase 6) drifted the counters. The
+# closeout is the deterministic point where EVERY approved seed closure
+# passes through, so the counter increment and the line-side short
+# reflection ride HERE (scope item 1). Shared across lanes via --lane.
+#
+# Substantive detection: the claim-base-anchored diff excluding pure
+# bookkeeping (.seeds tracker, stage journals, the ledger itself) — a
+# verify-only or bookkeeping-only closure counts 0 sprints (settled
+# weighting). Fail-open toward COUNTING: a git failure treats the closure
+# as substantive (same degrade direction as the demand gate).
+#
+# Advisory: runs AFTER the successful `seeds close` and can never un-close
+# — `do -i` + `do { ... } | complete` wrappers; a ledger failure prints a
+# WARNING and the closeout still exits 0 (byte-identical close semantics
+# when the ledger step succeeds silently). The printed JSON carries the
+# arch-gate boundary signal (gate_due) into the stage journal/run output.
+# ---------------------------------------------------------------------------
+
+# Pure: does a complete-style `git diff --name-only` result show any
+# (non-excluded) change? Non-zero git exit degrades to true (count it).
+def substantive-patch? [res: record]: nothing -> bool {
+    if $res.exit_code != 0 { return true }
+    ($res.stdout | lines | each {|l| $l | str trim} | where {|l| not ($l | is-empty)} | is-not-empty)
+}
+
+# Best-effort line-side short reflection from the run's stage journal:
+# mechanical counts of recorded painpoints/observations with a pointer.
+# Missing/unreadable journal degrades to a generic note — never blocks.
+def journal-reflection [journal_path: string]: nothing -> string {
+    let recs = (
+        do -i { open --raw $journal_path | lines | compact | each {|l| do -i { $l | from json } } | where {|r| $r != null } } | default []
+    )
+    if ($recs | is-empty) {
+        return $"journal absent/unreadable — no recorded painpoints to fold; details at ($journal_path)"
+    }
+    let pain = ($recs | get -o data | where {|d| $d != null } | each {|d| $d | get -o painpoints | default [] } | flatten | length)
+    let obs = ($recs | get -o data | where {|d| $d != null } | each {|d| $d | get -o observations | default [] } | flatten | length)
+    $"journal recorded ($pain) painpoint\(s\) and ($obs) observation\(s\); residual/deferred/exemption sweeps filed at close; details at ($journal_path)"
+}
+
+# Best-effort ledger close for THIS run's seed. Never raises: the caller
+# wraps in `do -i`; failures print a WARNING to stderr and stdout.
+def sprint-ledger-close [seed_id: string, run_id: string, lane: string]: nothing -> nothing {
+    let cb = (do -i { seed-claim-base $seed_id (run-base) } | default {base: "HEAD"})
+    let diff_res = (do { git diff --name-only $cb.base -- . ':(exclude).seeds' ':(exclude).fabro/journal' ':(exclude).fabro/iterate-state.json' } | complete)
+    let flags = (if (substantive-patch? $diff_res) { ["--substantive"] } else { [] })
+    let refl = (journal-reflection $".fabro/journal/($run_id).jsonl")
+    let res = (do { nu .fabro/scripts/iterate-ledger.nu --mode close --seed $seed_id --run-id $run_id --lane $lane --reflection $refl ...$flags } | complete)
+    if $res.exit_code != 0 {
+        let msg = $"closeout: WARNING — sprint ledger update failed \(non-blocking\): ($res.stderr | str trim)"
+        print -e $msg
+        print $msg
+    } else {
+        print $"closeout: sprint ledger — ($res.stdout | str trim)"
+    }
+}
+
 # Lane parameter (fabro-70b5): product (default, develop) or loop. The
 # lane fixes the assignee residual/deferred sweeps file under — residuals
 # from a loop run are loop-asset follow-ups (@loop); product residuals
@@ -521,4 +583,9 @@ def main [--lane: string = "product"]: nothing -> nothing {
         exit 1
     }
     print $"closeout: closed ($seed_id) — one seed per run, exiting"
+
+    # Sprint ledger close (fabro-cadd): AFTER the successful close, so a
+    # parked/failed closeout never touches the counters. Advisory only.
+    let lane_name = (if $lane == "loop" { "loop" } else { "develop" })
+    do -i { sprint-ledger-close $seed_id $run_id $lane_name } | ignore
 }

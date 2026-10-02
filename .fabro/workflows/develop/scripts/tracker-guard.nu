@@ -59,6 +59,15 @@
 # FABRO_GUARD_CURRENT_SEED names the claimed seed for manual runs.
 # Requeued ids land in the output's `requeued` array; the
 # outcome/preferred_next_label semantics above are unchanged.
+#
+# Reflection-invariant park (fabro-cadd, LOOP lane only): with
+# --assignee loop the guard also runs the sprint-ledger check
+# (.fabro/scripts/iterate-ledger.nu --mode check) and routes
+# "Sprint unreflected" while sprints_reflected < sprints_completed —
+# the loop graph's deadlock exit (seeds stay open; the session-side
+# short reflection clears the park). Fail-open: a missing/corrupt
+# ledger never parks. The develop (default) lane never runs the arm —
+# byte-equivalent behavior.
 
 # Stale threshold in hours. Default 6h: develop runs complete in
 # minutes-to-hours (the loop cycles seeds continuously), so a claiming
@@ -177,6 +186,19 @@ def develop-claims [journal_dir: string, seed_ids: list, self_run: string]: noth
     {claims: $claims, degraded: false}
 }
 
+# Pure reflection-park decision (fabro-cadd, smoke-testable): a
+# complete-style result from `iterate-ledger.nu --mode check` -> routing
+# overlay. parked=true ONLY on the parsed invariant
+# (sprints_reflected < sprints_completed); any internal failure
+# (non-zero exit, invalid JSON) degrades to not-parked — fail-open, the
+# guard never parks on a broken ledger.
+def park-decision [res: record] {
+    if $res.exit_code != 0 { return {parked: false, degraded: true} }
+    let parsed = (try { $res.stdout | from json } catch { null })
+    if not ($parsed | describe | str starts-with "record") { return {parked: false, degraded: true} }
+    {parked: (($parsed.parked? | default false) == true), degraded: (($parsed.degraded? | default false) == true)}
+}
+
 # Lane parameter (fabro-70b5): the guard serves BOTH lanes — develop
 # (default, assignee fabro) and the loop meta lane (--assignee loop).
 # The flag is passed by the calling graph's script line, so the lane is
@@ -222,14 +244,26 @@ def main [--dry-run (-d), --assignee: string = "fabro"]: nothing -> nothing {
         {requeued: ($results | where ok | get sid), failed: ($results | where ok == false | get sid)}
     })
 
-    $base
-    | merge {
+    # Reflection-invariant park (fabro-cadd, ADR-0024 iterate model): the
+    # LOOP lane owns the sprint ledger, so only --assignee loop runs the
+    # check — the develop (default) lane's behavior is byte-equivalent to
+    # pre-cadd. A parked ledger routes "Sprint unreflected" (the loop
+    # graph's deadlock exit: seeds stay open, work preserved — the
+    # session-side short reflection must run before the next pass starts).
+    # Fail-open: a missing/corrupt ledger never parks.
+    mut out = ($base | merge {
         requeued: $applied.requeued,
         requeue_failed: $applied.failed,
         dry_run: $dry_run,
         degraded: $arm_degraded,
         stale_threshold_hours: $stale_hours
+    })
+    if $assignee == "loop" {
+        let park = (park-decision (do { nu .fabro/scripts/iterate-ledger.nu --mode check } | complete))
+        if $park.parked {
+            $out = ($out | update preferred_next_label "Sprint unreflected")
+        }
+        $out = ($out | merge {reflection_park: $park})
     }
-    | to json --raw
-    | print
+    $out | to json --raw | print
 }

@@ -295,6 +295,30 @@ if (exemption-seed-labels) != ["ops" "residual"] {
 
 print "closeout-smoke: ok — reviewer-journal, deferred-action and exemption-arm sweep logic verified"
 
+# --- Sprint ledger close wiring (fabro-cadd), pure helpers ---
+
+# substantive-patch?: non-empty (non-excluded) diff lines count; git
+# failure degrades to TRUE (count the sprint — same direction as the
+# demand gate); empty stdout with exit 0 is NOT substantive.
+if not (substantive-patch? {"exit_code": 0, "stdout": "lib/a.rs\nscripts/x.nu\n"}) { fail "substantive-patch? non-empty diff must be true" }
+if (substantive-patch? {"exit_code": 0, "stdout": ""}) { fail "substantive-patch? empty diff must be false" }
+if (substantive-patch? {"exit_code": 0, "stdout": ([" " (char newline) " " (char newline)] | str join)}) { fail "substantive-patch? whitespace-only diff must be false" }
+if not (substantive-patch? {"exit_code": 1, "stdout": "", "stderr": "boom"}) { fail "substantive-patch? git failure must degrade to true (count)" }
+
+# journal-reflection: mechanical counts + pointer from a journal file;
+# missing journal degrades to a generic note, never raises.
+let jr_dir = (mktemp -d)
+let jr_ok = ($jr_dir | path join "ok.jsonl")
+([
+    '{"node":"implementer","ts":"t","data":{"painpoints":[{"text":"p1"}],"observations":["o1","o2"]}}'
+    '{"node":"reviewer","ts":"t","data":{"painpoints":[],"observations":["o3"]}}'
+] | str join "\n") | save --force $jr_ok
+if not ((journal-reflection $jr_ok) | str contains "1 painpoint") { fail $"journal-reflection painpoint count wrong: (journal-reflection $jr_ok)" }
+if not ((journal-reflection $jr_ok) | str contains "3 observation") { fail $"journal-reflection observation count wrong: (journal-reflection $jr_ok)" }
+let jr_missing = ($jr_dir | path join "nope.jsonl")
+if not ((journal-reflection $jr_missing) | str contains "absent/unreadable") { fail "journal-reflection missing journal must degrade generically" }
+rm -rf $jr_dir
+
 
 # Sourcing closeout.nu imports its `def main`; nu auto-invokes it after
 # the top level runs — exit explicitly so the smoke never reaches it.

@@ -46,6 +46,11 @@ in the journal, never silently work around it.
 
 - Quality gate: `just qualitygate` — a `qualitygate` recipe in the project
   justfile. The workflow stays agnostic about what the gate checks.
+- Sprint ledger (iterate model, ADR-0024): the deterministic Closeout
+  step updates `.fabro/iterate-state.json` on every approved seed close —
+  one substantive closure = 1 sprint, verify-only = 0; the update is
+  bookkeeping, never a lane concern. `gate_due: true` in closeout output
+  (every 3rd sprint) means the local architecture-gate pass is due.
 - Rust toolchain pin (fmt/clippy run on the pinned nightly; tests run
   through `cargo nextest`):
   - `cargo +nightly-2026-04-14 fmt -p <touched-crate>`
