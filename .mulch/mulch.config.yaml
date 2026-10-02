@@ -35,6 +35,7 @@ domains:
   rust: {}
   fabro: {}
   nu: {}
+  git-insteadof: {}
 governance:
   max_entries: 100
   warn_entries: 150
