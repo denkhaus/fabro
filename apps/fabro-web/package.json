@@ -5,7 +5,7 @@
   "scripts": {
     "build": "bun run scripts/build.ts",
     "dev": "bun run scripts/build.ts --watch",
-    "test": "bun test --isolate",
+    "test": "bun test --parallel",
     "typecheck": "tsc"
   },
   "dependencies": {
