@@ -162,7 +162,7 @@ def loop-work-path [path: string]: nothing -> bool {
     # x.fs_write (the run-scope fixtures pin the triple).
     if ($path | str starts-with "lib/components/fabro-dot/src/snapshots/") { return true }
     let prefix_hit = ([".fabro/" "scripts/"] | any {|q| $path | str starts-with $q})
-    ($prefix_hit) or ($path in ["justfile" ".seeds/issues.jsonl"])
+    ($prefix_hit) or ($path in ["justfile" ".seeds/issues.jsonl" ".seeds/config.yaml"])
 }
 
 # numstat rows {add del path} for base -> working tree (staged + unstaged).
