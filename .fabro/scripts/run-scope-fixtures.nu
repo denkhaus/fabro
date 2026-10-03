@@ -47,8 +47,10 @@ expect-violations [".fabro/workflows/develop/workflow.fabro" "scripts/run.sh" "j
 # contract writes the git-tracked expertise files there (ml record).
 expect-violations [".mulch/expertise/rust.jsonl"] "product" []
 
-# The two exemptions pass: hook-owned journal, tracker bookkeeping.
-expect-violations [".fabro/journal/01X.jsonl" ".seeds/issues.jsonl"] "product" []
+# The exemptions pass: hook-owned journal, tracker bookkeeping — the
+# tracker CONFIG included (fabro-28d8: the seeds CLI rewrites it on
+# store ops; user decision: checks relax, the CLI owns its config).
+expect-violations [".fabro/journal/01X.jsonl" ".seeds/issues.jsonl" ".seeds/config.yaml"] "product" []
 
 # Repo code passes untouched.
 expect-violations ["lib/apps/fabro-cli/src/main.rs" "apps/fabro-web/src/x.ts" "docs/public/api.yaml" "README.md"] "product" []
@@ -57,7 +59,7 @@ expect-violations ["lib/apps/fabro-cli/src/main.rs" "apps/fabro-web/src/x.ts" "d
 # Loop assets pass (the meta lane's surface); the fabro-dot snapshot dir
 # passes too (fabro-9973 — mechanically derived from .fabro/workflows
 # graphs, part of the loop lane's one-unit graph edit).
-expect-violations [".fabro/workflows/loop/workflow.fabro" "scripts/qualitygate.nu" "justfile" ".seeds/issues.jsonl" ".fabro/journal/01X.jsonl" "lib/components/fabro-dot/src/snapshots/fabro_dot__tests__x.snap"] "loop" []
+expect-violations [".fabro/workflows/loop/workflow.fabro" "scripts/qualitygate.nu" "justfile" ".seeds/issues.jsonl" ".seeds/config.yaml" ".fabro/journal/01X.jsonl" "lib/components/fabro-dot/src/snapshots/fabro_dot__tests__x.snap"] "loop" []
 
 # Everything else violates (out of lane) — including lib/ paths OUTSIDE
 # the snapshot dir (adjacent product code stays out of lane).
@@ -92,8 +94,8 @@ expect-drops [" mode change 100755 => 100644 a.sh" " mode change 100644 => 10075
 # substitute; the loop graph-contract smoke pins the graph side).
 const PIN_PREFIXES = '[".fabro/" "scripts/"] | any {|q| $path | str starts-with $q}'
 const PIN_PREFIXES_QG = '[".fabro/" "scripts/"] | any {|q| $p | str starts-with $q}'
-const PIN_EXACT_EVIDENCE = '($path in ["justfile" ".seeds/issues.jsonl"])'
-const PIN_EXACT_QG = '($p in ["justfile" ".seeds/issues.jsonl"])'
+const PIN_EXACT_EVIDENCE = '($path in ["justfile" ".seeds/issues.jsonl" ".seeds/config.yaml"])'
+const PIN_EXACT_QG = '($p in ["justfile" ".seeds/issues.jsonl" ".seeds/config.yaml"])'
 let evidence_src = (open --raw ($SCRIPT_DIR | path join '../workflows/develop/scripts/evidence.nu'))
 if not ($evidence_src | str contains $PIN_PREFIXES) or not ($evidence_src | str contains $PIN_EXACT_EVIDENCE) {
     fail $"drift pin: evidence.nu loop-work-path set changed — realign with scripts/qualitygate.nu loop-asset? \(and the loop graph x.fs_write\)"

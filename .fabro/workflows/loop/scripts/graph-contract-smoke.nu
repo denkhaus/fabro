@@ -34,7 +34,7 @@
 #      cap must never silently omit an evidence capture's head.
 
 const GRAPH = ('.fabro/workflows/loop/workflow.fabro' | path expand)
-const FS_WRITE_EXPECTED = 'x.fs_write=".fabro/**,scripts/**,justfile,.seeds/issues.jsonl,lib/components/fabro-dot/src/snapshots/**"'
+const FS_WRITE_EXPECTED = 'x.fs_write=".fabro/**,scripts/**,justfile,.seeds/issues.jsonl,.seeds/config.yaml,lib/components/fabro-dot/src/snapshots/**"'
 
 def fail [what: string]: nothing -> nothing {
     print -e $"loop graph-contract-smoke: FAIL — ($what)"

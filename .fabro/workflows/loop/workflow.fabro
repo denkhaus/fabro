@@ -68,7 +68,7 @@ digraph Loop {
         x.preamble_stages_ignore="planner,implementer,evidence",
         x.context_consume_keys="review_verdict,review_feedback,implementation_summary",
         x.fs_hide=".fabro/**,.mulch/**,.agents/**,scripts/**,justfile",
-        x.fs_write=".seeds/issues.jsonl",
+        x.fs_write=".seeds/issues.jsonl,.seeds/config.yaml",
         x.context_allow_keys="current_seed_id,current_seed_title,current_seed_brief,review_verdict,journal",
         x.fabro_tools="fabro_run_search"
     ]
@@ -116,7 +116,7 @@ digraph Loop {
         x.fabro_tools="",
         x.preamble_allow_keys="current_seed_id,current_seed_title,current_seed_brief",
         x.fs_hide=".agents/**,.mulch/**",
-        x.fs_write=".fabro/**,scripts/**,justfile,.seeds/issues.jsonl,lib/components/fabro-dot/src/snapshots/**",
+        x.fs_write=".fabro/**,scripts/**,justfile,.seeds/issues.jsonl,.seeds/config.yaml,lib/components/fabro-dot/src/snapshots/**",
         x.context_allow_keys="implementation_summary,journal"
     ]
 

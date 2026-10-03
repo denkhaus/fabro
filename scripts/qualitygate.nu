@@ -258,10 +258,13 @@ def check-workspace-compiles [] {
 #     gate — loop assets are the meta lane's surface, never the product
 #     implementer's. Exemptions: .fabro/journal/** (the stage-journal
 #     hook's own writes, hook-owned per fabro-b6c5) and
-#     .seeds/issues.jsonl (tracker bookkeeping: planner claim, close).
+#     .seeds/issues.jsonl + .seeds/config.yaml (tracker bookkeeping:
+#     planner claim, close, and the seeds CLI's config rewrite on store
+#     ops — fabro-28d8, user decision 2026-10-03).
 #   loop lane (loop tester calls `check-run-scope loop`): the diff may
 #     touch ONLY the loop assets the loop implementer's fs_write pins
-#     (.fabro/**, scripts/**, justfile, .seeds/issues.jsonl) — a loop
+#     (.fabro/**, scripts/**, justfile, .seeds/issues.jsonl,
+#     .seeds/config.yaml) — a loop
 #     run editing lib/ or docs/ is out of lane and REDs.
 #
 # Determinism: the CALLING GRAPH fixes the lane (the script line lives in
@@ -280,7 +283,7 @@ def loop-asset? [p: string]: nothing -> bool {
     # edit. Every other lib/ path stays out of lane.
     if ($p | str starts-with "lib/components/fabro-dot/src/snapshots/") { return true }
     let prefix_hit = ([".fabro/" "scripts/"] | any {|q| $p | str starts-with $q})
-    ($prefix_hit) or ($p in ["justfile" ".seeds/issues.jsonl"])
+    ($prefix_hit) or ($p in ["justfile" ".seeds/issues.jsonl" ".seeds/config.yaml"])
 }
 
 # Pure: one path against the product-lane deny-list — EXACTLY develop's
@@ -292,7 +295,7 @@ def loop-asset? [p: string]: nothing -> bool {
 # lesson-recording product run (fabro-70b5 spec review).
 def product-denied? [p: string]: nothing -> bool {
     if ($p | str starts-with ".fabro/journal/") { return false }
-    if ($p == ".seeds/issues.jsonl") { return false }
+    if ($p in [".seeds/issues.jsonl" ".seeds/config.yaml"]) { return false }
     let prefix_hit = ([".fabro/" ".agents/" ".seeds/" "scripts/"] | any {|q| $p | str starts-with $q})
     ($prefix_hit) or ($p == "justfile")
 }
