@@ -783,6 +783,8 @@ async fn mcp_create_and_search_manage_real_runs_with_cli_auth() {
           },
           "source_directory": null,
           "repo_origin_url": null,
+          "workflow_version_id": "387df37bc0038b0af5593abd4cbcc05f22243035a8a6c81ffd4d0c5bb4231ac2",
+          "sandbox_available": null,
           "goal_preview": "Run tests and report results",
           "goal_truncated": false
         }
@@ -1390,7 +1392,9 @@ async fn mcp_lifecycle_tools_manage_real_run() {
             },
             "source_directory": null,
             "repo_origin_url": null,
-            "goal": "Run tests and report results"
+            "goal": "Run tests and report results",
+            "workflow_version_id": "387df37bc0038b0af5593abd4cbcc05f22243035a8a6c81ffd4d0c5bb4231ac2",
+            "sandbox_available": null
           }
         ],
         "timed_out": false,
