@@ -74,9 +74,12 @@ digraph Loop {
     ]
 
     // Claim-contract gate (fabro-c42f stopgap): the shared develop script
-    // is lane-agnostic — it only proves current_seed_id arrived.
+    // is lane-agnostic — it proves current_seed_id arrived and (fabro-4c81
+    // path gate) that the claimed seed body's cited repo paths resolve in
+    // the worktree; a stale body bounces the planner to correct the
+    // tracker row before the pass may proceed.
     claim_check [
-        label="Claim check: seed id contract",
+        label="Claim check: seed id + body path contract",
         shape=parallelogram,
         script="nu .fabro/workflows/develop/scripts/claim-check.nu",
         stdin_source="current_seed_id",

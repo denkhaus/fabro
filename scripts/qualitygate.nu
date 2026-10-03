@@ -123,6 +123,10 @@ def check-loop-assets [] {
     }
     let smokes = [
         '.fabro/workflows/develop/scripts/evidence-smoke.nu'
+        # Claim-gate path battery (fabro-4c81): the pure claim-body-verdict
+        # core over canned seeds-show records — blocking classes, creation-
+        # intent windows, advisory classes, fail-open contract.
+        '.fabro/workflows/develop/scripts/claim-check-smoke.nu'
         # Graph-contract pin (fabro-83df/fabro-92e2, incident 2026-09-19):
         # the develop graph must keep its deterministic-exit contract —
         # planner ungated, preflight report-only, guard exits intact.
