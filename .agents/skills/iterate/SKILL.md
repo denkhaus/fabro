@@ -151,7 +151,21 @@ stores it belongs to; reach them by phase need:
   (`seeds update --status in_progress`), implement under the mechanical
   gates of the touched surface (Rust: rust-style-guide + guideline pages
   loaded and NAMED before the first edit cell), verify with real
-  commands, close with evidence. The full direct-fix recipe below
+  commands, close with evidence.
+- Pin power is PROVEN, not assumed (2026-10-03, fabro-8615): after a
+  regression pin is written, restore the PRE-FIX implementation (the
+  file as it stands in HEAD) and confirm the pin goes RED, then restore.
+  A "nearby" mutation of the new code can pass while the pin is blind -
+  two variant mutations of the new scanner survived, only the HEAD
+  restore failed the run-level pin with the real symptom
+  (`Failed { reason: SoftStop }`). A test added through an EXISTING
+  harness must prove the input reaches the seam: the projection harness
+  never wrote the run spec's `graph_source`, so the first engine-level
+  pin was trivially green until the harness carried it.
+- Run the touched tests IMMEDIATELY after each refactor edit, not at the
+  end of the batch: two self-inflicted scanner bugs (a byte offset,
+  chain legs) cost a hung 120s test round each; the unit test would have
+  failed in 0.02s. The full direct-fix recipe below
   (lint first, dry-runs, unpiped exit codes) is binding for local work.
 - Delegated builds (the explicit-choice case): feed implementation seeds
   with pointers — files, trait seams, guideline pages.
@@ -292,7 +306,20 @@ stores it belongs to; reach them by phase need:
 
 ## Phase 5 — Integrate
 
-- Commit code (`but commit`) BEFORE tracker mutations land. `seeds sync`
+- Commit code (`but commit`) BEFORE tracker mutations land. The commit
+  message travels through a FILE, never through a Python variable:
+  `bash()` does not see the REPL's names, so `-m "$MSG"` commits an
+  empty message (2026-10-03 fabro-8615) - write `/tmp/msg.txt` and pass
+  `-m "$(cat /tmp/msg.txt)"`, then read the message back (`but show
+  <id>`) before pushing.
+- A SHARED workspace means shared FILES (2026-10-03, two iterate
+  sessions in one GitButler workspace): a file-level `but commit` sweeps
+  every uncommitted line of that file, so a sibling's tracker commit
+  swallowed this session's seed claims. Check the per-id diff
+  (`git diff -- .seeds/issues.jsonl`) for foreign ids before committing
+  a shared file, land your own lines promptly, and re-read
+  `iterate-state.json` before writing - the sibling session counts its
+  closures into the same ledger. `seeds sync`
   is SAFE again since seeds 0.6.0 with `vcs_manager: gitbutler` in
   `.seeds/config.yaml` (set in the GB repos): sync becomes report-only
   (no git write; prints the changed paths + the ready commit message) —
