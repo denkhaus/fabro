@@ -8,6 +8,7 @@ description: Apply this Rust style guide when writing, reviewing, refactoring, o
 Use this skill to apply the project's Rust style conventions while writing, reviewing, refactoring, or configuring Rust code.
 
 > **Location:** This skill's supporting files live in `.fabro/skills/rust-style-guide/` at the repository root. Every linked path below (`guidelines.md`, `guidelines/*.md`, `workflows/*.md`) is relative to that directory. Read them with that prefix — e.g. `.fabro/skills/rust-style-guide/guidelines.md`.
+> **Sync rule (fabro-6538):** the canonical run-facing copy is `.fabro/skills/rust-style-guide/`; `.agents/skills/rust-style-guide/` is a synced mirror — the qualitygate loop-asset tier hash-compares both trees and REDs on any divergence.
 
 ## Supporting Files
 
