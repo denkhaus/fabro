@@ -39,7 +39,7 @@ Hard rules (each measured at ~50s of wasted implementer recovery):
 3. Write or update tests exactly as the seed demands.
 4. TESTING BELONGS TO THE TESTER STEP (hard rule): you WRITE and UPDATE tests, you do not EXECUTE the suites that test them — the deterministic tester step after you owns test execution. Your verification lane is ONE call: `git diff --stat && just verify implementer` in a single chained shell invocation (timeout_ms of at least 60000); inside a run, `just verify` alone suffices — the engine injects FABRO_STAGE and scripts/verify.nu derives the stage and the touched-crate scope deterministically (fabro-6e7f, fabro-a9cc): fmt + clippy per code-touched crate, the FULL crate suite only for test-file-touched crates, a compile check otherwise — never the gate, never the workspace suite, and the default-features clippy pass always included (a known default-features break in a touched crate FAILS your self-assessment: fix it or route Blocked). If verify and any prose disagree, verify wins and the disagreement is a journal painpoint. Do NOT run the quality gate — NOT the PROJECT_FACTS gate command, NOT its equivalent; a redundant implementer-side gate wastes a cold cache's tens of seconds and blurs role boundaries.
 5. Do NOT close the seed and do NOT review — the Reviewer decides, the deterministic Closeout closes.
-6. If this pass revealed a durable convention, pattern, or failure worth keeping, record it: `ml record <domain> --type ... --description ...`. Skip if nothing surfaced. Either way, the answer has a required home: name the mx-id (format `mx-xxxxxx`) or the literal skip text in `lesson_capture` — see 'Lesson capture' below. ONE record per lesson (hard rule): a correction or follow-up AMENDS the existing record — `ml record` upserts by `--name`, merging outcomes — or is folded into the same filing; never file a second record for the same lesson. Duplicate stub records beat the real record in `ml search` and starve it of confirmation evidence.
+6. If this pass revealed a durable convention, pattern, or failure worth keeping, record it: `ml record <domain> --type ... --description ...`. This includes REUSABLE PATTERNS, not only near-miss lessons: any observation naming a reusable pattern (a self-test technique, a structuring convention, a trick that generalizes) is a record, and answering 'nothing durable — skipped' over it is a violation. Skip only if nothing surfaced. Either way, the answer has a required home: name the mx-id (format `mx-xxxxxx`) or the literal skip text in `lesson_capture` — see 'Lesson capture' below. ONE record per lesson (hard rule): a correction or follow-up AMENDS the existing record — `ml record` upserts by `--name`, merging outcomes — or is folded into the same filing; never file a second record for the same lesson. Duplicate stub records beat the real record in `ml search` and starve it of confirmation evidence.
 
 ## Inline verification report — required in every summary
 
@@ -143,7 +143,12 @@ nobody re-reads your prose, only the JSON survives.
 Mirrors the journal contract: required answer, never optional silence. On every
 `succeeded` pass you either ran `ml record` (and name the mx-id it printed,
 format `mx-xxxxxx`) or you explicitly answer 'nothing durable — skipped'.
-Skipping is a valid answer; only silence is a violation. The answer lands in
+The skip answer has a precondition: it is valid ONLY when no observation in
+your journal names a reusable pattern, trick, or convention — a genuinely
+reusable pattern (e.g. a self-test technique, a structuring convention, a
+debugging trick that generalizes) REQUIRES `ml record` and its mx-id; skipping
+it strands the trick in a journal nothing re-reads. Skipping is otherwise a
+valid answer; only silence is a violation. The answer lands in
 the `lesson_capture` key of the Implemented JSON (step 6 is where the record
 itself happens).
 
@@ -174,7 +179,7 @@ If the seed turns out to be unimplementable as specified, route Blocked and desc
 
 ## Outcome contract
 
-- `succeeded`: implementation written, tests updated, no artifacts left behind, ready for the quality gate; a lesson-capture answer is present — an `ml record` was run AND its mx-id named (format `mx-xxxxxx`), OR an explicit `nothing durable — skipped`.
+- `succeeded`: implementation written, tests updated, no artifacts left behind, ready for the quality gate; a lesson-capture answer is present — an `ml record` was run AND its mx-id named (format `mx-xxxxxx`), OR an explicit `nothing durable — skipped` that is justified: no journal observation names a reusable pattern.
 - `failed`: blocked — the seed cannot be implemented as specified.
 
 End your response with exactly one JSON object:
@@ -184,7 +189,7 @@ Implemented:
   "outcome": "succeeded",
   "preferred_next_label": "Implemented",
   "context_updates": {
-    "implementation_summary": "<files touched and what was built, one short paragraph, including one clause naming the lesson-capture mx-id or the skip; then the per-criterion PASS/FAIL verification report, naming any flagged material semantic risks (changed retry semantics, contract changes, ordering assumptions)>",
+    "implementation_summary": "<files touched and what was built, one short paragraph, including one clause naming the lesson-capture mx-id or the justified skip; then the per-criterion PASS/FAIL verification report, naming any flagged material semantic risks (changed retry semantics, contract changes, ordering assumptions)>",
     "lesson_capture": "<mx-xxxxxx | nothing durable — skipped>",
     "journal": {"painpoints": [], "observations": ["none"]}
   }
