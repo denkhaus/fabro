@@ -385,6 +385,12 @@ stores it belongs to; reach them by phase need:
 
 ## Standing rules
 
+- Style-guide pair invariant (fabro-6538, 591a decision 2026-10-03):
+  `.fabro/skills/rust-style-guide/` is canonical, `.agents/skills/rust-style-guide/`
+  its synced mirror. After ANY edit to the canonical side, the session runs
+  `just sync-style-guide` (the qualitygate parity battery REDs on divergence).
+  Loop runs NEVER write `.agents/**` (fabro-591a decision: no run-scope
+  widening — battery-RED routes the sync to the session).
 - VCS layer is the GitButler experiment (user directive 2026-10-03): every
   write operation (commit, push, branch, history edit) goes through `but`;
   never run `git add/commit/push/checkout/merge/rebase/stash/cherry-pick`.

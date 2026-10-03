@@ -133,6 +133,13 @@ pin-toolchain:
 build-binary: web-deps
     cargo --locked dev docker-build --arch {{ arch }} --compile-only
 
+# Sync the .agents/skills/rust-style-guide mirror from the canonical
+# .fabro/skills copy (fabro-6538 pair invariant). Run after ANY edit to the
+# canonical side; the parity battery verifies the pair and REDs on divergence.
+sync-style-guide:
+    rsync -a --delete .fabro/skills/rust-style-guide/ .agents/skills/rust-style-guide/
+    nu .fabro/scripts/skill-parity-fixtures.nu
+
 # Install workspace JS dependencies for the SPA build (bun workspace, root lockfile)
 web-deps:
     bun install --frozen-lockfile
