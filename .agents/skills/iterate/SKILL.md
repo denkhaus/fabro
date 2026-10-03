@@ -49,14 +49,21 @@ stores it belongs to; reach them by phase need:
 
 ## Phase 0 — Orient (always, cheap)
 
-- One world: everything works on branch `denkhaus` in the main checkout
-  (`git branch --show-current` must say `denkhaus`). Runs execute on the
-  PRODUCTION server `https://mirtuell.net` — every line query carries
-  `--server https://mirtuell.net`. The local server (127.0.0.1:32276) is
-  for TESTS only. Branch switches happen in the main checkout; git
-  worktrees never.
-- `git fetch` + `git pull --ff-only` BEFORE reading tracker state when
-  another machine may have run the line — the tracker view is branch-local.
+- One world: everything works on the LINE branch `denkhaus` in the main
+  checkout. VCS layer is the GitButler experiment (2026-10-03): the checkout
+  itself sits on `gitbutler/workspace` and the line is the APPLIED virtual
+  branch `denkhaus` — `but status` must show it applied (this replaces
+  `git branch --show-current`). All write operations go through `but`;
+  read-only git inspection (`git log`, `git show`, `git diff`) stays
+  allowed. Runs execute on the PRODUCTION server `https://mirtuell.net` —
+  every line query carries `--server https://mirtuell.net`. The local
+  server (127.0.0.1:32276) is for TESTS only. Apply/unapply of branches
+  plays the role of branch switches; git worktrees never.
+- `but branch update denkhaus` BEFORE reading tracker state when another
+  machine may have run the line (integrates origin/denkhaus into the applied
+  branch, pull-rebase) — the tracker view is branch-local. Never apply,
+  unapply, or update branches while a background cargo runs (the tree is
+  rewritten and a mixed build invalidates the whole run).
 - Open-PR sweep BEFORE anything else (user directive 2026-10-02, PR #359
   lesson): `gh pr list --repo denkhaus/fabro --state open` plus
   `gh pr checks <n>` for each. A run PR (`fabro/run/*` branches) with a RED
@@ -270,22 +277,25 @@ stores it belongs to; reach them by phase need:
 
 ## Phase 5 — Integrate
 
-- Commit code BEFORE `seeds sync` (sync sweeps staged changes + `.seeds`
-  only). Never `seeds sync` inside a workflow stage. Line-watch closes
+- Commit code (`but commit`) BEFORE tracker mutations land: under the
+  GitButler rule, NEVER run `seeds sync` (it issues its own plain git
+  commit behind the workspace's back) — commit `.seeds/` changes
+  explicitly via `but commit` in the same batch. Line-watch closes
   through `seeds close --reason` with the reason appended to the body
-  first.
+  first, then the same explicit `.seeds` commit.
 - A `fabro create` whose post-processing dies still created the run:
   capture exactly one run id per intended create and `fabro rm --force`
   duplicates immediately - submitted ghosts count as active runs and wedge
   the push gate.
-- Push policy: during the cycle, pulls and read-only integration stay
-  allowed; the PUSH direction is gated to one mechanical decision at the
-  END: `nu .fabro/scripts/push-gate.nu` (exit 0 = open: no running
+- Push policy: during the cycle, branch updates and read-only integration
+  stay allowed; the PUSH direction is gated to one mechanical decision at
+  the END: `nu .fabro/scripts/push-gate.nu` (exit 0 = open: no running
   conductor/develop/revisor pass AND no open run PR). Check and push
-  share one cell, and the gate runs UNPIPED — `&&` behind a pipe reads
-  the pipe member's exit code, not the gate's (2026-10-02 23:00
-  incident: a `gate | tail -1 && git push` pushed straight through a
-  REFUSED verdict while a loop pass ran). A repaired gate is validated against a known-active
+  share one cell, the gate runs UNPIPED, and the push itself is
+  `but push denkhaus` — `&&` behind a pipe reads the pipe member's exit
+  code, not the gate's (2026-10-02 23:00 incident: a
+  `gate | tail -1 && git push` pushed straight through a REFUSED verdict
+  while a loop pass ran). A repaired gate is validated against a known-active
   line state before its first OPEN verdict is trusted. Incident restore
   may push as soon as no pass runs. Evidence and history: `ml prime git`.
 - Deploy windows: deploy only while no conductor pass runs. Pause the
@@ -366,7 +376,7 @@ stores it belongs to; reach them by phase need:
    delivery): pull, evaluate journals/reviews (premise-checked against
    the tree), dispatch seeds per ADR-0018 with dispatch-dedupe (keep the
    richer seed, close the lesser naming both ids), push through the gate
-   with JSONL-dedupe discipline, rootprint correlation for every
+   (`but push denkhaus`, gate unpiped) with JSONL-dedupe discipline, rootprint correlation for every
    evaluated run, SALVAGE SWEEP per the failed-run salvage rule above for
    every failed/green-lie run, report compactly in German. RLM heartbeats are
    session-scoped: recreate from this spec when missing; if the session
@@ -375,6 +385,16 @@ stores it belongs to; reach them by phase need:
 
 ## Standing rules
 
+- VCS layer is the GitButler experiment (user directive 2026-10-03): every
+  write operation (commit, push, branch, history edit) goes through `but`;
+  never run `git add/commit/push/checkout/merge/rebase/stash/cherry-pick`.
+  Target is `origin/main` (the frozen ADR-0024 base) — do NOT run
+  `but pull` routinely (it would intake upstream); line updates arrive via
+  `but branch update denkhaus`, line pushes via `but push denkhaus`.
+  Multi-agent note: the experiment exists to run several agents as separate
+  virtual branches/stacks in one workspace; report friction in the cycle
+  report so the go/no-go stays factual. If the experiment fails, revert the
+  but-specific procedures of this skill to git wording.
 - Wait budgets derive from observed service latencies, not guesses: a
   bounded wait must outlive the slowest LEGITIMATE stage of what it waits
   for (PR creation after terminal status; required-check duration on a
