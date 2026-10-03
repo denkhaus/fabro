@@ -170,6 +170,13 @@ def check-loop-assets [] {
         # local-session mirror) must stay byte-identical; the battery
         # hash-compares both trees (run-images.nu's sha256 pattern).
         '.fabro/scripts/skill-parity-fixtures.nu'
+        # touchpoints parity (fabro-de32, arch-gate sprint 9): every
+        # tracked fork-only pin file must be named in the touchpoints
+        # registry and every literal row path must exist — the two-pin
+        # rule machine-checked in both directions (was reviewer-prompt
+        # only; live gaps found at filing: fork_exec_guard x2,
+        # fork_structured).
+        '.fabro/scripts/touchpoints-parity.nu'
     ]
     for battery in $batteries {
         let res = (do { ^nu $battery } | complete)
