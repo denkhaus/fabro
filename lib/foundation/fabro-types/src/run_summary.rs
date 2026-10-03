@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     DiffSummary, GitRunTarget, InterviewQuestionRecord, Principal, PullRequestLink, RepositoryRef,
-    RunControlAction, RunId, RunSandbox, RunStatus, RunTiming,
+    RunControlAction, RunId, RunSandbox, RunStatus, RunTiming, WorkflowVersionId,
 };
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -41,51 +41,56 @@ pub enum AskFabroUnavailableReason {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Run {
-    pub id:               RunId,
+    pub id:                  RunId,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub parent_id:        Option<RunId>,
+    pub parent_id:           Option<RunId>,
     #[serde(default)]
-    pub children_count:   u64,
-    pub title:            String,
-    pub goal:             String,
-    pub workflow:         WorkflowRef,
+    pub children_count:      u64,
+    pub title:               String,
+    pub goal:                String,
+    pub workflow:            WorkflowRef,
     #[serde(default)]
-    pub automation:       Option<AutomationRef>,
+    pub automation:          Option<AutomationRef>,
     #[serde(default)]
-    pub repository:       Option<RepositoryRef>,
-    pub created_by:       Principal,
-    pub origin:           RunOrigin,
-    pub labels:           HashMap<String, String>,
-    pub lifecycle:        RunLifecycle,
+    pub repository:          Option<RepositoryRef>,
+    pub created_by:          Principal,
+    pub origin:              RunOrigin,
+    pub labels:              HashMap<String, String>,
+    pub lifecycle:           RunLifecycle,
     #[serde(default)]
-    pub sandbox:          Option<RunSandbox>,
-    pub models:           Vec<RunModel>,
+    pub sandbox:             Option<RunSandbox>,
+    /// The immutable workflow version the run was created from, when the
+    /// creating intent pinned one. Absent for pre-version runs; the
+    /// revisor's freshness rule (ADR-0015) reads it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workflow_version_id: Option<WorkflowVersionId>,
+    pub models:              Vec<RunModel>,
     #[serde(default)]
-    pub source_directory: Option<String>,
-    pub timestamps:       RunTimestamps,
+    pub source_directory:    Option<String>,
+    pub timestamps:          RunTimestamps,
     /// Run-level timing rollup. `None` until the run has measurable timing
     /// data; populated once a terminal event or partial rollup is available.
     #[serde(default)]
-    pub timing:           Option<RunTiming>,
+    pub timing:              Option<RunTiming>,
     /// The run's usage summed across every stage visit so far: the
     /// conclusion's total once the run ended, else the sum of the stages'.
     #[serde(default)]
-    pub usage:            Usage,
+    pub usage:               Usage,
     #[serde(default)]
-    pub size:             RunSize,
+    pub size:                RunSize,
     #[serde(default)]
-    pub ask_fabro:        AskFabro,
+    pub ask_fabro:           AskFabro,
     #[serde(default)]
-    pub diff:             Option<DiffSummary>,
+    pub diff:                Option<DiffSummary>,
     #[serde(default)]
-    pub pull_request:     Option<PullRequestLink>,
+    pub pull_request:        Option<PullRequestLink>,
     #[serde(default)]
-    pub current_question: Option<InterviewQuestionRecord>,
+    pub current_question:    Option<InterviewQuestionRecord>,
     #[serde(default)]
-    pub superseded_by:    Option<RunId>,
+    pub superseded_by:       Option<RunId>,
     #[serde(default)]
-    pub retried_from:     Option<RunId>,
-    pub links:            RunLinks,
+    pub retried_from:        Option<RunId>,
+    pub links:               RunLinks,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

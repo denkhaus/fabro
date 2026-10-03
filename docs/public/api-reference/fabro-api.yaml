@@ -13446,6 +13446,13 @@ components:
           oneOf:
             - $ref: "#/components/schemas/RunSandbox"
             - type: "null"
+        workflow_version_id:
+          type: ["string", "null"]
+          description: |
+            The immutable workflow version the run was created from, when the
+            creating intent pinned one. Absent for pre-version runs. The
+            revisor's freshness rule (ADR-0015) consumes it; agent run-search
+            tools surface it per run.
         models:
           type: array
           items:

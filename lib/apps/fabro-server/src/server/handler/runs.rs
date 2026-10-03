@@ -545,6 +545,10 @@ pub(crate) struct CreateRunFromIntentRequest {
     pub(crate) automation:      Option<AutomationRef>,
 }
 
+#[expect(
+    clippy::large_futures,
+    reason = "this future inlines validate_parent_link's parent-chain walk, which holds summary Run values; the summary Run grew by workflow_version_id (fabro-1b2a) and pushed the future past clippy's 16 KiB threshold"
+)]
 pub(crate) async fn create_run_from_intent(
     state: Arc<AppState>,
     request: CreateRunFromIntentRequest,

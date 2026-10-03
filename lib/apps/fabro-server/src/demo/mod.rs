@@ -1208,6 +1208,7 @@ mod runs {
                 archived_at: None,
             },
             sandbox: None,
+            workflow_version_id: None,
             models: Vec::new(),
             source_directory,
             timestamps: RunTimestamps {
