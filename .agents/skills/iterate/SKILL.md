@@ -165,6 +165,14 @@ stores it belongs to; reach them by phase need:
 - Rust work (when directly assigned): mechanical gate — read SKILL.md AND
   the guideline pages covering the diff in the SAME turn, before the first
   Rust edit cell; name the pages in the cycle report.
+- Rust gate-repair pushes (fixing a RED dogfood-gate): verify with the
+  FULL workspace program locally BEFORE the push — `cargo +<pin> clippy
+  --locked --workspace --all-targets -- -D warnings` plus the touched
+  crates' `cargo nextest run --profile ci --no-fail-fast`. The gate aborts
+  at the first failing crate, and nextest at the first failing test, so
+  later-crate breakage and further snapshot drift stay invisible through
+  any number of 16-min CI rounds (fabro-1b2a: three stacked layers, two
+  snapshot rounds; fabro-9707 tracks the CI-side fix).
 - Direct-fix verification recipe (before any push): lint first
   (`just lint-nu` for nu), then DRY-RUNS — positive AND negative — each
   as its own shell call, exit codes read from the process (never behind
@@ -295,7 +303,10 @@ stores it belongs to; reach them by phase need:
   `but push denkhaus` — `&&` behind a pipe reads the pipe member's exit
   code, not the gate's (2026-10-02 23:00 incident: a
   `gate | tail -1 && git push` pushed straight through a REFUSED verdict
-  while a loop pass ran). A repaired gate is validated against a known-active
+  while a loop pass ran), and `cmd; echo RC=$?; if [ $? -eq 0 ]` reads
+  ECHO's status, not cmd's — capture `rc=$?` on the line directly after
+  the gated command and branch on `$rc` (2026-10-03 near-miss, arch-branch
+  push cell). A repaired gate is validated against a known-active
   line state before its first OPEN verdict is trusted. Incident restore
   may push as soon as no pass runs. Evidence and history: `ml prime git`.
 - Deploy windows: deploy only while no conductor pass runs. Pause the
@@ -398,6 +409,11 @@ stores it belongs to; reach them by phase need:
   Target is `origin/main` (the frozen ADR-0024 base) — do NOT run
   `but pull` routinely (it would intake upstream); line updates arrive via
   `but branch update denkhaus`, line pushes via `but push denkhaus`.
+  `but` does NOT maintain the classic git index — a stale index makes
+  `git diff`/`git status` show phantom `MM` entries while the worktree
+  matches HEAD (2026-10-03: five loop files looked uncommitted). Proof of
+  real change is `git diff HEAD -- <files>`; `git reset` (mixed, index
+  only) restores honest views and leaves `but status` untouched.
   Multi-agent note: the experiment exists to run several agents as separate
   virtual branches/stacks in one workspace; report friction in the cycle
   report so the go/no-go stays factual. If the experiment fails, revert the
