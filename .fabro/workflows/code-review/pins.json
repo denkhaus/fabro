@@ -1,0 +1,133 @@
+{
+  "files": [
+    {
+      "path": "prompts/finder.md.j2",
+      "sha256": "86c2e6a032f7c54c1bbab1c12496a8f0d6bf48703abe6017eb175330608cf223"
+    },
+    {
+      "path": "prompts/group-files.md.j2",
+      "sha256": "5b291313a1266d1d658f80ea7989cdefcd8609b6893b7197b17914d553dab041"
+    },
+    {
+      "path": "prompts/partials/finding-fields.md.j2",
+      "sha256": "a81ee5b0ac134eb121dbf503025387c64126d3276e4673ebc836cfb62a3689fb"
+    },
+    {
+      "path": "prompts/partials/guidance.md.j2",
+      "sha256": "53bc0c40bb917288708bed1f9ba478fbd89b9790c92497762224cc752f40bef5"
+    },
+    {
+      "path": "prompts/partials/output-schema.md.j2",
+      "sha256": "811994bb357739f2562d84f66dc05075ebe3c7f8d58034f8c25ee1c36bee996b"
+    },
+    {
+      "path": "prompts/partials/read-only-explorer.md.j2",
+      "sha256": "44a0244e7aa62fdb0dbbfdbadcffbfb640af249bae3e96895dedd5c7a33bad10"
+    },
+    {
+      "path": "prompts/partials/review-target.md.j2",
+      "sha256": "abffeeff0e16b89a0754cd53f1833b3744494cd54ff761798b782a80467446ea"
+    },
+    {
+      "path": "prompts/partials/safe-git-history.md.j2",
+      "sha256": "4ddd8d36d5c51d7e166a6b7f1dff51b72cce0e64108cc7e892002ca909af8b3a"
+    },
+    {
+      "path": "prompts/sweep.md.j2",
+      "sha256": "e6f89b47b11c57030a6ef7d5896ccb37dbd2a2982e9fa7eb7f2e3df73acab82c"
+    },
+    {
+      "path": "prompts/verify.md.j2",
+      "sha256": "cb3866240077d1bc8993b2f012a8d66a6ea61d4a9f2e88a1fefc6ef375f630e2"
+    },
+    {
+      "path": "rules/builtin-manifest.json",
+      "sha256": "ecd1d77ad8c77cae153280cb775e5e5f7fa9b68925900473e7d2331af377bb49"
+    },
+    {
+      "path": "schemas/file-groups.schema.json",
+      "sha256": "b53c4e1c0bbd07bbf70e83f4f3b35fd96cb880c621c7c424e95b9aea34e13d7c"
+    },
+    {
+      "path": "schemas/findings.schema.json",
+      "sha256": "2f4d0a9052d5af0dad92db12a1e9d49cc91a282c4dddda495791352bf1559ed8"
+    },
+    {
+      "path": "schemas/verdict.schema.json",
+      "sha256": "de13ce02c5fd0c088640542831cc732e35dee3ddb38f89d4412f6a46fea75567"
+    },
+    {
+      "path": "scripts/code_review.py",
+      "sha256": "914a714616e73cdfdcbda4a2938d8e00ba8ade2df02a51ebbdcbc83e9d4b9028"
+    },
+    {
+      "path": "scripts/final_assembly.py",
+      "sha256": "7ca5adf7beeb3af2bc7ceb4a6584dda7b7536588494b27e08c78d3f4968e9b10"
+    },
+    {
+      "path": "scripts/git_readonly.py",
+      "sha256": "29cee508724f7bee8d73317d82fe94d0d830361476b367e4a012b70071a0e841"
+    },
+    {
+      "path": "scripts/git_target.py",
+      "sha256": "6d5819272ac63611d9d956fa94bf7fc9573db3f0e858eefcde0aed6635b9a72c"
+    },
+    {
+      "path": "scripts/job_planning.py",
+      "sha256": "c012aa40b7e03120e9731fe6b6953012459fa520b4786fb879ff131faf277991"
+    },
+    {
+      "path": "scripts/normalize.py",
+      "sha256": "95b43a229e0e228fd8fa641c9ed724a70dc9edef0ac296889ead406d84ad8148"
+    },
+    {
+      "path": "scripts/parallel_merges.py",
+      "sha256": "e00ee502bd2b87f607f5e1b10b01dad7fe4c61ef1b0fbb3f896d49cb793f3746"
+    },
+    {
+      "path": "scripts/prepare.py",
+      "sha256": "9446a2f2af9280dbaf04fffb688edcc829755176bcae02c4799cdde71f192cdc"
+    },
+    {
+      "path": "scripts/publish_pr.py",
+      "sha256": "35cde9006c9d079f468228498704c7c6079bff52fc790d7e2cee9505d3de9a06"
+    },
+    {
+      "path": "scripts/render_report.py",
+      "sha256": "fe432d8a53e1294b8030a54ca17b412312338e761ee751ab770e221450b53b8c"
+    },
+    {
+      "path": "scripts/rendering.py",
+      "sha256": "90b5a567843f12c0b8ffff1c91e86393fdd46fda764e18080122bf4fe2133b0c"
+    },
+    {
+      "path": "scripts/review_common.py",
+      "sha256": "d04b8c4f43b7910d7b52ad8813914d1bfff032809c6129b2205a8abc9b59d773"
+    },
+    {
+      "path": "scripts/review_contract.py",
+      "sha256": "8917fe7ae046cfda547f4f1240570fa295e110fd5e8d0c84c2a98719137db6fa"
+    },
+    {
+      "path": "scripts/rule_compile.py",
+      "sha256": "df055aae0422f9808fa67c833f3b679d4b54000d2ef2f675722fb0afd60c3857"
+    },
+    {
+      "path": "scripts/rule_loader.py",
+      "sha256": "eaa7258e5cf7b231a7a1192c9738eb2a0486480cd04ebe2059a79295040fc66e"
+    },
+    {
+      "path": "scripts/verification.py",
+      "sha256": "eb1f8d9951e0423f98c06fc386afca0108e32d13cc9789ade7a5cd4f6847decf"
+    },
+    {
+      "path": "specs/report-spec.md",
+      "sha256": "7a54f72ee46f09218d18854d184a1f36875f9011877e94779c6b1f0d5dd118a9"
+    },
+    {
+      "path": "templates/report.html",
+      "sha256": "5def570da34ca186da31781378367d70fb9c58e82f7aeec4aaf420fd348a8e61"
+    }
+  ],
+  "version": 1
+}
