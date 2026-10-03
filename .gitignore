@@ -16,6 +16,11 @@ __pycache__
 .ai/tmp
 .worktrees/
 **/*.pending-snap
+
+# .chisel/ — the local codebase-map tool's output. Untracked by policy
+# (fabro-8bf6): a tracked map froze at the pre-cutover revision and
+# mis-navigated agents; regeneration stays local.
+.chisel/
 .worktrees
 .claude/scheduled_tasks.lock
 .mcp.json
