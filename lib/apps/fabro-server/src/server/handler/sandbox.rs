@@ -11,6 +11,7 @@ use futures_util::FutureExt;
 use futures_util::future::BoxFuture;
 use pebble_coding_agent::sandbox_driver::{display_for_log, resolve_path};
 use sandbox_driver::{FileKind, ListeningPort, PtyOptions, PtySize, Sandbox, Services as _};
+use tokio::sync::OwnedMutexGuard;
 
 use super::super::{
     ApiError, AppState, Bytes, HeaderMap, IntoResponse, Json, NamedTempFile, Path,
@@ -546,10 +547,11 @@ async fn list_sandbox_files(
         Ok(id) => id,
         Err(response) => return response,
     };
-    let (record, sandbox) = match reconnect_run_sandbox(&state, &id).await {
-        Ok(sandbox) => sandbox,
-        Err(response) => return response,
-    };
+    let (record, sandbox, _inspection, _gate) =
+        match reconnect_run_sandbox_for_inspection(&state, &id).await {
+            Ok(result) => result,
+            Err(response) => return response,
+        };
     // To `depth` (the immediate children by default), sorted by path, with
     // sizes for files only.
     let path = resolve_path(&params.path, &record.runtime.working_directory);
@@ -687,10 +689,11 @@ async fn get_sandbox_file(
         Ok(id) => id,
         Err(response) => return response,
     };
-    let (record, sandbox) = match reconnect_run_sandbox(&state, &id).await {
-        Ok(sandbox) => sandbox,
-        Err(response) => return response,
-    };
+    let (record, sandbox, _inspection, _gate) =
+        match reconnect_run_sandbox_for_inspection(&state, &id).await {
+            Ok(result) => result,
+            Err(response) => return response,
+        };
     let temp = match NamedTempFile::new() {
         Ok(temp) => temp,
         Err(err) => {
@@ -728,10 +731,11 @@ async fn put_sandbox_file(
     if let Some(response) = reject_if_archived(state.as_ref(), &id).await {
         return response;
     }
-    let (record, sandbox) = match reconnect_run_sandbox(&state, &id).await {
-        Ok(sandbox) => sandbox,
-        Err(response) => return response,
-    };
+    let (record, sandbox, _inspection, _gate) =
+        match reconnect_run_sandbox_for_inspection(&state, &id).await {
+            Ok(result) => result,
+            Err(response) => return response,
+        };
     let temp = match NamedTempFile::new() {
         Ok(temp) => temp,
         Err(err) => {
@@ -753,14 +757,43 @@ async fn put_sandbox_file(
     }
 }
 
-/// The run's sandbox record and its handle, attached and running.
-async fn reconnect_run_sandbox(
+/// Reconnects a run's sandbox for a read-only inspection and brings it
+/// to running: a terminal run's sandbox is reactivated for the read and
+/// stopped again when the returned guard drops — every exit path of the
+/// caller, included (fabro-afab; the legacy
+/// `reconnect_run_sandbox_for_inspection`).
+async fn reconnect_run_sandbox_for_inspection(
     state: &Arc<AppState>,
     run_id: &RunId,
-) -> Result<(RunSandboxInstance, Arc<dyn Sandbox>), Response> {
+) -> Result<
+    (
+        RunSandboxInstance,
+        Arc<dyn Sandbox>,
+        sandbox_access::InspectionSandbox,
+        OwnedMutexGuard<()>,
+    ),
+    Response,
+> {
     let record = load_run_sandbox_instance(state, run_id).await?;
+    // Hold the run's gate for the whole request window: attach, activate,
+    // and the handler's reads serialize against every deferred inspection
+    // stop on the same run (fabro-2c17).
+    let gate = sandbox_access::run_sandbox_gate(run_id);
+    let held = gate.clone().lock_owned().await;
     let sandbox = reconnect_run_sandbox_instance(state, run_id, &record).await?;
-    Ok((record, sandbox))
+    let projection = state.load_run_projection(run_id).await.map_err(|err| {
+        ApiError::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("loading the run's projection failed: {err:?}"),
+        )
+        .into_response()
+    })?;
+    let guard = if projection.is_terminal() {
+        sandbox_access::InspectionSandbox::terminal(Arc::clone(&sandbox), Some(gate))
+    } else {
+        sandbox_access::InspectionSandbox::live(Arc::clone(&sandbox))
+    };
+    Ok((record, sandbox, guard, held))
 }
 
 /// Reconnects a run's sandbox and brings it to running.

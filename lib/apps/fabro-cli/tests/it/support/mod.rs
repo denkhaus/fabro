@@ -20,7 +20,17 @@ pub(crate) fn run_output_filters(context: &TestContext) -> Vec<(String, String)>
         r"(?m)^(Graph: ).+$".to_string(),
         "${1}[GRAPH_PATH]".to_string(),
     ));
+    filters.push(replay_marker_filter());
     filters
+}
+
+/// Normalizes the item count in `attach`'s replay marker line (fabro-204e):
+/// how many items a run has emitted before the attach is not fixed.
+pub(crate) fn replay_marker_filter() -> (String, String) {
+    (
+        r"(?m)^(Replaying )\d+( items…)$".to_string(),
+        "${1}[N]${2}".to_string(),
+    )
 }
 
 pub(crate) fn fatal_error_line(stderr: &[u8]) -> String {

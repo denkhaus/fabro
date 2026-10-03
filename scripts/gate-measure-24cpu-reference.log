@@ -1,0 +1,24 @@
+=== cold gate measurement, 24 CPUs, 94Gi RAM ===
+ELAPSED build --workspace (kalt): 394 s
+ELAPSED clippy fabro-workflow (inkrementell): 152 s
+TEST FEHLGESCHLAGEN
+        PASS [   0.905s] (1400/1517) fabro-workflow::it integration::fidelity_prompt_summary_low
+        PASS [   0.705s] (1401/1517) fabro-workflow::it integration::fidelity_stored_in_checkpoint_context
+        PASS [   0.874s] (1402/1517) fabro-workflow::it integration::fidelity_prompt_truncate
+        PASS [   0.906s] (1403/1517) fabro-workflow::it integration::fidelity_prompt_summary_medium
+        PASS [   0.675s] (1404/1517) fabro-workflow::it integration::fidelity_thread_id_from_node_class_in_pipeline
+        PASS [   0.803s] (1405/1517) fabro-workflow::it integration::fidelity_summary_high_mode
+        PASS [   0.738s] (1406/1517) fabro-workflow::it integration::fidelity_thread_id_fallback_to_previous_node_in_pipeline
+        PASS [   0.775s] (1407/1517) fabro-workflow::it integration::fidelity_summary_low_mode
+        PASS [   0.691s] (1408/1517) fabro-workflow::it integration::fidelity_truncate_preamble_minimal
+        PASS [   0.749s] (1409/1517) fabro-workflow::it integration::fidelity_summary_medium_mode
+        PASS [   0.581s] (1410/1517) fabro-workflow::it integration::goal_gate_routes_to_retry_target_on_failure
+        PASS [   0.736s] (1411/1517) fabro-workflow::it integration::git_checkpoint_host_skips_empty_diff_patch
+        PASS [   0.759s] (1412/1517) fabro-workflow::it integration::git_checkpoint_host_emits_events_and_diff_patch
+        PASS [   0.737s] (1413/1517) fabro-workflow::it integration::git_checkpoint_host_skips_metadata_branch_without_writer_prereqs
+        PASS [   1.097s] (1414/1517) fabro-workflow::it integration::fidelity_summary_low_excludes_context_values_in_pipeline
+────────────
+     Summary [   8.436s] 1414/1517 tests run: 1413 passed, 1 timed out, 31 skipped
+     TIMEOUT [   6.011s] (1391/1517) fabro-workflow handler::parallel::tests::for_each_accepts_an_array_at_the_item_limit
+warning: 103/1517 tests were not run due to test failure (run with --no-fail-fast to run all tests, or run with --max-fail)
+error: test run failed

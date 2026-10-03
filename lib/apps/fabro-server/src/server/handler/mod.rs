@@ -12,9 +12,10 @@ pub(in crate::server) mod automations;
 mod completions;
 mod environments;
 pub(in crate::server) mod events;
+mod fork_ask_docs;
 pub(in crate::server) mod graph;
 pub(in crate::server) mod lifecycle;
-mod lineage;
+pub(crate) mod lineage;
 mod llm_sse;
 mod mcp_servers;
 mod models;
@@ -25,11 +26,13 @@ pub(in crate::server) mod runs;
 mod sandbox;
 mod sandboxes;
 mod secrets;
+mod seeds;
 mod sessions;
 mod steer;
 pub(in crate::server) mod system;
 mod usage;
 mod variables;
+mod wait;
 mod worker_control;
 mod workflow_versions;
 
@@ -206,6 +209,7 @@ pub(super) fn real_routes() -> Router<Arc<AppState>> {
         .merge(runs::routes())
         .merge(events::routes())
         .merge(usage::routes())
+        .merge(wait::routes())
         .merge(pull_requests::routes())
         .merge(artifacts::routes())
         .merge(automations::routes())
@@ -226,6 +230,7 @@ pub(super) fn real_routes() -> Router<Arc<AppState>> {
         .merge(worker_control::routes())
         .merge(workflow_versions::routes())
         .merge(sessions::routes())
+        .merge(seeds::routes())
         .merge(system::routes())
         .merge(completions::routes())
 }

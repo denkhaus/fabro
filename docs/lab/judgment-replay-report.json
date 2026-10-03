@@ -1,0 +1,29 @@
+{
+  "cycles": 100,
+  "judged": 100,
+  "degraded": 0,
+  "agreed": 96,
+  "agreement_rate": 0.96,
+  "confidence_distribution": {
+    "0.50-0.55": 5,
+    "0.55-0.60": 5,
+    "0.60-0.65": 3,
+    "0.65-0.70": 5,
+    "0.70-0.75": 7,
+    "0.75-0.80": 8,
+    "0.80-0.85": 4,
+    "0.85-0.90": 17,
+    "0.90-0.95": 18,
+    "0.95-1.00": 17,
+    "<0.50": 11
+  },
+  "ground_truth_distribution": {
+    "approved": 98,
+    "changes_requested": 2
+  },
+  "total_cost_usd": 0.002825213999999999,
+  "cost_per_cycle": 0.00002825213999999999,
+  "retry_autonomy_floor": 0.85,
+  "autonomy_meets_floor": true,
+  "advisory_surfacing_threshold": 0.5
+}

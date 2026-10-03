@@ -16,6 +16,7 @@ workspace = true
 anyhow.workspace = true
 assert_cmd = "2"
 axum = { workspace = true }
+fabro-build-support = { path = "../build-support" }
 fabro-config = { path = "../fabro-config" }
 fabro-install = { path = "../../components/fabro-install" }
 fabro-proc = { path = "../fabro-proc" }

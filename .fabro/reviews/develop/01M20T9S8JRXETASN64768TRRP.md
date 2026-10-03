@@ -1,0 +1,54 @@
+# Improve review — run 01M20T9S8JRXETASN64768TRRP
+
+- workflow: develop
+- branch integrated: this revisor pass (unmerged until approved)
+- status: succeeded (55.0 min, revisor pass — reason and cost in run detail)
+- generated: 2026-09-08 16:31+0000 by revisor `fabro_ask`
+
+---
+
+All grounding below is from this run's events, checkpoints, stage timings, and the stage journals (`.fabro/journal/01M20T9S8JRXETASN64768TRRP.jsonl`). Run totals: ~55 min wall, $3.39 LLM (implementer = $2.39 + $0.77 of it), 9 stage visits because of one gate-red bounce.
+
+## Recommendations, ordered by expected impact
+
+**1. Implementer's "one focused check" must be the full touched-crate test suite when the seed touches tests — not targeted tests.**
+What happened: implementer@1 verified with "1595 fabro-tool/fabro-workflow tests, **targeted** fabro-server tests" (implementation_summary, checkpoint seq 835). The two pre-existing Docker-socket failures (`run_start_grants_github_token_bridge_only_to_user_principals`, `worker_principal_run_without_vault_token_takes_no_token_path`) live in fabro-server's full suite and were missed. Cost of the resulting bounce: tester@1 red (340 s) + gatebounce + implementer@2 (915 s, $0.769) + tester@2 (91 s) ≈ 22 min, ~40% of run wall — to apply a 6-line `[run.environment] id = "local"` pin.
+Change: `.fabro/workflows/develop/prompts/implementer.md`, step 4 — replace "ONE focused test" with: when the seed adds/edits tests in a crate, the check is `cargo nextest -p <touched-crate>` (full crate suite), still never the workspace suite.
+Expected effect: pre-existing or adjacent breaks surface in the same implementer pass; eliminates ~20 min / ~$0.8 per bounce of this class.
+
+**2. Evidence classifier: treat paths cited in the in-progress seed spec as seed-work.**
+What happened: the two acceptance-critical deliverables of this seed — `.fabro/workflows/develop/workflow.fabro` (inspects declaration) and `prompts/planner.md` step 4 rewrite — were classified as loop-churn, rendered as counts-only (+8/-1, +1/-1) with no diff (reviewer journal, reviewer@1 painpoint). The reviewer reconstructed them via `git diff 9eeab20 -- <paths>`; a tool-less reviewer would have had to route Changes-requested on unread evidence, burning a full implement+gate cycle.
+Change: `.fabro/workflows/develop/scripts/evidence.nu` — in the partition that feeds `is-loop-path` (line 145, `LOOP_PREFIXES` includes `.fabro/`), exempt any path that appears as a substring in the in-progress seed's `current_seed_brief`/seed description (this is exactly open seed fabro-93a7).
+Expected effect: platform-targeting seeds — the tracker's most common class — get their core diffs into the capture; removes the false-Changes-requested failure mode and the reviewer's manual git-diff detour.
+
+**3. Gate-bounce matching is producing false-positive noise, not root causes.**
+What happened: tester@1 failed on Docker-socket test errors; `gate-bounce.nu` matched three irrelevant seeds (fabro-5453 world-merger, fabro-5a25 stage records, fabro-f18a prompt lint — 3.3 KB injected into the bounce preamble via `output.gate_known_bug_hits`). None mentioned docker.sock; the implementer ignored them and re-derived root cause itself (lesson mx-9df484). The current heuristic (`compound_hits`, `MIN_COMPOUND_HITS=2` against the whole 120-line tail) matches generic prose compounds.
+Change: `.fabro/workflows/develop/scripts/gate-bounce.nu` — match only against extracted failure signatures (the `FAIL`/`TRY 2 FAIL` test names and error lines from the tail), not the full tail text; require at least one signature-token hit (open seed fabro-c841).
+Expected effect: bounce passes start at the real root cause or get honest empty hits; removes ~3 KB misleading context per red gate and the risk of fixing the wrong bug.
+
+**4. Bound the planner's candidate listing.**
+What happened: the planner's first tracker call (`sd ready --assignee fabro --limit 200`, event seq 35) returned 171 issues — 22,948 bytes observed, `stdout_truncated: true` — and the planner only needed the top unblocked High-priority candidate (it picked fabro-06e0 immediately). Also, one wasted `gh pr list` call (exit 127, seq 33–34) because this run still executed the pre-fix prompt — the fix only applies to future runs since the workflow version is pinned at submit.
+Change: `.fabro/workflows/develop/prompts/planner.md` step 1/2 — keep `--limit 200` for correctness but render a bounded view (e.g. `| head -25` plus the "N ready" count line) before feeding it to the model.
+Expected effect: ~20 KB less planner context every pass, faster candidate selection, same coverage (priority-ordered list).
+
+**5. Drop `current_seed_brief` from the reviewer's `preamble_allow_keys`.**
+What happened: the reviewer's `## Context` carried the ~2.4 KB brief **and** the 33.5 KB evidence capture whose own `== in-progress seed spec ==` section delivers the same spec — and the capture exceeded the 16 KB inline cap anyway, arriving as a blob-ref the reviewer had to open with tools (reviewer@1 preamble, evidence blob `85ee02d2…`). This is a duplication of exactly the kind open seed fabro-c1bb describes.
+Change: `.fabro/workflows/develop/workflow.fabro`, reviewer node — remove `current_seed_brief` from `preamble_allow_keys`.
+Expected effect: ~2.4 KB deduped per review; fewer blob-ref demotions of the capture at the 24 KB budget; one fewer tool round-trip per review.
+
+**6. Give the quality gate a deterministic-vs-transient exit status.**
+What happened: the engine tagged the tester failure `failure_class: transient_infra` (checkpoint seq 845) for a break the implementer then *proved* deterministic by reproducing it on the untouched parent commit 22e03c3. Misclassification skews retry semantics (tester `max_retries=1`) and triage.
+Change: `scripts/qualitygate.nu` + `justfile` recipe — exit with distinct codes for deterministic failures vs infra flakes (open seed fabro-4815); map them in the tester node.
+Expected effect: no phantom "transient" expectations; deterministic reds route straight to the bounce path with correct failure classes in events.
+
+**7. Fix the progress denominator and preamble stage duplication (UX trust).**
+What happened: this run's own header reads "Progress: **9 of 7** non-meta stages completed" (cyclic-graph denominator bug, fabro-a0e3/fabro-45bf), and the reviewer's prompt rendered the tester stage section twice (dedup gap, fabro-edac).
+Change: engine-side — count unique completed nodes for the denominator; dedupe preamble stage sections to the latest visit per node.
+Expected effect: trustworthy progress reporting and smaller, non-repetitive preambles; no behavior change in routing.
+
+**8. Stop writing empty stage-journal entries.**
+What happened: 5 of this run's 9 journal lines are `data:{}` no-ops (start, gatebounce, tester, evidence, closeout), committed into every checkpoint diff (journal file in each checkpoint patch).
+Change: `.fabro/workflows/develop/scripts/stage-journal.nu` — skip emission when the payload is empty (open seed fabro-850f).
+Expected effect: less checkpoint/journal churn per run; the journal file carries only signal.
+
+One structural note, not a defect: this run is the self-referential case — the seed that rewrites planner.md step 4 must run under the old prompt, so the planner's `gh` call failed fail-open exactly as designed. The credential-less guard this run built (inspects + `fabro_tools="fabro_runs_list"` in `workflow.fabro`) takes effect on the **next** develop run; the reviewer already flagged watching for the `skipped: in-flight PR <n>` journal line there as the closing proof. No change needed — just don't re-file it.

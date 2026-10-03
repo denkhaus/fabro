@@ -39,6 +39,9 @@ import type { ServerSandboxSettings } from './server-sandbox-settings';
 import type { ServerSchedulerSettings } from './server-scheduler-settings';
 // May contain unused imports in some cases
 // @ts-ignore
+import type { ServerSeedsSettings } from './server-seeds-settings';
+// May contain unused imports in some cases
+// @ts-ignore
 import type { ServerStorageSettings } from './server-storage-settings';
 // May contain unused imports in some cases
 // @ts-ignore
@@ -55,4 +58,5 @@ export interface ServerNamespace {
     'scheduler': ServerSchedulerSettings;
     'logging': ServerLoggingSettings;
     'integrations': ServerIntegrationsSettings;
+    'seeds': ServerSeedsSettings;
 }

@@ -1,0 +1,78 @@
+# denkhaus fork catalog overlay — ported from the fork's fabro-model
+# provider TOMLs when upstream deleted fabro-model for the lithos catalog
+# (merge of v0.353.0-nightly.0).
+#
+# What it restores on top of the lithos built-ins:
+# - zai glm-5.3 as the default zai model (the fork's workflows pin
+#   `provider = "zai"`, `name = "glm-5.3"`), with the glm/glm5 aliases
+#   moved off glm-5.2.
+# - zai glm-4.7 ALWAYS reasons on the coding endpoint (probe 2026-09-03,
+#   fabro-cd27: enable_thinking=false is rejected with code 1210 naming
+#   low/high/max, reasoning_effort=low yields zero visible reasoning at
+#   5x speed). The lithos built-in carries the pre-probe data
+#   (`reasoning = false`, no effort levels), which starves the PR-content
+#   call of an effort pin.
+# - openrouter: the glm/glm5 aliases point at glm-5.3, whose numbers come
+#   from the lithos live listing (newer than the fork's estimates).
+#
+# Layer order in `build_catalog`: built-ins, then this fork overlay, then
+# the operator's `[llm]` overlay — so operator settings still win.
+schema_version = 1
+
+[providers.zai]
+default_model = "glm-5.3"
+
+[providers.zai.models."glm-5.3"]
+display_name = "GLM 5.3"
+aliases = ["glm", "glm5", "glm53", "glm5.3"]
+api_model = "glm-5.3"
+limits = { context_tokens = 1048576, max_output_tokens = 131072 }
+capabilities = { text = true, images = false, tools = true, reasoning = true, caching = true, sampling = true, reasoning_effort = { low = true, medium = false, high = true, xhigh = false, max = true } }
+protocol_options = { reasoning_effort_levels = true }
+pricing = { input_usd_micros_per_million = 1400000, output_usd_micros_per_million = 4400000, cached_input_usd_micros_per_million = 260000 }
+family = "glm-5"
+
+[providers.zai.models."glm-5.2"]
+aliases = ["glm52", "glm5.2"]
+
+[providers.zai.models."glm-4.7"]
+# Probe 2026-09-03 (fabro-cd27, api.z.ai/api/coding/paas/v4): the coding
+# endpoint always reasons; the old reasoning=false label starved the
+# PR-content call of an effort pin, running it in full-reasoning mode
+# (71s, occasional non-JSON output).
+# Operator directive 2026-09-28: glm-4.7 answers structured requests
+# (response_format), unlike glm-5.3 whose catalog entry carries none — so
+# the fork declares the capability here and marks the model as zai's
+# small default. Run-title generation picks the small default, and the
+# title path (like PR content) needs `complete_object`; with
+# response_format "unknown" every run title was refused ("model
+# zai/glm-5.3 does not support structured output", fabro-d5b1).
+capabilities = { reasoning = true, reasoning_effort = { low = true, medium = false, high = true, xhigh = false, max = true }, response_format = { json_object = true, json_schema = true } }
+protocol_options = { reasoning_effort_levels = true }
+small_default = true
+
+[providers.openrouter.models."glm-5.2"]
+aliases = ["glm52", "glm5.2"]
+
+[providers.openrouter.models."glm-5.3"]
+aliases = ["glm", "glm5", "glm53", "glm5.3", "glm-5-3"]
+
+# Judgment model (ADR-0022 wave 3, fabro-b506): TypeSafe's System One
+# (Jev) through OpenRouter's System One surface (operator repoint
+# 2026-09-24; endpoint https://openrouter.ai/api/v1/systemone). The lithos
+# built-ins already carry the OpenRouter Jev rows, so this OVERRIDES the
+# built-in `jev-latest` row in place — a parallel `typesafe/jev-latest`
+# key with a `jev-latest` alias is a DuplicateModelSelector and the whole
+# catalog build refuses it. The override pins the wire id to the bare
+# `jev-latest` the System One surface expects (no `~` alias drift while
+# thresholds are tuned) and adds the fabro-side
+# `metadata.fabro.kind = "judgment"` marker that lithos's kindless schema
+# cannot carry, read by fabro-llm's `judgment::is_judgment_model`.
+# Capabilities and pricing merge through from the built-in row:
+# evaluation-only, input-only billing (output priced zero).
+[providers.openrouter.models."jev-latest"]
+aliases = ["jev"]
+api_model = "jev-latest"
+
+[providers.openrouter.models."jev-latest".metadata.fabro]
+kind = "judgment"

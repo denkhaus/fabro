@@ -54,10 +54,12 @@ use super::super::{
 use crate::error::ApiError;
 use crate::principal_middleware::{
     RequireCommandLog, RequireRunManagementTarget, RequireRunScoped, RequireRunStageScoped,
-    RequiredRunManagementActor, RequiredUser,
+    RequireWorkerRunScoped, RequiredRunManagementActor, RequiredUser,
 };
 use crate::run_compiler::{self, RawRunCompilerInput};
-use crate::run_files::{list_run_commits, list_run_files};
+use crate::run_files::{
+    RunSandboxFilesQuery, list_run_commits, list_run_files, read_run_sandbox_files,
+};
 use crate::run_intent::{
     EnvironmentSelectionError, PreparedIntentTarget, RunIntentAdmissionError,
     lower_workflow_closure, pin_workflow_environment_authority, prepare_intent_target,
@@ -100,6 +102,7 @@ pub(super) fn routes() -> Router<Arc<AppState>> {
         )
         .route("/runs/{id}/settings", get(get_run_settings))
         .route("/runs/{id}/files", get(list_run_files))
+        .route("/runs/{id}/sandbox-files", get(list_run_sandbox_files))
         .route("/runs/{id}/commits", get(list_run_commits))
         .merge(manifest_routes())
 }
@@ -1370,6 +1373,22 @@ async fn get_run_state(
 ) -> Response {
     match state.load_run_projection(&id).await {
         Ok(projection) => Json(&*projection).into_response(),
+        Err(err) => err.into_response(),
+    }
+}
+
+/// `GET /runs/{id}/sandbox-files` — the run-tool `files_from` collection
+/// (fabro-4b29): one bounded read of a workspace directory from the run's
+/// own sandbox, worker-token only. User principals keep the elided
+/// run-files diff view; this raw read serves the run's worker, which
+/// already holds the sandbox's shell.
+async fn list_run_sandbox_files(
+    RequireWorkerRunScoped(id): RequireWorkerRunScoped,
+    State(state): State<Arc<AppState>>,
+    Query(params): Query<RunSandboxFilesQuery>,
+) -> Response {
+    match read_run_sandbox_files(&state, &id, &params.directory).await {
+        Ok(map) => Json(map).into_response(),
         Err(err) => err.into_response(),
     }
 }

@@ -1,0 +1,42 @@
+# Local development toolset for this worktree, managed by mise.
+# Activate with `mise activate` in the shell, or run tools through
+# `mise x -- <command>`.
+#
+# Notes:
+# - The denkhaus-lab branch carries its own .mise.toml for run
+#   sandboxes (fabro-runner:mise image). Keep overlapping pins
+#   aligned with that file so lab and local hosts behave the same.
+# - The Rust toolchain is owned by rustup (pinned nightly-2026-04-14,
+#   see AGENTS.md); do not add cargo/rust here.
+
+[tools]
+# Task runner for the local build + docker compose pipeline (justfile).
+just = "1.58.0"
+# Frontend toolchain: `cargo dev docker-build` / `just` recipes refresh
+# the embedded SPA via `bun run build` (fabro-dev spa refresh).
+bun = "1.4.0"
+# Shell for scripts/ helpers: justfile recipes are thin launchers, the
+# logic (clean-target, install-cli, wait-healthy) lives in nushell.
+# Keep aligned with the lab branch pin.
+"aqua:nushell/nushell" = "0.115.0"
+# Expertise CLI (git-native, see AGENTS.md); bin: ml/mulch.
+"npm:@os-eco/mulch-cli" = "0.10.7"
+# The issue tracker CLI `seeds`, pinned LOCALLY via mise's cargo backend
+# (crates.io 0.5.0; the denkhaus Rust app replaced the npm
+# @os-eco/seeds-cli reference tool 2026-09-26 — no sd bin; the ubi
+# backend is deprecated). Needs cargo — the toolchain image and dev
+# hosts have it. The repo must not rely on a global install.
+"cargo:seeds" = "0.6.0"
+
+# GitButler CLI (but) — pinned via http backend (no registry entry: GitHub
+# releases carry no assets; the artifact comes from releases.gitbutler.com,
+# see app.gitbutler.com/releases/version/<v>). 0.22.3-3234 is the build the
+# fabro GitButler experiment validated (2026-10-03). Same pin as the
+# global ~/.config/mise/config.toml entry and the seeds/mulch per-repo pins;
+# the per-repo pin makes the dependency explicit for this checkout.
+"http:but" = { version = "0.22.3", url = "https://releases.gitbutler.com/releases/release/0.22.3-3234/linux/x86_64/but" }
+
+[settings.npm]
+# Default aube backend aborts on its interactive `mise add` approval prompt
+# in non-TTY installs; bun -g is the verified path for these script-less CLIs.
+package_manager = "bun"

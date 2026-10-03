@@ -1,10 +1,11 @@
 use std::sync::Arc;
 
+use anyhow::Context as _;
 use async_trait::async_trait;
 use fabro_api::types;
 use fabro_types::{
     PairId, PairMessageRecord, PairMessageRequest, PairRecord, PairTranscriptResponse, Run, RunId,
-    RunIntent, RunPairStatusResponse, RunProjection, RunStreamItem, StageId,
+    RunIntent, RunPairStatusResponse, RunProjection, RunStreamItem, SessionId, StageId,
 };
 
 use crate::{FabroToolBackend, common};
@@ -79,6 +80,19 @@ impl FabroToolBackend for ClientBackend {
             .collect::<Vec<_>>();
         self.client.register_workflow_versions(versions).await?;
         Ok(packaged.root_id())
+    }
+
+    async fn read_run_sandbox_files(
+        &self,
+        run_id: &RunId,
+        directory: &str,
+    ) -> anyhow::Result<std::collections::BTreeMap<String, String>> {
+        self.ensure_run_scope(run_id)?;
+        let collected = self
+            .client
+            .list_run_sandbox_files(run_id, directory)
+            .await?;
+        Ok(collected.files.into_iter().collect())
     }
 
     async fn create_run_from_intent(&self, intent: RunIntent) -> anyhow::Result<RunId> {
@@ -176,6 +190,22 @@ impl FabroToolBackend for ClientBackend {
         self.client.get_run_state(run_id).await
     }
 
+    async fn wait_run(
+        &self,
+        run_id: &RunId,
+        until: crate::RunWaitUntil,
+        timeout_ms: u64,
+    ) -> anyhow::Result<types::RunWaitResult> {
+        self.ensure_run_scope(run_id)?;
+        let until = match until {
+            crate::RunWaitUntil::Terminal => types::WaitRunUntil::Terminal,
+            crate::RunWaitUntil::Merged => types::WaitRunUntil::Merged,
+        };
+        let timeout_ms = std::num::NonZeroU64::new(timeout_ms.max(1))
+            .expect("timeout_ms is clamped to at least 1");
+        self.client.wait_run(run_id, until, timeout_ms).await
+    }
+
     async fn list_run_stream(
         &self,
         run_id: &RunId,
@@ -257,6 +287,52 @@ impl FabroToolBackend for ClientBackend {
         self.client
             .get_run_pair_transcript(run_id, pair_id, since_seq, limit)
             .await
+    }
+
+    async fn read_run_blob(
+        &self,
+        run_id: &RunId,
+        hash: &fabro_types::BlobHash,
+    ) -> anyhow::Result<Option<Vec<u8>>> {
+        self.ensure_run_scope(run_id)?;
+        let bytes = self.client.read_run_blob(run_id, hash).await?;
+        Ok(bytes.map(|bytes| bytes.to_vec()))
+    }
+
+    async fn create_ask_session(&self, run_id: &RunId, title: &str) -> anyhow::Result<String> {
+        self.ensure_run_scope(run_id)?;
+        let session = self
+            .client
+            .create_run_session(*run_id, types::CreateRunSessionRequest {
+                title:    Some(title.to_string()),
+                model:    None,
+                provider: None,
+            })
+            .await?;
+        Ok(session.id.to_string())
+    }
+
+    async fn submit_ask_turn(
+        &self,
+        run_id: &RunId,
+        session_id: &str,
+        question: &str,
+    ) -> anyhow::Result<crate::AskTurnOutcome> {
+        self.ensure_run_scope(run_id)?;
+        let session_id: SessionId = session_id
+            .parse()
+            .map_err(anyhow::Error::new)
+            .with_context(|| format!("invalid Ask-Fabro session id {session_id}"))?;
+        let mut stream = self
+            .client
+            .submit_session_turn_stream(session_id, question)
+            .await?;
+
+        let mut collector = crate::AskTurnCollector::default();
+        while let Some(event) = stream.next_event().await? {
+            collector.absorb(&event);
+        }
+        Ok(collector.finish())
     }
 }
 

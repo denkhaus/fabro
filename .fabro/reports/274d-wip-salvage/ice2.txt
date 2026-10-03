@@ -1,0 +1,26 @@
+thread 'main' panicked at /rustc-dev/17584a181979f04f2aaad867332c22db1caa511a/compiler/rustc_interface/src/util.rs:162:14:
+called `Result::unwrap()` on an `Err` value: Os { code: 11, kind: WouldBlock, message: "Resource temporarily unavailable" }
+stack backtrace:
+   0:     0x7f9c49df3d8b - <std[82445d07c273dcb0]::backtrace::Backtrace>::create
+   1:     0x7f9c49df3cd5 - <std[82445d07c273dcb0]::backtrace::Backtrace>::force_capture
+   2:     0x7f9c48de1f9b - std[82445d07c273dcb0]::panicking::update_hook::<alloc[8aa01d6867f017eb]::boxed::Box<rustc_driver_impl[b53ec1d8796d19d7]::install_ice_hook::{closure#1}>>::{closure#0}
+   3:     0x7f9c49e06302 - std[82445d07c273dcb0]::panicking::panic_with_hook
+   4:     0x7f9c49de8d78 - std[82445d07c273dcb0]::panicking::panic_handler::{closure#0}
+   5:     0x7f9c49ddd2d9 - std[82445d07c273dcb0]::sys::backtrace::__rust_end_short_backtrace::<std[82445d07c273dcb0]::panicking::panic_handler::{closure#0}, !>
+   6:     0x7f9c49dea7dd - __rustc[ccd49f7a2776e796]::rust_begin_unwind
+   7:     0x7f9c4695bdec - core[e6c15338c37dc114]::panicking::panic_fmt
+   8:     0x7f9c464fc272 - core[e6c15338c37dc114]::result::unwrap_failed
+   9:     0x7f9c4b3f5b91 - rustc_driver_impl[b53ec1d8796d19d7]::run_compiler
+  10:     0x7f9c4b3ec8c4 - rustc_driver_impl[b53ec1d8796d19d7]::main
+  11:     0x556818bc3153 - std[82445d07c273dcb0]::sys::backtrace::__rust_begin_short_backtrace::<fn() -> std[82445d07c273dcb0]::process::ExitCode, std[82445d07c273dcb0]::process::ExitCode>
+  12:     0x556818bc3149 - <std[82445d07c273dcb0]::rt::lang_start<std[82445d07c273dcb0]::process::ExitCode>::{closure#0} as core[e6c15338c37dc114]::ops::function::FnOnce<()>>::call_once::{shim:vtable#0}
+  13:     0x7f9c4b5ad9e4 - std[82445d07c273dcb0]::rt::lang_start_internal
+  14:     0x556818c02197 - main
+  15:     0x7f9c450181ca - <unknown>
+  16:     0x7f9c4501828b - __libc_start_main
+  17:     0x556818c020a6 - <unknown>
+  18:                0x0 - <unknown>
+
+
+rustc version: 1.97.0-nightly (17584a181 2026-04-13)
+platform: x86_64-unknown-linux-gnu

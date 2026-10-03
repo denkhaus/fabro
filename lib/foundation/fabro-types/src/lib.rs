@@ -137,7 +137,7 @@ pub use run::{
     DirtyStatus, ForkSourceRef, GitContext, RunClientProvenance, RunProvenance,
     RunServerProvenance, RunSpec,
 };
-pub use run_failure::RunFailure;
+pub use run_failure::{RunFailure, is_quota_rate_limit_failure};
 pub use run_graph::{RunGraph, RunGraphEdge, RunGraphNode};
 pub use run_id::{RunId, fixtures};
 pub use run_intent::{

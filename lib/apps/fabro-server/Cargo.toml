@@ -32,6 +32,8 @@ fabro-graphviz = { path = "../../components/fabro-graphviz" }
 fabro-interview = { path = "../../components/fabro-interview" }
 fabro-slack = { path = "../../components/fabro-slack" }
 fabro-workflow = { path = "../../components/fabro-workflow" }
+include_dir = "0.7"
+schemars = "1.2.1"
 fabro-workflow-version = { path = "../../components/fabro-workflow-version" }
 sandbox-driver.workspace = true
 sandbox-driver-host.workspace = true
@@ -63,6 +65,7 @@ croner.workspace = true
 futures-util.workspace = true
 axum = { workspace = true, features = ["ws"] }
 axum-extra.workspace = true
+seeds.workspace = true
 cookie.workspace = true
 globset.workspace = true
 tower = "0.5"

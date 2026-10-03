@@ -1197,6 +1197,7 @@ mod runs {
             origin: RunOrigin::default(),
             labels: labels(entries),
             lifecycle: RunLifecycle {
+                conclusion_failure: None,
                 status: parse_run_status(status, status_reason)
                     .unwrap_or_else(|| panic!("demo run status `{status}` is a hardcoded constant and must be a valid RunStatus variant")),
                 approval: None,

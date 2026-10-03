@@ -169,7 +169,7 @@ pub enum Conclusion {
 }
 
 /// Execute the run to its end and report what the record says.
-pub async fn run(request: RunRequest) -> Result<RunOutcome, RunError> {
+pub async fn run(mut request: RunRequest) -> Result<RunOutcome, RunError> {
     let backend = backend(&request.provider).ok_or_else(|| RunError::UnsupportedProvider {
         provider: request.provider.clone(),
     })?;
@@ -185,6 +185,11 @@ pub async fn run(request: RunRequest) -> Result<RunOutcome, RunError> {
         options.sandbox.lost_sandbox = LostSandbox::Replace;
     }
     let resumed = matches!(request.execution, Execution::Resume);
+    // The run's identity for `[[run.hooks]]` contexts: the runtime installs
+    // its own local hook service (the tool-policy seam), which Petri
+    // run-binds only for a service it built itself, so the run about to
+    // execute binds its id here (fabro-6558).
+    request.runtime.run_id = Some(request.run_id.clone());
     let mut runtime = request
         .runtime
         .runtime(true)

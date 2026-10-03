@@ -50,6 +50,8 @@ use petri_runtime::ir::LogStream;
 use tokio::process::Command;
 use tokio::{fs, time};
 
+use crate::fork_exec_guard::{EXEC_RETRY_DELAYS, retry_on_resource_unavailable};
+
 /// The failure class of a stage whose checkpoint commit failed: fatal to
 /// the run, and terminal for a restart.
 pub const CHECKPOINT_FAILED_CLASS: &str = "checkpoint_failed";
@@ -296,10 +298,10 @@ impl std::fmt::Debug for Site {
 }
 
 /// What one `git` run produced, on either site.
-struct GitOutput {
-    success: bool,
-    stdout:  Vec<u8>,
-    stderr:  Vec<u8>,
+pub struct GitOutput {
+    pub success: bool,
+    pub stdout:  Vec<u8>,
+    pub stderr:  Vec<u8>,
 }
 
 /// A checkpoint commit: the commit, whether an earlier attempt of the same
@@ -438,23 +440,7 @@ impl RunWorkspaces {
                 });
             }
         }
-        let mut add = vec![
-            "add".to_string(),
-            "-A".to_string(),
-            "--".to_string(),
-            ".".to_string(),
-        ];
-        add.extend(
-            EXCLUDE_DIRS
-                .iter()
-                .map(|dir| format!(":(glob,exclude)**/{dir}/**")),
-        );
-        add.extend(
-            self.exclude_globs
-                .iter()
-                .map(|glob| format!(":(glob,exclude){glob}")),
-        );
-        self.git(site, "add", &add).await?;
+        self.stage(site).await?;
         let message = self.message(key, node, status);
         let user_name = format!("user.name={}", self.author.name);
         let user_email = format!("user.email={}", self.author.email);
@@ -480,6 +466,58 @@ impl RunWorkspaces {
             reused: false,
             branched,
         })
+    }
+
+    /// Stage the workspace's files exactly as a commit would: everything,
+    /// minus the excluded caches and configured exclusions. Idempotent;
+    /// `commit` stages again without harm.
+    async fn stage(&self, site: &Site) -> Result<(), CheckpointError> {
+        let mut add = vec![
+            "add".to_string(),
+            "-A".to_string(),
+            "--".to_string(),
+            ".".to_string(),
+        ];
+        add.extend(
+            EXCLUDE_DIRS
+                .iter()
+                .map(|dir| format!(":(glob,exclude)**/{dir}/**")),
+        );
+        add.extend(
+            self.exclude_globs
+                .iter()
+                .map(|glob| format!(":(glob,exclude){glob}")),
+        );
+        self.git(site, "add", &add).await?;
+        Ok(())
+    }
+
+    /// The files a commit would snapshot right now: the staged set against
+    /// the current head (the empty tree for a workspace with no commits
+    /// yet), after [`Self::stage`]. This is what the stage-envelope guard
+    /// judges (fabro-aa5f): a path here is a path the checkpoint is about
+    /// to make durable.
+    pub async fn staged_paths(&self, site: &Site) -> Result<Vec<String>, CheckpointError> {
+        self.stage(site).await?;
+        let base = self
+            .head(site)
+            .await?
+            .unwrap_or_else(|| EMPTY_TREE.to_string());
+        let names = self
+            .git(site, "diff --name-only --cached", &[
+                "diff",
+                "--name-only",
+                "--no-color",
+                "--cached",
+                &base,
+            ])
+            .await?;
+        Ok(names
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty())
+            .map(str::to_string)
+            .collect())
     }
 
     /// The parent of a published commit, or `None` for a root commit.
@@ -1145,11 +1183,28 @@ impl RunWorkspaces {
             "-c",
             "init.defaultBranch=main",
         ];
-        all.extend(args.iter().map(AsRef::as_ref));
-        match site {
-            Site::Host(cwd) => self.run_host(cwd, &all, action).await,
-            Site::Sandbox(env) => self.run_sandbox(env, "git", &all, action).await,
+        // A sandbox workspace carries the engine-delivered checkout, whose
+        // archive records the SERVER's uid; the sandbox's git runs as its
+        // own user, and git refuses a repository it does not own
+        // ("detected dubious ownership", fabro-b6c5 pass 3). The
+        // checkpoint's content is trusted by construction — it commits
+        // what the engine delivered and the model wrote — so the
+        // ownership check is dropped for sandbox sites only.
+        if matches!(site, Site::Sandbox(_)) {
+            all.extend(["-c", "safe.directory=*"]);
         }
+        all.extend(args.iter().map(AsRef::as_ref));
+        // Fork seam (fabro-0c08): a resource-exhausted sandbox fails
+        // every new exec while staying alive; the guard retries that
+        // class on a bounded cooldown ladder. Everything else is
+        // unchanged.
+        retry_on_resource_unavailable(action, &EXEC_RETRY_DELAYS, || async {
+            match site {
+                Site::Host(cwd) => self.run_host(cwd, &all, action).await,
+                Site::Sandbox(env) => self.run_sandbox(env, "git", &all, action).await,
+            }
+        })
+        .await
     }
 
     async fn run_host(

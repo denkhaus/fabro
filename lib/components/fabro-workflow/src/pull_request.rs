@@ -5,9 +5,10 @@ use std::time::Duration;
 use fabro_github::{self as github_app, ssh_url_to_https};
 use fabro_llm::credentials::CredentialProvider;
 use fabro_llm::lithos_catalog::Catalog;
-use fabro_llm::{Client, ClientOptions, Request, selection};
+use fabro_llm::{Client, ClientOptions, Request, fork_structured, selection};
 use fabro_store::RunProjection;
 use fabro_types::settings::run::MergeStrategy;
+use fabro_types::settings::{ModelRef, ResolvedModelRef};
 use fabro_types::{Conclusion, PullRequestLink, RunSpec, format_cost as outcome_format_cost};
 use fabro_util::text::strip_goal_decoration;
 use lithos_llm::catalog::ProviderId;
@@ -92,6 +93,33 @@ fn truncation_caps_for_context_window(ctx: usize) -> TruncationCaps {
     }
 }
 
+/// The LLM client's route form of the configured PR model (fabro-6558
+/// evening): Fabro's `[run.pull_request] model` names the provider with a
+/// colon (`zai:glm-4.7`), while the client splits routes on `/` — an
+/// unconverted selector resolves no route, the generation call fails with
+/// "model selector `zai:glm-4.7` was not found", and every pull request
+/// falls back to the deterministic skeleton. A model that names no
+/// provider stays bare: the client's own catalog matching picks it.
+fn client_selector(model: &str, catalog: &Catalog) -> String {
+    match model
+        .parse::<ModelRef>()
+        .map(|reference| reference.resolve(catalog))
+    {
+        Ok(Ok(ResolvedModelRef::Model {
+            provider: Some(provider),
+            selector,
+        })) => format!("{provider}/{selector}"),
+        Ok(Ok(ResolvedModelRef::Model {
+            provider: None,
+            selector,
+        })) => selector,
+        // A provider-only reference, an ambiguous one, and an unparseable
+        // one keep the client's own default handling (the bare token, or
+        // the whole string the client will refuse and report).
+        Ok(Ok(ResolvedModelRef::Provider(_)) | Err(_)) | Err(_) => model.to_owned(),
+    }
+}
+
 /// Truncate `s` to at most `max` Unicode scalar values without splitting a
 /// UTF-8 sequence.
 fn truncate_chars(s: &str, max: usize) -> &str {
@@ -129,6 +157,16 @@ fn fallback_pr_title(goal: &str) -> String {
         DEFAULT_PR_TITLE.to_string()
     } else {
         title
+    }
+}
+
+/// The deterministic PR content used when the LLM cannot generate one
+/// (fabro-ac40): the goal's first line as the title, the empty-body
+/// notice as the narrative.
+fn skeleton_pr_content(goal: &str) -> PrContent {
+    PrContent {
+        title: fallback_pr_title(goal),
+        body:  EMPTY_BODY_NOTICE.to_string(),
     }
 }
 
@@ -356,18 +394,46 @@ async fn build_pr_content_with_client(
     };
 
     let request = Request::builder()
-        .model(model)
+        .model(client_selector(model, catalog))
         .system(PR_BODY_SYSTEM_PROMPT)
         .message(Message::text(Role::User, prompt))
         .build()
         .map_err(|e| format!("invalid PR content request: {e}"))?;
-    let completion = client
-        .complete_object(request, "pr_content", PR_CONTENT_SCHEMA.clone())
-        .await
-        .map_err(|e| format!("LLM generation failed: {e}"))?;
-
-    let generated: PrContent = serde_json::from_value(completion.object)
-        .map_err(|e| format!("Failed to deserialize PR content: {e}"))?;
+    // The deterministic skeleton (fabro-ac40): a model that cannot produce
+    // the structured PR content — observed on zai models, which answer the
+    // JSON request with prose — must not fail the creation. The goal
+    // titles the PR and the notice stands in for the narrative; the plan,
+    // details and footer sections below are assembled as always.
+    let generated = match fork_structured::complete_object_tolerant(
+        &client,
+        request,
+        "pr_content",
+        PR_CONTENT_SCHEMA.clone(),
+    )
+    .await
+    {
+        Ok(completion) => match serde_json::from_value::<PrContent>(completion.object) {
+            Ok(generated) => generated,
+            Err(error) => {
+                warn!(
+                    model = %model,
+                    layer = "pr_content.deserialize",
+                    error = ?error,
+                    "PR content did not deserialize; using the deterministic skeleton"
+                );
+                skeleton_pr_content(goal)
+            }
+        },
+        Err(error) => {
+            warn!(
+                model = %model,
+                layer = "pr_content.structured_completion",
+                error = ?error,
+                "PR content generation failed; using the deterministic skeleton"
+            );
+            skeleton_pr_content(goal)
+        }
+    };
 
     let title = if generated.title.trim().is_empty() {
         fallback_pr_title(goal)
@@ -450,13 +516,14 @@ async fn reconcile_existing_pull_request(
         return Ok(None);
     };
     info!(pr_url = %existing.html_url, pr_number = existing.number, context, "Existing pull request reconciled");
-    enable_auto_merge_if_requested(
+    enable_auto_merge_within_scope(
         &req.github,
         owner,
         repo,
         &existing.node_id,
         existing.number,
         req.auto_merge.as_ref(),
+        req.diff,
     )
     .await;
     Ok(Some(CreatedPullRequest {
@@ -469,6 +536,153 @@ async fn reconcile_existing_pull_request(
         base_branch: req.base_branch.to_string(),
         head_branch: req.head_branch.to_string(),
     }))
+}
+
+/// Paths the run's own diff touches: both sides of every `diff --git`
+/// header, `/dev/null` excluded. A path the run deleted itself appears on
+/// the `a/` side, so it counts as touched.
+///
+/// Fork surface (fabro-4ebd, petri port W2-2 Phase B): gates auto-merge on
+/// scope — the PR must not delete paths the run never touched.
+fn diff_touched_paths(diff: &str) -> std::collections::HashSet<&str> {
+    let mut paths = std::collections::HashSet::new();
+    for line in diff.lines().filter(|line| line.starts_with("diff --git ")) {
+        for token in line.split(' ').skip(2) {
+            let path = token
+                .strip_prefix("a/")
+                .or_else(|| token.strip_prefix("b/"))
+                .unwrap_or(token);
+            if path != "/dev/null" {
+                paths.insert(path);
+            }
+        }
+    }
+    paths
+}
+
+/// Paths the PR deletes that the run's own diff never touched (fabro-4ebd):
+/// a stale run tree reverting concurrent base work shows up exactly here.
+/// `removed` statuses plus the old side of renames count as deletions.
+fn out_of_scope_deletions<'a>(
+    files: &'a [fabro_github::PullRequestFileStatus],
+    diff_touched: &std::collections::HashSet<&str>,
+) -> Vec<&'a str> {
+    files
+        .iter()
+        .filter(|file| {
+            let removed = file.status == "removed" || file.status == "changed";
+            let renamed_from = file.status == "renamed"
+                && file
+                    .previous_filename
+                    .as_deref()
+                    .is_some_and(|previous| !diff_touched.contains(previous));
+            (removed && !diff_touched.contains(file.filename.as_str()))
+                || (removed && file.status == "renamed" && renamed_from)
+                || (file.status == "renamed"
+                    && file
+                        .previous_filename
+                        .as_deref()
+                        .is_some_and(|previous| !diff_touched.contains(previous)))
+        })
+        .map(|file| file.filename.as_str())
+        .collect()
+}
+
+/// Fork gate (fabro-4ebd, petri port W2-2 Phase B): before auto-merge is
+/// enabled, the PR's deletions must be confined to the run's own change
+/// scope. A stale run tree that reverts concurrent base work would delete
+/// paths the run never touched — merging it silently reverts them.
+/// Out-of-scope deletions skip auto-merge (the PR stays for manual review)
+/// and are logged with the offending paths.
+async fn enable_auto_merge_within_scope(
+    github: &github_app::GitHubContext<'_>,
+    owner: &str,
+    repo: &str,
+    node_id: &str,
+    number: u64,
+    options: Option<&AutoMergeOptions>,
+    run_diff: &str,
+) {
+    let Some(options) = options else {
+        return;
+    };
+    if let Ok(files) =
+        fabro_github::list_pull_request_file_statuses(github, owner, repo, number).await
+    {
+        let touched = diff_touched_paths(run_diff);
+        let out_of_scope = out_of_scope_deletions(&files, &touched);
+        if !out_of_scope.is_empty() {
+            tracing::warn!(
+                pr_number = number,
+                deletion_paths = %out_of_scope.join(", "),
+                "Auto-merge withheld (fabro-4ebd): pull request deletes paths outside the                  run's own change scope — manual review required"
+            );
+            return;
+        }
+    }
+    enable_auto_merge_if_requested(github, owner, repo, node_id, number, Some(options)).await;
+}
+
+/// Fork surface (fabro-67e5 retry, W2-3): bounded retry around pull request
+/// creation. All attempts except the last retry once on transient
+/// (retryable) failures with a short backoff; deterministic failures fail
+/// fast carrying the scope remediation and the attempt history.
+const PR_CREATE_ATTEMPTS: u32 = 3;
+const PR_CREATE_RETRY_DELAY: std::time::Duration = std::time::Duration::from_secs(2);
+
+async fn create_pull_request_with_attempts<F, Fut>(
+    owner: &str,
+    repo: &str,
+    mut create: F,
+) -> Result<github_app::CreatedPullRequest, String>
+where
+    F: FnMut() -> Fut,
+    Fut: std::future::Future<
+            Output = Result<github_app::CreatedPullRequest, fabro_github::CreatePullRequestError>,
+        >,
+{
+    let mut attempts: Vec<String> = Vec::new();
+    for attempt in 1..PR_CREATE_ATTEMPTS {
+        let error = match create().await {
+            Ok(created) => return Ok(created),
+            Err(error) if error.is_retryable() => error,
+            Err(error) => {
+                attempts.push(create_attempt_line(attempt, owner, repo, &error));
+                return Err(final_create_error(&attempts, &error));
+            }
+        };
+        attempts.push(create_attempt_line(attempt, owner, repo, &error));
+        tracing::warn!(
+            attempt,
+            error = %error,
+            "Transient pull request creation failure; retrying after a short backoff"
+        );
+        sleep(PR_CREATE_RETRY_DELAY).await;
+    }
+    let error = match create().await {
+        Ok(created) => return Ok(created),
+        Err(error) => error,
+    };
+    attempts.push(create_attempt_line(PR_CREATE_ATTEMPTS, owner, repo, &error));
+    Err(final_create_error(&attempts, &error))
+}
+
+fn create_attempt_line(
+    attempt: u32,
+    owner: &str,
+    repo: &str,
+    error: &fabro_github::CreatePullRequestError,
+) -> String {
+    format!("attempt {attempt} ({owner}/{repo}): {error:#}")
+}
+
+fn final_create_error(attempts: &[String], error: &fabro_github::CreatePullRequestError) -> String {
+    let history = attempts.join("; ");
+    match error.scope_hint() {
+        Some(hint) if history.is_empty() => format!("pull request creation failed — {hint}"),
+        Some(hint) => format!("pull request creation failed — {hint} ({history})"),
+        None => history,
+    }
 }
 
 async fn enable_auto_merge_if_requested(
@@ -577,18 +791,20 @@ pub async fn open_pull_request(
     let body = truncate_pr_body(&content.body);
     let title = content.title;
 
-    let created = match github_app::create_pull_request(
-        &req.github,
-        &owner,
-        &repo,
-        req.base_branch,
-        req.head_branch,
-        &title,
-        &body,
-        req.draft,
-    )
-    .await
-    {
+    let create_result = create_pull_request_with_attempts(&owner, &repo, || {
+        github_app::create_pull_request(
+            &req.github,
+            &owner,
+            &repo,
+            req.base_branch,
+            req.head_branch,
+            &title,
+            &body,
+            req.draft,
+        )
+    })
+    .await;
+    let created = match create_result {
         Ok(created) => created,
         Err(create_err) => {
             match reconcile_existing_pull_request(&req, &owner, &repo, "after a failed create")
@@ -606,13 +822,14 @@ pub async fn open_pull_request(
     };
 
     info!(pr_url = %created.html_url, created.number, "Pull request created");
-    enable_auto_merge_if_requested(
+    enable_auto_merge_within_scope(
         &req.github,
         &owner,
         &repo,
         &created.node_id,
         created.number,
         req.auto_merge.as_ref(),
+        req.diff,
     )
     .await;
 
@@ -728,6 +945,33 @@ limits = { context_tokens = 8192, max_output_tokens = 1024 }
 capabilities = { text = true, tools = true, response_format = { json_object = true, json_schema = true } }
 "#,
         )
+    }
+
+    /// The configured `[run.pull_request] model` reaches the client in its
+    /// route form: Fabro spells the provider with a colon, the client
+    /// splits on `/` (fabro-6558; an unconverted selector fails with
+    /// "model selector `zai:glm-4.7` was not found" and every pull
+    /// request falls back to the skeleton).
+    #[test]
+    fn the_configured_pr_model_reaches_the_client_in_route_form() {
+        let catalog = fabro_llm::test_support::test_catalog_with_overlay(
+            r#"
+[providers.zai]
+display_name = "Zai"
+base_url = "http://zai.invalid/v1"
+auth = { type = "bearer" }
+
+[providers.zai.models."glm-4.7"]
+display_name = "GLM 4.7"
+api_model = "glm-4.7"
+capabilities = { text = true }
+"#,
+        );
+        assert_eq!(client_selector("zai:glm-4.7", &catalog), "zai/glm-4.7");
+        // A bare model keeps its shape: the client matches it itself.
+        assert_eq!(client_selector("glm-4.7", &catalog), "glm-4.7");
+        // An already-routed selector stays as it is.
+        assert_eq!(client_selector("zai/glm-4.7", &catalog), "zai/glm-4.7");
     }
 
     /// A client over [`mock_catalog`] whose `provider_name` answers with
@@ -1370,6 +1614,75 @@ capabilities = { text = true, tools = true, response_format = { json_object = tr
         assert!(body.contains("Plan from store"));
         assert!(body.contains("### Fabro Details"));
         assert!(body.contains("Generated with [Fabro](https://fabro.sh)"));
+    }
+
+    /// The zai failure mode (fabro-ac40): the model answers the
+    /// structured-output request with prose instead of a JSON document.
+    /// The content builder must fall back to the deterministic skeleton
+    /// (goal title, notice body) instead of failing the creation.
+    #[tokio::test]
+    async fn build_pr_content_falls_back_to_skeleton_when_llm_returns_prose() {
+        let harness = setup_fallback_test_harness(
+            "Sure! I would title this PR: Add the feature. Here is some prose.",
+        )
+        .await;
+
+        let content = build_pr_content(
+            "diff --git a/src/lib.rs b/src/lib.rs\n+fn x() {}\n",
+            "Add the feature\n\nlonger description",
+            "gpt-5.4",
+            Arc::clone(&harness.llm_source),
+            harness.catalog.clone(),
+            None,
+            None,
+        )
+        .await
+        .expect("the deterministic fallback keeps PR content building");
+
+        assert_eq!(content.title, "Add the feature");
+        assert!(
+            content
+                .body
+                .contains("The LLM did not produce a description")
+        );
+        assert!(
+            content
+                .body
+                .contains("Generated with [Fabro](https://fabro.sh)")
+        );
+    }
+
+    /// The zai/glm-4.7 reply shape (fabro-4c11): the model answers the
+    /// structured-output request with prose wrapping a fenced JSON document.
+    /// The content builder must extract the document instead of falling back
+    /// to the skeleton.
+    #[tokio::test]
+    async fn build_pr_content_extracts_fenced_json_from_prose_reply() {
+        let payload = format!(
+            "Sure! Here is the PR content:\n```json\n{}\n```\nHope that helps.",
+            pr_content_json("Fenced title", "Narrative from a fenced document.")
+        );
+        let harness = setup_fallback_test_harness(&payload).await;
+
+        let content = build_pr_content(
+            "diff --git a/src/lib.rs b/src/lib.rs\n+fn x() {}\n",
+            "Add the feature\n\nlonger description",
+            "gpt-5.4",
+            Arc::clone(&harness.llm_source),
+            harness.catalog.clone(),
+            None,
+            None,
+        )
+        .await
+        .expect("the fenced document keeps PR content building");
+
+        assert_eq!(content.title, "Fenced title");
+        assert!(content.body.contains("Narrative from a fenced document."));
+        assert!(
+            !content
+                .body
+                .contains("The LLM did not produce a description")
+        );
     }
 
     // ── open_pull_request fallback tests ──────────────────────────

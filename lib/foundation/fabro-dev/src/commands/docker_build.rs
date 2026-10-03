@@ -68,6 +68,10 @@ struct DockerBuildPlan {
     compile_only:   bool,
     tag:            String,
     workspace_root: PathBuf,
+    /// Short (12-char) git sha injected into the builder container as
+    /// `FABRO_GIT_SHA`, so the server binary embeds a build sha even when
+    /// the builder has no usable git metadata (fabro-6ffb).
+    git_sha:        String,
 }
 
 #[expect(
@@ -75,11 +79,13 @@ struct DockerBuildPlan {
     reason = "dev docker-build command reports progress and dry-run commands directly"
 )]
 pub(crate) fn docker_build(args: DockerBuildArgs) -> Result<()> {
+    let workspace_root = workspace_root();
     let plan = DockerBuildPlan {
         arch:           args.arch.map_or_else(DockerArch::detect, Ok)?,
         compile_only:   args.compile_only,
         tag:            args.tag,
-        workspace_root: workspace_root(),
+        workspace_root: workspace_root.clone(),
+        git_sha:        host_short_sha(&workspace_root)?,
     };
 
     if args.dry_run {
@@ -179,6 +185,8 @@ impl DockerBuildPlan {
             .arg("CARGO_TARGET_DIR=/target")
             .arg("-e")
             .arg("LIBZ_SYS_STATIC=1")
+            .arg("-e")
+            .arg(format!("FABRO_GIT_SHA={}", self.git_sha))
             .arg("rust:1-bookworm")
             .arg("bash")
             .arg("-c")
@@ -197,9 +205,23 @@ impl DockerBuildPlan {
             .arg("-v")
             .arg(format!("{}:/out", self.context_dir().display()))
             .arg("rust:1-bookworm")
-            .arg("cp")
-            .arg(format!("/target/{}/release/fabro", self.arch.target()))
-            .arg("/out/fabro")
+            .arg("bash")
+            .arg("-c")
+            .arg(format!(
+                "cp /target/{}/release/fabro /out/fabro && \
+                 cp /target/{}/release/sandbox-driver-docker /target/{}/release/sandbox-driver-host /out/ && \
+                 NU_TGZ=/tmp/nu.tar.gz && \
+                 curl -fsSL -o $NU_TGZ \
+                 https://github.com/nushell/nushell/releases/download/{nu_version}/nu-{nu_version}-{musl}.tar.gz && \
+                 echo '{nu_sha}  '$NU_TGZ | sha256sum -c - && \
+                 tar -xzf $NU_TGZ -C /out --strip-components=1 nu-{nu_version}-{musl}/nu",
+                self.arch.target(),
+                self.arch.target(),
+                self.arch.target(),
+                nu_version = NU_VERSION,
+                musl = self.arch.target(),
+                nu_sha = nu_sha256(self.arch),
+            ))
     }
 
     fn image_build_command(&self) -> PlannedCommand {
@@ -224,10 +246,46 @@ impl DockerBuildPlan {
     }
 }
 
+/// The awk line that reads the sandbox-driver rev `Cargo.lock` resolves,
+/// so the plugin build can never drift from the dependency the binary
+/// linked. The Lithos git deps track `branch = "main"` upstream, so the
+/// rev lives in the lockfile, not in `Cargo.toml` (same source upstream's
+/// CI plugin job reads). A raw string: the pattern is shell-awk, not Rust.
+const SANDBOX_PIN_SED: &str = r#"REV=$(awk '/^name = "sandbox-driver"$/{getline; getline; sub(/.*#/, ""); sub(/".*/, ""); print; exit}' Cargo.lock)"#;
+
+/// Nushell release vendored into the server image for host-side hooks
+/// (fabro-8e13): the official musl tarball, sha256-pinned per arch, staged
+/// through the docker context beside the release binary so `[[run.hooks]]`
+/// script kinds can run nu inside the server container.
+const NU_VERSION: &str = "0.115.0";
+const NU_SHA256_AMD64: &str = "d510565b039b5384986652e579fe443877fcc4df86f16072ed5edca641ad92f1";
+const NU_SHA256_ARM64: &str = "7e60824f66b8c814fdbb52741047d38c8379e4bc5e8271135667ef04e3c55324";
+
+fn nu_sha256(arch: DockerArch) -> &'static str {
+    match arch {
+        DockerArch::Amd64 => NU_SHA256_AMD64,
+        DockerArch::Arm64 => NU_SHA256_ARM64,
+    }
+}
+
+/// Short git sha of the working tree, truncated from the full sha so the
+/// embedded `FABRO_GIT_SHA` agrees with `fabro_build_support`'s
+/// `SHORT_SHA_LEN` contract (fabro-6ffb).
+fn host_short_sha(root: &std::path::Path) -> Result<String> {
+    let full_sha = super::resolve_git_revision(root, "HEAD")?;
+    if full_sha.len() < fabro_build_support::SHORT_SHA_LEN {
+        bail!(
+            "git rev-parse HEAD returned a sha shorter than {} chars: {full_sha}",
+            fabro_build_support::SHORT_SHA_LEN
+        );
+    }
+    Ok(full_sha[..fabro_build_support::SHORT_SHA_LEN].to_string())
+}
+
 fn build_script(target: &str, zig_arch: &str) -> String {
     format!(
         "set -e; \
-         apt-get update -qq && apt-get install -y -qq pkg-config perl make cmake xz-utils curl >/dev/null; \
+         apt-get update -qq && apt-get install -y -qq pkg-config perl make cmake xz-utils curl git >/dev/null; \
          if [ ! -x /opt/zig/zig-linux-{zig_arch}-{ZIG_VERSION}/zig ]; then \
          curl -fsSL https://ziglang.org/download/{ZIG_VERSION}/zig-linux-{zig_arch}-{ZIG_VERSION}.tar.xz | tar -xJ -C /opt/zig; \
          fi; \
@@ -236,6 +294,17 @@ fn build_script(target: &str, zig_arch: &str) -> String {
          cargo install --locked --root /opt/cargo-tools cargo-zigbuild; \
          fi; \
          rustup target add {target}; \
-         cargo zigbuild --locked --release -p fabro-cli --target {target}"
+         cargo zigbuild --locked --release -p fabro-cli --target {target}; \
+         {SANDBOX_PIN_SED}; \
+         test -n \"$REV\"; \
+         CHECKOUT=$(ls -d ${{CARGO_HOME:-$HOME/.cargo}}/git/checkouts/sandbox-driver-*/$REV 2>/dev/null | head -1); \
+         if [ -z \"$CHECKOUT\" ]; then \
+         git clone --quiet https://github.com/lithoscomputer/sandbox-driver /tmp/sandbox-driver; \
+         git -C /tmp/sandbox-driver checkout --quiet $REV; \
+         CHECKOUT=/tmp/sandbox-driver; \
+         fi; \
+         echo building sandbox-driver plugins at rev $REV; \
+         cargo zigbuild --locked --release --manifest-path \"$CHECKOUT/Cargo.toml\" \
+         -p sandbox-driver-docker -p sandbox-driver-host --target {target} --target-dir $CARGO_TARGET_DIR"
     )
 }

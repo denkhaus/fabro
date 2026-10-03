@@ -111,6 +111,36 @@ async fn fork_run(
     }
 }
 
+/// Fork (rewind) a terminal run internally: the handler's core minus the
+/// HTTP surface (fork, archive, superseded record). Returns the new run id
+/// and whether the source archive succeeded (fabro-2e7b Option C: the
+/// provider gate re-fires parked runs through this instead of a new run).
+pub(crate) async fn rewind_run_internal(
+    state: &AppState,
+    id: RunId,
+    actor: Principal,
+) -> Result<(RunId, bool), String> {
+    let outcome = fork_at(state, id, actor, &HeaderMap::new(), ForkKind::Rewind, None)
+        .await
+        .map_err(|err| format!("rewind rejected: {}", err.detail()))?;
+    let archived = run_archive_operation(state, &id, None, ArchiveAction::Archive)
+        .await
+        .map(|_| ())
+        .is_ok();
+    if archived {
+        let record = operations::superseded_record(outcome.new_run_id, &outcome.target);
+        if let Err(err) = run_records::append(state, id, record).await {
+            error!(
+                source_run_id = %id,
+                new_run_id = %outcome.new_run_id,
+                error = %err,
+                "the rewound run was archived but its superseded record was not written"
+            );
+        }
+    }
+    Ok((outcome.new_run_id, archived))
+}
+
 async fn rewind_run(
     RequireRunManagementTarget(id, actor): RequireRunManagementTarget,
     State(state): State<Arc<AppState>>,

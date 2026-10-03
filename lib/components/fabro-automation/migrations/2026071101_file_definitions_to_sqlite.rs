@@ -106,6 +106,7 @@ fn parse_legacy_automation(
         name: legacy.name,
         description: legacy.description,
         environment_id: None,
+        on_overlap: None,
         target,
         workflow,
         workflow_source: None,

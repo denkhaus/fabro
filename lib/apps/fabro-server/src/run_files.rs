@@ -32,7 +32,7 @@ use fabro_api::types::{
     RunCommitParentShortSha, RunCommitPerson, RunCommitSha, RunCommitShortSha, RunCommitTreeSha,
     RunCommitsMeta, RunCommitsMetaBaseSha, RunCommitsMetaHeadSha, RunCommitsMetaSource,
     RunFilesMeta, RunFilesMetaDegradedReason, RunFilesMetaScope, RunFilesMetaSource,
-    RunFilesMetaToSha,
+    RunFilesMetaToSha, RunSandboxFileMap,
 };
 use fabro_redact::SecretRedactor;
 use fabro_types::RunId;
@@ -48,7 +48,7 @@ use sandbox_driver::{
     Termination,
 };
 use serde::Deserialize;
-use tokio::sync::{Mutex, watch};
+use tokio::sync::{Mutex, OwnedMutexGuard, watch};
 
 use crate::error::ApiError;
 use crate::principal_middleware::RequiredUser;
@@ -70,14 +70,44 @@ const SANDBOX_GIT_TIMEOUT: Duration = Duration::from_secs(10);
 /// brought to `Running`, and the directory the run's repository is checked
 /// out in.
 struct SandboxCheckout {
+    /// The reactivated sandbox, behind the run's inspection guard
+    /// (fabro-afab): a terminal run's sandbox is stopped again when the
+    /// checkout drops; a live run keeps its sandbox.
     handle:            Arc<dyn Sandbox>,
+    #[expect(
+        dead_code,
+        reason = "the guard acts in Drop: the checkout keeps the terminal run's reactivated \
+                  sandbox alive exactly as long as the inspection reads it"
+    )]
+    guard:             sandbox_access::InspectionSandbox,
+    /// The run's serialization gate, held for the checkout's whole read
+    /// window so a deferred inspection stop waits it out instead of
+    /// landing inside it (fabro-2c17).
+    #[expect(
+        dead_code,
+        reason = "the hold acts in Drop: releasing the gate after the read is its whole job"
+    )]
+    gate_hold:         Option<OwnedMutexGuard<()>>,
     working_directory: String,
 }
 
 impl SandboxCheckout {
-    fn new(handle: Arc<dyn Sandbox>, working_directory: impl Into<String>) -> Self {
+    fn new(
+        handle: Arc<dyn Sandbox>,
+        working_directory: impl Into<String>,
+        terminal_run: bool,
+        stop_gate: Option<Arc<Mutex<()>>>,
+        gate_hold: Option<OwnedMutexGuard<()>>,
+    ) -> Self {
+        let guard = if terminal_run {
+            sandbox_access::InspectionSandbox::terminal(handle, stop_gate)
+        } else {
+            sandbox_access::InspectionSandbox::live(handle)
+        };
         Self {
-            handle,
+            handle: guard.sandbox(),
+            guard,
+            gate_hold,
             working_directory: working_directory.into(),
         }
     }
@@ -1226,12 +1256,19 @@ async fn reconnect_run_sandbox(
         .provider_access()
         .await
         .map_err(|err| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string()))?;
+    // Hold the run's gate for the checkout's whole read window so a
+    // deferred inspection stop waits it out (fabro-2c17).
+    let gate = sandbox_access::run_sandbox_gate(run_id);
+    let gate_hold = gate.clone().lock_owned().await;
     let handle = sandbox_access::attach_running_run_sandbox(&access, record, *run_id)
         .await
         .map_err(|err| ApiError::new(StatusCode::CONFLICT, format!("{err:#}")))?;
     Ok(SandboxCheckout::new(
         handle,
         record.runtime.working_directory.clone(),
+        projection.is_terminal(),
+        (projection.is_terminal()).then_some(gate),
+        Some(gate_hold),
     ))
 }
 
@@ -1733,6 +1770,212 @@ fn count_flags(data: &[FileDiff]) -> (u64, u64, u64, u64) {
     (binary, sensitive, symlink, submodule)
 }
 
+// ---- Run-tool sandbox directory collection (fabro-4b29) ----
+//
+// `fabro_workflow_version_create` with `files_from` reads the workflow
+// closure straight from the run's sandbox: the model names a directory, the
+// server collects the tree, and nothing is transcribed through tool
+// arguments. Only the run's own worker calls this (the route's guard); a
+// worker already holds the sandbox's shell, so the read grants nothing new,
+// and user principals keep the elided run-files diff view.
+
+/// Tree depth a `files_from` collection walks. Workflow directories are
+/// shallow (`<slug>/{prompts,scripts}/...`); deeper trees are a mistake, not
+/// a workflow.
+const SANDBOX_FILES_DEPTH: usize = 8;
+/// Total bytes one collection may return: the workflow-version budget, the
+/// same ceiling inline `files` pass through.
+const SANDBOX_FILES_TOTAL_BYTES: usize = fabro_types::MAX_WORKFLOW_VERSION_BYTES;
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct RunSandboxFilesQuery {
+    pub(crate) directory: String,
+}
+
+/// Read every regular text file under `directory` (workspace-relative) of
+/// the run's sandbox, keyed relative to the directory's parent so
+/// `<slug>/workflow.toml` entrypoints work unchanged. Every bound refuses
+/// rather than truncates: a violated cap is an error the caller can name,
+/// never a silently partial closure.
+pub(crate) async fn read_run_sandbox_files(
+    state: &Arc<AppState>,
+    run_id: &RunId,
+    directory: &str,
+) -> std::result::Result<RunSandboxFileMap, ApiError> {
+    let relative = validate_collection_directory(directory)?;
+    let projection = load_projection(state, run_id).await?;
+    let checkout = reconnect_run_sandbox(state, run_id, &projection).await?;
+    collect_sandbox_directory(&checkout, &relative).await
+}
+
+/// The workspace-relative directory to collect: trimmed, non-empty,
+/// relative, and free of `..` components, so the read cannot leave the
+/// run's checkout.
+fn validate_collection_directory(directory: &str) -> Result<String, ApiError> {
+    let trimmed = directory.trim();
+    if trimmed.is_empty() {
+        return Err(ApiError::with_code(
+            StatusCode::BAD_REQUEST,
+            "`directory` is required: the workspace-relative directory to collect",
+            "sandbox_files_directory_invalid",
+        ));
+    }
+    if trimmed.len() > 512 {
+        return Err(ApiError::with_code(
+            StatusCode::BAD_REQUEST,
+            "`directory` exceeds 512 characters",
+            "sandbox_files_directory_invalid",
+        ));
+    }
+    let path = std::path::Path::new(trimmed);
+    if path.is_absolute() || trimmed.starts_with('/') {
+        return Err(ApiError::with_code(
+            StatusCode::BAD_REQUEST,
+            "`directory` must be workspace-relative, not absolute",
+            "sandbox_files_directory_invalid",
+        ));
+    }
+    if path.components().any(|component| {
+        matches!(
+            component,
+            std::path::Component::ParentDir | std::path::Component::RootDir
+        )
+    }) {
+        return Err(ApiError::with_code(
+            StatusCode::BAD_REQUEST,
+            "`directory` must stay inside the workspace (no `..` components)",
+            "sandbox_files_directory_invalid",
+        ));
+    }
+    Ok(trimmed.trim_end_matches('/').to_string())
+}
+
+/// The directory's name: the key prefix every collected file carries (the
+/// `<slug>/` of `.fabro/workflows/<slug>`).
+fn directory_prefix(relative: &str) -> &str {
+    relative.rsplit('/').next().unwrap_or(relative)
+}
+
+/// Collect the tree below `relative` through the sandbox's filesystem
+/// facet. Files only; a symlink or other entry refuses the whole read
+/// (422), as does a non-UTF-8 file — the closure is text or it is not the
+/// caller's workflow.
+async fn collect_sandbox_directory(
+    checkout: &SandboxCheckout,
+    relative: &str,
+) -> std::result::Result<RunSandboxFileMap, ApiError> {
+    let root = join_workspace_path(checkout.working_directory(), relative);
+    let entries = checkout
+        .sandbox()
+        .fs()
+        .list_dir(&root, SANDBOX_FILES_DEPTH)
+        .await
+        .map_err(|err| match err {
+            sandbox_driver::Error::NotFound { .. } => ApiError::with_code(
+                StatusCode::BAD_REQUEST,
+                format!("`{relative}` is not a directory of the run's workspace"),
+                "sandbox_files_directory_invalid",
+            ),
+            err => ApiError::new(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("sandbox directory listing failed: {err}"),
+            ),
+        })?;
+
+    let files: Vec<&sandbox_driver::DirEntry> = entries
+        .iter()
+        .filter(|entry| entry.kind == sandbox_driver::FileKind::File)
+        .collect();
+    if files.len() > FILE_COUNT_CAP {
+        return Err(too_large(format!(
+            "the directory holds {} files; the collection cap is {FILE_COUNT_CAP}",
+            files.len()
+        )));
+    }
+    for entry in &files {
+        if matches!(entry.kind, sandbox_driver::FileKind::File)
+            && entry.size.is_some_and(|size| size > PER_FILE_BYTES_CAP)
+        {
+            return Err(too_large(format!(
+                "`{}` exceeds the per-file cap of {} KiB",
+                entry.path,
+                PER_FILE_BYTES_CAP / 1024
+            )));
+        }
+    }
+    if let Some(offender) = entries.iter().find(|entry| {
+        matches!(
+            entry.kind,
+            sandbox_driver::FileKind::Symlink | sandbox_driver::FileKind::Other
+        )
+    }) {
+        return Err(not_text(&offender.path));
+    }
+
+    let prefix = directory_prefix(relative);
+    let mut collected: HashMap<String, String> = HashMap::with_capacity(files.len());
+    let mut total: usize = 0;
+    for entry in &files {
+        let path = join_workspace_path(&root, &entry.path);
+        let bytes = checkout.sandbox().fs().read(&path).await.map_err(|err| {
+            ApiError::new(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("sandbox file read failed for `{}`: {err}", entry.path),
+            )
+        })?;
+        if u64::try_from(bytes.len()).expect("a file length fits u64") > PER_FILE_BYTES_CAP {
+            return Err(too_large(format!(
+                "`{}` exceeds the per-file cap of {} KiB",
+                entry.path,
+                PER_FILE_BYTES_CAP / 1024
+            )));
+        }
+        total += bytes.len();
+        if total > SANDBOX_FILES_TOTAL_BYTES {
+            return Err(too_large(format!(
+                "the directory exceeds the total cap of {} MiB",
+                SANDBOX_FILES_TOTAL_BYTES / (1024 * 1024)
+            )));
+        }
+        let text = String::from_utf8(bytes).map_err(|_| not_text(&entry.path))?;
+        collected.insert(join_workspace_path(prefix, &entry.path), text);
+    }
+
+    Ok(RunSandboxFileMap {
+        directory: relative.to_string(),
+        files:     collected,
+    })
+}
+
+/// `path` under the workspace `base` with one separator between them; the
+/// same joining the pebble sandbox environment applies.
+fn join_workspace_path(base: &str, path: &str) -> String {
+    let base = base.trim_end_matches('/');
+    if base.is_empty() {
+        return path.to_string();
+    }
+    if path.is_empty() {
+        return base.to_string();
+    }
+    format!("{base}/{path}")
+}
+
+fn too_large(message: String) -> ApiError {
+    ApiError::with_code(
+        StatusCode::PAYLOAD_TOO_LARGE,
+        message,
+        "sandbox_files_too_large",
+    )
+}
+
+fn not_text(path: &str) -> ApiError {
+    ApiError::with_code(
+        StatusCode::UNPROCESSABLE_ENTITY,
+        format!("`{path}` is not UTF-8 text; the collection serves text files only"),
+        "sandbox_files_not_text",
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -1746,7 +1989,7 @@ mod tests {
 
     /// The mock as the Run Files endpoints hold a sandbox.
     fn checkout(mock: &MockSandbox) -> SandboxCheckout {
-        SandboxCheckout::new(mock.handle(), mock.working_dir)
+        SandboxCheckout::new(mock.handle(), mock.working_dir, false, None, None)
     }
 
     fn run_id(_name: &str) -> RunId {
@@ -3013,5 +3256,50 @@ rename to .env.production
             .await
             .expect("small SHA lists skip phase 1 entirely; phase-2 success is the full story");
         assert_eq!(table.get(&sha), Some(&Some("hello".to_string())));
+    }
+
+    // ---- sandbox directory collection (fabro-4b29) ----
+
+    #[test]
+    fn collection_directories_are_relative_and_stay_inside_the_workspace() {
+        assert_eq!(
+            super::validate_collection_directory(".fabro/workflows/develop").unwrap(),
+            ".fabro/workflows/develop"
+        );
+        assert_eq!(
+            super::validate_collection_directory(" .fabro/workflows/develop/ ").unwrap(),
+            ".fabro/workflows/develop"
+        );
+        for invalid in [
+            "",
+            "   ",
+            "/workspace/.fabro",
+            "..",
+            "../outside",
+            ".fabro/../..",
+            &"x".repeat(513),
+        ] {
+            assert!(
+                super::validate_collection_directory(invalid).is_err(),
+                "`{invalid}` must refuse"
+            );
+        }
+    }
+
+    #[test]
+    fn collected_keys_carry_the_directory_name_prefix() {
+        assert_eq!(
+            super::directory_prefix(".fabro/workflows/develop"),
+            "develop"
+        );
+        assert_eq!(super::directory_prefix("develop"), "develop");
+        assert_eq!(
+            super::join_workspace_path("develop", "prompts/planner.md"),
+            "develop/prompts/planner.md"
+        );
+        assert_eq!(
+            super::join_workspace_path("/workspace/", ".fabro"),
+            "/workspace/.fabro"
+        );
     }
 }

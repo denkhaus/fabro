@@ -100,15 +100,16 @@ fn run_summary_json_matches_openapi_shape() {
         origin:           RunOrigin::default(),
         labels:           HashMap::from([("team".to_string(), "core".to_string())]),
         lifecycle:        RunLifecycle {
-            status:          RunStatus::Succeeded {
+            conclusion_failure: None,
+            status:             RunStatus::Succeeded {
                 reason: SuccessReason::PartialSuccess,
             },
-            approval:        None,
-            pending_control: None,
-            queue_position:  None,
-            error:           None,
-            archived:        true,
-            archived_at:     Some(archived_at),
+            approval:           None,
+            pending_control:    None,
+            queue_position:     None,
+            error:              None,
+            archived:           true,
+            archived_at:        Some(archived_at),
         },
         sandbox:          None,
         models:           vec![],

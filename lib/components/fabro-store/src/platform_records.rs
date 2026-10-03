@@ -147,6 +147,9 @@ pub enum PlatformRecordKind {
     #[serde(rename = "run.paired")]
     #[strum(serialize = "run.paired")]
     RunPaired,
+    #[serde(rename = "run.branch_published")]
+    #[strum(serialize = "run.branch_published")]
+    RunBranchPublished,
 }
 
 /// One platform record, tagged by `kind` on the wire.
@@ -197,6 +200,11 @@ pub enum PlatformRecord {
     /// when the run finishes.
     #[serde(rename = "run.diff")]
     RunDiff(RunDiffRecord),
+    /// The platform published the run's branch: pushed the run's final
+    /// commit from its snapshot repository to the origin, or recorded why
+    /// it did not (fabro-ac40).
+    #[serde(rename = "run.branch_published")]
+    RunBranchPublished(RunBranchPublishedRecord),
     /// A pull request was asked for: the supervisor creates it.
     #[serde(rename = "pull_request.requested")]
     PullRequestRequested(PullRequestRequestedRecord),
@@ -241,6 +249,7 @@ impl PlatformRecord {
             Self::PullRequestUnlinked(_) => PlatformRecordKind::PullRequestUnlinked,
             Self::NotificationSent(_) => PlatformRecordKind::NotificationSent,
             Self::RunPaired(_) => PlatformRecordKind::RunPaired,
+            Self::RunBranchPublished(_) => PlatformRecordKind::RunBranchPublished,
         }
     }
 
@@ -269,7 +278,8 @@ impl PlatformRecord {
             | Self::PullRequestFailed(_)
             | Self::PullRequestLinked(_)
             | Self::PullRequestUnlinked(_)
-            | Self::RunPaired(_) => None,
+            | Self::RunPaired(_)
+            | Self::RunBranchPublished(_) => None,
         }
     }
 }
@@ -478,6 +488,37 @@ pub struct RunDiffRecord {
     /// The patch as a text blob; absent when the diff is empty.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub patch_blob:   Option<BlobHash>,
+}
+
+/// How the platform's publish of a run's branch ended (fabro-ac40): the
+/// final commit pushed to the origin, or the reason it was not.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "outcome", rename_all = "snake_case")]
+pub enum RunBranchPublishOutcome {
+    /// The final commit is on the origin under the run branch.
+    Published,
+    /// Publishing does not apply to this run: push disabled, nothing to
+    /// push, or no repository to push to. Terminal.
+    Skipped {
+        /// Machine-readable skip code (`run_branch_push_disabled`, ...).
+        reason: String,
+    },
+    /// Publishing was attempted and failed terminally after its bounded
+    /// retries; the error is the last attempt's.
+    Failed { error: String },
+}
+
+/// The platform's publish of one run's branch (fabro-ac40): written once
+/// per run when it reaches terminal success, after the push from the
+/// run's snapshot repository to the origin succeeded, was skipped, or
+/// failed terminally.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RunBranchPublishedRecord {
+    /// The run branch the publish targets (`fabro/run/<id>`).
+    pub run_branch: String,
+    /// The final commit the publish pushes.
+    pub head_sha:   String,
+    pub outcome:    RunBranchPublishOutcome,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -905,6 +946,13 @@ mod tests {
                     node_label: "Plan".to_string(),
                 },
             }),
+            PlatformRecordKind::RunBranchPublished => {
+                PlatformRecord::RunBranchPublished(RunBranchPublishedRecord {
+                    run_branch: "fabro/run/01TEST".to_string(),
+                    head_sha:   "abc123".to_string(),
+                    outcome:    RunBranchPublishOutcome::Published,
+                })
+            }
         }
     }
 

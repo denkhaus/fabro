@@ -184,18 +184,23 @@ pub struct RunModel {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RunLifecycle {
-    pub status:          RunStatus,
+    pub status:             RunStatus,
+    /// The conclusion's failure, verbatim, once the run ended with one
+    /// (fork, fabro-986b): carries reason + signature for quota-park
+    /// classification where the status alone cannot express it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub conclusion_failure: Option<crate::RunFailure>,
     #[serde(default)]
-    pub approval:        Option<RunApproval>,
+    pub approval:           Option<RunApproval>,
     #[serde(default)]
-    pub pending_control: Option<RunControlAction>,
+    pub pending_control:    Option<RunControlAction>,
     #[serde(default)]
-    pub queue_position:  Option<u32>,
+    pub queue_position:     Option<u32>,
     #[serde(default)]
-    pub error:           Option<RunError>,
-    pub archived:        bool,
+    pub error:              Option<RunError>,
+    pub archived:           bool,
     #[serde(default)]
-    pub archived_at:     Option<DateTime<Utc>>,
+    pub archived_at:        Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

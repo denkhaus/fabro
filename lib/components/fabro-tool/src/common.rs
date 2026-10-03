@@ -54,6 +54,19 @@ pub trait FabroToolBackend: Send + Sync {
         Err(workflow_version_tool_unavailable_error())
     }
 
+    /// Read every text file under `directory` (workspace-relative) of
+    /// `run_id`'s sandbox, keyed relative to the directory's parent — the
+    /// `files_from` half of workflow-version registration (fabro-4b29).
+    /// Only surfaces bound to a run's sandbox serve it; the default
+    /// refuses with a teaching error.
+    async fn read_run_sandbox_files(
+        &self,
+        _run_id: &RunId,
+        _directory: &str,
+    ) -> anyhow::Result<std::collections::BTreeMap<String, String>> {
+        Err(run_sandbox_files_unavailable_error())
+    }
+
     async fn create_run_from_intent(&self, intent: fabro_types::RunIntent)
     -> anyhow::Result<RunId>;
 
@@ -74,6 +87,19 @@ pub trait FabroToolBackend: Send + Sync {
     async fn get_run_state(&self, run_id: &RunId) -> anyhow::Result<fabro_types::RunProjection>;
     /// The run's stream past `after` (the last `stream_seq` seen; `0` from
     /// the start), at most `limit` items when a limit is given.
+    /// Block until `run_id` is terminal or its pull request merged
+    /// (`fabro_run_wait`, fabro-571e/fabro-96c6): one server-side long
+    /// poll, up to the ceiling the API allows. The default answers
+    /// unavailable, so partial backends keep compiling.
+    async fn wait_run(
+        &self,
+        _run_id: &RunId,
+        _until: crate::RunWaitUntil,
+        _timeout_ms: u64,
+    ) -> anyhow::Result<types::RunWaitResult> {
+        Err(ToolError::message(format!("{FABRO_RUN_WAIT_TOOL_NAME} is not available")).into())
+    }
+
     async fn list_run_stream(
         &self,
         run_id: &RunId,
@@ -126,6 +152,36 @@ pub trait FabroToolBackend: Send + Sync {
     ) -> anyhow::Result<PairTranscriptResponse> {
         Err(pair_tool_unavailable_error())
     }
+
+    /// Open an Ask-Fabro session on the target run and return its id.
+    async fn create_ask_session(&self, _run_id: &RunId, _title: &str) -> anyhow::Result<String> {
+        Err(ask_tool_unavailable_error())
+    }
+
+    /// Read one of the run's blobs back: the bytes a demoted value left
+    /// in the run's blob table, or `None` when the run has none such.
+    async fn read_run_blob(
+        &self,
+        _run_id: &RunId,
+        _hash: &fabro_types::BlobHash,
+    ) -> anyhow::Result<Option<Vec<u8>>> {
+        Err(ToolError::message(format!("{FABRO_BLOB_TOOL_NAME} is not available")).into())
+    }
+
+    /// Submit one question to an Ask-Fabro session and return the turn's
+    /// outcome once the analyst's answer is final.
+    async fn submit_ask_turn(
+        &self,
+        _run_id: &RunId,
+        _session_id: &str,
+        _question: &str,
+    ) -> anyhow::Result<crate::AskTurnOutcome> {
+        Err(ask_tool_unavailable_error())
+    }
+}
+
+fn ask_tool_unavailable_error() -> anyhow::Error {
+    ToolError::message(format!("{FABRO_ASK_TOOL_NAME} is not available")).into()
 }
 
 fn pair_tool_unavailable_error() -> anyhow::Error {
@@ -136,6 +192,15 @@ pub(crate) fn workflow_version_tool_unavailable_error() -> anyhow::Error {
     ToolError::message(format!(
         "{FABRO_WORKFLOW_VERSION_CREATE_TOOL_NAME} is not available"
     ))
+    .into()
+}
+
+pub(crate) fn run_sandbox_files_unavailable_error() -> anyhow::Error {
+    ToolError::message(
+        "reading workflow files from the run sandbox (files_from) is not available on this \
+         surface; pass the file contents inline in `files` instead"
+            .to_string(),
+    )
     .into()
 }
 
@@ -168,11 +233,14 @@ pub struct ToolDefinition {
 pub const FABRO_WORKFLOW_VERSION_CREATE_TOOL_NAME: &str = "fabro_workflow_version_create";
 pub const FABRO_RUN_CREATE_TOOL_NAME: &str = "fabro_run_create";
 pub const FABRO_RUN_SEARCH_TOOL_NAME: &str = "fabro_run_search";
+pub const FABRO_RUN_WAIT_TOOL_NAME: &str = "fabro_run_wait";
 pub const FABRO_RUN_GET_TOOL_NAME: &str = "fabro_run_get";
 pub const FABRO_RUN_INTERACT_TOOL_NAME: &str = "fabro_run_interact";
 pub const FABRO_RUN_GATHER_TOOL_NAME: &str = "fabro_run_gather";
 pub const FABRO_RUN_EVENTS_TOOL_NAME: &str = "fabro_run_events";
 pub const FABRO_RUN_PAIR_TOOL_NAME: &str = "fabro_run_pair";
+pub const FABRO_ASK_TOOL_NAME: &str = "fabro_ask";
+pub const FABRO_BLOB_TOOL_NAME: &str = "fabro_blob";
 
 static TOOL_DEFINITIONS: LazyLock<Vec<ToolDefinition>> = LazyLock::new(|| {
     vec![
@@ -207,6 +275,18 @@ static TOOL_DEFINITIONS: LazyLock<Vec<ToolDefinition>> = LazyLock::new(|| {
         tool_definition::<crate::FabroRunEventsParams>(
             FABRO_RUN_EVENTS_TOOL_NAME,
             "List, inspect, or search stored events for a Fabro workflow run.",
+        ),
+        tool_definition::<crate::FabroRunWaitParams>(
+            FABRO_RUN_WAIT_TOOL_NAME,
+            "Block until one run reaches a terminal state or its pull request merges, on one server-side long-poll (up to 3600000 ms). On reached=timeout, call again with the same run id to continue waiting; never sleep-poll.",
+        ),
+        tool_definition::<crate::FabroBlobParams>(
+            FABRO_BLOB_TOOL_NAME,
+            "Read a demoted blob back with deterministic paging: pass the blob reference you met in the context to learn its byte size and line count, then page it by lines with offset/limit. The reference stays authoritative.",
+        ),
+        tool_definition::<crate::FabroAskParams>(
+            FABRO_ASK_TOOL_NAME,
+            "Ask one question to the Ask-Fabro analyst of another run and wait for its final answer. The analyst reads the target run's events, state, and workspace; the answer comes back as this tool's result.",
         ),
     ]
 });
@@ -332,6 +412,9 @@ mod tests {
             FABRO_RUN_GATHER_TOOL_NAME,
             FABRO_RUN_PAIR_TOOL_NAME,
             FABRO_RUN_EVENTS_TOOL_NAME,
+            FABRO_RUN_WAIT_TOOL_NAME,
+            FABRO_BLOB_TOOL_NAME,
+            FABRO_ASK_TOOL_NAME,
         ]);
     }
 
@@ -343,10 +426,19 @@ mod tests {
             .expect("workflow version creation should be in the shared catalog");
         let schema = &definition.parameters;
         assert_eq!(schema["additionalProperties"], false);
-        assert_eq!(schema["properties"].as_object().unwrap().len(), 2);
-        assert_eq!(
-            schema["required"],
-            serde_json::json!(["entrypoint", "files"])
+        // entrypoint, files, files_from — the sandbox-supplied source is
+        // optional and never required (fabro-4b29).
+        assert_eq!(schema["properties"].as_object().unwrap().len(), 3);
+        assert_eq!(schema["required"], serde_json::json!(["entrypoint"]));
+    }
+
+    #[test]
+    fn run_sandbox_files_error_teaches_the_inline_alternative() {
+        let error = run_sandbox_files_unavailable_error();
+        let text = format!("{error:#}");
+        assert!(
+            text.contains("inline"),
+            "the teaching error names the inline alternative: {text}"
         );
     }
 
@@ -436,13 +528,14 @@ mod tests {
             origin:           RunOrigin::default(),
             labels:           HashMap::new(),
             lifecycle:        RunLifecycle {
-                status:          RunStatus::Submitted,
-                approval:        None,
-                pending_control: None,
-                queue_position:  None,
-                error:           None,
-                archived:        false,
-                archived_at:     None,
+                conclusion_failure: None,
+                status:             RunStatus::Submitted,
+                approval:           None,
+                pending_control:    None,
+                queue_position:     None,
+                error:              None,
+                archived:           false,
+                archived_at:        None,
             },
             sandbox:          None,
             models:           Vec::new(),

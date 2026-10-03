@@ -59,7 +59,8 @@ impl RunView {
             | PlatformRecord::RunNotice(_)
             | PlatformRecord::InterviewAnswered(_)
             | PlatformRecord::NotificationSent(_)
-            | PlatformRecord::RunPaired(_) => {}
+            | PlatformRecord::RunPaired(_)
+            | PlatformRecord::RunBranchPublished(_) => {}
             PlatformRecord::RunBranch(record) => {
                 self.state.run_branch.clone_from(&record.run_branch);
                 self.state.base_sha.clone_from(&record.base_sha);
@@ -174,6 +175,10 @@ impl RunView {
                         })
                 {
                     creation.fail(record.error.clone(), at);
+                    // Fork seam (fabro-6655): a publish failure trailing the
+                    // conclusion re-classifies the green run as
+                    // PublishBlocked (records can arrive after the finish).
+                    super::fork_taxonomy::reclassify_publish_blocked(projection, at);
                 }
             }
             PlatformRecord::PullRequestLinked(record) => {

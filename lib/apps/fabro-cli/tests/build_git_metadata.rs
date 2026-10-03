@@ -11,7 +11,15 @@ fn symbolic_branch_tracks_head_and_active_ref() {
         PathBuf::from(".git/HEAD"),
         PathBuf::from(".git/refs/heads/main"),
     ]);
-    assert_eq!(metadata.short_sha.len(), 7);
+    assert_eq!(metadata.short_sha.len(), fabro_build_support::SHORT_SHA_LEN);
+}
+
+#[test]
+fn short_sha_length_matches_the_pin_toolchain_tag_contract() {
+    // Single shared length contract (fabro-6ffb): the embedded
+    // FABRO_GIT_SHA and the `env pin-toolchain` sha12 tag must agree, or
+    // the deployed-server parity gate can never pass.
+    assert_eq!(fabro_build_support::SHORT_SHA_LEN, 12);
 }
 
 #[test]
@@ -22,7 +30,7 @@ fn detached_head_tracks_only_head() {
     let metadata = fabro_build_support::collect_from(repo.path());
 
     assert_eq!(metadata.rerun_paths, vec![PathBuf::from(".git/HEAD")]);
-    assert_eq!(metadata.short_sha.len(), 7);
+    assert_eq!(metadata.short_sha.len(), fabro_build_support::SHORT_SHA_LEN);
 }
 
 #[test]

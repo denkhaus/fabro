@@ -16,6 +16,7 @@ api/run-outputs-api.ts
 api/runs-api.ts
 api/sandboxes-api.ts
 api/secrets-api.ts
+api/seeds-api.ts
 api/sessions-api.ts
 api/settings-api.ts
 api/system-api.ts
@@ -69,6 +70,7 @@ models/automation-api-trigger.ts
 models/automation-git-workflow-source.ts
 models/automation-list-meta.ts
 models/automation-list-response.ts
+models/automation-overlap-policy.ts
 models/automation-ref.ts
 models/automation-schedule-trigger.ts
 models/automation-trigger.ts
@@ -269,6 +271,7 @@ models/paginated-run-list.ts
 models/paginated-run-stage-list.ts
 models/paginated-run-stream-list.ts
 models/paginated-saved-query-list.ts
+models/paginated-seed-list.ts
 models/paginated-session-event-list.ts
 models/paginated-session-list.ts
 models/paginated-workflow-list-response.ts
@@ -423,6 +426,7 @@ models/run-question.ts
 models/run-reference.ts
 models/run-runnable-source.ts
 models/run-sandbox-failure.ts
+models/run-sandbox-file-map.ts
 models/run-sandbox-instance.ts
 models/run-sandbox-kind.ts
 models/run-sandbox-plan.ts
@@ -456,6 +460,7 @@ models/run-timing.ts
 models/run-usage-stage.ts
 models/run-usage-totals.ts
 models/run-usage.ts
+models/run-wait-result.ts
 models/run.ts
 models/sandbox-details.ts
 models/sandbox-file-entry.ts
@@ -482,6 +487,14 @@ models/saved-query.ts
 models/secret-list-response.ts
 models/secret-metadata.ts
 models/secret-type.ts
+models/seed-detail.ts
+models/seed-graph-edge.ts
+models/seed-graph-node.ts
+models/seed-graph.ts
+models/seed-status.ts
+models/seed-summary.ts
+models/seed-type.ts
+models/seeds-mirror-settings.ts
 models/server-api-settings.ts
 models/server-artifacts-settings.ts
 models/server-auth-github-settings.ts
@@ -496,6 +509,7 @@ models/server-namespace.ts
 models/server-sandbox-provider-settings.ts
 models/server-sandbox-settings.ts
 models/server-scheduler-settings.ts
+models/server-seeds-settings.ts
 models/server-settings.ts
 models/server-storage-settings.ts
 models/server-web-settings.ts

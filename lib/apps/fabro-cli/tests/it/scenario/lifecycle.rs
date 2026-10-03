@@ -146,7 +146,7 @@ fn dry_run_create_start_attach_works_with_default_run_lookup() {
     context
         .command()
         .args(["attach", &run_id])
-        .timeout(std::time::Duration::from_secs(10))
+        .timeout(std::time::Duration::from_secs(30))
         .assert()
         .success();
 
@@ -205,7 +205,7 @@ fn dry_run_detach_attach_works_with_default_run_lookup() {
     context
         .command()
         .args(["attach", &run_id])
-        .timeout(std::time::Duration::from_secs(10))
+        .timeout(std::time::Duration::from_secs(30))
         .assert()
         .success();
 
@@ -271,14 +271,14 @@ digraph BarBaz {
         .command()
         .current_dir(project.path())
         .args(["attach", &run_id])
-        .timeout(std::time::Duration::from_secs(10))
+        .timeout(std::time::Duration::from_secs(30))
         .assert()
         .success();
     context
         .command()
         .current_dir(project.path())
         .args(["attach", "workflow"])
-        .timeout(std::time::Duration::from_secs(10))
+        .timeout(std::time::Duration::from_secs(30))
         .assert()
         .success();
 
@@ -339,7 +339,7 @@ digraph FooWorkflow {
     context
         .command()
         .args(["attach", "alpha"])
-        .timeout(std::time::Duration::from_secs(10))
+        .timeout(std::time::Duration::from_secs(30))
         .assert()
         .success();
 

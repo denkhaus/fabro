@@ -4,12 +4,12 @@ use std::path::Path;
 use fabro_types::SandboxProviderKind;
 use fabro_types::settings::server::{
     GithubIntegrationSettings, GithubIntegrationStrategy, IntegrationWebhooksSettings,
-    ObjectStoreProvider, ObjectStoreSettings, SandboxPluginSettings, ServerApiSettings,
-    ServerArtifactsSettings, ServerAuthGithubSettings, ServerAuthMethod, ServerAuthSettings,
-    ServerIntegrationsSettings, ServerListenSettings, ServerLoggingSettings, ServerNamespace,
-    ServerSandboxProviderSettings, ServerSandboxProvidersSettings, ServerSandboxSettings,
-    ServerSchedulerSettings, ServerStorageSettings, ServerWebSettings, SlackIntegrationSettings,
-    WebhookStrategy,
+    ObjectStoreProvider, ObjectStoreSettings, SandboxPluginSettings, SeedsMirrorSettings,
+    ServerApiSettings, ServerArtifactsSettings, ServerAuthGithubSettings, ServerAuthMethod,
+    ServerAuthSettings, ServerIntegrationsSettings, ServerListenSettings, ServerLoggingSettings,
+    ServerNamespace, ServerSandboxProviderSettings, ServerSandboxProvidersSettings,
+    ServerSandboxSettings, ServerSchedulerSettings, ServerSeedsSettings, ServerStorageSettings,
+    ServerWebSettings, SlackIntegrationSettings, WebhookStrategy,
 };
 use fabro_util::Home;
 
@@ -21,7 +21,8 @@ use crate::user::default_storage_dir;
 use crate::{
     IntegrationWebhooksLayer, ObjectStoreLocalLayer, ObjectStoreS3Layer, ServerApiLayer,
     ServerArtifactsLayer, ServerAuthLayer, ServerIntegrationsLayer, ServerLayer, ServerListenLayer,
-    ServerSandboxLayer, ServerSandboxProviderLayer, ServerStorageLayer, ServerWebLayer,
+    ServerSandboxLayer, ServerSandboxProviderLayer, ServerSeedsLayer, ServerStorageLayer,
+    ServerWebLayer,
 };
 
 pub fn resolve_server(layer: &ServerLayer, errors: &mut Vec<ResolveError>) -> ServerNamespace {
@@ -63,6 +64,31 @@ pub fn resolve_server(layer: &ServerLayer, errors: &mut Vec<ResolveError>) -> Se
                 .unwrap_or_default(),
         },
         integrations,
+        seeds: resolve_seeds(layer.seeds.as_ref(), errors),
+    }
+}
+
+/// Resolve `[server.seeds]`: absent or empty leaves the seeds read API
+/// unconfigured; a mirror requires both `origin` and `branch`.
+fn resolve_seeds(
+    layer: Option<&ServerSeedsLayer>,
+    errors: &mut Vec<ResolveError>,
+) -> ServerSeedsSettings {
+    let Some(mirror) = layer.and_then(|seeds| seeds.mirror.as_ref()) else {
+        return ServerSeedsSettings::default();
+    };
+    let origin = require_string(mirror.origin.as_ref(), "server.seeds.mirror.origin", errors);
+    let branch = require_string(mirror.branch.as_ref(), "server.seeds.mirror.branch", errors);
+    warn_if_demoted_template("server.seeds.mirror.origin", Some(origin.as_str()));
+    if origin.is_empty() || branch.is_empty() {
+        return ServerSeedsSettings::default();
+    }
+    ServerSeedsSettings {
+        mirror: Some(SeedsMirrorSettings {
+            origin,
+            branch,
+            cache_dir: mirror.cache_dir.clone(),
+        }),
     }
 }
 

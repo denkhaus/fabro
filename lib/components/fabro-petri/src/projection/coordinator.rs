@@ -127,9 +127,16 @@ impl RunView {
     }
 
     /// The run's conclusion, from its recorded finish and what the stages
-    /// The run's conclusion, from its recorded finish and what the stages
     /// summed to.
     fn conclude(&mut self, status: &str, at: DateTime<Utc>) {
+        use fabro_llm::LONG_RATE_LIMIT_WINDOW;
+        use fabro_llm::gateway::{RateLimitWindow, reset_window};
+        // Fork seam read (fabro-6655): snapshot the publish state before the
+        // mutable projection borrow below.
+        let pull_request_creation = self
+            .projection
+            .as_ref()
+            .and_then(|projection| projection.pull_request_creation.clone());
         let Some(projection) = self.projection.as_mut() else {
             return;
         };
@@ -138,7 +145,48 @@ impl RunView {
             .root
             .and_then(|root| self.state.invocations.get(&root));
         let failure_message = root.and_then(|root| root.failure.clone());
-        let run_status = finished_status(status);
+        let mut run_status = finished_status(status);
+        // Fork seam (fabro-6655, fabro-67e5): a failed publish
+        // downgrades a green conclusion to PublishBlocked, keeping
+        // the run green while naming why delivery is incomplete.
+        let publish_blocked_failure = if matches!(run_status, RunStatus::Succeeded { .. })
+            && super::fork_taxonomy::publish_creation_failed(pull_request_creation.as_ref())
+        {
+            let error = pull_request_creation
+                .as_ref()
+                .and_then(|creation| creation.error.clone())
+                .unwrap_or_else(|| "unknown error".to_string());
+            run_status = RunStatus::Succeeded {
+                reason: SuccessReason::PublishBlocked,
+            };
+            Some(super::fork_taxonomy::publish_blocked_failure(&error, at))
+        } else {
+            None
+        };
+        // Fork seam (fabro-b00c, user decision 2026-09-25 — engine-side,
+        // refined 2026-09-26 option a): a green conclusion cannot stand
+        // over a leg failure a CATCH-ALL (unconditional) edge consumed —
+        // that is the fake-green the rule exists for. A failure an
+        // EXPLICIT conditional edge routed onward is control flow, the
+        // petri TerminalNode rule's own line, and stays green; a
+        // retried-then-succeeded leg never counts, because the leg's
+        // FINAL outcome is what the stages hold. PublishBlocked above set
+        // its own success reason, and the x.kind exit edges below are an
+        // explicit graph decision that consumes the failure deliberately.
+        // A parent whose child died must never read as a clean success.
+        let catch_all_failure = catch_all_leg_failure(projection, failure_message.as_deref());
+        if super::fork_taxonomy::refuses_green_conclusion(&run_status, catch_all_failure.as_deref())
+        {
+            tracing::warn!(
+                conclusion_downgraded = true,
+                message = %failure_message.as_deref().unwrap_or(""),
+                "recorded leg failure refuses the green conclusion (fabro-b00c)"
+            );
+            run_status = RunStatus::Failed {
+                reason: FailureReason::WorkflowError,
+            };
+        }
+
         let (outcome, failure) = match run_status {
             RunStatus::Failed {
                 reason: reason @ FailureReason::Cancelled,
@@ -172,6 +220,51 @@ impl RunView {
             ),
             _ => (StageOutcome::Succeeded, None),
         };
+        let failure = failure.or(publish_blocked_failure);
+        // Fork seam (fabro-2e7b, ADR-0021 rev 2 Option C): a failure whose
+        // message announces a provider usage-window reset (long window or
+        // naive-ETA) parks the run resumable instead of failing it — the
+        // pre-fire provider gate owns its recovery through rewind.
+        if let (RunStatus::Failed { .. }, Some(failure)) = (&run_status, &failure) {
+            let parks = reset_window(&failure.detail.message, std::time::SystemTime::now())
+                .is_some_and(|window| {
+                    matches!(window, RateLimitWindow::UnknownEta)
+                        || matches!(
+                            window,
+                            RateLimitWindow::Reopens(wait)
+                                if wait > LONG_RATE_LIMIT_WINDOW
+                        )
+                });
+            if parks {
+                run_status = RunStatus::Blocked {
+                    blocked_reason: fabro_types::BlockedReason::QuotaRateLimit,
+                };
+            }
+        }
+
+        // Fork seam (fabro-288d, ADR-0010 rev Option A): the run's DOT
+        // source carries the fork's `x.kind` exit edges; a boundary
+        // failure upgrades to `Succeeded { Boundary }`, deadlock/soft
+        // success-shapes downgrade to their park reasons.
+        {
+            let graph_source = projection.spec.graph_source.as_deref().unwrap_or_default();
+            let exit_kinds = super::fork_exit_kinds::ExitKinds::parse(graph_source);
+            // The kind lookup needs the stage that ROUTED to exit, not
+            // the exit stage itself: `node@visit` display ids never match
+            // the DOT edge names, and the exit node runs after the router
+            // (fabro-51ad: a looping deadlock exit read as workflow_error
+            // because `flaky@3`/`exit@1` never matched `flaky -> exit`).
+            let last_stage = self
+                .state
+                .stages
+                .iter()
+                .rev()
+                .map(|(_, stage)| stage.stage_id.node_id().to_string())
+                .find(|node| node != "exit");
+            if let Some(overridden) = exit_kinds.classify(status, last_stage.as_deref(), "exit") {
+                run_status = overridden;
+            }
+        }
         apply_status(projection, run_status, at);
         projection.pending_control = None;
         projection.pending_interviews.clear();
@@ -233,6 +326,59 @@ fn branch_slot(slot: &str) -> Option<(u64, u32)> {
     let index = parts.next()?.parse::<u32>().ok()?;
     let firing = fork.rsplit_once('@')?.1.parse::<u64>().ok()?;
     Some((firing, index))
+}
+
+/// The first leg failure a catch-all (unconditional) edge consumed, as
+/// the message the downgrade names: `None` when every failed leg rode an
+/// explicit conditional route — or when no leg failed at all (a
+/// retried-then-succeeded leg's final outcome is success, so it never
+/// appears here). The failed leg's consumer is the next stage in the
+/// projection's execution order, or `exit` when the leg is last.
+fn catch_all_leg_failure(
+    projection: &fabro_types::RunProjection,
+    recorded: Option<&str>,
+) -> Option<String> {
+    // Stages in EXECUTION order: `StageId` orders lexicographically, the
+    // run's own order lives in each stage's first event sequence.
+    let mut stages: Vec<(u32, String, Option<String>)> = projection
+        .iter_stages()
+        .map(|(stage_id, stage)| {
+            (
+                stage.first_event_seq.get(),
+                stage_id.node_id().to_string(),
+                stage.completion.as_ref().and_then(|completion| {
+                    completion.outcome.is_failure().then(|| {
+                        completion
+                            .failure_reason
+                            .clone()
+                            .or_else(|| recorded.map(str::to_string))
+                            .unwrap_or_default()
+                    })
+                }),
+            )
+        })
+        .collect();
+    stages.sort_by_key(|(seq, _, _)| *seq);
+    let Some((index, _)) = stages
+        .iter()
+        .enumerate()
+        .find(|(_, (_, _, failure))| failure.is_some())
+    else {
+        // No failed leg: a recorded message without a failed stage is a
+        // superseded attempt's echo — retries are invisible.
+        return None;
+    };
+    let (_, node, message) = &stages[index];
+    let consumer = stages
+        .get(index + 1)
+        .map_or_else(|| "exit".to_string(), |(_, next, _)| next.clone());
+    let edges = super::edge_conditions::EdgeConditions::parse(
+        projection.spec.graph_source.as_deref().unwrap_or_default(),
+    );
+    if edges.is_conditional(node, &consumer) {
+        return None;
+    }
+    message.clone()
 }
 
 #[cfg(test)]

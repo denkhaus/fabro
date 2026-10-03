@@ -26,6 +26,7 @@ use fabro_petri::checkpoint::{
 };
 use fabro_petri::controls::RunControls;
 use fabro_petri::engine::{self, Execution, RunRequest, RunStatus};
+use fabro_petri::fork_stage_envelope::StageEnvelopes;
 use fabro_petri::hooks::HooksSpec;
 use fabro_petri::platform_records::PlatformRecords;
 use fabro_petri::providers::{DaytonaCredentials, SandboxProviderConfig};
@@ -54,6 +55,34 @@ fn workflow(stages: &str, edges: &str) -> String {
 
 const SETTINGS: &str = "_version = 1\n\n[workflow]\ngraph = \"workflow.fabro\"\n";
 
+/// The host plugin as Petri's lookup finds it: the override variable, else
+/// the executable on `PATH`. `None`, after saying so, when the test should
+/// skip; a panic when the environment forbids a skip. (Restored from the
+/// pre-merge branch state: upstream's in-process-provider rewrite of this
+/// file dropped the helper our hook-write-roots tests still guard with.)
+const HOST_PLUGIN: &str = "sandbox-driver-host";
+const HOST_PLUGIN_OVERRIDE: &str = "PETRI_SANDBOX_HOST_PLUGIN";
+const REQUIRE_ENV: &str = "FABRO_REQUIRE_SANDBOX_PLUGINS";
+
+#[allow(clippy::print_stderr, reason = "test-skip notice, not tool output")]
+fn host_plugin() -> Option<PathBuf> {
+    let found = env::var_os(HOST_PLUGIN_OVERRIDE)
+        .map(PathBuf::from)
+        .or_else(|| {
+            env::split_paths(&env::var_os("PATH")?)
+                .map(|dir| dir.join(HOST_PLUGIN))
+                .find(|candidate| candidate.is_file())
+        });
+    if found.is_none() {
+        assert!(
+            env::var_os(REQUIRE_ENV).is_none(),
+            "{REQUIRE_ENV} is set, but {HOST_PLUGIN} is not on PATH and {HOST_PLUGIN_OVERRIDE} is unset"
+        );
+        eprintln!("skipping: {HOST_PLUGIN} is not on PATH and {HOST_PLUGIN_OVERRIDE} is unset");
+    }
+    found
+}
+
 /// The bundle admitted the way the create handler admits it.
 fn admit(workflow: &str, settings: &str) -> AdmittedGraphs {
     let request = CheckRequest {
@@ -80,40 +109,54 @@ fn admit(workflow: &str, settings: &str) -> AdmittedGraphs {
 
 /// One run's pieces: the store, its platform records, where it ran.
 struct Harness {
-    run_id:    RunId,
-    run_dir:   PathBuf,
-    store:     Arc<MemoryRunStore>,
-    records:   Arc<MemoryPlatformRecords>,
-    blobs:     Arc<MemoryBlobs>,
+    run_id:           RunId,
+    run_dir:          PathBuf,
+    store:            Arc<MemoryRunStore>,
+    records:          Arc<MemoryPlatformRecords>,
+    blobs:            Arc<MemoryBlobs>,
     /// The `[run.artifacts] include` patterns the hooks collect under.
-    artifacts: Vec<String>,
-    _root:     tempfile::TempDir,
+    artifacts:        Vec<String>,
+    /// The run's stage envelopes, when a test drives the checkpoint
+    /// guard: parsed from the workflow's `x.*` attributes.
+    envelopes:        Option<Arc<StageEnvelopes>>,
+    /// Workspace-relative roots the run's hook wiring may write
+    /// (fabro-b6c5), as `HooksSpec::for_run` would derive them.
+    hook_write_roots: Vec<String>,
+    _root:            tempfile::TempDir,
 }
 
 impl Harness {
     fn new() -> Self {
         let root = tempfile::tempdir().expect("a temp dir");
         Self {
-            run_id:    RunId::new(),
-            run_dir:   root.path().join("run"),
-            store:     Arc::new(MemoryRunStore::new()),
-            records:   Arc::new(MemoryPlatformRecords::new()),
-            blobs:     Arc::new(MemoryBlobs::new()),
-            artifacts: Vec::new(),
-            _root:     root,
+            run_id:           RunId::new(),
+            run_dir:          root.path().join("run"),
+            store:            Arc::new(MemoryRunStore::new()),
+            records:          Arc::new(MemoryPlatformRecords::new()),
+            blobs:            Arc::new(MemoryBlobs::new()),
+            artifacts:        Vec::new(),
+            envelopes:        None,
+            hook_write_roots: Vec::new(),
+            _root:            root,
         }
     }
 
     fn hooks(&self, provider: &SandboxProviderKind) -> HooksSpec {
-        HooksSpec {
-            records:    Arc::clone(&self.records) as Arc<dyn PlatformRecords>,
-            git:        RunGitSettings {
+        let mut spec = HooksSpec {
+            records:          Arc::clone(&self.records) as Arc<dyn PlatformRecords>,
+            git:              RunGitSettings {
                 host_workspaces: *provider == SandboxProviderKind::LOCAL,
                 ..RunGitSettings::default()
             },
-            artifacts:  self.artifacts.clone(),
-            test_gates: None,
+            artifacts:        self.artifacts.clone(),
+            envelopes:        None,
+            hook_write_roots: self.hook_write_roots.clone(),
+            test_gates:       None,
+        };
+        if let Some(envelopes) = &self.envelopes {
+            spec = spec.with_envelopes(Arc::clone(envelopes));
         }
+        spec
     }
 
     /// Run the bundle to its end through the engine module, as the worker
@@ -372,6 +415,152 @@ async fn every_finish_is_committed_and_recorded() {
         .await
         .expect("the run-end hooks wrote their log");
     assert_eq!(run_end, "run_complete\nsandbox_cleanup\n");
+}
+
+/// `[[run.hooks]]` contexts carry the run's id: the runtime installs its
+/// own local hook service for the tool-policy seam, which Petri run-binds
+/// only for a service it built itself, so before fabro-6558 nothing bound
+/// it and every context (and `FABRO_RUN_ID`) reached hooks empty — the
+/// stage journal landed in `.fabro/journal/.jsonl` instead of
+/// `<run_id>.jsonl`.
+#[tokio::test]
+async fn run_hook_contexts_carry_the_run_id() {
+    let harness = Harness::new();
+    let workflow = workflow(
+        "  noop [shape=parallelogram, script=\"true\"]",
+        "  start -> noop -> exit",
+    );
+    let settings = format!(
+        "{SETTINGS}\n[[run.hooks]]\nevent = \"run_complete\"\nscript = \"printf '%s' \\\"$FABRO_RUN_ID\\\" \
+         > env-run-id.txt; grep -o '\\\"run_id\\\":\\\"[^\\\"]*\\\"' \\\"$FABRO_HOOK_CONTEXT\\\" > \
+         ctx-run-id.txt\"\n"
+    );
+    let outcome = harness.run(&workflow, &settings).await;
+    assert_eq!(outcome.status, RunStatus::Success, "{outcome:?}");
+    assert!(outcome.complete, "{:?}", outcome.incomplete);
+
+    let workspace = harness.workspace().await;
+    let path = harness.workspace_path(&workspace);
+    let run_id = harness.run_id.to_string();
+    let env_id = fs::read_to_string(path.join("env-run-id.txt"))
+        .await
+        .expect("the hook saw FABRO_RUN_ID");
+    assert_eq!(env_id, run_id, "the env var carries the run id");
+    let ctx_id = fs::read_to_string(path.join("ctx-run-id.txt"))
+        .await
+        .expect("the hook context carried a run id");
+    assert_eq!(
+        ctx_id.trim(),
+        format!("\"run_id\":\"{run_id}\""),
+        "the context's run_id field matches the run"
+    );
+}
+
+/// The engine-injected stage environment (fabro-6e7f): every process a
+/// stage spawns sees `FABRO_STAGE` naming the node being dispatched, one
+/// value per node, through the sandbox exec facet the provider factories
+/// wrapped.
+#[tokio::test]
+async fn stage_processes_carry_the_dispatched_stage() {
+    let harness = Harness::new();
+    let workflow = workflow(
+        "  survey [shape=parallelogram, script=\"printf '%s' \\\"$FABRO_STAGE\\\" > \
+         stage-survey.txt\"]\n  develop [shape=parallelogram, script=\"printf '%s' \
+         \\\"$FABRO_STAGE\\\" > stage-develop.txt\"]",
+        "  start -> survey -> develop -> exit",
+    );
+    let outcome = harness.run(&workflow, SETTINGS).await;
+    assert_eq!(outcome.status, RunStatus::Success, "{outcome:?}");
+    assert!(outcome.complete, "{:?}", outcome.incomplete);
+
+    let workspace = harness.workspace().await;
+    let path = harness.workspace_path(&workspace);
+    for node in ["survey", "develop"] {
+        let seen = fs::read_to_string(path.join(format!("stage-{node}.txt")))
+            .await
+            .unwrap_or_else(|error| panic!("the {node} stage saw FABRO_STAGE: {error}"));
+        assert_eq!(seen, node, "the engine's stage names the dispatched node");
+    }
+}
+
+/// The stage-envelope guard meets the stage-journal hook contract
+/// (fabro-b6c5): a run that wires sandbox hooks keeps its
+/// `.fabro/journal/` traffic exempt from `x.fs_write`, so a deny-all
+/// planner whose only staged file is the journal the hook appended
+/// commits cleanly. `prep` carries no envelope and commits the tree, so
+/// the journal file is the deny-all stage's whole staged set.
+#[tokio::test]
+async fn a_hook_write_root_exempts_the_journal_from_a_deny_all_stage() {
+    if host_plugin().is_none() {
+        return;
+    }
+    let mut harness = Harness::new();
+    harness.envelopes = Some(Arc::new(StageEnvelopes::parse(&journal_workflow(false))));
+    harness.hook_write_roots = vec![".fabro/journal".to_string()];
+    let outcome = harness.run(&journal_workflow(false), SETTINGS).await;
+    assert_eq!(outcome.status, RunStatus::Success, "{outcome:?}");
+    assert!(outcome.complete, "{:?}", outcome.incomplete);
+}
+
+/// The exemption is narrow: a stage that also stages a file of its own
+/// outside the hook root still violates its deny-all envelope, and the
+/// run names the path. Hook wiring never widens `x.fs_write`.
+#[tokio::test]
+async fn a_non_journal_staged_path_still_violates_a_deny_all_stage() {
+    if host_plugin().is_none() {
+        return;
+    }
+    let mut harness = Harness::new();
+    harness.envelopes = Some(Arc::new(StageEnvelopes::parse(&journal_workflow(true))));
+    harness.hook_write_roots = vec![".fabro/journal".to_string()];
+    let outcome = harness.run(&journal_workflow(true), SETTINGS).await;
+    assert_ne!(outcome.status, RunStatus::Success, "{outcome:?}");
+    let failure = outcome.failure.as_deref().unwrap_or("no failure recorded");
+    assert!(
+        failure.contains("stage envelope violation"),
+        "the failure names the envelope violation: {failure}"
+    );
+    assert!(
+        failure.contains("leak.txt"),
+        "the failure names the leaking path: {failure}"
+    );
+}
+
+/// Without the hook roots the same journal-only stage violates: the
+/// exemption comes from the declared hook wiring, never from a global
+/// bypass.
+#[tokio::test]
+async fn without_hook_write_roots_the_journal_violates_a_deny_all_stage() {
+    if host_plugin().is_none() {
+        return;
+    }
+    let mut harness = Harness::new();
+    harness.envelopes = Some(Arc::new(StageEnvelopes::parse(&journal_workflow(false))));
+    let outcome = harness.run(&journal_workflow(false), SETTINGS).await;
+    assert_ne!(outcome.status, RunStatus::Success, "{outcome:?}");
+    let failure = outcome.failure.as_deref().unwrap_or("no failure recorded");
+    assert!(
+        failure.contains("stage envelope violation"),
+        "the failure names the envelope violation: {failure}"
+    );
+}
+
+/// The deny-all fixture of the journal tests: `prep` commits the tree,
+/// `planner` declares `x.fs_write=''` (the model writes nothing) and
+/// stages the journal line the stage-journal hook would have appended —
+/// plus `leak.txt` when `leak` is set.
+fn journal_workflow(leak: bool) -> String {
+    let mut planner_script =
+        "mkdir -p .fabro/journal && echo line > .fabro/journal/j.jsonl".to_string();
+    if leak {
+        planner_script.push_str(" && echo secret > leak.txt");
+    }
+    workflow(
+        &format!(
+            "  prep [shape=parallelogram, script=\"echo base > base.txt\"]\n  planner              [shape=parallelogram, script=\"{planner_script}\", x.fs_write=\"\"]"
+        ),
+        "  start -> prep -> planner -> exit",
+    )
 }
 
 /// The files under `[run.artifacts] include` are collected once per

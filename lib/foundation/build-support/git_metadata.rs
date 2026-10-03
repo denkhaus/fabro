@@ -1,6 +1,12 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+/// Length of the short git sha embedded as `FABRO_GIT_SHA` and compared by
+/// the `fabro env pin-toolchain` parity gate. Matches `git rev-parse
+/// --short=12` and the `scripts/run-images.nu` image tags, so a
+/// correctly-built server always passes the parity check (fabro-6ffb).
+pub const SHORT_SHA_LEN: usize = 12;
+
 #[derive(Debug, Eq, PartialEq)]
 pub struct BuildGitMetadata {
     pub rerun_paths: Vec<PathBuf>,
@@ -22,8 +28,8 @@ pub fn collect_from(package_dir: &Path) -> BuildGitMetadata {
 
     let short_sha = git_output(package_dir, ["rev-list", "-1", "HEAD"])
         .map(|sha| {
-            if sha.len() >= 7 {
-                sha[..7].to_string()
+            if sha.len() >= SHORT_SHA_LEN {
+                sha[..SHORT_SHA_LEN].to_string()
             } else {
                 sha
             }
@@ -42,6 +48,20 @@ pub fn collect_from(package_dir: &Path) -> BuildGitMetadata {
 )]
 pub fn cargo_profile() -> String {
     std::env::var("PROFILE").unwrap_or_default()
+}
+
+/// The `FABRO_GIT_SHA` image-build injection: image builds (`cargo dev
+/// docker-build`) compile without usable git metadata inside the builder
+/// container, so the build plan injects the sha as this env var and the
+/// build script never embeds an empty sha (fabro-6ffb).
+#[expect(
+    clippy::disallowed_methods,
+    reason = "Build scripts read the FABRO_GIT_SHA image-build injection seam outside application runtime configuration."
+)]
+pub fn injected_git_sha() -> Option<String> {
+    std::env::var("FABRO_GIT_SHA")
+        .ok()
+        .filter(|sha| !sha.is_empty())
 }
 
 #[expect(

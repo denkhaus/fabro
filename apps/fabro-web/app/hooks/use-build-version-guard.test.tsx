@@ -7,14 +7,18 @@ import { setupReactTestEnv } from "../lib/test-utils";
 const loadedBuildId = "aaaaaaaa";
 let latestBuildId: string | null = loadedBuildId;
 
+// Partial-mock (bun's mock.module is process-wide; restore does not undo
+// it — later files resolve names off this factory): spread the REAL
+// module, override only what the guard consumes.
+const realBuildVersion = await import("../lib/build-version");
 mock.module("../lib/build-version", () => ({
+  ...realBuildVersion,
   documentBuildId: () => loadedBuildId,
-  isStaleBuild: (loaded: string | null, latest: string | null) =>
-    loaded != null && latest != null && loaded !== latest,
   useLatestBuildId: () => latestBuildId,
 }));
 
 const { useBuildVersionGuard } = await import("./use-build-version-guard");
+mock.restore();
 
 let renderer: TestRenderer.ReactTestRenderer | null = null;
 let restoreReactTestEnv = () => {};

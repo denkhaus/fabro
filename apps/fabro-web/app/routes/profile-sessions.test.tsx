@@ -11,46 +11,32 @@ let currentResponse: AuthSessionsResponse | undefined;
 const deleteAuthSessionMock = mock((_id: string) => Promise.resolve({ data: undefined }));
 const mutateMock = mock((..._args: unknown[]) => Promise.resolve(undefined));
 
+// Partial-mock: bun's mock.module is process-wide (restore does not
+// undo it) — spread the REAL module so every export stays available
+// to later files in the same run; override only what this test needs.
+const realQueries = await import("../lib/queries");
 mock.module("../lib/queries", () => ({
+  ...realQueries,
   useAuthSessions: () => ({ data: currentResponse, error: undefined }),
 }));
 
+// Partial-mock: bun's mock.module is process-wide (restore does not
+// undo it) — spread the REAL module so every export stays available
+// to later files in the same run; override only what this test needs.
+const realApiClient = await import("../lib/api-client");
 mock.module("../lib/api-client", () => ({
-  apiData: async function apiData<T>(
-    call: () => Promise<{ data: T }>,
-  ): Promise<T> {
-    const response = await call();
-    return response.data;
-  },
+  ...realApiClient,
+  // Only the API method this route hits is replaced; apiData/ApiError stay
+  // REAL so later files in the same run test the real adapter behavior.
   authApi: {
+    ...realApiClient.authApi,
     deleteAuthSession: (id: string) => deleteAuthSessionMock(id),
-  },
-  ApiError: class ApiError extends Error {
-    readonly status: number;
-    readonly requestId: string | null;
-    readonly body: unknown;
-
-    constructor({
-      status,
-      message,
-      requestId,
-      body,
-    }: {
-      status: number;
-      message: string;
-      requestId: string | null;
-      body: unknown;
-    }) {
-      super(message);
-      this.name = "ApiError";
-      this.status = status;
-      this.requestId = requestId;
-      this.body = body;
-    }
   },
 }));
 
+const realswr = await import("swr");
 mock.module("swr", () => ({
+  ...realswr,
   useSWRConfig: () => ({ mutate: mutateMock }),
 }));
 

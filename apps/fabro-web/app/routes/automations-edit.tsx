@@ -111,6 +111,7 @@ function EditAutomationForm({
           target:      targetFromFormValues(values),
           workflow:    values.workflow.trim(),
           workflow_source: workflowSourceFromFormValues(values),
+          on_overlap: automation.on_overlap ?? "skip",
           triggers: triggersFromFormValues(values),
         }),
       );

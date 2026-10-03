@@ -11,10 +11,12 @@ import {
   canArchive,
   canCancel,
   canDelete,
+  canRetry,
   canUnarchive,
   cancellationActionLabel,
   cancellationSuccessMessage,
   cancelRun,
+  retryRun,
   deleteErrorMessage,
   deleteRun,
   denyRun,
@@ -35,7 +37,8 @@ const MENU_ITEM_DANGER_CLASS =
 export function RowActionsMenu({ run }: { run: RunWithStatus }) {
   const { mutate } = useSWRConfig();
   const { push } = useToast();
-  const [pendingAction, setPendingAction] = useState<LifecycleAction | "delete" | null>(null);
+  const [pendingAction, setPendingAction] =
+    useState<LifecycleAction | "delete" | "retry" | null>(null);
   const [optimisticallyCancelled, setOptimisticallyCancelled] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [idCopied, setIdCopied] = useState(false);
@@ -46,6 +49,7 @@ export function RowActionsMenu({ run }: { run: RunWithStatus }) {
   const showArchive = canArchive(status);
   const showUnarchive = canUnarchive(status);
   const showCancel = canCancel(status);
+  const showRetry = canRetry(status);
   const showDelete = canDelete(status);
   const cancellationPending = isCancellationPendingState(
     status,
@@ -54,11 +58,11 @@ export function RowActionsMenu({ run }: { run: RunWithStatus }) {
   );
   const pending = pendingAction !== null || cancellationPending;
 
-  const hasLifecycle = showArchive || showUnarchive;
+  const hasLifecycle = showRetry || showArchive || showUnarchive;
   const hasDestructive = showDeny || showCancel || showDelete;
 
   async function runAction<T>(
-    label: LifecycleAction,
+    label: LifecycleAction | "retry",
     action: () => Promise<T>,
     successMessage: string | ((result: T) => string),
   ) {
@@ -76,7 +80,13 @@ export function RowActionsMenu({ run }: { run: RunWithStatus }) {
             : successMessage,
       });
     } catch (error) {
-      push({ message: mapError(error, label), tone: "error" });
+      push({
+        message:
+          label === "retry"
+            ? "Couldn't retry the run right now. Try again."
+            : mapError(error, label),
+        tone: "error",
+      });
     } finally {
       setPendingAction(null);
       mutateRunListCaches(mutate);
@@ -160,13 +170,30 @@ export function RowActionsMenu({ run }: { run: RunWithStatus }) {
               </button>
             </MenuItem>
           )}
-          {showArchive && (
+          {showRetry && (
             <MenuItem>
               <button
                 type="button"
                 onClick={() =>
-                  void runAction("archive", () => archiveRun(run.id), "Archived run.")
+                  void runAction(
+                    "retry",
+                    () => retryRun(run.id),
+                    (run) => `Retried as run ${run.id} — earlier progress is kept.`,
+                  )
                 }
+                disabled={pending}
+                className={MENU_ITEM_CLASS}
+              >
+                Retry
+                <span className="ml-auto text-xs text-fg-muted">keep progress</span>
+              </button>
+            </MenuItem>
+          )}
+          {showArchive && (
+            <MenuItem>
+              <button
+                type="button"
+                onClick={() => void runAction("archive", () => archiveRun(run.id), "Archived run.")}
                 disabled={pending}
                 className={MENU_ITEM_CLASS}
               >

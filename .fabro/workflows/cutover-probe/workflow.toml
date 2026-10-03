@@ -1,0 +1,11 @@
+_version = 1
+
+[workflow]
+graph = "workflow.fabro"
+
+# Full-history clone: checkpoint publishing bundles the workspace commit
+# and traverses its whole ancestry; a depth cut silently truncates the
+# bundle at the shallow boundary and kills every sandbox git-target run at
+# its first checkpoint (fabro-df60/fabro-b6c5/fabro-6558; mx-9251c9).
+[run.clone]
+depth = 0

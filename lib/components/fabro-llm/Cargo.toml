@@ -17,6 +17,7 @@ test-support = ["fabro-auth/test-support"]
 workspace = true
 
 [dependencies]
+chrono = { workspace = true }
 async-trait.workspace = true
 bytes.workspace = true
 fabro-auth = { path = "../../foundation/fabro-auth" }
@@ -32,8 +33,11 @@ strum.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 toml.workspace = true
+tracing.workspace = true
 
 [dev-dependencies]
+anyhow.workspace = true
+clap.workspace = true
 fabro-auth = { path = "../../foundation/fabro-auth", features = ["test-support"] }
 fabro-llm = { path = ".", features = ["test-support"] }
 fabro-macros = { path = "../../foundation/fabro-macros" }

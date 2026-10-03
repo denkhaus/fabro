@@ -128,6 +128,20 @@ fn events_completed_run_reads_store_without_progress_jsonl() {
         r#""recorded_at":\d{13}"#.to_string(),
         r#""recorded_at":[EPOCH_MS]"#.to_string(),
     ));
+    // The publish-outcome record races the terminal lifecycle record for
+    // stream order (fabro-0664); the setup waits for it and the filter
+    // keeps it out of the asserted view, making either order equivalent.
+    filters.push((
+        r#"\{"run_id":"\[ULID\]".*run\.branch_published.*\n"#.to_string(),
+        String::new(),
+    ));
+    // Either platform record can land first, so the surviving line's
+    // sequence numbers vary by arrival order.
+    filters.push((
+        r#""stream_seq":\d+"#.to_string(),
+        r#""stream_seq":[SEQ]"#.to_string(),
+    ));
+    filters.push((r#""seq":\d+"#.to_string(), r#""seq":[SEQ]"#.to_string()));
     let mut cmd = context.command();
     cmd.args(["events", "--tail", "2", &run.run_id]);
 
@@ -135,8 +149,7 @@ fn events_completed_run_reads_store_without_progress_jsonl() {
     success: true
     exit_code: 0
     ----- stdout -----
-    {"run_id":"[ULID]","stream_seq":67,"kind":"petri","id":"coordinator/7/0","recorded_at":[EPOCH_MS],"item":{"id":{"log":"coordinator","seq":7,"index":0},"origin":"external","context":{},"recorded_at":[EPOCH_MS],"record":{"seq":7,"origin":"external","recorded_at":[EPOCH_MS],"body":{"event":"run.finished","status":"success"}}}}
-    {"run_id":"[ULID]","stream_seq":68,"kind":"platform","id":"[EVENT_ID]","recorded_at":[EPOCH_MS],"item":{"seq":14,"recorded_at":[EPOCH_MS],"record":{"kind":"run.lifecycle","transition":"succeeded","status":{"kind":"succeeded","reason":"completed"}}}}
+    {"run_id":"[ULID]","stream_seq":[SEQ],"kind":"platform","id":"[EVENT_ID]","recorded_at":[EPOCH_MS],"item":{"seq":[SEQ],"recorded_at":[EPOCH_MS],"record":{"kind":"run.lifecycle","transition":"succeeded","status":{"kind":"succeeded","reason":"completed"}}}}
     ----- stderr -----
     "#);
 }
@@ -158,6 +171,20 @@ fn events_tail_limits_output() {
         r#""recorded_at":\d{13}"#.to_string(),
         r#""recorded_at":[EPOCH_MS]"#.to_string(),
     ));
+    // The publish-outcome record races the terminal lifecycle record for
+    // stream order (fabro-0664); the setup waits for it and the filter
+    // keeps it out of the asserted view, making either order equivalent.
+    filters.push((
+        r#"\{"run_id":"\[ULID\]".*run\.branch_published.*\n"#.to_string(),
+        String::new(),
+    ));
+    // Either platform record can land first, so the surviving line's
+    // sequence numbers vary by arrival order.
+    filters.push((
+        r#""stream_seq":\d+"#.to_string(),
+        r#""stream_seq":[SEQ]"#.to_string(),
+    ));
+    filters.push((r#""seq":\d+"#.to_string(), r#""seq":[SEQ]"#.to_string()));
     let mut cmd = context.command();
     cmd.args(["events", "--tail", "2", &run.run_id]);
 
@@ -165,8 +192,7 @@ fn events_tail_limits_output() {
     success: true
     exit_code: 0
     ----- stdout -----
-    {"run_id":"[ULID]","stream_seq":67,"kind":"petri","id":"coordinator/7/0","recorded_at":[EPOCH_MS],"item":{"id":{"log":"coordinator","seq":7,"index":0},"origin":"external","context":{},"recorded_at":[EPOCH_MS],"record":{"seq":7,"origin":"external","recorded_at":[EPOCH_MS],"body":{"event":"run.finished","status":"success"}}}}
-    {"run_id":"[ULID]","stream_seq":68,"kind":"platform","id":"[EVENT_ID]","recorded_at":[EPOCH_MS],"item":{"seq":14,"recorded_at":[EPOCH_MS],"record":{"kind":"run.lifecycle","transition":"succeeded","status":{"kind":"succeeded","reason":"completed"}}}}
+    {"run_id":"[ULID]","stream_seq":[SEQ],"kind":"platform","id":"[EVENT_ID]","recorded_at":[EPOCH_MS],"item":{"seq":[SEQ],"recorded_at":[EPOCH_MS],"record":{"kind":"run.lifecycle","transition":"succeeded","status":{"kind":"succeeded","reason":"completed"}}}}
     ----- stderr -----
     "#);
 }

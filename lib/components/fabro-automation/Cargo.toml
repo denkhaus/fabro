@@ -13,6 +13,7 @@ doctest = false
 workspace = true
 
 [dependencies]
+strum.workspace = true
 chrono.workspace = true
 croner.workspace = true
 fabro-db = { path = "../../foundation/fabro-db" }

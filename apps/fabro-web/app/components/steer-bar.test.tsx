@@ -16,7 +16,9 @@ let interruptPending = false;
 const steerTrigger = mock(() => Promise.resolve(undefined));
 const interruptTrigger = mock(() => Promise.resolve(undefined));
 
+const reallibmutations = await import("../lib/mutations");
 mock.module("../lib/mutations", () => ({
+  ...reallibmutations,
   useSteerRun: () => ({
     isMutating: steerPending,
     trigger: steerTrigger,

@@ -70,6 +70,11 @@ pub mod checkpoint;
 pub mod controls;
 pub mod engine;
 pub mod fork;
+pub mod fork_exec_guard;
+pub mod fork_preamble_policy;
+pub mod fork_stage_env;
+pub mod fork_stage_envelope;
+pub mod generation_guard_lint;
 pub mod hooks;
 pub mod host_tools;
 pub mod http_store;
@@ -87,6 +92,7 @@ pub mod runtime;
 pub mod secrets;
 #[cfg(feature = "test-support")]
 pub mod test_support;
+pub mod tool_policy;
 pub mod workspace;
 
 pub use http_store::HttpRunStore;

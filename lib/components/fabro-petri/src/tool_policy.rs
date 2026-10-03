@@ -1,0 +1,188 @@
+//! The engine-side `x.tools` allowlist at the session's tool boundary
+//! (fabro-1a41, the first re-landed member of the fabro-70af family).
+//!
+//! [`ToolPolicyHooks`] wraps Petri's local hook service as the run's
+//! `HookService`: at `BeforeToolUse` it asks the node's stage envelope —
+//! a node that declares `x.tools` may call only those session tools, and
+//! a call outside the list is denied mechanically, the reason stated to
+//! the model, before Pebble runs the tool. At the dispatch points
+//! (`BeforeVisit`, `Retrying`, `BeforeAttempt`) it records the node
+//! being dispatched on the run's [`StageDispatch`] cell, which the
+//! sandbox exec facet reads to inject `FABRO_STAGE` (fabro-6e7f) — the
+//! hook service is the one fabro-owned component that sees every
+//! stage's view before the step spawns anything. Every other point, and
+//! every call of a node without the attribute, passes through to the
+//! local service unchanged, so `[[run.hooks]]` keep running. The wrapper
+//! is what [`RuntimeSpec::runtime`](crate::runtime::RuntimeSpec::runtime)
+//! installs as the `HookServiceHandle` capability before
+//! `petri_attractor_steps::register`, the documented host-replacement
+//! seam; the driver's awaited hooks (`FabroHooks`) wrap it in turn and
+//! forward every point.
+
+use std::sync::Arc;
+
+use petri_attractor_steps::hooks::LocalHooks;
+use petri_execution::hooks::{HookDecision, HookPoint, HookReport, HookRequest, HookService};
+
+use crate::fork_stage_env::StageDispatch;
+use crate::fork_stage_envelope::StageEnvelopes;
+
+/// The wrapped local hook service with the run's stage envelopes.
+#[derive(Clone)]
+pub struct ToolPolicyHooks {
+    inner:     Arc<LocalHooks>,
+    envelopes: Option<Arc<StageEnvelopes>>,
+    stages:    Arc<StageDispatch>,
+}
+
+impl ToolPolicyHooks {
+    /// Wrap `inner` (Petri's local `[[run.hooks]]` service) with the
+    /// `x.tools` policy for `envelopes` and the stage recorder `stages`;
+    /// `None` envelopes is a pure passthrough, the runtime without
+    /// envelopes.
+    #[must_use]
+    pub fn new(
+        inner: Arc<LocalHooks>,
+        envelopes: Option<Arc<StageEnvelopes>>,
+        stages: Arc<StageDispatch>,
+    ) -> Self {
+        Self {
+            inner,
+            envelopes,
+            stages,
+        }
+    }
+}
+
+/// The points that precede a step's spawns: where the node being
+/// dispatched becomes the run's current stage.
+fn is_dispatch_point(point: HookPoint) -> bool {
+    matches!(
+        point,
+        HookPoint::BeforeVisit | HookPoint::Retrying | HookPoint::BeforeAttempt
+    )
+}
+
+#[async_trait::async_trait]
+impl HookService for ToolPolicyHooks {
+    async fn run(&self, request: HookRequest) -> HookReport {
+        if let Some(view) = &request.view {
+            if is_dispatch_point(request.point) {
+                self.stages.set(view.node_name());
+            }
+        }
+        if let (Some(envelopes), Some(view)) = (&self.envelopes, &request.view) {
+            if matches!(request.point, HookPoint::BeforeToolUse) {
+                if let Some(tool) = request
+                    .payload
+                    .get("tool_name")
+                    .and_then(|value| value.as_str())
+                {
+                    if let Some(reason) = denied_tool(envelopes, view.node_name(), tool) {
+                        return HookReport {
+                            point:    request.point,
+                            decision: HookDecision::Block { reason },
+                            hooks:    Vec::new(),
+                            warnings: Vec::new(),
+                            activity: Vec::new(),
+                        };
+                    }
+                }
+            }
+        }
+        self.inner.run(request).await
+    }
+
+    fn configured_hooks(&self, point: HookPoint) -> Vec<String> {
+        self.inner.configured_hooks(point)
+    }
+}
+
+/// The denial for `tool` on `node`, when the node's `x.tools` allowlist
+/// excludes it: `None` proceeds. A node without the attribute, or a run
+/// without envelopes, never denies.
+///
+/// The two tool families govern themselves separately (the legacy
+/// engine's posture): `x.tools` lists the session's own coding tools,
+/// `x.fabro_tools` lists the run tools the host seam registers — a tool
+/// in the node's `x.fabro_tools` passes the `x.tools` gate, exactly as
+/// the host seam enforces that list on its own.
+#[must_use]
+pub fn denied_tool(envelopes: &StageEnvelopes, node: &str, tool: &str) -> Option<String> {
+    let envelope = envelopes.envelope(node)?;
+    if envelope
+        .fabro_tools
+        .as_ref()
+        .is_some_and(|fabro| fabro.iter().any(|allowed| allowed == tool))
+    {
+        return None;
+    }
+    let tools = envelope.tools.as_ref()?;
+    if tools.iter().any(|allowed| allowed == tool) {
+        return None;
+    }
+    Some(if tools.is_empty() {
+        format!(
+            "node '{node}' declares x.tools=\"\" (no session tools); '{tool}' is denied at \
+             the engine layer (fabro-1a41)"
+        )
+    } else {
+        format!(
+            "node '{node}' allows only the session tools [{}] (x.tools); '{tool}' is denied at \
+             the engine layer (fabro-1a41)",
+            tools.join(", ")
+        )
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn envelopes(source: &str) -> StageEnvelopes {
+        StageEnvelopes::parse(source)
+    }
+
+    #[test]
+    fn a_node_without_x_tools_never_denies() {
+        let source = r#"digraph W { a [x.fs_write="lib/**"] }"#;
+        assert_eq!(denied_tool(&envelopes(source), "a", "write_file"), None);
+    }
+
+    #[test]
+    fn a_declared_tool_passes_and_an_undeclared_one_is_denied_with_reason() {
+        let source = r#"digraph W { reader [x.tools="read_file, list_files"] }"#;
+        let parsed = envelopes(source);
+        assert_eq!(denied_tool(&parsed, "reader", "read_file"), None);
+        let reason = denied_tool(&parsed, "reader", "write_file").expect("denied");
+        assert!(reason.contains("read_file, list_files"));
+        assert!(reason.contains("write_file"));
+        assert!(reason.contains("fabro-1a41"));
+    }
+
+    #[test]
+    fn an_empty_list_denies_everything_with_the_empty_posture() {
+        let source = r#"digraph W { reviewer [x.tools=""] }"#;
+        let reason = denied_tool(&envelopes(source), "reviewer", "read_file").expect("denied");
+        assert!(reason.contains("no session tools"));
+    }
+
+    #[test]
+    fn a_run_tool_in_fabro_tools_passes_the_tools_gate() {
+        let source = r#"digraph W {
+            parent [x.tools="read_file", x.fabro_tools="fabro_run_create,fabro_run_wait"]
+        }"#;
+        let parsed = envelopes(source);
+        assert_eq!(denied_tool(&parsed, "parent", "fabro_run_create"), None);
+        assert_eq!(denied_tool(&parsed, "parent", "read_file"), None);
+        let reason =
+            denied_tool(&parsed, "parent", "write_file").expect("session tool still gated");
+        assert!(reason.contains("read_file"));
+    }
+
+    #[test]
+    fn expansion_clones_carry_the_allowlist() {
+        let source = r#"digraph W { reader [x.tools="read_file"] }"#;
+        assert!(denied_tool(&envelopes(source), "reader#2", "write_file").is_some());
+    }
+}

@@ -45,7 +45,12 @@ mock.module("@headlessui/react", () => ({
     ),
 }));
 
+// Partial-mock: bun's mock.module is process-wide (restore does not
+// undo it) — spread the REAL module so every export stays available
+// to later files in the same run; override only what this test needs.
+const realQueries = await import("../lib/queries");
 mock.module("../lib/queries", () => ({
+  ...realQueries,
   useEnvironments: () => ({
     data:      { data: currentEnvironments, meta: { total: currentEnvironments.length } },
     error:     currentEnvironmentsError,
@@ -77,42 +82,21 @@ mock.module("../lib/queries", () => ({
   },
 }));
 
+// Partial-mock: bun's mock.module is process-wide (restore does not
+// undo it) — spread the REAL module so every export stays available to
+// later files in the same run; override only what this test needs.
+const realApiClient = await import("../lib/api-client");
 mock.module("../lib/api-client", () => ({
-  ApiError: class ApiError extends Error {
-    readonly status: number;
-    readonly requestId: string | null;
-    readonly body: unknown;
-
-    constructor({
-      status,
-      message,
-      requestId,
-      body,
-    }: {
-      status: number;
-      message: string;
-      requestId: string | null;
-      body: unknown;
-    }) {
-      super(message);
-      this.name = "ApiError";
-      this.status = status;
-      this.requestId = requestId;
-      this.body = body;
-    }
-  },
-  apiData: async function apiData<T>(
-    call: () => Promise<{ data: T }>,
-  ): Promise<T> {
-    const response = await call();
-    return response.data;
-  },
+  ...realApiClient,
   automationsApi: {
+    ...realApiClient.automationsApi,
     createAutomation: createAutomationMock,
   },
 }));
 
+const realSwr = await import("swr");
 mock.module("swr", () => ({
+  ...realSwr,
   useSWRConfig: () => ({ mutate: swrMutateMock }),
 }));
 

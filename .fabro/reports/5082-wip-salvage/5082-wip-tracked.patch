@@ -1,0 +1,579 @@
+diff --git a/lib/components/fabro-workflow/src/artifact.rs b/lib/components/fabro-workflow/src/artifact.rs
+index 30b2f6d8..57d2f5c5 100644
+--- a/lib/components/fabro-workflow/src/artifact.rs
++++ b/lib/components/fabro-workflow/src/artifact.rs
+@@ -20,8 +20,9 @@ use crate::outcome::Outcome;
+ use crate::records::Checkpoint;
+ use crate::runtime_store::RunStoreHandle;
+ 
+-/// Threshold above which values are persisted as blobs (100KB).
+-const BLOB_OFFLOAD_THRESHOLD: usize = 100 * 1024;
++/// Threshold above which values are persisted as blobs (100KB). Shared by
++/// context-update offload and the run-event payload offload (fabro-5082).
++pub(crate) const BLOB_OFFLOAD_THRESHOLD: usize = 100 * 1024;
+ 
+ /// Largest serialized JSON one context or outcome value may contribute to a
+ /// prompt preamble before it is demoted to a preview plus a file reference.
+@@ -156,7 +157,11 @@ async fn offload_parallel_result_updates(
+     Ok(())
+ }
+ 
+-async fn offload_value(value: &mut Value, run_store: &RunStoreHandle) -> Result<()> {
++/// Offload one value into the blob store when it exceeds
++/// [`BLOB_OFFLOAD_THRESHOLD`], replacing it with a `blob://sha256/...`
++/// reference (fabro-5082 lifts this to `pub(crate)` for the run-event
++/// payload offload).
++pub(crate) async fn offload_value(value: &mut Value, run_store: &RunStoreHandle) -> Result<()> {
+     let Some(bytes) = serialized_if_over(value, BLOB_OFFLOAD_THRESHOLD)? else {
+         return Ok(());
+     };
+diff --git a/lib/components/fabro-workflow/src/event.rs b/lib/components/fabro-workflow/src/event.rs
+index b972bf6a..ebef0730 100644
+--- a/lib/components/fabro-workflow/src/event.rs
++++ b/lib/components/fabro-workflow/src/event.rs
+@@ -3,6 +3,7 @@ mod driver_events;
+ mod emitter;
+ mod events;
+ mod names;
++mod offload;
+ mod redaction;
+ mod sink;
+ mod stored_fields;
+diff --git a/lib/components/fabro-workflow/src/event/convert.rs b/lib/components/fabro-workflow/src/event/convert.rs
+index 73710ab4..b18fa933 100644
+--- a/lib/components/fabro-workflow/src/event/convert.rs
++++ b/lib/components/fabro-workflow/src/event/convert.rs
+@@ -1,6 +1,5 @@
+ use ::fabro_types::{
+-    EventBody, RunControlAction, RunEvent, RunId, StageOutcome, bound_run_event,
+-    run_event as fabro_types,
++    EventBody, RunControlAction, RunEvent, RunId, StageOutcome, run_event as fabro_types,
+ };
+ use chrono::Utc;
+ use uuid::Uuid;
+@@ -1037,7 +1036,7 @@ pub fn to_run_event_at(
+ ) -> RunEvent {
+     let fields = stored_event_fields(event, scope);
+     let body = event_body_from_event(event);
+-    let mut run_event = RunEvent {
++    let run_event = RunEvent {
+         id: Uuid::now_v7().to_string(),
+         ts,
+         run_id: *run_id,
+@@ -1053,18 +1052,9 @@ pub fn to_run_event_at(
+         body,
+     };
+ 
+-    // The canonical event feeds every sink, including the run-store append
+-    // with its hard body limit. Bound oversized payloads here so all sinks
+-    // observe the same bounded envelope (fabro-a723).
+-    if let Some(bound) = bound_run_event(&mut run_event) {
+-        tracing::warn!(
+-            run_id = %run_event.run_id,
+-            event = run_event.body.event_name(),
+-            original_bytes = bound.original_bytes,
+-            bounded_bytes = bound.bounded_bytes,
+-            "run event body exceeded the append budget; truncated to protect the run store"
+-        );
+-    }
++    // Oversized bodies are no longer bounded here: the sink layer owns the
++    // budget now, so blob-store offload (fabro-5082) runs before the lossy
++    // `bound_run_event` fallback wherever a run store is reachable.
+     run_event
+ }
+ 
+@@ -2373,7 +2363,11 @@ mod tests {
+     }
+ 
+     #[test]
+-    fn checkpoint_completed_with_oversized_diff_is_bounded_to_the_append_budget() {
++    fn checkpoint_completed_keeps_oversized_diff_for_sink_layer_offload() {
++        // fabro-5082: bounding moved from construction to the sink layer so
++        // blob-store offload runs before any truncation. The canonical
++        // event stays lossless here; the sink tests cover the offload and
++        // truncation fallback paths.
+         let huge_diff = "diff --git a/x b/x\n+".to_string() + &"x".repeat(4 * 1024 * 1024);
+         let stored = to_run_event(&fixtures::RUN_1, &Event::CheckpointCompleted {
+             node_id: "merge".to_string(),
+@@ -2388,7 +2382,7 @@ mod tests {
+             loop_failure_signatures: BTreeMap::new(),
+             restart_failure_signatures: BTreeMap::new(),
+             node_visits: BTreeMap::new(),
+-            diff: Some(huge_diff),
++            diff: Some(huge_diff.clone()),
+             diff_summary: None,
+             graph_visit: None,
+             resumed_from_stage_id: None,
+@@ -2396,14 +2390,13 @@ mod tests {
+ 
+         let serialized = serde_json::to_vec(&stored).expect("run event serializes");
+         assert!(
+-            serialized.len() <= fabro_types::run_event_body_budget(),
+-            "canonical run event must fit the append budget, got {}",
++            serialized.len() > fabro_types::run_event_body_budget(),
++            "canonical run event still carries the oversized diff, got {}",
+             serialized.len()
+         );
+         match stored.body {
+             EventBody::CheckpointCompleted(props) => {
+-                let diff = props.diff.as_deref().expect("diff retained after bounding");
+-                assert!(diff.contains("[... fabro truncated"));
++                assert_eq!(props.diff.as_deref(), Some(huge_diff.as_str()));
+                 assert_eq!(props.git_commit_sha.as_deref(), Some("f95a8e019"));
+             }
+             other => panic!("expected CheckpointCompleted body, got {other:?}"),
+diff --git a/lib/components/fabro-workflow/src/event/sink.rs b/lib/components/fabro-workflow/src/event/sink.rs
+index b06c03b9..9df93cc2 100644
+--- a/lib/components/fabro-workflow/src/event/sink.rs
++++ b/lib/components/fabro-workflow/src/event/sink.rs
+@@ -2,7 +2,7 @@ use std::future::Future;
+ use std::pin::Pin;
+ use std::sync::Arc;
+ 
+-use ::fabro_types::{RunEvent, RunId, RunProjection};
++use ::fabro_types::{RunEvent, RunId, RunProjection, bound_run_event};
+ use anyhow::Result;
+ use chrono::{DateTime, Utc};
+ use fabro_store::{Database, RunDatabase};
+@@ -11,6 +11,7 @@ use tokio::io::{AsyncWrite, AsyncWriteExt};
+ use tokio::sync::{Mutex as AsyncMutex, mpsc, oneshot, watch};
+ 
+ use super::emitter::Emitter;
++use super::offload::offload_oversized_run_event;
+ use super::redaction::{build_redacted_event_payload, redacted_event_json};
+ use super::{Event, to_run_event, to_run_event_at};
+ use crate::runtime_store::RunStoreHandle;
+@@ -139,19 +140,24 @@ impl RunEventSink {
+ 
+     pub async fn write_run_event(&self, event: &RunEvent) -> Result<()> {
+         let mut pending = vec![(self, event.clone())];
+-        while let Some((sink, event)) = pending.pop() {
++        while let Some((sink, mut event)) = pending.pop() {
+             match sink {
+                 Self::Store(run_store) => {
++                    bound_event_for_store(&mut event, run_store).await;
+                     run_store.append_run_event(&event).await?;
+                 }
+                 Self::JsonLines(writer) => {
++                    bound_event_for_blobless_sink(&mut event);
+                     let line = redacted_event_json(&event)?;
+                     let mut writer = writer.lock().await;
+                     writer.write_all(line.as_bytes()).await?;
+                     writer.write_all(b"\n").await?;
+                     writer.flush().await?;
+                 }
+-                Self::Callback(callback) => callback(event).await?,
++                Self::Callback(callback) => {
++                    bound_event_for_blobless_sink(&mut event);
++                    callback(event).await?;
++                }
+                 Self::Map { transform, inner } => {
+                     pending.push((inner.as_ref(), transform(event)));
+                 }
+@@ -166,6 +172,53 @@ impl RunEventSink {
+     }
+ }
+ 
++/// Bound an event headed for the run store: first offload oversized
++/// payloads into the store's blob store losslessly (fabro-5082), then fall
++/// back to the lossy `bound_run_event` truncation when the offload fails or
++/// the event still exceeds the budget.
++async fn bound_event_for_store(event: &mut RunEvent, run_store: &RunStoreHandle) {
++    match offload_oversized_run_event(event, run_store).await {
++        Ok(Some(offload)) => tracing::info!(
++            run_id = %event.run_id,
++            event = %event.body.event_name(),
++            offloaded_values = offload.values,
++            offloaded_bytes = offload.bytes,
++            "offloaded oversized run event payloads to the blob store"
++        ),
++        Ok(None) => {}
++        Err(err) => tracing::warn!(
++            run_id = %event.run_id,
++            event = %event.body.event_name(),
++            error = %err,
++            "blob offload of oversized run event failed; falling back to lossy truncation"
++        ),
++    }
++    if let Some(bound) = bound_run_event(event) {
++        tracing::warn!(
++            run_id = %event.run_id,
++            event = event.body.event_name(),
++            original_bytes = bound.original_bytes,
++            bounded_bytes = bound.bounded_bytes,
++            "run event body still exceeded the append budget after blob offload; truncated as a \
++             fallback to protect the run store"
++        );
++    }
++}
++
++/// Blob-less sinks keep the bounded envelope of fabro-a723: shrink oversized
++/// events lossily before they are written.
++fn bound_event_for_blobless_sink(event: &mut RunEvent) {
++    if let Some(bound) = bound_run_event(event) {
++        tracing::warn!(
++            run_id = %event.run_id,
++            event = event.body.event_name(),
++            original_bytes = bound.original_bytes,
++            bounded_bytes = bound.bounded_bytes,
++            "run event body exceeded the append budget; truncated to protect the run store"
++        );
++    }
++}
++
+ #[allow(
+     clippy::large_enum_variant,
+     reason = "Logger queue messages stay inline to avoid boxing hot-path payloads."
+@@ -351,10 +404,18 @@ impl StoreProgressLogger {
+ mod tests {
+     use std::sync::Arc;
+     use std::sync::atomic::{AtomicUsize, Ordering};
++    use std::time::Duration;
+ 
+-    use ::fabro_types::{Graph, RunNoticeLevel, WorkflowSettings, fixtures};
++    use ::fabro_types::run_event::CheckpointCompletedProps;
++    use ::fabro_types::{
++        EventBody, Graph, Outcome as StoredOutcome, RunNoticeLevel, WorkflowSettings, fixtures,
++        parse_blob_ref, run_event_body_budget,
++    };
++    use async_trait::async_trait;
++    use chrono::Utc;
+     use fabro_types::test_support;
+     use lithos_llm::types::ReasoningOutput;
++    use object_store::memory::InMemory;
+     use pebble_coding_agent::events::{CodingAgentEvent, CodingEvent, TokenUsage};
+     use tokio::sync::Mutex as AsyncMutex;
+ 
+@@ -364,6 +425,8 @@ mod tests {
+         Emitter, Event, append_event, build_redacted_event_payload,
+         event_payload_from_redacted_json, to_run_event,
+     };
++    use crate::pipeline::ResumeState;
++    use crate::runtime_store::RunStoreBackend;
+ 
+     #[tokio::test]
+     async fn append_event_writes_store_event_shape() {
+@@ -574,4 +637,323 @@ mod tests {
+         assert_eq!(collect_chain(&flush_failure), collect_chain(&failure));
+         assert_eq!(writes.load(Ordering::SeqCst), 1);
+     }
++
++    // --- oversized checkpoint payload offload (fabro-5082) ---
++
++    async fn offload_test_store() -> (RunStoreHandle, fabro_store::RunDatabase) {
++        let store = fabro_store::test_support::test_database(
++            Arc::new(InMemory::new()),
++            "",
++            Duration::from_millis(1),
++            None,
++        );
++        let run_store = store.create_run(&fixtures::RUN_7).await.unwrap();
++        append_event(&run_store, &fixtures::RUN_7, &Event::RunCreated {
++            run_id:              fixtures::RUN_7,
++            title:               None,
++            settings:            serde_json::to_value(WorkflowSettings::default()).unwrap(),
++            graph:               serde_json::to_value(Graph::new("test")).unwrap(),
++            workflow_source:     None,
++            labels:              std::collections::BTreeMap::new(),
++            source_directory:    None,
++            workflow_slug:       None,
++            workflow_version_id: None,
++            target:              None,
++            automation:          None,
++            provenance:          test_support::test_run_provenance(),
++            manifest_blob:       None,
++            spec_blob:           None,
++            git:                 None,
++            fork_source_ref:     None,
++            retried_from:        None,
++            parent_id:           None,
++            web_url:             None,
++        })
++        .await
++        .unwrap();
++        let handle = RunStoreHandle::local(run_store.clone());
++        (handle, run_store)
++    }
++
++    fn checkpoint_props() -> CheckpointCompletedProps {
++        CheckpointCompletedProps {
++            status: "succeeded".to_string(),
++            current_node: "work".to_string(),
++            completed_nodes: Vec::new(),
++            node_retries: std::collections::BTreeMap::new(),
++            context_values: std::collections::BTreeMap::new(),
++            node_outcomes: std::collections::BTreeMap::new(),
++            next_node_id: None,
++            git_commit_sha: None,
++            loop_failure_signatures: std::collections::BTreeMap::new(),
++            restart_failure_signatures: std::collections::BTreeMap::new(),
++            node_visits: std::collections::BTreeMap::new(),
++            diff: None,
++            diff_summary: None,
++            graph_visit: None,
++            resumed_from_stage_id: None,
++        }
++    }
++
++    fn checkpoint_event(props: CheckpointCompletedProps) -> RunEvent {
++        RunEvent {
++            id:                 "0196b0ad-7d47-7c7f-8f2a-3f2b1a0c9d11".to_string(),
++            ts:                 Utc::now(),
++            run_id:             fixtures::RUN_7,
++            node_id:            Some("work".to_string()),
++            node_label:         None,
++            stage_id:           None,
++            parallel_group_id:  None,
++            parallel_branch_id: None,
++            session_id:         None,
++            parent_session_id:  None,
++            tool_call_id:       None,
++            actor:              None,
++            body:               EventBody::CheckpointCompleted(props),
++        }
++    }
++
++    async fn stored_checkpoint(run_store: &fabro_store::RunDatabase) -> RunEvent {
++        let events = run_store.list_events().await.unwrap();
++        events
++            .into_iter()
++            .map(|envelope| envelope.event)
++            .find(|event| matches!(event.body, EventBody::CheckpointCompleted(_)))
++            .expect("checkpoint event was stored")
++    }
++
++    const OVERSIZED: usize = 4 * 1024 * 1024;
++
++    fn oversized_props(case: &str) -> (CheckpointCompletedProps, Vec<u8>) {
++        let mut props = checkpoint_props();
++        match case {
++            "diff" => {
++                let diff = "d".repeat(OVERSIZED);
++                props.diff = Some(diff.clone());
++                (props, diff.into_bytes())
++            }
++            "context_value" => {
++                let journal = "j".repeat(OVERSIZED);
++                props
++                    .context_values
++                    .insert("journal".to_string(), serde_json::json!(journal.clone()));
++                (
++                    props,
++                    serde_json::to_vec(&serde_json::json!(journal)).unwrap(),
++                )
++            }
++            "outcome_update" => {
++                let payload = "p".repeat(OVERSIZED);
++                let outcome = StoredOutcome {
++                    context_updates: [("payload".to_string(), serde_json::json!(payload.clone()))]
++                        .into_iter()
++                        .collect(),
++                    ..StoredOutcome::default()
++                };
++                props.node_outcomes.insert("work".to_string(), outcome);
++                (
++                    props,
++                    serde_json::to_vec(&serde_json::json!(payload)).unwrap(),
++                )
++            }
++            "outcome_notes" => {
++                let notes = "n".repeat(OVERSIZED);
++                let outcome = StoredOutcome {
++                    notes: Some(notes.clone()),
++                    ..StoredOutcome::default()
++                };
++                props.node_outcomes.insert("work".to_string(), outcome);
++                (props, notes.into_bytes())
++            }
++            other => panic!("unknown offload case: {other}"),
++        }
++    }
++
++    fn stored_blob_ref(case: &str, props: &CheckpointCompletedProps) -> String {
++        match case {
++            "diff" => props.diff.clone().unwrap_or_default(),
++            "context_value" => props.context_values["journal"]
++                .as_str()
++                .unwrap_or_default()
++                .to_string(),
++            "outcome_update" => props.node_outcomes["work"].context_updates["payload"]
++                .as_str()
++                .unwrap_or_default()
++                .to_string(),
++            "outcome_notes" => props.node_outcomes["work"]
++                .notes
++                .clone()
++                .unwrap_or_default(),
++            other => panic!("unknown offload case: {other}"),
++        }
++    }
++
++    #[tokio::test]
++    async fn oversized_checkpoint_payloads_offload_to_blobs_with_inline_refs() {
++        for case in ["diff", "context_value", "outcome_update", "outcome_notes"] {
++            let (handle, run_store) = offload_test_store().await;
++            let sink = RunEventSink::backend(handle.clone());
++            let (props, original) = oversized_props(case);
++            let event = checkpoint_event(props);
++            assert!(
++                serde_json::to_vec(&event).unwrap().len() > run_event_body_budget(),
++                "{case}: event must start oversized"
++            );
++
++            sink.write_run_event(&event).await.unwrap();
++
++            let stored = stored_checkpoint(&run_store).await;
++            let serialized = serde_json::to_vec(&stored).unwrap();
++            assert!(
++                serialized.len() <= run_event_body_budget(),
++                "{case}: stored event is {} bytes",
++                serialized.len()
++            );
++            let EventBody::CheckpointCompleted(props) = &stored.body else {
++                panic!("{case}: event stays a checkpoint.completed");
++            };
++            let blob_ref = stored_blob_ref(case, props);
++            let blob_hash = parse_blob_ref(&blob_ref)
++                .unwrap_or_else(|| panic!("{case}: payload is an inline blob ref: {blob_ref}"));
++            let blob = handle
++                .read_blob(&blob_hash)
++                .await
++                .unwrap()
++                .unwrap_or_else(|| panic!("{case}: blob was persisted"));
++            assert_eq!(blob.as_ref(), original.as_slice(), "{case}: full payload");
++        }
++    }
++
++    struct FailingBlobBackend {
++        inner: RunStoreHandle,
++    }
++
++    #[async_trait]
++    impl RunStoreBackend for FailingBlobBackend {
++        async fn load_state(&self) -> anyhow::Result<fabro_store::RunProjection> {
++            self.inner.state().await
++        }
++
++        async fn list_events(&self) -> anyhow::Result<Vec<fabro_store::EventEnvelope>> {
++            self.inner.list_events().await
++        }
++
++        async fn append_run_event(&self, event: &RunEvent) -> anyhow::Result<()> {
++            self.inner.append_run_event(event).await
++        }
++
++        async fn write_blob(&self, _data: &[u8]) -> anyhow::Result<fabro_types::BlobHash> {
++            Err(anyhow::anyhow!("blob endpoint unavailable"))
++        }
++
++        async fn read_blob(
++            &self,
++            blob_hash: &fabro_types::BlobHash,
++        ) -> anyhow::Result<Option<bytes::Bytes>> {
++            self.inner.read_blob(blob_hash).await
++        }
++
++        async fn read_run_log(&self) -> anyhow::Result<Option<Vec<u8>>> {
++            self.inner.read_run_log().await
++        }
++    }
++
++    #[tokio::test]
++    async fn blob_write_failure_falls_back_to_truncation_and_append_succeeds() {
++        let (handle, run_store) = offload_test_store().await;
++        let sink = RunEventSink::backend(RunStoreHandle::new(Arc::new(FailingBlobBackend {
++            inner: handle,
++        })));
++        let (props, _) = oversized_props("diff");
++
++        sink.write_run_event(&checkpoint_event(props))
++            .await
++            .expect("append succeeds via the truncation fallback");
++
++        let stored = stored_checkpoint(&run_store).await;
++        assert!(serde_json::to_vec(&stored).unwrap().len() <= run_event_body_budget());
++        let EventBody::CheckpointCompleted(props) = &stored.body else {
++            panic!("event stays a checkpoint.completed");
++        };
++        let diff = props.diff.as_deref().expect("diff is retained");
++        assert!(
++            diff.contains("[... fabro truncated"),
++            "diff was truncated by the fallback: {}",
++            &diff[..diff.len().min(200)]
++        );
++    }
++
++    /// Rejects every event append, simulating a transport failure that
++    /// survives offload and fallback.
++    struct FlakyAppendBackend {
++        inner: RunStoreHandle,
++    }
++
++    #[async_trait]
++    impl RunStoreBackend for FlakyAppendBackend {
++        async fn load_state(&self) -> anyhow::Result<fabro_store::RunProjection> {
++            self.inner.state().await
++        }
++
++        async fn list_events(&self) -> anyhow::Result<Vec<fabro_store::EventEnvelope>> {
++            self.inner.list_events().await
++        }
++
++        async fn append_run_event(&self, _event: &RunEvent) -> anyhow::Result<()> {
++            Err(anyhow::anyhow!(
++                "append rejected: request failed with status 503"
++            ))
++        }
++
++        async fn write_blob(&self, data: &[u8]) -> anyhow::Result<fabro_types::BlobHash> {
++            self.inner.write_blob(data).await
++        }
++
++        async fn read_blob(
++            &self,
++            blob_hash: &fabro_types::BlobHash,
++        ) -> anyhow::Result<Option<bytes::Bytes>> {
++            self.inner.read_blob(blob_hash).await
++        }
++
++        async fn read_run_log(&self) -> anyhow::Result<Option<Vec<u8>>> {
++            self.inner.read_run_log().await
++        }
++    }
++
++    #[tokio::test]
++    async fn checkpoint_append_failure_after_offload_stays_resumable() {
++        let (handle, run_store) = offload_test_store().await;
++
++        // A first, small checkpoint persists through the plain store and
++        // becomes the run's resume point.
++        handle
++            .append_run_event(&checkpoint_event(checkpoint_props()))
++            .await
++            .unwrap();
++
++        // A later oversized checkpoint whose append still fails after
++        // offload surfaces as an error instead of destroying the run's
++        // resume state.
++        let backend = FlakyAppendBackend {
++            inner: handle.clone(),
++        };
++        let sink = RunEventSink::backend(RunStoreHandle::new(Arc::new(backend)));
++        let (props, _) = oversized_props("diff");
++        let error = sink
++            .write_run_event(&checkpoint_event(props))
++            .await
++            .expect_err("append failure surfaces");
++
++        assert!(error.to_string().contains("append rejected"), "{}", error);
++
++        // The run stays resumable: the earlier checkpoint remains the
++        // resume point a retry or `resume` picks up.
++        let state = run_store.state().await.unwrap();
++        assert!(!state.checkpoints.is_empty());
++        assert!(
++            ResumeState::from_projection(&state).is_some(),
++            "the persisted checkpoint must remain a valid resume state"
++        );
++    }
+ }

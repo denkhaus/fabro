@@ -8,6 +8,22 @@ pub struct RunFailure {
     pub detail: FailureDetail,
 }
 
+/// Fork (fabro-986b): classify a failure as quota-rate-limit class. The
+/// engine-side quota park (ADR-0021) writes `SoftStop` + transient-infra +
+/// a `rate_limit` signature; server-side gates and the automation breaker
+/// exemption key off this predicate.
+pub fn is_quota_rate_limit_failure(failure: &RunFailure) -> bool {
+    use crate::outcome::FailureCategory;
+
+    failure.reason == FailureReason::SoftStop
+        && failure.detail.category == FailureCategory::TransientInfra
+        && failure
+            .detail
+            .signature
+            .as_ref()
+            .is_some_and(|signature| signature.as_str().contains("rate_limit"))
+}
+
 #[cfg(test)]
 mod tests {
     use serde_json::json;

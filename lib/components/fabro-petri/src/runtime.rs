@@ -22,14 +22,20 @@ use lithos_llm::Client;
 use lithos_llm::catalog::{Catalog, ProviderId};
 use lithos_llm::client::ClientBuildError;
 use lithos_llm::credentials::CredentialProvider;
+use petri_attractor_steps::hooks::LocalHooks;
 use petri_attractor_steps::pebble::PebbleClient;
 use petri_attractor_steps::skills::FabroHome;
+use petri_attractor_steps::stage::RunInfo;
+use petri_execution::hooks::{HookAdapter, HookServiceHandle};
 use petri_frontend_fabro::Fabro;
 use petri_runtime::Runtime;
 use tracing::debug;
 
-use crate::host_tools;
+use crate::fork_stage_env::StageDispatch;
+use crate::fork_stage_envelope::StageEnvelopes;
 use crate::providers::{self, SandboxProviderConfig};
+use crate::tool_policy::ToolPolicyHooks;
+use crate::{fork_preamble_policy, host_tools};
 
 /// What every Petri runtime Fabro builds is configured with.
 #[derive(Clone, Default)]
@@ -62,6 +68,20 @@ pub struct RuntimeSpec {
     /// token's `agent:run_tools` scope); `None` gives the sessions Pebble's
     /// tools alone. See [`crate::host_tools`].
     pub run_tools:        Option<FabroRunToolServices>,
+    /// The run's stage envelopes, parsed off its `graph_source`: what the
+    /// host-tools capability enforces the per-node `x.fabro_tools`
+    /// allowlist against (fabro-96c6), what the tool policy enforces
+    /// `x.tools` against (fabro-1a41), and what the preamble policy
+    /// source lowers onto the fork seam (fabro-70af PART 2b). `None`
+    /// registers the full set on every session.
+    pub envelopes:        Option<Arc<StageEnvelopes>>,
+    /// The run's id, as `[[run.hooks]]` contexts report it (`FABRO_RUN_ID`
+    /// and the context's `run_id`): the runtime installs its own local
+    /// hook service for the tool-policy seam, which Petri run-binds only
+    /// for a service it built itself, so the spec's id is bound here
+    /// instead (fabro-6558). `None` leaves it unset (admission checks,
+    /// offline validation).
+    pub run_id:           Option<String>,
 }
 
 impl RuntimeSpec {
@@ -70,7 +90,12 @@ impl RuntimeSpec {
     /// registry: only execution swaps in the stubs.
     #[must_use]
     pub fn runtime(&self, for_execution: bool) -> Runtime {
-        let mut runtime = providers::standard_runtime(&self.sandbox).frontend(
+        // The engine-injected stage environment (fabro-6e7f): one cell per
+        // runtime, shared between the hook service that records the node
+        // being dispatched and the sandbox exec facet that injects
+        // `FABRO_STAGE` into every process the stage spawns.
+        let stages = StageDispatch::shared();
+        let mut runtime = providers::staged_runtime(&self.sandbox, &stages).frontend(
             Fabro::new()
                 .with_settings_toml(self.settings_toml.clone())
                 .with_mcp_catalog_toml(self.mcp_catalog_toml.clone()),
@@ -87,8 +112,43 @@ impl RuntimeSpec {
             runtime = runtime.capability(home);
         }
         if let Some(services) = &self.run_tools {
-            runtime = runtime.capability(host_tools::capability(services.clone()));
+            runtime = runtime.capability(host_tools::capability(
+                services.clone(),
+                self.envelopes.clone(),
+            ));
         }
+        // The preamble family (fabro-70af PART 2b): the envelopes as the
+        // fork seam's `PreamblePolicyHandle` — the agent and prompt steps
+        // consult it at render time for `x.preamble_stages_ignore`,
+        // `x.preamble_stages_latest_only`, the allow-keys filters,
+        // budgets, output caps, and consume-keys tombstones. A run
+        // without envelopes installs none and keeps the default no-op
+        // policy.
+        if let Some(envelopes) = &self.envelopes {
+            runtime = runtime.capability(fork_preamble_policy::capability(envelopes.clone()));
+        }
+        // The host-supplied hook service (the documented replacement seam):
+        // Petri's local service wrapped with the per-node `x.tools` policy
+        // (fabro-1a41), so the tool boundary — Pebble's middleware included
+        // — denies calls outside a node's allowlist before they run, and
+        // every other point still reaches the local `[[run.hooks]]` service.
+        // Installed before `register`, which then steps its own service
+        // aside; `FabroHooks` wraps this adapter in turn at execution.
+        let local = Arc::new(LocalHooks::default());
+        if let Some(run_id) = &self.run_id {
+            local.set_run(RunInfo {
+                run_id: run_id.clone(),
+            });
+        }
+        let policy = Arc::new(ToolPolicyHooks::new(
+            local.clone(),
+            self.envelopes.clone(),
+            stages,
+        ));
+        runtime = runtime
+            .hooks(Arc::new(HookAdapter::new(policy.clone())))
+            .capability(HookServiceHandle(policy))
+            .capability(local.environments());
         if for_execution && self.dry_run {
             petri_attractor_steps::register_stubs(runtime)
         } else {

@@ -46,6 +46,16 @@ const TERMINAL_RUN_STATUSES = new Set<RunStatus>([
   "dead",
 ]);
 
+/**
+ * Retry a terminal failed run: the engine re-runs only the failed stage
+ * on the files of the stage before it (rerun_last) and keeps every
+ * committed stage — retry IS the resume (fabro-5eed user decision
+ * 2026-09-22). Returns the replacement run.
+ */
+export async function retryRun(id: string, request?: Request): Promise<Run> {
+  return apiData(() => runsApi.retryRun(id, requestSignalOptions(request)));
+}
+
 export async function cancelRun(id: string, request?: Request): Promise<Run> {
   return runLifecycleAction(id, "cancel", request);
 }
@@ -124,6 +134,16 @@ export async function deleteRun(id: string, request?: Request): Promise<void> {
     if (error instanceof ApiError && error.status === 404) return;
     throw lifecycleActionErrorFromError(error);
   }
+}
+
+/**
+ * A failed or dead run can be retried: the engine re-runs the failed
+ * stage from the run's last checkpoint and keeps every committed stage.
+ * A succeeded run has nothing failed to re-run (use a timeline fork for
+ * time travel).
+ */
+export function canRetry(status: string | null | undefined): boolean {
+  return status === "failed" || status === "dead";
 }
 
 export function canCancel(status: string | null | undefined): boolean {

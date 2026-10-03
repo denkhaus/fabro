@@ -25,6 +25,8 @@ import {
   mapError,
   unarchiveRun,
   unarchiveRuns,
+  canRetry,
+  retryRun,
 } from "./run-actions";
 import { generatedAxios } from "./api-client";
 import { TEST_PRINCIPAL, makeUsage } from "./test-fixtures";
@@ -174,6 +176,17 @@ describe("run lifecycle actions", () => {
     if (result.lifecycle.status.kind === "failed") {
       expect(result.lifecycle.status.reason).toBe("cancelled");
     }
+  });
+
+  test("retryRun posts and parses the replacement run", async () => {
+    const { requests } = stubGeneratedAxiosOnce({
+      status: 200,
+      body: makeRun({ kind: "running" }),
+    });
+    const result = await retryRun("run-1");
+    expect(result.id).toBeTypeOf("string");
+    expect(requests[0]?.url).toBe("/api/v1/runs/run-1/retry");
+    expect(requests[0]?.method).toBe("post");
   });
 
   test("cancelRun parses a 202 response as a pending cancellation", async () => {
@@ -458,5 +471,18 @@ describe("run lifecycle actions", () => {
     expect(isCancellationPendingState("failed", "cancel", true)).toBe(false);
     expect(cancellationActionLabel(true)).toBe("Cancelling…");
     expect(cancellationActionLabel(false)).toBe("Cancel");
+  });
+});
+
+describe("canRetry", () => {
+  test("failed and dead runs can be retried (retry is the resume)", () => {
+    expect(canRetry("failed")).toBe(true);
+    expect(canRetry("dead")).toBe(true);
+  });
+
+  test("nothing else can", () => {
+    expect(canRetry("running")).toBe(false);
+    expect(canRetry("succeeded")).toBe(false);
+    expect(canRetry(null)).toBe(false);
   });
 });

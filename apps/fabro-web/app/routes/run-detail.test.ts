@@ -54,7 +54,12 @@ mock.module("@headlessui/react", () => ({
     createElement("div", props, children),
 }));
 
+// Partial-mock: bun's mock.module is process-wide (restore does not
+// undo it) — spread the REAL module so every export stays available
+// to later files in the same run; override only what this test needs.
+const realQueries = await import("../lib/queries");
 mock.module("../lib/queries", () => ({
+  ...realQueries,
   useAllRuns: () => ({ data: { data: currentBoardRuns }, isLoading: false }),
   useRunsPage: () => ({ data: null, isLoading: false }),
   useAuthConfig: () => ({ data: { methods: [] } }),
@@ -84,63 +89,47 @@ mock.module("../lib/queries", () => ({
   }),
 }));
 
+const reallibrunevents = await import("../lib/run-events");
 mock.module("../lib/run-events", () => ({
+  ...reallibrunevents,
   useRunEvents: () => undefined,
 }));
 
+const reallibboardevents = await import("../lib/board-events");
 mock.module("../lib/board-events", () => ({
-  shouldRefreshBoardForEvent: () => false,
+  ...reallibboardevents,
+  // shouldRefreshBoardForEvent stays REAL (spread) — board-events.test
+  // asserts the real function's behavior later in the same run.
   useBoardEvents: () => undefined,
 }));
 
+const realhooksuseruntoasts = await import("../hooks/use-run-toasts");
 mock.module("../hooks/use-run-toasts", () => ({
+  ...realhooksuseruntoasts,
   useRunToasts: () => undefined,
 }));
 
+const reallibapiclient = await import("../lib/api-client");
 mock.module("../lib/api-client", () => ({
-  apiData: async function apiData<T>(
-    call: () => Promise<{ data: T }>,
-  ): Promise<T> {
-    const response = await call();
-    return response.data;
-  },
-  apiResponse: async function apiResponse<T>(call: () => Promise<T>): Promise<T> {
-    return await call();
-  },
-  requestSignalOptions: () => undefined,
+  ...reallibapiclient,
+  // Only the one API method this test drives is replaced; apiData/
+  // apiResponse/requestSignalOptions/ApiError stay REAL — a leaked stub
+  // here breaks every later file that tests the real adapter.
   runsApi: {
+    ...reallibapiclient.runsApi,
     deleteRun: deleteRunApiMock,
-  },
-  ApiError: class ApiError extends Error {
-    readonly status: number;
-    readonly requestId: string | null;
-    readonly body: unknown;
-
-    constructor({
-      status,
-      message,
-      requestId,
-      body,
-    }: {
-      status: number;
-      message: string;
-      requestId: string | null;
-      body: unknown;
-    }) {
-      super(message);
-      this.name = "ApiError";
-      this.status = status;
-      this.requestId = requestId;
-      this.body = body;
-    }
   },
 }));
 
+const reallibboardcache = await import("../lib/board-cache");
 mock.module("../lib/board-cache", () => ({
+  ...reallibboardcache,
   mutateRunListCaches: mutateRunListCachesMock,
 }));
 
+const realswr = await import("swr");
 mock.module("swr", () => ({
+  ...realswr,
   useSWRConfig: () => ({ mutate: swrMutateMock }),
 }));
 
@@ -174,7 +163,9 @@ const mutationState = () => ({
   trigger:    mock(() => Promise.resolve(undefined)),
 });
 
+const reallibmutations = await import("../lib/mutations");
 mock.module("../lib/mutations", () => ({
+  ...reallibmutations,
   useArchiveRun:           mutationState,
   useApproveRun:           mutationState,
   useCancelRun:            mutationState,

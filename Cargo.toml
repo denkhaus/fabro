@@ -10,7 +10,7 @@ resolver = "2"
 
 [workspace.package]
 edition = "2021"
-version = "0.362.0-nightly.0"
+version = "0.362.0-fork.2"
 license = "MIT"
 
 [workspace.dependencies]
@@ -97,7 +97,12 @@ sandbox-driver-docker-config = { git = "https://github.com/lithoscomputer/sandbo
 sandbox-driver-daytona = { git = "https://github.com/lithoscomputer/sandbox-driver", branch = "main" }
 sandbox-driver-daytona-config = { git = "https://github.com/lithoscomputer/sandbox-driver", branch = "main" }
 sandbox-driver-testing = { git = "https://github.com/lithoscomputer/sandbox-driver", branch = "main" }
-# pebble: the coding agent loop fabro runs its agent stages, Ask Fabro
+
+# Native seeds tracker (denkhaus/seeds, ADR-0023): release tags are the
+# cross-repo sync points. v0.2.0 carries the lifted command-layer library
+# API (seeds-0dfd, their PR #47; the fabro-088b binding's sync point —
+# ee1bb59 ancestor, acceptance documented in the tag message).
+seeds = { git = "https://github.com/denkhaus/seeds", tag = "v0.2.0" }# pebble: the coding agent loop fabro runs its agent stages, Ask Fabro
 # sessions, hook evaluators, and `fabro exec` on. The `Environment` over a
 # sandbox-driver handle is pebble's `sandbox_driver` module (the
 # `sandbox-driver` feature).
@@ -193,3 +198,43 @@ opt-level = 2
 opt-level = 2
 [profile.dev.package.regex-syntax]
 opt-level = 2
+
+
+# FORK PATCH (fabro-c5a0): petri's Contract::Schema never spreads a
+# response's top-level context_updates into the run context, so every
+# stdin_source-over-context-key stage after a schema'd agent stage reads
+# empty stdin (deterministic cutover child failure 3/3). denkhaus/petri
+# branch `fabro` carries the spread in the agent and prompt Structured
+# arms (fork commit cfcacaa over lithoscomputer/petri cbab2c5, the rev
+# this tree validated). Remove this block — and the fork branch — when
+# lithoscomputer/petri merges the equivalent fix (PR to follow).
+[patch."https://github.com/lithoscomputer/petri.git"]
+petri-runtime = { git = "https://github.com/denkhaus/petri", branch = "fabro" }
+petri-execution = { git = "https://github.com/denkhaus/petri", branch = "fabro" }
+petri-store = { git = "https://github.com/denkhaus/petri", branch = "fabro" }
+petri-attractor-steps = { git = "https://github.com/denkhaus/petri", branch = "fabro" }
+petri-frontend-attractor = { git = "https://github.com/denkhaus/petri", branch = "fabro" }
+petri-frontend-native = { git = "https://github.com/denkhaus/petri", branch = "fabro" }
+petri-frontend-fabro = { git = "https://github.com/denkhaus/petri", branch = "fabro" }
+petri-driver = { git = "https://github.com/denkhaus/petri", branch = "fabro" }
+petri-engine = { git = "https://github.com/denkhaus/petri", branch = "fabro" }
+petri-executor = { git = "https://github.com/denkhaus/petri", branch = "fabro" }
+petri-executor-sandbox = { git = "https://github.com/denkhaus/petri", branch = "fabro" }
+petri-ir = { git = "https://github.com/denkhaus/petri", branch = "fabro" }
+petri-steps = { git = "https://github.com/denkhaus/petri", branch = "fabro" }
+petri-testkit = { git = "https://github.com/denkhaus/petri", branch = "fabro" }
+petri-frontend = { git = "https://github.com/denkhaus/petri", branch = "fabro" }
+
+
+# FORK PATCH (fabro-3fce): pebble's skill-reference expansion applied to
+# every input - typed or harness-synthesized - so an assembled agent prompt
+# carrying two path-like /tokens died structurally ("Only one skill
+# reference per input is allowed", failure_class skill_missing, no LLM
+# call). denkhaus/pebble branch `fabro` makes the input's source decide
+# (a person's typed turn expands, synthesized input passes through; fork
+# commit 3ea3424 over lithoscomputer/pebble ba2928d, the rev this tree
+# validated). Remove this block - and the fork branch - when
+# lithoscomputer/pebble wires `is_prompt_source` itself (PR to follow).
+[patch."https://github.com/lithoscomputer/pebble.git"]
+pebble-coding-agent = { git = "https://github.com/denkhaus/pebble", branch = "fabro" }
+pebble-agent = { git = "https://github.com/denkhaus/pebble", branch = "fabro" }

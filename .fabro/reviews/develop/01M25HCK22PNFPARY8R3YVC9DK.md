@@ -1,0 +1,48 @@
+# Improve review — run 01M25HCK22PNFPARY8R3YVC9DK
+
+- workflow: develop
+- branch integrated: this revisor pass (unmerged until approved)
+- status: succeeded (10.3 min, revisor pass — reason and cost in run detail)
+- generated: 2026-09-10 11:43+0000 by revisor `fabro_ask`
+
+---
+
+Recommendations for the `develop` workflow, ordered by expected impact. All evidence from this run's events, journals, and conclusion (run `01M25HCK22PNFPARY8R3YVC9DK`, seed `fabro-d183`, 2 review cycles, 604.8 s wall, $0.408, 11 stage executions).
+
+---
+
+**1. Add a routing-consistency self-check to the Implementer (prompting — highest impact: a full avoidable cycle)**
+- **What happened:** implementer@1 wrote branch (a) of `.fabro/workflows/develop/prompts/planner.md` with two routing sentences ("route \"Already landed\"" *and* "continue down the `sd ready` candidate list → Seed claimed/Tracker empty"), making the new graph edge dead config. Reviewer@1 rejected it; the pass-2 fix was deleting one sentence. That avoidable cycle cost planner@2 + implementer@2 + tester@2 + evidence@2 + reviewer@2 ≈ **126 s wall, ~$0.125, 5 stage visits** (from conclusion stage timings). The brief was unambiguous; the contradiction was implementer improvisation that no self-check caught.
+- **Change:** one paragraph in `.fabro/workflows/develop/prompts/implementer.md` (Inline verification report section): "Before finishing, re-read every routing instruction you wrote: each branch must yield exactly ONE route; two routing sentences in one branch is a FAIL — fix it before reporting."
+- **Expected effect:** this failure class (label-dead-config contradictions) is caught at implementer time; saves one full review cycle (~2 min / ~$0.13) per occurrence.
+
+**2. Make `evidence.nu` count and diff loop churn from the same base (error handling)**
+- **What happened:** reviewer@1's journal painpoint (verbatim): the capture "listed `.seeds/issues.jsonl +1/-1` in the loop-churn counts but included NO diff for it in the loop-work section, and `git diff 698b1e5..HEAD -- .seeds/issues.jsonl` is empty — the churn count and the diffed file set disagree." Mechanism: counts are enumerated against the run base (`74aaeda`), the loop-work diff against the per-seed claim base (`698b1e5`, which already contains the claim flip) — two different bases.
+- **Change:** in `.fabro/workflows/develop/scripts/evidence.nu`, derive the loop-churn file list *and* its diff from the same base (the claim base), or annotate claim-base-committed files as expected churn with zero net diff.
+- **Expected effect:** the integrity header reconciles with the visible diff; removes a standing trigger for "counts contradict what is visible" → Verification-blocked recaptures (each would cost an evidence re-run + full re-review ≈ 45 s / $0.045 here).
+
+**3. Dedupe per-visit stage sections and/or raise `preamble_budget_kb` 24→32 (graph/engine design)**
+- **What happened:** the evidence capture was blob-ref'd on **both** review passes (11.3 KB at cycle 1, 23.6 KB at cycle 2 — visible in reviewer@1/@2 stage prompts), forcing a tool round-trip to page the blob each time. Critically, the 11.3 KB capture was demoted **despite being under the reviewer's `preamble_inline_max_kb=16`** — the aggregate 24 KB graph budget is the binding constraint, so raising the inline max alone (open seed fabro-cf3e) provably would not have helped. Reviewer context usage was ~2% of the 1M window; capacity is not the issue. Reviewer@2's preamble also renders the tester and evidence sections **twice** (once per visit) — the duplication the graph comment already flags as "engine-side dedup work".
+- **Change:** (a) engine preamble renderer: render only the latest visit per command node (earlier visits as one-line summaries); (b) `.fabro/workflows/develop/workflow.fabro` graph attr `preamble_budget_kb=24` → `32` (aligns with open seed fabro-8d2c).
+- **Expected effect:** evidence stays inline on multi-cycle reviews; ~1 tool call + paging latency saved per review pass; cycle-2 preambles stop growing by re-rendering adjudicated output.
+
+**4. Planner recon economy: name the graph file in PROJECT_FACTS + top-N `sd ready` (prompting/tool usage)**
+- **What happened:** planner@1 (100.6 s, $0.117 — the costliest stage) burned two probes discovering where the graph lives: grep on `workflow.toml` for planner edges returned nothing (seq 51–53), then a `sed -n '1,120p'` head of `workflow.toml` (seq 57–59) before grepping the real file `workflow.fabro`. Its first `sd ready --assignee fabro --limit 200` returned a 27.6 KB firehose (`stdout_truncated: true`) that inference then had to read.
+- **Change:** (a) one line in `.fabro/workflows/develop/prompts/project-facts.md`: "Graph source: `.fabro/workflows/develop/workflow.fabro` (DOT); `workflow.toml` wires runtime settings only — never probe it for edges." (b) planner.md step 1: pipe `sd ready` through a top-N view (`| sed -n '1,25p'`) and page deeper only on need (aligns with open seeds fabro-55a7 / fabro-c3b4).
+- **Expected effect:** ~2 fewer tool calls and materially less input to reason over per fresh claim; the 200-seed firehose stops being loaded wholesale every run.
+
+**5. Minor-fix fast path: `reviewer -> implementer` edge for single-mechanical-edit feedback (graph design)**
+- **What happened:** the pass-2 fix was a fully-specified one-sentence deletion, yet routing went reviewer → planner (full re-plan, 31.5 s / $0.036) → implementer → tester → evidence → reviewer. The planner added no information the reviewer's feedback didn't already carry (its own journal: "brief narrowed to that single edit").
+- **Change:** in `.fabro/workflows/develop/workflow.fabro`, add `reviewer -> implementer [label="Changes requested (minor)", condition="preferred_label=\"Changes requested (minor)\""]`, with a matching reviewer.md verdict shape gated on "feedback is exactly one mechanical edit, fully specified" — everything else keeps the planner hop.
+- **Expected effect:** ~30 s and one LLM call saved per minor cycle, and no chance for the re-plan to drift; bounded by the reviewer explicitly tagging the verdict minor.
+
+**6. Bake `dot` (graphviz) into the toolchain image (error prevention)**
+- **What happened:** implementer@1's journal: "`dot` is not installed in this environment, so the workflow.fabro render-check fell back to eyeballing the edge block." Loop-asset seeds edit this graph regularly (this run did), and a malformed edge would only surface at the *next* run's engine parse.
+- **Change:** add `graphviz` to the apt-get list in the toolchain Dockerfile (inline image spec in the workflow settings / `.fabro/Dockerfile.toolchain`).
+- **Expected effect:** mechanical `dot -Tcanon` syntax verification of graph edits at implementer time; eyeball fallback eliminated.
+
+---
+
+Not re-recommended (already open as seeds and confirmed by this run, listed for triage priority): reviewer read-only PROJECT_FACTS subset (fabro-52b4 — reviewer@1 again received the full `sd update`/`sd close` write table), `current_seed_id` in the runs_list projection (fabro-9372 — planner again had to fall back to journal greps for in-flight seed ids).
+
+One cost note for calibration: the deterministic machinery was cheap where it should be — tester@2 gate ran 5.3 s ("no crates touched … GATE GREEN") and evidence@2 0.4 s — so the optimization surface is the LLM stages and their context plumbing, not the gate.

@@ -11,7 +11,8 @@ use serde_json::Value;
 
 use super::support::{
     created_run_id, init_remote_fixture, mock_environment, mock_workflow_version_registrations,
-    output_stderr, remote_run_summary_json, run_state, wait_for_run_finished, write_workflow,
+    output_stderr, remote_run_summary_json, run_state, wait_for_run_finished,
+    wait_for_run_publish_record, write_workflow,
 };
 use crate::support::{LightweightCli, run_output_filters, run_projection_json, unique_run_id};
 
@@ -832,7 +833,9 @@ fn dry_run_simple() {
     ----- stdout -----
     ----- stderr -----
         Run: [ULID]
+    Replaying [N] items…
         Web UI: http://localhost:3000/runs/[ULID]
+    ── live ──
         ✓ Start  [TIME]
         Base: [BASE]
         ✓ Run Tests  [TIME]
@@ -928,6 +931,7 @@ fn dry_run_persists_event_history_in_store() {
     let run_dir = context.single_run_dir();
     let run_id = run_state(&run_dir).spec.run_id.to_string();
     wait_for_run_finished(&run_dir);
+    wait_for_run_publish_record(&run_dir);
     let output = context
         .command()
         .args(["events", &run_id])
@@ -970,13 +974,29 @@ fn dry_run_persists_event_history_in_store() {
             == Some("run.finished")),
         "store-backed event history should include the engine's run.finished"
     );
-    let last = progress.last().expect("the history has a last item");
-    assert_eq!(
-        last.pointer("/item/record/kind").and_then(Value::as_str),
-        Some("run.lifecycle")
+    // The publish-outcome record races the terminal lifecycle record for
+    // stream order (fabro-0664); after waiting for both, exactly these two
+    // records remain at the end, in either order.
+    let kinds: Vec<&str> = progress
+        .iter()
+        .rev()
+        .take(2)
+        .filter_map(|item| item.pointer("/item/record/kind").and_then(Value::as_str))
+        .collect();
+    assert!(
+        kinds.contains(&"run.lifecycle") && kinds.contains(&"run.branch_published"),
+        "the history should end with the terminal lifecycle and publish-outcome          records in either order, found {kinds:?}"
     );
+    let lifecycle = progress
+        .iter()
+        .rev()
+        .find(|item| {
+            item.pointer("/item/record/kind").and_then(Value::as_str) == Some("run.lifecycle")
+        })
+        .expect("the terminal lifecycle record is present");
     assert_eq!(
-        last.pointer("/item/record/transition")
+        lifecycle
+            .pointer("/item/record/transition")
             .and_then(Value::as_str),
         Some("succeeded")
     );
@@ -1021,6 +1041,50 @@ fn run_rejects_removed_run_id_flag() {
     assert!(
         stderr.contains("unexpected argument '--run-id'"),
         "{stderr}"
+    );
+}
+
+#[test]
+fn json_run_auto_approves_human_gates() {
+    let context = test_context!();
+    context.ensure_home_server_auth_methods();
+    context.write_temp(
+        "auto-approve.fabro",
+        r#"digraph HumanGate {
+  start [shape=Mdiamond]
+  approve [shape=hexagon, label="Approve?"]
+  exit [shape=Msquare]
+  start -> approve
+  approve -> exit [label="[A] Approve"]
+}
+"#,
+    );
+    let output = context
+        .command()
+        .args([
+            "--json",
+            "run",
+            "--auto-approve",
+            "--environment",
+            "local",
+            "auto-approve.fabro",
+        ])
+        .assert()
+        .success();
+    let items: Vec<Value> = std::str::from_utf8(&output.get_output().stdout)
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    assert!(items.iter().any(|item| {
+        item.pointer("/item/derived/parsed/kind") == Some(&Value::from("question"))
+    }));
+    assert!(
+        items.iter().any(|item| {
+            item.pointer("/item/record/body/event") == Some(&Value::from("run.finished"))
+                && item.pointer("/item/record/body/status") == Some(&Value::from("success"))
+        }),
+        "JSON mode must continue through an automatically approved gate to completion"
     );
 }
 

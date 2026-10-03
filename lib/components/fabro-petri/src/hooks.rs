@@ -76,11 +76,12 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
+use fabro_redact::fs_scope::FsScopeError;
 use fabro_store::platform_records::{
     ArtifactCollectedRecord, CheckpointRecord, GitIdentityRecord, RunBranchRecord, RunDiffRecord,
 };
 use fabro_store::{PlatformRecord, PlatformRecordKind, StagePosition};
-use fabro_types::settings::run::RunNamespace;
+use fabro_types::settings::run::{HookDefinition, RunNamespace};
 use fabro_types::{BlobHash, DiffSummary, GitIdentity, RunId};
 use fabro_util::error::collect_chain;
 use fabro_util::sync;
@@ -103,12 +104,18 @@ use crate::checkpoint::{
     CHECKPOINT_FAILED_CLASS, CheckpointError, CheckpointKey, EXCLUDE_DIRS, RunGitSettings,
     RunWorkspaces, Site, Snapshot, WorkspaceDiff,
 };
+use crate::fork_stage_envelope::StageEnvelopes;
 use crate::platform_records::{PlatformRecordError, PlatformRecords};
 use crate::recovery::{self, Plan, RecoveryError, RestoreTarget};
 use crate::workspace::{self, WorkspaceLookup, WorkspaceLookupError};
 
 /// The note kind the hooks record on a firing about its checkpoint.
 pub const CHECKPOINT_NOTE: &str = "fabro.checkpoint";
+
+/// The failure class of a stage-envelope violation (fabro-aa5f): the run
+/// ends, the violating commit never happens, and the projection can name
+/// the class.
+pub const FS_POLICY_VIOLATION_CLASS: &str = "fs_policy_violation";
 
 /// The effect kind of an artifact collection in its operation identity.
 pub const ARTIFACT_EFFECT: &str = "artifact";
@@ -152,6 +159,17 @@ pub enum HookError {
         #[source]
         source: CheckpointError,
     },
+    #[error("the stage envelope of `{node}` has a glob that does not compile")]
+    EnvelopeCompile {
+        node:   String,
+        #[source]
+        source: FsScopeError,
+    },
+    #[error(
+        "stage envelope violation in `{node}`: {} fall outside the node's fs_write scope",
+        .paths.join(", ")
+    )]
+    EnvelopeViolation { node: String, paths: Vec<String> },
     #[error("the checkpoint commit could not be looked up")]
     Find(#[source] CheckpointError),
     #[error("no checkpoint commit exists for {key}")]
@@ -212,15 +230,36 @@ impl HookError {
 /// What Fabro's hooks need beside the run: where the platform records go,
 /// the run's Git settings, and which files are the run's artifacts.
 pub struct HooksSpec {
-    pub records:    Arc<dyn PlatformRecords>,
-    pub git:        RunGitSettings,
+    pub records:          Arc<dyn PlatformRecords>,
+    pub git:              RunGitSettings,
     /// The `[run.artifacts] include` patterns: which files of a stage's
     /// workspace are collected after the stage.
-    pub artifacts:  Vec<String>,
+    pub artifacts:        Vec<String>,
+    /// The run's stage envelopes, parsed from its `graph_source`
+    /// (fabro-aa5f, ADR-0009 rev): what the checkpoint guard enforces a
+    /// node's staged files against. `None` leaves every stage
+    /// unrestricted.
+    pub envelopes:        Option<Arc<StageEnvelopes>>,
+    /// Workspace-relative roots the run's `[[run.hooks]]` wiring may
+    /// write (fabro-b6c5): platform traffic the checkpoint guard exempts
+    /// from `x.fs_write`, so a deny-all stage keeps meaning "the model
+    /// writes nothing". Derived by [`HooksSpec::for_run`] from the hooks
+    /// the run declares; empty exempts nothing.
+    pub hook_write_roots: Vec<String>,
     /// A test's gate directory: a checkpoint point named by a `.hold` file
     /// there waits for its `.release` file. `None` outside tests.
-    pub test_gates: Option<PathBuf>,
+    pub test_gates:       Option<PathBuf>,
 }
+
+/// The write root of the stage-journal hook contract (seed fabro-176b,
+/// ADR-0009 rev): the one sandbox hook every loop workflow wires appends
+/// the run's journal stream — one JSON line per stage execution, engine
+/// provenance — under `.fabro/journal/<run_id>.jsonl` in the workspace.
+/// Hook writes are platform wiring, not stage work (fabro-b6c5): the
+/// checkpoint guard exempts this root from `x.fs_write` for a run that
+/// wires a sandbox hook, and `x.fs_write=''` keeps meaning "the model
+/// writes nothing".
+const STAGE_JOURNAL_WRITE_ROOT: &str = ".fabro/journal";
 
 impl HooksSpec {
     /// The spec a run's settings give: its Git settings and its artifact
@@ -231,6 +270,8 @@ impl HooksSpec {
             records,
             git: RunGitSettings::from(settings),
             artifacts: settings.artifacts.include.clone(),
+            hook_write_roots: hook_write_roots(settings),
+            envelopes: None,
             test_gates: None,
         }
     }
@@ -240,6 +281,35 @@ impl HooksSpec {
         self.test_gates = gates;
         self
     }
+
+    /// The run's stage envelopes, parsed from its `graph_source`, for the
+    /// checkpoint guard to enforce (fabro-aa5f, ADR-0009 rev).
+    #[must_use]
+    pub fn with_envelopes(mut self, envelopes: Arc<StageEnvelopes>) -> Self {
+        self.envelopes = Some(envelopes);
+        self
+    }
+}
+
+/// The roots the run's hook wiring may write (fabro-b6c5): the
+/// stage-journal contract's root, but only for a run that wires a hook
+/// into its sandboxes. A run without sandbox hooks exempts nothing —
+/// its journal root, should one appear staged, is stage traffic like
+/// any other file.
+fn hook_write_roots(settings: &RunNamespace) -> Vec<String> {
+    settings
+        .hooks
+        .iter()
+        .any(HookDefinition::runs_in_sandbox)
+        .then(|| STAGE_JOURNAL_WRITE_ROOT.to_string())
+        .into_iter()
+        .collect()
+}
+
+/// Whether `path` sits at or under the workspace-relative `root`: the
+/// shape of a root the checkpoint guard exempts.
+fn under_write_root(root: &str, path: &str) -> bool {
+    path == root || path.starts_with(&format!("{root}/"))
 }
 
 /// A scope's sandbox environment as the hooks keep it: the workspace id
@@ -364,31 +434,38 @@ impl ScopeEnvs {
 
 /// Fabro's `ExecutionHooks`, around the hooks the runtime installed.
 pub struct FabroHooks {
-    inner:           Arc<dyn ExecutionHooks>,
-    run_id:          RunId,
-    records:         Arc<dyn PlatformRecords>,
+    inner:            Arc<dyn ExecutionHooks>,
+    run_id:           RunId,
+    records:          Arc<dyn PlatformRecords>,
     /// Where an artifact's bytes and a diff's patch go; `None` records
     /// summaries alone.
-    blobs:           Option<Arc<dyn Blobs>>,
-    workspaces:      RunWorkspaces,
-    lookup:          WorkspaceLookup,
-    identity:        GitIdentity,
-    host_workspaces: bool,
-    test_gates:      Option<PathBuf>,
-    handle:          OnceLock<CoordinatorHandle>,
-    checkpoints:     CheckpointLedger,
-    artifacts:       ArtifactLedger,
-    scopes:          ScopeEnvs,
+    blobs:            Option<Arc<dyn Blobs>>,
+    workspaces:       RunWorkspaces,
+    lookup:           WorkspaceLookup,
+    identity:         GitIdentity,
+    host_workspaces:  bool,
+    test_gates:       Option<PathBuf>,
+    handle:           OnceLock<CoordinatorHandle>,
+    checkpoints:      CheckpointLedger,
+    artifacts:        ArtifactLedger,
+    scopes:           ScopeEnvs,
     /// The checkpoint failure that ended the run, when one did.
-    failure:         Mutex<Option<String>>,
+    failure:          Mutex<Option<String>>,
+    /// The run's stage envelopes (`graph_source`), for the checkpoint
+    /// guard; `None` leaves every stage unrestricted.
+    envelopes:        Option<Arc<StageEnvelopes>>,
+    /// Workspace-relative roots the run's `[[run.hooks]]` wiring may
+    /// write (fabro-b6c5): exempted from the stage envelope, so hook
+    /// traffic is never judged as the model's.
+    hook_write_roots: Vec<String>,
     /// Whether the run continues from its records: a sandbox workspace is
     /// then brought to its snapshot when its scope is first acquired.
-    resumed:         bool,
+    resumed:          bool,
     /// The snapshot every live sandbox workspace must sit on before work
     /// resumes in it, read once from the records; an entry leaves when it
     /// is applied.
-    restore:         OnceCell<Mutex<BTreeMap<String, RestoreTarget>>>,
-    store:           Arc<dyn RunStore>,
+    restore:          OnceCell<Mutex<BTreeMap<String, RestoreTarget>>>,
+    store:            Arc<dyn RunStore>,
 }
 
 impl FabroHooks {
@@ -437,6 +514,8 @@ impl FabroHooks {
                 collected: OnceCell::new(),
             },
             scopes: ScopeEnvs::default(),
+            envelopes: spec.envelopes,
+            hook_write_roots: spec.hook_write_roots,
             failure: Mutex::default(),
             resumed,
             restore: OnceCell::new(),
@@ -541,6 +620,68 @@ impl FabroHooks {
         Ok(Some((workspace, site)))
     }
 
+    /// Deny a stage whose staged files fall outside its `x.fs_write`
+    /// scope (fabro-aa5f, ADR-0009 rev). A node without envelope
+    /// attributes, or an envelope that restricts nothing, passes. The
+    /// check runs under the workspace's commit lock over the same staged
+    /// set the commit would snapshot, so a violation is refused before
+    /// anything is committed: an escape never reaches the run branch.
+    ///
+    /// Read-side hiding (`x.fs_hide`) is not enforceable at this seam —
+    /// the checkpoint sees files, not tool calls; the session-level hook
+    /// the ADR names needs a Petri host capability the pinned revision
+    /// does not offer, and upstream gets no offers from us.
+    async fn enforce_stage_envelope(&self, site: &Site, node: &str) -> Result<(), HookError> {
+        let Some(envelopes) = &self.envelopes else {
+            return Ok(());
+        };
+        let Some(scope) = envelopes.fs_scope(node) else {
+            return Ok(());
+        };
+        let scope = scope.map_err(|source| HookError::EnvelopeCompile {
+            node: node.to_string(),
+            source,
+        })?;
+        if !scope.is_active() {
+            return Ok(());
+        }
+        let staged =
+            self.workspaces
+                .staged_paths(site)
+                .await
+                .map_err(|source| HookError::Commit {
+                    node: node.to_string(),
+                    source,
+                })?;
+        // Hook traffic is platform wiring, not stage work (fabro-b6c5):
+        // files under a root the run's `[[run.hooks]]` wiring declared
+        // writable never reach the scope check, so the journal the
+        // stage-journal hook appends cannot fail a deny-all planner.
+        let violations: Vec<String> = staged
+            .into_iter()
+            .filter(|path| {
+                !self
+                    .hook_write_roots
+                    .iter()
+                    .any(|root| under_write_root(root, path))
+            })
+            .filter(|path| scope.check_write("", path).is_err())
+            .collect();
+        if violations.is_empty() {
+            return Ok(());
+        }
+        warn!(
+            run_id = %self.run_id,
+            node,
+            paths = violations.len(),
+            "stage envelope violation; the run ends before committing"
+        );
+        Err(HookError::EnvelopeViolation {
+            node:  node.to_string(),
+            paths: violations,
+        })
+    }
+
     /// The checkpoint commit for one attempt's result. `Ok(Some)` is the
     /// note to record, `Ok(None)` nothing to record, `Err` the fatal
     /// failure.
@@ -575,6 +716,7 @@ impl FabroHooks {
         self.gate("commit", node).await;
         let serialized = self.scopes.lock_for(&workspace);
         let _held = serialized.lock().await;
+        self.enforce_stage_envelope(&site, node).await?;
         match self
             .workspaces
             .commit(&site, &workspace, key, node, status.tag())
@@ -1225,8 +1367,16 @@ impl ExecutionHooks for FabroHooks {
                     "checkpoint failed; the run ends"
                 );
                 self.fail_run(&message);
+                let class = if matches!(
+                    error,
+                    HookError::EnvelopeViolation { .. } | HookError::EnvelopeCompile { .. }
+                ) {
+                    FS_POLICY_VIOLATION_CLASS
+                } else {
+                    CHECKPOINT_FAILED_CLASS
+                };
                 prepared.adjustment.status = Some(Status::Failure(
-                    FailureInfo::new(message.clone()).with_class(CHECKPOINT_FAILED_CLASS),
+                    FailureInfo::new(message.clone()).with_class(class),
                 ));
                 prepared.adjustment.reason = Some(message);
             }
@@ -1351,7 +1501,56 @@ impl ExecutionHooks for FabroHooks {
 
 #[cfg(test)]
 mod tests {
+    use fabro_types::settings::run::HookEvent;
+
     use super::*;
+
+    #[test]
+    fn hook_write_roots_follow_the_sandbox_hook_contract() {
+        let mut settings = RunNamespace::default();
+        assert!(
+            hook_write_roots(&settings).is_empty(),
+            "a run without hooks exempts nothing"
+        );
+
+        settings.hooks = vec![HookDefinition {
+            name:       Some("judgment-shadow".to_string()),
+            event:      HookEvent::StageComplete,
+            command:    None,
+            hook_type:  None,
+            matcher:    None,
+            blocking:   Some(false),
+            timeout_ms: None,
+            sandbox:    Some(false),
+        }];
+        assert!(
+            hook_write_roots(&settings).is_empty(),
+            "a host-side hook writes no workspace the guard judges"
+        );
+
+        settings.hooks[0].sandbox = Some(true);
+        settings.hooks[0].name = Some("stage-journal".to_string());
+        assert_eq!(
+            hook_write_roots(&settings),
+            vec![STAGE_JOURNAL_WRITE_ROOT.to_string()],
+            "a sandbox hook exempts the stage-journal contract's root"
+        );
+    }
+
+    #[test]
+    fn under_write_root_matches_the_root_tree_only() {
+        assert!(under_write_root(".fabro/journal", ".fabro/journal"));
+        assert!(under_write_root(
+            ".fabro/journal",
+            ".fabro/journal/01M3A0ZWE86BSRQRPE583EMDSZ.jsonl"
+        ));
+        assert!(!under_write_root(
+            ".fabro/journal",
+            ".fabro/journal-escape.txt"
+        ));
+        assert!(!under_write_root(".fabro/journal", "src/main.rs"));
+        assert!(!under_write_root(".fabro/journal", "a/fabro/journal/x"));
+    }
 
     #[test]
     fn the_selection_keeps_the_smallest_files_within_the_budgets() {

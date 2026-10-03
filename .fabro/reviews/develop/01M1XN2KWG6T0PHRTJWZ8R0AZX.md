@@ -1,0 +1,55 @@
+# Improve review — run 01M1XN2KWG6T0PHRTJWZ8R0AZX
+
+- workflow: develop
+- branch integrated: this revisor pass (unmerged until approved)
+- status: succeeded (48.0 min, revisor pass — reason and cost in run detail)
+- generated: 2026-09-07 11:11+0000 by revisor `fabro_ask`
+
+---
+
+# Recommendations for the Develop workflow — grounded in run 01M1XN2KWG6T0PHRTJWZ8R0AZX
+
+Run shape (from run events/checkpoints): seed `fabro-bde4` claimed 10:05, implemented 10:33, **gate red 10:34 (known bug), implementer revisit until 10:47**, green 10:48, approved 10:49. Total 48 min / $1.78; the gate-red detour cost ~13 min, $0.38, and one full agent pass. Ordered by expected impact:
+
+---
+
+**1. Match gate-red failures against the known-bug tracker before bouncing to the implementer**
+- **What happened:** tester@1 failed on exactly the deterministic failure already filed as seed `fabro-febd` (missing `target/debug/fabro` in a cold sandbox, 3 SVG-render tests). The planner had literally run `sd show fabro-febd` at 10:02:34 — its body says "the 01M1VZTJSZ55 run burned a whole implementer revisit on this" — yet when the gate went red 30 minutes later, nothing surfaced it. implementer@2 (events 672–910) re-derived the root cause from a 186 KB log blob: 704 s wall, $0.38, `sed`/`git log`/reproduction churn. Same waste as the prior run.
+- **Change:** two layers, both concrete: (a) `scripts/qualitygate.nu` — run `cargo build -p fabro-cli --bin fabro` before nextest whenever fabro-server is in the touched set (fabro-febd's own preferred fix (a)); (b) in `workflow.fabro`, make the `tester -> implementer [label="Gate red"]` bounce carry a deterministic pre-step that matches the failure tail against open `workflows`-labelled seeds and attaches a matching seed body to the brief.
+- **Expected effect:** eliminates the recurring whole-implementer-revisit class (~12 min + ~$0.38 per occurrence, observed twice across two runs); bounce passes start at the root cause instead of the log tail.
+
+**2. Print a critical-first failure summary in the gate, and fix the failure classification**
+- **What happened:** the 3 `TRY 2 FAIL` lines sit at the *end* of a 188,350-byte output; the implementer@2 prompt preview showed the gate *header*, not the failures, so it paged the blob first (event 684 reads the tail before anything else). Worse, the checkpoint records `failure_class: "transient_infra"` for a failure the tracker documents as deterministic.
+- **Change:** `scripts/qualitygate.nu` — on red, print a top-of-output block: failing test names + likely cause (e.g. "missing `target/debug/fabro`"), and exit with a distinguishable status so the engine doesn't classify deterministic misses as transient. (Open seed fabro-e988 proposes the summary; this run is the evidence.)
+- **Expected effect:** gate-red bounces diagnose in one read instead of a blob-paging + reproduction cycle; correct classification stops deterministic bugs from being treated as retryable noise.
+
+**3. Fix the evidence capture's churn classifier for seed-cited paths**
+- **What happened (reviewer journal, verbatim painpoint):** `docs/public/api-reference/fabro-api.yaml` (+11/−3) and `.fabro/workflows/conductor/prompts/{develop-leg,merge-leg}.md` — three of eight *acceptance criteria* — were bucketed as "loop churn" and appeared only as counts, no diffs. The reviewer had to run `git diff 422fbb0..HEAD -- <paths>` itself to verify them.
+- **Change:** `.fabro/workflows/develop/scripts/evidence.nu` — classify a changed file as seed-work when its path is named in the seed spec/brief, even under `.fabro/` or `docs/`.
+- **Expected effect:** reviewer verifies 8/8 criteria from the capture; removes the git-diff fallback and the risk that a lazier reviewer routes "Verification blocked" on the same gap.
+
+**4. Raise the reviewer's inline evidence cap (blob detour on a 2%-full window)**
+- **What happened:** the evidence capture (25.8 KB) was demoted to a blob ref by `preamble_inline_max_kb=16`; the reviewer's context window stood at **2.1% of 1M** (from the stage's context_window breakdown). One extra `read_file` round trip per review, plus the standing "unread blob = grounds for rejection" rule.
+- **Change:** `workflow.fabro`, reviewer node: `preamble_inline_max_kb=16` → 32, and graph `preamble_budget_kb=24` → 32 (open seed fabro-8d2c already proposes the budget half; this run's 25.8 KB capture is the number that justifies it).
+- **Expected effect:** captures arrive inline; one fewer tool round trip per review and the unread-blob rejection class disappears.
+
+**5. Dedupe stage history in preambles and fix the progress denominator**
+- **What happened:** the reviewer@1 prompt contains **two identical `## Stage: tester / GATE GREEN` sections** (both visits rendered). implementer@2's header read "Pipeline progress: 1 of 6 stages completed" when four stage visits were done; the final projection says "8 of 6 non-meta stages completed."
+- **Change:** engine preamble renderer (fabro-edac: latest visit per node only) and the progress computation (fabro-45bf/a0e3: unique completed nodes as numerator/denominator).
+- **Expected effect:** smaller, non-contradictory preambles; progress that users and downstream agents can trust in the UI and Slack notifications.
+
+**6. Trim the planner's tracker firehose**
+- **What happened (planner transcript, events 32–49):** first batch = `sd prime` + `ml prime` + `sd ready --limit 200` → an 18 KB, 146-seed listing (`stdout_truncated: true`), then full `sd show` on **two** seeds including the one not picked. Planner cost $0.225/188 s — acceptable, but ~15 KB of the input was noise it never used.
+- **Change:** `.fabro/workflows/develop/prompts/planner.md` sd table — pipe `sd ready` through `head -40` (the list is priority-sorted; open seed fabro-c3b4), and only `sd show` the runner-up when the top candidate fails its basis check.
+- **Expected effect:** fewer input tokens and turns per planning pass; less chance of the model being distracted by 146 titles.
+
+**7. Share a prompt-cache prefix across stages**
+- **What happened:** `cache_write_tokens: 0` on every stage (planner, both implementer passes, reviewer — from billing events); each stage opens a fresh session and re-pays its ~13 KB prompt + tool schemas at full input price. Intra-session cache reads work (planner: 513 K cache-read), cross-stage none.
+- **Change:** engine session handling (open seed fabro-944d): keep a stable system-prompt/tool-schema prefix across stages of one run.
+- **Expected effect:** direct cut in the 172,758 billed input tokens; largest for the implementer, which is 85% of run LLM spend ($1.51 of $1.78).
+
+---
+
+**Do not touch (measured working well in this run):** reviewer `reasoning_effort=low` + the inline PASS/FAIL report → $0.05, 42 s, 948 reasoning tokens, first-pass approval on substance; implementer's crate-scoped fmt/clippy rule → both gate runs compile-warm (96 s cold → 54 s warm, zero style-red cycles); deterministic closeout (0.3 s, $0, correct seed closed via `stdin_source=current_seed_id`).
+
+Sources: run events and checkpoints (`fabro_run_events`, `fabro_run_get`), stage prompts/transcripts (planner@1, implementer@2, reviewer@1), the run journal `.fabro/journal/01M1XN2KWG6T0PHRTJWZ8R0AZX.jsonl` (implementer and reviewer painpoints quoted above), and billing/timing from the run conclusion.

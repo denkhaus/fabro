@@ -858,6 +858,11 @@ pub struct RunPullRequestLayer {
         value_type = "\"merge\" | \"squash\" | \"rebase\""
     )]
     pub merge_strategy: Option<MergeStrategy>,
+    /// Explicit model for pull-request content generation (fork, fabro-890b):
+    /// wins over the catalog default; a per-request body model wins over both.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[option(default = "null", value_type = "string")]
+    pub model:          Option<String>,
 }
 
 /// `[run.artifacts]` — run artifact collection policy.

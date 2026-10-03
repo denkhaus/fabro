@@ -2043,6 +2043,9 @@ fn slack_app_state_with_settings_and_secret_sources(
         worker_control_bus: None,
         worker_runtime: None,
         automation_materializer_override: None,
+        seeds_source_override: None,
+        #[cfg(any(test, feature = "test-support"))]
+        automation_breaker_notifier_override: None,
     })
     .expect("slack test app state should build")
 }
@@ -3525,6 +3528,53 @@ file = "goal.md"
     );
 }
 
+/// A git-target run binds a prepared checkout for the engine's start
+/// step (fabro-b6c5 FINDING 5): without a bound repository Petri seeds an
+/// empty workspace and every stage runs without the repository the run
+/// was asked to start from. Test builds bind the local stub worktree, so
+/// the pin asserts the run's scratch carries a git worktree at the
+/// requested branch naming its target.
+#[tokio::test]
+async fn a_git_target_run_binds_a_prepared_checkout_under_its_scratch() {
+    let state = test_app_state();
+    let app = crate::test_support::build_test_router(Arc::clone(&state));
+    let workflow_version_id = store_workflow_version(&state, MINIMAL_DOT, None).await;
+    let body = post_run_intent(
+        &app,
+        json!({
+            "workflow_version_id": workflow_version_id,
+            "target": {
+                "kind": "git",
+                "repo": "denkhaus/seeds",
+                "branch": "main"
+            },
+            "args": {}
+        }),
+    )
+    .await;
+    let run_id = body["id"].as_str().unwrap().parse::<RunId>().unwrap();
+
+    let scratch = fabro_config::Storage::new(state.server_storage_dir()).run_scratch(&run_id);
+    let worktree = scratch.worktree_dir();
+    let marker = worktree.join("fabro-test-target.txt");
+    let bound = tokio::fs::read_to_string(&marker)
+        .await
+        .expect("the run's scratch carries the bound checkout");
+    assert_eq!(bound.trim(), "denkhaus/seeds @ main");
+
+    let head = std::process::Command::new("git")
+        .args([
+            "-C",
+            &worktree.to_string_lossy(),
+            "rev-parse",
+            "--abbrev-ref",
+            "HEAD",
+        ])
+        .output()
+        .expect("git reads the bound worktree");
+    assert_eq!(String::from_utf8_lossy(&head.stdout).trim(), "main");
+}
+
 #[tokio::test]
 async fn post_runs_run_intent_creates_submitted_none_target_without_git_projection() {
     let state = test_app_state();
@@ -4962,7 +5012,7 @@ strategy = "token"
     .expect("github token settings fixture should resolve")
 }
 
-fn create_github_token_app_state(
+pub(super) fn create_github_token_app_state(
     token: Option<&str>,
     github_api_base_url: Option<String>,
 ) -> Arc<AppState> {
@@ -5032,6 +5082,9 @@ fn create_github_token_app_state_with_env_lookup_and_llm_catalog_settings(
         worker_control_bus: None,
         worker_runtime: None,
         automation_materializer_override: None,
+        seeds_source_override: None,
+        #[cfg(any(test, feature = "test-support"))]
+        automation_breaker_notifier_override: None,
     };
     build_app_state(config).expect("test app state should build")
 }
@@ -7930,6 +7983,66 @@ async fn worker_started_child_run_requires_approval_before_becoming_runnable() {
     );
 }
 
+/// The approval gate a worker-made child meets reads the run's resolved
+/// approval mode (fabro-b6c5): an intent that asked for
+/// `auto_approve: true` starts directly, so an orchestrated line can
+/// hand its children the keys it already holds. The human gate stays
+/// the default for every worker child without it.
+#[tokio::test]
+async fn an_auto_approved_worker_child_run_starts_directly() {
+    let (state, app) = jwt_auth_app();
+    let user_jwt = issue_test_user_jwt();
+    let parent_run_id = create_run_with_bearer(&app, &user_jwt).await;
+    let worker_token = issue_test_run_tools_worker_token(&parent_run_id);
+    let mut child_intent =
+        test_intent_with_bearer(&app, "workflow.fabro", MINIMAL_DOT, None, Some(&user_jwt)).await;
+    child_intent["parent_id"] = json!(parent_run_id.to_string());
+    child_intent["args"]["auto_approve"] = json!(true);
+
+    let response = app
+        .clone()
+        .oneshot(json_bearer_request(
+            Method::POST,
+            "/runs",
+            &worker_token,
+            &child_intent,
+        ))
+        .await
+        .unwrap();
+    let child_body = response_json!(response, StatusCode::CREATED).await;
+    let child_run_id = child_body["id"].as_str().unwrap().parse::<RunId>().unwrap();
+
+    let projection = state.load_run_projection(&child_run_id).await.unwrap();
+    assert_eq!(
+        projection.spec.settings.run.execution.approval,
+        ApprovalMode::Auto,
+        "the override resolves into the child's spec"
+    );
+
+    let response = app
+        .clone()
+        .oneshot(json_bearer_request(
+            Method::POST,
+            &format!("/runs/{child_run_id}/start"),
+            &worker_token,
+            &json!({ "resume": false }),
+        ))
+        .await
+        .unwrap();
+    let start_body = response_json!(response, StatusCode::OK).await;
+    assert_eq!(
+        run_json_status(&start_body)["kind"],
+        "runnable",
+        "an auto-approved worker child queues as runnable: {start_body}"
+    );
+
+    let runs = state.runs.lock().expect("runs lock poisoned");
+    assert_eq!(
+        runs.get(&child_run_id).map(|run| run.status),
+        Some(RunStatus::Runnable)
+    );
+}
+
 #[tokio::test]
 async fn denying_pending_child_run_fails_with_approval_denied() {
     let (_state, app) = jwt_auth_app();
@@ -10738,6 +10851,9 @@ methods = ["dev-token"]
         worker_control_bus: None,
         worker_runtime: None,
         automation_materializer_override: None,
+        seeds_source_override: None,
+        #[cfg(any(test, feature = "test-support"))]
+        automation_breaker_notifier_override: None,
     }) else {
         panic!("build_app_state should require SESSION_SECRET")
     };
@@ -10796,6 +10912,9 @@ fn slack_service_respects_disabled_server_config_even_with_vault_tokens() {
         worker_control_bus: None,
         worker_runtime: None,
         automation_materializer_override: None,
+        seeds_source_override: None,
+        #[cfg(any(test, feature = "test-support"))]
+        automation_breaker_notifier_override: None,
     })
     .expect("slack disabled test app state should build");
 

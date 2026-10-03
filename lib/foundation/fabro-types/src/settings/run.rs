@@ -2427,6 +2427,11 @@ pub struct PullRequestSettings {
     pub draft:          bool,
     pub auto_merge:     bool,
     pub merge_strategy: MergeStrategy,
+    /// Explicit model for pull-request content generation (fork, fabro-890b):
+    /// when set, it wins over the catalog default; a per-request body model
+    /// still wins over both.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model:          Option<String>,
 }
 
 impl Default for PullRequestSettings {
@@ -2436,6 +2441,7 @@ impl Default for PullRequestSettings {
             draft:          true,
             auto_merge:     false,
             merge_strategy: MergeStrategy::Squash,
+            model:          None,
         }
     }
 }

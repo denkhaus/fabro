@@ -304,3 +304,87 @@ mod tests {
         assert_eq!(error.retry_classification(), RetryClassification::Never);
     }
 }
+
+/// The timestamp format providers embed in usage-window reset prose.
+const RESET_TIMESTAMP_LEN: usize = "YYYY-MM-DD HH:MM:SS".len();
+
+/// A reset deadline parsed out of provider error prose (fabro-0607).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ResetDeadline {
+    /// A timestamp with an explicit UTC offset: trustworthy as an absolute
+    /// instant.
+    At(chrono::DateTime<chrono::FixedOffset>),
+    /// A timezone-naive wallclock. The provider's local offset is unknown
+    /// (zai sends Beijing wallclock), so it must never become an absolute
+    /// deadline — west-of-UTC providers would look already-reset and
+    /// silently disable the park.
+    Naive,
+}
+
+/// Parses a provider usage-window reset deadline out of error message text.
+///
+/// Some providers (zai and Anthropic-style 429 bodies) say when a usage
+/// window reopens only in prose: "Usage limit reached for 5 hour. Your limit
+/// will reset at 2026-09-03 05:35:16". RFC3339 timestamps (with offset)
+/// parse as [`ResetDeadline::At`]; the offset-less wallclock form parses as
+/// [`ResetDeadline::Naive`] (fabro-a3d8, fabro-0607).
+#[must_use]
+pub fn parse_reset_deadline(message: &str) -> Option<ResetDeadline> {
+    let marker = "will reset at ";
+    let start = message.find(marker)? + marker.len();
+    let rest = message.get(start..)?;
+    let token = rest.split_whitespace().next()?;
+    if let Ok(at) = chrono::DateTime::parse_from_rfc3339(token) {
+        return Some(ResetDeadline::At(at));
+    }
+    let timestamp = rest.get(..RESET_TIMESTAMP_LEN)?;
+    if NaiveDateTime::parse_from_str(timestamp, "%Y-%m-%d %H:%M:%S").is_ok() {
+        return Some(ResetDeadline::Naive);
+    }
+    None
+}
+
+/// Whether `message` announces a reset only as a timezone-naive wallclock.
+#[must_use]
+pub fn reset_prose_is_naive(message: &str) -> bool {
+    matches!(parse_reset_deadline(message), Some(ResetDeadline::Naive))
+}
+
+use std::time::SystemTime;
+
+use chrono::NaiveDateTime;
+
+// ── Fork surface (fabro-a3d8/986b, W3-1) ────────────────────────────────
+/// The provider's announced wait until its usage window reopens
+/// (fabro-0607).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RateLimitWindow {
+    /// A trustworthy reopen wait: parsed from an offset-carrying timestamp
+    /// that still lies in the future at `now`.
+    Reopens(Duration),
+    /// A reset was announced, but its timestamp carries no UTC offset: the
+    /// real wait is unknown. Callers must still treat the window as closed
+    /// (park) instead of computing a duration.
+    UnknownEta,
+}
+
+/// The wait until the reset deadline parsed from `message`, when one exists.
+///
+/// Offset-carrying deadlines already reached advise nothing — the window
+/// has reopened, so ordinary short-window retry behavior applies. Naive
+/// wallclocks return [`RateLimitWindow::UnknownEta`] regardless of how they
+/// compare against UTC now: without the provider's offset the comparison
+/// itself is meaningless.
+#[must_use]
+pub fn reset_window(message: &str, now: SystemTime) -> Option<RateLimitWindow> {
+    match parse_reset_deadline(message)? {
+        ResetDeadline::At(deadline) => deadline
+            .with_timezone(&chrono::Utc)
+            .signed_duration_since(chrono::DateTime::<chrono::Utc>::from(now))
+            .to_std()
+            .ok()
+            .filter(|window| !window.is_zero())
+            .map(RateLimitWindow::Reopens),
+        ResetDeadline::Naive => Some(RateLimitWindow::UnknownEta),
+    }
+}

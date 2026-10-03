@@ -1,0 +1,16 @@
+digraph Repro68d3 {
+    // Reproduction harness for fabro-68d3: a prompt that MENTIONS an
+    // unknown slash-command token mid-text must not kill the session
+    // before the first LLM call.
+    graph [goal="Survive a prompt that mentions an unknown slash command", retry_target=exit]
+    rankdir=LR
+    start [shape=Mdiamond, label="Start"]
+    exit  [shape=Msquare, label="Exit"]
+    stage [
+        label="Mention",
+        prompt="@prompts/mention.md",
+        reasoning_effort="low"
+    ]
+    start -> stage
+    stage -> exit
+}

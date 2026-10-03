@@ -1,0 +1,49 @@
+# Improve review — run 01M235V6FWMNBDKS9BH3T25G2D
+
+- workflow: develop
+- branch integrated: this revisor pass (unmerged until approved)
+- status: succeeded (4.9 min, revisor pass — reason and cost in run detail)
+- generated: 2026-09-09 13:42+0000 by revisor `fabro_ask`
+
+---
+
+All facts below are from this run's events (seq numbers), stage timings/billing from the run conclusion, and journal entries in `.fabro/journal/01M235V6FWMNBDKS9BH3T25G2D.jsonl` (visible in the checkpoint diffs). Run totals: 4m55s wall, $0.173 LLM spend, of which planner $0.076 (44%), implementer $0.075 (43%), reviewer $0.022 (13%); script stages (tester/evidence/closeout) cost $0 and 5.7s combined. Tool time across the whole run: 12.2s vs 232s inference — this run's economics are decided by LLM round counts, not tool or gate time.
+
+## Recommendations, ordered by expected impact
+
+**1. Make the implementer's `sd show` re-fetch conditional — `.fabro/workflows/develop/prompts/implementer.md`, step 1.**
+What happened: the brief was complete in context (5 bulleted criteria, anchors, verification commands), yet step 1's "Re-read the seed requirements from `sd show`" forced a redundant fetch (seq 90) plus a full LLM round to reconcile it against the brief. The implementer needed 10 LLM rounds / 135.5s inference / $0.075 for a one-line insertion; tool time was 3.0s.
+Change: reword step 1 to "the brief in context is authoritative; run `sd show` only if a criterion is ambiguous or the brief is marked thin" (this is open seed fabro-4881/fabro-a67f territory — implement it).
+Expected effect: −1 LLM round (~13s, ~$0.008) per implementer pass; on trivial seeds ~10% of stage cost.
+
+**2. Expose `current_seed_id` in the `fabro_runs_list` projection — engine, `lib/components/fabro-workflow` (seed fabro-9372), plus top-N `sd ready` (fabro-c3b4).**
+What happened: the planner's in-flight check found one running develop run (itself), its goal carries no seed id (all develop runs share the generic goal), so it fell back to grepping its own journal and got a junk match — `fabro-journal` from the `$schema` field (seq 44–47). Separately, `sd ready --limit 200` dumped 189 seeds / 25.6KB into context (seq 32). Planner: 8 rounds, 68.9s inference, $0.076.
+Change: stamp `current_seed_id` into the run projection (or as a run label) so the guard reads it structurally; and have the planner request a top-N view — it only ever claims the top unblocked candidate.
+Expected effect: −2 planner rounds (~20s, ~$0.015) per pass, since a running develop run always exists under the conductor; more importantly, removes a junk-matching heuristic that could mis-skip a valid candidate or miss a real double-pick (the fabro-22e4/fabro-91ff class).
+
+**3. Briefs must quote anchor text, not absolute line numbers — `.fabro/workflows/develop/prompts/planner.md`, steps 6–7.**
+What happened: the brief pinned "lines 48–55"; in the checkout the anchor sat at line 51. The implementer burned a full reasoning round reconciling its sed window against python's 0-based index (seq 104→110: "Hmm, discrepancy… wait"), then journaled "briefs citing absolute line numbers should be treated as approximate." The planner had also spent 2 tool calls locating the anchor (seq 51–59) — reconnaissance the implementer redid anyway (seq 91–100).
+Change: require briefs to specify insertion points as quoted anchor text (e.g. "insert after the line reading `keep working through the shell.`") and drop the planner's anchor-locating greps entirely — that's implementer work.
+Expected effect: −1 implementer verification round and −2 planner tool calls (~35s combined); eliminates the off-by-N insertion risk class.
+
+**4. Fix the `ml record` lesson-capture friction — mulch-cli (`@os-eco/mulch-cli`, pinned 0.10.7 in the toolchain image) + one line in implementer.md.**
+What happened: three separate friction points, all in events 123–143: (a) `ml record --type failure` failed once for a missing `--resolution` flag (the prompt documents no flag contract — open seed fabro-96bd); (b) the retry printed only "✓ Recorded failure in tooling" — no mx-id — while the prompt demands "name the mx-id it printed", forcing 2 `ml search` calls to recover `mx-9bad2f` (the first search, piped through `head`, returned nothing); (c) the call auto-created domain "tooling", mutating `.mulch/mulch.config.yaml` mid-run (open seed fabro-b94d) — churn the reviewer then had to reason about ("Mulch/config churn correctly segregated").
+Change: make `ml record` print the mx-id on success and pre-validate flags; stop auto-creating domains in the config mid-run (or pre-declare `tooling`); until then, add the flag contract (`--type failure` requires `--resolution`) and the `ml search` recovery path to implementer.md's lesson-capture section.
+Expected effect: −3 tool calls / −2 LLM rounds (~25s, ~$0.015) on every lesson-capturing pass; seed diffs stay at exactly the seed's file, shrinking review scope.
+
+**5. Fix the pipeline-progress denominator — engine, stage prompt renderer (open seeds fabro-45bf/fabro-38f4).**
+What happened: the implementer's prompt header read "Pipeline progress: 0 of 7 stages completed" when 2 nodes were done; the reviewer's read "2 of 7" when 5 were done (start, planner, implementer, tester, evidence) — the counter appears to track only command-handler stages.
+Change: compute progress from unique completed node ids in the checkpoint, not completed command stages.
+Expected effect: correct context in every downstream prompt; removes a systematically wrong signal agents currently read while self-assessing scope. Zero runtime cost.
+
+**6. Downgrade the by-design preamble warn — engine fidelity/lifecycle log (open seed fabro-8275).**
+What happened: the run's only WARN line (worker log, 13:32:44) is `preamble_allow_keys entry absent from context node=implementer key=output.gate_known_bug_hits` — that key exists only on gate-red bounces, so the warn fires on every green first visit and is pure noise.
+Change: emit it at info unless the gatebounce node actually produced output this cycle.
+Expected effect: clean warn-level logs; a real allow-keys drift becomes visible instead of buried in expected noise.
+
+**7. Do not raise `preamble_budget_kb` past 24 on current evidence — guard against fabro-8d2c (24→32).**
+What happened: the recurring justification for the raise is the evidence blob-detour; it did not occur this run. The capture was 4.4KB, delivered inline under the reviewer's 16KB ceiling, reviewer context peaked at 1.2% of the 1M window, zero tool calls, $0.022, first-pass approval.
+Change: none to the graph; close fabro-8d2c as "not reproduced while captures stay churn-only-scoped", or gate any future bump on a recurrence.
+Expected effect: avoids permanently enlarging every stage preamble (and its token bill) to fix a failure mode this run's evidence design already prevents.
+
+**Not inspected / limits:** PR #94's post-run merge state is `null` in the projection (auto-merge was enabled; last event 13:39:46 postdates completion), and the tester/evidence outputs were read from previews and the reviewer preamble ("no crates touched / format clean"), not from the full blobs — neither affects the recommendations above.

@@ -10,6 +10,7 @@ mod mcp_servers;
 mod petri_store;
 mod routing;
 mod run_files;
+mod run_wait;
 mod runs;
 mod sandbox_vnc;
 mod sessions;

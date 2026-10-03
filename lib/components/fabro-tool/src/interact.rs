@@ -694,6 +694,7 @@ mod tests {
             origin:           RunOrigin::default(),
             labels:           HashMap::new(),
             lifecycle:        RunLifecycle {
+                conclusion_failure: None,
                 status,
                 approval: None,
                 pending_control: None,

@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Loop planner routing output (fabro-70b5)",
+  "description": "The develop planner schema (fabro-9ec3 arm 3 pattern) for the loop lane: routing contract with preferred_next_label restricted to this node's outgoing edge labels, plus the gate-command ban — a current_seed_brief naming the PRODUCT gate (`just qualitygate` / `nu scripts/qualitygate.nu`) or the LOOP gate (`nu .fabro/workflows/loop/scripts/loop-gate.nu`) fails validation and burns an output retry. Verification criteria say 'gate green via the deterministic tester step'. context_updates stays otherwise open (journal, seed keys, ...) exactly like the routing kind.",
+  "type": "object",
+  "required": [
+    "outcome",
+    "preferred_next_label"
+  ],
+  "properties": {
+    "outcome": {
+      "type": "string"
+    },
+    "preferred_next_label": {
+      "type": "string",
+      "enum": [
+        "Seed claimed",
+        "Verification-only",
+        "Tracker empty",
+        "Already landed",
+        "Blocked"
+      ]
+    },
+    "failure_reason": {
+      "type": "string"
+    },
+    "suggested_next_ids": {
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "context_updates": {
+      "type": "object",
+      "properties": {
+        "current_seed_brief": {
+          "type": "string",
+          "pattern": "^(?:(?!just qualitygate|nu\\s+scripts/qualitygate\\.nu|nu\\s+\\.fabro/workflows/loop/scripts/loop-gate\\.nu)[\\s\\S])*$",
+          "description": "Gate-command ban (both lanes' gates): the implementer never runs a full gate in any form; the deterministic tester step owns the gate."
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

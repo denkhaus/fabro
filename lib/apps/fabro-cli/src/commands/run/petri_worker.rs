@@ -74,6 +74,7 @@ use fabro_llm::credentials::{CredentialProvider, readiness};
 use fabro_petri::blobs::ClientBlobs;
 use fabro_petri::controls::{RunControls, SteerError};
 use fabro_petri::engine::{self, Conclusion, Execution, RunRequest};
+use fabro_petri::fork_stage_envelope::StageEnvelopes;
 use fabro_petri::hooks::HooksSpec;
 use fabro_petri::interview::{Approval, FabroInterviewer};
 use fabro_petri::petri::OwnerId;
@@ -165,11 +166,22 @@ pub(super) async fn execute(worker: PetriWorker<'_>) -> Result<()> {
     let vault = runner::load_worker_vault(worker.storage_dir).await?;
     let secrets = VaultSecrets::from_vault(&*vault.read().await);
     let run_tools = run_tool_services(&worker);
+    // The run's stage envelopes ride its `graph_source`: the lowering
+    // drops `x.*`, so the checkpoint guard (fabro-aa5f) and the per-node
+    // run-tools allowlist (fabro-96c6) both read them off the original
+    // text, parsed once and shared.
+    let envelopes = worker
+        .run_state
+        .spec
+        .graph_source
+        .clone()
+        .map(|source| Arc::new(StageEnvelopes::parse(&source)));
     let runtime = runtime_spec(
         &vault,
         &worker.run_state,
         worker.fabro_home.clone(),
         run_tools,
+        envelopes.clone(),
     )
     .await?;
     let execution = match worker.mode {
@@ -198,8 +210,11 @@ pub(super) async fn execute(worker: PetriWorker<'_>) -> Result<()> {
     }
     runner::set_worker_title(&run_id, WorkerTitlePhase::Running);
 
-    let hooks = HooksSpec::for_run(Arc::clone(&records), &worker.run_state.spec.settings.run)
+    let mut hooks = HooksSpec::for_run(Arc::clone(&records), &worker.run_state.spec.settings.run)
         .with_test_gates(test_checkpoint_gates());
+    if let Some(envelopes) = &envelopes {
+        hooks = hooks.with_envelopes(Arc::clone(envelopes));
+    }
     let request = RunRequest {
         run_id: run_id.to_string(),
         run_dir: worker.run_dir.join("petri"),
@@ -598,6 +613,7 @@ async fn runtime_spec(
     run_state: &RunProjection,
     fabro_home: Option<PathBuf>,
     run_tools: Option<FabroRunToolServices>,
+    envelopes: Option<Arc<StageEnvelopes>>,
 ) -> Result<RuntimeSpec> {
     let catalog =
         command_context::load_cli_catalog().context("failed to build worker LLM catalog")?;
@@ -628,5 +644,9 @@ async fn runtime_spec(
         dry_run: run_state.spec.settings.run.execution.mode == RunMode::DryRun,
         fabro_home,
         run_tools,
+        envelopes,
+        // The engine binds the run's id on the local hook service when the
+        // run executes; the worker assembles the spec before that.
+        run_id: None,
     })
 }

@@ -290,6 +290,85 @@ impl RunSummaryStore {
         decode_run_rows(&rows, now)
     }
 
+    /// Terminal runs of one automation, newest first. The automation
+    /// breaker replays these chronologically to count consecutive
+    /// same-signature failures (fabro-3d97, fork).
+    ///
+    /// Quota parks (fabro-e566, fork) end `blocked` with a conclusion
+    /// (completed_at set): they are terminal and stay visible to the
+    /// breaker/gate window — the breaker skips them through
+    /// `is_quota_park`, never counting them. A human-input block has no
+    /// conclusion and stays a live run.
+    pub async fn list_terminal_for_automation(
+        &self,
+        automation_id: &str,
+        limit: u32,
+        now: DateTime<Utc>,
+    ) -> Result<Vec<Run>> {
+        let mut query = QueryBuilder::<Sqlite>::new(SELECT_RUN_SUMMARIES_SQL);
+        query
+            .push(" WHERE automation_id = ")
+            .push_bind(automation_id.to_string())
+            .push(
+                " AND (status IN ('succeeded', 'failed', 'dead')                    OR (status = 'blocked' AND completed_at_ms IS NOT NULL))",
+            );
+        push_order(
+            &mut query,
+            RunSummarySort::CreatedAt,
+            RunSummarySortDirection::Desc,
+            now,
+        );
+        query.push(" LIMIT ").push_bind(i64::from(limit));
+        let rows = query.build().fetch_all(&self.pool).await?;
+        decode_run_rows(&rows, now)
+    }
+
+    /// Run ids whose latest pull-request record links an open pull request
+    /// (fork, fabro-895d staleness supervisor). The latest record per run
+    /// must be a created/linked one — an unlinked or later request
+    /// supersedes it.
+    pub async fn list_linked_pull_request_run_ids(&self) -> Result<Vec<RunId>> {
+        sqlx::query_scalar::<_, String>(
+            "SELECT DISTINCT latest.run_id FROM platform_records AS latest \
+             WHERE latest.kind IN ('pull_request.created', 'pull_request.linked') \
+               AND NOT EXISTS ( \
+                 SELECT 1 FROM platform_records AS later \
+                 WHERE later.run_id = latest.run_id \
+                   AND later.seq > latest.seq \
+                   AND later.kind LIKE 'pull_request.%' \
+               )",
+        )
+        .fetch_all(&self.pool)
+        .await?
+        .into_iter()
+        .map(parse_stored_run_id)
+        .collect()
+    }
+
+    /// The newest non-terminal run of an automation (including children of
+    /// its runs), for overlap-policy skip logging (fabro-09ea, fork).
+    pub async fn active_run_for_automation(&self, automation_id: &str) -> Result<Option<RunId>> {
+        let stored: Option<String> = sqlx::query_scalar(
+            r"
+SELECT id
+FROM runs
+WHERE status NOT IN ('succeeded', 'failed', 'dead')
+  AND NOT (status = 'blocked' AND completed_at_ms IS NOT NULL)
+  AND (
+    automation_id = ?
+    OR parent_id IN (SELECT id FROM runs WHERE automation_id = ?)
+  )
+ORDER BY created_at_ms DESC
+LIMIT 1
+",
+        )
+        .bind(automation_id)
+        .bind(automation_id)
+        .fetch_optional(&self.pool)
+        .await?;
+        stored.map(parse_stored_run_id).transpose()
+    }
+
     /// Run ids whose latest pull request creation request has no later
     /// record that resolves it. A newer request supersedes the old one;
     /// `created`, `linked` and `unlinked` resolve any pending request;
@@ -321,6 +400,42 @@ impl RunSummaryStore {
                    ) \
                )",
         )
+        .fetch_all(&self.pool)
+        .await?
+        .into_iter()
+        .map(parse_stored_run_id)
+        .collect()
+    }
+
+    /// Run ids whose branch publish is still owed (fabro-ac40): runs that
+    /// finished successfully against a repository and carry no
+    /// `run.branch_published` record yet. Any outcome record — published,
+    /// skipped, failed — settles the debt, so the set stays bounded by
+    /// unfinished publishes; `completed_after_ms` bounds the backlog a
+    /// server adopts at boot (runs that finished before the cutoff are
+    /// left alone).
+    pub async fn list_run_publish_candidate_run_ids(
+        &self,
+        completed_after_ms: i64,
+        limit: u32,
+    ) -> Result<Vec<RunId>> {
+        let limit = i64::from(limit);
+        sqlx::query_scalar::<_, String>(
+            "SELECT runs.id FROM runs \
+             WHERE runs.status = 'succeeded' \
+               AND runs.completed_at_ms IS NOT NULL \
+               AND runs.completed_at_ms >= ? \
+               AND json_extract(runs.summary_json, '$.repository.origin_url') IS NOT NULL \
+               AND NOT EXISTS ( \
+                 SELECT 1 FROM platform_records AS published \
+                 WHERE published.run_id = runs.id \
+                   AND published.kind = 'run.branch_published' \
+               ) \
+             ORDER BY runs.completed_at_ms DESC, runs.id DESC \
+             LIMIT ?",
+        )
+        .bind(completed_after_ms)
+        .bind(limit)
         .fetch_all(&self.pool)
         .await?
         .into_iter()
@@ -660,7 +775,7 @@ mod tests {
     };
     use crate::platform_records::{
         PlatformRecord, PullRequestCreatedRecord, PullRequestFailedRecord,
-        PullRequestRequestedRecord,
+        PullRequestRequestedRecord, RunBranchPublishOutcome, RunBranchPublishedRecord,
     };
     use crate::test_support as store_test_support;
 
@@ -1047,6 +1162,101 @@ mod tests {
         let mut expected = vec![pending_id, failed_id, renewed_id];
         expected.sort();
         assert_eq!(candidates, expected);
+    }
+
+    #[tokio::test]
+    async fn run_publish_candidates_are_unpublished_successful_repository_runs() {
+        let (_directory, store) = store().await;
+        let created_at = dt("2026-08-27T12:00:00Z");
+        let cutoff = created_at.timestamp_millis();
+        let owed_id = run_id(created_at.timestamp_millis().cast_unsigned(), 1);
+        let settled_id = run_id(created_at.timestamp_millis().cast_unsigned() + 1, 2);
+        let failed_run_id = run_id(created_at.timestamp_millis().cast_unsigned() + 2, 3);
+        let no_repo_id = run_id(created_at.timestamp_millis().cast_unsigned() + 3, 4);
+        let too_old_id = run_id(
+            (created_at - chrono::Duration::hours(3))
+                .timestamp_millis()
+                .cast_unsigned(),
+            5,
+        );
+        let records = store.platform_records();
+
+        let succeeded_with_repo = |id: RunId, at: DateTime<Utc>| {
+            let mut projected = projection(id, "green", at);
+            projected.spec.git = Some(fabro_types::GitContext {
+                origin_url: "https://github.com/acme/widgets.git".to_string(),
+                branch:     "main".to_string(),
+                sha:        None,
+                dirty:      fabro_types::DirtyStatus::Clean,
+            });
+            projected.status = RunStatus::Succeeded {
+                reason: SuccessReason::Completed,
+            };
+            projected.last_event_at = at;
+            projected.conclusion = Some(Conclusion {
+                timestamp:            at,
+                status:               StageOutcome::Succeeded,
+                timing:               RunTiming::wall_only(60_000),
+                failure:              None,
+                final_git_commit_sha: Some("abc123".to_string()),
+                stages:               Vec::new(),
+                usage:                None,
+                total_retries:        0,
+                diff:                 RunDiff {
+                    patch:   None,
+                    summary: Some(DiffSummary {
+                        files_changed: 1,
+                        additions:     2,
+                        deletions:     0,
+                    }),
+                },
+            });
+            projected
+        };
+
+        // Owed: a green repository run without an outcome record.
+        write(&store, &succeeded_with_repo(owed_id, created_at)).await;
+        // Settled: the same shape, but an outcome record exists.
+        write(&store, &succeeded_with_repo(settled_id, created_at)).await;
+        records
+            .append(
+                &settled_id,
+                &PlatformRecord::RunBranchPublished(RunBranchPublishedRecord {
+                    run_branch: "fabro/run/x".to_string(),
+                    head_sha:   "abc123".to_string(),
+                    outcome:    RunBranchPublishOutcome::Skipped {
+                        reason: "run_branch_push_disabled".to_string(),
+                    },
+                }),
+                None,
+            )
+            .await
+            .unwrap();
+        // A failed run owes nothing even with a repository.
+        let mut failed_run = succeeded_with_repo(failed_run_id, created_at);
+        failed_run.status = RunStatus::Failed {
+            reason: FailureReason::WorkflowError,
+        };
+        failed_run.conclusion = None;
+        write(&store, &failed_run).await;
+        // A green run without a repository cannot publish.
+        let mut no_repo = projection(no_repo_id, "local", created_at);
+        no_repo.status = RunStatus::Succeeded {
+            reason: SuccessReason::Completed,
+        };
+        write(&store, &no_repo).await;
+        // A green repository run finished before the cutoff is left alone.
+        write(
+            &store,
+            &succeeded_with_repo(too_old_id, created_at - chrono::Duration::hours(3)),
+        )
+        .await;
+
+        let candidates = store
+            .list_run_publish_candidate_run_ids(cutoff, 16)
+            .await
+            .unwrap();
+        assert_eq!(candidates, vec![owed_id]);
     }
 
     #[tokio::test]

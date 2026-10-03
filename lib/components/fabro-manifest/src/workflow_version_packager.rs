@@ -155,7 +155,8 @@ mod tests {
                 let input = ValidatedWorkflowVersionCreate::try_from(
                     fabro_tool::FabroWorkflowVersionCreateParams {
                         entrypoint: "f0.fabro".parse().unwrap(),
-                        files,
+                        files:      Some(files),
+                        files_from: None,
                     },
                 )
                 .unwrap();

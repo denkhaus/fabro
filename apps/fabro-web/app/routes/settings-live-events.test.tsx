@@ -8,7 +8,9 @@ import { makePetriItem, makePlatformItem } from "../lib/test-utils";
 
 let capturedOnEvent: ((payload: RunStreamItem) => void) | null = null;
 
+const reallibliveevents = await import("../lib/live-events");
 mock.module("../lib/live-events", () => ({
+  ...reallibliveevents,
   subscribeToLiveEvents: (
     onEvent: (payload: RunStreamItem) => void,
   ) => {

@@ -8,7 +8,12 @@ import { setupReactTestEnv } from "../lib/test-utils";
 let mcpServers: McpServerListResponse | undefined;
 let teardownReactTestEnv: (() => void) | undefined;
 
+// Partial-mock: bun's mock.module is process-wide (restore does not
+// undo it) — spread the REAL module so every export stays available
+// to later files in the same run; override only what this test needs.
+const realQueries = await import("../lib/queries");
 mock.module("../lib/queries", () => ({
+  ...realQueries,
   useMcpServers: () => ({ data: mcpServers }),
 }));
 

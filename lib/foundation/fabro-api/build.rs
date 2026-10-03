@@ -228,6 +228,16 @@ fn main() {
             &[],
         ),
         (
+            "ServerSeedsSettings",
+            "fabro_types::settings::server::ServerSeedsSettings",
+            &[],
+        ),
+        (
+            "SeedsMirrorSettings",
+            "fabro_types::settings::server::SeedsMirrorSettings",
+            &[],
+        ),
+        (
             "ServerListenSettings",
             "fabro_types::settings::server::ServerListenSettings",
             &[],

@@ -1,0 +1,333 @@
+bun install --frozen-lockfile
+[0m[2m[[1m0.33ms[0m[2m][0m [2m".env"[0m
+[0m[1mbun install [0m[2mv1.4.0 (34cbb9a40)[0m
+
+Checked [32m819 installs[0m across 978 packages [2m(no changes)[0m [0m[2m[[1m47.00ms[0m[2m][0m[0m
+nu scripts/image-release.nu "amd64"
+image-release: building ghcr.io/denkhaus/fabro:0.355.0-nightly.0-69383c4d9 (arch amd64) ...
+   Compiling tower v0.5.3
+   Compiling hyper-util v0.1.20
+   Compiling crokey v1.4.0
+   Compiling process-wrap v9.0.3
+   Compiling tokio-stream v0.1.18
+   Compiling sandbox-driver v0.1.0 (https://github.com/lithoscomputer/sandbox-driver?rev=ddb32e19e763299319ecf6aebc8961298db80c0c#ddb32e19)
+   Compiling fabro-options-metadata v0.355.0-nightly.0 (/home/denkhaus/dev/fabro/lib/foundation/fabro-options-metadata)
+   Compiling fabro-proc v0.355.0-nightly.0 (/home/denkhaus/dev/fabro/lib/foundation/fabro-proc)
+   Compiling termimad v0.34.1
+   Compiling tower-http v0.6.8
+   Compiling hyper-rustls v0.27.7
+   Compiling fabro-util v0.355.0-nightly.0 (/home/denkhaus/dev/fabro/lib/foundation/fabro-util)
+   Compiling reqwest v0.13.4
+   Compiling lithos-llm v0.1.0 (https://github.com/lithoscomputer/lithos-llm?rev=a1e3fd37b7153870411701327ac117606753fe90#a1e3fd37)
+   Compiling rmcp v1.7.0
+   Compiling pebble-agent v0.1.0 (https://github.com/lithoscomputer/pebble?rev=69969420c9017ca15ac6c175c820a0cb8090866a#69969420)
+   Compiling pebble-coding-agent v0.1.0 (https://github.com/lithoscomputer/pebble?rev=69969420c9017ca15ac6c175c820a0cb8090866a#69969420)
+   Compiling fabro-types v0.355.0-nightly.0 (/home/denkhaus/dev/fabro/lib/foundation/fabro-types)
+   Compiling fabro-config v0.355.0-nightly.0 (/home/denkhaus/dev/fabro/lib/foundation/fabro-config)
+   Compiling fabro-dev v0.355.0-nightly.0 (/home/denkhaus/dev/fabro/lib/foundation/fabro-dev)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 58.75s
+     Running `target/debug/fabro-dev docker-build --arch amd64 --tag 'ghcr.io/denkhaus/fabro:0.355.0-nightly.0-69383c4d9'`
+Refreshing embedded SPA assets...
+Running bun run build in apps/fabro-web...
+[0m[2m[35m$[0m [2m[1mbun run scripts/build.ts[0m
+(node:2092463) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `bun --trace-warnings ...` to show where the warning was created)
+≈ tailwindcss v4.2.2
+
+Done in 356ms
+fabro-spa asset bytes: 14101704
+fabro-spa estimated compressed payload bytes: 3100338
+Refreshed lib/apps/fabro-spa/assets
+Building fabro-cli for x86_64-unknown-linux-musl inside rust:1-bookworm via cargo-zigbuild...
+debconf: delaying package configuration, since apt-utils is not installed
+info: component rust-std for target x86_64-unknown-linux-musl is up to date
+    Updating git repository `https://github.com/lithoscomputer/lithos-llm`
+    Updating git repository `https://github.com/lithoscomputer/pebble`
+    Updating git repository `https://github.com/lithoscomputer/sandbox-driver`
+    Updating git repository `https://github.com/lithoscomputer/twins`
+    Updating git repository `https://github.com/fabro-sh/graphviz-sys`
+    Updating git repository `https://github.com/brynary/daytona-sdk-rust`
+   Compiling tokio-util v0.7.19
+   Compiling crossterm v0.29.0
+   Compiling fabro-static v0.355.0-nightly.0 (/src/lib/foundation/fabro-static)
+   Compiling fabro-proc v0.355.0-nightly.0 (/src/lib/foundation/fabro-proc)
+   Compiling fabro-db v0.355.0-nightly.0 (/src/lib/foundation/fabro-db)
+   Compiling fabro-options-metadata v0.355.0-nightly.0 (/src/lib/foundation/fabro-options-metadata)
+   Compiling fabro-macros v0.355.0-nightly.0 (/src/lib/foundation/fabro-macros)
+   Compiling fabro-redact v0.355.0-nightly.0 (/src/lib/foundation/fabro-redact)
+   Compiling sandbox-driver-docker-config v0.1.0 (https://github.com/lithoscomputer/sandbox-driver?rev=ddb32e19e763299319ecf6aebc8961298db80c0c#ddb32e19)
+   Compiling h2 v0.4.13
+   Compiling tower-http v0.6.8
+   Compiling tokio-stream v0.1.18
+   Compiling sandbox-driver v0.1.0 (https://github.com/lithoscomputer/sandbox-driver?rev=ddb32e19e763299319ecf6aebc8961298db80c0c#ddb32e19)
+   Compiling foyer-storage v0.18.1
+   Compiling crokey v1.4.0
+   Compiling coolor v1.1.0
+   Compiling sandbox-driver-daytona-config v0.1.0 (https://github.com/lithoscomputer/sandbox-driver?rev=ddb32e19e763299319ecf6aebc8961298db80c0c#ddb32e19)
+   Compiling fabro-api v0.355.0-nightly.0 (/src/lib/foundation/fabro-api)
+   Compiling fabro-build-support v0.355.0-nightly.0 (/src/lib/foundation/build-support)
+   Compiling termimad v0.34.1
+   Compiling fabro-spa v0.355.0-nightly.0 (/src/lib/apps/fabro-spa)
+   Compiling async_zip v0.0.18
+   Compiling fabro-server v0.355.0-nightly.0 (/src/lib/apps/fabro-server)
+   Compiling fabro-cli v0.355.0-nightly.0 (/src/lib/apps/fabro-cli)
+   Compiling sqlx-core v0.9.0
+   Compiling fabro-util v0.355.0-nightly.0 (/src/lib/foundation/fabro-util)
+   Compiling sqlx-sqlite v0.9.0
+   Compiling foyer v0.18.1
+   Compiling hyper v1.8.1
+   Compiling sandbox-driver-protocol v0.1.0 (https://github.com/lithoscomputer/sandbox-driver?rev=ddb32e19e763299319ecf6aebc8961298db80c0c#ddb32e19)
+   Compiling sqlx v0.9.0
+   Compiling hyper-util v0.1.20
+   Compiling hyper-rustls v0.27.7
+   Compiling hyper-tls v0.6.0
+   Compiling hyperlocal v0.9.1
+   Compiling axum v0.8.8
+   Compiling bollard v0.18.1
+   Compiling reqwest v0.13.4
+   Compiling aws-smithy-http-client v1.1.13
+   Compiling reqwest v0.12.28
+   Compiling aws-smithy-runtime v1.11.3
+   Compiling object_store v0.12.5
+   Compiling rmcp v1.7.0
+   Compiling fabro-http v0.355.0-nightly.0 (/src/lib/foundation/fabro-http)
+   Compiling reqwest-middleware v0.5.1
+   Compiling progenitor-client v0.13.0
+   Compiling fabro-telemetry v0.355.0-nightly.0 (/src/lib/foundation/fabro-telemetry)
+   Compiling daytona-api-client v0.1.0 (https://github.com/brynary/daytona-sdk-rust?rev=5e86990418e21f4288ce537c9852dfdf78768abc#5e869904)
+   Compiling daytona-toolbox-client v0.1.0 (https://github.com/brynary/daytona-sdk-rust?rev=5e86990418e21f4288ce537c9852dfdf78768abc#5e869904)
+   Compiling fabro-oauth v0.355.0-nightly.0 (/src/lib/foundation/fabro-oauth)
+   Compiling axum-extra v0.10.3
+   Compiling aws-runtime v1.7.4
+   Compiling sandbox-driver-docker v0.1.0 (https://github.com/lithoscomputer/sandbox-driver?rev=ddb32e19e763299319ecf6aebc8961298db80c0c#ddb32e19)
+   Compiling sandbox-driver-host v0.1.0 (https://github.com/lithoscomputer/sandbox-driver?rev=ddb32e19e763299319ecf6aebc8961298db80c0c#ddb32e19)
+   Compiling aws-sdk-ssooidc v1.103.0
+   Compiling aws-sdk-sso v1.101.0
+   Compiling aws-sdk-sts v1.106.0
+   Compiling slatedb-txn-obj v0.11.2
+   Compiling slatedb v0.11.2
+   Compiling aws-config v1.8.18
+   Compiling lithos-llm v0.1.0 (https://github.com/lithoscomputer/lithos-llm?rev=a1e3fd37b7153870411701327ac117606753fe90#a1e3fd37)
+   Compiling agent-client-protocol v0.11.1
+   Compiling daytona-sdk v0.1.0 (https://github.com/brynary/daytona-sdk-rust?rev=5e86990418e21f4288ce537c9852dfdf78768abc#5e869904)
+   Compiling sandbox-driver-daytona v0.1.0 (https://github.com/lithoscomputer/sandbox-driver?rev=ddb32e19e763299319ecf6aebc8961298db80c0c#ddb32e19)
+   Compiling agent-client-protocol-tokio v0.11.1
+   Compiling pebble-agent v0.1.0 (https://github.com/lithoscomputer/pebble?rev=69969420c9017ca15ac6c175c820a0cb8090866a#69969420)
+   Compiling pebble-coding-agent v0.1.0 (https://github.com/lithoscomputer/pebble?rev=69969420c9017ca15ac6c175c820a0cb8090866a#69969420)
+   Compiling fabro-types v0.355.0-nightly.0 (/src/lib/foundation/fabro-types)
+   Compiling pebble-cli-core v0.1.0 (https://github.com/lithoscomputer/pebble?rev=69969420c9017ca15ac6c175c820a0cb8090866a#69969420)
+   Compiling fabro-config v0.355.0-nightly.0 (/src/lib/foundation/fabro-config)
+   Compiling fabro-vault v0.355.0-nightly.0 (/src/lib/foundation/fabro-vault)
+   Compiling fabro-github v0.355.0-nightly.0 (/src/lib/components/fabro-github)
+   Compiling fabro-automation v0.355.0-nightly.0 (/src/lib/components/fabro-automation)
+   Compiling fabro-graphviz v0.355.0-nightly.0 (/src/lib/components/fabro-graphviz)
+   Compiling fabro-store v0.355.0-nightly.0 (/src/lib/components/fabro-store)
+   Compiling fabro-template v0.355.0-nightly.0 (/src/lib/foundation/fabro-template)
+   Compiling fabro-core v0.355.0-nightly.0 (/src/lib/foundation/fabro-core)
+   Compiling fabro-mcp v0.355.0-nightly.0 (/src/lib/components/fabro-mcp)
+   Compiling fabro-interview v0.355.0-nightly.0 (/src/lib/components/fabro-interview)
+   Compiling fabro-mcp-store v0.355.0-nightly.0 (/src/lib/components/fabro-mcp-store)
+   Compiling fabro-variable v0.355.0-nightly.0 (/src/lib/components/fabro-variable)
+   Compiling fabro-auth v0.355.0-nightly.0 (/src/lib/foundation/fabro-auth)
+   Compiling fabro-sandbox v0.355.0-nightly.0 (/src/lib/components/fabro-sandbox)
+   Compiling fabro-dump v0.355.0-nightly.0 (/src/lib/components/fabro-dump)
+   Compiling fabro-acp v0.355.0-nightly.0 (/src/lib/components/fabro-acp)
+   Compiling fabro-environment v0.355.0-nightly.0 (/src/lib/components/fabro-environment)
+   Compiling fabro-llm v0.355.0-nightly.0 (/src/lib/components/fabro-llm)
+   Compiling fabro-workflow-version v0.355.0-nightly.0 (/src/lib/components/fabro-workflow-version)
+   Compiling fabro-checkpoint v0.355.0-nightly.0 (/src/lib/components/fabro-checkpoint)
+   Compiling fabro-install v0.355.0-nightly.0 (/src/lib/components/fabro-install)
+   Compiling fabro-validate v0.355.0-nightly.0 (/src/lib/components/fabro-validate)
+   Compiling fabro-hooks v0.355.0-nightly.0 (/src/lib/components/fabro-hooks)
+   Compiling fabro-client v0.355.0-nightly.0 (/src/lib/foundation/fabro-client)
+   Compiling fabro-tool v0.355.0-nightly.0 (/src/lib/components/fabro-tool)
+   Compiling fabro-workflow v0.355.0-nightly.0 (/src/lib/components/fabro-workflow)
+   Compiling fabro-slack v0.355.0-nightly.0 (/src/lib/components/fabro-slack)
+   Compiling fabro-manifest v0.355.0-nightly.0 (/src/lib/components/fabro-manifest)
+   Compiling fabro-mcp-server v0.355.0-nightly.0 (/src/lib/apps/fabro-mcp-server)
+    Finished `release` profile [optimized] target(s) in 12m 10s
+warning: the following packages contain code that will be rejected by a future version of Rust: proc-macro-error2 v2.0.1
+note: to see what the problems were, use the option `--future-incompat-report`, or run `cargo report future-incompatibilities --id 1`
+Extracting binary from builder cache...
+Building Docker image as ghcr.io/denkhaus/fabro:0.355.0-nightly.0-69383c4d9...
+#0 building with "default" instance using docker driver
+
+#1 [internal] load build definition from Dockerfile
+#1 transferring dockerfile: 1.36kB done
+#1 DONE 0.1s
+
+#2 resolve image config for docker-image://docker.io/docker/dockerfile:1.9
+#2 ...
+
+#3 [auth] docker/dockerfile:pull token for registry-1.docker.io
+#3 DONE 0.0s
+
+#2 resolve image config for docker-image://docker.io/docker/dockerfile:1.9
+#2 DONE 1.3s
+
+#4 docker-image://docker.io/docker/dockerfile:1.9@sha256:fe40cf4e92cd0c467be2cfc30657a680ae2398318afd50b0c80585784c604f28
+#4 resolve docker.io/docker/dockerfile:1.9@sha256:fe40cf4e92cd0c467be2cfc30657a680ae2398318afd50b0c80585784c604f28
+#4 resolve docker.io/docker/dockerfile:1.9@sha256:fe40cf4e92cd0c467be2cfc30657a680ae2398318afd50b0c80585784c604f28 0.3s done
+#4 DONE 0.3s
+
+#4 docker-image://docker.io/docker/dockerfile:1.9@sha256:fe40cf4e92cd0c467be2cfc30657a680ae2398318afd50b0c80585784c604f28
+#4 CACHED
+
+#5 [internal] load metadata for ghcr.io/fabro-sh/dhi-alpine-base:3.23-dev-2026-04-18
+#5 ...
+
+#6 [auth] fabro-sh/dhi-alpine-base:pull token for ghcr.io
+#6 DONE 0.0s
+
+#5 [internal] load metadata for ghcr.io/fabro-sh/dhi-alpine-base:3.23-dev-2026-04-18
+#5 DONE 1.1s
+
+#7 [internal] load .dockerignore
+#7 transferring context: 109B 0.0s done
+#7 DONE 0.1s
+
+#8 [internal] load build context
+#8 ...
+
+#9 [1/4] FROM ghcr.io/fabro-sh/dhi-alpine-base:3.23-dev-2026-04-18@sha256:f7b74374e3e07e765ff2dabec26e636b55cb222b4e905b9251405ef47637f9af
+#9 resolve ghcr.io/fabro-sh/dhi-alpine-base:3.23-dev-2026-04-18@sha256:f7b74374e3e07e765ff2dabec26e636b55cb222b4e905b9251405ef47637f9af 0.2s done
+#9 DONE 0.2s
+
+#8 [internal] load build context
+#8 transferring context: 140.49MB 1.8s done
+#8 DONE 1.9s
+
+#10 [2/4] RUN apk add --no-cache       ca-certificates       git       su-exec       tini  && addgroup -S -g 1000 fabro  && adduser -S -u 1000 -G fabro -h /var/fabro -s /sbin/nologin fabro  && install -d -o fabro -g fabro -m 0755 /var/fabro /storage
+#10 CACHED
+
+#11 [3/4] COPY --chmod=0755 tmp/docker-context/amd64/fabro /usr/local/bin/fabro
+#11 DONE 3.0s
+
+#12 [4/4] COPY --chmod=0755 docker/entrypoint.sh /usr/local/bin/fabro-entrypoint
+#12 DONE 0.6s
+
+#13 exporting to image
+#13 exporting layers
+#13 exporting layers 7.5s done
+#13 exporting manifest sha256:6d39b1c7be995353f69ae58993cf2add556f26520bcb7c3c93979f3e4bde1dd0
+#13 exporting manifest sha256:6d39b1c7be995353f69ae58993cf2add556f26520bcb7c3c93979f3e4bde1dd0 0.2s done
+#13 exporting config sha256:14e14cba83ad4d7f7d56435d106140e1a674001f18cb1a28166fc13635571aa4
+#13 exporting config sha256:14e14cba83ad4d7f7d56435d106140e1a674001f18cb1a28166fc13635571aa4 0.2s done
+#13 exporting attestation manifest sha256:29e54d6138ac34dabe58b95c06012f8dfac0dd156d9b59cd18575b1ea86ba0d0
+#13 exporting attestation manifest sha256:29e54d6138ac34dabe58b95c06012f8dfac0dd156d9b59cd18575b1ea86ba0d0 0.2s done
+#13 exporting manifest list sha256:b77a1c6f77bbc74259dfd6557c5719f98f6d16d47dbc0065fd03a45dbdf89246
+#13 exporting manifest list sha256:b77a1c6f77bbc74259dfd6557c5719f98f6d16d47dbc0065fd03a45dbdf89246 0.2s done
+#13 naming to ghcr.io/denkhaus/fabro:0.355.0-nightly.0-69383c4d9
+#13 naming to ghcr.io/denkhaus/fabro:0.355.0-nightly.0-69383c4d9 0.0s done
+#13 unpacking to ghcr.io/denkhaus/fabro:0.355.0-nightly.0-69383c4d9
+#13 unpacking to ghcr.io/denkhaus/fabro:0.355.0-nightly.0-69383c4d9 1.2s done
+#13 DONE 9.8s
+image-release: tagging ghcr.io/denkhaus/fabro:latest
+image-release: pushing ghcr.io/denkhaus/fabro:0.355.0-nightly.0-69383c4d9 ...
+The push refers to repository [ghcr.io/denkhaus/fabro]
+5959666cf744: Waiting
+0c4f514c6d0f: Waiting
+d75009c6e4ad: Waiting
+44136fa355b3: Waiting
+d75009c6e4ad: Waiting
+44136fa355b3: Waiting
+5959666cf744: Waiting
+0c4f514c6d0f: Waiting
+d75009c6e4ad: Waiting
+44136fa355b3: Waiting
+5959666cf744: Waiting
+0c4f514c6d0f: Waiting
+d75009c6e4ad: Waiting
+44136fa355b3: Waiting
+5959666cf744: Waiting
+0c4f514c6d0f: Waiting
+d75009c6e4ad: Waiting
+44136fa355b3: Waiting
+5959666cf744: Waiting
+0c4f514c6d0f: Waiting
+d75009c6e4ad: Waiting
+44136fa355b3: Waiting
+5959666cf744: Waiting
+0c4f514c6d0f: Waiting
+d75009c6e4ad: Waiting
+44136fa355b3: Waiting
+5959666cf744: Waiting
+0c4f514c6d0f: Waiting
+0e0aa4097189: Waiting
+d75009c6e4ad: Waiting
+44136fa355b3: Already exists
+5959666cf744: Layer already exists
+0c4f514c6d0f: Waiting
+aaf1fa948614: Waiting
+0c4f514c6d0f: Layer already exists
+aaf1fa948614: Waiting
+0e0aa4097189: Waiting
+d75009c6e4ad: Waiting
+faccc01212e7: Waiting
+d75009c6e4ad: Waiting
+faccc01212e7: Waiting
+2cc96c4a3b8c: Waiting
+53de958866b9: Waiting
+aaf1fa948614: Layer already exists
+0e0aa4097189: Layer already exists
+faccc01212e7: Layer already exists
+2cc96c4a3b8c: Waiting
+53de958866b9: Waiting
+2cc96c4a3b8c: Waiting
+53de958866b9: Waiting
+53de958866b9: Waiting
+2cc96c4a3b8c: Waiting
+d75009c6e4ad: Pushed
+53de958866b9: Pushed
+2cc96c4a3b8c: Pushed
+0.355.0-nightly.0-69383c4d9: digest: sha256:b77a1c6f77bbc74259dfd6557c5719f98f6d16d47dbc0065fd03a45dbdf89246 size: 856
+image-release: pushing ghcr.io/denkhaus/fabro:latest ...
+The push refers to repository [ghcr.io/denkhaus/fabro]
+5959666cf744: Waiting
+0c4f514c6d0f: Waiting
+d75009c6e4ad: Waiting
+44136fa355b3: Waiting
+d75009c6e4ad: Waiting
+44136fa355b3: Waiting
+5959666cf744: Waiting
+0c4f514c6d0f: Waiting
+44136fa355b3: Waiting
+5959666cf744: Waiting
+0c4f514c6d0f: Waiting
+d75009c6e4ad: Waiting
+44136fa355b3: Waiting
+5959666cf744: Waiting
+0c4f514c6d0f: Waiting
+d75009c6e4ad: Waiting
+d75009c6e4ad: Waiting
+44136fa355b3: Waiting
+5959666cf744: Waiting
+0c4f514c6d0f: Waiting
+d75009c6e4ad: Waiting
+44136fa355b3: Waiting
+5959666cf744: Waiting
+0c4f514c6d0f: Waiting
+5959666cf744: Waiting
+0c4f514c6d0f: Waiting
+d75009c6e4ad: Waiting
+44136fa355b3: Waiting
+2cc96c4a3b8c: Waiting
+53de958866b9: Waiting
+44136fa355b3: Already exists
+5959666cf744: Layer already exists
+0c4f514c6d0f: Layer already exists
+d75009c6e4ad: Already exists
+aaf1fa948614: Waiting
+0e0aa4097189: Waiting
+faccc01212e7: Waiting
+aaf1fa948614: Layer already exists
+0e0aa4097189: Waiting
+faccc01212e7: Waiting
+2cc96c4a3b8c: Waiting
+53de958866b9: Waiting
+0e0aa4097189: Layer already exists
+faccc01212e7: Layer already exists
+2cc96c4a3b8c: Layer already exists
+53de958866b9: Layer already exists
+latest: digest: sha256:b77a1c6f77bbc74259dfd6557c5719f98f6d16d47dbc0065fd03a45dbdf89246 size: 856
+image-release: pushed ghcr.io/denkhaus/fabro:0.355.0-nightly.0-69383c4d9 and ghcr.io/denkhaus/fabro:latest

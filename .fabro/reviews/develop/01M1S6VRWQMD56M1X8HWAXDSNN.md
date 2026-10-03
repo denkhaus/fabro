@@ -1,0 +1,50 @@
+# Improve review — run 01M1S6VRWQMD56M1X8HWAXDSNN
+
+- workflow: develop
+- branch integrated: this revisor pass (unmerged until approved)
+- status: succeeded (15.5 min, revisor pass — reason and cost in run detail)
+- generated: 2026-09-05 17:25+0000 by revisor `fabro_ask`
+
+---
+
+All grounding below is from this run's stage records, events, and journals (run `01M1S6VRWQMD56M1X8HWAXDSNN`, seed `fabro-78ac`, 14 min wall, $0.515, 1.24M tokens). Ordered by expected impact.
+
+## 1. Let the implementer run crate-scoped `fmt` + `clippy` before handing off — the biggest waste in this run
+**What happened:** Two of three implementer→tester cycles were burned on pure style failures. `tester@1` red = rustfmt alignment drift in new test fixtures (5s gate, then `implementer@2`: 53s, $0.044). `tester@2` red = two denied clippy lints (`map_unwrap_or`, `format_push_string`) after an 81.6s cold-compile gate, then `implementer@3`: 108s, $0.085. Rework = ~25% of run LLM spend, ~4 min wall — and `seed_cycles.tester` hit 3, i.e. **one more red would have tripped the "Gate deadlock (3 reds, needs a human)" exit**. The implementer's own journals say it: "the implementer stage's instruction to skip fmt… let whitespace drift reach the deterministic gate" and "a cheap `cargo clippy -p <touched crate>` … would catch these pre-gate at near-zero cost (two tester cycles burned)."
+**Change:** `.fabro/workflows/develop/prompts/implementer.md`, step 4 — replace "nothing that formats, lints" with: require `cargo +<pinned-nightly> fmt -p <touched-crate>` and `cargo clippy -p <touched-crate> -D warnings` as part of the ONE focused check (still forbid the full `just qualitygate`). Bonus: clippy compiles, so the tester's first gate is always warm — `tester@2`'s 81.6s was the first compile of the tree precisely because the implementer never compiled.
+**Effect:** Kills the fmt/clippy gate-red class entirely; this run would have been one implementer pass + one gate run (~4 min, ~$0.13 saved) and never approached the 3-red deadlock.
+
+## 2. Pre-trust the repo mise config in run containers (seed fabro-66db)
+**What happened:** The planner's very first `sd ready` failed with "Config files in `/repos/denkhaus/fabro/.mise.toml` are not trusted" (events seq 35–36), costing one wasted LLM round-trip + tool call on `mise trust` before any tracker read worked (planner journal painpoint). Recurs every fresh container.
+**Change:** Sandbox prepare step or runner image (`fabro-toolchain:noble` build): run `mise trust` for the primary repo path, or set `MISE_YES=1`/pre-trust in the image.
+**Effect:** Removes one dead turn per run and the risk that an agent handles the failure ungracefully instead of recovering.
+
+## 3. Raise the aggregate preamble budget so the evidence capture stays inline (seed fabro-8d2c)
+**What happened:** The 14.2 KB evidence capture (`fc3c8add…`, 14,086 bytes — *under* the reviewer's `preamble_inline_max_kb=16`) was still demoted to a blob ref because the **24 KB aggregate** budget was exceeded; the reviewer had to page it manually with `read_file` before judging (reviewer journal painpoint: "the preamble preview truncates right before the diff body"). Reviewer context usage was 1.55% of a 1M window — the window is not the constraint, the detour is. The graph comment in `workflow.fabro` already documents this rationale for the 12→24 raise; it wasn't enough.
+**Change:** `.fabro/workflows/develop/workflow.fabro`, graph attr `preamble_budget_kb=24` → `32` (or engine-side: exempt `command.output` from the aggregate demote pass when under the per-key ceiling).
+**Effect:** Most reviews start without a blob round-trip; removes the "Verification blocked → re-capture" retry risk and shrinks the need for the ~700-token blob-protocol paragraph the reviewer prompt carries.
+
+## 4. Dedupe per-visit stage sections in preambles (seed fabro-edac)
+**What happened:** The reviewer's prompt contained the **same** "GATE GREEN" tester output **three times** (one section per tester visit); `implementer@3`'s prompt carried the same 10.2 KB failed-gate blob ref twice. Run total: 1.12M cache-read tokens.
+**Change:** Engine preamble renderer (`lib/components/fabro-workflow/src/handler/llm/preamble.rs`): render only the latest visit per node (or collapse repeats to a one-line "visited N×, latest below").
+**Effect:** Smaller prompts on every cyclic run, lower token cost, and no stale-duplicate confusion for the implementer deciding what still needs fixing.
+
+## 5. Make gate failure output critical-first
+**What happened:** `tester@2`'s failure message was a ~10 KB compile log with the two decisive clippy errors buried at the very end; `implementer@3` saw only a preview cut mid-log and had to open the blob to learn what broke. The evidence script already solved this ordering problem (`evidence.nu` fronts the integrity header and diff); the gate hasn't.
+**Change:** `scripts/qualitygate.nu` (via the `qualitygate` recipe in `justfile`): on failure, print a compact summary first — failing step name + the error lines (grep for `^error`) — then the full log.
+**Effect:** The re-entering implementer reads the actual error inline; faster, cheaper rework, and it composes with #1.
+
+## 6. Cap the `sd ready` firehose
+**What happened:** One `sd ready --limit 200` poured ~15 KB / 126 seed lines into the planner's conversation (event 47: 15,112 output bytes) just to learn which seed is top of the queue. Conversation tokens jumped ~4k on that single call.
+**Change:** Planner prompt (`.fabro/workflows/develop/prompts/planner.md`) + seeds-cli: use a top-N view (`sd ready --first 10` or `--priority high`) for the pick, full listing only when the top candidates are unclaimable.
+**Effect:** Less context bloat and distraction per planning pass; composes with open seed fabro-e4fa (sd call economy).
+
+## 7. Cut the human-approval idle window for spawned runs (seeds fabro-54f0 / this run's own fabro-78ac)
+**What happened:** The run sat `pending(approval_required)` from 16:36:39 to 16:38:58 — **2m19s, ~13% of run wall, doing nothing**. This is the exact friction class this run's seed fixed at the tool layer (create-then-start swallowing run ids → conductors retrying → duplicate children).
+**Change:** Orchestration/parent-spawned runs: `auto_approve` for trusted worker subjects (or the approval-TTL backstop of fabro-54f0 so zombies can't persist).
+**Effect:** ~2 min saved per run; prevents duplicate-children incidents for conductor flows.
+
+## 8. Cosmetic: renumber the duplicated step "4." in the planner prompt (seed fabro-890d)
+The planner prompt's "Plan the next seed" section has two consecutive "4." items ("Claim it" / "Write the implementation brief") — visible verbatim in `stage.prompt` for planner@1. Renumber in `.fabro/workflows/develop/prompts/planner.md`. Effect: removes a small spec-parse hazard for literal-minded models; near-zero cost.
+
+**What already worked and needs no change** (so you don't re-tune it): `reasoning_effort=low` on implementer/rewriter passes ($0.044–$0.085, 113–132 reasoning tokens, correct fixes); deterministic `evidence`/`closeout` nodes (0.4s / 0.3s); the per-seed diff base in the capture (reviewer confirmed counts matched, no re-capture needed); and the failure-signature dedup keeping repeated gate-red noise at one entry each.

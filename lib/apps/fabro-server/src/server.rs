@@ -66,7 +66,7 @@ use fabro_petri::projector::Projector;
 use fabro_petri::providers::SandboxProviderConfig;
 use fabro_petri::prune::{self, PruneError, PruneRequest};
 use fabro_redact::redact_jsonl_line;
-use fabro_slack::client::{PostedMessage as SlackPostedMessage, SlackClient};
+use fabro_slack::client::{PostedMessage as SlackPostedMessage, SlackApiError, SlackClient};
 use fabro_slack::config::{
     SlackCredentialResolution,
     resolve_credentials_status_with_lookup as resolve_slack_credentials_status_with_lookup,
@@ -150,6 +150,7 @@ use crate::sandbox_access::{
     self, DAYTONA_CREDENTIAL_PROBE_TIMEOUT, DaytonaCredentials, DaytonaKeyCheck, ProviderAccess,
     SandboxInventory,
 };
+pub(crate) use crate::server::automation_breaker::AutomationBreakerNotifier;
 use crate::server_secrets::ServerSecrets;
 use crate::spawn_env::apply_render_graph_env;
 use crate::worker_control::{
@@ -164,16 +165,30 @@ use crate::{
     canonical_host, demo, diagnostics, run_manifest, security_headers, static_files, web_auth,
 };
 
+pub(crate) mod automation_breaker;
 mod automation_scheduler;
+#[cfg(test)]
+mod fork_inspection_guard_tests;
+mod fork_line_recovery;
+pub(crate) mod fork_seeds_git_source;
+#[cfg(test)]
+mod fork_seeds_read_api_tests;
+pub(crate) mod fork_staleness_supervisor;
+#[cfg(test)]
+mod fork_staleness_supervisor_tests;
 mod handler;
 pub(crate) mod petri_runs;
+pub(crate) mod pull_request_conflict;
 mod pull_request_supervisor;
 pub(crate) mod resource_sampler;
+mod run_publish;
 pub(crate) mod run_records;
+pub mod seeds_source;
 mod session_runtime;
 pub(crate) mod stream_follower;
 
 pub(crate) use automation_scheduler::spawn_automation_scheduler;
+pub(crate) use fork_staleness_supervisor::spawn_pull_request_staleness_supervisor;
 pub(crate) use handler::graph::render_graph_bytes;
 #[cfg(test)]
 pub(in crate::server) use handler::graph::{
@@ -182,6 +197,7 @@ pub(in crate::server) use handler::graph::{
 #[cfg(test)]
 pub(in crate::server) use handler::system::validate_github_slug;
 pub(crate) use pull_request_supervisor::spawn_pull_request_creation_supervisor;
+pub(crate) use run_publish::spawn_run_publish_supervisor;
 use session_runtime::SessionRuntimeManager;
 
 pub(crate) type EnvLookup = Arc<dyn Fn(&str) -> Option<String> + Send + Sync>;
@@ -602,6 +618,19 @@ struct SlackService {
 }
 
 impl SlackService {
+    /// Post the ONE aggregated automation-breaker pause message
+    /// (fabro-3d97, fork).
+    pub(crate) async fn post_breaker_message(
+        &self,
+        channel: &str,
+        blocks: &[serde_json::Value],
+    ) -> Result<(), SlackApiError> {
+        self.client
+            .post_message(channel, blocks, None)
+            .await
+            .map(|_| ())
+    }
+
     fn new(bot_token: String, app_token: String, default_channel: Option<String>) -> Self {
         Self {
             client: SlackClient::new(bot_token),
@@ -1103,6 +1132,9 @@ pub struct AppState {
     session_runtimes: SessionRuntimeManager,
     artifact_store: ArtifactStore,
     automation_repo_cache: Arc<GitRepoCache>,
+    /// The seeds read API's data source; unconfigured servers serve the
+    /// documented `503` instead of guessing a checkout (fabro-3488).
+    pub(crate) seeds_source: Arc<dyn seeds_source::SeedsSource>,
     #[cfg(any(test, feature = "test-support"))]
     automation_materializer_override: Option<Arc<dyn AutomationRunMaterializer>>,
     worker_tokens: WorkerTokenKeys,
@@ -1123,6 +1155,9 @@ pub struct AppState {
     automation_scheduler_notify: Notify,
     pull_request_scheduler_notify: Notify,
     pull_request_creation_queue: Mutex<pull_request_supervisor::PendingPullRequestCreationQueue>,
+    run_publish_scheduler_notify: Notify,
+    run_publish_queue: Mutex<run_publish::RunPublishQueue>,
+    run_publish_locks: KeyedMutex<RunId>,
     global_event_tx: broadcast::Sender<RunStreamItem>,
     /// Per-run coalescing registry for `GET /runs/{id}/files`. Concurrent
     /// callers for the same run share one materialization; different runs
@@ -1153,6 +1188,7 @@ pub struct AppState {
     /// Test switch: execute runs in this process instead of a worker.
     execute_in_process: bool,
     slack_service: Option<Arc<SlackService>>,
+    automation_breaker_notifier: Option<Arc<dyn AutomationBreakerNotifier>>,
     slack_started: AtomicBool,
     github_webhook_secret: Option<String>,
 }
@@ -1286,6 +1322,12 @@ impl AppState {
     ) -> impl std::future::Future<Output = ()> + '_ {
         self.pull_request_scheduler_notify.notified()
     }
+
+    pub(crate) fn run_publish_scheduler_notified(
+        &self,
+    ) -> impl std::future::Future<Output = ()> + '_ {
+        self.run_publish_scheduler_notify.notified()
+    }
 }
 
 pub(crate) struct AskFabroReadiness {
@@ -1323,6 +1365,11 @@ impl AskFabroReadiness {
 }
 
 pub(crate) struct AppStateConfig {
+    /// Fork (fabro-3d97): notifier override for tests; production wires the
+    /// Slack notifier from the Slack service.
+    #[cfg(any(test, feature = "test-support"))]
+    pub(crate) automation_breaker_notifier_override: Option<Arc<dyn AutomationBreakerNotifier>>,
+
     pub(crate) resolved_settings: ResolvedAppStateSettings,
     /// Execute runs in this process instead of a worker (tests only).
     pub(crate) execute_in_process: bool,
@@ -1344,6 +1391,10 @@ pub(crate) struct AppStateConfig {
     pub(crate) worker_runtime: Option<Arc<dyn WorkerRuntime>>,
     #[cfg(any(test, feature = "test-support"))]
     pub(crate) automation_materializer_override: Option<Arc<dyn AutomationRunMaterializer>>,
+    /// Fork (fabro-3488): seeds read-API source override for tests;
+    /// production builds the configured source from server settings.
+    #[cfg(any(test, feature = "test-support"))]
+    pub(crate) seeds_source_override: Option<Arc<dyn seeds_source::SeedsSource>>,
 }
 
 #[derive(Clone)]
@@ -1723,6 +1774,7 @@ impl AppState {
         self.scheduler_notify.notify_waiters();
         self.automation_scheduler_notify.notify_waiters();
         self.pull_request_scheduler_notify.notify_waiters();
+        self.run_publish_scheduler_notify.notify_waiters();
     }
 
     pub(crate) fn shutdown_token(&self) -> CancellationToken {
@@ -2511,6 +2563,10 @@ pub(crate) fn build_app_state(config: AppStateConfig) -> anyhow::Result<Arc<AppS
         worker_runtime,
         #[cfg(any(test, feature = "test-support"))]
         automation_materializer_override,
+        #[cfg(any(test, feature = "test-support"))]
+        automation_breaker_notifier_override,
+        #[cfg(any(test, feature = "test-support"))]
+        seeds_source_override,
     } = config;
 
     let store_pool = db_pool.clone();
@@ -2651,6 +2707,37 @@ pub(crate) fn build_app_state(config: AppStateConfig) -> anyhow::Result<Arc<AppS
             Arc::new(LocalWorkerRuntime::new())
         }
     };
+
+    let automation_breaker_notifier: Option<Arc<dyn AutomationBreakerNotifier>> =
+        slack_service.as_ref().map(|service| {
+            Arc::new(automation_breaker::SlackBreakerNotifier::new(Arc::clone(
+                service,
+            ))) as Arc<dyn AutomationBreakerNotifier>
+        });
+    #[cfg(any(test, feature = "test-support"))]
+    let automation_breaker_notifier =
+        { automation_breaker_notifier_override.or(automation_breaker_notifier) };
+    // The seeds read API's source (fabro-3488, fork decision B): a
+    // test/support override, else the configured `[server.seeds.mirror]`
+    // line-repo mirror; an unconfigured server serves the documented `503`.
+    let production_seeds_source: Arc<dyn seeds_source::SeedsSource> =
+        match current_server_settings.server.seeds.mirror.as_ref() {
+            Some(mirror) => {
+                let cache_root = mirror.cache_dir.clone().map_or_else(
+                    || Storage::new(&storage_root).cache_dir().join("seeds-repos"),
+                    PathBuf::from,
+                );
+                Arc::new(fork_seeds_git_source::GitSeedsSource::new(
+                    mirror, cache_root,
+                ))
+            }
+            None => Arc::new(seeds_source::DisabledSeedsSource),
+        };
+    #[cfg(any(test, feature = "test-support"))]
+    let seeds_source = seeds_source_override.unwrap_or(production_seeds_source);
+    #[cfg(not(any(test, feature = "test-support")))]
+    let seeds_source = production_seeds_source;
+
     Ok(Arc::new(AppState {
         runs: Mutex::new(HashMap::new()),
         aggregate_usage: Mutex::new(UsageAccumulator::default()),
@@ -2670,6 +2757,7 @@ pub(crate) fn build_app_state(config: AppStateConfig) -> anyhow::Result<Arc<AppS
         session_runtimes: SessionRuntimeManager::new(),
         artifact_store,
         automation_repo_cache,
+        seeds_source,
         #[cfg(any(test, feature = "test-support"))]
         automation_materializer_override,
         worker_tokens,
@@ -2688,6 +2776,9 @@ pub(crate) fn build_app_state(config: AppStateConfig) -> anyhow::Result<Arc<AppS
         pull_request_creation_queue: Mutex::new(
             pull_request_supervisor::PendingPullRequestCreationQueue::default(),
         ),
+        run_publish_scheduler_notify: Notify::new(),
+        run_publish_queue: Mutex::new(run_publish::RunPublishQueue::default()),
+        run_publish_locks: KeyedMutex::new(),
         global_event_tx,
         files_in_flight: new_files_in_flight(),
         pull_request_create_locks: KeyedMutex::new(),
@@ -2710,6 +2801,7 @@ pub(crate) fn build_app_state(config: AppStateConfig) -> anyhow::Result<Arc<AppS
         shutting_down: AtomicBool::new(false),
         execute_in_process,
         slack_service,
+        automation_breaker_notifier,
         slack_started: AtomicBool::new(false),
         // Startup snapshot for the sync router build; rotating the webhook
         // secret requires a server restart.

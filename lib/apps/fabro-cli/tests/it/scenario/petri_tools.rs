@@ -85,7 +85,8 @@ fn write_agent_workspace(context: &fabro_test::TestContext, extra_settings: &str
         format!(
             "digraph Tools {{\n  graph [goal=\"Use the run tools\", default_max_retries=0]\n  \
              start [shape=Mdiamond]\n  exit [shape=Msquare]\n  work [shape=box, \
-             prompt=\"{PROMPT}\", max_retries=0]\n  start -> work -> exit\n}}\n"
+             prompt=\"{PROMPT}\", max_retries=0, \
+             x.fabro_tools=\"fabro_run_search,fabro_run_create\"]\n  start -> work -> exit\n}}\n"
         ),
     )
     .expect("the workflow writes");
@@ -177,25 +178,6 @@ async fn request_inputs(twin: &fabro_test::TwinOpenAi, namespace: &str) -> Vec<S
         .collect()
 }
 
-/// Approve `run_id` as a user, through the server's API.
-async fn approve_run(server: &RunningServer, run_id: &str) {
-    let response = fabro_test::test_http_client()
-        .post(format!(
-            "{}/api/v1/runs/{run_id}/approve",
-            server.api_base_url
-        ))
-        .bearer_auth(TEST_DEV_TOKEN)
-        .send()
-        .await
-        .expect("the approval sends");
-    fabro_test::expect_reqwest_json(
-        response,
-        fabro_http::StatusCode::OK,
-        format!("POST /api/v1/runs/{run_id}/approve"),
-    )
-    .await;
-}
-
 /// The runs whose parent is `parent_id`.
 async fn children_of(server: &RunningServer, parent_id: &str) -> Vec<Value> {
     run_json(server, &format!("runs?parent_id={parent_id}")).await["data"]
@@ -284,14 +266,10 @@ async fn an_agent_starts_a_child_run_with_a_run_tool_inside_a_petri_run() {
         .to_string();
     eprintln!("child run {child_id} found");
     assert_eq!(children[0]["parent_id"], run_id, "{:?}", children[0]);
-    // A run a worker creates waits for a person's approval, as it does
-    // when the legacy worker's agent creates one; the test is that person.
-    assert_eq!(
-        children[0]["lifecycle"]["status"]["reason"], "approval_required",
-        "{:?}",
-        children[0]["lifecycle"]
-    );
-    approve_run(&server, &child_id).await;
+    // The child was created with `auto_approve: true`, and the start gate
+    // honors a run's resolved auto-approve (fabro-b6c5, cb0ba449d): an
+    // orchestrated line's child starts directly instead of waiting for a
+    // person, as the server's own contract test pins.
     let child_status = wait_for_status(&server, &child_id, &["succeeded", "failed"]).await;
     eprintln!("child run {child_id} is {child_status}");
     assert_eq!(

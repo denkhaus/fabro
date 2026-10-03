@@ -32,6 +32,7 @@ pub struct ServerNamespace {
     pub scheduler:    ServerSchedulerSettings,
     pub logging:      ServerLoggingSettings,
     pub integrations: ServerIntegrationsSettings,
+    pub seeds:        ServerSeedsSettings,
 }
 
 #[cfg(any(test, feature = "test-support"))]
@@ -52,6 +53,7 @@ impl ServerNamespace {
             scheduler:    ServerSchedulerSettings::default(),
             logging:      ServerLoggingSettings::default(),
             integrations: ServerIntegrationsSettings::default(),
+            seeds:        ServerSeedsSettings::default(),
         }
     }
 }
@@ -305,6 +307,30 @@ impl Default for SlackIntegrationSettings {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct IntegrationWebhooksSettings {
     pub strategy: Option<WebhookStrategy>,
+}
+
+/// `[server.seeds]` — the read-only seeds API's tracker mirror
+/// (fabro-3488, ADR-0023 step 5). Without a mirror the seeds endpoints
+/// serve the documented `503` (`seeds_source_unconfigured`).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ServerSeedsSettings {
+    pub mirror: Option<SeedsMirrorSettings>,
+}
+
+/// A `GitRepoCache` mirror of the line repository whose `.seeds/` store the
+/// seeds read API serves. The mirror is refreshed via `git fetch`; every
+/// served-ref change (branch move or commit move) invalidates the cached
+/// snapshot before it can be served.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SeedsMirrorSettings {
+    /// Clone URL of the line repository (a `.seeds/` directory at its root).
+    pub origin:    String,
+    /// The branch the read API serves.
+    pub branch:    String,
+    /// Overrides the on-disk mirror cache directory (default: under
+    /// `[server.storage]`'s cache root).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_dir: Option<String>,
 }
 
 fn serialize_socket_addr<S>(value: &SocketAddr, serializer: S) -> Result<S::Ok, S::Error>

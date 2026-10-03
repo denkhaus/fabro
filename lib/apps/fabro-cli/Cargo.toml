@@ -35,11 +35,13 @@ fabro-manifest = { path = "../../components/fabro-manifest" }
 fabro-proc = { path = "../../foundation/fabro-proc" }
 sandbox-driver.workspace = true
 sandbox-driver-host.workspace = true
+seeds.workspace = true
 fabro-graphviz = { path = "../../components/fabro-graphviz" }
 fabro-workflow = { path = "../../components/fabro-workflow" }
 fabro-server = { path = "../fabro-server" }
 fabro-client = { path = "../../foundation/fabro-client" }
 fabro-api = { path = "../../foundation/fabro-api" }
+fabro-automation = { path = "../../components/fabro-automation" }
 fabro-telemetry = { path = "../../foundation/fabro-telemetry" }
 fabro-store = { path = "../../components/fabro-store" }
 fabro-vault = { path = "../../foundation/fabro-vault" }
@@ -88,6 +90,7 @@ bytes.workspace = true
 tokio-util.workspace = true
 libc = "0.2"
 nix = { version = "0.30", features = ["fs", "signal"] }
+fabro-build-support = { path = "../../foundation/build-support" }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 core-foundation = { version = "0.9", optional = true }

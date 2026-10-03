@@ -1472,6 +1472,13 @@ pub(crate) enum Commands {
     Parent(ParentNamespace),
     /// Manage server-owned secrets
     Secret(SecretNamespace),
+    /// Operate on the repository's seeds issue tracker (.seeds/, sd-compatible)
+    Seeds(SeedsNamespace),
+    /// Manage server environments
+    Env(EnvNamespace),
+    /// Manage server automations (alias: auto)
+    #[command(alias = "auto")]
+    Automations(AutomationsNamespace),
     /// Manage server-owned variables
     Variable(VariableNamespace),
     /// Inspect effective settings
@@ -1588,6 +1595,25 @@ impl Commands {
                 SecretCommand::Rm(_) => "secret rm",
                 SecretCommand::Set(_) => "secret set",
             },
+            Self::Env(ns) => match &ns.command {
+                EnvCommand::List(_) => "env list",
+                EnvCommand::Show(_) => "env show",
+                EnvCommand::Update(_) => "env update",
+                EnvCommand::PinToolchain(_) => "env pin-toolchain",
+            },
+            Self::Automations(ns) => match &ns.command {
+                AutomationsCommand::List(_) => "automations list",
+                AutomationsCommand::Show(_) => "automations show",
+                AutomationsCommand::Runs(_) => "automations runs",
+                AutomationsCommand::SetSchedule(_) => "automations set-schedule",
+                AutomationsCommand::Pause(_) => "automations pause",
+                AutomationsCommand::Unpause(_) => "automations unpause",
+                AutomationsCommand::Breaker(ns) => match &ns.command {
+                    AutomationsBreakerCommand::Reset(_) => "automations breaker reset",
+                },
+                AutomationsCommand::Fire(_) => "automations fire",
+                AutomationsCommand::Status(_) => "automations status",
+            },
             Self::Variable(ns) => match &ns.command {
                 VariableCommand::List(_) => "variable list",
                 VariableCommand::Get(_) => "variable get",
@@ -1615,6 +1641,17 @@ impl Commands {
                 SystemCommand::Repair(args) => match &args.command {
                     SystemRepairCommand::Runs(_) => "system repair runs",
                 },
+            },
+            Self::Seeds(ns) => match &ns.command {
+                SeedsCommand::Create(_) => "seeds create",
+                SeedsCommand::Show(_) => "seeds show",
+                SeedsCommand::List(_) => "seeds list",
+                SeedsCommand::Ready(_) => "seeds ready",
+                SeedsCommand::Update(_) => "seeds update",
+                SeedsCommand::Close(_) => "seeds close",
+                SeedsCommand::Dep(_) => "seeds dep",
+                SeedsCommand::Prime(_) => "seeds prime",
+                SeedsCommand::Search(_) => "seeds search",
             },
             Self::SendAnalytics { .. } => "__send_analytics",
             Self::SendPanic { .. } => "__send_panic",
@@ -1678,6 +1715,240 @@ pub(crate) enum ArtifactCommand {
 }
 
 #[derive(Args)]
+pub(crate) struct SeedsNamespace {
+    #[command(subcommand)]
+    pub(crate) command: SeedsCommand,
+}
+
+/// sd-parity surface over the native seeds tracker (fabro-088b): each
+/// subcommand maps 1:1 onto a `seeds::commands` typed input; flag names
+/// mirror the reference CLI, raw values pass through unparsed (the
+/// library owns validation and envelope shapes).
+#[derive(Subcommand)]
+pub(crate) enum SeedsCommand {
+    /// Create a new seed
+    Create(SeedsCreateArgs),
+    /// Show one or more seeds by id
+    Show(SeedsShowArgs),
+    /// List seeds
+    List(SeedsQueryArgs),
+    /// List seeds with resolved dependencies
+    Ready(SeedsQueryArgs),
+    /// Update seed fields
+    Update(SeedsUpdateArgs),
+    /// Close one or more seeds
+    Close(SeedsCloseArgs),
+    /// Manage seed dependencies
+    Dep(SeedsDepNamespace),
+    /// Print a priming prompt from open seeds
+    Prime(SeedsPrimeArgs),
+    /// Search seeds by keyword
+    Search(SeedsSearchArgs),
+}
+
+#[derive(Args)]
+pub(crate) struct SeedsCreateArgs {
+    /// Seed title
+    #[arg(long)]
+    pub(crate) title:       Option<String>,
+    /// Seed type (task|bug|feature|epic)
+    #[arg(long = "type")]
+    pub(crate) kind:        Option<String>,
+    /// Priority (0-4 or P0-P4)
+    #[arg(long)]
+    pub(crate) priority:    Option<String>,
+    /// Full description body
+    #[arg(long)]
+    pub(crate) description: Option<String>,
+    /// Comma-separated labels
+    #[arg(long)]
+    pub(crate) labels:      Option<String>,
+    /// Assignee
+    #[arg(long)]
+    pub(crate) assignee:    Option<String>,
+    /// JSON envelope output
+    #[arg(long)]
+    pub(crate) json:        bool,
+}
+
+#[derive(Args)]
+pub(crate) struct SeedsShowArgs {
+    /// Seed ids (prefixes allowed by the reference)
+    pub(crate) ids:    Vec<String>,
+    /// Output format (text|json)
+    #[arg(long)]
+    pub(crate) format: Option<String>,
+    /// JSON envelope output
+    #[arg(long)]
+    pub(crate) json:   bool,
+}
+
+/// Shared filters for list/ready/search (mirrors the reference flags).
+#[derive(Args)]
+pub(crate) struct SeedsQueryArgs {
+    /// Filter by status
+    #[arg(long)]
+    pub(crate) status:           Option<String>,
+    /// Filter by type
+    #[arg(long = "type")]
+    pub(crate) kind:             Option<String>,
+    /// Filter by assignee
+    #[arg(long)]
+    pub(crate) assignee:         Option<String>,
+    /// Include all seeds (ignore defaults)
+    #[arg(long)]
+    pub(crate) all:              bool,
+    /// Comma-separated labels (AND)
+    #[arg(long)]
+    pub(crate) label:            Option<String>,
+    /// Comma-separated labels (OR)
+    #[arg(long)]
+    pub(crate) label_any:        Option<String>,
+    /// Only unlabeled seeds
+    #[arg(long)]
+    pub(crate) unlabeled:        bool,
+    /// Comma-separated priorities
+    #[arg(long)]
+    pub(crate) priority:         Option<String>,
+    /// Upper priority bound
+    #[arg(long)]
+    pub(crate) priority_max:     Option<String>,
+    /// Result limit
+    #[arg(long)]
+    pub(crate) limit:            Option<String>,
+    /// Sort order
+    #[arg(long)]
+    pub(crate) sort:             Option<String>,
+    /// Output format (text|json)
+    #[arg(long)]
+    pub(crate) format:           Option<String>,
+    /// JSON envelope output
+    #[arg(long)]
+    pub(crate) json:             bool,
+    /// Respect schedule windows (ready only)
+    #[arg(long)]
+    pub(crate) respect_schedule: bool,
+}
+
+#[derive(Args)]
+pub(crate) struct SeedsSearchArgs {
+    /// Search needle
+    pub(crate) needle:  String,
+    /// Shared list filters
+    #[command(flatten)]
+    pub(crate) filters: SeedsQueryArgs,
+}
+
+#[derive(Args)]
+pub(crate) struct SeedsUpdateArgs {
+    /// Seed id
+    #[arg(long)]
+    pub(crate) id:               Option<String>,
+    /// New status (open|in_progress|closed)
+    #[arg(long)]
+    pub(crate) status:           Option<String>,
+    /// New title
+    #[arg(long)]
+    pub(crate) title:            Option<String>,
+    /// New assignee
+    #[arg(long)]
+    pub(crate) assignee:         Option<String>,
+    /// New description body (replaces the whole body)
+    #[arg(long)]
+    pub(crate) description:      Option<String>,
+    /// New type
+    #[arg(long = "type")]
+    pub(crate) kind:             Option<String>,
+    /// New priority
+    #[arg(long)]
+    pub(crate) priority:         Option<String>,
+    /// Labels to add (comma-separated)
+    #[arg(long = "add-label")]
+    pub(crate) add_label:        Option<String>,
+    /// Labels to remove (comma-separated)
+    #[arg(long = "remove-label")]
+    pub(crate) remove_label:     Option<String>,
+    /// Replace the whole label set
+    #[arg(long = "set-labels")]
+    pub(crate) set_labels:       Option<String>,
+    /// Shallow-merge JSON into extensions
+    #[arg(long)]
+    pub(crate) extensions:       Option<String>,
+    /// Remove the extensions field
+    #[arg(long = "clear-extensions")]
+    pub(crate) clear_extensions: bool,
+    /// JSON envelope output
+    #[arg(long)]
+    pub(crate) json:             bool,
+}
+
+#[derive(Args)]
+pub(crate) struct SeedsCloseArgs {
+    /// Seed ids
+    pub(crate) ids:    Vec<String>,
+    /// Closure reason (appended to the body)
+    #[arg(long)]
+    pub(crate) reason: Option<String>,
+    /// JSON envelope output
+    #[arg(long)]
+    pub(crate) json:   bool,
+}
+
+#[derive(Args)]
+pub(crate) struct SeedsDepNamespace {
+    #[command(subcommand)]
+    pub(crate) command: SeedsDepCommand,
+}
+
+#[derive(Subcommand)]
+pub(crate) enum SeedsDepCommand {
+    /// Add blocker ids to a seed
+    Add(SeedsDepAddArgs),
+    /// Remove a blocker id from seeds
+    Remove(SeedsDepRemoveArgs),
+    /// List dependency links
+    List(SeedsDepListArgs),
+}
+
+#[derive(Args)]
+pub(crate) struct SeedsDepAddArgs {
+    /// Seed id followed by blocker ids
+    pub(crate) ids:  Vec<String>,
+    /// JSON envelope output
+    #[arg(long)]
+    pub(crate) json: bool,
+}
+
+#[derive(Args)]
+pub(crate) struct SeedsDepRemoveArgs {
+    /// Seed ids followed by the blocker id
+    pub(crate) ids:  Vec<String>,
+    /// JSON envelope output
+    #[arg(long)]
+    pub(crate) json: bool,
+}
+
+#[derive(Args)]
+pub(crate) struct SeedsDepListArgs {
+    /// Restrict to one seed id
+    #[arg(long)]
+    pub(crate) id:   Option<String>,
+    /// JSON envelope output
+    #[arg(long)]
+    pub(crate) json: bool,
+}
+
+#[derive(Args)]
+pub(crate) struct SeedsPrimeArgs {
+    /// Compact template and section set
+    #[arg(long)]
+    pub(crate) compact: bool,
+    /// JSON envelope output
+    #[arg(long)]
+    pub(crate) json:    bool,
+}
+
+#[derive(Args)]
 pub(crate) struct SecretNamespace {
     #[command(flatten)]
     pub(crate) target: ServerTargetArgs,
@@ -1695,6 +1966,194 @@ pub(crate) enum SecretCommand {
     Rm(SecretRmArgs),
     /// Set a secret value
     Set(SecretSetArgs),
+}
+
+#[derive(Args)]
+pub(crate) struct EnvNamespace {
+    #[command(flatten)]
+    pub(crate) target: ServerTargetArgs,
+
+    #[command(subcommand)]
+    pub(crate) command: EnvCommand,
+}
+
+#[derive(Subcommand)]
+pub(crate) enum EnvCommand {
+    /// List server environments
+    #[command(alias = "ls")]
+    List(EnvListArgs),
+    /// Show one server environment
+    Show(EnvShowArgs),
+    /// Update a server environment
+    Update(EnvUpdateArgs),
+    /// Pin the toolchain environment to the just-pushed image
+    PinToolchain(EnvPinToolchainArgs),
+}
+
+#[derive(Args)]
+pub(crate) struct EnvListArgs;
+
+#[derive(Args)]
+pub(crate) struct EnvShowArgs {
+    /// Environment id
+    pub(crate) id: String,
+}
+
+#[derive(Args)]
+pub(crate) struct EnvUpdateArgs {
+    /// Environment id
+    pub(crate) id: String,
+
+    /// Docker image reference for the environment
+    #[arg(long)]
+    pub(crate) image: Option<String>,
+
+    /// CPU count (provider-dependent)
+    #[arg(long)]
+    pub(crate) cpu: Option<i32>,
+
+    /// Memory size (e.g. 4g)
+    #[arg(long)]
+    pub(crate) memory: Option<String>,
+
+    /// Disk size (e.g. 20g)
+    #[arg(long)]
+    pub(crate) disk: Option<String>,
+
+    /// Preserve sandbox instances after runs
+    #[arg(long, conflicts_with = "no_preserve")]
+    pub(crate) preserve: bool,
+
+    /// Do not preserve sandbox instances after runs
+    #[arg(long = "no-preserve")]
+    pub(crate) no_preserve: bool,
+
+    /// Stop sandboxes when a run reaches a terminal state
+    #[arg(long, conflicts_with = "no_stop_on_terminal")]
+    pub(crate) stop_on_terminal: bool,
+
+    /// Do not stop sandboxes on terminal run states
+    #[arg(long = "no-stop-on-terminal")]
+    pub(crate) no_stop_on_terminal: bool,
+
+    /// Auto-stop idle sandboxes after this duration (e.g. 30m)
+    #[arg(long, conflicts_with = "no_auto_stop")]
+    pub(crate) auto_stop: Option<String>,
+
+    /// Clear the auto-stop idle duration
+    #[arg(long = "no-auto-stop")]
+    pub(crate) no_auto_stop: bool,
+}
+
+#[derive(Args)]
+#[group(required = true, multiple = false)]
+pub(crate) struct EnvPinToolchainArgs {
+    /// Pin this 12-hex git sha tag (e.g. from scripts/run-images.nu --push)
+    #[arg(long = "tag")]
+    pub(crate) tag: Option<String>,
+
+    /// Derive the tag from the current git HEAD sha12 (same logic as
+    /// scripts/run-images.nu --push)
+    #[arg(long = "from-run-images")]
+    pub(crate) from_run_images: bool,
+}
+
+#[derive(Args)]
+pub(crate) struct AutomationsNamespace {
+    #[command(flatten)]
+    pub(crate) target: ServerTargetArgs,
+
+    #[command(subcommand)]
+    pub(crate) command: AutomationsCommand,
+}
+
+#[derive(Subcommand)]
+pub(crate) enum AutomationsCommand {
+    /// List server automations
+    #[command(alias = "ls")]
+    List(AutomationsListArgs),
+    /// Show one server automation
+    Show(AutomationsShowArgs),
+    /// List the runs an automation created
+    Runs(AutomationsRunsArgs),
+    /// Change an automation's cron schedule
+    SetSchedule(AutomationsSetScheduleArgs),
+    /// Pause an automation's schedule trigger
+    Pause(AutomationsPauseArgs),
+    /// Re-enable an automation's schedule trigger
+    Unpause(AutomationsPauseArgs),
+    /// Circuit-breaker control
+    Breaker(AutomationsBreakerNamespace),
+    /// Fire an automation through its API trigger
+    Fire(AutomationsFireArgs),
+    /// Monitor automations for fire drift
+    Status(AutomationsStatusArgs),
+}
+
+#[derive(Args)]
+pub(crate) struct AutomationsBreakerNamespace {
+    #[command(subcommand)]
+    pub(crate) command: AutomationsBreakerCommand,
+}
+
+#[derive(Subcommand)]
+pub(crate) enum AutomationsBreakerCommand {
+    /// Unlatch a tripped breaker (no-op when clean)
+    Reset(AutomationsBreakerResetArgs),
+}
+
+#[derive(Args)]
+pub(crate) struct AutomationsListArgs;
+
+#[derive(Args)]
+pub(crate) struct AutomationsShowArgs {
+    /// Automation id
+    pub(crate) id: String,
+}
+
+#[derive(Args)]
+pub(crate) struct AutomationsRunsArgs {
+    /// Automation id
+    pub(crate) id: String,
+}
+
+#[derive(Args)]
+pub(crate) struct AutomationsSetScheduleArgs {
+    /// Automation id
+    pub(crate) id: String,
+
+    /// Five-field UTC cron expression
+    #[arg(long = "cron")]
+    pub(crate) cron: String,
+
+    /// Schedule trigger id, required when the automation has several
+    #[arg(long = "trigger")]
+    pub(crate) trigger: Option<String>,
+}
+
+#[derive(Args)]
+pub(crate) struct AutomationsPauseArgs {
+    /// Automation id
+    pub(crate) id: String,
+}
+
+#[derive(Args)]
+pub(crate) struct AutomationsBreakerResetArgs {
+    /// Automation id
+    pub(crate) id: String,
+}
+
+#[derive(Args)]
+pub(crate) struct AutomationsFireArgs {
+    /// Automation id
+    pub(crate) id: String,
+}
+
+#[derive(Args)]
+pub(crate) struct AutomationsStatusArgs {
+    /// Re-check every 30 seconds until interrupted
+    #[arg(long = "watch")]
+    pub(crate) watch: bool,
 }
 
 #[derive(Args)]

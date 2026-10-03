@@ -20,7 +20,13 @@
 pub mod api;
 pub mod catalog;
 pub mod client;
+mod error;
+pub use error::LONG_RATE_LIMIT_WINDOW;
+pub(crate) mod fork_catalog;
+pub mod fork_structured;
 pub mod gateway;
+pub mod judgment;
+pub mod judgment_replay;
 pub mod probe;
 pub mod selection;
 #[cfg(any(test, feature = "test-support"))]
@@ -30,6 +36,13 @@ pub use catalog::{build_catalog, default_catalog};
 pub use client::{
     ClientOptions, FabroClient, LlmSetupError, RetryListener, RetryNotice, build_client,
     build_offline_client, configured_providers,
+};
+pub use fork_structured::{
+    TolerantCompletion, complete_object_tolerant, decode_json_object, extract_json_document,
+};
+pub use judgment::{
+    Answer, AnswerValue, DEFAULT_BASE_URL, DEFAULT_MODEL, JudgmentClient, JudgmentEndpoint,
+    JudgmentError, JudgmentRequest, JudgmentResponse, JudgmentUsage, Question, is_judgment_model,
 };
 pub use lithos_llm::client::{Client, ClientBuild};
 pub use lithos_llm::middleware::{CallContext, CancellationToken, RetryPolicy, RetryStage};

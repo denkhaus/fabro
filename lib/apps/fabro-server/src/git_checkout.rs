@@ -13,6 +13,10 @@ use tokio_util::sync::CancellationToken;
 
 const GIT_CLONE_TIMEOUT: Duration = Duration::from_mins(2);
 const GIT_FETCH_TIMEOUT: Duration = Duration::from_mins(1);
+/// A complete repository (the fork's is ~150 MB): one-off, cache-warming.
+const GIT_FULL_CLONE_TIMEOUT: Duration = Duration::from_mins(10);
+/// Deepening a shallow cache to complete history.
+const GIT_FULL_FETCH_TIMEOUT: Duration = Duration::from_mins(5);
 const GIT_WORKTREE_ADD_TIMEOUT: Duration = Duration::from_secs(30);
 const GIT_WORKTREE_PRUNE_TIMEOUT: Duration = Duration::from_secs(10);
 const GIT_REV_PARSE_TIMEOUT: Duration = Duration::from_secs(10);
@@ -169,9 +173,23 @@ impl GitRepoCache {
                     }
                 })?;
             }
-            run_git_plan(build_bare_clone_plan(clone_url, bare_dir, args.auth))
+            let clone_plan = match args.depth {
+                WorktreeDepth::Shallow => build_bare_clone_plan(clone_url, bare_dir, args.auth),
+                WorktreeDepth::Full => build_full_bare_clone_plan(clone_url, bare_dir, args.auth),
+            };
+            run_git_plan(clone_plan)
                 .await
                 .map_err(|source| GitCheckoutError::Clone { source })?;
+        } else if args.depth == WorktreeDepth::Full && is_shallow(bare_dir).await {
+            // A shallow cache from the materializer's default deepens once;
+            // `fetch --unshallow` makes the shared cache complete for every
+            // later caller.
+            run_git_plan(build_unshallow_plan(bare_dir, clone_url, args.auth))
+                .await
+                .map_err(|source| GitCheckoutError::FetchBranch {
+                    branch: "<unshallow>".to_string(),
+                    source,
+                })?;
         }
 
         let fetch_target = args.selector;
@@ -180,6 +198,7 @@ impl GitRepoCache {
             clone_url,
             &fetch_target.selector(),
             args.auth,
+            args.depth,
         ))
         .await
         .map_err(|source| fetch_target.checkout_error(source))?;
@@ -200,6 +219,23 @@ pub(crate) struct WorktreePrepareInput<'a> {
     pub selector:     GitCheckoutSelector<'a>,
     pub auth:         Option<&'a GitAuthConfig>,
     pub worktree_dir: &'a Path,
+    /// How much history the prepared worktree carries. `Shallow` is the
+    /// materializer's cheap default (it reads files at one ref); `Full`
+    /// is what a run's bound checkout needs — the engine's checkpoint
+    /// publishing traverses the workspace commit's whole ancestry, and a
+    /// shallow cut fails that traversal (fabro-b6c5 pass 4).
+    pub depth:        WorktreeDepth,
+}
+
+/// The history depth a prepared worktree carries.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub(crate) enum WorktreeDepth {
+    /// `--depth 1`: one commit, the file-reading default.
+    #[default]
+    Shallow,
+    /// The ref's complete history: deepens an existing shallow cache
+    /// with `fetch --unshallow` before the ref fetch.
+    Full,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -404,25 +440,73 @@ fn build_bare_clone_plan(
     .with_auth(clone_url, auth)
 }
 
-fn build_bare_fetch_plan(
+/// The full-history twin of the bare clone: no depth cut, a budget that
+/// fits a complete repository, and the same auth channel.
+fn build_full_bare_clone_plan(
+    clone_url: &str,
+    bare_dir: &Path,
+    auth: Option<&GitAuthConfig>,
+) -> GitCommandPlan {
+    GitCommandPlan::new(
+        [
+            "clone".to_string(),
+            "--bare".to_string(),
+            clone_url.to_string(),
+            bare_dir.display().to_string(),
+        ],
+        GIT_FULL_CLONE_TIMEOUT,
+    )
+    .with_auth(clone_url, auth)
+}
+
+/// Deepen an existing shallow bare cache to complete history.
+fn build_unshallow_plan(
     bare_dir: &Path,
     clone_url: &str,
-    ref_selector: &str,
     auth: Option<&GitAuthConfig>,
 ) -> GitCommandPlan {
     GitCommandPlan::new(
         [
             "fetch".to_string(),
-            "--depth".to_string(),
-            "1".to_string(),
+            "--unshallow".to_string(),
             "origin".to_string(),
-            "--".to_string(),
-            ref_selector.to_string(),
         ],
-        GIT_FETCH_TIMEOUT,
+        GIT_FULL_FETCH_TIMEOUT,
     )
     .current_dir(bare_dir)
     .with_auth(clone_url, auth)
+}
+
+fn build_bare_fetch_plan(
+    bare_dir: &Path,
+    clone_url: &str,
+    ref_selector: &str,
+    auth: Option<&GitAuthConfig>,
+    depth: WorktreeDepth,
+) -> GitCommandPlan {
+    let mut argv = vec!["fetch".to_string()];
+    if depth == WorktreeDepth::Shallow {
+        argv.extend(["--depth".to_string(), "1".to_string()]);
+    }
+    argv.extend([
+        "origin".to_string(),
+        "--".to_string(),
+        ref_selector.to_string(),
+    ]);
+    let timeout = match depth {
+        WorktreeDepth::Shallow => GIT_FETCH_TIMEOUT,
+        WorktreeDepth::Full => GIT_FULL_FETCH_TIMEOUT,
+    };
+    GitCommandPlan::new(argv, timeout)
+        .current_dir(bare_dir)
+        .with_auth(clone_url, auth)
+}
+
+/// Whether the bare cache at `bare_dir` is shallow (a `shallow` file).
+async fn is_shallow(bare_dir: &Path) -> bool {
+    fs::try_exists(bare_dir.join("shallow"))
+        .await
+        .unwrap_or(false)
 }
 
 fn build_worktree_add_plan(bare_dir: &Path, worktree_dir: &Path, target: &str) -> GitCommandPlan {
@@ -779,7 +863,13 @@ mod tests {
         assert_eq!(clone.timeout, Duration::from_mins(2));
         assert_eq!(clone.env_value("GIT_TERMINAL_PROMPT"), Some("0"));
 
-        let fetch = build_bare_fetch_plan(&bare_dir, &clone_url, "feature/materialize", None);
+        let fetch = build_bare_fetch_plan(
+            &bare_dir,
+            &clone_url,
+            "feature/materialize",
+            None,
+            WorktreeDepth::Shallow,
+        );
         assert_eq!(fetch.args, vec![
             "fetch",
             "--depth",
@@ -970,6 +1060,7 @@ mod tests {
                     selector:     GitCheckoutSelector::from(&target),
                     auth:         None,
                     worktree_dir: &worktree_a,
+                    depth:        WorktreeDepth::Shallow,
                 },
                 &upstream_url,
             )
@@ -992,6 +1083,7 @@ mod tests {
                     selector:     GitCheckoutSelector::from(&target),
                     auth:         None,
                     worktree_dir: &worktree_b,
+                    depth:        WorktreeDepth::Shallow,
                 },
                 &upstream_url,
             )
@@ -1023,6 +1115,7 @@ mod tests {
                     selector:     GitCheckoutSelector::from(&target),
                     auth:         None,
                     worktree_dir: &worktree_a,
+                    depth:        WorktreeDepth::Shallow,
                 },
                 &upstream_url,
             )
@@ -1041,6 +1134,7 @@ mod tests {
                     selector:     GitCheckoutSelector::from(&target),
                     auth:         None,
                     worktree_dir: &worktree_b,
+                    depth:        WorktreeDepth::Shallow,
                 },
                 &upstream_url,
             )
@@ -1079,6 +1173,7 @@ mod tests {
                         selector:     GitCheckoutSelector::from(&target),
                         auth:         None,
                         worktree_dir: &temp.path().join(name),
+                        depth:        WorktreeDepth::Shallow,
                     },
                     &upstream_url,
                 )
@@ -1107,6 +1202,7 @@ mod tests {
                     selector:     GitCheckoutSelector::from(&missing_tag),
                     auth:         None,
                     worktree_dir: &temp.path().join("missing-tag"),
+                    depth:        WorktreeDepth::Shallow,
                 },
                 &upstream_url,
             )
@@ -1124,6 +1220,7 @@ mod tests {
                     selector:     GitCheckoutSelector::from(&unavailable_commit),
                     auth:         None,
                     worktree_dir: &temp.path().join("missing-commit"),
+                    depth:        WorktreeDepth::Shallow,
                 },
                 &upstream_url,
             )
