@@ -8,6 +8,8 @@
 
 use std::collections::BTreeSet;
 
+use crate::fork_dot_edges;
+
 /// Edges by (from-node, to-node) that carry a `condition=` attribute.
 #[derive(Debug, Default, Clone, PartialEq)]
 pub(crate) struct EdgeConditions {
@@ -16,14 +18,14 @@ pub(crate) struct EdgeConditions {
 
 impl EdgeConditions {
     /// Parse `condition=` presence per edge from raw DOT text through the
-    /// shared edge scan ([`super::fork_dot_edges`]): one edge statement
+    /// shared edge scan ([`crate::fork_dot_edges`]): one edge statement
     /// at a time — a bare edge (`a -> b`) owns NO attributes, and a
     /// bracket-less edge never inherits the NEXT edge's block. Comments
     /// are stripped first, so a commented-out route (`// merge -> exit`)
     /// is not read as a conditional one.
     pub(crate) fn parse(graph_source: &str) -> Self {
         let mut conditional = BTreeSet::new();
-        super::fork_dot_edges::for_each_edge(graph_source, |from, to, attrs| {
+        fork_dot_edges::for_each_edge(graph_source, |from, to, attrs| {
             if has_condition(attrs) {
                 conditional.insert((from.to_string(), to.to_string()));
             }

@@ -20,6 +20,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use fabro_types::{FailureReason, RunStatus, SuccessReason};
 
+use crate::fork_dot_edges;
+
 /// Exit kinds by (from-node, to-node) parsed from the DOT `graph_source`.
 #[derive(Debug, Default, Clone, PartialEq)]
 pub(crate) struct ExitKinds {
@@ -32,20 +34,18 @@ pub(crate) struct ExitKinds {
 
 impl ExitKinds {
     /// Parse `x.kind="…"` edge attributes from raw DOT text through the
-    /// shared edge scan ([`super::fork_dot_edges`]), which owns the fabro
+    /// shared edge scan ([`crate::fork_dot_edges`]), which owns the fabro
     /// files' edge syntax (`a -> b [label="…", x.kind="soft"]`,
     /// multi-line attributes and comments included).
     pub(crate) fn parse(graph_source: &str) -> Self {
         let mut edges = BTreeMap::new();
         let mut plain_edges = BTreeSet::new();
-        super::fork_dot_edges::for_each_edge(graph_source, |from, to, attrs| {
-            match parse_x_kind(attrs) {
-                Some(kind) => {
-                    edges.insert((from.to_string(), to.to_string()), kind.to_string());
-                }
-                None => {
-                    plain_edges.insert((from.to_string(), to.to_string()));
-                }
+        fork_dot_edges::for_each_edge(graph_source, |from, to, attrs| match parse_x_kind(attrs) {
+            Some(kind) => {
+                edges.insert((from.to_string(), to.to_string()), kind.to_string());
+            }
+            None => {
+                plain_edges.insert((from.to_string(), to.to_string()));
             }
         });
         Self { edges, plain_edges }

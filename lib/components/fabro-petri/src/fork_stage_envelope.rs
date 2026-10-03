@@ -16,9 +16,12 @@
 //!
 //! The parser is deliberately in the shape of `fork_exit_kinds`: a
 //! light scan over the raw DOT text, tolerant of the fabro files'
-//! multi-line attribute blocks, never a full DOT grammar. It can misread
-//! attribute text embedded in quoted labels; the lints then judge what
-//! was read, and a misread hides an envelope rather than inventing one.
+//! multi-line attribute blocks, never a full DOT grammar. It shares the
+//! fork's one DOT scan ([`crate::fork_dot_edges`], fabro-8615/e901):
+//! comments are stripped first, and the closing bracket is matched
+//! outside quoted values — so a commented-out block declares nothing and
+//! an edge label carrying `]` closes no block early. The lints then
+//! judge what was read.
 //!
 //! Unknown `x.*` attribute names are REFUSED at create (`lint`,
 //! fabro-70af): the petri rework dropped the whole legacy per-node
@@ -30,6 +33,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use fabro_redact::fs_scope::{FsScope, FsScopeError};
 use fabro_util::workspace_glob::WorkspaceGlob;
+
+use crate::fork_dot_edges;
 
 /// The aggregate preamble budget when no `x.preamble_budget_kb` is set:
 /// the value the legacy engine defaulted to (fabro-a85b).
@@ -163,18 +168,31 @@ impl StageEnvelopes {
     /// Parse node and graph blocks with their `x.*` envelope attributes
     /// from raw DOT text. Edge statements (`a -> b [...]`) are skipped;
     /// a node block's attributes may span lines.
+    ///
+    /// The walk reads COMMENT-FREE text and matches brackets outside
+    /// quoted values, through the fork's one DOT scan
+    /// ([`crate::fork_dot_edges`], fabro-e901): a commented-out block
+    /// (`// merge [ ... ]`) is no node, and an edge label carrying a
+    /// bracket (`label="[Y] Yes"`) closes no block early.
     #[must_use]
     pub fn parse(graph_source: &str) -> Self {
         let mut nodes: BTreeMap<String, NodeEnvelope> = BTreeMap::new();
         let mut graph = GraphEnvelope::default();
         let mut x_sites = Vec::new();
-        let mut rest = graph_source;
-        while let Some(open) = rest.find('[') {
-            let head = &rest[..open];
-            let after = &rest[open + 1..];
-            let Some(close) = after.find(']') else { break };
-            let block = &after[..close];
-            rest = &after[close + 1..];
+        let cleaned = fork_dot_edges::strip_comments(graph_source);
+        // `cursor` is the absolute offset of the read position; the
+        // subject walk needs the text SINCE the previous block, so the
+        // relative `open` is kept beside it.
+        let mut cursor = 0;
+        while let Some(offset) = cleaned[cursor..].find('[') {
+            let rest = &cleaned[cursor..];
+            let head = &rest[..offset];
+            let open = cursor + offset;
+            let Some(close) = fork_dot_edges::find_bracket_end(&cleaned, open) else {
+                break;
+            };
+            let block = &cleaned[open + 1..close];
+            cursor = close + 1;
             // The subject is the tail of the head after the last `{` (a
             // graph header can share the line with the first statement):
             // `name`, `graph`, or an edge's `a -> b`. Edges carry their
@@ -802,6 +820,83 @@ mod tests {
             offenders.is_empty(),
             "unknown x.* attributes in the workspace graphs:\n{}",
             offenders.join("\n")
+        );
+    }
+
+    /// fabro-e901: a commented-out node block declares nothing.
+    #[test]
+    fn a_commented_out_block_declares_no_envelope() {
+        let source = "\
+digraph W {
+    graph [goal=\"G\", x.preamble_budget_kb=24]
+    // merge [
+    //     x.fs_write=\".fabro/merge/**\",
+    // ]
+    build [x.fs_write=\".fabro/build/**\"]
+    start -> build -> exit
+}";
+        let envelopes = StageEnvelopes::parse(source);
+        assert_eq!(
+            envelopes.nodes.keys().collect::<Vec<_>>(),
+            vec!["build"],
+            "only the live node block declares an envelope"
+        );
+        assert_eq!(
+            envelopes
+                .envelope("build")
+                .and_then(|node| node.fs_write.clone()),
+            Some(vec![".fabro/build/**".to_string()])
+        );
+    }
+
+    /// fabro-e901: a bracketed edge label closes no block early, so the
+    /// edge's own `x.*` attribute stays visible to the census.
+    #[test]
+    fn a_bracketed_edge_label_keeps_the_edges_x_attributes() {
+        let source = "\
+digraph W {
+    graph [goal=\"G\"]
+    gate [shape=hexagon]
+    gate -> exit [label=\"[Y] Yes\", x.kind=\"soft\"]
+}";
+        let envelopes = StageEnvelopes::parse(source);
+        assert!(
+            envelopes.x_sites.iter().any(|site| site.name == "x.kind"
+                && site.subject == "gate -> exit"
+                && site.on_edge),
+            "the edge's x.kind site survives a bracketed label: {:?}",
+            envelopes.x_sites
+        );
+    }
+
+    /// fabro-e901 on a real graph whose merge leg is commented out
+    /// (`.fabro/workflows/conductor/workflow.fabro`): no comment fragment
+    /// becomes a node or an `x.*` subject. Before the fix the walk read
+    /// the commented block as a node named `//` and its attributes as
+    /// envelope sites.
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "the regression test reads the checked-in conductor graph synchronously"
+    )]
+    #[test]
+    fn the_real_conductor_graph_reads_no_envelope_from_a_comment() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../.fabro/workflows/conductor/workflow.fabro");
+        let source = std::fs::read_to_string(&path)
+            .unwrap_or_else(|error| panic!("failed to read {}: {error}", path.display()));
+        let envelopes = StageEnvelopes::parse(&source);
+        assert!(
+            envelopes.nodes.keys().all(|node| !node.starts_with("//")),
+            "no comment fragment is a node: {:?}",
+            envelopes.nodes.keys().collect::<Vec<_>>()
+        );
+        assert!(
+            envelopes
+                .x_sites
+                .iter()
+                .all(|site| !site.subject.starts_with("//")),
+            "no comment fragment is an x-attribute subject: {:?}",
+            envelopes.x_sites
         );
     }
 

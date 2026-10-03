@@ -1,11 +1,13 @@
 //! One comment-aware DOT edge scan for the fork's `graph_source`
 //! readers (fabro-8615).
 //!
-//! Two projection modules read edge attributes straight off the run's
-//! original DOT text: [`super::fork_exit_kinds`] reads the fork's
-//! `x.kind` exit routes, [`super::edge_conditions`] reads `condition=`
-//! presence. Both walked the raw text with `find("->")` and `find(']')`,
-//! and that walk loses real edges in two shapes Fabro graphs carry:
+//! Three modules read the run's original DOT text: the projection's
+//! [`crate::projection::fork_exit_kinds`] reads the fork's `x.kind` exit
+//! routes and [`crate::projection::edge_conditions`] reads `condition=`
+//! presence (both edge statements), and [`crate::fork_stage_envelope`]
+//! reads node blocks and their `x.*` envelopes (fabro-e901). Both walked the
+//! raw text with `find("->")` and `find(']')`, and that walk loses real edges
+//! in two shapes Fabro graphs carry:
 //!
 //! - a COMMENT mentioning an arrow (`// match): failed -> soft exit`) hands the
 //!   walk a bracket far away, so every edge statement up to that bracket
@@ -169,7 +171,7 @@ fn find_arrow(text: &str) -> Option<usize> {
 
 /// The byte offset of the `]` closing the `[` at `open`, skipping quoted
 /// attribute values.
-fn find_bracket_end(text: &str, open: usize) -> Option<usize> {
+pub(crate) fn find_bracket_end(text: &str, open: usize) -> Option<usize> {
     find_unquoted(text, open + 1, |byte| byte == b']')
 }
 

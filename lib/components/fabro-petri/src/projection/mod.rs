@@ -28,7 +28,6 @@
 mod coordinator;
 mod edge_conditions;
 mod engine;
-mod fork_dot_edges;
 mod fork_exit_kinds;
 pub mod fork_taxonomy;
 mod model;
