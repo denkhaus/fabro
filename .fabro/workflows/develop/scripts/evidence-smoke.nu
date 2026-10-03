@@ -92,7 +92,34 @@ if (total $fixture "add") != 13 { fail $"total add (binary as 0): (total $fixtur
 if (total $fixture "del") != 8  { fail $"total del: (total $fixture 'del')" }
 if (total [] "add") != 0 { fail "total empty must be 0" }
 
-print "evidence-smoke: ok — sanitize/resolve-blobrefs/diff-sort-key/is-loop-path/total verified"
+# checks-transcript-path: pure builder — run id lands in the file name
+# under the shared transcript dir (check-transcript.nu writes it).
+if (checks-transcript-path "abc123") != "/tmp/fabro-check-transcript/abc123.md" {
+    fail $"checks-transcript-path: (checks-transcript-path 'abc123')"
+}
+
+# checks-section: absent file -> "" (no noise for runs without checks);
+# present transcript -> section head + sanitized body; bare /word tokens
+# in the body get backticked like every other emitted text.
+if (checks-section "/tmp/fabro-check-transcript/definitely-missing.md") != "" {
+    fail "checks-section missing file must be empty"
+}
+let tmp2 = (mktemp -d)
+let tpath = $"($tmp2)/checks.md"
+"$ just lint-nu\nall green\n-> exit 0\n\nrun in /tmp dir\n-> exit 0" | save --force $tpath
+let sec = (checks-section $tpath)
+rm -rf $tmp2
+if not ($sec | str contains "implementer checks: per-criterion transcript") {
+    fail "checks-section must carry the contract header"
+}
+if not ($sec | str contains "just lint-nu") {
+    fail "checks-section must inline the transcript body"
+}
+if not ($sec | str contains "`/tmp` dir") {
+    fail $"checks-section must sanitize bare /word tokens: ($sec)"
+}
+
+print "evidence-smoke: ok — sanitize/resolve-blobrefs/diff-sort-key/is-loop-path/total/checks-section verified"
 
 # Sourcing evidence.nu imports its `def main`; nu auto-invokes it after
 # the top level runs — exit explicitly so the smoke never reaches it.
