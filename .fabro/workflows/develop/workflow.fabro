@@ -525,7 +525,11 @@ digraph Develop {
     // tolerance: on this route the implementer never runs, so
     // implementation_summary is legitimately absent (allow-keys is a
     // whitelist, not a presence requirement) and the planner brief in the
-    // evidence capture is the criteria source.
+    // evidence capture is the criteria source — plus, since fabro-f759,
+    // the planner's per-criterion checks recorded through the shared
+    // check-transcript wrapper (--by planner), which the capture inlines
+    // as its `recorded checks` section so the reviewer need not re-run
+    // them.
     planner -> evidence [label="Verification-only", condition="preferred_label=\"Verification-only\""]
     // Claim-contract gate (fabro-c42f stopgap): a cheap script node that
     // fails deterministically within seconds when current_seed_id is
