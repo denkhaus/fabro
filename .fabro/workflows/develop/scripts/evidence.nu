@@ -119,6 +119,14 @@ def current-branch []: nothing -> string {
     git branch --show-current | str trim
 }
 
+# Run id parsed from the run branch (`fabro/run/<id>`); "local" off a
+# run branch. Shared by run-base and the checks-transcript path below;
+# mirrored in check-transcript.nu — change both together.
+def current-run-id []: nothing -> string {
+    let id = (current-branch | parse --regex 'fabro/run/(?P<id>[^/]+)$' | get -o id.0 | default '')
+    if ($id | is-empty) { "local" } else { $id }
+}
+
 # Parent of THIS run's oldest checkpoint commit, identified via the run
 # branch name (fabro/run/<id> -> subject "fabro(<id>): ..."). The subject
 # match is FIXED-STRING: a regex like "fabro.<id>:" silently matches
@@ -126,12 +134,7 @@ def current-branch []: nothing -> string {
 # sections and misleading evidence. Foreign run checkpoints merged into
 # history are ignored. Fallback: HEAD.
 def run-base []: nothing -> record<base: string, short: string, grounded: bool> {
-    let run_id = (
-        current-branch
-        | parse --regex 'fabro/run/(?P<id>[^/]+)$'
-        | get -o id.0
-        | default ''
-    )
+    let run_id = (current-run-id)
     let subject_mark = $"fabro\(($run_id)\):"
     let checkpoints = (git log --format=%H --fixed-strings --grep $subject_mark | lines | compact)
     if ($checkpoints | is-empty) {
@@ -431,6 +434,36 @@ def worktree-section [wt_lines: list<string>]: nothing -> string {
     }
 }
 
+# Pure path builder for the per-criterion check transcript written by
+# check-transcript.nu (implementer-side half; dir constant kept in sync
+# there). Takes the run id so the smoke can exercise it without git.
+def checks-transcript-path [run_id: string]: nothing -> string {
+    $"/tmp/fabro-check-transcript/($run_id).md"
+}
+
+# Per-criterion check transcript (fabro-d89a): checks the implementer
+# ran through check-transcript.nu append command + combined output +
+# exit code records to the run-scoped transcript; this section inlines
+# it so the reviewer approves from context instead of re-running the
+# proof (temp fixtures may be long gone — the transcript IS the proof).
+# Present in EVERY capture whose implementer recorded checks; omitted
+# entirely when no transcript exists (no empty-section noise for
+# verification-only runs or older runs). HARD_CAP applies with the same
+# UNSEEN disclosure as the diff sections.
+def checks-section [path: string]: nothing -> string {
+    if not ($path | path exists) { return "" }
+    let raw = (open --raw $path | str trim -r -c "\n")
+    if ($raw | is-empty) { return "" }
+    let head = "\n== implementer checks: per-criterion transcript (commands + outputs + exit codes exactly as the implementer ran them — recorded proof; never re-run these) ==\n"
+    let body = (sanitize $raw)
+    if (($head | str length) + ($body | str length)) > $HARD_CAP {
+        let keep = ($HARD_CAP - ($head | str length) - 100)
+        $head + ($body | str substring 0..<$keep) + "\n(hard cap hit: transcript cut — the cut tail is UNSEEN; treat with the same rule as omitted diff files)\n"
+    } else {
+        $head + $body + "\n"
+    }
+}
+
 # ---------------------------------------------------------------------------
 # main
 # ---------------------------------------------------------------------------
@@ -484,6 +517,10 @@ def main [--lane: string = "product"]: nothing -> nothing {
     # Fixed sections first, each under its own cap…
     let integrity = (integrity-section $base.short $seed_desc $diff_desc $seed_rows $churn_rows $wt.label)
     let spec = (spec-section $wip)
+    # Implementer check transcript (fabro-d89a): cheap and critical —
+    # slot it after the spec, before the file lists and diffs, so a
+    # compact render still carries the recorded proof.
+    let checks = (checks-section (checks-transcript-path (current-run-id)))
     let files = (seed-work-files-section $seed_rows)
     let churn = (loop-churn-section $churn_rows)
     # Churn-only seeds get a loop-work diff adjacent to the churn counts
@@ -508,6 +545,7 @@ def main [--lane: string = "product"]: nothing -> nothing {
     emit ($no_base_note | str trim -r -c "\n")
     emit $integrity
     emit $spec
+    if ($checks | is-not-empty) { emit $checks }
     emit $files
     emit $diff
     emit $churn

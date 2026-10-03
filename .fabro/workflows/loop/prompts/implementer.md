@@ -45,6 +45,8 @@ The expertise store (mulch) is OUTSIDE this node's envelope (fs_hide) — `ml re
 
 Your `implementation_summary` must end with a per-criterion verification report: one line per acceptance-criteria bullet from the brief, each `PASS` or `FAIL`, each naming the file (and check, where applicable) that satisfies it. A FAIL you cannot resolve is a deviation: say so explicitly. The one-unit rule gets its own line naming every part of the unit you touched.
 
+Run every per-criterion check through the transcript wrapper — `nu .fabro/workflows/develop/scripts/check-transcript.nu -- '<the check command>'` — which records the command, its combined output, and its exit code for the evidence capture (it streams the output to you unchanged and exits with the command's own code, so nothing about running the check bare changes; the parse-tier checks belong to your lane and MAY run bare or wrapped, but a check that backs a PASS line goes through the wrapper). This is what makes a PASS line verifiable instead of prose: the capture carries the recorded proof, and a check whose evidence lives in temporary fixtures (built under `mktemp -d`, deleted afterwards) survives ONLY through the transcript — without it the reviewer must re-run the entire proof itself. A PASS line whose check was not run through the wrapper is unverifiable prose; prefer re-running the check through the wrapper over asserting it.
+
 This report lives ONLY inside the JSON `implementation_summary` field — never duplicate it in the pre-JSON markdown. Keep the pre-JSON text one short paragraph.
 
 Material semantic-risk observations (changed routing labels, envelope scope changes, new node contracts) MUST be repeated inside `implementation_summary` itself — the reviewer's context filter excludes journal.
