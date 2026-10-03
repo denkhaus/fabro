@@ -160,6 +160,12 @@ def check-loop-assets [] {
         # classification RED both ways, both lanes, plus the git base
         # derivation — this tier proves the meta lane's diff boundary.
         '.fabro/scripts/run-scope-fixtures.nu'
+        # rust-style-guide skill parity (fabro-6538): .fabro/skills/
+        # rust-style-guide (canonical — run-facing, the reviewer
+        # contract's source) and .agents/skills/rust-style-guide (the
+        # local-session mirror) must stay byte-identical; the battery
+        # hash-compares both trees (run-images.nu's sha256 pattern).
+        '.fabro/scripts/skill-parity-fixtures.nu'
     ]
     for battery in $batteries {
         let res = (do { ^nu $battery } | complete)
