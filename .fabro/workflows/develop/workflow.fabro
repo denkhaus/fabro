@@ -458,11 +458,16 @@ digraph Develop {
         max_retries=1
     ]
 
-    // Claim-contract gate (fabro-c42f stopgap): fails within seconds when
-    // the planner's structured output dropped current_seed_id (see the
-    // edges below for the routing rationale).
+    // Claim-contract gate (fabro-c42f stopgap + fabro-4c81 path gate):
+    // fails within seconds when the planner's structured output dropped
+    // current_seed_id, and fails the claim when the seed body cites repo
+    // paths (repo-rooted, or line-anchored, outside an add/create window)
+    // that resolve nowhere in the worktree. Both arms bounce the planner
+    // via the edge below; the path arm's payload carries the stale path
+    // list plus the full body so the `seeds update --description`
+    // correction is one call. Fail-open on seeds CLI failure.
     claim_check [
-        label="Claim check: seed id contract",
+        label="Claim check: seed id + body path contract",
         shape=parallelogram,
         script="nu .fabro/workflows/develop/scripts/claim-check.nu",
         stdin_source="current_seed_id",

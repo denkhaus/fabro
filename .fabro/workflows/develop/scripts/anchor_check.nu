@@ -89,13 +89,32 @@ export def member-src-roots [root: string] {
 # hit (`base` is "root" or the member's repo-relative src dir), null
 # when the path exists nowhere — the caller then reports missing_file
 # knowing the file is gone, not merely cited against the wrong base.
+# Workflow-relative fallback roots: every workflow dir under
+# .fabro/workflows/* is a resolution base, because seed bodies cite
+# their assets workflow-relative ("prompts/planner.md:31",
+# "scripts/planner-preflight.nu") no matter which lane filed the seed
+# (the loop lane's seeds cite loop assets; develop's preflight checks
+# them too). Labeled by repo-relative path. Fail-open: any surprise
+# degrades to [].
+export def workflow-dirs [root: string] {
+    try {
+        glob ($root | path join '.fabro' 'workflows' '*') --no-file
+        | each {|d| {base: ($d | path relative-to $root), dir: $d} }
+    } catch { [] }
+}
+
 export def resolve-anchor-path [a_path: string, root: string] {
     let rp = ($root | path join $a_path)
     if ($rp | path exists) {
         {full: $rp, base: "root"}
     } else {
-        let hit = (try { member-src-roots $root | where {|m| ($m.dir | path join $a_path) | path exists} | first } catch { null })
-        if ($hit == null) { null } else { {full: ($hit.dir | path join $a_path), base: $hit.base} }
+        let mhit = (try { member-src-roots $root | where {|m| ($m.dir | path join $a_path) | path exists} | first } catch { null })
+        if ($mhit != null) {
+            {full: ($mhit.dir | path join $a_path), base: $mhit.base}
+        } else {
+            let whit = (try { workflow-dirs $root | where {|w| ($w.dir | path join $a_path) | path exists} | first } catch { null })
+            if ($whit == null) { null } else { {full: ($whit.dir | path join $a_path), base: $whit.base} }
+        }
     }
 }
 
@@ -168,9 +187,10 @@ export def extract-bare-paths [desc: string] {
 export def check-bare-paths [desc: string, root: string] {
     # Seed bodies cite paths both repo-rooted (lib/.../main.rs) and
     # workflow-relative ("prompts/planner.md", "scripts/planner-preflight.nu"
-    # — relative to .fabro/workflows/develop/). Resolve against both roots
-    # before flagging, so a legitimate relative citation is not rot.
-    let roots = [$root ($root | path join '.fabro' 'workflows' 'develop')]
+    # — relative to any .fabro/workflows/* dir, not just develop's). Resolve
+    # against every base before flagging, so a legitimate relative citation
+    # is not rot.
+    let roots = ([$root] | append (workflow-dirs $root | get dir))
     extract-bare-paths $desc | each {|p|
         if ($roots | any {|r| $r | path join $p | path exists}) { null } else { {path: $p, line: null, status: "missing_file"} }
     } | compact

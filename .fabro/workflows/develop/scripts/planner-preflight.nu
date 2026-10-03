@@ -68,7 +68,9 @@
 #     verification covers path:line/path:line-line anchors against the
 #     worktree; fabro-9ec3 extended it to bare path-only citations
 #     (anchor_check.nu extract-bare-paths/check-bare-paths) — no gap
-#     remains, both flag classes ship in anchor_flags.
+#     remains, both flag classes ship in anchor_flags. The TEETH for
+#     fabro-4c81 live in the claim gate (claim-check.nu), not here:
+#     this table stays report-only (fabro-83df), the claim node blocks.
 #   arm 2 (complements engine-side fabro-9372): in-flight run/PR
 #     exclusion — in-flight-claims below maps recent unmerged develop
 #     run branches to claimed seed ids via the stage-journal fallback
