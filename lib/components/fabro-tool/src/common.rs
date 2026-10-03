@@ -221,6 +221,14 @@ pub struct RunSummaryResult {
     pub source_directory:    Option<String>,
     pub repo_origin_url:     Option<String>,
     pub goal:                String,
+    /// The immutable workflow version the run was created from, when pinned.
+    /// The revisor's freshness baseline (ADR-0015).
+    pub workflow_version_id: Option<String>,
+    /// Whether the run's sandbox is live: `true` = retained after release
+    /// (or the run is still running on it), `false` = released and removed,
+    /// `None` = no sandbox record / no live view (fabro-8d30 analyst rule:
+    /// absent disqualifies).
+    pub sandbox_available:   Option<bool>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -358,6 +366,25 @@ pub(crate) fn run_summary_result(run: &Run) -> RunSummaryResult {
             .as_ref()
             .and_then(|repository| repository.origin_url.clone()),
         goal:                run.goal.clone(),
+        workflow_version_id: run.workflow_version_id.map(|id| id.to_string()),
+        sandbox_available:   sandbox_available(run),
+    }
+}
+
+/// The run's sandbox liveness for agent tools: `Some(true)` when the
+/// instance is retained after release or the run is still running on it,
+/// `Some(false)` when it was released and removed, `None` when there is
+/// no live view (no record, no instance, or a terminal run whose release
+/// was not recorded).
+fn sandbox_available(run: &Run) -> Option<bool> {
+    let instance = run.sandbox.as_ref()?.instance()?;
+    match instance.retained {
+        Some(retained) => Some(retained),
+        // Absent until release: the sandbox is live while the run runs on
+        // it; after a terminal state without a release record there is no
+        // trustworthy view.
+        None if run.lifecycle.status.is_terminal() => None,
+        None => Some(true),
     }
 }
 
@@ -510,24 +537,24 @@ mod tests {
     fn run_summary_result_includes_parent_metadata() {
         let parent_id = run_id("01KRBZW4DW0000000000000002");
         let run = Run {
-            id:               run_id("01KRBZW5C00000000000000001"),
-            parent_id:        Some(parent_id),
-            children_count:   3,
-            title:            "test".to_string(),
-            goal:             "test".to_string(),
-            workflow:         WorkflowRef {
+            id:                  run_id("01KRBZW5C00000000000000001"),
+            parent_id:           Some(parent_id),
+            children_count:      3,
+            title:               "test".to_string(),
+            goal:                "test".to_string(),
+            workflow:            WorkflowRef {
                 slug:       Some("simple".to_string()),
                 name:       Some("Simple".to_string()),
                 graph_name: Some("GraphName".to_string()),
                 node_count: 0,
                 edge_count: 0,
             },
-            automation:       None,
-            repository:       None,
-            created_by:       test_support::test_principal(),
-            origin:           RunOrigin::default(),
-            labels:           HashMap::new(),
-            lifecycle:        RunLifecycle {
+            automation:          None,
+            repository:          None,
+            created_by:          test_support::test_principal(),
+            origin:              RunOrigin::default(),
+            labels:              HashMap::new(),
+            lifecycle:           RunLifecycle {
                 conclusion_failure: None,
                 status:             RunStatus::Submitted,
                 approval:           None,
@@ -537,25 +564,26 @@ mod tests {
                 archived:           false,
                 archived_at:        None,
             },
-            sandbox:          None,
-            models:           Vec::new(),
-            source_directory: None,
-            timestamps:       RunTimestamps {
+            sandbox:             None,
+            workflow_version_id: None,
+            models:              Vec::new(),
+            source_directory:    None,
+            timestamps:          RunTimestamps {
                 created_at:    Utc.with_ymd_and_hms(2026, 5, 11, 12, 0, 0).unwrap(),
                 started_at:    None,
                 last_event_at: None,
                 completed_at:  None,
             },
-            timing:           None,
-            usage:            Usage::default(),
-            size:             fabro_types::RunSize::default(),
-            ask_fabro:        fabro_types::AskFabro::default(),
-            diff:             None,
-            pull_request:     None,
-            current_question: None,
-            superseded_by:    None,
-            retried_from:     None,
-            links:            RunLinks { web: None },
+            timing:              None,
+            usage:               Usage::default(),
+            size:                fabro_types::RunSize::default(),
+            ask_fabro:           fabro_types::AskFabro::default(),
+            diff:                None,
+            pull_request:        None,
+            current_question:    None,
+            superseded_by:       None,
+            retried_from:        None,
+            links:               RunLinks { web: None },
         };
 
         let summary = run_summary_result(&run);
@@ -564,6 +592,139 @@ mod tests {
         assert_eq!(summary.children_count, 3);
         assert_eq!(summary.workflow_name.as_deref(), Some("Simple"));
         assert_eq!(summary.workflow_graph_name.as_deref(), Some("GraphName"));
+    }
+
+    #[test]
+    fn run_summary_result_carries_workflow_version_and_sandbox_liveness() {
+        let version_id: fabro_types::WorkflowVersionId =
+            fabro_types::BlobHash::new(b"stored").into();
+        let instance = |retained: Option<bool>| fabro_types::RunSandboxInstance {
+            provider: fabro_types::SandboxProviderKind::DOCKER,
+            image: None,
+            snapshot: None,
+            runtime: fabro_types::RunSandboxRuntime {
+                id:                "sandbox-1".to_string(),
+                working_directory: "/workspace".to_string(),
+                repo_cloned:       None,
+                clone_origin_url:  None,
+                clone_branch:      None,
+                workspace_root:    None,
+                repos_root:        None,
+                primary_repo_path: None,
+                primary_repo_link: None,
+            },
+            ready_duration_ms: None,
+            retained,
+        };
+        let plan = || fabro_types::RunSandboxPlan {
+            provider: fabro_types::SandboxProviderKind::DOCKER,
+            image:    None,
+            snapshot: None,
+        };
+
+        // Retained after release: live for the analyst.
+        let mut run = sandbox_test_run(&version_id, fabro_types::RunStatusKind::Succeeded);
+        run.sandbox = Some(fabro_types::RunSandbox::ready(plan(), instance(Some(true))));
+        let summary = run_summary_result(&run);
+        assert_eq!(
+            summary.workflow_version_id.as_deref(),
+            Some(version_id.to_string().as_str())
+        );
+        assert_eq!(summary.sandbox_available, Some(true));
+
+        // Released and removed.
+        run.sandbox = Some(fabro_types::RunSandbox::ready(
+            plan(),
+            instance(Some(false)),
+        ));
+        assert_eq!(run_summary_result(&run).sandbox_available, Some(false));
+
+        // No release record while the run still runs: live by definition.
+        let mut running = sandbox_test_run(&version_id, fabro_types::RunStatusKind::Running);
+        running.sandbox = Some(fabro_types::RunSandbox::ready(plan(), instance(None)));
+        assert_eq!(run_summary_result(&running).sandbox_available, Some(true));
+
+        // No release record and terminal: no trustworthy view.
+        let mut terminal = sandbox_test_run(&version_id, fabro_types::RunStatusKind::Failed);
+        terminal.sandbox = Some(fabro_types::RunSandbox::ready(plan(), instance(None)));
+        assert_eq!(run_summary_result(&terminal).sandbox_available, None);
+
+        // No sandbox record at all: no live view; a run without a pinned
+        // version reports none.
+        let mut bare = sandbox_test_run(&version_id, fabro_types::RunStatusKind::Running);
+        bare.workflow_version_id = None;
+        let bare_summary = run_summary_result(&bare);
+        assert_eq!(bare_summary.sandbox_available, None);
+        assert_eq!(bare_summary.workflow_version_id, None);
+    }
+
+    fn sandbox_test_run(
+        version_id: &fabro_types::WorkflowVersionId,
+        kind: fabro_types::RunStatusKind,
+    ) -> Run {
+        let mut run = Run {
+            id:                  run_id("01KRBZW5C00000000000000009"),
+            parent_id:           None,
+            children_count:      0,
+            title:               "test".to_string(),
+            goal:                "test".to_string(),
+            workflow:            WorkflowRef {
+                slug:       Some("simple".to_string()),
+                name:       Some("Simple".to_string()),
+                graph_name: Some("GraphName".to_string()),
+                node_count: 0,
+                edge_count: 0,
+            },
+            automation:          None,
+            repository:          None,
+            created_by:          test_support::test_principal(),
+            origin:              RunOrigin::default(),
+            labels:              HashMap::new(),
+            lifecycle:           RunLifecycle {
+                conclusion_failure: None,
+                status:             run_status(kind),
+                approval:           None,
+                pending_control:    None,
+                queue_position:     None,
+                archived:           false,
+                archived_at:        None,
+                error:              None,
+            },
+            sandbox:             None,
+            workflow_version_id: Some(version_id.clone()),
+            models:              Vec::new(),
+            source_directory:    None,
+            timestamps:          RunTimestamps {
+                created_at:    Utc.with_ymd_and_hms(2026, 5, 11, 12, 0, 0).unwrap(),
+                started_at:    None,
+                last_event_at: None,
+                completed_at:  None,
+            },
+            timing:              None,
+            usage:               Usage::default(),
+            size:                fabro_types::RunSize::default(),
+            ask_fabro:           fabro_types::AskFabro::default(),
+            diff:                None,
+            pull_request:        None,
+            current_question:    None,
+            superseded_by:       None,
+            retried_from:        None,
+            links:               RunLinks { web: None },
+        };
+        run
+    }
+
+    fn run_status(kind: fabro_types::RunStatusKind) -> RunStatus {
+        match kind {
+            fabro_types::RunStatusKind::Succeeded => RunStatus::Succeeded {
+                reason: fabro_types::SuccessReason::Completed,
+            },
+            fabro_types::RunStatusKind::Failed => RunStatus::Failed {
+                reason: fabro_types::FailureReason::Cancelled,
+            },
+            fabro_types::RunStatusKind::Running => RunStatus::Running,
+            other => unimplemented!("test helper: status {other:?}"),
+        }
     }
 
     fn run_id(raw: &str) -> RunId {

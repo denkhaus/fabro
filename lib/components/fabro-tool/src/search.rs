@@ -97,6 +97,8 @@ pub struct SearchRunSummaryResult {
     pub labels:              HashMap<String, String>,
     pub source_directory:    Option<String>,
     pub repo_origin_url:     Option<String>,
+    pub workflow_version_id: Option<String>,
+    pub sandbox_available:   Option<bool>,
     pub goal_preview:        String,
     pub goal_truncated:      bool,
 }
@@ -155,6 +157,8 @@ fn search_run_summary_result(run: &Run) -> SearchRunSummaryResult {
         labels,
         source_directory,
         repo_origin_url,
+        workflow_version_id,
+        sandbox_available,
         goal,
     } = common::run_summary_result(run);
     let (goal_preview, goal_truncated) = goal_preview(&goal);
@@ -174,6 +178,8 @@ fn search_run_summary_result(run: &Run) -> SearchRunSummaryResult {
         labels,
         source_directory,
         repo_origin_url,
+        workflow_version_id,
+        sandbox_available,
         goal_preview,
         goal_truncated,
     }
@@ -433,24 +439,24 @@ mod tests {
     fn run_with_archived(id: &str, group: &str, seconds: u32, archived: bool) -> Run {
         let created_at = Utc.with_ymd_and_hms(2026, 5, 11, 12, 0, seconds).unwrap();
         Run {
-            id:               id.parse().expect("test run id should parse"),
-            parent_id:        None,
-            children_count:   0,
-            title:            "test".to_string(),
-            goal:             "test".to_string(),
-            workflow:         WorkflowRef {
+            id:                  id.parse().expect("test run id should parse"),
+            parent_id:           None,
+            children_count:      0,
+            title:               "test".to_string(),
+            goal:                "test".to_string(),
+            workflow:            WorkflowRef {
                 slug:       Some("simple".to_string()),
                 name:       Some("Simple".to_string()),
                 graph_name: Some("GraphName".to_string()),
                 node_count: 0,
                 edge_count: 0,
             },
-            automation:       None,
-            repository:       None,
-            created_by:       test_support::test_principal(),
-            origin:           RunOrigin::default(),
-            labels:           HashMap::from([("group".to_string(), group.to_string())]),
-            lifecycle:        RunLifecycle {
+            automation:          None,
+            repository:          None,
+            created_by:          test_support::test_principal(),
+            origin:              RunOrigin::default(),
+            labels:              HashMap::from([("group".to_string(), group.to_string())]),
+            lifecycle:           RunLifecycle {
                 conclusion_failure: None,
                 status: RunStatus::Submitted,
                 approval: None,
@@ -460,25 +466,26 @@ mod tests {
                 archived,
                 archived_at: None,
             },
-            sandbox:          None,
-            models:           Vec::new(),
-            source_directory: None,
-            timestamps:       RunTimestamps {
+            sandbox:             None,
+            workflow_version_id: None,
+            models:              Vec::new(),
+            source_directory:    None,
+            timestamps:          RunTimestamps {
                 created_at,
                 started_at: None,
                 last_event_at: None,
                 completed_at: None,
             },
-            timing:           None,
-            usage:            Usage::default(),
-            size:             fabro_types::RunSize::default(),
-            ask_fabro:        fabro_types::AskFabro::default(),
-            diff:             None,
-            pull_request:     None,
-            current_question: None,
-            superseded_by:    None,
-            retried_from:     None,
-            links:            RunLinks { web: None },
+            timing:              None,
+            usage:               Usage::default(),
+            size:                fabro_types::RunSize::default(),
+            ask_fabro:           fabro_types::AskFabro::default(),
+            diff:                None,
+            pull_request:        None,
+            current_question:    None,
+            superseded_by:       None,
+            retried_from:        None,
+            links:               RunLinks { web: None },
         }
     }
 }

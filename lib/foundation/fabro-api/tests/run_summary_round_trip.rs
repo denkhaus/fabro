@@ -67,19 +67,19 @@ fn run_summary_json_matches_openapi_shape() {
     let last_event_at = Utc.with_ymd_and_hms(2026, 4, 20, 12, 0, 42).unwrap();
     let archived_at = Utc.with_ymd_and_hms(2026, 4, 20, 12, 1, 0).unwrap();
     let summary = Run {
-        id:               run_id,
-        parent_id:        None,
-        children_count:   2,
-        title:            "API title".to_string(),
-        goal:             String::new(),
-        workflow:         WorkflowRef {
+        id:                  run_id,
+        parent_id:           None,
+        children_count:      2,
+        title:               "API title".to_string(),
+        goal:                String::new(),
+        workflow:            WorkflowRef {
             slug:       Some("workflow".to_string()),
             name:       Some("Ship workflow".to_string()),
             graph_name: Some("GraphName".to_string()),
             node_count: 7,
             edge_count: 9,
         },
-        automation:       Some(AutomationRef {
+        automation:          Some(AutomationRef {
             id:              "nightly".to_string(),
             name:            Some("Nightly".to_string()),
             trigger_id:      Some("schedule_1".to_string()),
@@ -91,15 +91,15 @@ fn run_summary_json_matches_openapi_shape() {
                 resolved_sha: "0123456789abcdef0123456789abcdef01234567".to_string(),
             })),
         }),
-        repository:       Some(RepositoryRef {
+        repository:          Some(RepositoryRef {
             name:       "fabro".to_string(),
             origin_url: None,
             provider:   RepositoryProvider::Unknown,
         }),
-        created_by:       test_support::test_principal(),
-        origin:           RunOrigin::default(),
-        labels:           HashMap::from([("team".to_string(), "core".to_string())]),
-        lifecycle:        RunLifecycle {
+        created_by:          test_support::test_principal(),
+        origin:              RunOrigin::default(),
+        labels:              HashMap::from([("team".to_string(), "core".to_string())]),
+        lifecycle:           RunLifecycle {
             conclusion_failure: None,
             status:             RunStatus::Succeeded {
                 reason: SuccessReason::PartialSuccess,
@@ -111,17 +111,18 @@ fn run_summary_json_matches_openapi_shape() {
             archived:           true,
             archived_at:        Some(archived_at),
         },
-        sandbox:          None,
-        models:           vec![],
-        source_directory: Some("/tmp/fabro".to_string()),
-        timestamps:       RunTimestamps {
+        sandbox:             None,
+        workflow_version_id: None,
+        models:              vec![],
+        source_directory:    Some("/tmp/fabro".to_string()),
+        timestamps:          RunTimestamps {
             created_at,
             started_at: Some(created_at),
             last_event_at: Some(last_event_at),
             completed_at: None,
         },
-        timing:           Some(RunTiming::new(42_000, 12_000, 30_000)),
-        usage:            Usage {
+        timing:              Some(RunTiming::new(42_000, 12_000, 30_000)),
+        usage:               Usage {
             tokens: TokenCounts {
                 input: 10,
                 output: 5,
@@ -132,26 +133,26 @@ fn run_summary_json_matches_openapi_shape() {
                 source:     CostSource::Catalog,
             }),
         },
-        size:             RunSize::Xs,
-        ask_fabro:        AskFabro {
+        size:                RunSize::Xs,
+        ask_fabro:           AskFabro {
             available:          false,
             unavailable_reason: Some(AskFabroUnavailableReason::SandboxNotReady),
             default_model:      Some("gpt-5.4".to_string()),
         },
-        diff:             Some(DiffSummary {
+        diff:                Some(DiffSummary {
             files_changed: 3,
             additions:     12,
             deletions:     4,
         }),
-        pull_request:     Some(PullRequestLink {
+        pull_request:        Some(PullRequestLink {
             owner:  "fabro-sh".to_string(),
             repo:   "fabro".to_string(),
             number: 123,
         }),
-        current_question: None,
-        superseded_by:    None,
-        retried_from:     Some(fixtures::RUN_2),
-        links:            RunLinks { web: None },
+        current_question:    None,
+        superseded_by:       None,
+        retried_from:        Some(fixtures::RUN_2),
+        links:               RunLinks { web: None },
     };
 
     assert_eq!(

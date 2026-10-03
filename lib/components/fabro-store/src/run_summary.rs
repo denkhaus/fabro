@@ -82,6 +82,7 @@ pub fn build_summary(state: &RunProjection, run_id: &RunId) -> Run {
             archived_at:        state.archived_at,
         },
         sandbox: state.sandbox.clone(),
+        workflow_version_id: state.spec.workflow_version_id.clone(),
         models,
         source_directory,
         timestamps: RunTimestamps {
