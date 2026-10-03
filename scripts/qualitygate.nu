@@ -135,6 +135,17 @@ def check-loop-assets [] {
         # the implementer envelope pin, the red bounce — the meta lane's
         # load-bearing contracts, same tier as the develop pin.
         '.fabro/workflows/loop/scripts/graph-contract-smoke.nu'
+        # tracker-guard pure decision logic (fabro-0da8): guard-decision /
+        # sd-issue-count over canned complete-style records — both-empty
+        # route, open/in_progress arms, and the sd-failure fail-open
+        # contract. Found UNREGISTERED by the fabro-8b38 registration
+        # sweep (the ac84 silent-de-gate class): the script existed, ran
+        # green, and nothing executed it.
+        '.fabro/workflows/develop/scripts/tracker-guard-smoke.nu'
+        # closeout pure-decision logic (fabro-5af4/591a era): reviewer
+        # journal, deferred-action and exemption-arm sweep. Same finding —
+        # unregistered until fabro-8b38.
+        '.fabro/workflows/develop/scripts/closeout-smoke.nu'
     ]
     for smoke in $smokes {
         let res = (do { ^nu $smoke } | complete)
@@ -176,7 +187,7 @@ def check-loop-assets [] {
         # rule machine-checked in both directions (was reviewer-prompt
         # only; live gaps found at filing: fork_exec_guard x2,
         # fork_structured).
-        '.fabro/scripts/touchpoints-parity.nu'
+        '.fabro/scripts/touchpoints-parity-fixtures.nu'
     ]
     for battery in $batteries {
         let res = (do { ^nu $battery } | complete)
