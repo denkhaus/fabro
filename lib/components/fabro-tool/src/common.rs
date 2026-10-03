@@ -662,7 +662,7 @@ mod tests {
         version_id: &fabro_types::WorkflowVersionId,
         kind: fabro_types::RunStatusKind,
     ) -> Run {
-        let mut run = Run {
+        Run {
             id:                  run_id("01KRBZW5C00000000000000009"),
             parent_id:           None,
             children_count:      0,
@@ -691,7 +691,7 @@ mod tests {
                 error:              None,
             },
             sandbox:             None,
-            workflow_version_id: Some(version_id.clone()),
+            workflow_version_id: Some(*version_id),
             models:              Vec::new(),
             source_directory:    None,
             timestamps:          RunTimestamps {
@@ -710,8 +710,7 @@ mod tests {
             superseded_by:       None,
             retried_from:        None,
             links:               RunLinks { web: None },
-        };
-        run
+        }
     }
 
     fn run_status(kind: fabro_types::RunStatusKind) -> RunStatus {

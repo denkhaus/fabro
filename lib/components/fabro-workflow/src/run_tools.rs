@@ -473,24 +473,24 @@ mod tests {
     fn ask_target_run(run_id: RunId) -> fabro_types::Run {
         use chrono::TimeZone;
         fabro_types::Run {
-            id:               run_id,
-            parent_id:        None,
-            children_count:   0,
-            title:            "Reviewed run".to_string(),
-            goal:             "Reviewed run".to_string(),
-            workflow:         fabro_types::WorkflowRef {
+            id:                  run_id,
+            parent_id:           None,
+            children_count:      0,
+            title:               "Reviewed run".to_string(),
+            goal:                "Reviewed run".to_string(),
+            workflow:            fabro_types::WorkflowRef {
                 slug:       Some("develop".to_string()),
                 name:       Some("Develop".to_string()),
                 graph_name: None,
                 node_count: 0,
                 edge_count: 0,
             },
-            automation:       None,
-            repository:       None,
-            created_by:       fabro_types::test_support::test_principal(),
-            origin:           fabro_types::RunOrigin::default(),
-            labels:           std::collections::HashMap::new(),
-            lifecycle:        fabro_types::RunLifecycle {
+            automation:          None,
+            repository:          None,
+            created_by:          fabro_types::test_support::test_principal(),
+            origin:              fabro_types::RunOrigin::default(),
+            labels:              std::collections::HashMap::new(),
+            lifecycle:           fabro_types::RunLifecycle {
                 conclusion_failure: None,
                 status:             fabro_types::RunStatus::Pending {
                     reason: fabro_types::PendingReason::ApprovalRequired,
@@ -502,25 +502,26 @@ mod tests {
                 archived:           false,
                 archived_at:        None,
             },
-            sandbox:          None,
-            models:           Vec::new(),
-            source_directory: None,
-            timestamps:       fabro_types::RunTimestamps {
+            sandbox:             None,
+            workflow_version_id: None,
+            models:              Vec::new(),
+            source_directory:    None,
+            timestamps:          fabro_types::RunTimestamps {
                 created_at:    chrono::Utc.with_ymd_and_hms(2026, 9, 22, 8, 0, 0).unwrap(),
                 started_at:    None,
                 last_event_at: None,
                 completed_at:  None,
             },
-            timing:           None,
-            usage:            fabro_api::types::Usage::default(),
-            size:             fabro_types::RunSize::default(),
-            ask_fabro:        fabro_types::AskFabro::default(),
-            diff:             None,
-            pull_request:     None,
-            current_question: None,
-            superseded_by:    None,
-            retried_from:     None,
-            links:            fabro_types::RunLinks { web: None },
+            timing:              None,
+            usage:               fabro_api::types::Usage::default(),
+            size:                fabro_types::RunSize::default(),
+            ask_fabro:           fabro_types::AskFabro::default(),
+            diff:                None,
+            pull_request:        None,
+            current_question:    None,
+            superseded_by:       None,
+            retried_from:        None,
+            links:               fabro_types::RunLinks { web: None },
         }
     }
 
