@@ -21,13 +21,9 @@ const MAX_PROMPT_SECTION_CHARS: usize = 4_000;
 /// parsing a value at line 1 column 0" (174 title WARNs between
 /// 2026-09-28 and 2026-10-03, rootprint; fabro-d5b1). The JSON payload
 /// itself is a handful of tokens, so the budget only has to outlive the
-/// reasoning phase of the smallest configured model.
+/// reasoning phase of the smallest configured model — the tests pin a
+/// compile-time floor against regressing to a reasoning-starving cap.
 const TITLE_MAX_OUTPUT_TOKENS: u32 = 1_024;
-
-/// Floor for [`TITLE_MAX_OUTPUT_TOKENS`]: a reasoning model must have room
-/// for its reasoning phase plus the title JSON. Anything at or below this
-/// starves the always-reasoning small default again (fabro-d5b1).
-const TITLE_MIN_REASONING_SAFE_TOKENS: u32 = 512;
 
 /// The title task is fire-and-forget (spawned), so a generous deadline only
 /// trades a rare hard cutoff for a slower answer; 10s already produced one
@@ -358,10 +354,11 @@ mod tests {
     /// fabro-d5b1: the budget must outlive the always-reasoning small
     /// default — a cap at or below the floor starves the reasoning phase and
     /// empties the content (174 "EOF while parsing" title WARNs in six days).
-    #[test]
-    fn title_budget_outlives_the_reasoning_phase() {
-        assert!(TITLE_MAX_OUTPUT_TOKENS >= TITLE_MIN_REASONING_SAFE_TOKENS);
-    }
+    /// Compile-time pin: a regression to a reasoning-starving cap fails the
+    /// build of the test target, not a runtime test run.
+    const TITLE_MIN_REASONING_SAFE_TOKENS: u32 = 512;
+
+    const _: () = assert!(TITLE_MAX_OUTPUT_TOKENS >= TITLE_MIN_REASONING_SAFE_TOKENS);
 
     #[tokio::test]
     async fn invalid_or_failed_generation_returns_current_title() {
