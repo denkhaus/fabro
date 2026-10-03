@@ -31,51 +31,23 @@ pub(crate) struct ExitKinds {
 }
 
 impl ExitKinds {
-    /// Parse `x.kind="…"` edge attributes from raw DOT text. Handles the
-    /// fabro files' edge syntax (`a -> b [label="…", x.kind="soft"]`,
-    /// multi-line attributes included).
+    /// Parse `x.kind="…"` edge attributes from raw DOT text through the
+    /// shared edge scan ([`super::fork_dot_edges`]), which owns the fabro
+    /// files' edge syntax (`a -> b [label="…", x.kind="soft"]`,
+    /// multi-line attributes and comments included).
     pub(crate) fn parse(graph_source: &str) -> Self {
         let mut edges = BTreeMap::new();
         let mut plain_edges = BTreeSet::new();
-        // Ein Kantenblock beginnt bei "name ->" und endet mit "]".
-        let mut rest = graph_source;
-        while let Some(arrow) = rest.find("->") {
-            let head = &rest[..arrow];
-            let from = head
-                .lines()
-                .last()
-                .unwrap_or_default()
-                .trim()
-                .trim_matches(|c: char| c.is_whitespace() || c == '"' || c == ',')
-                .to_string();
-            let after = &rest[arrow + 2..];
-            let Some(bracket_end) = after.find(']') else {
-                break;
-            };
-            let block = &after[..bracket_end];
-            let tail = &after[bracket_end + 1..];
-            let to = block
-                .lines()
-                .next()
-                .unwrap_or_default()
-                .split('[')
-                .next()
-                .unwrap_or_default()
-                .trim()
-                .to_string();
-            let to = to.split_whitespace().next().unwrap_or_default().to_string();
-            if !from.is_empty() && !to.is_empty() {
-                match parse_x_kind(block) {
-                    Some(kind) => {
-                        edges.insert((from.clone(), to.clone()), kind.to_string());
-                    }
-                    None => {
-                        plain_edges.insert((from, to));
-                    }
+        super::fork_dot_edges::for_each_edge(graph_source, |from, to, attrs| {
+            match parse_x_kind(attrs) {
+                Some(kind) => {
+                    edges.insert((from.to_string(), to.to_string()), kind.to_string());
+                }
+                None => {
+                    plain_edges.insert((from.to_string(), to.to_string()));
                 }
             }
-            rest = tail;
-        }
+        });
         Self { edges, plain_edges }
     }
 
@@ -230,5 +202,49 @@ digraph Develop {
         let kinds = ExitKinds::parse(SOURCE);
         assert_eq!(kinds.classify("success", Some("closeout"), "exit"), None);
         assert_eq!(kinds.classify("success", Some("tester"), "exit"), None);
+    }
+
+    /// The regression pin for fabro-8615 on the graph that exposed it
+    /// (`.fabro/workflows/revisor/workflow.fabro`): comment lines carry
+    /// `->` and `]`, and `start -> select` is a bare edge. Both shapes
+    /// used to swallow the plain `select -> exit` route, so a green
+    /// "Nothing to revise" pass classified as `Failed { SoftStop }` and
+    /// the run showed a misleading `failed` (fabro-79ba).
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "the regression test reads the checked-in revisor graph synchronously"
+    )]
+    #[test]
+    fn the_real_revisor_graph_keeps_its_plain_selector_exit() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../.fabro/workflows/revisor/workflow.fabro");
+        let source = std::fs::read_to_string(&path)
+            .unwrap_or_else(|error| panic!("failed to read {}: {error}", path.display()));
+        let kinds = ExitKinds::parse(&source);
+        assert_eq!(kinds.kind_of("select", "exit"), Some("soft"));
+        assert_eq!(kinds.kind_of("analyze", "exit"), Some("soft"));
+        assert_eq!(kinds.kind_of("file", "exit"), Some("soft"));
+        assert!(
+            kinds.has_plain_edge("select", "exit"),
+            "the plain 'Nothing to revise' route survives the comment lines"
+        );
+        assert_eq!(
+            kinds.classify("success", Some("select"), "exit"),
+            None,
+            "a green 'Nothing to revise' pass stays green"
+        );
+        assert!(
+            kinds
+                .edges
+                .keys()
+                .chain(kinds.plain_edges.iter())
+                .all(|(from, to)| !from.starts_with("//")
+                    && !to.starts_with("//")
+                    && !from.contains(' ')
+                    && !to.contains(' ')),
+            "no comment fragment becomes an edge key: {:?} {:?}",
+            kinds.edges,
+            kinds.plain_edges
+        );
     }
 }

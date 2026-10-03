@@ -15,57 +15,20 @@ pub(crate) struct EdgeConditions {
 }
 
 impl EdgeConditions {
-    /// Parse `condition=` presence per edge from raw DOT text: a
-    /// line-based scan that reads one edge statement at a time — a bare
-    /// edge (`a -> b`) owns NO attributes, an edge whose statement opens
-    /// `[` keeps collecting attribute lines until its `]`. A bracket-less
-    /// edge must never inherit the NEXT edge's block.
+    /// Parse `condition=` presence per edge from raw DOT text through the
+    /// shared edge scan ([`super::fork_dot_edges`]): one edge statement
+    /// at a time — a bare edge (`a -> b`) owns NO attributes, and a
+    /// bracket-less edge never inherits the NEXT edge's block. Comments
+    /// are stripped first, so a commented-out route (`// merge -> exit`)
+    /// is not read as a conditional one.
     pub(crate) fn parse(graph_source: &str) -> Self {
         let mut conditional = BTreeSet::new();
-        let lines: Vec<&str> = graph_source.lines().collect();
-        let mut index = 0;
-        while let Some(line) = lines.get(index) {
-            index += 1;
-            let Some((from, to, rest)) = Self::edge_ends(line) else {
-                continue;
-            };
-            if from.is_empty() || to.is_empty() {
-                continue;
+        super::fork_dot_edges::for_each_edge(graph_source, |from, to, attrs| {
+            if has_condition(attrs) {
+                conditional.insert((from.to_string(), to.to_string()));
             }
-            // The attribute block: the rest of THIS line after the target,
-            // extended while the brackets stay unbalanced.
-            let mut block = rest.to_string();
-            let mut open = block.matches('[').count();
-            let mut close = block.matches(']').count();
-            while open > close {
-                let Some(next) = lines.get(index) else { break };
-                index += 1;
-                block.push(' ');
-                block.push_str(next);
-                open += next.matches('[').count();
-                close += next.matches(']').count();
-            }
-            if has_condition(&block) {
-                conditional.insert((from, to));
-            }
-        }
+        });
         Self { conditional }
-    }
-
-    /// The edge statement's `(from, to, attribute-rest)`, when the line is
-    /// an edge: `a -> b [attrs…` carries the block's opening; `a -> b`
-    /// carries none.
-    fn edge_ends(line: &str) -> Option<(String, String, &str)> {
-        let arrow = line.find("->")?;
-        let head = line[..arrow].trim();
-        let from = head.split_whitespace().last()?.to_string();
-        let after = line[arrow + 2..].trim();
-        let (to, rest) = match after.find('[') {
-            Some(at) => (after[..at].trim(), &after[at..]),
-            None => (after, ""),
-        };
-        let to = to.split_whitespace().next()?.to_string();
-        Some((from, to, rest))
     }
 
     /// Whether the edge `from -> to` carries a condition: an explicit,
@@ -116,5 +79,35 @@ digraph Develop {
     fn multiline_attribute_blocks_parse() {
         let source = "a -> b [label=\"X\",\n  condition=\"outcome=failed\",\n  x.kind=\"soft\"]";
         assert!(EdgeConditions::parse(source).is_conditional("a", "b"));
+    }
+
+    /// The regression pin for fabro-8615: the conductor carries its merge
+    /// leg as comments today (`// survey -> merge [...]`, `// merge -> exit
+    /// [x.kind="soft", ...]`). A commented-out route is no route — the old
+    /// walk read both as conditional ones.
+    #[test]
+    fn a_commented_out_leg_is_no_conditional_route() {
+        let source = "\
+digraph Conductor {
+    graph [goal=\"Run the line\"]
+    start [shape=Mdiamond]
+    exit [shape=Msquare]
+    survey [shape=tab]
+    develop [shape=tab]
+    // survey -> merge   [label=\"Merge needed\", condition=\"preferred_label=\\\"Merge needed\\\"\"]
+    survey -> develop [label=\"Work\", condition=\"preferred_label=\\\"Work\\\"\"]
+    survey -> exit    [label=\"Nothing to do\", condition=\"preferred_label=\\\"Nothing to do\\\"\"]
+    // merge -> exit [x.kind=\"soft\", label=\"Merge child failed\", condition=\"preferred_label=\\\"Merge child failed\\\"\"]
+    develop -> exit   [label=\"Tracker empty\", condition=\"preferred_label=\\\"Tracker empty\\\"\"]
+}";
+        let edges = EdgeConditions::parse(source);
+        assert!(
+            !edges.is_conditional("survey", "merge"),
+            "the commented-out merge leg is no route"
+        );
+        assert!(!edges.is_conditional("merge", "exit"));
+        assert!(edges.is_conditional("survey", "develop"));
+        assert!(edges.is_conditional("survey", "exit"));
+        assert!(edges.is_conditional("develop", "exit"));
     }
 }

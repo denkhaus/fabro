@@ -31,8 +31,8 @@ use fabro_store::platform_records::{
 };
 use fabro_store::{BlobStore, test_support};
 use fabro_types::{
-    BlobHash, PetriAdmission, PetriGraphRef, RunId, RunStatus, StageHandler, StageId, StageState,
-    test_support as types_support,
+    BlobHash, FailureReason, PetriAdmission, PetriGraphRef, RunId, RunStatus, StageHandler,
+    StageId, StageState, test_support as types_support,
 };
 use petri_execution::host::{self, HostRun};
 use petri_frontend_fabro::Fabro;
@@ -153,11 +153,14 @@ fn run_options(run_dir: &Path, run_id: RunId) -> RunOptions {
 }
 
 /// The run's `run.created` platform record, as the create handler writes it,
-/// and the `running` lifecycle record the execute path writes.
-async fn create_run(pool: &DbPool, run_id: RunId, goal: &str) {
+/// and the `running` lifecycle record the execute path writes. `graph_source`
+/// is the graph as the run's spec carries it: the fork's `x.kind` exit
+/// classification reads it back (fabro-8615).
+async fn create_run(pool: &DbPool, run_id: RunId, goal: &str, graph_source: &str) {
     let store = PlatformRecordStore::new(pool.clone());
     let mut spec = types_support::test_run_spec();
     spec.run_id = run_id;
+    spec.graph_source = Some(graph_source.to_string());
     spec.admission = PetriAdmission {
         graph:    PetriGraphRef {
             blob:   BlobHash::new(b"graph"),
@@ -248,9 +251,13 @@ struct Scenario {
 async fn scenario(name: &str, files: &[(&str, &str)], stubs: bool) -> Scenario {
     let root = tempfile::tempdir().expect("a temp dir");
     let workflow = install_bundle(root.path(), name, files).await;
+    let graph_source = files
+        .iter()
+        .find(|(file, _)| *file == "workflow.fabro")
+        .map_or("", |(_, text)| *text);
     let pool = pool();
     let run_id = RunId::new();
-    create_run(&pool, run_id, name).await;
+    create_run(&pool, run_id, name, graph_source).await;
     Scenario {
         pool,
         run_id,
@@ -1360,4 +1367,83 @@ async fn an_auto_approved_answer_closes_the_question_in_the_projection() {
         "{states:?}"
     );
     assert_view_equals_rebuild(&gate.scenario.pool, gate.scenario.run_id).await;
+}
+
+/// The revisor's exit shape (fabro-8615): comment lines carrying `->` and
+/// `]` sit above the bare `start -> select` edge, and the plain
+/// `select -> exit` route runs beside the failure-gated soft exit. A green
+/// pass leaves through the plain route and must project green; before the
+/// fix the comment swallowed the plain edge, `sole_exit_route` saw the soft
+/// edge alone, and the run projected `Failed { SoftStop }` (fabro-79ba).
+const REVISOR_SHAPED_WORKFLOW: &str = r#"digraph Soft {
+    graph [goal="Leave through the plain exit"]
+    start [shape=Mdiamond]
+    exit [shape=Msquare]
+    select [shape=parallelogram, script="echo select"]
+    // match): failed -> soft exit; budget exhausted -> natural exit
+    start -> select
+    select -> exit [label="Nothing to revise"]
+    select -> exit [x.kind="soft", label="Selector failed", condition="outcome=failed"]
+}"#;
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_plain_exit_beside_a_soft_kind_edge_projects_green() {
+    let scenario = scenario(
+        "soft-plain",
+        &[
+            ("workflow.fabro", REVISOR_SHAPED_WORKFLOW),
+            ("workflow.toml", SETTINGS),
+        ],
+        false,
+    )
+    .await;
+    run_live(&scenario).await;
+    let stored = petri_support::stored_projection(&scenario.pool, scenario.run_id)
+        .await
+        .expect("reads")
+        .expect("stored");
+    assert!(
+        matches!(stored.status, RunStatus::Succeeded { .. }),
+        "a green pass left through the plain route: {:?}",
+        stored.status
+    );
+    assert!(stored.conclusion.is_some(), "the run concluded");
+}
+
+/// The control for the same seam: when the soft exit is the node's SOLE
+/// route to `exit`, a success-shaped finish still downgrades to
+/// `Failed { SoftStop }` (fabro-843d). The comment-aware scan must not
+/// disable the downgrade itself.
+const SOLE_SOFT_EXIT_WORKFLOW: &str = r#"digraph SoleSoft {
+    graph [goal="Leave only through the soft exit"]
+    start [shape=Mdiamond]
+    exit [shape=Msquare]
+    select [shape=parallelogram, script="echo select"]
+    start -> select
+    select -> exit [x.kind="soft", label="Unrouted select outcome"]
+}"#;
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_sole_soft_kind_edge_still_downgrades_a_green_finish() {
+    let scenario = scenario(
+        "soft-sole",
+        &[
+            ("workflow.fabro", SOLE_SOFT_EXIT_WORKFLOW),
+            ("workflow.toml", SETTINGS),
+        ],
+        false,
+    )
+    .await;
+    run_live(&scenario).await;
+    let stored = petri_support::stored_projection(&scenario.pool, scenario.run_id)
+        .await
+        .expect("reads")
+        .expect("stored");
+    assert_eq!(
+        stored.status,
+        RunStatus::Failed {
+            reason: FailureReason::SoftStop,
+        },
+        "the sole soft route still parks the green finish"
+    );
 }
