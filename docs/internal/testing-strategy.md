@@ -221,6 +221,17 @@ For CLI snapshot updates:
 2. inspect each pending change
 3. accept only the intended updates
 
+### `.pending-snap` artifacts are regenerable
+
+`**/*.pending-snap` files are gitignored, append-only histories per source
+file (insta appends one JSON line per assertion and never truncates; only the
+last `run_id` matters). If any `cargo insta` command aborts with
+`Failed parsing the YAML from ...pending-snap`, a stale or damaged artifact is
+blocking the whole repo — delete the `.pending-snap` files under the named
+directory and re-run the failing test to regenerate a clean one. Accepted
+inline snapshots are rewritten in the SOURCE file; verify the result with
+`git diff`, not by inspecting the artifact.
+
 ## Helpers and fixtures
 
 Use the test helpers that reinforce the rules above.
