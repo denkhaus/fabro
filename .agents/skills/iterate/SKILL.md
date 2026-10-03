@@ -163,9 +163,12 @@ stores it belongs to; reach them by phase need:
   never wrote the run spec's `graph_source`, so the first engine-level
   pin was trivially green until the harness carried it.
 - Run the touched tests IMMEDIATELY after each refactor edit, not at the
-  end of the batch: two self-inflicted scanner bugs (a byte offset,
-  chain legs) cost a hung 120s test round each; the unit test would have
-  failed in 0.02s. The full direct-fix recipe below
+  end of the batch: three self-inflicted scanner bugs (two byte offsets,
+  chain legs) each cost a hung 120s/20s test round; the unit test
+  catches them in 0.02s. Slice arithmetic is the recurring trap: never
+  pass an index computed against the FULL text into a walk that slices
+  a SUFFIX (fabro-e901 hung every envelope test this way) - carry the
+  absolute cursor beside the relative offset. The full direct-fix recipe below
   (lint first, dry-runs, unpiped exit codes) is binding for local work.
 - Delegated builds (the explicit-choice case): feed implementation seeds
   with pointers — files, trait seams, guideline pages.
