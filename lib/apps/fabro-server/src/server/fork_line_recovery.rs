@@ -22,10 +22,15 @@
 //!   as defense in depth: a run whose window closes MID-FLIGHT still parks
 //!   resumable instead of burning retries.
 //!
-//! The gate probe resolves the model from the automation's newest
-//! terminal run (`RunModel { provider, name }`); without a resolvable
-//! model or client the gate FAILS OPEN (one bounded parked run per
-//! window, never a dead line on a client hiccup).
+//! The gate probe is PROVIDER-scoped since fabro-b869 (2026-10-03): the
+//! newest terminal run records the models of ALL its stages (the fold
+//! dedups them), so the gate probes EVERY provider the automation needs and
+//! holds it while any of them is closed — one probe per provider per recheck
+//! cadence, shared across all automations that need that provider. A workflow
+//! with no LLM provider observed (deterministic) is never held. Without a
+//! resolvable model or client the gate FAILS OPEN (one bounded parked run per
+//! window, never a dead line on a client hiccup), and every window TRANSITION
+//! is logged at WARN because INFO is not ingested by the log platform.
 //!
 //! Fork-file policy: this file exists only on our fork; upstream does
 //! not have it, so no merge can conflict it away.
@@ -72,15 +77,33 @@ pub(crate) fn is_quota_park(status: RunStatus, failure: Option<&RunFailure>) -> 
     parked_status && failure.is_some_and(fabro_types::is_quota_rate_limit_failure)
 }
 
+/// Window state of ONE provider.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ProviderWindow {
+    Open,
+    Closed,
+}
+
+/// Per-provider probe answer plus the selector it was probed with.
+#[derive(Debug, Clone)]
+struct ProviderProbe {
+    window:        ProviderWindow,
+    last_probe_at: DateTime<Utc>,
+    selector:      String,
+}
+
 /// In-memory gate bookkeeping (derived, not persisted).
 ///
-/// `last_poll` bounds the closed-window probe cadence; `closed` marks
-/// automations whose provider window was last seen closed. A server
-/// restart loses the marks — the next due fire probes fresh and re-marks.
+/// PROVIDER-scoped since fabro-b869: `probes` is keyed by provider, so one
+/// outage is one fact for every automation that needs that provider and the
+/// fixed recheck cadence costs ONE probe per provider instead of one per
+/// automation. `held` remembers which automations the last tick skipped, which
+/// is what detects the reopen transition (rewind-or-fire, ADR-0021 Option C).
+/// A server restart loses the marks — the next due fire probes fresh.
 #[derive(Default)]
 pub(crate) struct GateState {
-    last_poll: HashMap<String, DateTime<Utc>>,
-    closed:    HashMap<String, bool>,
+    probes: HashMap<String, ProviderProbe>,
+    held:   std::collections::HashSet<String>,
 }
 
 impl GateState {
@@ -88,49 +111,101 @@ impl GateState {
         Self::default()
     }
 
-    /// Whether the 10-minute closed-window poll cadence allows a fresh
-    /// probe for `automation_id` (user decision 2026-09-14: fixed
-    /// 10-minute rechecks).
+    /// Whether the 10-minute recheck cadence allows a fresh probe for
+    /// `provider` (user decision 2026-09-14: fixed 10-minute rechecks).
     #[must_use]
-    pub(crate) fn poll_due(&self, automation_id: &str, now: DateTime<Utc>) -> bool {
-        self.last_poll.get(automation_id).is_none_or(|last| {
-            now.signed_duration_since(*last).num_seconds() >= RECHECK_INTERVAL_SECS
+    pub(crate) fn poll_due(&self, provider: &str, now: DateTime<Utc>) -> bool {
+        self.probes.get(provider).is_none_or(|probe| {
+            now.signed_duration_since(probe.last_probe_at).num_seconds() >= RECHECK_INTERVAL_SECS
         })
     }
 
-    /// Record a probe result.
+    /// Last-seen window; absent = never probed (the gate fails open).
+    #[must_use]
+    pub(crate) fn window(&self, provider: &str) -> Option<ProviderWindow> {
+        self.probes.get(provider).map(|probe| probe.window)
+    }
+
+    /// Record a provider probe result. Every TRANSITION is logged at WARN
+    /// (fabro-b869 step 5): at most one per provider per cadence, and it is
+    /// the only trace of a window that rootprint can ingest (INFO is not).
     pub(crate) fn note_probe(
         &mut self,
-        automation_id: &str,
-        window_open: bool,
+        provider: &str,
+        window: ProviderWindow,
+        selector: &str,
         now: DateTime<Utc>,
     ) {
-        self.last_poll.insert(automation_id.to_string(), now);
-        self.closed.insert(automation_id.to_string(), !window_open);
+        let previous = self.probes.insert(provider.to_string(), ProviderProbe {
+            window,
+            last_probe_at: now,
+            selector: selector.to_string(),
+        });
+        match (previous.as_ref().map(|probe| probe.window), window) {
+            (Some(ProviderWindow::Open) | None, ProviderWindow::Closed) => {
+                tracing::warn!(
+                    provider,
+                    selector,
+                    recheck_secs = RECHECK_INTERVAL_SECS,
+                    "line gate: provider window CLOSED — scheduled fires for workflows that need this provider are held"
+                );
+            }
+            (Some(ProviderWindow::Closed), ProviderWindow::Open) => {
+                tracing::warn!(
+                    provider,
+                    selector,
+                    "line gate: provider window REOPENED — held automations resume (rewind-or-fire)"
+                );
+            }
+            _ => {}
+        }
     }
 
-    /// Last-seen closed state; absent = unknown (never probed).
+    /// The selector a provider was last probed with (for log/status lines).
     #[must_use]
-    pub(crate) fn window_closed(&self, automation_id: &str) -> Option<bool> {
-        self.closed.get(automation_id).copied()
+    pub(crate) fn probe_selector_of(&self, provider: &str) -> Option<&str> {
+        self.probes
+            .get(provider)
+            .map(|probe| probe.selector.as_str())
     }
 
-    /// A recovered (open) automation forgets its marks.
-    pub(crate) fn note_recovered(&mut self, automation_id: &str) {
-        self.last_poll.remove(automation_id);
-        self.closed.remove(automation_id);
+    /// Whether the last tick held this automation's fires.
+    #[cfg(test)]
+    fn is_held(&self, automation_id: &str) -> bool {
+        self.held.contains(automation_id)
+    }
+
+    fn note_held(&mut self, automation_id: &str) {
+        self.held.insert(automation_id.to_string());
+    }
+
+    /// Forget a hold (window open again); `true` when this call ended a hold,
+    /// i.e. this tick IS the reopen transition for the automation.
+    fn take_hold(&mut self, automation_id: &str) -> bool {
+        self.held.remove(automation_id)
     }
 }
 
-/// The probe selector for one automation: `provider/model` from its
-/// newest terminal run's primary model, else `None` (degraded — the gate
-/// fails open).
+/// The providers one run touched, as `(provider, probe selector)` pairs:
+/// EVERY model of the run — the fold records the models of all stages and
+/// dedups — not just the first (fabro-b869 step 2: a workflow can drive
+/// several providers, and holding it for one of them is not enough).
 #[must_use]
-pub(crate) fn probe_selector(newest_terminal: Option<&Run>) -> Option<String> {
-    let run = newest_terminal?;
-    let model = run.models.first()?;
-    let provider = model.provider.as_deref()?;
-    Some(format!("{provider}/{}", model.name))
+pub(crate) fn run_providers(newest_terminal: Option<&Run>) -> Vec<(String, String)> {
+    let Some(run) = newest_terminal else {
+        return Vec::new();
+    };
+    let mut providers: Vec<(String, String)> = run
+        .models
+        .iter()
+        .filter_map(|model| {
+            let provider = model.provider.as_deref()?;
+            Some((provider.to_string(), format!("{provider}/{}", model.name)))
+        })
+        .collect();
+    providers.sort();
+    providers.dedup_by(|left, right| left.0 == right.0);
+    providers
 }
 
 /// Whether the provider window is open, probed with a basic one-word
@@ -189,13 +264,16 @@ pub(crate) async fn provider_window_open(state: &AppState, selector: &str) -> bo
 /// Gate tick, called on every scheduler pass BEFORE due cron fires are
 /// spawned.
 ///
-/// 1. Closed-marked automations probe on the fixed 10-minute cadence (no runs
-///    are created while the window stays closed); the moment a probe sees the
-///    window open, the real pass fires through the normal scheduled-fire path
-///    and the automation recovers its marks.
-/// 2. Returns the set of automation ids whose window is closed RIGHT NOW — the
-///    scheduler skips their due cron fires (a fire would only produce a doomed
-///    run and noise).
+/// Since fabro-b869 the gate is PROVIDER-scoped: every provider the
+/// automation's newest terminal run touched is answered once per recheck
+/// cadence (shared across automations), and the automation is held while ANY
+/// of them is closed. A hold that ends (window open) either rewinds the parked
+/// run (ADR-0021 rev 2 Option C) or fires the real pass through the normal
+/// scheduled-fire path.
+///
+/// Returns the set of automation ids whose fires are held RIGHT NOW — the
+/// scheduler skips their due cron fires (a fire would only produce a doomed
+/// run and noise).
 pub(crate) async fn provider_gate_tick(
     state: Arc<AppState>,
     automations: &[fabro_automation::Automation],
@@ -208,107 +286,135 @@ pub(crate) async fn provider_gate_tick(
         if automation.enabled_schedule_triggers().next().is_none() {
             continue;
         }
-        let window_closed = match gate.window_closed(automation_id) {
-            Some(true) => {
-                // Closed as of the last probe: poll on the cadence, fire
-                // on reopen. Between polls the answer stays closed.
-                if gate.poll_due(automation_id, now) {
-                    let newest = newest_terminal(&state, automation_id, now).await;
-                    let selector = probe_selector(newest.as_ref());
-                    let open = match selector.as_deref() {
-                        Some(selector) => provider_window_open(&state, selector).await,
-                        // Degraded (no model known): fail open, recover.
-                        None => true,
-                    };
-                    gate.note_probe(automation_id, open, now);
-                    if open {
-                        // ADR-0021 rev 2 Option C (fabro-2e7b): when the
-                        // newest terminal is a quota park, REWIND it — a
-                        // resume from its last checkpoint — instead of
-                        // firing a fresh run; anything else fires normally.
-                        let park_to_rewind = newest_terminal(&state, automation_id, now)
-                            .await
-                            .filter(|run| {
-                                is_quota_park(run.lifecycle.status, park_failure(run).as_ref())
-                            })
-                            .map(|run| run.id);
-                        if let Some(parked_run_id) = park_to_rewind {
-                            tracing::info!(
-                                automation_id,
-                                run_id = %parked_run_id,
-                                "line gate: provider window reopened — rewinding the parked run (fabro-2e7b Option C)"
-                            );
-                            let state_for_rewind = Arc::clone(&state);
-                            tokio::spawn(async move {
-                                let actor = fabro_types::Principal::System {
-                                    system_kind: fabro_types::SystemActorKind::Engine,
-                                };
-                                match super::handler::lineage::rewind_run_internal(
-                                    state_for_rewind.as_ref(),
-                                    parked_run_id,
-                                    actor,
-                                )
-                                .await
-                                {
-                                    Ok((new_run_id, archived)) => {
-                                        tracing::info!(
-                                            source_run_id = %parked_run_id,
-                                            new_run_id = %new_run_id,
-                                            archived,
-                                            "line gate: parked run rewound after window reopen"
-                                        );
-                                    }
-                                    Err(err) => {
-                                        tracing::warn!(
-                                            source_run_id = %parked_run_id,
-                                            error = %err,
-                                            "line gate: rewind of the parked run failed — the next schedule fire recovers the line"
-                                        );
-                                    }
-                                }
-                            });
-                        }
-                    } else {
-                        tracing::info!(
-                            automation_id,
-                            "line gate: provider window reopened — firing (fabro-986b)"
-                        );
-                        if let Some(trigger) = automation.enabled_schedule_triggers().next() {
-                            tokio::spawn(
-                                super::automation_scheduler::fire_scheduled_automation_run(
-                                    Arc::clone(&state),
-                                    automation.clone(),
-                                    trigger.id.clone(),
-                                    now,
-                                ),
-                            );
-                        }
-                        gate.note_recovered(automation_id);
-                        continue;
-                    }
+        let newest = newest_terminal(&state, automation_id, now).await;
+        let required = run_providers(newest.as_ref());
+        if required.is_empty() {
+            // No LLM provider observed for this automation (deterministic
+            // workflow, or no terminal run yet): never held.
+            continue;
+        }
+        let closed = probe_due_providers(&state, &required, gate, now).await;
+        if closed.is_empty() {
+            // Every required provider's window is open. If this tick ENDS a
+            // hold, recover the line: rewind the quota-parked run, else fire
+            // immediately (the normal cron path would wait for the next slot).
+            if gate.take_hold(automation_id) {
+                let park_to_rewind = newest
+                    .as_ref()
+                    .filter(|run| is_quota_park(run.lifecycle.status, park_failure(run).as_ref()))
+                    .map(|run| run.id);
+                if let Some(parked_run_id) = park_to_rewind {
                     tracing::info!(
                         automation_id,
-                        interval_secs = RECHECK_INTERVAL_SECS,
-                        "line gate: provider window still closed — holding fires (fabro-986b)"
+                        run_id = %parked_run_id,
+                        "line gate: provider window reopened — rewinding the parked run (fabro-2e7b Option C)"
                     );
+                    let state_for_rewind = Arc::clone(&state);
+                    tokio::spawn(async move {
+                        let actor = fabro_types::Principal::System {
+                            system_kind: fabro_types::SystemActorKind::Engine,
+                        };
+                        match super::handler::lineage::rewind_run_internal(
+                            state_for_rewind.as_ref(),
+                            parked_run_id,
+                            actor,
+                        )
+                        .await
+                        {
+                            Ok((new_run_id, archived)) => {
+                                tracing::info!(
+                                    source_run_id = %parked_run_id,
+                                    new_run_id = %new_run_id,
+                                    archived,
+                                    "line gate: parked run rewound after window reopen"
+                                );
+                            }
+                            Err(err) => {
+                                tracing::warn!(
+                                    source_run_id = %parked_run_id,
+                                    error = %err,
+                                    "line gate: rewind of the parked run failed — the next schedule fire recovers the line"
+                                );
+                            }
+                        }
+                    });
+                } else {
+                    tracing::info!(
+                        automation_id,
+                        "line gate: provider window reopened — firing (fabro-986b)"
+                    );
+                    if let Some(trigger) = automation.enabled_schedule_triggers().next() {
+                        tokio::spawn(super::automation_scheduler::fire_scheduled_automation_run(
+                            Arc::clone(&state),
+                            automation.clone(),
+                            trigger.id.clone(),
+                            now,
+                        ));
+                    }
                 }
-                true
+                continue;
             }
-            // Unknown or open: nothing to hold yet — the cron-due probe
-            // below decides fresh.
-            _ => false,
-        };
-        if window_closed {
-            skip_fires.insert(automation_id.to_string());
+            // Not held: the cron path decides on its own (cron_fire_allowed
+            // re-checks the same provider state).
+            continue;
         }
+        let probed_with = closed
+            .iter()
+            .map(|provider| {
+                gate.probe_selector_of(provider)
+                    .unwrap_or(provider.as_str())
+                    .to_string()
+            })
+            .collect::<Vec<_>>()
+            .join(",");
+        tracing::info!(
+            automation_id,
+            providers = %closed.join(","),
+            probed_with,
+            interval_secs = RECHECK_INTERVAL_SECS,
+            "line gate: provider window closed — holding fires (fabro-b869)"
+        );
+        gate.note_held(automation_id);
+        skip_fires.insert(automation_id.to_string());
     }
     skip_fires
 }
 
-/// Gate one due cron fire: probe the provider NOW (one basic completion —
-/// cheap next to a run start) and return false when the window is closed.
-/// A closed result also marks the automation so the 10-minute reopen
-/// polling takes over.
+/// Probe every required provider whose answer is older than the recheck
+/// cadence and return the providers that are CLOSED right now.
+///
+/// Fail-open: a provider whose probe cannot even run (unresolvable client /
+/// selector) is treated as open — one bounded parked run per window is
+/// cheaper than a dead line. Without a run model there is no selector, so the
+/// caller never reaches this for deterministic workflows.
+pub(crate) async fn probe_due_providers(
+    state: &AppState,
+    required: &[(String, String)],
+    gate: &mut GateState,
+    now: DateTime<Utc>,
+) -> Vec<String> {
+    let mut closed = Vec::new();
+    for (provider, selector) in required {
+        if gate.poll_due(provider, now) {
+            let open = provider_window_open(state, selector).await;
+            let window = if open {
+                ProviderWindow::Open
+            } else {
+                ProviderWindow::Closed
+            };
+            gate.note_probe(provider, window, selector, now);
+        }
+        if gate.window(provider) == Some(ProviderWindow::Closed) && !closed.contains(provider) {
+            closed.push(provider.clone());
+        }
+    }
+    closed
+}
+
+/// Gate one due cron fire: make sure every provider the automation needs has a
+/// FRESH window answer (probing only what the recheck cadence allows —
+/// provider-scoped since fabro-b869, so a shared outage costs one probe per
+/// provider) and return false while any of them is closed.
 pub(crate) async fn cron_fire_allowed(
     state: &AppState,
     automation: &fabro_automation::Automation,
@@ -317,23 +423,23 @@ pub(crate) async fn cron_fire_allowed(
 ) -> bool {
     let automation_id = automation.id.as_str();
     let newest = newest_terminal(state, automation_id, now).await;
-    let Some(selector) = probe_selector(newest.as_ref()) else {
-        // Degraded: no model known — fail open.
+    let required = run_providers(newest.as_ref());
+    if required.is_empty() {
+        // Degraded: no LLM provider observed — fail open.
         return true;
-    };
-    let open = provider_window_open(state, &selector).await;
-    gate.note_probe(automation_id, open, now);
-    if open {
+    }
+    let closed = probe_due_providers(state, &required, gate, now).await;
+    if closed.is_empty() {
         tracing::debug!(
             automation_id,
-            selector = %selector,
-            "line gate: provider window open — allowing scheduled fire (fabro-986b)"
+            providers = %required.iter().map(|(provider, _)| provider.as_str()).collect::<Vec<_>>().join(","),
+            "line gate: provider windows open — allowing scheduled fire (fabro-986b)"
         );
         true
     } else {
         tracing::info!(
             automation_id,
-            selector = %selector,
+            providers = %closed.join(","),
             "line gate: provider window closed — skipping scheduled fire (fabro-986b)"
         );
         false
@@ -412,41 +518,96 @@ mod tests {
     }
 
     #[test]
-    fn closed_gate_poll_cadence_is_ten_minutes() {
+    fn provider_poll_cadence_is_ten_minutes_and_provider_scoped() {
         let mut gate = GateState::new();
         let t0 = Utc::now();
-        assert!(gate.poll_due("a", t0));
-        gate.note_probe("a", false, t0);
-        assert!(
-            gate.window_closed("a") == Some(true),
-            "a closed probe marks the automation"
+        assert!(gate.poll_due("zai", t0), "never probed -> due");
+        gate.note_probe("zai", ProviderWindow::Closed, "zai/glm-5.3", t0);
+        assert_eq!(
+            gate.window("zai"),
+            Some(ProviderWindow::Closed),
+            "a closed probe marks the PROVIDER (fabro-b869)"
         );
-        assert!(!gate.poll_due("a", t0));
-        assert!(gate.poll_due("a", t0 + chrono::Duration::seconds(RECHECK_INTERVAL_SECS)));
+        assert!(!gate.poll_due("zai", t0));
+        assert!(
+            gate.poll_due("zai", t0 + chrono::Duration::seconds(RECHECK_INTERVAL_SECS)),
+            "the fixed recheck cadence re-opens the probe"
+        );
+        // Provider scope: another provider's answer is independent.
+        assert_eq!(gate.window("openrouter"), None);
+        assert!(gate.poll_due("openrouter", t0));
+        gate.note_probe("openrouter", ProviderWindow::Open, "openrouter/x", t0);
+        assert_eq!(gate.window("openrouter"), Some(ProviderWindow::Open));
         assert_eq!(RECHECK_INTERVAL_SECS, 600, "user decision 2026-09-14");
     }
 
     #[test]
-    fn reopened_gate_recovers_its_marks() {
+    fn holds_end_only_on_the_reopen_transition() {
         let mut gate = GateState::new();
-        let t0 = Utc::now();
-        gate.note_probe("a", false, t0);
-        gate.note_recovered("a");
-        assert_eq!(gate.window_closed("a"), None);
-        assert!(gate.poll_due("a", t0));
+        assert!(!gate.is_held("loop-fabro"));
+        gate.note_held("loop-fabro");
+        gate.note_held("loop-fabro");
+        assert!(gate.is_held("loop-fabro"));
+        assert!(
+            gate.take_hold("loop-fabro"),
+            "the first tick after a hold ends returns true (rewind-or-fire arm)"
+        );
+        assert!(
+            !gate.take_hold("loop-fabro"),
+            "a second tick is not a transition"
+        );
+        assert!(!gate.is_held("loop-fabro"));
     }
 
     #[test]
-    fn probe_selector_derives_provider_model_from_the_newest_run() {
+    fn run_providers_returns_every_provider_not_just_the_first() {
         let mut run = run_body();
-        run.models = vec![fabro_types::RunModel {
-            provider: Some("zai".to_string()),
-            name:     "glm-5.3".to_string(),
-        }];
-        assert_eq!(probe_selector(Some(&run)).as_deref(), Some("zai/glm-5.3"));
-        assert_eq!(probe_selector(None), None, "no run — degraded fail-open");
-        run.models[0].provider = None;
-        assert_eq!(probe_selector(Some(&run)), None);
+        run.models = vec![
+            fabro_types::RunModel {
+                provider: Some("zai".to_string()),
+                name:     "glm-5.3".to_string(),
+            },
+            fabro_types::RunModel {
+                provider: Some("openrouter".to_string()),
+                name:     "claude-opus".to_string(),
+            },
+            // Same provider, second model: deduped to one probe.
+            fabro_types::RunModel {
+                provider: Some("zai".to_string()),
+                name:     "glm-4.7".to_string(),
+            },
+            // No provider attribution: skipped, never probed.
+            fabro_types::RunModel {
+                provider: None,
+                name:     "unknown".to_string(),
+            },
+        ];
+        let providers = run_providers(Some(&run));
+        assert_eq!(
+            providers,
+            vec![
+                (
+                    "openrouter".to_string(),
+                    "openrouter/claude-opus".to_string()
+                ),
+                ("zai".to_string(), "zai/glm-4.7".to_string()),
+            ],
+            "every provider of the run is gated (fabro-b869 step 2); one probe per provider, \
+             the alphabetically first of its models as the deterministic representative"
+        );
+    }
+
+    #[test]
+    fn deterministic_runs_have_no_providers_to_gate() {
+        let run = run_body();
+        assert!(
+            run_providers(Some(&run)).is_empty(),
+            "no models recorded -> no provider to gate -> deterministic workflows are never held"
+        );
+        assert!(
+            run_providers(None).is_empty(),
+            "no run yet — degraded fail-open"
+        );
     }
 
     fn run_body() -> Run {
