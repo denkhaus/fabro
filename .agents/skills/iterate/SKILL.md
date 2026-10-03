@@ -173,6 +173,13 @@ stores it belongs to; reach them by phase need:
   later-crate breakage and further snapshot drift stay invisible through
   any number of 16-min CI rounds (fabro-1b2a: three stacked layers, two
   snapshot rounds; fabro-9707 tracks the CI-side fix).
+- Multi-agent limit of the rule above: `cargo clippy` lints EVERY workspace
+  member (RUSTC_WORKSPACE_WRAPPER applies to path deps too), so a sibling
+  agent's uncommitted red crate blocks/masks your OWN lint verification
+  locally (2026-10-03, PR #378: two lints of mine stayed invisible until
+  CI). Then: message the sibling the exact lint + fix, fix yours by
+  reading, and accept CI as the arbiter for the round — say so in the
+  commit message.
 - Direct-fix verification recipe (before any push): lint first
   (`just lint-nu` for nu), then DRY-RUNS — positive AND negative — each
   as its own shell call, exit codes read from the process (never behind
