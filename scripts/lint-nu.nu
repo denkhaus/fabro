@@ -98,6 +98,50 @@ def bare-paren-check [file: string] {
     }
 }
 
+# Registration check (fabro-8b38): the gate executes smokes and fixture
+# batteries ONLY when they are named in scripts/qualitygate.nu's explicit
+# lists, so a new battery that nobody registers is silently un-gated — the
+# class that produced fabro-ac84 and, caught by this check's first run,
+# tracker-guard-smoke.nu + closeout-smoke.nu (both existed, both ran green,
+# nothing executed them). Convention: *-smoke.nu belongs in the `smokes`
+# list, *-fixtures.nu in `batteries`. Scripts that match a suffix but are
+# not batteries go in the allow-list below with a reason.
+const REGISTRATION_ALLOW = []
+
+def registration-check [] {
+    let qualitygate = 'scripts/qualitygate.nu'
+    if not (($qualitygate | path exists)) {
+        print $"registration FAILED: ($qualitygate) is missing — the gate's battery lists moved?"
+        return false
+    }
+    let text = (open --raw $qualitygate)
+    let candidates = (
+        script-paths
+        | where {|f|
+            let base = ($f | path basename)
+            (($base | str ends-with '-smoke.nu') or ($base | str ends-with '-fixtures.nu')) and ($f not-in $REGISTRATION_ALLOW)
+        }
+    )
+    # script-paths mixes absolute (glob without a ./ prefix) and relative
+    # entries; normalize to repo-root-relative before matching qualitygate's
+    # literal list entries.
+    let root = $env.PWD
+    let unregistered = (
+        $candidates
+        | where {|f| not ($text | str contains ($f | path relative-to $root)) }
+    )
+    if ($unregistered | is-empty) {
+        print $"registration ok: ($candidates | length) smoke/fixture batteries all named in ($qualitygate)"
+        true
+    } else {
+        for f in $unregistered {
+            let list = (if (($f | path basename) | str ends-with '-smoke.nu') { 'smokes' } else { 'batteries' })
+            print $"registration FAILED: ($f | path relative-to ($env.PWD)) is not named in ($qualitygate) — add it to the ($list) list"
+        }
+        false
+    }
+}
+
 def main [] {
     let scripts = (script-paths)
     if ($scripts | is-empty) {
@@ -111,6 +155,7 @@ def main [] {
         if not (interpolated-regex-check $s) { $green = false }
         if not (bare-paren-check $s) { $green = false }
     }
+    if not (registration-check) { $green = false }
     if $green {
         print 'lint-nu: green'
     } else {

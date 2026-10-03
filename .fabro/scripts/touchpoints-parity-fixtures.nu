@@ -22,7 +22,7 @@
 # fabro-63fc step 1 relocates the registry to a neutral home; that change
 # must move REGISTRY_REL with it (one definition, one-line edit).
 #
-#   nu .fabro/scripts/touchpoints-parity.nu
+#   nu .fabro/scripts/touchpoints-parity-fixtures.nu
 
 const SCRIPT_DIR = (path self | path dirname)
 const REGISTRY_REL = '.agents/skills/merge-upstream/references/touchpoints.md'
