@@ -29,6 +29,9 @@
 #      implementer.
 #   9. The tester runs the loop gate, NOT the product gate
 #      (just qualitygate must not appear on the tester node).
+#  10. Reviewer evidence line budget: x.preamble_output_max_lines on the
+#      reviewer node stays >= 1000 (fabro-31f7) — the stage Output tail
+#      cap must never silently omit an evidence capture's head.
 
 const GRAPH = ('.fabro/workflows/loop/workflow.fabro' | path expand)
 const FS_WRITE_EXPECTED = 'x.fs_write=".fabro/**,scripts/**,justfile,.seeds/issues.jsonl,lib/components/fabro-dot/src/snapshots/**"'
@@ -106,5 +109,26 @@ def main [] {
         fail 'tester script line lost loop-gate.nu'
     }
 
-    print 'loop graph-contract-smoke: OK — guard exits, lane wiring, envelope pins, red bounce intact'
+    # 10. reviewer evidence line budget (fabro-31f7): the stage Output
+    # render is a TAIL cap, and evidence.nu puts the integrity header +
+    # seed-work diff at the capture HEAD — a low cap silently drops
+    # exactly that head ("(275 lines omitted)" hid new-script heads from
+    # a reviewer). The reviewer's x.preamble_output_max_lines must stay
+    # >= 1000 so every realistic capture renders whole; pathological
+    # sizes are evidence.nu's own HARD_CAP disclosure, never this cap.
+    let rstart = ($lines | enumerate | where {|e| ($e.item | str trim) == 'reviewer ['} | get -o index | first | default null)
+    if $rstart == null { fail 'reviewer node not found' }
+    let rend = ($lines | enumerate | where {|e| ($e.index > $rstart) and (($e.item | str trim) == ']')} | get -o index | first | default null)
+    if $rend == null { fail 'reviewer node block not terminated' }
+    let rblock = ($lines | skip ($rstart + 1) | take ($rend - $rstart - 1) | each {|l| $l | split row '//' | first | str trim | str trim -r -c ','})
+    let cap = ($rblock | where {|l| $l | str starts-with 'x.preamble_output_max_lines='} | first | default null)
+    if $cap == null {
+        fail 'reviewer node lost x.preamble_output_max_lines — the engine default tail cap would silently omit evidence heads'
+    }
+    let value = ($cap | str replace --regex '\D+' '' | into int)
+    if $value < 1000 {
+        fail $"reviewer x.preamble_output_max_lines=($value) is below the fabro-31f7 floor of 1000 — evidence heads would be silently omitted"
+    }
+
+    print 'loop graph-contract-smoke: OK — guard exits, lane wiring, envelope pins, red bounce, evidence budget intact'
 }
