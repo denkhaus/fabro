@@ -13,6 +13,23 @@ use toml::Value as TomlValue;
 const TRUNCATED_MARKER: &str = "...[truncated]";
 const MAX_PROMPT_SECTION_CHARS: usize = 4_000;
 
+/// The output budget for a title call. The structured small default the
+/// title path routes to (zai glm-4.7) is ALWAYS-REASONING (fork overlay,
+/// fabro-cd27) and reasoning tokens come out of the same budget: the old
+/// 64-token cap starved the reasoning phase and left the content EMPTY on
+/// every call — "the model did not return a JSON document: EOF while
+/// parsing a value at line 1 column 0" (174 title WARNs between
+/// 2026-09-28 and 2026-10-03, rootprint; fabro-d5b1). The JSON payload
+/// itself is a handful of tokens, so the budget only has to outlive the
+/// reasoning phase of the smallest configured model — the tests pin a
+/// compile-time floor against regressing to a reasoning-starving cap.
+const TITLE_MAX_OUTPUT_TOKENS: u32 = 1_024;
+
+/// The title task is fire-and-forget (spawned), so a generous deadline only
+/// trades a rare hard cutoff for a slower answer; 10s already produced one
+/// deadline-expired miss in the fabro-d5b1 rootprint window.
+const TITLE_TIMEOUT: Duration = Duration::from_secs(30);
+
 const TITLE_PROMPT_NAME: &str = "run_title.md.j2";
 const TITLE_PROMPT_TEMPLATE: &str = include_str!("prompts/run_title.md.j2");
 
@@ -46,8 +63,8 @@ pub(crate) async fn generate_title_or_current(input: GenerateTitleInput<'_>) -> 
     let request = match Request::builder()
         .model(format!("{}/{}", input.provider_id, input.model_id))
         .user(prompt)
-        .max_output_tokens(64)
-        .timeout(Duration::from_secs(10))
+        .max_output_tokens(TITLE_MAX_OUTPUT_TOKENS)
+        .timeout(TITLE_TIMEOUT)
         .build()
     {
         Ok(request) => request,
@@ -330,8 +347,18 @@ mod tests {
         let captured = captured.lock().unwrap();
         assert_eq!(captured[0].provider, "openai");
         assert_eq!(captured[0].model, "gpt-5.4");
-        assert_eq!(captured[0].max_output_tokens, Some(64));
+        assert_eq!(captured[0].max_output_tokens, Some(TITLE_MAX_OUTPUT_TOKENS));
+        assert_eq!(captured[0].timeout, Some(TITLE_TIMEOUT));
     }
+
+    /// fabro-d5b1: the budget must outlive the always-reasoning small
+    /// default — a cap at or below the floor starves the reasoning phase and
+    /// empties the content (174 "EOF while parsing" title WARNs in six days).
+    /// Compile-time pin: a regression to a reasoning-starving cap fails the
+    /// build of the test target, not a runtime test run.
+    const TITLE_MIN_REASONING_SAFE_TOKENS: u32 = 512;
+
+    const _: () = assert!(TITLE_MAX_OUTPUT_TOKENS >= TITLE_MIN_REASONING_SAFE_TOKENS);
 
     #[tokio::test]
     async fn invalid_or_failed_generation_returns_current_title() {
@@ -346,6 +373,7 @@ mod tests {
         provider:          String,
         model:             String,
         max_output_tokens: Option<u32>,
+        timeout:           Option<Duration>,
     }
 
     async fn title_with_mocked_response(
@@ -397,6 +425,7 @@ mod tests {
                 provider:          call.route().provider().id().to_string(),
                 model:             call.route().model().id().to_string(),
                 max_output_tokens: call.request().max_output_tokens(),
+                timeout:           call.request().timeout(),
             });
             Ok(fabro_llm::test_support::text_response(
                 call.route().provider().id().as_str(),
