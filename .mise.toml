@@ -26,7 +26,7 @@ bun = "1.4.0"
 # @os-eco/seeds-cli reference tool 2026-09-26 — no sd bin; the ubi
 # backend is deprecated). Needs cargo — the toolchain image and dev
 # hosts have it. The repo must not rely on a global install.
-"cargo:seeds" = "0.5.0"
+"cargo:seeds" = "0.6.0"
 
 # GitButler CLI (but) — pinned via http backend (no registry entry: GitHub
 # releases carry no assets; the artifact comes from releases.gitbutler.com,

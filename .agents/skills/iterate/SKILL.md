@@ -277,12 +277,12 @@ stores it belongs to; reach them by phase need:
 
 ## Phase 5 — Integrate
 
-- Commit code (`but commit`) BEFORE tracker mutations land: under the
-  GitButler rule, NEVER run `seeds sync` (it issues its own plain git
-  commit behind the workspace's back) — commit `.seeds/` changes
-  explicitly via `but commit` in the same batch. Line-watch closes
-  through `seeds close --reason` with the reason appended to the body
-  first, then the same explicit `.seeds` commit.
+- Commit code (`but commit`) BEFORE tracker mutations land. `seeds sync`
+  is SAFE again since seeds 0.6.0 with `vcs_manager: gitbutler` in
+  `.seeds/config.yaml` (set in the GB repos): sync becomes report-only
+  (no git write; prints the changed paths + the ready commit message) —
+  take those paths as file IDs via `but diff` and commit explicitly.
+  In git-mode repos `seeds sync` behaves as before.
 - A `fabro create` whose post-processing dies still created the run:
   capture exactly one run id per intended create and `fabro rm --force`
   duplicates immediately - submitted ghosts count as active runs and wedge
