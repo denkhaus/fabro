@@ -38,7 +38,7 @@ Write the answer to `.fabro/reviews/develop/<run-id>.md` with this header (same 
 The backlog runs share root causes; without a tracker check every pass re-distills the same findings the file stage then has to merge away. So:
 
 1. Run `seeds list --format compact` — that is the current tracker, INCLUDING seeds this revisor run already filed (they are committed on this branch).
-2. For each recurring theme in the answer, run `seeds search "<theme keyword>"` — title matches are not enough; content duplicates hide behind different titles.
+2. For each recurring theme in the answer, run `seeds search "<theme keyword>"` — title matches are not enough; content duplicates hide behind different titles. Query discipline at the call site: search is AND-strict, so pass exactly ONE keyword per query (a multi-word phrase returns zero hits even when the words all appear in a seed); on zero hits, retry once with a broader single token before concluding "no duplicate"; for a candidate the answer cites by id, use `seeds show <id> --format json`, never `seeds search` (search matches title/description text only, not ids).
 3. A finding that names the SAME concrete change as an existing seed is a duplicate: OPEN seed → drop it and record `duplicate_of: <id>` for the journal; CLOSED seed → the change is already implemented, drop it likewise. Only a genuinely NEW change (different file/mechanism/effect — a superset or an orthogonal fix) survives.
 
 Filed seeds carry the `revision` label (the bookkeeper sets it), so `seeds list --label revision` shows this loop's whole output — assume that set exists and grows.
@@ -62,7 +62,7 @@ Convert the SURVIVING recommendations into `revision_findings`: an array of seed
 | Command | Purpose |
 |---|---|
 | `seeds list --format compact` | Whole tracker picture before distilling. |
-| `seeds search <query> --format compact` | Theme lookup; run one per recurring recommendation theme. |
+| `seeds search <keyword> --format compact` | Theme lookup; run one per recurring recommendation theme. ONE keyword per query (AND-strict); broaden the token on zero hits; id lookups go through `seeds show`, never search. |
 
 ## Hard rules
 
