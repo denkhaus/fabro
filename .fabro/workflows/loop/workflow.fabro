@@ -159,8 +159,14 @@ digraph Loop {
         x.preamble_stages_latest_only=true,
         x.preamble_allow_keys="current_seed_id,current_seed_title,current_seed_brief,implementation_summary,command.output",
         x.context_allow_keys="review_verdict,review_feedback,journal",
+        // fabro-31f7: the stage Output render is a TAIL cap — at 200 a
+        // 475-line loop evidence capture lost its first 275 lines (the
+        // integrity header and new-script heads) to "(275 lines
+        // omitted)". 2000 keeps realistic captures whole; pathological
+        // sizes stay evidence.nu's HARD_CAP disclosure. Pinned by the
+        // loop graph-contract smoke (contract 10).
         x.preamble_inline_max_kb=16,
-        x.preamble_output_max_lines=200,
+        x.preamble_output_max_lines=2000,
         x.fs_write="",
         x.tools="read_file,grep,glob",
         x.fabro_tools="",
