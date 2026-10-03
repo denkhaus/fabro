@@ -40,7 +40,7 @@ Envelope note for the brief: verification criteria name parse-level checks (lint
 If the top candidate looks already implemented, apply the two-branch rule. DETERMINISTIC PREFLIGHT TABLE FIRST: its verdict table is inline in `## Context` as `output.preflight` (advisory; the planner owns the decision and every closure).
 
 (a) ALREADY LANDED — a fix commit referencing the seed sits in base history AND the acceptance criteria hold in the worktree → emit note-append and close as ONE chained shell call: `seeds update <id> --description "<full existing body> + closure note: superseded: fix landed in <sha> (run <run-id>)" && seeds close <id> --reason "superseded: fix landed in <sha>"` and route "Already landed".
-(b) Criteria satisfied but NO referencing commit → claim it, mark the brief verification-only with per-criterion checks, route "Verification-only" (the graph skips implementer and tester; evidence -> reviewer decides).
+(b) Criteria satisfied but NO referencing commit → claim it, mark the brief verification-only with per-criterion checks, route "Verification-only" (the graph skips implementer and tester; evidence -> reviewer decides). Record the proof (fabro-f759): before routing, RUN each per-criterion check yourself through the shared wrapper — `nu .fabro/workflows/develop/scripts/check-transcript.nu --by planner -- '<check command>'` — cheapest-first, so the capture inlines the commands + outputs + exit codes as a `recorded checks` section and the reviewer judges from context instead of re-running them. Checks are read-only verification only — never edit anything on this route.
 
 If `seeds ready --assignee loop --limit 200` returns nothing and no loop-assigned seed is in progress, route Tracker empty. NEVER fall back to other assignees' seeds and never invent work (FAIL-CLOSED).
 
@@ -88,7 +88,7 @@ Verification-only:
   "context_updates": {
     "current_seed_id": "<the seed id>",
     "current_seed_title": "<its title>",
-    "current_seed_brief": "The acceptance criteria appear already satisfied. Verify each one against the worktree; make NO changes if all hold. Per-criterion checks: <one checkable bullet per acceptance criterion, cheapest-first verification>",
+    "current_seed_brief": "The acceptance criteria appear already satisfied. Verify each one against the worktree; make NO changes if all hold. Per-criterion checks (each already run through the check-transcript wrapper with --by planner; the capture inlines their outputs): <one checkable bullet per acceptance criterion, cheapest-first verification>",
     "journal": {"painpoints": [], "observations": ["none"]}
   }
 }

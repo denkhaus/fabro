@@ -441,20 +441,25 @@ def checks-transcript-path [run_id: string]: nothing -> string {
     $"/tmp/fabro-check-transcript/($run_id).md"
 }
 
-# Per-criterion check transcript (fabro-d89a): checks the implementer
-# ran through check-transcript.nu append command + combined output +
-# exit code records to the run-scoped transcript; this section inlines
-# it so the reviewer approves from context instead of re-running the
-# proof (temp fixtures may be long gone — the transcript IS the proof).
-# Present in EVERY capture whose implementer recorded checks; omitted
-# entirely when no transcript exists (no empty-section noise for
-# verification-only runs or older runs). HARD_CAP applies with the same
-# UNSEEN disclosure as the diff sections.
+# Per-criterion check transcript (fabro-d89a + fabro-f759): checks the
+# implementer (implement runs) or the planner (verification-only claims,
+# which skip the implementer entirely) recorded through check-transcript.nu
+# — command + combined output + exit code records, each stamped with its
+# recorder (`[by implementer]` / `[by planner]`) — append to the
+# run-scoped transcript; this section inlines it so the reviewer approves
+# from context instead of re-running the proof (temp fixtures may be long
+# gone — the transcript IS the proof). A verification-only capture with
+# empty seed-work is exactly the case that needs it most: without it the
+# capture is a bare "(no seed-work files to diff)" and the reviewer
+# re-derives every criterion with tools. Present in EVERY capture whose
+# running stage recorded checks; omitted entirely when no transcript
+# exists (no empty-section noise for runs that recorded none). HARD_CAP
+# applies with the same UNSEEN disclosure as the diff sections.
 def checks-section [path: string]: nothing -> string {
     if not ($path | path exists) { return "" }
     let raw = (open --raw $path | str trim -r -c "\n")
     if ($raw | is-empty) { return "" }
-    let head = "\n== implementer checks: per-criterion transcript (commands + outputs + exit codes exactly as the implementer ran them — recorded proof; never re-run these) ==\n"
+    let head = "\n== recorded checks: per-criterion transcript (commands + outputs + exit codes exactly as recorded through the check-transcript wrapper — implementer on implement runs, planner on verification-only runs; recorded proof; never re-run these) ==\n"
     let body = (sanitize $raw)
     if (($head | str length) + ($body | str length)) > $HARD_CAP {
         let keep = ($HARD_CAP - ($head | str length) - 100)
@@ -517,7 +522,8 @@ def main [--lane: string = "product"]: nothing -> nothing {
     # Fixed sections first, each under its own cap…
     let integrity = (integrity-section $base.short $seed_desc $diff_desc $seed_rows $churn_rows $wt.label)
     let spec = (spec-section $wip)
-    # Implementer check transcript (fabro-d89a): cheap and critical —
+    # Implementer check transcript (fabro-d89a; planner-recording on
+    # verification-only claims fabro-f759): cheap and critical —
     # slot it after the spec, before the file lists and diffs, so a
     # compact render still carries the recorded proof.
     let checks = (checks-section (checks-transcript-path (current-run-id)))

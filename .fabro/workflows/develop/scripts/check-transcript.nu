@@ -1,9 +1,13 @@
 #!/usr/bin/env nu
-# Per-criterion check transcript — the implementer-side half of the
-# evidence pipe. The implementer runs each acceptance-criterion check
-# through this wrapper; the wrapper records the command, its combined
-# output, and its exit code into a run-scoped transcript file that
-# evidence.nu inlines as an `implementer checks` capture section.
+# Per-criterion check transcript — the recording half of the evidence
+# pipe. The IMPLEMENTER runs each acceptance-criterion check through
+# this wrapper on implement runs; the PLANNER runs the per-criterion
+# verification checks the same way on verification-only claims
+# (fabro-f759 — a 1.7KB "(no seed-work files to diff)" capture once
+# forced the reviewer to re-derive every criterion with tools). The
+# wrapper records the command, its combined output, and its exit code
+# (stamped with the recorder via --by) into a run-scoped transcript
+# file that evidence.nu inlines as a `recorded checks` capture section.
 # Motivation (fabro-d89a): an implementer's temp-fixture negative-path
 # proof (fixtures built under `mktemp -d`, deleted afterwards) used to
 # die with the fixtures, so the reviewer re-ran the entire proof
@@ -18,6 +22,8 @@
 #
 # Usage (implementer):
 #   nu .fabro/workflows/develop/scripts/check-transcript.nu -- '<check command>'
+# Usage (planner, verification-only claims — fabro-f759):
+#   nu .fabro/workflows/develop/scripts/check-transcript.nu --by planner -- '<check command>'
 #   nu .fabro/workflows/develop/scripts/check-transcript.nu --path
 #
 # The wrapper streams the command's stdout/stderr to YOU unchanged and
@@ -38,7 +44,7 @@ def transcript-path [run_id: string]: nothing -> string {
     $"/tmp/fabro-check-transcript/($run_id).md"
 }
 
-def main [...command: string, --path]: nothing -> nothing {
+def main [...command: string, --path, --by: string = "implementer"]: nothing -> nothing {
     if $path or ($command | is-empty) {
         print (transcript-path (current-run-id))
         return
@@ -47,7 +53,7 @@ def main [...command: string, --path]: nothing -> nothing {
     let res = (do { bash -c $cmd } | complete)
     let out = ($res.stdout | str trim -r -c "\n")
     let err = ($res.stderr | str trim -r -c "\n")
-    mut record = $"$ ($cmd)\n"
+    mut record = $"$ [by ($by)] ($cmd)\n"
     if ($out | is-not-empty) { $record = $"($record)($out)\n" }
     if ($err | is-not-empty) { $record = $"($record)[stderr] ($err)\n" }
     $record = $"($record)-> exit ($res.exit_code)\n\n"

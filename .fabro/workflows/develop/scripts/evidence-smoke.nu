@@ -109,7 +109,7 @@ let tpath = $"($tmp2)/checks.md"
 "$ just lint-nu\nall green\n-> exit 0\n\nrun in /tmp dir\n-> exit 0" | save --force $tpath
 let sec = (checks-section $tpath)
 rm -rf $tmp2
-if not ($sec | str contains "implementer checks: per-criterion transcript") {
+if not ($sec | str contains "recorded checks: per-criterion transcript") {
     fail "checks-section must carry the contract header"
 }
 if not ($sec | str contains "just lint-nu") {
