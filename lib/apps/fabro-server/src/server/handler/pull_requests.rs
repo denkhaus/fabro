@@ -184,6 +184,31 @@ pub(super) async fn load_pull_request_github_context(
     })
 }
 
+/// Whether every file the patch touches is a run journal (`.fabro/journal/
+/// *.jsonl`) — the run's own bookkeeping and nothing else (fabro-6ac5).
+/// A patch naming no file at all is not journal-only.
+fn patch_touches_only_the_run_journal(patch: &str) -> bool {
+    let mut any_file = false;
+    for line in patch.lines() {
+        if let Some(path) = line.strip_prefix("+++ b/") {
+            let path = path.split_whitespace().next().unwrap_or_default();
+            if path.is_empty() {
+                continue;
+            }
+            any_file = true;
+            let is_journal = path.strip_prefix(".fabro/journal/").is_some_and(|rest| {
+                rest.rsplit_once('.').is_some_and(|(_, ext)| {
+                    ext.eq_ignore_ascii_case("jsonl") && rest.len() > "jsonl".len()
+                })
+            });
+            if !is_journal {
+                return false;
+            }
+        }
+    }
+    any_file
+}
+
 pub(in crate::server) struct RunPrInputs<'a> {
     pub(in crate::server) goal:              &'a str,
     pub(in crate::server) base_branch:       &'a str,
@@ -240,6 +265,20 @@ impl<'a> RunPrInputs<'a> {
                     "empty_diff",
                 )
             })?;
+        // Fork seam (fabro-6ac5, part b): a run whose ONLY change is its
+        // own stage journal is bookkeeping, not work — a PR for it fakes
+        // in-flight state on the line and briefly blocks the push gate
+        // (observed: run 01M43QEE554G, a rate-limited revisor pass whose
+        // one-line journal diff opened and auto-merged PR #386). Refuse
+        // with a teaching error; `force` overrides.
+        if !force && patch_touches_only_the_run_journal(diff) {
+            return Err(ApiError::with_code(
+                StatusCode::BAD_REQUEST,
+                "The run's only change is its own stage journal — nothing to review or merge. \
+                 Pull request creation is skipped for bookkeeping-only runs (force to override).",
+                "bookkeeping_only_run",
+            ));
+        }
         let conclusion = run_state.conclusion.as_ref().ok_or_else(|| {
             ApiError::with_code(
                 StatusCode::BAD_REQUEST,
@@ -614,5 +653,71 @@ async fn close_run_pull_request(
             github_pull_request_not_found_error(ctx.number).into_response()
         }
         Err(err) => ApiError::new(StatusCode::BAD_GATEWAY, err.to_string()).into_response(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::patch_touches_only_the_run_journal;
+
+    #[test]
+    fn a_journal_only_patch_is_bookkeeping() {
+        // the PR #386 shape (fabro-6ac5): a rate-limited run whose only
+        // change is its own stage journal
+        let patch = "\
+diff --git a/.fabro/journal/01M43QEE554G.jsonl b/.fabro/journal/01M43QEE554G.jsonl
+index 1111111..2222222 100644
+--- a/.fabro/journal/01M43QEE554G.jsonl
++++ b/.fabro/journal/01M43QEE554G.jsonl
+@@ -1,0 +2 @@
++{\"kind\":\"stage\"}
+";
+        assert!(patch_touches_only_the_run_journal(patch));
+    }
+
+    #[test]
+    fn a_patch_with_real_work_is_not_bookkeeping() {
+        let patch = "\
+diff --git a/.fabro/journal/x.jsonl b/.fabro/journal/x.jsonl
+--- a/.fabro/journal/x.jsonl
++++ b/.fabro/journal/x.jsonl
+@@ -1,0 +2 @@
++x
+diff --git a/lib/lib.rs b/lib/lib.rs
+--- a/lib/lib.rs
++++ b/lib/lib.rs
+@@ -1 +1 @@
+-fn a() {}
++fn b() {}
+";
+        assert!(!patch_touches_only_the_run_journal(patch));
+    }
+
+    #[test]
+    fn code_only_and_headerless_patches_are_not_bookkeeping() {
+        let code_only = "\
+diff --git a/lib/lib.rs b/lib/lib.rs
+--- a/lib/lib.rs
++++ b/lib/lib.rs
+@@ -1 +1 @@
+-a
++b
+";
+        assert!(!patch_touches_only_the_run_journal(code_only));
+        assert!(!patch_touches_only_the_run_journal("no headers at all"));
+        assert!(!patch_touches_only_the_run_journal(""));
+    }
+
+    #[test]
+    fn other_dot_fabro_files_do_not_count_as_the_journal() {
+        let skills_only = "\
+diff --git a/.fabro/skills/x.md b/.fabro/skills/x.md
+--- a/.fabro/skills/x.md
++++ b/.fabro/skills/x.md
+@@ -1 +1 @@
+-a
++b
+";
+        assert!(!patch_touches_only_the_run_journal(skills_only));
     }
 }
