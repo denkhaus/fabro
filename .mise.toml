@@ -34,7 +34,7 @@ bun = "1.4.0"
 # fabro GitButler experiment validated (2026-10-03). Same pin as the
 # global ~/.config/mise/config.toml entry and the seeds/mulch per-repo pins;
 # the per-repo pin makes the dependency explicit for this checkout.
-"http:but" = { version = "0.22.3-fork.1", url = "https://github.com/denkhaus/gitbutler/releases/download/v0.22.3-fork.1/but-0.22.3-fork.1-x86_64-unknown-linux-gnu.tar.gz" }
+"http:but" = { version = "0.22.3-fork.3", url = "https://github.com/denkhaus/gitbutler/releases/download/v0.22.3-fork.3/but-0.22.3-fork.3-x86_64-unknown-linux-gnu.tar.gz" }
 
 [settings.npm]
 # Default aube backend aborts on its interactive `mise add` approval prompt
