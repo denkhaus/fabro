@@ -26,6 +26,15 @@ sandbox = false
 # Mirrors develop (fabro-03ef): starts go through `just run loop` which
 # passes --environment toolchain (the loop battery needs nu/just/seeds
 # and the prebuilt fabro CLI). Placement is server-managed.
+#
+# No [run.environment] pin here, twice over (fabro-3ab2): (a) the CLI
+# always sends an explicit intent environment id and the intent's
+# selection outranks the bundle layers, so a pin cannot redirect a
+# flag-less manual `fabro run loop` off the default image; (b) a pin
+# naming a server-managed id ("toolchain") fails offline validation
+# (validate-workflows cannot resolve the server's catalog). The
+# fail-closed teaching guard is the graph's FIRST node instead:
+# env_guard runs toolchain-guard.sh (POSIX sh) before any nu stage.
 
 [run.model]
 provider = "zai"

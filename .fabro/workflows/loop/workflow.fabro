@@ -21,6 +21,23 @@ digraph Loop {
     // open for a human; soft exits re-enter on the next run.
     exit  [shape=Msquare, label="Exit"]
 
+    // Toolchain-placement guard (fabro-3ab2): a manual `fabro run loop`
+    // without --environment falls to the default sandbox image (the CLI
+    // always sends an intent environment id and the intent's selection
+    // outranks any [run.environment] pin, so workflow.toml cannot
+    // redirect a flag-less fire) — the run then died cryptically at
+    // "nu: command not found" in the next stage. POSIX sh, NOT nu: the
+    // failure mode it guards is a sandbox without nu. Fail-closed with a
+    // teaching error naming the correct fire command; zero effect on
+    // toolchain-placed runs (passes in milliseconds).
+    env_guard [
+        label="Toolchain guard: fail-closed placement check",
+        shape=parallelogram,
+        script="sh .fabro/scripts/toolchain-guard.sh loop",
+        timeout="30s",
+        max_retries=0
+    ]
+
     // Tracker guard: the develop script with --assignee loop — one file,
     // a fix lands once (stage-journal sharing pattern). Drained
     // loop-queue fast exit costs zero planner tokens; the stale-claim
@@ -190,7 +207,8 @@ digraph Loop {
         max_retries=1
     ]
 
-    start -> tracker_guard
+    start -> env_guard
+    env_guard -> tracker_guard
     tracker_guard -> exit [label="Tracker empty", condition="preferred_label=\"Tracker empty\""]
     tracker_guard -> preflight [label="Tracker non-empty"]
     preflight -> planner [label="Preflight done"]
