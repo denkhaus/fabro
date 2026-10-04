@@ -142,6 +142,12 @@ def check-loop-assets [] {
         # sweep (the ac84 silent-de-gate class): the script existed, ran
         # green, and nothing executed it.
         '.fabro/workflows/develop/scripts/tracker-guard-smoke.nu'
+        # Salvage-sweep analysis battery (fabro-f312, user directive
+        # 2026-09-30): the dump analysis is the sweep's decision core, so
+        # the battery pins the five verdict-relevant shapes — failed with
+        # real work, journal-only bookkeeping, the green-lie, a diff-less
+        # run, and a clean green run — with no live server in reach.
+        '.fabro/scripts/salvage-sweep-smoke.nu'
         # closeout pure-decision logic (fabro-5af4/591a era): reviewer
         # journal, deferred-action and exemption-arm sweep. Same finding —
         # unregistered until fabro-8b38.
