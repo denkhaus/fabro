@@ -180,6 +180,16 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for build instructions and development wo
 
 ---
 
+## Haiku
+
+```text
+One graph, many hands —
+agents commit while you sleep,
+gates await your nod.
+```
+
+---
+
 ## License
 
 Fabro is licensed under the [MIT License](LICENSE.md).
