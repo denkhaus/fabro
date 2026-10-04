@@ -235,8 +235,12 @@ stores it belongs to; reach them by phase need:
 - Proof of work: the cycle report NAMES the guideline pages loaded for
   the diff and the verification commands actually run.
 - Fork-feature regression check: run the fork-only presence suites
-  (`cargo nextest run -p fabro-workflow -- fork_seam` + newer fork-only
-  files) on the reviewed tree. Every NEW fork feature carries a presence
+  on the reviewed tree — for fabro-workflow the current files are
+  `--test fork_ask_tool_registry --test fork_publish_gate --test
+  fork_run_tool_pins` (the old `-- fork_seam` filter matches NOTHING
+  since the suite split; a filter that runs 0 tests is a silent skip and
+  nextest exits 4), plus every newer `fork_*` test file of the crate you
+  touched. Every NEW fork feature carries a presence
   pin (fork-only test file + touchpoints row); a pin-less fork feature
   ships only with a filed seed. Red fork-only test = landed fork feature
   regressed: fix or revert, never relax the test.
