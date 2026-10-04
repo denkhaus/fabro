@@ -309,7 +309,12 @@ stores it belongs to; reach them by phase need:
 
 ## Phase 5 — Integrate
 
-- Commit code (`but commit`) BEFORE tracker mutations land. The commit
+- Commit code (`but commit`) BEFORE tracker mutations land. TARGET the
+  lane explicitly: with several lanes stacked, `but commit` places the
+  commit at the TIP OF THE STACK - the topmost lane, not the line (2026-
+  10-04, sprint 14: the 9c44 commit landed on the sibling's b869 lane and
+  needed `but move <id> --branch denkhaus`); pass `--branch denkhaus` on
+  every line commit. The commit
   message travels through a FILE, never through a Python variable:
   `bash()` does not see the REPL's names, so `-m "$MSG"` commits an
   empty message (2026-10-03 fabro-8615) - write `/tmp/msg.txt` and pass
