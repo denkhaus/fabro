@@ -165,6 +165,50 @@ def loop-work-path [path: string]: nothing -> bool {
     ($prefix_hit) or ($path in ["justfile" ".seeds/issues.jsonl" ".seeds/config.yaml"])
 }
 
+# Paths literally named by the seed spec (fabro-d76c): a seed body that
+# names a loop-path file (e.g. a develop-workflow prompt) as part of its
+# change used to see that file flagged in the anomaly section anyway —
+# the split was pure path-prefix classification, blind to the spec.
+# Extraction is MECHANICAL: path-shaped tokens (contain "/", no spaces)
+# pulled from the claimed seed's description; a token ending in "**" or
+# "*" names every path under its prefix; the four bare root files match
+# as whole words. Fail-open by design: null seed / empty description /
+# no tokens -> [] and the lane split degrades to the pre-fabro-d76c
+# behavior exactly (never a wrong promotion).
+def spec-named-paths [wip: any]: nothing -> list<string> {
+    if $wip == null { return [] }
+    let desc = ($wip | get -o description | default "")
+    if ($desc | is-empty) { return [] }
+    let toks = ($desc | parse --regex '(?P<tok>[A-Za-z0-9_.@*-]+(?:/[A-Za-z0-9_.@*-]+)+)' | get -o tok | default [])
+    let pathed = ($toks
+        | each {|t| $t | str replace -r '^[(`(]+' '' | str replace -r "[).,;:'`]+$" '' }
+        | where {|t| ($t | str length) > 1 }
+        | uniq)
+    let bare_roots = ["justfile" "AGENTS.md" "CLAUDE.md" ".gitignore"]
+    let bare = ($bare_roots | where {|b|
+        let rx = ('\b(?P<x>' + $b + ')\b')
+        ($desc | parse --regex $rx | get -o x | default [] | is-not-empty)
+    })
+    $pathed | append $bare
+}
+
+# Does one spec token name this changed path? Exact match, or — only for
+# an explicitly globbed token ("dir/**", "dir/*") — prefix match under
+# the glob's directory. A bare directory token ("docs/") never promotes
+# its children: only an explicit glob does.
+def spec-token-names [tok: string, path: string]: nothing -> bool {
+    if $tok == $path { return true }
+    if ($tok | str ends-with "*") {
+        let pre = ($tok | str replace -r '\*+$' '')
+        if ($pre | str ends-with "/") and ($path | str starts-with $pre) { return true }
+    }
+    false
+}
+
+def spec-names-path [spec_paths: list<string>, path: string]: nothing -> bool {
+    $spec_paths | any {|tok| spec-token-names $tok $path }
+}
+
 # numstat rows {add del path} for base -> working tree (staged + unstaged).
 # numstat emits "-" for binary files; `total` counts those as 0.
 def numstat-rows [base: string]: nothing -> list<record<add: string, del: string, path: string>> {
@@ -397,11 +441,15 @@ def loop-diff-section [base: string, churn_rows: list]: nothing -> string {
 # change alongside seed work as a NAMED, DIFFED anomaly — same walk, same
 # cap, same disclosure as the two diff sections above — and the reviewer
 # prompt makes adjudicating it (residue vs adjacent repair vs scope
-# creep) mandatory. Detection-only by design: spec-named path promotion
+# creep) mandatory. Since fabro-d76c the section is spec-aware: loop-path
+# files the seed spec explicitly names are seed work (diffed in the
+# seed-work sections above), so the anomaly list carries only files the
+# spec does NOT name — the header's claim is now literally true.
+# Detection-only by design: spec-named path promotion
 # (fabro-93a7) and worktree-diff quarantine (fabro-9d2f) are separate
 # open seeds and stay out.
 def anomaly-section [base: string, churn_rows: list]: nothing -> string {
-    let head = "\n== anomaly: changed files NOT named by the seed spec (loop paths changed alongside seed work — reviewer must adjudicate: residue vs adjacent repair vs scope creep) ==\n"
+    let head = "\n== anomaly: changed files NOT named by the seed spec (loop paths changed alongside seed work, excluding spec-named files — reviewer must adjudicate: residue vs adjacent repair vs scope creep) ==\n"
     let churn_files = ($churn_rows | get -o path | default [] | sort-by {|f| diff-sort-key $f })
     let walk = (diff-walk $base $churn_files)
     if ($walk.omitted | is-empty) and ($walk.body | is-empty) {
@@ -473,6 +521,28 @@ def checks-section [path: string]: nothing -> string {
 # main
 # ---------------------------------------------------------------------------
 
+# Pure classification (fabro-70b5 lane split + fabro-d76c spec-awareness):
+# product lane inverts loop-ness, loop lane inverts it again (loop assets
+# = seed work); the tracker file flips sides with the lane (product churn
+# vs loop seed work — reviewed hunks). A spec-named path flips to seed
+# work regardless of lane, so the anomaly section carries only files the
+# seed spec does NOT name. Pure on purpose: the smoke proves the split
+# without git.
+def classify-rows [rows: list, lane: string, spec_paths: list<string>]: nothing -> record<seed: list, churn: list> {
+    let spec_named = {|r| spec-names-path $spec_paths $r.path }
+    let seed = (if $lane == "loop" {
+        $rows | where {|r| (loop-work-path $r.path) or (do $spec_named $r)} | sort-by path
+    } else {
+        $rows | where {|r| (not (is-loop-path $r.path)) or (do $spec_named $r)} | sort-by path
+    })
+    let churn = (if $lane == "loop" {
+        $rows | where {|r| (not (loop-work-path $r.path)) and (not (do $spec_named $r))} | sort-by path
+    } else {
+        $rows | where {|r| (is-loop-path $r.path) and (not (do $spec_named $r))} | sort-by path
+    })
+    {seed: $seed, churn: $churn}
+}
+
 # Lane parameter (fabro-70b5): product (default — develop's reviewer
 # scope is repo code, loop paths are churn) or loop (the meta lane's
 # reviewer scope IS the loop assets; everything else is out-of-lane and
@@ -490,23 +560,16 @@ def main [--lane: string = "product"]: nothing -> nothing {
     # by the improve workflow. They are NO review input —
     # dropped here, so they appear in NO section and NO count.
     let rows = (numstat-rows $base.base | where {|r| not ($r.path | str starts-with ".fabro/journal/")})
-    # Lane classification: product inverts loop-ness, loop inverts it
-    # again (loop assets = seed work). The tracker file flips sides with
-    # the lane: product churn (bookkeeping) vs loop seed work (the loop
-    # implementer may legitimately write it — reviewed hunks).
-    let seed_rows = (if $lane == "loop" {
-        $rows | where {|r| loop-work-path $r.path} | sort-by path
-    } else {
-        $rows | where {|r| not (is-loop-path $r.path)} | sort-by path
-    })
-    let churn_rows = (if $lane == "loop" {
-        $rows | where {|r| not (loop-work-path $r.path)} | sort-by path
-    } else {
-        $rows | where {|r| is-loop-path $r.path} | sort-by path
-    })
+    # The claimed seed FIRST: its description names the files the spec
+    # mandates, and spec-named files are seed work in EVERY lane
+    # (fabro-d76c) — a spec that names a loop-path file (a develop
+    # workflow prompt, say) must not see it flagged as anomaly churn.
+    let wip = (claimed-seed)
+    let split = (classify-rows $rows $lane (spec-named-paths $wip))
+    let seed_rows = $split.seed
+    let churn_rows = $split.churn
 
     let wt = (worktree-state)
-    let wip = (claimed-seed)
     let seed_desc = (if $wip == null { "none-in-progress" } else { $"($wip.id): ($wip.title)" })
 
     # Diff anchor: the commit where this seed was claimed. Only the diff

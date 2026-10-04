@@ -119,7 +119,73 @@ if not ($sec | str contains "`/tmp` dir") {
     fail $"checks-section must sanitize bare /word tokens: ($sec)"
 }
 
-print "evidence-smoke: ok — sanitize/resolve-blobrefs/diff-sort-key/is-loop-path/total/checks-section verified"
+# spec-named-paths / spec-token-names / spec-names-path (fabro-d76c):
+# null/empty seed -> [] (fail-open, pre-d76c split); path-shaped tokens
+# are extracted from the description (sentence punctuation stripped);
+# glob tokens name their subtree; bare root files match as words.
+if (spec-named-paths null) != [] { fail "spec-named-paths null seed must be []" }
+if (spec-named-paths {description: ""}) != [] { fail "spec-named-paths empty description must be []" }
+let d76c_seed = {description: "Part (a): edit .fabro/workflows/develop/prompts/implementer.md as the fix; also touch .fabro/workflows/** graphs and the justfile, see docs/internal/x.md. Not paths: fabro-70b5, run 01M2K8TECWAHRR79PQ63V2C0ZP, PR #109."}
+let d76c_paths = (spec-named-paths $d76c_seed)
+if ".fabro/workflows/develop/prompts/implementer.md" not-in $d76c_paths {
+    fail $"spec-named-paths must extract the named prompt file: ($d76c_paths)"
+}
+if "justfile" not-in $d76c_paths { fail $"spec-named-paths must catch bare root justfile: ($d76c_paths)" }
+if "docs/internal/x.md" not-in $d76c_paths { fail $"spec-named-paths must strip trailing sentence dot: ($d76c_paths)" }
+# Glob token promotes its subtree, exact token matches exactly, a bare
+# directory token never promotes children, unrelated paths stay out.
+if not (spec-names-path $d76c_paths ".fabro/workflows/develop/prompts/implementer.md") {
+    fail "spec-names-path exact token must match"
+}
+if not (spec-names-path $d76c_paths ".fabro/workflows/loop/scripts/loop-gate.nu") {
+    fail "spec-names-path glob token (.fabro/workflows/**) must promote subtree"
+}
+if (spec-names-path [] "lib/main.rs") { fail "spec-names-path empty set must never match" }
+if (spec-names-path [".fabro/workflows"] ".fabro/workflows/loop/scripts/x.nu") {
+    fail "spec-names-path bare directory token must not promote children"
+}
+if (spec-names-path ["docs/a.md"] "docs/b.md") { fail "spec-names-path sibling must not match" }
+
+# classify-rows (fabro-d76c, the original incident reproduced): a product
+# run whose seed spec names a loop-path prompt file must classify that
+# file as seed work, not anomaly churn; unnamed loop paths stay churn in
+# product and flip to seed work in loop; product code stays seed work in
+# product and churn (anomaly) in loop unless the spec names it.
+let incident_rows = [
+    {add: "3" del: "1" path: "lib/apps/fabro-cli/src/main.rs"}
+    {add: "5" del: "2" path: ".fabro/workflows/develop/prompts/implementer.md"}
+    {add: "1" del: "1" path: ".fabro/workflows/develop/workflow.fabro"}
+]
+# Incident seed body: names the prompt file ONLY (no glob) — workflow.fabro
+# stays unnamed and must remain anomaly churn in the product lane.
+let incident_seed = {description: "Part (a): edit .fabro/workflows/develop/prompts/implementer.md as the fix. Basis: run evidence review."}
+let incident_spec = (spec-named-paths $incident_seed)
+let prod = (classify-rows $incident_rows "product" $incident_spec)
+let prod_seed = ($prod.seed | get path)
+let prod_churn = ($prod.churn | get path)
+if "lib/apps/fabro-cli/src/main.rs" not-in $prod_seed { fail $"product seed work must carry product code: ($prod_seed)" }
+if ".fabro/workflows/develop/prompts/implementer.md" not-in $prod_seed {
+    fail $"fabro-d76c: spec-named loop path must be seed work in product lane: ($prod_seed)"
+}
+if ".fabro/workflows/develop/prompts/implementer.md" in $prod_churn {
+    fail $"fabro-d76c: spec-named loop path must NOT be anomaly churn: ($prod_churn)"
+}
+if ".fabro/workflows/develop/workflow.fabro" not-in $prod_churn {
+    fail $"unnamed loop path must stay churn in product lane: ($prod_churn)"
+}
+let lp = (classify-rows $incident_rows "loop" [])
+if ".fabro/workflows/develop/workflow.fabro" not-in ($lp.seed | get path) {
+    fail $"loop lane: loop assets must be seed work even unnamed: ($lp.seed)"
+}
+if "lib/apps/fabro-cli/src/main.rs" not-in ($lp.churn | get path) {
+    fail $"loop lane: unnamed product code must be anomaly churn: ($lp.churn)"
+}
+let lp_named = (classify-rows $incident_rows "loop" ["lib/apps/fabro-cli/src/main.rs"])
+if "lib/apps/fabro-cli/src/main.rs" not-in ($lp_named.seed | get path) {
+    fail $"loop lane: spec-named product path must be seed work: ($lp_named.seed)"
+}
+
+print "evidence-smoke: ok — sanitize/resolve-blobrefs/diff-sort-key/is-loop-path/spec-named-paths/classify-rows/total/checks-section verified"
 
 # Sourcing evidence.nu imports its `def main`; nu auto-invokes it after
 # the top level runs — exit explicitly so the smoke never reaches it.

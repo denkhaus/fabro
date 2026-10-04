@@ -1,0 +1,10 @@
+{"$schema":"fabro-journal-v1","run_id":"01M43FJAX6T8FWFH1C227SX55F","node":"start","visit":1,"status":"succeeded","ts":"2026-10-04T12:53:55Z","data":{}}
+{"$schema":"fabro-journal-v1","run_id":"01M43FJAX6T8FWFH1C227SX55F","node":"tracker_guard","visit":1,"status":"succeeded","ts":"2026-10-04T12:53:56Z","data":{}}
+{"$schema":"fabro-journal-v1","run_id":"01M43FJAX6T8FWFH1C227SX55F","node":"preflight","visit":1,"status":"succeeded","ts":"2026-10-04T12:54:00Z","data":{}}
+{"$schema":"fabro-journal-v1","run_id":"01M43FJAX6T8FWFH1C227SX55F","node":"planner","visit":1,"status":"succeeded","ts":"2026-10-04T12:56:14Z","data":{}}
+{"$schema":"fabro-journal-v1","run_id":"01M43FJAX6T8FWFH1C227SX55F","node":"claim_check","visit":1,"status":"succeeded","ts":"2026-10-04T12:56:15Z","data":{}}
+{"$schema":"fabro-journal-v1","run_id":"01M43FJAX6T8FWFH1C227SX55F","node":"implementer","visit":1,"status":"succeeded","ts":"2026-10-04T13:01:31Z","data":{}}
+{"$schema":"fabro-journal-v1","run_id":"01M43FJAX6T8FWFH1C227SX55F","node":"tester","visit":1,"status":"succeeded","ts":"2026-10-04T13:01:44Z","data":{}}
+{"$schema":"fabro-journal-v1","run_id":"01M43FJAX6T8FWFH1C227SX55F","node":"evidence","visit":1,"status":"succeeded","ts":"2026-10-04T13:01:45Z","data":{}}
+{"$schema":"fabro-journal-v1","run_id":"01M43FJAX6T8FWFH1C227SX55F","node":"reviewer","visit":1,"status":"succeeded","ts":"2026-10-04T13:02:36Z","data":{}}
+{"$schema":"fabro-journal-v1","run_id":"01M43FJAX6T8FWFH1C227SX55F","node":"closeout","visit":1,"status":"succeeded","ts":"2026-10-04T13:02:38Z","data":{}}
