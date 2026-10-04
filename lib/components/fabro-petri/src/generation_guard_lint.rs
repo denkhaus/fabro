@@ -7,7 +7,13 @@
 //! limit and the guard's threshold still dies as `workflow_error`. This
 //! lint names the collision at admission, with the recommendation, before
 //! a run ever hits it.
+//!
+//! The guard edges are read through the fork's one DOT scan
+//! ([`crate::fork_dot_edges`], fabro-9c44): comment- and quote-aware, so a
+//! commented-out route declares no guard and a quoted bracket hides no
+//! condition.
 
+use crate::fork_dot_edges;
 use crate::fork_stage_envelope::LintSeverity;
 
 /// One generation-guard finding over the raw DOT `graph_source`.
@@ -59,30 +65,21 @@ struct Guard {
 }
 
 /// The generation guards in the DOT text: edges whose `condition=`
-/// attribute compares `nodes.<id>.generation` with a number.
+/// attribute compares `nodes.<id>.generation` with a number, read through
+/// the fork's one DOT scan ([`crate::fork_dot_edges`], fabro-9c44): a
+/// commented-out guard edge declares nothing, a quoted `]` in a label
+/// hides no condition, and a bare edge owns no attribute block.
 fn generation_guards(graph_source: &str) -> Vec<Guard> {
     let mut guards = Vec::new();
-    let mut rest = graph_source;
-    while let Some(open) = rest.find('[') {
-        let head = &rest[..open];
-        let after = &rest[open + 1..];
-        let Some(close) = after.find(']') else { break };
-        let block = &after[..close];
-        rest = &after[close + 1..];
-        let Some(condition) = attribute(block, "condition") else {
-            continue;
+    fork_dot_edges::for_each_edge(graph_source, |from, to, attrs| {
+        let Some(block) = fork_dot_edges::inner_block(attrs) else {
+            return;
         };
-        let subject = head
-            .lines()
-            .last()
-            .unwrap_or_default()
-            .trim()
-            .trim_matches(|c: char| c.is_whitespace() || c == ';' || c == ',');
-        if !subject.contains("->") {
-            continue;
-        }
-        guards.extend(guards_in_condition(subject, condition));
-    }
+        let Some(condition) = fork_dot_edges::attribute(block, "condition") else {
+            return;
+        };
+        guards.extend(guards_in_condition(&format!("{from} -> {to}"), condition));
+    });
     guards
 }
 
@@ -130,21 +127,6 @@ fn guards_in_condition(edge: &str, condition: &str) -> Vec<Guard> {
     guards
 }
 
-/// The quoted-or-bare value of `name=` in an attribute block.
-fn attribute<'a>(block: &'a str, name: &str) -> Option<&'a str> {
-    let key = format!("{name}=");
-    let at = block.find(&key)?;
-    let rest = &block[at + key.len()..];
-    let trimmed = rest.trim_start();
-    if let Some(value) = trimmed.strip_prefix('"') {
-        return value.find('"').map(|end| &value[..end]);
-    }
-    let end = trimmed
-        .find([',', ']', '\n', ' ', '\r'])
-        .unwrap_or(trimmed.len());
-    Some(&trimmed[..end])
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -190,5 +172,46 @@ mod tests {
     fn multiple_guards_each_lint() {
         let source = "a -> e1 [condition=\"nodes.a.generation >= 5\"]\nb -> e2 [condition=\"nodes.b.generation >= 5\"]";
         assert_eq!(lint(source, Some(3)).len(), 2);
+    }
+
+    #[test]
+    fn a_commented_out_guard_edge_declares_no_guard() {
+        // The e901 phantom-site class: a commented-out route is not a
+        // route. The raw `find('[')`/`find(']')` walk read the comment's
+        // block as a live edge's and warned at admission.
+        let source = "digraph W {\n    // flaky -> exit [condition=\"nodes.flaky.generation >= 5\"]\n    flaky -> exit\n}";
+        assert!(lint(source, Some(3)).is_empty());
+    }
+
+    #[test]
+    fn a_quoted_bracket_in_a_label_hides_no_condition() {
+        // The raw walk closed the block at the `]` inside the quoted
+        // label and never saw the condition — the guard was silently
+        // missed.
+        let source = "flaky -> exit [label=\"[Y] Yes\", condition=\"nodes.flaky.generation >= 9\"]";
+        assert_eq!(lint(source, Some(3)).len(), 1);
+        assert!(lint(source, Some(10)).is_empty(), ">= 9 fires after 10");
+    }
+
+    #[test]
+    fn a_bare_edge_owns_no_condition() {
+        // The bare edge must not inherit the next edge's block.
+        let source = "a -> b\nb -> exit [condition=\"nodes.b.generation >= 9\"]";
+        let findings = lint(source, Some(3));
+        assert_eq!(findings.len(), 1);
+        assert!(findings[0].message.contains("'b -> exit'"));
+    }
+
+    #[test]
+    fn a_chain_condition_lints_each_leg() {
+        // DOT applies a statement's block to every leg of the chain, so a
+        // guard on a chain statement guards each leg — the same fan-out
+        // `edge_conditions` applies since fabro-8615. The old raw walk
+        // named the whole statement once; the scan names each leg.
+        let source = "a -> b -> exit [condition=\"nodes.a.generation >= 9\"]";
+        let findings = lint(source, Some(3));
+        assert_eq!(findings.len(), 2);
+        assert!(findings[0].message.contains("'a -> b'"));
+        assert!(findings[1].message.contains("'b -> exit'"));
     }
 }

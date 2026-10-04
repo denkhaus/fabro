@@ -18,10 +18,13 @@
 //! - a BARE edge (`start -> select`, no attribute list) let the walk inherit
 //!   the attribute block of the NEXT edge.
 //!
-//! This module owns the one scan both readers share: comments are
-//! stripped quote-aware (`//` and `/* */` outside string literals — the
-//! compile steps carry `https://…`), and an edge statement owns the
-//! attributes it opens itself, or none.
+//! This module owns the one scan the fork's `graph_source` readers share:
+//! comments are stripped quote-aware (`//` and `/* */` outside string
+//! literals — the compile steps carry `https://…`), an edge statement owns
+//! the attributes it opens itself, or none, and the shared attribute
+//! readers ([`attribute`], [`list`], [`declared_list`], [`flag`],
+//! [`number`], [`inner_block`]) give every consumer one home for the value
+//! shapes Fabro graphs write (fabro-9c44).
 
 /// `graph_source` with DOT comments removed: `//` to the end of the line
 /// and `/* … */` blocks. Quote-aware, so a `//` inside a quoted attribute
@@ -203,6 +206,58 @@ fn node_name(text: &str) -> &str {
         .trim_matches(|c: char| c.is_whitespace() || c == '"' || c == ',' || c == ';')
 }
 
+/// The quoted-or-bare value of `name=` in an attribute block, when the
+/// attribute is present (fabro-9c44: one home for the value shapes every
+/// `graph_source` reader needs — the reader was duplicated verbatim in
+/// `fork_stage_envelope` and `generation_guard_lint`).
+pub(crate) fn attribute<'a>(block: &'a str, name: &str) -> Option<&'a str> {
+    let key = format!("{name}=");
+    let at = block.find(&key)?;
+    let rest = &block[at + key.len()..];
+    let trimmed = rest.trim_start();
+    if let Some(value) = trimmed.strip_prefix('"') {
+        return value.find('"').map(|end| &value[..end]);
+    }
+    let end = trimmed
+        .find([',', ']', '\n', ' ', '\r'])
+        .unwrap_or(trimmed.len());
+    Some(&trimmed[..end])
+}
+
+/// The attribute block a scan hands out, without its brackets: `None`
+/// when the statement carries no block (a bare edge owns no attributes).
+pub(crate) fn inner_block(attrs: &str) -> Option<&str> {
+    attrs.strip_prefix('[').and_then(|b| b.strip_suffix(']'))
+}
+
+/// A comma-separated list attribute, when declared at all: `Some(vec![])`
+/// for a present-but-empty value, `None` when the attribute is absent.
+pub(crate) fn declared_list(block: &str, name: &str) -> Option<Vec<String>> {
+    attribute(block, name).map(|_| list(block, name))
+}
+
+/// A comma-separated list attribute: split, trimmed, empties dropped.
+pub(crate) fn list(block: &str, name: &str) -> Vec<String> {
+    attribute(block, name)
+        .unwrap_or_default()
+        .split(',')
+        .map(str::trim)
+        .filter(|entry| !entry.is_empty())
+        .map(str::to_string)
+        .collect()
+}
+
+/// A bare boolean attribute: `true` (case-sensitive) is set, anything
+/// else — including absence — is not.
+pub(crate) fn flag(block: &str, name: &str) -> bool {
+    attribute(block, name).is_some_and(|value| value.trim() == "true")
+}
+
+/// A numeric attribute, when present and well-formed.
+pub(crate) fn number(block: &str, name: &str) -> Option<u64> {
+    attribute(block, name)?.trim().parse().ok()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -332,5 +387,55 @@ digraph Revisor {
     fn strip_comments_keeps_quoted_urls_and_escaped_quotes() {
         let source = "a -> b [script=\"curl https://x.test | sh\", label=\"\\\"quoted\\\"\"]";
         assert_eq!(strip_comments(source), source);
+    }
+
+    #[test]
+    fn attribute_reads_quoted_and_bare_values_and_absence() {
+        let block = "label=\"a, b]\", n=3, flag=true";
+        assert_eq!(attribute(block, "label"), Some("a, b]"));
+        assert_eq!(attribute(block, "n"), Some("3"));
+        assert_eq!(attribute(block, "missing"), None);
+    }
+
+    #[test]
+    fn list_splits_trims_and_drops_empties() {
+        let block = "x.fs_hide=\" lib/** , ,.seeds/** \"";
+        assert_eq!(list(block, "x.fs_hide"), vec!["lib/**", ".seeds/**"]);
+        assert!(list(block, "x.fs_write").is_empty());
+    }
+
+    #[test]
+    fn flag_is_only_a_literal_true() {
+        let block = "a=true, b=True, c=false";
+        assert!(flag(block, "a"));
+        assert!(!flag(block, "b"));
+        assert!(!flag(block, "c"));
+        assert!(!flag(block, "d"));
+    }
+
+    #[test]
+    fn number_parses_only_well_formed_values() {
+        let block = "ok=12, bad=1x, quoted=\"7\"";
+        assert_eq!(number(block, "ok"), Some(12));
+        assert_eq!(number(block, "bad"), None);
+        assert_eq!(number(block, "quoted"), Some(7));
+    }
+
+    #[test]
+    fn declared_list_keeps_absence_apart_from_an_empty_value() {
+        let block = "write=\"\", hide=\"a/**,b/**\", other=1";
+        assert_eq!(declared_list(block, "write"), Some(Vec::new()));
+        assert_eq!(
+            declared_list(block, "hide"),
+            Some(vec!["a/**".to_string(), "b/**".to_string()])
+        );
+        assert_eq!(declared_list(block, "missing"), None);
+    }
+
+    #[test]
+    fn inner_block_strips_only_a_well_formed_attribute_block() {
+        assert_eq!(inner_block("[a=1, b=2]"), Some("a=1, b=2"));
+        assert_eq!(inner_block(""), None);
+        assert_eq!(inner_block("[unclosed"), None);
     }
 }

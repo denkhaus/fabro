@@ -220,25 +220,38 @@ impl StageEnvelopes {
                 continue;
             }
             if name == "graph" {
-                graph.preamble_budget_kb = number(block, "x.preamble_budget_kb");
-                graph.preamble_inline_max_kb = number(block, "x.preamble_inline_max_kb");
+                graph.preamble_budget_kb = fork_dot_edges::number(block, "x.preamble_budget_kb");
+                graph.preamble_inline_max_kb =
+                    fork_dot_edges::number(block, "x.preamble_inline_max_kb");
             } else {
                 let envelope = NodeEnvelope {
-                    fs_hide: list(block, "x.fs_hide"),
-                    fs_write: attribute(block, "x.fs_write").map(|_| list(block, "x.fs_write")),
-                    preamble_inline_max_kb: number(block, "x.preamble_inline_max_kb"),
-                    fabro_tools: attribute(block, "x.fabro_tools")
-                        .map(|_| list(block, "x.fabro_tools")),
-                    tools: attribute(block, "x.tools").map(|_| list(block, "x.tools")),
-                    preamble_stages_ignore: list(block, "x.preamble_stages_ignore"),
-                    preamble_stages_latest_only: flag(block, "x.preamble_stages_latest_only"),
-                    context_allow_keys: attribute(block, "x.context_allow_keys")
-                        .map(|_| list(block, "x.context_allow_keys")),
-                    preamble_allow_keys: attribute(block, "x.preamble_allow_keys")
-                        .map(|_| list(block, "x.preamble_allow_keys")),
-                    context_consume_keys: list(block, "x.context_consume_keys"),
-                    preamble_budget_kb: number(block, "x.preamble_budget_kb"),
-                    preamble_output_max_lines: number(block, "x.preamble_output_max_lines"),
+                    fs_hide: fork_dot_edges::list(block, "x.fs_hide"),
+                    fs_write: fork_dot_edges::declared_list(block, "x.fs_write"),
+                    preamble_inline_max_kb: fork_dot_edges::number(
+                        block,
+                        "x.preamble_inline_max_kb",
+                    ),
+                    fabro_tools: fork_dot_edges::declared_list(block, "x.fabro_tools"),
+                    tools: fork_dot_edges::declared_list(block, "x.tools"),
+                    preamble_stages_ignore: fork_dot_edges::list(block, "x.preamble_stages_ignore"),
+                    preamble_stages_latest_only: fork_dot_edges::flag(
+                        block,
+                        "x.preamble_stages_latest_only",
+                    ),
+                    context_allow_keys: fork_dot_edges::declared_list(
+                        block,
+                        "x.context_allow_keys",
+                    ),
+                    preamble_allow_keys: fork_dot_edges::declared_list(
+                        block,
+                        "x.preamble_allow_keys",
+                    ),
+                    context_consume_keys: fork_dot_edges::list(block, "x.context_consume_keys"),
+                    preamble_budget_kb: fork_dot_edges::number(block, "x.preamble_budget_kb"),
+                    preamble_output_max_lines: fork_dot_edges::number(
+                        block,
+                        "x.preamble_output_max_lines",
+                    ),
                 };
                 let declares = !envelope.fs_hide.is_empty()
                     || envelope.fs_write.is_some()
@@ -524,44 +537,6 @@ fn hide_covers(hide: &[String], entry: &str) -> bool {
         };
         write_root == hide_root || write_root.starts_with(&format!("{hide_root}/"))
     })
-}
-
-/// The quoted-or-bare value of `name=` in an attribute block, when the
-/// attribute is present.
-fn attribute<'a>(block: &'a str, name: &str) -> Option<&'a str> {
-    let key = format!("{name}=");
-    let at = block.find(&key)?;
-    let rest = &block[at + key.len()..];
-    let trimmed = rest.trim_start();
-    if let Some(value) = trimmed.strip_prefix('"') {
-        return value.find('"').map(|end| &value[..end]);
-    }
-    let end = trimmed
-        .find([',', ']', '\n', ' ', '\r'])
-        .unwrap_or(trimmed.len());
-    Some(&trimmed[..end])
-}
-
-/// A comma-separated list attribute: split, trimmed, empties dropped.
-fn list(block: &str, name: &str) -> Vec<String> {
-    attribute(block, name)
-        .unwrap_or_default()
-        .split(',')
-        .map(str::trim)
-        .filter(|entry| !entry.is_empty())
-        .map(str::to_string)
-        .collect()
-}
-
-/// A bare boolean attribute: `true` (case-sensitive) is set, anything
-/// else — including absence — is not.
-fn flag(block: &str, name: &str) -> bool {
-    attribute(block, name).is_some_and(|value| value.trim() == "true")
-}
-
-/// A numeric attribute, when present and well-formed.
-fn number(block: &str, name: &str) -> Option<u64> {
-    attribute(block, name)?.trim().parse().ok()
 }
 
 #[cfg(test)]
