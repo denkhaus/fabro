@@ -32,6 +32,11 @@
 #  10. Reviewer evidence line budget: x.preamble_output_max_lines on the
 #      reviewer node stays >= 1000 (fabro-31f7) — the stage Output tail
 #      cap must never silently omit an evidence capture's head.
+# 11. Toolchain-placement guard (fabro-3ab2): the env_guard node is the
+#      FIRST stage after start, runs the shared guard through POSIX sh
+#      (never nu — the failure mode is a sandbox without nu), and hands
+#      to tracker_guard. A dropped guard silently returns the cryptic
+#      "nu: command not found" death on misplaced manual fires.
 
 const GRAPH = ('.fabro/workflows/loop/workflow.fabro' | path expand)
 const FS_WRITE_EXPECTED = 'x.fs_write=".fabro/**,scripts/**,justfile,.seeds/issues.jsonl,.seeds/config.yaml,lib/components/fabro-dot/src/snapshots/**"'
@@ -130,5 +135,17 @@ def main [] {
         fail $"reviewer x.preamble_output_max_lines=($value) is below the fabro-31f7 floor of 1000 — evidence heads would be silently omitted"
     }
 
-    print 'loop graph-contract-smoke: OK — guard exits, lane wiring, envelope pins, red bounce, evidence budget intact'
+    # 11. toolchain-placement guard (fabro-3ab2): start routes through
+    # env_guard (sh, never nu) before tracker_guard.
+    if not ($lines | any {|l| ($l | str contains 'start -> env_guard')}) {
+        fail 'start -> env_guard edge missing — a misplaced manual fire would die cryptically at the first nu stage'
+    }
+    if not ($lines | any {|l| ($l | str contains 'env_guard -> tracker_guard')}) {
+        fail 'env_guard -> tracker_guard edge missing — the placement guard must precede every nu stage'
+    }
+    if not ($lines | any {|l| ($l | str contains 'toolchain-guard.sh') and ($l | str starts-with '        script="sh ')}) {
+        fail 'env_guard script line must run the shared guard via POSIX sh — nu cannot guard a sandbox without nu'
+    }
+
+    print 'loop graph-contract-smoke: OK — guard exits, lane wiring, envelope pins, red bounce, evidence budget, placement guard intact'
 }
