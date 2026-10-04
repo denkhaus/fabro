@@ -129,8 +129,6 @@ impl RunView {
     /// The run's conclusion, from its recorded finish and what the stages
     /// summed to.
     fn conclude(&mut self, status: &str, at: DateTime<Utc>) {
-        use fabro_llm::LONG_RATE_LIMIT_WINDOW;
-        use fabro_llm::gateway::{RateLimitWindow, reset_window};
         // Fork seam read (fabro-6655): snapshot the publish state before the
         // mutable projection borrow below.
         let pull_request_creation = self
@@ -220,28 +218,7 @@ impl RunView {
             ),
             _ => (StageOutcome::Succeeded, None),
         };
-        let failure = failure.or(publish_blocked_failure);
-        // Fork seam (fabro-2e7b, ADR-0021 rev 2 Option C): a failure whose
-        // message announces a provider usage-window reset (long window or
-        // naive-ETA) parks the run resumable instead of failing it — the
-        // pre-fire provider gate owns its recovery through rewind.
-        if let (RunStatus::Failed { .. }, Some(failure)) = (&run_status, &failure) {
-            let parks = reset_window(&failure.detail.message, std::time::SystemTime::now())
-                .is_some_and(|window| {
-                    matches!(window, RateLimitWindow::UnknownEta)
-                        || matches!(
-                            window,
-                            RateLimitWindow::Reopens(wait)
-                                if wait > LONG_RATE_LIMIT_WINDOW
-                        )
-                });
-            if parks {
-                run_status = RunStatus::Blocked {
-                    blocked_reason: fabro_types::BlockedReason::QuotaRateLimit,
-                };
-            }
-        }
-
+        let mut failure = failure.or(publish_blocked_failure);
         // Fork seam (fabro-288d, ADR-0010 rev Option A): the run's DOT
         // source carries the fork's `x.kind` exit edges; a boundary
         // failure upgrades to `Succeeded { Boundary }`, deadlock/soft
@@ -263,6 +240,27 @@ impl RunView {
                 .find(|node| node != "exit");
             if let Some(overridden) = exit_kinds.classify(status, last_stage.as_deref(), "exit") {
                 run_status = overridden;
+            }
+        }
+        // Fork seam (fabro-2e7b, ADR-0021 rev 2 Option C — generalized by
+        // fabro-6ac5): a failure message announcing a provider usage-window
+        // reset parks the run resumable instead of failing OR greening it —
+        // the window blocks the whole lane, so even a leg the graph routed
+        // onward to a designed exit cannot claim success while it is closed,
+        // and the pre-fire provider gate owns the recovery through rewind.
+        // This runs AFTER the x.kind seam on purpose: a designed soft exit
+        // does not outrank a closed provider window. The green arm of the
+        // match above dropped the engine's recorded failure — the park
+        // restores it so the conclusion names the provider window.
+        if super::fork_taxonomy::parks_on_rate_limit(&run_status, failure_message.as_deref()) {
+            run_status = RunStatus::Blocked {
+                blocked_reason: fabro_types::BlockedReason::QuotaRateLimit,
+            };
+            if failure.is_none() {
+                failure = failure_message.map(|message| RunFailure {
+                    reason: FailureReason::SoftStop,
+                    detail: FailureDetail::new(message, FailureCategory::TransientInfra),
+                });
             }
         }
         apply_status(projection, run_status, at);

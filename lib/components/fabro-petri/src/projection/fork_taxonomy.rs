@@ -88,3 +88,26 @@ pub fn refuses_green_conclusion(run_status: &RunStatus, recorded_failure: Option
         reason: SuccessReason::Completed,
     }) && recorded_failure.is_some_and(|message| !message.is_empty())
 }
+
+/// Whether a recorded failure message parks the run as quota-blocked
+/// (fabro-2e7b, generalized by fabro-6ac5): a provider usage-window reset
+/// (long window or naive ETA) blocks the whole lane regardless of the
+/// conclusion the graph's routing produced — even a designed soft or
+/// conditional exit cannot claim success while the window is closed, and a
+/// green run that never reached its work must park, not stand. The
+/// pre-fire provider gate owns the recovery through rewind.
+pub fn parks_on_rate_limit(run_status: &RunStatus, recorded_failure: Option<&str>) -> bool {
+    use fabro_llm::LONG_RATE_LIMIT_WINDOW;
+    use fabro_llm::gateway::{RateLimitWindow, reset_window};
+
+    if matches!(run_status, RunStatus::Blocked { .. }) {
+        return false;
+    }
+    let Some(message) = recorded_failure.filter(|message| !message.is_empty()) else {
+        return false;
+    };
+    reset_window(message, std::time::SystemTime::now()).is_some_and(|window| {
+        matches!(window, RateLimitWindow::UnknownEta)
+            || matches!(window, RateLimitWindow::Reopens(wait) if wait > LONG_RATE_LIMIT_WINDOW)
+    })
+}
