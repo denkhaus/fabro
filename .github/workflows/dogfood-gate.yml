@@ -50,13 +50,33 @@ jobs:
           git fetch origin "${{ github.base_ref }}" --depth=1 >/dev/null 2>&1 || true
           files=$(git diff --name-only "$base"...HEAD || git diff --name-only "$base" HEAD)
           echo "$files" | head -50
-          rust=$(echo "$files" | grep -qE '^(lib/|Cargo\.toml$|Cargo\.lock$|\.cargo/|rust-toolchain|justfile$)' && echo true || echo false)
+          rust_paths='^(lib/|Cargo\.toml$|Cargo\.lock$|\.cargo/|rust-toolchain|justfile$)'
+          rust=$(echo "$files" | grep -qE "$rust_paths" && echo true || echo false)
           ts=$(echo "$files" | grep -qE '^(apps/|lib/packages/|bun\.lock$|\.github/workflows/dogfood-gate\.yml$)' && echo true || echo false)
           loop=$(echo "$files" | grep -qE '^(\.fabro/(workflows|scripts)/|scripts/.*\.nu$)' && echo true || echo false)
+          # The light tier's own contract file lives under lib/: a loop-asset PR
+          # that legitimately refreshes the fabro-dot shape snapshot must stay
+          # light (PR #385 ran the full 4522-test program because of its own
+          # snapshot update and flaked twice). Rust paths other than those
+          # snapshots — and snapshot-only PRs without loop paths — still take
+          # the full program.
+          rust_snapshots_only=$(echo "$files" | grep -E "$rust_paths" | grep -vqE '^lib/components/fabro-dot/src/snapshots/' && echo false || echo true)
+          if [ "$rust" = "true" ] && { [ "$rust_snapshots_only" != "true" ] || [ "$loop" != "true" ]; }; then
+            full_rust=true
+          else
+            full_rust=false
+          fi
+          if [ "$full_rust" != "true" ] && [ "$loop" = "true" ]; then
+            light=true
+          else
+            light=false
+          fi
           {
             echo "rust=$rust"
             echo "ts=$ts"
             echo "loop=$loop"
+            echo "full_rust=$full_rust"
+            echo "light=$light"
           } >> "$GITHUB_OUTPUT"
 
       # ── Light tier (loop assets without Rust paths) ────────────────────
@@ -64,43 +84,43 @@ jobs:
       # contract for .fabro/workflows shape changes (PR #359). Nu-script
       # syntax stays covered by the loop lane's in-run `just lint-nu` gate.
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
-        if: steps.changes.outputs.rust != 'true' && steps.changes.outputs.loop == 'true'
+        if: steps.changes.outputs.light == 'true'
       - uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # v2
-        if: steps.changes.outputs.rust != 'true' && steps.changes.outputs.loop == 'true'
+        if: steps.changes.outputs.light == 'true'
         with:
           cache-on-failure: true
       - uses: taiki-e/install-action@773334c0e05d7e699e4d78234494308223f3a2cf # nextest
-        if: steps.changes.outputs.rust != 'true' && steps.changes.outputs.loop == 'true'
+        if: steps.changes.outputs.light == 'true'
       - name: Loop-asset shape tests (fabro-dot)
-        if: steps.changes.outputs.rust != 'true' && steps.changes.outputs.loop == 'true'
+        if: steps.changes.outputs.light == 'true'
         run: cargo nextest run --locked -p fabro-dot --profile ci
 
       # ── Rust (only when Rust paths changed) ────────────────────────────
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
-        if: steps.changes.outputs.rust == 'true'
+        if: steps.changes.outputs.full_rust == 'true'
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # nightly pin
-        if: steps.changes.outputs.rust == 'true'
+        if: steps.changes.outputs.full_rust == 'true'
         with:
           toolchain: nightly-2026-04-14
           components: clippy, rustfmt
       - uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # v2
-        if: steps.changes.outputs.rust == 'true'
+        if: steps.changes.outputs.full_rust == 'true'
         with:
           cache-on-failure: true
       - name: Rust format
-        if: steps.changes.outputs.rust == 'true'
+        if: steps.changes.outputs.full_rust == 'true'
         run: cargo +nightly-2026-04-14 fmt --check --all
       - name: Rust clippy
-        if: steps.changes.outputs.rust == 'true'
+        if: steps.changes.outputs.full_rust == 'true'
         run: cargo +nightly-2026-04-14 clippy --locked --workspace --all-targets -- -D warnings
       - uses: taiki-e/install-action@773334c0e05d7e699e4d78234494308223f3a2cf # nextest
-        if: steps.changes.outputs.rust == 'true'
+        if: steps.changes.outputs.full_rust == 'true'
       # Petri runs take their scope through sandbox-driver plugin executables
       # that must be on PATH, at the rev the workspace pins (mirrors upstream
       # rust.yml). Without them the workspace suite fails/skips.
       - name: Read the sandbox-driver rev the lock pins
         id: sandbox-driver
-        if: steps.changes.outputs.rust == 'true'
+        if: steps.changes.outputs.full_rust == 'true'
         run: |
           # Cargo.toml tracks Lithos deps on branches since upstream's
           # deps/branch-pins merge; the exact rev lives in Cargo.lock.
@@ -109,7 +129,7 @@ jobs:
           echo "rev=$rev" >> "$GITHUB_OUTPUT"
       - name: Restore the sandbox-driver plugin executables
         id: sandbox-driver-cache
-        if: steps.changes.outputs.rust == 'true'
+        if: steps.changes.outputs.full_rust == 'true'
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
@@ -117,13 +137,13 @@ jobs:
             ~/.cargo/bin/sandbox-driver-docker
           key: sandbox-driver-plugins-${{ runner.os }}-${{ steps.sandbox-driver.outputs.rev }}
       - name: Install the sandbox-driver plugin executables
-        if: steps.changes.outputs.rust == 'true' && steps.sandbox-driver-cache.outputs.cache-hit != 'true'
+        if: steps.changes.outputs.full_rust == 'true' && steps.sandbox-driver-cache.outputs.cache-hit != 'true'
         run: cargo install --locked --git https://github.com/lithoscomputer/sandbox-driver --rev "${{ steps.sandbox-driver.outputs.rev }}" sandbox-driver-host sandbox-driver-docker
       # The images the Docker tests run. The plugin pulls a missing image on
       # first use, but a 1 GiB pull inside a run's wait is a flake (seen live
       # in the 2026-09-21 W0 baseline: 5 petri_docker failures).
       - name: Pull the images the Docker tests run
-        if: steps.changes.outputs.rust == 'true'
+        if: steps.changes.outputs.full_rust == 'true'
         run: |
           backend="$(dirname "$(cargo metadata --locked --format-version 1 | jq -r '.packages[] | select(.name == "petri-executor-sandbox") | .manifest_path')")/src/backend.rs"
           pin="$(sed -n 's/^const RUNNER_PIN: &str = "\([^"]*\)";$/\1/p' "$backend")"
@@ -131,7 +151,7 @@ jobs:
             docker pull "ghcr.io/lithoscomputer/ubuntu-24.04:${flavor}-${pin}"
           done
       - name: Rust tests
-        if: steps.changes.outputs.rust == 'true'
+        if: steps.changes.outputs.full_rust == 'true'
         run: cargo nextest run --locked --workspace --status-level slow --profile ci --no-fail-fast
 
       # ── TypeScript (only when TS paths changed) ────────────────────────
