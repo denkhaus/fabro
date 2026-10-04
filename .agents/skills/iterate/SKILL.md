@@ -355,6 +355,16 @@ stores it belongs to; reach them by phase need:
   line first (automation replace with FULL body + `If-Match` revision +
   explicit `on_overlap: skip`; re-GET and verify it survived), deploy
   nonblocking, smoke on mirtuell.net, re-enable, monitor via heartbeat.
+- Tooling-repin rule (user directive 2026-10-04, "simple but
+  consistent"): a GitButler-fork release repin (`.mise.toml` http:but)
+  is COMMITTED locally and NEVER pushed — the session owns every line
+  push (behind the gate). Repins riding their own push bypass the push
+  gate and move the line tip past the deployed sha (fork.5 incident:
+  parity refusal + stale release clone). Deploy-window ORDER: repin (if
+  pending) -> version bump -> push -> clone-build -> tofu apply ->
+  pin-toolchain — one window restores `line tip == deployed sha == pin
+  target`. Repo scripts shell out via `mise exec -- but`, never the
+  ambient PATH but.
 - Fork releases follow ADR-0025 naming `<frozen-base>-fork.N` — the
   upstream `cargo dev release` path (origin main push) is WRONG for the
   line branch. Until a fork mode exists: manual bump = workspace
