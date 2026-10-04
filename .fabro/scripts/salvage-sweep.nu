@@ -51,12 +51,12 @@ def main [
       continue
     }
     if $dry_run {
-      print $"salvage:would-file ($run.run_id) — affected ($analysis.affected_seed), ($analysis.changed) changed lines, ($analysis.new_files) new files"
+      print $"salvage:would-file ($run.run_id) — affected ($analysis.affected_seed), ($analysis.changed) changed lines, ($analysis.new_files) new files, ($analysis.added_seeds) added seed records"
       continue
     }
     let goal_short = ($run.goal? | default '' | str substring 0..90)
     let today = (date now | format date '%Y-%m-%d')
-    let body = ('SALVAGE POINTER (fabro-f312 sweep, ' + $today + '): terminal run ' + $run.run_id + ' — ' + $goal_short + ' — carries noteworthy stranded work (' + ($analysis.changed | into string) + ' changed lines, ' + ($analysis.new_files | into string) + ' new files); affected seed: ' + $analysis.affected_seed + '. Export: FABRO_SERVER=' + $server + ' fabro dump --output <dir> ' + $run.run_id + '. Review the stage diffs, land the work via PR citing the run, then close this pointer.')
+    let body = ('SALVAGE POINTER (fabro-f312 sweep, ' + $today + '): terminal run ' + $run.run_id + ' — ' + $goal_short + ' — carries noteworthy stranded work (' + ($analysis.changed | into string) + ' changed lines, ' + ($analysis.new_files | into string) + ' new files, ' + ($analysis.added_seeds | into string) + ' added seed records); affected seed: ' + $analysis.affected_seed + '. Export: FABRO_SERVER=' + $server + ' fabro dump --output <dir> ' + $run.run_id + '. Review the stage diffs, land the work via PR citing the run, then close this pointer.')
     let title = ('salvage: run ' + $run.run_id + ' carries noteworthy stranded work')
     let filed = (do { ^seeds create --title $title --type task --priority 2 --labels salvage,revision --description $body } | complete)
     if $filed.exit_code != 0 {

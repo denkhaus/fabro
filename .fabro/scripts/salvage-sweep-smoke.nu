@@ -88,6 +88,39 @@ def main [] {
     exit 1
   }
 
-  print 'salvage-sweep-smoke: OK — candidate/noteworthy/green-lie/bookkeeping/empty/clean verdicts pinned'
+  # F: a failed run whose ONLY product is a tracker ADDITION — the seeds it
+  # filed never landed (fabro-f312 closeout, 2026-10-04: a revisor whose file
+  # stage died strands exactly this).
+  let filed_patch = 'diff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl
+--- a/.seeds/issues.jsonl
++++ b/.seeds/issues.jsonl
+@@ -1,1 +1,2 @@
+ {"id":"fabro-1111","title":"existing","status":"open"}
++{"id":"fabro-3333","title":"stranded filing","status":"open"}
+'
+  let f = (fixture 'failed' 'file the findings' [['001-file@1' 'failed' $filed_patch]])
+  let rf = (analyze-dump $f)
+  if not ($rf.candidate and $rf.noteworthy and $rf.added_seeds == 1) {
+    print $"FAIL: added tracker records are stranded work: ($rf | to json)"
+    exit 1
+  }
+
+  # G: the noise guard — a tracker REWRITE (a claim, a status change) is
+  # churn every pass produces, never work.
+  let claim_patch = 'diff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl
+--- a/.seeds/issues.jsonl
++++ b/.seeds/issues.jsonl
+@@ -1,1 +1,1 @@
+-{"id":"fabro-1111","title":"existing","status":"open"}
++{"id":"fabro-1111","title":"existing","status":"in_progress"}
+'
+  let g = (fixture 'failed' 'claim and die' [['001-file@1' 'failed' $claim_patch]])
+  let rg = (analyze-dump $g)
+  if not ($rg.candidate and not $rg.noteworthy and $rg.added_seeds == 0) {
+    print $"FAIL: a tracker rewrite is not stranded work: ($rg | to json)"
+    exit 1
+  }
+
+  print 'salvage-sweep-smoke: OK — candidate/noteworthy/green-lie/bookkeeping/added-seeds/rewrite/empty/clean verdicts pinned'
 
 }
