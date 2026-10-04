@@ -64,6 +64,15 @@ stores it belongs to; reach them by phase need:
   branch, pull-rebase) — the tracker view is branch-local. Never apply,
   unapply, or update branches while a background cargo runs (the tree is
   rewritten and a mixed build invalidates the whole run).
+- Agent roster FIRST (2026-10-04, second-session incident): call
+  `agent_observe.list_agents()` before anything else. Another top-level
+  session in THIS repo's cwd means a second /iterate is alive in the same
+  checkout: the uncommitted pool, the tracker file and the ledger are then
+  SHARED, and one line has one executor per surface. Do not wait: pick a
+  disjoint surface (code side vs loop assets), claim in the tracker (a
+  sibling's message queue can be full — `agent_message` then refuses), and
+  never commit the sibling's files. Foreign uncommitted files in `git
+  status` are the sibling's work, not an interrupted cycle of this session.
 - Open-PR sweep BEFORE anything else (user directive 2026-10-02, PR #359
   lesson): `gh pr list --repo denkhaus/fabro --state open` plus
   `gh pr checks <n>` for each. A run PR (`fabro/run/*` branches) with a RED
@@ -440,8 +449,16 @@ stores it belongs to; reach them by phase need:
    the tree), dispatch seeds per ADR-0018 with dispatch-dedupe (keep the
    richer seed, close the lesser naming both ids), push through the gate
    (`but push denkhaus`, gate unpiped) with JSONL-dedupe discipline, rootprint correlation for every
-   evaluated run, SALVAGE SWEEP per the failed-run salvage rule above for
-   every failed/green-lie run, report compactly in German. RLM heartbeats are
+   evaluated run, report compactly in German.
+   SALVAGE SWEEP is MECHANICAL FIRST (fabro-f312, 2026-10-04): run
+   `nu .fabro/scripts/salvage-sweep.nu` (optionally `--since 48hr
+   --max-runs 25`) and route its verdicts — `salvage:filed` means the
+   sweep already filed the pointer seed, `salvage:none` /
+   `salvage:pointer-exists` mean nothing to do, `sweep:skip:<reason>` is
+   journaled verbatim. The SESSION owns this call because it holds the
+   stored server login; a run sandbox has none (a lane-side consumer must
+   go through the server or the engine's run tools, never through
+   `fabro ps`/`fabro dump` inside a sandbox). RLM heartbeats are
    session-scoped: recreate from this spec when missing; if the session
    host rejects heartbeats entirely, ask the user to set the visible
    /heartbeat with this ceremony — never run silently unwatched.
