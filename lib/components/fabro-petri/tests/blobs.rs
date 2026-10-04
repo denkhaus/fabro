@@ -5,6 +5,7 @@
 
 mod support;
 
+use std::path::Path;
 use std::sync::Arc;
 
 use fabro_petri::SqliteRunStore;
@@ -16,21 +17,31 @@ use fabro_store::{BlobStore, test_support};
 use fabro_types::BlobHash;
 use petri_attractor_steps::blobs::{BLOB_REF_PREFIX, OFFLOAD_THRESHOLD, parse_blob_ref};
 use support::{SETTINGS, Silent, admit, all_records, no_questions, run_request};
+use tokio::fs;
 
 /// One line of the command's output.
 const LINE: &str = "xxxxxxxx";
 
-/// The command prints `lines` lines, more than the offload threshold in
-/// all.
-fn workflow(lines: usize) -> String {
+/// The stage's exact stdout: `LARGE_OUTPUT_LINES` lines of [`LINE`], more
+/// than the offload threshold in all.
+fn expected_output(lines: usize) -> String {
+    format!("{LINE}\n").repeat(lines)
+}
+
+/// The command prints the payload FILE's bytes, so the byte count never
+/// depends on when a pipe writer dies `yes … | head -n …` produced a
+/// truncated tail under load, which made the live fold and the replay
+/// disagree (fabro-b60d).
+fn workflow(payload: &Path) -> String {
     format!(
         r#"digraph Big {{
     graph [goal="Print a lot"]
     start [shape=Mdiamond]
     exit [shape=Msquare]
-    say [shape=parallelogram, script="yes {LINE} | head -n {lines}"]
+    say [shape=parallelogram, script="cat {payload}"]
     start -> say -> exit
-}}"#
+}}"#,
+        payload = payload.display()
     )
 }
 
@@ -44,8 +55,12 @@ async fn a_large_output_round_trips_through_the_blob_table() {
     let store = Arc::new(SqliteRunStore::new(pool.clone()));
     let blobs = Arc::new(BlobStore::new(pool.clone()));
     let lines = OFFLOAD_THRESHOLD / (LINE.len() + 1) + 512;
-    let expected = format!("{LINE}\n").repeat(lines);
-    let workflow = workflow(lines);
+    let expected = expected_output(lines);
+    let payload = root.path().join("big.txt");
+    fs::write(&payload, &expected)
+        .await
+        .expect("the payload is writable");
+    let workflow = workflow(&payload);
     let runtime = RuntimeSpec::default();
     let graphs = admit(
         &[("workflow.fabro", &workflow), ("workflow.toml", SETTINGS)],

@@ -297,24 +297,55 @@ async fn command_scenario() -> Scenario {
 }
 
 /// A command whose output is above Petri's offload threshold.
-const LARGE_OUTPUT_WORKFLOW: &str = r#"digraph Large {
+/// Above Petri's 100 KiB offload threshold, and BIT-EXACT: the scenario
+/// writes a payload file and the stage cats it. A generator piped into a
+/// limiter (`yes … | head -n`) closes its pipe by timing, and the live fold
+/// and the replay then saw different tails of the same output under load
+/// (live 136000 != rebuilt 134045, fabro-b60d) — the byte count must not
+/// depend on when a writer dies.
+const LARGE_OUTPUT_BYTES: usize = 128 * 1024;
+
+/// The stage's exact stdout: `LARGE_OUTPUT_BYTES` bytes of `x`, no newline.
+fn large_output_payload() -> String {
+    "x".repeat(LARGE_OUTPUT_BYTES)
+}
+
+fn large_output_workflow(payload: &Path) -> String {
+    format!(
+        r#"digraph Large {{
     graph [goal="Print a lot"]
     start [shape=Mdiamond]
     exit [shape=Msquare]
-    big [shape=parallelogram, script="yes xxxxxxxxxxxxxxxx | head -n 8000"]
+    big [shape=parallelogram, script="cat {payload}"]
     start -> big -> exit
-}"#;
+}}"#,
+        payload = payload.display()
+    )
+}
 
 async fn large_output_scenario() -> Scenario {
-    scenario(
-        "large",
-        &[
-            ("workflow.fabro", LARGE_OUTPUT_WORKFLOW),
-            ("workflow.toml", SETTINGS),
-        ],
-        false,
-    )
-    .await
+    let root = tempfile::tempdir().expect("a temp dir");
+    let payload_path = root.path().join("large-output.txt");
+    fs::write(&payload_path, large_output_payload())
+        .await
+        .expect("the payload is writable");
+    let graph = large_output_workflow(&payload_path);
+    let workflow = install_bundle(root.path(), "large", &[
+        ("workflow.fabro", &graph),
+        ("workflow.toml", SETTINGS),
+    ])
+    .await;
+    let pool = pool();
+    let run_id = RunId::new();
+    create_run(&pool, run_id, "large", &graph).await;
+    Scenario {
+        pool,
+        run_id,
+        workflow,
+        run_dir: root.path().join("run"),
+        stubs: false,
+        _root: root,
+    }
 }
 
 async fn parallel_scenario() -> Scenario {
@@ -486,6 +517,24 @@ async fn a_large_output_projects_as_its_blob_reference() {
         "the output is a blob reference: {} bytes, {}",
         output.len(),
         &output[..output.len().min(80)]
+    );
+    // The fixture STATES its exact byte count (fabro-b60d): the live fold and
+    // the rebuild must agree on the blob's content, not only on its
+    // reference, so a timing-dependent tail can never creep back in.
+    let hash = fabro_types::parse_blob_ref(output).expect("a well-formed reference");
+    let table = BlobStore::new(scenario.pool.clone());
+    let bytes = Blobs::read(&table, &hash)
+        .await
+        .expect("the blob table reads")
+        .expect("the blob is in the table");
+    assert_eq!(
+        bytes.len(),
+        LARGE_OUTPUT_BYTES,
+        "the blob carries exactly the fixture's byte count"
+    );
+    assert!(
+        bytes.iter().all(|byte| *byte == b'x'),
+        "and exactly the fixture's bytes"
     );
 }
 
