@@ -130,8 +130,13 @@ run-images:
 # GitButler workspace the pushable line tip needs `but sha` — HEAD is the
 # never-pushed workspace commit — and the generic CLI takes the resolved
 # sha via --tag, keeping repo specifics out of the product.
-pin-toolchain:
-    fabro env pin-toolchain --tag {{ `nu .fabro/scripts/line-tip-sha.nu` }}
+# Usage: `just pin-toolchain [TAG]` — default tag is the LINE TIP (correct
+# inside a deploy window: deploy, then pin). The toolchain image exists only
+# for a sha that was actually built+deployed, and the parity gate demands the
+# DEPLOYED server sha — so pass the deployed sha explicitly whenever the line
+# moved on since the deploy (tooling repins do exactly that).
+pin-toolchain tag="":
+    fabro env pin-toolchain --tag {{ if tag == "" { `nu .fabro/scripts/line-tip-sha.nu` } else { tag } }}
 
 # Build only the release binary and stage it (no docker image build)
 build-binary: web-deps
