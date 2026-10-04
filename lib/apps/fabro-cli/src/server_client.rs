@@ -316,7 +316,35 @@ fn resolve_target_credential_with_store(
 
 fn resolve_target_credential(target: &ServerTarget) -> Result<Option<Credential>> {
     let store = AuthStore::default();
-    resolve_target_credential_with_store(target, &store, chrono::Utc::now())
+    let credential = resolve_target_credential_with_store(target, &store, chrono::Utc::now())?;
+    if credential.is_none() {
+        if let Some(note) = no_credentials_note(target, &store) {
+            tracing::warn!("{note}");
+        }
+    }
+    Ok(credential)
+}
+
+/// The teaching note for a target that resolves to no usable credentials
+/// while the store holds logins for other targets (fabro-3c11): logins are
+/// keyed by the EXACT server URL — scheme included — so a wrong-scheme
+/// `FABRO_SERVER`/`--server` silently points at a target nobody logged in
+/// to, and the later "Authentication required" denies sessions that exist.
+/// `None` when the store holds nothing worth naming.
+fn no_credentials_note(target: &ServerTarget, store: &AuthStore) -> Option<String> {
+    let stored = store
+        .list()
+        .ok()?
+        .into_iter()
+        .map(|(stored, _)| stored.to_string())
+        .collect::<Vec<_>>();
+    if stored.is_empty() {
+        return None;
+    }
+    Some(format!(
+        "no stored credentials for {target}; the CLI keys logins by the exact server URL          (scheme included). Stored logins: {}. Log in to the exact target or point          --server/FABRO_SERVER at one of them.",
+        stored.join(", ")
+    ))
 }
 
 #[expect(
@@ -632,5 +660,37 @@ mod tests {
             },
             logged_in_at: Utc::now(),
         })
+    }
+
+    #[test]
+    fn no_credentials_note_names_the_target_and_the_stored_logins() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = AuthStore::new(dir.path().join("auth.json"));
+        let stored = ServerTarget::http_url("https://mirtuell.net").unwrap();
+        store
+            .put(
+                &stored,
+                AuthEntry::DevToken(DevTokenEntry {
+                    token:
+                        "fabro_dev_abababababababababababababababababababababababababababababababab"
+                            .to_string(),
+                    logged_in_at: Utc::now(),
+                }),
+            )
+            .unwrap();
+
+        let attempted = ServerTarget::http_url("http://mirtuell.net").unwrap();
+        let note = no_credentials_note(&attempted, &store).expect("a note when logins exist");
+        assert!(note.contains("http://mirtuell.net"), "{note}");
+        assert!(note.contains("https://mirtuell.net"), "{note}");
+        assert!(note.contains("exact server URL"), "{note}");
+    }
+
+    #[test]
+    fn no_credentials_note_is_silent_without_stored_logins() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = AuthStore::new(dir.path().join("auth.json"));
+        let attempted = ServerTarget::http_url("http://mirtuell.net").unwrap();
+        assert_eq!(no_credentials_note(&attempted, &store), None);
     }
 }

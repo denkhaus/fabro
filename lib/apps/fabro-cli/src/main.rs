@@ -127,9 +127,10 @@ async fn main() {
 
     if let Err(err) = result {
         let json_mode = raw_args.iter().any(|a| a == "--json");
+        let auth_target = selected_server_from_args(&raw_args);
         eprintln!(
             "{:?}",
-            miette::Report::new(CliDiagnostic::new(err, !json_mode))
+            miette::Report::new(CliDiagnostic::new(err, !json_mode, auth_target))
         );
     }
 
@@ -154,13 +155,18 @@ fn install_miette_hook() {
 struct CliDiagnostic {
     err:            anyhow::Error,
     show_auth_hint: bool,
+    /// The server target the failed command selected (fabro-3c11): named in
+    /// the auth hint so a wrong-scheme selection is visible at the failure,
+    /// not only in `auth status`.
+    auth_target:    Option<String>,
 }
 
 impl CliDiagnostic {
-    fn new(err: anyhow::Error, show_auth_hint: bool) -> Self {
+    fn new(err: anyhow::Error, show_auth_hint: bool, auth_target: Option<String>) -> Self {
         Self {
             err,
             show_auth_hint,
+            auth_target,
         }
     }
 }
@@ -186,8 +192,53 @@ impl std::error::Error for CliDiagnostic {
 impl miette::Diagnostic for CliDiagnostic {
     fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
         (self.show_auth_hint && exit::exit_class_for(&self.err) == Some(ExitClass::AuthRequired))
-            .then(|| Box::new("Run `fabro auth login` to authenticate.") as Box<dyn Display + 'a>)
+            .then(|| Box::new(auth_hint(self.auth_target.as_deref())) as Box<dyn Display + 'a>)
     }
+}
+
+/// The auth-required hint, naming the logins the store actually holds
+/// (fabro-3c11): a bare "run auth login" denies sessions that exist when the
+/// selected target merely differs from every stored one — the CLI keys
+/// logins by the exact server URL, scheme included.
+/// The server target the command line selected, mirroring the resolution
+/// order for the auth hint: an explicit `--server` flag wins over the
+/// `FABRO_SERVER` environment fallback. Settings-configured and default
+/// targets stay unnamed (the hint then speaks of "the selected target").
+fn selected_server_from_args(raw_args: &[String]) -> Option<String> {
+    let mut iter = raw_args.iter();
+    while let Some(argument) = iter.next() {
+        if let Some(value) = argument.strip_prefix("--server=") {
+            return Some(value.to_string());
+        }
+        if argument == "--server" {
+            return iter.next().cloned();
+        }
+    }
+    process_env_var(fabro_static::EnvVars::FABRO_SERVER)
+}
+
+fn auth_hint(target: Option<&str>) -> String {
+    let stored = fabro_client::AuthStore::default()
+        .list()
+        .map(|entries| {
+            entries
+                .into_iter()
+                .map(|(target, _)| target.to_string())
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    if stored.is_empty() {
+        return "Run `fabro auth login` to authenticate.".to_string();
+    }
+    let selected = target.map_or_else(
+        || "the selected target".to_string(),
+        |target| format!("target `{target}`"),
+    );
+    format!(
+        "Run `fabro auth login --server <target>` to authenticate: logins are keyed by the \
+         exact server URL (scheme included), and {selected} matches none. Stored logins: {}.",
+        stored.join(", ")
+    )
 }
 
 #[expect(

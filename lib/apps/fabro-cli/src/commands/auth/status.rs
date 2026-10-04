@@ -61,7 +61,12 @@ pub(super) fn status_command(args: &AuthStatusArgs, ctx: &CommandContext) -> Res
     }
 
     if rows.is_empty() {
-        fabro_util::printerr!(printer, "Not logged in to any servers.");
+        let env_server = crate::process_env_var(fabro_static::EnvVars::FABRO_SERVER);
+        fabro_util::printerr!(
+            printer,
+            "{}",
+            empty_status_message(args.server.as_deref(), env_server.as_deref(), &store)
+        );
         return Ok(());
     }
 
@@ -134,6 +139,41 @@ pub(super) fn status_command(args: &AuthStatusArgs, ctx: &CommandContext) -> Res
     Ok(())
 }
 
+/// The empty-status message (fabro-3c11): scoped to one target it names that
+/// target and the logins that DO exist — a wrong-scheme server selection
+/// must not read as "not logged in to any servers". Unscoped it stays the
+/// plain sentence (the store is genuinely empty).
+fn empty_status_message(
+    scoped_target: Option<&str>,
+    env_server: Option<&str>,
+    store: &AuthStore,
+) -> String {
+    let stored = store
+        .list()
+        .map(|entries| {
+            entries
+                .into_iter()
+                .map(|(target, _)| target.to_string())
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let Some(target) = scoped_target else {
+        return "Not logged in to any servers.".to_string();
+    };
+    let scope = if stored.is_empty() {
+        format!("Not logged in to {target}; the auth store is empty.")
+    } else {
+        format!(
+            "Not logged in to {target}. Stored logins (exact server URLs): {}.",
+            stored.join(", ")
+        )
+    };
+    if env_server.is_some_and(|value| value == target) {
+        return format!("{scope} The scope came from FABRO_SERVER, not a --server flag.");
+    }
+    scope
+}
+
 fn all_rows(store: &AuthStore, now: DateTime<Utc>) -> Result<Vec<StatusRow>> {
     Ok(store
         .list()?
@@ -196,7 +236,7 @@ fn human_state(state: OAuthState) -> &'static str {
 #[cfg(test)]
 mod tests {
     use chrono::Duration;
-    use fabro_client::{OAuthEntry, StoredSubject};
+    use fabro_client::{AuthStore, OAuthEntry, StoredSubject};
 
     use super::{OAuthState, human_state, oauth_state};
 
@@ -250,5 +290,63 @@ mod tests {
             "expired (refreshable)"
         );
         assert_eq!(human_state(OAuthState::Expired), "expired");
+    }
+
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "test fixture writes the auth store synchronously, off the Tokio paths"
+    )]
+    fn store_with(server: &str) -> AuthStore {
+        let dir =
+            std::env::temp_dir().join(format!("fabro-auth-status-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("create test dir");
+        std::fs::write(
+            dir.join("auth.json"),
+            format!(
+                r#"{{"servers":{{"{server}":{{"kind":"dev-token","token":"t","logged_in_at":"2026-10-04T00:00:00Z"}}}}}}"#
+            ),
+        )
+        .expect("write test store");
+        AuthStore::new(dir.join("auth.json"))
+    }
+
+    #[test]
+    fn unscoped_empty_store_keeps_the_plain_message() {
+        let empty = AuthStore::new(std::path::PathBuf::from(
+            "/nonexistent-auth-store/auth.json",
+        ));
+        assert_eq!(
+            super::empty_status_message(None, None, &empty),
+            "Not logged in to any servers."
+        );
+    }
+
+    #[test]
+    fn scoped_empty_names_the_target_and_the_stored_logins() {
+        let store = store_with("https://mirtuell.net");
+        let message = super::empty_status_message(
+            Some("http://mirtuell.net"),
+            Some("http://mirtuell.net"),
+            &store,
+        );
+        assert!(
+            message.contains("Not logged in to http://mirtuell.net."),
+            "{message}"
+        );
+        assert!(message.contains("https://mirtuell.net"), "{message}");
+        assert!(
+            message.contains("FABRO_SERVER"),
+            "the env origin is named: {message}"
+        );
+    }
+
+    #[test]
+    fn scoped_with_nothing_stored_says_the_store_is_empty() {
+        let empty = AuthStore::new(std::path::PathBuf::from(
+            "/nonexistent-auth-store/auth.json",
+        ));
+        let message = super::empty_status_message(Some("http://x.test"), None, &empty);
+        assert!(message.contains("auth store is empty"), "{message}");
     }
 }
