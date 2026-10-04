@@ -276,6 +276,18 @@ impl HooksSpec {
         }
     }
 
+    /// The run's Git identity: what authors every commit the run makes —
+    /// its checkpoints, and (fabro-19f9) every commit a stage makes inside
+    /// its sandbox, which the runtime injects this same identity for.
+    #[must_use]
+    pub fn identity(&self) -> GitIdentity {
+        GitIdentity {
+            name:   self.git.author.name.clone(),
+            email:  self.git.author.email.clone(),
+            source: self.git.identity_source,
+        }
+    }
+
     #[must_use]
     pub fn with_test_gates(mut self, gates: Option<PathBuf>) -> Self {
         self.test_gates = gates;
@@ -486,11 +498,7 @@ impl FabroHooks {
         resumed: bool,
         blobs: Option<Arc<dyn Blobs>>,
     ) -> Self {
-        let identity = GitIdentity {
-            name:   spec.git.author.name.clone(),
-            email:  spec.git.author.email.clone(),
-            source: spec.git.identity_source,
-        };
+        let identity = spec.identity();
         let workspaces = RunWorkspaces::new(
             run_dir,
             run_id.to_string(),

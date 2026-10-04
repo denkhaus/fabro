@@ -115,6 +115,10 @@ pub(crate) fn runtime_spec(
         // The engine binds the run's id on the local hook service when the
         // run executes; the launch spec itself has no id to give yet.
         run_id: None,
+        // Likewise the Git identity: `engine::run` hands the runtime the
+        // run's hooks spec, whose identity every sandbox process carries
+        // (fabro-19f9).
+        git_identity: None,
     }
 }
 

@@ -190,6 +190,10 @@ pub async fn run(mut request: RunRequest) -> Result<RunOutcome, RunError> {
     // run-binds only for a service it built itself, so the run about to
     // execute binds its id here (fabro-6558).
     request.runtime.run_id = Some(request.run_id.clone());
+    // The run's Git identity reaches the sandboxes (fabro-19f9): the same
+    // identity the checkpoints are authored with, so a stage's own commit
+    // inside its sandbox is the run's, not a self-configured one.
+    request.runtime.git_identity = request.hooks.as_ref().map(HooksSpec::identity);
     let mut runtime = request
         .runtime
         .runtime(true)

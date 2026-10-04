@@ -648,5 +648,8 @@ async fn runtime_spec(
         // The engine binds the run's id on the local hook service when the
         // run executes; the worker assembles the spec before that.
         run_id: None,
+        // Likewise the Git identity: `engine::run` reads it off the run's
+        // hooks spec, which every sandbox process then carries (fabro-19f9).
+        git_identity: None,
     })
 }

@@ -12,7 +12,7 @@
     reason = "the tests inspect backend availability and read the workspace's history with git"
 )]
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::env;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -34,7 +34,7 @@ use fabro_petri::recovery::{self, Recovery, RecoveryRequest};
 use fabro_petri::runtime::RuntimeSpec;
 use fabro_petri::test_support::{MemoryBlobs, MemoryPlatformRecords};
 use fabro_store::{PlatformRecord, PlatformRecordKind};
-use fabro_types::settings::run::RunCheckpointSettings;
+use fabro_types::settings::run::{GitAuthorSettings, RunCheckpointSettings, RunNamespace};
 use fabro_types::{GitIdentitySource, RunId, SandboxProviderKind};
 use petri_execution::inspect::{self, RunInspection};
 use petri_store::{Access, MemoryRunStore, RunKey, RunStore as _};
@@ -107,6 +107,19 @@ fn admit(workflow: &str, settings: &str) -> AdmittedGraphs {
     }
 }
 
+/// The Git settings a run's namespace gives for `author` on `provider`,
+/// as `HooksSpec::for_run` derives them: the fixture never restates the
+/// host-workspace or the identity-source rule.
+fn named_git_settings(author: &GitAuthor, provider: &SandboxProviderKind) -> RunGitSettings {
+    let mut namespace = RunNamespace::default();
+    namespace.environment.provider = provider.clone();
+    namespace.git.author = (!author.is_default()).then(|| GitAuthorSettings {
+        name:  Some(author.name.clone()),
+        email: Some(author.email.clone()),
+    });
+    RunGitSettings::from(&namespace)
+}
+
 /// One run's pieces: the store, its platform records, where it ran.
 struct Harness {
     run_id:           RunId,
@@ -122,6 +135,9 @@ struct Harness {
     /// Workspace-relative roots the run's hook wiring may write
     /// (fabro-b6c5), as `HooksSpec::for_run` would derive them.
     hook_write_roots: Vec<String>,
+    /// The Git author the run's settings name, as `[run.git.author]`
+    /// would: the identity its commits are authored with (fabro-19f9).
+    author:           GitAuthor,
     _root:            tempfile::TempDir,
 }
 
@@ -137,6 +153,7 @@ impl Harness {
             artifacts:        Vec::new(),
             envelopes:        None,
             hook_write_roots: Vec::new(),
+            author:           GitAuthor::default(),
             _root:            root,
         }
     }
@@ -144,10 +161,7 @@ impl Harness {
     fn hooks(&self, provider: &SandboxProviderKind) -> HooksSpec {
         let mut spec = HooksSpec {
             records:          Arc::clone(&self.records) as Arc<dyn PlatformRecords>,
-            git:              RunGitSettings {
-                host_workspaces: *provider == SandboxProviderKind::LOCAL,
-                ..RunGitSettings::default()
-            },
+            git:              named_git_settings(&self.author, provider),
             artifacts:        self.artifacts.clone(),
             envelopes:        None,
             hook_write_roots: self.hook_write_roots.clone(),
@@ -481,6 +495,64 @@ async fn stage_processes_carry_the_dispatched_stage() {
             .unwrap_or_else(|error| panic!("the {node} stage saw FABRO_STAGE: {error}"));
         assert_eq!(seen, node, "the engine's stage names the dispatched node");
     }
+}
+
+/// Presence pin (fork feature, fabro-19f9): a run's sandbox processes
+/// carry the run's Git identity, so a stage commits inside its workspace
+/// without configuring one and the commit names the run — the revisor's
+/// `Author identity unknown` (run 01M441TACSP4, pass 2) cannot recur.
+///
+/// The stage initialises the repository itself: the identity travels in
+/// the process environment, not in a repository the run's checkout would
+/// have to have delivered first.
+#[tokio::test]
+async fn a_stage_commits_as_the_runs_git_identity() {
+    let mut harness = Harness::new();
+    harness.author = GitAuthor {
+        name:  "Fabro Pin".to_string(),
+        email: "pin@fabro.test".to_string(),
+    };
+    let workflow = workflow(
+        "  work [shape=parallelogram, script=\"echo \\\"$GIT_AUTHOR_NAME|$GIT_AUTHOR_EMAIL|\
+         $GIT_COMMITTER_NAME|$GIT_COMMITTER_EMAIL\\\" > identity.txt && git init -q && git \
+         add -A && git commit -q -m stage-commit && git log -1 \
+         --format='%an|%ae|%cn|%ce' > committed-as.txt\"]",
+        "  start -> work -> exit",
+    );
+    let outcome = harness.run(&workflow, SETTINGS).await;
+    assert_eq!(outcome.status, RunStatus::Success, "{outcome:?}");
+    assert!(outcome.complete, "{:?}", outcome.incomplete);
+
+    let workspace = harness.workspace().await;
+    let path = harness.workspace_path(&workspace);
+    let seen = fs::read_to_string(path.join("identity.txt"))
+        .await
+        .expect("the stage saw the run's identity");
+    assert_eq!(
+        seen.trim(),
+        "Fabro Pin|pin@fabro.test|Fabro Pin|pin@fabro.test",
+        "the run's identity reached the stage's process"
+    );
+    let committed = fs::read_to_string(path.join("committed-as.txt"))
+        .await
+        .expect("the stage committed without configuring an identity");
+    assert_eq!(
+        committed.trim(),
+        "Fabro Pin|pin@fabro.test|Fabro Pin|pin@fabro.test",
+        "the commit is authored and committed as the run"
+    );
+
+    // The acceptance bullet, compared rather than implied: the stage's own
+    // commit and every engine checkpoint commit published beside it name
+    // ONE identity — the run's.
+    let repository = harness.workspaces().snapshot_repository(&workspace);
+    let authors = git(&repository, &["log", "--all", "--format=%an|%ae|%cn|%ce"]).await;
+    let seen: BTreeSet<&str> = authors.lines().collect();
+    assert_eq!(
+        seen,
+        BTreeSet::from(["Fabro Pin|pin@fabro.test|Fabro Pin|pin@fabro.test"]),
+        "stage and checkpoint commits agree on the run's identity: {authors}"
+    );
 }
 
 /// The stage-envelope guard meets the stage-journal hook contract
@@ -1097,13 +1169,18 @@ const LARGE_FILE_BYTES: usize = 20 * 1024 * 1024;
 /// nothing of it is on the host, every checkpoint is published, and the
 /// bundles carried the stages' files, a large one in parts.
 async fn assert_sandbox_run_publishes_every_checkpoint(provider: SandboxProviderKind) {
-    let harness = Harness::new();
+    let mut harness = Harness::new();
+    harness.author = GitAuthor {
+        name:  "Fabro Pin".to_string(),
+        email: "pin@fabro.test".to_string(),
+    };
     let workflow = workflow(
         &format!(
             "  write [shape=parallelogram, script=\"echo one > out.txt && head -c \
              {LARGE_FILE_BYTES} /dev/urandom > large.bin\"]\n  check [shape=parallelogram, \
              script=\"test \\\"$(cat out.txt)\\\" = one && git log --format=%s | head -1 | grep -q \
-             write\"]"
+             write && test \\\"$GIT_AUTHOR_EMAIL\\\" = pin@fabro.test && test \
+             \\\"$(git log -1 --format=%ae)\\\" = pin@fabro.test\"]"
         ),
         "  start -> write -> check -> exit",
     );

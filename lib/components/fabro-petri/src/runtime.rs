@@ -17,6 +17,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use fabro_http::HttpClient;
+use fabro_types::GitIdentity;
 use fabro_workflow::services::FabroRunToolServices;
 use lithos_llm::Client;
 use lithos_llm::catalog::{Catalog, ProviderId};
@@ -31,6 +32,7 @@ use petri_frontend_fabro::Fabro;
 use petri_runtime::Runtime;
 use tracing::debug;
 
+use crate::fork_git_identity::RunGitIdentity;
 use crate::fork_stage_env::StageDispatch;
 use crate::fork_stage_envelope::StageEnvelopes;
 use crate::providers::{self, SandboxProviderConfig};
@@ -82,6 +84,12 @@ pub struct RuntimeSpec {
     /// instead (fabro-6558). `None` leaves it unset (admission checks,
     /// offline validation).
     pub run_id:           Option<String>,
+    /// The identity the run's commits are authored with, injected into
+    /// every process its sandboxes spawn (fabro-19f9): a stage that
+    /// commits inside its sandbox commits as the run (see
+    /// [`crate::fork_git_identity`]). `None` injects none (admission
+    /// checks, and a run executed without Fabro's hooks).
+    pub git_identity:     Option<GitIdentity>,
 }
 
 impl RuntimeSpec {
@@ -95,11 +103,24 @@ impl RuntimeSpec {
         // being dispatched and the sandbox exec facet that injects
         // `FABRO_STAGE` into every process the stage spawns.
         let stages = StageDispatch::shared();
-        let mut runtime = providers::staged_runtime(&self.sandbox, &stages).frontend(
-            Fabro::new()
-                .with_settings_toml(self.settings_toml.clone())
-                .with_mcp_catalog_toml(self.mcp_catalog_toml.clone()),
-        );
+        // The run's Git identity (fabro-19f9), injected by the same facet
+        // so a stage's own `git commit` in the sandbox is authored as the
+        // run instead of failing on an unknown identity.
+        let git_identity = RunGitIdentity::shared();
+        if let Some(identity) = &self.git_identity {
+            git_identity.set(identity.clone());
+            debug!(
+                author_name = %identity.name,
+                identity_source = %identity.source,
+                "run processes commit as the run's git identity"
+            );
+        }
+        let mut runtime = providers::staged_runtime(&self.sandbox, &stages, &git_identity)
+            .frontend(
+                Fabro::new()
+                    .with_settings_toml(self.settings_toml.clone())
+                    .with_mcp_catalog_toml(self.mcp_catalog_toml.clone()),
+            );
         if let Some(client) = &self.model_client {
             runtime = runtime.capability(PebbleClient(client.clone()));
         }

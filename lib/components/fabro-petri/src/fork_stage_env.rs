@@ -27,6 +27,11 @@
 //! on the cell — recorded as the seam's known boundary, not silently
 //! absorbed.
 //!
+//! The facet applies two injections, each its own cell and its own file:
+//! the dispatched stage (this file, fabro-6e7f) and the run's Git identity
+//! ([`crate::fork_git_identity`], fabro-19f9), so a stage that commits
+//! inside the sandbox commits as the run's identity.
+//!
 //! This file is fork-owned (new file, `fork_` prefix): an upstream merge
 //! cannot silently absorb it. The upstream touch points are the factory
 //! wrap in `providers.rs` and the cell hand-off in `runtime.rs`, pinned
@@ -45,6 +50,8 @@ use sandbox_driver::{
     Search, SearchFacet, Services, ServicesFacet, ShellCommand, SnapshotId, SpawnSpec, SshAccess,
     StdioProcess, Vnc, WebTerminal,
 };
+
+use crate::fork_git_identity::RunGitIdentity;
 
 /// The environment variable the engine injects: the id of the node being
 /// dispatched, as the deterministic verify dispatcher (`just verify`)
@@ -94,19 +101,30 @@ impl StageDispatch {
     }
 }
 
-/// A factory that wraps its provider's sandboxes with the stage
-/// environment: the one touch point on the provider path every built-in
-/// kind connects through.
+/// A factory that wraps its provider's sandboxes with the run's injected
+/// process environment — the dispatched stage and the run's Git identity:
+/// the one touch point on the provider path every built-in kind connects
+/// through.
 pub struct StageFactory {
-    inner:  Arc<dyn ProviderFactory>,
-    stages: Arc<StageDispatch>,
+    inner:    Arc<dyn ProviderFactory>,
+    stages:   Arc<StageDispatch>,
+    identity: Arc<RunGitIdentity>,
 }
 
 impl StageFactory {
-    /// Wrap `inner` so every sandbox it connects carries the injection.
+    /// Wrap `inner` so every sandbox it connects carries the injections:
+    /// the dispatched stage and the run's Git identity.
     #[must_use]
-    pub fn new(inner: Arc<dyn ProviderFactory>, stages: Arc<StageDispatch>) -> Self {
-        Self { inner, stages }
+    pub fn new(
+        inner: Arc<dyn ProviderFactory>,
+        stages: Arc<StageDispatch>,
+        identity: Arc<RunGitIdentity>,
+    ) -> Self {
+        Self {
+            inner,
+            stages,
+            identity,
+        }
     }
 }
 
@@ -134,18 +152,20 @@ impl ProviderFactory for StageFactory {
     ) -> sandbox_driver::Result<Arc<dyn SandboxProvider>> {
         let provider = self.inner.connect(context).await?;
         Ok(Arc::new(StageProvider {
-            inner:  provider,
-            stages: Arc::clone(&self.stages),
+            inner:    provider,
+            stages:   Arc::clone(&self.stages),
+            identity: Arc::clone(&self.identity),
         }))
     }
 }
 
-/// A provider whose sandboxes inject the dispatched stage into every
-/// process they run. Delegates everything but handle creation, the same
-/// shape as the driver's own `OwnedProvider`.
+/// A provider whose sandboxes inject the dispatched stage and the run's
+/// Git identity into every process they run. Delegates everything but
+/// handle creation, the same shape as the driver's own `OwnedProvider`.
 pub struct StageProvider {
-    inner:  Arc<dyn SandboxProvider>,
-    stages: Arc<StageDispatch>,
+    inner:    Arc<dyn SandboxProvider>,
+    stages:   Arc<StageDispatch>,
+    identity: Arc<RunGitIdentity>,
 }
 
 #[async_trait]
@@ -164,7 +184,7 @@ impl SandboxProvider for StageProvider {
         events: Option<EventContext>,
     ) -> sandbox_driver::Result<Arc<dyn Sandbox>> {
         let sandbox = self.inner.create(spec, events).await?;
-        Ok(stage_sandbox(sandbox, &self.stages))
+        Ok(stage_sandbox(sandbox, &self.stages, &self.identity))
     }
 
     async fn attach(
@@ -173,7 +193,7 @@ impl SandboxProvider for StageProvider {
         events: Option<EventContext>,
     ) -> sandbox_driver::Result<Arc<dyn Sandbox>> {
         let sandbox = self.inner.attach(id, events).await?;
-        Ok(stage_sandbox(sandbox, &self.stages))
+        Ok(stage_sandbox(sandbox, &self.stages, &self.identity))
     }
 
     async fn undelete(
@@ -182,7 +202,7 @@ impl SandboxProvider for StageProvider {
         events: Option<EventContext>,
     ) -> sandbox_driver::Result<Arc<dyn Sandbox>> {
         let sandbox = self.inner.undelete(id, events).await?;
-        Ok(stage_sandbox(sandbox, &self.stages))
+        Ok(stage_sandbox(sandbox, &self.stages, &self.identity))
     }
 
     async fn delete(
@@ -202,24 +222,32 @@ impl SandboxProvider for StageProvider {
     }
 }
 
-/// Wrap `sandbox` for stage injection: the handle delegates everything
-/// but its `exec` facet.
-fn stage_sandbox(sandbox: Arc<dyn Sandbox>, stages: &Arc<StageDispatch>) -> Arc<dyn Sandbox> {
+/// Wrap `sandbox` for the injected process environment: the handle
+/// delegates everything but its `exec` facet.
+fn stage_sandbox(
+    sandbox: Arc<dyn Sandbox>,
+    stages: &Arc<StageDispatch>,
+    identity: &Arc<RunGitIdentity>,
+) -> Arc<dyn Sandbox> {
     Arc::new(StageSandbox {
-        exec:   StageExec {
-            inner:  Arc::clone(&sandbox),
-            stages: Arc::clone(stages),
+        exec:     StageExec {
+            inner:    Arc::clone(&sandbox),
+            stages:   Arc::clone(stages),
+            identity: Arc::clone(identity),
         },
-        inner:  sandbox,
-        stages: Arc::clone(stages),
+        inner:    sandbox,
+        stages:   Arc::clone(stages),
+        identity: Arc::clone(identity),
     })
 }
 
-/// A sandbox handle whose `exec` facet injects the dispatched stage.
+/// A sandbox handle whose `exec` facet injects the dispatched stage and the
+/// run's Git identity.
 pub struct StageSandbox {
-    exec:   StageExec,
-    inner:  Arc<dyn Sandbox>,
-    stages: Arc<StageDispatch>,
+    exec:     StageExec,
+    inner:    Arc<dyn Sandbox>,
+    stages:   Arc<StageDispatch>,
+    identity: Arc<RunGitIdentity>,
 }
 
 #[async_trait]
@@ -278,7 +306,7 @@ impl Sandbox for StageSandbox {
 
     async fn fork(&self, options: &ForkOptions) -> sandbox_driver::Result<Arc<dyn Sandbox>> {
         let sandbox = self.inner.fork(options).await?;
-        Ok(stage_sandbox(sandbox, &self.stages))
+        Ok(stage_sandbox(sandbox, &self.stages, &self.identity))
     }
 
     async fn resize(&self, resources: &Resources) -> sandbox_driver::Result<()> {
@@ -377,19 +405,29 @@ impl Sandbox for StageSandbox {
     }
 }
 
-/// The exec facet that applies the dispatch to every spec immediately
+/// The exec facet that applies the injections to every spec immediately
 /// before the driver runs it: buffered, streaming, and stdio process
 /// spawns alike.
 pub struct StageExec {
-    inner:  Arc<dyn Sandbox>,
-    stages: Arc<StageDispatch>,
+    inner:    Arc<dyn Sandbox>,
+    stages:   Arc<StageDispatch>,
+    identity: Arc<RunGitIdentity>,
+}
+
+impl StageExec {
+    /// Apply both injections to a spec's environment: the dispatched stage
+    /// (fabro-6e7f) and the run's Git identity (fabro-19f9).
+    fn apply(&self, env: &mut BTreeMap<String, String>) {
+        self.stages.apply(env);
+        self.identity.apply(env);
+    }
 }
 
 #[async_trait]
 impl Exec for StageExec {
     async fn run(&self, spec: &ExecSpec) -> sandbox_driver::Result<ExecResult> {
         let mut spec = spec.clone();
-        self.stages.apply(&mut spec.env);
+        self.apply(&mut spec.env);
         self.inner.exec().run(&spec).await
     }
 
@@ -399,7 +437,7 @@ impl Exec for StageExec {
         controls: ExecControls,
     ) -> sandbox_driver::Result<ExecStreamingResult> {
         let mut spec = spec.clone();
-        self.stages.apply(&mut spec.env);
+        self.apply(&mut spec.env);
         self.inner.exec().run_streaming(&spec, controls).await
     }
 
@@ -410,7 +448,7 @@ impl Exec for StageExec {
             staged = staged.working_dir(dir.clone());
         }
         staged.env = spec.env.clone();
-        self.stages.apply(&mut staged.env);
+        self.apply(&mut staged.env);
         self.inner.exec().spawn_stdio(&staged).await
     }
 }
@@ -418,6 +456,7 @@ impl Exec for StageExec {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::fork_git_identity::{AUTHOR_EMAIL, AUTHOR_NAME, COMMITTER_EMAIL, COMMITTER_NAME};
 
     /// An exec facet that records the environment of every spec it is
     /// asked, then refuses: the fixture asserts what reached the facet,
@@ -465,13 +504,21 @@ mod tests {
     }
 
     fn wrapped(stages: &Arc<StageDispatch>) -> (Arc<StageExec>, Arc<RecordingExec>) {
+        wrapped_with_identity(stages, &RunGitIdentity::shared())
+    }
+
+    fn wrapped_with_identity(
+        stages: &Arc<StageDispatch>,
+        identity: &Arc<RunGitIdentity>,
+    ) -> (Arc<StageExec>, Arc<RecordingExec>) {
         let recorder = Arc::new(RecordingExec::new());
         let sandbox: Arc<dyn Sandbox> = Arc::new(FakeSandbox {
             exec: Arc::clone(&recorder),
         });
         let exec = Arc::new(StageExec {
-            inner:  sandbox,
-            stages: Arc::clone(stages),
+            inner:    sandbox,
+            stages:   Arc::clone(stages),
+            identity: Arc::clone(identity),
         });
         (exec, recorder)
     }
@@ -592,5 +639,59 @@ mod tests {
             !recorded[0].contains_key(STAGE_ENV_VAR),
             "no stage in dispatch: the variable is absent, not inherited"
         );
+    }
+
+    /// Presence pin (fork feature, fabro-19f9): the run's Git identity
+    /// reaches every process the exec facet runs, so a stage that commits
+    /// inside its sandbox needs no repository-local identity.
+    #[tokio::test]
+    async fn the_runs_git_identity_reaches_every_spawn() {
+        let identity = RunGitIdentity::shared();
+        identity.set(fabro_types::GitIdentity {
+            name:   "Fabro Pin".to_string(),
+            email:  "pin@fabro.test".to_string(),
+            source: fabro_types::GitIdentitySource::Explicit,
+        });
+        let (exec, recorder) = wrapped_with_identity(&StageDispatch::shared(), &identity);
+
+        let _ = exec.run(&spec_with(&[("PATH", "/bin")])).await;
+        let _ = exec
+            .run_streaming(&spec_with(&[]), ExecControls::default())
+            .await;
+        let _ = exec.spawn_stdio(&SpawnSpec::new("agent")).await;
+
+        for lane in [&recorder.runs, &recorder.streams, &recorder.spawns] {
+            let recorded = lane.read().unwrap();
+            assert_eq!(recorded.len(), 1, "one spec per lane");
+            assert_eq!(
+                recorded[0].get(AUTHOR_NAME).map(String::as_str),
+                Some("Fabro Pin")
+            );
+            assert_eq!(
+                recorded[0].get(AUTHOR_EMAIL).map(String::as_str),
+                Some("pin@fabro.test")
+            );
+            assert_eq!(
+                recorded[0].get(COMMITTER_NAME).map(String::as_str),
+                Some("Fabro Pin")
+            );
+            assert_eq!(
+                recorded[0].get(COMMITTER_EMAIL).map(String::as_str),
+                Some("pin@fabro.test")
+            );
+        }
+    }
+
+    /// A run that recorded no identity injects none: the facet never
+    /// invents an author.
+    #[tokio::test]
+    async fn a_run_without_an_identity_injects_none() {
+        let (exec, recorder) =
+            wrapped_with_identity(&StageDispatch::shared(), &RunGitIdentity::shared());
+
+        let _ = exec.run(&spec_with(&[])).await;
+
+        let recorded = recorder.runs.read().unwrap();
+        assert!(!recorded[0].contains_key(AUTHOR_NAME));
     }
 }
