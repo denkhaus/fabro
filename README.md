@@ -183,3 +183,9 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for build instructions and development wo
 ## License
 
 Fabro is licensed under the [MIT License](LICENSE.md).
+
+---
+
+> *Agents in a graph —*
+> *stages flow from start to done;*
+> *chaos finds its shape.*
