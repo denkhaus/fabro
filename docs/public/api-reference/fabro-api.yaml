@@ -2396,6 +2396,7 @@ paths:
         archived runs are not retryable.
       parameters:
         - $ref: "#/components/parameters/RunId"
+        - $ref: "#/components/parameters/ForceLineageOverride"
       responses:
         "201":
           description: New retry run created and started
@@ -2405,6 +2406,15 @@ paths:
                 $ref: "#/components/schemas/Run"
         "400":
           description: The source has no checkpoint to retry from
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: A model stage of the source run's workflow needs a provider with no stored credential
           headers:
             x-request-id:
               $ref: "#/components/headers/XRequestId"
@@ -2443,6 +2453,7 @@ paths:
         but the source archive step failed.
       parameters:
         - $ref: "#/components/parameters/RunId"
+        - $ref: "#/components/parameters/ForceLineageOverride"
       requestBody:
         required: false
         content:
@@ -2464,6 +2475,15 @@ paths:
                 $ref: "#/components/schemas/RewindResponse"
         "400":
           description: Invalid rewind target
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: A model stage of the source run's workflow needs a provider with no stored credential
           headers:
             x-request-id:
               $ref: "#/components/headers/XRequestId"
@@ -2504,6 +2524,7 @@ paths:
         parallel stage instead.
       parameters:
         - $ref: "#/components/parameters/RunId"
+        - $ref: "#/components/parameters/ForceLineageOverride"
       requestBody:
         required: false
         content:
@@ -2519,6 +2540,15 @@ paths:
                 $ref: "#/components/schemas/ForkResponse"
         "400":
           description: Invalid fork target
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: A model stage of the source run's workflow needs a provider with no stored credential
           headers:
             x-request-id:
               $ref: "#/components/headers/XRequestId"
@@ -6614,6 +6644,20 @@ components:
       in: query
       required: false
       description: Whether to force deletion of an active run. Defaults to `false`.
+      schema:
+        type: boolean
+        default: false
+      example: false
+
+    ForceLineageOverride:
+      name: force
+      in: query
+      required: false
+      description: >
+        Whether to force the fork, rewind or retry through a provider
+        credential-readiness miss: the readiness refusal becomes a warning
+        in the server log and the successor fires anyway. Defaults to
+        `false`.
       schema:
         type: boolean
         default: false

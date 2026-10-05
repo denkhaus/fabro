@@ -85,6 +85,26 @@ impl Readiness {
     }
 }
 
+/// Fabro's refusal of a model node when no provider is ready at all
+/// ([`NO_READY_PROVIDER_RULE`]): the launch has no model to run on. Built
+/// by the check at create and re-built over a stored admission when a
+/// successor re-checks readiness (fabro-f93b).
+pub(crate) fn no_ready_provider_diagnostic() -> FabroDiagnostic {
+    FabroDiagnostic {
+        rule: NO_READY_PROVIDER_RULE.to_string(),
+        severity: Severity::Error,
+        message: "no default model is available: no LLM provider is ready, and the \
+                  workflow has a node that runs a model"
+            .to_string(),
+        fix: Some(
+            "configure a provider credential (for example `OPENAI_API_KEY`) or a \
+             `[run.model]`"
+                .to_string(),
+        ),
+        ..FabroDiagnostic::default()
+    }
+}
+
 /// One provider the run will use for a model stage, resolved against the
 /// catalog and the ready set (fabro-b869 step 4): the launch selection
 /// would pick one of these. `model` names the stage's selector when one
@@ -154,8 +174,10 @@ pub(crate) fn required_providers(
     required
 }
 
-/// The credential-readiness diagnostics of an admitted workflow: one per
-/// model requirement whose provider is not ready (fabro-b46e).
+/// The credential-readiness diagnostics of a run's model requirements:
+/// one per requirement whose provider is not ready (fabro-b46e). The
+/// requirements come off the admitted graphs at create, or off a source
+/// run's stored admission for a successor (fabro-f93b).
 ///
 /// Skipped when no provider is ready at all — [`NO_READY_PROVIDER_RULE`]
 /// owns that case — and per requirement when a selector does not resolve
@@ -164,17 +186,14 @@ pub(crate) fn required_providers(
 /// finding but downgrades it to a warning, so an override stays visible.
 pub(crate) fn model_readiness_diagnostics(
     readiness: &ModelReadiness<'_>,
-    admitted: Option<&Admitted>,
+    requirements: &[ModelRequirement],
 ) -> Vec<FabroDiagnostic> {
-    let Some(admitted) = admitted else {
-        return Vec::new();
-    };
     if readiness.ready.is_empty() {
         return Vec::new();
     }
     let mut misses: BTreeMap<(String, Option<String>), ProviderMiss> = BTreeMap::new();
-    for requirement in admitted.model_requirements() {
-        let candidates = requirement_providers(readiness.catalog, &requirement);
+    for requirement in requirements {
+        let candidates = requirement_providers(readiness.catalog, requirement);
         if candidates.is_empty() {
             continue;
         }
@@ -203,7 +222,7 @@ pub(crate) fn model_readiness_diagnostics(
         misses
             .entry((providers, requirement.model.clone()))
             .or_default()
-            .record(requirement.node, expected_secret);
+            .record(requirement.node.clone(), expected_secret);
     }
     misses
         .into_iter()
@@ -398,19 +417,7 @@ pub(crate) fn check(
                 .map(fabro_diagnostic)
                 .collect::<Vec<_>>();
             if !has_ready_provider && admitted.needs_model() {
-                diagnostics.push(FabroDiagnostic {
-                    rule: NO_READY_PROVIDER_RULE.to_string(),
-                    severity: Severity::Error,
-                    message: "no default model is available: no LLM provider is ready, and the \
-                              workflow has a node that runs a model"
-                        .to_string(),
-                    fix: Some(
-                        "configure a provider credential (for example `OPENAI_API_KEY`) or a \
-                         `[run.model]`"
-                            .to_string(),
-                    ),
-                    ..FabroDiagnostic::default()
-                });
+                diagnostics.push(no_ready_provider_diagnostic());
             }
             Ok(Checked {
                 admitted: Some(admitted),

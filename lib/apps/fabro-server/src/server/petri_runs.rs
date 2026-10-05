@@ -41,6 +41,7 @@ use fabro_config::{
     EnvironmentImageLayer, EnvironmentLayer, Home, MergeMap, SettingsLayer, Storage,
 };
 use fabro_interview::ControlInterviewer;
+use fabro_petri::check::Admitted;
 use fabro_petri::controls::RunControls;
 use fabro_petri::engine::{self, Conclusion, Execution, RunRequest};
 use fabro_petri::hooks::HooksSpec;
@@ -492,6 +493,11 @@ pub(crate) async fn admit(
     // Credential readiness of every model stage the admitted graphs run
     // (fabro-b46e): a required provider with no stored credential refuses
     // the fire — a warning when the intent forces the run anyway.
+    let requirements = checked
+        .admitted
+        .as_ref()
+        .map(Admitted::model_requirements)
+        .unwrap_or_default();
     checked
         .diagnostics
         .extend(petri_check::model_readiness_diagnostics(
@@ -500,7 +506,7 @@ pub(crate) async fn admit(
                 ready: eligible,
                 force,
             },
-            checked.admitted.as_ref(),
+            &requirements,
         ));
     if checked.has_errors() {
         return Err(RunCompilerError::Workflow(

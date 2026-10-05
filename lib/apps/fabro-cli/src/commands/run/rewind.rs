@@ -29,9 +29,13 @@ pub(crate) async fn run(
     }
 
     let result = client
-        .rewind_run(&run_id, RewindRequest {
-            target: args.target.clone(),
-        })
+        .rewind_run(
+            &run_id,
+            RewindRequest {
+                target: args.target.clone(),
+            },
+            args.force,
+        )
         .await?;
     let response = result.response;
 

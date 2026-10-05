@@ -15,18 +15,19 @@
 
 use std::sync::Arc;
 
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use fabro_api::types as api;
 use fabro_config::Storage;
-use fabro_petri::SqliteRunStore;
 use fabro_petri::fork::{self as petri_fork, ForkError, ForkRequest};
 use fabro_petri::petri::RunStore;
 use fabro_petri::platform_records::SqlitePlatformRecords;
+use fabro_petri::{SqliteRunStore, admission};
 use fabro_store::{PlatformRecordKind, RunProjection};
+use fabro_types::diagnostic::Severity;
 use fabro_types::{FailureReason, Principal, RunId};
 use fabro_util::error as error_util;
 use fabro_workflow::Error as WorkflowError;
@@ -38,6 +39,7 @@ use super::super::{
 };
 use super::lifecycle::{ArchiveAction, queue_run, run_archive_operation, run_response};
 use super::runs::run_provenance;
+use crate::petri_check;
 
 pub(super) fn routes() -> Router<Arc<AppState>> {
     Router::new()
@@ -87,13 +89,24 @@ async fn fork_run(
     RequireRunManagementTarget(id, actor): RequireRunManagementTarget,
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
+    Query(LineageForceQuery { force }): Query<LineageForceQuery>,
     body: Option<Json<api::ForkRequest>>,
 ) -> Response {
     let target = match parse_fork_target(body.and_then(|Json(body)| body.target)) {
         Ok(target) => target,
         Err(err) => return err.into_response(),
     };
-    match fork_at(state.as_ref(), id, actor, &headers, ForkKind::Fork, target).await {
+    match fork_at(
+        state.as_ref(),
+        id,
+        actor,
+        &headers,
+        ForkKind::Fork,
+        target,
+        force,
+    )
+    .await
+    {
         Ok(outcome) => (
             StatusCode::OK,
             Json(api::ForkResponse {
@@ -120,9 +133,17 @@ pub(crate) async fn rewind_run_internal(
     id: RunId,
     actor: Principal,
 ) -> Result<(RunId, bool), String> {
-    let outcome = fork_at(state, id, actor, &HeaderMap::new(), ForkKind::Rewind, None)
-        .await
-        .map_err(|err| format!("rewind rejected: {}", err.detail()))?;
+    let outcome = fork_at(
+        state,
+        id,
+        actor,
+        &HeaderMap::new(),
+        ForkKind::Rewind,
+        None,
+        false,
+    )
+    .await
+    .map_err(|err| format!("rewind rejected: {}", err.detail()))?;
     let archived = run_archive_operation(state, &id, None, ArchiveAction::Archive)
         .await
         .map(|_| ())
@@ -145,6 +166,7 @@ async fn rewind_run(
     RequireRunManagementTarget(id, actor): RequireRunManagementTarget,
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
+    Query(LineageForceQuery { force }): Query<LineageForceQuery>,
     body: Option<Json<api::RewindRequest>>,
 ) -> Response {
     let target = match parse_fork_target(body.and_then(|Json(body)| body.target)) {
@@ -158,6 +180,7 @@ async fn rewind_run(
         &headers,
         ForkKind::Rewind,
         target,
+        force,
     )
     .await
     {
@@ -204,8 +227,19 @@ async fn retry_run(
     RequireRunManagementTarget(id, actor): RequireRunManagementTarget,
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
+    Query(LineageForceQuery { force }): Query<LineageForceQuery>,
 ) -> Response {
-    match fork_at(state.as_ref(), id, actor, &headers, ForkKind::Retry, None).await {
+    match fork_at(
+        state.as_ref(),
+        id,
+        actor,
+        &headers,
+        ForkKind::Retry,
+        None,
+        force,
+    )
+    .await
+    {
         Ok(outcome) => run_response(state.as_ref(), outcome.new_run_id, StatusCode::CREATED).await,
         Err(err) => err.into_response(),
     }
@@ -276,8 +310,18 @@ fn parse_fork_target(target: Option<String>) -> Result<Option<ForkTarget>, ApiEr
         .transpose()
 }
 
+/// The `?force` query override of the lineage endpoints (fabro-f93b):
+/// fires a successor through a provider credential-readiness miss, keeping
+/// the finding a warning — the same override the create path carries.
+#[derive(Debug, Default, serde::Deserialize)]
+struct LineageForceQuery {
+    #[serde(default)]
+    force: bool,
+}
+
 /// Make the fork: check the source, resolve the target, create the new
-/// run's row, seed it from the source, and queue it in resume mode.
+/// run's row, seed it from the source, and queue it in resume mode. The
+/// successor's provider readiness is re-checked first (fabro-f93b).
 async fn fork_at(
     state: &AppState,
     id: RunId,
@@ -285,6 +329,7 @@ async fn fork_at(
     headers: &HeaderMap,
     kind: ForkKind,
     target: Option<ForkTarget>,
+    force: bool,
 ) -> Result<ForkOutcome, ApiError> {
     let source = run_records::require_projection(state, id).await?;
     match kind {
@@ -293,6 +338,7 @@ async fn fork_at(
         ForkKind::Retry => operations::ensure_retryable(&source, &id),
     }
     .map_err(workflow_operation_error)?;
+    refuse_unready_successor(state, &source, force).await?;
     let timeline = timeline(state, id).await?;
     let entry = match kind {
         ForkKind::Retry => timeline.latest(),
@@ -369,6 +415,88 @@ async fn fork_at(
         target: resolved,
         rerun_last,
     })
+}
+
+/// The credential readiness of a successor run (fabro-f93b): the source's
+/// stored admission names the model stages the successor will run, and the
+/// current ready set judges them — a provider that lost its stored
+/// credential since the source was admitted refuses the fork, rewind or
+/// retry with the create path's rule (fabro-b46e), naming provider, model
+/// and the expected secret, before any successor record exists. `force`
+/// keeps the findings as warnings. An admission that cannot be loaded
+/// fails closed: the successor would fail its start the same way.
+async fn refuse_unready_successor(
+    state: &AppState,
+    source: &RunProjection,
+    force: bool,
+) -> Result<(), ApiError> {
+    let ready = state.ready_llm_provider_ids().await;
+    let graphs = admission::load(&state.store_ref().blobs(), &source.spec.admission)
+        .await
+        .map_err(|err| {
+            let chain = error_util::collect_chain(&err).join(": ");
+            error!(
+                source_run_id = %source.spec.run_id,
+                error = %chain,
+                "a successor's readiness check could not load the source admission"
+            );
+            ApiError::with_code(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "the source run's admitted graphs could not be loaded",
+                "admission_unreadable",
+            )
+        })?;
+    let mut diagnostics = Vec::new();
+    if ready.is_empty() && graphs.needs_model() {
+        diagnostics.push(petri_check::no_ready_provider_diagnostic());
+    }
+    let requirements = graphs.model_requirements();
+    diagnostics.extend(petri_check::model_readiness_diagnostics(
+        &petri_check::ModelReadiness {
+            catalog: state.catalog().as_ref(),
+            ready: &ready,
+            force,
+        },
+        &requirements,
+    ));
+    let errors = diagnostics
+        .iter()
+        .filter(|diagnostic| diagnostic.severity == Severity::Error)
+        .collect::<Vec<_>>();
+    if errors.is_empty() {
+        for warning in &diagnostics {
+            warn!(
+                source_run_id = %source.spec.run_id,
+                code = %warning.rule,
+                message = %warning.message,
+                "forced successor fires through a readiness finding (fabro-f93b)"
+            );
+        }
+        return Ok(());
+    }
+    let listed = errors
+        .iter()
+        .map(|diagnostic| format!("{}: {}", diagnostic.rule, diagnostic.message))
+        .collect::<Vec<_>>()
+        .join("; ");
+    // One code per refusal reason, the b869 precedent: the zero-ready arm
+    // is its own rule and says so, the per-provider arm is the b46e rule.
+    let code = if errors
+        .iter()
+        .any(|diagnostic| diagnostic.rule == petri_check::NO_READY_PROVIDER_RULE)
+    {
+        "no_ready_provider"
+    } else {
+        "provider_not_ready"
+    };
+    Err(ApiError::with_code(
+        StatusCode::UNPROCESSABLE_ENTITY,
+        format!(
+            "the new run would die in its model stages: {listed} — store the credential or \
+             pass --force (?force=true) to fire anyway"
+        ),
+        code,
+    ))
 }
 
 /// A refused position is the caller's mistake; anything else is the

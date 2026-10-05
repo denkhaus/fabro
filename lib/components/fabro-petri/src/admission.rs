@@ -19,13 +19,31 @@ use fabro_types::{BlobHash, PetriAdmission, PetriGraphRef};
 use petri_runtime::frontend::graph_digest;
 use petri_runtime::ir::Graph;
 
-use crate::check::Admitted;
+use crate::check::{self, Admitted, ModelRequirement};
 
 /// The graphs a run starts from: the admitted root and its pre-lowered
 /// children, loaded and verified.
 pub struct AdmittedGraphs {
     pub graph:    Graph,
     pub children: Vec<Graph>,
+}
+
+impl AdmittedGraphs {
+    /// Whether any stored graph has a node that runs a model: an agent or
+    /// a prompt node. A workflow of commands and gates needs none.
+    #[must_use]
+    pub fn needs_model(&self) -> bool {
+        check::graphs_need_model(&self.graph, &self.children)
+    }
+
+    /// The model requirements the stored graphs state (fabro-f93b): the
+    /// same requirement set the create path read off the admitted graphs,
+    /// so a fork, rewind or retry re-checked over its source's stored
+    /// admission judges readiness over what the successor will run.
+    #[must_use]
+    pub fn model_requirements(&self) -> Vec<ModelRequirement> {
+        check::graph_model_requirements(&self.graph, &self.children)
+    }
 }
 
 /// Why an admission could not be stored or loaded.

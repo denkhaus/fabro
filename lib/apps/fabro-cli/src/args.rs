@@ -769,6 +769,11 @@ pub(crate) struct RetryArgs {
 
     /// Run ID (or unambiguous prefix)
     pub(crate) run_id: String,
+
+    /// Fire through a provider credential-readiness miss (the finding stays
+    /// a warning)
+    #[arg(long)]
+    pub(crate) force: bool,
 }
 
 #[derive(Args)]
@@ -786,6 +791,11 @@ pub(crate) struct ForkArgs {
     /// Show the checkpoint timeline instead of forking
     #[arg(long)]
     pub(crate) list: bool,
+
+    /// Fire through a provider credential-readiness miss (the finding stays
+    /// a warning)
+    #[arg(long)]
+    pub(crate) force: bool,
 }
 
 #[derive(Args)]
@@ -802,6 +812,11 @@ pub(crate) struct RewindArgs {
     /// Show the checkpoint timeline instead of rewinding
     #[arg(long)]
     pub(crate) list: bool,
+
+    /// Fire through a provider credential-readiness miss (the finding stays
+    /// a warning)
+    #[arg(long)]
+    pub(crate) force: bool,
 }
 
 #[derive(Args)]

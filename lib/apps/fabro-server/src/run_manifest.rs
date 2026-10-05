@@ -15,7 +15,7 @@ use fabro_config::{
 use fabro_dot::WorkflowGraph;
 use fabro_github::token_source::{InstallationTokenSource, ResolvedToken, TokenSnapshot};
 use fabro_graphviz::render::apply_direction;
-use fabro_petri::check::Launch;
+use fabro_petri::check::{Admitted, Launch};
 use fabro_petri::run_graph;
 use fabro_petri::runtime::RuntimeSpec;
 use fabro_proc::ProcessError;
@@ -213,11 +213,16 @@ pub(crate) fn validate_prepared_manifest(
     )?;
     let mut checked = petri_check::check(&request, readiness.has_ready_provider())?;
     if let Some(model_readiness) = readiness.as_model_readiness() {
+        let requirements = checked
+            .admitted
+            .as_ref()
+            .map(Admitted::model_requirements)
+            .unwrap_or_default();
         checked
             .diagnostics
             .extend(petri_check::model_readiness_diagnostics(
                 &model_readiness,
-                checked.admitted.as_ref(),
+                &requirements,
             ));
     }
     Ok(ManifestCheck {

@@ -3182,11 +3182,31 @@ async fn create_run_without_ready_llm_provider_rejects_implicit_model_selection(
         .unwrap();
     let body = response_json!(response, StatusCode::UNPROCESSABLE_ENTITY).await;
 
+    // The full message, pinned end to end (fabro-f93b review — a corrupted
+    // continuation once glued source indentation into this public text),
+    // and the diagnostic's fix hint with it: both render as single
+    // readable sentences.
     assert!(
-        body["errors"][0]["detail"]
-            .as_str()
-            .is_some_and(|detail| detail.contains("no default model is available")),
+        body["errors"][0]["detail"].as_str().is_some_and(|detail| {
+            detail.contains(
+                "no default model is available: no LLM provider is ready, and the workflow \
+                 has a node that runs a model",
+            )
+        }),
         "unexpected response: {body}"
+    );
+    let diagnostic = crate::petri_check::no_ready_provider_diagnostic();
+    assert_eq!(
+        diagnostic.message,
+        "no default model is available: no LLM provider is ready, and the workflow has a \
+         node that runs a model"
+    );
+    assert_eq!(
+        diagnostic.fix.as_deref(),
+        Some(
+            "configure a provider credential (for example `OPENAI_API_KEY`) or a \
+             `[run.model]`"
+        )
     );
     assert!(state.runs.lock().expect("runs lock poisoned").is_empty());
 
@@ -3275,6 +3295,216 @@ async fn create_run_refuses_a_stage_whose_provider_has_no_stored_credential() {
         .await
         .unwrap();
     response_json!(response, StatusCode::CREATED).await;
+}
+
+#[tokio::test]
+async fn fork_retry_and_rewind_refuse_a_successor_whose_provider_has_no_stored_credential() {
+    const PROVIDER_DOT: &str = r#"digraph Test {
+        graph [goal="Test"]
+        start [shape=Mdiamond]
+        work [shape=box, prompt="Do the work", model="glm-4.7", provider="zai"]
+        exit  [shape=Msquare]
+        start -> work -> exit
+    }"#;
+    // The source was created while its readiness finding was forced
+    // through (fabro-b46e's warning path); with zai still carrying no
+    // credential, every successor is refused before any new run record
+    // exists (fabro-f93b).
+    let state = TestAppStateBuilder::new()
+        .llm_overlay_toml("[providers.openrouter]\nenabled = true\n")
+        .vault_entries([(EnvVars::OPENROUTER_API_KEY, "test-openrouter-key")])
+        .build();
+    let app = crate::test_support::build_test_router(Arc::clone(&state));
+
+    let mut intent = test_intent(&app, PROVIDER_DOT).await;
+    intent["force"] = json!(true);
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(api("/runs"))
+                .header("content-type", "application/json")
+                .body(Body::from(intent.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let body = response_json!(response, StatusCode::CREATED).await;
+    let run_id: RunId = body["id"].as_str().unwrap().parse().unwrap();
+
+    // The fork is refused naming provider, model and the expected secret,
+    // with the create path's rule.
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(api(&format!("/runs/{run_id}/fork")))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let body = response_json!(response, StatusCode::UNPROCESSABLE_ENTITY).await;
+    let detail = body["errors"][0]["detail"].as_str().unwrap_or_default();
+    assert_eq!(
+        body["errors"][0]["code"].as_str(),
+        Some("provider_not_ready"),
+        "unexpected response: {body}"
+    );
+    assert!(
+        detail.contains("fabro.model.provider_not_ready")
+            && detail.contains("zai")
+            && detail.contains("glm-4.7")
+            && detail.contains("ZAI_API_KEY")
+            && detail.contains("store the credential or pass --force (?force=true) to fire anyway"),
+        "unexpected response: {body}"
+    );
+    // The source is untouched: no successor record, no lifecycle change.
+    let records = platform_records(state.as_ref(), run_id).await;
+    assert_created_then_submitted(&records);
+
+    // Force fires through the miss: the refusal class is gone and the fork
+    // fails on the next honest gate, the missing checkpoint.
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(api(&format!("/runs/{run_id}/fork?force=true")))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let body = response_json!(response, StatusCode::BAD_REQUEST).await;
+    assert!(
+        body["errors"][0]["detail"]
+            .as_str()
+            .is_some_and(|detail| detail.contains("no checkpoint")),
+        "the forced fork should reach the checkpoint gate: {body}"
+    );
+
+    // Retry and rewind of the now-terminal source carry the same refusal.
+    // The terminal state is seeded the way the staleness-supervisor tests
+    // seed their read-path views: the projection's status flipped and both
+    // stores rewritten (the fold itself is not under test here).
+    state.petri_projector.settle(run_id).await;
+    let projection = state
+        .stores
+        .run_summaries
+        .load_petri_projection(&run_id)
+        .await
+        .unwrap()
+        .expect("the created run holds a projection");
+    let mut projection = Arc::try_unwrap(projection).unwrap_or_else(|shared| (*shared).clone());
+    projection.status = RunStatus::Failed {
+        reason: FailureReason::WorkflowError,
+    };
+    let projection_json = serde_json::to_string(&projection).unwrap();
+    let pool = state.stores.run_summaries.pool();
+    let mut tx = pool.begin().await.unwrap();
+    fabro_store::RunSummaryStore::write_petri_run_row_on_connection(&mut tx, &run_id, &projection)
+        .await
+        .unwrap();
+    sqlx::query(
+        "INSERT INTO petri_projection (run_id, projection_json, fold_json, positions_json, \
+         stream_seq, updated_at_ms) VALUES (?, ?, '{}', '{}', 0, 0) ON CONFLICT(run_id) DO \
+         UPDATE SET projection_json = excluded.projection_json",
+    )
+    .bind(run_id.to_string())
+    .bind(&projection_json)
+    .execute(&mut *tx)
+    .await
+    .unwrap();
+    tx.commit().await.unwrap();
+    for path in [
+        format!("/runs/{run_id}/retry"),
+        format!("/runs/{run_id}/rewind"),
+    ] {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(api(&path))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let body = response_json!(response, StatusCode::UNPROCESSABLE_ENTITY).await;
+        assert_eq!(
+            body["errors"][0]["code"].as_str(),
+            Some("provider_not_ready"),
+            "unexpected response for {path}: {body}"
+        );
+    }
+
+    // A ready provider is unaffected: with the credential stored, the same
+    // fork passes readiness and fails on the missing checkpoint alone.
+    let ready_state = TestAppStateBuilder::new()
+        .vault_entries([(EnvVars::ZAI_API_KEY, "test-zai-key")])
+        .build();
+    let ready_app = crate::test_support::build_test_router(Arc::clone(&ready_state));
+    let run_id = create_run(&ready_app, PROVIDER_DOT).await;
+    let response = ready_app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(api(&format!("/runs/{run_id}/fork")))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let body = response_json!(response, StatusCode::BAD_REQUEST).await;
+    assert!(
+        body["errors"][0]["detail"]
+            .as_str()
+            .is_some_and(|detail| detail.contains("no checkpoint")),
+        "a ready provider must not refuse the fork: {body}"
+    );
+
+    // The zero-ready arm is its own refusal reason and says so with its own
+    // code (fabro-f93b): the last credential vanishes while the run exists,
+    // so NO provider is ready at the fork and the no-ready rule refuses it.
+    let solo_state = TestAppStateBuilder::new()
+        .vault_entries([(EnvVars::ZAI_API_KEY, "test-zai-key")])
+        .build();
+    let solo_app = crate::test_support::build_test_router(Arc::clone(&solo_state));
+    let solo_run = create_run(&solo_app, PROVIDER_DOT).await;
+    solo_state
+        .stores
+        .vault
+        .remove(EnvVars::ZAI_API_KEY.as_ref())
+        .await
+        .unwrap();
+    let response = solo_app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(api(&format!("/runs/{solo_run}/fork")))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let body = response_json!(response, StatusCode::UNPROCESSABLE_ENTITY).await;
+    assert_eq!(
+        body["errors"][0]["code"].as_str(),
+        Some("no_ready_provider"),
+        "unexpected response: {body}"
+    );
+    assert!(
+        body["errors"][0]["detail"]
+            .as_str()
+            .is_some_and(|detail| detail.contains("no default model is available")),
+        "the refusal names the rule's message: {body}"
+    );
 }
 
 #[tokio::test]

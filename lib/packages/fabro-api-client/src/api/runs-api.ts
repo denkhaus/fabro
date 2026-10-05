@@ -553,11 +553,12 @@ export const RunsApiAxiosParamCreator = function (configuration?: Configuration)
          * Creates a new run from a checkpoint of the source run and starts it. The new run holds the source\'s records up to the checkpoint\'s position and continues from there in a fresh workspace restored to the checkpoint\'s commit. The source run is left untouched. A checkpoint inside a parallel branch cannot be forked at; fork at the parallel stage instead.
          * @summary Fork Run
          * @param {string} id Unique run identifier (ULID).
+         * @param {boolean} [force] Whether to force the fork, rewind or retry through a provider credential-readiness miss. The finding stays a warning in the new run. Defaults to &#x60;false&#x60;.
          * @param {ForkRequest} [forkRequest]
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        forkRun: async (id: string, forkRequest?: ForkRequest, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+        forkRun: async (id: string, force?: boolean, forkRequest?: ForkRequest, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
             // verify required parameter 'id' is not null or undefined
             assertParamExists('forkRun', 'id', id)
             const localVarPath = `/api/v1/runs/{id}/fork`
@@ -578,6 +579,10 @@ export const RunsApiAxiosParamCreator = function (configuration?: Configuration)
             // authentication BearerAuth required
             // http bearer authentication required
             await setBearerAuthToObject(localVarHeaderParameter, configuration)
+
+            if (force !== undefined) {
+                localVarQueryParameter['force'] = force;
+            }
 
             localVarHeaderParameter['Content-Type'] = 'application/json';
             localVarHeaderParameter['Accept'] = 'application/json';
@@ -1218,10 +1223,11 @@ export const RunsApiAxiosParamCreator = function (configuration?: Configuration)
          * Creates a new run from the terminal source run\'s last checkpoint and starts it. When the source failed on a stage, that stage runs again on the files of the stage before it; otherwise the new run continues from the last checkpoint as it stands. The new run records `retried_from` and `fork_source_ref`; the source run is left unchanged. Active and archived runs are not retryable.
          * @summary Retry Run
          * @param {string} id Unique run identifier (ULID).
+         * @param {boolean} [force] Whether to force the fork, rewind or retry through a provider credential-readiness miss. The finding stays a warning in the new run. Defaults to &#x60;false&#x60;.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        retryRun: async (id: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+        retryRun: async (id: string, force?: boolean, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
             // verify required parameter 'id' is not null or undefined
             assertParamExists('retryRun', 'id', id)
             const localVarPath = `/api/v1/runs/{id}/retry`
@@ -1243,6 +1249,10 @@ export const RunsApiAxiosParamCreator = function (configuration?: Configuration)
             // http bearer authentication required
             await setBearerAuthToObject(localVarHeaderParameter, configuration)
 
+            if (force !== undefined) {
+                localVarQueryParameter['force'] = force;
+            }
+
             localVarHeaderParameter['Accept'] = 'application/json';
 
             setSearchParams(localVarUrlObj, localVarQueryParameter);
@@ -1258,11 +1268,12 @@ export const RunsApiAxiosParamCreator = function (configuration?: Configuration)
          * Creates a new run from a checkpoint of a terminal source run and starts it, then archives the source run and records `run.superseded_by` on it. Returns 207 when the new run was created but the source archive step failed.
          * @summary Rewind Run
          * @param {string} id Unique run identifier (ULID).
+         * @param {boolean} [force] Whether to force the fork, rewind or retry through a provider credential-readiness miss. The finding stays a warning in the new run. Defaults to &#x60;false&#x60;.
          * @param {RewindRequest} [rewindRequest]
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        rewindRun: async (id: string, rewindRequest?: RewindRequest, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+        rewindRun: async (id: string, force?: boolean, rewindRequest?: RewindRequest, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
             // verify required parameter 'id' is not null or undefined
             assertParamExists('rewindRun', 'id', id)
             const localVarPath = `/api/v1/runs/{id}/rewind`
@@ -1283,6 +1294,10 @@ export const RunsApiAxiosParamCreator = function (configuration?: Configuration)
             // authentication BearerAuth required
             // http bearer authentication required
             await setBearerAuthToObject(localVarHeaderParameter, configuration)
+
+            if (force !== undefined) {
+                localVarQueryParameter['force'] = force;
+            }
 
             localVarHeaderParameter['Content-Type'] = 'application/json';
             localVarHeaderParameter['Accept'] = 'application/json';
@@ -1840,12 +1855,13 @@ export const RunsApiFp = function(configuration?: Configuration) {
          * Creates a new run from a checkpoint of the source run and starts it. The new run holds the source\'s records up to the checkpoint\'s position and continues from there in a fresh workspace restored to the checkpoint\'s commit. The source run is left untouched. A checkpoint inside a parallel branch cannot be forked at; fork at the parallel stage instead.
          * @summary Fork Run
          * @param {string} id Unique run identifier (ULID).
+         * @param {boolean} [force] Whether to force the fork, rewind or retry through a provider credential-readiness miss. The finding stays a warning in the new run. Defaults to &#x60;false&#x60;.
          * @param {ForkRequest} [forkRequest]
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        async forkRun(id: string, forkRequest?: ForkRequest, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<ForkResponse>> {
-            const localVarAxiosArgs = await localVarAxiosParamCreator.forkRun(id, forkRequest, options);
+        async forkRun(id: string, force?: boolean, forkRequest?: ForkRequest, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<ForkResponse>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.forkRun(id, force, forkRequest, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
             const localVarOperationServerBasePath = operationServerMap['RunsApi.forkRun']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
@@ -2047,11 +2063,12 @@ export const RunsApiFp = function(configuration?: Configuration) {
          * Creates a new run from the terminal source run\'s last checkpoint and starts it. When the source failed on a stage, that stage runs again on the files of the stage before it; otherwise the new run continues from the last checkpoint as it stands. The new run records `retried_from` and `fork_source_ref`; the source run is left unchanged. Active and archived runs are not retryable.
          * @summary Retry Run
          * @param {string} id Unique run identifier (ULID).
+         * @param {boolean} [force] Whether to force the fork, rewind or retry through a provider credential-readiness miss. The finding stays a warning in the new run. Defaults to &#x60;false&#x60;.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        async retryRun(id: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<Run>> {
-            const localVarAxiosArgs = await localVarAxiosParamCreator.retryRun(id, options);
+        async retryRun(id: string, force?: boolean, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<Run>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.retryRun(id, force, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
             const localVarOperationServerBasePath = operationServerMap['RunsApi.retryRun']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
@@ -2060,12 +2077,13 @@ export const RunsApiFp = function(configuration?: Configuration) {
          * Creates a new run from a checkpoint of a terminal source run and starts it, then archives the source run and records `run.superseded_by` on it. Returns 207 when the new run was created but the source archive step failed.
          * @summary Rewind Run
          * @param {string} id Unique run identifier (ULID).
+         * @param {boolean} [force] Whether to force the fork, rewind or retry through a provider credential-readiness miss. The finding stays a warning in the new run. Defaults to &#x60;false&#x60;.
          * @param {RewindRequest} [rewindRequest]
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        async rewindRun(id: string, rewindRequest?: RewindRequest, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<RewindResponse>> {
-            const localVarAxiosArgs = await localVarAxiosParamCreator.rewindRun(id, rewindRequest, options);
+        async rewindRun(id: string, force?: boolean, rewindRequest?: RewindRequest, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<RewindResponse>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.rewindRun(id, force, rewindRequest, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
             const localVarOperationServerBasePath = operationServerMap['RunsApi.rewindRun']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
@@ -2317,12 +2335,13 @@ export const RunsApiFactory = function (configuration?: Configuration, basePath?
          * Creates a new run from a checkpoint of the source run and starts it. The new run holds the source\'s records up to the checkpoint\'s position and continues from there in a fresh workspace restored to the checkpoint\'s commit. The source run is left untouched. A checkpoint inside a parallel branch cannot be forked at; fork at the parallel stage instead.
          * @summary Fork Run
          * @param {string} id Unique run identifier (ULID).
+         * @param {boolean} [force] Whether to force the fork, rewind or retry through a provider credential-readiness miss. The finding stays a warning in the new run. Defaults to &#x60;false&#x60;.
          * @param {ForkRequest} [forkRequest]
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        forkRun(id: string, forkRequest?: ForkRequest, options?: RawAxiosRequestConfig): AxiosPromise<ForkResponse> {
-            return localVarFp.forkRun(id, forkRequest, options).then((request) => request(axios, basePath));
+        forkRun(id: string, force?: boolean, forkRequest?: ForkRequest, options?: RawAxiosRequestConfig): AxiosPromise<ForkResponse> {
+            return localVarFp.forkRun(id, force, forkRequest, options).then((request) => request(axios, basePath));
         },
         /**
          * Returns the stored pull request record for a run plus live GitHub details when available.
@@ -2479,22 +2498,24 @@ export const RunsApiFactory = function (configuration?: Configuration, basePath?
          * Creates a new run from the terminal source run\'s last checkpoint and starts it. When the source failed on a stage, that stage runs again on the files of the stage before it; otherwise the new run continues from the last checkpoint as it stands. The new run records `retried_from` and `fork_source_ref`; the source run is left unchanged. Active and archived runs are not retryable.
          * @summary Retry Run
          * @param {string} id Unique run identifier (ULID).
+         * @param {boolean} [force] Whether to force the fork, rewind or retry through a provider credential-readiness miss. The finding stays a warning in the new run. Defaults to &#x60;false&#x60;.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        retryRun(id: string, options?: RawAxiosRequestConfig): AxiosPromise<Run> {
-            return localVarFp.retryRun(id, options).then((request) => request(axios, basePath));
+        retryRun(id: string, force?: boolean, options?: RawAxiosRequestConfig): AxiosPromise<Run> {
+            return localVarFp.retryRun(id, force, options).then((request) => request(axios, basePath));
         },
         /**
          * Creates a new run from a checkpoint of a terminal source run and starts it, then archives the source run and records `run.superseded_by` on it. Returns 207 when the new run was created but the source archive step failed.
          * @summary Rewind Run
          * @param {string} id Unique run identifier (ULID).
+         * @param {boolean} [force] Whether to force the fork, rewind or retry through a provider credential-readiness miss. The finding stays a warning in the new run. Defaults to &#x60;false&#x60;.
          * @param {RewindRequest} [rewindRequest]
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        rewindRun(id: string, rewindRequest?: RewindRequest, options?: RawAxiosRequestConfig): AxiosPromise<RewindResponse> {
-            return localVarFp.rewindRun(id, rewindRequest, options).then((request) => request(axios, basePath));
+        rewindRun(id: string, force?: boolean, rewindRequest?: RewindRequest, options?: RawAxiosRequestConfig): AxiosPromise<RewindResponse> {
+            return localVarFp.rewindRun(id, force, rewindRequest, options).then((request) => request(axios, basePath));
         },
         /**
          * Validates runtime readiness for a workflow manifest without creating a run. The workflow is checked as a run would be admitted: Petri compiles the bundle with the server\'s settings, run variables and model catalog, and every diagnostic carries Petri\'s code as its `rule` (`attractor.no_start`, `attractor.model.unknown`, `unsupported.template.unbound_input`), with Fabro\'s own `fabro.model.no_ready_provider` when a model node has no provider ready to run it. The checks then probe the sandbox, repository access and GitHub credentials.
@@ -2725,12 +2746,13 @@ export class RunsApi extends BaseAPI {
      * Creates a new run from a checkpoint of the source run and starts it. The new run holds the source\'s records up to the checkpoint\'s position and continues from there in a fresh workspace restored to the checkpoint\'s commit. The source run is left untouched. A checkpoint inside a parallel branch cannot be forked at; fork at the parallel stage instead.
      * @summary Fork Run
      * @param {string} id Unique run identifier (ULID).
+     * @param {boolean} [force] Whether to force the fork, rewind or retry through a provider credential-readiness miss. The finding stays a warning in the new run. Defaults to &#x60;false&#x60;.
      * @param {ForkRequest} [forkRequest]
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      */
-    public forkRun(id: string, forkRequest?: ForkRequest, options?: RawAxiosRequestConfig) {
-        return RunsApiFp(this.configuration).forkRun(id, forkRequest, options).then((request) => request(this.axios, this.basePath));
+    public forkRun(id: string, force?: boolean, forkRequest?: ForkRequest, options?: RawAxiosRequestConfig) {
+        return RunsApiFp(this.configuration).forkRun(id, force, forkRequest, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**
@@ -2902,23 +2924,25 @@ export class RunsApi extends BaseAPI {
      * Creates a new run from the terminal source run\'s last checkpoint and starts it. When the source failed on a stage, that stage runs again on the files of the stage before it; otherwise the new run continues from the last checkpoint as it stands. The new run records `retried_from` and `fork_source_ref`; the source run is left unchanged. Active and archived runs are not retryable.
      * @summary Retry Run
      * @param {string} id Unique run identifier (ULID).
+     * @param {boolean} [force] Whether to force the fork, rewind or retry through a provider credential-readiness miss. The finding stays a warning in the new run. Defaults to &#x60;false&#x60;.
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      */
-    public retryRun(id: string, options?: RawAxiosRequestConfig) {
-        return RunsApiFp(this.configuration).retryRun(id, options).then((request) => request(this.axios, this.basePath));
+    public retryRun(id: string, force?: boolean, options?: RawAxiosRequestConfig) {
+        return RunsApiFp(this.configuration).retryRun(id, force, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**
      * Creates a new run from a checkpoint of a terminal source run and starts it, then archives the source run and records `run.superseded_by` on it. Returns 207 when the new run was created but the source archive step failed.
      * @summary Rewind Run
      * @param {string} id Unique run identifier (ULID).
+     * @param {boolean} [force] Whether to force the fork, rewind or retry through a provider credential-readiness miss. The finding stays a warning in the new run. Defaults to &#x60;false&#x60;.
      * @param {RewindRequest} [rewindRequest]
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      */
-    public rewindRun(id: string, rewindRequest?: RewindRequest, options?: RawAxiosRequestConfig) {
-        return RunsApiFp(this.configuration).rewindRun(id, rewindRequest, options).then((request) => request(this.axios, this.basePath));
+    public rewindRun(id: string, force?: boolean, rewindRequest?: RewindRequest, options?: RawAxiosRequestConfig) {
+        return RunsApiFp(this.configuration).rewindRun(id, force, rewindRequest, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**

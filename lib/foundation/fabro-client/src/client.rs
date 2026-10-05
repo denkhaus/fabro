@@ -1675,16 +1675,20 @@ impl Client {
     }
 
     /// Fork the run at a checkpoint into a new run, started in resume mode.
+    /// `force` fires through a provider credential-readiness miss
+    /// (fabro-f93b).
     pub async fn fork_run(
         &self,
         run_id: &RunId,
         request: types::ForkRequest,
+        force: bool,
     ) -> Result<types::ForkResponse> {
         let response = self
             .send_api(|client| async move {
                 client
                     .fork_run()
                     .id(run_id.to_string())
+                    .force(force)
                     .body(request)
                     .send()
                     .await
@@ -1695,17 +1699,20 @@ impl Client {
 
     /// Rewind the run to a checkpoint: a fork that archives and supersedes
     /// the source. The status says whether the archive succeeded (200) or
-    /// the new run was made without it (207).
+    /// the new run was made without it (207). `force` fires through a
+    /// provider credential-readiness miss (fabro-f93b).
     pub async fn rewind_run(
         &self,
         run_id: &RunId,
         request: types::RewindRequest,
+        force: bool,
     ) -> Result<RewindRunResult> {
         let response = self
             .send_api(|client| async move {
                 client
                     .rewind_run()
                     .id(run_id.to_string())
+                    .force(force)
                     .body(request)
                     .send()
                     .await
@@ -1739,12 +1746,18 @@ impl Client {
         Ok(response.into_inner())
     }
 
-    /// Retry a terminal run from its last checkpoint: the new run.
-    pub async fn retry_run(&self, run_id: &RunId) -> Result<Run> {
+    /// Retry a terminal run from its last checkpoint: the new run. `force`
+    /// fires through a provider credential-readiness miss (fabro-f93b).
+    pub async fn retry_run(&self, run_id: &RunId, force: bool) -> Result<Run> {
         let response = self
-            .send_api(
-                |client| async move { client.retry_run().id(run_id.to_string()).send().await },
-            )
+            .send_api(|client| async move {
+                client
+                    .retry_run()
+                    .id(run_id.to_string())
+                    .force(force)
+                    .send()
+                    .await
+            })
             .await?;
         convert_type(response.into_inner())
     }

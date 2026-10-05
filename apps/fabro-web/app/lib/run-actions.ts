@@ -53,7 +53,7 @@ const TERMINAL_RUN_STATUSES = new Set<RunStatus>([
  * 2026-09-22). Returns the replacement run.
  */
 export async function retryRun(id: string, request?: Request): Promise<Run> {
-  return apiData(() => runsApi.retryRun(id, requestSignalOptions(request)));
+  return apiData(() => runsApi.retryRun(id, undefined, requestSignalOptions(request)));
 }
 
 export async function cancelRun(id: string, request?: Request): Promise<Run> {

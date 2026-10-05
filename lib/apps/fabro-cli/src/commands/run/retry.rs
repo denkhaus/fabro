@@ -12,7 +12,7 @@ pub(crate) async fn run(args: &RetryArgs, base_ctx: &CommandContext) -> Result<(
     let ctx = base_ctx.with_target(&args.server)?;
     let client = ctx.server().await?;
     let run_id = client.resolve_run(&args.run_id).await?.id;
-    let new_run = client.retry_run(&run_id).await?;
+    let new_run = client.retry_run(&run_id, args.force).await?;
 
     if ctx.json_output() {
         print_json_pretty(&serde_json::json!({

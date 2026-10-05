@@ -258,10 +258,7 @@ impl Admitted {
     /// or a prompt node. A workflow of commands and gates needs none.
     #[must_use]
     pub fn needs_model(&self) -> bool {
-        std::iter::once(&self.graph)
-            .chain(&self.children)
-            .flat_map(|graph| &graph.body.nodes)
-            .any(|node| node.step.kind == AGENT_KIND || node.step.kind == PROMPT_KIND)
+        graphs_need_model(&self.graph, &self.children)
     }
 
     /// The model requirements the admitted graphs state, one per agent or
@@ -273,21 +270,40 @@ impl Admitted {
     /// templates, states none.
     #[must_use]
     pub fn model_requirements(&self) -> Vec<ModelRequirement> {
-        std::iter::once(&self.graph)
-            .chain(&self.children)
-            .flat_map(|graph| &graph.body.nodes)
-            .filter(|node| node.step.kind == AGENT_KIND || node.step.kind == PROMPT_KIND)
-            .filter_map(|node| {
-                let requirement = ModelRequirement {
-                    node:     node.name.to_string(),
-                    model:    requirement_string(&node.step.config, "model"),
-                    provider: requirement_string(&node.step.config, "provider"),
-                };
-                (requirement.model.is_some() || requirement.provider.is_some())
-                    .then_some(requirement)
-            })
-            .collect()
+        graph_model_requirements(&self.graph, &self.children)
     }
+}
+
+/// Whether lowered graphs have a node that runs a model: shared by the
+/// check's [`Admitted`] and the stored [`crate::admission::AdmittedGraphs`]
+/// (fabro-f93b re-checks readiness over the stored graphs).
+pub(crate) fn graphs_need_model(graph: &Graph, children: &[Graph]) -> bool {
+    std::iter::once(graph)
+        .chain(children)
+        .flat_map(|graph| &graph.body.nodes)
+        .any(|node| node.step.kind == AGENT_KIND || node.step.kind == PROMPT_KIND)
+}
+
+/// The model requirements lowered graphs state, one per agent or prompt
+/// node that carries a resolved `model`/`provider` string (fabro-b46e):
+/// shared by the check's [`Admitted`] and the stored
+/// [`crate::admission::AdmittedGraphs`], so a successor re-checked over its
+/// source's stored admission reads the same requirement set the create path
+/// admitted (fabro-f93b).
+pub(crate) fn graph_model_requirements(graph: &Graph, children: &[Graph]) -> Vec<ModelRequirement> {
+    std::iter::once(graph)
+        .chain(children)
+        .flat_map(|graph| &graph.body.nodes)
+        .filter(|node| node.step.kind == AGENT_KIND || node.step.kind == PROMPT_KIND)
+        .filter_map(|node| {
+            let requirement = ModelRequirement {
+                node:     node.name.to_string(),
+                model:    requirement_string(&node.step.config, "model"),
+                provider: requirement_string(&node.step.config, "provider"),
+            };
+            (requirement.model.is_some() || requirement.provider.is_some()).then_some(requirement)
+        })
+        .collect()
 }
 
 /// A config string a readiness check can resolve: a plain string that is
