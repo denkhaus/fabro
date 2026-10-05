@@ -349,7 +349,10 @@ stores it belongs to; reach them by phase need:
 - A `fabro create` whose post-processing dies still created the run:
   capture exactly one run id per intended create and `fabro rm --force`
   duplicates immediately - submitted ghosts count as active runs and wedge
-  the push gate.
+  the push gate. The SAME class hits `seeds create` (2026-10-05, sprint 19:
+  d7e7+3523 duplicated f93b+c167): piping a create's JSON into a consumer
+  that crashes still lands the record - write CLI json to a FILE, parse the
+  file, and sweep the tracker diff for surprise new ids before committing.
 - Push policy: during the cycle, branch updates and read-only integration
   stay allowed; the PUSH direction is gated to one mechanical decision at
   the END: `nu .fabro/scripts/push-gate.nu` (exit 0 = open: no running

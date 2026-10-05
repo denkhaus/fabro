@@ -36,6 +36,7 @@ domains:
   fabro: {}
   nu: {}
   git-insteadof: {}
+  failure: {}
 governance:
   max_entries: 100
   warn_entries: 150
