@@ -440,6 +440,7 @@ pub(crate) async fn admit(
     state: &AppState,
     prepared: &PreparedRun,
     eligible: &[ProviderId],
+    force: bool,
 ) -> Result<AdmittedRun, RunCompilerError> {
     let settings = prepared.settings();
     let repository = match prepared.target() {
@@ -478,15 +479,29 @@ pub(crate) async fn admit(
     )
     .map_err(RunCompilerError::Workflow)?;
     let has_ready_provider = !eligible.is_empty();
-    let checked = task::spawn_blocking(move || petri_check::check(&request, has_ready_provider))
-        .await
-        .map_err(|source| {
-            RunCompilerError::Workflow(WorkflowError::engine_with_source(
-                "Petri check task failed",
-                source,
-            ))
-        })?
-        .map_err(RunCompilerError::Workflow)?;
+    let mut checked =
+        task::spawn_blocking(move || petri_check::check(&request, has_ready_provider))
+            .await
+            .map_err(|source| {
+                RunCompilerError::Workflow(WorkflowError::engine_with_source(
+                    "Petri check task failed",
+                    source,
+                ))
+            })?
+            .map_err(RunCompilerError::Workflow)?;
+    // Credential readiness of every model stage the admitted graphs run
+    // (fabro-b46e): a required provider with no stored credential refuses
+    // the fire — a warning when the intent forces the run anyway.
+    checked
+        .diagnostics
+        .extend(petri_check::model_readiness_diagnostics(
+            &petri_check::ModelReadiness {
+                catalog: state.catalog().as_ref(),
+                ready: eligible,
+                force,
+            },
+            checked.admitted.as_ref(),
+        ));
     if checked.has_errors() {
         return Err(RunCompilerError::Workflow(
             WorkflowError::ValidationFailed {

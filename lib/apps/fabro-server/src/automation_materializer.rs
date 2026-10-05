@@ -46,6 +46,7 @@ impl AutomationRunMaterialized {
             parent_id:           None,
             title:               None,
             goal:                None,
+            force:               None,
         }
     }
 }
@@ -399,6 +400,16 @@ impl TestAutomationRunMaterializer {
         })))
     }
 
+    /// A scheduled fire whose workflow is `dot` as written, for admission
+    /// outcomes the deterministic default workflow cannot reach.
+    pub fn succeed_with_workflow(target: GitRunTarget, dot: &str) -> Self {
+        Self::new(Ok(Box::new(TestMaterializedWorkflow {
+            version: test_workflow_version_with(dot),
+            target,
+            store: true,
+        })))
+    }
+
     pub fn return_unstored_version(target: GitRunTarget) -> Self {
         Self::new(Ok(Box::new(TestMaterializedWorkflow {
             version: test_workflow_version(),
@@ -460,17 +471,20 @@ impl TestAutomationRunMaterializer {
 
 #[cfg(any(test, feature = "test-support"))]
 fn test_workflow_version() -> fabro_workflow_version::ValidatedWorkflowVersion {
+    test_workflow_version_with(
+        "digraph Test { graph [goal=\"Test\"] start [shape=Mdiamond] exit [shape=Msquare] start -> exit }",
+    )
+}
+
+#[cfg(any(test, feature = "test-support"))]
+fn test_workflow_version_with(dot: &str) -> fabro_workflow_version::ValidatedWorkflowVersion {
     use std::collections::BTreeMap;
 
     let entrypoint = fabro_types::WorkflowPath::new("workflow.fabro")
         .expect("test workflow entrypoint should be valid");
     let version = fabro_types::WorkflowVersion::new(
         entrypoint.clone(),
-        BTreeMap::from([(
-            entrypoint,
-            "digraph Test { graph [goal=\"Test\"] start [shape=Mdiamond] exit [shape=Msquare] start -> exit }"
-                .to_string(),
-        )]),
+        BTreeMap::from([(entrypoint, dot.to_string())]),
         BTreeMap::new(),
     )
     .expect("test workflow version should have a valid shape");

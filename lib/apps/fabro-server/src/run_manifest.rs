@@ -43,6 +43,7 @@ use tokio::task;
 use tokio::time;
 use tokio_util::sync::CancellationToken;
 
+use crate::petri_check::Readiness;
 use crate::sandbox_access::{self, ProviderAccess};
 use crate::server::{AppState, petri_runs};
 use crate::{petri_check, run_compiler};
@@ -188,16 +189,17 @@ impl ManifestCheck {
 }
 
 /// Petri's check of the whole bundle under `launch` and `runtime`.
-/// `has_ready_provider` false adds Fabro's refusal of a model node no
-/// provider can run; `unbound_is_warning` keeps an input nothing binds a
-/// warning, for a validation before the run's inputs exist. Blocking: Petri
-/// lowers the graph synchronously.
+/// `Readiness::Server` adds Fabro's readiness rules: the refusal of a model
+/// node no provider can run, and the refusal of a stage whose provider has
+/// no stored credential (fabro-b46e); `unbound_is_warning` keeps an input
+/// nothing binds a warning, for a validation before the run's inputs exist.
+/// Blocking: Petri lowers the graph synchronously.
 pub(crate) fn validate_prepared_manifest(
     prepared: &PreparedManifest,
     vars: &HashMap<String, String>,
     launch: Launch,
     runtime: RuntimeSpec,
-    has_ready_provider: bool,
+    readiness: &Readiness,
     unbound_is_warning: bool,
 ) -> Result<ManifestCheck, WorkflowError> {
     let request = petri_check::check_request(
@@ -209,7 +211,15 @@ pub(crate) fn validate_prepared_manifest(
         runtime,
         unbound_is_warning,
     )?;
-    let checked = petri_check::check(&request, has_ready_provider)?;
+    let mut checked = petri_check::check(&request, readiness.has_ready_provider())?;
+    if let Some(model_readiness) = readiness.as_model_readiness() {
+        checked
+            .diagnostics
+            .extend(petri_check::model_readiness_diagnostics(
+                &model_readiness,
+                checked.admitted.as_ref(),
+            ));
+    }
     Ok(ManifestCheck {
         graph:       checked.admitted.as_ref().map(run_graph::run_graph),
         diagnostics: checked.diagnostics,
@@ -239,10 +249,14 @@ pub(crate) async fn check_prepared_manifest(
         dry_run,
         state.sandbox_provider_config(None),
     );
-    let has_ready_provider = !ready_providers.is_empty();
+    let readiness = Readiness::Server {
+        catalog: state.catalog(),
+        ready:   ready_providers.to_vec(),
+        force:   false,
+    };
     let prepared = prepared.clone();
     task::spawn_blocking(move || {
-        validate_prepared_manifest(&prepared, &vars, launch, runtime, has_ready_provider, false)
+        validate_prepared_manifest(&prepared, &vars, launch, runtime, &readiness, false)
     })
     .await
     .map_err(|source| WorkflowError::engine_with_source("manifest check task failed", source))?
@@ -1546,7 +1560,11 @@ mod tests {
             &HashMap::new(),
             launch,
             runtime,
-            !ready_providers.is_empty(),
+            &Readiness::Server {
+                catalog: state.catalog(),
+                ready:   ready_providers.to_vec(),
+                force:   false,
+            },
             false,
         )
     }
@@ -2789,6 +2807,65 @@ id = "daytona"
                 .iter()
                 .all(|check| check.name != "LLM"),
             "no LLM check runs on a refused workflow"
+        );
+        assert_eq!(any_provider_call.calls_async().await, 0);
+    }
+
+    #[tokio::test]
+    async fn preflight_refuses_a_stage_whose_provider_has_no_stored_credential() {
+        let server = httpmock::MockServer::start_async().await;
+        let any_provider_call = server
+            .mock_async(|when, then| {
+                when.any_request();
+                then.status(500);
+            })
+            .await;
+        // moonshot is enabled but carries no credential in this state; the
+        // workflow needs it, so the validation refuses the stage at its
+        // check instead of letting a fire die inside it (fabro-b46e).
+        let moonshot_url = server.url("/moonshot/v1");
+        let openrouter_url = server.url("/openrouter/v1");
+        let state = crate::test_support::TestAppStateBuilder::new()
+            .llm_overlay_toml(&format!(
+                r#"
+[providers.moonshot]
+base_url = "{moonshot_url}"
+
+[providers.openrouter]
+base_url = "{openrouter_url}"
+enabled = true
+
+"#
+            ))
+            .vault_entries([(EnvVars::OPENROUTER_API_KEY, "test-openrouter-key")])
+            .build();
+        let (_, ready_providers) = state.resolve_llm_client_with_ready_ids().await;
+        let mut manifest = minimal_manifest();
+        manifest.workflows.get_mut("workflow.fabro").unwrap().source = r#"
+digraph Demo {
+    start [shape=Mdiamond]
+    exit  [shape=Msquare]
+    work  [prompt="Do work", model="kimi-k3", provider="moonshot"]
+    start -> work -> exit
+}
+"#
+        .to_string();
+        let prepared = prepare_manifest(
+            &manifest_run_defaults(Some(&default_settings_fixture())),
+            &manifest,
+        )
+        .unwrap();
+        let validated = validate_for_test(&state, &prepared, &ready_providers).unwrap();
+
+        let refusal = validated
+            .diagnostics
+            .iter()
+            .find(|diagnostic| diagnostic.rule == crate::petri_check::PROVIDER_NOT_READY_RULE)
+            .expect("the not-ready provider should refuse the workflow");
+        assert!(refusal.severity == Severity::Error);
+        assert!(
+            refusal.message.contains("moonshot") && refusal.message.contains("kimi-k3"),
+            "{refusal:?}"
         );
         assert_eq!(any_provider_call.calls_async().await, 0);
     }

@@ -20,6 +20,12 @@ pub struct RunIntent {
     pub title:               Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub goal:                Option<String>,
+    /// Admission override (fabro-b46e): true fires the run although a
+    /// required LLM provider has no stored credential — the readiness
+    /// refusal becomes a warning instead of refusing the create. An
+    /// omission (and every automation fire) keeps the refusal.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub force:               Option<bool>,
 }
 
 /// Structured run-setting overrides accepted by [`RunIntent`].

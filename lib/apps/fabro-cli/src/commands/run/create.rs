@@ -142,6 +142,7 @@ pub(crate) async fn create_run(
             parent_id,
             title: None,
             goal: prepared.goal,
+            force: args.force.then_some(true),
         })
         .await
         .context("could not create run")?;

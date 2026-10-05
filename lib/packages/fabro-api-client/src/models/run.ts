@@ -88,6 +88,10 @@ export interface Run {
     'labels': { [key: string]: string; };
     'lifecycle': RunLifecycle;
     'sandbox': RunSandbox | null;
+    /**
+     * The immutable workflow version the run was created from, when the creating intent pinned one. Absent for pre-version runs. The revisor\'s freshness rule (ADR-0015) consumes it; agent run-search tools surface it per run.
+     */
+    'workflow_version_id'?: string | null;
     'models': Array<RunModel>;
     'source_directory': string | null;
     'timestamps': RunTimestamps;

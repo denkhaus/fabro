@@ -91,6 +91,7 @@ fn help() {
           --target-branch <BRANCH>        Target working branch (default: remote default branch), pinned to its observed commit
           --dry-run                       Simulate execution; workflow source may still be fetched and uploaded
           --auto-approve                  Auto-approve all human gates
+          --force                         Fire although a required LLM provider has no stored credential; the readiness refusal becomes a warning (fabro-b46e)
           --goal <GOAL>                   Override the workflow goal (available as {{ goal }} in prompts)
           --goal-file <GOAL_FILE>         Read a per-run goal value from a local file
           --model <MODEL>                 Override default LLM model

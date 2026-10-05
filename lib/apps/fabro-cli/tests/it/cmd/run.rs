@@ -140,6 +140,7 @@ fn help() {
           --target-branch <BRANCH>        Target working branch (default: remote default branch), pinned to its observed commit
           --dry-run                       Simulate execution; workflow source may still be fetched and uploaded
           --auto-approve                  Auto-approve all human gates
+          --force                         Fire although a required LLM provider has no stored credential; the readiness refusal becomes a warning (fabro-b46e)
           --goal <GOAL>                   Override the workflow goal (available as {{ goal }} in prompts)
           --goal-file <GOAL_FILE>         Read a per-run goal value from a local file
           --model <MODEL>                 Override default LLM model
@@ -255,6 +256,61 @@ fn run_parent_resolves_parent_and_sends_parent_id_in_intent() {
         String::from_utf8_lossy(&output.stderr)
     );
     resolve_mock.assert();
+    environment_mock.assert();
+    version_mock.assert();
+    create_mock.assert();
+    start_mock.assert();
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout).trim(),
+        run_id.as_str()
+    );
+}
+
+#[test]
+fn force_flag_travels_to_the_run_intent() {
+    let context = test_context!();
+    let server = MockServer::start();
+    let run_id = unique_run_id();
+    let environment_mock = mock_environment(&server, "default", "docker");
+    let version_mock = mock_workflow_version_registrations(&server);
+    // The create mock only matches a body that carries the admission
+    // override (fabro-b46e); a run without `--force` would not match.
+    let create_mock = server.mock(|when, then| {
+        when.method("POST")
+            .path("/api/v1/runs")
+            .json_body_includes(r#"{"force":true}"#);
+        then.status(201)
+            .header("Content-Type", "application/json")
+            .body(run_status_response(run_id.as_str(), "submitted").to_string());
+    });
+    let start_mock = server.mock(|when, then| {
+        when.method("POST")
+            .path(format!("/api/v1/runs/{run_id}/start"));
+        then.status(200)
+            .header("Content-Type", "application/json")
+            .body(run_status_response(run_id.as_str(), "runnable").to_string());
+    });
+
+    let workflow = context.install_fixture("simple.fabro");
+    let output = context
+        .run_cmd()
+        .args([
+            "--server",
+            &format!("{}/api/v1", server.base_url()),
+            "--detach",
+            "--dry-run",
+            "--force",
+            workflow.to_str().unwrap(),
+        ])
+        .output()
+        .expect("command should execute");
+
+    assert!(
+        output.status.success(),
+        "command failed:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
     environment_mock.assert();
     version_mock.assert();
     create_mock.assert();

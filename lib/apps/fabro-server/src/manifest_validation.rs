@@ -36,7 +36,7 @@ pub fn validate_manifest(
         &HashMap::new(),
         petri_check::launch_without_catalog(&prepared.settings),
         offline_runtime(Some(manifest_run_defaults)),
-        true,
+        &petri_check::Readiness::Offline,
         true,
     )
     .map_err(anyhow::Error::new)?;

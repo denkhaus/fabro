@@ -3207,6 +3207,77 @@ async fn create_run_without_ready_llm_provider_rejects_implicit_model_selection(
 }
 
 #[tokio::test]
+async fn create_run_refuses_a_stage_whose_provider_has_no_stored_credential() {
+    const PROVIDER_DOT: &str = r#"digraph Test {
+        graph [goal="Test"]
+        start [shape=Mdiamond]
+        work [shape=box, prompt="Do the work", model="glm-4.7", provider="zai"]
+        exit  [shape=Msquare]
+        start -> work -> exit
+    }"#;
+    const MODEL_DOT: &str = r#"digraph Test {
+        graph [goal="Test"]
+        start [shape=Mdiamond]
+        work [shape=box, prompt="Do the work", model="glm-4.7"]
+        exit  [shape=Msquare]
+        start -> work -> exit
+    }"#;
+    // Only openrouter is credentialed; the workflow needs moonshot, whose
+    // key is absent — the fire is refused instead of dying in the stage
+    // (fabro-b46e).
+    let state = TestAppStateBuilder::new()
+        .llm_overlay_toml("[providers.openrouter]\nenabled = true\n")
+        .vault_entries([(EnvVars::OPENROUTER_API_KEY, "test-openrouter-key")])
+        .build();
+    let app = crate::test_support::build_test_router(Arc::clone(&state));
+
+    // One arm pins the provider explicitly; the other resolves by model
+    // name — both must name provider and model in the refusal.
+    for dot in [PROVIDER_DOT, MODEL_DOT] {
+        let intent = test_intent(&app, dot).await;
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(api("/runs"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(intent.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let body = response_json!(response, StatusCode::UNPROCESSABLE_ENTITY).await;
+        let detail = body["errors"][0]["detail"].as_str().unwrap_or_default();
+        assert!(
+            detail.contains("fabro.model.provider_not_ready")
+                && detail.contains("zai")
+                && detail.contains("glm-4.7")
+                && detail.contains("ZAI_API_KEY"),
+            "unexpected response: {body}"
+        );
+    }
+    assert!(state.runs.lock().expect("runs lock poisoned").is_empty());
+
+    // A forced intent fires through the miss; the finding stays a warning.
+    let mut intent = test_intent(&app, PROVIDER_DOT).await;
+    intent["force"] = json!(true);
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(api("/runs"))
+                .header("content-type", "application/json")
+                .body(Body::from(intent.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    response_json!(response, StatusCode::CREATED).await;
+}
+
+#[tokio::test]
 async fn generated_title_failure_leaves_deterministic_title_unchanged() {
     let llm = MockServer::start_async().await;
     let title_mock = llm
@@ -4603,6 +4674,7 @@ async fn create_run_from_intent_helper_persists_automation_version_and_exact_tar
                 parent_id: None,
                 title: None,
                 goal: None,
+                force: None,
             },
             explicit_run_id: Some(run_id),
             actor:           Principal::System {

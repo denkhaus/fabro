@@ -36,6 +36,7 @@ fn intent() -> RunIntent {
         parent_id:           None,
         title:               Some("Add RunIntent".to_string()),
         goal:                Some("Implement the endpoint".to_string()),
+        force:               None,
     }
 }
 

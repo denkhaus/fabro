@@ -9876,6 +9876,12 @@ components:
         goal:
           type: string
           description: Optional inline goal override.
+        force:
+          type: boolean
+          description: >-
+            Admission override (fabro-b46e): fire although a required LLM
+            provider has no stored credential; the readiness refusal becomes
+            a warning. Omission keeps the refusal; automations never force.
 
     RunIntentArgs:
       description: Structured run overrides accepted by workflow-version creation.

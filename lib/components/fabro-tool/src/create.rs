@@ -132,6 +132,7 @@ pub async fn create_runs_with_options(
                 parent_id,
                 title: spec.title,
                 goal: spec.goal,
+                force: None,
             };
             // Fork seam (fabro-8ee1): a parent must not gain a second
             // non-terminal child of the same workflow version — prompt

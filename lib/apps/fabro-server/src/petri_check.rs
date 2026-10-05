@@ -7,7 +7,12 @@
 //! and hands back the admitted graphs with Petri's diagnostics in Fabro's
 //! shape. Fabro adds one rule of its own: a workflow with a node that runs a
 //! model is refused when no LLM provider is ready, since Petri admits the
-//! model nodes unchecked without a model client.
+//! model nodes unchecked without a model client. A second rule of the same
+//! family (fabro-b46e) refuses a run whose stages need a provider with no
+//! stored credential — readiness, not admission, is Fabro's to judge, and a
+//! miss that would surface as an in-stage authentication error (or, for a
+//! graph that routes the failed leg onward, as a green run) is refused at
+//! the fire instead.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::PathBuf;
@@ -25,6 +30,181 @@ use lithos_llm::catalog::ProviderId;
 
 /// Fabro's rule for a model node with no provider ready to run it.
 pub(crate) const NO_READY_PROVIDER_RULE: &str = "fabro.model.no_ready_provider";
+
+/// Fabro's rule for a stage whose resolved provider has no stored
+/// credential (fabro-b46e): the fire is refused naming provider and model.
+pub(crate) const PROVIDER_NOT_READY_RULE: &str = "fabro.model.provider_not_ready";
+
+/// What a readiness check needs (fabro-b46e): the catalog to resolve
+/// selectors with, the providers with stored credentials, and whether an
+/// operator override downgrades the refusal to a warning.
+pub(crate) struct ModelReadiness<'a> {
+    pub(crate) catalog: &'a Catalog,
+    pub(crate) ready:   &'a [ProviderId],
+    pub(crate) force:   bool,
+}
+
+/// Owned readiness inputs for a check that crosses a thread boundary
+/// (fabro-b46e): the server's catalog and ready providers, or no
+/// credential knowledge at all for an offline check, where neither
+/// readiness rule fires.
+pub(crate) enum Readiness {
+    Offline,
+    Server {
+        catalog: std::sync::Arc<Catalog>,
+        ready:   Vec<ProviderId>,
+        force:   bool,
+    },
+}
+
+impl Readiness {
+    /// Whether any provider is ready: the input of the no-ready rule.
+    pub(crate) fn has_ready_provider(&self) -> bool {
+        match self {
+            Self::Offline => true,
+            Self::Server { ready, .. } => !ready.is_empty(),
+        }
+    }
+
+    /// The per-provider rule's inputs, when credential readiness is known.
+    pub(crate) fn as_model_readiness(&self) -> Option<ModelReadiness<'_>> {
+        match self {
+            Self::Offline => None,
+            Self::Server {
+                catalog,
+                ready,
+                force,
+            } => Some(ModelReadiness {
+                catalog,
+                ready,
+                force: *force,
+            }),
+        }
+    }
+}
+
+/// The credential-readiness diagnostics of an admitted workflow: one per
+/// model requirement whose provider is not ready (fabro-b46e).
+///
+/// Skipped when no provider is ready at all — [`NO_READY_PROVIDER_RULE`]
+/// owns that case — and per requirement when a selector does not resolve
+/// (Petri's admission owns unknown models and providers) or the node states
+/// neither (the launch default is ready by construction). `force` keeps the
+/// finding but downgrades it to a warning, so an override stays visible.
+pub(crate) fn model_readiness_diagnostics(
+    readiness: &ModelReadiness<'_>,
+    admitted: Option<&Admitted>,
+) -> Vec<FabroDiagnostic> {
+    let Some(admitted) = admitted else {
+        return Vec::new();
+    };
+    if readiness.ready.is_empty() {
+        return Vec::new();
+    }
+    let mut misses: BTreeMap<(String, Option<String>), ProviderMiss> = BTreeMap::new();
+    for requirement in admitted.model_requirements() {
+        let (required_providers, representative) = match &requirement.provider {
+            Some(provider) => match selection::require_provider(readiness.catalog, provider) {
+                Ok(canonical) => {
+                    let representative = readiness
+                        .catalog
+                        .enabled_provider(canonical.as_str())
+                        .map(|provider| provider.id().clone());
+                    (vec![canonical], representative)
+                }
+                Err(_) => continue,
+            },
+            None => match &requirement.model {
+                Some(model) => {
+                    let offerings = readiness.catalog.offerings_matching(model);
+                    if offerings.is_empty() {
+                        continue;
+                    }
+                    let representative = Some(offerings[0].provider.id().clone());
+                    let providers = offerings
+                        .iter()
+                        .map(|offering| offering.provider.id().clone())
+                        .collect();
+                    (providers, representative)
+                }
+                None => continue,
+            },
+        };
+        if required_providers.is_empty() {
+            continue;
+        }
+        if required_providers
+            .iter()
+            .any(|provider| readiness.ready.contains(provider))
+        {
+            continue;
+        }
+        let providers = required_providers
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+            .join("`, `");
+        // The vault entry an operator creates for the miss: the preferred
+        // secret name of the first provider the selector names (fabro-b46e
+        // names provider, model AND the missing secret).
+        let expected_secret = representative.as_ref().and_then(|provider| {
+            readiness
+                .catalog
+                .enabled_provider(provider.as_str())
+                .and_then(fabro_auth::expected_secret_name)
+        });
+        misses
+            .entry((providers, requirement.model.clone()))
+            .or_default()
+            .record(requirement.node, expected_secret);
+    }
+    misses
+        .into_iter()
+        .map(|((providers, model), miss)| {
+            let mut nodes = miss.nodes;
+            nodes.sort();
+            let model = model.as_deref().map_or_else(
+                || "the provider's default model".to_string(),
+                |model| format!("model `{model}`"),
+            );
+            let secret = miss.expected_secret.map_or_else(String::new, |secret| {
+                format!(" (expected secret: `{secret}`)")
+            });
+            FabroDiagnostic {
+                rule: PROVIDER_NOT_READY_RULE.to_string(),
+                severity: if readiness.force {
+                    Severity::Warning
+                } else {
+                    Severity::Error
+                },
+                message: format!(
+                    "stage(s) {} run {model} on provider(s) `{providers}`, for which no credential is stored{secret} — the run would die in those stages",
+                    nodes.join(", ")
+                ),
+                fix: Some(
+                    "store a credential for the provider (server vault / `fabro install`) or set run.model to a ready provider; `--force` fires anyway"
+                        .to_string(),
+                ),
+                ..FabroDiagnostic::default()
+            }
+        })
+        .collect()
+}
+
+/// One readiness miss being aggregated: the stages that need it and the
+/// vault entry an operator would create.
+#[derive(Default)]
+struct ProviderMiss {
+    nodes:           Vec<String>,
+    expected_secret: Option<String>,
+}
+
+impl ProviderMiss {
+    fn record(&mut self, node: String, expected_secret: Option<String>) {
+        self.nodes.push(node);
+        self.expected_secret = self.expected_secret.take().or(expected_secret);
+    }
+}
 
 /// The launch Fabro binds around the settings: the run's model and provider
 /// below them, and the environment the run selected and the goal the run

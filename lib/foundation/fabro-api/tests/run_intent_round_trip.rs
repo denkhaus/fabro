@@ -39,6 +39,7 @@ fn run_intent_round_trips_the_openapi_shape() {
         parent_id:           None,
         title:               Some("Ship RunIntent".to_string()),
         goal:                Some("Create the run without starting it".to_string()),
+        force:               None,
     };
 
     let value = serde_json::to_value(&intent).unwrap();
@@ -60,6 +61,7 @@ fn run_intent_none_target_round_trips_the_openapi_shape() {
         parent_id:           None,
         title:               None,
         goal:                None,
+        force:               None,
     };
 
     let value = serde_json::to_value(&intent).unwrap();
@@ -81,6 +83,7 @@ fn run_intent_folder_target_round_trips_the_openapi_shape() {
         parent_id:           None,
         title:               None,
         goal:                None,
+        force:               None,
     };
 
     let value = serde_json::to_value(&intent).unwrap();

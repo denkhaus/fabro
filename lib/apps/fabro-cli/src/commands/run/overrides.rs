@@ -176,6 +176,7 @@ mod tests {
             target_branch:        None,
             dry_run:              false,
             auto_approve:         false,
+            force:                false,
             goal:                 None,
             goal_file:            None,
             model:                None,

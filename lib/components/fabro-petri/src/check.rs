@@ -263,6 +263,52 @@ impl Admitted {
             .flat_map(|graph| &graph.body.nodes)
             .any(|node| node.step.kind == AGENT_KIND || node.step.kind == PROMPT_KIND)
     }
+
+    /// The model requirements the admitted graphs state, one per agent or
+    /// prompt node that carries a resolved `model`/`provider` string
+    /// (fabro-b46e): the attractor lowering writes the node attribute, the
+    /// graph default, or the run settings onto every model node's config,
+    /// so this is the workflow's required provider set as compiled — a
+    /// workflow of commands and gates, or a node whose selectors are still
+    /// templates, states none.
+    #[must_use]
+    pub fn model_requirements(&self) -> Vec<ModelRequirement> {
+        std::iter::once(&self.graph)
+            .chain(&self.children)
+            .flat_map(|graph| &graph.body.nodes)
+            .filter(|node| node.step.kind == AGENT_KIND || node.step.kind == PROMPT_KIND)
+            .filter_map(|node| {
+                let requirement = ModelRequirement {
+                    node:     node.name.to_string(),
+                    model:    requirement_string(&node.step.config, "model"),
+                    provider: requirement_string(&node.step.config, "provider"),
+                };
+                (requirement.model.is_some() || requirement.provider.is_some())
+                    .then_some(requirement)
+            })
+            .collect()
+    }
+}
+
+/// A config string a readiness check can resolve: a plain string that is
+/// not a template — a `{{ inputs.* }}` selector resolves at stage
+/// dispatch, not at admission, so it states no requirement.
+fn requirement_string(config: &serde_json::Value, key: &str) -> Option<String> {
+    let value = config.get(key)?.as_str()?;
+    (!value.contains("{{")).then(|| value.to_string())
+}
+
+/// One stage's resolved model selection, as the admitted graph states it
+/// (fabro-b46e). Both fields are absent only for nodes the lowering could
+/// not supply — the launch default owns those.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ModelRequirement {
+    /// The node's name, for diagnostics.
+    pub node:     String,
+    /// The `model` the node runs, when one is stated.
+    pub model:    Option<String>,
+    /// The `provider` the node pins, when one is stated.
+    pub provider: Option<String>,
 }
 
 /// Why a check produced no graph.
@@ -424,5 +470,101 @@ fn convert(diagnostic: &frontend::Diagnostic) -> Diagnostic {
 impl Diagnostic {
     pub fn is_error(&self) -> bool {
         self.severity == DiagnosticSeverity::Error
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeMap;
+
+    use super::{Admitted, Bundle, CheckRequest, ModelRequirement};
+
+    fn admit(dot: &str) -> Admitted {
+        let request = CheckRequest {
+            bundle: Bundle {
+                files:        BTreeMap::from([("workflow.fabro".to_string(), dot.to_string())]),
+                entrypoint:   "workflow.fabro".to_string(),
+                project_toml: None,
+            },
+            ..CheckRequest::default()
+        };
+        super::check(&request).unwrap_or_else(|err| panic!("the workflow should admit: {err:?}"))
+    }
+
+    fn requirements(dot: &str) -> Vec<ModelRequirement> {
+        let mut requirements = admit(dot).model_requirements();
+        requirements.sort_by(|left, right| left.node.cmp(&right.node));
+        requirements
+    }
+
+    fn requirement(node: &str, model: Option<&str>, provider: Option<&str>) -> ModelRequirement {
+        ModelRequirement {
+            node:     node.to_string(),
+            model:    model.map(str::to_string),
+            provider: provider.map(str::to_string),
+        }
+    }
+
+    #[test]
+    fn model_requirements_carry_each_model_nodes_resolved_selection() {
+        let requirements = requirements(
+            r#"digraph Demo {
+                start [shape=Mdiamond]
+                work [prompt="Do work", model="glm-4.7", provider="zai"]
+                ask [prompt="Ask", model="kimi"]
+                exit [shape=Msquare]
+                start -> work -> ask -> exit
+            }"#,
+        );
+        assert_eq!(requirements, vec![
+            requirement("ask", Some("kimi"), None),
+            requirement("work", Some("glm-4.7"), Some("zai")),
+        ]);
+    }
+
+    #[test]
+    fn model_requirements_skip_templated_selectors() {
+        // A `{{ ... }}` selector resolves at stage dispatch, not at
+        // admission, so it states no requirement the check could resolve.
+        let requirements = requirements(
+            r#"digraph Demo {
+                start [shape=Mdiamond]
+                work [prompt="Do work", model="{{ inputs.model }}", provider="{{ inputs.provider }}"]
+                exit [shape=Msquare]
+                start -> work -> exit
+            }"#,
+        );
+        assert!(requirements.is_empty());
+    }
+
+    #[test]
+    fn a_workflow_of_commands_and_gates_states_no_model_requirement() {
+        let requirements = requirements(
+            r#"digraph Demo {
+                start [shape=Mdiamond]
+                check [script="make check"]
+                gate [shape=hexagon, label="Ship?"]
+                exit [shape=Msquare]
+                start -> check -> gate -> exit
+                gate -> check [label="[N] No"]
+            }"#,
+        );
+        assert!(requirements.is_empty());
+    }
+
+    #[test]
+    fn a_model_node_the_launch_defaults_would_own_states_no_requirement() {
+        // No launch model is bound here, so the lowering writes neither
+        // `model` nor `provider` onto the node: the launch default owns it,
+        // and the launch default is ready by construction (fabro-b46e).
+        let requirements = requirements(
+            r#"digraph Demo {
+                start [shape=Mdiamond]
+                work [prompt="Do work"]
+                exit [shape=Msquare]
+                start -> work -> exit
+            }"#,
+        );
+        assert!(requirements.is_empty());
     }
 }

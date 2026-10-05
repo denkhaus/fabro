@@ -1052,6 +1052,7 @@ async fn create_seeded_run(
             parent_id: None,
             title: None,
             goal: None,
+            force: None,
         })
         .await
         .expect("seeded run creation should succeed")

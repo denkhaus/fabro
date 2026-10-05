@@ -1145,6 +1145,51 @@ pub(crate) mod tests {
     }
 
     #[tokio::test]
+    async fn scheduled_fire_is_refused_when_a_required_provider_has_no_stored_credential() {
+        // Only openai carries a credential in this state; the automation's
+        // workflow needs zai, so the fire is refused at admission and no
+        // run is created (fabro-b46e): the miss is a scheduler error, not
+        // a run that dies inside its first model stage.
+        let mut exact_target = git_target();
+        exact_target.sha = Some("0123456789abcdef0123456789abcdef01234567".to_string());
+        let materializer = TestAutomationRunMaterializer::succeed_with_workflow(
+            exact_target,
+            "digraph Test { graph [goal=\"Test\"] start [shape=Mdiamond] work [shape=box, prompt=\"Do the work\", model=\"glm-4.7\", provider=\"zai\"] exit [shape=Msquare] start -> work -> exit }",
+        );
+        let state = TestAppStateBuilder::new()
+            .env_lookup(|_| None)
+            .vault_entries([(EnvVars::OPENAI_API_KEY, "test-openai-api-key")])
+            .automation_materializer(materializer)
+            .build();
+        create_automation(state.as_ref(), "needs-zai", "Needs zai", vec![
+            schedule_trigger("schedule", "* * * * *", true),
+        ])
+        .await;
+        let mut planner = AutomationSchedulePlanner::default();
+
+        run_due_schedules_once(Arc::clone(&state), &mut planner, prime_time()).await;
+        run_due_schedules_once(Arc::clone(&state), &mut planner, first_due_time()).await;
+
+        assert!(
+            stored_runs(state.as_ref()).await.is_empty(),
+            "a refused fire must create no run"
+        );
+        let automation = state
+            .automation_store()
+            .list()
+            .await
+            .expect("test automations should list")
+            .into_iter()
+            .find(|automation| automation.id.as_str() == "needs-zai")
+            .expect("the automation should still exist");
+        let last_error = automation.last_error.as_deref().unwrap_or_default();
+        assert!(
+            last_error.contains("Failed to create scheduled automation run"),
+            "the refusal should surface as the automation's last error: {last_error}"
+        );
+    }
+
+    #[tokio::test]
     async fn scheduled_fire_skips_while_previous_run_is_non_terminal() {
         let materializer = succeeding_materializer();
         let state = test_state_with_materializer(materializer.clone());

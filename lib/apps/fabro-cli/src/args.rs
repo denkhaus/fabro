@@ -278,6 +278,11 @@ pub(crate) struct RunArgs {
     #[arg(long)]
     pub(crate) auto_approve: bool,
 
+    /// Fire although a required LLM provider has no stored credential; the
+    /// readiness refusal becomes a warning (fabro-b46e)
+    #[arg(long)]
+    pub(crate) force: bool,
+
     /// Override the workflow goal (available as {{ goal }} in prompts)
     #[arg(long)]
     pub(crate) goal: Option<String>,

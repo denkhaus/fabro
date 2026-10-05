@@ -561,6 +561,9 @@ pub(crate) async fn create_run_from_intent(
         automation,
     } = request;
     let explicit_title_supplied = intent.title.is_some();
+    // Admission override (fabro-b46e): a forced run fires through a
+    // credential-readiness miss; the finding stays a warning.
+    let force = intent.force.unwrap_or(false);
     // Validate the pure, in-memory request facts before paying for
     // blob-store reads and closure lowering.
     let ValidatedRunTarget { target, git } = match intent.target.validate() {
@@ -706,7 +709,7 @@ pub(crate) async fn create_run_from_intent(
         return response;
     }
     let prepared = prepared.with_web_url(state.run_web_url(&run_id));
-    finalize_created_run(state, prepared, explicit_title_supplied, entrypoint).await
+    finalize_created_run(state, prepared, explicit_title_supplied, entrypoint, force).await
 }
 
 /// A run must not be its own parent; an explicit parent must pass
@@ -733,6 +736,7 @@ async fn finalize_created_run(
     prepared: run_compiler::PreparedRun,
     explicit_title_supplied: bool,
     title_generation_target: ManifestPath,
+    force: bool,
 ) -> Response {
     // Resolve once: we need both the provider IDs (for the run create input
     // and ask-fabro-readiness) and the LLM client itself (for the spawned
@@ -756,7 +760,13 @@ async fn finalize_created_run(
     // Petri compiles the run: the bundle goes to `Runtime::check`, its
     // diagnostics come back in Fabro's shape, and the admitted graph is what
     // the run executes. Fabro's own settings resolution ran above.
-    let pinned = match petri_runs::admit(&state, &prepared, &run_materialization_provider_ids).await
+    let pinned = match petri_runs::admit(
+        &state,
+        &prepared,
+        &run_materialization_provider_ids,
+        force,
+    )
+    .await
     {
         Ok(admitted) => run_compiler::materialize_admitted(prepared, admitted).await,
         Err(error) => Err(error),

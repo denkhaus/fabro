@@ -46,4 +46,8 @@ export interface RunIntent {
      * Optional inline goal override.
      */
     'goal'?: string;
+    /**
+     * Admission override (fabro-b46e): fire although a required LLM provider has no stored credential; the readiness refusal becomes a warning. Omission keeps the refusal; automations never force.
+     */
+    'force'?: boolean;
 }
