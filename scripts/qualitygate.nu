@@ -152,6 +152,11 @@ def check-loop-assets [] {
         # journal, deferred-action and exemption-arm sweep. Same finding —
         # unregistered until fabro-8b38.
         '.fabro/workflows/develop/scripts/closeout-smoke.nu'
+        # close-claim battery (fabro-2a3b): the close-claim-check core over
+        # the incident fixture pair — a subject claiming a close the tracker
+        # never recorded is a finding; remainder/residual/file phrasings
+        # stay quiet. The LIVE check runs in the session's line watch.
+        '.fabro/scripts/close-claim-check-smoke.nu'
     ]
     for smoke in $smokes {
         let res = (do { ^nu $smoke } | complete)

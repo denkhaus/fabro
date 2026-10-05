@@ -53,7 +53,7 @@ jobs:
           rust_paths='^(lib/|Cargo\.toml$|Cargo\.lock$|\.cargo/|rust-toolchain|justfile$)'
           rust=$(echo "$files" | grep -qE "$rust_paths" && echo true || echo false)
           ts=$(echo "$files" | grep -qE '^(apps/|lib/packages/|bun\.lock$|\.github/workflows/dogfood-gate\.yml$)' && echo true || echo false)
-          loop=$(echo "$files" | grep -qE '^(\.fabro/(workflows|scripts)/|scripts/.*\.nu$)' && echo true || echo false)
+          loop=$(echo "$files" | grep -qE '^(\.fabro/|scripts/.*\.nu$)' && echo true || echo false)
           # The light tier's own contract file lives under lib/: a loop-asset PR
           # that legitimately refreshes the fabro-dot shape snapshot must stay
           # light (PR #385 ran the full 4522-test program because of its own
