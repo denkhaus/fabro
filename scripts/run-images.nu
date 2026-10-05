@@ -115,12 +115,9 @@ def build-one [dockerfile: string, tag: string, push: bool] {
             # Pushing is idempotent: a remote that already holds the digest
             # uploads nothing.
             if $push and $tag == "fabro-toolchain:noble" {
-                let sha12 = (git rev-parse --short=12 HEAD | str trim)
-                let remote = $"ghcr.io/denkhaus/fabro-toolchain:($sha12)"
-                docker tag $tag $remote
-                print $"run-images: pushing ($remote) ..."
-                docker push $remote
-                print $"run-images: pushed ($remote) — server-managed environments pin this sha tag"
+                let sha12 = (line_tip_sha12)
+                docker tag $tag $"ghcr.io/denkhaus/fabro-toolchain:($sha12)"
+                push-toolchain $sha12
             }
             return
         }
@@ -130,13 +127,37 @@ def build-one [dockerfile: string, tag: string, push: bool] {
     ^docker build --file $dockerfile --tag $tag --label $wanted $context
     print $"run-images: ($tag) built \(sha ($hash | str substring 0..11)\)"
     if $push and $tag == "fabro-toolchain:noble" {
-        let sha12 = (git rev-parse --short=12 HEAD | str trim)
-        let remote = $"ghcr.io/denkhaus/fabro-toolchain:($sha12)"
-        docker tag $tag $remote
-        print $"run-images: pushing ($remote) ..."
-        docker push $remote
-        print $"run-images: pushed ($remote) — server-managed environments pin this sha tag"
+        let sha12 = (line_tip_sha12)
+        docker tag $tag $"ghcr.io/denkhaus/fabro-toolchain:($sha12)"
+        push-toolchain $sha12
     }
+}
+
+# The pushable line-tip sha12 (fabro-a1ed/06da): the ONE policy site is
+# .fabro/scripts/line-tip-sha.nu — in a GitButler workspace git HEAD is the
+# never-pushed workspace commit, and a release tag must name the sha a push
+# publishes. It fails closed inside a workspace when `but sha` cannot run.
+def line_tip_sha12 [] {
+    let res = (do { ^nu .fabro/scripts/line-tip-sha.nu } | complete)
+    if $res.exit_code != 0 {
+        error make {msg: $"run-images: line-tip-sha failed: ($res.stderr | str trim)"}
+    }
+    let sha = ($res.stdout | str trim)
+    if ($sha | str length) != 12 {
+        error make {msg: $"run-images: line-tip-sha returned '($sha)' — expected a 12-hex sha"}
+    }
+    $sha
+}
+
+# Publish the toolchain image under its sha tag. ONE implementation: the two
+# call sites below (up-to-date push and fresh-build push) cannot drift
+# (fabro-06da — the duplicated statement was the reason a fix could land in
+# one branch and miss the other).
+def push-toolchain [sha12: string] {
+    let remote = $"ghcr.io/denkhaus/fabro-toolchain:($sha12)"
+    print $"run-images: pushing ($remote) ..."
+    ^docker push $remote
+    print $"run-images: pushed ($remote) — server-managed environments pin this sha tag"
 }
 
 def main [--push] {

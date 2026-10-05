@@ -157,6 +157,11 @@ def check-loop-assets [] {
         # never recorded is a finding; remainder/residual/file phrasings
         # stay quiet. The LIVE check runs in the session's line watch.
         '.fabro/scripts/close-claim-check-smoke.nu'
+        # release-sha battery (fabro-06da): release tags must name the
+        # PUSHABLE line tip — only the allow-listed files may derive a short
+        # sha, the two release scripts must call the policy site, and the
+        # scanner proves it has teeth on a planted fixture.
+        '.fabro/scripts/release-sha-fixtures.nu'
     ]
     for smoke in $smokes {
         let res = (do { ^nu $smoke } | complete)

@@ -142,6 +142,26 @@ def registration-check [] {
     }
 }
 
+# NUL-byte check (fabro-40ba): a literal NUL in a script makes git treat the
+# file as BINARY - no diff, no review, and `grep` prints 'binary file
+# matches' instead of lines, so the rg-first reconnaissance this repo
+# prescribes silently degrades on it. One battery carried a NUL for months
+# (its fixture meant to write control bytes; the fix is an escape sequence:
+# "\u{0}" in the source, never the raw byte).
+def nul-byte-check [file: string] {
+    # bytes index-of is the only reliable reader here: `each` over a binary
+    # yields binary chunks and `into int` refuses more than 8 bytes, so a
+    # byte-wise loop cannot see the NUL at all.
+    let bytes = (open --raw $file | into binary)
+    let at = ($bytes | bytes index-of 0x[00])
+    if $at >= 0 {
+        print $"nul-byte FAILED: ($file | path relative-to ($env.PWD)) contains a NUL byte at offset ($at) — write it as an escape sequence, never literally"
+        false
+    } else {
+        true
+    }
+}
+
 def main [] {
     let scripts = (script-paths)
     if ($scripts | is-empty) {
@@ -154,6 +174,7 @@ def main [] {
         if not (parse-check $s) { $green = false }
         if not (interpolated-regex-check $s) { $green = false }
         if not (bare-paren-check $s) { $green = false }
+        if not (nul-byte-check $s) { $green = false }
     }
     if not (registration-check) { $green = false }
     if $green {

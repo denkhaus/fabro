@@ -1,6 +1,6 @@
 #!/usr/bin/env nu
 # Build the fork's release image and push it to GHCR
-# (`just image-release`). Tags: <version>-<shortsha> plus `latest`.
+# (`just image-release`). Tags: <version>-<line-tip-sha12> plus `latest`.
 #
 # Requires a ghcr.io docker login with write:packages:
 #   gh auth refresh -s write:packages
@@ -12,7 +12,20 @@ def main [arch: string = "amd64"] {
         | first
         | parse --regex 'version = "(?P<v>[^"]+)"'
         | get v.0)
-    let sha = (git rev-parse --short HEAD)
+    # The pushable LINE-TIP sha (fabro-a1ed/06da): in a GitButler workspace
+    # git HEAD is the never-pushed workspace commit, so a tag built from it
+    # names a sha no push publishes and `just pin-toolchain`'s parity gate
+    # then refuses. ONE policy site: .fabro/scripts/line-tip-sha.nu (it
+    # falls back to git HEAD in a plain release clone/CI, and fails closed
+    # inside a workspace when `but sha` cannot run).
+    let res = (do { ^nu .fabro/scripts/line-tip-sha.nu } | complete)
+    if $res.exit_code != 0 {
+        error make {msg: $"image-release: line-tip-sha failed: ($res.stderr | str trim)"}
+    }
+    let sha = ($res.stdout | str trim)
+    if ($sha | str length) != 12 {
+        error make {msg: $"image-release: line-tip-sha returned '($sha)' — expected a 12-hex sha"}
+    }
     let repo = "ghcr.io/denkhaus/fabro"
     let tag = $"($repo):($version)-($sha)"
 
