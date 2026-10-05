@@ -212,6 +212,14 @@ stores it belongs to; reach them by phase need:
   a pipe: `$?` reads the last pipeline member, not the script). Nu
   interpolated strings treat `word:` before a `(` as a command call —
   reword such phrases; parse-clean does not mean run-clean.
+- Rust line-continuations written THROUGH Python (edit skill, insert
+  cells) MUST use raw strings (r'''...''') or doubled backslashes: a
+  single `\` before the newline is a PYTHON continuation that glues the
+  next line's indentation INTO the literal as mid-sentence spaces (f93b:
+  corrupted the extracted no-ready diagnostic twice — the second 'fix'
+  re-broke it the same way; fmt/clippy stay green, only a full-text pin
+  or a reviewer catches it). Pin full user-facing refusal strings in
+  tests, not just their prefixes.
 - Loop assets are deterministic-script-first: a prompt clause requiring
   judgment over mechanical data becomes a script that prints a verdict
   (`.fabro/scripts/`, `just lint-nu` for new nu scripts; prompts keep only
