@@ -19,7 +19,9 @@ use std::path::PathBuf;
 
 use fabro_llm::lithos_catalog::Catalog;
 use fabro_llm::selection;
-use fabro_petri::check::{self, Admitted, Bundle, CheckError, CheckRequest, Diagnostic, Launch};
+use fabro_petri::check::{
+    self, Admitted, Bundle, CheckError, CheckRequest, Diagnostic, Launch, ModelRequirement,
+};
 use fabro_petri::runtime::RuntimeSpec;
 use fabro_types::diagnostic::{Diagnostic as FabroDiagnostic, Severity};
 use fabro_types::settings::run::RunGoal;
@@ -83,6 +85,75 @@ impl Readiness {
     }
 }
 
+/// One provider the run will use for a model stage, resolved against the
+/// catalog and the ready set (fabro-b869 step 4): the launch selection
+/// would pick one of these. `model` names the stage's selector when one
+/// was stated, for probes.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct RequiredProvider {
+    pub provider: ProviderId,
+    pub model:    Option<String>,
+}
+
+/// Resolve one requirement's candidate providers: the pinned provider
+/// canonicalized, else every enabled provider offering the model. Empty
+/// when the selector names nothing the catalog knows (admission owns
+/// those refusals).
+fn requirement_providers(catalog: &Catalog, requirement: &ModelRequirement) -> Vec<ProviderId> {
+    match &requirement.provider {
+        Some(provider) => selection::require_provider(catalog, provider)
+            .map(|canonical| vec![canonical])
+            .unwrap_or_default(),
+        None => match &requirement.model {
+            Some(model) => catalog
+                .offerings_matching(model)
+                .iter()
+                .map(|offering| offering.provider.id().clone())
+                .collect(),
+            None => Vec::new(),
+        },
+    }
+}
+
+/// The providers the run's model stages will actually use (fabro-b869
+/// step 4): every requirement whose candidates include a credential-ready
+/// provider maps to those ready candidates — the selection would pick one
+/// of them. Requirements with no ready candidate are readiness misses
+/// ([`model_readiness_diagnostics`]) and never reach a window check.
+pub(crate) fn required_providers(
+    catalog: &Catalog,
+    admitted: Option<&Admitted>,
+    ready: &[ProviderId],
+) -> Vec<RequiredProvider> {
+    let Some(admitted) = admitted else {
+        return Vec::new();
+    };
+    let mut required: Vec<RequiredProvider> = Vec::new();
+    for requirement in admitted.model_requirements() {
+        let candidates = requirement_providers(catalog, &requirement);
+        let usable = candidates
+            .iter()
+            .filter(|provider| ready.contains(provider))
+            .cloned()
+            .collect::<Vec<_>>();
+        if usable.is_empty() {
+            continue;
+        }
+        for provider in usable {
+            if !required
+                .iter()
+                .any(|known| known.provider == provider && known.model == requirement.model)
+            {
+                required.push(RequiredProvider {
+                    provider,
+                    model: requirement.model.clone(),
+                });
+            }
+        }
+    }
+    required
+}
+
 /// The credential-readiness diagnostics of an admitted workflow: one per
 /// model requirement whose provider is not ready (fabro-b46e).
 ///
@@ -103,36 +174,12 @@ pub(crate) fn model_readiness_diagnostics(
     }
     let mut misses: BTreeMap<(String, Option<String>), ProviderMiss> = BTreeMap::new();
     for requirement in admitted.model_requirements() {
-        let (required_providers, representative) = match &requirement.provider {
-            Some(provider) => match selection::require_provider(readiness.catalog, provider) {
-                Ok(canonical) => {
-                    let representative = readiness
-                        .catalog
-                        .enabled_provider(canonical.as_str())
-                        .map(|provider| provider.id().clone());
-                    (vec![canonical], representative)
-                }
-                Err(_) => continue,
-            },
-            None => match &requirement.model {
-                Some(model) => {
-                    let offerings = readiness.catalog.offerings_matching(model);
-                    if offerings.is_empty() {
-                        continue;
-                    }
-                    let representative = Some(offerings[0].provider.id().clone());
-                    let providers = offerings
-                        .iter()
-                        .map(|offering| offering.provider.id().clone())
-                        .collect();
-                    (providers, representative)
-                }
-                None => continue,
-            },
-        };
-        if required_providers.is_empty() {
+        let candidates = requirement_providers(readiness.catalog, &requirement);
+        if candidates.is_empty() {
             continue;
         }
+        let required_providers = candidates;
+        let representative = required_providers.first().cloned();
         if required_providers
             .iter()
             .any(|provider| readiness.ready.contains(provider))

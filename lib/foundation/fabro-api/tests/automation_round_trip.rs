@@ -1,11 +1,14 @@
 use fabro_api::types::{
     Automation as ApiAutomation, AutomationGitWorkflowSource as ApiAutomationGitWorkflowSource,
+    AutomationProviderWindowFact as ApiProviderWindowFact,
+    AutomationProviderWindowState as ApiProviderWindowState,
     AutomationTrigger as ApiAutomationTrigger,
     CreateAutomationRequest as ApiCreateAutomationRequest,
     ReplaceAutomationRequest as ApiReplaceAutomationRequest,
 };
 use fabro_automation::{
     Automation, AutomationDraft, AutomationGitWorkflowSource, AutomationReplace, AutomationTrigger,
+    ProviderWindowFact, ProviderWindowState,
 };
 use serde_json::json;
 
@@ -18,6 +21,10 @@ const _: fn(ApiAutomationTrigger) -> AutomationTrigger = |value| value;
 const _: fn(ApiAutomationGitWorkflowSource) -> AutomationGitWorkflowSource = |value| value;
 const _: fn(ApiCreateAutomationRequest) -> AutomationDraft = |value| value;
 const _: fn(ApiReplaceAutomationRequest) -> AutomationReplace = |value| value;
+// Fork (fabro-b869 step 5b): the provider-window read model reuses the
+// domain types, so the gate's facts and the API payload cannot drift.
+const _: fn(ApiProviderWindowState) -> ProviderWindowState = |value| value;
+const _: fn(ApiProviderWindowFact) -> ProviderWindowFact = |value| value;
 
 #[test]
 fn automation_response_round_trips_public_json_shape() {
@@ -160,4 +167,27 @@ fn automation_workflow_source_rejects_unknown_or_incomplete_coordinates() {
     }))
     .unwrap();
     assert!(fabro_automation::validate_workflow_source(invalid_commit).is_err());
+}
+
+#[test]
+fn provider_window_facts_round_trip_the_public_json_shape() {
+    // The trigger read model as the fork's scheduler writes it (fabro-b869
+    // step 5b): the window is the catalog-spelled lowercase value.
+    let value = json!({
+        "providers": [
+            {
+                "provider": "zai",
+                "window": "closed",
+                "last_probe_at": "2026-10-05T09:00:00Z",
+                "next_probe_at": "2026-10-05T09:10:00Z"
+            }
+        ]
+    });
+
+    let state: ApiProviderWindowState = serde_json::from_value(value.clone()).unwrap();
+    assert_eq!(
+        state.providers[0].window,
+        fabro_automation::ProviderWindowKind::Closed
+    );
+    assert_eq!(serde_json::to_value(state).unwrap(), value);
 }

@@ -71,6 +71,8 @@ models/automation-git-workflow-source.ts
 models/automation-list-meta.ts
 models/automation-list-response.ts
 models/automation-overlap-policy.ts
+models/automation-provider-window-fact.ts
+models/automation-provider-window-state.ts
 models/automation-ref.ts
 models/automation-schedule-trigger.ts
 models/automation-trigger.ts

@@ -275,6 +275,56 @@ pub struct ScheduleTrigger {
     /// paths strip it. `Some(..)` with `paused_at` set marks a breaker pause.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub breaker:           Option<crate::ScheduleBreakerState>,
+    /// Scheduler-maintained provider window facts (fork, fabro-b869 step
+    /// 5b): the providers the window gate last held this trigger's fires
+    /// for. Read-only through the API; input paths strip it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider_window:   Option<crate::ProviderWindowState>,
+}
+
+/// The provider-window gate's per-trigger read model (fork, fabro-b869
+/// step 5b): one fact per provider the gate held fires for, so `fabro
+/// automations list/show` and the UI route can render why a schedule is
+/// quiet. Written by the scheduler tick; never accepted as input.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProviderWindowState {
+    pub providers: Vec<ProviderWindowFact>,
+}
+
+/// One provider's window as the gate last observed it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProviderWindowFact {
+    pub provider:      String,
+    pub window:        ProviderWindowKind,
+    /// When the provider was last probed.
+    pub last_probe_at: chrono::DateTime<chrono::Utc>,
+    /// When the next recheck may probe again (10-minute cadence).
+    pub next_probe_at: chrono::DateTime<chrono::Utc>,
+}
+
+/// Whether a provider's usage window is open (the provider answers) or
+/// closed (it reported a spent window). The one enum both the gate's
+/// bookkeeping and the trigger read model use, so the wire value is never
+/// a bare string (AGENTS.md strum rule).
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    strum::Display,
+    strum::EnumString,
+    strum::IntoStaticStr,
+)]
+#[serde(rename_all = "lowercase")]
+#[strum(serialize_all = "lowercase")]
+pub enum ProviderWindowKind {
+    Open,
+    Closed,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -438,9 +488,11 @@ fn normalize_replace(
         })
         .collect::<Vec<_>>();
     // Breaker facts are scheduler-owned read model state; any client-supplied
-    // facts on a create/replace are dropped (fabro-3d97).
+    // facts on a create/replace are dropped (fabro-3d97). The provider
+    // window facts ride the same rule (fork, fabro-b869 step 5b).
     for schedule in &mut schedules {
         schedule.breaker = None;
+        schedule.provider_window = None;
     }
     schedules.sort_by(|left, right| left.id.cmp(&right.id));
 
@@ -582,6 +634,7 @@ mod tests {
             expression: cron.to_string(),
             breaker_threshold: None,
             breaker: None,
+            provider_window: None,
         })
     }
 
@@ -596,6 +649,35 @@ mod tests {
             tag:    tag.map(str::to_string),
             sha:    sha.map(str::to_string),
         }
+    }
+
+    #[test]
+    fn replace_strips_client_supplied_provider_window_facts() {
+        let mut replacement = replace_with_source(None);
+        let AutomationTrigger::Schedule(mut schedule) = schedule_trigger("schedule", "* * * * *")
+        else {
+            panic!("test trigger should be a schedule");
+        };
+        schedule.provider_window = Some(crate::ProviderWindowState {
+            providers: vec![crate::ProviderWindowFact {
+                provider:      "zai".to_string(),
+                window:        crate::ProviderWindowKind::Closed,
+                last_probe_at: chrono::Utc::now(),
+                next_probe_at: chrono::Utc::now(),
+            }],
+        });
+        replacement.triggers = vec![AutomationTrigger::Schedule(schedule)];
+
+        let (automation, _) =
+            Automation::from_replace(AutomationId::new("strip-window").unwrap(), replacement)
+                .unwrap();
+        let AutomationTrigger::Schedule(stripped) = &automation.triggers[0] else {
+            panic!("stored trigger should be a schedule");
+        };
+        assert!(
+            stripped.provider_window.is_none(),
+            "client-supplied window facts must be stripped: {stripped:?}"
+        );
     }
 
     fn replace_with_source(

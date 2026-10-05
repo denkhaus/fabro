@@ -375,8 +375,6 @@ pub(crate) fn spawn_automation_scheduler(state: Arc<AppState>) {
     tokio::spawn(async move {
         let mut planner = AutomationSchedulePlanner::default();
         let mut lag_watchdog = AutomationLagWatchdog::default();
-        // Fork state (fabro-986b): provider window gate per automation.
-        let mut gate = super::fork_line_recovery::GateState::new();
         let shutdown = state.shutdown_token();
 
         loop {
@@ -421,13 +419,43 @@ pub(crate) fn spawn_automation_scheduler(state: Arc<AppState>) {
             // fire (one basic completion) — closed windows create no runs;
             // closed lines poll on the fixed 10-minute cadence and fire
             // on reopen. No prose-parsed backoff.
-            let held = super::fork_line_recovery::provider_gate_tick(
+            // Fork state (fabro-986b, shared since fabro-b869 step 4):
+            // the provider window gate lives on the AppState, so the
+            // run-create path and the scheduler feed the same probes.
+            // The tick locks the shared gate internally, in short sections,
+            // so a provider probe never blocks a concurrent create.
+            let tick = super::fork_line_recovery::provider_gate_tick(
                 Arc::clone(&state),
                 &automations,
                 now,
-                &mut gate,
             )
             .await;
+            // The gate lock is released above; the trigger read model is
+            // written here, in order, so a clear can never overtake a hold
+            // (fabro-b869 step 5b).
+            for write in &tick.fact_writes {
+                let Some(automation_id) =
+                    fabro_automation::AutomationId::new(&write.automation_id).ok()
+                else {
+                    continue;
+                };
+                if let Err(err) = state
+                    .automation_store()
+                    .apply_schedule_provider_window(
+                        &automation_id,
+                        &write.trigger_id,
+                        write.facts.as_ref(),
+                    )
+                    .await
+                {
+                    warn!(
+                        automation_id = %write.automation_id,
+                        error = ?err,
+                        "line gate: writing provider window facts failed"
+                    );
+                }
+            }
+            let held = tick.held;
             for due in planner.tick(&automations, now) {
                 if held.contains(due.automation.id.as_str()) {
                     info!(
@@ -441,7 +469,6 @@ pub(crate) fn spawn_automation_scheduler(state: Arc<AppState>) {
                     state.as_ref(),
                     &due.automation,
                     now,
-                    &mut gate,
                 )
                 .await
                 {
@@ -754,6 +781,7 @@ pub(crate) mod tests {
             expression: expression.to_string(),
             breaker_threshold: None,
             breaker: None,
+            provider_window: None,
         })
     }
 
@@ -1464,6 +1492,7 @@ pub(crate) mod tests {
             expression:        "* * * * *".to_string(),
             breaker_threshold: threshold,
             breaker:           None,
+            provider_window:   None,
         };
         state
             .automation_store()

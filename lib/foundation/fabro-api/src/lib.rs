@@ -15,8 +15,16 @@ mod generated {
 }
 pub mod types {
     pub use fabro_automation::{
-        Automation, AutomationDraft as CreateAutomationRequest,
-        AutomationReplace as ReplaceAutomationRequest, AutomationTrigger,
+        Automation,
+        AutomationDraft as CreateAutomationRequest,
+        AutomationReplace as ReplaceAutomationRequest,
+        AutomationTrigger,
+        // Fork (fabro-b869 step 5b): the provider-window read model reuses
+        // the domain types, so the gate's facts and the API payload cannot
+        // drift into parallel shapes.
+        ProviderWindowFact as AutomationProviderWindowFact,
+        ProviderWindowKind,
+        ProviderWindowState as AutomationProviderWindowState,
     };
     pub use fabro_environment::Environment;
     pub use fabro_types::settings::run::{

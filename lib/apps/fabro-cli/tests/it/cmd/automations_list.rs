@@ -2,6 +2,17 @@ use fabro_test::{fabro_snapshot, test_context};
 use httpmock::MockServer;
 
 fn automation_json(id: &str, revision: &str, last_error: Option<&str>) -> serde_json::Value {
+    automation_json_with_window(id, revision, last_error, None)
+}
+
+/// The same definition, optionally carrying the provider-window gate's
+/// hold facts (fork, fabro-b869 step 5b) the scheduler writes.
+fn automation_json_with_window(
+    id: &str,
+    revision: &str,
+    last_error: Option<&str>,
+    provider_window: Option<&serde_json::Value>,
+) -> serde_json::Value {
     serde_json::json!({
         "id": id,
         "revision": revision,
@@ -24,7 +35,8 @@ fn automation_json(id: &str, revision: &str, last_error: Option<&str>) -> serde_
                     "consecutive_count": 1,
                     "last_run_id": "01M2ZSYQR4ZM8N6HD67TT3AT3X",
                     "paused_at": null
-                }
+                },
+                "provider_window": provider_window.cloned()
             }
         ]
     })
@@ -70,10 +82,18 @@ fn list_renders_automations_table() {
                             "1111111111111111111111111111111111111111111111111111111111111111",
                             None
                         ),
-                        automation_json(
+                        automation_json_with_window(
                             "architect",
                             "2222222222222222222222222222222222222222222222222222222222222222",
-                            Some("scheduler failed to queue run")
+                            Some("scheduler failed to queue run"),
+                            Some(&serde_json::json!({
+                                "providers": [{
+                                    "provider": "zai",
+                                    "window": "closed",
+                                    "last_probe_at": "2026-10-05T09:00:00Z",
+                                    "next_probe_at": "2026-10-05T09:10:00Z"
+                                }]
+                            }))
                         )
                     ],
                     "meta": { "total": 2 }
@@ -97,6 +117,8 @@ fn list_renders_automations_table() {
         "SCHEDULE",
         "ENABLED",
         "BREAKER",
+        "WINDOW",
+        "zai",
         "LAST ERROR",
         "nightly-deps",
         "architect",

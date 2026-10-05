@@ -20,6 +20,7 @@ fabro-db = { path = "../../foundation/fabro-db" }
 fabro-types = { path = "../../foundation/fabro-types" }
 hex.workspace = true
 serde.workspace = true
+serde_json.workspace = true
 sha2.workspace = true
 sqlx.workspace = true
 thiserror.workspace = true
@@ -29,6 +30,5 @@ tracing.workspace = true
 
 [dev-dependencies]
 anyhow.workspace = true
-serde_json.workspace = true
 tempfile = "3"
 tokio = { workspace = true, features = ["macros", "test-util"] }

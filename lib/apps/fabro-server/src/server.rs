@@ -1191,6 +1191,12 @@ pub struct AppState {
     automation_breaker_notifier: Option<Arc<dyn AutomationBreakerNotifier>>,
     slack_started: AtomicBool,
     github_webhook_secret: Option<String>,
+    /// The fork's provider window gate (fabro-986b, provider-scoped since
+    /// fabro-b869): shared per-provider window state. The scheduler tick
+    /// and the run-create admission path consult and feed the same probes,
+    /// so one provider outage costs one probe per recheck cadence across
+    /// every consumer (fork seam: the type lives in fork_line_recovery).
+    pub(crate) provider_gate: AsyncMutex<super::server::fork_line_recovery::GateState>,
 }
 
 pub(crate) struct AppStores {
@@ -2803,6 +2809,7 @@ pub(crate) fn build_app_state(config: AppStateConfig) -> anyhow::Result<Arc<AppS
         slack_service,
         automation_breaker_notifier,
         slack_started: AtomicBool::new(false),
+        provider_gate: AsyncMutex::new(super::server::fork_line_recovery::GateState::new()),
         // Startup snapshot for the sync router build; rotating the webhook
         // secret requires a server restart.
         github_webhook_secret: vault.get(WEBHOOK_SECRET_ENV).map(str::to_string),

@@ -41,8 +41,10 @@ use std::time::Duration;
 
 use chrono::{DateTime, Utc};
 use fabro_types::{Run, RunFailure, RunStatus};
+use lithos_llm::catalog::CatalogProvider;
 
 use super::AppState;
+use crate::petri_check::RequiredProvider;
 
 /// Recheck probe cadence (user decision 2026-09-14: "fixe rechecks alle
 /// 10 Minuten").
@@ -77,12 +79,10 @@ pub(crate) fn is_quota_park(status: RunStatus, failure: Option<&RunFailure>) -> 
     parked_status && failure.is_some_and(fabro_types::is_quota_rate_limit_failure)
 }
 
-/// Window state of ONE provider.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ProviderWindow {
-    Open,
-    Closed,
-}
+/// Window state of ONE provider: the shared kind the trigger read model
+/// also carries (fabro-b869), so gate bookkeeping and the persisted facts
+/// cannot drift apart.
+pub(crate) use fabro_automation::ProviderWindowKind as ProviderWindow;
 
 /// Per-provider probe answer plus the selector it was probed with.
 #[derive(Debug, Clone)]
@@ -159,6 +159,35 @@ impl GateState {
             }
             _ => {}
         }
+    }
+
+    /// The per-provider hold facts as the trigger read model stores them
+    /// (fabro-b869 step 5b): one fact per provider, window as last probed,
+    /// next probe one recheck cadence after the last.
+    pub(crate) fn window_facts(
+        &self,
+        providers: &[String],
+    ) -> Vec<fabro_automation::ProviderWindowFact> {
+        providers
+            .iter()
+            .filter_map(|provider| {
+                let probe = self.probes.get(provider)?;
+                Some(fabro_automation::ProviderWindowFact {
+                    provider:      provider.clone(),
+                    window:        probe.window,
+                    last_probe_at: probe.last_probe_at,
+                    next_probe_at: probe
+                        .last_probe_at
+                        .checked_add_signed(chrono::Duration::seconds(RECHECK_INTERVAL_SECS))?,
+                })
+            })
+            .collect()
+    }
+
+    /// When a provider was last probed, whatever the answer was.
+    #[must_use]
+    pub(crate) fn last_probe_at(&self, provider: &str) -> Option<DateTime<Utc>> {
+        self.probes.get(provider).map(|probe| probe.last_probe_at)
     }
 
     /// The selector a provider was last probed with (for log/status lines).
@@ -246,19 +275,54 @@ pub(crate) async fn provider_window_open(state: &AppState, selector: &str) -> bo
         );
         return true;
     }
-    match probe::run_model_test(
+    let outcome = probe::run_model_test(
         &llm.client,
         selector,
         fabro_types::ModelTestMode::Basic,
         None,
         Some(Duration::from_secs(30)),
     )
-    .await
-    .status
-    {
+    .await;
+    match outcome.status {
         probe::ModelTestStatus::Ok => true,
-        probe::ModelTestStatus::Error => false,
+        probe::ModelTestStatus::Error => {
+            let message = outcome.error_message.unwrap_or_default();
+            if probe_failure_is_a_usage_window(&message) {
+                false
+            } else {
+                // Only a USAGE WINDOW closes the gate (fabro-986b's user
+                // decision: check the provider for its 429 before a fire).
+                // Any other probe failure — a 5xx, a transport hiccup, a
+                // mock — leaves the window OPEN: the documented fail-open
+                // contract, and since fabro-b869 step 4 the create path
+                // reads the same state, so a transient failure must never
+                // lock manual fires for a whole cadence.
+                tracing::warn!(
+                    selector,
+                    error = %message,
+                    "line gate: provider probe failed without a usage-window signature — failing open (fabro-986b)"
+                );
+                true
+            }
+        }
     }
+}
+
+/// Whether a failed provider probe describes a usage/quota WINDOW — the
+/// only failure the gate treats as closed: the provider answered and said
+/// the window is spent (429-shaped), as opposed to failing to answer at all.
+fn probe_failure_is_a_usage_window(message: &str) -> bool {
+    let lowered = message.to_ascii_lowercase();
+    [
+        "429",
+        "rate limit",
+        "rate_limit",
+        "usage limit",
+        "quota",
+        "too many requests",
+    ]
+    .iter()
+    .any(|marker| lowered.contains(marker))
 }
 
 /// Gate tick, called on every scheduler pass BEFORE due cron fires are
@@ -278,9 +342,9 @@ pub(crate) async fn provider_gate_tick(
     state: Arc<AppState>,
     automations: &[fabro_automation::Automation],
     now: DateTime<Utc>,
-    gate: &mut GateState,
-) -> std::collections::HashSet<String> {
+) -> GateTick {
     let mut skip_fires = std::collections::HashSet::new();
+    let mut fact_writes: Vec<ProviderWindowWrite> = Vec::new();
     for automation in automations {
         let automation_id = automation.id.as_str();
         if automation.enabled_schedule_triggers().next().is_none() {
@@ -293,12 +357,23 @@ pub(crate) async fn provider_gate_tick(
             // workflow, or no terminal run yet): never held.
             continue;
         }
-        let closed = probe_due_providers(&state, &required, gate, now).await;
+        let closed = probe_due_providers(&state, &required, now).await;
         if closed.is_empty() {
             // Every required provider's window is open. If this tick ENDS a
             // hold, recover the line: rewind the quota-parked run, else fire
             // immediately (the normal cron path would wait for the next slot).
-            if gate.take_hold(automation_id) {
+            if state.provider_gate.lock().await.take_hold(automation_id) {
+                // The hold ended: clear the trigger's window facts so the
+                // read model says quiet-for-no-reason (fabro-b869 step 5b).
+                // The write is DEFERRED to the caller (never detached): an
+                // out-of-order clear could strand a stale "closed" forever.
+                if let Some(trigger) = automation.enabled_schedule_triggers().next() {
+                    fact_writes.push(ProviderWindowWrite {
+                        automation_id: automation_id.to_string(),
+                        trigger_id:    trigger.id.clone(),
+                        facts:         None,
+                    });
+                }
                 let park_to_rewind = newest
                     .as_ref()
                     .filter(|run| is_quota_park(run.lifecycle.status, park_failure(run).as_ref()))
@@ -355,18 +430,37 @@ pub(crate) async fn provider_gate_tick(
                 continue;
             }
             // Not held: the cron path decides on its own (cron_fire_allowed
-            // re-checks the same provider state).
+            // re-checks the same provider state). A trigger still carrying
+            // stored facts from an earlier hold — or from a restart, which
+            // starts the gate empty and so can never observe a reopen
+            // transition — is cleared here, so the read model can never say
+            // "closed" for a schedule that is firing (fabro-b869 step 5b).
+            let stale = automation
+                .enabled_schedule_triggers()
+                .next()
+                .filter(|trigger| trigger.provider_window.is_some())
+                .map(|trigger| trigger.id.clone());
+            if let Some(trigger_id) = stale {
+                fact_writes.push(ProviderWindowWrite {
+                    automation_id: automation_id.to_string(),
+                    trigger_id,
+                    facts: None,
+                });
+            }
             continue;
         }
-        let probed_with = closed
-            .iter()
-            .map(|provider| {
-                gate.probe_selector_of(provider)
-                    .unwrap_or(provider.as_str())
-                    .to_string()
-            })
-            .collect::<Vec<_>>()
-            .join(",");
+        let probed_with = {
+            let gate = state.provider_gate.lock().await;
+            closed
+                .iter()
+                .map(|provider| {
+                    gate.probe_selector_of(provider)
+                        .unwrap_or(provider.as_str())
+                        .to_string()
+                })
+                .collect::<Vec<_>>()
+                .join(",")
+        };
         tracing::info!(
             automation_id,
             providers = %closed.join(","),
@@ -374,10 +468,139 @@ pub(crate) async fn provider_gate_tick(
             interval_secs = RECHECK_INTERVAL_SECS,
             "line gate: provider window closed — holding fires (fabro-b869)"
         );
-        gate.note_held(automation_id);
+        state.provider_gate.lock().await.note_held(automation_id);
         skip_fires.insert(automation_id.to_string());
+        // fabro-b869 step 5b: the hold is readable on the trigger — one
+        // fact per closed provider, next probe one cadence out. Deferred to
+        // the caller, which writes them after the gate lock is released.
+        if let Some(trigger) = automation.enabled_schedule_triggers().next() {
+            fact_writes.push(ProviderWindowWrite {
+                automation_id: automation_id.to_string(),
+                trigger_id:    trigger.id.clone(),
+                facts:         Some(fabro_automation::ProviderWindowState {
+                    providers: state.provider_gate.lock().await.window_facts(&closed),
+                }),
+            });
+        }
     }
-    skip_fires
+    GateTick {
+        held: skip_fires,
+        fact_writes,
+    }
+}
+
+/// What one gate tick decided (fabro-b869 step 5b): the automations whose
+/// fires it holds, and the trigger-fact writes the caller performs after
+/// releasing the gate lock.
+pub(crate) struct GateTick {
+    pub(crate) held:        std::collections::HashSet<String>,
+    pub(crate) fact_writes: Vec<ProviderWindowWrite>,
+}
+
+/// One deferred write of a trigger's provider-window read model.
+pub(crate) struct ProviderWindowWrite {
+    pub(crate) automation_id: String,
+    pub(crate) trigger_id:    fabro_automation::AutomationTriggerId,
+    pub(crate) facts:         Option<fabro_automation::ProviderWindowState>,
+}
+
+/// Why a manual/API/CLI fire was refused on a provider window (fabro-b869
+/// step 4): the closed provider, the stage's model selector when stated,
+/// and when the gate last probed it.
+pub(crate) struct WindowRefusal {
+    pub provider:      String,
+    pub model:         Option<String>,
+    pub last_probe_at: DateTime<Utc>,
+}
+
+impl WindowRefusal {
+    /// The next probe is one recheck cadence after the last, exactly what
+    /// the scheduler's poll_due would allow.
+    pub(crate) fn next_probe_at(&self) -> DateTime<Utc> {
+        self.last_probe_at
+            .checked_add_signed(chrono::Duration::seconds(RECHECK_INTERVAL_SECS))
+            .unwrap_or(self.last_probe_at)
+    }
+}
+
+/// The manual/API/CLI create path's window check (fabro-b869 step 4): a
+/// run whose model stages need a provider whose window the gate last saw
+/// CLOSED is refused before any run record exists. A provider the gate
+/// never probed is probed ON DEMAND here (the same bounded one-word probe
+/// the scheduler uses, fail-open on unresolvable client or selector) and
+/// the answer is recorded, so scheduler and manual fires share one probe
+/// per provider per cadence. `force` skips the check entirely.
+pub(crate) async fn manual_window_refusal(
+    state: &AppState,
+    required: &[RequiredProvider],
+    force: bool,
+    now: DateTime<Utc>,
+) -> Option<WindowRefusal> {
+    if force {
+        return None;
+    }
+    for requirement in required {
+        let provider = requirement.provider.as_str();
+        // The cadence slot is CLAIMED under the lock (fabro-b869 step 4):
+        // a provider the gate never probed, or whose answer is older than
+        // the recheck cadence, is reserved for this caller — a concurrent
+        // create sees a fresh slot and never probes a second time inside
+        // one cadence. The reservation keeps the last known window, so a
+        // closed window stays closed while its reprobe is in flight.
+        let claim = {
+            let mut gate = state.provider_gate.lock().await;
+            if gate.poll_due(provider, now) {
+                let known = gate.window(provider).unwrap_or(ProviderWindow::Open);
+                let selector = probe_selector(state, requirement);
+                gate.note_probe(provider, known, &selector, now);
+                Some(selector)
+            } else {
+                None
+            }
+        };
+        if let Some(selector) = claim {
+            // The probe runs OUTSIDE the lock: a 30-second provider probe
+            // must never block the scheduler or a concurrent create.
+            let open = provider_window_open(state, &selector).await;
+            let window = if open {
+                ProviderWindow::Open
+            } else {
+                ProviderWindow::Closed
+            };
+            let mut gate = state.provider_gate.lock().await;
+            gate.note_probe(provider, window, &selector, now);
+        }
+        let (window, last_probe_at) = {
+            let gate = state.provider_gate.lock().await;
+            (gate.window(provider), gate.last_probe_at(provider))
+        };
+        if window == Some(ProviderWindow::Closed) {
+            return Some(WindowRefusal {
+                provider:      requirement.provider.to_string(),
+                model:         requirement.model.clone(),
+                last_probe_at: last_probe_at.unwrap_or(now),
+            });
+        }
+    }
+    None
+}
+
+/// The selector a requirement's probe runs with: the provider's PROBE
+/// model from the catalog (the row marked `probe`, else its default
+/// offering) — the cheap model the catalog designates for exactly this
+/// question. The stage's own model is deliberately not used: probing the
+/// stage's model spends it on a one-word request and, in scripted test
+/// scenarios, would consume the answer the stage itself expects.
+fn probe_selector(state: &AppState, requirement: &RequiredProvider) -> String {
+    let probe_model = state
+        .catalog()
+        .enabled_provider(requirement.provider.as_str())
+        .and_then(CatalogProvider::probe_offering)
+        .map(|offering| offering.model.id().to_string());
+    match probe_model {
+        Some(model) => format!("{}/{}", requirement.provider, model),
+        None => requirement.provider.to_string(),
+    }
 }
 
 /// Probe every required provider whose answer is older than the recheck
@@ -390,21 +613,38 @@ pub(crate) async fn provider_gate_tick(
 pub(crate) async fn probe_due_providers(
     state: &AppState,
     required: &[(String, String)],
-    gate: &mut GateState,
     now: DateTime<Utc>,
 ) -> Vec<String> {
     let mut closed = Vec::new();
     for (provider, selector) in required {
-        if gate.poll_due(provider, now) {
+        // Claim the cadence slot under a SHORT lock, probe OUTSIDE it: a
+        // 30-second provider probe must never block a concurrent create or
+        // the tick's next automation (fabro-b869 step 4).
+        let claimed = {
+            let mut gate = state.provider_gate.lock().await;
+            if gate.poll_due(provider, now) {
+                let known = gate.window(provider).unwrap_or(ProviderWindow::Open);
+                gate.note_probe(provider, known, selector, now);
+                true
+            } else {
+                false
+            }
+        };
+        if claimed {
             let open = provider_window_open(state, selector).await;
             let window = if open {
                 ProviderWindow::Open
             } else {
                 ProviderWindow::Closed
             };
+            let mut gate = state.provider_gate.lock().await;
             gate.note_probe(provider, window, selector, now);
         }
-        if gate.window(provider) == Some(ProviderWindow::Closed) && !closed.contains(provider) {
+        let known_closed = {
+            let gate = state.provider_gate.lock().await;
+            gate.window(provider) == Some(ProviderWindow::Closed)
+        };
+        if known_closed && !closed.contains(provider) {
             closed.push(provider.clone());
         }
     }
@@ -419,7 +659,6 @@ pub(crate) async fn cron_fire_allowed(
     state: &AppState,
     automation: &fabro_automation::Automation,
     now: DateTime<Utc>,
-    gate: &mut GateState,
 ) -> bool {
     let automation_id = automation.id.as_str();
     let newest = newest_terminal(state, automation_id, now).await;
@@ -428,7 +667,7 @@ pub(crate) async fn cron_fire_allowed(
         // Degraded: no LLM provider observed — fail open.
         return true;
     }
-    let closed = probe_due_providers(state, &required, gate, now).await;
+    let closed = probe_due_providers(state, &required, now).await;
     if closed.is_empty() {
         tracing::debug!(
             automation_id,
@@ -539,6 +778,59 @@ mod tests {
         gate.note_probe("openrouter", ProviderWindow::Open, "openrouter/x", t0);
         assert_eq!(gate.window("openrouter"), Some(ProviderWindow::Open));
         assert_eq!(RECHECK_INTERVAL_SECS, 600, "user decision 2026-09-14");
+    }
+
+    #[test]
+    fn only_a_usage_window_signature_closes_the_gate() {
+        // The gate exists for usage windows (fabro-986b): a provider that
+        // ANSWERS "the window is spent" closes it, a provider that fails to
+        // answer must not — since fabro-b869 step 4 the create path reads
+        // the same state, so a 5xx would lock manual fires for a cadence.
+        for message in [
+            "429 Too Many Requests",
+            "Usage limit reached for 5 hour. Your limit will reset at 2026-10-05 01:44:59Z",
+            "rate_limit exceeded",
+            "quota exhausted",
+        ] {
+            assert!(
+                probe_failure_is_a_usage_window(message),
+                "a usage window should close the gate: {message}"
+            );
+        }
+        for message in [
+            "connection reset by peer",
+            "500 Internal Server Error",
+            "probe unavailable",
+            "invalid api key",
+            "",
+        ] {
+            assert!(
+                !probe_failure_is_a_usage_window(message),
+                "a non-window failure must fail open: {message}"
+            );
+        }
+    }
+
+    #[test]
+    fn window_facts_carry_each_providers_last_probe_and_cadence() {
+        let now = Utc::now();
+        let mut gate = GateState::new();
+        gate.note_probe("zai", ProviderWindow::Closed, "zai/glm-4.7", now);
+        gate.note_probe("openai", ProviderWindow::Open, "gpt", now);
+
+        let facts = gate.window_facts(&["zai".to_string(), "openai".to_string()]);
+        assert_eq!(facts.len(), 2);
+        let zai = facts.iter().find(|fact| fact.provider == "zai").unwrap();
+        assert_eq!(zai.window, ProviderWindow::Closed);
+        assert_eq!(zai.last_probe_at, now);
+        assert_eq!(
+            zai.next_probe_at,
+            now.checked_add_signed(chrono::Duration::seconds(RECHECK_INTERVAL_SECS))
+                .unwrap()
+        );
+        // A provider the gate never probed states no fact.
+        let unseen = gate.window_facts(&["moonshot".to_string()]);
+        assert!(unseen.is_empty());
     }
 
     #[test]

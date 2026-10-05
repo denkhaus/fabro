@@ -47,7 +47,7 @@ export interface RunIntent {
      */
     'goal'?: string;
     /**
-     * Admission override (fabro-b46e): fire although a required LLM provider has no stored credential; the readiness refusal becomes a warning. Omission keeps the refusal; automations never force.
+     * Admission override (fabro-b46e, fabro-b869): fire although a required LLM provider has no stored credential or sits in a closed usage window; the readiness refusal becomes a warning. Omission keeps the refusal; automations never force.
      */
     'force'?: boolean;
 }

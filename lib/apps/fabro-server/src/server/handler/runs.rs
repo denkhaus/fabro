@@ -42,7 +42,7 @@ use lithos_llm::catalog::ProviderId;
 use serde::de::IgnoredAny;
 use strum::VariantArray as _;
 use tokio::fs;
-use tracing::info;
+use tracing::{info, warn};
 
 use super::super::{
     AppState, DeleteRunOutcome, ListResponse, RunExecutionMode, VariableError, answer_from_request,
@@ -768,7 +768,42 @@ async fn finalize_created_run(
     )
     .await
     {
-        Ok(admitted) => run_compiler::materialize_admitted(prepared, admitted).await,
+        Ok(admitted) => {
+            // The fork's provider window gate (fabro-b869 step 4): a manual,
+            // API or CLI fire whose model stages need a provider whose
+            // window the gate last saw closed is refused before any run
+            // record exists — the scheduler's holds and the create path
+            // share one probe per provider per cadence.
+            if let Some(refusal) = super::super::fork_line_recovery::manual_window_refusal(
+                state.as_ref(),
+                &admitted.required_providers,
+                force,
+                Utc::now(),
+            )
+            .await
+            {
+                let model = refusal
+                    .model
+                    .as_deref()
+                    .map_or_else(String::new, |model| format!(" (model `{model}`)"));
+                warn!(
+                    provider = %refusal.provider,
+                    last_probe_at = %refusal.last_probe_at,
+                    "run create refused: provider window closed (fabro-b869 step 4)"
+                );
+                return intent_error(
+                    StatusCode::CONFLICT,
+                    format!(
+                        "provider window closed: provider `{}`{model} was closed as of the probe at {}; the next recheck is at {} — pass --force to fire anyway",
+                        refusal.provider,
+                        refusal.last_probe_at.to_rfc3339(),
+                        refusal.next_probe_at().to_rfc3339(),
+                    ),
+                    "provider_window_closed",
+                );
+            }
+            run_compiler::materialize_admitted(prepared, admitted).await
+        }
         Err(error) => Err(error),
     };
     let pinned = match pinned {

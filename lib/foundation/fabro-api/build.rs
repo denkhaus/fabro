@@ -809,6 +809,19 @@ fn main() {
             "fabro_automation::AutomationReplace",
             &[],
         ),
+        // Fork (fabro-b869 step 5b): the provider-window read model rides
+        // the domain types, so gate bookkeeping, the stored trigger and the
+        // API output cannot drift into parallel shapes.
+        (
+            "AutomationProviderWindowState",
+            "fabro_automation::ProviderWindowState",
+            &[],
+        ),
+        (
+            "AutomationProviderWindowFact",
+            "fabro_automation::ProviderWindowFact",
+            &[],
+        ),
         // MCP server catalog wire types reuse the domain model rather than
         // generating parallel DTOs. The integer formats in the spec generate as
         // `i64`/`i32`, but the domain types use `u64`/`u16`; the replacements

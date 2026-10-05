@@ -84,6 +84,18 @@ pub enum AutomationStoreError {
     },
     #[error("stored automation {id} has an invalid trigger row")]
     StoredTriggerShape { id: AutomationId },
+    #[error("stored automation {id} has unreadable provider window facts")]
+    StoredProviderWindow {
+        id:     AutomationId,
+        #[source]
+        source: serde_json::Error,
+    },
+    #[error("provider window facts for automation {id} could not be encoded")]
+    ProviderWindowEncode {
+        id:     AutomationId,
+        #[source]
+        source: serde_json::Error,
+    },
     #[error("stored automation {id} has a partial workflow source coordinate")]
     StoredWorkflowSourceShape { id: AutomationId },
     #[error("stored automation {id} has an invalid revision")]
@@ -172,6 +184,8 @@ impl AutomationStoreError {
             Self::StoredValidation { .. } => "stored_validation",
             Self::StoredId { .. } => "stored_id",
             Self::StoredTriggerShape { .. } => "stored_trigger_shape",
+            Self::StoredProviderWindow { .. } => "stored_provider_window",
+            Self::ProviderWindowEncode { .. } => "provider_window_encode",
             Self::StoredWorkflowSourceShape { .. } => "stored_workflow_source_shape",
             Self::InvalidRevision { .. } => "invalid_revision",
             Self::Db { .. } => "db",

@@ -3278,6 +3278,194 @@ async fn create_run_refuses_a_stage_whose_provider_has_no_stored_credential() {
 }
 
 #[tokio::test]
+async fn create_run_refuses_a_manual_fire_while_the_provider_window_is_closed() {
+    const ZAI_DOT: &str = r#"digraph Test {
+        graph [goal="Test"]
+        start [shape=Mdiamond]
+        work [shape=box, prompt="Do the work", model="glm-4.7", provider="zai"]
+        exit  [shape=Msquare]
+        start -> work -> exit
+    }"#;
+    // zai carries a credential (readiness passes) but the fork's provider
+    // window gate last saw its window CLOSED: the manual fire is refused
+    // before any run record exists (fabro-b869 step 4).
+    let state = TestAppStateBuilder::new()
+        .env_lookup(|_| None)
+        .vault_entries([(EnvVars::ZAI_API_KEY, "test-zai-key")])
+        .build();
+    let probed_at = chrono::Utc::now();
+    {
+        let mut gate = state.provider_gate.lock().await;
+        gate.note_probe(
+            "zai",
+            super::fork_line_recovery::ProviderWindow::Closed,
+            "zai/glm-4.7",
+            probed_at,
+        );
+    }
+    let app = crate::test_support::build_test_router(Arc::clone(&state));
+
+    let intent = test_intent(&app, ZAI_DOT).await;
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(api("/runs"))
+                .header("content-type", "application/json")
+                .body(Body::from(intent.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let body = response_json!(response, StatusCode::CONFLICT).await;
+    let detail = body["errors"][0]["detail"].as_str().unwrap_or_default();
+    assert_eq!(
+        body["errors"][0]["code"].as_str(),
+        Some("provider_window_closed"),
+        "unexpected response: {body}"
+    );
+    assert!(
+        detail.contains("zai") && detail.contains("pass --force"),
+        "unexpected response: {body}"
+    );
+    assert!(
+        detail.contains(&probed_at.to_rfc3339()[..16]),
+        "the refusal names the last probe: {detail}"
+    );
+    assert!(state.runs.lock().expect("runs lock poisoned").is_empty());
+
+    // The force override fires through the closed window.
+    let mut intent = test_intent(&app, ZAI_DOT).await;
+    intent["force"] = json!(true);
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(api("/runs"))
+                .header("content-type", "application/json")
+                .body(Body::from(intent.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    response_json!(response, StatusCode::CREATED).await;
+
+    // An OPEN window never refuses the same workflow.
+    let mut gate = state.provider_gate.lock().await;
+    gate.note_probe(
+        "zai",
+        super::fork_line_recovery::ProviderWindow::Open,
+        "zai/glm-4.7",
+        chrono::Utc::now(),
+    );
+    drop(gate);
+    let intent = test_intent(&app, ZAI_DOT).await;
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(api("/runs"))
+                .header("content-type", "application/json")
+                .body(Body::from(intent.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    response_json!(response, StatusCode::CREATED).await;
+}
+
+#[tokio::test]
+async fn manual_fires_share_one_provider_probe_per_cadence() {
+    const ZAI_DOT: &str = r#"digraph Test {
+        graph [goal="Test"]
+        start [shape=Mdiamond]
+        work [shape=box, prompt="Do the work", model="glm-4.7", provider="zai"]
+        exit  [shape=Msquare]
+        start -> work -> exit
+    }"#;
+    // The provider answers its probe with a plain 500: no usage-window
+    // signature, so the gate fails OPEN (fabro-986b) — and the probe is
+    // still recorded, which is what the create path's cadence claim is
+    // about (fabro-b869 step 4).
+    let llm = MockServer::start_async().await;
+    let probe = llm
+        .mock_async(|when, then| {
+            when.any_request();
+            then.status(500)
+                .header("content-type", "application/json")
+                .json_body(json!({
+                    "error": {"message": "probe unavailable"}
+                }));
+        })
+        .await;
+    let state = TestAppStateBuilder::new()
+        .provider_base_url("zai", llm.url("/v1"))
+        .env_lookup(|_| None)
+        .vault_entries([(EnvVars::ZAI_API_KEY, "test-zai-key")])
+        .build();
+    let app = crate::test_support::build_test_router(Arc::clone(&state));
+
+    let intent = test_intent(&app, ZAI_DOT).await;
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(api("/runs"))
+                .header("content-type", "application/json")
+                .body(Body::from(intent.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    response_json!(response, StatusCode::CREATED).await;
+
+    // The probe really ran: the provider answered it (a 500 without a
+    // usage-window signature, hence fail open) — a claim-only regression
+    // (probing never executed) would leave this at zero.
+    assert!(
+        probe.calls_async().await > 0,
+        "the create path probes an unknown provider on demand"
+    );
+    let first_probe_at = {
+        let gate = state.provider_gate.lock().await;
+        assert!(
+            gate.window("zai").is_some(),
+            "the create path probed the unknown provider"
+        );
+        gate.last_probe_at("zai").expect("the probe is recorded")
+    };
+
+    // A second manual fire inside the cadence reuses the answer: the
+    // provider is probed ONCE per recheck interval, whatever fires it.
+    let intent = test_intent(&app, ZAI_DOT).await;
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(api("/runs"))
+                .header("content-type", "application/json")
+                .body(Body::from(intent.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    response_json!(response, StatusCode::CREATED).await;
+    let second_probe_at = {
+        let gate = state.provider_gate.lock().await;
+        gate.last_probe_at("zai").expect("still probed")
+    };
+    assert_eq!(
+        first_probe_at, second_probe_at,
+        "one probe per provider per recheck cadence, shared by every fire"
+    );
+}
+
+#[tokio::test]
 async fn generated_title_failure_leaves_deterministic_title_unchanged() {
     let llm = MockServer::start_async().await;
     let title_mock = llm

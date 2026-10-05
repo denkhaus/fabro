@@ -517,6 +517,11 @@ pub(crate) async fn admit(
             "Petri's check admitted no graph and raised no error",
         ))
     })?;
+    // The run's required providers as the admitted graphs state them,
+    // resolved against the catalog and the ready set (fabro-b869 step 4):
+    // what the create path's window check consults.
+    let required_providers =
+        petri_check::required_providers(state.catalog().as_ref(), Some(&admitted), eligible);
     let admission = admission::persist(&state.store_ref().blobs(), &admitted)
         .await
         .map_err(|err| {
@@ -528,6 +533,7 @@ pub(crate) async fn admit(
     Ok(AdmittedRun {
         admission,
         graph: run_graph::run_graph(&admitted),
+        required_providers,
     })
 }
 

@@ -47,6 +47,8 @@ use fabro_workflow::operations::{
 use fabro_workflow::workflow_bundle::{BundledWorkflow, WorkflowBundle};
 use tokio::task;
 
+use crate::petri_check::RequiredProvider;
+
 /// Transport-neutral inputs for compiling one submitted run.
 ///
 /// Identity (`run_id`), lineage, title, git metadata, and provenance are
@@ -196,8 +198,12 @@ impl PreparedRun {
 /// What Petri admitted for a run: the stored graphs the run executes from,
 /// and the display graph read off them.
 pub(crate) struct AdmittedRun {
-    pub(crate) admission: PetriAdmission,
-    pub(crate) graph:     RunGraph,
+    pub(crate) admission:          PetriAdmission,
+    pub(crate) graph:              RunGraph,
+    /// The providers the run's model stages will use (fabro-b869 step 4):
+    /// the create path's provider-window check consults this before any
+    /// run record exists.
+    pub(crate) required_providers: Vec<RequiredProvider>,
 }
 
 /// Admitted stage output ready for pure persistence-input assembly.
@@ -435,7 +441,11 @@ pub(crate) async fn materialize_admitted(
             // Consumed at admission, as Petri's compile variables.
             vars: _,
         } = prepared;
-        let AdmittedRun { admission, graph } = admitted;
+        let AdmittedRun {
+            admission,
+            graph,
+            required_providers: _,
+        } = admitted;
         let materialized = operations::materialize_admitted_run(AdmittedRunInput {
             settings,
             cwd,
@@ -904,6 +914,7 @@ include = ["reports/{{ vars.path }}/*.json"]
         let pinned = materialize_admitted(prepared, AdmittedRun {
             admission: PetriAdmission::default(),
             graph,
+            required_providers: Vec::new(),
         })
         .await
         .expect("the admitted run should materialize");

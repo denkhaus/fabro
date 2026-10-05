@@ -7349,6 +7349,51 @@ components:
           type: string
           description: Five-field cron expression evaluated in UTC.
           example: "0 3 * * *"
+        provider_window:
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/AutomationProviderWindowState"
+          description: >-
+            Scheduler-maintained provider window facts (fork, fabro-b869):
+            one fact per provider the provider-window gate last held this
+            trigger's fires for. Read-only; input values are stripped.
+
+    AutomationProviderWindowState:
+      description: >-
+        The provider-window gate's per-trigger read model (fork,
+        fabro-b869): why a schedule is quiet.
+      type: object
+      additionalProperties: false
+      required:
+        - providers
+      properties:
+        providers:
+          type: array
+          items:
+            $ref: "#/components/schemas/AutomationProviderWindowFact"
+
+    AutomationProviderWindowFact:
+      description: One provider's window as the gate last observed it.
+      type: object
+      additionalProperties: false
+      required:
+        - provider
+        - window
+        - last_probe_at
+        - next_probe_at
+      properties:
+        provider:
+          type: string
+          example: zai
+        window:
+          type: string
+          enum: [open, closed]
+        last_probe_at:
+          type: string
+          format: date-time
+        next_probe_at:
+          type: string
+          format: date-time
 
     CreateAutomationRequest:
       description: Request body for creating an automation.
@@ -9879,9 +9924,10 @@ components:
         force:
           type: boolean
           description: >-
-            Admission override (fabro-b46e): fire although a required LLM
-            provider has no stored credential; the readiness refusal becomes
-            a warning. Omission keeps the refusal; automations never force.
+            Admission override (fabro-b46e, fabro-b869): fire although a
+            required LLM provider has no stored credential or sits in a
+            closed usage window; the readiness refusal becomes a warning.
+            Omission keeps the refusal; automations never force.
 
     RunIntentArgs:
       description: Structured run overrides accepted by workflow-version creation.

@@ -41,6 +41,7 @@ fn schedule(id: &str, expression: &str, enabled: bool) -> AutomationTrigger {
         id: AutomationTriggerId::new(id).unwrap(),
         enabled,
         expression: expression.to_string(),
+        provider_window: None,
     })
 }
 
@@ -103,6 +104,71 @@ fn trigger_ids(automation: &fabro_automation::Automation) -> Vec<&str> {
         .iter()
         .map(|trigger| trigger.id().as_str())
         .collect()
+}
+
+#[tokio::test]
+async fn provider_window_facts_round_trip_and_a_replace_clears_them() {
+    let (_dir, database) = test_database().await;
+    let store = AutomationStore::new(database.clone_pool());
+    let automation = store.create(draft("window-facts", true)).await.unwrap();
+
+    let now = chrono::Utc::now();
+    let facts = fabro_automation::ProviderWindowState {
+        providers: vec![fabro_automation::ProviderWindowFact {
+            provider:      "zai".to_string(),
+            window:        fabro_automation::ProviderWindowKind::Closed,
+            last_probe_at: now,
+            next_probe_at: now,
+        }],
+    };
+    let trigger_id = AutomationTriggerId::new("a-first").unwrap();
+    store
+        .apply_schedule_provider_window(&automation.id, &trigger_id, Some(&facts))
+        .await
+        .unwrap();
+
+    let stored = store.get(&automation.id).await.unwrap().unwrap();
+    let AutomationTrigger::Schedule(schedule) = stored
+        .triggers
+        .iter()
+        .find(|trigger| trigger.id().as_str() == "a-first")
+        .expect("the schedule trigger should exist")
+    else {
+        panic!("stored trigger should be a schedule");
+    };
+    // The facts are readable on the trigger they belong to.
+    let read = schedule.provider_window.as_ref().unwrap();
+    assert_eq!(read.providers.len(), 1);
+    assert_eq!(read.providers[0].provider, "zai");
+    assert_eq!(
+        read.providers[0].window,
+        fabro_automation::ProviderWindowKind::Closed
+    );
+
+    // A replace of the same automation never carries facts forward: the
+    // rewrite resets the column the breaker also starts clean on.
+    store
+        .replace(
+            &automation.id,
+            &AutomationRevision::from_bytes(b"stale"),
+            replacement("Fresh", "0 4 * * *"),
+        )
+        .await
+        .unwrap_err();
+    let current = store.get(&automation.id).await.unwrap().unwrap().revision;
+    store
+        .replace(&automation.id, &current, replacement("Fresh", "0 4 * * *"))
+        .await
+        .unwrap();
+    let stored = store.get(&automation.id).await.unwrap().unwrap();
+    for trigger in &stored.triggers {
+        if let AutomationTrigger::Schedule(schedule) = trigger {
+            assert!(
+                schedule.provider_window.is_none(),
+                "a replace clears provider window facts: {schedule:?}"
+            );
+        }
+    }
 }
 
 #[tokio::test]

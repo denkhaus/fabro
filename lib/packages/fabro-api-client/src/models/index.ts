@@ -42,6 +42,8 @@ export * from './automation-git-workflow-source';
 export * from './automation-list-meta';
 export * from './automation-list-response';
 export * from './automation-overlap-policy';
+export * from './automation-provider-window-fact';
+export * from './automation-provider-window-state';
 export * from './automation-ref';
 export * from './automation-schedule-trigger';
 export * from './automation-trigger';

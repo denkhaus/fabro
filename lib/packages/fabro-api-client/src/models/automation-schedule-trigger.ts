@@ -13,6 +13,9 @@
  */
 
 
+// May contain unused imports in some cases
+// @ts-ignore
+import type { AutomationProviderWindowState } from './automation-provider-window-state';
 
 /**
  * Cron schedule trigger evaluated in UTC.
@@ -25,6 +28,10 @@ export interface AutomationScheduleTrigger {
      * Five-field cron expression evaluated in UTC.
      */
     'expression': string;
+    /**
+     * Scheduler-maintained provider window facts (fork, fabro-b869): one fact per provider the provider-window gate last held this trigger\'s fires for. Read-only; input values are stripped.
+     */
+    'provider_window'?: AutomationProviderWindowState;
 }
 
 export const AutomationScheduleTriggerTypeEnum = {

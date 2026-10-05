@@ -41,7 +41,8 @@ macro_rules! select_automations_sql {
                 t.breaker_signature AS trigger_breaker_signature,
                 t.breaker_consecutive_count AS trigger_breaker_consecutive_count,
                 t.breaker_last_run_id AS trigger_breaker_last_run_id,
-                t.breaker_paused_at_ms AS trigger_breaker_paused_at_ms
+                t.breaker_paused_at_ms AS trigger_breaker_paused_at_ms,
+                t.provider_windows AS trigger_provider_windows
             FROM automations AS a
             LEFT JOIN automation_triggers AS t ON t.automation_id = a.id
             ",
@@ -171,6 +172,35 @@ impl AutomationStore {
             return Ok(false);
         }
         Ok(pause)
+    }
+
+    /// Persist the provider-window gate's facts for one schedule trigger
+    /// (fork, fabro-b869 step 5b). `None` clears the held state (window
+    /// reopened); `Some(..)` records why the gate is holding fires. The
+    /// rewrite path (create/replace) resets the column to NULL by never
+    /// writing it, exactly as the breaker starts clean.
+    pub async fn apply_schedule_provider_window(
+        &self,
+        id: &AutomationId,
+        trigger_id: &AutomationTriggerId,
+        facts: Option<&crate::ProviderWindowState>,
+    ) -> Result<(), AutomationStoreError> {
+        let stored = facts
+            .map(serde_json::to_string)
+            .transpose()
+            .map_err(|source| AutomationStoreError::ProviderWindowEncode {
+                id: id.clone(),
+                source,
+            })?;
+        sqlx::query(
+            "UPDATE automation_triggers SET provider_windows = ? WHERE automation_id = ? AND id = ?",
+        )
+        .bind(stored)
+        .bind(id.as_str())
+        .bind(trigger_id.as_str())
+        .execute(&self.pool)
+        .await?;
+        Ok(())
     }
 
     pub async fn create(&self, draft: AutomationDraft) -> Result<Automation, AutomationStoreError> {
@@ -352,6 +382,7 @@ impl StoredAutomation {
             expression,
             breaker_threshold,
             breaker: stored_breaker_state(row, &self.id)?,
+            provider_window: stored_provider_window(row, &self.id)?,
         });
         Ok(())
     }
@@ -359,10 +390,17 @@ impl StoredAutomation {
     fn finish(mut self) -> Result<Automation, AutomationStoreError> {
         // Input normalization strips scheduler-owned breaker facts, so keep
         // them aside and re-attach after canonicalization (fabro-3d97).
+        // The provider window facts ride the same rule (fabro-b869 step 5b):
+        // normalization strips them, the store re-attaches what it read.
         let breaker_by_id = self
             .schedule_triggers
             .iter()
             .map(|trigger| (trigger.id.clone(), trigger.breaker.clone()))
+            .collect::<std::collections::HashMap<_, _>>();
+        let window_by_id = self
+            .schedule_triggers
+            .iter()
+            .map(|trigger| (trigger.id.clone(), trigger.provider_window.clone()))
             .collect::<std::collections::HashMap<_, _>>();
         // `from_stored` canonicalizes trigger order and the manual API trigger.
         let mut triggers = self
@@ -390,6 +428,7 @@ impl StoredAutomation {
         for trigger in &mut automation.triggers {
             if let AutomationTrigger::Schedule(trigger) = trigger {
                 trigger.breaker = breaker_by_id.get(&trigger.id).cloned().flatten();
+                trigger.provider_window = window_by_id.get(&trigger.id).cloned().flatten();
             }
         }
         Ok(automation)
@@ -547,6 +586,27 @@ fn stored_breaker_state(
         }
     };
     Ok(state)
+}
+
+/// Provider window facts loaded from a trigger row (fork, fabro-b869
+/// step 5b): a JSON array written by the scheduler tick; NULL or empty
+/// means the gate never held this trigger's fires.
+fn stored_provider_window(
+    row: &SqliteRow,
+    id: &AutomationId,
+) -> Result<Option<crate::ProviderWindowState>, AutomationStoreError> {
+    let Some(stored) = row
+        .try_get::<Option<String>, _>("trigger_provider_windows")?
+        .filter(|stored| !stored.is_empty())
+    else {
+        return Ok(None);
+    };
+    serde_json::from_str::<crate::ProviderWindowState>(&stored)
+        .map(Some)
+        .map_err(|source| AutomationStoreError::StoredProviderWindow {
+            id: id.clone(),
+            source,
+        })
 }
 
 fn stored_git_target(automation: &Automation) -> &GitRunTarget {

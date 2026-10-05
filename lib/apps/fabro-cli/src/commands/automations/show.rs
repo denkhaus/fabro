@@ -148,6 +148,31 @@ fn trigger_rows(automation: &types::Automation) -> Vec<Vec<CellStruct>> {
                         rows.push(field_row(use_color, "  breaker", "clean".to_string()));
                     }
                 }
+                // The provider-window gate's hold state (fabro-b869): why
+                // the schedule is quiet, per provider, with its cadence.
+                match &schedule.provider_window {
+                    Some(window) if !window.providers.is_empty() => {
+                        for fact in &window.providers {
+                            rows.push(field_row(
+                                use_color,
+                                "  provider window",
+                                format!(
+                                    "{}={} last probe {} next {}",
+                                    fact.provider,
+                                    match fact.window {
+                                        fabro_automation::ProviderWindowKind::Open => "open",
+                                        fabro_automation::ProviderWindowKind::Closed => {
+                                            "closed"
+                                        }
+                                    },
+                                    fact.last_probe_at.to_rfc3339(),
+                                    fact.next_probe_at.to_rfc3339(),
+                                ),
+                            ));
+                        }
+                    }
+                    _ => {}
+                }
             }
         }
     }

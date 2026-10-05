@@ -32,6 +32,7 @@ pub(super) async fn list_command(_args: &AutomationsListArgs, ctx: &CommandConte
         "SCHEDULE".cell().bold(use_color),
         "ENABLED".cell().bold(use_color),
         "BREAKER".cell().bold(use_color),
+        "WINDOW".cell().bold(use_color),
         "LAST ERROR".cell().bold(use_color),
     ];
 
@@ -52,6 +53,19 @@ pub(super) async fn list_command(_args: &AutomationsListArgs, ctx: &CommandConte
                 .map(|breaker| breaker.consecutive_count.to_string())
                 .max()
                 .unwrap_or_else(|| "-".to_string());
+            // The provider-window gate's hold, when it is holding this
+            // schedule's fires (fabro-b869): one closed provider is enough.
+            let window = schedule_triggers(automation)
+                .filter_map(|schedule| schedule.provider_window.as_ref())
+                .flat_map(|window| &window.providers)
+                .filter(|fact| fact.window == fabro_automation::ProviderWindowKind::Closed)
+                .map(|fact| fact.provider.clone())
+                .collect::<Vec<_>>();
+            let window = if window.is_empty() {
+                "-".to_string()
+            } else {
+                window.join(",")
+            };
             let enabled = if automation.triggers.iter().all(AutomationTrigger::enabled) {
                 "all"
             } else if automation.triggers.iter().any(AutomationTrigger::enabled) {
@@ -65,6 +79,7 @@ pub(super) async fn list_command(_args: &AutomationsListArgs, ctx: &CommandConte
                 schedules.join(" | ").cell(),
                 enabled.cell(),
                 breaker.cell(),
+                window.cell(),
                 automation
                     .last_error
                     .clone()
