@@ -129,6 +129,50 @@ async fn the_hello_bundle_is_admitted_and_round_trips_through_the_blob_store() {
 }
 
 #[tokio::test]
+async fn model_requirements_and_needs_model_survive_the_admission_round_trip() {
+    // fabro-ddb4 (fabro-f93b review nit): a successor re-checked over its
+    // source's STORED admission reads `AdmittedGraphs::model_requirements`
+    // — persist -> load must answer exactly what the check answered, for
+    // the requirements and `needs_model`, in both the model and the
+    // command-only shape.
+    const MODEL_WORKFLOW: &str = r#"digraph Model {
+        graph [goal="Run models"]
+        start [shape=Mdiamond]
+        work [shape=box, prompt="Do the work", model="glm-4.7", provider="zai"]
+        ask [shape=box, prompt="Ask", model="kimi"]
+        exit [shape=Msquare]
+        start -> work -> ask -> exit
+    }"#;
+
+    let blobs = BlobStore::new(test_support::in_memory_pool_with(&[
+        fabro_db::BLOBS_MIGRATION_SQL,
+    ]));
+    for (workflow, needs_model) in [(MODEL_WORKFLOW, true), (COMMAND_WORKFLOW, false)] {
+        let admitted = check::check(&request(
+            bundle(&[("workflow.fabro", workflow), ("workflow.toml", SETTINGS)]),
+            RuntimeSpec::default(),
+        ))
+        .expect("the workflow admits");
+        let mut expected = admitted.model_requirements();
+        expected.sort_by(|left, right| left.node.cmp(&right.node));
+        let record = admission::persist(&blobs, &admitted)
+            .await
+            .expect("the graphs persist");
+        let graphs = admission::load(&blobs, &record)
+            .await
+            .expect("the graphs load");
+        assert_eq!(admitted.needs_model(), needs_model);
+        assert_eq!(graphs.needs_model(), admitted.needs_model());
+        let mut loaded = graphs.model_requirements();
+        loaded.sort_by(|left, right| left.node.cmp(&right.node));
+        assert_eq!(
+            loaded, expected,
+            "the stored graphs answer what the check answered"
+        );
+    }
+}
+
+#[tokio::test]
 async fn a_launch_binds_the_repository_and_the_model_default() {
     let repository = tempfile::tempdir().expect("a temp dir");
     let request = CheckRequest {
