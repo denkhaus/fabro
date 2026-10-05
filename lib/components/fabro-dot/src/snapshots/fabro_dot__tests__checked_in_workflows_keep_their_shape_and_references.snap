@@ -112,12 +112,6 @@ expression: report
 .fabro/workflows/pr-simplify/workflow.fabro: PrSimplify nodes=3 edges=2
   goal-inline
   file:prompt:prompts/simplify.md@simplify
-.fabro/workflows/repro-68d3/workflow.fabro: Repro68d3 nodes=3 edges=2
-  goal-inline
-  file:prompt:prompts/mention.md@stage
-.fabro/workflows/repro-d774/workflow.fabro: ReproD774 nodes=4 edges=3
-  goal-inline
-  file:prompt:prompts/ask.md@ask
 .fabro/workflows/revisor/workflow.fabro: Revisor nodes=5 edges=10
   goal-inline
   file:prompt:prompts/select.md@select
