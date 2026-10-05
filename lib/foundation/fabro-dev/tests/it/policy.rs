@@ -13,6 +13,18 @@ const TEMPLATE_RENDER_ALLOWED_PATH_FRAGMENTS: &[&str] = &[
     "lib/foundation/fabro-template/src/lib.rs",
     // Workflow-definition rendering must stay centralized here.
     "lib/components/fabro-workflow/src/transforms/variable_expansion.rs",
+    // Static-reference VALIDATION only (`validate_static_reference`), no render.
+    "lib/components/fabro-dot/src/lib.rs",
+    // Template DISCOVERY while collecting a workflow version's dependency
+    // closure (`discover_static_dependency_closure`), no render.
+    "lib/components/fabro-workflow-version/src/lib.rs",
+    // Bundling-time dependency VERIFICATION: `render_source` runs in
+    // `TemplateRenderMode::Lenient` against a `RecordingTemplateStore` to
+    // prove the closure; the definitions themselves render through
+    // `TemplateTransform`.
+    "lib/components/fabro-manifest/src/workflow_bundler.rs",
+    // Run-TITLE text interpolation, not a workflow definition.
+    "lib/apps/fabro-server/src/run_title_generation.rs",
     // This policy test names the forbidden patterns.
     "/tests/it/policy.rs",
 ];

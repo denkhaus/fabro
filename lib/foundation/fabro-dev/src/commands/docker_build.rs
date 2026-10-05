@@ -22,6 +22,13 @@ pub(crate) struct DockerBuildArgs {
     /// Print the Docker commands instead of running them.
     #[arg(long)]
     dry_run:      bool,
+    /// Embedded build sha (12 lowercase hex), injected as `FABRO_GIT_SHA`.
+    /// Defaults to `git rev-parse HEAD`; in a GitButler workspace that is
+    /// the never-pushed workspace commit, so a release passes the pushable
+    /// line tip here (`scripts/image-release.nu`, fabro-49af) — the repo
+    /// resolves the policy, this command takes the value.
+    #[arg(long)]
+    git_sha:      Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
@@ -80,12 +87,16 @@ struct DockerBuildPlan {
 )]
 pub(crate) fn docker_build(args: DockerBuildArgs) -> Result<()> {
     let workspace_root = workspace_root();
+    let git_sha = match args.git_sha.as_deref() {
+        Some(sha) => validate_git_sha(sha)?,
+        None => host_short_sha(&workspace_root)?,
+    };
     let plan = DockerBuildPlan {
         arch:           args.arch.map_or_else(DockerArch::detect, Ok)?,
         compile_only:   args.compile_only,
         tag:            args.tag,
         workspace_root: workspace_root.clone(),
-        git_sha:        host_short_sha(&workspace_root)?,
+        git_sha,
     };
 
     if args.dry_run {
@@ -280,6 +291,23 @@ fn host_short_sha(root: &std::path::Path) -> Result<String> {
         );
     }
     Ok(full_sha[..fabro_build_support::SHORT_SHA_LEN].to_string())
+}
+
+/// The caller-supplied build sha (`--git-sha`): the same 12-lowercase-hex
+/// contract the release tag carries, so the embedded sha and the tag can
+/// never disagree by shape (fabro-49af).
+fn validate_git_sha(sha: &str) -> Result<String> {
+    let valid = sha.len() == fabro_build_support::SHORT_SHA_LEN
+        && sha
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte));
+    if !valid {
+        bail!(
+            "--git-sha must be a {}-character lowercase hex git sha, got {sha:?}",
+            fabro_build_support::SHORT_SHA_LEN
+        );
+    }
+    Ok(sha.to_string())
 }
 
 fn build_script(target: &str, zig_arch: &str) -> String {

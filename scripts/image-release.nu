@@ -29,8 +29,12 @@ def main [arch: string = "amd64"] {
     let repo = "ghcr.io/denkhaus/fabro"
     let tag = $"($repo):($version)-($sha)"
 
+    # The SAME line-tip sha goes into the builder as `FABRO_GIT_SHA`
+    # (fabro-49af): without it the binary embeds the workspace commit at
+    # build time and `just pin-toolchain`'s parity gate refuses a
+    # content-identical pair.
     print $"image-release: building ($tag) \(arch ($arch)) ..."
-    cargo --locked dev docker-build --arch $arch --tag $tag
+    cargo --locked dev docker-build --arch $arch --tag $tag --git-sha $sha
     print $"image-release: tagging ($repo):latest"
     docker tag $tag $"($repo):latest"
     print $"image-release: pushing ($tag) ..."
