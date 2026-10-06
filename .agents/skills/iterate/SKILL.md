@@ -50,20 +50,27 @@ stores it belongs to; reach them by phase need:
 ## Phase 0 — Orient (always, cheap)
 
 - One world: everything works on the LINE branch `denkhaus` in the main
-  checkout. VCS layer is PLAIN GIT again since 2026-10-06: the GitButler
-  experiment (2026-10-03) ended — the checkout sits on `denkhaus`, the
-  `.git/gitbutler` project is gone, and all write operations go through
-  ordinary git again (`git add/commit/push`, `git pull --rebase`). Git
-  worktrees still never; branch switches happen only in the main checkout.
-  Runs execute on the PRODUCTION server `https://mirtuell.net` —
+  checkout. VCS layer is the GitButler experiment (2026-10-03, CONTINUES)
+  — but it is PER MACHINE: a machine that has not set up the workspace yet
+  shows a PLAIN git checkout on `denkhaus` with no `.git/gitbutler` (seen
+  2026-10-06 on the second dev machine; that is NOT the experiment ending).
+  FIRST `but status` (via `mise exec -- but`): if it says no GitButler
+  project, run `mise exec -- but setup` on a synced, clean tree — it
+  registers the project, switches to `gitbutler/workspace`, and sets the
+  target to the remote HEAD (origin/main = the frozen ADR-0024 base); then
+  make `denkhaus` the applied virtual branch. On a set-up machine the
+  checkout sits on `gitbutler/workspace` and the line is the APPLIED
+  virtual branch `denkhaus` — `but status` must show it applied. All
+  write operations go through `but`; read-only git inspection stays
+  allowed. Runs execute on the PRODUCTION server `https://mirtuell.net` —
   every line query carries `--server https://mirtuell.net`. The local
-  server (127.0.0.1:32276) is for TESTS only.
-- `git fetch origin && git rebase origin/denkhaus` BEFORE reading tracker
-  state when another machine may have run the line — the tracker view is
-  branch-local. Never rebase or switch branches while a background cargo
-  runs (the tree is rewritten and a mixed build invalidates the whole run).
-  Residual cleanup pending: `.mise.toml` still pins `http:but` (unused
-  now); drop it in the next tooling window.
+  server (127.0.0.1:32276) is for TESTS only. Apply/unapply of branches
+  plays the role of branch switches; git worktrees never.
+- `but branch update denkhaus` BEFORE reading tracker state when another
+  machine may have run the line (integrates origin/denkhaus into the
+  applied branch, pull-rebase) — the tracker view is branch-local. Never
+  apply, unapply, or update branches while a background cargo runs (the
+  tree is rewritten and a mixed build invalidates the whole run).
 - Agent roster FIRST (2026-10-04, second-session incident): call
   `agent_observe.list_agents()` before anything else. Another top-level
   session in THIS repo's cwd means a second /iterate is alive in the same
@@ -330,28 +337,35 @@ stores it belongs to; reach them by phase need:
 
 ## Phase 5 — Integrate
 
-- Commit code (`git commit`) BEFORE tracker mutations land. Since the
-  GitButler end (2026-10-06) there is no lane stack — plain `git add`
-  of exactly your files, commit on the checked-out line. The commit
-  message travels through a FILE, never through a Python variable:
-  `bash()` does not see the REPL's names, so `-m "$MSG"` commits an
-  empty message (2026-10-03 fabro-8615) - write `/tmp/msg.txt` and pass
-  `-m "$(cat /tmp/msg.txt)"`, then read the message back
-  (`git log -1 --format=%B`) before pushing.
-- A SHARED checkout means shared FILES (2026-10-03 incident, two iterate
-  sessions): a file-level commit sweeps every uncommitted line of that
-  file, so a sibling's tracker commit swallowed this session's seed
-  claims. Check the per-id diff (`git diff -- .seeds/issues.jsonl`) for
-  foreign ids before committing a shared file, land your own lines
-  promptly, and re-read `iterate-state.json` before writing - the sibling
-  session counts its closures into the same ledger. Since 2026-10-06 the
-  repo is in plain git mode again: `seeds sync` COMMITS changed tracker
-  files itself (verify each sync commit with `git show --stat` before
-  pushing); the old `vcs_manager: gitbutler` key no longer exists in the
-  seeds 0.6.0 config schema — an unknown key makes sync wipe
-  `.seeds/config.yaml` to an EMPTY file (observed 2026-10-06; restore
-  project/version/max_plan_depth via a hand-written mapping, `seeds
-  config set` refuses an empty file).
+- Commit code (`but commit`) BEFORE tracker mutations land. TARGET the
+  lane explicitly: with several lanes stacked, `but commit` places the
+  commit at the TIP OF THE STACK — the topmost lane, not the line (2026-
+  10-04, sprint 14: a commit landed on the sibling's lane and needed
+  `but move <id> --branch denkhaus`); pass `--branch denkhaus` on every
+  line commit. The commit message travels through a FILE, never through
+  a Python variable: `bash()` does not see the REPL's names, so
+  `-m "$MSG"` commits an empty message (2026-10-03 fabro-8615) — write
+  `/tmp/msg.txt` and pass `-m "$(cat /tmp/msg.txt)"`, then read the
+  message back (`but show <id>`) before pushing. On a machine whose GB
+  workspace is NOT set up (plain git), land NOTHING on the line without
+  setting up first — or with the user's explicit go for a plain-git
+  interim (push through the gate as usual, and `but setup` before the
+  next cycle).
+- A SHARED workspace means shared FILES (2026-10-03, two iterate
+  sessions in one GitButler workspace): a file-level `but commit` sweeps
+  every uncommitted line of that file, so a sibling's tracker commit
+  can swallow this session's seed claims. Check the per-id diff
+  (`git diff -- .seeds/issues.jsonl`) for foreign ids before committing
+  a shared file, land your own lines promptly, and re-read
+  `iterate-state.json` before writing — the sibling session counts its
+  closures into the same ledger. `seeds sync` with
+  `vcs_manager: gitbutler` in `.seeds/config.yaml` (the GB repos carry
+  it) commits changed tracker files itself — verify each sync commit
+  with `git show --stat` before pushing. CONFIG TRAP (observed
+  2026-10-06): a hand-edited INVALID `vcs_manager` value makes sync wipe
+  `.seeds/config.yaml` to an EMPTY file; restore the mapping by hand
+  (`seeds config set` refuses an empty file) — valid keys:
+  project/version/max_plan_depth/vcs_manager.
 - A `fabro create` whose post-processing dies still created the run:
   capture exactly one run id per intended create and `fabro rm --force`
   duplicates immediately - submitted ghosts count as active runs and wedge
@@ -364,7 +378,7 @@ stores it belongs to; reach them by phase need:
   the END: `nu .fabro/scripts/push-gate.nu` (exit 0 = open: no running
   conductor/develop/revisor pass AND no open run PR). Check and push
   share one cell, the gate runs UNPIPED, and the push itself is
-  `git push origin denkhaus` — `&&` behind a pipe reads the pipe member's exit
+  `but push denkhaus` — `&&` behind a pipe reads the pipe member's exit
   code, not the gate's (2026-10-02 23:00 incident: a
   `gate | tail -1 && git push` pushed straight through a REFUSED verdict
   while a loop pass ran), and `cmd; echo RC=$?; if [ $? -eq 0 ]` reads
@@ -461,7 +475,7 @@ stores it belongs to; reach them by phase need:
    delivery): pull, evaluate journals/reviews (premise-checked against
    the tree), dispatch seeds per ADR-0018 with dispatch-dedupe (keep the
    richer seed, close the lesser naming both ids), push through the gate
-   (`git push origin denkhaus`, gate unpiped) with JSONL-dedupe discipline, rootprint correlation for every
+   (`but push denkhaus`, gate unpiped) with JSONL-dedupe discipline, rootprint correlation for every
    evaluated run, report compactly in German.
    SALVAGE SWEEP is MECHANICAL FIRST (fabro-f312, 2026-10-04): run
    `nu .fabro/scripts/salvage-sweep.nu` (optionally `--since 48hr
@@ -485,17 +499,26 @@ stores it belongs to; reach them by phase need:
   `just sync-style-guide` (the qualitygate parity battery REDs on divergence).
   Loop runs NEVER write `.agents/**` (fabro-591a decision: no run-scope
   widening — battery-RED routes the sync to the session).
-- VCS layer is PLAIN GIT (GitButler experiment ended 2026-10-06; the
-  checkout reverted to `denkhaus` with no `.git/gitbutler` project — the
-  pre-authorized fallback to git wording applied). Ordinary git rules
-  apply: commits/pushes/rebases as usual, NO worktrees (branch switches
-  only in the main checkout), no routine merges of `upstream` (the
-  ADR-0024 freeze stands: intake stays cherry-pick-bounded). Historical
-  GB lessons that outlive the tool: a stale index can show phantom `MM`
-  entries (proof of real change is `git diff HEAD -- <files>`);
-  multi-agent file-level commits sweep shared files (the per-id tracker
-  diff check in Phase 5); the `.mise.toml` http:but pin is unused residue
-  pending cleanup.
+- VCS layer is the GitButler experiment (user directive 2026-10-03,
+  CONTINUES — user re-confirmed 2026-10-06 after a wrong end-report from
+  the second machine): every write operation (commit, push, branch,
+  history edit) goes through `but` (via `mise exec -- but`); never run
+  `git add/commit/push/checkout/merge/rebase/stash/cherry-pick` on a
+  set-up machine. MULTI-MACHINE (2026-10-06 lesson): the workspace is
+  PER MACHINE — a new machine without `but setup` shows plain git; that
+  impression is a setup gap, never "the experiment ended" (report such
+  findings, do not rewrite this skill's VCS wording on them). Target is
+  `origin/main` (the frozen ADR-0024 base) — do NOT run `but pull`
+  routinely (it would intake upstream); line updates arrive via
+  `but branch update denkhaus`, line pushes via `but push denkhaus`.
+  `but` does NOT maintain the classic git index — a stale index makes
+  `git diff`/`git status` show phantom `MM` entries while the worktree
+  matches HEAD (proof of real change is `git diff HEAD -- <files>`;
+  `git reset` (mixed, index only) restores honest views and leaves
+  `but status` untouched). Multi-agent note: the experiment exists to
+  run several agents as separate virtual branches/stacks in one
+  workspace; report friction in the cycle report so the go/no-go stays
+  factual.
 - Wait budgets derive from observed service latencies, not guesses: a
   bounded wait must outlive the slowest LEGITIMATE stage of what it waits
   for (PR creation after terminal status; required-check duration on a
