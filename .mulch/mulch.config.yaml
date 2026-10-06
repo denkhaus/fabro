@@ -37,6 +37,7 @@ domains:
   nu: {}
   git-insteadof: {}
   failure: {}
+  test: {}
 governance:
   max_entries: 100
   warn_entries: 150
