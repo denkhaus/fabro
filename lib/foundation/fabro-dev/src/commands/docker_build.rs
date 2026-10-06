@@ -92,9 +92,9 @@ pub(crate) fn docker_build(args: DockerBuildArgs) -> Result<()> {
         None => host_short_sha(&workspace_root)?,
     };
     let plan = DockerBuildPlan {
-        arch:           args.arch.map_or_else(DockerArch::detect, Ok)?,
-        compile_only:   args.compile_only,
-        tag:            args.tag,
+        arch: args.arch.map_or_else(DockerArch::detect, Ok)?,
+        compile_only: args.compile_only,
+        tag: args.tag,
         workspace_root: workspace_root.clone(),
         git_sha,
     };

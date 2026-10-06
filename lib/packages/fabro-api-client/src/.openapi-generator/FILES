@@ -70,6 +70,7 @@ models/automation-api-trigger.ts
 models/automation-git-workflow-source.ts
 models/automation-list-meta.ts
 models/automation-list-response.ts
+models/automation-model-provider.ts
 models/automation-overlap-policy.ts
 models/automation-provider-window-fact.ts
 models/automation-provider-window-state.ts

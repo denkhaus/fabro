@@ -90,8 +90,20 @@ pub enum AutomationStoreError {
         #[source]
         source: serde_json::Error,
     },
+    #[error("stored automation {id} has unreadable model providers")]
+    StoredModelProviders {
+        id:     AutomationId,
+        #[source]
+        source: serde_json::Error,
+    },
     #[error("provider window facts for automation {id} could not be encoded")]
     ProviderWindowEncode {
+        id:     AutomationId,
+        #[source]
+        source: serde_json::Error,
+    },
+    #[error("model providers for automation {id} could not be encoded")]
+    ModelProvidersEncode {
         id:     AutomationId,
         #[source]
         source: serde_json::Error,
@@ -186,6 +198,8 @@ impl AutomationStoreError {
             Self::StoredTriggerShape { .. } => "stored_trigger_shape",
             Self::StoredProviderWindow { .. } => "stored_provider_window",
             Self::ProviderWindowEncode { .. } => "provider_window_encode",
+            Self::StoredModelProviders { .. } => "stored_model_providers",
+            Self::ModelProvidersEncode { .. } => "model_providers_encode",
             Self::StoredWorkflowSourceShape { .. } => "stored_workflow_source_shape",
             Self::InvalidRevision { .. } => "invalid_revision",
             Self::Db { .. } => "db",

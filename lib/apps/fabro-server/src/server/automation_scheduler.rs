@@ -753,6 +753,7 @@ pub(crate) mod tests {
 
     use super::super::automation_breaker;
     use super::*;
+    use crate::server::fork_line_recovery;
     use crate::test_support::{TestAppStateBuilder, TestAutomationRunMaterializer};
 
     fn dt(value: &str) -> DateTime<Utc> {
@@ -794,6 +795,7 @@ pub(crate) mod tests {
             description: None,
             environment_id: Some("default".to_string()),
             last_error: None,
+            model_providers: None,
             target: target(),
             workflow_source: None,
             workflow: "workflow.fabro".to_string(),
@@ -1214,6 +1216,162 @@ pub(crate) mod tests {
         assert!(
             last_error.contains("Failed to create scheduled automation run"),
             "the refusal should surface as the automation's last error: {last_error}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_refused_first_fire_teaches_the_gate_the_model_providers() {
+        // fabro-0611 (b869 step 3): an automation whose workflow never ran
+        // has no run history to derive providers from. The FIRST fire still
+        // pays admission — and its refusal records the admission's model
+        // providers on the automation, so the NEXT tick can hold cleanly
+        // instead of burning another materialization.
+        let exact_target = git_target();
+        let materializer = TestAutomationRunMaterializer::succeed_with_workflow(
+            exact_target,
+            "digraph Test { graph [goal=\"Test\"] start [shape=Mdiamond] work [shape=box, prompt=\"Do the work\", model=\"glm-4.7\", provider=\"zai\"] exit [shape=Msquare] start -> work -> exit }",
+        );
+        let state = TestAppStateBuilder::new()
+            .env_lookup(|_| None)
+            .vault_entries([(EnvVars::ZAI_API_KEY, "test-zai-key")])
+            .automation_materializer(materializer)
+            .build();
+        create_automation(state.as_ref(), "needs-zai", "Needs zai", vec![
+            schedule_trigger("schedule", "* * * * *", true),
+        ])
+        .await;
+        // The gate knows zai's window is closed (probed just now, so the
+        // fire's on-demand check reads the remembered answer, no network).
+        {
+            let mut gate = state.provider_gate.lock().await;
+            gate.note_probe(
+                "zai",
+                fork_line_recovery::ProviderWindow::Closed,
+                "zai/glm-4.7",
+                chrono::Utc::now(),
+            );
+        }
+        let mut planner = AutomationSchedulePlanner::default();
+
+        run_due_schedules_once(Arc::clone(&state), &mut planner, prime_time()).await;
+        run_due_schedules_once(Arc::clone(&state), &mut planner, first_due_time()).await;
+
+        assert!(
+            stored_runs(state.as_ref()).await.is_empty(),
+            "a refused fire must create no run"
+        );
+        let automation = state
+            .automation_store()
+            .get(&fabro_automation::AutomationId::new("needs-zai").unwrap())
+            .await
+            .unwrap()
+            .expect("the automation should still exist");
+        let learned = automation
+            .model_providers
+            .as_ref()
+            .expect("the refused fire records the admission's providers");
+        assert_eq!(learned.len(), 1, "unexpected learned set: {learned:?}");
+        assert_eq!(learned[0].provider, "zai");
+        assert_eq!(learned[0].model.as_deref(), Some("glm-4.7"));
+
+        // The learned set holds the NEXT due fire before materialization:
+        // the tick holds the automation and writes the trigger facts.
+        let automations = state.automation_store().list().await.unwrap();
+        let tick = fork_line_recovery::provider_gate_tick(
+            Arc::clone(&state),
+            &automations,
+            second_due_time(),
+        )
+        .await;
+        assert!(
+            tick.held.contains("needs-zai"),
+            "the never-run automation is held off its learned providers"
+        );
+        assert!(
+            !tick.fact_writes.is_empty(),
+            "the hold is readable on the trigger (WINDOW column)"
+        );
+    }
+
+    #[tokio::test]
+    async fn the_tick_holds_a_never_run_automation_off_its_stored_providers() {
+        // The pure gate fallback (fabro-0611): without any run, the stored
+        // admission set decides; with a closed window the automation is
+        // held and `cron_fire_allowed` refuses — no materialization, no
+        // scheduler error. A deterministic workflow (empty set) consults
+        // nothing.
+        let materializer = succeeding_materializer();
+        let state = test_state_with_materializer(materializer);
+        create_automation(state.as_ref(), "never-ran", "Never ran", vec![
+            schedule_trigger("schedule", "* * * * *", true),
+        ])
+        .await;
+        create_automation(state.as_ref(), "deterministic", "Deterministic", vec![
+            schedule_trigger("schedule", "* * * * *", true),
+        ])
+        .await;
+        let now = prime_time();
+        state
+            .automation_store()
+            .set_model_providers(
+                &fabro_automation::AutomationId::new("never-ran").unwrap(),
+                Some(&[fabro_automation::ModelProviderRequirement {
+                    provider: "zai".to_string(),
+                    model:    Some("glm-4.7".to_string()),
+                }]),
+            )
+            .await
+            .unwrap();
+        state
+            .automation_store()
+            .set_model_providers(
+                &fabro_automation::AutomationId::new("deterministic").unwrap(),
+                Some(&[]),
+            )
+            .await
+            .unwrap();
+        {
+            let mut gate = state.provider_gate.lock().await;
+            gate.note_probe(
+                "zai",
+                fork_line_recovery::ProviderWindow::Closed,
+                "zai/glm-4.7",
+                now,
+            );
+        }
+
+        let automations = state.automation_store().list().await.unwrap();
+        let tick =
+            fork_line_recovery::provider_gate_tick(Arc::clone(&state), &automations, now).await;
+        assert!(
+            tick.held.contains("never-ran"),
+            "a never-run workflow is gated off its stored providers"
+        );
+        assert!(
+            !tick.held.contains("deterministic"),
+            "a workflow with no model stages is never held"
+        );
+        assert_eq!(
+            tick.fact_writes.len(),
+            1,
+            "only the held trigger carries facts"
+        );
+
+        let never_ran = automations
+            .iter()
+            .find(|automation| automation.id.as_str() == "never-ran")
+            .unwrap();
+        assert!(
+            !fork_line_recovery::cron_fire_allowed(state.as_ref(), never_ran, now).await,
+            "a due cron fire of the never-run automation is refused"
+        );
+        let deterministic = automations
+            .iter()
+            .find(|automation| automation.id.as_str() == "deterministic")
+            .unwrap();
+        assert!(
+            fork_line_recovery::cron_fire_allowed(state.as_ref(), deterministic, now).await,
+            "a deterministic workflow consults nothing and always fires"
         );
     }
 

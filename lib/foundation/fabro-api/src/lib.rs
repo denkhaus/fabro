@@ -22,6 +22,7 @@ pub mod types {
         // Fork (fabro-b869 step 5b): the provider-window read model reuses
         // the domain types, so the gate's facts and the API payload cannot
         // drift into parallel shapes.
+        ModelProviderRequirement as AutomationModelProvider,
         ProviderWindowFact as AutomationProviderWindowFact,
         ProviderWindowKind,
         ProviderWindowState as AutomationProviderWindowState,

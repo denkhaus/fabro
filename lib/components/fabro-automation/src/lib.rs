@@ -18,7 +18,8 @@ pub use migrations::{
 };
 pub use model::{
     ApiTrigger, Automation, AutomationDraft, AutomationGitWorkflowSource, AutomationOverlapPolicy,
-    AutomationReplace, AutomationTrigger, ProviderWindowFact, ProviderWindowKind,
-    ProviderWindowState, ScheduleTrigger, parse_schedule_expression, validate_workflow_source,
+    AutomationReplace, AutomationTrigger, ModelProviderRequirement, ProviderWindowFact,
+    ProviderWindowKind, ProviderWindowState, ScheduleTrigger, parse_schedule_expression,
+    validate_workflow_source,
 };
 pub use store::AutomationStore;

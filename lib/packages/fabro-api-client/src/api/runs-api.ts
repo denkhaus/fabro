@@ -553,7 +553,7 @@ export const RunsApiAxiosParamCreator = function (configuration?: Configuration)
          * Creates a new run from a checkpoint of the source run and starts it. The new run holds the source\'s records up to the checkpoint\'s position and continues from there in a fresh workspace restored to the checkpoint\'s commit. The source run is left untouched. A checkpoint inside a parallel branch cannot be forked at; fork at the parallel stage instead.
          * @summary Fork Run
          * @param {string} id Unique run identifier (ULID).
-         * @param {boolean} [force] Whether to force the fork, rewind or retry through a provider credential-readiness miss. The finding stays a warning in the new run. Defaults to &#x60;false&#x60;.
+         * @param {boolean} [force] Whether to force the fork, rewind or retry through a provider credential-readiness miss: the readiness refusal becomes a warning in the server log and the successor fires anyway. Defaults to &#x60;false&#x60;.
          * @param {ForkRequest} [forkRequest]
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -1223,7 +1223,7 @@ export const RunsApiAxiosParamCreator = function (configuration?: Configuration)
          * Creates a new run from the terminal source run\'s last checkpoint and starts it. When the source failed on a stage, that stage runs again on the files of the stage before it; otherwise the new run continues from the last checkpoint as it stands. The new run records `retried_from` and `fork_source_ref`; the source run is left unchanged. Active and archived runs are not retryable.
          * @summary Retry Run
          * @param {string} id Unique run identifier (ULID).
-         * @param {boolean} [force] Whether to force the fork, rewind or retry through a provider credential-readiness miss. The finding stays a warning in the new run. Defaults to &#x60;false&#x60;.
+         * @param {boolean} [force] Whether to force the fork, rewind or retry through a provider credential-readiness miss: the readiness refusal becomes a warning in the server log and the successor fires anyway. Defaults to &#x60;false&#x60;.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -1268,7 +1268,7 @@ export const RunsApiAxiosParamCreator = function (configuration?: Configuration)
          * Creates a new run from a checkpoint of a terminal source run and starts it, then archives the source run and records `run.superseded_by` on it. Returns 207 when the new run was created but the source archive step failed.
          * @summary Rewind Run
          * @param {string} id Unique run identifier (ULID).
-         * @param {boolean} [force] Whether to force the fork, rewind or retry through a provider credential-readiness miss. The finding stays a warning in the new run. Defaults to &#x60;false&#x60;.
+         * @param {boolean} [force] Whether to force the fork, rewind or retry through a provider credential-readiness miss: the readiness refusal becomes a warning in the server log and the successor fires anyway. Defaults to &#x60;false&#x60;.
          * @param {RewindRequest} [rewindRequest]
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -1855,7 +1855,7 @@ export const RunsApiFp = function(configuration?: Configuration) {
          * Creates a new run from a checkpoint of the source run and starts it. The new run holds the source\'s records up to the checkpoint\'s position and continues from there in a fresh workspace restored to the checkpoint\'s commit. The source run is left untouched. A checkpoint inside a parallel branch cannot be forked at; fork at the parallel stage instead.
          * @summary Fork Run
          * @param {string} id Unique run identifier (ULID).
-         * @param {boolean} [force] Whether to force the fork, rewind or retry through a provider credential-readiness miss. The finding stays a warning in the new run. Defaults to &#x60;false&#x60;.
+         * @param {boolean} [force] Whether to force the fork, rewind or retry through a provider credential-readiness miss: the readiness refusal becomes a warning in the server log and the successor fires anyway. Defaults to &#x60;false&#x60;.
          * @param {ForkRequest} [forkRequest]
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -2063,7 +2063,7 @@ export const RunsApiFp = function(configuration?: Configuration) {
          * Creates a new run from the terminal source run\'s last checkpoint and starts it. When the source failed on a stage, that stage runs again on the files of the stage before it; otherwise the new run continues from the last checkpoint as it stands. The new run records `retried_from` and `fork_source_ref`; the source run is left unchanged. Active and archived runs are not retryable.
          * @summary Retry Run
          * @param {string} id Unique run identifier (ULID).
-         * @param {boolean} [force] Whether to force the fork, rewind or retry through a provider credential-readiness miss. The finding stays a warning in the new run. Defaults to &#x60;false&#x60;.
+         * @param {boolean} [force] Whether to force the fork, rewind or retry through a provider credential-readiness miss: the readiness refusal becomes a warning in the server log and the successor fires anyway. Defaults to &#x60;false&#x60;.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -2077,7 +2077,7 @@ export const RunsApiFp = function(configuration?: Configuration) {
          * Creates a new run from a checkpoint of a terminal source run and starts it, then archives the source run and records `run.superseded_by` on it. Returns 207 when the new run was created but the source archive step failed.
          * @summary Rewind Run
          * @param {string} id Unique run identifier (ULID).
-         * @param {boolean} [force] Whether to force the fork, rewind or retry through a provider credential-readiness miss. The finding stays a warning in the new run. Defaults to &#x60;false&#x60;.
+         * @param {boolean} [force] Whether to force the fork, rewind or retry through a provider credential-readiness miss: the readiness refusal becomes a warning in the server log and the successor fires anyway. Defaults to &#x60;false&#x60;.
          * @param {RewindRequest} [rewindRequest]
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -2335,7 +2335,7 @@ export const RunsApiFactory = function (configuration?: Configuration, basePath?
          * Creates a new run from a checkpoint of the source run and starts it. The new run holds the source\'s records up to the checkpoint\'s position and continues from there in a fresh workspace restored to the checkpoint\'s commit. The source run is left untouched. A checkpoint inside a parallel branch cannot be forked at; fork at the parallel stage instead.
          * @summary Fork Run
          * @param {string} id Unique run identifier (ULID).
-         * @param {boolean} [force] Whether to force the fork, rewind or retry through a provider credential-readiness miss. The finding stays a warning in the new run. Defaults to &#x60;false&#x60;.
+         * @param {boolean} [force] Whether to force the fork, rewind or retry through a provider credential-readiness miss: the readiness refusal becomes a warning in the server log and the successor fires anyway. Defaults to &#x60;false&#x60;.
          * @param {ForkRequest} [forkRequest]
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -2498,7 +2498,7 @@ export const RunsApiFactory = function (configuration?: Configuration, basePath?
          * Creates a new run from the terminal source run\'s last checkpoint and starts it. When the source failed on a stage, that stage runs again on the files of the stage before it; otherwise the new run continues from the last checkpoint as it stands. The new run records `retried_from` and `fork_source_ref`; the source run is left unchanged. Active and archived runs are not retryable.
          * @summary Retry Run
          * @param {string} id Unique run identifier (ULID).
-         * @param {boolean} [force] Whether to force the fork, rewind or retry through a provider credential-readiness miss. The finding stays a warning in the new run. Defaults to &#x60;false&#x60;.
+         * @param {boolean} [force] Whether to force the fork, rewind or retry through a provider credential-readiness miss: the readiness refusal becomes a warning in the server log and the successor fires anyway. Defaults to &#x60;false&#x60;.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -2509,7 +2509,7 @@ export const RunsApiFactory = function (configuration?: Configuration, basePath?
          * Creates a new run from a checkpoint of a terminal source run and starts it, then archives the source run and records `run.superseded_by` on it. Returns 207 when the new run was created but the source archive step failed.
          * @summary Rewind Run
          * @param {string} id Unique run identifier (ULID).
-         * @param {boolean} [force] Whether to force the fork, rewind or retry through a provider credential-readiness miss. The finding stays a warning in the new run. Defaults to &#x60;false&#x60;.
+         * @param {boolean} [force] Whether to force the fork, rewind or retry through a provider credential-readiness miss: the readiness refusal becomes a warning in the server log and the successor fires anyway. Defaults to &#x60;false&#x60;.
          * @param {RewindRequest} [rewindRequest]
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -2746,7 +2746,7 @@ export class RunsApi extends BaseAPI {
      * Creates a new run from a checkpoint of the source run and starts it. The new run holds the source\'s records up to the checkpoint\'s position and continues from there in a fresh workspace restored to the checkpoint\'s commit. The source run is left untouched. A checkpoint inside a parallel branch cannot be forked at; fork at the parallel stage instead.
      * @summary Fork Run
      * @param {string} id Unique run identifier (ULID).
-     * @param {boolean} [force] Whether to force the fork, rewind or retry through a provider credential-readiness miss. The finding stays a warning in the new run. Defaults to &#x60;false&#x60;.
+     * @param {boolean} [force] Whether to force the fork, rewind or retry through a provider credential-readiness miss: the readiness refusal becomes a warning in the server log and the successor fires anyway. Defaults to &#x60;false&#x60;.
      * @param {ForkRequest} [forkRequest]
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
@@ -2924,7 +2924,7 @@ export class RunsApi extends BaseAPI {
      * Creates a new run from the terminal source run\'s last checkpoint and starts it. When the source failed on a stage, that stage runs again on the files of the stage before it; otherwise the new run continues from the last checkpoint as it stands. The new run records `retried_from` and `fork_source_ref`; the source run is left unchanged. Active and archived runs are not retryable.
      * @summary Retry Run
      * @param {string} id Unique run identifier (ULID).
-     * @param {boolean} [force] Whether to force the fork, rewind or retry through a provider credential-readiness miss. The finding stays a warning in the new run. Defaults to &#x60;false&#x60;.
+     * @param {boolean} [force] Whether to force the fork, rewind or retry through a provider credential-readiness miss: the readiness refusal becomes a warning in the server log and the successor fires anyway. Defaults to &#x60;false&#x60;.
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      */
@@ -2936,7 +2936,7 @@ export class RunsApi extends BaseAPI {
      * Creates a new run from a checkpoint of a terminal source run and starts it, then archives the source run and records `run.superseded_by` on it. Returns 207 when the new run was created but the source archive step failed.
      * @summary Rewind Run
      * @param {string} id Unique run identifier (ULID).
-     * @param {boolean} [force] Whether to force the fork, rewind or retry through a provider credential-readiness miss. The finding stays a warning in the new run. Defaults to &#x60;false&#x60;.
+     * @param {boolean} [force] Whether to force the fork, rewind or retry through a provider credential-readiness miss: the readiness refusal becomes a warning in the server log and the successor fires anyway. Defaults to &#x60;false&#x60;.
      * @param {RewindRequest} [rewindRequest]
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}

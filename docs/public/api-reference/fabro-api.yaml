@@ -7312,6 +7312,16 @@ components:
         last_error:
           type: ["string", "null"]
           description: Most recent scheduled-run failure, cleared after a scheduled run is queued successfully.
+        model_providers:
+          type: ["array", "null"]
+          description: >-
+            Read-only. The model providers the workflow's admission last
+            required at this automation's fire, recorded so the
+            provider-window gate also covers workflows that never ran.
+            Null before the first fire; empty for workflows with no model
+            stages. Replace clears it.
+          items:
+            $ref: "#/components/schemas/AutomationModelProvider"
         target:
           $ref: "#/components/schemas/RunTarget"
         workflow:
@@ -7415,6 +7425,22 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/AutomationProviderWindowFact"
+
+    AutomationModelProvider:
+      description: >-
+        One provider the workflow's admission requires a model of; the model
+        selector when the requirement states one.
+      type: object
+      additionalProperties: false
+      required:
+        - provider
+      properties:
+        provider:
+          type: string
+          example: zai
+        model:
+          type: ["string", "null"]
+          example: glm-5.3
 
     AutomationProviderWindowFact:
       description: One provider's window as the gate last observed it.

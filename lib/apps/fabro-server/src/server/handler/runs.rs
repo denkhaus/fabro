@@ -769,6 +769,45 @@ async fn finalize_created_run(
     .await
     {
         Ok(admitted) => {
+            // The admission knows the workflow's model providers even before
+            // any run exists; recording them on the automation lets the
+            // scheduler's gate probe, hold and write window facts for a
+            // never-run workflow too (fabro-0611, b869 step 3). The write
+            // precedes the refusal below, so a refused first fire teaches
+            // the gate as well. Failures never block the fire.
+            if let Some(automation) = prepared.automation() {
+                let learned = admitted
+                    .required_providers
+                    .iter()
+                    .map(|required| fabro_automation::ModelProviderRequirement {
+                        provider: required.provider.to_string(),
+                        model:    required.model.clone(),
+                    })
+                    .collect::<Vec<_>>();
+                match fabro_automation::AutomationId::new(automation.id.as_str()) {
+                    Ok(automation_id) => {
+                        if let Err(err) = state
+                            .automation_store()
+                            .set_model_providers(&automation_id, Some(&learned))
+                            .await
+                        {
+                            warn!(
+                                automation_id = %automation.id,
+                                error = ?err,
+                                "recording the admission's model providers failed (fabro-0611)"
+                            );
+                        }
+                    }
+                    Err(err) => {
+                        warn!(
+                            automation_id = %automation.id,
+                            error = ?err,
+                            "stored automation id is invalid — the provider window gate \
+                             cannot learn this workflow's model providers (fabro-0611)"
+                        );
+                    }
+                }
+            }
             // The fork's provider window gate (fabro-b869 step 4): a manual,
             // API or CLI fire whose model stages need a provider whose
             // window the gate last saw closed is refused before any run

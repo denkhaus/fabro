@@ -74,6 +74,13 @@ pub struct Automation {
     /// Most recent scheduler failure. Runtime status is not part of the
     /// optimistic-concurrency revision.
     pub last_error:      Option<String>,
+    /// The model providers the workflow's admission last required (fork,
+    /// fabro-0611): learned by the create path at every fire and read by the
+    /// provider-window gate when no terminal run names them yet. Read-only
+    /// through the API; input paths never carry it; not part of the
+    /// optimistic-concurrency revision.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model_providers: Option<Vec<ModelProviderRequirement>>,
     pub target:          RunTarget,
     pub workflow:        String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -185,6 +192,7 @@ impl Automation {
             description: replace.description,
             environment_id: replace.environment_id,
             last_error: None,
+            model_providers: None,
             target: replace.target,
             workflow: replace.workflow,
             workflow_source: replace.workflow_source,
@@ -302,6 +310,19 @@ pub struct ProviderWindowFact {
     pub last_probe_at: chrono::DateTime<chrono::Utc>,
     /// When the next recheck may probe again (10-minute cadence).
     pub next_probe_at: chrono::DateTime<chrono::Utc>,
+}
+
+/// One provider the workflow's admission requires a model of (fork,
+/// fabro-0611 / b869 step 3): what the create path learned from
+/// `Admitted::model_requirements` at the fire's admission, persisted on the
+/// automation so the window gate can consult it before any run exists.
+/// `model` is the stage's model selector when the requirement states one.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ModelProviderRequirement {
+    pub provider: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model:    Option<String>,
 }
 
 /// Whether a provider's usage window is open (the provider answers) or
@@ -706,6 +727,7 @@ mod tests {
             description: None,
             environment_id: Some("default".to_string()),
             last_error: None,
+            model_providers: None,
             target: target(),
             workflow: "release".to_string(),
             workflow_source: None,

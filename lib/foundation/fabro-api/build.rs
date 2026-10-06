@@ -822,6 +822,14 @@ fn main() {
             "fabro_automation::ProviderWindowFact",
             &[],
         ),
+        // Fork (fabro-0611, b869 step 3): the admission-derived model
+        // providers ride the domain type, so the gate's stored fallback and
+        // the API output cannot drift into parallel shapes.
+        (
+            "AutomationModelProvider",
+            "fabro_automation::ModelProviderRequirement",
+            &[],
+        ),
         // MCP server catalog wire types reuse the domain model rather than
         // generating parallel DTOs. The integer formats in the spec generate as
         // `i64`/`i32`, but the domain types use `u64`/`u16`; the replacements

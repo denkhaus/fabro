@@ -10,7 +10,13 @@ fn help_lists_docker_build_flags() {
         .clone();
     let stdout = output_text(&output.stdout);
 
-    for flag in ["--arch", "--tag", "--compile-only", "--dry-run", "--git-sha"] {
+    for flag in [
+        "--arch",
+        "--tag",
+        "--compile-only",
+        "--dry-run",
+        "--git-sha",
+    ] {
         assert!(
             stdout.contains(flag),
             "docker-build help should list {flag}:\n{stdout}"

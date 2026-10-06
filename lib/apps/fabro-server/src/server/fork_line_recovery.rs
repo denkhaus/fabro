@@ -24,7 +24,10 @@
 //!
 //! The gate probe is PROVIDER-scoped since fabro-b869 (2026-10-03): the
 //! newest terminal run records the models of ALL its stages (the fold
-//! dedups them), so the gate probes EVERY provider the automation needs and
+//! dedups them) — and since fabro-0611 a workflow that never ran states its
+//! providers through the set the create path's admission recorded at the
+//! automation's last fire — so the gate probes EVERY provider the
+//! automation needs and
 //! holds it while any of them is closed — one probe per provider per recheck
 //! cadence, shared across all automations that need that provider. A workflow
 //! with no LLM provider observed (deterministic) is never held. Without a
@@ -224,14 +227,19 @@ pub(crate) fn run_providers(newest_terminal: Option<&Run>) -> Vec<(String, Strin
     let Some(run) = newest_terminal else {
         return Vec::new();
     };
-    let mut providers: Vec<(String, String)> = run
-        .models
-        .iter()
-        .filter_map(|model| {
-            let provider = model.provider.as_deref()?;
-            Some((provider.to_string(), format!("{provider}/{}", model.name)))
-        })
-        .collect();
+    sorted_providers(run.models.iter().filter_map(|model| {
+        let provider = model.provider.as_deref()?;
+        Some((provider.to_string(), format!("{provider}/{}", model.name)))
+    }))
+}
+
+/// One `(provider, probe selector)` pair per provider, alphabetically
+/// ordered, the first of its selectors the deterministic representative:
+/// every derivation of the gate's provider set normalizes through here.
+fn sorted_providers<I: IntoIterator<Item = (String, String)>>(
+    providers: I,
+) -> Vec<(String, String)> {
+    let mut providers = providers.into_iter().collect::<Vec<_>>();
     providers.sort();
     providers.dedup_by(|left, right| left.0 == right.0);
     providers
@@ -351,7 +359,7 @@ pub(crate) async fn provider_gate_tick(
             continue;
         }
         let newest = newest_terminal(&state, automation_id, now).await;
-        let required = run_providers(newest.as_ref());
+        let required = automation_providers(state.as_ref(), newest.as_ref(), automation);
         if required.is_empty() {
             // No LLM provider observed for this automation (deterministic
             // workflow, or no terminal run yet): never held.
@@ -551,7 +559,7 @@ pub(crate) async fn manual_window_refusal(
             let mut gate = state.provider_gate.lock().await;
             if gate.poll_due(provider, now) {
                 let known = gate.window(provider).unwrap_or(ProviderWindow::Open);
-                let selector = probe_selector(state, requirement);
+                let selector = probe_selector(state, requirement.provider.as_str());
                 gate.note_probe(provider, known, &selector, now);
                 Some(selector)
             } else {
@@ -591,16 +599,44 @@ pub(crate) async fn manual_window_refusal(
 /// question. The stage's own model is deliberately not used: probing the
 /// stage's model spends it on a one-word request and, in scripted test
 /// scenarios, would consume the answer the stage itself expects.
-fn probe_selector(state: &AppState, requirement: &RequiredProvider) -> String {
+fn probe_selector(state: &AppState, provider: &str) -> String {
     let probe_model = state
         .catalog()
-        .enabled_provider(requirement.provider.as_str())
+        .enabled_provider(provider)
         .and_then(CatalogProvider::probe_offering)
         .map(|offering| offering.model.id().to_string());
     match probe_model {
-        Some(model) => format!("{}/{}", requirement.provider, model),
-        None => requirement.provider.to_string(),
+        Some(model) => format!("{provider}/{model}"),
+        None => provider.to_string(),
     }
+}
+
+/// The providers an automation's fires need as `(provider, probe selector)`
+/// pairs (fabro-0611, b869 step 3): the newest terminal run's models when
+/// one exists — the observed truth, including selectors execution resolved
+/// from templated stages — else the model providers the create path's
+/// admission recorded at the automation's last fire, so a workflow that
+/// never ran is gated like one that did. Deterministic workflows state no
+/// providers either way and are never held.
+fn automation_providers(
+    state: &AppState,
+    newest_terminal: Option<&Run>,
+    automation: &fabro_automation::Automation,
+) -> Vec<(String, String)> {
+    let observed = run_providers(newest_terminal);
+    if !observed.is_empty() {
+        return observed;
+    }
+    sorted_providers(
+        automation
+            .model_providers
+            .iter()
+            .flatten()
+            .map(|requirement| {
+                let selector = probe_selector(state, &requirement.provider);
+                (requirement.provider.clone(), selector)
+            }),
+    )
 }
 
 /// Probe every required provider whose answer is older than the recheck
@@ -608,8 +644,10 @@ fn probe_selector(state: &AppState, requirement: &RequiredProvider) -> String {
 ///
 /// Fail-open: a provider whose probe cannot even run (unresolvable client /
 /// selector) is treated as open — one bounded parked run per window is
-/// cheaper than a dead line. Without a run model there is no selector, so the
-/// caller never reaches this for deterministic workflows.
+/// cheaper than a dead line. Both provider-set derivations hand every
+/// provider a selector (the run's own model, or the catalog probe offering
+/// for the stored admission set), and a deterministic workflow consults
+/// nothing, so the caller never reaches this without one.
 pub(crate) async fn probe_due_providers(
     state: &AppState,
     required: &[(String, String)],
@@ -662,7 +700,7 @@ pub(crate) async fn cron_fire_allowed(
 ) -> bool {
     let automation_id = automation.id.as_str();
     let newest = newest_terminal(state, automation_id, now).await;
-    let required = run_providers(newest.as_ref());
+    let required = automation_providers(state, newest.as_ref(), automation);
     if required.is_empty() {
         // Degraded: no LLM provider observed — fail open.
         return true;
@@ -975,6 +1013,20 @@ mod tests {
         )]
         std::fs::read_to_string(&path)
             .unwrap_or_else(|error| panic!("read {}: {error}", path.display()))
+    }
+
+    #[test]
+    fn the_create_path_records_the_admissions_model_providers() {
+        // fabro-0611 (b869 step 3): the write lives in the SHARED run-create
+        // handler; an upstream merge that rewrites finalize_created_run can
+        // drop it silently and never-run workflows go blind again.
+        let runs = server_src("lib/apps/fabro-server/src/server/handler/runs.rs");
+        assert!(
+            runs.contains("set_model_providers"),
+            "the create path must record the admission's model providers on the \
+             automation (fabro-0611): without it, the gate cannot cover a \
+             workflow that never ran"
+        );
     }
 
     #[test]

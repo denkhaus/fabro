@@ -18,6 +18,9 @@
 import type { AutomationGitWorkflowSource } from './automation-git-workflow-source';
 // May contain unused imports in some cases
 // @ts-ignore
+import type { AutomationModelProvider } from './automation-model-provider';
+// May contain unused imports in some cases
+// @ts-ignore
 import type { AutomationOverlapPolicy } from './automation-overlap-policy';
 // May contain unused imports in some cases
 // @ts-ignore
@@ -45,6 +48,10 @@ export interface Automation {
      * Most recent scheduled-run failure, cleared after a scheduled run is queued successfully.
      */
     'last_error': string | null;
+    /**
+     * Read-only. The model providers the workflow\'s admission last required at this automation\'s fire, recorded so the provider-window gate also covers workflows that never ran. Null before the first fire; empty for workflows with no model stages. Replace clears it.
+     */
+    'model_providers'?: Array<AutomationModelProvider> | null;
     'target': RunTarget;
     /**
      * Workflow slug or path resolved in the run-target checkout when `workflow_source` is omitted, or in the explicit workflow-source checkout when present.

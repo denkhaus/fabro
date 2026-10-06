@@ -183,6 +183,13 @@ impl PreparedRun {
         self.layered.metadata.environment_id.as_deref()
     }
 
+    /// The automation this run fires for, when it is one: the admission's
+    /// model providers are recorded on it so the provider-window gate also
+    /// covers workflows that never ran (fabro-0611).
+    pub(crate) fn automation(&self) -> Option<&AutomationRef> {
+        self.layered.metadata.automation.as_ref()
+    }
+
     pub(crate) fn resolve_run_id(mut self) -> (Self, RunId) {
         let run_id = self.layered.metadata.run_id.unwrap_or_default();
         self.layered.metadata.run_id = Some(run_id);

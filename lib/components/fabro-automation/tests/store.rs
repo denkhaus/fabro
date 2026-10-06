@@ -172,6 +172,84 @@ async fn provider_window_facts_round_trip_and_a_replace_clears_them() {
 }
 
 #[tokio::test]
+async fn model_providers_round_trip_and_a_replace_clears_them() {
+    let (_dir, database) = test_database().await;
+    let store = AutomationStore::new(database.clone_pool());
+    let automation = store.create(draft("model-providers", true)).await.unwrap();
+
+    // Unknown before any fire learned them (fabro-0611: the never-run gate
+    // fallback stays silent until the create path records a set).
+    let stored = store.get(&automation.id).await.unwrap().unwrap();
+    assert!(stored.model_providers.is_none());
+
+    store
+        .set_model_providers(
+            &automation.id,
+            Some(&[
+                fabro_automation::ModelProviderRequirement {
+                    provider: "zai".to_string(),
+                    model:    Some("glm-5.3".to_string()),
+                },
+                fabro_automation::ModelProviderRequirement {
+                    provider: "openai".to_string(),
+                    model:    None,
+                },
+            ]),
+        )
+        .await
+        .unwrap();
+
+    let stored = store.get(&automation.id).await.unwrap().unwrap();
+    let providers = stored.model_providers.as_ref().unwrap();
+    assert_eq!(providers.len(), 2);
+    assert_eq!(providers[0].provider, "zai");
+    assert_eq!(providers[0].model.as_deref(), Some("glm-5.3"));
+    assert_eq!(providers[1].provider, "openai");
+    assert_eq!(providers[1].model, None);
+
+    // Forgetting is explicit; a missing id is typed.
+    store
+        .set_model_providers(&automation.id, None)
+        .await
+        .unwrap();
+    let stored = store.get(&automation.id).await.unwrap().unwrap();
+    assert!(stored.model_providers.is_none());
+    store
+        .set_model_providers(
+            &AutomationId::new("missing").unwrap(),
+            Some(&[fabro_automation::ModelProviderRequirement {
+                provider: "zai".to_string(),
+                model:    None,
+            }]),
+        )
+        .await
+        .unwrap_err();
+
+    // A replace never carries the learned set forward: the workflow may have
+    // changed, so the gate re-learns at the next fire.
+    store
+        .set_model_providers(
+            &automation.id,
+            Some(&[fabro_automation::ModelProviderRequirement {
+                provider: "zai".to_string(),
+                model:    None,
+            }]),
+        )
+        .await
+        .unwrap();
+    let current = store.get(&automation.id).await.unwrap().unwrap().revision;
+    store
+        .replace(&automation.id, &current, replacement("Fresh", "0 4 * * *"))
+        .await
+        .unwrap();
+    let stored = store.get(&automation.id).await.unwrap().unwrap();
+    assert!(
+        stored.model_providers.is_none(),
+        "a replace clears the learned model providers: {stored:?}"
+    );
+}
+
+#[tokio::test]
 async fn crud_normalizes_api_and_schedule_order() {
     let (_dir, database) = test_database().await;
     let store = AutomationStore::new(database.clone_pool());

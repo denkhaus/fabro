@@ -1,5 +1,6 @@
 use fabro_api::types::{
     Automation as ApiAutomation, AutomationGitWorkflowSource as ApiAutomationGitWorkflowSource,
+    AutomationModelProvider as ApiModelProvider,
     AutomationProviderWindowFact as ApiProviderWindowFact,
     AutomationProviderWindowState as ApiProviderWindowState,
     AutomationTrigger as ApiAutomationTrigger,
@@ -25,6 +26,9 @@ const _: fn(ApiReplaceAutomationRequest) -> AutomationReplace = |value| value;
 // domain types, so the gate's facts and the API payload cannot drift.
 const _: fn(ApiProviderWindowState) -> ProviderWindowState = |value| value;
 const _: fn(ApiProviderWindowFact) -> ProviderWindowFact = |value| value;
+// Fork (fabro-0611): the admission-derived model providers reuse the domain
+// type, so the gate's stored fallback and the API payload cannot drift.
+const _: fn(ApiModelProvider) -> fabro_automation::ModelProviderRequirement = |value| value;
 
 #[test]
 fn automation_response_round_trips_public_json_shape() {
@@ -167,6 +171,46 @@ fn automation_workflow_source_rejects_unknown_or_incomplete_coordinates() {
     }))
     .unwrap();
     assert!(fabro_automation::validate_workflow_source(invalid_commit).is_err());
+}
+
+#[test]
+fn model_providers_round_trip_the_public_json_shape() {
+    // The admission-derived set as the create path records it (fabro-0611):
+    // provider always, model selector only when the requirement states one.
+    let value = json!({
+        "provider": "zai",
+        "model": "glm-5.3"
+    });
+    let requirement: ApiModelProvider = serde_json::from_value(value.clone()).unwrap();
+    assert_eq!(requirement.provider, "zai");
+    assert_eq!(requirement.model.as_deref(), Some("glm-5.3"));
+    assert_eq!(serde_json::to_value(requirement).unwrap(), value);
+
+    let modelless = json!({"provider": "openai"});
+    let requirement: ApiModelProvider = serde_json::from_value(modelless.clone()).unwrap();
+    assert_eq!(requirement.model, None);
+    assert_eq!(serde_json::to_value(requirement).unwrap(), modelless);
+
+    // The Automation payload carries the learned set read-only.
+    let automation = json!({
+        "id": "nightly-deps",
+        "revision": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "name": "Nightly dependency update",
+        "description": null,
+        "environment_id": "daytona-smoke",
+        "last_error": null,
+        "model_providers": [{"provider": "zai", "model": "glm-5.3"}],
+        "target": {
+            "kind": "git",
+            "repo": "fabro-sh/fabro",
+            "branch": "main"
+        },
+        "workflow": "dependency-update",
+        "triggers": []
+    });
+    let api: ApiAutomation = serde_json::from_value(automation.clone()).unwrap();
+    assert_eq!(api.model_providers.as_ref().unwrap()[0].provider, "zai");
+    assert_eq!(serde_json::to_value(api).unwrap(), automation);
 }
 
 #[test]

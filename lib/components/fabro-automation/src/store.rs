@@ -23,6 +23,7 @@ macro_rules! select_automations_sql {
                 a.description,
                 a.environment_id,
                 a.last_error,
+                a.model_providers,
                 a.api_enabled,
                 a.on_overlap,
                 a.target_repository,
@@ -89,6 +90,41 @@ impl AutomationStore {
             .fetch_optional(&self.pool)
             .await?;
         Ok(row.is_some())
+    }
+
+    /// Record the model providers the workflow's admission last required
+    /// (fork, fabro-0611): written by the create path at every fire of an
+    /// automation, read by the provider-window gate when no terminal run
+    /// names them yet. `None` forgets the learned set.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`AutomationStoreError::NotFound`] when the automation does
+    /// not exist, and [`AutomationStoreError::ModelProvidersEncode`] when
+    /// the requirements cannot be encoded.
+    pub async fn set_model_providers(
+        &self,
+        id: &AutomationId,
+        providers: Option<&[crate::ModelProviderRequirement]>,
+    ) -> Result<(), AutomationStoreError> {
+        let stored = providers.map(|providers| {
+            serde_json::to_string(providers).map_err(|source| {
+                AutomationStoreError::ModelProvidersEncode {
+                    id: id.clone(),
+                    source,
+                }
+            })
+        });
+        let stored = stored.transpose()?;
+        let result = sqlx::query("UPDATE automations SET model_providers = ? WHERE id = ?")
+            .bind(stored)
+            .bind(id.as_str())
+            .execute(&self.pool)
+            .await?;
+        if result.rows_affected() == 0 {
+            return Err(AutomationStoreError::NotFound { id: id.clone() });
+        }
+        Ok(())
     }
 
     pub async fn references_environment(
@@ -232,6 +268,7 @@ impl AutomationStore {
                 description = ?,
                 environment_id = ?,
                 last_error = NULL,
+                model_providers = NULL,
                 api_enabled = ?,
                 target_repository = ?,
                 target_branch = ?,
@@ -304,6 +341,7 @@ struct StoredAutomation {
     description:       Option<String>,
     environment_id:    Option<String>,
     last_error:        Option<String>,
+    model_providers:   Option<Vec<crate::ModelProviderRequirement>>,
     api_enabled:       bool,
     target:            RunTarget,
     workflow:          String,
@@ -327,6 +365,7 @@ impl StoredAutomation {
                 source,
             })?;
         let workflow_source = stored_workflow_source(row, &id)?;
+        let model_providers = stored_model_providers(row, &id)?;
         Ok(Self {
             id,
             revision,
@@ -334,6 +373,7 @@ impl StoredAutomation {
             description: row.try_get("description")?,
             environment_id: row.try_get("environment_id")?,
             last_error: row.try_get("last_error")?,
+            model_providers,
             api_enabled: row.try_get("api_enabled")?,
             target: RunTarget::Git(GitRunTarget {
                 repo:   row.try_get("target_repository")?,
@@ -425,6 +465,7 @@ impl StoredAutomation {
             })
             .map_err(|source| AutomationStoreError::StoredValidation { id, source })?;
         automation.last_error = self.last_error;
+        automation.model_providers = self.model_providers;
         for trigger in &mut automation.triggers {
             if let AutomationTrigger::Schedule(trigger) = trigger {
                 trigger.breaker = breaker_by_id.get(&trigger.id).cloned().flatten();
@@ -604,6 +645,24 @@ fn stored_provider_window(
     serde_json::from_str::<crate::ProviderWindowState>(&stored)
         .map(Some)
         .map_err(|source| AutomationStoreError::StoredProviderWindow {
+            id: id.clone(),
+            source,
+        })
+}
+
+fn stored_model_providers(
+    row: &SqliteRow,
+    id: &AutomationId,
+) -> Result<Option<Vec<crate::ModelProviderRequirement>>, AutomationStoreError> {
+    let Some(stored) = row
+        .try_get::<Option<String>, _>("model_providers")?
+        .filter(|stored| !stored.is_empty())
+    else {
+        return Ok(None);
+    };
+    serde_json::from_str::<Vec<crate::ModelProviderRequirement>>(&stored)
+        .map(Some)
+        .map_err(|source| AutomationStoreError::StoredModelProviders {
             id: id.clone(),
             source,
         })
