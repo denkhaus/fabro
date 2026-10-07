@@ -6,11 +6,29 @@ description: >-
   full upstream report, workflow-change assessment, and a self-reflection
   step that improves this skill. Use when upstream commits should be merged
   into our fork, when the user says "merge upstream", or after a fetch
-  shows new upstream/main commits.
+  shows new upstream/main commits. FROZEN since 2026-10-07 (user
+  directive): do NOT invoke — upstream merges are frozen; only crate
+  dependency bumps (petri/pebble via the [patch] pins) may update the
+  fork. The procedure below applies only when the user explicitly
+  re-opens the channel.
 disable-model-invocation: true
 ---
 
 # /merge-upstream (fabro only)
+
+## FROZEN — do not merge upstream (user directive 2026-10-07)
+
+Upstream merges are FROZEN until the user explicitly re-opens this
+channel. Do NOT run this skill — no fetch diagnosis, no merge, no
+`but pull` on origin/main. The `but status` hint "origin/main moved
+ahead; run `but pull`" is to be IGNORED. Drift on origin/main stays
+informational (ADR-0024, no routine merges). The ONLY accepted
+external update channel is crate dependency bumps of the fork-followed
+dependencies (petri, pebble) via the workspace Cargo.toml `[patch]`
+pins — fork-repo work there follows the iterate dependency-finish
+standing rule (commit, push, bump the lock in the same change).
+Everything below is the procedure for the case the user explicitly
+re-opens upstream merges.
 
 ## Scope — local-only agent skill (user directive 2026-09-16)
 

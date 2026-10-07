@@ -194,7 +194,12 @@ stores it belongs to; reach them by phase need:
   SAME change (a fabro lock still at the pre-fix petri rev nearly shipped a
   half fix and probe-15 red). Patch BOTH crates of a multi-crate fork repo
   (pebble-coding-agent AND pebble-agent) - a single entry splits shared
-  traits into two copies and fails unification.
+  traits into two copies and fails unification. DEPS ARE FINISHED ONLY
+  WHEN COMMITTED AND PUSHED (fabro-e71b park, 2026-10-07): fork-dep
+  work left uncommitted or unpushed at session end strands every other
+  machine that needs it - machine 1 had to park the e71b takeover
+  because machine 2's petri changes never left the local tree. See the
+  dependency-finish standing rule.
 - Rust work (when directly assigned): mechanical gate — read SKILL.md AND
   the guideline pages covering the diff in the SAME turn, before the first
   Rust edit cell; name the pages in the cycle report.
@@ -574,6 +579,20 @@ stores it belongs to; reach them by phase need:
   non-strategic fixes upstream (fabro-d485); strategic assets stay
   fork-private. Endgame: convergence or a deliberate wholesale switch —
   keep the .fabro layer portable (seams/presence pins stay binding).
+- Dependency finish (user directive 2026-10-07, fabro-e71b park): a
+  session that lands work in a fork-dep checkout (petri, pebble, ...)
+  FINISHES it before it ends — commit AND push the fork repo, bump this
+  workspace's lock in the same change (fork wiring above), and name the
+  pushed shas in the handoff/close note. Uncommitted or unpushed
+  fork-dep changes park the next machine: machine 1 could not take over
+  fabro-e71b because machine 2's petri changes sat uncommitted at
+  session end ("fork tree unreachable" — the lock pin itself was fine).
+  Session-close check for EVERY fork dep touched: `git -C <repo>
+  status -sb` clean AND `git -C <repo> log @{u}..HEAD` empty; if a push
+  is impossible (credentials, network), the handoff seed names repo,
+  branch, and local state EXPLICITLY — dependency work never ends
+  silently unfinished. Upstream merges stay FROZEN (2026-10-07): the
+  only external updates are these dependency bumps.
 - Fork-feature presence pinning: every durable fork feature lives in a
   fork-only source file wired through minimal one-line seams, with a
   presence test in a fork-only test file plus a touchpoints row —
