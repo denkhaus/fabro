@@ -380,10 +380,10 @@ pub(super) fn stage_outcome(status: &Status) -> StageOutcome {
 
 pub(super) fn failure_message(status: &Status) -> Option<String> {
     match status {
-        Status::Failure(info)
-        | Status::PartialSuccess {
-            underlying: Some(info),
-        } => Some(info.message.clone()),
+        Status::Failure(info) => Some(info.message.clone()),
+        Status::PartialSuccess {
+            underlying: Some(underlying),
+        } => underlying.failure_info().map(|info| info.message.clone()),
         Status::TimedOut => Some("the step timed out".to_string()),
         Status::Cancelled => Some("the step was cancelled".to_string()),
         Status::Success | Status::PartialSuccess { underlying: None } | Status::Skipped => None,

@@ -140,7 +140,12 @@ impl ClientOptions {
             builder = builder.middleware(retry_middleware(policy));
         }
         if self.inline_attachments {
-            builder = builder.middleware(InlineLocalFiles::new());
+            // lithos-llm fd42e6b split the constructor: allow-listed
+            // directories or unrestricted. This preserves the previous
+            // behavior (any local path a request names); the allow-list
+            // posture for server-side clients is an open security
+            // decision (see the tracker).
+            builder = builder.middleware(InlineLocalFiles::unrestricted());
         }
         for middleware in self.middleware {
             builder = builder.middleware_arc(middleware);
