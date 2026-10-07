@@ -238,3 +238,7 @@ petri-frontend = { git = "https://github.com/denkhaus/petri", branch = "fabro" }
 [patch."https://github.com/lithoscomputer/pebble.git"]
 pebble-coding-agent = { git = "https://github.com/denkhaus/pebble", branch = "fabro" }
 pebble-agent = { git = "https://github.com/denkhaus/pebble", branch = "fabro" }
+# Without this entry pebble-cli-core would resolve from upstream `main` and
+# ride into the build on the next `cargo update` — an undeliberate intake
+# (ADR-0024). Same content as the fork's today; the pin makes it stay so.
+pebble-cli-core = { git = "https://github.com/denkhaus/pebble", branch = "fabro" }
