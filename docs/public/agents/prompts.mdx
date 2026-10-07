@@ -64,6 +64,31 @@ Before execution, `{{ goal }}` becomes `Add a /health endpoint to the API server
 | `{{ goal }}` | The graph-level `goal` attribute |
 | `{{ inputs.name }}` | A value from `[run.inputs]` |
 
+### Context tokens
+
+`{{ context.NAME }}` is a second token namespace on a different clock: it does not render at compile time. The token survives lowering verbatim and resolves at stage dispatch, when the run context exists — so a prompt can inline a value an earlier stage produced:
+
+```dot title="review.fabro"
+digraph Review {
+    graph [goal="Review the change"]
+    start [shape=Mdiamond]
+    exit [shape=Msquare]
+    plan [shape=parallelogram, output_schema="routing", script="echo '{\"context_updates\": {\"seed_id\": \"fabro-1234\"}}'"]
+    review [prompt="Review seed {{ context.seed_id }} against the goal."]
+    start -> plan -> review -> exit
+}
+```
+
+Rules:
+
+- The token resolves only against the node's visible context projection — the same keys its `## Context` preamble section shows, after `x.context_allow_keys` / `x.preamble_allow_keys` filtering. A key the node may not see is not resolvable: this is the envelope, not a bypass.
+- Resolution is strict: an unresolved `{{ context.NAME }}` fails the stage (`context_token` failure class) naming the token and the visible keys. A typo never renders empty.
+- Values render exactly as `## Context` renders them, including the bounded preview for oversized values.
+- Command scripts resolve the same namespace against the run context, without the rendered-dedup: a key some stage's output already showed is still readable, because a command consumes data.
+- The pass is single: a context value that itself contains `{{ ... }}` lands as data, never as a template.
+- Keys with a reserved engine prefix (`internal.*`, `graph.*`, `thread.*`, `current*`, `response.*`) are never visible. Name context keys `seed_id`-style, not `current_seed_id`.
+- Injection discipline: context values are agent-written strings. Place tokens in data slots (command arguments, data lines), not inside instruction sentences.
+
 A prompt variable that nothing binds is a diagnostic from the workflow compile. `fabro validate` reports it as a warning (`attractor.unbound_input`) and leaves the text unrendered; run-style commands and `fabro preflight` refuse the workflow with `unsupported.template.unbound_input` before a run is created. Environment variables are not available in prompt templates.
 
 Prompt and goal templates can use static MiniJinja includes to share partials:
