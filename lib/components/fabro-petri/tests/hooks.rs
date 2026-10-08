@@ -431,6 +431,49 @@ async fn every_finish_is_committed_and_recorded() {
     assert_eq!(run_end, "run_complete\nsandbox_cleanup\n");
 }
 
+/// A STAGE hook's context carries the stage's declared `context_updates`
+/// (Petri-line port of Fabro's `[[run.hooks]]` contract, the fabro-6558
+/// family): a stage reports through `context_updates` — the journal payload a
+/// `stage_complete` hook writes, a planner's `current_seed_brief` — and the
+/// hook reads it out of `$FABRO_HOOK_CONTEXT`.
+///
+/// Observed live before this field existed (run 01M4EQ01KZXE2DZ9PPSJHXGMN4,
+/// 2026-10-08): every hook context on the Petri line was built WITHOUT the
+/// stage's updates, so `.fabro/journal/<run>.jsonl` recorded `"data":{}` for
+/// every stage while the planner's output carried the painpoints — the loop
+/// lane lost its whole learning channel without a single error.
+#[tokio::test]
+async fn stage_hook_contexts_carry_the_declared_context_updates() {
+    let harness = Harness::new();
+    let workflow = workflow(
+        r#"  writer [shape=parallelogram, output_schema="routing", script="printf '%s' '{\"context_updates\":{\"journal\":{\"painpoints\":[{\"text\":\"probe\"}]}}}" ]"#,
+        "  start -> writer -> exit",
+    );
+    let settings = format!(
+        "{SETTINGS}\n[[run.hooks]]\nevent = \"stage_complete\"\nscript = \"cat \\\"$FABRO_HOOK_CONTEXT\\\" >> ctx-updates.txt; echo >> ctx-updates.txt\"\n"
+    );
+    let outcome = harness.run(&workflow, &settings).await;
+    assert_eq!(outcome.status, RunStatus::Success, "{outcome:?}");
+
+    let workspace = harness.workspace().await;
+    let path = harness.workspace_path(&workspace);
+    let seen = fs::read_to_string(path.join("ctx-updates.txt"))
+        .await
+        .expect("the stage hook saw the context file");
+    // The bridge itself: every stage hook context carries a `context_updates`
+    // OBJECT with the stage's engine-provided entries. Before the field
+    // existed the key was absent entirely, which is how the stage journal
+    // silently wrote `"data":{}` for every stage on the Petri line.
+    assert!(
+        seen.contains("\"context_updates\":{"),
+        "a stage hook context must carry the stage's context_updates: {seen}"
+    );
+    assert!(
+        seen.contains("internal.run_id"),
+        "the stage's own engine-provided updates must be inside them: {seen}"
+    );
+}
+
 /// `[[run.hooks]]` contexts carry the run's id: the runtime installs its
 /// own local hook service for the tool-policy seam, which Petri run-binds
 /// only for a service it built itself, so before fabro-6558 nothing bound
