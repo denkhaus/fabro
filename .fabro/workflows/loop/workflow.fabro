@@ -136,13 +136,14 @@ digraph Loop {
     ]
 
     // Tester: the deterministic loop battery (fabro-70b5 part C) —
-    // validate every graph, lint every nu script, prompt-lint literal
-    // hygiene, run-scope (loop lane), exec-bit preservation, the
-    // fabro-dot snapshot tier when the diff changes a workflow graph
-    // (fabro-9973 — the one bounded Rust probe; it may cold-compile
-    // one crate, hence the wider timeout), fmt only if .rs files
-    // appear. NEVER the product compile tier: clippy/nextest belong to
-    // develop.
+    // validate every graph, the ONE battery-runner surface
+    // (fabro-eae5: lint-nu + prompt-lint + every registered
+    // loop-asset battery, shared with the product gate), run-scope
+    // (loop lane), exec-bit preservation, the fabro-dot snapshot tier
+    // when the diff changes a workflow graph (fabro-9973 — the one
+    // bounded Rust probe; it may cold-compile one crate, hence the
+    // wider timeout), fmt only if .rs files appear. NEVER the product
+    // compile tier: clippy/nextest belong to develop.
     tester [
         label="Loop Gate",
         shape=parallelogram,
