@@ -75,7 +75,7 @@ def stage-cook-context [] {
     $out
 }
 
-def build-one [dockerfile: string, tag: string, push: bool] {
+def build-one [dockerfile: string, tag: string, push: bool, sha12: string] {
     if not ($dockerfile | path exists) {
         let name = ($dockerfile | path basename)
         print $"run-images: skip ($tag) \(($name) missing\)"
@@ -115,7 +115,6 @@ def build-one [dockerfile: string, tag: string, push: bool] {
             # Pushing is idempotent: a remote that already holds the digest
             # uploads nothing.
             if $push and $tag == "fabro-toolchain:noble" {
-                let sha12 = (line_tip_sha12)
                 docker tag $tag $"ghcr.io/denkhaus/fabro-toolchain:($sha12)"
                 push-toolchain $sha12
             }
@@ -127,7 +126,6 @@ def build-one [dockerfile: string, tag: string, push: bool] {
     ^docker build --file $dockerfile --tag $tag --label $wanted $context
     print $"run-images: ($tag) built \(sha ($hash | str substring 0..11)\)"
     if $push and $tag == "fabro-toolchain:noble" {
-        let sha12 = (line_tip_sha12)
         docker tag $tag $"ghcr.io/denkhaus/fabro-toolchain:($sha12)"
         push-toolchain $sha12
     }
@@ -137,10 +135,20 @@ def build-one [dockerfile: string, tag: string, push: bool] {
 # .fabro/scripts/line-tip-sha.nu — in a GitButler workspace git HEAD is the
 # never-pushed workspace commit, and a release tag must name the sha a push
 # publishes. It fails closed inside a workspace when `but sha` cannot run.
-def line_tip_sha12 [] {
-    let res = (do { ^nu .fabro/scripts/line-tip-sha.nu } | complete)
+# The tag this image is published under. `--sha` carries the value
+# `scripts/image-release.nu` already resolved (fabro-ed65: ONE resolution per
+# release); the standalone path demands the PUBLISHED tip, so a release can
+# never tag an image a pull cannot find.
+def line_tip_sha12 [given: string] {
+    if ($given | str length) > 0 {
+        if ($given | str length) != 12 {
+            error make {msg: $"run-images: --sha '($given)' is not a 12-hex sha"}
+        }
+        return $given
+    }
+    let res = (do { ^nu .fabro/scripts/line-tip-sha.nu --require-published } | complete)
     if $res.exit_code != 0 {
-        error make {msg: $"run-images: line-tip-sha failed: ($res.stderr | str trim)"}
+        error make {msg: $"run-images: the published line-tip guard failed: ($res.stderr | str trim)"}
     }
     let sha = ($res.stdout | str trim)
     if ($sha | str length) != 12 {
@@ -160,7 +168,8 @@ def push-toolchain [sha12: string] {
     print $"run-images: pushed ($remote) — server-managed environments pin this sha tag"
 }
 
-def main [--push] {
-    build-one ".fabro/Dockerfile.toolchain" "fabro-toolchain:noble" $push
+def main [--push, --sha: string = ''] {
+    let sha12 = (line_tip_sha12 $sha)
+    build-one ".fabro/Dockerfile.toolchain" "fabro-toolchain:noble" $push $sha12
     # build-one ".fabro/Dockerfile.mise" "fabro-runner:mise" $push
 }

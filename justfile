@@ -106,8 +106,10 @@ build-image: web-deps
 # released server at the same version. Escape hatch for pure-CI runs:
 # JUST_SKIP_CLI_INSTALL=true just image-release
 image-release: web-deps
-    nu scripts/image-release.nu "{{ arch }}"
-    nu scripts/run-images.nu --push
+    @TIP=$(nu .fabro/scripts/line-tip-sha.nu --require-published) && \
+        echo "image-release: line tip $TIP" && \
+        nu scripts/image-release.nu "{{ arch }}" --sha "$TIP" && \
+        nu scripts/run-images.nu --push --sha "$TIP"
     @if [ "{{ skip_cli }}" = "true" ]; then \
         echo "image-release: skipping CLI install (JUST_SKIP_CLI_INSTALL=true)"; \
     else \
@@ -136,7 +138,7 @@ run-images:
 # DEPLOYED server sha — so pass the deployed sha explicitly whenever the line
 # moved on since the deploy (tooling repins do exactly that).
 pin-toolchain tag="":
-    fabro env pin-toolchain --tag {{ if tag == "" { `nu .fabro/scripts/line-tip-sha.nu` } else { tag } }}
+    nu .fabro/scripts/pin-toolchain.nu "{{ tag }}"
 
 # Build only the release binary and stage it (no docker image build)
 build-binary: web-deps

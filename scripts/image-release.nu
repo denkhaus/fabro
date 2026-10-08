@@ -6,26 +6,34 @@
 #   gh auth refresh -s write:packages
 #   gh auth token | docker login ghcr.io -u denkhaus --password-stdin
 
-def main [arch: string = "amd64"] {
+# `--sha` is how the RELEASE resolves the line tip exactly ONCE (fabro-ed65):
+# `just image-release` reads it from .fabro/scripts/line-tip-sha.nu and passes
+# the same value to scripts/run-images.nu. Two independent resolutions inside
+# one release let a commit landing during the long build tag the fabro image
+# and the toolchain image differently, and `just pin-toolchain` then pins an
+# image tag nobody ever pushed. Standalone callers omit --sha and get the
+# guarded resolution (it refuses a sha that is not the published tip).
+def main [arch: string = "amd64", --sha: string = ''] {
     let version = (open --raw Cargo.toml | lines
         | where $it =~ '^version = '
         | first
         | parse --regex 'version = "(?P<v>[^"]+)"'
         | get v.0)
-    # The pushable LINE-TIP sha (fabro-a1ed/06da): in a GitButler workspace
-    # git HEAD is the never-pushed workspace commit, so a tag built from it
-    # names a sha no push publishes and `just pin-toolchain`'s parity gate
-    # then refuses. ONE policy site: .fabro/scripts/line-tip-sha.nu (it
-    # falls back to git HEAD in a plain release clone/CI, and fails closed
-    # inside a workspace when `but sha` cannot run).
-    let res = (do { ^nu .fabro/scripts/line-tip-sha.nu } | complete)
-    if $res.exit_code != 0 {
-        error make {msg: $"image-release: line-tip-sha failed: ($res.stderr | str trim)"}
+    let tip_sha = (if ($sha | str length) > 0 { $sha } else {
+        # ONE policy site: .fabro/scripts/line-tip-sha.nu (fabro-a1ed/06da).
+        # In a GitButler workspace git HEAD is the never-pushed workspace
+        # commit; --require-published additionally demands the PUBLISHED tip
+        # (a release tag must name a sha a pull can find).
+        let res = (do { ^nu .fabro/scripts/line-tip-sha.nu --require-published } | complete)
+        if $res.exit_code != 0 {
+            error make {msg: $"image-release: the published line-tip guard failed: ($res.stderr | str trim)"}
+        }
+        ($res.stdout | str trim)
+    })
+    if ($tip_sha | str length) != 12 {
+        error make {msg: $"image-release: line tip '($tip_sha)' is not a 12-hex sha"}
     }
-    let sha = ($res.stdout | str trim)
-    if ($sha | str length) != 12 {
-        error make {msg: $"image-release: line-tip-sha returned '($sha)' — expected a 12-hex sha"}
-    }
+    let sha = $tip_sha
     let repo = "ghcr.io/denkhaus/fabro"
     let tag = $"($repo):($version)-($sha)"
 
