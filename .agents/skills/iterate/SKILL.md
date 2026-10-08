@@ -517,7 +517,7 @@ stores it belongs to; reach them by phase need:
 
 ## Standing rules
 
-- NO LANGUAGE SPRAWL (user top priority, directive 2026-10-03): every script invoked by workflows, justfile, or gate/tooling entry points MUST be a nu script. Never add, extend, or split non-nu script assets (the code-review lane's python engine is a standing violation to MIGRATE to nu, not a pattern); architecture scans and sprint plans check the language axis BEFORE proposing splits/refactors.
+- NO LANGUAGE SPRAWL (user top priority, directive 2026-10-03): every script invoked by workflows, justfile, or gate/tooling entry points MUST be a nu script. Never add, extend, or split non-nu script assets. The one standing violation — the upstream code-review lane's 16-file / 8.5k-line python engine — was RETIRED on 2026-10-08 (user GO) as never used in this fork instead of ported (fabro-c16a closed; the graph, rules, templates and pins are gone, the upstream asset stays recoverable from upstream history). POSIX sh survives only where the failure mode it guards is a sandbox WITHOUT nu (`.fabro/scripts/toolchain-guard.sh`). Architecture scans and sprint plans check the language axis BEFORE proposing splits/refactors.
 - Style-guide pair invariant (fabro-6538, 591a decision 2026-10-03):
   `.fabro/skills/rust-style-guide/` is canonical, `.agents/skills/rust-style-guide/`
   its synced mirror. After ANY edit to the canonical side, the session runs
