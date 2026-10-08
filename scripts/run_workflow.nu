@@ -103,10 +103,23 @@ def main [
         print $"run_workflow: adopting run ($adopt)"
         $adopt
     } else {
+        # Workflow source + target come from the PUSHED branch (fabro-ed65 era,
+        # observed 2026-10-09): inside a GitButler workspace the local HEAD is
+        # the never-pushed workspace commit, so a bare `fabro create` refuses
+        # with "the exact local Git commit could not be made available from the
+        # canonical GitHub origin". Pinning both to origin/<branch> also makes a
+        # manual fire reproduce exactly what the line published — uncommitted
+        # workflow edits never ride a fire (the dirty-worktree guard above
+        # already enforces that earlier).
+        let source = [
+            '--workflow-repo' $GITHUB_REPO
+            '--workflow-ref' $branch
+            '--target' $"($GITHUB_REPO)@($branch)"
+        ]
         let created = (if ($goal | is-empty) {
-            do { ^$fabro_bin create $workflow --environment $environment --json --server $server } | complete
+            do { ^$fabro_bin create $workflow ...$source --environment $environment --json --server $server } | complete
         } else {
-            do { ^$fabro_bin create $workflow --goal $goal --environment $environment --json --server $server } | complete
+            do { ^$fabro_bin create $workflow --goal $goal ...$source --environment $environment --json --server $server } | complete
         })
         ok $created 'fabro create'
         let id = ($created.stdout | from json | get -o run_id | default '')
