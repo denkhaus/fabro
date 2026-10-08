@@ -22,7 +22,6 @@ digraph Conductor {
         // fabro-f84f: opt into vendored-skill discovery — the
         // session loads `.fabro/skills` (rust-style-guide and
         // friends) through the UseSkill tool.
-        x.skills="discover",
         output_schema="routing",
         output_retries=2,
         retry_policy="standard",
@@ -65,7 +64,6 @@ digraph Conductor {
         // fabro-f84f: opt into vendored-skill discovery — the
         // session loads `.fabro/skills` (rust-style-guide and
         // friends) through the UseSkill tool.
-        x.skills="discover",
         // fabro-3196: file schema (fabro-017f teeth pattern) — keeps
         // the routing contract AND rejects a revise-handoff routing
         // ('Develop integrated' / 'Gate stuck — revise anyway')
@@ -89,7 +87,6 @@ digraph Conductor {
         // fabro-f84f: opt into vendored-skill discovery — the
         // session loads `.fabro/skills` (rust-style-guide and
         // friends) through the UseSkill tool.
-        x.skills="discover",
         output_schema="routing",
         output_retries=2,
         retry_policy="standard",

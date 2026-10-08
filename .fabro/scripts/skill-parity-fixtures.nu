@@ -1,8 +1,9 @@
 #!/usr/bin/env nu
 # Skill-parity fixtures (fabro-6538): the rust-style-guide skill ships as
-# two trees — .fabro/skills/rust-style-guide (CANONICAL, run-facing: run
-# agents load it via x.skills=discover and the reviewer contract depends
-# on it) and .agents/skills/rust-style-guide (the local-session mirror).
+# two trees — .fabro/skills/rust-style-guide (CANONICAL, run-facing: every
+# agent session discovers .fabro/skills and loads the guide by name through
+# use_skill, and the reviewer contract depends on it) and
+# .agents/skills/rust-style-guide (the local-session mirror).
 # They were byte-identical by accident and nothing checked parity: an
 # edit to one tree silently forked style guidance per audience. This
 # battery is the deterministic hash-compare net the loop-asset tier

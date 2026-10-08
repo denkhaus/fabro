@@ -76,7 +76,6 @@ digraph Loop {
     planner [
         label="Planner",
         prompt="@prompts/planner.md",
-        x.skills="discover",
         output_schema="@schemas/planner-output.schema.json",
         output_retries=2,
         max_visits=20,
@@ -120,7 +119,6 @@ digraph Loop {
     implementer [
         label="Implementer",
         prompt="@prompts/implementer.md",
-        x.skills="discover",
         output_schema="routing",
         output_retries=2,
         max_visits=10,
@@ -172,7 +170,6 @@ digraph Loop {
     reviewer [
         label="Reviewer",
         prompt="@prompts/reviewer.md",
-        x.skills="discover",
         fidelity="summary:high",
         reasoning_effort="low",
         x.preamble_stages_ignore="planner,implementer,reviewer",

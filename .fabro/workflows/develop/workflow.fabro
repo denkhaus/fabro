@@ -221,7 +221,6 @@ digraph Develop {
         // fabro-f84f: opt into vendored-skill discovery — the
         // session loads `.fabro/skills` (rust-style-guide and
         // friends) through the UseSkill tool.
-        x.skills="discover",
         output_schema="routing",
         output_retries=2,
         max_visits=10,
@@ -236,8 +235,11 @@ digraph Develop {
         // fabro-269d (fabro-47b5 adoption, user decision 2026-09-17 GO):
         // per-node tool allow-list — exactly what this prompt demonstrably
         // uses: the file tools, the shell (loop-asset escape hatch, just/seeds/
-        // ml/nu), and use_skill (x.skills="discover" loads the vendored style
-        // guide through it). spawn_agent, the web tools, and the fabro-run
+        // ml/nu), and use_skill (the vendored style guide is discovered for
+        // every agent session from .fabro/skills and loaded BY NAME through
+        // use_skill; the old x.skills="discover" attribute was dropped by
+        // Petri's x. extension namespace and never did anything).
+        // spawn_agent, the web tools, and the fabro-run
         // catalog are denied mechanically by the same list (question tools
         // stay exempt engine-side). Restricting, never extending (ADR-0019).
         x.tools="read_file,write_file,edit_file,glob,grep,shell,use_skill",
@@ -395,7 +397,6 @@ digraph Develop {
         // fabro-f84f: opt into vendored-skill discovery — the
         // session loads `.fabro/skills` (rust-style-guide and
         // friends) through the UseSkill tool.
-        x.skills="discover",
         fidelity="summary:high",
         reasoning_effort="low",
         x.preamble_stages_ignore="planner,implementer,reviewer",

@@ -66,7 +66,6 @@ digraph Architect {
         // fabro-f84f: opt into vendored-skill discovery — the
         // session loads `.fabro/skills` (rust-style-guide and
         // friends) through the UseSkill tool.
-        x.skills="discover",
         output_schema="routing",
         output_retries=2,
         retry_policy="standard",
