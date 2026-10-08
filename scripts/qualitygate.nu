@@ -100,129 +100,21 @@ def check-fmt [] {
 # no-op gate (run 01M23TE61D4Y).
 def check-loop-assets [] {
     print '== checking loop-asset scripts =='
-    # Full-repo nushell tier (lint-nu.nu): parse check of EVERY script —
-    # repo scripts/ and all workflow assets, not just develop's — plus the
-    # interpolated-regex scan that parse checks cannot see.
-    # The gate previously walked develop scripts only; a verify.nu shipped
-    # broken through that gap.
-    let lint = (do { ^nu scripts/lint-nu.nu } | complete)
-    print $lint.stdout
-    if ($lint.exit_code != 0) {
-        print $lint.stderr
+    # One battery-runner surface (fabro-eae5): the smokes/batteries
+    # registry lives in .fabro/scripts/battery-runner.nu and only
+    # there — this gate and the loop lane's tester gate
+    # (.fabro/workflows/loop/scripts/loop-gate.nu) both call the SAME
+    # runner (`all` scope), so a red battery REDs both callers and the
+    # path lists can no longer drift between lanes. Loop-asset tiers
+    # (fabro-bfe1 lint, fabro-41de prompt-lint, fabro-ac84 fixture
+    # batteries) run in BOTH main paths — crates touched or not — so a
+    # loop-asset-only diff is no longer a 4s no-op gate (run
+    # 01M23TE61D4Y).
+    let res = (do { ^nu .fabro/scripts/battery-runner.nu all } | complete)
+    print $res.stdout
+    if ($res.exit_code != 0) {
+        print $res.stderr
         return false
-    }
-    # Prompt-lint tier (fabro-41de C3 guard, gate-wired 2026-09-19): loop
-    # prompts/graph/toml literals must not rot — unresolvable seed ids,
-    # drifted justfile anchors, provenance literals (run ids, PR refs).
-    # Runs in BOTH gate paths so prompt-only diffs are gated too.
-    let plint = (do { ^nu .fabro/scripts/prompt-lint.nu } | complete)
-    print $plint.stdout
-    if ($plint.exit_code != 0) {
-        print $plint.stderr
-        return false
-    }
-    let smokes = [
-        '.fabro/workflows/develop/scripts/evidence-smoke.nu'
-        # Claim-gate path battery (fabro-4c81): the pure claim-body-verdict
-        # core over canned seeds-show records — blocking classes, creation-
-        # intent windows, advisory classes, fail-open contract.
-        '.fabro/workflows/develop/scripts/claim-check-smoke.nu'
-        # Graph-contract pin (fabro-83df/fabro-92e2, incident 2026-09-19):
-        # the develop graph must keep its deterministic-exit contract —
-        # planner ungated, preflight report-only, guard exits intact.
-        '.fabro/workflows/develop/scripts/graph-contract-smoke.nu'
-        # Loop-lane graph-contract pin (fabro-70b5): lane wiring flags,
-        # the implementer envelope pin, the red bounce — the meta lane's
-        # load-bearing contracts, same tier as the develop pin.
-        '.fabro/workflows/loop/scripts/graph-contract-smoke.nu'
-        # Revisor graph-contract pin (fabro-2357): the meta lane stays a
-        # MANUAL fire lane, so the toolchain-placement guard is an operator
-        # path there too — first stage after start, POSIX sh, no bypass
-        # edge. The revisor had no graph-contract smoke before this.
-        '.fabro/workflows/revisor/scripts/graph-contract-smoke.nu'
-        # tracker-guard pure decision logic (fabro-0da8): guard-decision /
-        # sd-issue-count over canned complete-style records — both-empty
-        # route, open/in_progress arms, and the sd-failure fail-open
-        # contract. Found UNREGISTERED by the fabro-8b38 registration
-        # sweep (the ac84 silent-de-gate class): the script existed, ran
-        # green, and nothing executed it.
-        '.fabro/workflows/develop/scripts/tracker-guard-smoke.nu'
-        # Salvage-sweep analysis battery (fabro-f312, user directive
-        # 2026-09-30): the dump analysis is the sweep's decision core, so
-        # the battery pins the five verdict-relevant shapes — failed with
-        # real work, journal-only bookkeeping, the green-lie, a diff-less
-        # run, and a clean green run — with no live server in reach.
-        '.fabro/scripts/salvage-sweep-smoke.nu'
-        # closeout pure-decision logic (fabro-5af4/591a era): reviewer
-        # journal, deferred-action and exemption-arm sweep. Same finding —
-        # unregistered until fabro-8b38.
-        '.fabro/workflows/develop/scripts/closeout-smoke.nu'
-        # close-claim battery (fabro-2a3b): the close-claim-check core over
-        # the incident fixture pair — a subject claiming a close the tracker
-        # never recorded is a finding; remainder/residual/file phrasings
-        # stay quiet. The LIVE check runs in the session's line watch.
-        '.fabro/scripts/close-claim-check-smoke.nu'
-        # prompt-lint marker battery (fabro-cb5c): the synthetic-fixture-id
-        # marker must silence ONLY its own file — the check keeps teeth on
-        # unmarked files and every other prompt-lint check stays live on a
-        # marked one. Runs the real lint against temp roots.
-        '.fabro/scripts/prompt-lint-fixtures.nu'
-        # release-sha battery (fabro-06da): release tags must name the
-        # PUSHABLE line tip — only the allow-listed files may derive a short
-        # sha, the two release scripts must call the policy site, and the
-        # scanner proves it has teeth on a planted fixture.
-        '.fabro/scripts/release-sha-fixtures.nu'
-    ]
-    for smoke in $smokes {
-        let res = (do { ^nu $smoke } | complete)
-        if ($res.exit_code != 0) {
-            print $"loop-asset smoke FAILED: ($smoke)"
-            print ($res.stdout | str trim -r -c "\n" | lines | last 20)
-            print ($res.stderr | str trim -r -c "\n")
-            return false
-        }
-    }
-    # Checked-in fixture batteries (seed fabro-ac84, run 01M2NDGXSKF8YFANJXRFZGC087):
-    # the gate must EXECUTE the fixture scripts under .fabro/scripts/, not just
-    # parse them. Discovery is explicit and minimal — name each battery; do NOT
-    # blanket-run every .fabro/scripts/*.nu (stage-journal.nu and friction-score.nu
-    # are tools, not batteries).
-    let batteries = [
-        '.fabro/scripts/dup-run-check-fixtures.nu'
-        # planner-preflight anchor battery (fabro-83df report-only
-        # end-to-end case included; 0.5s measured 2026-09-19)
-        '.fabro/scripts/planner-preflight-anchor-fixtures.nu'
-        # revisor overflow-ledger battery (fabro-552a): fixture revision
-        # file with open + consumed overflows drives `open`/`consume`
-        # selection deterministically, plus the live real-tree invariant
-        # for the memoize entry in revision 01M2X8458MDWMRVBRVEMDX9W4J.
-        '.fabro/workflows/revisor/scripts/overflow-ledger-fixtures.nu'
-        # run-scope fixtures (fabro-70b5 part D): the run-scope
-        # classification RED both ways, both lanes, plus the git base
-        # derivation — this tier proves the meta lane's diff boundary.
-        '.fabro/scripts/run-scope-fixtures.nu'
-        # rust-style-guide skill parity (fabro-6538): .fabro/skills/
-        # rust-style-guide (canonical — run-facing, the reviewer
-        # contract's source) and .agents/skills/rust-style-guide (the
-        # local-session mirror) must stay byte-identical; the battery
-        # hash-compares both trees (run-images.nu's sha256 pattern).
-        '.fabro/scripts/skill-parity-fixtures.nu'
-        # touchpoints parity (fabro-de32, arch-gate sprint 9): every
-        # tracked fork-only pin file must be named in the touchpoints
-        # registry and every literal row path must exist — the two-pin
-        # rule machine-checked in both directions (was reviewer-prompt
-        # only; live gaps found at filing: fork_exec_guard x2,
-        # fork_structured).
-        '.fabro/scripts/touchpoints-parity-fixtures.nu'
-    ]
-    for battery in $batteries {
-        let res = (do { ^nu $battery } | complete)
-        if $res.exit_code != 0 {
-            print $"loop-asset fixture battery FAILED: ($battery)"
-            print ($res.stdout | str trim -r -c "\n" | lines | last 20)
-            print ($res.stderr | str trim -r -c "\n")
-            return false
-        }
     }
     print "loop-asset scripts green"
     true

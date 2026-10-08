@@ -98,23 +98,26 @@ def bare-paren-check [file: string] {
     }
 }
 
-# Registration check (fabro-8b38): the gate executes smokes and fixture
-# batteries ONLY when they are named in scripts/qualitygate.nu's explicit
-# lists, so a new battery that nobody registers is silently un-gated — the
-# class that produced fabro-ac84 and, caught by this check's first run,
-# tracker-guard-smoke.nu + closeout-smoke.nu (both existed, both ran green,
-# nothing executed them). Convention: *-smoke.nu belongs in the `smokes`
-# list, *-fixtures.nu in `batteries`. Scripts that match a suffix but are
-# not batteries go in the allow-list below with a reason.
+# Registration check (fabro-8b38): the gates execute smokes and fixture
+# batteries ONLY when they are named in the battery runner's explicit
+# lists (.fabro/scripts/battery-runner.nu — the ONE registry since
+# fabro-eae5, called by both scripts/qualitygate.nu and the loop lane's
+# loop-gate.nu), so a new battery that nobody registers is silently
+# un-gated — the class that produced fabro-ac84 and, caught by this
+# check's first run, tracker-guard-smoke.nu + closeout-smoke.nu (both
+# existed, both ran green, nothing executed them). Convention:
+# *-smoke.nu belongs in the `smokes` list, *-fixtures.nu in
+# `batteries`. Scripts that match a suffix but are not batteries go in
+# the allow-list below with a reason.
 const REGISTRATION_ALLOW = []
 
 def registration-check [] {
-    let qualitygate = 'scripts/qualitygate.nu'
-    if not (($qualitygate | path exists)) {
-        print $"registration FAILED: ($qualitygate) is missing — the gate's battery lists moved?"
+    let registry = '.fabro/scripts/battery-runner.nu'
+    if not (($registry | path exists)) {
+        print $"registration FAILED: ($registry) is missing — the battery registry moved?"
         return false
     }
-    let text = (open --raw $qualitygate)
+    let text = (open --raw $registry)
     let candidates = (
         script-paths
         | where {|f|
@@ -131,12 +134,12 @@ def registration-check [] {
         | where {|f| not ($text | str contains ($f | path relative-to $root)) }
     )
     if ($unregistered | is-empty) {
-        print $"registration ok: ($candidates | length) smoke/fixture batteries all named in ($qualitygate)"
+        print $"registration ok: ($candidates | length) smoke/fixture batteries all named in ($registry)"
         true
     } else {
         for f in $unregistered {
             let list = (if (($f | path basename) | str ends-with '-smoke.nu') { 'smokes' } else { 'batteries' })
-            print $"registration FAILED: ($f | path relative-to ($env.PWD)) is not named in ($qualitygate) — add it to the ($list) list"
+            print $"registration FAILED: ($f | path relative-to ($env.PWD)) is not named in ($registry) — add it to the ($list) list"
         }
         false
     }
