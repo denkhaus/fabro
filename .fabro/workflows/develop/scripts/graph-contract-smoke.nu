@@ -20,6 +20,12 @@
 #      unconditional fail-open route must stay.
 #   5. planner -> exit ("Already landed") edge EXISTS — the planner's
 #      own decision exit must stay.
+#   6. Toolchain-placement guard (fabro-2357, the loop-lane pattern of
+#      fabro-3ab2): start routes through env_guard before tracker_guard,
+#      the node runs the shared guard through POSIX sh with the develop
+#      lane flag, and start has NO second outgoing edge. A dropped or
+#      bypassed guard silently returns the cryptic "nu: command not
+#      found" death on a flag-less manual fire.
 
 const GRAPH = ('.fabro/workflows/develop/workflow.fabro' | path expand)
 
@@ -57,5 +63,24 @@ def main [] {
     if not ($lines | any {|l| ($l | str contains 'planner -> exit') and ($l | str contains 'Already landed')}) {
         fail 'planner -> exit ("Already landed") edge missing: the planner decision exit lost'
     }
-    print 'graph-contract-smoke: OK — planner ungated, preflight report-only, guard exits intact'
+    # 6. toolchain-placement guard (fabro-2357): start -> env_guard ->
+    # tracker_guard, run through POSIX sh with the develop lane flag.
+    # Assertions read COMMENT-STRIPPED lines (the loop smoke's precedent):
+    # the rationale comments name the contract, and only real code may
+    # satisfy it.
+    let code = ($lines | each {|l| ($l | split row '//' | first)})
+    if not ($code | any {|l| ($l | str contains 'start -> env_guard')}) {
+        fail 'start -> env_guard edge missing — a misplaced manual fire would die cryptically at the first nu stage'
+    }
+    if not ($code | any {|l| ($l | str contains 'env_guard -> tracker_guard')}) {
+        fail 'env_guard -> tracker_guard edge missing — the placement guard must precede every nu stage'
+    }
+    if not ($code | any {|l| ($l | str contains 'toolchain-guard.sh develop') and ($l | str starts-with '        script="sh ')}) {
+        fail 'env_guard script line must run the shared guard via POSIX sh with the develop lane flag — nu cannot guard a sandbox without nu'
+    }
+    let start_edges = ($code | where {|l| ($l | str trim | str starts-with 'start ->')})
+    if ($start_edges | length) != 1 {
+        fail $'start must have exactly ONE outgoing edge, the placement guard; found ($start_edges | length) — a second edge would bypass it'
+    }
+    print 'graph-contract-smoke: OK — planner ungated, preflight report-only, guard exits intact, placement guard wired'
 }

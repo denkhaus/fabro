@@ -135,6 +135,11 @@ def check-loop-assets [] {
         # the implementer envelope pin, the red bounce — the meta lane's
         # load-bearing contracts, same tier as the develop pin.
         '.fabro/workflows/loop/scripts/graph-contract-smoke.nu'
+        # Revisor graph-contract pin (fabro-2357): the meta lane stays a
+        # MANUAL fire lane, so the toolchain-placement guard is an operator
+        # path there too — first stage after start, POSIX sh, no bypass
+        # edge. The revisor had no graph-contract smoke before this.
+        '.fabro/workflows/revisor/scripts/graph-contract-smoke.nu'
         # tracker-guard pure decision logic (fabro-0da8): guard-decision /
         # sd-issue-count over canned complete-style records — both-empty
         # route, open/in_progress arms, and the sd-failure fail-open
@@ -157,6 +162,11 @@ def check-loop-assets [] {
         # never recorded is a finding; remainder/residual/file phrasings
         # stay quiet. The LIVE check runs in the session's line watch.
         '.fabro/scripts/close-claim-check-smoke.nu'
+        # prompt-lint marker battery (fabro-cb5c): the synthetic-fixture-id
+        # marker must silence ONLY its own file — the check keeps teeth on
+        # unmarked files and every other prompt-lint check stays live on a
+        # marked one. Runs the real lint against temp roots.
+        '.fabro/scripts/prompt-lint-fixtures.nu'
         # release-sha battery (fabro-06da): release tags must name the
         # PUSHABLE line tip — only the allow-listed files may derive a short
         # sha, the two release scripts must call the policy site, and the

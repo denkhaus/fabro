@@ -43,6 +43,25 @@ digraph Develop {
     // and hard errors stay on the untyped exit.
     exit  [shape=Msquare, label="Exit"]
 
+    // Toolchain-placement guard (fabro-2357, the loop-lane pattern of
+    // fabro-3ab2): a manual `fabro run develop` WITHOUT --environment falls
+    // to the server's `default` environment (the CLI always sends an
+    // explicit intent environment id, and the intent's selection outranks
+    // any [run.environment] pin, so workflow.toml cannot redirect a
+    // flag-less fire) and dies cryptically at the first nu stage with
+    // "nu: command not found". POSIX sh, NOT nu: the failure mode it
+    // guards is a sandbox without nu, and a nu guard could never report
+    // it. Fail-closed with a teaching error naming the correct fire
+    // command; toolchain-placed runs pass in milliseconds and change
+    // nothing.
+    env_guard [
+        label="Toolchain guard: fail-closed placement check",
+        shape=parallelogram,
+        script="sh .fabro/scripts/toolchain-guard.sh develop",
+        timeout="30s",
+        max_retries=0
+    ]
+
     // Tracker guard (fabro-0da8): deterministic drained-tracker terminal
     // check AFTER start, BEFORE the preflight and planner — proves tracker
     // state in ~1-3 s of shell (seeds list open + in_progress, both
@@ -475,7 +494,10 @@ digraph Develop {
         max_retries=0
     ]
 
-    start -> tracker_guard
+    // fabro-2357: the placement guard is the FIRST stage after start, so a
+    // misplaced manual fire fails closed before any nu stage exists.
+    start -> env_guard
+    env_guard -> tracker_guard
     // fabro-0da8: drained-tracker terminal exit — zero LLM tokens on this
     // path. Plain edge, natural completion, same family as the planner's
     // own "Tracker empty" edge below (the label contract predates this

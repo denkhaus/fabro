@@ -36,11 +36,13 @@ sandbox = false
 # Since upstream v0.345, `fabro run`/`fabro create` build runs from
 # immutable workflow intents and no longer transmit project-level
 # [run]/[environments] settings: workflow behavior lives HERE, placement
-# is server-managed. Starts go through `just run develop` which passes
-# --environment mise (the intent's environment override outranks any pin
-# here, and a local `fabro preflight` cannot resolve server-managed
-# environment ids — placement is therefore NOT pinned in this file; the
-# wrapper flag is the single source).
+# is server-managed. A manual start goes through `just run revisor`
+# (run_workflow.nu's default `--environment toolchain`) or
+# `fabro run revisor --environment toolchain` — the same fire command the
+# env_guard node's teaching error names. The intent's environment override
+# outranks any pin here, and a local `fabro preflight` cannot resolve
+# server-managed environment ids — placement is therefore NOT pinned in
+# this file; the wrapper flag is the single source).
 #
 # Default model (moved from project.toml).
 [run.model]

@@ -60,7 +60,7 @@ expression: report
   file:prompt:prompts/product.md@product
 .fabro/workflows/daytona-medium/workflow.fabro: DaytonaMedium nodes=3 edges=2
   goal-inline
-.fabro/workflows/develop/workflow.fabro: Develop nodes=12 edges=27
+.fabro/workflows/develop/workflow.fabro: Develop nodes=13 edges=28
   goal-inline
   file:output_schema:schemas/planner-output.schema.json@planner
   file:prompt:prompts/planner.md@planner
@@ -112,7 +112,7 @@ expression: report
 .fabro/workflows/pr-simplify/workflow.fabro: PrSimplify nodes=3 edges=2
   goal-inline
   file:prompt:prompts/simplify.md@simplify
-.fabro/workflows/revisor/workflow.fabro: Revisor nodes=5 edges=10
+.fabro/workflows/revisor/workflow.fabro: Revisor nodes=6 edges=11
   goal-inline
   file:prompt:prompts/select.md@select
   file:prompt:prompts/analyze.md@analyze

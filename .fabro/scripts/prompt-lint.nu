@@ -19,6 +19,15 @@
 #
 # Exit 1 on any error, 0 otherwise (warnings pass).
 
+# Opt-in marker (fabro-cb5c): a fixture battery may declare that its
+# `fabro-xxxx` literals are SYNTHETIC fixture ids — ids that must NOT
+# resolve in the tracker. The declaration suppresses check 1 for that file
+# only; a real unresolvable id in any file without the marker still errors,
+# and every other check keeps running on the marked file.
+# (split so THIS file's own source never contains the joined marker and
+# can never self-skip its seed-id check)
+const SYNTHETIC_IDS_MARKER = '# prompt-lint: ' + 'synthetic-seed-ids'
+
 def lint-files [] {
     (glob .fabro/workflows/conductor/**/*)
     | append (glob .fabro/workflows/develop/**/*)
@@ -118,15 +127,36 @@ def main [] {
 
     for f in $files {
         let text = (open --raw $f)
-        # 1. seed ids must resolve
-        for id in (seed-ids-in $text) {
-            let full = $"fabro-($id)"
-            # sd -> seeds cutover (2026-09-26): the Rust tracker CLI is
-            # `seeds` on PATH everywhere now (host + toolchain image);
-            # exit codes match (0 resolves, 1 not found).
-            let s = (do { seeds show $full --format json } | complete)
-            if $s.exit_code != 0 {
-                $errors = ($errors | append $"($f): seed id '($full)' does not resolve in the tracker")
+        # 1. seed ids must resolve — unless the file is a FIXTURE BATTERY
+        # that declares synthetic fixture ids (fabro-cb5c). A battery needs
+        # ids that must NOT resolve, so the marker suspends THIS check
+        # alone for THIS file; every other check keeps running on it.
+        #
+        # Two bounds keep the suspension from becoming a silent de-gate
+        # (fabro-ac84 class): the declaration must be its own TRIMMED line
+        # (prose that merely mentions the marker never counts), and it is
+        # honored only in a `-smoke.nu`/`-fixtures.nu` battery. The skipped
+        # ids are printed, so a rotted real id in a marked file stays
+        # visible instead of silently unchecked.
+        let base = ($f | path basename)
+        let is_battery = (($base | str ends-with '-smoke.nu') or ($base | str ends-with '-fixtures.nu'))
+        let declared = ($text | lines | any {|l| ($l | str trim) == $SYNTHETIC_IDS_MARKER})
+        if ($declared and (not $is_battery)) {
+            $errors = ($errors | append $"($f): the synthetic-fixture-id marker is only honored in a -smoke.nu / -fixtures.nu battery")
+        }
+        if ($declared and $is_battery) {
+            let skipped = (seed-ids-in $text | each {|id| $"fabro-($id)"})
+            print $"note: ($f) declares synthetic fixture ids — resolvable-id check skipped for ($skipped | length) ids: ($skipped | str join ', ')"
+        } else {
+            for id in (seed-ids-in $text) {
+                let full = $"fabro-($id)"
+                # sd -> seeds cutover (2026-09-26): the Rust tracker CLI is
+                # `seeds` on PATH everywhere now (host + toolchain image);
+                # exit codes match (0 resolves, 1 not found).
+                let s = (do { seeds show $full --format json } | complete)
+                if $s.exit_code != 0 {
+                    $errors = ($errors | append $"($f): seed id '($full)' does not resolve in the tracker")
+                }
             }
         }
         # 2. justfile anchors must not sit on comments

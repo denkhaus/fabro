@@ -3,6 +3,12 @@
 # decision core, so the battery pins it against fixture dump directories —
 # the four verdict-relevant shapes plus the affected-seed extraction. The
 # filing itself stays dry (the sweep's --dry-run arm covers it live).
+#
+# prompt-lint: synthetic-seed-ids
+# This battery's `fabro-xxxx` literals are FIXTURE ids that must not exist
+# in the tracker (fabro-cb5c): a verdict is exercised over plantable record
+# bodies, so a real id would make the fixture depend on live tracker state.
+# The marker suspends ONLY prompt-lint's resolvable-id check for this file.
 
 const ANALYSIS = "salvage-analysis.nu"
 source $ANALYSIS

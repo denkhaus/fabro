@@ -20,6 +20,28 @@ digraph Revisor {
     // develop's merge path, no human in the loop.
     exit  [shape=Msquare, label="Exit"]
 
+    // Toolchain-placement guard (fabro-2357, the loop-lane pattern of
+    // fabro-3ab2): a manual `fabro run revisor` WITHOUT --environment falls
+    // to the server's `default` environment (the CLI always sends an
+    // explicit intent environment id, and the intent's selection outranks
+    // any [run.environment] pin, so workflow.toml cannot redirect a
+    // flag-less fire) and burns a pass before the first stage that needs
+    // the toolchain: the revisor's nu/seeds calls live INSIDE the agent
+    // stages (analyze/file shell out to nu and seeds) and in the
+    // sandbox-side stage-journal hook, so the failure surfaces late and
+    // cryptically ("nu: command not found", or a soft exit after wasted
+    // model tokens). POSIX sh, NOT nu: the failure mode it guards is a
+    // sandbox without nu, and a nu guard could never report it.
+    // Fail-closed with a teaching error naming the correct fire command;
+    // toolchain-placed runs pass in milliseconds and change nothing.
+    env_guard [
+        label="Toolchain guard: fail-closed placement check",
+        shape=parallelogram,
+        script="sh .fabro/scripts/toolchain-guard.sh revisor",
+        timeout="30s",
+        max_retries=0
+    ]
+
     // Select (ADR-0015 v2): pick the NEWEST revisable develop run —
     // revisable = terminal, live sandbox, and workflow_version_id equal
     // to the newest run's version (stale-evidence runs are skipped so
@@ -127,7 +149,10 @@ digraph Revisor {
         x.context_allow_keys="filed_seed_ids,journal"
     ]
 
-    start -> select
+    // fabro-2357: the placement guard is the FIRST stage after start, so a
+    // misplaced manual fire fails closed before any nu stage exists.
+    start -> env_guard
+    env_guard -> select
 
     // Tracker-clean analog of develop's "Tracker empty": a plain natural
     // completion, not an error.

@@ -135,16 +135,26 @@ def main [] {
         fail $"reviewer x.preamble_output_max_lines=($value) is below the fabro-31f7 floor of 1000 — evidence heads would be silently omitted"
     }
 
-    # 11. toolchain-placement guard (fabro-3ab2): start routes through
-    # env_guard (sh, never nu) before tracker_guard.
-    if not ($lines | any {|l| ($l | str contains 'start -> env_guard')}) {
+    # 11. toolchain-placement guard (fabro-3ab2; lane flag + single-start
+    # edge added in fabro-2357 so all three lane smokes assert the same
+    # contract). start routes through env_guard (sh, never nu) before
+    # tracker_guard, the node names the loop lane, and start has no second
+    # outgoing edge that would bypass the guard. Reads COMMENT-STRIPPED
+    # lines: the rationale comments name the contract, only code may
+    # satisfy it.
+    let guard_lines = ($lines | each {|l| ($l | split row '//' | first)})
+    if not ($guard_lines | any {|l| ($l | str contains 'start -> env_guard')}) {
         fail 'start -> env_guard edge missing — a misplaced manual fire would die cryptically at the first nu stage'
     }
-    if not ($lines | any {|l| ($l | str contains 'env_guard -> tracker_guard')}) {
+    if not ($guard_lines | any {|l| ($l | str contains 'env_guard -> tracker_guard')}) {
         fail 'env_guard -> tracker_guard edge missing — the placement guard must precede every nu stage'
     }
-    if not ($lines | any {|l| ($l | str contains 'toolchain-guard.sh') and ($l | str starts-with '        script="sh ')}) {
-        fail 'env_guard script line must run the shared guard via POSIX sh — nu cannot guard a sandbox without nu'
+    if not ($guard_lines | any {|l| ($l | str contains 'toolchain-guard.sh loop') and ($l | str starts-with '        script="sh ')}) {
+        fail 'env_guard script line must run the shared guard via POSIX sh with the loop lane flag — nu cannot guard a sandbox without nu'
+    }
+    let guard_start_edges = ($guard_lines | where {|l| ($l | str trim | str starts-with 'start ->')})
+    if ($guard_start_edges | length) != 1 {
+        fail $'start must have exactly ONE outgoing edge, the placement guard; found ($guard_start_edges | length) — a second edge would bypass it'
     }
 
     print 'loop graph-contract-smoke: OK — guard exits, lane wiring, envelope pins, red bounce, evidence budget, placement guard intact'
