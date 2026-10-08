@@ -270,6 +270,15 @@ stores it belongs to; reach them by phase need:
   cost narratives, or machine-specific paths (`.fabro/workflows/**`);
   branch/merge facts belong in PROJECT_FACTS. The mechanical net is the
   prompt-lint evidence ban.
+- Loop-asset battery sweep BEFORE declaring a gate healthy: run
+  EVERY battery named in `scripts/qualitygate.nu` (grep its `smokes` +
+  `batteries` lists, run each with `nu`, read each exit code). Cargo
+  rounds and the workflow smokes can be fully green while a registered
+  parity battery stays red: sprint 23 shipped a fork feature with its
+  pin file but no touchpoints registry row, and nothing noticed for
+  days (2026-10-08, found by `touchpoints-parity-fixtures.nu`). Seconds
+  of work; it is the only net for the missing-row / missing-registration
+  class.
 - Local full-crate verification runs with `--profile ci` timeouts: a
   default-profile timeout on a Docker/sandbox test under dev-host
   conditions is an environment artifact (known class), not a regression —
@@ -371,6 +380,17 @@ stores it belongs to; reach them by phase need:
   `.seeds/config.yaml` to an EMPTY file; restore the mapping by hand
   (`seeds config set` refuses an empty file) — valid keys:
   project/version/max_plan_depth/vcs_manager.
+- Shell-written tracker text NEVER carries backticks or `$(` through a
+  `bash()` command line (2026-10-08): bash executes them as command
+  substitution. A close reason containing `start -> env_guard ->
+  tracker_guard` ran the command `start` and REDIRECTED its stdout into
+  files named after the remaining words — three empty files appeared at
+  the repo root as `A` entries in `but status`, and the stored close
+  reason silently lost every backticked phrase (the earlier record of the
+  sprint had to be rewritten). Write the payload to a file and pass
+  `--reason "$(cat /tmp/reason.txt)"`; after any shell-based tracker
+  write, sweep `but status` for stray `A` entries and delete them before
+  committing — otherwise they ride the next sweep commit.
 - A `fabro create` whose post-processing dies still created the run:
   capture exactly one run id per intended create and `fabro rm --force`
   duplicates immediately - submitted ghosts count as active runs and wedge
