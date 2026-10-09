@@ -92,6 +92,13 @@ def main [
     if ($branch | str starts-with 'fabro/') {
         fail $"refusing to integrate into run branch '($branch)' — switch to a world branch"
     }
+    # Run 01M4GXA88RC2 (2026-10-09): a fire whose ambient branch was the
+    # GitButler workspace resolved the stale origin/gitbutler/workspace shadow
+    # (a 2026-10-03 tree + tracker) and died at the planner's fs-envelope
+    # guard. The workspace stack is never the published line.
+    if ($branch | str starts-with 'gitbutler/') {
+        fail $"refusing '($branch)' as fire source — a GitButler workspace branch is never the published line (a stale origin shadow of it exists). Pass --branch <world-branch> or fire from a plain checkout."
+    }
     let dirty = ((do { git status --porcelain } | complete).stdout | str trim)
     if not ($dirty | is-empty) {
         fail $"worktree is dirty — commit or stash first:\n($dirty)"
