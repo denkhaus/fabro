@@ -571,16 +571,23 @@ stores it belongs to; reach them by phase need:
   appear in origin/denkhaus.
 - Tool-agnostic engine (ADR-0017): engine components never reference
   project-scope tooling by name; bootstrap lives in project artifacts.
-- Upstream posture (ADR-0024, 2026-10-01): the platform base is FROZEN at
-  0.362.0-nightly (merge-base 1b4fb1528). No routine merges of fabro main.
-  Intake: (a) petri/pebble fork merges only when they compile and pass gates
-  against OUR base (skip+record what needs fabro-side changes we lack);
-  (b) fabro-main fixes land as bounded, justified cherry-picks (registered
-  candidate: the sandbox-side publication rewrite #913). Drift watching is
-  informational, never action-triggering. Selectively OFFER general,
-  non-strategic fixes upstream (fabro-d485); strategic assets stay
-  fork-private. Endgame: convergence or a deliberate wholesale switch —
-  keep the .fabro layer portable (seams/presence pins stay binding).
+- Upstream posture (ADR-0024 + ADR-0027): the platform base is FROZEN at
+  0.362.0-nightly (merge-base 1b4fb1528); since ADR-0027 (2026-10-09) the
+  ENGINE DEPENDENCIES are frozen as well — no routine dep intake, no
+  routine fork merges of petri/pebble/lithos-llm/sandbox-driver/twins.
+  The decisive finding behind that: three read-only inventories showed
+  denkhaus-0 to have all ten capability axes we rely on and ~74% of the
+  Petri-era closures to be REBUILD/FIX of pre-existing capability, while
+  the host-hook gap we were chasing exists in BOTH worlds (containerized
+  server, no host checkout) — so the archived line was no fix for it.
+  What a return would have LOST: the record/projection run stack (server,
+  CLI, SPA, DB) and the ~24% genuinely new machinery. A dep bump is now a
+  deliberate decision with a recorded reason; drift watching stays
+  informational; still selectively OFFER general, non-strategic fixes
+  upstream (fabro-d485), strategic assets stay fork-private. Keep the
+  .fabro layer portable (seams/presence pins stay binding). Re-open
+  condition (ADR-0027): the engine structurally blocks a change we cannot
+  make in the fork.
 - Dependency finish (user directive 2026-10-07, fabro-e71b park): a
   session that lands work in a fork-dep checkout (petri, pebble, ...)
   FINISHES it before it ends — commit AND push the fork repo, bump this
@@ -593,8 +600,13 @@ stores it belongs to; reach them by phase need:
   status -sb` clean AND `git -C <repo> log @{u}..HEAD` empty; if a push
   is impossible (credentials, network), the handoff seed names repo,
   branch, and local state EXPLICITLY — dependency work never ends
-  silently unfinished. Upstream merges stay FROZEN (2026-10-07): the
-  only external updates are these dependency bumps.
+  silently unfinished. Upstream merges stay FROZEN, and since ADR-0027
+  (2026-10-09) the DEPENDENCY BUMPS are frozen too: petri/pebble/
+  lithos-llm/sandbox-driver/twins are pinned by lock revs, and
+  `.fabro/scripts/dep-pins-fixtures.nu` (registered in battery-runner)
+  REDs when a locked rev moves. A dep bump is a deliberate decision:
+  reason + edit that list in the same change. Patching our forks stays
+  allowed and expected.
 - Fork-feature presence pinning: every durable fork feature lives in a
   fork-only source file wired through minimal one-line seams, with a
   presence test in a fork-only test file plus a touchpoints row —
