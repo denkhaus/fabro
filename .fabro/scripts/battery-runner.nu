@@ -76,6 +76,13 @@ const SMOKES = [
     # sha, the two release scripts must call the policy site, and the
     # scanner proves it has teeth on a planted fixture.
     '.fabro/scripts/release-sha-fixtures.nu'
+    # judgment-shadow sync battery (fabro-d367): the host hook's script
+    # travels INSIDE the four workflow.toml hook commands (quoted
+    # heredoc through nu -c — a host-side hook has no workspace cwd on
+    # the Docker provider, so a repo-relative path exits 1 on every
+    # stage); the battery pins byte-equality with the ONE source file
+    # and simulates the engine's sh -c transport end to end.
+    '.fabro/scripts/judgment-shadow-sync-smoke.nu'
 ]
 
 # Registered checked-in fixture batteries (seed fabro-ac84): the gate
