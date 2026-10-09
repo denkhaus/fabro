@@ -50,27 +50,23 @@ stores it belongs to; reach them by phase need:
 ## Phase 0 — Orient (always, cheap)
 
 - One world: everything works on the LINE branch `denkhaus` in the main
-  checkout. VCS layer is the GitButler experiment (2026-10-03, CONTINUES)
-  — but it is PER MACHINE: a machine that has not set up the workspace yet
-  shows a PLAIN git checkout on `denkhaus` with no `.git/gitbutler` (seen
-  2026-10-06 on the second dev machine; that is NOT the experiment ending).
-  FIRST `but status` (via `mise exec -- but`): if it says no GitButler
-  project, run `mise exec -- but setup` on a synced, clean tree — it
-  registers the project, switches to `gitbutler/workspace`, and sets the
-  target to the remote HEAD (origin/main = the frozen ADR-0024 base); then
-  make `denkhaus` the applied virtual branch. On a set-up machine the
-  checkout sits on `gitbutler/workspace` and the line is the APPLIED
-  virtual branch `denkhaus` — `but status` must show it applied. All
-  write operations go through `but`; read-only git inspection stays
-  allowed. Runs execute on the PRODUCTION server `https://mirtuell.net` —
-  every line query carries `--server https://mirtuell.net`. The local
-  server (127.0.0.1:32276) is for TESTS only. Apply/unapply of branches
-  plays the role of branch switches; git worktrees never.
-- `but branch update denkhaus` BEFORE reading tracker state when another
-  machine may have run the line (integrates origin/denkhaus into the
-  applied branch, pull-rebase) — the tracker view is branch-local. Never
-  apply, unapply, or update branches while a background cargo runs (the
-  tree is rewritten and a mixed build invalidates the whole run).
+  checkout. VCS layer is PLAIN GIT (user decision 2026-10-09: the GitButler
+  experiment ENDED — assessment ~14-19h friction over 6 days, zero current
+  multi-agent use, permanent sha tax; teardown ran on v1000 the same
+  evening: `but teardown --checkout-to denkhaus`, `.git/gitbutler` removed,
+  `vcs_manager` key dropped from .seeds/config.yaml, the repo http:but pin
+  dropped from .mise.toml). MACHINE 1 still needs the same teardown
+  ceremony when it next works (its checkout may still be a GB workspace:
+  if `git rev-parse --abbrev-ref HEAD` says `gitbutler/workspace`, run the
+  teardown FIRST, then read state). Runs execute on the PRODUCTION server
+  `https://mirtuell.net` — every line query carries
+  `--server https://mirtuell.net`. The local server (127.0.0.1:32276) is
+  for TESTS only. git worktrees never.
+- `git pull --ff-only origin denkhaus` BEFORE reading tracker state when
+  another machine may have run the line — the tracker view is
+  branch-local. Never checkout/reset the tree while a background cargo
+  runs (the builder reads live sources and a mixed build invalidates the
+  whole run).
 - Agent roster FIRST (2026-10-04, second-session incident): call
   `agent_observe.list_agents()` before anything else. Another top-level
   session in THIS repo's cwd means a second /iterate is alive in the same
@@ -351,46 +347,37 @@ stores it belongs to; reach them by phase need:
 
 ## Phase 5 — Integrate
 
-- Commit code (`but commit`) BEFORE tracker mutations land. TARGET the
-  lane explicitly: with several lanes stacked, `but commit` places the
-  commit at the TIP OF THE STACK — the topmost lane, not the line (2026-
-  10-04, sprint 14: a commit landed on the sibling's lane and needed
-  `but move <id> --branch denkhaus`); pass `--branch denkhaus` on every
-  line commit. The commit message travels through a FILE, never through
-  a Python variable: `bash()` does not see the REPL's names, so
-  `-m "$MSG"` commits an empty message (2026-10-03 fabro-8615) — write
-  `/tmp/msg.txt` and pass `-m "$(cat /tmp/msg.txt)"`, then read the
-  message back (`but show <id>`) before pushing. On a machine whose GB
-  workspace is NOT set up (plain git), land NOTHING on the line without
-  setting up first — or with the user's explicit go for a plain-git
-  interim (push through the gate as usual, and `but setup` before the
-  next cycle).
-- A SHARED workspace means shared FILES (2026-10-03, two iterate
-  sessions in one GitButler workspace): a file-level `but commit` sweeps
-  every uncommitted line of that file, so a sibling's tracker commit
-  can swallow this session's seed claims. Check the per-id diff
+- Commit code (plain `git add <files>` + `git commit -F /tmp/msg.txt`)
+  BEFORE tracker mutations land. The commit message travels through a
+  FILE, never through a Python variable: `bash()` does not see the
+  REPL's names, so `-m "$MSG"` commits an empty message (2026-10-03
+  fabro-8615) — write `/tmp/msg.txt`, commit with `-F`, then read the
+  message back (`git log -1 --format=%B`) before pushing. Stage NAMED
+  files only (never `git add -A`) so a sibling session's uncommitted
+  work cannot ride the commit.
+- A SHARED checkout means shared FILES (observed 2026-10-03 with two
+  iterate sessions): whole-file commits can sweep a sibling's tracker
+  lines into your commit. Check the per-id diff
   (`git diff -- .seeds/issues.jsonl`) for foreign ids before committing
   a shared file, land your own lines promptly, and re-read
   `iterate-state.json` before writing — the sibling session counts its
-  closures into the same ledger. `seeds sync` with
-  `vcs_manager: gitbutler` in `.seeds/config.yaml` (the GB repos carry
-  it) commits changed tracker files itself — verify each sync commit
-  with `git show --stat` before pushing. CONFIG TRAP (observed
-  2026-10-06): a hand-edited INVALID `vcs_manager` value makes sync wipe
-  `.seeds/config.yaml` to an EMPTY file; restore the mapping by hand
-  (`seeds config set` refuses an empty file) — valid keys:
+  closures into the same ledger. CONFIG TRAP (observed 2026-10-06, GB
+  era): a hand-edited INVALID `vcs_manager` value made sync wipe
+  `.seeds/config.yaml` to an EMPTY file; the fabro repo now carries NO
+  `vcs_manager` key (plain default). Valid keys when one is ever needed:
   project/version/max_plan_depth/vcs_manager.
 - Shell-written tracker text NEVER carries backticks or `$(` through a
   `bash()` command line (2026-10-08): bash executes them as command
   substitution. A close reason containing `start -> env_guard ->
   tracker_guard` ran the command `start` and REDIRECTED its stdout into
   files named after the remaining words — three empty files appeared at
-  the repo root as `A` entries in `but status`, and the stored close
-  reason silently lost every backticked phrase (the earlier record of the
-  sprint had to be rewritten). Write the payload to a file and pass
-  `--reason "$(cat /tmp/reason.txt)"`; after any shell-based tracker
-  write, sweep `but status` for stray `A` entries and delete them before
-  committing — otherwise they ride the next sweep commit.
+  the repo root as untracked `A` entries in the status view, and the
+  stored close reason silently lost every backticked phrase (the earlier
+  record of the sprint had to be rewritten). Write the payload to a file
+  and pass `--reason "$(cat /tmp/reason.txt)"`; after any shell-based
+  tracker write, sweep `git status` for stray untracked entries and
+  delete them before committing — otherwise they ride the next
+  `git add`.
 - A `fabro create` whose post-processing dies still created the run:
   capture exactly one run id per intended create and `fabro rm --force`
   duplicates immediately - submitted ghosts count as active runs and wedge
@@ -403,7 +390,7 @@ stores it belongs to; reach them by phase need:
   the END: `nu .fabro/scripts/push-gate.nu` (exit 0 = open: no running
   conductor/develop/revisor pass AND no open run PR). Check and push
   share one cell, the gate runs UNPIPED, and the push itself is
-  `but push denkhaus` — `&&` behind a pipe reads the pipe member's exit
+  `git push origin denkhaus` — `&&` behind a pipe reads the pipe member's exit
   code, not the gate's (2026-10-02 23:00 incident: a
   `gate | tail -1 && git push` pushed straight through a REFUSED verdict
   while a loop pass ran), and `cmd; echo RC=$?; if [ $? -eq 0 ]` reads
@@ -417,15 +404,14 @@ stores it belongs to; reach them by phase need:
   explicit `on_overlap: skip`; re-GET and verify it survived), deploy
   nonblocking, smoke on mirtuell.net, re-enable, monitor via heartbeat.
 - Tooling-repin rule (user directive 2026-10-04, "simple but
-  consistent"): a GitButler-fork release repin (`.mise.toml` http:but)
-  is COMMITTED locally and NEVER pushed — the session owns every line
-  push (behind the gate). Repins riding their own push bypass the push
-  gate and move the line tip past the deployed sha (fork.5 incident:
-  parity refusal + stale release clone). Deploy-window ORDER: repin (if
-  pending) -> version bump -> push -> clone-build -> tofu apply ->
-  pin-toolchain — one window restores `line tip == deployed sha == pin
-  target`. Repo scripts shell out via `mise exec -- but`, never the
-  ambient PATH but.
+  consistent"; GB era ended 2026-10-09): a GitButler-fork release repin
+  is COMMITTED locally and NEVER pushed on its own — the session owns
+  every line push (behind the gate). Repins riding their own push bypass
+  the push gate and move the line tip past the deployed sha (fork.5
+  incident: parity refusal + stale release clone). Deploy-window ORDER:
+  repin (if pending) -> version bump -> push -> clone-build -> tofu
+  apply -> pin-toolchain — one window restores `line tip == deployed
+  sha == pin target`.
 - Fork releases follow ADR-0025 naming `<frozen-base>-fork.N` — the
   upstream `cargo dev release` path (origin main push) is WRONG for the
   line branch. Until a fork mode exists: manual bump = workspace
@@ -500,7 +486,7 @@ stores it belongs to; reach them by phase need:
    delivery): pull, evaluate journals/reviews (premise-checked against
    the tree), dispatch seeds per ADR-0018 with dispatch-dedupe (keep the
    richer seed, close the lesser naming both ids), push through the gate
-   (`but push denkhaus`, gate unpiped) with JSONL-dedupe discipline, rootprint correlation for every
+   (`git push origin denkhaus`, gate unpiped) with JSONL-dedupe discipline, rootprint correlation for every
    evaluated run, report compactly in German.
    SALVAGE SWEEP is MECHANICAL FIRST (fabro-f312, 2026-10-04): run
    `nu .fabro/scripts/salvage-sweep.nu` (optionally `--since 48hr
@@ -524,26 +510,22 @@ stores it belongs to; reach them by phase need:
   `just sync-style-guide` (the qualitygate parity battery REDs on divergence).
   Loop runs NEVER write `.agents/**` (fabro-591a decision: no run-scope
   widening — battery-RED routes the sync to the session).
-- VCS layer is the GitButler experiment (user directive 2026-10-03,
-  CONTINUES — user re-confirmed 2026-10-06 after a wrong end-report from
-  the second machine): every write operation (commit, push, branch,
-  history edit) goes through `but` (via `mise exec -- but`); never run
-  `git add/commit/push/checkout/merge/rebase/stash/cherry-pick` on a
-  set-up machine. MULTI-MACHINE (2026-10-06 lesson): the workspace is
-  PER MACHINE — a new machine without `but setup` shows plain git; that
-  impression is a setup gap, never "the experiment ended" (report such
-  findings, do not rewrite this skill's VCS wording on them). Target is
-  `origin/main` (the frozen ADR-0024 base) — do NOT run `but pull`
-  routinely (it would intake upstream); line updates arrive via
-  `but branch update denkhaus`, line pushes via `but push denkhaus`.
-  `but` does NOT maintain the classic git index — a stale index makes
-  `git diff`/`git status` show phantom `MM` entries while the worktree
-  matches HEAD (proof of real change is `git diff HEAD -- <files>`;
-  `git reset` (mixed, index only) restores honest views and leaves
-  `but status` untouched). Multi-agent note: the experiment exists to
-  run several agents as separate virtual branches/stacks in one
-  workspace; report friction in the cycle report so the go/no-go stays
-  factual.
+- VCS layer is PLAIN GIT (user decision 2026-10-09: the GitButler
+  experiment ENDED after ~14-19h friction over 6 days, zero current
+  multi-agent use, and a permanent sha tax; the fork stays frozen at
+  v0.22.3-fork.7). Normal git discipline: named-file staging, commit -F,
+  ff-only pulls, pushes only behind the gate. HISTORY (2026-10-03..
+  2026-10-09, GB era): every write went through `but`; target was
+  `origin/main` (frozen ADR-0024 base) with the line as the applied
+  virtual branch `denkhaus`; a stale git index under GB made
+  `git diff`/`git status` show phantom `MM` entries (proof of real
+  change was `git diff HEAD -- <files>`). MACHINE 1 may still be a GB
+  workspace — run its teardown (see Phase 0) before any write there.
+  Do NOT merge origin/main (upstream intake stays frozen); line updates
+  via `git pull --ff-only origin denkhaus`, line pushes via
+  `git push origin denkhaus` behind the gate. The stale
+  `origin/gitbutler/workspace` shadow branch (2026-10-03 snapshot) is a
+  fire hazard if left standing — delete it once the user confirms.
 - Wait budgets derive from observed service latencies, not guesses: a
   bounded wait must outlive the slowest LEGITIMATE stage of what it waits
   for (PR creation after terminal status; required-check duration on a
