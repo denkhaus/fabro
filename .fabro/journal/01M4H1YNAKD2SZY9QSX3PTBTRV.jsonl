@@ -6,3 +6,4 @@
 {"$schema":"fabro-journal-v1","run_id":"01M4H1YNAKD2SZY9QSX3PTBTRV","node":"claim_check","visit":1,"status":"succeeded","ts":"2026-10-09T19:25:30Z","data":{}}
 {"$schema":"fabro-journal-v1","run_id":"01M4H1YNAKD2SZY9QSX3PTBTRV","node":"implementer","visit":1,"status":"succeeded","ts":"2026-10-09T19:26:18Z","data":{"painpoints":[],"observations":["iterate-state.json (line 56) carries a prose mention of this seed's GO decision — journal-style ledger data outside the fs envelope's loop-asset list; harmless here, but it means 'zero references' scans must always exclude ledger/journal files or they will read as invocations."]}}
 {"$schema":"fabro-journal-v1","run_id":"01M4H1YNAKD2SZY9QSX3PTBTRV","node":"tester","visit":1,"status":"succeeded","ts":"2026-10-09T19:26:37Z","data":{}}
+{"$schema":"fabro-journal-v1","run_id":"01M4H1YNAKD2SZY9QSX3PTBTRV","node":"evidence","visit":1,"status":"succeeded","ts":"2026-10-09T19:26:38Z","data":{}}
