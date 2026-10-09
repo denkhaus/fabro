@@ -114,6 +114,11 @@ const BATTERIES = [
     # only; live gaps found at filing: fork_exec_guard x2,
     # fork_structured).
     '.fabro/scripts/touchpoints-parity-fixtures.nu'
+    # Dependency freeze pin (ADR-0027, 2026-10-09): the locked revs of the
+    # engine dependency repos (petri, pebble, lithos-llm, sandbox-driver,
+    # twins, daytona-sdk-rust) must equal the recorded list — a dep bump
+    # cannot ride in silently; it is a deliberate edit plus a reason.
+    '.fabro/scripts/dep-pins-fixtures.nu'
 ]
 
 def run-list [kind: string, paths: list<string>]: nothing -> bool {
