@@ -132,9 +132,9 @@ def build-one [dockerfile: string, tag: string, push: bool, sha12: string] {
 }
 
 # The pushable line-tip sha12 (fabro-a1ed/06da): the ONE policy site is
-# .fabro/scripts/line-tip-sha.nu — in a GitButler workspace git HEAD is the
-# never-pushed workspace commit, and a release tag must name the sha a push
-# publishes. It fails closed inside a workspace when `but sha` cannot run.
+# .fabro/scripts/line-tip-sha.nu — its published-tip guard refuses any sha
+# origin has not published, the safety net for stale or workspace-era
+# checkouts (GB era ended 2026-10-09).
 # The tag this image is published under. `--sha` carries the value
 # `scripts/image-release.nu` already resolved (fabro-ed65: ONE resolution per
 # release); the standalone path demands the PUBLISHED tip, so a release can

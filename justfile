@@ -128,10 +128,10 @@ run-images:
 # `fabro env pin-toolchain --from-run-images`; fabro-4f44). Ordering rule:
 # run ONLY after the matching server deploy — the command verifies
 # deployed-server/tag parity fail-closed and aborts on mismatch.
-# The tag comes from .fabro/scripts/line-tip-sha.nu (fabro-a1ed): in a
-# GitButler workspace the pushable line tip needs `but sha` — HEAD is the
-# never-pushed workspace commit — and the generic CLI takes the resolved
-# sha via --tag, keeping repo specifics out of the product.
+# The tag comes from .fabro/scripts/line-tip-sha.nu (fabro-a1ed): it
+# resolves the line tip and its published-tip guard refuses any sha origin
+# has not published (GB era ended 2026-10-09) — and the generic CLI takes
+# the resolved sha via --tag, keeping repo specifics out of the product.
 # Usage: `just pin-toolchain [TAG]` — default tag is the LINE TIP (correct
 # inside a deploy window: deploy, then pin). The toolchain image exists only
 # for a sha that was actually built+deployed, and the parity gate demands the
