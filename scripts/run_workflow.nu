@@ -97,7 +97,7 @@ def main [
     # (a 2026-10-03 tree + tracker) and died at the planner's fs-envelope
     # guard. The workspace stack is never the published line.
     if ($branch | str starts-with 'gitbutler/') {
-        fail $"refusing '($branch)' as fire source — a GitButler workspace branch is never the published line (a stale origin shadow of it exists). Pass --branch <world-branch> or fire from a plain checkout."
+        fail $"refusing '($branch)' as fire source — a GitButler workspace branch is never the published line; a stale origin shadow of it exists. Pass --branch with a world branch, or fire from a plain checkout."
     }
     let dirty = ((do { git status --porcelain } | complete).stdout | str trim)
     if not ($dirty | is-empty) {
