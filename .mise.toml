@@ -26,7 +26,7 @@ bun = "1.4.0"
 # @os-eco/seeds-cli reference tool 2026-09-26 — no sd bin; the ubi
 # backend is deprecated). Needs cargo — the toolchain image and dev
 # hosts have it. The repo must not rely on a global install.
-"cargo:seeds" = "0.6.0"
+"cargo:seeds" = "0.7.0"
 
 [settings.npm]
 # Default aube backend aborts on its interactive `mise add` approval prompt
