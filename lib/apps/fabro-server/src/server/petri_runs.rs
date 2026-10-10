@@ -120,6 +120,9 @@ pub(crate) fn runtime_spec(
         // run's hooks spec, whose identity every sandbox process carries
         // (fabro-19f9).
         git_identity: None,
+        // The watchdog sink binds at execution time in the worker; this
+        // spec only assembles the launch (fabro-6922).
+        hook_warnings: None,
     }
 }
 

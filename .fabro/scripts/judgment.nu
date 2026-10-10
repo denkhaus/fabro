@@ -2,7 +2,7 @@
 # judgment.nu — shared Jev (TypeSafe System One) judgment caller (ADR-0022).
 #
 # Vehicle for session-side judgments in the LOCAL session skills
-# (iterate / integrate / merge-upstream; skill boundary 2026-09-16: never
+# (iterate / integrate; skill boundary 2026-09-16: never
 # wired into fabro workflow prompts) and reusable by the engine-side
 # judgment-shadow hook (fabro-8e13) later.
 #
@@ -27,7 +27,7 @@
 # stream plus session provenance (skill, phase, subject). DEFAULT log
 # path (used when --log-file is omitted) is the canonical session log:
 #   ~/.local/state/fabro-judgments/<YYYY-MM-DD>.jsonl  (one FILE per day)
-# — every caller (iterate/integrate/merge-upstream, ad-hoc) lands in
+# — every caller (iterate/integrate, ad-hoc) lands in
 # the SAME place; --log-file exists for overrides only (the engine
 # hook passes .fabro/judgments/<run_id>.jsonl).
 #

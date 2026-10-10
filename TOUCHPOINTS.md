@@ -1,5 +1,13 @@
 # Feature touchpoints — PETRI ERA (branch denkhaus)
 
+Neutral joint home (fabro-3e3c root-cause fix, 2026-10-10): this registry
+is a CONTRACT shared by the line and the session. The line reads it
+(touchpoints-parity battery) and carries rows for the fork features it
+lands; the session curates it at integration. It lives at the repo ROOT
+because root files sit outside every lane's fs_hide — the line can
+complete the two-pin rule without an envelope exception. The retired
+merge-upstream skill (dead since the freeze era) no longer owns it.
+
 The fork line lives on `denkhaus` (the petri line, renamed from
 `denkhaus-petri` on 2026-09-27; base: upstream/main 40419cbd2, epic
 fabro-9930 owns the port waves; full analysis:
@@ -7,10 +15,9 @@ fabro-9930 owns the port waves; full analysis:
 as branch `denkhaus-0`; its old-engine touchpoint rows live in that
 branch's history and in the analysis doc — do not resurrect them here.
 
-Merges walk `upstream/main -> denkhaus`. Every durable fork feature
-keeps TWO pins: a row here (LLM-walked) AND a fork-only test a merge can
-never drop. A row without a test is a gap; a test without a row is
-invisible to the merge walk.
+Every durable fork feature keeps TWO pins: a row here AND a fork-only test
+a merge can never drop. A row without a test is a gap; a test without a
+row is invisible to the inventory walk.
 
 ## Landed pins (verify after every upstream merge)
 

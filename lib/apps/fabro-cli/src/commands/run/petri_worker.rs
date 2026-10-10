@@ -651,5 +651,8 @@ async fn runtime_spec(
         // Likewise the Git identity: `engine::run` reads it off the run's
         // hooks spec, which every sandbox process then carries (fabro-19f9).
         git_identity: None,
+        // `engine::run` installs the watchdog sink (with the run's platform
+        // records) once the hooks spec is in hand (fabro-6922).
+        hook_warnings: None,
     })
 }

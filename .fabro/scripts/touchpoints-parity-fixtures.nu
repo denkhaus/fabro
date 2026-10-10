@@ -18,14 +18,15 @@
 # experiment must not red this battery — committed work carries its row by
 # definition of the two-pin rule.
 #
-# Registry path: .agents/skills/merge-upstream/references/touchpoints.md —
-# fabro-63fc step 1 relocates the registry to a neutral home; that change
-# must move REGISTRY_REL with it (one definition, one-line edit).
-#
 #   nu .fabro/scripts/touchpoints-parity-fixtures.nu
 
 const SCRIPT_DIR = (path self | path dirname)
-const REGISTRY_REL = '.agents/skills/merge-upstream/references/touchpoints.md'
+# The registry lives at the repo ROOT (neutral joint home, fabro-3e3c root
+# cause fix, 2026-10-10): the line reads it here and carries rows for its
+# own fork features; the session curates it at integration. Root files are
+# outside every lane's fs_hide, so the line can complete the two-pin rule
+# without an envelope exception.
+const REGISTRY_REL = 'TOUCHPOINTS.md'
 # Scope guards: both sides must be substantial, or the battery would green
 # vacuously after a path-form or inventory change (skill-parity's guard
 # pattern, fabro-6538).
@@ -110,7 +111,7 @@ let dead = (
 # --- verdict ------------------------------------------------------------
 if ($unpinned | is-not-empty) {
     for f in $unpinned {
-        print -e $"touchpoints-parity: pin file without a registry row: ($f) — add a row for it in ($REGISTRY_REL) or rename the file"
+        print -e $"touchpoints-parity: pin file without a registry row: ($f) — add a row for it in TOUCHPOINTS.md (repo root) or rename the file"
     }
 }
 if ($dead | is-not-empty) {
