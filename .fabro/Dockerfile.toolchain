@@ -154,16 +154,17 @@ RUN set -eux; \
     && just --version \
     && rg --version
 
-# seeds (seeds-e160): the tracker CLI comes from the project's musl-static
+# seeds (seeds-e160, repinned 0.7.0 2026-10-10 matching .mise.toml): the tracker
+# CLI comes from the project's musl-static
 # release binaries, NOT mise's cargo backend — seeds 0.5.0 needs library
 # features (result_option_map_or_default et al.) that this image's pinned
 # nightly-2026-04-14 predates (cargo exit 101), while bumping the nightly
 # to the seeds pin (2026-09-22) breaks cargo-insta's locked rustix. The
 # release pipeline builds the musl binaries with zero runtime deps, so
 # the download is version-pinned and checksum-verified instead.
-ARG SEEDS_VERSION=0.5.0
-ARG SEEDS_SHA256_X86_64=1c4e0ad346830b31032459331135226263ea1d156379ea8764017e32da64aae6
-ARG SEEDS_SHA256_AARCH64=695b14863a2268a020c2441aa1a29e5df04b08dbc306e0fea038db1cc824ef4d
+ARG SEEDS_VERSION=0.7.0
+ARG SEEDS_SHA256_X86_64=4830cabb8a2a4eb6d716f991009c6999e21818b5f6cca52adb48b39ba21357bd
+ARG SEEDS_SHA256_AARCH64=ddd2df793ac4aeeb3b5f166b99cb1046b0ec0c745e9aabd20cac8fe0cb4a8b9b
 RUN set -eux; \
     case "${TARGETARCH:-amd64}" in \
         amd64) triple=x86_64-unknown-linux-musl; sha="${SEEDS_SHA256_X86_64}";; \
