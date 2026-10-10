@@ -1221,6 +1221,16 @@ impl RunWorkspaces {
             .env_remove("GIT_DIR")
             .env_remove("GIT_WORK_TREE")
             .env_remove("GIT_INDEX_FILE")
+            // Git resolves the commit author from GIT_AUTHOR_* /
+            // GIT_COMMITTER_* BEFORE any `-c user.name/email` config, so an
+            // ambient identity (the stage-env injection every run sandbox
+            // carries, fabro-19f9) would override the checkpoint's own
+            // author. The checkpoint names its identity on the command
+            // line; the ambient one must not win (fabro-114c).
+            .env_remove("GIT_AUTHOR_NAME")
+            .env_remove("GIT_AUTHOR_EMAIL")
+            .env_remove("GIT_COMMITTER_NAME")
+            .env_remove("GIT_COMMITTER_EMAIL")
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())

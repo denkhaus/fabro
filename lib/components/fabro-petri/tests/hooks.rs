@@ -598,6 +598,45 @@ async fn a_stage_commits_as_the_runs_git_identity() {
     );
 }
 
+/// fabro-114c: every run sandbox carries the stage-env identity injection
+/// (GIT_AUTHOR_*/GIT_COMMITTER_*, fabro-19f9), and git resolves the commit
+/// author from that env BEFORE any `-c user.name/email` config — so an
+/// ambient default identity would override the checkpoint's configured
+/// author wherever the checkpoint's git runs as a child of a process that
+/// inherited the injection (the develop gate's engine harness,
+/// Site::Host). The checkpoint must strip the ambient identity: this pin
+/// sets it the way a real sandbox does and asserts every commit still
+/// names the run's configured author.
+#[tokio::test]
+async fn checkpoint_commits_ignore_ambient_identity_env() {
+    std::env::set_var("GIT_AUTHOR_NAME", "Fabro");
+    std::env::set_var("GIT_AUTHOR_EMAIL", "noreply@fabro.sh");
+    std::env::set_var("GIT_COMMITTER_NAME", "Fabro");
+    std::env::set_var("GIT_COMMITTER_EMAIL", "noreply@fabro.sh");
+    let mut harness = Harness::new();
+    harness.author = GitAuthor {
+        name:  "Fabro Pin".to_string(),
+        email: "pin@fabro.test".to_string(),
+    };
+    let workflow = workflow(
+        "  work [shape=parallelogram, script=\"git init -q && git add -A && git commit -q -m stage-commit\"]",
+        "  start -> work -> exit",
+    );
+    let outcome = harness.run(&workflow, SETTINGS).await;
+    assert_eq!(outcome.status, RunStatus::Success, "{outcome:?}");
+    assert!(outcome.complete, "{:?}", outcome.incomplete);
+
+    let workspace = harness.workspace().await;
+    let repository = harness.workspaces().snapshot_repository(&workspace);
+    let authors = git(&repository, &["log", "--all", "--format=%an|%ae|%cn|%ce"]).await;
+    let seen: BTreeSet<&str> = authors.lines().collect();
+    assert_eq!(
+        seen,
+        BTreeSet::from(["Fabro Pin|pin@fabro.test|Fabro Pin|pin@fabro.test"]),
+        "ambient identity env must not override the checkpoint's author: {authors}"
+    );
+}
+
 /// The stage-envelope guard meets the stage-journal hook contract
 /// (fabro-b6c5): a run that wires sandbox hooks keeps its
 /// `.fabro/journal/` traffic exempt from `x.fs_write`, so a deny-all
