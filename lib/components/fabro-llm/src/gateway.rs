@@ -278,6 +278,53 @@ mod tests {
         assert_eq!(parse_sse_block(": comment"), None);
     }
 
+    /// The exact 429 body zai sent on 2026-10-10 (run
+    /// 01M4KMWYRQDJ54ZSS08NJNH74N) — the naive Beijing wallclock plus the
+    /// engine's `[provider ...]` suffix must parse as UnknownEta, not as a
+    /// duration and not as "no window at all".
+    #[test]
+    fn the_live_zai_window_body_parses_as_unknown_eta() {
+        let body = "Usage limit reached for 5 hour. Your limit will reset at \
+                    2026-10-11 05:04:33 [provider zai, status 429, code 1308]";
+        assert!(reset_prose_is_naive(body));
+        assert_eq!(
+            parse_reset_deadline(body),
+            Some(ResetDeadline::Naive),
+            "the bracket suffix must not defeat the wallclock parse"
+        );
+        assert_eq!(
+            reset_window(body, SystemTime::now()),
+            Some(RateLimitWindow::UnknownEta)
+        );
+    }
+
+    /// Offset-carrying deadlines keep parsing as a real wait; a deadline in
+    /// the past advises nothing (the retry layer's short-window path).
+    #[test]
+    fn offset_deadlines_parse_to_a_wait_and_past_ones_to_none() {
+        let future = format!("quota: your usage will reset at {}", "2879-05-29T07:15:00Z");
+        assert!(matches!(
+            reset_window(&future, SystemTime::now()),
+            Some(RateLimitWindow::Reopens(_))
+        ));
+        let past = format!("quota: your usage will reset at {}", "1970-01-01T00:00:00Z");
+        assert_eq!(reset_window(&past, SystemTime::now()), None);
+    }
+
+    /// A 429 without reset prose is not a window: OpenAI-style "try again
+    /// in 20ms" bodies and bare statuses must stay on the retry path.
+    #[test]
+    fn bodies_without_reset_prose_are_not_windows() {
+        for body in [
+            "Rate limit reached for gpt-4 on requests per min: Limit 3, Used 3. Please try again in 20ms.",
+            "429 Too Many Requests",
+            "too many requests",
+        ] {
+            assert_eq!(reset_window(body, SystemTime::now()), None, "{body}");
+            assert_eq!(parse_reset_deadline(body), None, "{body}");
+        }
+    }
+
     #[test]
     fn status_codes_map_to_error_kinds() {
         let provider = ProviderId::new("openai");

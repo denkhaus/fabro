@@ -835,6 +835,17 @@ mod tests {
                 "a usage window should close the gate: {message}"
             );
         }
+        // The exact body zai sent on 2026-10-10 (naive wallclock + the
+        // engine's own bracket suffix) must close the gate — the live
+        // incident's text, not a cleaned-up cousin.
+        for message in [
+            "model request failed (rate_limit): provider zai Usage limit reached for 5 hour. Your limit will reset at 2026-10-11 05:04:33 [provider zai, status 429, code 1308]",
+        ] {
+            assert!(
+                probe_failure_is_a_usage_window(message),
+                "the live 429 body should close the gate: {message}"
+            );
+        }
         for message in [
             "connection reset by peer",
             "500 Internal Server Error",
