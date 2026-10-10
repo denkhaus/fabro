@@ -260,6 +260,23 @@ impl AutomationStore {
         let target = stored_git_target(&automation);
         let workflow_source = automation.workflow_source.as_ref();
         let mut transaction = self.pool.begin().await?;
+        // The handler path validates the environment through
+        // `resolve_automation_environment`; direct store callers still deserve
+        // an actionable error instead of the raw SQLite FK failure (code 787)
+        // the UPDATE below would surface (fabro-9f4a). Checked before the
+        // revision guard so validation outranks the conflict, mirroring the
+        // handler's validate-then-write ordering.
+        if let Some(environment_id) = automation.environment_id.as_deref() {
+            let row = sqlx::query("SELECT 1 FROM environments WHERE id = ?")
+                .bind(environment_id)
+                .fetch_optional(&mut *transaction)
+                .await?;
+            if row.is_none() {
+                return Err(AutomationStoreError::EnvironmentNotFound {
+                    environment: environment_id.to_string(),
+                });
+            }
+        }
         let result = sqlx::query(
             r"
             UPDATE automations SET

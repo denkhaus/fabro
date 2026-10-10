@@ -338,6 +338,11 @@ impl From<AutomationStoreError> for ApiError {
             AutomationStoreError::NotFound { id } => {
                 Self::not_found(format!("automation not found: {id}"))
             }
+            AutomationStoreError::EnvironmentNotFound { environment } => Self::with_code(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                format!("automation environment not found: {environment}"),
+                "automation_environment_not_found",
+            ),
             AutomationStoreError::AlreadyExists { id } => Self::new(
                 StatusCode::CONFLICT,
                 format!("automation already exists: {id}"),

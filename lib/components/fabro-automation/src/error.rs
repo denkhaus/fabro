@@ -55,6 +55,8 @@ pub enum AutomationValidationError {
 pub enum AutomationStoreError {
     #[error("automation not found: {id}")]
     NotFound { id: AutomationId },
+    #[error("automation environment not found: {environment}")]
+    EnvironmentNotFound { environment: String },
     #[error("automation already exists: {id}")]
     AlreadyExists { id: AutomationId },
     #[error("automation revision is missing: {id}")]
@@ -189,6 +191,7 @@ impl AutomationStoreError {
     pub fn kind(&self) -> &'static str {
         match self {
             Self::NotFound { .. } => "not_found",
+            Self::EnvironmentNotFound { .. } => "environment_not_found",
             Self::AlreadyExists { .. } => "already_exists",
             Self::MissingRevision { .. } => "missing_revision",
             Self::StaleRevision { .. } => "stale_revision",
