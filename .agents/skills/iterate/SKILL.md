@@ -220,6 +220,12 @@ stores it belongs to; reach them by phase need:
   a pipe: `$?` reads the last pipeline member, not the script). Nu
   interpolated strings treat `word:` before a `(` as a command call —
   reword such phrases; parse-clean does not mean run-clean.
+- Rust edit cells that INSERT an item before a documented function must
+  anchor on the item ABOVE (or the previous item's closing brace), never
+  on the target's `#[must_use]`/`fn` line: the doc comment sits above
+  that line, and the insert lands BETWEEN doc and fn — the new item
+  hijacks the doc and the old one goes undocumented (fabro-091b sprint 28
+  review must-fix; rustdoc-only damage, fmt/clippy stay green).
 - Rust line-continuations written THROUGH Python (edit skill, insert
   cells) MUST use raw strings (r'''...''') or doubled backslashes: a
   single `\` before the newline is a PYTHON continuation that glues the
