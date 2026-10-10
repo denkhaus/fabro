@@ -813,11 +813,24 @@ async fn finalize_created_run(
             // window the gate last saw closed is refused before any run
             // record exists — the scheduler's holds and the create path
             // share one probe per provider per cadence.
+            let gate_now = Utc::now();
+            let last_run_window = match prepared.automation() {
+                Some(automation) => {
+                    super::super::fork_line_recovery::last_run_window_signal(
+                        state.as_ref(),
+                        automation.id.as_str(),
+                        gate_now,
+                    )
+                    .await
+                }
+                None => None,
+            };
             if let Some(refusal) = super::super::fork_line_recovery::manual_window_refusal(
                 state.as_ref(),
                 &admitted.required_providers,
                 force,
-                Utc::now(),
+                gate_now,
+                last_run_window.as_ref(),
             )
             .await
             {
@@ -828,15 +841,29 @@ async fn finalize_created_run(
                 warn!(
                     provider = %refusal.provider,
                     last_probe_at = %refusal.last_probe_at,
+                    learned_from_run = ?refusal.learned_from_run,
                     "run create refused: provider window closed (fabro-b869 step 4)"
+                );
+                let source = refusal.learned_from_run.as_deref().map_or_else(
+                    || {
+                        format!(
+                            "was closed as of the probe at {}; the next recheck is at {}",
+                            refusal.last_probe_at.to_rfc3339(),
+                            refusal.next_probe_at().to_rfc3339()
+                        )
+                    },
+                    |run_id| {
+                        format!(
+                            "was closed by the workflow's last run `{run_id}`, which concluded on the provider window; the next recheck is at {}",
+                            refusal.next_probe_at().to_rfc3339()
+                        )
+                    },
                 );
                 return intent_error(
                     StatusCode::CONFLICT,
                     format!(
-                        "provider window closed: provider `{}`{model} was closed as of the probe at {}; the next recheck is at {} — pass --force to fire anyway",
+                        "provider window closed: provider `{}`{model} {source} — pass --force to fire anyway",
                         refusal.provider,
-                        refusal.last_probe_at.to_rfc3339(),
-                        refusal.next_probe_at().to_rfc3339(),
                     ),
                     "provider_window_closed",
                 );

@@ -40,10 +40,11 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use chrono::{DateTime, Utc};
-use fabro_types::{Run, RunFailure, RunStatus};
+use fabro_llm::gateway::reset_window;
+use fabro_types::{Run, RunFailure, RunId, RunStatus};
 use lithos_llm::catalog::CatalogProvider;
 
 use super::AppState;
@@ -516,9 +517,13 @@ pub(crate) struct ProviderWindowWrite {
 /// step 4): the closed provider, the stage's model selector when stated,
 /// and when the gate last probed it.
 pub(crate) struct WindowRefusal {
-    pub provider:      String,
-    pub model:         Option<String>,
-    pub last_probe_at: DateTime<Utc>,
+    pub provider:         String,
+    pub model:            Option<String>,
+    pub last_probe_at:    DateTime<Utc>,
+    /// The run whose conclusion announced the window, when the refusal
+    /// came from first-hand run evidence rather than a gate probe
+    /// (fabro-2f03).
+    pub learned_from_run: Option<String>,
 }
 
 impl WindowRefusal {
@@ -543,9 +548,32 @@ pub(crate) async fn manual_window_refusal(
     required: &[RequiredProvider],
     force: bool,
     now: DateTime<Utc>,
+    last_run_window: Option<&(String, String)>,
 ) -> Option<WindowRefusal> {
     if force {
         return None;
+    }
+    // First-hand evidence outranks a stale probe (fabro-2f03): when the
+    // workflow's own last terminal run concluded with a usage-window
+    // announcement, the window is spent regardless of what the last
+    // cadence probe saw — a window that closed mid-run otherwise stays
+    // invisible until the next probe.
+    if let Some((run_id, message)) = last_run_window {
+        for requirement in required {
+            tracing::warn!(
+                provider = requirement.provider.as_str(),
+                run_id,
+                "line gate: refusing a manual fire — the workflow's last run concluded on a provider window: {message}"
+            );
+        }
+        if let Some(requirement) = required.first() {
+            return Some(WindowRefusal {
+                provider:         requirement.provider.to_string(),
+                model:            requirement.model.clone(),
+                last_probe_at:    now,
+                learned_from_run: Some(run_id.clone()),
+            });
+        }
     }
     for requirement in required {
         let provider = requirement.provider.as_str();
@@ -584,13 +612,53 @@ pub(crate) async fn manual_window_refusal(
         };
         if window == Some(ProviderWindow::Closed) {
             return Some(WindowRefusal {
-                provider:      requirement.provider.to_string(),
-                model:         requirement.model.clone(),
-                last_probe_at: last_probe_at.unwrap_or(now),
+                provider:         requirement.provider.to_string(),
+                model:            requirement.model.clone(),
+                last_probe_at:    last_probe_at.unwrap_or(now),
+                learned_from_run: None,
             });
         }
     }
     None
+}
+
+/// The most recent terminal run of `automation_id` whose recorded
+/// conclusion announces a provider usage window, as `(run_id, message)`.
+///
+/// The gate's facts otherwise come only from its own probes, so a window
+/// that closes MID-RUN stays invisible until the next cadence probe — a
+/// fire inside that cadence used to go through and burn a run
+/// (fabro-2f03, the 2026-10-10 zai incident). A run that concluded with a
+/// window announcement is first-hand evidence the window is spent; the
+/// refusal consults it before trusting a stale "open" probe.
+pub(crate) async fn last_run_window_signal(
+    state: &AppState,
+    automation_id: &str,
+    now: DateTime<Utc>,
+) -> Option<(String, String)> {
+    let run = state
+        .stores
+        .run_summaries
+        .list_terminal_for_automation(automation_id, 1, now)
+        .await
+        .ok()?
+        .into_iter()
+        .next()?;
+    window_signal(&run.id, run.lifecycle.conclusion_failure.as_ref(), now)
+}
+
+/// The window signal a recorded conclusion carries, as `(run_id, message)`:
+/// `Some` only when the conclusion names a provider usage window (the same
+/// grammar the park predicate reads).
+fn window_signal(
+    run_id: &RunId,
+    conclusion_failure: Option<&RunFailure>,
+    now: DateTime<Utc>,
+) -> Option<(String, String)> {
+    let message = &conclusion_failure?.detail.message;
+    reset_window(message, SystemTime::from(now))
+        .is_some()
+        .then(|| (run_id.to_string(), message.clone()))
 }
 
 /// The selector a requirement's probe runs with: the provider's PROBE
@@ -818,6 +886,42 @@ mod tests {
         assert_eq!(RECHECK_INTERVAL_SECS, 600, "user decision 2026-09-14");
     }
 
+    /// A terminal run's conclusion feeds the gate only when it names a
+    /// window (fabro-2f03): the live zai body must signal, an unrelated
+    /// failure must not.
+    #[test]
+    fn a_runs_conclusion_signals_only_a_usage_window() {
+        fn failure_with(message: &str) -> fabro_types::RunFailure {
+            fabro_types::RunFailure {
+                reason: fabro_types::FailureReason::SoftStop,
+                detail: fabro_types::outcome::FailureDetail::new(
+                    message,
+                    FailureCategory::TransientInfra,
+                ),
+            }
+        }
+
+        let run_id: fabro_types::RunId = "01M4KMWYRQDJ54ZSS08NJNH74N".parse().unwrap();
+        let live = "model request failed (rate_limit): provider zai Usage limit reached for 5 hour. Your limit will reset at 2026-10-11 05:04:33 [provider zai, status 429, code 1308]";
+        let signal = window_signal(&run_id, Some(&failure_with(live)), Utc::now());
+        assert!(
+            signal.is_some(),
+            "the live zai conclusion must signal a window"
+        );
+        assert_eq!(signal.unwrap().0, "01M4KMWYRQDJ54ZSS08NJNH74N");
+
+        assert!(
+            window_signal(
+                &run_id,
+                Some(&failure_with("bad_output after 2 repair turns")),
+                Utc::now()
+            )
+            .is_none(),
+            "a non-window failure must not feed the gate"
+        );
+        assert!(window_signal(&run_id, None, Utc::now()).is_none());
+    }
+
     #[test]
     fn only_a_usage_window_signature_closes_the_gate() {
         // The gate exists for usage windows (fabro-986b): a provider that
@@ -838,14 +942,11 @@ mod tests {
         // The exact body zai sent on 2026-10-10 (naive wallclock + the
         // engine's own bracket suffix) must close the gate — the live
         // incident's text, not a cleaned-up cousin.
-        for message in [
-            "model request failed (rate_limit): provider zai Usage limit reached for 5 hour. Your limit will reset at 2026-10-11 05:04:33 [provider zai, status 429, code 1308]",
-        ] {
-            assert!(
-                probe_failure_is_a_usage_window(message),
-                "the live 429 body should close the gate: {message}"
-            );
-        }
+        let live = "model request failed (rate_limit): provider zai Usage limit reached for 5 hour. Your limit will reset at 2026-10-11 05:04:33 [provider zai, status 429, code 1308]";
+        assert!(
+            probe_failure_is_a_usage_window(live),
+            "the live 429 body should close the gate"
+        );
         for message in [
             "connection reset by peer",
             "500 Internal Server Error",
