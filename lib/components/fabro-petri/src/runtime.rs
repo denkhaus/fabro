@@ -27,12 +27,13 @@ use petri_attractor_steps::hooks::LocalHooks;
 use petri_attractor_steps::pebble::PebbleClient;
 use petri_attractor_steps::skills::FabroHome;
 use petri_attractor_steps::stage::RunInfo;
-use petri_execution::hooks::{HookAdapter, HookServiceHandle};
+use petri_execution::hooks::{HookAdapter, HookService, HookServiceHandle};
 use petri_frontend_fabro::Fabro;
 use petri_runtime::Runtime;
 use tracing::debug;
 
 use crate::fork_git_identity::RunGitIdentity;
+use crate::fork_hook_warning::{HookWarningSink, HookWarningWatchdog};
 use crate::fork_stage_env::StageDispatch;
 use crate::fork_stage_envelope::StageEnvelopes;
 use crate::providers::{self, SandboxProviderConfig};
@@ -90,6 +91,14 @@ pub struct RuntimeSpec {
     /// [`crate::fork_git_identity`]). `None` injects none (admission
     /// checks, and a run executed without Fabro's hooks).
     pub git_identity:     Option<GitIdentity>,
+    /// Where the non-blocking hook watchdog's warnings go (fabro-6922):
+    /// the run's platform records and the run id the notices carry. The
+    /// runtime wraps its hook service with the watchdog when the sink is
+    /// present, so a persistently failing non-blocking `[[run.hooks]]`
+    /// entry reaches the run's stream as a `run.notice` warning instead
+    /// of living only in raw hook reports. `None` installs the hook
+    /// service bare (admission checks).
+    pub hook_warnings:    Option<Arc<HookWarningSink>>,
 }
 
 impl RuntimeSpec {
@@ -166,9 +175,21 @@ impl RuntimeSpec {
             self.envelopes.clone(),
             stages,
         ));
+        // The non-blocking hook watchdog (fabro-6922) wraps the service
+        // when the run's engine pass wired a sink, so every hook report
+        // the service returns is observed before it travels on. The
+        // handle keeps serving the wrapped service: same decisions, plus
+        // the warning notices a failing non-blocking hook now earns.
+        let service: Arc<dyn HookService> = match &self.hook_warnings {
+            Some(sink) => Arc::new(HookWarningWatchdog::new(
+                Arc::clone(&policy) as Arc<dyn HookService>,
+                Arc::clone(sink),
+            )),
+            None => policy,
+        };
         runtime = runtime
-            .hooks(Arc::new(HookAdapter::new(policy.clone())))
-            .capability(HookServiceHandle(policy))
+            .hooks(Arc::new(HookAdapter::new(Arc::clone(&service))))
+            .capability(HookServiceHandle(service))
             .capability(local.environments());
         if for_execution && self.dry_run {
             petri_attractor_steps::register_stubs(runtime)

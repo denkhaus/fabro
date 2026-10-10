@@ -65,6 +65,7 @@ use tracing::{debug, info, warn};
 use crate::admission::AdmittedGraphs;
 use crate::blobs::{Blobs, RunBlobs};
 use crate::controls::RunControls;
+use crate::fork_hook_warning::HookWarningSink;
 use crate::hooks::{FabroHooks, HooksSpec};
 use crate::runtime::RuntimeSpec;
 use crate::secrets::SharedSecrets;
@@ -194,6 +195,16 @@ pub async fn run(mut request: RunRequest) -> Result<RunOutcome, RunError> {
     // identity the checkpoints are authored with, so a stage's own commit
     // inside its sandbox is the run's, not a self-configured one.
     request.runtime.git_identity = request.hooks.as_ref().map(HooksSpec::identity);
+    // The non-blocking hook watchdog's sink (fabro-6922): the same
+    // platform records the run's hooks append through, keyed to the same
+    // run id, so a persistently failing non-blocking `[[run.hooks]]`
+    // entry earns a `run.notice` warning on the run's stream.
+    request.runtime.hook_warnings = request.hooks.as_ref().map(|spec| {
+        Arc::new(HookWarningSink::new(
+            Arc::clone(&spec.records),
+            spec_run_id(&request.run_id),
+        ))
+    });
     let mut runtime = request
         .runtime
         .runtime(true)

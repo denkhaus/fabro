@@ -73,6 +73,7 @@ pub mod fork;
 mod fork_dot_edges;
 pub mod fork_exec_guard;
 pub mod fork_git_identity;
+pub mod fork_hook_warning;
 pub mod fork_preamble_policy;
 pub mod fork_stage_env;
 pub mod fork_stage_envelope;

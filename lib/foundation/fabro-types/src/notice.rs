@@ -43,6 +43,7 @@ pub enum RunNoticeCode {
     GithubTokenRefreshLimited,
     ModelFallbackChainEmpty,
     ModelFallbackSkipped,
+    NonBlockingHookFailed,
     PullRequestFailed,
     SandboxCleanupFailed,
     SandboxGitUnavailable,
